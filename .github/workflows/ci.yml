@@ -25,11 +25,15 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - uses: actions/cache@v4
+      - id: pw
+        uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('package-lock.json') }}
-      - run: npx playwright install --with-deps chromium
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.pw.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.pw.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
       - run: npm run e2e
         env:
           CI: "1"
@@ -56,5 +60,30 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest --cov=bettercad
 
-  # docker:
-  #   Filled in by the Docker sub-issue (#18): build linux/amd64 and linux/arm64 from web-dist.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the image (amd64 here; release.yml also builds arm64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: bettercad:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Image is under 300 MB
+        run: |
+          size=$(docker image inspect bettercad:ci --format '{{.Size}}')
+          echo "Image size: $((size / 1024 / 1024)) MB"
+          test "$size" -lt $((300 * 1024 * 1024))
+      - name: Container starts, serves the app and reports healthy
+        run: |
+          docker run -d --name bc -p 8000:8000 -e SECRET_KEY=ci bettercad:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8000/api/health && break; sleep 1; done
+          curl -fsS localhost:8000/api/health | grep '"ok":true'
+          curl -fsS localhost:8000/ | grep -q '<title>BetterCad</title>'
+          curl -fsSI localhost:8000/ | grep -i 'cross-origin-embedder-policy: require-corp'
+          docker exec bc id -u | grep -v '^0$'
+          docker logs bc

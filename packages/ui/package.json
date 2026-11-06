@@ -7,16 +7,23 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./index.css": "./src/index.css",
     "./tokens.css": "./src/tokens.css",
-    "./components.css": "./src/components.css",
-    "./tokens.json": "./src/tokens.json"
+    "./styles/*": "./src/styles/*",
+    "./tokens.json": "./src/tokens.json",
+    "./icons": "./src/icons.ts"
   },
   "scripts": {
-    "tokens": "node scripts/build-tokens.mjs",
-    "tokens:check": "node scripts/build-tokens.mjs --check"
+    "tokens": "node scripts/build-tokens.ts",
+    "tokens:check": "node scripts/build-tokens.ts --check",
+    "build": "tsc -b"
   },
   "peerDependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
-  }
+  },
+  "types": "dist/index.d.ts",
+  "sideEffects": [
+    "*.css"
+  ]
 }

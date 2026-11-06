@@ -1,0 +1,34 @@
+/* The view cube. Colours come only from tokens.css. */
+.bc-viewcube {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 6;
+  width: 104px;
+  height: 104px;
+  cursor: pointer;
+  filter: drop-shadow(0 4px 8px var(--bc-color-scrim));
+}
+.bc-cube-face {
+  fill: url(#bc-cube-grad);
+  stroke: var(--bc-color-cube-edge);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.bc-cube-label {
+  fill: var(--bc-color-cube-label);
+  font: 700 10px var(--bc-font-sans);
+  text-anchor: middle;
+}
+.bc-axis-x {
+  fill: var(--bc-color-axis-x);
+  font: 700 12px var(--bc-font-sans);
+}
+.bc-axis-y {
+  fill: var(--bc-color-axis-y);
+  font: 700 12px var(--bc-font-sans);
+}
+.bc-axis-z {
+  fill: var(--bc-color-axis-z);
+  font: 700 12px var(--bc-font-sans);
+}

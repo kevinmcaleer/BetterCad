@@ -1,0 +1,111 @@
+/* App root, shared form controls, responsive and reduced-motion rules. Colours come only from tokens.css. */
+.bc {
+  font: 13px/1.35 var(--bc-font-sans);
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.bc-icon {
+  flex: none;
+  display: block;
+}
+.bc :focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+@media (prefers-contrast: more) {
+  .bc {
+    --bc-color-line: var(--bc-color-muted);
+  }
+}
+.bc *,
+.bc *::before,
+.bc *::after {
+  box-sizing: border-box;
+}
+.bc button {
+  font: inherit;
+  color: inherit;
+}
+.bc input,
+.bc select {
+  font: inherit;
+  color: var(--bc-color-ink);
+}
+.bc [hidden] {
+  display: none !important;
+}
+.bc-grow {
+  flex: 1 1 auto;
+}
+.bc-label {
+  color: var(--bc-color-muted);
+  margin: 0 var(--bc-space-2);
+}
+.bc-select {
+  height: var(--bc-control);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  padding: 0 var(--bc-space-3);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  min-width: 110px;
+}
+.bc-text {
+  height: var(--bc-control);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  padding: 0 var(--bc-space-4);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  font: inherit;
+  width: 100%;
+}
+.bc-range {
+  accent-color: var(--bc-color-accent);
+  vertical-align: middle;
+}
+.bc-check {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  margin-top: var(--bc-space-5);
+  cursor: pointer;
+}
+.bc-check input {
+  accent-color: var(--bc-color-accent);
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .bc-btn span {
+    display: none;
+  }
+  .bc-done span {
+    display: inline;
+  }
+  .bc-rail {
+    width: 56px;
+  }
+  .bc-rail-btn span {
+    display: none;
+  }
+}
+.bc-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--bc-space-8);
+  background: var(--bc-color-scrim);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bc *,
+  .bc *::before,
+  .bc *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

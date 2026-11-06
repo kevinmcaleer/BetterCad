@@ -15,5 +15,8 @@
     "@bettercad/ui": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "vite-plugin-wasm": "^3.6.0"
   }
 }

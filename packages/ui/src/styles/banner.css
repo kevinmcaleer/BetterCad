@@ -1,0 +1,26 @@
+/* Warning banners in side panels. Colours come only from tokens.css. */
+.bc-banner {
+  margin: 0 0 var(--bc-space-5);
+  padding: var(--bc-space-5);
+  border-radius: var(--bc-radius-lg);
+  background: var(--bc-color-warn-soft);
+  color: var(--bc-color-warn-ink);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.bc-banner p {
+  margin: 0 0 var(--bc-space-4);
+}
+.bc-banner p:last-child {
+  margin-bottom: 0;
+}
+.bc-locked-note {
+  display: flex;
+  gap: var(--bc-space-3);
+  align-items: flex-start;
+}
+.bc-locked-note .bc-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--bc-color-snap);
+}

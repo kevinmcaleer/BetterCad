@@ -4,5 +4,9 @@
   "private": true,
   "type": "module",
   "description": "The 2D sketch solver: planegcs (FreeCAD's constraint solver, WASM). Arrives with epic #5.",
-  "main": "src/index.ts"
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "types": "dist/index.d.ts"
 }

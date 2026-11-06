@@ -1,0 +1,89 @@
+/* Side panels and the props panel: titles, notes, sections, presets. Colours come only from tokens.css. */
+.bc-sub {
+  margin: var(--bc-space-5) 0 var(--bc-space-2);
+  color: var(--bc-color-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.bc-namebox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+  font-size: 12px;
+  color: var(--bc-color-muted);
+}
+.bc-presets {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--bc-space-3);
+}
+.bc-preset {
+  height: var(--bc-control);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.bc-preset:hover {
+  border-color: var(--bc-color-accent);
+}
+.bc-preset.bc-on {
+  border-color: var(--bc-color-accent);
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
+.bc-colours {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--bc-space-3);
+  margin: var(--bc-space-5) 0;
+}
+.bc-colour {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+  font-size: 12px;
+  color: var(--bc-color-muted);
+}
+.bc-colour input {
+  width: 100%;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  cursor: pointer;
+}
+.bc-side {
+  flex: 0 0 var(--bc-side-width);
+  overflow: auto;
+  padding: var(--bc-space-6);
+  background: var(--bc-color-rail);
+  border-right: 1px solid var(--bc-color-line);
+}
+.bc-side.bc-props {
+  flex-basis: 280px;
+  border-right: 0;
+  border-left: 1px solid var(--bc-color-line);
+}
+.bc-panel-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin: var(--bc-space-7) 0 var(--bc-space-4);
+}
+.bc-panel-title:first-child {
+  margin-top: 2px;
+}
+.bc-note {
+  color: var(--bc-color-muted);
+  font-size: 12px;
+  margin: var(--bc-space-4) 0;
+}
+.bc-section + .bc-section {
+  margin-top: var(--bc-space-5);
+  padding-top: var(--bc-space-2);
+  border-top: 1px solid var(--bc-color-line);
+}

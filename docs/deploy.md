@@ -14,14 +14,27 @@ echo "SECRET_KEY=$(openssl rand -hex 32)" > .env
 docker compose pull && docker compose up -d
 ```
 
-## Reverse proxy
+## Reverse proxy and TLS
 
-Still to do (#21): pick the hostname (`bettercad.kevsrobots.com` is the placeholder) and copy the proxy block markdown-studio uses. The proxy must:
+The hostname is a placeholder: **`bettercad.kevsrobots.com`**. When Kev picks the real one (#21), search and replace it in `deploy/` and `docker-compose.yml`.
 
-- forward to `127.0.0.1:8000` and pass `X-Forwarded-Proto` and `X-Forwarded-For`;
-- allow request bodies of at least `MAX_UPLOAD_MB`;
-- keep `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` (FastAPI sets them; the proxy must not strip them);
-- compress `.wasm` responses (gzip or brotli).
+Use whichever proxy already fronts the Pi (the one markdown-studio sits behind):
+
+- Caddy: [`deploy/Caddyfile`](../deploy/Caddyfile). Certificates are automatic.
+- nginx: [`deploy/nginx.conf`](../deploy/nginx.conf), with `certbot --nginx -d <host>` for the certificate.
+
+Both:
+
+- forward to `127.0.0.1:8000` and pass `X-Forwarded-Proto` and `X-Forwarded-For` (uvicorn runs with `--proxy-headers`);
+- allow request bodies of 60 MB, above `MAX_UPLOAD_MB` (50);
+- set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`, which the kernel needs (FastAPI sets them too);
+- compress responses, including `.wasm`.
+
+Steps once the name is chosen:
+
+1. Add a DNS `A`/`AAAA` record (or a CNAME to the Pi's existing name) for the host.
+2. Drop in the proxy block above and reload the proxy.
+3. Check from outside the network: `curl https://<host>/api/health` returns `{"ok":true,...}`.
 
 ## Live preview
 

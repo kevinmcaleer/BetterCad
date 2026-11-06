@@ -1,0 +1,27 @@
+/* Dialogs and popovers. Colours come only from tokens.css. */
+.bc-pop {
+  position: absolute;
+  z-index: 20;
+  width: 264px;
+  padding: var(--bc-space-5) var(--bc-space-6) var(--bc-space-6);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-pop);
+}
+.bc-face {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+  margin-top: var(--bc-space-3);
+}
+.bc-face .bc-wide-btn {
+  flex: 1;
+  min-width: 0;
+}
+.bc-jtypes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bc-space-3);
+  margin-bottom: var(--bc-space-4);
+}

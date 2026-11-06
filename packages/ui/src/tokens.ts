@@ -1,4 +1,4 @@
-// BetterCad — generated from tokens.json by scripts/build-tokens.mjs. Do not edit by hand.
+// BetterCad — generated from tokens.json by scripts/build-tokens.ts. Do not edit by hand.
 
 export const THEME_IDS = ["light","dark","holodeck"] as const;
 export type ThemeId = (typeof THEME_IDS)[number];

@@ -1,4 +1,4 @@
-/* BetterCad — generated from tokens.json by scripts/build-tokens.mjs. Do not edit by hand. */
+/* BetterCad — generated from tokens.json by scripts/build-tokens.ts. Do not edit by hand. */
 :root {
   --bc-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --bc-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;

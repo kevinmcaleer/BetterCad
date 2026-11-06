@@ -1,0 +1,106 @@
+/* Menus, context menus and the views list. Colours come only from tokens.css. */
+.bc-menu {
+  z-index: 6;
+  width: 280px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: var(--bc-space-3);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  box-shadow: var(--bc-shadow-pop);
+  text-align: left;
+}
+.bc-menu .bc-panel-title {
+  margin: var(--bc-space-3) var(--bc-space-3) var(--bc-space-2);
+  font-size: 13px;
+}
+.bc-menu .bc-note {
+  margin: var(--bc-space-2) var(--bc-space-3) var(--bc-space-4);
+}
+.bc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  width: 100%;
+  min-height: 34px;
+  padding: var(--bc-space-2) var(--bc-space-4);
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-menu-item:hover,
+.bc-menu-item:focus-visible {
+  background: var(--bc-color-hover);
+  outline: none;
+}
+.bc-menu-item > span:nth-child(2) {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-menu-item .bc-keys {
+  flex: none;
+  color: var(--bc-color-muted);
+  font-size: 12px;
+}
+.bc-menu-item.bc-danger {
+  color: var(--bc-color-danger);
+}
+.bc-menu hr {
+  margin: var(--bc-space-2) 2px;
+  border: 0;
+  border-top: 1px solid var(--bc-color-line);
+}
+.bc-menu-title {
+  margin: var(--bc-space-2) var(--bc-space-4);
+  overflow: hidden;
+  color: var(--bc-color-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-view-row {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-1);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-view-row.bc-on {
+  background: var(--bc-color-accent-soft);
+}
+.bc-view-row.bc-on .bc-menu-item {
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
+.bc-view-row .bc-menu-item {
+  flex: 1;
+  min-width: 0;
+}
+.bc-view-save {
+  display: flex;
+  gap: var(--bc-space-3);
+  margin: var(--bc-space-4) var(--bc-space-2) 2px;
+}
+.bc-view-save input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  font: inherit;
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+}
+.bc-menu-icon {
+  display: inline-flex;
+  width: 16px;
+  flex: none;
+}

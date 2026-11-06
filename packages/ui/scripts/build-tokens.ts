@@ -6,20 +6,41 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = join(here, "..", "src");
-const tokens = JSON.parse(readFileSync(join(src, "tokens.json"), "utf8"));
+type Value = string | Record<string, string>;
+interface Token {
+  name: string;
+  value: Value;
+  usage?: string;
+}
+interface Style {
+  name: string;
+  fontSize: string;
+  lineHeight: number | string;
+  fontWeight: number | string;
+  usage?: string;
+}
+interface Tokens {
+  color: { themes: { id: string; name: string }[]; tokens: Token[] };
+  type: { families: Record<string, string>; groups: { name: string; family: string; styles: Style[] }[] };
+  spacing: { tokens: Token[] };
+  radius: { tokens: Token[] };
+  shadow: { tokens: Token[] };
+}
+
+const tokens: Tokens = JSON.parse(readFileSync(join(src, "tokens.json"), "utf8"));
 const themes = tokens.color.themes.map((t) => t.id);
 const first = themes[0];
 
 /** A value for a theme: plain values hold for every theme; a missing theme falls back to dark (for shadows), then the first theme. */
-function valueFor(value, theme) {
+function valueFor(value: Value, theme: string): string {
   if (typeof value !== "object" || value === null) return String(value);
-  return value[theme] ?? (theme !== first ? value.dark : undefined) ?? value[first];
+  return value[theme] ?? (theme !== first ? value.dark : undefined) ?? value[first]!;
 }
 
-const comment = (s) => (s ? `  /* ${String(s).replace(/\*\//g, "* /")} */\n` : "");
-const HEAD = "/* BetterCad — generated from tokens.json by scripts/build-tokens.mjs. Do not edit by hand. */\n";
+const comment = (s: string | false | undefined) => (s ? `  /* ${String(s).replace(/\*\//g, "* /")} */\n` : "");
+const HEAD = "/* BetterCad — generated from tokens.json by scripts/build-tokens.ts. Do not edit by hand. */\n";
 
-function themeBlock(selector, theme) {
+function themeBlock(selector: string, theme: string): string {
   let out = `${selector} {\n  color-scheme: ${theme === first ? "light" : "dark"};\n`;
   for (const t of tokens.color.tokens) out += comment(theme === first && t.usage) + `  --bc-color-${t.name}: ${valueFor(t.value, theme)};\n`;
   for (const t of tokens.shadow.tokens) out += comment(theme === first && t.usage) + `  --bc-${t.name}: ${valueFor(t.value, theme)};\n`;
@@ -28,7 +49,7 @@ function themeBlock(selector, theme) {
 
 let css = HEAD + ":root {\n";
 css += `  --bc-font-sans: ${tokens.type.families.sans};\n  --bc-font-mono: ${tokens.type.families.mono};\n`;
-for (const family of ["spacing", "radius"]) {
+for (const family of ["spacing", "radius"] as const) {
   for (const t of tokens[family].tokens) css += comment(t.usage) + `  --bc-${t.name}: ${t.value};\n`;
 }
 for (const group of tokens.type.groups) {
@@ -48,7 +69,7 @@ for (const group of tokens.type.groups) {
 }
 
 // Typed hex values for code that cannot read CSS variables cheaply (the three.js viewport).
-const colours = {};
+const colours: Record<string, Record<string, string>> = {};
 for (const theme of themes) {
   colours[theme] = {};
   for (const t of tokens.color.tokens) colours[theme][t.name] = valueFor(t.value, theme);
@@ -59,7 +80,7 @@ ts += `export const THEME_NAMES: Record<ThemeId, string> = ${JSON.stringify(Obje
 ts += `export type ColourName = ${tokens.color.tokens.map((t) => JSON.stringify(t.name)).join(" | ")};\n\n`;
 ts += `/** Every colour token's value in every theme. */\nexport const COLOURS: Record<ThemeId, Record<ColourName, string>> = ${JSON.stringify(colours, null, 2)};\n`;
 
-const outputs = [
+const outputs: [string, string][] = [
   [join(src, "tokens.css"), css],
   [join(src, "tokens.ts"), ts],
 ];

@@ -1,0 +1,209 @@
+/* Geometry feedback over the viewport: snaps, dimensions, the angle dial, the section arrow. Colours come only from tokens.css. */
+.bc-snaps {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+.bc-snap {
+  display: block;
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border: 2px solid var(--bc-color-snap);
+  border-radius: 50%;
+  background: var(--bc-color-viewport);
+  box-sizing: border-box;
+}
+.bc-snap-corner {
+  border-radius: 2px;
+}
+.bc-snap-edge {
+  transform: rotate(45deg);
+  border-radius: 1px;
+}
+.bc-snap-hole {
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  background: transparent;
+}
+.bc-snap-hole::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--bc-color-snap);
+}
+.bc-snap.bc-on {
+  width: 15px;
+  height: 15px;
+  margin: -7.5px 0 0 -7.5px;
+  background: var(--bc-color-snap);
+  box-shadow: 0 0 0 3px var(--bc-color-accent-soft);
+}
+.bc-snap.bc-on::before {
+  background: var(--bc-color-viewport);
+}
+.bc-snap-picked {
+  width: 13px;
+  height: 13px;
+  margin: -6.5px 0 0 -6.5px;
+  border-color: var(--bc-color-picked-edge);
+  background: var(--bc-color-picked);
+}
+.bc-snap-faint {
+  opacity: 0.45;
+}
+.bc-snap-label {
+  position: absolute;
+  transform: translate(12px, -50%);
+  padding: 2px 7px;
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-snap);
+  color: var(--bc-color-on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.bc-dim {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 2px 8px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: var(--bc-shadow-float);
+}
+.bc-dim.bc-on {
+  border-color: var(--bc-color-accent);
+  color: var(--bc-color-accent);
+}
+.bc-dim.bc-driven {
+  color: var(--bc-color-muted);
+  font-weight: 400;
+}
+.bc-dial-ring {
+  fill: none;
+  stroke: var(--bc-color-snap);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+.bc-dial-limits {
+  fill: none;
+  stroke: var(--bc-color-snap);
+  stroke-width: 6;
+  opacity: 0.15;
+  stroke-linecap: round;
+}
+.bc-dial-sweep {
+  fill: none;
+  stroke: var(--bc-color-snap);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.bc-dial-zero {
+  stroke: var(--bc-color-snap);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+.bc-dial-handle {
+  fill: var(--bc-color-viewport);
+  stroke: var(--bc-color-snap);
+  stroke-width: 3;
+  cursor: grab;
+}
+.bc-sect-shaft {
+  stroke: var(--bc-color-snap);
+  stroke-width: 2;
+}
+.bc-sect-head,
+.bc-sect-base {
+  fill: var(--bc-color-viewport);
+  stroke: var(--bc-color-snap);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  cursor: grab;
+}
+.bc-sect-field,
+.bc-dial-field {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px var(--bc-space-3);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  font-size: 12px;
+}
+.bc-sect-field input,
+.bc-dial-field input {
+  width: 56px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--bc-color-ink);
+  text-align: right;
+  outline: none;
+}
+.bc-sect-field em,
+.bc-dial-field em {
+  font-style: normal;
+  color: var(--bc-color-muted);
+}
+.bc-dialog {
+  z-index: 7;
+  width: 290px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  box-shadow: var(--bc-shadow-dialog);
+}
+.bc-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-4) var(--bc-space-4) var(--bc-space-4) var(--bc-space-6);
+  border-bottom: 1px solid var(--bc-color-line);
+  cursor: grab;
+  font-weight: 600;
+}
+.bc-dialog-body {
+  overflow: auto;
+  padding: 0 var(--bc-space-6) var(--bc-space-5);
+}
+.bc-dialog-body .bc-panel-title {
+  margin: var(--bc-space-6) 0 var(--bc-space-3);
+}
+.bc-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--bc-space-4);
+  padding: var(--bc-space-5) var(--bc-space-6);
+  border-top: 1px solid var(--bc-color-line);
+}
+.bc-dialog-fixed {
+  max-height: calc(100vh - 32px);
+  width: 420px;
+  max-width: 100%;
+}
+.bc-dialog-head {
+  cursor: default;
+}
+.bc-dialog-head .bc-icon-btn {
+  margin-left: auto;
+}

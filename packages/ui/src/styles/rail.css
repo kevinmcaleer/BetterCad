@@ -1,0 +1,40 @@
+/* The icon rail and the editor body. Colours come only from tokens.css. */
+.bc-body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.bc-rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+  width: var(--bc-rail-width);
+  padding: var(--bc-space-3) var(--bc-space-2);
+  background: var(--bc-color-rail);
+  border-right: 1px solid var(--bc-color-line);
+  overflow-y: auto;
+}
+.bc-rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: var(--bc-space-4) var(--bc-space-1);
+  border: 0;
+  border-radius: var(--bc-radius-md);
+  background: transparent;
+  color: var(--bc-color-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.bc-rail-btn:hover {
+  background: var(--bc-color-hover);
+  color: var(--bc-color-ink);
+}
+.bc-rail-btn[aria-pressed="true"] {
+  background: var(--bc-color-bar);
+  color: var(--bc-color-accent);
+  box-shadow: var(--bc-shadow-float);
+}

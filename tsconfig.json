@@ -1,19 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom", "vite/client", "node"]
-  },
-  "include": ["packages/*/src", "packages/*/scripts", "web/src", "web/e2e", "web/*.ts", "*.ts"]
+  "files": [],
+  "references": [{ "path": "packages/ui" }, { "path": "packages/kernel" }, { "path": "packages/sketch" }, { "path": "web" }]
 }

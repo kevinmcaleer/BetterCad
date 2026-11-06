@@ -6,7 +6,7 @@ The source of truth is the design system artifact: https://claude.ai/artifact/Mf
 
 - `src/tokens.json` is a copy of the design system's `project/tokens.json`.
 - `src/tokens.css` and `src/tokens.ts` are generated from it. Never edit them by hand.
-- `src/components.css` is the design system's `components/bundle.css`, with every variable renamed to the `--bc-*` form.
+- `src/styles/*.css` is the design system's `components/bundle.css`, split one file per component, with every variable renamed to the `--bc-*` form. `src/index.css` imports tokens then every sheet.
 - `src/icons.ts` holds the icon paths from the design system's bundle (Layers' set plus BetterCad's modelling icons).
 
 ## Re-sync from the design system

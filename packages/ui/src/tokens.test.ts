@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import tokens from "./tokens.json";
 import { contrast, colour, THEMES, type ColourName } from "./contrast";
@@ -48,10 +48,16 @@ describe("tokens.css", () => {
     }
     expect(css).toContain(".bc-type-panel-title {");
   });
-  it("component CSS uses tokens, never literal colours", () => {
-    const components = readFileSync(join(__dirname, "components.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(components).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
-    const unknown = [...components.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]!).filter((v) => !v.startsWith("--bc-") && v !== "--depth");
-    expect(unknown).toEqual([]);
-  });
+  const sheets = [
+    ...readdirSync(join(__dirname, "styles")).map((f) => join(__dirname, "styles", f)),
+    join(__dirname, "..", "..", "..", "web", "src", "app.css"),
+  ];
+  for (const file of sheets) {
+    it(`${file.split("/").slice(-2).join("/")} uses tokens, never literal colours`, () => {
+      const body = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(body).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+      const unknown = [...body.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]!).filter((v) => !v.startsWith("--bc-") && v !== "--depth");
+      expect(unknown).toEqual([]);
+    });
+  }
 });
