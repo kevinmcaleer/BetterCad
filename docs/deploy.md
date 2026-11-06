@@ -18,23 +18,40 @@ docker compose pull && docker compose up -d
 Until the first `v*` tag is released there is no published image; build it on the machine instead with
 `docker compose up -d --build` from a checkout of the repository.
 
-## Port
+## Cloudflare Tunnel
 
-The container listens on 8000 inside and is published on **`127.0.0.1:8010`** on the host, so nothing outside the
-machine can reach it directly; only the tunnel (or proxy) on the same machine can. If 8010 is taken, add
-`BETTERCAD_PORT=<free port>` to `.env` and use that port in the tunnel config too. To see what holds a port:
-`sudo ss -ltnp | grep :8010`.
+`docker compose up -d` starts two containers: the app, and `cloudflared`, which connects to Cloudflare and serves
+**`bettercad.kevsrobots.com`** (chosen by Kev, 6 November 2026). They talk over the project's own Docker network,
+so no port is opened on the machine. Cloudflare issues and renews the certificate.
 
-If `cloudflared` itself runs in Docker rather than on the host, `localhost` inside its container is not the host:
-put both containers on one Docker network and point the tunnel at `http://bettercad:8000` instead.
+Once:
 
-## Reverse proxy and TLS
+1. In Zero Trust → Networks → Tunnels, open the tunnel (or create one, type Cloudflared).
+2. Copy its token: Configure, then the long string after `--token` in the install command.
+3. Under Public Hostname, add `bettercad.kevsrobots.com` → Service `HTTP` → URL `bettercad:8000`.
+4. In `.env`, set `CLOUDFLARE_TUNNEL_TOKEN=<token>` (and keep `COMPOSE_PROFILES=tunnel`).
 
-The hostname is **`bettercad.kevsrobots.com`** (chosen by Kev, 6 November 2026). It is served through a Cloudflare Tunnel:
+The token only works for a tunnel managed from the dashboard. A tunnel made with `cloudflared tunnel create` and a
+local `config.yml` is managed locally instead: migrate it in the dashboard (Tunnels → the tunnel → Migrate), or
+make a new one there.
 
-- Cloudflare Tunnel: [`deploy/cloudflared.yml`](../deploy/cloudflared.yml). Add the `bettercad.kevsrobots.com` ingress rule to the tunnel's config, pointing at `http://localhost:8010`, and restart `cloudflared` (or set the same public hostname in the Zero Trust dashboard for a remotely managed tunnel). Cloudflare issues and renews the certificate; there is no DNS record to add by hand beyond the tunnel's CNAME, which `cloudflared tunnel route dns <tunnel> bettercad.kevsrobots.com` creates.
+To run the app without the tunnel, remove `COMPOSE_PROFILES=tunnel` from `.env`.
 
-If the machine is instead fronted by a proxy of its own:
+### Reaching it locally
+
+Nothing is published on the host. For a quick look on the machine itself, add a `docker-compose.override.yml`
+(git ignores it) with:
+
+```yaml
+services:
+  bettercad:
+    ports:
+      - "127.0.0.1:8010:8000"
+```
+
+## Another proxy instead of the tunnel
+
+If the machine is fronted by a proxy of its own, drop the tunnel profile, publish the port as above, and use:
 
 - Caddy: [`deploy/Caddyfile`](../deploy/Caddyfile). Certificates are automatic.
 - nginx: [`deploy/nginx.conf`](../deploy/nginx.conf), with `certbot --nginx -d <host>` for the certificate.

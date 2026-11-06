@@ -16,3 +16,4 @@ data/
 .coverage
 .env
 dist-types/
+docker-compose.override.yml

@@ -3,10 +3,8 @@ services:
     image: ghcr.io/kevinmcaleer/bettercad:latest
     build: .
     restart: unless-stopped
-    # Only this machine can reach it: the Cloudflare Tunnel (or proxy) forwards bettercad.kevsrobots.com here.
-    # Set BETTERCAD_PORT in .env if 8010 is taken.
-    ports:
-      - "127.0.0.1:${BETTERCAD_PORT:-8010}:8000"
+    # No published port: only the tunnel below reaches it, over this project's Docker network, at http://bettercad:8000.
+    # To open it on this machine for a quick look, see docs/deploy.md ("Reaching it locally").
     volumes:
       - bettercad-data:/data
     environment:
@@ -18,6 +16,20 @@ services:
       MAX_UPLOAD_MB: "50"
       # Only used for CORS outside production; the app is same-origin behind the proxy.
       ALLOWED_ORIGINS: https://bettercad.kevsrobots.com
+
+  # The Cloudflare Tunnel that serves bettercad.kevsrobots.com. Starts with the app when .env sets
+  # COMPOSE_PROFILES=tunnel and CLOUDFLARE_TUNNEL_TOKEN. In the Zero Trust dashboard, the tunnel's public hostname
+  # bettercad.kevsrobots.com points at http://bettercad:8000.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env, or remove COMPOSE_PROFILES=tunnel}
+    depends_on:
+      bettercad:
+        condition: service_healthy
 
 volumes:
   bettercad-data:
