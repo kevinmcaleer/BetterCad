@@ -23,7 +23,7 @@ With Docker, on a Raspberry Pi or anywhere else:
 
 ```sh
 cp .env.example .env   # then set SECRET_KEY (openssl rand -hex 32); the file explains each setting
-docker compose up -d   # http://localhost:8010 (this machine only)
+docker compose up -d   # app plus the Cloudflare Tunnel; see docs/deploy.md
 ```
 
 ## Repo layout
