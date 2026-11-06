@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="BetterCad: a free, browser-based CAD tool for 3D printing." />
+    <meta name="theme-color" content="#7c3aed" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <title>BetterCad</title>
+    <script>
+      // Apply the saved theme before the first paint so the page never flashes the wrong colours.
+      (function () {
+        try {
+          var s = localStorage.getItem("bettercad.theme") || "system";
+          var dark = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
+          document.documentElement.dataset.theme = s === "system" ? (dark ? "dark" : "light") : s;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,269 @@
+/* BetterCad — generated from tokens.json by scripts/build-tokens.mjs. Do not edit by hand. */
+:root {
+  --bc-font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --bc-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Gap between buttons in a toolbar, between rows in a list. */
+  --bc-space-1: 2px;
+  /* Gap between a top bar's buttons; padding of a floating toolbar; separator margins. */
+  --bc-space-2: 4px;
+  /* Gap inside a button between icon and label; grid gaps for tiles and fields; top bar vertical padding. */
+  --bc-space-3: 6px;
+  /* Horizontal padding of buttons and bars; gap between a row's icon and name; small vertical rhythm. */
+  --bc-space-4: 8px;
+  /* Popover padding; gap between the viewport and its toolbar; space between panel sections. */
+  --bc-space-5: 10px;
+  /* Side panel padding; template and text-style tile padding; stage vertical padding. */
+  --bc-space-6: 12px;
+  /* Panel body side padding; the Done button's side padding; a panel title's top margin. */
+  --bc-space-7: 14px;
+  /* Stage side padding; the page gutter outside the editor. */
+  --bc-space-8: 16px;
+  /* Height of buttons, inputs, selects and rows. Inside a dense row use 28px, inside a joint row 26px. */
+  --bc-control: 32px;
+  /* The icon rail (64px inline, 56px under 640px). */
+  --bc-rail-width: 72px;
+  /* The parts tree panel. The props panel is 280px, a layers panel 290px. */
+  --bc-side-width: 260px;
+  /* Buttons, inputs, selects, rows, menu items, swatches. */
+  --bc-radius-sm: 6px;
+  /* Tiles, wide buttons, rail buttons, part rows, templates, popover menus (the `--lyr-radius`). */
+  --bc-radius-md: 8px;
+  /* Floating toolbars over the stage, popovers, banners. */
+  --bc-radius-lg: 10px;
+  /* The editor frame and the drop zone. */
+  --bc-radius-xl: 12px;
+  /* Snap labels and dimension pills. */
+  --bc-radius-pill: 999px;
+  /* The base: buttons, rows, menu items, inputs. Set on the app root. */
+  --bc-type-ui-size: 13px;
+  --bc-type-ui-line: 1.35;
+  --bc-type-ui-weight: 400;
+  /* Primary buttons, the editor title, a selected row's name, wide buttons. */
+  --bc-type-ui-strong-size: 13px;
+  --bc-type-ui-strong-line: 1.35;
+  --bc-type-ui-strong-weight: 600;
+  /* Section headings inside a side panel or popover. */
+  --bc-type-panel-title-size: 14px;
+  --bc-type-panel-title-line: 1.35;
+  --bc-type-panel-title-weight: 600;
+  /* Notes, hints, help under the viewport, field values, status text, template captions. */
+  --bc-type-small-size: 12px;
+  --bc-type-small-line: 1.35;
+  --bc-type-small-weight: 400;
+  /* Sub-headings inside a panel section (`muted`), the Section bar's title, the explode count. */
+  --bc-type-small-strong-size: 12px;
+  --bc-type-small-strong-line: 1.35;
+  --bc-type-small-strong-weight: 600;
+  /* Units beside a number field, rail labels under their icon, a row's warning mark. */
+  --bc-type-micro-size: 11px;
+  --bc-type-micro-line: 1.3;
+  --bc-type-micro-weight: 400;
+  /* Snap labels (on `accent`-free `snap` pills) and small badges. */
+  --bc-type-micro-strong-size: 11px;
+  --bc-type-micro-strong-line: 1.3;
+  --bc-type-micro-strong-weight: 600;
+  /* Numbers in fields and read-outs, right-aligned with tabular numerals (font-variant-numeric: tabular-nums). */
+  --bc-type-value-size: 12px;
+  --bc-type-value-line: 1.35;
+  --bc-type-value-weight: 400;
+  /* Dimension labels drawn over a sketch; on a `bar` pill so they read over any part. */
+  --bc-type-dimension-size: 12px;
+  --bc-type-dimension-line: 1.2;
+  --bc-type-dimension-weight: 600;
+  /* Headings outside the editor: the models list, account, sign-in. Intentional addition: Layers has no pages. */
+  --bc-type-page-title-size: 20px;
+  --bc-type-page-title-line: 1.25;
+  --bc-type-page-title-weight: 600;
+  /* Running text outside the editor, at most 65 characters a line. */
+  --bc-type-page-body-size: 15px;
+  --bc-type-page-body-line: 1.5;
+  --bc-type-page-body-weight: 400;
+}
+:root, [data-theme="light"] {
+  color-scheme: light;
+  /* The one brand hue: primary buttons (Done, Add a part), pressed tool buttons, focus rings, selected rows' text, drop zones. On `bar` and `rail` only; never as a large fill behind text. */
+  --bc-color-accent: #7c3aed;
+  /* Fill of a selected part row, a pressed toolbar button, a chosen preset. Text on it is `accent`. */
+  --bc-color-accent-soft: #f1eafe;
+  /* Text and icons on an `accent` fill (Done button, snap labels). */
+  --bc-color-on-accent: #ffffff;
+  /* All UI text and icons on `bar`, `rail`, `stage` and `hover`. */
+  --bc-color-ink: #1f2328;
+  /* Secondary text: notes, hints, field labels, units, status, rail labels, Cancel. 4.5:1 on `bar` and `rail` in both themes. */
+  --bc-color-muted: #5f6670;
+  /* Every 1px border and separator: bars, panels, inputs, popovers, dividers between sections. */
+  --bc-color-line: #dde1e6;
+  /* Top bar, context bar, popovers, menus, dialogs, floating toolbars, inputs and the props panel background. */
+  --bc-color-bar: #ffffff;
+  /* The side rails (parts tree, side panels), tiles' resting fill, wide secondary buttons. */
+  --bc-color-rail: #f6f7f9;
+  /* The ground behind the viewport: the stage that frames the 3D view. */
+  --bc-color-stage: #e9ebef;
+  /* Hover fill of buttons, rows and menu items; the fill of a joint's explode row. */
+  --bc-color-hover: #eef0f3;
+  /* The 3D canvas itself, framed on `stage` with `shadow-frame`. Light keeps Layers' white sheet. */
+  --bc-color-viewport: #ffffff;
+  /* Flat fill of a solid in the viewport (Line art preset). Fold lines and the outline are `part-line`. */
+  --bc-color-part-fill: #ffffff;
+  /* Fold lines (1px) and the bold outline (3px) round each part, as on a flat-pack sheet. */
+  --bc-color-part-line: #111111;
+  /* Fill of a highlighted (selected, or this step's) part in the viewport. From Layers' HIGHLIGHT. */
+  --bc-color-part-highlight: #9db8f5;
+  /* Lines of a ghost part (fitted in an earlier step, or a reference body); its fill is a pale mix of `part-fill` and this. From Layers' GHOST. */
+  --bc-color-part-ghost: #a6a6a6;
+  /* Geometry feedback: snap points, joint rows and icons, the section arrow, the angle dial, face tints (at 32% alpha), the Section bar's title. Never for UI chrome, so blue always means geometry. */
+  --bc-color-snap: #1f6fe0;
+  /* The snap or face already picked (the second face of a joint), with `picked-edge` as its ring. */
+  --bc-color-picked: #ff922b;
+  /* Ring round a `picked` snap marker. */
+  --bc-color-picked-edge: #d9480f;
+  /* Error status text, a part's missing-file mark, a context menu's Delete item. Pair with a word or icon, never colour alone. */
+  --bc-color-danger: #c92a2a;
+  /* Out-of-date and stale marks: the Update button, a stale hint, the amber frame. */
+  --bc-color-warn: #b45309;
+  /* Fill of a warning banner in a side panel; its text is `warn-ink`. */
+  --bc-color-warn-soft: #fff7e6;
+  /* Text on `warn-soft`. */
+  --bc-color-warn-ink: #8a5300;
+  /* The X axis: view cube label, axis lines, the X handle. Red, as in Fusion and Snakie. */
+  --bc-color-axis-x: #e0483a;
+  /* The Y axis: view cube label, axis lines, the Y handle. */
+  --bc-color-axis-y: #40b04a;
+  /* The Z axis: view cube label, axis lines, the Z handle. */
+  --bc-color-axis-z: #4a78e0;
+  /* View cube face, top of its vertical gradient to `cube-face-low`. */
+  --bc-color-cube-face: #ffffff;
+  /* View cube face, bottom of the gradient. */
+  --bc-color-cube-face-low: #eceef2;
+  /* View cube edges (6px stroke on a 128px face texture). */
+  --bc-color-cube-edge: #b9bec8;
+  /* FRONT / TOP / RIGHT lettering on the view cube. */
+  --bc-color-cube-label: #3a3f47;
+  /* Icon colour on element tiles (shapes, primitives) at rest. */
+  --bc-color-tile-icon: #4c6ef5;
+  /* Row buttons that stay quiet until pointed at (eye, ghost, highlight in the parts tree) and drag grips. Decorative: not a text colour. */
+  --bc-color-quiet-icon: #c3c7cd;
+  /* Background of a model thumbnail tile while it loads or has no picture. */
+  --bc-color-thumb-bg: #f1f1f1;
+  /* The placeholder cube icon on `thumb-bg`. */
+  --bc-color-thumb-ink: #9aa0a6;
+  /* The overlay behind a full-screen workspace or dialog. */
+  --bc-color-scrim: #14161a73;
+  /* The drawing grid's minor lines on `viewport`, every 2 mm at the default zoom. In Holodeck it is the yellow grid on the floor, walls and ceiling. */
+  --bc-color-grid: #dde1e6;
+  /* Every tenth grid line, and the two axis lines through the origin. In Holodeck, the bright yellow of the room's grid. */
+  --bc-color-grid-major: #c3c7cd;
+  /* The far walls and ceiling of the drawing room, drawn behind the grid when the camera looks up or out. Light and dark barely differ from `viewport`; Holodeck is true black. */
+  --bc-color-room: #f6f7f9;
+  /* A floating toolbar over the stage; a pressed rail button (0 1px 3px at 8%). */
+  --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.12);
+  /* The viewport frame on the stage; the selection toolbar (0 2px 10px at 16%). */
+  --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.14);
+  /* Popovers, menus and context menus. */
+  --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.16);
+  /* A floating dialog over the viewport (the joint dialog). */
+  --bc-shadow-dialog: 0 10px 32px rgba(0, 0, 0, 0.2);
+  /* The inline editor frame on a page. */
+  --bc-shadow-editor: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bc-color-accent: #a78bfa;
+  --bc-color-accent-soft: #2d2546;
+  --bc-color-on-accent: #15102a;
+  --bc-color-ink: #e8eaee;
+  --bc-color-muted: #a0a6b0;
+  --bc-color-line: #343841;
+  --bc-color-bar: #1b1d22;
+  --bc-color-rail: #16181c;
+  --bc-color-stage: #101216;
+  --bc-color-hover: #272a31;
+  --bc-color-viewport: #1c1f25;
+  --bc-color-part-fill: #3a3f48;
+  --bc-color-part-line: #f1f3f5;
+  --bc-color-part-highlight: #5b86d6;
+  --bc-color-part-ghost: #6b6f78;
+  --bc-color-snap: #5b9cf6;
+  --bc-color-picked: #ffa94d;
+  --bc-color-picked-edge: #ff922b;
+  --bc-color-danger: #ff6b6b;
+  --bc-color-warn: #ffc078;
+  --bc-color-warn-soft: #3a2a10;
+  --bc-color-warn-ink: #ffd591;
+  --bc-color-axis-x: #ff6b5e;
+  --bc-color-axis-y: #5fd36a;
+  --bc-color-axis-z: #7aa2ff;
+  --bc-color-cube-face: #3a3f48;
+  --bc-color-cube-face-low: #2a2e36;
+  --bc-color-cube-edge: #6b707a;
+  --bc-color-cube-label: #f1f3f5;
+  --bc-color-tile-icon: #91a7ff;
+  --bc-color-quiet-icon: #4f545e;
+  --bc-color-thumb-bg: #23262c;
+  --bc-color-thumb-ink: #6b707a;
+  --bc-color-scrim: #000000a6;
+  --bc-color-grid: #2a2e36;
+  --bc-color-grid-major: #3d424c;
+  --bc-color-room: #15171b;
+  --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
+  --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);
+  --bc-shadow-dialog: 0 10px 32px rgba(0, 0, 0, 0.7);
+  --bc-shadow-editor: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+[data-theme="holodeck"] {
+  color-scheme: dark;
+  --bc-color-accent: #a78bfa;
+  --bc-color-accent-soft: #2d2546;
+  --bc-color-on-accent: #15102a;
+  --bc-color-ink: #e8eaee;
+  --bc-color-muted: #a0a6b0;
+  --bc-color-line: #343841;
+  --bc-color-bar: #1b1d22;
+  --bc-color-rail: #16181c;
+  --bc-color-stage: #000000;
+  --bc-color-hover: #272a31;
+  --bc-color-viewport: #000000;
+  --bc-color-part-fill: #17181c;
+  --bc-color-part-line: #f3f3f1;
+  --bc-color-part-highlight: #3b6fd6;
+  --bc-color-part-ghost: #6b6f78;
+  --bc-color-snap: #5b9cf6;
+  --bc-color-picked: #ffa94d;
+  --bc-color-picked-edge: #ff922b;
+  --bc-color-danger: #ff6b6b;
+  --bc-color-warn: #ffc078;
+  --bc-color-warn-soft: #3a2a10;
+  --bc-color-warn-ink: #ffd591;
+  --bc-color-axis-x: #ff6b5e;
+  --bc-color-axis-y: #5fd36a;
+  --bc-color-axis-z: #7aa2ff;
+  --bc-color-cube-face: #2a2a2a;
+  --bc-color-cube-face-low: #151515;
+  --bc-color-cube-edge: #f2c230;
+  --bc-color-cube-label: #f2c230;
+  --bc-color-tile-icon: #91a7ff;
+  --bc-color-quiet-icon: #4f545e;
+  --bc-color-thumb-bg: #23262c;
+  --bc-color-thumb-ink: #6b707a;
+  --bc-color-scrim: #000000c0;
+  --bc-color-grid: #8a6d0f;
+  --bc-color-grid-major: #f2c230;
+  --bc-color-room: #000000;
+  --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
+  --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);
+  --bc-shadow-dialog: 0 10px 32px rgba(0, 0, 0, 0.7);
+  --bc-shadow-editor: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.bc-type-ui { font-family: var(--bc-font-sans); font-size: var(--bc-type-ui-size); line-height: var(--bc-type-ui-line); font-weight: var(--bc-type-ui-weight); }
+.bc-type-ui-strong { font-family: var(--bc-font-sans); font-size: var(--bc-type-ui-strong-size); line-height: var(--bc-type-ui-strong-line); font-weight: var(--bc-type-ui-strong-weight); }
+.bc-type-panel-title { font-family: var(--bc-font-sans); font-size: var(--bc-type-panel-title-size); line-height: var(--bc-type-panel-title-line); font-weight: var(--bc-type-panel-title-weight); }
+.bc-type-small { font-family: var(--bc-font-sans); font-size: var(--bc-type-small-size); line-height: var(--bc-type-small-line); font-weight: var(--bc-type-small-weight); }
+.bc-type-small-strong { font-family: var(--bc-font-sans); font-size: var(--bc-type-small-strong-size); line-height: var(--bc-type-small-strong-line); font-weight: var(--bc-type-small-strong-weight); }
+.bc-type-micro { font-family: var(--bc-font-sans); font-size: var(--bc-type-micro-size); line-height: var(--bc-type-micro-line); font-weight: var(--bc-type-micro-weight); }
+.bc-type-micro-strong { font-family: var(--bc-font-sans); font-size: var(--bc-type-micro-strong-size); line-height: var(--bc-type-micro-strong-line); font-weight: var(--bc-type-micro-strong-weight); }
+.bc-type-value { font-family: var(--bc-font-sans); font-size: var(--bc-type-value-size); line-height: var(--bc-type-value-line); font-weight: var(--bc-type-value-weight); }
+.bc-type-dimension { font-family: var(--bc-font-sans); font-size: var(--bc-type-dimension-size); line-height: var(--bc-type-dimension-line); font-weight: var(--bc-type-dimension-weight); }
+.bc-type-page-title { font-family: var(--bc-font-sans); font-size: var(--bc-type-page-title-size); line-height: var(--bc-type-page-title-line); font-weight: var(--bc-type-page-title-weight); }
+.bc-type-page-body { font-family: var(--bc-font-sans); font-size: var(--bc-type-page-body-size); line-height: var(--bc-type-page-body-line); font-weight: var(--bc-type-page-body-weight); }

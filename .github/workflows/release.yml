@@ -1,0 +1,34 @@
+# Builds the multi-arch image and pushes it to GHCR on a version tag (v0.1.0 and so on).
+name: Release image
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ github.ref_name }}
+          tags: |
+            ghcr.io/kevinmcaleer/bettercad:${{ github.ref_name }}
+            ghcr.io/kevinmcaleer/bettercad:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,8 @@
+{
+  "name": "@bettercad/sketch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The 2D sketch solver: planegcs (FreeCAD's constraint solver, WASM). Arrives with epic #5.",
+  "main": "src/index.ts"
+}

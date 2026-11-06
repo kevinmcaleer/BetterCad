@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.d.ts.map
+web/test-results/
+web/playwright-report/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+.coverage
+.env
