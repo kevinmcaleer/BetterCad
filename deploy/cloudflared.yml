@@ -1,0 +1,13 @@
+# Cloudflare Tunnel ingress for BetterCad. Merge the bettercad.kevsrobots.com rule into the tunnel's existing
+# config.yml (above the catch-all), then restart cloudflared. Cloudflare provides the certificate and renews it.
+# FastAPI sets COOP/COEP on every response, so nothing else is needed here.
+tunnel: <your-tunnel-id>
+credentials-file: /etc/cloudflared/<your-tunnel-id>.json
+
+ingress:
+  - hostname: bettercad.kevsrobots.com
+    service: http://localhost:8000
+    originRequest:
+      # Uploads up to MAX_UPLOAD_MB (50) fit in Cloudflare's 100 MB request limit on every plan.
+      connectTimeout: 30s
+  - service: http_status:404
