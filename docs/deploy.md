@@ -18,11 +18,21 @@ docker compose pull && docker compose up -d
 Until the first `v*` tag is released there is no published image; build it on the machine instead with
 `docker compose up -d --build` from a checkout of the repository.
 
+## Port
+
+The container listens on 8000 inside and is published on **`127.0.0.1:8010`** on the host, so nothing outside the
+machine can reach it directly; only the tunnel (or proxy) on the same machine can. If 8010 is taken, add
+`BETTERCAD_PORT=<free port>` to `.env` and use that port in the tunnel config too. To see what holds a port:
+`sudo ss -ltnp | grep :8010`.
+
+If `cloudflared` itself runs in Docker rather than on the host, `localhost` inside its container is not the host:
+put both containers on one Docker network and point the tunnel at `http://bettercad:8000` instead.
+
 ## Reverse proxy and TLS
 
 The hostname is **`bettercad.kevsrobots.com`** (chosen by Kev, 6 November 2026). It is served through a Cloudflare Tunnel:
 
-- Cloudflare Tunnel: [`deploy/cloudflared.yml`](../deploy/cloudflared.yml). Add the `bettercad.kevsrobots.com` ingress rule to the tunnel's config, pointing at `http://localhost:8000`, and restart `cloudflared` (or set the same public hostname in the Zero Trust dashboard for a remotely managed tunnel). Cloudflare issues and renews the certificate; there is no DNS record to add by hand beyond the tunnel's CNAME, which `cloudflared tunnel route dns <tunnel> bettercad.kevsrobots.com` creates.
+- Cloudflare Tunnel: [`deploy/cloudflared.yml`](../deploy/cloudflared.yml). Add the `bettercad.kevsrobots.com` ingress rule to the tunnel's config, pointing at `http://localhost:8010`, and restart `cloudflared` (or set the same public hostname in the Zero Trust dashboard for a remotely managed tunnel). Cloudflare issues and renews the certificate; there is no DNS record to add by hand beyond the tunnel's CNAME, which `cloudflared tunnel route dns <tunnel> bettercad.kevsrobots.com` creates.
 
 If the machine is instead fronted by a proxy of its own:
 
@@ -31,7 +41,7 @@ If the machine is instead fronted by a proxy of its own:
 
 Whichever route you use:
 
-- forward to `127.0.0.1:8000` and pass `X-Forwarded-Proto` and `X-Forwarded-For` (uvicorn runs with `--proxy-headers`);
+- forward to `127.0.0.1:8010` and pass `X-Forwarded-Proto` and `X-Forwarded-For` (uvicorn runs with `--proxy-headers`);
 - allow request bodies of 60 MB, above `MAX_UPLOAD_MB` (50);
 - set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`, which the kernel needs (FastAPI sets them too);
 - compress responses, including `.wasm`.

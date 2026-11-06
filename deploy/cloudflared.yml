@@ -6,7 +6,7 @@ credentials-file: /etc/cloudflared/<your-tunnel-id>.json
 
 ingress:
   - hostname: bettercad.kevsrobots.com
-    service: http://localhost:8000
+    service: http://localhost:8010
     originRequest:
       # Uploads up to MAX_UPLOAD_MB (50) fit in Cloudflare's 100 MB request limit on every plan.
       connectTimeout: 30s
