@@ -49,13 +49,22 @@
 .bc-btn.bc-stale {
   color: var(--bc-color-warn);
 }
+/* The snap colour is for markers on the viewport; on a bar it is a dot beside ink text, so the count stays readable. */
 .bc-btn.bc-snap-count {
-  color: var(--bc-color-snap);
+  color: var(--bc-color-ink);
   font-weight: 600;
   font-size: 12px;
   height: 28px;
   gap: 3px;
   padding: 0 var(--bc-space-3);
+}
+.bc-btn.bc-snap-count::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--bc-color-snap);
+  border-radius: 50%;
+  box-sizing: border-box;
 }
 .bc-wide-btn {
   display: flex;
