@@ -1,4 +1,4 @@
-import { loadThemeSetting, resolveTheme, saveThemeSetting } from "./theme";
+import { applyTheme, loadThemeSetting, resolveTheme, saveThemeSetting } from "./theme";
 
 describe("theme", () => {
   it("honours the system preference", () => {
@@ -11,5 +11,10 @@ describe("theme", () => {
     expect(loadThemeSetting()).toBe("holodeck");
     localStorage.setItem("bettercad.theme", "nonsense");
     expect(loadThemeSetting()).toBe("system");
+  });
+  it("applies data-theme and the theme-color", () => {
+    applyTheme("holodeck");
+    expect(document.documentElement.dataset.theme).toBe("holodeck");
+    expect(document.querySelector('meta[name="theme-color"]')!.getAttribute("content")).toBe("#1b1d22");
   });
 });
