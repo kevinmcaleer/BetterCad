@@ -10,5 +10,5 @@ bettercad.kevsrobots.com {
 		Cross-Origin-Embedder-Policy "require-corp"
 		Strict-Transport-Security "max-age=31536000"
 	}
-	reverse_proxy 127.0.0.1:8000
+	reverse_proxy 127.0.0.1:8010
 }
