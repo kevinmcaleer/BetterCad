@@ -29,11 +29,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - if: steps.pw.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - if: steps.pw.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      # The runner image already has Chrome's system libraries, so skip install-deps (minutes of apt font downloads).
+      # Headless shell only; a cache hit makes this a no-op.
+      - run: npx playwright install --only-shell chromium
       - run: npm run e2e
         env:
           CI: "1"
@@ -62,11 +61,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-      - if: steps.pw.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-      - if: steps.pw.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      # The runner image already has Chrome's system libraries, so skip install-deps (minutes of apt font downloads).
+      # Headless shell only; a cache hit makes this a no-op.
+      - run: npx playwright install --only-shell chromium
       - name: Write any missing baselines
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: npm run e2e:visual -- --update-snapshots=missing || true
