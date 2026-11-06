@@ -8,7 +8,8 @@ On the Pi:
 # once
 mkdir -p ~/bettercad && cd ~/bettercad
 curl -O https://raw.githubusercontent.com/kevinmcaleer/BetterCad/main/docker-compose.yml
-echo "SECRET_KEY=$(openssl rand -hex 32)" > .env
+curl -O https://raw.githubusercontent.com/kevinmcaleer/BetterCad/main/.env.example
+cp .env.example .env    # set SECRET_KEY, e.g. openssl rand -hex 32; every other setting is explained in the file
 
 # each update
 docker compose pull && docker compose up -d
