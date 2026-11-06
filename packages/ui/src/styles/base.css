@@ -24,12 +24,13 @@
 .bc *::after {
   box-sizing: border-box;
 }
-.bc button {
+/* :where keeps these at element specificity, so a component class (.bc-done) can set its own colour. */
+:where(.bc) button {
   font: inherit;
   color: inherit;
 }
-.bc input,
-.bc select {
+:where(.bc) input,
+:where(.bc) select {
   font: inherit;
   color: var(--bc-color-ink);
 }
@@ -78,10 +79,11 @@
   margin: 0;
 }
 @media (max-width: 640px) {
-  .bc-btn span {
+  /* Icon buttons drop their label; text-only buttons (Iso, Top) keep it. */
+  .bc-btn .bc-icon + span {
     display: none;
   }
-  .bc-done span {
+  .bc-done .bc-icon + span {
     display: inline;
   }
   .bc-rail {
@@ -90,16 +92,6 @@
   .bc-rail-btn span {
     display: none;
   }
-}
-.bc-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--bc-space-8);
-  background: var(--bc-color-scrim);
 }
 @media (prefers-reduced-motion: reduce) {
   .bc *,

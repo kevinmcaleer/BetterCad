@@ -25,4 +25,4 @@ The source of truth is the design system artifact: https://claude.ai/artifact/Mf
 | Shadow | `--bc-shadow-float/frame/pop/dialog/editor` |
 | Type | `--bc-type-<name>-size/-line/-weight`, and a `.bc-type-<name>` class |
 
-Components never use a literal colour. A test fails if one appears in `components.css`.
+Components never use a literal colour. A test fails if one appears in any sheet under `src/styles/`.

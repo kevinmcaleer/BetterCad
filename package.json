@@ -22,7 +22,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:golden": "echo \"Geometry golden tests arrive with epics #4 and #5.\"",
-    "e2e:update": "npm run e2e -w web -- --update-snapshots"
+    "e2e:visual": "npm run e2e:visual -w web",
+    "e2e:update": "npm run e2e:visual -w web -- --update-snapshots=all"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",

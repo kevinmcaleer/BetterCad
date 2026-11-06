@@ -10,27 +10,35 @@ import {
   IconButton,
   Menu,
   NumberField,
-  PartRow,
   PartsTree,
+  PropRow,
+  PropsPanel,
   Rail,
-  Separator,
   THEMES,
+  ToolButton,
   Toolbar,
+  TooltipLayer,
+  TooltipSample,
   ViewCube,
   WideButton,
   COLOURS,
   type IconName,
   type ThemeId,
+  type TreeItem,
 } from "@bettercad/ui";
 
-/** Every component in its states, under Light, Dark and Holodeck side by side. The visual check for UI changes. */
+/**
+ * Every component in its states, under Light, Dark and Holodeck side by side. The visual check for UI changes:
+ * the Playwright screenshot tests photograph each block. Hover, focus and pressed are pinned with data-state so a
+ * screenshot shows them without a pointer.
+ */
 export function Gallery() {
   return (
     <div className="bc bc-gallery">
       <header className="bc-top">
         <span className="bc-title">
           <Icon name="cube" size={18} />
-          <span>BetterCad components</span>
+          <span className="bc-brand">BetterCad components</span>
         </span>
         <span className="bc-grow" />
         <a className="bc-btn" href="#/">
@@ -38,23 +46,35 @@ export function Gallery() {
           <span>Back to the editor</span>
         </a>
       </header>
-      <div className="bc-gallery-cols">
+      <main className="bc-gallery-cols">
         {THEMES.map((t) => (
-          <section key={t.id} data-theme={t.id} className="bc bc-gallery-col" aria-label={`${t.name} theme`}>
-            <h1 className="bc-type-page-title">{t.name}</h1>
+          <section key={t.id} data-theme={t.id} className="bc bc-gallery-col" aria-labelledby={`bc-gal-${t.id}`}>
+            <h1 className="bc-type-page-title" id={`bc-gal-${t.id}`}>
+              {t.name}
+            </h1>
             <Column theme={t.id} />
           </section>
         ))}
-      </div>
+      </main>
+      <TooltipLayer />
     </div>
   );
 }
 
-function Block({ title, children }: { title: string; children: ReactNode }) {
+function Block({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <div className="bc-gallery-block">
+    <div className="bc-gallery-block" data-block={id}>
       <h2 className="bc-panel-title">{title}</h2>
       {children}
+    </div>
+  );
+}
+
+function State({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="bc-gallery-state">
+      {children}
+      <small>{label}</small>
     </div>
   );
 }
@@ -80,12 +100,24 @@ const SWATCHES = [
   "axis-z",
 ] as const;
 
+const TREE: TreeItem[] = [
+  { id: "plate", name: "Base plate", icon: "cube" },
+  { id: "sketch", name: "Sketch 1", icon: "sketch", parentId: "plate" },
+  { id: "bracket", name: "Bracket", icon: "cylinder", ghost: true },
+  { id: "lid", name: "Lid", icon: "cube", hidden: true },
+  { id: "screw", name: "Screw hole", icon: "hole", parentId: "lid", inherited: { hidden: true } },
+  { id: "imported", name: "Imported part", icon: "body", warning: "The file it came from is missing", highlight: true },
+];
+
 function Column({ theme }: { theme: ThemeId }) {
-  const [w, setW] = useState(40);
-  const [panel, setPanel] = useState("parts");
+  const [w, setW] = useState<number | null>(40);
+  const [panel, setPanel] = useState<string | null>("parts");
+  const [tool, setTool] = useState("move");
+  const [selection, setSelection] = useState<string[]>(["plate"]);
+  const [items, setItems] = useState(TREE);
   return (
     <>
-      <Block title="Colours">
+      <Block id="colours" title="Colours">
         <div className="bc-swatches">
           {SWATCHES.map((s) => (
             <div key={s} className="bc-swatch-tile">
@@ -96,12 +128,38 @@ function Column({ theme }: { theme: ThemeId }) {
           ))}
         </div>
       </Block>
-      <Block title="Buttons">
+
+      <Block id="buttons" title="Buttons">
         <div className="bc-gallery-row">
-          <Button label="Plain" />
-          <Button icon="move" label="Pressed" on />
+          <Button variant="primary" label="Primary" />
+          <Button variant="secondary" label="Secondary" />
+          <Button label="Quiet" />
+          <Button variant="danger" icon="trash" label="Delete" />
+        </div>
+        <div className="bc-gallery-row">
+          <State label="Rest">
+            <Button variant="secondary" label="Save" />
+          </State>
+          <State label="Hover">
+            <Button variant="secondary" label="Save" data-state="hover" />
+          </State>
+          <State label="Focus">
+            <Button variant="secondary" label="Save" data-state="focus" />
+          </State>
+          <State label="Pressed">
+            <Button variant="secondary" label="Save" on />
+          </State>
+          <State label="Off">
+            <Button variant="secondary" label="Save" disabled title="Nothing to save yet" />
+          </State>
+          <State label="Busy">
+            <Button variant="primary" label="Save" busy />
+          </State>
+        </div>
+        <div className="bc-gallery-row">
+          <Button size="dense" label="Dense" />
+          <Button label="Control" />
           <Button icon="undo" title="Undo" shortcut="Ctrl+Z" />
-          <Button label="Disabled" disabled />
         </div>
         <div className="bc-gallery-row">
           <Button kind="done" label="Done" />
@@ -111,40 +169,54 @@ function Column({ theme }: { theme: ThemeId }) {
         </div>
         <div className="bc-gallery-row">
           <IconButton icon="eye" title="Hide" quiet />
-          <IconButton icon="ghost" title="Ghost" quiet on />
+          <IconButton icon="ghost" title="Show as a reference" quiet on />
           <IconButton icon="highlight" title="Highlight" quiet on inherited />
         </div>
         <WideButton icon="plus" label="Add a part" variant="outline" />
-        <div style={{ height: 6 }} />
+        <div className="bc-gallery-gap" />
         <WideButton label="Primary wide" variant="primary" />
       </Block>
-      <Block title="Toolbar">
-        <Toolbar label={`Toolbar ${theme}`}>
-          <Button icon="move" label="Move" on />
-          <Button icon="rotate" label="Turn" />
-          <Separator />
-          <Button label="Iso" />
+
+      <Block id="toolbar" title="Toolbar">
+        <Toolbar label={`Tools, ${theme}`}>
+          {(
+            [
+              ["select", "arrow", "Select", "V"],
+              ["move", "move", "Move", "M"],
+              ["turn", "rotate", "Turn", "R"],
+            ] as const
+          ).map(([id, icon, label, key]) => (
+            <ToolButton key={id} icon={icon} label={label} shortcut={key} pressed={tool === id} onPress={() => setTool(id)} />
+          ))}
+          <Toolbar.Separator />
+          <Button label="Iso" on />
           <Button label="Top" />
-          <Separator />
+          <Toolbar.Separator />
           <Button icon="frame" label="Fit" />
         </Toolbar>
-        <div style={{ height: 8 }} />
+        <div className="bc-gallery-gap" />
         <ArmedBar title="Extrude" icon="extrude">
           <span className="bc-armed-note">Distance 10 mm</span>
           <Button kind="done" label="Done" />
         </ArmedBar>
+        <div className="bc-gallery-gap" />
+        <TooltipSample text="Move (M)" />
       </Block>
-      <Block title="Number fields">
+
+      <Block id="fields" title="Number fields">
         <Fields>
           <NumberField label="W" value={w} onChange={setW} />
-          <NumberField label="Angle" value={45} unit="°" onChange={() => {}} precision={1} />
+          <NumberField label="Angle" value={45} unit="deg" onChange={() => {}} />
           <NumberField label="Z" value={12} onChange={() => {}} locked />
+          <NumberField label="D" value={null} onChange={() => {}} />
         </Fields>
+        <p className="bc-note">D shows “–” because the selected parts differ. Type a sum such as 40/2 + 5.</p>
       </Block>
-      <Block title="Rail">
+
+      <Block id="rail" title="Rail">
         <div className="bc-gallery-rail">
           <Rail
-            label={`Rail ${theme}`}
+            label={`Rail, ${theme}`}
             value={panel}
             onChange={setPanel}
             items={[
@@ -155,62 +227,94 @@ function Column({ theme }: { theme: ThemeId }) {
           />
         </div>
       </Block>
-      <Block title="Parts tree">
-        <PartsTree label={`Parts ${theme}`}>
-          <PartRow name="Base plate" selected buttons={<IconButton icon="eye" title="Hide" quiet />} />
-          <PartRow name="Bracket" icon="cylinder" buttons={<IconButton icon="eye" title="Hide" quiet />} />
-          <PartRow name="Hidden lid" hidden buttons={<IconButton icon="eyeOff" title="Show" quiet on />} />
-          <PartRow name="Imported" depth={1} warning="Missing file" />
-        </PartsTree>
+
+      <Block id="tree" title="Parts tree">
+        <PartsTree
+          label={`Parts, ${theme}`}
+          items={items}
+          selection={selection}
+          onSelect={setSelection}
+          toggles={["hidden", "ghost", "highlight"]}
+          onToggle={(id, what) => setItems((list) => list.map((it) => (it.id === id ? { ...it, [what]: !it[what] } : it)))}
+          onRename={(id, name) => setItems((list) => list.map((it) => (it.id === id ? { ...it, name } : it)))}
+        />
       </Block>
-      <Block title="Menu">
+
+      <Block id="props" title="Properties">
+        <PropsPanel
+          label={`Properties, ${theme}`}
+          sections={[
+            {
+              id: `gal-part-${theme}`,
+              title: "This part",
+              content: (
+                <>
+                  <PropRow label="Name">Base plate</PropRow>
+                  <PropRow label="Shape">Box</PropRow>
+                </>
+              ),
+            },
+            {
+              id: `gal-size-${theme}`,
+              title: "Size",
+              content: (
+                <Fields>
+                  <NumberField label="W" value={40} onChange={() => {}} />
+                  <NumberField label="D" value={20} onChange={() => {}} />
+                  <NumberField label="H" value={5} onChange={() => {}} />
+                </Fields>
+              ),
+            },
+          ]}
+        />
+      </Block>
+
+      <Block id="menu" title="Menu">
         <Menu
           open
           autoFocus={false}
           onClose={() => {}}
-          label={`Menu ${theme}`}
+          label={`Part actions, ${theme}`}
           title="Base plate"
           entries={[
-            { id: "r", label: "Rename…", icon: "pencil", keys: "F2", onSelect: () => {} },
+            { id: "r", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => {} },
             { id: "d", label: "Duplicate", icon: "copy", keys: "Ctrl+D", onSelect: () => {} },
-            { id: "x", label: "Disabled item", icon: "lock", disabled: true, onSelect: () => {} },
+            { id: "x", label: "Export (coming soon)", icon: "lock", disabled: true, onSelect: () => {} },
             { kind: "separator", id: "s" },
             { id: "del", label: "Delete", icon: "trash", danger: true, keys: "Del", onSelect: () => {} },
           ]}
         />
       </Block>
-      <Block title="Dialog">
-        <Dialog
-          inline
-          open
-          title="Extrude"
-          icon="extrude"
-          onClose={() => {}}
-          footer={
-            <>
-              <Button kind="cancel" label="Cancel" />
-              <Button kind="done" label="Done" />
-            </>
-          }
-        >
+
+      <Block id="dialog" title="Dialog">
+        <Dialog inline open title="Extrude" icon="extrude" onCancel={() => {}} onDone={() => {}}>
           <p className="bc-note">Pick a closed profile, then set the distance.</p>
           <Fields>
             <NumberField label="Distance" value={10} onChange={() => {}} />
           </Fields>
         </Dialog>
       </Block>
-      <Block title="Banner">
-        <Banner action={<Button kind="stale" label="Update" />}>This view is out of date.</Banner>
+
+      <Block id="banner" title="Banners">
+        <Banner tone="warn" action={<Button kind="stale" label="Update" />}>
+          This view is out of date.
+        </Banner>
+        <div className="bc-gallery-gap" />
+        <Banner tone="danger">The fillet is bigger than the edge. Try 2 mm or less.</Banner>
+        <div className="bc-gallery-gap" />
+        <Banner tone="info">The 3D view arrives with epic #3.</Banner>
       </Block>
-      <Block title="View cube and grid">
+
+      <Block id="view" title="View cube and grid">
         <div className="bc-frame bc-gallery-view">
           <ViewCube />
         </div>
       </Block>
-      <Block title="Icons">
+
+      <Block id="icons" title="Icons">
         <div className="bc-icon-grid">
           {(Object.keys(ICONS) as IconName[]).map((n) => (
-            <div key={n} title={n}>
+            <div key={n}>
               <Icon name={n} size={18} />
               <span>{n}</span>
             </div>

@@ -1,49 +1,62 @@
 import { useState, type ReactNode } from "react";
-import { Banner, ContextMenu, Icon, IconButton, PartRow, PartsTree, WideButton, cx, type ContextMenuState, type MenuEntry, THEME_NAMES } from "@bettercad/ui";
-import type { ModelDoc, Part, PartKind } from "../state/document";
+import { Banner, ContextMenu, Icon, PartsTree, WideButton, cx, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
+import type { ModelDoc, PartKind } from "../state/document";
 import type { History } from "../state/history";
 import type { ThemeSetting } from "../state/theme";
+import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
-import { formatCombo } from "../state/commands";
+import { ThemePicker } from "./ThemePicker";
 
 export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "settings";
+
+export const PANEL_TITLES: Record<PanelId, string> = {
+  parts: "Parts",
+  sketch: "Sketch",
+  bodies: "Bodies",
+  library: "Library",
+  history: "History",
+  settings: "Settings",
+};
 
 export interface LeftPanelProps {
   panel: PanelId;
   doc: ModelDoc;
-  selected: string | null;
-  onSelect: (id: string | null) => void;
+  selection: string[];
+  onSelect: (ids: string[]) => void;
   onAdd: (kind: PartKind) => void;
-  onToggleHidden: (id: string) => void;
-  onRename: (p: Part) => void;
-  onDuplicate: (id: string) => void;
-  onDelete: (id: string) => void;
+  onToggle: (id: string, what: RowToggle) => void;
+  onRename: (id: string, name: string) => void;
+  onReorder: (id: string, beforeId: string | null) => void;
+  partMenu: (ids: string[]) => MenuEntry[];
+  renameId: string | null;
+  onRenameIdChange: (id: string | null) => void;
   history: History<ModelDoc>;
-  themeSetting: ThemeSetting;
+  theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
-  themeLabels: Record<ThemeSetting, string>;
-  onShortcuts: () => void;
+  commands: Command[];
   onArmTool: (t: ToolId) => void;
   tool: ToolId;
 }
 
-const TITLES: Record<PanelId, string> = { parts: "Parts", sketch: "Sketch", bodies: "Bodies", library: "Library", history: "History", settings: "Settings" };
-
 export function LeftPanel(p: LeftPanelProps) {
-  return (
-    <aside className="bc-side bc-left" aria-label={TITLES[p.panel]} id="bc-left-panel">
-      {p.panel === "parts" && <PartsPanel {...p} />}
-      {p.panel === "sketch" && <SketchPanel {...p} />}
-      {p.panel === "bodies" && (
+  switch (p.panel) {
+    case "parts":
+      return <PartsPanel {...p} />;
+    case "sketch":
+      return <SketchPanel {...p} />;
+    case "bodies":
+      return (
         <Placeholder title="Bodies" epic={6}>
           Solid bodies you have extruded, pushed and combined show here, each with its own colour and visibility.
         </Placeholder>
-      )}
-      {p.panel === "library" && <LibraryPanel {...p} />}
-      {p.panel === "history" && <HistoryPanel history={p.history} />}
-      {p.panel === "settings" && <SettingsPanel {...p} />}
-    </aside>
-  );
+      );
+    case "library":
+      return <LibraryPanel {...p} />;
+    case "history":
+      return <HistoryPanel history={p.history} />;
+    case "settings":
+      return <SettingsPanel {...p} />;
+  }
 }
 
 function Placeholder({ title, epic, children }: { title: string; epic: number; children: ReactNode }) {
@@ -51,81 +64,54 @@ function Placeholder({ title, epic, children }: { title: string; epic: number; c
     <>
       <h2 className="bc-panel-title">{title}</h2>
       <p className="bc-note">{children}</p>
-      <p className="bc-note">
+      <Banner tone="info">
         Arrives with <a href={`https://github.com/kevinmcaleer/BetterCad/issues/${epic}`}>epic #{epic}</a>.
-      </p>
+      </Banner>
     </>
   );
 }
 
 function PartsPanel(p: LeftPanelProps) {
-  const [menu, setMenu] = useState<{ at: ContextMenuState; part: Part } | null>(null);
-  const entries: MenuEntry[] = menu
-    ? [
-        { id: "rename", label: "Rename…", icon: "pencil", keys: "F2", onSelect: () => p.onRename(menu.part) },
-        { id: "dup", label: "Duplicate", icon: "copy", keys: formatCombo("mod+d"), onSelect: () => p.onDuplicate(menu.part.id) },
-        { id: "hide", label: menu.part.hidden ? "Show" : "Hide", icon: menu.part.hidden ? "eye" : "eyeOff", onSelect: () => p.onToggleHidden(menu.part.id) },
-        { kind: "separator", id: "s" },
-        { id: "del", label: "Delete", icon: "trash", keys: "Del", danger: true, onSelect: () => p.onDelete(menu.part.id) },
-      ]
-    : [];
+  const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const items: TreeItem[] = p.doc.parts.map((part) => ({
+    id: part.id,
+    name: part.name,
+    icon: part.kind === "box" ? "cube" : part.kind,
+    hidden: part.hidden,
+    ghost: part.ghost,
+    highlight: part.highlight,
+  }));
+  const chosen = p.doc.parts.filter((x) => p.selection.includes(x.id));
   return (
     <>
       <WideButton icon="plus" label="Add a box" variant="outline" onClick={() => p.onAdd("box")} />
       <div className="bc-parts-head">
         <h2 className="bc-panel-title">Parts</h2>
-        <span className="bc-note bc-count">{p.doc.parts.length || ""}</span>
+        <span className="bc-note bc-count">{p.doc.parts.length ? `${p.doc.parts.length}` : ""}</span>
       </div>
-      {p.doc.parts.length === 0 ? (
-        <p className="bc-note">Nothing here yet. Add a shape from the Library, or start a sketch (K).</p>
-      ) : (
-        <PartsTree label="Parts">
-          {p.doc.parts.map((part) => (
-            <PartRow
-              key={part.id}
-              name={part.name}
-              icon={part.kind === "box" ? "cube" : part.kind}
-              selected={part.id === p.selected}
-              hidden={part.hidden}
-              onSelect={() => p.onSelect(part.id)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                p.onSelect(part.id);
-                setMenu({ at: { x: e.clientX, y: e.clientY }, part });
-              }}
-              buttons={
-                <>
-                  <IconButton
-                    quiet
-                    icon={part.hidden ? "eyeOff" : "eye"}
-                    title={part.hidden ? `Show ${part.name}` : `Hide ${part.name}`}
-                    on={part.hidden}
-                    onClick={() => p.onToggleHidden(part.id)}
-                  />
-                  <IconButton
-                    quiet
-                    icon="more"
-                    title={`More for ${part.name}`}
-                    onClick={(e) => {
-                      const r = e.currentTarget.getBoundingClientRect();
-                      p.onSelect(part.id);
-                      setMenu({ at: { x: r.left, y: r.bottom + 4 }, part });
-                    }}
-                  />
-                </>
-              }
-            />
-          ))}
-        </PartsTree>
-      )}
+      <PartsTree
+        label="Parts"
+        items={items}
+        selection={p.selection}
+        onSelect={p.onSelect}
+        onRename={p.onRename}
+        onToggle={p.onToggle}
+        onReorder={p.onReorder}
+        toggles={["hidden", "ghost", "highlight"]}
+        renameId={p.renameId}
+        onRenameIdChange={p.onRenameIdChange}
+        onContextMenu={(_id, at) => setMenu(at)}
+        empty={<p className="bc-note">Nothing here yet. Add a shape from the Library, or start a sketch (K).</p>}
+      />
+      {p.doc.parts.length > 0 && <p className="bc-note">Shift-click selects a range, {formatCombo("mod")}-click adds one. Drag to reorder, F2 to rename.</p>}
       <div className="bc-section-gap" />
-      <Banner>The 3D view and the modelling kernel are not wired up yet, so parts are only listed here for now.</Banner>
+      <Banner tone="info">The 3D view and the modelling kernel are not wired up yet, so parts are only listed here for now.</Banner>
       <ContextMenu
-        at={menu?.at ?? null}
+        at={menu}
         onClose={() => setMenu(null)}
-        label={menu ? `${menu.part.name} actions` : "Part"}
-        title={menu?.part.name}
-        entries={entries}
+        label="Part actions"
+        title={chosen.length > 1 ? `${chosen.length} parts` : chosen[0]?.name}
+        entries={p.partMenu(p.selection)}
       />
     </>
   );
@@ -144,7 +130,7 @@ function SketchPanel(p: LeftPanelProps) {
           { id: "dim", icon: "dimension" as const, label: "Dimension", key: "D" },
           { id: "con", icon: "constraint" as const, label: "Constraint", key: "" },
         ].map((t) => (
-          <button key={t.id} type="button" className="bc-menu-item" disabled title={`${t.label} (coming with sketching)`}>
+          <button key={t.id} type="button" className="bc-menu-item" aria-disabled="true" data-tip={`${t.label} comes with sketching (#5)`}>
             <span className="bc-menu-icon">
               <Icon name={t.icon} />
             </span>
@@ -187,7 +173,7 @@ function LibraryPanel(p: LeftPanelProps) {
       <p className="bc-note">Click a shape to add it. Dragging onto the view comes with the 3D view.</p>
       <div className="bc-tiles bc-tiles-labelled">
         {shapes.map((s) => (
-          <button key={s.kind} type="button" className="bc-tile" title={`Add a ${s.label.toLowerCase()}`} onClick={() => p.onAdd(s.kind)}>
+          <button key={s.kind} type="button" className="bc-tile" data-tip={`Add a ${s.label.toLowerCase()}`} onClick={() => p.onAdd(s.kind)}>
             <Icon name={s.icon} size={28} />
             <span>{s.label}</span>
           </button>
@@ -224,36 +210,47 @@ function HistoryPanel({ history }: { history: History<ModelDoc> }) {
 }
 
 function SettingsPanel(p: LeftPanelProps) {
-  const settings = Object.keys(p.themeLabels) as ThemeSetting[];
+  const groups = new Map<string, Command[]>();
+  for (const c of p.commands) if (c.keys?.length) groups.set(c.group, [...(groups.get(c.group) ?? []), c]);
   return (
     <>
       <h2 className="bc-panel-title">Theme</h2>
-      <div className="bc-theme-picker" role="radiogroup" aria-label="Theme">
-        {settings.map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="radio"
-            aria-checked={p.themeSetting === t}
-            className={cx("bc-theme-opt", p.themeSetting === t && "bc-on")}
-            onClick={() => p.onTheme(t)}
-          >
-            <span className={cx("bc-swatch", `bc-swatch-${t}`)} data-theme={t === "system" ? undefined : t} aria-hidden="true" />
-            <span>{t === "system" ? "System" : THEME_NAMES[t]}</span>
-          </button>
-        ))}
-      </div>
+      <ThemePicker value={p.theme} onChange={p.onTheme} />
       <p className="bc-note">System follows your device, light or dark. Holodeck is a black drawing room with a yellow grid.</p>
       <h2 className="bc-panel-title">Units</h2>
-      <p className="bc-note">Millimetres. Inches may come later.</p>
-      <h2 className="bc-panel-title">Keyboard</h2>
-      <WideButton icon="keyboard" label="Keyboard shortcuts" variant="outline" onClick={p.onShortcuts} />
-      <p className="bc-note">Press ? to see them any time, or {formatCombo("mod+k")} to find a command.</p>
-      <h2 className="bc-panel-title">Components</h2>
-      <a className="bc-wide-btn bc-outline bc-link-btn" href="#/gallery">
-        <Icon name="template" />
-        <span>Open the component gallery</span>
-      </a>
+      <p className="bc-note">Millimetres. Z points up.</p>
+      <h2 className="bc-panel-title" id="bc-shortcuts-title">
+        Keyboard shortcuts
+      </h2>
+      <p className="bc-note">Press ? to see these any time, or {formatCombo("mod+k")} to find any command.</p>
+      <div aria-labelledby="bc-shortcuts-title">
+        {[...groups].map(([group, list]) => (
+          <div key={group}>
+            <h3 className="bc-sub">{group}</h3>
+            <dl className="bc-shortcuts">
+              {list.map((c) => (
+                <div key={c.id}>
+                  <dt>{c.label}</dt>
+                  <dd>
+                    {c.keys!.map((k) => (
+                      <kbd key={k}>{formatCombo(k)}</kbd>
+                    ))}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </div>
+      {import.meta.env.DEV || import.meta.env.VITE_GALLERY ? (
+        <>
+          <h2 className="bc-panel-title">Components</h2>
+          <a className="bc-wide-btn bc-outline bc-link-btn" href="#/gallery">
+            <Icon name="template" />
+            <span>Open the component gallery</span>
+          </a>
+        </>
+      ) : null}
     </>
   );
 }

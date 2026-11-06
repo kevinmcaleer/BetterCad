@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { kernelStatus } from "@bettercad/kernel";
 import { solverStatus } from "@bettercad/sketch";
 import { Editor } from "./editor/Editor";
-import { Gallery } from "./gallery/Gallery";
+
+/** The component gallery ships in development and in preview builds (VITE_GALLERY=1), never in the release image. */
+export const GALLERY_ON = !!(import.meta.env.DEV || import.meta.env.VITE_GALLERY);
+const Gallery = GALLERY_ON ? lazy(() => import("./gallery/Gallery").then((m) => ({ default: m.Gallery }))) : null;
 
 function useHash() {
   const [hash, setHash] = useState(() => window.location.hash);
@@ -20,6 +23,12 @@ export const ENGINES = [kernelStatus(), solverStatus()];
 /** Hash routes keep the app working from any static host: "#/" is the editor, "#/gallery" the components. */
 export function App() {
   const hash = useHash();
-  if (hash.startsWith("#/gallery")) return <Gallery />;
+  if (Gallery && hash.startsWith("#/gallery")) {
+    return (
+      <Suspense fallback={null}>
+        <Gallery />
+      </Suspense>
+    );
+  }
   return <Editor />;
 }

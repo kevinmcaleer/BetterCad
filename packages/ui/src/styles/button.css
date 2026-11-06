@@ -49,7 +49,7 @@
 .bc-btn.bc-stale {
   color: var(--bc-color-warn);
 }
-.bc-btn.bc-snap {
+.bc-btn.bc-snap-count {
   color: var(--bc-color-snap);
   font-weight: 600;
   font-size: 12px;
@@ -120,4 +120,28 @@
 .bc-icon-btn.bc-quiet:not(.bc-on):hover,
 .bc-icon-btn.bc-quiet:not(.bc-on):focus-visible {
   color: var(--bc-color-ink);
+}
+.bc-btn[aria-disabled="true"]:not(.bc-busy),
+.bc-wide-btn[aria-disabled="true"]:not(.bc-busy) {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+.bc-busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+.bc-dense {
+  height: 28px;
+  min-width: 28px;
+}
+.bc-secondary {
+  background: var(--bc-color-bar);
+  box-shadow: inset 0 0 0 1px var(--bc-color-line);
+}
+.bc-danger-btn {
+  color: var(--bc-color-danger);
+}
+.bc-tool {
+  padding: 0 var(--bc-space-3);
 }

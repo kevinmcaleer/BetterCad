@@ -43,6 +43,54 @@ jobs:
           path: web/dist
           retention-days: 7
 
+  # Screenshot tests (@visual). Baselines come from this Linux runner so fonts match: on a pull request from this
+  # repository, any missing baseline is written and committed back to the branch, then everything is compared.
+  screenshots:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - id: pw
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - if: steps.pw.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.pw.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - name: Write any missing baselines
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: npm run e2e:visual -- --update-snapshots=missing || true
+        env:
+          CI: "1"
+      - name: Commit new baselines
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git add web/e2e/*-snapshots
+          if git diff --cached --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add screenshot baselines from CI"
+          git push origin HEAD:${{ github.head_ref }}
+      - run: npm run e2e:visual
+        env:
+          CI: "1"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-diffs
+          path: web/test-results
+          retention-days: 7
+
   server:
     runs-on: ubuntu-latest
     defaults:

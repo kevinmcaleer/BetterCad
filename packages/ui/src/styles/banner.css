@@ -24,3 +24,21 @@
   margin-top: 2px;
   color: var(--bc-color-snap);
 }
+.bc-banner-text {
+  display: flex;
+  gap: var(--bc-space-4);
+  align-items: flex-start;
+}
+.bc-banner-text .bc-icon {
+  flex: none;
+  margin-top: 1px;
+}
+.bc-banner-danger {
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-danger);
+  color: var(--bc-color-danger);
+}
+.bc-banner-info {
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-ink);
+}

@@ -144,3 +144,11 @@
   font-weight: 600;
   color: var(--bc-color-snap);
 }
+.bc-tools-vertical {
+  flex-direction: column;
+}
+.bc-tools-vertical .bc-sep {
+  width: 22px;
+  height: 1px;
+  margin: var(--bc-space-2) 0;
+}

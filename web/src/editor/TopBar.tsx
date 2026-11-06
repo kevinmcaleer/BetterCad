@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
-import { Button, Icon, Menu, Separator, cx, type MenuEntry } from "@bettercad/ui";
+import { Button, Icon, IconButton, MenuButton, Separator, cx, type MenuEntry } from "@bettercad/ui";
 import type { Status } from "./useStatus";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
+import { ThemePicker } from "./ThemePicker";
 
 export interface TopBarProps {
   name: string;
@@ -10,45 +10,23 @@ export interface TopBarProps {
   onRenameDone: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  undoLabel: string;
+  redoLabel: string;
   onUndo: () => void;
   onRedo: () => void;
   status: Status;
-  onSave: () => void;
-  onOpen: () => void;
-  onNew: () => void;
+  saveEntries: MenuEntry[];
   onPalette: () => void;
-  themeSetting: ThemeSetting;
+  theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
-  themeLabels: Record<ThemeSetting, string>;
+  /** Under 900px: the button that opens the props sheet. */
+  onProps: () => void;
+  propsOpen: boolean;
 }
 
 export function TopBar(p: TopBarProps) {
-  const [fileOpen, setFileOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const fileBtn = useRef<HTMLButtonElement>(null);
-  const accountBtn = useRef<HTMLButtonElement>(null);
-
-  const fileEntries: MenuEntry[] = [
-    { id: "save", label: "Save to disk", icon: "download", keys: formatCombo("mod+s"), onSelect: p.onSave },
-    { id: "open", label: "Open from disk…", icon: "folder", keys: formatCombo("mod+o"), onSelect: p.onOpen },
-    { id: "new", label: "New model", icon: "plus", onSelect: p.onNew },
-    { kind: "separator", id: "s1" },
-    { id: "cloud", label: "Save to my account (coming soon)", icon: "upload", disabled: true, onSelect: () => {} },
-  ];
-  const accountEntries: MenuEntry[] = [
-    { id: "signin", label: "Sign in (coming soon)", icon: "user", disabled: true, onSelect: () => {} },
-    { kind: "separator", id: "s1" },
-    { kind: "title", id: "t", label: "Theme" },
-    ...(Object.keys(p.themeLabels) as ThemeSetting[]).map<MenuEntry>((t) => ({
-      id: `theme-${t}`,
-      label: p.themeLabels[t],
-      checked: p.themeSetting === t,
-      onSelect: () => p.onTheme(t),
-    })),
-  ];
-
   return (
-    <header className="bc-top" role="banner">
+    <header className="bc-top">
       <span className="bc-title">
         <Icon name="cube" size={18} />
         <span className="bc-brand">BetterCad</span>
@@ -63,55 +41,46 @@ export function TopBar(p: TopBarProps) {
         spellCheck={false}
       />
       <Separator />
-      <Button icon="undo" title="Undo" shortcut={formatCombo("mod+z")} disabled={!p.canUndo} onClick={p.onUndo} />
-      <Button icon="redo" title="Redo" shortcut={formatCombo("shift+mod+z")} disabled={!p.canRedo} onClick={p.onRedo} />
-      <span className={cx("bc-status", p.status.bad && "bc-bad")} role="status" aria-live="polite">
+      <Button
+        icon="undo"
+        title={p.canUndo ? `Undo ${p.undoLabel.toLowerCase()}` : "Undo"}
+        shortcut={formatCombo("mod+z")}
+        disabled={!p.canUndo}
+        onClick={p.onUndo}
+      />
+      <Button
+        icon="redo"
+        title={p.canRedo ? `Redo ${p.redoLabel.toLowerCase()}` : "Redo"}
+        shortcut={formatCombo("shift+mod+z")}
+        disabled={!p.canRedo}
+        onClick={p.onRedo}
+      />
+      <span className={cx("bc-status", p.status.bad && "bc-bad")} role={p.status.bad ? "alert" : "status"} aria-live={p.status.bad ? "assertive" : "polite"}>
         {p.status.text}
       </span>
       <span className="bc-grow" />
       <Button className="bc-find" icon="search" label="Find a command" title="Find a command" shortcut={formatCombo("mod+k")} onClick={p.onPalette} />
-      <div className="bc-anchor">
-        <Button
-          ref={fileBtn}
-          kind="done"
-          icon="save"
-          label="Save"
-          title="Save"
-          aria-haspopup="menu"
-          aria-expanded={fileOpen}
-          onClick={() => setFileOpen((o) => !o)}
-        />
-        <Menu
-          open={fileOpen}
-          onClose={() => {
-            setFileOpen(false);
-            fileBtn.current?.focus();
-          }}
-          label="Save"
-          entries={fileEntries}
-          className="bc-menu-right"
-        />
-      </div>
-      <div className="bc-anchor">
-        <Button
-          ref={accountBtn}
-          icon="user"
-          title="Account and theme"
-          aria-haspopup="menu"
-          aria-expanded={accountOpen}
-          onClick={() => setAccountOpen((o) => !o)}
-        />
-        <Menu
-          open={accountOpen}
-          onClose={() => {
-            setAccountOpen(false);
-            accountBtn.current?.focus();
-          }}
-          label="Account"
-          entries={accountEntries}
-          className="bc-menu-right"
-        />
-      </div>
+      <IconButton className="bc-props-toggle" icon="list" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
+      <MenuButton
+        label="Save"
+        align="end"
+        entries={p.saveEntries}
+        trigger={(t) => <Button {...t} variant="primary" icon="save" label="Save" title="Save your model" />}
+      />
+      <MenuButton
+        label="Account and theme"
+        align="end"
+        entries={[
+          { id: "signin", label: "Sign in (coming with accounts)", icon: "user", disabled: true, onSelect: () => {} },
+          { kind: "separator", id: "s1" },
+          { kind: "title", id: "t", label: "Theme" },
+        ]}
+        trigger={(t) => <Button {...t} icon="user" title="Account and theme" />}
+      >
+        <div className="bc-menu-extra">
+          <ThemePicker value={p.theme} onChange={p.onTheme} compact />
+        </div>
+      </MenuButton>
     </header>
   );
 }

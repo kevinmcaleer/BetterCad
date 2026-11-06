@@ -1,4 +1,4 @@
-/** The model document. Epic #2 keeps it small: a name and a flat list of placeholder parts. */
+/** The model document. Epic #2 keeps it small: a name and a flat list of placeholder parts. The kernel (#4) replaces it. */
 export type PartKind = "box" | "cylinder" | "sphere";
 
 export interface Vec3 {
@@ -12,6 +12,8 @@ export interface Part {
   name: string;
   kind: PartKind;
   hidden: boolean;
+  ghost?: boolean;
+  highlight?: boolean;
   position: Vec3;
   size: Vec3;
 }
@@ -45,18 +47,29 @@ export function nextName(doc: ModelDoc, kind: PartKind): string {
 }
 
 export function addPart(doc: ModelDoc, kind: PartKind, id = newId()): ModelDoc {
-  const size = kind === "box" ? { x: 20, y: 20, z: 20 } : kind === "cylinder" ? { x: 20, y: 20, z: 30 } : { x: 20, y: 20, z: 20 };
+  const size = kind === "cylinder" ? { x: 20, y: 20, z: 30 } : { x: 20, y: 20, z: 20 };
   const offset = doc.parts.length * 25;
   const part: Part = { id, name: nextName(doc, kind), kind, hidden: false, position: { x: offset, y: 0, z: 0 }, size };
   return { ...doc, parts: [...doc.parts, part] };
 }
 
 export function updatePart(doc: ModelDoc, id: string, change: Partial<Omit<Part, "id">>): ModelDoc {
-  return { ...doc, parts: doc.parts.map((p) => (p.id === id ? { ...p, ...change } : p)) };
+  return updateParts(doc, [id], () => change);
+}
+
+/** Applies a change to several parts at once (a multi-selection edit). */
+export function updateParts(doc: ModelDoc, ids: string[], change: (p: Part) => Partial<Omit<Part, "id">>): ModelDoc {
+  const set = new Set(ids);
+  return { ...doc, parts: doc.parts.map((p) => (set.has(p.id) ? { ...p, ...change(p) } : p)) };
+}
+
+export function removeParts(doc: ModelDoc, ids: string[]): ModelDoc {
+  const set = new Set(ids);
+  return { ...doc, parts: doc.parts.filter((p) => !set.has(p.id)) };
 }
 
 export function removePart(doc: ModelDoc, id: string): ModelDoc {
-  return { ...doc, parts: doc.parts.filter((p) => p.id !== id) };
+  return removeParts(doc, [id]);
 }
 
 export function duplicatePart(doc: ModelDoc, id: string, newPartId = newId()): ModelDoc {
@@ -67,6 +80,17 @@ export function duplicatePart(doc: ModelDoc, id: string, newPartId = newId()): M
   const parts = [...doc.parts];
   parts.splice(i + 1, 0, copy);
   return { ...doc, parts };
+}
+
+/** Moves a part before another (or to the end when beforeId is null). */
+export function reorderPart(doc: ModelDoc, id: string, beforeId: string | null): ModelDoc {
+  const part = doc.parts.find((p) => p.id === id);
+  if (!part || id === beforeId) return doc;
+  const rest = doc.parts.filter((p) => p.id !== id);
+  const at = beforeId === null ? rest.length : rest.findIndex((p) => p.id === beforeId);
+  if (at < 0) return doc;
+  rest.splice(at, 0, part);
+  return { ...doc, parts: rest };
 }
 
 /** Parses a saved file, throwing a one-line message when it is not a BetterCad model. */
