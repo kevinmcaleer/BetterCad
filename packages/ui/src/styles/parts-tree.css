@@ -1,0 +1,153 @@
+/* The parts tree in the left panel. Colours come only from tokens.css. */
+.bc-parts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-4);
+  margin: var(--bc-space-6) 0 var(--bc-space-3);
+}
+.bc-parts-head .bc-panel-title {
+  margin: 0;
+}
+.bc-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+}
+.bc-tree > li {
+  margin: 0;
+  padding: 0;
+}
+.bc-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-radius: var(--bc-radius-sm);
+  padding-left: calc(var(--depth, 0) * 18px);
+}
+.bc-row:hover {
+  background: var(--bc-color-hover);
+}
+.bc-row.bc-on {
+  background: var(--bc-color-accent-soft);
+}
+.bc-row.bc-off .bc-row-name {
+  color: var(--bc-color-muted);
+  font-style: italic;
+}
+.bc-row.bc-off .bc-row-name .bc-icon {
+  opacity: 0.45;
+}
+.bc-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  height: var(--bc-control);
+  padding: 0 var(--bc-space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-row-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-row-name > em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--bc-color-danger);
+}
+.bc-row.bc-on .bc-row-name {
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
+.bc-joint-row .bc-row-name {
+  height: 26px;
+  font-size: 12px;
+  color: var(--bc-color-muted);
+}
+.bc-joint-row .bc-row-name .bc-icon {
+  color: var(--bc-color-snap);
+}
+.bc-joint-row .bc-icon-btn {
+  height: 24px;
+}
+.bc-joint-row.bc-on .bc-row-name,
+.bc-joint-row.bc-picked .bc-row-name {
+  color: var(--bc-color-snap);
+}
+.bc-joint-row.bc-picked {
+  background: var(--bc-color-hover);
+}
+.bc-tree > li.bc-joint-explode {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  padding-right: 2px;
+  height: 30px;
+  background: var(--bc-color-hover);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-joint-explode input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 28px;
+  accent-color: var(--bc-color-accent);
+}
+.bc-grip {
+  color: var(--bc-color-quiet-icon);
+  cursor: grab;
+  display: flex;
+}
+.bc-disclose {
+  flex: none;
+  width: 18px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--bc-color-muted);
+  cursor: pointer;
+}
+.bc-disclose .bc-icon {
+  transition: transform 0.12s;
+}
+.bc-disclose.bc-open .bc-icon {
+  transform: rotate(90deg);
+}
+.bc-row-name:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: -2px;
+  border-radius: var(--bc-radius-sm);
+}
+.bc-row-warning {
+  display: inline-flex;
+  color: var(--bc-color-warn);
+  font-style: normal;
+}
+.bc-renaming {
+  cursor: default;
+}
+.bc-rename {
+  height: 26px;
+  padding: 0 var(--bc-space-3);
+}
+.bc-drop-before {
+  box-shadow: inset 0 2px 0 var(--bc-color-accent);
+}
+.bc-drop-end {
+  height: 6px;
+  box-shadow: inset 0 2px 0 var(--bc-color-accent);
+}

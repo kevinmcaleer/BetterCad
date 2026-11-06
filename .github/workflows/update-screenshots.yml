@@ -1,0 +1,31 @@
+# Accepts deliberate visual changes: re-makes every screenshot baseline on Linux and commits them to the branch
+# you run it on. Run it from Actions → Update screenshots → Run workflow.
+name: Update screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e:update || true
+        env:
+          CI: "1"
+      - run: |
+          git add web/e2e/*-snapshots
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update screenshot baselines"
+          git push

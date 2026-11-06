@@ -1,0 +1,12 @@
+{
+  "name": "@bettercad/kernel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The modelling kernel: OpenCascade (opencascade.js, WASM) running in a Web Worker. Arrives with epic #4.",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "types": "dist/index.d.ts"
+}

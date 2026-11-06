@@ -1,0 +1,103 @@
+/* Dialogs and popovers. Colours come only from tokens.css. */
+.bc-dialog {
+  z-index: 7;
+  width: 290px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  box-shadow: var(--bc-shadow-dialog);
+}
+.bc-dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-4) var(--bc-space-4) var(--bc-space-4) var(--bc-space-6);
+  border-bottom: 1px solid var(--bc-color-line);
+  cursor: grab;
+  font-weight: 600;
+}
+.bc-dialog-body {
+  overflow: auto;
+  padding: 0 var(--bc-space-6) var(--bc-space-5);
+}
+.bc-dialog-body .bc-panel-title {
+  margin: var(--bc-space-6) 0 var(--bc-space-3);
+}
+.bc-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--bc-space-4);
+  padding: var(--bc-space-5) var(--bc-space-6);
+  border-top: 1px solid var(--bc-color-line);
+}
+.bc-pop {
+  position: absolute;
+  z-index: 20;
+  width: 264px;
+  padding: var(--bc-space-5) var(--bc-space-6) var(--bc-space-6);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-pop);
+}
+.bc-face {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+  margin-top: var(--bc-space-3);
+}
+.bc-face .bc-wide-btn {
+  flex: 1;
+  min-width: 0;
+}
+.bc-jtypes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bc-space-3);
+  margin-bottom: var(--bc-space-4);
+}
+.bc-dialog-float {
+  position: fixed;
+  top: 120px;
+  right: 300px;
+  z-index: 30;
+  max-height: calc(100vh - 140px);
+  width: 290px;
+  max-width: calc(100vw - 32px);
+}
+.bc-dialog-modal {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 420px;
+}
+.bc-dialog-head {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.bc-dialog-head:active {
+  cursor: grabbing;
+}
+.bc-dialog-head .bc-icon-btn {
+  margin-left: auto;
+}
+.bc-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--bc-space-8);
+  background: var(--bc-color-scrim);
+}
+@media (max-width: 900px) {
+  .bc-dialog-float {
+    right: var(--bc-space-8);
+    top: auto;
+    bottom: 80px;
+  }
+}

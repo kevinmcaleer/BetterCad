@@ -1,0 +1,595 @@
+/* Layout of the editor shell and the gallery. Colours, sizes and type all come from @bettercad/ui tokens. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: var(--bc-color-stage);
+  color: var(--bc-color-ink);
+  font-family: var(--bc-font-sans);
+}
+.bc {
+  font-family: var(--bc-font-sans);
+  font-size: var(--bc-type-ui-size);
+  line-height: var(--bc-type-ui-line);
+}
+.bc a {
+  color: var(--bc-color-accent);
+}
+.bc :focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+
+/* ---- editor frame: top bar, then rail | left panel | stage | props */
+.bc-app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+.bc-app .bc-top {
+  flex: none;
+  flex-wrap: nowrap;
+  height: 46px;
+  min-height: 46px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.bc-app > .bc-body {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--bc-rail-width) var(--bc-side-width) minmax(0, 1fr) 280px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.bc-app.bc-left-closed > .bc-body {
+  grid-template-columns: var(--bc-rail-width) minmax(0, 1fr) 280px;
+}
+.bc-skip {
+  position: absolute;
+  left: var(--bc-space-4);
+  top: -60px;
+  z-index: 100;
+  padding: var(--bc-space-4) var(--bc-space-6);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-accent);
+  border-radius: var(--bc-radius-sm);
+  box-shadow: var(--bc-shadow-pop);
+}
+.bc-skip:focus {
+  top: var(--bc-space-4);
+}
+.bc-props-toggle {
+  display: none;
+}
+.bc-menu-extra {
+  padding: var(--bc-space-2) var(--bc-space-3) var(--bc-space-3);
+}
+.bc-app .bc-side {
+  min-height: 0;
+  overflow: auto;
+}
+.bc-app .bc-stage {
+  min-height: 0;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+.bc-brand {
+  white-space: nowrap;
+}
+.bc-docname {
+  width: 200px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+  font-weight: var(--bc-type-ui-strong-weight);
+}
+.bc-docname:hover {
+  border-color: var(--bc-color-line);
+}
+.bc-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-anchor {
+  position: relative;
+}
+.bc-menu-right {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+}
+.bc-find .bc-icon {
+  color: var(--bc-color-muted);
+}
+
+/* ---- stage */
+.bc-stage-bars {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--bc-space-3);
+  flex: none;
+  max-width: 100%;
+}
+.bc-stage-bars > .bc-tools {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.bc-armed-note {
+  color: var(--bc-color-muted);
+}
+.bc-viewport {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-height: 200px;
+  border-radius: var(--bc-radius-xl);
+  overflow: hidden;
+}
+.bc-viewport:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+.bc-grid-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.bc-empty-view {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-3);
+  max-width: 340px;
+  padding: var(--bc-space-6) var(--bc-space-7);
+  text-align: center;
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+}
+.bc-empty-view span {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+}
+.bc-help {
+  flex: none;
+  margin: 0;
+}
+
+/* ---- left panel bits */
+.bc-left .bc-wide-btn {
+  margin-bottom: var(--bc-space-2);
+}
+.bc-count {
+  margin: 0;
+}
+.bc-section-gap {
+  height: var(--bc-space-6);
+}
+.bc-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+}
+.bc-menu-item.bc-on,
+.bc-menu-item.bc-active {
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+}
+.bc-menu-item:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+.bc-tiles-labelled {
+  grid-template-columns: repeat(3, 1fr);
+}
+.bc-tiles-labelled .bc-tile {
+  flex-direction: column;
+  gap: var(--bc-space-2);
+  cursor: pointer;
+  font-size: var(--bc-type-micro-size);
+  color: var(--bc-color-ink);
+}
+.bc-tiles-labelled .bc-tile .bc-icon {
+  color: var(--bc-color-tile-icon);
+}
+.bc-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+  counter-reset: step;
+}
+.bc-history li {
+  counter-increment: step;
+  padding: var(--bc-space-3) var(--bc-space-4);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-history li::before {
+  content: counter(step) ". ";
+  color: var(--bc-color-muted);
+}
+.bc-history li.bc-on {
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
+.bc-history li.bc-undone {
+  color: var(--bc-color-muted);
+  text-decoration: line-through;
+}
+.bc-link-btn {
+  text-decoration: none;
+  color: var(--bc-color-ink) !important;
+}
+.bc-theme-picker {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--bc-space-3);
+}
+.bc-theme-opt {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  height: 40px;
+  padding: 0 var(--bc-space-4);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  cursor: pointer;
+}
+.bc-theme-opt:hover {
+  border-color: var(--bc-color-accent);
+}
+.bc-theme-opt.bc-on {
+  border-color: var(--bc-color-accent);
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
+.bc-swatch {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--bc-radius-sm);
+  border: 1px solid var(--bc-color-line);
+  background: var(--bc-color-viewport);
+}
+.bc-swatch[data-swatch="light"],
+.bc-swatch[data-swatch="dark"] {
+  background: linear-gradient(135deg, var(--bc-color-bar) 50%, var(--bc-color-accent) 50%);
+}
+.bc-swatch[data-swatch="holodeck"] {
+  background-color: var(--bc-color-room);
+  background-image: linear-gradient(var(--bc-color-grid-major) 1px, transparent 1px), linear-gradient(90deg, var(--bc-color-grid-major) 1px, transparent 1px);
+  background-size: 7px 7px;
+}
+.bc-swatch[data-swatch="system"] {
+  background: linear-gradient(90deg, var(--bc-color-bar) 50%, var(--bc-color-ink) 50%);
+}
+.bc-theme-picker.bc-compact {
+  grid-template-columns: 1fr;
+  gap: var(--bc-space-2);
+  min-width: 190px;
+}
+.bc-theme-picker.bc-compact .bc-theme-opt {
+  height: 32px;
+}
+
+/* ---- props panel */
+.bc-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--bc-space-3) var(--bc-space-6);
+  margin: var(--bc-space-5) 0 0;
+  font-size: var(--bc-type-small-size);
+}
+.bc-facts dt {
+  color: var(--bc-color-muted);
+}
+.bc-facts dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- command palette and shortcuts */
+.bc-scrim-top {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+.bc-palette {
+  width: 520px;
+  max-width: 100%;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-pop);
+  overflow: hidden;
+}
+.bc-palette-search {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  padding: 0 var(--bc-space-6);
+  border-bottom: 1px solid var(--bc-color-line);
+  color: var(--bc-color-muted);
+}
+.bc-palette-input {
+  flex: 1;
+  height: 46px;
+  border: 0;
+  background: transparent;
+  color: var(--bc-color-ink);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+.bc-palette-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--bc-space-3);
+  overflow: auto;
+}
+.bc-palette-list .bc-note {
+  padding: var(--bc-space-4);
+}
+.bc-shortcuts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+}
+.bc-shortcuts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--bc-space-6);
+  padding: var(--bc-space-2) 0;
+}
+.bc-shortcuts dt {
+  color: var(--bc-color-ink);
+}
+.bc-shortcuts dd {
+  margin: 0;
+  display: flex;
+  gap: var(--bc-space-2);
+}
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px var(--bc-space-3);
+  border: 1px solid var(--bc-color-line);
+  border-bottom-width: 2px;
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-rail);
+  color: var(--bc-color-ink);
+  font: var(--bc-type-small-weight) var(--bc-type-small-size) / 1.4 var(--bc-font-sans);
+  text-align: center;
+}
+.bc-dialog-fixed .bc-dialog-body {
+  max-height: 60vh;
+}
+
+/* ---- gallery */
+.bc-gallery {
+  min-height: 100vh;
+  background: var(--bc-color-stage);
+}
+.bc-gallery-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(300px, 1fr));
+}
+.bc-gallery-col {
+  padding: var(--bc-space-8);
+  background: var(--bc-color-rail);
+  color: var(--bc-color-ink);
+  border-right: 1px solid var(--bc-color-line);
+  min-width: 0;
+}
+.bc-gallery-col h1 {
+  margin: 0 0 var(--bc-space-6);
+}
+.bc-gallery-block {
+  margin-bottom: var(--bc-space-8);
+  padding-bottom: var(--bc-space-6);
+  border-bottom: 1px solid var(--bc-color-line);
+}
+.bc-gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-2);
+  align-items: center;
+  margin-bottom: var(--bc-space-4);
+}
+.bc-gallery-gap {
+  height: var(--bc-space-4);
+}
+.bc-gallery-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--bc-space-1);
+}
+.bc-gallery-state small {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-micro-size);
+}
+/* Pinned states, so a screenshot shows hover and focus without a pointer. Gallery only. */
+.bc-gallery [data-state="hover"] {
+  background: var(--bc-color-hover);
+}
+.bc-gallery [data-state="focus"] {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+.bc-gallery .bc-props {
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-gallery-rail {
+  height: 220px;
+  display: flex;
+}
+.bc-gallery-view {
+  height: 140px;
+  border-radius: var(--bc-radius-xl);
+  background-color: var(--bc-color-viewport);
+  background-image: linear-gradient(var(--bc-color-grid) 1px, transparent 1px), linear-gradient(90deg, var(--bc-color-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.bc-gallery .bc-menu,
+.bc-gallery .bc-dialog {
+  width: 100%;
+  max-width: 290px;
+}
+.bc-swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bc-space-3);
+}
+.bc-swatch-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--bc-type-micro-size);
+}
+.bc-swatch-tile span {
+  height: 28px;
+  border-radius: var(--bc-radius-sm);
+  border: 1px solid var(--bc-color-line);
+}
+.bc-swatch-tile code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-swatch-tile small {
+  color: var(--bc-color-muted);
+}
+.bc-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+  gap: var(--bc-space-3);
+}
+.bc-icon-grid > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--bc-space-2);
+  padding: var(--bc-space-3) 2px;
+  border-radius: var(--bc-radius-sm);
+  font-size: var(--bc-type-micro-size);
+  color: var(--bc-color-muted);
+}
+.bc-icon-grid > div .bc-icon {
+  color: var(--bc-color-ink);
+}
+.bc-icon-grid span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- under 900px the stage takes the screen: the rail is a bottom bar, the panels are sheets over the stage */
+@media (max-width: 899px) {
+  .bc-app > .bc-body,
+  .bc-app.bc-left-closed > .bc-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .bc-app .bc-stage {
+    grid-row: 1;
+    grid-column: 1;
+    padding: var(--bc-space-4);
+  }
+  .bc-app .bc-left,
+  .bc-app .bc-props {
+    grid-row: 1;
+    grid-column: 1;
+    align-self: end;
+    z-index: 9;
+    width: auto;
+    max-height: 55%;
+    border: 0;
+    border-top: 1px solid var(--bc-color-line);
+    border-radius: var(--bc-radius-lg) var(--bc-radius-lg) 0 0;
+    box-shadow: var(--bc-shadow-pop);
+  }
+  .bc-app .bc-props {
+    display: none;
+  }
+  .bc-app.bc-right-open .bc-props {
+    display: block;
+  }
+  .bc-props-toggle {
+    display: inline-flex;
+  }
+  .bc-app .bc-rail {
+    grid-row: 2;
+    grid-column: 1;
+    z-index: 10;
+    width: auto;
+    flex-direction: row;
+    justify-content: space-around;
+    border-right: 0;
+    border-top: 1px solid var(--bc-color-line);
+    padding: var(--bc-space-2);
+  }
+  .bc-app .bc-rail-btn {
+    flex: 1;
+  }
+  .bc-docname {
+    width: 130px;
+  }
+  .bc-gallery-cols {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .bc-find,
+  .bc-brand,
+  .bc-app .bc-top > .bc-sep {
+    display: none;
+  }
+  .bc-docname {
+    width: 110px;
+  }
+  .bc-app .bc-rail {
+    width: auto;
+  }
+  .bc-empty-view {
+    max-width: 80%;
+  }
+}
+
+/* ---- more contrast when the system asks for it */
+@media (prefers-contrast: more) {
+  .bc-app .bc-side,
+  .bc-app .bc-rail,
+  .bc-app .bc-top,
+  .bc-tools {
+    border-color: var(--bc-color-ink);
+  }
+  .bc-note,
+  .bc-help {
+    color: var(--bc-color-ink);
+  }
+}

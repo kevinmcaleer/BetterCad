@@ -1,0 +1,29 @@
+{
+  "name": "@bettercad/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "BetterCad design system: tokens, component CSS, icons and React components.",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./index.css": "./src/index.css",
+    "./tokens.css": "./src/tokens.css",
+    "./styles/*": "./src/styles/*",
+    "./tokens.json": "./src/tokens.json",
+    "./icons": "./src/icons.ts"
+  },
+  "scripts": {
+    "tokens": "node scripts/build-tokens.ts",
+    "tokens:check": "node scripts/build-tokens.ts --check",
+    "build": "tsc -b"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "types": "dist/index.d.ts",
+  "sideEffects": [
+    "*.css"
+  ]
+}

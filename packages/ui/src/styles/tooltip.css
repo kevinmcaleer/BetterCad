@@ -1,0 +1,38 @@
+/* The shared tooltip. Colours come only from tokens.css. */
+.bc-tooltip {
+  position: fixed;
+  z-index: 50;
+  max-width: 280px;
+  padding: var(--bc-space-2) var(--bc-space-4);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  border: 1px solid var(--bc-color-line);
+  box-shadow: var(--bc-shadow-pop);
+  font-size: var(--bc-type-small-size);
+  line-height: var(--bc-type-small-line);
+  pointer-events: none;
+  white-space: normal;
+}
+.bc-tooltip-static {
+  position: static;
+  display: inline-block;
+}
+.bc-overlays {
+  background: transparent;
+}
+.bc-floating {
+  position: fixed;
+  z-index: 40;
+}
+.bc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

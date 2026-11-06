@@ -1,0 +1,78 @@
+/* Number fields with scrub labels and units. Colours come only from tokens.css. */
+.bc-num {
+  width: 52px;
+  height: var(--bc-control);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  padding: 0 var(--bc-space-2);
+  text-align: center;
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  -moz-appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+.bc-num::-webkit-inner-spin-button {
+  margin: 0;
+}
+.bc-num:focus,
+.bc-text:focus,
+.bc-select:focus {
+  outline: none;
+  border-color: var(--bc-color-accent);
+}
+.bc-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bc-space-3);
+}
+.bc-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+  min-width: 0;
+  position: relative;
+}
+.bc-field .bc-num {
+  width: 100%;
+  padding: 0 28px 0 4px;
+  text-align: right;
+  font-size: 12px;
+}
+.bc-field em {
+  position: absolute;
+  right: var(--bc-space-3);
+  bottom: 8px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--bc-color-muted);
+  pointer-events: none;
+}
+.bc-scrub {
+  font-size: 12px;
+  color: var(--bc-color-muted);
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+}
+.bc-scrub:hover {
+  color: var(--bc-color-accent);
+}
+.bc-field.bc-locked .bc-num {
+  opacity: 0.45;
+}
+.bc-field.bc-locked em,
+.bc-field.bc-locked .bc-scrub {
+  color: var(--bc-color-muted);
+}
+.bc-field.bc-invalid .bc-num {
+  border-color: var(--bc-color-danger);
+}
+.bc-field-error {
+  color: var(--bc-color-danger);
+  font-size: var(--bc-type-micro-size);
+  line-height: var(--bc-type-micro-line);
+}
+.bc-field.bc-invalid em {
+  bottom: auto;
+  top: 25px;
+}

@@ -1,0 +1,21 @@
+services:
+  bettercad:
+    image: ghcr.io/kevinmcaleer/bettercad:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - bettercad-data:/data
+    environment:
+      # Signs sessions. Required: the server refuses to start in production without it.
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      # Where the SQLite database and uploads live (the volume above).
+      DATA_DIR: /data
+      # Largest saved model, in megabytes. Keep the reverse proxy's body limit at least this big.
+      MAX_UPLOAD_MB: "50"
+      # Only used for CORS outside production; the app is same-origin behind the proxy.
+      ALLOWED_ORIGINS: https://bettercad.kevsrobots.com
+
+volumes:
+  bettercad-data:

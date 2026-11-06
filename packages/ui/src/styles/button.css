@@ -1,0 +1,156 @@
+/* Buttons: bar buttons, wide buttons, icon buttons. Colours come only from tokens.css. */
+.bc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bc-space-3);
+  min-width: var(--bc-control);
+  height: var(--bc-control);
+  padding: 0 var(--bc-space-4);
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bc-btn:hover {
+  background: var(--bc-color-hover);
+}
+.bc-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+.bc-btn.bc-on {
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+}
+.bc-btn:focus-visible,
+.bc-rail-btn:focus-visible,
+.bc-tile:focus-visible,
+.bc-icon-btn:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+.bc-done {
+  background: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+  padding: 0 var(--bc-space-7);
+  font-weight: 600;
+}
+.bc-done:hover {
+  background: var(--bc-color-accent);
+  filter: brightness(0.88);
+}
+.bc-cancel {
+  color: var(--bc-color-muted);
+}
+.bc-btn.bc-stale {
+  color: var(--bc-color-warn);
+}
+/* The snap colour is for markers on the viewport; on a bar it is a dot beside ink text, so the count stays readable. */
+.bc-btn.bc-snap-count {
+  color: var(--bc-color-ink);
+  font-weight: 600;
+  font-size: 12px;
+  height: 28px;
+  gap: 3px;
+  padding: 0 var(--bc-space-3);
+}
+.bc-btn.bc-snap-count::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--bc-color-snap);
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.bc-wide-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bc-space-4);
+  width: 100%;
+  height: 38px;
+  border: 0;
+  border-radius: var(--bc-radius-md);
+  background: var(--bc-color-rail);
+  color: var(--bc-color-ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+.bc-wide-btn:hover {
+  background: var(--bc-color-hover);
+}
+.bc-wide-btn.bc-outline {
+  border: 1px solid var(--bc-color-line);
+  background: var(--bc-color-bar);
+}
+.bc-wide-btn.bc-on {
+  border: 1px solid var(--bc-color-accent);
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+}
+.bc-primary {
+  background: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+}
+.bc-primary:hover {
+  background: var(--bc-color-accent);
+  filter: brightness(0.88);
+}
+.bc-icon-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bc-color-muted);
+  cursor: pointer;
+}
+.bc-icon-btn.bc-on {
+  color: var(--bc-color-accent);
+}
+.bc-icon-btn.bc-on.bc-inherited {
+  opacity: 0.55;
+}
+.bc-icon-btn.bc-quiet:not(.bc-on) {
+  color: var(--bc-color-quiet-icon);
+  transition: color 0.12s;
+}
+.bc-icon-btn.bc-quiet:not(.bc-on):hover,
+.bc-icon-btn.bc-quiet:not(.bc-on):focus-visible {
+  color: var(--bc-color-ink);
+}
+.bc-btn[aria-disabled="true"]:not(.bc-busy),
+.bc-wide-btn[aria-disabled="true"]:not(.bc-busy) {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+}
+.bc-busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+.bc-dense {
+  height: 28px;
+  min-width: 28px;
+}
+.bc-secondary {
+  background: var(--bc-color-bar);
+  box-shadow: inset 0 0 0 1px var(--bc-color-line);
+}
+.bc-danger-btn {
+  color: var(--bc-color-danger);
+}
+.bc-tool {
+  padding: 0 var(--bc-space-3);
+}
