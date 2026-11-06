@@ -22,7 +22,7 @@ make dev       # API on :8000, editor on http://localhost:5173
 With Docker, on a Raspberry Pi or anywhere else:
 
 ```sh
-echo "SECRET_KEY=$(openssl rand -hex 32)" > .env
+cp .env.example .env   # then set SECRET_KEY (openssl rand -hex 32); the file explains each setting
 docker compose up -d   # http://localhost:8000
 ```
 
