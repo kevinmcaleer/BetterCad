@@ -2,15 +2,16 @@ import { SketchIndex, allCrossings, closestOnSegment, dist, mid, sub, angleOf, o
 
 /**
  * Snaps while drawing (#55): the cursor jumps to the meaningful point nearest it, within a tolerance in screen pixels
- * (8 px, 16 px for touch). Priority: end points, then centres, then midpoints, then crossings, then a point on a line
- * or curve, then level or upright with the point the tool started from, then the grid. Ctrl snaps to the grid only.
+ * (8 px, 16 px for touch). Priority: the model's origin, end points and centres (whichever is nearest), then midpoints,
+ * then crossings, then a point on a line or curve, then level or upright with the point the tool started from, then
+ * the grid. Ctrl snaps to the grid only.
  */
-export type SnapKind = "end" | "centre" | "middle" | "crossing" | "on" | "horizontal" | "vertical" | "grid" | "free";
+export type SnapKind = "origin" | "end" | "centre" | "middle" | "crossing" | "on" | "horizontal" | "vertical" | "grid" | "free";
 
 export interface Snap {
   xy: Vec2;
   kind: SnapKind;
-  /** The point snapped to (end, centre), or the curve (middle, on, and the first of a crossing). */
+  /** The point snapped to (origin, end, centre), or the curve (middle, on, and the first of a crossing). */
   ref?: Id;
   /** The second curve of a crossing. */
   ref2?: Id;
@@ -32,9 +33,19 @@ export interface SnapOptions {
   off?: boolean;
   /** Ctrl snaps to the grid and nothing else. */
   gridOnly?: boolean;
+  /**
+   * The model's origin in sketch mm: (0, 0) on the XY, XZ and YZ planes, the origin projected onto any other plane.
+   * Null leaves it out.
+   */
+  origin?: Vec2 | null;
 }
 
+/** Points closer than this to the origin are on it. */
+const ON_ORIGIN = 1e-6;
+export const isAtOrigin = (xy: Vec2, origin: Vec2 = [0, 0]) => dist(xy, origin) < ON_ORIGIN;
+
 export const SNAP_LABEL: Record<SnapKind, string> = {
+  origin: "Origin",
   end: "End",
   centre: "Centre",
   middle: "Middle",
@@ -68,10 +79,12 @@ export function snap(cursor: Vec2, sketch: Sketch, o: SnapOptions): Snap {
     }
   };
 
-  // End points and centres.
+  // The origin, end points and centres. A point already on the origin is the origin, so it is reused.
+  const origin = o.origin === undefined ? ([0, 0] as Vec2) : o.origin;
+  if (origin) consider({ xy: origin, kind: "origin", label: SNAP_LABEL.origin });
   for (const e of sketch.entities) {
     if (e.kind !== "point" || skip.has(e.id)) continue;
-    const kind = centres.has(e.id) ? "centre" : "end";
+    const kind = origin && isAtOrigin([e.x, e.y], origin) ? "origin" : centres.has(e.id) ? "centre" : "end";
     consider({ xy: [e.x, e.y], kind, ref: e.id, label: SNAP_LABEL[kind] });
   }
   if (best) return best;

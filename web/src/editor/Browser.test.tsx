@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { addPart, build, newDoc, type Part } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
-import { BrowserPanel, ROW, browserItems, browserPick, type BrowserModel, type BrowserSketch } from "./Browser";
+import { BrowserPanel, ROW, browserItems, browserPick, type BrowserModel, type BrowserSketch, type OriginItem } from "./Browser";
 
 function model(over: Partial<BrowserModel> = {}): BrowserModel {
   const d = addPart(addPart(newDoc("Rover"), "box", "a"), "cylinder", "b");
@@ -13,7 +13,7 @@ function model(over: Partial<BrowserModel> = {}): BrowserModel {
 function Harness(spy: { onSelectSketch?: (id: string) => void; onSketchOn?: (p: WorldPlaneName) => void; onPicked?: (id: string | null) => void }) {
   const [parts, setParts] = useState<Part[]>(model().parts);
   const [sketches, setSketches] = useState<BrowserSketch[]>(model().sketches);
-  const [origin, setOrigin] = useState<WorldPlaneName[]>([]);
+  const [origin, setOrigin] = useState<OriginItem[]>([]);
   const [selection, setSelection] = useState<string[]>([]);
   const [renameId, setRenameId] = useState<string | null>(null);
   const hide = (ids: string[], hidden: boolean) => setParts((ps) => ps.map((p) => (ids.includes(p.id) ? { ...p, hidden } : p)));
@@ -50,7 +50,7 @@ describe("browserItems", () => {
     const folders = items.filter((i) => i.kind === "folder").map((i) => i.name);
     expect(folders).toEqual(["Origin", "Bodies", "Sketches", "Joints"]);
     expect(items.filter((i) => i.parentId === ROW.bodies).map((i) => i.name)).toEqual(["Box 1", "Cylinder 1"]);
-    expect(items.filter((i) => i.parentId === ROW.origin).map((i) => i.name)).toEqual(["XY plane", "XZ plane", "YZ plane"]);
+    expect(items.filter((i) => i.parentId === ROW.origin).map((i) => i.name)).toEqual(["Origin point", "XY plane", "XZ plane", "YZ plane"]);
     expect(items.find((i) => i.id === ROW.joints)).toMatchObject({ note: "None yet", toggles: [] });
   });
 
@@ -122,12 +122,30 @@ describe("BrowserPanel", () => {
     expect(row(/^XY plane/)).toHaveClass("bc-off");
     await userEvent.click(screen.getByRole("button", { name: "Show XZ plane" }));
     expect(row(/^XZ plane/)).not.toHaveClass("bc-off");
-    expect(row(/^Origin/)).not.toHaveClass("bc-off");
+    expect(row(/^Origin(?! point)/)).not.toHaveClass("bc-off");
     await userEvent.click(screen.getByText("YZ plane"));
     expect(onPicked).toHaveBeenLastCalledWith(ROW.plane("YZ"));
     fireEvent.contextMenu(screen.getByText("XY plane"));
     await userEvent.click(screen.getByRole("menuitem", { name: /Sketch on the XY plane/ }));
     expect(onSketchOn).toHaveBeenCalledWith("XY");
+  });
+
+  it("shows and picks the origin point, which the folder's eye includes", async () => {
+    const onPicked = vi.fn();
+    render(<Harness onPicked={onPicked} />);
+    const folderRow = () => row(/^Origin(?! point)/);
+    await userEvent.click(screen.getByRole("button", { name: "Show what is in Origin" }));
+    expect(row(/^Origin point/)).toHaveClass("bc-off");
+    await userEvent.click(screen.getByRole("button", { name: "Show Origin point" }));
+    expect(row(/^Origin point/)).not.toHaveClass("bc-off");
+    expect(folderRow()).not.toHaveClass("bc-off");
+    await userEvent.click(screen.getByRole("button", { name: "Hide Origin" }));
+    expect(row(/^Origin point/)).toHaveClass("bc-off");
+    await userEvent.click(screen.getByRole("button", { name: "Show Origin" }));
+    expect(row(/^Origin point/)).not.toHaveClass("bc-off");
+    expect(row(/^XY plane/)).not.toHaveClass("bc-off");
+    await userEvent.click(screen.getByText("Origin point"));
+    expect(onPicked).toHaveBeenLastCalledWith(ROW.point);
   });
 
   it("doesn't rename or drag the folders", () => {

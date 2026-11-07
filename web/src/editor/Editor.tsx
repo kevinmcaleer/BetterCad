@@ -131,7 +131,7 @@ import { saveBcad } from "@bettercad/kernel/bcad";
 import type { Mate } from "@bettercad/kernel";
 import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
-import { planeOf } from "./Browser";
+import { ROW, planeOf, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 
 const PANELS: RailItem<PanelId>[] = [
@@ -225,7 +225,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const narrow = useMedia(NARROW);
   const [selection, setSelection] = useState<string[]>([]);
   // The browser's origin planes on show, and its sketch or plane pick: view state, like the marker.
-  const [originShown, setOriginShown] = useState<WorldPlaneName[]>([]);
+  const [originShown, setOriginShown] = useState<OriginItem[]>([]);
   const [browserPicked, setBrowserPicked] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelId | null>(() => (window.matchMedia?.(NARROW).matches ? null : "parts"));
   const [propsOpen, setPropsOpen] = useState(false);
@@ -1789,7 +1789,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             bed={showBed && !share ? printer : null}
             warn={offBed}
             check={checkResult?.values ?? null}
-            originPlanes={{ shown: sketch.editing ? [] : originShown, chosen: sketch.editing ? null : planeOf(browserPicked ?? "") }}
+            originPlanes={{
+              shown: sketch.editing ? [] : originShown.filter((x): x is WorldPlaneName => x !== "point"),
+              chosen: sketch.editing ? null : planeOf(browserPicked ?? ""),
+              point: !sketch.editing && (originShown.includes("point") || browserPicked === ROW.point),
+            }}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
             <SketchLabels s={sketch} />

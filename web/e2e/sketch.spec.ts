@@ -136,3 +136,30 @@ test("offset a rectangle inward, round a corner, then trim", async ({ page }) =>
   await expect(constraints).toHaveCount(n - 1);
   await page.screenshot({ path: test.info().outputPath("edited.png") });
 });
+
+test("the origin is a snap point: a rectangle sized from it is fully constrained", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await expect(page.getByText("Sketching on the XY plane. Enter finishes.")).toBeVisible();
+  await page.waitForTimeout(800);
+
+  await page.keyboard.press("r");
+  // A little off the origin still lands on it.
+  const near = await at(page, 0, 0);
+  await page.mouse.move(near.x + 3, near.y - 2, { steps: 3 });
+  await expect(page.locator(".bc-snap-label")).toHaveText("Origin");
+  await page.mouse.down();
+  await page.mouse.up();
+  const far = await at(page, 25, 15);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width" }).fill("30");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height" }).fill("20");
+  await page.keyboard.press("Enter");
+  // Four from the rectangle, and the corner fixed on the origin.
+  await expect(page.getByRole("list", { name: "Constraints" }).getByRole("listitem")).toHaveCount(5);
+  await expect(page.locator(".bc-help")).toContainText(/fully constrained/i);
+});
