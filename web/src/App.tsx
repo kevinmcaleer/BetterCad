@@ -6,13 +6,18 @@ import { AccountProvider, useAccount } from "./cloud/account";
 import { useRoute, type Route } from "./cloud/route";
 import { useTheme } from "./state/useTheme";
 import type { ThemeSetting } from "./state/theme";
-import { AccountPage, SignInPage, SignUpPage } from "./pages/AuthPages";
-import { Library } from "./pages/Library";
 import { UpdateBanner } from "./pwa/UpdateBanner";
 
 /** The component gallery ships in development and in preview builds (VITE_GALLERY=1), never in the release image. */
 export const GALLERY_ON = !!(import.meta.env.DEV || import.meta.env.VITE_GALLERY);
 const Gallery = GALLERY_ON ? lazy(() => import("./gallery/Gallery").then((m) => ({ default: m.Gallery }))) : null;
+
+// The account pages and the library load in their own chunk (#97), so the editor's first paint doesn't wait for them.
+const pages = () => import("./pages/lazy");
+const SignInPage = lazy(() => pages().then((m) => ({ default: m.SignInPage })));
+const SignUpPage = lazy(() => pages().then((m) => ({ default: m.SignUpPage })));
+const AccountPage = lazy(() => pages().then((m) => ({ default: m.AccountPage })));
+const Library = lazy(() => pages().then((m) => ({ default: m.Library })));
 
 // Proves the workspace packages resolve; the kernel and solver arrive in epics #4 and #5.
 export const ENGINES = [kernelStatus(), solverStatus()];
@@ -74,7 +79,7 @@ export function App() {
     <AccountProvider>
       <ThemeSync />
       <UpdateBanner />
-      {over}
+      <Suspense fallback={null}>{over}</Suspense>
       <div className="bc-editor-host" style={over ? { display: "none" } : undefined}>
         <Editor active={!over} model={route.page === "editor" ? route.model : undefined} share={route.page === "view" ? route.token : undefined} />
       </div>

@@ -39,12 +39,17 @@ class CachedStatic(StaticFiles):
     """Hashed assets are cached for a year; everything else is revalidated."""
 
     async def get_response(self, path: str, scope) -> Response:  # type: ignore[override]
-        # The build writes a .gz beside large assets (the kernel WASM is 23 MB, 7 MB zipped); send it when we can.
-        accepts = b"gzip" in dict(scope.get("headers", [])).get(b"accept-encoding", b"")
-        zipped = accepts and path.startswith("assets/") and self.directory and (Path(self.directory) / f"{path}.gz").is_file()
-        response = await super().get_response(f"{path}.gz" if zipped else path, scope)
-        if zipped:
-            response.headers["Content-Encoding"] = "gzip"
+        # The build writes a .br and a .gz beside large assets (#97); send the smallest the browser takes.
+        accepts = dict(scope.get("headers", [])).get(b"accept-encoding", b"")
+        encoding = None
+        if path.startswith("assets/") and self.directory:
+            for name, ext in (("br", ".br"), ("gzip", ".gz")):
+                if name.encode() in accepts and (Path(self.directory) / f"{path}{ext}").is_file():
+                    encoding = (name, ext)
+                    break
+        response = await super().get_response(f"{path}{encoding[1]}" if encoding else path, scope)
+        if encoding:
+            response.headers["Content-Encoding"] = encoding[0]
             response.headers["Vary"] = "Accept-Encoding"
             kind = {".wasm": "application/wasm", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
             response.headers["Content-Type"] = next((v for k, v in kind.items() if path.endswith(k)), "application/octet-stream")

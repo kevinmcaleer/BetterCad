@@ -4,10 +4,14 @@ import wasm from "vite-plugin-wasm";
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { gzipSync } from "node:zlib";
+import { brotliCompressSync, constants as zlib, gzipSync } from "node:zlib";
 import type { Plugin } from "vite";
 
-/** Writes a .gz beside each large asset (the 23 MB kernel WASM is 7 MB gzipped) so the server sends it without zipping per request. */
+/**
+ * Writes a .br and a .gz beside each large asset so the server sends them without compressing per request (#97). The
+ * 23 MB kernel WASM is 7.2 MB gzipped and 5.7 MB with Brotli. Files over 1 MB use Brotli quality 9: quality 11 takes
+ * a minute on the WASM for 0.6 MB more.
+ */
 function precompress(): Plugin {
   let outDir = "dist";
   return {
@@ -19,7 +23,11 @@ function precompress(): Plugin {
       for (const f of readdirSync(dir)) {
         if (!/\.(wasm|js|css)$/.test(f)) continue;
         const bytes = readFileSync(join(dir, f));
-        if (bytes.length > 10_000) writeFileSync(join(dir, `${f}.gz`), gzipSync(bytes, { level: 9 }));
+        if (bytes.length <= 10_000) continue;
+        writeFileSync(join(dir, `${f}.gz`), gzipSync(bytes, { level: 9 }));
+        const quality = bytes.length > 1_000_000 ? 9 : 11;
+        const br = brotliCompressSync(bytes, { params: { [zlib.BROTLI_PARAM_QUALITY]: quality, [zlib.BROTLI_PARAM_SIZE_HINT]: bytes.length } });
+        writeFileSync(join(dir, `${f}.br`), br);
       }
     },
   };

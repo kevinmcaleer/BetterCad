@@ -25,6 +25,8 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # First-paint JavaScript under 350 KB gzipped and no dev-only code in the release build (#97).
+      - run: npm run size -w web
       - id: pw
         uses: actions/cache@v4
         with:

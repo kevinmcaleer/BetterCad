@@ -70,3 +70,20 @@ def test_serves_precompressed_assets(make_client, tmp_path):
         plain = client.get("/assets/k-abc.wasm", headers={"Accept-Encoding": "identity"})
         assert "Content-Encoding" not in plain.headers
         assert plain.headers["Content-Type"] == "application/wasm"
+
+
+def test_prefers_brotli_when_the_browser_takes_it(make_client, tmp_path):
+    import gzip
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html>")
+    (dist / "assets" / "app-abc.js").write_text("console.log(1)")
+    (dist / "assets" / "app-abc.js.gz").write_bytes(gzip.compress(b"console.log(1)"))
+    (dist / "assets" / "app-abc.js.br").write_bytes(b"BROTLI")
+    with make_client(web_dist=dist) as client:
+        with client.stream("GET", "/assets/app-abc.js", headers={"Accept-Encoding": "gzip, deflate, br"}) as r:
+            assert r.headers["Content-Encoding"] == "br"
+            assert r.headers["Content-Type"].startswith("text/javascript")
+            assert b"".join(r.iter_raw()) == b"BROTLI"
+        assert client.get("/assets/app-abc.js", headers={"Accept-Encoding": "gzip"}).headers["Content-Encoding"] == "gzip"
