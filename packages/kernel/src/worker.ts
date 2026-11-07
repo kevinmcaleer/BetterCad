@@ -6,6 +6,7 @@ import { Exporter } from "./occt/exporter";
 import { KernelError, isKernelError } from "./errors";
 import type { Methods, Request, Response } from "./protocol";
 import { thickness } from "./print/checks";
+import { suggestOrientations } from "./print/orient";
 
 /**
  * The kernel worker (#44). It loads OpenCascade once, then answers calls one at a time. A cancel marks the call, and
@@ -48,6 +49,7 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
       const r = thickness(b, threshold);
       return { id: b.id, values: r.values, areas: r.areas, min: r.min };
     }),
+  orient: ({ bodies, limit, weights }) => suggestOrientations(bodies, { limit, weights }),
 };
 
 async function pump() {

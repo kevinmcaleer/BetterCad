@@ -37,6 +37,7 @@ import {
   WebGLRenderTarget,
   ZeroStencilOp,
   BoxGeometry,
+  Box3,
   EdgesGeometry,
   ArrowHelper,
   type Camera,
@@ -892,6 +893,39 @@ export class Engine {
       for (const c of hidden) c.visible = true;
       this.width = w0;
       this.height = h0;
+      this.applyCamera();
+      this.invalidate();
+    }
+  }
+
+  /**
+   * A thumbnail of the bodies turned by `turn` (row major, about the world origin), framed from the default view:
+   * an orientation suggestion (#103) before it is applied. The scene is put back as it was.
+   */
+  posed(turn: number[][], width = 96, height = 64): string | null {
+    // Row major in, so read as columns and transpose.
+    const [r0, r1, r2] = turn as [number[], number[], number[]];
+    const m = new Matrix4().fromArray([...r0, 0, ...r1, 0, ...r2, 0, 0, 0, 0, 1]).transpose();
+    const saved = this.order.map((b) => b.group.matrix.clone());
+    const cam = this.cam;
+    const box = new Box3();
+    try {
+      for (const b of this.order) {
+        b.group.matrix.premultiply(m);
+        b.group.updateMatrixWorld(true);
+        box.expandByObject(b.shaded);
+      }
+      if (box.isEmpty()) return null;
+      const c = box.getCenter(new Vector3());
+      const r = Math.max(box.getSize(new Vector3()).length() / 2, 5);
+      this.cam = fitCamera({ ...DEFAULT_CAMERA, ortho: this.cam.ortho }, [c.x, c.y, c.z], r, width / height);
+      return this.thumbnail(width, height);
+    } finally {
+      this.order.forEach((b, i) => {
+        b.group.matrix.copy(saved[i]!);
+        b.group.updateMatrixWorld(true);
+      });
+      this.cam = cam;
       this.applyCamera();
       this.invalidate();
     }

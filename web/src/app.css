@@ -991,3 +991,45 @@ kbd {
   width: 100%;
   margin-bottom: var(--bc-space-3);
 }
+
+/* Orientation suggestions (#103). */
+.bc-orient {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bc-space-2);
+  margin: 0 0 var(--bc-space-2);
+  padding: 0;
+  list-style: none;
+}
+.bc-orient-pick {
+  display: grid;
+  justify-items: center;
+  gap: var(--bc-space-1);
+  width: 100%;
+  padding: var(--bc-space-1);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  font: inherit;
+  font-size: var(--bc-type-micro-size);
+  cursor: pointer;
+}
+.bc-orient-pick:hover {
+  background: var(--bc-color-hover);
+}
+.bc-orient-pick:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+.bc-orient-current {
+  border-color: var(--bc-color-accent);
+  background: var(--bc-color-accent-soft);
+}
+.bc-orient-pick img,
+.bc-orient-blank {
+  display: block;
+  width: 100%;
+  max-width: 96px;
+  aspect-ratio: 3 / 2;
+}

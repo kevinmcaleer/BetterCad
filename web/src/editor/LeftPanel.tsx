@@ -3,6 +3,8 @@ import {
   Banner,
   Button,
   ContextMenu,
+  Fields,
+  NumberField,
   Icon,
   PartsTree,
   WideButton,
@@ -12,7 +14,7 @@ import {
   type RowToggle,
   type TreeItem,
 } from "@bettercad/ui";
-import { KIND_LABEL, PRIMITIVES, type Feature, type ModelDoc, type Part, type PartKind } from "../state/document";
+import { KIND_LABEL, ORIENT_WEIGHTS, PRIMITIVES, type OrientWeights, type Feature, type ModelDoc, type Part, type PartKind } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
@@ -69,6 +71,9 @@ export interface LeftPanelProps {
   paramsPanel: ReactNode;
   /** The Print panel (#100), made by the editor. */
   printPanel: ReactNode;
+  /** How orientation suggestions are scored (#103). */
+  orientWeights: OrientWeights;
+  onOrientWeights: (w: OrientWeights) => void;
 }
 
 export function LeftPanel(p: LeftPanelProps) {
@@ -302,6 +307,35 @@ function SettingsPanel(p: LeftPanelProps) {
           </div>
         ))}
       </div>
+      <h2 className="bc-panel-title">Advanced</h2>
+      <h3 className="bc-sub" id="bc-orient-weights">
+        Orientation suggestions
+      </h3>
+      <div role="group" aria-labelledby="bc-orient-weights">
+        <Fields>
+          {(
+            [
+              ["contact", "Contact"],
+              ["overhang", "Overhang"],
+              ["height", "Height"],
+            ] as const
+          ).map(([k, label]) => (
+            <NumberField
+              key={k}
+              label={label}
+              value={p.orientWeights[k]}
+              min={0}
+              max={1}
+              step={0.1}
+              precision={2}
+              unit="none"
+              onCommit={(v) => p.onOrientWeights({ ...p.orientWeights, [k]: Math.max(0, Math.min(1, v)) })}
+            />
+          ))}
+        </Fields>
+      </div>
+      <p className="bc-note">How much each counts when the Print panel suggests a way to lay the model: more on the bed, less overhang, less height.</p>
+      <Button size="dense" label="Reset" title="Back to 0.4, 0.4 and 0.2" onClick={() => p.onOrientWeights(ORIENT_WEIGHTS)} />
       {import.meta.env.DEV || import.meta.env.VITE_GALLERY ? (
         <>
           <h2 className="bc-panel-title">Components</h2>

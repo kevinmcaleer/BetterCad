@@ -1,5 +1,16 @@
 import { Banner, Button, Fields, NumberField } from "@bettercad/ui";
-import { DEFAULT_INFILL, MATERIALS, PRINTERS, formatWeight, materialOf, type CheckArea, type Printer, type PrintSettings } from "../state/document";
+import {
+  DEFAULT_INFILL,
+  MATERIALS,
+  PRINTERS,
+  formatWeight,
+  materialOf,
+  orientationFacts,
+  type CheckArea,
+  type Orientation,
+  type Printer,
+  type PrintSettings,
+} from "../state/document";
 
 /**
  * The Print panel (#100, #105): the printer the model is for, its bed in the view, whether the model fits, and the
@@ -27,7 +38,13 @@ export interface PrintPanelProps {
   /** The check's areas, worst first; null while it runs. */
   areas: CheckArea[] | null;
   onShowArea: (a: CheckArea) => void;
+  /** Ways to lay the model down (#103), best scored first; null while they're worked out. */
+  suggestions: Suggestion[] | null;
+  onSuggestion: (s: Suggestion) => void;
 }
+
+/** An orientation suggestion with its thumbnail (a PNG data URL, or null where the view can't draw one). */
+export type Suggestion = Orientation & { picture: string | null };
 
 export type PrintCheck = "none" | "overhang" | "thin";
 
@@ -164,6 +181,39 @@ export function PrintPanel(p: PrintPanelProps) {
               ? "Downward faces steeper than this need support. Short bridges often print fine without it."
               : "Thinner walls than about two nozzle widths may not print. This samples the surface, so it can miss a wall."}
           </p>
+        </>
+      )}
+
+      <h2 className="bc-panel-title">Orientation</h2>
+      {!p.hasModel ? (
+        <p className="bc-note">Add a shape to see which way down it prints best.</p>
+      ) : !p.suggestions ? (
+        <p className="bc-note" role="status">
+          Working out suggestions…
+        </p>
+      ) : (
+        <>
+          <ul className="bc-orient" aria-label="Suggestions">
+            {p.suggestions.map((o, i) => {
+              const facts = orientationFacts(o);
+              return (
+                <li key={i}>
+                  <button
+                    type="button"
+                    className={o.current ? "bc-orient-pick bc-orient-current" : "bc-orient-pick"}
+                    aria-pressed={o.current}
+                    aria-label={`${o.current ? "As it lies now" : `Suggestion ${i + 1}`}: ${facts}`}
+                    title={facts}
+                    onClick={() => p.onSuggestion(o)}
+                  >
+                    {o.picture ? <img src={o.picture} alt="" width={96} height={64} /> : <span className="bc-orient-blank" />}
+                    <span>{o.current ? "As it lies" : `Suggestion ${i + 1}`}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="bc-note bc-micro">Suggestions weigh how much touches the bed, how much overhangs and how tall it stands. Pick one to turn the model.</p>
         </>
       )}
 
