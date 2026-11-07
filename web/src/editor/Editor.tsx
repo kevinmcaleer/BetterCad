@@ -110,6 +110,12 @@ import { Versions } from "../cloud/Versions";
 import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
+import { ReportDialog } from "../report/ReportDialog";
+import { actionLog, editSummary } from "../report/actionLog";
+import { browserName } from "../report/report";
+import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
+import { APP_VERSION } from "../version";
+import { saveBcad } from "@bettercad/kernel/bcad";
 import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 
@@ -212,6 +218,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  // Report a problem (#109): open, and the error that offered it, if one did.
+  const [report, setReport] = useState<{ prefill?: string } | null>(null);
+  const [crash, setCrash] = useState<Caught | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [inactive, setInactive] = useState(false);
@@ -223,7 +232,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   activeRef.current = active;
   // The registry reads the latest state through a ref, so commands are registered once.
   const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false });
-  live.current = { doc, parts, marker, at, selection, tool, dialogOpen: paletteOpen || shortcutsOpen || exportOpen, sketching: live.current.sketching };
+  live.current = {
+    doc,
+    parts,
+    marker,
+    at,
+    selection,
+    tool,
+    dialogOpen: paletteOpen || shortcutsOpen || exportOpen || report !== null,
+    sketching: live.current.sketching,
+  };
   const [registry] = useState(() =>
     createRegistry((): CommandContext => ({
       hasSelection: live.current.selection.length > 0,
@@ -236,6 +254,27 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
   // Re-render when commands are added or run, so enabled states stay fresh.
   useSyncExternalStore(registry.subscribe, registry.version);
+
+  // The action log for problem reports (#109): commands as they run, and timeline edits by feature id and type.
+  useEffect(() => registry.onRun((id) => actionLog.record({ id })), [registry]);
+  useEffect(() => {
+    let before = store.get();
+    return store.subscribe(() => {
+      const now = store.get();
+      if (now === before) return;
+      const detail = editSummary(before, now);
+      before = now;
+      if (detail) actionLog.record({ id: "edit", detail });
+    });
+  }, [store]);
+  useEffect(() => {
+    const off = onCaught((c) => setCrash(c));
+    const unwatch = watchWindow();
+    return () => {
+      off();
+      unwatch();
+    };
+  }, []);
 
   // Drop selected ids that no longer exist (after undo, delete, open).
   useEffect(() => {
@@ -948,6 +987,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().printCheck("thin"),
         keywords: "wall thickness print nozzle",
       },
+      { id: "help.report", label: "Report a problem", group: "Help", icon: "warning", run: () => setReport({}), keywords: "bug crash error feedback" },
       { id: "help.tour", label: "Take the tour", group: "Help", icon: "info", run: () => h().startTour(), keywords: "help start learn guide" },
       { id: "help.shortcuts", label: "Keyboard shortcuts", group: "Help", icon: "keyboard", keys: ["?"], run: () => setShortcutsOpen(true) },
     ];
@@ -1697,6 +1737,36 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       {files.dialog}
       {dropZone}
       {tour.card}
+      {crash && !report && (
+        <div className="bc-crash">
+          <Banner
+            tone="danger"
+            action={
+              <span className="bc-actions">
+                <Button
+                  size="dense"
+                  label="Report this"
+                  onClick={() => {
+                    setReport({ prefill: lastError() ?? crash.message });
+                    setCrash(null);
+                  }}
+                />
+                <Button size="dense" label="Dismiss" onClick={() => setCrash(null)} />
+              </span>
+            }
+          >
+            Something went wrong: {crash.message}
+          </Banner>
+        </div>
+      )}
+      <ReportDialog
+        open={report !== null}
+        prefill={report?.prefill}
+        onClose={() => setReport(null)}
+        model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
+        info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
+        say={say}
+      />
       <ExportDialog
         open={exportOpen}
         onClose={() => setExportOpen(false)}
