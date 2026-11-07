@@ -72,6 +72,8 @@ test("Esc cancels an extrude", async ({ page }) => {
   await click(page, 0, 0);
   const edge = await at(page, 6, 0);
   await page.mouse.move(edge.x, edge.y, { steps: 3 });
+  // The live diameter shows once the centre is down.
+  await expect(page.getByRole("textbox", { name: "Diameter" })).toHaveValue(/\d/);
   await page.getByRole("textbox", { name: "Diameter" }).fill("16");
   await page.keyboard.press("Enter");
   await page.keyboard.press("Escape");

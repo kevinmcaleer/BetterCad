@@ -382,7 +382,7 @@ function blend(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], r: number, ki
 }
 
 /** Hollows a solid to a wall `thickness`, leaving the faces given open. */
-export function shell(oc: OC, shape: TopoDS_Shape, openFaces: number[], thickness: number): TopoDS_Shape {
+export function shell(oc: OC, shape: TopoDS_Shape, openFaces: number[], thickness: number, outside = false): TopoDS_Shape {
   if (!(thickness > 0)) throw new KernelError("invalid-size", "A shell needs a wall above 0 mm.");
   const faces = elements(oc, shape, "face");
   const list = new oc.NCollection_List_TopoDS_Shape();
@@ -393,13 +393,32 @@ export function shell(oc: OC, shape: TopoDS_Shape, openFaces: number[], thicknes
   }
   return guard(oc, "failed", `A ${mm(thickness)} wall does not fit inside this body. Try a thinner wall.`, () => {
     const mk = new oc.BRepOffsetAPI_MakeThickSolid();
-    mk.MakeThickSolidByJoin(shape, list, -thickness, 1e-3);
+    // Inside keeps the outer size; outside grows the body by the wall.
+    mk.MakeThickSolidByJoin(shape, list, outside ? thickness : -thickness, 1e-3);
     mk.Build(progress(oc));
     if (!mk.IsDone()) throw new KernelError("failed", `A ${mm(thickness)} wall does not fit inside this body. Try a thinner wall.`);
-    const out = mk.Shape();
+    let out = mk.Shape();
+    // With nothing left open, OCCT gives the offset solid alone: the sealed hollow is the space between the two.
+    if (!openFaces.length) {
+      const offset = count(oc, out, "solid") ? out : solidOfShell(oc, out);
+      out = outside ? boolean(oc, "cut", offset, [shape]) : boolean(oc, "cut", shape, [offset]);
+    }
     if (!valid(oc, out)) throw new KernelError("non-manifold", `A ${mm(thickness)} wall does not fit inside this body. Try a thinner wall.`);
     return out;
   });
+}
+
+/** A closed shell (what a sealed offset comes back as) made into a solid. */
+function solidOfShell(oc: OC, shape: TopoDS_Shape): TopoDS_Shape {
+  const ex = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_SHELL, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  if (!ex.More()) throw new KernelError("failed", "That wall could not be made.");
+  const mk = new oc.BRepBuilderAPI_MakeSolid(oc.TopoDS.Shell(ex.Current()));
+  const solid = mk.Solid();
+  ex.delete();
+  // Make sure it faces outward, so the cut takes the inside away.
+  const fix = new oc.ShapeFix_Solid(solid);
+  fix.Perform(progress(oc));
+  return fix.Solid();
 }
 
 /** Whether a shape is a valid solid; tries ShapeFix once if not. */

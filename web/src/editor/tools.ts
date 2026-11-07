@@ -1,6 +1,6 @@
 import type { IconName } from "@bettercad/ui";
 
-export type ToolId = "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "pushpull" | "combine" | "fillet" | "hole";
+export type ToolId = "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "pushpull" | "combine" | "fillet" | "shell" | "hole";
 
 export interface Tool {
   id: ToolId;
@@ -72,7 +72,8 @@ export const TOOLS: Tool[] = [
     title: "Join, cut or intersect bodies",
     help: "Click the body to keep, then Shift-click the bodies to join, cut or intersect.",
   },
-  { id: "fillet", label: "Fillet", icon: "fillet", key: "g", title: "Round an edge", help: "Pick edges, then drag or type the radius.", epic: 6 },
+  { id: "fillet", label: "Fillet", icon: "fillet", key: "g", title: "Round or bevel edges", help: "Click the edges to round." },
+  { id: "shell", label: "Shell", icon: "shell", key: "s", title: "Hollow a body to a wall", help: "Click the face to leave open, usually the top." },
   { id: "hole", label: "Hole", icon: "hole", key: "h", title: "Make a hole", help: "Click a face where the hole goes.", epic: 6 },
 ];
 

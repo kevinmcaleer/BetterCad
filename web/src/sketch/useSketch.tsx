@@ -724,12 +724,12 @@ export function useSketch(d: SketchDeps) {
   useEscape(editing, () => say("Enter or the Finish button finishes the sketch."), ESC.tool);
 
   /** Commits the shape under way with the typed sizes, at the cursor. */
-  const commitTyped = useCallback(() => {
+  const commitTyped = useCallback((typedNow?: (number | undefined)[]) => {
     const L = live.current;
     if (!L.sketch || !L.clicks.length || !isDrawTool(L.stool)) return;
     const last: Snap = L.cursor ?? L.clicks[L.clicks.length - 1]!;
     const all = [...L.clicks, last];
-    const c = commit(L.stool, L.sketch, all, L.typed, L.sides);
+    const c = commit(L.stool, L.sketch, all, typedNow ?? L.typed, L.sides);
     if (!c) return;
     L.apply(c.sketch, c.label);
     setTyped([]);

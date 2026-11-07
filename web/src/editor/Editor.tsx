@@ -48,6 +48,8 @@ import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
 import { CombineBar, type CombineOp } from "./CombineBar";
+import { useFinish } from "../finish/useFinish";
+import { FinishBar } from "../finish/FinishBar";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -220,6 +222,15 @@ export function Editor() {
     theme: resolved,
   });
   useEffect(() => registry.register(extrude.commands), [registry, extrude.commands]);
+
+  const finish = useFinish({
+    record,
+    parts,
+    view: vp.ref,
+    tool: sketch.editing ? null : tool === "fillet" || tool === "shell" ? tool : null,
+    onClose: () => setTool("select"),
+    say,
+  });
   // While sketching the model goes faint, so the sketch reads on top of it. Project needs the faces solid to pick them.
   const ghostParts = sketch.editing && sketch.stool !== "project";
   const viewParts = useMemo(() => parts.map((p) => (ghostParts || p.hole ? { ...p, ghost: true } : p)), [parts, ghostParts]);
@@ -478,7 +489,7 @@ export function Editor() {
     group,
     ungroup,
     toggleHole,
-    confirm: () => (extrude.session ? extrude.done() : tool === "combine" ? combine(selection, combineOp, keepTools) : undefined),
+    confirm: () => (extrude.session ? extrude.done() : tool === "combine" ? combine(selection, combineOp, keepTools) : finish.tool ? finish.done() : undefined),
   };
 
   useEffect(() => {
@@ -584,7 +595,7 @@ export function Editor() {
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => live.current.tool === "extrude" || live.current.tool === "combine",
+        when: () => ["extrude", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -778,11 +789,13 @@ export function Editor() {
     ? sketch.help
     : extrude.help
       ? extrude.help
-      : vp.elementText
-        ? `${vp.elementText} Esc clears it.`
-        : tool === "select" && selectedParts.length
-          ? `${selectionText} Esc clears the selection.`
-          : activeTool.help;
+      : finish.help
+        ? finish.help
+        : vp.elementText
+          ? `${vp.elementText} Esc clears it.`
+          : tool === "select" && selectedParts.length
+            ? `${selectionText} Esc clears the selection.`
+            : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -866,6 +879,7 @@ export function Editor() {
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} />}
+              {(tool === "fillet" || tool === "shell") && <FinishBar f={finish} onCancel={() => setTool("select")} />}
               {tool === "combine" && (
                 <CombineBar
                   picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
@@ -886,7 +900,7 @@ export function Editor() {
             parts={viewParts}
             meshes={kernel.bodies}
             engine={kernel.state}
-            picks={vp.picks}
+            picks={finish.tool ? finish.picks : vp.picks}
             filter={vp.filter}
             mode={vp.mode}
             style={vp.style}

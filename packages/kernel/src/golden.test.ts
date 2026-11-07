@@ -70,6 +70,12 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
       from: -4,
       to: 4,
     }),
+  // Finishes (#67, #68): every edge of a cube rounded; a tray with a 1.2 mm wall; a shell grown outward.
+  "fillet-all": (oc) => fillet(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 2),
+  "chamfer-all": (oc) => chamfer(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 1),
+  tray: (oc) => shell(oc, fillet(oc, box(oc, { x: 40, y: 30, z: 15 }), [...Array(12).keys()], 3), [], 1.2),
+  "hollow-sphere": (oc) => shell(oc, sphere(oc, { x: 20, y: 20, z: 20 }), [], 1),
+  "shell-outside": (oc) => shell(oc, box(oc, { x: 20, y: 20, z: 20 }), [5], 2, true),
   // Group (#66): a box with two hole cylinders is the box less both.
   group: (oc) =>
     boolean(oc, "cut", box(oc, { x: 40, y: 20, z: 10 }), [

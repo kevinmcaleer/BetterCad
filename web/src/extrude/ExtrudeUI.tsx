@@ -16,7 +16,8 @@ export function ExtrudeBar({ x, parts }: { x: ExtrudeSession; parts: Part[] }) {
   }
   // Enter in a field keeps its value, then keeps the extrude.
   const onFieldKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") setTimeout(x.done, 0);
+    // The field's own commit has already gone into the document; finish now, before an Esc could follow.
+    if (e.key === "Enter") x.done();
   };
   const others = parts.filter((p) => p.id !== f.body.id);
   const target = others.find((p) => p.id === f.target);

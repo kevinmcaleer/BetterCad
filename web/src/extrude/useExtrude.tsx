@@ -211,10 +211,12 @@ export function useExtrude(d: ExtrudeDeps) {
 
   const done = useCallback(() => {
     const L = live.current;
-    if (L.session && L.feature) {
+    // The document, not the last render: Enter in the distance field commits it just before this.
+    const f = L.session && store.get().features.find((x): x is ExtrudeFeature => x.id === L.session!.id && x.type === "extrude");
+    if (L.session && f) {
       store.seal();
-      const n = L.feature.seeds.length;
-      say(`${L.session.isNew ? "Extruded" : "Changed"} ${n === 1 ? "one shape" : `${n} shapes`} ${fmt(L.feature.distance)} mm`);
+      const n = f.seeds.length;
+      say(`${L.session.isNew ? "Extruded" : "Changed"} ${n === 1 ? "one shape" : `${n} shapes`} ${fmt(f.distance)} mm`);
     }
     setSession(null);
     deps.current.onClose();
