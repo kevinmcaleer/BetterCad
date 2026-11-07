@@ -3,10 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The modelling kernel: OpenCascade (opencascade.js, WASM) running in a Web Worker. Arrives with epic #4.",
+  "description": "The modelling kernel: OpenCascade (replicad-opencascadejs, WASM) in a Web Worker, the model document and the meshes the viewport draws.",
   "main": "src/index.ts",
   "scripts": {
     "build": "tsc -b"
   },
-  "types": "dist/index.d.ts"
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "replicad-opencascadejs": "1.2.1"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./document": "./src/document.ts",
+    "./browser": "./src/browser.ts",
+    "./occt": "./src/occt/index.ts"
+  }
 }

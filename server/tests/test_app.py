@@ -52,3 +52,21 @@ def test_database_is_wal_and_migrated_once(tmp_path):
     assert conn.execute("SELECT name FROM sqlite_master WHERE name='meta'").fetchone()
     conn.close()
     assert isinstance(sqlite3.connect(tmp_path / "t.db"), sqlite3.Connection)
+
+
+def test_serves_precompressed_assets(make_client, tmp_path):
+    import gzip
+
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html>")
+    (dist / "assets" / "k-abc.wasm").write_bytes(b"\0asm" + b"x" * 100)
+    (dist / "assets" / "k-abc.wasm.gz").write_bytes(gzip.compress(b"\0asm" + b"x" * 100))
+    with make_client(web_dist=dist) as client:
+        zipped = client.get("/assets/k-abc.wasm", headers={"Accept-Encoding": "gzip"})
+        assert zipped.headers["Content-Encoding"] == "gzip"
+        assert zipped.headers["Content-Type"] == "application/wasm"
+        assert zipped.content == b"\0asm" + b"x" * 100
+        plain = client.get("/assets/k-abc.wasm", headers={"Accept-Encoding": "identity"})
+        assert "Content-Encoding" not in plain.headers
+        assert plain.headers["Content-Type"] == "application/wasm"

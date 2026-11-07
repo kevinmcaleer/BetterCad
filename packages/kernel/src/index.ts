@@ -1,9 +1,15 @@
 /**
- * The modelling kernel. OpenCascade (epic #4) will run in a Web Worker behind this package; until it lands, the
- * placeholder primitives are tessellated here in the same BodyMesh shape the worker will hand the viewport.
+ * The modelling kernel. OpenCascade (epic #4) runs in a Web Worker behind `./browser`; the app talks to it through
+ * KernelClient. The JS primitives stay as the first frame's meshes while the WASM loads.
  */
 export * from "./mesh";
 export * from "./primitives";
+export * from "./errors";
+export * from "./client";
+export type { Methods, Method, Request, Response } from "./protocol";
+export type { ModelResult, BuiltBody } from "./occt/model";
+export type { Measure } from "./occt/shapes";
+export type { Quality } from "./occt/tessellate";
 
 export interface KernelStatus {
   ready: boolean;

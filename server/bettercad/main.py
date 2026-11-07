@@ -36,7 +36,15 @@ class CachedStatic(StaticFiles):
     """Hashed assets are cached for a year; everything else is revalidated."""
 
     async def get_response(self, path: str, scope) -> Response:  # type: ignore[override]
-        response = await super().get_response(path, scope)
+        # The build writes a .gz beside large assets (the kernel WASM is 23 MB, 7 MB zipped); send it when we can.
+        accepts = b"gzip" in dict(scope.get("headers", [])).get(b"accept-encoding", b"")
+        zipped = accepts and path.startswith("assets/") and self.directory and (Path(self.directory) / f"{path}.gz").is_file()
+        response = await super().get_response(f"{path}.gz" if zipped else path, scope)
+        if zipped:
+            response.headers["Content-Encoding"] = "gzip"
+            response.headers["Vary"] = "Accept-Encoding"
+            kind = {".wasm": "application/wasm", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+            response.headers["Content-Type"] = next((v for k, v in kind.items() if path.endswith(k)), "application/octet-stream")
         if path.startswith("assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         else:
