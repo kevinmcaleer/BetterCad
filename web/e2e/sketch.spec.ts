@@ -136,3 +136,39 @@ test("offset a rectangle inward, round a corner, then trim", async ({ page }) =>
   await expect(constraints).toHaveCount(n - 1);
   await page.screenshot({ path: test.info().outputPath("edited.png") });
 });
+
+test("Horizontal/Vertical stays on the pointer and picks the nearer one per line", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // A shallow line (about 27°) and a steep one (about 73°).
+  await click(page, 0, 0);
+  await click(page, 20, 10);
+  await page.keyboard.press("Escape");
+  await click(page, 40, 0);
+  await click(page, 46, 20);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+  await expect(constraints).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Constrain", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Horizontal/Vertical" }).click();
+  await expect(page.getByRole("group", { name: "Horizontal/Vertical options" })).toBeVisible();
+  await click(page, 10, 5);
+  await expect(constraints.filter({ hasText: "Horizontal" })).toHaveCount(1);
+  // Still armed: the next line needs only a click.
+  await click(page, 43, 10);
+  await expect(constraints.filter({ hasText: "Vertical" })).toHaveCount(1);
+  await expect(constraints).toHaveCount(2);
+  const over = await at(page, 10, 0);
+  await page.mouse.move(over.x, over.y, { steps: 3 });
+  await page.screenshot({ path: test.info().outputPath("pinned.png") });
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("group", { name: "Horizontal/Vertical options" })).toBeHidden();
+  await expect(page.getByRole("group", { name: "Select options" })).toBeVisible();
+});

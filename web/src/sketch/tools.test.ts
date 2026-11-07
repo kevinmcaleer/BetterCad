@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { drawRectangle, newSketch, profiles } from "@bettercad/sketch";
-import { commit, constraintsFor, preview } from "./tools";
+import { Draft, drawRectangle, newSketch, profiles } from "@bettercad/sketch";
+import { commit, constraintsFor, levelOrUpright, preview } from "./tools";
 import type { Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
@@ -52,5 +52,29 @@ describe("sketch tools", () => {
     expect(constraintsFor("perpendicular", s, [lines[0]!, lines[1]!])).toEqual([{ type: "perpendicular", a: lines[0], b: lines[1] }]);
     expect(constraintsFor("coincident", s, [pts[0]!, lines[1]!])).toEqual([{ type: "pointOn", p: pts[0], e: lines[1] }]);
     expect(constraintsFor("fix", s, [lines[0]!])).toHaveLength(2);
+  });
+
+  it("makes a line horizontal up to 45° from the horizon and vertical past it", () => {
+    const d = new Draft(newSketch());
+    const line = (x: number, y: number) => d.line(d.point([0, 0]), d.point([x, y]), { auto: false });
+    const flat = line(10, 4);
+    const steep = line(-3, 10);
+    const diagonal = line(10, -10);
+    const s = d.done().sketch;
+    expect(levelOrUpright(s, flat)).toBe("horizontal");
+    expect(levelOrUpright(s, steep)).toBe("vertical");
+    expect(levelOrUpright(s, diagonal)).toBe("horizontal");
+    expect(constraintsFor("horizontalVertical", s, [flat, steep])).toEqual([
+      { type: "horizontal", e: flat },
+      { type: "vertical", e: steep },
+    ]);
+  });
+
+  it("skips lines that are already horizontal or vertical", () => {
+    const s = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
+    const lines = s.entities.filter((e) => e.kind === "line").map((e) => e.id);
+    expect(constraintsFor("horizontalVertical", s, [lines[0]!])).toBe("That line is already horizontal or vertical");
+    const pts = s.entities.filter((e) => e.kind === "point").map((e) => e.id);
+    expect(constraintsFor("horizontalVertical", s, [pts[0]!])).toBe("Pick lines");
   });
 });

@@ -228,42 +228,70 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
   }
 }
 
-/** The constraints in the constraints group: what each needs picked, and the hint until it has it. */
+/**
+ * The constraint tools: what each needs picked, and the hint until it has it. A tool stays armed after it applies, so
+ * line after line can be clicked until Esc. Horizontal/Vertical is one tool: each line takes whichever it is nearer.
+ */
+export type ConstraintToolId = Exclude<NewConstraint["type"], "horizontal" | "vertical"> | "horizontalVertical";
+
 export interface ConstraintTool {
-  id: NewConstraint["type"];
+  id: ConstraintToolId;
   label: string;
   hint: string;
+  /** How many picks make one constraint. */
+  picks: number;
+  /** A short mark for the tag that follows the pointer. */
+  tag: string;
 }
 
 export const CONSTRAINT_TOOLS: ConstraintTool[] = [
-  { id: "coincident", label: "Coincident", hint: "Pick two points, or a point and a line or curve" },
-  { id: "horizontal", label: "Horizontal", hint: "Pick lines" },
-  { id: "vertical", label: "Vertical", hint: "Pick lines" },
-  { id: "parallel", label: "Parallel", hint: "Pick two lines" },
-  { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines" },
-  { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves" },
-  { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs" },
-  { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs" },
-  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line" },
-  { id: "fix", label: "Fix", hint: "Pick points, lines or curves" },
-  { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line" },
+  { id: "coincident", label: "Coincident", hint: "Pick two points, or a point and a line or curve", picks: 2, tag: "Coincident" },
+  { id: "horizontalVertical", label: "Horizontal/Vertical", hint: "Pick lines", picks: 1, tag: "H/V" },
+  { id: "parallel", label: "Parallel", hint: "Pick two lines", picks: 2, tag: "Parallel" },
+  { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines", picks: 2, tag: "Perpendicular" },
+  { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves", picks: 2, tag: "Tangent" },
+  { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs", picks: 2, tag: "Equal" },
+  { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs", picks: 2, tag: "Concentric" },
+  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line", picks: 2, tag: "Midpoint" },
+  { id: "fix", label: "Fix", hint: "Pick points, lines or curves", picks: 1, tag: "Fix" },
+  { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line", picks: 3, tag: "Symmetric" },
 ];
+
+export const constraintToolById = (id: ConstraintToolId) => CONSTRAINT_TOOLS.find((t) => t.id === id)!;
+
+/**
+ * Horizontal or vertical for a line, by its angle from the horizon: up to 45° is horizontal, past it vertical.
+ * Null when the id is not a line.
+ */
+export function levelOrUpright(sketch: Sketch, id: Id): "horizontal" | "vertical" | null {
+  const line = sketch.entities.find((e) => e.id === id);
+  if (line?.kind !== "line") return null;
+  const at = (p: Id) => sketch.entities.find((e) => e.id === p);
+  const a = at(line.a);
+  const b = at(line.b);
+  if (a?.kind !== "point" || b?.kind !== "point") return null;
+  return Math.abs(b.y - a.y) > Math.abs(b.x - a.x) ? "vertical" : "horizontal";
+}
 
 /**
  * The constraints a constraint tool adds for a selection, or the hint when the selection does not fit. Lines and
  * curves may be picked where points are wanted for Fix (their points are fixed).
  */
-export function constraintsFor(type: ConstraintTool["id"], sketch: Sketch, picked: Id[]): NewConstraint[] | string {
+export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: Id[]): NewConstraint[] | string {
   const kinds = picked.map((id) => sketch.entities.find((e) => e.id === id)?.kind);
   const only = (k: string[]) => kinds.length > 0 && kinds.every((x) => x && k.includes(x));
-  const hint = CONSTRAINT_TOOLS.find((t) => t.id === type)!.hint;
+  const hint = constraintToolById(type).hint;
   const two = picked.length === 2;
   const [a, b] = picked as [Id, Id];
   const curve = (k?: string) => k === "circle" || k === "arc";
   switch (type) {
-    case "horizontal":
-    case "vertical":
-      return only(["line"]) ? picked.map((e) => ({ type, e })) : hint;
+    case "horizontalVertical": {
+      if (!only(["line"])) return hint;
+      const set = new Set(sketch.constraints.flatMap((c) => (c.type === "horizontal" || c.type === "vertical" ? [c.e] : [])));
+      const fresh = picked.filter((e) => !set.has(e));
+      if (!fresh.length) return picked.length === 1 ? "That line is already horizontal or vertical" : "Those lines are already horizontal or vertical";
+      return fresh.map((e) => ({ type: levelOrUpright(sketch, e)!, e }));
+    }
     case "parallel":
     case "perpendicular":
       return two && only(["line"]) ? [{ type, a, b }] : hint;

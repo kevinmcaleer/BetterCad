@@ -37,7 +37,19 @@ import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { entityAt, snap, snapStep, type Snap } from "./snap";
-import { CLICKS, CONSTRAINT_TOOLS, SKETCH_TOOLS, commit, constraintsFor, isDrawTool, preview, toolById, type ConstraintTool, type SketchToolId } from "./tools";
+import {
+  CLICKS,
+  CONSTRAINT_TOOLS,
+  SKETCH_TOOLS,
+  commit,
+  constraintToolById,
+  constraintsFor,
+  isDrawTool,
+  preview,
+  toolById,
+  type ConstraintToolId,
+  type SketchToolId,
+} from "./tools";
 
 /**
  * The sketch session (#51–#58): picking a plane, then drawing, constraining and dimensioning on it until Finish. The
@@ -88,6 +100,10 @@ export function useSketch(d: SketchDeps) {
   deps.current = d;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [stool, setStoolState] = useState<SketchToolId>("select");
+  /** The armed constraint tool: it stays on the pointer, picking line after line, until Esc. */
+  const [ctool, setCtool] = useState<ConstraintToolId | null>(null);
+  /** Where the pointer is on the view while a constraint tool is armed, for the tag that follows it. */
+  const [pointer, setPointer] = useState<ScreenPoint | null>(null);
   const [clicks, setClicks] = useState<Snap[]>([]);
   const [cursor, setCursor] = useState<Snap | null>(null);
   const [typed, setTyped] = useState<(number | undefined)[]>([]);
@@ -133,6 +149,8 @@ export function useSketch(d: SketchDeps) {
 
   const setStool = useCallback((t: SketchToolId) => {
     setStoolState(t);
+    setCtool(null);
+    setPointer(null);
     setEditPreview(null);
     setClicks([]);
     setTyped([]);
@@ -264,21 +282,41 @@ export function useSketch(d: SketchDeps) {
     [current, apply, say],
   );
 
-  const constrain = useCallback(
-    (type: ConstraintTool["id"]) => {
+  /** Adds a constraint tool's output for some picks. Returns whether they fitted (true even if the solver said no). */
+  const applyConstraint = useCallback(
+    (type: ConstraintToolId, picked: Id[], quietHint = false): boolean => {
       const s = current();
-      if (!s) return;
-      const picked = live.current.sel.filter((id) => s.entities.some((e) => e.id === id));
+      if (!s) return false;
       const out = constraintsFor(type, s, picked);
       if (typeof out === "string") {
-        say(`${out}, then choose ${CONSTRAINT_TOOLS.find((t) => t.id === type)!.label} again.`);
-        return;
+        if (!quietHint) say(out);
+        return false;
       }
       const dr = new Draft(s);
       for (const c of out) dr.constrain(c);
-      if (apply(dr.done().sketch, `Add ${CONSTRAINT_LABEL[out[0]!.type].toLowerCase()} constraint`, { strict: true })) setSel([]);
+      const kinds = [...new Set(out.map((c) => CONSTRAINT_LABEL[c.type].toLowerCase()))].join(" and ");
+      apply(dr.done().sketch, `Add ${kinds} constraint${out.length > 1 ? "s" : ""}`, { strict: true });
+      return true;
     },
     [current, apply, say],
+  );
+
+  /**
+   * Arms a constraint tool. Geometry picked beforehand gets it at once; either way the tool stays on the pointer for
+   * more picks until Esc.
+   */
+  const constrain = useCallback(
+    (type: ConstraintToolId) => {
+      const s = current();
+      if (!s) return;
+      const picked = live.current.sel.filter((id) => s.entities.some((e) => e.id === id));
+      if (picked.length) applyConstraint(type, picked, true);
+      setStool("select");
+      setSel([]);
+      setCtool(type);
+      say(`${constraintToolById(type).hint}. Esc puts the tool down.`);
+    },
+    [current, applyConstraint, setStool, say],
   );
 
   const removeSelected = useCallback(() => {
@@ -402,6 +440,8 @@ export function useSketch(d: SketchDeps) {
     filletR,
     offsetD,
     projectGuide,
+    ctool,
+    applyConstraint,
   });
   live.current = {
     editingId,
@@ -421,6 +461,8 @@ export function useSketch(d: SketchDeps) {
     filletR,
     offsetD,
     projectGuide,
+    ctool,
+    applyConstraint,
   };
 
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
@@ -579,6 +621,19 @@ export function useSketch(d: SketchDeps) {
         const L = live.current;
         const hit = at(p);
         if (!hit || !L.sketch) return false;
+        if (L.ctool) {
+          // Each pick adds to the tool's picks; once there are enough, the constraint goes on and the tool stays armed.
+          const id = entityAt(hit.xy, L.sketch, 8 * hit.px);
+          if (!id) return true;
+          const picked = [...L.sel.filter((x) => x !== id), id];
+          if (picked.length < constraintToolById(L.ctool).picks) {
+            setSel(picked);
+            return true;
+          }
+          if (L.applyConstraint(L.ctool, picked)) setSel([]);
+          else setSel(picked.length > 1 ? [id] : []);
+          return true;
+        }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
         if (L.stool === "select" || L.stool === "dimension") {
           const id = entityAt(hit.xy, L.sketch, 8 * hit.px);
@@ -624,6 +679,7 @@ export function useSketch(d: SketchDeps) {
           return;
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
+        if (L.ctool) setPointer({ x: p.x, y: p.y });
         if (L.stool === "select" || L.stool === "dimension") {
           setHover(entityAt(hit.xy, L.sketch, 8 * hit.px));
           setCursor(null);
@@ -638,6 +694,7 @@ export function useSketch(d: SketchDeps) {
       },
       leave: () => {
         setHover(null);
+        setPointer(null);
         setCursor(null);
         setEditPreview(null);
         eng.showHover(null);
@@ -719,6 +776,14 @@ export function useSketch(d: SketchDeps) {
     ESC.tool + 3,
   );
   useEscape(editing && stool !== "select", () => setStool("select"), ESC.tool + 2);
+  useEscape(
+    editing && ctool !== null,
+    () => {
+      setStool("select");
+      setSel([]);
+    },
+    ESC.tool + 2,
+  );
   useEscape(editing && sel.length > 0, () => setSel([]), ESC.tool + 1);
   // Esc never drops the sketch by accident: the last layer only says how to finish.
   useEscape(editing, () => say("Enter or the Finish button finishes the sketch."), ESC.tool);
@@ -821,8 +886,8 @@ export function useSketch(d: SketchDeps) {
           ? "Fully constrained"
           : `${dof} degree${dof === 1 ? "" : "s"} of freedom`;
 
-  const help =
-    d.picking && !editing ? "Click a face or a plane to sketch on it." : editing ? `${toolById(stool).help} ${status ?? ""}.`.replace(/\.\.$/, ".") : null;
+  const toolHelp = ctool ? `${constraintToolById(ctool).hint}. Esc puts the tool down.` : toolById(stool).help;
+  const help = d.picking && !editing ? "Click a face or a plane to sketch on it." : editing ? `${toolHelp} ${status ?? ""}.`.replace(/\.\.$/, ".") : null;
 
   return {
     editing,
@@ -833,6 +898,8 @@ export function useSketch(d: SketchDeps) {
     result,
     status,
     stool,
+    ctool,
+    pointer,
     pickTool,
     clicks,
     cursor,

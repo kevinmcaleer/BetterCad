@@ -22,7 +22,7 @@ import {
 } from "@bettercad/sketch";
 import { formatCombo } from "../state/commands";
 import { SNAP_LABEL } from "./snap";
-import { CONSTRAINT_TOOLS, SKETCH_TOOLS, isDrawTool, toolById } from "./tools";
+import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, levelOrUpright, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
 
 /** The sketch tool bar and the armed tool's strip, in place of the model bars while a sketch is open. */
@@ -53,7 +53,7 @@ export function SketchBars({ s }: { s: SketchSession }) {
             icon={t.icon}
             label={t.label}
             shortcut={t.key.toUpperCase()}
-            pressed={s.stool === t.id}
+            pressed={s.stool === t.id && !s.ctool}
             showLabel
             onPress={() => s.pickTool(t.id)}
           />
@@ -62,12 +62,14 @@ export function SketchBars({ s }: { s: SketchSession }) {
         <MenuButton
           label="Constraints"
           entries={CONSTRAINT_TOOLS.map((c) => ({ id: c.id, label: c.label, onSelect: () => s.constrain(c.id) }))}
-          trigger={(p) => <Button {...p} icon="constraint" label="Constrain" title="Add a constraint to the picked geometry" />}
+          trigger={(p) => (
+            <Button {...p} icon="constraint" label="Constrain" on={!!s.ctool} title="Pick a constraint, then click the geometry. Esc puts it down." />
+          )}
         />
         <Toolbar.Separator />
         <Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />
       </Toolbar>
-      <ArmedBar title={tool.label} icon={tool.icon}>
+      <ArmedBar title={s.ctool ? constraintToolById(s.ctool).label : tool.label} icon={s.ctool ? "constraint" : tool.icon}>
         {drawing && tool.fields.length > 0 && (
           <span className="bc-sk-fields" onKeyDown={onFieldKey}>
             {tool.fields.map((f, i) => (
@@ -286,6 +288,11 @@ export function SketchLabels({ s }: { s: SketchSession }) {
           {g}
         </button>
       ))}
+      {s.ctool && s.pointer && (
+        <span className="bc-snap-label bc-tool-tag" aria-hidden="true" style={{ left: s.pointer.x, top: s.pointer.y }}>
+          {toolTag(s)}
+        </span>
+      )}
       {s.cursor && s.cursor.kind !== "free" && (
         <span className="bc-snap-label" style={{ left: at(s.cursor.xy).x, top: at(s.cursor.xy).y }}>
           {SNAP_LABEL[s.cursor.kind]}
@@ -293,6 +300,16 @@ export function SketchLabels({ s }: { s: SketchSession }) {
       )}
     </div>
   );
+}
+
+/** The armed constraint's tag by the pointer. Over a line, Horizontal/Vertical says which one that line would get. */
+function toolTag(s: SketchSession): string {
+  const t = constraintToolById(s.ctool!);
+  if (t.id === "horizontalVertical" && s.hover && s.sketch) {
+    const k = levelOrUpright(s.sketch, s.hover);
+    if (k) return CONSTRAINT_LABEL[k];
+  }
+  return t.tag;
 }
 
 /** The right column while sketching: the sketch's plane and state, its sizes and its constraints. */
