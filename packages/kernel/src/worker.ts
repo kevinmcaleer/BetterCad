@@ -5,6 +5,7 @@ import { ModelBuilder } from "./occt/model";
 import { Exporter } from "./occt/exporter";
 import { KernelError, isKernelError } from "./errors";
 import type { Methods, Request, Response } from "./protocol";
+import { thickness } from "./print/checks";
 
 /**
  * The kernel worker (#44). It loads OpenCascade once, then answers calls one at a time. A cancel marks the call, and
@@ -41,6 +42,12 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
   inspect: (params) => builder!.inspect(params),
   estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),
   export: (params, id) => exporter!.export(params, () => cancelled.has(id)),
+  thickness: ({ bodies, threshold }, id) =>
+    bodies.map((b) => {
+      if (cancelled.has(id)) throw new KernelError("cancelled", "Stopped.");
+      const r = thickness(b, threshold);
+      return { id: b.id, values: r.values, areas: r.areas, min: r.min };
+    }),
 };
 
 async function pump() {

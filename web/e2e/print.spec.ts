@@ -51,3 +51,27 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
   await page.keyboard.press("ControlOrMeta+z");
   await expect(page.getByLabel("Material", { exact: true })).toHaveValue("pla");
 });
+
+test("overhangs and thin walls: one check at a time, with the areas listed", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Sphere", exact: true }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await openPrint(page);
+
+  // A sphere's underside needs support.
+  await page.getByRole("group", { name: "Check" }).getByRole("button", { name: "Overhangs" }).click();
+  await expect(page.getByText(/^Needs support: 1 area, [\d,]+ mm²$/)).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("list", { name: "Areas that need support" }).getByRole("button", { name: /Show/ }).first().click();
+
+  // A 20 mm sphere has no thin walls at 0.8 mm, but does at 25 mm.
+  await page.getByRole("group", { name: "Check" }).getByRole("button", { name: "Thin walls" }).click();
+  await expect(page.getByText("No walls thinner than 0.8 mm.")).toBeVisible({ timeout: 30_000 });
+  const limit = page.getByRole("textbox", { name: "Thinnest (mm)" });
+  await limit.fill("25");
+  await limit.press("Enter");
+  await expect(page.getByText(/^1 thin area, thinnest [\d.]+ mm$/)).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("group", { name: "Check" }).getByRole("button", { name: "Off" }).click();
+  await expect(page.getByText(/thin area/)).toHaveCount(0);
+});

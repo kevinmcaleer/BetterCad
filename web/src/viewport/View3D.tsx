@@ -43,6 +43,8 @@ export interface View3DProps {
   bed?: { x: number; y: number; z: number; origin: "centre" | "corner" } | null;
   /** Bodies off the bed, tinted warn. */
   warn?: Set<string>;
+  /** A print check's per-vertex tint by body (#101, #102). */
+  check?: Map<string, Float32Array> | null;
   /** Whether to show the empty-model hint (off while sketching). */
   emptyHint?: boolean;
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
@@ -186,6 +188,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   useEffect(() => engine.current?.setHoverEnabled(mode === "select" || mode === "section" || mode === "move" || mode === "turn"), [mode]);
   useEffect(() => engine.current?.setTheme(theme === "holodeck"), [theme]);
   useEffect(() => engine.current?.setStyle(style), [style]);
+  const check = props.check ?? null;
+  useEffect(() => engine.current?.setCheck(check), [check, bodies]);
   const bed = props.bed;
   const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin}` : "";
   useEffect(() => {

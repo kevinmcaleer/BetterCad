@@ -57,8 +57,18 @@ So, weight = density × (shell + (volume − shell) × infill).
 
 This is usually within about 20% of a slicer, so the panel says "about 18 g". Meshes imported with gaps in their surface have no true volume, so they show "–".
 
+## Overhangs and thin walls (#101, #102)
+
+The Checks row in the Print panel shows one check at a time. It tints the problem areas on the bodies that print, lists them, and has a Show button that frames each one.
+
+**Overhangs.** A downward face steeper than the limit needs support. The limit defaults to 45° and can be set from 30° to 70°. A face counts if the steepness of its downward normal, measured from vertical, is past the limit and its lowest corner is more than 0.2 mm above the bed. The tint gets stronger as the face nears flat. This uses the display mesh, so it's instant. It doesn't recognise bridges yet: a short flat span a printer can cross is still flagged.
+
+**Thin walls.** The check casts a ray from the middle of each triangle straight into the body. Where the ray reaches the far wall sooner than the limit, the wall is thin. The limit defaults to two nozzle widths, 0.8 mm for a 0.4 mm nozzle. Areas that touch, or are within 1.5 × the limit of each other, are listed as one, with their thinnest point.
+
+It runs in the geometry worker, so the editor stays responsive. Rays only test the surface they start from, so a wall met at a grazing angle can be missed. Treat it as a guide, not a proof.
+
 ## Still to come
 
-- Wall thickness (#101), overhangs (#102) and orientation suggestions (#103).
+- Orientation suggestions (#103).
 - Printed-fit hole sizes tied to the printer (#104).
 - Saving custom printers and a price per kilogram to your account.
