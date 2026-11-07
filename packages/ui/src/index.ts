@@ -24,7 +24,7 @@ export { Rail, type RailItem, type RailProps } from "./Rail";
 export { PartsTree, depths, type TreeItem, type PartsTreeProps, type RowToggle } from "./PartsTree";
 export { PropsPanel, PropRow, type PropsSection, type PropsPanelProps } from "./PropsPanel";
 export { clickSelect, type Modifiers } from "./selection";
-export { ViewCube, type ViewName } from "./ViewCube";
+export { ViewCube, classifyCubePoint, cubePlaceName, type ViewName } from "./ViewCube";
 export { useDismiss } from "./useDismiss";
 export { useEscape } from "./useEscape";
 export { pushEscape, backOut, escapeDepth, ESC } from "./escape";

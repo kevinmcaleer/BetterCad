@@ -57,6 +57,7 @@ import {
   gridStep,
   halfHeight,
   lerpCamera,
+  lookFrom,
   orbit,
   pan,
   presetOf,
@@ -461,6 +462,16 @@ export class Engine {
 
   preset(p: Preset): void {
     this.setCamera(toPreset(this.tween?.to ?? this.cam, p), true);
+  }
+
+  /** Glides round to look from `dir` (a view cube face, edge or corner). */
+  lookFrom(dir: V3): void {
+    this.setCamera(lookFrom(this.tween?.to ?? this.cam, dir), true);
+  }
+
+  /** Turns the view by a drag on the view cube, in pixels; stops any glide. */
+  orbitBy(dxPx: number, dyPx: number): void {
+    this.setCamera(orbit(this.cam, -dxPx * 0.5, dyPx * 0.5));
   }
 
   setOrtho(on: boolean): void {

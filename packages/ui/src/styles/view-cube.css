@@ -9,39 +9,69 @@
   height: 104px;
   cursor: pointer;
   filter: drop-shadow(0 4px 8px var(--bc-color-scrim));
+  /* Dragging the cube turns the view, so the browser must not scroll or zoom. */
+  touch-action: none;
 }
 .bc-cube-face {
   fill: url(#bc-cube-grad);
-  stroke: var(--bc-color-cube-edge);
-  stroke-width: 2.5;
+  /* The cube's own edges: darker than the frame inside each face. */
+  stroke: var(--bc-color-muted);
+  stroke-opacity: 0.6;
+  stroke-width: 1;
   stroke-linejoin: round;
+}
+/* The border just inside each face, as on the kevsrobots editor's cube. */
+.bc-cube-frame {
+  fill: none;
+  stroke: var(--bc-color-cube-edge);
+  stroke-width: 1.8;
+  stroke-linejoin: round;
+  pointer-events: none;
 }
 .bc-cube-label {
   fill: var(--bc-color-cube-label);
-  font: 700 10px var(--bc-font-sans);
+  font: 700 8.6px var(--bc-font-sans);
   text-anchor: middle;
+}
+.bc-cube-label-long {
+  font-size: 7.8px;
+}
+/* A face, edge or corner to click: invisible, it only takes the pointer. */
+.bc-cube-place {
+  fill: transparent;
+}
+/* The face, edge or corner under the pointer. */
+.bc-cube-light {
+  fill: var(--bc-color-accent);
+  fill-opacity: 0.35;
+  pointer-events: none;
 }
 .bc-axis-x {
   fill: var(--bc-color-axis-x);
   font: 700 12px var(--bc-font-sans);
+  pointer-events: none;
 }
 .bc-axis-y {
   fill: var(--bc-color-axis-y);
   font: 700 12px var(--bc-font-sans);
+  pointer-events: none;
 }
 .bc-axis-z {
   fill: var(--bc-color-axis-z);
   font: 700 12px var(--bc-font-sans);
+  pointer-events: none;
 }
 .bc-cube-side {
   outline: none;
 }
-.bc-cube-side:hover .bc-cube-face {
-  fill: var(--bc-color-accent-soft);
+.bc-cube-side:focus-visible .bc-cube-face {
   stroke: var(--bc-color-accent);
+  stroke-opacity: 1;
+  stroke-width: 2;
 }
 .bc-axis-line {
-  stroke-width: 2;
+  stroke-width: 1.5;
+  pointer-events: none;
   stroke-linecap: round;
 }
 .bc-axis-line-x {

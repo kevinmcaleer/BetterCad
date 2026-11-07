@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CAMERA, cameraBasis, fit, fitInRect, gridStep, lerpCamera, orbit, pan, presetOf, snapTo, toPreset, viewDir, zoom } from "./camera";
+import { DEFAULT_CAMERA, cameraBasis, fit, fitInRect, gridStep, lerpCamera, lookFrom, orbit, pan, presetOf, snapTo, toPreset, viewDir, zoom } from "./camera";
 import { FACE_ONLY, decodeId, encodeId, findPick } from "./ids";
 
 const near = (a: number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i]!, 6));
@@ -77,6 +77,20 @@ describe("camera", () => {
   it("snaps to steps", () => {
     expect(snapTo(12.4, 5)).toBe(10);
     expect(snapTo(23, 15)).toBe(30);
+  });
+});
+
+describe("looking from the view cube", () => {
+  it("faces, edges and corners turn the camera to look from there", () => {
+    expect(presetOf(lookFrom(DEFAULT_CAMERA, [0, -1, 0]))).toBe("front");
+    expect(presetOf(lookFrom(DEFAULT_CAMERA, [1, 0, 0]))).toBe("side");
+    expect(presetOf(lookFrom(DEFAULT_CAMERA, [0, 0, 1]))).toBe("top");
+    expect(presetOf(lookFrom(DEFAULT_CAMERA, [0, 0, -1]))).toBe("bottom");
+    expect(presetOf(lookFrom({ ...DEFAULT_CAMERA, azimuth: 120, elevation: 10 }, [1, -1, 1]))).toBe("iso");
+    const edge = lookFrom(DEFAULT_CAMERA, [0, -1, 1]);
+    expect(edge.azimuth).toBeCloseTo(-90);
+    expect(edge.elevation).toBeCloseTo(45);
+    expect(edge.distance).toBe(DEFAULT_CAMERA.distance);
   });
 });
 
