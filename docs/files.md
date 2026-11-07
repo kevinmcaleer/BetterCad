@@ -81,3 +81,5 @@ They're added to the open model as an Import step on the timeline; a dropped fil
 - The file's bytes are kept in the `.bcad` (by content hash, once per file), so the model rebuilds without the
   original.
 - Drop a `.bcad` to open it; BetterCad asks first if you have unsaved changes.
+
+For how the formats compare and which ones come next, see [cad-formats.md](cad-formats.md).
