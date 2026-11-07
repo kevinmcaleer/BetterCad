@@ -3,7 +3,7 @@ import { ViewCube, type ViewName } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
-import { Engine, canDraw3D, type RenderStyle, type Section, type Stats } from "./engine";
+import { Engine, canDraw3D, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
 import { formatMilestones, milestone } from "../perf";
 import type { Pick, SelectFilter } from "./ids";
 
@@ -45,6 +45,8 @@ export interface View3DProps {
   warn?: Set<string>;
   /** A print check's per-vertex tint by body (#101, #102). */
   check?: Map<string, Float32Array> | null;
+  /** Origin planes on show from the browser, and the one chosen there. */
+  originPlanes?: { shown: WorldPlaneName[]; chosen: WorldPlaneName | null };
   /** Whether to show the empty-model hint (off while sketching). */
   emptyHint?: boolean;
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
@@ -219,6 +221,13 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
     // Only a different bed redraws it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bedKey]);
+  const origin = props.originPlanes;
+  const originKey = origin ? `${origin.shown.join(",")}|${origin.chosen ?? ""}` : "";
+  useEffect(() => {
+    engine.current?.setOriginPlanes(origin?.shown ?? [], origin?.chosen ?? null);
+    // Redrawn when the planes change, and with the bodies, so they keep to the model's size.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [originKey, bodies]);
   useEffect(() => engine.current?.setOrtho(ortho), [ortho]);
   useEffect(() => engine.current?.setSection(section, mode === "section"), [section, mode]);
   useEffect(() => engine.current?.showStats(stats), [stats]);

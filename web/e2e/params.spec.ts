@@ -31,7 +31,7 @@ test("a box sized by a parameter follows when the parameter changes", async ({ p
   // In use, so it can't be deleted.
   await page.getByRole("button", { name: "Delete width" }).click();
   await expect(page.getByText("width is used by Resize 1, so it can't be deleted")).toBeVisible();
-  await page.getByRole("button", { name: "Parts" }).click();
+  await page.getByRole("button", { name: "Browser" }).click();
   await page.getByRole("treeitem", { name: /Box 1/ }).click();
   await expect(page.getByText("16,000 mm³")).toBeVisible({ timeout: 20_000 });
 });

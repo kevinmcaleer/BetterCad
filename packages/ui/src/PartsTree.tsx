@@ -21,6 +21,18 @@ export interface TreeItem {
   inherited?: Partial<Record<RowToggle, boolean>>;
   /** A problem with this item (a failed feature): a mark after the name, the message in its tooltip. */
   warning?: string;
+  /** Muted text after the name, such as a folder's count. */
+  note?: string;
+  /** Row buttons for this item, in place of the tree's `toggles`. */
+  toggles?: RowToggle[];
+  /** false: the row can't be dragged (a folder, a plane). */
+  drag?: boolean;
+  /** false: the row can't be renamed. */
+  rename?: boolean;
+  /** Starts folded, until the person opens it. */
+  folded?: boolean;
+  /** What the row is (body, sketch, plane, folder), as `data-kind` for styling. */
+  kind?: string;
 }
 
 export interface PartsTreeProps {
@@ -81,7 +93,8 @@ export function PartsTree({
   renameId,
   onRenameIdChange,
 }: PartsTreeProps) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Folds the person chose, by id; rows they haven't touched follow their `folded`.
+  const [folds, setFolds] = useState<Map<string, boolean>>(new Map());
   const [focusId, setFocusId] = useState<string | null>(null);
   const [localRenaming, setLocalRenaming] = useState<string | null>(null);
   const renaming = renameId !== undefined ? renameId : localRenaming;
@@ -93,6 +106,7 @@ export function PartsTree({
 
   const depth = useMemo(() => depths(items), [items]);
   const hasChildren = useMemo(() => new Set(items.filter((i) => i.parentId).map((i) => i.parentId!)), [items]);
+  const collapsed = useMemo(() => new Set(items.filter((i) => folds.get(i.id) ?? !!i.folded).map((i) => i.id)), [items, folds]);
   const visible = useMemo(() => {
     const hiddenParents = new Set<string>();
     return items.filter((i) => {
@@ -120,13 +134,8 @@ export function PartsTree({
     setFocusId(id);
     onSelect(r.selection);
   };
-  const fold = (id: string, open: boolean) =>
-    setCollapsed((c) => {
-      const n = new Set(c);
-      if (open) n.delete(id);
-      else n.add(id);
-      return n;
-    });
+  const fold = (id: string, open: boolean) => setFolds((f) => new Map(f).set(id, !open));
+  const renamable = (item: TreeItem) => !!onRename && item.rename !== false;
 
   const onKeyDown = (e: KeyboardEvent, item: TreeItem) => {
     if (renaming) return;
@@ -163,7 +172,7 @@ export function PartsTree({
         click(item.id, { shiftKey: false, ctrlKey: true, metaKey: false });
         break;
       case "F2":
-        if (onRename) setRenaming(item.id);
+        if (renamable(item)) setRenaming(item.id);
         break;
       default:
         return;
@@ -178,7 +187,7 @@ export function PartsTree({
   };
   const onDragOver = (e: DragEvent, target: TreeItem) => {
     const id = dragId.current;
-    if (!id || id === target.id || !siblingsOf(id).some((s) => s.id === target.id)) return;
+    if (!id || id === target.id || target.drag === false || !siblingsOf(id).some((s) => s.id === target.id)) return;
     e.preventDefault();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const after = e.clientY > r.top + r.height / 2;
@@ -204,13 +213,14 @@ export function PartsTree({
           <li
             key={item.id}
             data-id={item.id}
+            data-kind={item.kind}
             role="treeitem"
             aria-selected={selected}
             aria-level={d + 1}
             aria-expanded={parent ? !collapsed.has(item.id) : undefined}
             className={cx("bc-row", selected && "bc-on", item.hidden && "bc-off", dropBefore === item.id && "bc-drop-before")}
             style={{ ["--depth" as string]: d }}
-            draggable={!!onReorder && renaming !== item.id}
+            draggable={!!onReorder && item.drag !== false && renaming !== item.id}
             onDragStart={(e) => {
               dragId.current = item.id;
               e.dataTransfer.effectAllowed = "move";
@@ -259,12 +269,13 @@ export function PartsTree({
                 className="bc-row-name"
                 tabIndex={item.id === current ? 0 : -1}
                 onClick={(e) => click(item.id, e)}
-                onDoubleClick={() => onRename && setRenaming(item.id)}
+                onDoubleClick={() => renamable(item) && setRenaming(item.id)}
                 onKeyDown={(e) => onKeyDown(e, item)}
                 onFocus={() => setFocusId(item.id)}
               >
                 <Icon name={item.icon ?? "cube"} size={16} />
                 <span>{item.name}</span>
+                {item.note && <small className="bc-row-note">{item.note}</small>}
                 {item.warning && (
                   <em className="bc-row-warning" data-tip={item.warning} aria-label={`Problem: ${item.warning}`}>
                     <Icon name="warning" size={14} />
@@ -273,7 +284,7 @@ export function PartsTree({
               </button>
             )}
             {onToggle &&
-              toggles.map((t) => {
+              (item.toggles ?? toggles).map((t) => {
                 const on = !!item[t];
                 const inherited = !on && !!item.inherited?.[t];
                 const def = TOGGLE[t];

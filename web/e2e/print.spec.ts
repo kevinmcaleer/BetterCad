@@ -18,7 +18,7 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
   await page.getByLabel("Printer", { exact: true }).selectOption("bambu-a1-mini");
 
   // 192 mm wide: 12 mm more than an A1 Mini's bed.
-  await page.getByRole("navigation").getByRole("button", { name: "Parts" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Browser" }).click();
   await page.getByRole("treeitem", { name: /Box 1/ }).click();
   const w = page.getByRole("textbox", { name: "W (mm)", exact: true });
   await w.fill("192");

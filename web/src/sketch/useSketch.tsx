@@ -341,6 +341,9 @@ export function useSketch(d: SketchDeps) {
     [store, engineOf, setStool, say],
   );
 
+  /** Starts a sketch on an origin plane, as picking it in the view does (the browser's Sketch on). */
+  const startOnPlane = useCallback((plane: "XY" | "XZ" | "YZ") => startOn({ kind: "world", plane, offset: 0 }, `the ${plane} plane`), [startOn]);
+
   const edit = useCallback(
     (id: string) => {
       const f = store.get().features.find((x) => x.id === id);
@@ -862,6 +865,7 @@ export function useSketch(d: SketchDeps) {
     setFinishWarn,
     finish,
     edit,
+    startOnPlane,
     constrain,
     removeSelected,
     setOffset,

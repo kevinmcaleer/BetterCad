@@ -82,10 +82,10 @@ describe("Editor timeline", () => {
     render(<Editor />);
     fireEvent.click(screen.getByRole("button", { name: "Add a box" }));
     fireEvent.click(screen.getByRole("button", { name: "Add a box" }));
-    expect(screen.getAllByRole("treeitem")).toHaveLength(2);
+    expect(screen.getAllByRole("treeitem", { name: /^Box/ })).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: /^Step back/ }));
-    expect(screen.getAllByRole("treeitem")).toHaveLength(1);
+    expect(screen.getAllByRole("treeitem", { name: /^Box/ })).toHaveLength(1);
     expect(screen.getByRole("button", { name: /^Box 2.*not built/ })).toHaveClass("bc-after");
 
     fireEvent.click(screen.getByRole("button", { name: "Add a box" }));
@@ -96,6 +96,6 @@ describe("Editor timeline", () => {
     expect(screen.getByRole("slider", { name: "Timeline marker" })).toHaveAttribute("aria-valuenow", "2");
 
     fireEvent.keyDown(window, { key: "End", altKey: true });
-    expect(screen.getAllByRole("treeitem")).toHaveLength(3);
+    expect(screen.getAllByRole("treeitem", { name: /^Box/ })).toHaveLength(3);
   });
 });
