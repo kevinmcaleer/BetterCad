@@ -4,6 +4,7 @@ import type { ImportInfo, ModelResult } from "./occt/model";
 import type { ImportFormat } from "./imports";
 import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
+import type { CheckArea } from "./print/checks";
 import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
 
 /**
@@ -21,6 +22,11 @@ export interface Methods {
   export: { params: ExportRequest & { name: string }; result: ExportResult };
   /** Reads a file to import (#82): its bodies, kept ready for the build that follows. */
   inspect: { params: { name: string; format: ImportFormat; blob: string; data: string }; result: ImportInfo };
+  /** Wall thickness (#101) on bodies' meshes: the per-vertex tint and the thin areas. */
+  thickness: {
+    params: { bodies: { id: string; positions: Float32Array; indices: Uint32Array }[]; threshold: number };
+    result: { id: string; values: Float32Array; areas: CheckArea[]; min: number | null }[];
+  };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };
 }

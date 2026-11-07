@@ -43,6 +43,8 @@ import {
   setLook,
   updateFeature,
   KIND_LABEL,
+  overhangs,
+  type CheckArea,
   centreMove,
   estimateWeight,
   fitCheck,
@@ -100,7 +102,7 @@ import { Versions } from "../cloud/Versions";
 import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
-import { PrintPanel } from "../print/PrintPanel";
+import { PrintPanel, type PrintCheck } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 
 const PANELS: RailItem<PanelId>[] = [
@@ -628,6 +630,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const handlers = useRef({
     openExport: () => {},
     startTour: () => {},
+    printCheck: (_c: PrintCheck) => {},
     saveCloud: () => {},
     newModel,
     open,
@@ -656,6 +659,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   handlers.current = {
     openExport: () => setExportOpen(true),
     startTour: tour.start,
+    printCheck: (c: PrintCheck) => {
+      setCheck((now) => (now === c ? "none" : c));
+      showPanel("print");
+    },
     saveCloud: () => void files.saveCloud(),
     newModel,
     open,
@@ -911,6 +918,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().setTheme(t),
       })),
       { id: "help.palette", label: "Find a command", group: "Help", icon: "search", keys: ["mod+k"], run: () => setPaletteOpen(true) },
+      { id: "print.overhangs", label: "Check overhangs", group: "View", icon: "printer", run: () => h().printCheck("overhang"), keywords: "support print 45" },
+      {
+        id: "print.thin",
+        label: "Check thin walls",
+        group: "View",
+        icon: "printer",
+        run: () => h().printCheck("thin"),
+        keywords: "wall thickness print nozzle",
+      },
       { id: "help.tour", label: "Take the tour", group: "Help", icon: "info", run: () => h().startTour(), keywords: "help start learn guide" },
       { id: "help.shortcuts", label: "Keyboard shortcuts", group: "Help", icon: "keyboard", keys: ["?"], run: () => setShortcutsOpen(true) },
     ];
@@ -1019,6 +1035,54 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     }, "Centre on bed");
     say("Centred the model on the bed");
   }, [printBox, parts, store, say, at, marker]);
+  // Print checks (#101, #102): one at a time, tinting the bodies that print.
+  const [check, setCheck] = useState<PrintCheck>("none");
+  const [overhangAngle, setOverhangAngle] = useState(45);
+  const [thinWall, setThinWall] = useState<number | null>(null);
+  const thinLimit = thinWall ?? printer.nozzle * 2;
+  const printBodies = useMemo(
+    () => parts.filter((p) => !p.hidden && !p.hole && kernel.bodies.has(p.id)).map((p) => ({ id: p.id, mesh: kernel.bodies.get(p.id)!.mesh })),
+    [parts, kernel.bodies],
+  );
+  const overhangResult = useMemo(() => {
+    if (check !== "overhang") return null;
+    const values = new Map<string, Float32Array>();
+    const areas: CheckArea[] = [];
+    for (const b of printBodies) {
+      const r = overhangs(b.mesh, overhangAngle, 0);
+      values.set(b.id, r.values);
+      areas.push(...r.areas);
+    }
+    return { values, areas: areas.sort((a, b) => b.area - a.area) };
+  }, [check, printBodies, overhangAngle]);
+  const [thinResult, setThinResult] = useState<{ values: Map<string, Float32Array>; areas: CheckArea[] } | null>(null);
+  const kernelCall = kernel.call;
+  useEffect(() => {
+    setThinResult(null);
+    if (check !== "thin" || !printBodies.length) return;
+    let pending: { cancel(): void } | null = null;
+    const t = setTimeout(() => {
+      const call = kernelCall("thickness", {
+        bodies: printBodies.map((b) => ({ id: b.id, positions: b.mesh.positions, indices: b.mesh.indices })),
+        threshold: thinLimit,
+      });
+      call?.then(
+        (r) => {
+          const areas = r.flatMap((x) => x.areas).sort((a, b) => (a.min ?? 0) - (b.min ?? 0));
+          setThinResult({ values: new Map(r.map((x) => [x.id, x.values])), areas });
+        },
+        () => undefined,
+      );
+      pending = call;
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      pending?.cancel();
+    };
+  }, [check, printBodies, thinLimit, kernelCall]);
+  const checkResult = check === "overhang" ? overhangResult : check === "thin" ? thinResult : null;
+  const showArea = useCallback((a: CheckArea) => vp.ref.current?.engine()?.fitBox(a.box.min, a.box.max), [vp.ref]);
+
   const printPanel = (
     <PrintPanel
       settings={doc.print ?? {}}
@@ -1030,6 +1094,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       hasModel={printBox !== null}
       onCentre={centreOnBed}
       weight={modelWeight}
+      check={check}
+      onCheck={setCheck}
+      overhangAngle={overhangAngle}
+      onOverhangAngle={setOverhangAngle}
+      thinWall={thinLimit}
+      onThinWall={setThinWall}
+      areas={check === "none" ? [] : (checkResult?.areas ?? (check === "thin" && !printBodies.length ? [] : null))}
+      onShowArea={showArea}
     />
   );
 
@@ -1415,6 +1487,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onCamera={composedCamera}
             bed={showBed && !share ? printer : null}
             warn={offBed}
+            check={checkResult?.values ?? null}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
             <SketchLabels s={sketch} />

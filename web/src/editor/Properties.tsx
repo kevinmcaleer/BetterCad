@@ -78,7 +78,7 @@ function PrintRows({ f }: { f: NonNullable<ReturnType<typeof printFacts>> }) {
     <>
       <PropRow label="Volume">{cm3(f.volume)}</PropRow>
       <PropRow label="Surface">{cm2(f.area)}</PropRow>
-      <PropRow label="Size">{sizeText(f.size).trim()}</PropRow>
+      <PropRow label="Size">{sizeText(f.size).trim().replace(/\.$/, "")}</PropRow>
       <PropRow label="Weight">{f.weight === null ? "–" : `${formatWeight(f.weight)} (${f.material}, ${f.infill}% infill)`}</PropRow>
     </>
   );

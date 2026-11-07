@@ -970,3 +970,24 @@ kbd {
   align-items: center;
   gap: var(--bc-space-2);
 }
+
+/* The print check's areas (#101, #102). */
+.bc-check-areas {
+  display: grid;
+  gap: var(--bc-space-1);
+  margin: 0 0 var(--bc-space-3);
+  padding: 0;
+  list-style: none;
+  font-size: var(--bc-type-small-size);
+}
+.bc-check-areas li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-2);
+}
+.bc-print-select {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--bc-space-3);
+}

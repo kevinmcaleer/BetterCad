@@ -437,6 +437,24 @@ export class Engine {
     this.setCamera({ ...this.cam, ortho: on });
   }
 
+  /** Frames a box in world space (a print check's area, #101, #102). */
+  fitBox(min: [number, number, number], max: [number, number, number]): void {
+    const c: [number, number, number] = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+    const r = Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2, 5);
+    this.setCamera(fitCamera(this.tween?.to ?? this.cam, c, r * 1.4, this.width / this.height), true);
+  }
+
+  /**
+   * A print check's tint (#101, #102): per body, a value per vertex from 0 (fine) to 1 (worst), blended to warn.
+   * null clears it.
+   */
+  setCheck(values: Map<string, Float32Array> | null): void {
+    this.check = values;
+    this.recolourAll();
+    this.invalidate();
+  }
+  private check: Map<string, Float32Array> | null = null;
+
   /** Frames the given bodies (all when empty). */
   fit(ids?: string[]): void {
     const s = this.bounds(ids?.length ? ids : undefined);
@@ -1083,12 +1101,16 @@ export class Engine {
       const faces = selFaces.get(o.body.id);
       const whole = selBodies.has(o.body.id);
       const hoverFace = this.hover?.kind === "face" && this.hover.body === o.body.id ? this.hover.index : -1;
+      const check = this.check?.get(o.body.id);
+      const checked = check && check.length === o.faceOfVertex.length ? check : undefined;
       for (let v = 0; v < o.faceOfVertex.length; v++) {
         const f = o.faceOfVertex[v]!;
         c.copy(base);
         if (whole) c.lerp(p.snap, 0.35);
         if (faces?.has(f)) c.lerp(p.snap, 0.6);
         else if (f === hoverFace) c.lerp(p.snap, 0.25);
+        // A print check shows through the selection tint.
+        if (checked && checked[v]! > 0) c.lerp(p.warn, 0.4 + 0.6 * checked[v]!);
         arr[v * 3] = c.r;
         arr[v * 3 + 1] = c.g;
         arr[v * 3 + 2] = c.b;
