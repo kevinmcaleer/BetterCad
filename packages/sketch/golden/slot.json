@@ -1,0 +1,5 @@
+{
+  "about": "A slot: two R5 ends 30 apart joined by tangent lines, the left centre fixed at the origin.",
+  "solved": [[0, 0], [30, 0], [0, 5], [30, 5], [30, -5], [0, -5], [5], [5]],
+  "edited": [[0, 0], [45, 0], [0, 5], [45, 5], [45, -5], [0, -5], [5], [5]]
+}

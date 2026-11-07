@@ -1,4 +1,15 @@
-/** Placeholder for the planegcs sketch solver (epic #5). */
+/**
+ * Sketching (epic #5): the sketch model, 2D geometry, closed-profile finding, the drawing tools' records and the
+ * planegcs solver. Framework-free, so it runs in Node for the golden tests.
+ */
+export * from "./model";
+export * from "./geom2d";
+export * from "./profiles";
+export * from "./measure";
+export * from "./draw";
+export * from "./dof";
+export { Solver, toPrimitives, type SolveResult, type SolveStatusName } from "./solver";
+
 export interface SolverStatus {
   ready: boolean;
   engine: "planegcs";

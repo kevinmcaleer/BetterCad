@@ -1,0 +1,19 @@
+{
+  "about": "An L: 80 wide, 40 tall, both arms 10 thick, bottom-left corner fixed at the origin.",
+  "solved": [
+    [0, 0],
+    [80, 0],
+    [80, 10],
+    [10, 10],
+    [10, 40],
+    [0, 40]
+  ],
+  "edited": [
+    [0, 0],
+    [100, 0],
+    [100, 10],
+    [10, 10],
+    [10, 40],
+    [0, 40]
+  ]
+}
