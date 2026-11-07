@@ -28,7 +28,17 @@ import type { PrismSpec, ProfileSeg } from "./extrude";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
-import { cataloguePart } from "./catalogue";
+import { cataloguePart, placeOnFace } from "./catalogue";
+import { addPart, build, changeParts, cutPocket, insertCatalogue, newDoc } from "./document";
+import { ModelBuilder } from "./occt/model";
+
+/** A 60 × 40 × 5 mm plate with a catalogue part's pocket and holes cut in it (#188). */
+function pocketIn(oc: OC, id: string): TopoDS_Shape {
+  let doc = changeParts(addPart(newDoc(), "box", "plate"), ["plate"], "size", { x: 60, y: 40, z: 5 });
+  doc = insertCatalogue(doc, cataloguePart(id)!, placeOnFace([0, 0, 5], [0, 0, 1], [1, 0, 0]), "part");
+  doc = cutPocket(doc, "part", { target: "plate" }).doc;
+  return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "plate")!).shape;
+}
 import { meshVolume, triangleCount } from "./mesh";
 
 /**
@@ -136,6 +146,9 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Catalogue parts (#186): a servo's blocks joined, and a bearing with its bore taken out.
   "catalogue-sg90": (oc) => catalogueShape(oc, cataloguePart("sg90")!),
   "catalogue-608": (oc) => catalogueShape(oc, cataloguePart("608")!),
+  // Cut pocket (#188): an SG90's pocket at a sliding fit and its M2 holes through a 5 mm plate; a Pico's four holes.
+  "pocket-sg90-plate": (oc) => pocketIn(oc, "sg90"),
+  "pocket-pico-holes": (oc) => pocketIn(oc, "pico"),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

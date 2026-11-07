@@ -207,3 +207,23 @@ export function placeOnFace(point: V3, normal: V3, x: V3, quarters = 0): { posit
   const deg = (a: number) => Math.round(a * DEG * 1e6) / 1e6 + 0;
   return { position: { x: point[0], y: point[1], z: point[2] }, rotation: { x: deg(rx), y: deg(ry), z: deg(rz) } };
 }
+
+/** Turns a vector about X, then Y, then Z, by degrees: the way parts are placed. */
+function turnVec(v: V3, r: Vec3): V3 {
+  const rad = Math.PI / 180;
+  let [x, y, z] = v;
+  const [cx, sx] = [Math.cos(r.x * rad), Math.sin(r.x * rad)];
+  [y, z] = [y * cx - z * sx, y * sx + z * cx];
+  const [cy, sy] = [Math.cos(r.y * rad), Math.sin(r.y * rad)];
+  [x, z] = [x * cy + z * sy, -x * sy + z * cy];
+  const [cz, sz] = [Math.cos(r.z * rad), Math.sin(r.z * rad)];
+  [x, y] = [x * cz - y * sz, x * sz + y * cz];
+  const tidy = (n: number) => (Math.abs(n) < 1e-12 ? 0 : n);
+  return [tidy(x), tidy(y), tidy(z)];
+}
+
+/** A placed part's own frame in the world (#188): origin on its surface, x along its x, normal along its z. */
+export function partFrame(position: Vec3, rotation?: Vec3): { origin: V3; x: V3; normal: V3 } {
+  const r = rotation ?? { x: 0, y: 0, z: 0 };
+  return { origin: [position.x, position.y, position.z], x: turnVec([1, 0, 0], r), normal: turnVec([0, 0, 1], r) };
+}

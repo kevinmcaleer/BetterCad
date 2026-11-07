@@ -21,6 +21,8 @@ import {
   groupOf,
   groupParams,
   cutTool,
+  cutPocket,
+  partFrame,
   staleFits,
   updateFits,
   fixMate,
@@ -251,6 +253,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const activeRef = useRef(active);
   activeRef.current = active;
   // The registry reads the latest state through a ref, so commands are registered once.
+  const measuresRef = useRef(new Map<string, { area: number; bbox: Box3 }>());
   const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false, placing: false });
   live.current = {
     doc,
@@ -576,11 +579,32 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       const chosen = live.current.parts.filter((p) => ids.includes(p.id));
       if (!chosen.length) return;
       const on = !chosen.every((p) => p.reference);
-      store.edit((d) => setLook(d, ids, () => ({ reference: on || undefined })), on ? "Make a reference" : "Make printable");
+      store.edit((d) => setLook(d, ids, () => ({ reference: on })), on ? "Make a reference" : "Make printable");
       const who = chosen.length === 1 ? chosen[0]!.name : `${chosen.length} parts`;
       say(on ? `${who} won't print or export` : `${who} will print`);
     },
     [store, say],
+  );
+
+  /** Cut pocket (#188): the catalogue part's pocket and holes, cut into the body just under it. */
+  const pocket = useCallback(
+    (id: string) => {
+      const part = live.current.parts.find((p) => p.id === id);
+      const step = live.current.doc.features.find((f) => f.type === "insert" && f.part.id === id);
+      if (!part?.catalogue || !step || step.type !== "insert") return say("Pick a part from the catalogue", true);
+      const f = partFrame(step.position, step.rotation);
+      const under = f.origin.map((v, i) => v - f.normal[i]! * 0.5);
+      const inBox = (b: { min: number[]; max: number[] }) => under.every((v, i) => v >= b.min[i]! - 1e-6 && v <= b.max[i]! + 1e-6);
+      const target = live.current.parts.find(
+        (p) => p.id !== id && !p.hidden && !p.hole && !p.reference && inBox(measuresRef.current.get(p.id)?.bbox ?? { min: [1, 1, 1], max: [0, 0, 0] }),
+      );
+      if (!target) return say(`Put the ${part.catalogue.name} on a body first`, true);
+      const r = cutPocket(live.current.doc, id, { target: target.id });
+      if (r.error) return say(r.error, true);
+      record((d, at) => cutPocket(d, id, { target: target.id }, at).doc, "Cut pocket");
+      say(`Cut the ${part.catalogue.name}'s pocket into ${target.name}. Edit its steps on the timeline.`);
+    },
+    [record, say],
   );
 
   const armTool = useCallback((id: ToolId) => setTool((t) => (t === id && id !== "select" ? "select" : id)), []);
@@ -754,6 +778,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggleHole,
     toggleReference,
     importReference: () => {},
+    pocket: (_id: string) => {},
     turnPlacing: () => {},
     confirm: () => {},
     suppressActive: () => {},
@@ -788,6 +813,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ungroup,
     toggleHole,
     toggleReference,
+    pocket,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
@@ -971,6 +997,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "design around mount stl not printed",
       },
       {
+        id: "edit.pocket",
+        scope: "model",
+        label: "Cut pocket",
+        group: "Edit",
+        icon: "extrude",
+        run: () => h().pocket(sel()[0]!),
+        when: () => sel().length === 1 && !!live.current.parts.find((p) => p.id === sel()[0])?.catalogue,
+        keywords: "robot part catalogue cutout mount servo screw holes",
+      },
+      {
         id: "place.turn",
         scope: "model",
         label: "Turn the part 90°",
@@ -1120,6 +1156,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   // ---- print readiness (#100, #105)
   const measures = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, { area: b.measure.area, bbox: b.measure.bbox as Box3 }])), [kernel.bodies]);
+  measuresRef.current = measures;
   const printer = printerOf(doc.print);
   const [showBed, setShowBedState] = useState(() => {
     try {
@@ -1516,6 +1553,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "hole",
         onSelect: () => toggleHole(ids),
       },
+      ...(chosen.length === 1 && chosen[0]!.catalogue
+        ? [{ id: "pocket", label: "Cut pocket", icon: "extrude" as const, onSelect: () => pocket(chosen[0]!.id) }]
+        : []),
       {
         id: "reference",
         label: chosen.length && chosen.every((p) => p.reference) ? "Make printable" : "Make a reference",

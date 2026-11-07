@@ -35,3 +35,13 @@ To add a part, add a record to `parts.ts`. The tests check it validates, builds 
 - Pick a part, then click a flat face, or the ground. The part stands with its z along the face's normal, its origin where you clicked (on a 0.5 mm grid). Press **T** (or **Turn 90°**) to turn it a quarter first; Esc puts it back.
 - It comes in as a reference body, named after the part, with an **Insert part** step on the timeline. The step keeps a copy of the part's record, so a later catalogue change never moves an old model. Properties shows the part and its mass.
 - The catalogue is part of the app's code, so the service worker caches it with everything else and it works offline.
+
+## Cut pocket (#188)
+
+Select a placed catalogue part and choose **Cut pocket** (right-click, or the command palette). BetterCad finds the body just under the part and adds ordinary steps you can edit:
+
+- a sketch of the pocket on the part's surface, named after the part,
+- an extrude cut into that body, the part's pocket depth, at a sliding fit (#183),
+- a Hole step for each screw size, printed clearance, right through. `cutPocket()` can make heat-set insert holes instead, as deep as the insert plus 1 mm.
+
+Parts with no pocket (the boards) get only their holes. The steps follow the part's turn. If you move the part later, its pocket stays where it was: edit or delete the steps.

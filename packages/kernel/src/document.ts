@@ -3,11 +3,21 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
-import { newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { drawCentreRectangle, drawCircle, newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
-import { partBounds, type CataloguePart } from "./catalogue";
-export { CATALOGUE, CATALOGUE_CATEGORIES, cataloguePart, checkPart, partBounds, placeOnFace, type CataloguePart, type CatalogueCategory } from "./catalogue";
+import { partBounds, partFrame, type CataloguePart } from "./catalogue";
+export {
+  CATALOGUE,
+  CATALOGUE_CATEGORIES,
+  cataloguePart,
+  checkPart,
+  partBounds,
+  partFrame,
+  placeOnFace,
+  type CataloguePart,
+  type CatalogueCategory,
+} from "./catalogue";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import {
   axisOf,
@@ -25,9 +35,10 @@ import {
 export * from "./extrude";
 export * from "./holes";
 export * from "./screws";
+import { screw } from "./screws";
 export * from "./params";
 export * from "./print";
-import { fitGap, type FitId, type PrintSettings } from "./print";
+import { fitGap, holeOffsetOf, type FitId, type PrintSettings } from "./print";
 
 export type PartKind = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "solid";
 
@@ -185,6 +196,9 @@ export interface ExtrudeFeature extends FeatureBase {
   target?: string;
   /** The new body's part, for "new". */
   body: { id: string; name: string };
+  /** Cuts only (#188): the named fit it was made with, and the gap on each side then, mm. */
+  fit?: FitId;
+  gap?: number;
 }
 /**
  * Combine (#66): bodies joined to, cut from or intersected with a target. A Group is the Tinkercad way: solids
@@ -503,7 +517,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           break;
         }
         const tool: PrismSpec = { ...spec, frame: frameToLocal(spec.frame, t) };
-        t.ops = [...(t.ops ?? []), { op: f.operation, tool, feature: f.id }];
+        t.ops = [...(t.ops ?? []), { op: f.operation, tool, ...(f.operation === "cut" && f.gap ? { gap: f.gap } : {}), feature: f.id }];
         break;
       }
       case "revolve": {
@@ -1213,6 +1227,87 @@ export function insertCatalogue(
     position: { ...place.position },
     ...(turned ? { rotation: { ...place.rotation! } } : {}),
   });
+}
+
+export interface PocketOptions {
+  /** The body the part sits on. */
+  target: string;
+  /** How deep the pocket goes, mm. The part's own pocket depth when missing. */
+  depth?: number;
+  /** The pocket's fit (#183): sliding by default. Null for none. */
+  fit?: FitId | null;
+  /** The screw holes' fit: printed clearance, or heat-set inserts. */
+  holes?: "printed" | "insert";
+}
+
+/**
+ * Cut pocket (#188): a catalogue part's cutout as ordinary steps in the body it sits on. A sketch of the pocket on the
+ * part's surface, an extrude cut with a fit, and a Hole step for each screw size, all through the target. Returns the
+ * document unchanged, with a reason, when there's nothing to cut.
+ */
+export function cutPocket(doc: ModelDoc, partId: string, o: PocketOptions, at?: number): { doc: ModelDoc; error?: string } {
+  const step = doc.features.find((f): f is InsertFeature => f.type === "insert" && f.part.id === partId);
+  if (!step) return { doc, error: "Pick a part from the catalogue" };
+  if (o.target === partId) return { doc, error: "Pick the body the part sits on" };
+  const rec = step.record;
+  const frame = partFrame(step.position, step.rotation);
+  let d = doc;
+  let i = at;
+  const next = () => (i === undefined ? undefined : i++);
+  if (rec.cutout.pocket.length) {
+    const sketchId = newId("f");
+    d = addSketch(d, { kind: "face", face: { body: partId, face: 0 }, offset: 0, frame }, sketchId, next());
+    const sf = d.features.find((f) => f.id === sketchId) as SketchFeature;
+    let sk = sf.sketch;
+    for (const s of rec.cutout.pocket) {
+      const [cx, cy] = s.at;
+      const [w, h] = s.size;
+      sk = (s.kind === "rect" ? drawCentreRectangle(sk, [cx, cy], [cx + w / 2, cy + h / 2], { width: w, height: h }) : drawCircle(sk, [cx, cy], w / 2, w))
+        .sketch;
+    }
+    d = {
+      ...d,
+      features: d.features.map((f) => (f.id === sketchId ? { ...sf, name: `${rec.name} pocket`, sketch: { ...sk, name: `${rec.name} pocket` } } : f)),
+    };
+    const fit = o.fit === undefined ? "sliding" : o.fit;
+    const gap = fit ? fitGap(fit, doc.print?.fits) : 0;
+    const depth = o.depth ?? rec.cutout.depth;
+    const exId = newId("f");
+    d = addExtrude(
+      d,
+      { sketch: sketchId, seeds: rec.cutout.pocket.map((s) => s.at), distance: -depth, direction: "one", operation: "cut", target: o.target },
+      exId,
+      newId(),
+      next(),
+    );
+    d = {
+      ...d,
+      features: d.features.map((f) => (f.id === exId && f.type === "extrude" ? { ...f, ...(fit ? { fit } : {}), ...(gap > 0 ? { gap } : {}) } : f)),
+    };
+  }
+  const sizes = [...new Set(rec.cutout.holes.map((h) => h.screw))];
+  for (const size of sizes) {
+    const points = rec.cutout.holes.filter((h) => h.screw === size).map((h) => h.at);
+    // An insert's hole is as deep as the insert, plus 1 mm for the melt to go; a clearance hole goes right through.
+    const insert = o.holes === "insert" ? screw(size)?.insert : undefined;
+    d = addHole(
+      d,
+      {
+        part: o.target,
+        frame,
+        points,
+        size,
+        fit: o.holes ?? "printed",
+        head: "none",
+        depth: insert ? insert.depth + 1 : null,
+        offset: holeOffsetOf(doc.print),
+      },
+      newId("f"),
+      next(),
+    );
+  }
+  if (d === doc) return { doc, error: `The ${rec.name} has no pocket or screw holes to cut` };
+  return { doc: d };
 }
 
 export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth">;
