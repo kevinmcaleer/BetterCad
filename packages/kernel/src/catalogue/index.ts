@@ -167,3 +167,43 @@ export function checkPart(p: unknown): string | null {
   if (part.cutout.pocket.length && part.cutout.depth <= 0) return `${where} has a pocket with no depth`;
   return null;
 }
+
+type Vec3 = { x: number; y: number; z: number };
+const DEG = 180 / Math.PI;
+
+/**
+ * Where a part stands when placed on a face (#187): its origin at `point`, its z along the face's outward `normal`
+ * and its x along `x` (a direction in the face), turned a further `quarters` × 90° about the normal. Returns the
+ * position and the turn in degrees about X, Y and Z (applied X, then Y, then Z), the way parts are placed.
+ */
+export function placeOnFace(point: V3, normal: V3, x: V3, quarters = 0): { position: Vec3; rotation: Vec3 } {
+  const unit = (v: V3): V3 => {
+    const l = Math.hypot(v[0], v[1], v[2]) || 1;
+    return [v[0] / l, v[1] / l, v[2] / l];
+  };
+  const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const z = unit(normal);
+  // x made square to z, falling back to any direction in the face.
+  const d = x[0] * z[0] + x[1] * z[1] + x[2] * z[2];
+  let ex: V3 = [x[0] - d * z[0], x[1] - d * z[1], x[2] - d * z[2]];
+  if (Math.hypot(...ex) < 1e-9) ex = Math.abs(z[0]) < 0.9 ? cross([0, 1, 0], z) : cross(z, [0, 0, 1]);
+  ex = unit(ex);
+  let ey = cross(z, ex);
+  const q = (((Math.round(quarters) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
+  for (let i = 0; i < q; i++) [ex, ey] = [ey, ex.map((v) => -v) as V3];
+  // The matrix R = Rz · Ry · Rx with columns ex, ey, z.
+  const r20 = ex[2];
+  let rx: number, ry: number, rz: number;
+  if (Math.abs(r20) < 1 - 1e-9) {
+    ry = Math.asin(-r20);
+    rx = Math.atan2(ey[2], z[2]);
+    rz = Math.atan2(ex[1], ex[0]);
+  } else {
+    // Looking straight along y: only the sum of the X and Z turns matters.
+    ry = r20 < 0 ? Math.PI / 2 : -Math.PI / 2;
+    rx = 0;
+    rz = Math.atan2(-ey[0], ey[1]);
+  }
+  const deg = (a: number) => Math.round(a * DEG * 1e6) / 1e6 + 0;
+  return { position: { x: point[0], y: point[1], z: point[2] }, rotation: { x: deg(rx), y: deg(ry), z: deg(rz) } };
+}

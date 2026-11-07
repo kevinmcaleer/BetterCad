@@ -112,6 +112,9 @@ import { FinishBar } from "../finish/FinishBar";
 import { usePushPull } from "../finish/usePushPull";
 import { PushPullBar } from "../finish/PushPullBar";
 import { useHole } from "../hole/useHole";
+import { usePlacePart } from "../catalogue/usePlacePart";
+import { CataloguePanel } from "../catalogue/CataloguePanel";
+import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
@@ -138,6 +141,7 @@ const PANELS: RailItem<PanelId>[] = [
   { id: "sketch", icon: "sketch", label: "Sketch" },
   { id: "bodies", icon: "body", label: "Bodies" },
   { id: "library", icon: "shapes", label: "Library" },
+  { id: "robot", icon: "screw", label: "Catalogue" },
   { id: "history", icon: "history", label: "History" },
   { id: "params", icon: "sliders", label: "Parameters" },
   { id: "print", icon: "printer", label: "Print" },
@@ -247,7 +251,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const activeRef = useRef(active);
   activeRef.current = active;
   // The registry reads the latest state through a ref, so commands are registered once.
-  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false });
+  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false, placing: false });
   live.current = {
     doc,
     parts,
@@ -257,6 +261,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     tool,
     dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || exportOpen || report !== null,
     sketching: live.current.sketching,
+    placing: live.current.placing,
   };
   const [registry] = useState(() =>
     createRegistry((): CommandContext => ({
@@ -412,6 +417,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onClose: () => setTool("select"),
     say,
   });
+
+  const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
+  live.current.placing = !!place.part;
 
   const finish = useFinish({
     record,
@@ -746,6 +754,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggleHole,
     toggleReference,
     importReference: () => {},
+    turnPlacing: () => {},
     confirm: () => {},
     suppressActive: () => {},
     activeFeature: (): string | null => null,
@@ -779,6 +788,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ungroup,
     toggleHole,
     toggleReference,
+    turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
       extrude.session
@@ -959,6 +969,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().toggleReference(sel()),
         when: hasSel,
         keywords: "design around mount stl not printed",
+      },
+      {
+        id: "place.turn",
+        scope: "model",
+        label: "Turn the part 90°",
+        group: "Tools",
+        icon: "revolve",
+        keys: ["t"],
+        run: () => h().turnPlacing(),
+        when: () => live.current.placing,
+        keywords: "robot part catalogue rotate",
       },
       {
         id: "tool.confirm",
@@ -1608,15 +1629,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const helpText = sketch.help
     ? sketch.help
-    : extrude.help || revolve.help || pushpull.help || hole.help || measure.help
-      ? extrude.help || revolve.help || pushpull.help || hole.help || measure.help
-      : finish.help
-        ? finish.help
-        : vp.elementText
-          ? `${vp.elementText} Esc clears it.`
-          : tool === "select" && selectedParts.length
-            ? `${selectionText} Esc clears the selection.`
-            : activeTool.help;
+    : place.help
+      ? place.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || measure.help
+        : finish.help
+          ? finish.help
+          : vp.elementText
+            ? `${vp.elementText} Esc clears it.`
+            : tool === "select" && selectedParts.length
+              ? `${selectionText} Esc clears the selection.`
+              : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -1726,6 +1749,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             <LeftPanel
               paramsPanel={paramsPanel}
               printPanel={printPanel}
+              robotPanel={
+                <CataloguePanel
+                  placing={place.part?.id ?? null}
+                  onPick={(p) => {
+                    setTool("select");
+                    place.start(p);
+                  }}
+                />
+              }
               orientWeights={orientWeights}
               onOrientWeights={setOrientWeights}
               panel={panel}
@@ -1768,6 +1800,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             <>
               {files.banners}
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
+              {place.part && <PlaceBar x={place} />}
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && (
                 <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />

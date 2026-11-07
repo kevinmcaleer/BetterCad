@@ -28,6 +28,7 @@ import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
 import { readImport, type ImportedBody } from "./imports";
 import { findMates, type Mate } from "./mates";
+import { catalogueShape } from "./catalogue";
 import { baseName, fromBase64, type ImportFormat } from "../imports";
 
 /**
@@ -60,6 +61,7 @@ const key = (p: Part, q: Quality) =>
     p.prism ?? null,
     p.revolve ?? null,
     p.imported ?? null,
+    p.catalogue ? [p.catalogue.id, p.catalogue.version, p.catalogue.model] : null,
     p.ops ?? null,
     q,
   ]);
@@ -81,6 +83,7 @@ const makers = (doc: ModelDoc, id: string) =>
 function primitive(oc: OC, p: Part): TopoDS_Shape {
   switch (p.kind) {
     case "solid":
+      if (p.catalogue) return catalogueShape(oc, p.catalogue);
       return p.revolve ? revolveOf(oc, p.revolve) : prismOf(oc, p.prism!);
     case "box":
       return box(oc, p.size);

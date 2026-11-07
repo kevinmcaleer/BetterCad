@@ -22,13 +22,14 @@ import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
-export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "params" | "print" | "settings";
+export type PanelId = "parts" | "sketch" | "bodies" | "library" | "robot" | "history" | "params" | "print" | "settings";
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   parts: "Parts",
   sketch: "Sketch",
   bodies: "Bodies",
   library: "Library",
+  robot: "Catalogue",
   history: "History",
   params: "Parameters",
   print: "Print",
@@ -71,6 +72,8 @@ export interface LeftPanelProps {
   paramsPanel: ReactNode;
   /** The Print panel (#100), made by the editor. */
   printPanel: ReactNode;
+  /** Robot parts (#187), made by the editor. */
+  robotPanel: ReactNode;
   /** How orientation suggestions are scored (#103). */
   orientWeights: OrientWeights;
   onOrientWeights: (w: OrientWeights) => void;
@@ -96,6 +99,8 @@ export function LeftPanel(p: LeftPanelProps) {
       return <>{p.paramsPanel}</>;
     case "print":
       return <>{p.printPanel}</>;
+    case "robot":
+      return <>{p.robotPanel}</>;
     case "settings":
       return <SettingsPanel {...p} />;
   }

@@ -6,6 +6,8 @@
 import { newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
+import { partBounds, type CataloguePart } from "./catalogue";
+export { CATALOGUE, CATALOGUE_CATEGORIES, cataloguePart, checkPart, partBounds, placeOnFace, type CataloguePart, type CatalogueCategory } from "./catalogue";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import {
   axisOf,
@@ -73,6 +75,8 @@ export interface Part {
   gap?: number;
   /** A body brought in from a file (#82): the file's bytes are in the document's blobs. */
   imported?: ImportSpec;
+  /** A catalogue part (#187): the record it was inserted from, kept whole so a catalogue change never moves it. */
+  catalogue?: CataloguePart;
 }
 
 /** Where an imported body comes from: body `index` of the file kept as `blob`. Meshes (STL, 3MF) can't be filleted. */
@@ -250,8 +254,17 @@ export interface ImportFeature extends FeatureBase {
   bodies: { id: string; name: string }[];
   position: Vec3;
 }
+/** Insert part (#187): a catalogue part, with the record it used, placed as a reference body. */
+export interface InsertFeature extends FeatureBase {
+  type: "insert";
+  part: { id: string; name: string };
+  record: CataloguePart;
+  position: Vec3;
+  rotation?: Vec3;
+}
 export type Feature =
   | ImportFeature
+  | InsertFeature
   | AddFeature
   | DuplicateFeature
   | MoveFeature
@@ -325,6 +338,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   revolve: "Revolve",
   hole: "Hole",
   import: "Import",
+  insert: "Insert part",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -350,6 +364,7 @@ export interface Build {
 
 const BUILT = new Set<string>([
   "import",
+  "insert",
   "add",
   "duplicate",
   "move",
@@ -401,6 +416,22 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             imported: { blob: f.blob, format: f.format, index, mesh: f.format !== "step" },
           });
         });
+        break;
+      case "insert":
+        if (find(f.part.id) < 0) {
+          const [min, max] = partBounds(f.record);
+          parts.push({
+            id: f.part.id,
+            name: f.part.name,
+            kind: "solid",
+            hidden: false,
+            position: { ...f.position },
+            ...(f.rotation ? { rotation: { ...f.rotation } } : {}),
+            size: { x: max[0] - min[0], y: max[1] - min[1], z: max[2] - min[2] },
+            catalogue: f.record,
+            reference: true,
+          });
+        }
         break;
       case "add":
         if (find(f.part.id) < 0) parts.push({ ...f.part, position: { ...f.part.position }, size: { ...f.part.size }, hidden: false });
@@ -649,7 +680,7 @@ export const partsOf = (doc: ModelDoc, upTo?: number) => build(doc, upTo).parts;
 function usedNames(doc: ModelDoc): Set<string> {
   const names = new Set<string>();
   for (const f of doc.features) {
-    if (f.type === "add") names.add(f.part.name);
+    if (f.type === "add" || f.type === "insert") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
     if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") names.add(f.body.name);
   }
@@ -842,6 +873,8 @@ export function featureParts(f: Feature): string[] {
       return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
     case "import":
       return f.bodies.map((b) => b.id);
+    case "insert":
+      return [f.part.id];
     default:
       return f.parts;
   }
@@ -858,13 +891,15 @@ const axes = (v: Partial<Vec3>) =>
 export function featureSummary(doc: ModelDoc, f: Feature): string {
   const names = new Map<string, string>();
   for (const g of doc.features) {
-    if (g.type === "add") names.set(g.part.id, g.part.name);
+    if (g.type === "add" || g.type === "insert") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
     if ((g.type === "extrude" || g.type === "revolve") && g.operation === "new") names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "insert":
+      return `${f.record.name}, ${f.record.mass} g${f.record.checked ? "" : ", sizes not checked"}`;
     case "import":
       return `${f.bodies.length === 1 ? "1 body" : `${f.bodies.length} bodies`} from ${f.file}`;
     case "add": {
@@ -1155,6 +1190,31 @@ export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: 
   return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest });
 }
 
+/** Adds an Insert part step (#187): a catalogue part, kept whole, standing at `position` turned by `rotation`. */
+export function insertCatalogue(
+  doc: ModelDoc,
+  record: CataloguePart,
+  place: { position: Vec3; rotation?: Vec3 },
+  partId = newId(),
+  id = newId("f"),
+  at?: number,
+): ModelDoc {
+  const names = usedNames(doc);
+  doc.features.forEach((f) => names.add(f.name));
+  let name = record.name;
+  for (let n = 2; names.has(name); n += 1) name = `${record.name} ${n}`;
+  const turned = place.rotation && (place.rotation.x || place.rotation.y || place.rotation.z);
+  return insert(doc, at, {
+    id,
+    type: "insert",
+    name,
+    part: { id: partId, name },
+    record: structuredClone(record),
+    position: { ...place.position },
+    ...(turned ? { rotation: { ...place.rotation! } } : {}),
+  });
+}
+
 export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth">;
 
 /** Adds a Hole step at `at` (the marker), or at the end. */
@@ -1187,6 +1247,7 @@ function partsRead(f: Feature): string[] {
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
     case "import":
+    case "insert":
       return [];
     default:
       return [f.part];
@@ -1198,6 +1259,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "add") return [f.part.id];
   if (f.type === "duplicate") return f.copies.map((c) => c.id);
   if (f.type === "import") return f.bodies.map((b) => b.id);
+  if (f.type === "insert") return [f.part.id];
   if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
   return [];
 }

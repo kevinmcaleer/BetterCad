@@ -194,6 +194,13 @@ export function Properties({
               />
             </PropRow>
           )}
+          {one?.catalogue && (
+            <PropRow label="Part">
+              <span className="bc-note">
+                {one.catalogue.name}, {one.catalogue.mass} g{one.catalogue.checked ? "" : ". Sizes aren't checked: measure yours."}
+              </span>
+            </PropRow>
+          )}
           {onFit && parts.every((p) => p.hole) && (
             <PropRow label="Fit">
               <FitMenu value={{ fit: parts[0]!.fit ?? null, gap: parts[0]!.gap ?? 0 }} onChange={onFit} tuned={print?.fits} />
@@ -209,7 +216,11 @@ export function Properties({
       content: parts.some((p) => p.kind === "solid") ? (
         <p className="bc-note">
           {one && (sizes?.get(one.id) ?? one.size.x) ? sizeText(sizes?.get(one.id) ?? one.size) : ""}
-          {one?.imported ? "It came from a file, so it keeps the size it came with." : "Change a body's sketch or its extrude to resize it."}
+          {one?.imported
+            ? "It came from a file, so it keeps the size it came with."
+            : one?.catalogue
+              ? "It's a catalogue part, so it keeps the part's size."
+              : "Change a body's sketch or its extrude to resize it."}
         </p>
       ) : (
         fields("size")

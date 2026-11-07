@@ -28,3 +28,10 @@ Later, a robot's links (#164) will count a reference body's datasheet mass, and 
 The first parts: SG90, MG90S and MG996R servos; N20 and TT gear motors; Raspberry Pi Pico, Pico W, Zero 2 W, 4 and 5; HC-SR04; 608 and 623 bearings; an 18650 cell.
 
 To add a part, add a record to `parts.ts`. The tests check it validates, builds a valid solid the size of its blocks, keeps everything below the surface inside its pocket, and puts its holes on the part.
+
+## Placing a part (#187)
+
+- Open **Catalogue** on the rail. Parts are listed by category; search matches every word you type against the name and description.
+- Pick a part, then click a flat face, or the ground. The part stands with its z along the face's normal, its origin where you clicked (on a 0.5 mm grid). Press **T** (or **Turn 90°**) to turn it a quarter first; Esc puts it back.
+- It comes in as a reference body, named after the part, with an **Insert part** step on the timeline. The step keeps a copy of the part's record, so a later catalogue change never moves an old model. Properties shows the part and its mass.
+- The catalogue is part of the app's code, so the service worker caches it with everything else and it works offline.
