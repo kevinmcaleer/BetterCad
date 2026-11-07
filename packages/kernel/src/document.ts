@@ -503,6 +503,13 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     const r = (p: Part) => rank.get(p.id) ?? Number.MAX_SAFE_INTEGER;
     looked.sort((a, b) => r(a) - r(b));
   }
+  // A step that can't build because something it needs is suppressed says so, rather than "gone".
+  if (doc.features.some((f) => f.suppressed)) {
+    for (const id of failed.keys()) {
+      const why = suppressedNeed(doc, id);
+      if (why) failed.set(id, why);
+    }
+  }
   return { parts: looked, sketches, failed };
 }
 
@@ -975,4 +982,123 @@ export function addHole(doc: ModelDoc, params: HoleStepParams, id = newId("f"), 
 /** Changes a Hole step (the tool edits it live, as one undo step). */
 export function updateHole(doc: ModelDoc, id: string, change: Partial<HoleStepParams>): ModelDoc {
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "hole" ? { ...f, ...change } : f)) };
+}
+
+// ---- dependencies (#74)
+
+/** The parts a feature reads (it needs them to exist before it), as opposed to the ones it makes. */
+function partsRead(f: Feature): string[] {
+  switch (f.type) {
+    case "add":
+    case "sketch":
+      return f.type === "sketch" && f.sketch.plane.kind === "face" ? [f.sketch.plane.face.body] : [];
+    case "duplicate":
+      return f.copies.map((c) => c.from);
+    case "move":
+    case "resize":
+    case "delete":
+      return f.parts;
+    case "extrude":
+    case "revolve":
+      return f.operation !== "new" && f.target ? [f.target] : [];
+    case "combine":
+      return [f.target, ...f.tools.map((t) => t.id)];
+    default:
+      return [f.part];
+  }
+}
+
+/** Parts a feature brings into being. */
+function partsMade(f: Feature): string[] {
+  if (f.type === "add") return [f.part.id];
+  if (f.type === "duplicate") return f.copies.map((c) => c.id);
+  if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
+  return [];
+}
+
+/** Features that pick edges or faces by number need the part exactly as the steps before left it. */
+const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "hole"]);
+
+/**
+ * The features one feature needs before it on the timeline: the steps that made the parts it reads, its sketch, and
+ * for edge and face picks, every earlier step that changed that part (the numbering depends on them).
+ */
+export function dependsOn(doc: ModelDoc, id: string): string[] {
+  const i = doc.features.findIndex((f) => f.id === id);
+  const f = doc.features[i];
+  if (!f) return [];
+  const before = doc.features.slice(0, i);
+  const out = new Set<string>();
+  for (const pid of partsRead(f)) {
+    for (const g of before) {
+      if (partsMade(g).includes(pid)) out.add(g.id);
+      else if (PICKS_BY_NUMBER.has(f.type) && featureParts(g).includes(pid) && g.type !== "move") out.add(g.id);
+    }
+  }
+  if (f.type === "extrude" || f.type === "revolve") {
+    if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
+  }
+  return [...out];
+}
+
+/** Every feature that needs this one, directly or through others, in timeline order. */
+export function dependents(doc: ModelDoc, id: string): Feature[] {
+  const hit = new Set([id]);
+  const out: Feature[] = [];
+  const start = doc.features.findIndex((f) => f.id === id);
+  for (const f of doc.features.slice(start + 1)) {
+    if (dependsOn(doc, f.id).some((d) => hit.has(d))) {
+      hit.add(f.id);
+      out.push(f);
+    }
+  }
+  return out;
+}
+
+/** Why a feature can't move before `beforeId` (null for the end), or null when it can. */
+export function moveProblem(doc: ModelDoc, id: string, beforeId: string | null): string | null {
+  const next = reorderFeature(doc, id, beforeId);
+  if (next === doc) return null;
+  const pos = new Map(next.features.map((f, i) => [f.id, i]));
+  const name = (fid: string) => doc.features.find((f) => f.id === fid)?.name ?? "a step";
+  for (const f of next.features) {
+    for (const d of dependsOn(doc, f.id)) {
+      if (pos.get(d)! > pos.get(f.id)!) return `${f.name} needs ${name(d)} before it`;
+    }
+  }
+  return null;
+}
+
+/** "Sketch 1 is used by Extrude 1 and Extrude 2". */
+export function usedByText(doc: ModelDoc, id: string): string | null {
+  const f = doc.features.find((x) => x.id === id);
+  const deps = dependents(doc, id);
+  if (!f || !deps.length) return null;
+  const names = deps.map((d) => d.name);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `${f.name} is used by ${list}`;
+}
+
+/** Deletes a feature and everything that needs it, as one change. */
+export function removeWithDependents(doc: ModelDoc, id: string): ModelDoc {
+  const gone = new Set([id, ...dependents(doc, id).map((f) => f.id)]);
+  return { ...doc, features: doc.features.filter((f) => !gone.has(f.id)) };
+}
+
+/** For a feature that can't build: the suppressed step it needs, as "Needs Extrude 2, which is suppressed". */
+export function suppressedNeed(doc: ModelDoc, id: string): string | null {
+  const byId = new Map(doc.features.map((f) => [f.id, f]));
+  const seen = new Set<string>();
+  const walk = (fid: string): string | null => {
+    for (const d of dependsOn(doc, fid)) {
+      if (seen.has(d)) continue;
+      seen.add(d);
+      const g = byId.get(d);
+      if (g?.suppressed) return `Needs ${g.name}, which is suppressed`;
+      const deeper = walk(d);
+      if (deeper) return deeper;
+    }
+    return null;
+  };
+  return walk(id);
 }

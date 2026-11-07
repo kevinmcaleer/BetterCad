@@ -110,13 +110,13 @@ describe("timeline", () => {
     d = changeParts(d, ["b"], "position", { x: 1 });
     expect(d.features.filter((f) => f.type === "move")).toHaveLength(2);
   });
-  it("skips suppressed steps and flags steps whose parts are gone", () => {
+  it("skips suppressed steps and flags the steps that needed them", () => {
     let d = three();
     const add = d.features[0]!;
     d = updateFeature(d, add.id, { suppressed: true });
     const b = build(d);
     expect(b.parts.map((p) => p.id)).toEqual(["b"]);
-    expect(b.failed.get(d.features[2]!.id)).toBe("The parts it changes are gone");
+    expect(b.failed.get(d.features[2]!.id)).toBe("Needs Box 1, which is suppressed");
     d = removeFeature(updateFeature(d, add.id, { suppressed: false }), d.features[2]!.id);
     expect(partsOf(d)[0]!.position.x).toBe(0);
     expect(build(d).failed.size).toBe(0);
