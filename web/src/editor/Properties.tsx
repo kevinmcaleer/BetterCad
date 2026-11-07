@@ -12,6 +12,8 @@ export interface PropertiesProps {
   scope?: Scope;
   /** Exact volumes from the kernel, by part id, once built. */
   volumes?: Map<string, number>;
+  /** Bodies' sizes from the kernel (their bounding boxes), for bodies whose size comes from a sketch or a file. */
+  sizes?: Map<string, Vec3>;
   /** Switches the selection between hole and solid. */
   onHole?: () => void;
 }
@@ -27,10 +29,11 @@ function shared(parts: Part[], key: "position" | "size" | "rotation", axis: keyo
 }
 
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
+const sizeText = (v: Vec3) => `${fmt(v.x)} × ${fmt(v.y)} × ${fmt(v.z)} mm. `;
 const formatVolume = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-GB");
 
 /** The right column: the selection's properties, or a summary of the model. */
-export function Properties({ parts, totalParts, onChange, onCommit, volumes, onHole, scope }: PropertiesProps) {
+export function Properties({ parts, totalParts, onChange, onCommit, volumes, sizes, onHole, scope }: PropertiesProps) {
   if (parts.length === 0) {
     return (
       <PropsPanel
@@ -100,7 +103,8 @@ export function Properties({ parts, totalParts, onChange, onCommit, volumes, onH
       // A body's size comes from its sketch and extrude, so it is shown, not typed.
       content: parts.some((p) => p.kind === "solid") ? (
         <p className="bc-note">
-          {one ? `${fmt(one.size.x)} × ${fmt(one.size.y)} × ${fmt(one.size.z)} mm. ` : ""}Change a body's sketch or its extrude to resize it.
+          {one && (sizes?.get(one.id) ?? one.size.x) ? sizeText(sizes?.get(one.id) ?? one.size) : ""}
+          {one?.imported ? "It came from a file, so it keeps the size it came with." : "Change a body's sketch or its extrude to resize it."}
         </p>
       ) : (
         fields("size")

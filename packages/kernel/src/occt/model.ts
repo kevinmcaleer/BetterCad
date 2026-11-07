@@ -25,6 +25,8 @@ import { build, type ModelDoc, type Part } from "../document";
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
+import { readImport, type ImportedBody } from "./imports";
+import { baseName, fromBase64, type ImportFormat } from "../imports";
 
 /**
  * Turns a document revision into solids. Each part's solid is cached by what makes it (its shape, size and place),
@@ -36,6 +38,10 @@ export interface BuiltBody {
   measure: Measure;
 }
 
+export interface ImportInfo {
+  bodies: { name: string; open: boolean; triangles?: number }[];
+}
+
 export interface ModelResult {
   bodies: BuiltBody[];
   /** Features the kernel could not build, with the reason. */
@@ -44,7 +50,24 @@ export interface ModelResult {
 }
 
 const key = (p: Part, q: Quality) =>
-  JSON.stringify([p.kind, p.kind === "solid" ? null : p.size, p.position, p.rotation ?? null, p.prism ?? null, p.revolve ?? null, p.ops ?? null, q]);
+  JSON.stringify([
+    p.kind,
+    p.kind === "solid" ? null : p.size,
+    p.position,
+    p.rotation ?? null,
+    p.prism ?? null,
+    p.revolve ?? null,
+    p.imported ?? null,
+    p.ops ?? null,
+    q,
+  ]);
+
+const MESH_REFUSAL: Partial<Record<string, string>> = {
+  fillet: "Imported meshes can't be filleted; use a STEP file for that",
+  chamfer: "Imported meshes can't be chamfered; use a STEP file for that",
+  shell: "Imported meshes can't be shelled; use a STEP file for that",
+  pushpull: "Imported meshes can't be pushed or pulled; use a STEP file for that",
+};
 
 /** Steps that made a part, so a part that cannot be built marks its tile. */
 const makers = (doc: ModelDoc, id: string) =>
@@ -78,6 +101,40 @@ export class ModelBuilder {
 
   constructor(private oc: OC) {}
 
+  /** The document's imported files (base64 by hash), and the bodies read from them. */
+  private blobs: Record<string, string> = {};
+  private files = new Map<string, ImportedBody[]>();
+
+  /** A file's bodies, read once and each stood with its bottom centre on its own origin. */
+  private readFile(blob: string, format: ImportFormat, data: string, name: string): ImportedBody[] {
+    let bodies = this.files.get(blob);
+    if (!bodies) {
+      bodies = readImport(this.oc, format, fromBase64(data), name).map((b) => {
+        const box = measure(this.oc, b.shape).bbox;
+        const at = { x: -(box.min[0] + box.max[0]) / 2, y: -(box.min[1] + box.max[1]) / 2, z: -box.min[2] };
+        return { ...b, shape: place(this.oc, b.shape, { position: at }) };
+      });
+      this.files.set(blob, bodies);
+    }
+    return bodies;
+  }
+
+  /** What an import would bring in (#82): its bodies' names, and which are open meshes. */
+  inspect(p: { name: string; format: ImportFormat; blob: string; data: string }): ImportInfo {
+    const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name));
+    return { bodies: bodies.map((b) => ({ name: b.name, open: b.open, triangles: b.triangles })) };
+  }
+
+  /** An imported body. */
+  private importedShape(p: Part): { shape: TopoDS_Shape; open: boolean } {
+    const im = p.imported!;
+    const data = this.blobs[im.blob];
+    if (!data && !this.files.has(im.blob)) throw new KernelError("failed", "The imported file is missing from this model.");
+    const b = this.readFile(im.blob, im.format, data ?? "", baseName(p.name))[im.index];
+    if (!b) throw new KernelError("failed", "That body is no longer in the imported file.");
+    return b;
+  }
+
   /** Steps whose join, cut or intersection could not be made on the last build (the part is built without them). */
   private opFailures: [string, string][] = [];
 
@@ -88,9 +145,18 @@ export class ModelBuilder {
     let hit = this.cache.get(k);
     if (!hit) {
       const oc = this.oc;
-      let local = primitive(oc, p);
+      let local: TopoDS_Shape;
+      let open = false;
+      if (p.imported) {
+        const im = this.importedShape(p);
+        local = im.shape;
+        open = im.open;
+      } else local = primitive(oc, p);
       for (const o of p.ops ?? []) {
         try {
+          if (p.imported?.mesh && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
+          if (open && (o.op === "join" || o.op === "cut" || o.op === "intersect"))
+            throw new KernelError("failed", "This mesh has holes, so it can't be combined");
           if (o.op === "fillet" || o.op === "chamfer") local = (o.op === "fillet" ? fillet : chamfer)(oc, local, o.refs ?? [], o.size ?? 0);
           else if (o.op === "shell") local = shell(oc, local, o.refs ?? [], o.size ?? 0, o.outside);
           else if (o.op === "pushpull") local = pushPull(oc, local, o.refs?.[0] ?? -1, o.size ?? 0);
@@ -115,10 +181,16 @@ export class ModelBuilder {
     return hit;
   }
 
+  useBlobs(doc: ModelDoc): void {
+    this.blobs = doc.blobs ?? {};
+    for (const k of this.files.keys()) if (!(k in this.blobs)) this.files.delete(k);
+  }
+
   /** Builds the first `upTo` features. `cancelled` is checked between parts. */
   build(doc: ModelDoc, upTo = doc.features.length, quality: Quality = "fast", cancelled: () => boolean = () => false): ModelResult {
     const t0 = performance.now();
     const { parts, failed } = build(doc, upTo);
+    this.useBlobs(doc);
     const bodies: BuiltBody[] = [];
     const out: [string, string][] = [...failed];
     this.used.clear();
@@ -142,6 +214,7 @@ export class ModelBuilder {
   /** Measures one or two picks (#71) on the model as built up to `upTo`, from the cached solids. */
   measure(doc: ModelDoc, refs: TopoRef[], upTo = doc.features.length): MeasureResult {
     const { parts } = build(doc, upTo);
+    this.useBlobs(doc);
     const picked = refs.slice(0, 2).map((r) => {
       const p = parts.find((x) => x.id === r.body);
       if (!p) throw new KernelError("reference-missing", "That body is not in the model any more.");

@@ -5,6 +5,7 @@
  */
 import { newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
+import type { ImportFormat } from "./imports";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import {
   axisOf,
@@ -62,6 +63,16 @@ export interface Part {
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
   hole?: boolean;
+  /** A body brought in from a file (#82): the file's bytes are in the document's blobs. */
+  imported?: ImportSpec;
+}
+
+/** Where an imported body comes from: body `index` of the file kept as `blob`. Meshes (STL, 3MF) can't be filleted. */
+export interface ImportSpec {
+  blob: string;
+  format: ImportFormat;
+  index: number;
+  mesh: boolean;
 }
 
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
@@ -211,7 +222,18 @@ export interface HoleFeature extends FeatureBase, HoleParams {
   /** Hole centres in the face's plane, mm. */
   points: Vec2[];
 }
+/** Import (#82): the bodies of an STL, STEP or 3MF file, standing with their bottom centre at `position`. */
+export interface ImportFeature extends FeatureBase {
+  type: "import";
+  /** The file's name when it was imported. */
+  file: string;
+  blob: string;
+  format: ImportFormat;
+  bodies: { id: string; name: string }[];
+  position: Vec3;
+}
 export type Feature =
+  | ImportFeature
   | AddFeature
   | DuplicateFeature
   | MoveFeature
@@ -246,6 +268,8 @@ export interface ModelDoc {
   views?: NamedView[];
   /** Parameters (#75): named values that feature fields can use. */
   params?: Parameter[];
+  /** Imported files' bytes, base64, by content hash (#82), so the model rebuilds without the original file. */
+  blobs?: Record<string, string>;
 }
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
@@ -274,6 +298,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   pushpull: "Push/pull",
   revolve: "Revolve",
   hole: "Hole",
+  import: "Import",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -298,6 +323,7 @@ export interface Build {
 }
 
 const BUILT = new Set<string>([
+  "import",
   "add",
   "duplicate",
   "move",
@@ -336,6 +362,20 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       continue;
     }
     switch (f.type) {
+      case "import":
+        f.bodies.forEach((b, index) => {
+          if (find(b.id) >= 0) return;
+          parts.push({
+            id: b.id,
+            name: b.name,
+            kind: "solid",
+            hidden: false,
+            position: { ...f.position },
+            size: { x: 0, y: 0, z: 0 },
+            imported: { blob: f.blob, format: f.format, index, mesh: f.format !== "step" },
+          });
+        });
+        break;
       case "add":
         if (find(f.part.id) < 0) parts.push({ ...f.part, position: { ...f.part.position }, size: { ...f.part.size }, hidden: false });
         break;
@@ -772,6 +812,8 @@ export function featureParts(f: Feature): string[] {
       return [f.part];
     case "revolve":
       return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
+    case "import":
+      return f.bodies.map((b) => b.id);
     default:
       return f.parts;
   }
@@ -795,6 +837,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "import":
+      return `${f.bodies.length === 1 ? "1 body" : `${f.bodies.length} bodies`} from ${f.file}`;
     case "add": {
       const s = f.part.size;
       return `${KIND_LABEL[f.part.kind]}, ${s.x} × ${s.y} × ${s.z} mm`;
@@ -998,6 +1042,23 @@ export function parseDoc(text: string): ModelDoc {
   throw new Error("That file is not a BetterCad model.");
 }
 
+export interface ImportParams {
+  file: string;
+  format: ImportFormat;
+  /** The file's bytes, base64, and their hash: kept once however many times the file is imported. */
+  blob: string;
+  data: string;
+  bodies: { id: string; name: string }[];
+  position: Vec3;
+}
+
+/** Adds an Import step (#82) and keeps the file's bytes in the document. */
+export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: number): ModelDoc {
+  const { data, ...rest } = p;
+  const blobs = doc.blobs?.[p.blob] ? doc.blobs : { ...doc.blobs, [p.blob]: data };
+  return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest });
+}
+
 export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "head" | "depth">;
 
 /** Adds a Hole step at `at` (the marker), or at the end. */
@@ -1029,6 +1090,8 @@ function partsRead(f: Feature): string[] {
       return f.operation !== "new" && f.target ? [f.target] : [];
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
+    case "import":
+      return [];
     default:
       return [f.part];
   }
@@ -1038,6 +1101,7 @@ function partsRead(f: Feature): string[] {
 function partsMade(f: Feature): string[] {
   if (f.type === "add") return [f.part.id];
   if (f.type === "duplicate") return f.copies.map((c) => c.id);
+  if (f.type === "import") return f.bodies.map((b) => b.id);
   if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
   return [];
 }

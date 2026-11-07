@@ -1,6 +1,7 @@
 import type { ModelDoc } from "./document";
 import type { KernelErrorData } from "./errors";
-import type { ModelResult } from "./occt/model";
+import type { ImportInfo, ModelResult } from "./occt/model";
+import type { ImportFormat } from "./imports";
 import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
 import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
@@ -18,6 +19,8 @@ export interface Methods {
   estimate: { params: ExportRequest; result: ExportEstimate };
   /** STL, 3MF or STEP files from the exact B-rep (#80, #81). */
   export: { params: ExportRequest & { name: string }; result: ExportResult };
+  /** Reads a file to import (#82): its bodies, kept ready for the build that follows. */
+  inspect: { params: { name: string; format: ImportFormat; blob: string; data: string }; result: ImportInfo };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };
 }
