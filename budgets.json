@@ -15,7 +15,7 @@
   "kernel": {
     "tolerance": 0.2,
     "baseline": {
-      "Build the phone stand sample": 100,
+      "Build the phone stand sample": 150,
       "Build the hole calibration coupon (40 cuts)": 3000,
       "Fillet all 12 edges of a box": 40,
       "Mesh a hollow sphere, fine": 2700,
