@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bettercad.kevsrobots.com/bcad.schema.json",
+  "title": "BetterCad model (.bcad)",
+  "description": "The timeline, sketches, parameters, named views and a thumbnail. Nothing derived: no geometry, no meshes. MIME type application/vnd.bettercad+json.",
+  "type": "object",
+  "required": ["schema", "app", "version", "created", "modified", "name", "document"],
+  "properties": {
+    "schema": { "type": "integer", "minimum": 1 },
+    "app": { "const": "bettercad" },
+    "version": { "type": "string" },
+    "id": { "type": "string" },
+    "created": { "type": "string" },
+    "modified": { "type": "string" },
+    "name": { "type": "string" },
+    "thumbnail": { "type": "string", "pattern": "^data:image/png;base64," },
+    "document": {
+      "type": "object",
+      "required": ["format", "version", "name", "features", "looks"],
+      "properties": {
+        "format": { "const": "bettercad" },
+        "version": { "type": "integer" },
+        "name": { "type": "string" },
+        "features": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "type", "name"],
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "name": { "type": "string" },
+              "suppressed": { "type": "boolean" },
+              "exprs": { "type": "object" }
+            }
+          }
+        },
+        "looks": { "type": "object" },
+        "order": { "type": "array", "items": { "type": "string" } },
+        "views": {
+          "type": "array",
+          "items": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } } }
+        },
+        "params": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "expression"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "expression": { "type": "string" },
+              "unit": { "enum": ["mm", "deg", "none"] }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -297,6 +297,23 @@ export interface Build {
   failed: Map<string, string>;
 }
 
+const BUILT = new Set<string>([
+  "add",
+  "duplicate",
+  "move",
+  "resize",
+  "delete",
+  "sketch",
+  "extrude",
+  "revolve",
+  "combine",
+  "fillet",
+  "chamfer",
+  "shell",
+  "pushpull",
+  "hole",
+]);
+
 /** Replays the first `upTo` features (all of them by default) into parts. */
 export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const parts: Part[] = [];
@@ -314,6 +331,10 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     if (raw.suppressed) continue;
     const { feature: f, error } = bindExprs(raw, values);
     if (error) failed.set(f.id, error);
+    if (!BUILT.has(f.type)) {
+      failed.set(f.id, "This step needs a newer BetterCad");
+      continue;
+    }
     switch (f.type) {
       case "add":
         if (find(f.part.id) < 0) parts.push({ ...f.part, position: { ...f.part.position }, size: { ...f.part.size }, hidden: false });
@@ -953,7 +974,17 @@ function migrateV1(d: { name: string; parts: Part[] }): ModelDoc {
   return doc;
 }
 
-/** Parses a saved file, throwing a one-line message when it is not a BetterCad model. */
+/**
+ * Brings a stored document up to the current version, keeping every field it carries, known or not, so a file from
+ * a newer BetterCad survives a round trip here.
+ */
+export function upgradeDoc(d: Record<string, unknown>): ModelDoc {
+  if (d.version === 1 && Array.isArray(d.parts)) return migrateV1(d as unknown as { name: string; parts: Part[] });
+  const looks = d.looks && typeof d.looks === "object" ? (d.looks as Record<string, Look>) : {};
+  return { ...d, format: "bettercad", version: 2, name: String(d.name ?? "Untitled model"), features: (d.features ?? []) as Feature[], looks } as ModelDoc;
+}
+
+/** Parses a saved document, throwing a one-line message when it is not a BetterCad model. (.bcad files: see bcad.ts.) */
 export function parseDoc(text: string): ModelDoc {
   let data: unknown;
   try {
@@ -963,21 +994,7 @@ export function parseDoc(text: string): ModelDoc {
   }
   const d = data as Record<string, unknown> | null;
   if (d?.format !== "bettercad" || typeof d.name !== "string") throw new Error("That file is not a BetterCad model.");
-  if (d.version === 1 && Array.isArray(d.parts)) return migrateV1(d as unknown as { name: string; parts: Part[] });
-  if (d.version === 2 && Array.isArray(d.features)) {
-    const looks = d.looks && typeof d.looks === "object" ? (d.looks as Record<string, Look>) : {};
-    const order = Array.isArray(d.order) ? (d.order as string[]) : undefined;
-    const views = Array.isArray(d.views) ? (d.views as NamedView[]) : undefined;
-    return {
-      format: "bettercad",
-      version: 2,
-      name: d.name,
-      features: d.features as Feature[],
-      looks,
-      ...(order ? { order } : {}),
-      ...(views ? { views } : {}),
-    };
-  }
+  if ((d.version === 1 && Array.isArray(d.parts)) || (d.version === 2 && Array.isArray(d.features))) return upgradeDoc(d);
   throw new Error("That file is not a BetterCad model.");
 }
 

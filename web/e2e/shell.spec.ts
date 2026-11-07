@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("the editor shell loads with its slots", async ({ page }) => {
   await page.goto("/");
-  await expect(page).toHaveTitle("BetterCad");
+  await expect(page).toHaveTitle("Untitled model · BetterCad");
   await expect(page.getByRole("navigation", { name: "Panels" })).toBeVisible();
   await expect(page.getByRole("toolbar", { name: "View tools" })).toBeVisible();
   await expect(page.getByRole("application", { name: /3D view/ })).toBeVisible();

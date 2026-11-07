@@ -18,6 +18,7 @@
     ".": "./src/index.ts",
     "./document": "./src/document.ts",
     "./browser": "./src/browser.ts",
-    "./occt": "./src/occt/index.ts"
+    "./occt": "./src/occt/index.ts",
+    "./bcad": "./src/bcad.ts"
   }
 }
