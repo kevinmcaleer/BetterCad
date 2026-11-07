@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { Banner, ContextMenu, Icon, PartsTree, WideButton, cx, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
-import type { ModelDoc, PartKind } from "../state/document";
-import type { History } from "../state/history";
+import type { Feature, ModelDoc, Part, PartKind } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
 import { ThemePicker } from "./ThemePicker";
+import { featureIcon } from "./Timeline";
 
 export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "settings";
 
@@ -21,6 +21,8 @@ export const PANEL_TITLES: Record<PanelId, string> = {
 export interface LeftPanelProps {
   panel: PanelId;
   doc: ModelDoc;
+  /** The parts built up to the timeline marker. */
+  parts: Part[];
   selection: string[];
   onSelect: (ids: string[]) => void;
   onAdd: (kind: PartKind) => void;
@@ -30,7 +32,19 @@ export interface LeftPanelProps {
   partMenu: (ids: string[]) => MenuEntry[];
   renameId: string | null;
   onRenameIdChange: (id: string | null) => void;
-  history: History<ModelDoc>;
+  features: Feature[];
+  at: number;
+  failed: Map<string, string>;
+  summary: (f: Feature) => string;
+  activeFeatureId: string | null;
+  onSelectFeature: (f: Feature) => void;
+  onRenameFeature: (id: string, name: string) => void;
+  onReorderFeature: (id: string, beforeId: string | null) => void;
+  featureMenu: (id: string) => MenuEntry[];
+  featureRenameId: string | null;
+  onFeatureRenameIdChange: (id: string | null) => void;
+  timelineShown: boolean;
+  onTimelineShown: (on: boolean) => void;
   theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
   commands: Command[];
@@ -53,7 +67,7 @@ export function LeftPanel(p: LeftPanelProps) {
     case "library":
       return <LibraryPanel {...p} />;
     case "history":
-      return <HistoryPanel history={p.history} />;
+      return <HistoryPanel {...p} />;
     case "settings":
       return <SettingsPanel {...p} />;
   }
@@ -73,7 +87,7 @@ function Placeholder({ title, epic, children }: { title: string; epic: number; c
 
 function PartsPanel(p: LeftPanelProps) {
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const items: TreeItem[] = p.doc.parts.map((part) => ({
+  const items: TreeItem[] = p.parts.map((part) => ({
     id: part.id,
     name: part.name,
     icon: part.kind === "box" ? "cube" : part.kind,
@@ -81,13 +95,13 @@ function PartsPanel(p: LeftPanelProps) {
     ghost: part.ghost,
     highlight: part.highlight,
   }));
-  const chosen = p.doc.parts.filter((x) => p.selection.includes(x.id));
+  const chosen = p.parts.filter((x) => p.selection.includes(x.id));
   return (
     <>
       <WideButton icon="plus" label="Add a box" variant="outline" onClick={() => p.onAdd("box")} />
       <div className="bc-parts-head">
         <h2 className="bc-panel-title">Parts</h2>
-        <span className="bc-note bc-count">{p.doc.parts.length ? `${p.doc.parts.length}` : ""}</span>
+        <span className="bc-note bc-count">{p.parts.length ? `${p.parts.length}` : ""}</span>
       </div>
       <PartsTree
         label="Parts"
@@ -103,7 +117,7 @@ function PartsPanel(p: LeftPanelProps) {
         onContextMenu={(_id, at) => setMenu(at)}
         empty={<p className="bc-note">Nothing here yet. Add a shape from the Library, or start a sketch (K).</p>}
       />
-      {p.doc.parts.length > 0 && <p className="bc-note">Shift-click selects a range, {formatCombo("mod")}-click adds one. Drag to reorder, F2 to rename.</p>}
+      {p.parts.length > 0 && <p className="bc-note">Shift-click selects a range, {formatCombo("mod")}-click adds one. Drag to reorder, F2 to rename.</p>}
       <div className="bc-section-gap" />
       <Banner tone="info">The 3D view and the modelling kernel are not wired up yet, so parts are only listed here for now.</Banner>
       <ContextMenu
@@ -183,28 +197,49 @@ function LibraryPanel(p: LeftPanelProps) {
   );
 }
 
-function HistoryPanel({ history }: { history: History<ModelDoc> }) {
-  const steps = [...history.past.slice(1).map((s) => s.label), ...(history.past.length ? [history.label] : [])];
+/** The timeline as rows, for people who prefer a list: the same steps, actions and selection as the bar. */
+function HistoryPanel(p: LeftPanelProps) {
+  const [menu, setMenu] = useState<{ id: string; at: ContextMenuState } | null>(null);
+  const items: TreeItem[] = p.features.map((f, i) => ({
+    id: f.id,
+    name: f.name,
+    icon: featureIcon(f),
+    // Steps after the marker, and suppressed ones, are not built: shown muted.
+    hidden: i >= p.at || !!f.suppressed,
+    warning: p.failed.get(f.id),
+  }));
+  const rolledBack = p.at < p.features.length;
   return (
     <>
-      <h2 className="bc-panel-title">History</h2>
-      <p className="bc-note">Every change you make, newest last. The full timeline, where you can edit an old step, arrives with epic #7.</p>
-      {steps.length === 0 ? (
-        <p className="bc-note">No changes yet.</p>
-      ) : (
-        <ol className="bc-history">
-          {steps.map((label, i) => (
-            <li key={i} className={cx(i === steps.length - 1 && "bc-on")}>
-              {label}
-            </li>
-          ))}
-          {history.future.map((f, i) => (
-            <li key={`f${i}`} className="bc-undone">
-              {f.label}
-            </li>
-          ))}
-        </ol>
-      )}
+      <div className="bc-parts-head">
+        <h2 className="bc-panel-title">History</h2>
+        <span className="bc-note bc-count">{p.features.length ? (rolledBack ? `${p.at} of ${p.features.length}` : `${p.features.length}`) : ""}</span>
+      </div>
+      <p className="bc-note">Every step that builds the model, in order. Drag to reorder, F2 to rename, right-click to suppress or delete.</p>
+      {rolledBack && <Banner tone="info">Rolled back. The model shows the first {p.at} steps, and new steps go in at the marker.</Banner>}
+      <PartsTree
+        label="History"
+        items={items}
+        selection={p.activeFeatureId ? [p.activeFeatureId] : []}
+        onSelect={(ids) => {
+          const f = p.features.find((x) => x.id === ids[ids.length - 1]);
+          if (f) p.onSelectFeature(f);
+        }}
+        onRename={p.onRenameFeature}
+        onReorder={p.onReorderFeature}
+        toggles={[]}
+        renameId={p.featureRenameId}
+        onRenameIdChange={p.onFeatureRenameIdChange}
+        onContextMenu={(id, at) => setMenu({ id, at })}
+        empty={<p className="bc-note">No steps yet. Add a shape and it shows here and on the timeline.</p>}
+      />
+      <ContextMenu
+        at={menu?.at ?? null}
+        onClose={() => setMenu(null)}
+        label="Step actions"
+        title={p.features.find((f) => f.id === menu?.id)?.name}
+        entries={menu ? p.featureMenu(menu.id) : []}
+      />
     </>
   );
 }
@@ -217,6 +252,11 @@ function SettingsPanel(p: LeftPanelProps) {
       <h2 className="bc-panel-title">Theme</h2>
       <ThemePicker value={p.theme} onChange={p.onTheme} />
       <p className="bc-note">System follows your device, light or dark. Holodeck is a black drawing room with a yellow grid.</p>
+      <h2 className="bc-panel-title">Timeline</h2>
+      <label className="bc-check">
+        <input type="checkbox" checked={p.timelineShown} onChange={(e) => p.onTimelineShown(e.target.checked)} />
+        <span>Show the timeline under the view</span>
+      </label>
       <h2 className="bc-panel-title">Units</h2>
       <p className="bc-note">Millimetres. Z points up.</p>
       <h2 className="bc-panel-title" id="bc-shortcuts-title">

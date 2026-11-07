@@ -93,3 +93,25 @@ test("a narrow window gets a bottom rail and sheets", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("complementary", { name: "Properties" })).toBeHidden();
 });
+
+test("timeline: each step shows, and the marker rolls the model back", async ({ page }) => {
+  await page.goto("/");
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  await page.getByRole("button", { name: "Add a box" }).click();
+  await page.getByRole("button", { name: "Add a box" }).click();
+  await expect(timeline.getByRole("button", { name: /^Box \d/ })).toHaveCount(2);
+  await expect(page.getByRole("treeitem")).toHaveCount(2);
+
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(page.getByRole("treeitem")).toHaveCount(1);
+  await expect(timeline.getByRole("button", { name: /^Box 2.*not built/ })).toBeVisible();
+
+  await timeline.getByRole("button", { name: /^Box 1/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Suppress" }).click();
+  await expect(page.getByRole("treeitem")).toHaveCount(0);
+
+  await page.keyboard.press("Alt+End");
+  await expect(page.getByRole("treeitem")).toHaveCount(1);
+  await page.getByRole("button", { name: "History" }).click();
+  await expect(page.getByRole("tree", { name: "History" }).getByRole("treeitem")).toHaveCount(2);
+});

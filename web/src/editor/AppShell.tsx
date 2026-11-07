@@ -10,6 +10,8 @@ export interface AppShellProps {
   stageToolbar: ReactNode;
   /** The viewport. Epic #3 mounts the canvas here. */
   stage: ReactNode;
+  /** The feature timeline along the bottom of the stage (epic #7). Left out when hidden from Settings. */
+  timeline?: ReactNode;
   helpLine: ReactNode;
   rightPanel: ReactNode;
   /** Under 900px the props panel is a sheet over the stage, open only when asked for. */
@@ -20,7 +22,7 @@ export interface AppShellProps {
  * The editor frame: top bar, then rail | left panel | stage | props panel. Later epics only fill the slots.
  * Under 900px the rail moves to the bottom and the panels become sheets over the stage.
  */
-export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, stage, helpLine, rightPanel, rightOpen }: AppShellProps) {
+export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
   return (
     <div className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open")}>
       <a className="bc-skip" href="#bc-view">
@@ -37,6 +39,7 @@ export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, sta
         <main className="bc-stage" aria-label="Stage">
           <div className="bc-stage-bars">{stageToolbar}</div>
           {stage}
+          {timeline}
           <div className="bc-help">{helpLine}</div>
         </main>
         {rightPanel}

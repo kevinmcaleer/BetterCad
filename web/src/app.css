@@ -205,33 +205,6 @@ body {
 .bc-tiles-labelled .bc-tile .bc-icon {
   color: var(--bc-color-tile-icon);
 }
-.bc-history {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--bc-space-1);
-  counter-reset: step;
-}
-.bc-history li {
-  counter-increment: step;
-  padding: var(--bc-space-3) var(--bc-space-4);
-  border-radius: var(--bc-radius-sm);
-}
-.bc-history li::before {
-  content: counter(step) ". ";
-  color: var(--bc-color-muted);
-}
-.bc-history li.bc-on {
-  background: var(--bc-color-accent-soft);
-  color: var(--bc-color-accent);
-  font-weight: 600;
-}
-.bc-history li.bc-undone {
-  color: var(--bc-color-muted);
-  text-decoration: line-through;
-}
 .bc-link-btn {
   text-decoration: none;
   color: var(--bc-color-ink) !important;
