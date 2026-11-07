@@ -216,36 +216,41 @@ const round = (v: unknown): unknown =>
 
 describe("golden geometry", () => {
   for (const [name, make] of Object.entries(cases)) {
-    it(name, () => {
-      const shape = make(oc);
-      expect(valid(oc, shape)).toBe(true);
-      const m = measure(oc, shape);
-      const mesh = tessellate(oc, shape, "fine");
-      // The fine mesh is what export writes: it must hold the solid's volume to within 0.5 %.
-      expect(Math.abs(meshVolume(mesh) - m.volume) / m.volume).toBeLessThan(0.005);
-      const got = round({ ...m, triangles: triangleCount(mesh) > 0 }) as Record<string, unknown>;
-      const file = join(DIR, `${name}.json`);
-      if (UPDATE || !existsSync(file)) {
-        if (!UPDATE && process.env.CI) throw new Error(`No golden file for ${name}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);
-        mkdirSync(DIR, { recursive: true });
-        writeFileSync(file, JSON.stringify(got, null, 2) + "\n");
-        return;
-      }
-      const want = JSON.parse(readFileSync(file, "utf8")) as typeof got;
-      // Every number that moved, before and after, for the CI job summary (GOLDEN_SUMMARY names the file).
-      const moved: [string, unknown, unknown][] = [];
-      const diff = (a: unknown, b: unknown, path: string): void => {
-        if (typeof b === "number") {
-          if (typeof a !== "number" || Math.abs(a - b) >= 5e-4) moved.push([path, b, a]);
-        } else if (b && typeof b === "object") for (const [k, x] of Object.entries(b)) diff((a as Record<string, unknown>)?.[k], x, `${path}.${k}`);
-        else if (JSON.stringify(a) !== JSON.stringify(b)) moved.push([path, b, a]);
-      };
-      diff(got, want, name);
-      if (moved.length && process.env.GOLDEN_SUMMARY) {
-        const rows = moved.map(([p, b, a]) => `| \`${p}\` | ${JSON.stringify(b)} | ${JSON.stringify(a)} |`).join("\n");
-        appendFileSync(process.env.GOLDEN_SUMMARY, `\n#### ${name}\n\n| Measure | Golden | Now |\n| --- | --- | --- |\n${rows}\n`);
-      }
-      expect(moved.map(([p, b, a]) => `${p}: ${JSON.stringify(b)} → ${JSON.stringify(a)}`)).toEqual([]);
-    });
+    // Gears and other many-faced bodies take a few seconds on a busy runner.
+    it(
+      name,
+      () => {
+        const shape = make(oc);
+        expect(valid(oc, shape)).toBe(true);
+        const m = measure(oc, shape);
+        const mesh = tessellate(oc, shape, "fine");
+        // The fine mesh is what export writes: it must hold the solid's volume to within 0.5 %.
+        expect(Math.abs(meshVolume(mesh) - m.volume) / m.volume).toBeLessThan(0.005);
+        const got = round({ ...m, triangles: triangleCount(mesh) > 0 }) as Record<string, unknown>;
+        const file = join(DIR, `${name}.json`);
+        if (UPDATE || !existsSync(file)) {
+          if (!UPDATE && process.env.CI) throw new Error(`No golden file for ${name}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);
+          mkdirSync(DIR, { recursive: true });
+          writeFileSync(file, JSON.stringify(got, null, 2) + "\n");
+          return;
+        }
+        const want = JSON.parse(readFileSync(file, "utf8")) as typeof got;
+        // Every number that moved, before and after, for the CI job summary (GOLDEN_SUMMARY names the file).
+        const moved: [string, unknown, unknown][] = [];
+        const diff = (a: unknown, b: unknown, path: string): void => {
+          if (typeof b === "number") {
+            if (typeof a !== "number" || Math.abs(a - b) >= 5e-4) moved.push([path, b, a]);
+          } else if (b && typeof b === "object") for (const [k, x] of Object.entries(b)) diff((a as Record<string, unknown>)?.[k], x, `${path}.${k}`);
+          else if (JSON.stringify(a) !== JSON.stringify(b)) moved.push([path, b, a]);
+        };
+        diff(got, want, name);
+        if (moved.length && process.env.GOLDEN_SUMMARY) {
+          const rows = moved.map(([p, b, a]) => `| \`${p}\` | ${JSON.stringify(b)} | ${JSON.stringify(a)} |`).join("\n");
+          appendFileSync(process.env.GOLDEN_SUMMARY, `\n#### ${name}\n\n| Measure | Golden | Now |\n| --- | --- | --- |\n${rows}\n`);
+        }
+        expect(moved.map(([p, b, a]) => `${p}: ${JSON.stringify(b)} → ${JSON.stringify(a)}`)).toEqual([]);
+      },
+      20_000,
+    );
   }
 });

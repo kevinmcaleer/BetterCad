@@ -35,7 +35,7 @@ describe("the Gear step (#191)", () => {
     expect(r.ops.map((o) => o.op)).toEqual(["join", "cut"]);
     const horn = gearSpec({ ...f, hub: undefined, bore: { kind: "horn", diameter: 7, arm: 7 } });
     if (typeof horn === "string") throw new Error(horn);
-    expect(horn.ops.filter((o) => o.op === "cut")).toHaveLength(5);
+    expect(horn.ops.map((o) => (o.op === "cut" ? (o.tool?.profiles.length ?? 0) : 0))).toEqual([5]);
   });
 
   it("says why a gear can't be made, and the step shows it", () => {

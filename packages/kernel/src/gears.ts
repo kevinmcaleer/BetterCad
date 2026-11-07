@@ -56,6 +56,15 @@ export function meshProblem(a: GearParams, b: GearParams): string | null {
 /** The distance between two meshing gears' axes, mm: m(z1 + z2)/2, plus the profile shifts. */
 export const centreDistance = (a: GearParams, b: GearParams) => (a.module * (a.teeth + b.teeth)) / 2 + a.module * (a.shift + b.shift);
 
+/**
+ * How far to turn gear b (radians) so its teeth fall between gear a's, when b sits at angle `theta` from a's centre
+ * and a is turned `turnA`. Each gear has a tooth centred on its +x before turning; b's gap faces a when a's tooth
+ * faces b, and they turn the opposite way in the ratio of their teeth.
+ */
+export function meshTurn(a: number, turnA: number, theta: number, b: number): number {
+  return theta + Math.PI + Math.PI / b + ((theta - turnA) * a) / b;
+}
+
 /** "2 : 1, the small gear turns twice as fast". */
 export function ratioText(driver: number, driven: number): string {
   const big = Math.max(driver, driven);

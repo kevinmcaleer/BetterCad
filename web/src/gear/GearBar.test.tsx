@@ -16,8 +16,8 @@ const feature = (c: Partial<GearFeature> = {}): GearFeature => ({
   ...c,
 });
 
-const session = (f: GearFeature | null) =>
-  ({ feature: f, change: vi.fn(), done: vi.fn(), cancel: vi.fn(), help: "Click the ground" }) as unknown as GearSession;
+const session = (f: GearFeature | null, partner: GearFeature | null = null) =>
+  ({ feature: f, partner, change: vi.fn(), done: vi.fn(), cancel: vi.fn(), help: "Click the ground" }) as unknown as GearSession;
 
 describe("GearBar (#191)", () => {
   it("asks for a place before there's a gear", () => {
@@ -41,5 +41,16 @@ describe("GearBar (#191)", () => {
     expect(screen.getByText("Fewer than 17 teeth weakens the root at 20°. Try profile shift.")).toBeInTheDocument();
     rerender(<GearBar x={session(feature())} error="The bore is wider than the gear's root" onCancel={() => {}} />);
     expect(screen.getByRole("alert")).toHaveTextContent("The bore is wider");
+  });
+
+  it("shows a meshed gear's partner and ratio, with an angle in place of the module", () => {
+    const a = feature({ name: "Gear 20T" });
+    const x = session(feature({ id: "b", name: "Gear 40T", gear: { ...GEAR_DEFAULTS, teeth: 40 }, mesh: { gear: "g", angle: 0 } }), a);
+    render(<GearBar x={x} onCancel={() => {}} />);
+    expect(screen.getByText("Meshes with Gear 20T, module 1. 2 : 1, the small gear turns twice as fast.")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Module/)).toBeNull();
+    expect(screen.getByLabelText(/Angle/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Unmesh/ }));
+    expect(x.change).toHaveBeenCalledWith(expect.objectContaining({ mesh: undefined, frame: expect.objectContaining({ origin: [30, 0, 0] }) }));
   });
 });

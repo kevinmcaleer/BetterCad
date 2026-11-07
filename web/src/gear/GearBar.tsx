@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent } from "react";
 import { ArmedBar, Button, NumberField } from "@bettercad/ui";
-import { gearCircles, undercutWarning, type GearBore, type GearParams } from "../state/document";
+import { gearCircles, meshedWith, ratioText, undercutWarning, type GearBore, type GearParams } from "../state/document";
 import type { GearSession } from "./useGear";
 
 const BORES: { id: GearBore["kind"]; label: string; title: string; diameter: number }[] = [
@@ -32,14 +32,32 @@ export function GearBar({ x, error, onCancel }: { x: GearSession; error?: string
   const b = f.bore;
   const pitch = round(2 * gearCircles(g).pitch);
   const warning = undercutWarning(g);
+  const mate = f.mesh ? x.partner : null;
   return (
     <ArmedBar title="Spur gear" icon="gear">
       <span className="bc-sk-fields" onKeyDown={onFieldKey}>
         <NumberField label="Teeth" value={g.teeth} min={6} max={400} step={1} precision={0} onCommit={(v) => set({ teeth: Math.round(v) })} />
-        <NumberField label="Module" unit="mm" value={g.module} min={0.1} step={0.1} onCommit={(v) => set({ module: v })} />
+        {mate ? (
+          <NumberField label="Angle" unit="°" value={f.mesh!.angle} onCommit={(v) => x.change({ mesh: { ...f.mesh!, angle: v } })} />
+        ) : (
+          <NumberField label="Module" unit="mm" value={g.module} min={0.1} step={0.1} onCommit={(v) => set({ module: v })} />
+        )}
         <NumberField label="Width" unit="mm" value={f.width} min={0.1} onCommit={(v) => x.change({ width: v })} />
       </span>
       <span className="bc-armed-note">Pitch diameter {pitch} mm</span>
+      {mate && (
+        <>
+          <span className="bc-armed-note">{`Meshes with ${mate.name}, module ${mate.gear.module}. ${ratioText(mate.gear.teeth, g.teeth)}.`}</span>
+          <Button
+            label="Unmesh"
+            title="Leave it where it is, free of the other gear"
+            onClick={() => {
+              const at = meshedWith(mate, f);
+              x.change({ mesh: undefined, frame: at.frame, turn: at.turn, gear: at.gear });
+            }}
+          />
+        </>
+      )}
       <span role="group" aria-label="Bore" className="bc-segmented">
         {BORES.map((o) => (
           <Button
@@ -75,7 +93,7 @@ export function GearBar({ x, error, onCancel }: { x: GearSession; error?: string
       <Button label="More" title="Pressure angle, backlash, clearance, profile shift and hub" on={more} onClick={() => setMore((m) => !m)} />
       {more && (
         <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-          <NumberField label="Pressure angle" unit="°" value={g.pressure} min={10} max={35} onCommit={(v) => set({ pressure: v })} />
+          {!mate && <NumberField label="Pressure angle" unit="°" value={g.pressure} min={10} max={35} onCommit={(v) => set({ pressure: v })} />}
           <NumberField label="Backlash" unit="mm" value={g.backlash} min={0} step={0.05} onCommit={(v) => set({ backlash: v })} />
           <NumberField label="Tip clearance" value={g.clearance} min={0} step={0.05} onCommit={(v) => set({ clearance: v })} />
           <NumberField label="Profile shift" value={g.shift} step={0.05} onCommit={(v) => set({ shift: v })} />

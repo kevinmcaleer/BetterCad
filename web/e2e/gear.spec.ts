@@ -40,3 +40,30 @@ test("a spur gear on the ground, then 30 teeth with a D-flat bore", async ({ pag
   await teeth.press("Tab");
   await expect(page.getByText("Fewer than 17 teeth weakens the root at 20°. Try profile shift.")).toBeVisible();
 });
+
+test("a mating gear meshes at the centre distance and follows the first", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Spur gear/ })
+    .click();
+  await click(page, 0, 0, 0);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/^Made Gear 20T/)).toBeVisible();
+
+  await page
+    .getByRole("treeitem", { name: /Gear 20T/ })
+    .first()
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Add mating gear" }).click();
+  await expect(page.getByText("Meshes with Gear 20T, module 1. 1 : 1, both turn at the same speed.")).toBeVisible();
+  const teeth = page.getByRole("textbox", { name: "Teeth" });
+  await teeth.fill("40");
+  await teeth.press("Tab");
+  await expect(page.getByText("Meshes with Gear 20T, module 1. 2 : 1, the small gear turns twice as fast.")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/^Made Gear 40T/)).toBeVisible();
+
+  await expect(page.getByRole("region", { name: "Timeline" }).getByRole("button", { name: /^Gear 40T, 40 teeth, meshes with Gear 20T, 2 : 1/ })).toBeVisible();
+});

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ESC, useEscape } from "@bettercad/ui";
 import { toSketch, toWorld, type Frame } from "@bettercad/sketch";
-import { GEAR_DEFAULTS, addGear, fitGap, newId, updateGear, type GearFeature, type GearParamsStep, type ModelDoc } from "../state/document";
+import { GEAR_DEFAULTS, addGear, fitGap, newId, resolveGear, updateGear, type GearFeature, type GearParamsStep, type ModelDoc } from "../state/document";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine } from "../viewport/engine";
 import { snapPoint } from "../hole/useHole";
@@ -26,7 +26,7 @@ export interface GearDeps {
   say: (text: string, error?: boolean) => void;
 }
 
-const KEY = (id: string) => `gear:${id}`;
+export const KEY = (id: string) => `gear:${id}`;
 type Settings = Omit<GearParamsStep, "frame" | "turn">;
 /** The first gear: 20 teeth, module 1, 5 mm wide on a 5 mm round bore. */
 export const FIRST_GEAR: Settings = { gear: GEAR_DEFAULTS, width: 5, bore: { kind: "round", diameter: 5 } };
@@ -38,6 +38,8 @@ export function useGear(d: GearDeps) {
   const [session, setSession] = useState<{ id: string; isNew: boolean } | null>(null);
   const [last, setLast] = useState<Settings | null>(null);
   const feature = (d.doc.features.find((f) => f.id === session?.id && f.type === "gear") as GearFeature | undefined) ?? null;
+  /** The gear it meshes with, as it stands (#192). */
+  const partner = feature?.mesh ? resolveGear(d.doc, feature.mesh.gear) : null;
   const live = useRef({ session, feature, last });
   live.current = { session, feature, last };
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
@@ -74,6 +76,15 @@ export function useGear(d: GearDeps) {
       },
       down: (p) => {
         const f = live.current.feature;
+        if (f?.mesh) {
+          // A meshed gear goes round the other one, toward the click.
+          const a = resolveGear(deps.current.doc, f.mesh.gear);
+          const w = a && eng.rayPlane(p.x, p.y, a.frame.origin, a.frame.normal);
+          if (!a || !w) return true;
+          const q = toSketch(a.frame, w);
+          change({ mesh: { ...f.mesh, angle: Math.round((Math.atan2(q[1], q[0]) * 180) / Math.PI) } });
+          return true;
+        }
         if (f) {
           // Move it about its own plane.
           const w = eng.rayPlane(p.x, p.y, f.frame.origin, f.frame.normal);
@@ -135,11 +146,11 @@ export function useGear(d: GearDeps) {
     deps.current.onClose();
   }, [store]);
 
-  /** Opens an existing step to change it (the timeline's Edit gear). */
+  /** Opens a step to change it: the timeline's Edit gear, or a mating gear just added (`isNew`, so Esc takes it back). */
   const edit = useCallback(
-    (id: string) => {
-      store.seal();
-      setSession({ id, isNew: false });
+    (id: string, isNew = false) => {
+      if (!isNew) store.seal();
+      setSession({ id, isNew });
     },
     [store],
   );
@@ -148,11 +159,13 @@ export function useGear(d: GearDeps) {
 
   const help = !d.active
     ? null
-    : session
-      ? "Set the teeth and size, or click to move it. Enter keeps it, Esc takes it back."
-      : "Click the ground or a flat face where the gear goes.";
+    : session && feature?.mesh
+      ? "Set the teeth, or click to move it round the other gear. Enter keeps it, Esc takes it back."
+      : session
+        ? "Set the teeth and size, or click to move it. Enter keeps it, Esc takes it back."
+        : "Click the ground or a flat face where the gear goes.";
 
-  return { session, feature, change, done, cancel, edit, help };
+  return { session, feature, partner, change, done, cancel, edit, help };
 }
 
 export type GearSession = ReturnType<typeof useGear>;

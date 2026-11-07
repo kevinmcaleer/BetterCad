@@ -22,6 +22,10 @@ import {
   groupParams,
   cutTool,
   cutPocket,
+  addMatingGear,
+  meshGears,
+  ratioText,
+  type GearFeature,
   partFrame,
   staleFits,
   updateFits,
@@ -120,7 +124,7 @@ import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { MountBar } from "../mount/MountBar";
-import { useGear } from "../gear/useGear";
+import { KEY as gearKey, useGear } from "../gear/useGear";
 import { GearBar } from "../gear/GearBar";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
@@ -630,6 +634,37 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [store, say],
   );
 
+  /** The Gear step that made a body, if one did. */
+  const gearOf = (id: string) => live.current.doc.features.find((f): f is GearFeature => f.type === "gear" && f.body.id === id);
+
+  /** Add mating gear (#192): a gear beside the picked one, meshed, with the bar open to set its teeth. */
+  const mateGear = useCallback(
+    (id: string) => {
+      const a = gearOf(id);
+      if (!a) return say("Pick a gear", true);
+      const fid = newId("f");
+      record((d, at) => addMatingGear(d, a.id, a.gear.teeth, 0, fid, newId(), at), "Add mating gear", gearKey(fid));
+      setTool("gear");
+      gear.edit(fid, true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [record, say, gear.edit],
+  );
+
+  /** Mesh gears (#192): the later of two picked gears moves beside the earlier one. */
+  const meshPicked = useCallback(
+    (ids: string[]) => {
+      const [a, b] = ids.map(gearOf);
+      if (!a || !b) return say("Pick two gears", true);
+      const r = meshGears(live.current.doc, a.id, b.id);
+      if (r.error) return say(r.error, true);
+      record((d) => meshGears(d, a.id, b.id).doc, "Mesh gears");
+      const [small, big] = a.gear.teeth <= b.gear.teeth ? [a, b] : [b, a];
+      say(`Meshed ${small.name} with ${big.name}: ${ratioText(big.gear.teeth, small.gear.teeth)}`);
+    },
+    [record, say],
+  );
+
   /** Cut pocket (#188): the catalogue part's pocket and holes, cut into the body just under it. */
   const pocket = useCallback(
     (id: string) => {
@@ -823,6 +858,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggleReference,
     importReference: () => {},
     pocket: (_id: string) => {},
+    mateGear: (_id: string) => {},
+    meshGears: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
     suppressActive: () => {},
@@ -858,6 +895,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggleHole,
     toggleReference,
     pocket,
+    mateGear,
+    meshGears: meshPicked,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
@@ -1053,6 +1092,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().pocket(sel()[0]!),
         when: () => sel().length === 1 && !!live.current.parts.find((p) => p.id === sel()[0])?.catalogue,
         keywords: "robot part catalogue cutout mount servo screw holes",
+      },
+      {
+        id: "gear.mate",
+        scope: "model",
+        label: "Add mating gear",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().mateGear(sel()[0]!),
+        when: () => sel().length === 1 && live.current.doc.features.some((f) => f.type === "gear" && f.body.id === sel()[0]),
+        keywords: "gear mesh pair drive ratio",
+      },
+      {
+        id: "gear.mesh",
+        scope: "model",
+        label: "Mesh gears",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().meshGears(sel()),
+        when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.body.id === id)),
+        keywords: "gear pair centre distance drive ratio",
       },
       {
         id: "place.turn",
@@ -1631,6 +1690,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       },
       ...(chosen.length === 1 && chosen[0]!.catalogue
         ? [{ id: "pocket", label: "Cut pocket", icon: "extrude" as const, onSelect: () => pocket(chosen[0]!.id) }]
+        : []),
+      ...(chosen.length === 1 && gearOf(chosen[0]!.id)
+        ? [{ id: "mate-gear", label: "Add mating gear", icon: "gear" as const, onSelect: () => mateGear(chosen[0]!.id) }]
+        : []),
+      ...(chosen.length === 2 && chosen.every((p) => gearOf(p.id))
+        ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
       {
         id: "reference",

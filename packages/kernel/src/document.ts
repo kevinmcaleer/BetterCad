@@ -34,6 +34,7 @@ import {
   type ExtrudeOperation,
   type PrismSpec,
   type ProfileSeg,
+  type ProfileShape,
   type RevolveSpec,
 } from "./extrude";
 
@@ -41,7 +42,20 @@ export * from "./extrude";
 export * from "./holes";
 export * from "./screws";
 import { screw } from "./screws";
-import { dFlat, dFlatSegs, gearArea, gearCircles, gearProblem, gearSegs, polyArea, type GearParams } from "./gears";
+import {
+  centreDistance,
+  dFlat,
+  dFlatSegs,
+  gearArea,
+  gearCircles,
+  gearProblem,
+  gearSegs,
+  meshProblem,
+  meshTurn,
+  polyArea,
+  ratioText,
+  type GearParams,
+} from "./gears";
 export * from "./gears";
 export * from "./params";
 export * from "./print";
@@ -333,6 +347,12 @@ export interface GearFeature extends FeatureBase {
   /** A boss on top, round the bore. */
   hub?: { diameter: number; length: number };
   frame: Frame;
+  /**
+   * Meshes with an earlier gear (#192): this one then stands beside it at the centre distance, `angle` degrees round
+   * from its x, on its plane, turned so the teeth interleave. Its own frame and turn are ignored, and it takes the
+   * other gear's module and pressure angle.
+   */
+  mesh?: { gear: string; angle: number };
   /** Degrees about the gear's axis, so a mating gear's teeth fall between this one's. */
   turn?: number;
 }
@@ -468,6 +488,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const sketches: Build["sketches"] = [];
   const sketchById = new Map<string, Sketch>();
   const failed = new Map<string, string>();
+  /** Gear steps as built, for gears that mesh with them (#192). */
+  const gearSteps = new Map<string, GearFeature>();
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -677,7 +699,16 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         break;
       }
       case "gear": {
-        const r = gearSpec(f);
+        let g: GearFeature = f;
+        if (f.mesh) {
+          const a = gearSteps.get(f.mesh.gear);
+          if (!a) {
+            failed.set(f.id, "The gear this one meshes with is gone or broken");
+            break;
+          }
+          g = meshedWith(a, f);
+        }
+        const r = gearSpec(g);
         if (typeof r === "string") {
           failed.set(f.id, r);
           break;
@@ -693,6 +724,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             prism: r.prism,
             ops: r.ops,
           });
+        gearSteps.set(f.id, g);
         break;
       }
       case "mount": {
@@ -1021,8 +1053,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
-    case "gear":
+    case "gear": {
+      const a = f.mesh && doc.features.find((g): g is GearFeature => g.id === f.mesh!.gear && g.type === "gear");
+      if (a) return `${f.gear.teeth} teeth, meshes with ${a.name}, ${ratioText(a.gear.teeth, f.gear.teeth).split(",")[0]}`;
       return `${f.gear.teeth} teeth, module ${f.gear.module}, ${mm(f.width)} wide`;
+    }
     case "mount":
       return f.kind === "standoffs"
         ? `${f.points.length} × ${f.size}, ${mm(f.height)} tall${f.hole === "insert" ? ", heat-set inserts" : ""}`
@@ -1365,8 +1400,9 @@ export function gearSpec(f: GearFeature): { prism: PrismSpec; ops: BodyOp[] } | 
       feature: f.id,
     });
   }
-  const cut = (outer: ProfileSeg[], area: number) =>
-    ops.push({ op: "cut", tool: { frame, profiles: [{ outer, holes: [], area }], from: -1, to: top + 1 }, feature: f.id });
+  // Every hole goes in one cut: each cut against the toothed body costs about the same, however small the hole.
+  const holes: ProfileShape[] = [];
+  const cut = (outer: ProfileSeg[], area: number) => holes.push({ outer, holes: [], area });
   const b = f.bore;
   if (b.kind !== "none") {
     if (!(b.diameter > 0)) return "Give the bore a diameter above 0 mm";
@@ -1385,7 +1421,60 @@ export function gearSpec(f: GearFeature): { prism: PrismSpec; ops: BodyOp[] } | 
       for (const q of hornPoints("cross", arm).map(spin)) cut([{ kind: "circle", c: q, r: d / 2 }], (Math.PI * d * d) / 4);
     }
   }
+  if (holes.length) ops.push({ op: "cut", tool: { frame, profiles: holes, from: -1, to: top + 1 }, feature: f.id });
   return { prism, ops };
+}
+
+/** Gear b as it stands meshed with gear a: on a's plane at the centre distance, turned to interleave. */
+export function meshedWith(a: GearFeature, b: GearFeature): GearFeature {
+  const gear = { ...b.gear, module: a.gear.module, pressure: a.gear.pressure };
+  const theta = ((b.mesh?.angle ?? 0) * Math.PI) / 180;
+  const cd = centreDistance(a.gear, gear);
+  const { x, normal: n, origin } = a.frame;
+  const y: Vec3t = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const along = (i: number) => origin[i]! + cd * (Math.cos(theta) * x[i]! + Math.sin(theta) * y[i]!);
+  const turnA = ((a.turn ?? 0) * Math.PI) / 180;
+  const turn = (meshTurn(a.gear.teeth, turnA, theta, gear.teeth) * 180) / Math.PI;
+  return { ...b, gear, frame: { origin: [along(0), along(1), along(2)], x, normal: n }, turn: ((turn % 360) + 360) % 360 };
+}
+type Vec3t = [number, number, number];
+
+/** A gear step as it stands, following any gears it meshes with. Null when it, or one it follows, is missing. */
+export function resolveGear(doc: ModelDoc, id: string, seen = new Set<string>()): GearFeature | null {
+  const f = doc.features.find((g): g is GearFeature => g.id === id && g.type === "gear");
+  if (!f || seen.has(id)) return null;
+  if (!f.mesh) return f;
+  const a = resolveGear(doc, f.mesh.gear, new Set([...seen, id]));
+  return a ? meshedWith(a, f) : null;
+}
+
+/** Adds a gear that meshes with gear step `with` (#192), `angle` degrees round from its x. Same width and bore. */
+export function addMatingGear(doc: ModelDoc, withId: string, teeth: number, angle = 0, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const a = doc.features.find((f): f is GearFeature => f.id === withId && f.type === "gear");
+  if (!a) return doc;
+  return addGear(doc, { gear: { ...a.gear, teeth, shift: 0 }, width: a.width, bore: a.bore, frame: a.frame, mesh: { gear: a.id, angle } }, id, bodyId, at);
+}
+
+/**
+ * Meshes two existing gear steps (#192): the later one moves beside the earlier, keeping the side it was on. Or why
+ * they can't mesh.
+ */
+export function meshGears(doc: ModelDoc, one: string, two: string): { doc: ModelDoc; error?: string } {
+  const gears = doc.features.filter((f): f is GearFeature => f.type === "gear");
+  const i = gears.findIndex((g) => g.id === one);
+  const j = gears.findIndex((g) => g.id === two);
+  if (i < 0 || j < 0 || i === j) return { doc, error: "Pick two gears to mesh" };
+  const [a, b] = i < j ? [gears[i]!, gears[j]!] : [gears[j]!, gears[i]!];
+  const problem = meshProblem(a.gear, b.gear);
+  if (problem) return { doc, error: problem };
+  if (b.mesh?.gear === a.id) return { doc };
+  // Keep b on the side it's on now, measured on a's plane.
+  const d = [0, 1, 2].map((k) => b.frame.origin[k]! - a.frame.origin[k]!);
+  const { x, normal: n } = a.frame;
+  const y = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const dot = (u: number[], v: readonly number[]) => u[0]! * v[0]! + u[1]! * v[1]! + u[2]! * v[2]!;
+  const angle = Math.hypot(dot(d, x), dot(d, y)) > 1e-6 ? Math.round(((Math.atan2(dot(d, y), dot(d, x)) * 180) / Math.PI) * 100) / 100 : 0;
+  return { doc: updateGear(doc, b.id, { mesh: { gear: a.id, angle } }) };
 }
 
 export type GearParamsStep = Omit<GearFeature, "id" | "name" | "type" | "body">;
@@ -1410,8 +1499,13 @@ export function updateGear(doc: ModelDoc, id: string, change: Partial<GearParams
       // A name still saying the old tooth count follows the new one.
       const was = `Gear ${f.gear.teeth}T`;
       const now = `Gear ${next.gear.teeth}T`;
-      const rename = (n: string) => (was !== now && (n === was || n.startsWith(`${was} `)) ? now + n.slice(was.length) : n);
-      return { ...next, name: rename(f.name), body: { ...f.body, name: rename(f.body.name) } };
+      const auto = (n: string) => n === was || (/^ \d+$/.test(n.slice(was.length)) && n.startsWith(was));
+      if (was === now || !auto(f.name)) return next;
+      const taken = usedNames({ ...doc, features: doc.features.filter((g) => g.id !== id) });
+      doc.features.forEach((g) => g.id !== id && taken.add(g.name));
+      let name = now;
+      for (let n = 2; taken.has(name); n += 1) name = `${now} ${n}`;
+      return { ...next, name, body: { ...f.body, name: auto(f.body.name) ? name : f.body.name } };
     }),
   };
 }

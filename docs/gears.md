@@ -23,3 +23,12 @@ Click again on the same plane to move the gear. **Edit gear** on the timeline op
 The issue asked for the profile as an editable sketch step. It's one Gear step instead: the settings stay editable and the outline regenerates from them, without a sketch full of curves you'd never edit by hand.
 
 Goldens: `gear-20t-m1`, `gear-12t-shifted-dflat-hub` and `gear-40t-horn`. Unit tests check tooth thickness at the pitch circle, the outside diameter m(z + 2), the area of a 20-tooth module 1 gear and the arcs against the involute.
+
+## Meshing two gears (#192)
+
+- Right-click a gear and pick **Add mating gear**. A new gear stands beside it, meshed, with the bar open: set its teeth and the bar shows the ratio ("2 : 1, the small gear turns twice as fast"). Click to move it round the first gear, or type its **Angle**.
+- Or pick two gears and use **Mesh gears**: the later one moves beside the earlier, on the side it was on. Gears with different modules or pressure angles are refused with a plain message.
+- A meshed gear follows its partner: change the partner's teeth, place or turn and it stays meshed, at the centre distance m(z1 + z2)/2 (plus any profile shift) and turned so its teeth fall between the partner's. It takes the partner's module and pressure angle. **Unmesh** leaves it where it is, free.
+- The tests build pairs in OCCT and check the solids don't overlap, and that half a tooth's turn would make them clash.
+
+Hinge joints at both centres and a drive link between them wait for joints (#164) and drive links (#194).
