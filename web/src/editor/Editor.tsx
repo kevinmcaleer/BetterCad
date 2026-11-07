@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ContextMenu, ESC, Rail, TooltipLayer, useEscape, type ContextMenuState, type MenuEntry, type RailItem, type RowToggle } from "@bettercad/ui";
+import {
+  Button,
+  ContextMenu,
+  Dialog,
+  ESC,
+  Rail,
+  TooltipLayer,
+  useEscape,
+  type ContextMenuState,
+  type MenuEntry,
+  type RailItem,
+  type RowToggle,
+} from "@bettercad/ui";
 import { createStore } from "../state/store";
 import {
   addCombine,
@@ -17,6 +29,10 @@ import {
   removeFeature,
   removeParts,
   reorderFeature,
+  dependents,
+  moveProblem,
+  removeWithDependents,
+  usedByText,
   reorderPart,
   setLook,
   updateFeature,
@@ -462,24 +478,40 @@ export function Editor() {
     },
     [store, say],
   );
-  const deleteFeature = useCallback(
-    (id: string) => {
-      const i = store.get().features.findIndex((x) => x.id === id);
-      const f = store.get().features[i];
+  /** A delete that would leave other steps without what they need: asks first, non-modally. */
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const deleteNow = useCallback(
+    (id: string, withDependents: boolean) => {
+      const d0 = store.get();
+      const f = d0.features.find((x) => x.id === id);
       if (!f) return;
-      store.edit((d) => removeFeature(d, id), `Delete ${f.name}`);
+      const gone = withDependents ? [id, ...dependents(d0, id).map((x) => x.id)] : [id];
       const m = live.current.marker;
-      if (m !== null && i < m) setMarker(m - 1);
-      say(`Deleted ${f.name}. ${formatCombo("mod+z")} brings it back.`);
+      const before = m === null ? 0 : d0.features.slice(0, m).filter((x) => gone.includes(x.id)).length;
+      store.edit((d) => (withDependents ? removeWithDependents(d, id) : removeFeature(d, id)), `Delete ${f.name}`);
+      if (m !== null && before) setMarker(m - before);
+      setPendingDelete(null);
+      say(`Deleted ${gone.length === 1 ? f.name : `${f.name} and ${gone.length - 1} more`}. ${formatCombo("mod+z")} brings it back.`);
     },
     [store, say],
   );
+  const deleteFeature = useCallback(
+    (id: string) => {
+      if (dependents(store.get(), id).length) setPendingDelete(id);
+      else deleteNow(id, false);
+    },
+    [store, deleteNow],
+  );
   const moveFeature = useCallback(
     (id: string, beforeId: string | null) => {
-      const f = store.get().features.find((x) => x.id === id);
-      if (f) store.edit((d) => reorderFeature(d, id, beforeId), `Move ${f.name} on the timeline`);
+      const d = store.get();
+      const f = d.features.find((x) => x.id === id);
+      if (!f) return;
+      const why = moveProblem(d, id, beforeId);
+      if (why) return say(`${why}, so it can't go there`, true);
+      store.edit((x) => reorderFeature(x, id, beforeId), `Move ${f.name} on the timeline`);
     },
-    [store],
+    [store, say],
   );
 
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
@@ -515,6 +547,8 @@ export function Editor() {
     ungroup,
     toggleHole,
     confirm: () => {},
+    suppressActive: () => {},
+    activeFeature: (): string | null => null,
   });
   handlers.current = {
     newModel,
@@ -550,6 +584,10 @@ export function Editor() {
                 : finish.tool
                   ? finish.done()
                   : undefined,
+    suppressActive: () => {
+      if (activeFeatureId) suppressFeature(activeFeatureId);
+    },
+    activeFeature: () => activeFeatureId,
   };
 
   useEffect(() => {
@@ -616,6 +654,17 @@ export function Editor() {
         run: () => h().armTool(t.id),
         keywords: t.title,
       })),
+      {
+        id: "timeline.suppress",
+        scope: "model",
+        label: "Suppress or unsuppress the step",
+        group: "Timeline",
+        icon: "eyeOff",
+        keys: ["mod+/"],
+        run: () => h().suppressActive(),
+        when: () => !!h().activeFeature(),
+        keywords: "skip disable timeline",
+      },
       {
         id: "edit.group",
         scope: "model",
@@ -1046,6 +1095,24 @@ export function Editor() {
       <span className="bc-sr-only" role="status" aria-live="polite">
         {selectionText} {tool === "select" ? "" : `${activeTool.label} tool armed.`}
       </span>
+      {pendingDelete && (
+        <Dialog
+          open
+          title={`Delete ${doc.features.find((f) => f.id === pendingDelete)?.name ?? "this step"}`}
+          icon="trash"
+          onCancel={() => setPendingDelete(null)}
+          footer={
+            <>
+              <Button kind="cancel" label="Cancel" onClick={() => setPendingDelete(null)} />
+              <Button label="Delete just this one" onClick={() => deleteNow(pendingDelete, false)} />
+              <Button variant="danger" label={`Delete all ${dependents(doc, pendingDelete).length + 1}`} onClick={() => deleteNow(pendingDelete, true)} />
+            </>
+          }
+        >
+          <p>{usedByText(doc, pendingDelete)}.</p>
+          <p className="bc-note">Delete them too, or keep them and fix them afterwards. {formatCombo("mod+z")} undoes either.</p>
+        </Dialog>
+      )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
       <ContextMenu
         at={featureMenuAt?.at ?? null}
