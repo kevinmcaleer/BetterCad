@@ -6,7 +6,13 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   // Most tests run without the service worker (#94), so each new context doesn't download and cache the 25 MB app;
   // pwa.spec.ts turns it on.
-  use: { baseURL: "http://127.0.0.1:4173", trace: "off", serviceWorkers: "block" },
+  // The first-run tour (#98) is marked done, so it stays out of the way; tour.spec.ts runs it.
+  use: {
+    baseURL: "http://127.0.0.1:4173",
+    trace: "off",
+    serviceWorkers: "block",
+    storageState: { cookies: [], origins: [{ origin: "http://127.0.0.1:4173", localStorage: [{ name: "bettercad.tourDone", value: "1" }] }] },
+  },
   // SwiftShader gives headless Chromium WebGL 2 without a GPU, so the 3D view draws in CI.
   projects: [
     {
