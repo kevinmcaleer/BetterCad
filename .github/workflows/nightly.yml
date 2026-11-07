@@ -1,0 +1,107 @@
+name: Nightly
+
+# The full model set (#106): every sample, fixture and format test file rebuilt at fine quality, measured, and
+# exported to STL and STEP and read back; the goldens; and the end-to-end journeys in Chromium and WebKit. A failure
+# opens (or updates) one issue labelled nightly-failure; a green run closes it.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:nightly -- --reporter=default --reporter=json --outputFile=nightly-report.json
+        env:
+          CI: "1"
+          GOLDEN_SUMMARY: ${{ runner.temp }}/golden-moved.md
+      - if: always()
+        run: node scripts/test-report.mjs nightly-report.json "Nightly models and goldens" "$RUNNER_TEMP/golden-moved.md" | tee nightly-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-models
+          path: nightly-summary.md
+          retention-days: 14
+
+  journeys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - id: pw
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-nightly-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run e2e -- --project=chromium --project=webkit
+        env:
+          CI: "1"
+          PW_WEBKIT: "1"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-journeys
+          path: web/test-results
+          retention-days: 14
+
+  report:
+    needs: [models, journeys]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-models
+        continue-on-error: true
+      - uses: actions/github-script@v7
+        env:
+          MODELS: ${{ needs.models.result }}
+          JOURNEYS: ${{ needs.journeys.result }}
+        with:
+          script: |
+            const fs = require("fs");
+            const label = "nightly-failure";
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const ok = process.env.MODELS === "success" && process.env.JOURNEYS === "success";
+            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, labels: label, state: "open", per_page: 1 });
+            if (ok) {
+              for (const i of open) {
+                await github.rest.issues.createComment({ ...context.repo, issue_number: i.number, body: `Green again in [this run](${run}).` });
+                await github.rest.issues.update({ ...context.repo, issue_number: i.number, state: "closed", state_reason: "completed" });
+              }
+              return;
+            }
+            const summary = fs.existsSync("nightly-summary.md") ? fs.readFileSync("nightly-summary.md", "utf8") : "";
+            const body = [
+              `The nightly run failed on ${new Date().toISOString().slice(0, 10)}: [run](${run}).`,
+              "",
+              `- Models and goldens: ${process.env.MODELS}`,
+              `- End-to-end journeys (Chromium and WebKit): ${process.env.JOURNEYS}`,
+              "",
+              summary.slice(0, 60000),
+            ].join("\n");
+            if (open.length) await github.rest.issues.update({ ...context.repo, issue_number: open[0].number, body });
+            else await github.rest.issues.create({ ...context.repo, title: "Nightly run failing", labels: [label], body });

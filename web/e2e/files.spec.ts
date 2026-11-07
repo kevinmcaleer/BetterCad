@@ -45,7 +45,7 @@ const addBox = async (page: Page) => {
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
 };
 
-test("saves a .bcad in place, names the model after the file, and saves again without asking", async ({ page }) => {
+test("saves a .bcad in place, names the model after the file, and saves again without asking", { tag: "@journey" }, async ({ page }) => {
   await mockPickers(page);
   await page.goto("/");
   await addBox(page);

@@ -50,7 +50,7 @@ test("sign up, see the empty library, open the account page and sign out", async
   await expect(page.getByRole("heading", { name: "My models" })).toBeVisible();
 });
 
-test("save a box to the account, open it again from the library after a reload", async ({ page, context }) => {
+test("save a box to the account, open it again from the library after a reload", { tag: "@journey" }, async ({ page, context }) => {
   const server = await fakeApi(context);
   await server.signIn(context);
   await page.goto("/");

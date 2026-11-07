@@ -35,7 +35,7 @@ async function pickShape(page: Page, x: number, y: number, taken: Locator) {
 
 const card = (page: Page) => page.getByRole("dialog", { name: /./ }).filter({ has: page.locator(".bc-tour-title") });
 
-test("the tour runs once, from looking around to an exported STL", async ({ page }) => {
+test("the tour runs once, from looking around to an exported STL", { tag: "@journey" }, async ({ page }) => {
   await page.addInitScript(() => {
     const w = window as unknown as Record<string, unknown>;
     w.showOpenFilePicker = async () => [];

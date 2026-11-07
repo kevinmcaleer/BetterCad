@@ -61,7 +61,7 @@ test("save three times, look at version 1, and restore it", async ({ page, conte
   expect(model.versions.at(-1)).toMatchObject({ number: 4, note: "Restored version 1" });
 });
 
-test("share a link, view it read-only, open a copy, then turn the link off", async ({ page, context }) => {
+test("share a link, view it read-only, open a copy, then turn the link off", { tag: "@journey" }, async ({ page, context }) => {
   const server = await fakeApi(context);
   await server.signIn(context);
   await savedModel(page);

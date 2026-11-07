@@ -19,7 +19,7 @@ test("the empty editor offers three ways in and the samples, and goes once the m
   await expect(welcome).toBeHidden();
 });
 
-test("a sample opens as a new model driven by parameters", async ({ page }) => {
+test("a sample opens as a new model driven by parameters", { tag: "@journey" }, async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open the bracket sample" }).click();
   await expect(page.getByText("Opened the bracket sample. Change it in Parameters.")).toBeVisible();

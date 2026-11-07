@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -164,12 +164,20 @@ describe("golden geometry", () => {
         return;
       }
       const want = JSON.parse(readFileSync(file, "utf8")) as typeof got;
-      const near = (a: unknown, b: unknown, path: string): void => {
-        if (typeof b === "number") expect(a as number, path).toBeCloseTo(b, 3);
-        else if (b && typeof b === "object") for (const [k, x] of Object.entries(b)) near((a as Record<string, unknown>)[k], x, `${path}.${k}`);
-        else expect(a, path).toEqual(b);
+      // Every number that moved, before and after, for the CI job summary (GOLDEN_SUMMARY names the file).
+      const moved: [string, unknown, unknown][] = [];
+      const diff = (a: unknown, b: unknown, path: string): void => {
+        if (typeof b === "number") {
+          if (typeof a !== "number" || Math.abs(a - b) >= 5e-4) moved.push([path, b, a]);
+        } else if (b && typeof b === "object") for (const [k, x] of Object.entries(b)) diff((a as Record<string, unknown>)?.[k], x, `${path}.${k}`);
+        else if (JSON.stringify(a) !== JSON.stringify(b)) moved.push([path, b, a]);
       };
-      near(got, want, name);
+      diff(got, want, name);
+      if (moved.length && process.env.GOLDEN_SUMMARY) {
+        const rows = moved.map(([p, b, a]) => `| \`${p}\` | ${JSON.stringify(b)} | ${JSON.stringify(a)} |`).join("\n");
+        appendFileSync(process.env.GOLDEN_SUMMARY, `\n#### ${name}\n\n| Measure | Golden | Now |\n| --- | --- | --- |\n${rows}\n`);
+      }
+      expect(moved.map(([p, b, a]) => `${p}: ${JSON.stringify(b)} → ${JSON.stringify(a)}`)).toEqual([]);
     });
   }
 });
