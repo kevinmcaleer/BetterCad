@@ -150,7 +150,7 @@ function sortKeys(v: unknown): unknown {
 
 // ---- a small JSON Schema validator: the subset bcad.schema.json uses
 
-interface Schema {
+export interface Schema {
   type?: "object" | "array" | "string" | "integer" | "number" | "boolean";
   required?: string[];
   properties?: Record<string, Schema>;

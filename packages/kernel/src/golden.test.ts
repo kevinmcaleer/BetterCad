@@ -27,6 +27,8 @@ import {
 import type { PrismSpec, ProfileSeg } from "./extrude";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
+import { catalogueShape } from "./occt/catalogue";
+import { cataloguePart } from "./catalogue";
 import { meshVolume, triangleCount } from "./mesh";
 
 /**
@@ -131,6 +133,9 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   "fit-cube-sliding": (oc) =>
     boolean(oc, "cut", box(oc, { x: 30, y: 30, z: 10 }), [grow(oc, place(oc, box(oc, { x: 10, y: 10, z: 10 }), { position: { x: 0, y: 0, z: 5 } }), 0.25)]),
   "fit-peg-sliding": (oc) => boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 10 }), [grow(oc, cylinder(oc, { x: 6, y: 6, z: 20 }), 0.25)]),
+  // Catalogue parts (#186): a servo's blocks joined, and a bearing with its bore taken out.
+  "catalogue-sg90": (oc) => catalogueShape(oc, cataloguePart("sg90")!),
+  "catalogue-608": (oc) => catalogueShape(oc, cataloguePart("608")!),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

@@ -1,0 +1,169 @@
+/**
+ * The robot parts catalogue (#167, #186): bought parts a robot is built round (servos, motors, boards, sensors,
+ * bearings, cells), each as a simple model to design against and the room to cut for it.
+ *
+ * Millimetres and grams. Each part has its own origin: z = 0 is the surface it sits on or is screwed to, x and y are
+ * centred on its footprint, and anything below z = 0 goes into the pocket cut for it. Pockets are the part's nominal
+ * size; a fit's gap (#183) is added when the pocket is cut.
+ */
+import { validate, type Schema } from "../bcad";
+import { screw } from "../screws";
+import schemaJson from "./part.schema.json";
+import { PARTS } from "./parts";
+
+export type CatalogueCategory = "servo" | "motor" | "board" | "sensor" | "bearing" | "power";
+type V2 = [number, number];
+type V3 = [number, number, number];
+
+/** One block of a part's model. A box's `at` is the centre of its bottom face; a cylinder's is the centre of its first end. */
+export interface CatalogueShape {
+  kind: "box" | "cylinder";
+  /** Width, depth and height before turning; a cylinder is [diameter, diameter, length]. */
+  size: V3;
+  at: V3;
+  /** Which way the shape's height runs. Z when missing. */
+  axis?: "x" | "y" | "z";
+  /** Taken away from the blocks before it (a bearing's bore) rather than added. */
+  cut?: boolean;
+}
+
+/** One outline of the pocket, on the surface, centred on `at`. A circle's size is [diameter, diameter]. */
+export interface PocketShape {
+  kind: "rect" | "circle";
+  at: V2;
+  size: V2;
+}
+
+export interface Cutout {
+  /** What to cut away so the part drops in, `depth` deep. Empty when the part sits on the surface. */
+  pocket: PocketShape[];
+  depth: number;
+  /** Screw holes, by the screw table's size (#70). */
+  holes: { at: V2; screw: string }[];
+}
+
+export interface CataloguePart {
+  /** Stable, lower case: "sg90". */
+  id: string;
+  /** Goes up when the model or cutout changes, so a design can tell its copy is old. */
+  version: number;
+  name: string;
+  category: CatalogueCategory;
+  description: string;
+  model: CatalogueShape[];
+  cutout: Cutout;
+  /** Where it drives from: a servo's or motor's output shaft, a bearing's centre. For joints (#164). */
+  mount?: { origin: V3; axis: V3 };
+  /** Grams, for mass estimates (#164). */
+  mass: number;
+  /** Where the sizes come from. */
+  source: string;
+  /** Whether the outline and mounting holes have been checked against the maker's drawing or a standard. */
+  checked: boolean;
+  licence: "MIT";
+  buy?: string;
+}
+
+export const CATALOGUE_CATEGORIES: { id: CatalogueCategory; label: string }[] = [
+  { id: "servo", label: "Servos" },
+  { id: "motor", label: "Motors" },
+  { id: "board", label: "Boards" },
+  { id: "sensor", label: "Sensors" },
+  { id: "bearing", label: "Bearings" },
+  { id: "power", label: "Power" },
+];
+
+export const CATALOGUE: readonly CataloguePart[] = PARTS;
+
+export function cataloguePart(id: string): CataloguePart | undefined {
+  return CATALOGUE.find((p) => p.id === id);
+}
+
+/** A shape's box as [min, max]. */
+export function shapeBounds(s: CatalogueShape): [V3, V3] {
+  const [w, d, h] = s.size;
+  const [x, y, z] = s.at;
+  if (s.axis === "x")
+    return [
+      [x, y - d / 2, z - w / 2],
+      [x + h, y + d / 2, z + w / 2],
+    ];
+  if (s.axis === "y")
+    return [
+      [x - w / 2, y, z - d / 2],
+      [x + w / 2, y + h, z + d / 2],
+    ];
+  return [
+    [x - w / 2, y - d / 2, z],
+    [x + w / 2, y + d / 2, z + h],
+  ];
+}
+
+/** The part's box, from the blocks it adds. */
+export function partBounds(p: CataloguePart): [V3, V3] {
+  const min: V3 = [Infinity, Infinity, Infinity];
+  const max: V3 = [-Infinity, -Infinity, -Infinity];
+  for (const s of p.model) {
+    if (s.cut) continue;
+    const [a, b] = shapeBounds(s);
+    for (let i = 0; i < 3; i++) {
+      min[i] = Math.min(min[i]!, a[i]!);
+      max[i] = Math.max(max[i]!, b[i]!);
+    }
+  }
+  return [min, max];
+}
+
+const EPS = 1e-6;
+
+/** Whether a block's plan lies inside a pocket outline: its box, or its circle for an upright cylinder. */
+function inside(s: CatalogueShape, o: PocketShape): boolean {
+  const [lo, hi] = shapeBounds(s);
+  const [cx, cy] = o.at;
+  if (o.kind === "circle" && s.kind === "cylinder" && (s.axis ?? "z") === "z")
+    return Math.hypot(s.at[0] - cx, s.at[1] - cy) + s.size[0] / 2 <= o.size[0] / 2 + EPS;
+  if (o.kind === "rect") {
+    const [w, h] = o.size;
+    return lo[0] >= cx - w / 2 - EPS && hi[0] <= cx + w / 2 + EPS && lo[1] >= cy - h / 2 - EPS && hi[1] <= cy + h / 2 + EPS;
+  }
+  const r = o.size[0] / 2;
+  return [lo[0], hi[0]].every((x) => [lo[1], hi[1]].every((y) => Math.hypot(x - cx, y - cy) <= r + EPS));
+}
+
+/**
+ * The first thing wrong with a part, or null. Beyond the schema: sizes are positive, circles are round, screws are
+ * in the screw table, and everything below the surface fits inside the pocket and its depth.
+ */
+export function checkPart(p: unknown): string | null {
+  const problem = validate(schemaJson as Schema, p, "");
+  if (problem) return problem;
+  const part = p as CataloguePart;
+  const where = part.id;
+  const triple = (v: unknown) => Array.isArray(v) && v.length === 3;
+  const pair = (v: unknown) => Array.isArray(v) && v.length === 2;
+  if (!part.model.some((s) => !s.cut)) return `${where} has no model`;
+  for (const s of part.model) {
+    if (!triple(s.size) || !triple(s.at)) return `${where} has a block without three sizes and a place`;
+    if (s.size.some((v) => v <= 0)) return `${where} has a block with no size`;
+    if (s.kind === "cylinder" && Math.abs(s.size[0] - s.size[1]) > EPS) return `${where} has a cylinder that isn't round`;
+  }
+  for (const o of part.cutout.pocket) {
+    if (!pair(o.at) || !pair(o.size) || o.size.some((v) => v <= 0)) return `${where} has a pocket without a size and a place`;
+    if (o.kind === "circle" && Math.abs(o.size[0] - o.size[1]) > EPS) return `${where} has a pocket circle that isn't round`;
+  }
+  for (const h of part.cutout.holes) {
+    if (!pair(h.at)) return `${where} has a hole without a place`;
+    if (!screw(h.screw)) return `${where} uses a screw the screw table doesn't have: ${h.screw}`;
+  }
+  if (part.mount && (!triple(part.mount.origin) || !triple(part.mount.axis))) return `${where} has a mount without a point and a direction`;
+  // Everything below the surface must drop into the pocket.
+  for (const s of part.model) {
+    if (s.cut) continue;
+    const [a] = shapeBounds(s);
+    if (a[2] >= -EPS) continue;
+    if (-a[2] > part.cutout.depth + EPS) return `${where} goes deeper than its pocket`;
+    if (!part.cutout.pocket.some((o) => inside(s, o))) return `${where} has a block below the surface outside its pocket`;
+  }
+  if (part.cutout.pocket.length && part.cutout.depth <= 0) return `${where} has a pocket with no depth`;
+  return null;
+}

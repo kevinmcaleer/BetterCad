@@ -1,0 +1,69 @@
+{
+  "$comment": "A catalogue part (#186): one bought part a robot is built round, as BetterCad draws it and cuts room for it. Millimetres and grams. z = 0 is the surface the part sits on; anything below it goes into the pocket.",
+  "type": "object",
+  "required": ["id", "version", "name", "category", "description", "model", "cutout", "mass", "source", "checked", "licence"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string" },
+    "category": { "enum": ["servo", "motor", "board", "sensor", "bearing", "power"] },
+    "description": { "type": "string" },
+    "model": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "size", "at"],
+        "properties": {
+          "kind": { "enum": ["box", "cylinder"] },
+          "size": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "at": { "type": "array", "items": { "type": "number" } },
+          "axis": { "enum": ["x", "y", "z"] },
+          "cut": { "type": "boolean" }
+        }
+      }
+    },
+    "cutout": {
+      "type": "object",
+      "required": ["pocket", "depth", "holes"],
+      "properties": {
+        "pocket": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "at", "size"],
+            "properties": {
+              "kind": { "enum": ["rect", "circle"] },
+              "at": { "type": "array", "items": { "type": "number" } },
+              "size": { "type": "array", "items": { "type": "number", "minimum": 0 } }
+            }
+          }
+        },
+        "depth": { "type": "number", "minimum": 0 },
+        "holes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["at", "screw"],
+            "properties": {
+              "at": { "type": "array", "items": { "type": "number" } },
+              "screw": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "mount": {
+      "type": "object",
+      "required": ["origin", "axis"],
+      "properties": {
+        "origin": { "type": "array", "items": { "type": "number" } },
+        "axis": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "mass": { "type": "number", "minimum": 0 },
+    "source": { "type": "string" },
+    "checked": { "type": "boolean" },
+    "licence": { "const": "MIT" },
+    "buy": { "type": "string" }
+  }
+}
