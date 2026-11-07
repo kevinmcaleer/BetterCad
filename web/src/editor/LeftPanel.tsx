@@ -7,7 +7,6 @@ import {
   NumberField,
   Icon,
   PartsTree,
-  WideButton,
   cx,
   type ContextMenuState,
   type MenuEntry,
@@ -20,14 +19,15 @@ import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
+import { BrowserPanel, type BrowserSketch } from "./Browser";
+import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
-export type PanelId = "parts" | "sketch" | "bodies" | "library" | "robot" | "history" | "params" | "print" | "settings";
+export type PanelId = "parts" | "sketch" | "library" | "robot" | "history" | "params" | "print" | "settings";
 
 export const PANEL_TITLES: Record<PanelId, string> = {
-  parts: "Parts",
+  parts: "Browser",
   sketch: "Sketch",
-  bodies: "Bodies",
   library: "Library",
   robot: "Catalogue",
   history: "History",
@@ -50,6 +50,14 @@ export interface LeftPanelProps {
   partMenu: (ids: string[]) => MenuEntry[];
   renameId: string | null;
   onRenameIdChange: (id: string | null) => void;
+  /** The browser's sketches, origin planes and their eyes. */
+  sketches: BrowserSketch[];
+  origin: WorldPlaneName[];
+  onOrigin: (shown: WorldPlaneName[]) => void;
+  onBodiesHidden: (ids: string[], hidden: boolean) => void;
+  onSketchesHidden: (ids: string[], hidden: boolean) => void;
+  onBrowserPicked: (id: string | null) => void;
+  onSketchOn: (plane: WorldPlaneName) => void;
   features: Feature[];
   at: number;
   failed: Map<string, string>;
@@ -85,12 +93,6 @@ export function LeftPanel(p: LeftPanelProps) {
       return <PartsPanel {...p} />;
     case "sketch":
       return <SketchPanel {...p} />;
-    case "bodies":
-      return (
-        <Placeholder title="Bodies" epic={6}>
-          Solid bodies you have extruded, pushed and combined show here, each with its own colour and visibility.
-        </Placeholder>
-      );
     case "library":
       return <LibraryPanel {...p} />;
     case "history":
@@ -106,61 +108,31 @@ export function LeftPanel(p: LeftPanelProps) {
   }
 }
 
-function Placeholder({ title, epic, children }: { title: string; epic: number; children: ReactNode }) {
-  return (
-    <>
-      <h2 className="bc-panel-title">{title}</h2>
-      <p className="bc-note">{children}</p>
-      <Banner tone="info">
-        Arrives with <a href={`https://github.com/kevinmcaleer/BetterCad/issues/${epic}`}>epic #{epic}</a>.
-      </Banner>
-    </>
-  );
-}
-
 function PartsPanel(p: LeftPanelProps) {
-  const [menu, setMenu] = useState<ContextMenuState | null>(null);
-  const items: TreeItem[] = p.parts.map((part) => ({
-    id: part.id,
-    name: part.name,
-    icon: partIcon(part.kind),
-    hidden: part.hidden,
-    ghost: part.ghost,
-    highlight: part.highlight,
-  }));
-  const chosen = p.parts.filter((x) => p.selection.includes(x.id));
   return (
-    <>
-      <WideButton icon="plus" label="Add a box" variant="outline" onClick={() => p.onAdd("box")} />
-      <div className="bc-parts-head">
-        <h2 className="bc-panel-title">Parts</h2>
-        <span className="bc-note bc-count">{p.parts.length ? `${p.parts.length}` : ""}</span>
-      </div>
-      <PartsTree
-        label="Parts"
-        items={items}
-        selection={p.selection}
-        onSelect={p.onSelect}
-        onRename={p.onRename}
-        onToggle={p.onToggle}
-        onReorder={p.onReorder}
-        toggles={["hidden", "ghost", "highlight"]}
-        renameId={p.renameId}
-        onRenameIdChange={p.onRenameIdChange}
-        onContextMenu={(_id, at) => setMenu(at)}
-        empty={<p className="bc-note">Nothing here yet. Add a shape from the Library, or start a sketch (K).</p>}
-      />
-      {p.parts.length > 0 && <p className="bc-note">Shift-click selects a range, {formatCombo("mod")}-click adds one. Drag to reorder, F2 to rename.</p>}
-      <div className="bc-section-gap" />
-      <Banner tone="info">Press K to sketch on a plane or a flat face, then E to extrude a closed shape into a solid.</Banner>
-      <ContextMenu
-        at={menu}
-        onClose={() => setMenu(null)}
-        label="Part actions"
-        title={chosen.length > 1 ? `${chosen.length} parts` : chosen[0]?.name}
-        entries={p.partMenu(p.selection)}
-      />
-    </>
+    <BrowserPanel
+      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin }}
+      selection={p.selection}
+      onSelect={p.onSelect}
+      onAdd={p.onAdd}
+      onToggle={p.onToggle}
+      onBodiesHidden={p.onBodiesHidden}
+      onSketchesHidden={p.onSketchesHidden}
+      onOrigin={p.onOrigin}
+      onPicked={p.onBrowserPicked}
+      onSelectSketch={(id) => {
+        const f = p.features.find((x) => x.id === id);
+        if (f) p.onSelectFeature(f);
+      }}
+      onRename={p.onRename}
+      onRenameSketch={p.onRenameFeature}
+      onReorder={p.onReorder}
+      onSketchOn={p.onSketchOn}
+      partMenu={p.partMenu}
+      sketchMenu={p.featureMenu}
+      renameId={p.renameId}
+      onRenameIdChange={p.onRenameIdChange}
+    />
   );
 }
 

@@ -24,8 +24,9 @@
     }
   },
   "viewport": {
+    "$comment": "Since #204 the view fills the 1280 x 800 window (3.3 times the pixels it had), and the frame is 34 to 84 ms on runners depending on the runner (the kernel numbers swing by the same factor in the same runs). Baseline 90 leaves the same headroom over a fast runner as the kernel budgets have.",
     "tolerance": 0.25,
-    "baseline": { "Draw a frame of the calibration coupon": 40 }
+    "baseline": { "Draw a frame of the calibration coupon": 90 }
   },
   "lighthouse": {
     "$comment": "Desktop preset, Chromium with SwiftShader as CI runs it. Software WebGL compiles the view's shaders on the main thread (about 1 s of blocking time); with WebGL off the score is 100. The target is 0.85.",

@@ -66,7 +66,7 @@ test("the printer's hole offset sizes printed holes, and Update brings old ones 
   await expect(page.getByRole("button", { name: "Update 1 hole", exact: true })).toHaveCount(0);
 
   // 20³ less one 3.2 mm bore.
-  await page.getByRole("navigation").getByRole("button", { name: "Parts" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Browser" }).click();
   await page.getByRole("treeitem", { name: /Box 1/ }).click();
   await expect(page.getByText("7,839.2 mm³")).toBeVisible({ timeout: 20_000 });
 });

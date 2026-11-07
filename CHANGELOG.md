@@ -23,6 +23,8 @@ The first public release: free CAD for 3D printing in your browser.
 - Light, Dark and Holodeck themes, every text pair at 4.5:1 or better (#2).
 - The 3D view fills the window: the top bar, panels, tool bars and timeline float over it, and Fit frames the model
   in the space they leave clear.
+- A browser, the way Fusion's works: the model at the top, then its origin planes, bodies, sketches and joints in
+  folders, each with an eye to show or hide it and a click to select it. Right-click an origin plane to sketch on it.
 
 ### Files and accounts
 

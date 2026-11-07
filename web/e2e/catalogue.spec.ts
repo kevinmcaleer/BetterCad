@@ -29,7 +29,7 @@ test("an SG90 placed on a plate comes in as a reference body", async ({ page }) 
   await expect(page.getByText("Placed SG90 micro servo, 9 g")).toBeVisible();
   await expect(page.getByRole("button", { name: /SG90 micro servo/ }).first()).toBeVisible();
 
-  await page.getByRole("navigation").getByRole("button", { name: "Parts" }).click();
+  await page.getByRole("navigation").getByRole("button", { name: "Browser" }).click();
   await expect(page.getByRole("treeitem", { name: /SG90 micro servo/ })).toBeVisible();
   await expect(page.getByText("SG90 micro servo, 9 g", { exact: false }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Reference", exact: true })).toBeVisible();

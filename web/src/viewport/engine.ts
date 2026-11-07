@@ -57,6 +57,7 @@ import {
   gridStep,
   halfHeight,
   lerpCamera,
+  lookFrom,
   orbit,
   pan,
   presetOf,
@@ -275,6 +276,12 @@ export class Engine {
   private lineMats = new Set<LineMaterial>();
   private planes: Group;
   private planeHover: WorldPlaneName | null = null;
+  /** Picking a sketch plane: all three show and answer the pointer. */
+  private planesPicking = false;
+  /** The origin planes on show from the browser, outside picking. */
+  private originShown: WorldPlaneName[] = [];
+  /** The origin plane chosen in the browser, drawn brighter. */
+  private planeChosen: WorldPlaneName | null = null;
 
   // Stats
   private statsOn = false;
@@ -463,6 +470,16 @@ export class Engine {
 
   preset(p: Preset): void {
     this.setCamera(toPreset(this.tween?.to ?? this.cam, p), true);
+  }
+
+  /** Glides round to look from `dir` (a view cube face, edge or corner). */
+  lookFrom(dir: V3): void {
+    this.setCamera(lookFrom(this.tween?.to ?? this.cam, dir), true);
+  }
+
+  /** Turns the view by a drag on the view cube, in pixels; stops any glide. */
+  orbitBy(dxPx: number, dyPx: number): void {
+    this.setCamera(orbit(this.cam, -dxPx * 0.5, dyPx * 0.5));
   }
 
   setOrtho(on: boolean): void {
@@ -791,18 +808,32 @@ export class Engine {
 
   /** Shows the three origin planes to pick from, sized to the model (at least 40 mm), or hides them. */
   showPlanes(on: boolean): void {
+    this.planesPicking = on;
+    this.planeHover = null;
+    this.layoutPlanes();
+  }
+
+  /** The origin planes to keep on show, as the browser's eyes set them, and the one chosen there. */
+  setOriginPlanes(shown: WorldPlaneName[], chosen: WorldPlaneName | null = null): void {
+    this.originShown = shown;
+    this.planeChosen = chosen;
+    this.layoutPlanes();
+  }
+
+  private layoutPlanes(): void {
     const s = this.bounds();
     const size = Math.max(40, s ? s.radius * 1.2 : 40);
     this.planes.scale.setScalar(size);
-    this.planes.visible = on;
-    this.planeHover = null;
+    const on = (n: WorldPlaneName) => this.planesPicking || this.originShown.includes(n) || this.planeChosen === n;
+    for (const m of this.planes.children) m.visible = on(m.name as WorldPlaneName);
+    this.planes.visible = this.planes.children.some((m) => m.visible);
     this.paintPlanes();
     this.invalidate();
   }
 
   /** The origin plane under a point, nearest first. */
   planeAt(x: number, y: number): WorldPlaneName | null {
-    if (!this.planes.visible) return null;
+    if (!this.planesPicking) return null;
     const ray = new Raycaster();
     ray.setFromCamera(new Vector2((x / this.width) * 2 - 1, -(y / this.height) * 2 + 1), this.activeCamera);
     this.planes.updateMatrixWorld(true);
@@ -820,7 +851,7 @@ export class Engine {
     for (const m of this.planes.children as Mesh[]) {
       const mat = m.material as MeshBasicMaterial;
       mat.color.copy(this.palette.snap);
-      mat.opacity = m.name === this.planeHover ? 0.3 : 0.15;
+      mat.opacity = m.name === this.planeHover || m.name === this.planeChosen ? 0.3 : 0.15;
     }
   }
 

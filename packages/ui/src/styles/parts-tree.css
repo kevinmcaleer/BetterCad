@@ -151,3 +151,16 @@
   height: 6px;
   box-shadow: inset 0 2px 0 var(--bc-color-accent);
 }
+.bc-row-note {
+  flex: none;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--bc-color-muted);
+}
+.bc-row[data-kind="folder"] .bc-row-name,
+.bc-row[data-kind="component"] .bc-row-name {
+  font-weight: 600;
+}
+.bc-row[data-kind="folder"] .bc-row-name .bc-icon {
+  color: var(--bc-color-muted);
+}

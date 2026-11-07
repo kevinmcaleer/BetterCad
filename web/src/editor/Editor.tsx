@@ -139,11 +139,12 @@ import { saveBcad } from "@bettercad/kernel/bcad";
 import type { Mate } from "@bettercad/kernel";
 import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
+import { planeOf } from "./Browser";
+import type { WorldPlaneName } from "../viewport/engine";
 
 const PANELS: RailItem<PanelId>[] = [
-  { id: "parts", icon: "layers", label: "Parts" },
+  { id: "parts", icon: "layers", label: "Browser" },
   { id: "sketch", icon: "sketch", label: "Sketch" },
-  { id: "bodies", icon: "body", label: "Bodies" },
   { id: "library", icon: "shapes", label: "Library" },
   { id: "robot", icon: "screw", label: "Catalogue" },
   { id: "history", icon: "history", label: "History" },
@@ -232,6 +233,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const narrow = useMedia(NARROW);
   const [selection, setSelection] = useState<string[]>([]);
+  // The browser's origin planes on show, and its sketch or plane pick: view state, like the marker.
+  const [originShown, setOriginShown] = useState<WorldPlaneName[]>([]);
+  const [browserPicked, setBrowserPicked] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelId | null>(() => (window.matchMedia?.(NARROW).matches ? null : "parts"));
   const [propsOpen, setPropsOpen] = useState(false);
   const [tool, setTool] = useState<ToolId>("select");
@@ -353,11 +357,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   live.current.dialogOpen ||= vp.namingOpen;
   useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
 
+  const shownSketches = useMemo(() => built.sketches.filter((s) => !doc.looks[s.id]?.hidden), [built.sketches, doc.looks]);
+  const browserSketches = useMemo(
+    () => built.sketches.map((s) => ({ id: s.id, name: s.name, hidden: !!doc.looks[s.id]?.hidden, warning: failed.get(s.id) })),
+    [built.sketches, doc.looks, failed],
+  );
   const sketch = useSketch({
     store,
     record,
     doc,
-    built: built.sketches,
+    built: shownSketches,
     view: vp.ref,
     picking: tool === "sketch",
     onStarted: () => setTool("select"),
@@ -517,6 +526,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       const on = !chosen.every((p) => !!p[what]);
       const verb = { hidden: on ? "Hide" : "Show", ghost: on ? "Ghost" : "Unghost", highlight: on ? "Highlight" : "Clear highlight on" }[what];
       store.edit((d) => setLook(d, ids, () => ({ [what]: on })), `${verb} ${chosen.length === 1 ? chosen[0]!.name : `${chosen.length} parts`}`);
+    },
+    [store],
+  );
+
+  /** The browser's folder eyes and sketch eyes: hide or show many at once, as one undo step. */
+  const setHidden = useCallback(
+    (ids: string[], hidden: boolean, what: "parts" | "sketches") => {
+      if (!ids.length) return;
+      const one = ids.length === 1 ? (live.current.parts.find((p) => p.id === ids[0])?.name ?? store.get().features.find((f) => f.id === ids[0])?.name) : null;
+      store.edit((d) => setLook(d, ids, () => ({ hidden })), `${hidden ? "Hide" : "Show"} ${one ?? `${ids.length} ${what}`}`);
     },
     [store],
   );
@@ -1841,6 +1860,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               partMenu={partMenu}
               renameId={renameId}
               onRenameIdChange={setRenameId}
+              sketches={browserSketches}
+              origin={originShown}
+              onOrigin={setOriginShown}
+              onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
+              onSketchesHidden={(ids, hidden) => setHidden(ids, hidden, "sketches")}
+              onBrowserPicked={setBrowserPicked}
+              onSketchOn={sketch.startOnPlane}
               features={doc.features}
               at={at}
               failed={failed}
@@ -1923,6 +1949,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             bed={showBed && !share ? printer : null}
             warn={offBed}
             check={checkResult?.values ?? null}
+            originPlanes={{ shown: sketch.editing ? [] : originShown, chosen: sketch.editing ? null : planeOf(browserPicked ?? "") }}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
             <SketchLabels s={sketch} />
