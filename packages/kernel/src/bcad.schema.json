@@ -36,6 +36,7 @@
           }
         },
         "looks": { "type": "object" },
+        "print": { "type": "object" },
         "order": { "type": "array", "items": { "type": "string" } },
         "views": {
           "type": "array",

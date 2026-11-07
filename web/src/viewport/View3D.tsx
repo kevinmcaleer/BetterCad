@@ -39,6 +39,10 @@ export interface View3DProps {
   onTransforming?: (id: string, position: V3, rotation: V3) => void;
   onSection: (s: Section) => void;
   onCamera?: (c: CameraState) => void;
+  /** The printer's bed to draw (#100), or null for none. */
+  bed?: { x: number; y: number; z: number; origin: "centre" | "corner" } | null;
+  /** Bodies off the bed, tinted warn. */
+  warn?: Set<string>;
   /** Whether to show the empty-model hint (off while sketching). */
   emptyHint?: boolean;
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
@@ -164,9 +168,10 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             rotation: p.rotation,
             ghost: p.ghost,
             highlight: p.highlight,
+            warn: props.warn?.has(p.id),
           };
         }),
-    [parts, meshes],
+    [parts, meshes, props.warn],
   );
 
   // Frame the model when the first part arrives (a new model, an opened file).
@@ -181,6 +186,13 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   useEffect(() => engine.current?.setHoverEnabled(mode === "select" || mode === "section" || mode === "move" || mode === "turn"), [mode]);
   useEffect(() => engine.current?.setTheme(theme === "holodeck"), [theme]);
   useEffect(() => engine.current?.setStyle(style), [style]);
+  const bed = props.bed;
+  const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin}` : "";
+  useEffect(() => {
+    engine.current?.setBed(bed ?? null);
+    // Only a different bed redraws it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bedKey]);
   useEffect(() => engine.current?.setOrtho(ortho), [ortho]);
   useEffect(() => engine.current?.setSection(section, mode === "section"), [section, mode]);
   useEffect(() => engine.current?.showStats(stats), [stats]);
