@@ -104,6 +104,11 @@ export const grid = "M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18";
 export const body = "M4 8l8-5 8 5v8l-8 5-8-5zM4 8l8 5 8-5M12 13v8";
 export const info = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8h.01";
 export const chevron = "m9 6 6 6-6 6";
+// Timeline play controls.
+export const skipStart = "M18 19 9 12l9-7zM6 5v14";
+export const stepBack = "M16 18 8 12l8-6z";
+export const stepForward = "m8 6 8 6-8 6z";
+export const skipEnd = "m6 5 9 7-9 7zM18 5v14";
 
 export const ICONS = {
   undo,
@@ -204,6 +209,10 @@ export const ICONS = {
   body,
   info,
   chevron,
+  skipStart,
+  stepBack,
+  stepForward,
+  skipEnd,
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -10,7 +10,7 @@ export interface CommandContext {
   dialogOpen: boolean;
 }
 
-export type CommandGroup = "File" | "Edit" | "Tools" | "View" | "Panels" | "Theme" | "Help";
+export type CommandGroup = "File" | "Edit" | "Tools" | "Timeline" | "View" | "Panels" | "Theme" | "Help";
 
 /** One action reachable from the keyboard, the command palette, menus and tool bars. */
 export interface Command {
@@ -46,7 +46,7 @@ export function comboOf(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "
 export function formatCombo(combo: string, mac = isMac): string {
   const parts = combo.split("+");
   const key = parts.pop()!;
-  const names: Record<string, string> = { escape: "Esc", delete: "Del", backspace: "Backspace", arrowup: "↑", arrowdown: "↓" };
+  const names: Record<string, string> = { escape: "Esc", delete: "Del", backspace: "Backspace", arrowup: "↑", arrowdown: "↓", arrowleft: "←", arrowright: "→" };
   const pretty = key.length === 1 ? key.toUpperCase() : (names[key] ?? key[0]!.toUpperCase() + key.slice(1));
   if (mac) {
     const sym: Record<string, string> = { mod: "⌘", shift: "⇧", alt: "⌥" };

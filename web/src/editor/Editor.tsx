@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ESC, Rail, TooltipLayer, useEscape, type MenuEntry, type RailItem, type RowToggle } from "@bettercad/ui";
+import { ContextMenu, ESC, Rail, TooltipLayer, useEscape, type ContextMenuState, type MenuEntry, type RailItem, type RowToggle } from "@bettercad/ui";
 import { createStore } from "../state/store";
 import {
   addPart,
-  duplicatePart,
+  build,
+  changeParts,
+  duplicateParts,
+  featureParts,
+  featureSummary,
   newDoc,
   newId,
+  removeFeature,
   removeParts,
+  reorderFeature,
   reorderPart,
-  updatePart,
-  updateParts,
+  setLook,
+  updateFeature,
   KIND_LABEL,
+  type Feature,
   type ModelDoc,
   type PartKind,
   type Vec3,
@@ -28,6 +35,7 @@ import { CommandPalette } from "./CommandPalette";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { openFromDisk, saveToDisk } from "./files";
+import { Timeline } from "./Timeline";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -41,6 +49,15 @@ const PANELS: RailItem<PanelId>[] = [
 const THEME_LABEL: Record<ThemeSetting, string> = { system: "Match the system", light: "Light", dark: "Dark", holodeck: "Holodeck" };
 
 const NARROW = "(max-width: 899px)";
+const TIMELINE_KEY = "bettercad.timeline";
+
+function readTimelineShown() {
+  try {
+    return localStorage.getItem(TIMELINE_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
 
 function useMedia(query: string) {
   const get = () => typeof window !== "undefined" && !!window.matchMedia?.(query).matches;
@@ -61,6 +78,25 @@ export function Editor() {
   const history = useSyncExternalStore(store.subscribe, store.history);
   const doc = history.present;
 
+  // The timeline marker is view state: how many features are built. null means at the end, following new features.
+  const [marker, setMarker] = useState<number | null>(null);
+  const featureCount = doc.features.length;
+  const at = marker === null ? featureCount : Math.min(marker, featureCount);
+  const built = useMemo(() => build(doc, at), [doc, at]);
+  const parts = built.parts;
+  const [activeFeature, setActiveFeature] = useState<string | null>(null);
+  const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
+  const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
+  const [timelineShown, setTimelineShownState] = useState(readTimelineShown);
+  const setTimelineShown = useCallback((on: boolean) => {
+    setTimelineShownState(on);
+    try {
+      localStorage.setItem(TIMELINE_KEY, on ? "on" : "off");
+    } catch {
+      // Private windows can refuse storage; the setting then lasts for this visit.
+    }
+  }, []);
+
   const narrow = useMedia(NARROW);
   const [selection, setSelection] = useState<string[]>([]);
   const [panel, setPanel] = useState<PanelId | null>(() => (window.matchMedia?.(NARROW).matches ? null : "parts"));
@@ -74,8 +110,8 @@ export function Editor() {
   const [status, say] = useStatus();
 
   // The registry reads the latest state through a ref, so commands are registered once.
-  const live = useRef({ doc, selection, tool, dialogOpen: false });
-  live.current = { doc, selection, tool, dialogOpen: paletteOpen || shortcutsOpen };
+  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false });
+  live.current = { doc, parts, marker, at, selection, tool, dialogOpen: paletteOpen || shortcutsOpen };
   const [registry] = useState(() =>
     createRegistry((): CommandContext => ({
       hasSelection: live.current.selection.length > 0,
@@ -92,10 +128,39 @@ export function Editor() {
   // Drop selected ids that no longer exist (after undo, delete, open).
   useEffect(() => {
     setSelection((s) => {
-      const kept = s.filter((id) => doc.parts.some((p) => p.id === id));
+      const kept = s.filter((id) => parts.some((p) => p.id === id));
       return kept.length === s.length ? s : kept;
     });
-  }, [doc.parts]);
+  }, [parts]);
+
+  // After an undo the marker can sit past the end; it then follows the end again.
+  useEffect(() => {
+    if (marker !== null && marker >= featureCount) setMarker(null);
+  }, [marker, featureCount]);
+
+  /**
+   * Records a modelling change. New features go in at the marker when the model is rolled back, and the marker moves
+   * past them, the way Fusion inserts into the timeline.
+   */
+  const record = useCallback(
+    (fn: (d: ModelDoc, at: number | undefined) => ModelDoc, label: string, coalesceKey?: string) => {
+      const before = store.get().features.length;
+      const m = live.current.marker;
+      store.edit((d) => fn(d, m ?? undefined), label, coalesceKey);
+      const grew = store.get().features.length - before;
+      if (grew > 0 && m !== null) setMarker(Math.min(m, before) + grew);
+    },
+    [store],
+  );
+
+  const moveMarker = useCallback(
+    (to: number) => {
+      const n = store.get().features.length;
+      const clamped = Math.max(0, Math.min(n, to));
+      setMarker(clamped >= n ? null : clamped);
+    },
+    [store],
+  );
 
   const showPanel = useCallback((id: PanelId | null) => {
     setPanel(id);
@@ -116,61 +181,53 @@ export function Editor() {
   const add = useCallback(
     (kind: PartKind) => {
       const id = newId();
-      store.edit((d) => addPart(d, kind, id), `Add ${KIND_LABEL[kind].toLowerCase()}`);
+      record((d, at) => addPart(d, kind, id, at), `Add ${KIND_LABEL[kind].toLowerCase()}`);
       setSelection([id]);
       if (!window.matchMedia?.(NARROW).matches) setPanel("parts");
       say(`Added a ${KIND_LABEL[kind].toLowerCase()}`);
     },
-    [store, say],
+    [record, say],
   );
 
   const remove = useCallback(
     (ids: string[]) => {
-      const gone = store.get().parts.filter((p) => ids.includes(p.id));
+      const gone = live.current.parts.filter((p) => ids.includes(p.id));
       if (!gone.length) return;
       const what = gone.length === 1 ? gone[0]!.name : `${gone.length} parts`;
-      store.edit((d) => removeParts(d, ids), `Delete ${what}`);
+      record((d, at) => removeParts(d, ids, at), `Delete ${what}`);
       setSelection((s) => s.filter((id) => !ids.includes(id)));
       say(`Deleted ${what}. ${formatCombo("mod+z")} brings it back.`);
     },
-    [store, say],
+    [record, say],
   );
 
   const duplicate = useCallback(
     (ids: string[]) => {
       if (!ids.length) return;
-      const copies: string[] = [];
-      store.edit(
-        (d) =>
-          ids.reduce((acc, id) => {
-            const copy = newId();
-            copies.push(copy);
-            return duplicatePart(acc, id, copy);
-          }, d),
-        ids.length === 1 ? "Duplicate" : `Duplicate ${ids.length} parts`,
-      );
+      const copies = ids.map(() => newId());
+      record((d, at) => duplicateParts(d, ids, copies, at), ids.length === 1 ? "Duplicate" : `Duplicate ${ids.length} parts`);
       setSelection(copies);
     },
-    [store],
+    [record],
   );
 
   const toggle = useCallback(
     (ids: string[], what: RowToggle) => {
-      const parts = store.get().parts.filter((p) => ids.includes(p.id));
-      if (!parts.length) return;
-      const on = !parts.every((p) => !!p[what]);
+      const chosen = live.current.parts.filter((p) => ids.includes(p.id));
+      if (!chosen.length) return;
+      const on = !chosen.every((p) => !!p[what]);
       const verb = { hidden: on ? "Hide" : "Show", ghost: on ? "Ghost" : "Unghost", highlight: on ? "Highlight" : "Clear highlight on" }[what];
-      store.edit((d) => updateParts(d, ids, () => ({ [what]: on })), `${verb} ${parts.length === 1 ? parts[0]!.name : `${parts.length} parts`}`);
+      store.edit((d) => setLook(d, ids, () => ({ [what]: on })), `${verb} ${chosen.length === 1 ? chosen[0]!.name : `${chosen.length} parts`}`);
     },
     [store],
   );
 
   const rename = useCallback(
     (id: string, name: string) => {
-      const p = store.get().parts.find((x) => x.id === id);
+      const p = live.current.parts.find((x) => x.id === id);
       const clean = name.trim();
       if (!p || !clean || clean === p.name) return;
-      store.edit((d) => updatePart(d, id, { name: clean }), `Rename ${p.name}`);
+      store.edit((d) => setLook(d, [id], () => ({ name: clean })), `Rename ${p.name}`);
     },
     [store],
   );
@@ -187,6 +244,7 @@ export function Editor() {
       const d = await openFromDisk();
       if (!d) return;
       store.edit(() => d, `Open ${d.name}`);
+      setMarker(null);
       setSelection([]);
       say(`Opened ${d.name}`);
     } catch (e) {
@@ -195,16 +253,95 @@ export function Editor() {
   }, [store, say]);
   const newModel = useCallback(() => {
     store.edit(() => newDoc(), "New model");
+    setMarker(null);
     setSelection([]);
   }, [store]);
+
+  // ---- timeline
+  const selectFeature = useCallback((f: Feature) => {
+    setActiveFeature(f.id);
+    const here = new Set(live.current.parts.map((p) => p.id));
+    setSelection(featureParts(f).filter((id) => here.has(id)));
+  }, []);
+  const renameFeature = useCallback(
+    (id: string, name: string) => {
+      const f = store.get().features.find((x) => x.id === id);
+      const clean = name.trim();
+      if (!f || !clean || clean === f.name) return;
+      store.edit((d) => updateFeature(d, id, { name: clean }), `Rename ${f.name}`);
+    },
+    [store],
+  );
+  const suppressFeature = useCallback(
+    (id: string) => {
+      const f = store.get().features.find((x) => x.id === id);
+      if (!f) return;
+      store.edit((d) => updateFeature(d, id, { suppressed: !f.suppressed }), `${f.suppressed ? "Unsuppress" : "Suppress"} ${f.name}`);
+      say(f.suppressed ? `${f.name} is built again` : `${f.name} is suppressed: it stays on the timeline but is not built`);
+    },
+    [store, say],
+  );
+  const deleteFeature = useCallback(
+    (id: string) => {
+      const i = store.get().features.findIndex((x) => x.id === id);
+      const f = store.get().features[i];
+      if (!f) return;
+      store.edit((d) => removeFeature(d, id), `Delete ${f.name}`);
+      const m = live.current.marker;
+      if (m !== null && i < m) setMarker(m - 1);
+      say(`Deleted ${f.name}. ${formatCombo("mod+z")} brings it back.`);
+    },
+    [store, say],
+  );
+  const moveFeature = useCallback(
+    (id: string, beforeId: string | null) => {
+      const f = store.get().features.find((x) => x.id === id);
+      if (f) store.edit((d) => reorderFeature(d, id, beforeId), `Move ${f.name} on the timeline`);
+    },
+    [store],
+  );
 
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
   useEscape(tool !== "select", () => setTool("select"), ESC.tool);
   useEscape(narrow && (panel !== null || propsOpen), () => (propsOpen ? setPropsOpen(false) : setPanel(null)), ESC.panel);
   useEscape(selection.length > 0, () => setSelection([]), ESC.selection);
 
-  const handlers = useRef({ newModel, open, save, doUndo, doRedo, duplicate, toggle, remove, armTool, add, showPanel, setTheme, say });
-  handlers.current = { newModel, open, save, doUndo, doRedo, duplicate, toggle, remove, armTool, add, showPanel, setTheme, say };
+  const handlers = useRef({
+    newModel,
+    open,
+    save,
+    doUndo,
+    doRedo,
+    duplicate,
+    toggle,
+    remove,
+    armTool,
+    add,
+    showPanel,
+    setTheme,
+    say,
+    moveMarker,
+    setTimelineShown,
+    timelineShown,
+  });
+  handlers.current = {
+    newModel,
+    open,
+    save,
+    doUndo,
+    doRedo,
+    duplicate,
+    toggle,
+    remove,
+    armTool,
+    add,
+    showPanel,
+    setTheme,
+    say,
+    moveMarker,
+    setTimelineShown,
+    timelineShown,
+  };
 
   useEffect(() => {
     const h = () => handlers.current;
@@ -222,8 +359,8 @@ export function Editor() {
         group: "Edit",
         icon: "arrow",
         keys: ["mod+a"],
-        run: () => setSelection(live.current.doc.parts.map((p) => p.id)),
-        when: () => live.current.doc.parts.length > 0,
+        run: () => setSelection(live.current.parts.map((p) => p.id)),
+        when: () => live.current.parts.length > 0,
       },
       {
         id: "edit.rename",
@@ -257,6 +394,51 @@ export function Editor() {
         run: () => h().add(k),
         keywords: "part primitive shape",
       })),
+      {
+        id: "timeline.start",
+        label: "Roll back to the start",
+        group: "Timeline",
+        icon: "skipStart",
+        keys: ["alt+home"],
+        run: () => h().moveMarker(0),
+        when: () => live.current.at > 0,
+      },
+      {
+        id: "timeline.back",
+        label: "Step back on the timeline",
+        group: "Timeline",
+        icon: "stepBack",
+        keys: ["alt+arrowleft"],
+        run: () => h().moveMarker(live.current.at - 1),
+        when: () => live.current.at > 0,
+        keywords: "roll back history",
+      },
+      {
+        id: "timeline.forward",
+        label: "Step forward on the timeline",
+        group: "Timeline",
+        icon: "stepForward",
+        keys: ["alt+arrowright"],
+        run: () => h().moveMarker(live.current.at + 1),
+        when: () => live.current.at < live.current.doc.features.length,
+      },
+      {
+        id: "timeline.end",
+        label: "Go to the end of the timeline",
+        group: "Timeline",
+        icon: "skipEnd",
+        keys: ["alt+end"],
+        run: () => h().moveMarker(Infinity),
+        when: () => live.current.at < live.current.doc.features.length,
+      },
+      {
+        id: "timeline.toggle",
+        label: "Show or hide the timeline",
+        group: "View",
+        icon: "history",
+        run: () => h().setTimelineShown(!h().timelineShown),
+        keywords: "steps features history",
+      },
       ...VIEWS.map<Command>((v) => ({ id: `view.${v.id}`, label: `${v.label} view`, group: "View", icon: "camera", keys: [v.key], run: () => setView(v.id) })),
       { id: "view.fit", label: "Fit the parts in the view", group: "View", icon: "frame", keys: ["f"], run: () => h().say("Fit arrives with the 3D view") },
       ...PANELS.map<Command>((p) => ({ id: `panel.${p.id}`, label: `Show ${p.label}`, group: "Panels", icon: p.icon, run: () => h().showPanel(p.id) })),
@@ -289,11 +471,43 @@ export function Editor() {
   const commands = registry.list();
   const isEnabled = useCallback((id: string) => registry.enabled(id), [registry]);
   const activeTool = TOOLS.find((t) => t.id === tool)!;
-  const selectedParts = useMemo(() => doc.parts.filter((p) => selection.includes(p.id)), [doc.parts, selection]);
+  const selectedParts = useMemo(() => parts.filter((p) => selection.includes(p.id)), [parts, selection]);
+
+  // The active tile: the one last clicked while its parts stay selected, else the last built step that touches them.
+  const activeFeatureId = useMemo(() => {
+    if (!selection.length) return null;
+    const touches = (f: Feature) => featureParts(f).some((id) => selection.includes(id));
+    const clicked = doc.features.find((f) => f.id === activeFeature);
+    if (clicked && touches(clicked)) return clicked.id;
+    return [...doc.features.slice(0, at)].reverse().find(touches)?.id ?? null;
+  }, [selection, activeFeature, doc.features, at]);
+
+  const summary = useCallback((f: Feature) => featureSummary(doc, f), [doc]);
+
+  const featureMenu = (id: string): MenuEntry[] => {
+    const i = doc.features.findIndex((f) => f.id === id);
+    const f = doc.features[i];
+    if (!f) return [];
+    return [
+      { id: "roll", label: "Roll to here", icon: "history", disabled: i + 1 === at, onSelect: () => moveMarker(i + 1) },
+      {
+        id: "rename",
+        label: "Rename",
+        icon: "pencil",
+        onSelect: () => {
+          showPanel("history");
+          setFeatureRenameId(id);
+        },
+      },
+      { id: "suppress", label: f.suppressed ? "Unsuppress" : "Suppress", icon: f.suppressed ? "eye" : "eyeOff", onSelect: () => suppressFeature(id) },
+      { kind: "separator", id: "s1" },
+      { id: "delete", label: "Delete", icon: "trash", danger: true, onSelect: () => deleteFeature(id) },
+    ];
+  };
 
   const partMenu = (ids: string[]): MenuEntry[] => {
-    const parts = doc.parts.filter((p) => ids.includes(p.id));
-    const allHidden = parts.length > 0 && parts.every((p) => p.hidden);
+    const chosen = parts.filter((p) => ids.includes(p.id));
+    const allHidden = chosen.length > 0 && chosen.every((p) => p.hidden);
     return [
       { id: "rename", label: "Rename", icon: "pencil", keys: "F2", disabled: ids.length !== 1, onSelect: () => setRenameId(ids[0] ?? null) },
       { id: "duplicate", label: "Duplicate", icon: "copy", keys: formatCombo("mod+d"), onSelect: () => duplicate(ids) },
@@ -327,9 +541,9 @@ export function Editor() {
 
   const onPropChange = (key: "position" | "size", axis: keyof Vec3, value: number) => {
     const ids = selection;
-    store.edit(
-      (d) => updateParts(d, ids, (p) => ({ [key]: { ...p[key], [axis]: value } })),
-      `Change ${key === "size" ? "size" : "position"}`,
+    record(
+      (d, at) => changeParts(d, ids, key, { [axis]: value }, at),
+      `${key === "size" ? "Resize" : "Move"} ${selectedParts.length === 1 ? selectedParts[0]!.name : `${ids.length} parts`}`,
       `props:${ids.join(",")}:${key}.${axis}`,
     );
   };
@@ -367,6 +581,7 @@ export function Editor() {
             <LeftPanel
               panel={panel}
               doc={doc}
+              parts={parts}
               selection={selection}
               onSelect={setSelection}
               onAdd={add}
@@ -376,7 +591,19 @@ export function Editor() {
               partMenu={partMenu}
               renameId={renameId}
               onRenameIdChange={setRenameId}
-              history={history}
+              features={doc.features}
+              at={at}
+              failed={built.failed}
+              summary={summary}
+              activeFeatureId={activeFeatureId}
+              onSelectFeature={selectFeature}
+              onRenameFeature={renameFeature}
+              onReorderFeature={moveFeature}
+              featureMenu={featureMenu}
+              featureRenameId={featureRenameId}
+              onFeatureRenameIdChange={setFeatureRenameId}
+              timelineShown={timelineShown}
+              onTimelineShown={setTimelineShown}
               theme={theme}
               onTheme={setTheme}
               commands={commands}
@@ -386,15 +613,36 @@ export function Editor() {
           )
         }
         stageToolbar={<StageBars tool={activeTool} onArmTool={armTool} view={view} onView={setView} onFit={() => say("Fit arrives with the 3D view")} />}
-        stage={<Viewport view={view} onView={setView} description={`${doc.parts.length} parts. ${selectionText}`} />}
+        stage={<Viewport view={view} onView={setView} description={`${parts.length} parts. ${selectionText}`} />}
+        timeline={
+          timelineShown && (
+            <Timeline
+              features={doc.features}
+              at={at}
+              onMarker={moveMarker}
+              failed={built.failed}
+              activeId={activeFeatureId}
+              summary={summary}
+              onSelect={selectFeature}
+              onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
+            />
+          )
+        }
         helpLine={helpText}
-        rightPanel={<Properties parts={selectedParts} totalParts={doc.parts.length} onChange={onPropChange} onCommit={store.seal} />}
+        rightPanel={<Properties parts={selectedParts} totalParts={parts.length} onChange={onPropChange} onCommit={store.seal} />}
         rightOpen={propsOpen}
       />
       <span className="bc-sr-only" role="status" aria-live="polite">
         {selectionText} {tool === "select" ? "" : `${activeTool.label} tool armed.`}
       </span>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
+      <ContextMenu
+        at={featureMenuAt?.at ?? null}
+        onClose={() => setFeatureMenuAt(null)}
+        label="Step actions"
+        title={doc.features.find((f) => f.id === featureMenuAt?.id)?.name}
+        entries={featureMenuAt ? featureMenu(featureMenuAt.id) : []}
+      />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
       <TooltipLayer />
     </>

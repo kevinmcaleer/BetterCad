@@ -1,0 +1,148 @@
+/* The Fusion-style timeline along the bottom of the stage. Colours come only from tokens.css. */
+.bc-timeline {
+  align-self: stretch;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  min-width: 0;
+  padding: var(--bc-space-2) var(--bc-space-4);
+  background: var(--bc-color-bar);
+  border-top: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  box-shadow: var(--bc-shadow-float);
+}
+.bc-tl-play {
+  flex: none;
+  display: flex;
+  gap: var(--bc-space-1);
+}
+.bc-tl-play .bc-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.bc-tl-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-1);
+  height: 36px;
+  padding: 0 var(--bc-space-3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  cursor: pointer;
+}
+.bc-tl-slot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-1);
+}
+.bc-tl-empty {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+  cursor: default;
+}
+.bc-tl-tile {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  cursor: pointer;
+}
+.bc-tl-tile .bc-icon {
+  width: 14px;
+  height: 14px;
+}
+.bc-tl-tile:hover {
+  background: var(--bc-color-hover);
+}
+.bc-tl-tile.bc-on {
+  background: var(--bc-color-accent-soft);
+  border-color: var(--bc-color-accent);
+  color: var(--bc-color-accent);
+}
+/* Features after the marker are not built. */
+.bc-tl-tile.bc-after {
+  border-style: dashed;
+  color: var(--bc-color-muted);
+  background: var(--bc-color-rail);
+}
+.bc-tl-tile.bc-suppressed {
+  opacity: 0.35;
+}
+.bc-tl-tile.bc-suppressed::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  border-top: 2px solid currentColor;
+  transform: rotate(-45deg);
+}
+/* A feature that failed to build: a warn corner mark. */
+.bc-tl-tile.bc-failed::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  border-style: solid;
+  border-width: 0 8px 8px 0;
+  border-color: transparent var(--bc-color-warn) transparent transparent;
+  border-top-right-radius: var(--bc-radius-sm);
+}
+.bc-tl-marker {
+  flex: none;
+  position: relative;
+  width: 4px;
+  height: 30px;
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-accent);
+  cursor: ew-resize;
+  touch-action: none;
+}
+/* A wider grab area than the bar itself. */
+.bc-tl-marker::before {
+  content: "";
+  position: absolute;
+  inset: -4px -8px;
+}
+.bc-tl-marker::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--bc-color-accent);
+  transform: translateX(-50%) rotate(45deg);
+}
+.bc-tl-summary {
+  flex: none;
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+  white-space: nowrap;
+}
+.bc-rolled-back .bc-tl-summary {
+  color: var(--bc-color-accent);
+  font-weight: var(--bc-type-small-strong-weight);
+}
+/* Under 640px the strip folds to a one-line summary beside the play controls. */
+@media (max-width: 640px) {
+  .bc-tl-strip {
+    display: none;
+  }
+  .bc-timeline {
+    justify-content: space-between;
+  }
+}
