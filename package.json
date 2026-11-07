@@ -21,7 +21,7 @@
     "check": "npm run lint && npm run typecheck && npm run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:golden": "vitest run packages/kernel/src/golden.test.ts",
+    "test:golden": "vitest run packages/kernel/src/golden.test.ts packages/sketch/src/golden.test.ts",
     "e2e:visual": "npm run e2e:visual -w web",
     "e2e:update": "npm run e2e:visual -w web -- --update-snapshots=all"
   },
