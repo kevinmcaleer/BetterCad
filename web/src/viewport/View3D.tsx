@@ -4,6 +4,7 @@ import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kerne
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
 import { Engine, canDraw3D, type RenderStyle, type Section, type Stats } from "./engine";
+import { formatMilestones, milestone } from "../perf";
 import type { Pick, SelectFilter } from "./ids";
 
 export type ViewMode = "select" | "move" | "turn" | "section" | "none";
@@ -130,6 +131,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       stats: (s) => setFrame(s),
     });
     engine.current = e;
+    milestone("shell");
     // Test builds can ask where a world point lands on screen (the gizmo's handles, a face).
     if (import.meta.env.DEV || import.meta.env.VITE_GALLERY) (window as unknown as { __bcView?: Engine }).__bcView = e;
     const ro = new ResizeObserver(() => {
@@ -232,6 +234,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       {frame && (
         <div className="bc-frame-stats" aria-hidden="true">
           {frame.ms.toFixed(1)} ms · {Math.round(frame.fps)} fps · {frame.triangles.toLocaleString()} triangles · {frame.calls} draws · {frame.bodies} bodies
+          {formatMilestones() && ` · ${formatMilestones()}`}
         </div>
       )}
     </div>
