@@ -1,6 +1,6 @@
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
-import { box, cylinder, measure, place, sphere, type Measure } from "./shapes";
+import { boolean, box, cylinder, measure, place, prismOf, sphere, type Measure } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
 import { build, type ModelDoc, type Part } from "../document";
 import type { BodyMesh } from "../mesh";
@@ -23,13 +23,17 @@ export interface ModelResult {
   ms: number;
 }
 
-const key = (p: Part, q: Quality) => JSON.stringify([p.kind, p.size, p.position, p.rotation ?? null, q]);
+const key = (p: Part, q: Quality) =>
+  JSON.stringify([p.kind, p.kind === "solid" ? null : p.size, p.position, p.rotation ?? null, p.prism ?? null, p.ops ?? null, q]);
 
 export class ModelBuilder {
   private cache = new Map<string, { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> }>();
   private used = new Set<string>();
 
   constructor(private oc: OC) {}
+
+  /** Steps whose join, cut or intersection could not be made on the last build (the part is built without them). */
+  private opFailures: [string, string][] = [];
 
   /** The solid for one part, made fresh or from the cache. */
   solid(p: Part, quality: Quality = "fast"): { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> } {
@@ -38,7 +42,15 @@ export class ModelBuilder {
     let hit = this.cache.get(k);
     if (!hit) {
       const oc = this.oc;
-      const local = p.kind === "box" ? box(oc, p.size) : p.kind === "cylinder" ? cylinder(oc, p.size) : sphere(oc, p.size);
+      let local =
+        p.kind === "solid" ? prismOf(oc, p.prism!) : p.kind === "box" ? box(oc, p.size) : p.kind === "cylinder" ? cylinder(oc, p.size) : sphere(oc, p.size);
+      for (const o of p.ops ?? []) {
+        try {
+          local = boolean(oc, o.op, local, [prismOf(oc, o.tool)]);
+        } catch (e) {
+          this.opFailures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
+        }
+      }
       const shape = place(oc, local, { position: p.position, rotation: p.rotation });
       hit = { shape, body: { mesh: tessellate(oc, shape, quality), measure: measure(oc, shape) } };
       this.cache.set(k, hit);
@@ -53,16 +65,18 @@ export class ModelBuilder {
     const bodies: BuiltBody[] = [];
     const out: [string, string][] = [...failed];
     this.used.clear();
+    this.opFailures = [];
     for (const p of parts) {
       if (cancelled()) throw new KernelError("cancelled", "Stopped.");
       try {
         bodies.push({ id: p.id, ...this.solid(p, quality).body });
       } catch (e) {
         const why = isKernelError(e) ? e.message : "This part could not be built.";
-        const f = doc.features.find((x) => x.type === "add" && x.part.id === p.id);
+        const f = doc.features.find((x) => (x.type === "add" && x.part.id === p.id) || (x.type === "extrude" && x.operation === "new" && x.body.id === p.id));
         if (f) out.push([f.id, why]);
       }
     }
+    out.push(...this.opFailures);
     // Keep the cache to what the last few builds used, so memory stays flat across many edits.
     if (this.cache.size > 400) for (const k of this.cache.keys()) if (!this.used.has(k)) this.cache.delete(k);
     return { bodies, failed: out, ms: performance.now() - t0 };

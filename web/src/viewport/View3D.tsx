@@ -46,7 +46,9 @@ export interface View3DProps {
 
 /** Meshes by shape and size, so a part's triangles are made once. The kernel worker replaces this with #4. */
 const meshCache = new Map<string, BodyMesh>();
-function meshFor(p: Part): BodyMesh {
+function meshFor(p: Part): BodyMesh | null {
+  // A body from a sketch has no quick mesh: it shows once the kernel has built it.
+  if (p.kind === "solid") return null;
   const key = `${p.kind}:${p.size.x}:${p.size.y}:${p.size.z}`;
   let m = meshCache.get(key);
   if (!m) {
@@ -148,11 +150,13 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
     () =>
       parts
         .filter((p) => !p.hidden)
-        .map((p) => {
+        .flatMap((p) => {
           const built = meshes?.get(p.id);
+          const mesh = built?.mesh ?? meshFor(p);
+          if (!mesh) return [];
           return {
             id: p.id,
-            mesh: built?.mesh ?? meshFor(p),
+            mesh,
             world: !!built,
             position: p.position,
             rotation: p.rotation,

@@ -3,9 +3,12 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
-import { newSketch, type PlaneRef, type Sketch } from "@bettercad/sketch";
+import { newSketch, planeFrame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { extent, frameToLocal, pickProfiles, type ExtrudeDirection, type ExtrudeOperation, type PrismSpec } from "./extrude";
 
-export type PartKind = "box" | "cylinder" | "sphere";
+export * from "./extrude";
+
+export type PartKind = "box" | "cylinder" | "sphere" | "solid";
 
 export interface Vec3 {
   x: number;
@@ -24,6 +27,17 @@ export interface Part {
   size: Vec3;
   /** Degrees about X, Y and Z, applied Z first. Missing means not turned. */
   rotation?: Vec3;
+  /** A "solid" part's shape: profiles pushed along a sketch's normal (Extrude, #61), in world space before any move. */
+  prism?: PrismSpec;
+  /** Joins, cuts and intersections made into the part, in its own coordinates, in timeline order. */
+  ops?: BodyOp[];
+}
+
+/** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
+export interface BodyOp {
+  op: "join" | "cut" | "intersect";
+  tool: PrismSpec;
+  feature: string;
 }
 
 /** A camera as the viewport saves it: Z up, turning round `target` (see web/src/viewport/camera.ts). */
@@ -79,7 +93,26 @@ export interface SketchFeature extends FeatureBase {
   type: "sketch";
   sketch: Sketch;
 }
-export type Feature = AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature;
+/**
+ * Extrude (#61): closed shapes of a sketch, picked by a point inside each (so the pick survives edits to the sketch),
+ * pushed along its normal into a new body, or joined to, cut from or intersected with an existing one.
+ */
+export interface ExtrudeFeature extends FeatureBase {
+  type: "extrude";
+  /** The sketch step's id. */
+  sketch: string;
+  seeds: Vec2[];
+  distance: number;
+  direction: ExtrudeDirection;
+  /** The second side's distance, for "two". */
+  distance2?: number;
+  operation: ExtrudeOperation;
+  /** The part joined to, cut or intersected (not for "new"). */
+  target?: string;
+  /** The new body's part, for "new". */
+  body: { id: string; name: string };
+}
+export type Feature = AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature | ExtrudeFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -104,7 +137,7 @@ export interface ModelDoc {
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
 
-export const KIND_LABEL: Record<PartKind, string> = { box: "Box", cylinder: "Cylinder", sphere: "Sphere" };
+export const KIND_LABEL: Record<PartKind, string> = { box: "Box", cylinder: "Cylinder", sphere: "Sphere", solid: "Body" };
 export const FEATURE_LABEL: Record<FeatureType, string> = {
   add: "Add",
   duplicate: "Duplicate",
@@ -112,6 +145,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   resize: "Resize",
   delete: "Delete",
   sketch: "Sketch",
+  extrude: "Extrude",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -139,6 +173,7 @@ export interface Build {
 export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const parts: Part[] = [];
   const sketches: Build["sketches"] = [];
+  const sketchById = new Map<string, Sketch>();
   const failed = new Map<string, string>();
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
@@ -167,11 +202,14 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       case "move":
       case "resize": {
         missing(f, f.parts);
+        if (f.type === "resize" && f.parts.some((id) => parts[find(id)]?.kind === "solid")) {
+          failed.set(f.id, "Resize works on boxes, cylinders and spheres. Change a body's sketch or its extrude instead.");
+        }
         const key = f.type === "move" ? "position" : "size";
         const change = f.type === "move" ? f.position : f.size;
         for (const id of f.parts) {
           const p = parts[find(id)];
-          if (!p) continue;
+          if (!p || (f.type === "resize" && p.kind === "solid")) continue;
           p[key] = { ...p[key], ...change };
           if (f.type === "move" && f.rotation) p.rotation = { ...ZERO, ...p.rotation, ...f.rotation };
         }
@@ -186,7 +224,39 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         break;
       case "sketch":
         sketches.push({ id: f.id, name: f.name, sketch: f.sketch });
+        sketchById.set(f.id, f.sketch);
         break;
+      case "extrude": {
+        const sk = sketchById.get(f.sketch);
+        if (!sk) {
+          failed.set(f.id, "Its sketch is gone or comes later on the timeline");
+          break;
+        }
+        const { shapes, lost } = pickProfiles(sk, f.seeds);
+        if (!shapes.length) {
+          failed.set(f.id, "The shapes it extruded are no longer closed. Close them in the sketch, or edit the extrude.");
+          break;
+        }
+        if (lost) failed.set(f.id, `${lost === 1 ? "One shape" : `${lost} shapes`} it extruded ${lost === 1 ? "is" : "are"} no longer closed`);
+        if (!(Math.abs(f.distance) > 1e-9)) {
+          failed.set(f.id, "Give it a distance other than 0 mm");
+          break;
+        }
+        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, ...extent(f.direction, f.distance, f.distance2) };
+        if (f.operation === "new") {
+          if (find(f.body.id) < 0)
+            parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: prismSize(spec), prism: spec });
+          break;
+        }
+        const t = f.target ? parts[find(f.target)] : undefined;
+        if (!t) {
+          failed.set(f.id, f.target ? "The body it changes is gone" : "Pick the body to change");
+          break;
+        }
+        const tool: PrismSpec = { ...spec, frame: frameToLocal(spec.frame, t) };
+        t.ops = [...(t.ops ?? []), { op: f.operation, tool, feature: f.id }];
+        break;
+      }
     }
   }
   const looked = parts.map((p) => {
@@ -201,6 +271,20 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   return { parts: looked, sketches, failed };
 }
 
+/** A prism's rough size along X, Y and Z, for the props panel and the gizmo. */
+function prismSize(spec: PrismSpec): Vec3 {
+  const pts = spec.profiles.flatMap((p) =>
+    p.outer.flatMap((g) =>
+      g.kind === "circle" ? [[g.c[0] - g.r, g.c[1] - g.r] as Vec2, [g.c[0] + g.r, g.c[1] + g.r] as Vec2] : g.kind === "arc" ? [g.a, g.m, g.b] : [g.a, g.b],
+    ),
+  );
+  const f = spec.frame;
+  const y = [f.normal[1] * f.x[2] - f.normal[2] * f.x[1], f.normal[2] * f.x[0] - f.normal[0] * f.x[2], f.normal[0] * f.x[1] - f.normal[1] * f.x[0]];
+  const corners = pts.flatMap(([u, v]) => [spec.from, spec.to].map((w) => [0, 1, 2].map((i) => f.origin[i]! + f.x[i]! * u + y[i]! * v + f.normal[i]! * w)));
+  const span = (i: number) => Math.round((Math.max(...corners.map((c) => c[i]!)) - Math.min(...corners.map((c) => c[i]!))) * 1000) / 1000;
+  return corners.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
+}
+
 /** The parts after the whole timeline. */
 export const partsOf = (doc: ModelDoc, upTo?: number) => build(doc, upTo).parts;
 
@@ -210,6 +294,7 @@ function usedNames(doc: ModelDoc): Set<string> {
   for (const f of doc.features) {
     if (f.type === "add") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
+    if (f.type === "extrude" && f.operation === "new") names.add(f.body.name);
   }
   Object.values(doc.looks).forEach((l) => l.name && names.add(l.name));
   return names;
@@ -386,6 +471,8 @@ export function featureParts(f: Feature): string[] {
       return f.copies.map((c) => c.id);
     case "sketch":
       return [];
+    case "extrude":
+      return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
     default:
       return f.parts;
   }
@@ -404,6 +491,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const g of doc.features) {
     if (g.type === "add") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
+    if (g.type === "extrude" && g.operation === "new") names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
@@ -429,6 +517,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       return who(f.parts);
     case "sketch":
       return sketchSummary(f.sketch);
+    case "extrude": {
+      const how = f.direction === "symmetric" ? ", both ways" : f.direction === "two" ? ` and ${mm(f.distance2 ?? 0)}` : "";
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(f.target ? [f.target] : [])}`;
+      return `${mm(f.distance)}${how}, ${op}`;
+    }
   }
 }
 
@@ -447,6 +540,19 @@ export function sketchSummary(s: Sketch): string {
 export function addSketch(doc: ModelDoc, plane: PlaneRef, id = newId("f"), at?: number): ModelDoc {
   const name = nextFeatureName(doc, "sketch");
   return insert(doc, clampAt(doc, at), { id, type: "sketch", name, sketch: newSketch(plane, name, id) });
+}
+
+export type ExtrudeParams = Pick<ExtrudeFeature, "sketch" | "seeds" | "distance" | "direction" | "distance2" | "operation" | "target">;
+
+/** Adds an Extrude step. Its new body (when it makes one) gets the part id `bodyId`. */
+export function addExtrude(doc: ModelDoc, params: ExtrudeParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const name = nextFeatureName(doc, "extrude");
+  return insert(doc, at, { id, type: "extrude", name, ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+/** Changes an Extrude step's settings (the dialog edits it live, as one undo step). */
+export function updateExtrude(doc: ModelDoc, id: string, change: Partial<ExtrudeParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "extrude" ? { ...f, ...change } : f)) };
 }
 
 /** Changes a sketch in place (each drawing step is one undo step). */

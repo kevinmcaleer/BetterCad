@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { loadOCCT, type OC } from "./occt/oc";
-import { boolean, box, chamfer, cone, cylinder, fillet, measure, place, shell, sphere, torus, valid, wedge, type TopoDS_Shape } from "./occt/shapes";
+import { boolean, box, chamfer, cone, cylinder, fillet, measure, place, prismOf, shell, sphere, torus, valid, wedge, type TopoDS_Shape } from "./occt/shapes";
+import type { PrismSpec, ProfileSeg } from "./extrude";
 import { tessellate } from "./occt/tessellate";
 import { meshVolume, triangleCount } from "./mesh";
 
@@ -19,6 +20,14 @@ let oc: OC;
 beforeAll(async () => {
   oc = await loadOCCT();
 }, 60_000);
+
+const XY = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] } as PrismSpec["frame"];
+const rect = (w: number, h: number): ProfileSeg[] => [
+  { kind: "line", a: [0, 0], b: [w, 0] },
+  { kind: "line", a: [w, 0], b: [w, h] },
+  { kind: "line", a: [w, h], b: [0, h] },
+  { kind: "line", a: [0, h], b: [0, 0] },
+];
 
 const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   box: (oc) => box(oc, { x: 20, y: 10, z: 5 }),
@@ -36,6 +45,40 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   fillet: (oc) => fillet(oc, box(oc, { x: 20, y: 20, z: 20 }), [0, 1, 2, 3], 3),
   chamfer: (oc) => chamfer(oc, box(oc, { x: 20, y: 20, z: 20 }), [0, 1, 2, 3], 2),
   shell: (oc) => shell(oc, box(oc, { x: 20, y: 20, z: 20 }), [0], 2),
+  // Extrude (#61): a sketch's closed shapes pushed along its normal.
+  "extrude-rect": (oc) => prismOf(oc, { frame: XY, profiles: [{ outer: rect(30, 20), holes: [], area: 600 }], from: 0, to: 10 }),
+  "extrude-ring": (oc) =>
+    prismOf(oc, {
+      frame: XY,
+      profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 10 }], holes: [[{ kind: "circle", c: [0, 0], r: 4 }]], area: 0 }],
+      from: 0,
+      to: 5,
+    }),
+  "extrude-arc": (oc) =>
+    prismOf(oc, {
+      frame: { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, -1, 0] },
+      profiles: [
+        {
+          outer: [
+            { kind: "line", a: [-10, 0], b: [10, 0] },
+            { kind: "arc", a: [10, 0], m: [0, 10], b: [-10, 0] },
+          ],
+          holes: [],
+          area: 0,
+        },
+      ],
+      from: -4,
+      to: 4,
+    }),
+  "extrude-cut": (oc) =>
+    boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
+      prismOf(oc, {
+        frame: { origin: [0, 0, 20], x: [1, 0, 0], normal: [0, 0, 1] },
+        profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }],
+        from: -8,
+        to: 0,
+      }),
+    ]),
 };
 
 const round = (v: unknown): unknown =>

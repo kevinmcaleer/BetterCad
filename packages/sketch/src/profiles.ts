@@ -60,6 +60,18 @@ interface Half {
 }
 
 export function profiles(sketch: Sketch): Profiles {
+  return nest(sketch, false);
+}
+
+/**
+ * Every closed region a click can pick (#61): each loop less the loops directly inside it. Unlike `profiles`, a
+ * circle inside a rectangle gives two regions, the ring and the disc, as in Fusion.
+ */
+export function regions(sketch: Sketch): Profile[] {
+  return nest(sketch, true).profiles;
+}
+
+function nest(sketch: Sketch, all: boolean): Profiles {
   const idx = new SketchIndex(sketch);
   const cls = pointClasses(sketch);
   const xy = (id: Id) => idx.xy(id);
@@ -136,14 +148,14 @@ export function profiles(sketch: Sketch): Profiles {
   const out: Profile[] = [];
   const byLoop = new Map<number, Profile>();
   loops.forEach((l, i) => {
-    if (depth(i) % 2 === 0) {
+    if (all || depth(i) % 2 === 0) {
       const p: Profile = { edges: l.edges, points: l.points, area: l.area, holes: [] };
       byLoop.set(i, p);
       out.push(p);
     }
   });
   loops.forEach((l, i) => {
-    if (depth(i) % 2 === 1) byLoop.get(parent[i]!)?.holes.push({ edges: l.edges, points: l.points, area: l.area });
+    if (all || depth(i) % 2 === 1) byLoop.get(parent[i]!)?.holes.push({ edges: l.edges, points: l.points, area: l.area });
   });
   return { profiles: out, openEnds: [...openEnds] };
 }

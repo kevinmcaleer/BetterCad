@@ -1,4 +1,18 @@
-import { BufferAttribute, BufferGeometry, Color, Group, Matrix4, Points, PointsMaterial, Vector3 } from "three";
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  Group,
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  Points,
+  PointsMaterial,
+  ShapeUtils,
+  Vector2,
+  Vector3,
+} from "three";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -23,10 +37,17 @@ export interface OverlayPoint {
   shade: Shade;
   big?: boolean;
 }
+/** A shaded region: a closed shape Extrude can pick (#61), with its holes. */
+export interface OverlayFill {
+  outer: Vec2[];
+  holes: Vec2[][];
+  shade: Shade;
+}
 export interface OverlayView {
   frame: Frame;
   curves: OverlayCurve[];
   points: OverlayPoint[];
+  fills?: OverlayFill[];
 }
 
 const ORDER = 20;
@@ -54,6 +75,14 @@ export class SketchOverlay {
     this.group.add(p);
     return p;
   });
+  private fillMat = new MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.35, depthTest: false, depthWrite: false, side: DoubleSide });
+  private fill = (() => {
+    const m = new Mesh(new BufferGeometry(), this.fillMat);
+    m.renderOrder = ORDER - 1;
+    m.frustumCulled = false;
+    this.group.add(m);
+    return m;
+  })();
   private palette: Palette = readPalette();
 
   constructor(private engine: Engine) {
@@ -121,6 +150,28 @@ export class SketchOverlay {
       this.points[i]!.geometry.dispose();
       this.points[i]!.geometry = g;
     });
+    const pos: number[] = [];
+    const col: number[] = [];
+    for (const f of v.fills ?? []) {
+      const ring = [f.outer, ...f.holes].flat();
+      const tris = ShapeUtils.triangulateShape(
+        f.outer.map((p) => new Vector2(p[0], p[1])),
+        f.holes.map((h) => h.map((p) => new Vector2(p[0], p[1]))),
+      );
+      const c = this.colour(f.shade);
+      for (const t of tris)
+        for (const i of t) {
+          const p = ring[i]!;
+          pos.push(p[0], p[1], 0);
+          col.push(c.r, c.g, c.b);
+        }
+    }
+    const g = new BufferGeometry();
+    g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
+    g.setAttribute("color", new BufferAttribute(new Float32Array(col), 3));
+    this.fill.geometry.dispose();
+    this.fill.geometry = g;
+    this.fill.visible = pos.length > 0;
     this.engine.invalidate();
   }
 
@@ -128,6 +179,7 @@ export class SketchOverlay {
     this.engine.removeOverlay(this.group);
     for (const l of this.lines) l.geometry.dispose();
     for (const p of this.points) p.geometry.dispose();
-    for (const m of [this.thin, this.bold, this.dashed, this.pointMat, this.bigMat]) m.dispose();
+    this.fill.geometry.dispose();
+    for (const m of [this.thin, this.bold, this.dashed, this.pointMat, this.bigMat, this.fillMat]) m.dispose();
   }
 }

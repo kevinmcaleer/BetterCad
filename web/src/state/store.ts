@@ -1,4 +1,4 @@
-import { canRedo, canUndo, createHistory, push, redo, seal, undo, type History } from "./history";
+import { canRedo, canUndo, createHistory, discard, push, redo, seal, undo, type History } from "./history";
 
 /**
  * What the shell's undo and redo buttons talk to. The document store implements it now; the kernel's document
@@ -30,6 +30,8 @@ export function createStore<T>(initial: T) {
     edit: (fn: (s: T) => T, label: string, coalesceKey?: string) => set(push(h, fn(h.present), label, coalesceKey)),
     /** Ends a run of merged changes. */
     seal: () => set(seal(h)),
+    /** Takes back the open run of changes with this key (Cancel on a live dialog). */
+    discard: (key: string) => set(discard(h, key)),
     canUndo: () => canUndo(h),
     canRedo: () => canRedo(h),
     undoLabel: () => h.label,

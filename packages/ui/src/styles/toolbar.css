@@ -152,3 +152,20 @@
   height: 1px;
   margin: var(--bc-space-2) 0;
 }
+
+/* A row of toggles where one is on (Extrude's operation). */
+.bc-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+}
+/* Fields in a tool's strip stay compact, side by side. */
+.bc-sk-fields {
+  display: inline-flex;
+  gap: var(--bc-space-2);
+}
+.bc-sk-fields .bc-field {
+  width: 96px;
+}

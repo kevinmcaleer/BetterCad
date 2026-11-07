@@ -61,8 +61,7 @@ export const TOOLS: Tool[] = [
     icon: "extrude",
     key: "e",
     title: "Extrude a sketch into a solid",
-    help: "Pick a closed sketch profile, then drag or type the distance.",
-    epic: 6,
+    help: "Click inside a closed sketch shape to extrude it.",
   },
   { id: "pushpull", label: "Push/pull", icon: "pushpull", key: "p", title: "Push or pull a face", help: "Click a face and drag it in or out.", epic: 6 },
   {
