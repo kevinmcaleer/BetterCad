@@ -3,9 +3,25 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
-import { newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { drawCentreRectangle, drawCircle, newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
+import { partBounds, partFrame, type CataloguePart } from "./catalogue";
+export {
+  CATALOGUE,
+  CATALOGUE_CATEGORIES,
+  cataloguePart,
+  checkPart,
+  partBounds,
+  partFrame,
+  HOLE_PATTERNS,
+  rectPattern,
+  circlePattern,
+  type HolePattern,
+  placeOnFace,
+  type CataloguePart,
+  type CatalogueCategory,
+} from "./catalogue";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import {
   axisOf,
@@ -23,9 +39,10 @@ import {
 export * from "./extrude";
 export * from "./holes";
 export * from "./screws";
+import { screw } from "./screws";
 export * from "./params";
 export * from "./print";
-import { fitGap, type FitId, type PrintSettings } from "./print";
+import { fitGap, holeOffsetOf, type FitId, type PrintSettings } from "./print";
 
 export type PartKind = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "solid";
 
@@ -65,12 +82,16 @@ export interface Part {
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
   hole?: boolean;
+  /** A reference body (#185): shown to design around, but never printed, exported or weighed. */
+  reference?: boolean;
   /** A hole's fit (#183): cut with a printed gap round it when grouped. A named fit, or a custom `gap`. */
   fit?: FitId;
   /** A custom gap on each side, mm, when `fit` isn't set. */
   gap?: number;
   /** A body brought in from a file (#82): the file's bytes are in the document's blobs. */
   imported?: ImportSpec;
+  /** A catalogue part (#187): the record it was inserted from, kept whole so a catalogue change never moves it. */
+  catalogue?: CataloguePart;
 }
 
 /** Where an imported body comes from: body `index` of the file kept as `blob`. Meshes (STL, 3MF) can't be filleted. */
@@ -179,6 +200,9 @@ export interface ExtrudeFeature extends FeatureBase {
   target?: string;
   /** The new body's part, for "new". */
   body: { id: string; name: string };
+  /** Cuts only (#188): the named fit it was made with, and the gap on each side then, mm. */
+  fit?: FitId;
+  gap?: number;
 }
 /**
  * Combine (#66): bodies joined to, cut from or intersected with a target. A Group is the Tinkercad way: solids
@@ -248,8 +272,47 @@ export interface ImportFeature extends FeatureBase {
   bodies: { id: string; name: string }[];
   position: Vec3;
 }
+/**
+ * A mounting feature (#189) on a flat face: standoffs on a hole pattern, or a servo horn mount (the horn's hub
+ * recess, a screwdriver hole to the servo's own screw, and screw holes to bolt the horn's arms to the part).
+ */
+export interface MountFeature extends FeatureBase {
+  type: "mount";
+  kind: "standoffs" | "horn";
+  part: string;
+  /** The face's plane when the mount was placed: origin on the face, normal out of the body. */
+  frame: Frame;
+  /** Standoff centres, or the horn's centre first, in the face's plane, mm. */
+  points: Vec2[];
+  /** The screw, from the screw table. */
+  size: string;
+  /** The printer's hole offset when it was made (#104), mm. */
+  offset?: number;
+  /** Standoffs: how tall, how wide, and a clearance hole right through or a heat-set insert at the top. */
+  height: number;
+  outer: number;
+  hole: "through" | "insert";
+  /** Horn: which horn, the hub recess's diameter and depth, the arm holes' distance from the centre, and the hole to
+   * reach the servo's screw. */
+  horn: "single" | "double" | "cross";
+  hub: number;
+  recess: number;
+  arm: number;
+  access: number;
+}
+
+/** Insert part (#187): a catalogue part, with the record it used, placed as a reference body. */
+export interface InsertFeature extends FeatureBase {
+  type: "insert";
+  part: { id: string; name: string };
+  record: CataloguePart;
+  position: Vec3;
+  rotation?: Vec3;
+}
 export type Feature =
+  | MountFeature
   | ImportFeature
+  | InsertFeature
   | AddFeature
   | DuplicateFeature
   | MoveFeature
@@ -270,6 +333,8 @@ export interface Look {
   ghost?: boolean;
   highlight?: boolean;
   hole?: boolean;
+  /** A reference body (#185). */
+  reference?: boolean;
   /** A hole's fit (#183). */
   fit?: FitId;
   /** A hole's custom gap, mm. */
@@ -321,6 +386,8 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   revolve: "Revolve",
   hole: "Hole",
   import: "Import",
+  insert: "Insert part",
+  mount: "Mount",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -345,7 +412,9 @@ export interface Build {
 }
 
 const BUILT = new Set<string>([
+  "mount",
   "import",
+  "insert",
   "add",
   "duplicate",
   "move",
@@ -397,6 +466,22 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             imported: { blob: f.blob, format: f.format, index, mesh: f.format !== "step" },
           });
         });
+        break;
+      case "insert":
+        if (find(f.part.id) < 0) {
+          const [min, max] = partBounds(f.record);
+          parts.push({
+            id: f.part.id,
+            name: f.part.name,
+            kind: "solid",
+            hidden: false,
+            position: { ...f.position },
+            ...(f.rotation ? { rotation: { ...f.rotation } } : {}),
+            size: { x: max[0] - min[0], y: max[1] - min[1], z: max[2] - min[2] },
+            catalogue: f.record,
+            reference: true,
+          });
+        }
         break;
       case "add":
         if (find(f.part.id) < 0) parts.push({ ...f.part, position: { ...f.part.position }, size: { ...f.part.size }, hidden: false });
@@ -468,7 +553,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           break;
         }
         const tool: PrismSpec = { ...spec, frame: frameToLocal(spec.frame, t) };
-        t.ops = [...(t.ops ?? []), { op: f.operation, tool, feature: f.id }];
+        t.ops = [...(t.ops ?? []), { op: f.operation, tool, ...(f.operation === "cut" && f.gap ? { gap: f.gap } : {}), feature: f.id }];
         break;
       }
       case "revolve": {
@@ -560,6 +645,26 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         t.ops = [...(t.ops ?? []), { op: "hole", holes, feature: f.id }];
         break;
       }
+      case "mount": {
+        const t = parts[find(f.part)];
+        if (!t) {
+          failed.set(f.id, "The body it changes is gone");
+          break;
+        }
+        const r = mountOps(f);
+        if (typeof r === "string") {
+          failed.set(f.id, r);
+          break;
+        }
+        const local = (op: BodyOp): BodyOp =>
+          op.tool
+            ? { ...op, tool: { ...op.tool, frame: frameToLocal(op.tool.frame, t) } }
+            : op.holes
+              ? { ...op, holes: { ...op.holes, frame: frameToLocal(op.holes.frame, t) } }
+              : op;
+        t.ops = [...(t.ops ?? []), ...r.map(local)];
+        break;
+      }
       case "combine": {
         const t = parts[find(f.target)];
         const gone = [f.target, ...f.tools.map((x) => x.id)].filter((id) => find(id) < 0);
@@ -645,7 +750,7 @@ export const partsOf = (doc: ModelDoc, upTo?: number) => build(doc, upTo).parts;
 function usedNames(doc: ModelDoc): Set<string> {
   const names = new Set<string>();
   for (const f of doc.features) {
-    if (f.type === "add") names.add(f.part.name);
+    if (f.type === "add" || f.type === "insert") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
     if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") names.add(f.body.name);
   }
@@ -833,11 +938,14 @@ export function featureParts(f: Feature): string[] {
     case "shell":
     case "pushpull":
     case "hole":
+    case "mount":
       return [f.part];
     case "revolve":
       return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
     case "import":
       return f.bodies.map((b) => b.id);
+    case "insert":
+      return [f.part.id];
     default:
       return f.parts;
   }
@@ -854,13 +962,19 @@ const axes = (v: Partial<Vec3>) =>
 export function featureSummary(doc: ModelDoc, f: Feature): string {
   const names = new Map<string, string>();
   for (const g of doc.features) {
-    if (g.type === "add") names.set(g.part.id, g.part.name);
+    if (g.type === "add" || g.type === "insert") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
     if ((g.type === "extrude" || g.type === "revolve") && g.operation === "new") names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "mount":
+      return f.kind === "standoffs"
+        ? `${f.points.length} × ${f.size}, ${mm(f.height)} tall${f.hole === "insert" ? ", heat-set inserts" : ""}`
+        : `${f.horn === "single" ? "Single" : f.horn === "double" ? "Double" : "Cross"} horn, ${f.size} holes ${mm(f.arm)} out`;
+    case "insert":
+      return `${f.record.name}, ${f.record.mass} g${f.record.checked ? "" : ", sizes not checked"}`;
     case "import":
       return `${f.bodies.length === 1 ? "1 body" : `${f.bodies.length} bodies`} from ${f.file}`;
     case "add": {
@@ -1017,6 +1131,9 @@ export function cutTool(id: string, fit: FitId | null, gap: number, print?: Prin
   return t;
 }
 
+/** Whether a part is printed (#185): not hidden, not a hole and not a reference body. */
+export const printed = (p: Pick<Part, "hidden" | "hole" | "reference">) => !p.hidden && !p.hole && !p.reference;
+
 /** What a mate (#184) needs to change to fix its gap: the bodies, the faces and the gap now. */
 export interface MateRef {
   kind: "pin" | "faces";
@@ -1148,6 +1265,191 @@ export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: 
   return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest });
 }
 
+/** Adds an Insert part step (#187): a catalogue part, kept whole, standing at `position` turned by `rotation`. */
+export function insertCatalogue(
+  doc: ModelDoc,
+  record: CataloguePart,
+  place: { position: Vec3; rotation?: Vec3 },
+  partId = newId(),
+  id = newId("f"),
+  at?: number,
+): ModelDoc {
+  const names = usedNames(doc);
+  doc.features.forEach((f) => names.add(f.name));
+  let name = record.name;
+  for (let n = 2; names.has(name); n += 1) name = `${record.name} ${n}`;
+  const turned = place.rotation && (place.rotation.x || place.rotation.y || place.rotation.z);
+  return insert(doc, at, {
+    id,
+    type: "insert",
+    name,
+    part: { id: partId, name },
+    record: structuredClone(record),
+    position: { ...place.position },
+    ...(turned ? { rotation: { ...place.rotation! } } : {}),
+  });
+}
+
+/** The points a horn's arm holes sit on, about its centre: along x, both ways, or both ways along x and y. */
+export function hornPoints(horn: MountFeature["horn"], arm: number): Vec2[] {
+  const out: Vec2[] = [[arm, 0]];
+  if (horn !== "single") out.push([-arm, 0]);
+  if (horn === "cross") out.push([0, arm], [0, -arm]);
+  return out;
+}
+
+/** A mount's joins and holes, in world space, or why it can't be made. */
+export function mountOps(f: MountFeature): BodyOp[] | string {
+  if (!f.points.length) return "Click the face to place it";
+  const s = screw(f.size);
+  if (!s) return "Pick a screw size";
+  const printed = resolveHole({ size: f.size, fit: "printed", head: "none", depth: null, offset: f.offset });
+  if ("error" in printed) return printed.error;
+  const n = f.frame.normal;
+  const lift = (h: number): Frame => ({ ...f.frame, origin: [f.frame.origin[0] + n[0] * h, f.frame.origin[1] + n[1] * h, f.frame.origin[2] + n[2] * h] });
+  const holes = (frame: Frame, points: Vec2[], diameter: number, depth: number | null): BodyOp => ({
+    op: "hole",
+    holes: { frame, points: points.map((p) => [p[0], p[1]]), diameter, depth },
+    feature: f.id,
+  });
+  if (f.kind === "standoffs") {
+    if (!(f.height > 0)) return "Give the standoffs a height above 0 mm";
+    const insert = f.hole === "insert" ? s.insert : undefined;
+    if (f.hole === "insert" && !insert) return `There's no heat-set insert for ${s.label} in the screw table`;
+    const bore = insert ? insert.diameter : printed.diameter;
+    if (!(f.outer > bore + 0.8)) return `Make the standoffs wider than ${Math.round((bore + 0.8) * 100) / 100} mm, so they keep a wall`;
+    const r = f.outer / 2;
+    const tool: PrismSpec = {
+      frame: f.frame,
+      profiles: f.points.map((c) => ({ outer: [{ kind: "circle", c: [c[0], c[1]], r }], holes: [], area: Math.PI * r * r })),
+      from: 0,
+      to: f.height,
+    };
+    return [{ op: "join", tool, feature: f.id }, holes(lift(f.height), f.points, bore, insert ? insert.depth + 1 : null)];
+  }
+  if (!(f.hub > 0 && f.recess > 0)) return "Give the hub recess a diameter and depth above 0 mm";
+  if (!(f.arm > f.hub / 2)) return "Put the arm holes outside the hub";
+  const [cx, cy] = f.points[0]!;
+  const at = (p: Vec2): Vec2 => [cx + p[0], cy + p[1]];
+  const ops = [holes(f.frame, [[cx, cy]], f.hub, f.recess), holes(f.frame, hornPoints(f.horn, f.arm).map(at), printed.diameter, null)];
+  if (f.access > 0) ops.push(holes(f.frame, [[cx, cy]], f.access, null));
+  return ops;
+}
+
+/** The settings a new mount starts with: M2.5 standoffs 6 mm tall (a Pi's screws), or a micro servo's single-arm horn. */
+export const MOUNT_DEFAULTS: Omit<MountFeature, "id" | "name" | "type" | "kind" | "part" | "frame" | "points"> = {
+  size: "M2.5",
+  height: 6,
+  outer: 6,
+  hole: "through",
+  horn: "single",
+  hub: 7.5,
+  recess: 2,
+  arm: 10,
+  access: 3,
+};
+
+export type MountParams = Omit<MountFeature, "id" | "name" | "type">;
+
+/** Adds a Mount step at `at` (the marker), or at the end. */
+export function addMount(doc: ModelDoc, params: MountParams, id = newId("f"), at?: number): ModelDoc {
+  const name = params.kind === "standoffs" ? nextNamed(doc, "Standoffs") : nextNamed(doc, "Horn mount");
+  return insert(doc, at, { id, type: "mount", name, ...params });
+}
+
+/** Changes a Mount step (the tool edits it live, as one undo step). */
+export function updateMount(doc: ModelDoc, id: string, change: Partial<MountParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "mount" ? { ...f, ...change } : f)) };
+}
+
+function nextNamed(doc: ModelDoc, base: string): string {
+  const names = new Set(doc.features.map((f) => f.name));
+  let n = 1;
+  while (names.has(`${base} ${n}`)) n += 1;
+  return `${base} ${n}`;
+}
+
+export interface PocketOptions {
+  /** The body the part sits on. */
+  target: string;
+  /** How deep the pocket goes, mm. The part's own pocket depth when missing. */
+  depth?: number;
+  /** The pocket's fit (#183): sliding by default. Null for none. */
+  fit?: FitId | null;
+  /** The screw holes' fit: printed clearance, or heat-set inserts. */
+  holes?: "printed" | "insert";
+}
+
+/**
+ * Cut pocket (#188): a catalogue part's cutout as ordinary steps in the body it sits on. A sketch of the pocket on the
+ * part's surface, an extrude cut with a fit, and a Hole step for each screw size, all through the target. Returns the
+ * document unchanged, with a reason, when there's nothing to cut.
+ */
+export function cutPocket(doc: ModelDoc, partId: string, o: PocketOptions, at?: number): { doc: ModelDoc; error?: string } {
+  const step = doc.features.find((f): f is InsertFeature => f.type === "insert" && f.part.id === partId);
+  if (!step) return { doc, error: "Pick a part from the catalogue" };
+  if (o.target === partId) return { doc, error: "Pick the body the part sits on" };
+  const rec = step.record;
+  const frame = partFrame(step.position, step.rotation);
+  let d = doc;
+  let i = at;
+  const next = () => (i === undefined ? undefined : i++);
+  if (rec.cutout.pocket.length) {
+    const sketchId = newId("f");
+    d = addSketch(d, { kind: "face", face: { body: partId, face: 0 }, offset: 0, frame }, sketchId, next());
+    const sf = d.features.find((f) => f.id === sketchId) as SketchFeature;
+    let sk = sf.sketch;
+    for (const s of rec.cutout.pocket) {
+      const [cx, cy] = s.at;
+      const [w, h] = s.size;
+      sk = (s.kind === "rect" ? drawCentreRectangle(sk, [cx, cy], [cx + w / 2, cy + h / 2], { width: w, height: h }) : drawCircle(sk, [cx, cy], w / 2, w))
+        .sketch;
+    }
+    d = {
+      ...d,
+      features: d.features.map((f) => (f.id === sketchId ? { ...sf, name: `${rec.name} pocket`, sketch: { ...sk, name: `${rec.name} pocket` } } : f)),
+    };
+    const fit = o.fit === undefined ? "sliding" : o.fit;
+    const gap = fit ? fitGap(fit, doc.print?.fits) : 0;
+    const depth = o.depth ?? rec.cutout.depth;
+    const exId = newId("f");
+    d = addExtrude(
+      d,
+      { sketch: sketchId, seeds: rec.cutout.pocket.map((s) => s.at), distance: -depth, direction: "one", operation: "cut", target: o.target },
+      exId,
+      newId(),
+      next(),
+    );
+    d = {
+      ...d,
+      features: d.features.map((f) => (f.id === exId && f.type === "extrude" ? { ...f, ...(fit ? { fit } : {}), ...(gap > 0 ? { gap } : {}) } : f)),
+    };
+  }
+  const sizes = [...new Set(rec.cutout.holes.map((h) => h.screw))];
+  for (const size of sizes) {
+    const points = rec.cutout.holes.filter((h) => h.screw === size).map((h) => h.at);
+    // An insert's hole is as deep as the insert, plus 1 mm for the melt to go; a clearance hole goes right through.
+    const insert = o.holes === "insert" ? screw(size)?.insert : undefined;
+    d = addHole(
+      d,
+      {
+        part: o.target,
+        frame,
+        points,
+        size,
+        fit: o.holes ?? "printed",
+        head: "none",
+        depth: insert ? insert.depth + 1 : null,
+        offset: holeOffsetOf(doc.print),
+      },
+      newId("f"),
+      next(),
+    );
+  }
+  if (d === doc) return { doc, error: `The ${rec.name} has no pocket or screw holes to cut` };
+  return { doc: d };
+}
+
 export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth">;
 
 /** Adds a Hole step at `at` (the marker), or at the end. */
@@ -1180,6 +1482,7 @@ function partsRead(f: Feature): string[] {
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
     case "import":
+    case "insert":
       return [];
     default:
       return [f.part];
@@ -1191,12 +1494,13 @@ function partsMade(f: Feature): string[] {
   if (f.type === "add") return [f.part.id];
   if (f.type === "duplicate") return f.copies.map((c) => c.id);
   if (f.type === "import") return f.bodies.map((b) => b.id);
+  if (f.type === "insert") return [f.part.id];
   if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
   return [];
 }
 
 /** Features that pick edges or faces by number need the part exactly as the steps before left it. */
-const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "hole"]);
+const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "hole", "mount"]);
 
 /**
  * The features one feature needs before it on the timeline: the steps that made the parts it reads, its sketch, and

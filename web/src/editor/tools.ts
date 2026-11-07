@@ -1,7 +1,7 @@
 import type { IconName } from "@bettercad/ui";
 
 export type ToolId =
-  "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "revolve" | "pushpull" | "combine" | "fillet" | "shell" | "hole" | "measure";
+  "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "revolve" | "pushpull" | "combine" | "fillet" | "shell" | "hole" | "mount" | "measure";
 
 export interface Tool {
   id: ToolId;
@@ -92,6 +92,7 @@ export const TOOLS: Tool[] = [
     help: "Pick something to measure, then something else for the distance.",
   },
   { id: "hole", label: "Hole", icon: "hole", key: "h", title: "Make a screw hole", help: "Click a flat face where the hole goes." },
+  { id: "mount", label: "Mount", icon: "screw", title: "Standoffs or a servo horn mount", help: "Click a flat face where the mount goes." },
 ];
 
 export const VIEW_TOOLS = TOOLS.filter((t) => t.id === "select" || t.id === "move" || t.id === "turn" || t.id === "section");

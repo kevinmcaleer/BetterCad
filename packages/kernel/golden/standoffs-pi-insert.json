@@ -1,0 +1,14 @@
+{
+  "volume": 40486.1615,
+  "area": 18472.3008,
+  "centroid": [0, 0, 2.5637],
+  "bbox": {
+    "min": [-50, -40, 0],
+    "max": [50, 40, 11]
+  },
+  "solids": 1,
+  "faces": 22,
+  "edges": 36,
+  "vertices": 24,
+  "triangles": true
+}
