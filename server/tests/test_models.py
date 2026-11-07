@@ -182,6 +182,9 @@ def test_share_links(user, make_client):
         assert shared.status_code == 200 and shared.headers["cache-control"] == "private, no-store"
         assert shared.json()["owner"] == "Kev" and json.loads(shared.json()["bcad"])["name"] == "Box"
         assert anon.get(f"/api/shared/{token}/thumbnail").status_code == 200
+        user.put("/api/blobs/abcdef123456", content=b"solid", headers={"Content-Type": "model/stl"})
+        assert anon.get(f"/api/shared/{token}/blobs/abcdef123456").content == b"solid"
+        assert anon.get(f"/api/shared/{token}/blobs/nothere00").status_code == 404
         user.delete(f"{url}/share")
         r = anon.get(f"/api/shared/{token}")
         assert r.status_code == 404 and r.json()["detail"] == "This link isn't active any more."

@@ -1,0 +1,198 @@
+/* Pages outside the editor (#88, #89): sign in, account and the library. Colours come only from tokens. */
+.bc-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bc-color-stage);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.bc-page-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  height: 48px;
+  padding: 0 var(--bc-space-8);
+  background: var(--bc-color-bar);
+  border-bottom: 1px solid var(--bc-color-line);
+}
+.bc-page-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  color: var(--bc-color-ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+.bc-page-main {
+  max-width: calc(65ch + 2 * var(--bc-space-8));
+  margin: 0 auto;
+  padding: var(--bc-space-8);
+  font: var(--bc-type-page-body-weight) var(--bc-type-page-body-size) / var(--bc-type-page-body-line) var(--bc-font-sans);
+}
+.bc-page-wide {
+  max-width: 1280px;
+}
+.bc-page-title {
+  font: var(--bc-type-page-title-weight) var(--bc-type-page-title-size) / var(--bc-type-page-title-line) var(--bc-font-sans);
+  margin: var(--bc-space-8) 0;
+  outline: none;
+}
+.bc-page-main h2 {
+  font-size: inherit;
+  font-weight: 600;
+  margin: var(--bc-space-8) 0 var(--bc-space-4);
+}
+.bc-page-main p {
+  margin: 0 0 var(--bc-space-6);
+}
+.bc-page-main a {
+  color: var(--bc-color-accent);
+}
+.bc-page-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-6);
+  max-width: 360px;
+}
+.bc-page-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-2);
+}
+.bc-page-field label {
+  font-weight: 500;
+}
+.bc-page-field .bc-text[aria-invalid="true"] {
+  border-color: var(--bc-color-danger);
+}
+.bc-page-error {
+  color: var(--bc-color-danger);
+  font-size: 13px;
+}
+.bc-page-hint,
+.bc-page-note {
+  color: var(--bc-color-muted);
+  font-size: 13px;
+}
+.bc-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-4);
+  align-items: center;
+}
+.bc-page-section {
+  border-top: 1px solid var(--bc-color-line);
+  margin-top: var(--bc-space-8);
+}
+
+/* The library (#89) */
+.bc-lib-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-4);
+  align-items: center;
+  margin-bottom: var(--bc-space-8);
+}
+.bc-lib-tools .bc-text {
+  width: 220px;
+}
+.bc-lib-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--bc-space-8);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+@media (max-width: 1100px) {
+  .bc-lib-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 860px) {
+  .bc-lib-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 400px) {
+  .bc-lib-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.bc-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  background: var(--bc-color-bar);
+  overflow: hidden;
+}
+.bc-card:hover,
+.bc-card:focus-within {
+  background: var(--bc-color-hover);
+}
+.bc-card-open {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.bc-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 320 / 200;
+  background: var(--bc-color-thumb-bg);
+  color: var(--bc-color-thumb-ink);
+}
+.bc-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.bc-thumb.bc-loading .bc-icon {
+  animation: bc-pulse 1.4s ease-in-out infinite;
+}
+@keyframes bc-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bc-thumb.bc-loading .bc-icon {
+    animation: none;
+  }
+}
+.bc-card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-4) var(--bc-space-4) var(--bc-space-4) var(--bc-space-6);
+}
+.bc-card-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.bc-card-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-card-time {
+  color: var(--bc-color-muted);
+  font-size: 13px;
+}
+.bc-lib-empty {
+  text-align: center;
+  padding: var(--bc-space-8) 0;
+}
+.bc-lib-usage {
+  color: var(--bc-color-muted);
+  font-size: 13px;
+  margin-top: var(--bc-space-8);
+}

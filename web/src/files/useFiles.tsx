@@ -6,6 +6,22 @@ import { importFormat, isBcad } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
 import { ago, createAutosave, recoverable, type Autosave, type AutosaveRecord } from "./autosave";
 import { createFileStore, type FileHandle, type FileStore, type Opened, type Recent } from "./fileStore";
+import { useAccount } from "../cloud/account";
+import { ApiError } from "../cloud/api";
+import { fillBlobs, stripBlobs } from "../cloud/cloudDoc";
+
+/** Where a model saved to an account stands (#90): shown by the cloud icon in the title. */
+export type CloudState = "saved" | "saving" | "dirty" | "offline" | "error";
+export const CLOUD_AUTOSAVE = 30_000;
+
+/** Changes the address without a new history entry, and tells the router. */
+function setRoute(hash: string) {
+  if (window.location.hash === hash) return;
+  window.history.replaceState(null, "", hash);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
+/** A model that isn't the saved one any more: the address goes back to the plain editor. */
+const leaveCloudRoute = () => window.location.hash.startsWith("#/edit/") && setRoute("#/");
 
 /**
  * The model's life on disk (#79, #83, #84): Open, Save, Save as and Recent files, the unsaved dot in the title,
@@ -41,7 +57,15 @@ export function useFiles(d: FilesDeps) {
   const [auto] = useState(() => d.autosave ?? createAutosave({ onWrite: () => deps.current.say("Autosaved", false, true) }));
 
   // Which model this is: kept in the file's header so autosave and Recent files recognise it.
-  const meta = useRef<{ id: string; created?: string; handle?: FileHandle; file: string | null; savedAt: number | null }>({
+  const meta = useRef<{
+    id: string;
+    created?: string;
+    handle?: FileHandle;
+    file: string | null;
+    savedAt: number | null;
+    /** Set when the model came from, or was saved to, an account. */
+    cloud?: { modelId: string; version: number };
+  }>({
     id: newId("m"),
     file: null,
     savedAt: null,
@@ -53,6 +77,13 @@ export function useFiles(d: FilesDeps) {
   // A step that would replace unsaved work, waiting for Save or Don't save.
   const [ask, setAsk] = useState<{ run: () => Promise<unknown> } | null>(null);
   const warnedStorage = useRef(false);
+  const { api, account } = useAccount();
+  const signedIn = !!account;
+  const [cloud, setCloud] = useState<{ modelId: string; state: CloudState } | null>(null);
+  // Another tab saved first: Save anyway or Reload.
+  const [conflict, setConflict] = useState(false);
+  // A model that isn't in the account yet: what to call it.
+  const [naming, setNaming] = useState<string | null>(null);
 
   const refreshRecent = useCallback(() => {
     files.recent().then(setRecent, () => undefined);
@@ -158,7 +189,59 @@ export function useFiles(d: FilesDeps) {
     [auto, files, store, thumbnail, refreshRecent],
   );
 
-  const save = useCallback(() => write(false), [write]);
+  /** Saves to the account as a new version (#90). `force` replaces whatever another tab saved. */
+  const saveCloud = useCallback(
+    async (o: { note?: string; force?: boolean; name?: string } = {}): Promise<boolean> => {
+      const m = meta.current;
+      if (!account) {
+        deps.current.say("Sign in to save to your account", true);
+        return false;
+      }
+      if (!m.cloud && o.name === undefined) {
+        setNaming(store.get().name);
+        return false;
+      }
+      if (o.name !== undefined && o.name !== store.get().name) store.edit((x) => ({ ...x, name: o.name! }), "Rename model");
+      const current = store.get();
+      const modelId = m.cloud?.modelId;
+      setCloud({ modelId: modelId ?? "", state: "saving" });
+      try {
+        await auto.flush();
+        const thumb = await thumbnail();
+        const text = saveBcad(await stripBlobs(api, current), { id: m.id, created: m.created ?? new Date().toISOString(), thumbnail: thumb });
+        if (!m.cloud) {
+          const made = await api.create(current.name, text, o.note);
+          m.cloud = { modelId: made.id, version: made.version };
+          // The address now names the model, so a reload opens it again.
+          setRoute(`#/edit/${made.id}`);
+        } else {
+          const r = await api.save(m.cloud.modelId, text, { note: o.note, name: current.name, ifMatch: o.force ? undefined : m.cloud.version });
+          m.cloud = { ...m.cloud, version: r.version };
+        }
+        m.created ??= new Date().toISOString();
+        m.savedAt = Date.now();
+        setBaseline(current);
+        await auto.markSaved(m.id, m.savedAt);
+        setCloud({ modelId: m.cloud.modelId, state: "saved" });
+        if (o.note !== "autosave") deps.current.say(`Saved ${current.name} to your account`);
+        return true;
+      } catch (e) {
+        const err = e as ApiError;
+        if (err.status === 409) {
+          setCloud({ modelId: modelId ?? "", state: "error" });
+          setConflict(true);
+          return false;
+        }
+        setCloud({ modelId: modelId ?? "", state: err.status === 0 ? "offline" : "error" });
+        deps.current.say(err.status === 0 ? "Not saved: you're offline. It saves when you're back, and autosave keeps a copy here." : err.message, true);
+        return false;
+      }
+    },
+    [account, api, auto, store, thumbnail],
+  );
+
+  /** Ctrl+S: to the account when the model lives there and you're signed in, otherwise to disk. */
+  const save = useCallback(() => (meta.current.cloud && signedIn ? saveCloud() : write(false)), [saveCloud, signedIn, write]);
   const saveAs = useCallback(() => write(true), [write]);
 
   /** Runs a step that replaces the model, asking first to save unsaved changes. */
@@ -179,6 +262,8 @@ export function useFiles(d: FilesDeps) {
       auto.cancel();
       const id = r.meta.id ?? newId("m");
       meta.current = { id, created: r.meta.created, handle: opened.handle, file: opened.name, savedAt: Date.now() };
+      setCloud(null);
+      leaveCloudRoute();
       store.edit(() => r.doc, `Open ${r.doc.name}`);
       setBaseline(r.doc);
       deps.current.onSwitched();
@@ -245,12 +330,68 @@ export function useFiles(d: FilesDeps) {
     auto.cancel();
     const fresh = newDoc();
     meta.current = { id: newId("m"), file: null, savedAt: null };
+    setCloud(null);
+    leaveCloudRoute();
     store.edit(() => fresh, "New model");
     setBaseline(fresh);
     deps.current.onSwitched();
   }, [auto, store]);
 
   const newModel = useCallback(() => confirmThen(startNew), [confirmThen, startNew]);
+
+  /** Opens a model saved to the account (#89, #90), after asking about unsaved changes. */
+  const loadCloud = useCallback(
+    async (modelId: string) => {
+      deps.current.say("Opening…", false, true);
+      try {
+        const got = await api.get(modelId);
+        const r = loadBcad(got.bcad);
+        if (r instanceof BcadError) {
+          deps.current.say(r.message, true);
+          return false;
+        }
+        const docIn = await fillBlobs(api, { ...r.doc, name: got.name });
+        await auto.flush();
+        auto.cancel();
+        meta.current = { id: r.meta.id ?? newId("m"), created: r.meta.created, file: null, savedAt: Date.now(), cloud: { modelId, version: got.version } };
+        store.edit(() => docIn, `Open ${got.name}`);
+        setBaseline(docIn);
+        setCloud({ modelId, state: "saved" });
+        setRecover((list) => list.filter((x) => x.id !== meta.current.id));
+        deps.current.onSwitched();
+        deps.current.say(r.warning ?? `Opened ${got.name}`, !!r.warning);
+        return true;
+      } catch (e) {
+        deps.current.say((e as Error).message, true);
+        return false;
+      }
+    },
+    [api, auto, store],
+  );
+  const openCloud = useCallback(
+    (modelId: string) => {
+      if (meta.current.cloud?.modelId === modelId) return;
+      confirmThen(() => loadCloud(modelId));
+    },
+    [confirmThen, loadCloud],
+  );
+
+  // Cloud autosave: every 30 seconds while there are changes, as a version noted "autosave".
+  const cloudOn = !!cloud && signedIn;
+  useEffect(() => {
+    if (!cloudOn || !dirty || conflict) return;
+    setCloud((c) => (c && c.state === "saved" ? { ...c, state: "dirty" } : c));
+    const t = setTimeout(() => void saveCloud({ note: "autosave" }), CLOUD_AUTOSAVE);
+    return () => clearTimeout(t);
+  }, [cloudOn, dirty, conflict, doc, saveCloud]);
+
+  // Back online: send what's waiting.
+  useEffect(() => {
+    if (!cloudOn) return;
+    const on = () => dirtyNow.current && void saveCloud({ note: "autosave" });
+    window.addEventListener("online", on);
+    return () => window.removeEventListener("online", on);
+  }, [cloudOn, saveCloud]);
 
   const recoverOne = useCallback(
     (rec: AutosaveRecord) => {
@@ -261,6 +402,8 @@ export function useFiles(d: FilesDeps) {
       }
       auto.cancel();
       meta.current = { id: rec.id, created: r.meta.created, file: rec.source, savedAt: rec.savedAt };
+      setCloud(null);
+      leaveCloudRoute();
       store.edit(() => r.doc, `Recover ${rec.name}`);
       // Recovered work is not in a file yet.
       setBaseline(null);
@@ -329,6 +472,64 @@ export function useFiles(d: FilesDeps) {
     </Dialog>
   ) : null;
 
+  const conflictDialog = conflict ? (
+    <Dialog
+      open
+      title="This model changed in another tab"
+      icon="cloud"
+      onCancel={() => setConflict(false)}
+      footer={
+        <>
+          <Button kind="cancel" label="Cancel" onClick={() => setConflict(false)} />
+          <Button
+            label="Reload"
+            title="Open the version the other tab saved; your changes here are dropped"
+            onClick={() => {
+              setConflict(false);
+              const id = meta.current.cloud?.modelId;
+              if (id) {
+                meta.current.cloud = undefined;
+                void loadCloud(id);
+              }
+            }}
+          />
+          <Button
+            variant="primary"
+            label="Save anyway"
+            title="Save this as the newest version"
+            onClick={() => {
+              setConflict(false);
+              void saveCloud({ force: true });
+            }}
+          />
+        </>
+      }
+    >
+      <p>Another tab or computer saved {doc.name} after you opened it. Save anyway makes yours the newest version; the other one stays in the history.</p>
+    </Dialog>
+  ) : null;
+
+  const namingDialog =
+    naming !== null ? (
+      <Dialog
+        open
+        title="Save to your account"
+        icon="cloud"
+        onCancel={() => setNaming(null)}
+        doneLabel="Save"
+        onDone={() => {
+          const name = naming.trim() || doc.name;
+          setNaming(null);
+          void saveCloud({ name });
+        }}
+      >
+        <label className="bc-field-label" htmlFor="bc-cloud-name">
+          Name
+        </label>
+        <input id="bc-cloud-name" className="bc-text" autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} onFocus={(e) => e.target.select()} />
+      </Dialog>
+    ) : null;
+
   const recentEntries = useMemo<MenuEntry[]>(
     () =>
       recent.length
@@ -340,7 +541,32 @@ export function useFiles(d: FilesDeps) {
     [recent, openRecent],
   );
 
-  return { save, saveAs, open, openRecent, newModel, dirty, banners, dialog, recentEntries, inPlace: files.kind === "disk", show, openFiles, store: files };
+  return {
+    save,
+    saveAs,
+    saveToDisk: () => write(false),
+    saveCloud,
+    openCloud,
+    cloud,
+    confirmThen,
+    open,
+    openRecent,
+    newModel,
+    dirty,
+    banners,
+    dialog: (
+      <>
+        {dialog}
+        {conflictDialog}
+        {namingDialog}
+      </>
+    ),
+    recentEntries,
+    inPlace: files.kind === "disk",
+    show,
+    openFiles,
+    store: files,
+  };
 }
 
 export type Files = ReturnType<typeof useFiles>;

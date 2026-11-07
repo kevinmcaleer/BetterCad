@@ -82,6 +82,8 @@ import { useHole } from "../hole/useHole";
 import { HoleBar } from "../hole/HoleBar";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
+import { useAccount } from "../cloud/account";
+import { go } from "../cloud/route";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -121,7 +123,14 @@ function useMedia(query: string) {
 }
 
 /** The editor: composes the shell's slots and owns the document, the selection, the armed tool and the commands. */
-export function Editor() {
+export interface EditorProps {
+  /** False while a page (library, account) covers the editor: its shortcuts stop. */
+  active?: boolean;
+  /** A model saved to the account to open ("#/edit/<id>"). */
+  model?: string;
+}
+
+export function Editor({ active = true, model }: EditorProps = {}) {
   const [store] = useState(() => createStore<ModelDoc>(newDoc()));
   const history = useSyncExternalStore(store.subscribe, store.history);
   const doc = history.present;
@@ -161,6 +170,8 @@ export function Editor() {
   const { theme, setTheme, resolved } = useTheme();
   const [status, say] = useStatus();
 
+  const activeRef = useRef(active);
+  activeRef.current = active;
   // The registry reads the latest state through a ref, so commands are registered once.
   const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false });
   live.current = { doc, parts, marker, at, selection, tool, dialogOpen: paletteOpen || shortcutsOpen || exportOpen, sketching: live.current.sketching };
@@ -457,6 +468,29 @@ export function Editor() {
     },
   });
   const { save, saveAs, open, newModel } = files;
+
+  // Accounts (#88, #90): open "#/edit/<id>" once we know who is signed in.
+  const { api, account, ready: accountReady, available: accountsOn, setAccount } = useAccount();
+  const openCloud = useRef(files.openCloud);
+  openCloud.current = files.openCloud;
+  useEffect(() => {
+    if (!model || !accountReady) return;
+    if (!account) {
+      if (accountsOn) go(`#/signin?next=${encodeURIComponent(`#/edit/${model}`)}`);
+      else say("Accounts can't be reached here, so that model can't open", true);
+      return;
+    }
+    openCloud.current(model);
+  }, [model, accountReady, account, accountsOn, say]);
+  const signOut = useCallback(() => {
+    const run = async () => {
+      await api.signOut().catch(() => undefined);
+      setAccount(null);
+      say("Signed out");
+    };
+    if (files.cloud) files.confirmThen(run);
+    else void run();
+  }, [api, setAccount, say, files]);
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
 
   // ---- timeline
@@ -533,6 +567,7 @@ export function Editor() {
 
   const handlers = useRef({
     openExport: () => {},
+    saveCloud: () => {},
     newModel,
     open,
     save,
@@ -559,6 +594,7 @@ export function Editor() {
   });
   handlers.current = {
     openExport: () => setExportOpen(true),
+    saveCloud: () => void files.saveCloud(),
     newModel,
     open,
     save,
@@ -616,6 +652,16 @@ export function Editor() {
         run: () => void h().saveAs(),
         keywords: "disk download copy file",
       },
+      {
+        id: "file.saveCloud",
+        label: "Save to your account",
+        group: "File",
+        icon: "cloud",
+        run: () => h().saveCloud(),
+        keywords: "cloud online upload version",
+      },
+      { id: "go.library", label: "My models", group: "File", icon: "folder", run: () => go("#/library"), keywords: "library cloud account open" },
+      { id: "go.account", label: "Account", group: "Help", icon: "user", run: () => go("#/account"), keywords: "sign in profile password" },
       {
         id: "file.import",
         label: "Import STL, STEP or 3MF…",
@@ -814,7 +860,7 @@ export function Editor() {
   // One keyboard handler for the whole editor. Escape goes through the layered stack instead.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.key === "Escape" || live.current.dialogOpen) return;
+      if (e.defaultPrevented || e.key === "Escape" || live.current.dialogOpen || !activeRef.current) return;
       registry.dispatch(e);
     };
     window.addEventListener("keydown", onKey);
@@ -954,7 +1000,13 @@ export function Editor() {
   };
 
   const saveEntries: MenuEntry[] = [
-    { id: "save", label: files.inPlace ? "Save" : "Save (downloads a file)", icon: "save", keys: formatCombo("mod+s"), onSelect: () => void save() },
+    {
+      id: "save",
+      label: files.cloud && account ? "Save to your account" : files.inPlace ? "Save" : "Save (downloads a file)",
+      icon: files.cloud && account ? "cloud" : "save",
+      keys: formatCombo("mod+s"),
+      onSelect: () => void save(),
+    },
     { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
@@ -962,7 +1014,13 @@ export function Editor() {
     { id: "export", label: "Export STL, 3MF or STEP…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
     ...files.recentEntries,
     { kind: "separator", id: "s1" },
-    { id: "cloud", label: "Save to your account (coming with accounts)", icon: "user", disabled: true, onSelect: () => {} },
+    account
+      ? files.cloud
+        ? { id: "disk", label: "Save a copy to disk", icon: "save", onSelect: () => void files.saveToDisk() }
+        : { id: "cloud", label: "Save to your account…", icon: "cloud", onSelect: () => void files.saveCloud() }
+      : accountsOn
+        ? { id: "cloud", label: "Sign in to save to your account", icon: "cloud", onSelect: () => go("#/signin?next=%23%2F") }
+        : { id: "cloud", label: "Accounts can't be reached here", icon: "cloudOff", disabled: true, onSelect: () => {} },
   ];
 
   const selectionText =
@@ -1092,6 +1150,11 @@ export function Editor() {
             onRedo={doRedo}
             status={status}
             saveEntries={saveEntries}
+            account={account ? { name: account.name } : null}
+            accountsOn={accountReady && accountsOn}
+            cloud={files.cloud?.state ?? null}
+            onSaveCloud={() => void files.saveCloud()}
+            onSignOut={signOut}
             onPalette={() => setPaletteOpen(true)}
             theme={theme}
             onTheme={setTheme}
