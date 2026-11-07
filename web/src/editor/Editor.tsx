@@ -51,6 +51,9 @@ import {
   type Orientation,
   type OrientWeights,
   centreMove,
+  holeOffsetOf,
+  updateHole,
+  type HoleFeature,
   estimateWeight,
   fitCheck,
   fitMessage,
@@ -1172,6 +1175,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
   const showArea = useCallback((a: CheckArea) => vp.ref.current?.engine()?.fitBox(a.box.min, a.box.max), [vp.ref]);
 
+  // Printed holes (#104): steps made at another offset, which Update brings to the one set now.
+  const holeOffset = holeOffsetOf(doc.print);
+  const staleHoles = useMemo(
+    () =>
+      doc.features.filter(
+        (f): f is HoleFeature => f.type === "hole" && f.fit === "printed" && f.size !== "custom" && Math.abs((f.offset ?? 0.4) - holeOffset) > 1e-9,
+      ),
+    [doc.features, holeOffset],
+  );
+  const updateHoles = useCallback(() => {
+    const n = staleHoles.length;
+    store.edit((d) => staleHoles.reduce((x, f) => updateHole(x, f.id, { offset: holeOffset }), d), n === 1 ? "Update 1 hole" : `Update ${n} holes`);
+    say(`${n === 1 ? "1 printed hole now adds" : `${n} printed holes now add`} ${holeOffset} mm`);
+  }, [staleHoles, holeOffset, store, say]);
+
   const printPanel = (
     <PrintPanel
       settings={doc.print ?? {}}
@@ -1193,6 +1211,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       onShowArea={showArea}
       suggestions={suggestions}
       onSuggestion={layDown}
+      holeOffset={holeOffset}
+      staleHoles={staleHoles.length}
+      onUpdateHoles={updateHoles}
+      onCalibrate={() => files.openSample("hole-calibration")}
     />
   );
 

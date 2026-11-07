@@ -64,6 +64,14 @@ describe("hole steps", () => {
     expect(r.bodies[0]!.measure.faces).toBe(8);
   });
 
+  it("sizes a printed hole with the step's offset, and an insert hole from the table (#104)", () => {
+    const tuned = addHole(addPart(newDoc(), "box", "b"), hole({ offset: 0.2 }), "h1");
+    expect(featureSummary(tuned, tuned.features[1]!)).toBe("1 hole, M3, 3.2 mm, through, Box 1");
+    expect(bodies(tuned).bodies[0]!.measure.volume).toBeCloseTo(8000 - cyl(3.2, 20), 1);
+    const insert = addHole(addPart(newDoc(), "box", "b"), hole({ fit: "insert", depth: 6.7 }), "h1");
+    expect(bodies(insert).bodies[0]!.measure.volume).toBeCloseTo(8000 - cyl(4, 6.7), 1);
+  });
+
   it("stops a blind hole at its depth", () => {
     const d = addHole(addPart(newDoc(), "box", "b"), hole({ depth: 6 }), "h1");
     expect(bodies(d).bodies[0]!.measure.volume).toBeCloseTo(8000 - cyl(3.4, 6), 1);

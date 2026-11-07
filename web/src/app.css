@@ -1033,3 +1033,9 @@ kbd {
   max-width: 96px;
   aspect-ratio: 3 / 2;
 }
+
+/* The Hole tool's fit explained (#104). */
+.bc-hole-fit-note {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+}

@@ -48,6 +48,13 @@ export interface PrintSettings {
   material?: string;
   /** Infill, percent. */
   infill?: number;
+  /** What printed holes add, mm (#104), when tuned away from the printer's default. */
+  holeOffset?: number;
+}
+
+/** The hole offset in use: the tuned one, else the printer's. */
+export function holeOffsetOf(s: PrintSettings | undefined): number {
+  return s?.holeOffset ?? printerOf(s).holeOffset;
 }
 
 export function printerOf(s: PrintSettings | undefined): Printer {

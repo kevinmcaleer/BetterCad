@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ESC, useEscape } from "@bettercad/ui";
 import { toSketch, type Frame, type Vec2 } from "@bettercad/sketch";
-import { addHole, newId, updateHole, type HoleFeature, type HoleStepParams, type ModelDoc, type Part } from "../state/document";
+import { addHole, holeOffsetOf, newId, updateHole, type HoleFeature, type HoleStepParams, type ModelDoc, type Part } from "../state/document";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine } from "../viewport/engine";
 
@@ -107,7 +107,14 @@ export function useHole(d: HoleDeps) {
         const frame: Frame = { origin: info.centroid, x: info.edge.map((v) => v / len) as Frame["x"], normal: info.normal };
         const w = eng.rayPlane(p.x, p.y, frame.origin, frame.normal);
         const id = newId("f");
-        const params: HoleStepParams = { part: hit.body, frame, points: [snapPoint(w ? toSketch(frame, w) : [0, 0])], ...live.current.last };
+        const params: HoleStepParams = {
+          part: hit.body,
+          frame,
+          points: [snapPoint(w ? toSketch(frame, w) : [0, 0])],
+          ...live.current.last,
+          // The printer's hole offset now (#104): kept on the step, so changing it later is an edit, not a surprise.
+          offset: holeOffsetOf(deps.current.doc.print),
+        };
         deps.current.record((doc, at) => addHole(doc, params, id, at), "Hole", KEY(id));
         setSession({ id, isNew: true });
         eng.showHover(null);

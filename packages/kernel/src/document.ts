@@ -1063,7 +1063,7 @@ export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: 
   return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest });
 }
 
-export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "head" | "depth">;
+export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth">;
 
 /** Adds a Hole step at `at` (the marker), or at the end. */
 export function addHole(doc: ModelDoc, params: HoleStepParams, id = newId("f"), at?: number): ModelDoc {
