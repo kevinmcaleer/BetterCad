@@ -84,6 +84,9 @@ import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
+import { Versions } from "../cloud/Versions";
+import { ShareDialog } from "../cloud/ShareDialog";
+import { Page } from "../pages/Page";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -128,9 +131,11 @@ export interface EditorProps {
   active?: boolean;
   /** A model saved to the account to open ("#/edit/<id>"). */
   model?: string;
+  /** A share link's token ("#/view/<token>"): the model read-only (#92). */
+  share?: string;
 }
 
-export function Editor({ active = true, model }: EditorProps = {}) {
+export function Editor({ active = true, model, share }: EditorProps = {}) {
   const [store] = useState(() => createStore<ModelDoc>(newDoc()));
   const history = useSyncExternalStore(store.subscribe, store.history);
   const doc = history.present;
@@ -166,6 +171,9 @@ export function Editor({ active = true, model }: EditorProps = {}) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [inactive, setInactive] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const { theme, setTheme, resolved } = useTheme();
   const [status, say] = useStatus();
@@ -482,6 +490,20 @@ export function Editor({ active = true, model }: EditorProps = {}) {
     }
     openCloud.current(model);
   }, [model, accountReady, account, accountsOn, say]);
+  // A share link opens read-only; leaving it goes back to a fresh model.
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  useEffect(() => {
+    if (!share) {
+      setInactive(false);
+      if (filesRef.current.shared) filesRef.current.leaveShared();
+      return;
+    }
+    filesRef.current.openShared(share).then(
+      () => setInactive(false),
+      () => setInactive(true),
+    );
+  }, [share]);
   const signOut = useCallback(() => {
     const run = async () => {
       await api.signOut().catch(() => undefined);
@@ -1134,6 +1156,17 @@ export function Editor({ active = true, model }: EditorProps = {}) {
     />
   );
 
+  if (share && inactive) {
+    return (
+      <Page title="Shared model">
+        <p>This link isn&rsquo;t active any more. Ask whoever sent it for a new one.</p>
+        <p>
+          <a href="#/">Open the editor</a>
+        </p>
+      </Page>
+    );
+  }
+
   return (
     <>
       <AppShell
@@ -1153,7 +1186,12 @@ export function Editor({ active = true, model }: EditorProps = {}) {
             account={account ? { name: account.name } : null}
             accountsOn={accountReady && accountsOn}
             cloud={files.cloud?.state ?? null}
-            onSaveCloud={() => void files.saveCloud()}
+            onHistory={() => setVersionsOpen(true)}
+            onShare={files.cloud && !files.viewing ? () => setShareOpen(true) : undefined}
+            shared={files.shared ? { owner: files.shared.owner } : null}
+            onOpenCopy={files.openCopy}
+            onDownloadBcad={files.saveToDisk}
+            onExport={() => setExportOpen(true)}
             onSignOut={signOut}
             onPalette={() => setPaletteOpen(true)}
             theme={theme}
@@ -1351,6 +1389,18 @@ export function Editor({ active = true, model }: EditorProps = {}) {
         say={say}
         onGroup={(ids) => group(ids)}
       />
+      {versionsOpen && files.cloud && (
+        <Versions
+          api={api}
+          modelId={files.cloud.modelId}
+          name={doc.name}
+          viewing={files.viewing?.number ?? null}
+          onPreview={(n) => void files.previewVersion(n)}
+          onClose={() => setVersionsOpen(false)}
+          say={say}
+        />
+      )}
+      {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
       <TooltipLayer />
     </>

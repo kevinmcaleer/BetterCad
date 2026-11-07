@@ -32,6 +32,23 @@ reached and nothing else changes.
 - The cloud icon beside the name shows the state: saved, saving, changes waiting, offline, or not saved. Click it to
   save now.
 
+## Versions
+
+Every save to the account is a version. The cloud icon beside the name opens **Version history**: newest first,
+with time, size and note, and runs of autosaves folded into one row. **View** shows an old version read-only (the
+store is locked: edits, undo and redo stop with a note) under a bar with **Restore** and **Back**. Restore saves it
+again as the newest version, noted "Restored version N", so nothing is lost. The current version can carry a note.
+The server keeps every version for 30 days, then the newest 10 older ones and any a share link shows.
+
+## Share links
+
+**Share** in the top bar (for a model in your account) makes a link, `https://<host>/view/<token>`. The server
+answers that address with Open Graph tags (name, owner, thumbnail) so a pasted link previews in Discord and Slack, and
+sends the browser to `#/view/<token>`. There the model opens read-only, rebuilt in the visitor's browser from its
+recipe: the parts tree, views, measure, **Download** (STL, 3MF, STEP or `.bcad`) and **Open a copy**, which makes
+it a new unsaved model of the visitor's own. **Turn off the link** in the Share dialog stops it; the viewer then says
+the link isn't active. `frame-ancestors` lets kevsrobots.com frame the viewer (#93).
+
 ## Sign-in
 
 `server/bettercad/auth.py` is a small stand-in for markdown-studio's powertools-auth (#88): scrypt passwords,

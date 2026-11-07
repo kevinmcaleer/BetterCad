@@ -203,3 +203,17 @@ def test_docs_only_in_development(make_client):
         assert client.get("/api/openapi.json").status_code == 200
     with make_client(env="production", secret_key="x") as client:
         assert client.get("/api/openapi.json").status_code == 404
+
+
+def test_view_page_previews_and_redirects(user, make_client):
+    m = create(user)
+    token = user.post(f"/api/models/{m['id']}/share").json()["token"]
+    with make_client() as anon:
+        page = anon.get(f"/view/{token}")
+        assert page.status_code == 200
+        assert 'og:title" content="Box by Kev · BetterCad"' in page.text
+        assert f"/api/shared/{token}/thumbnail" in page.text
+        assert f"url=/#/view/{token}" in page.text
+        assert "frame-ancestors" in page.headers["content-security-policy"]
+        odd = anon.get("/view/%3Cscript%3E%22x")
+        assert odd.status_code == 200 and '<script>"x' not in odd.text and "BetterCad" in odd.text

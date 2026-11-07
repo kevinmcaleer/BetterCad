@@ -1,6 +1,8 @@
 """App factory: /api routes, request logging, and the built web app with an index.html fallback."""
 
 import asyncio
+import html
+import json
 import logging
 import subprocess
 import time
@@ -9,7 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, auth, db, jobs, models
@@ -105,6 +107,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
     def api_not_found(rest: str) -> JSONResponse:
         return JSONResponse({"detail": "Not found"}, status_code=404)
+
+    # A share link (#92) is /view/<token>: a page with Open Graph tags, so a pasted link previews in Discord and
+    # Slack, that sends the browser on to the viewer at /#/view/<token>. kevsrobots.com may frame it (#93).
+    @app.get("/view/{token}", include_in_schema=False)
+    def view(token: str, request: Request) -> HTMLResponse:
+        row = request.app.state.db.execute(
+            "SELECT m.name, m.thumbnail, u.name AS owner FROM shares s JOIN models m ON m.id = s.model_id "
+            "JOIN users u ON u.id = m.user_id WHERE s.token = ? AND m.deleted_at IS NULL",
+            (token,),
+        ).fetchone()
+        base = str(request.base_url).rstrip("/")
+        safe = html.escape(token, quote=True)
+        js = json.dumps(token).replace("<", "\\u003c")
+        title = html.escape(f"{row['name']} by {row['owner']} · BetterCad" if row else "BetterCad", quote=True)
+        image = f'<meta property="og:image" content="{base}/api/shared/{safe}/thumbnail">' if row and row["thumbnail"] else ""
+        page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{title}</title>
+<meta property="og:title" content="{title}"><meta property="og:type" content="website">
+<meta property="og:description" content="A 3D model made in BetterCad. Open it to look around, measure and download.">
+<meta property="og:url" content="{base}/view/{safe}">{image}<meta name="twitter:card" content="summary_large_image">
+<meta http-equiv="refresh" content="0; url=/#/view/{safe}"></head>
+<body><script>location.replace("/#/view/" + encodeURIComponent({js}));</script>
+<a href="/#/view/{safe}">Open the model</a></body></html>"""
+        return HTMLResponse(
+            page,
+            headers={
+                "Cache-Control": "no-cache",
+                "Content-Security-Policy": "frame-ancestors 'self' https://www.kevsrobots.com https://kevsrobots.com",
+            },
+        )
 
     dist: Path = settings.web_dist
     if dist.is_dir():

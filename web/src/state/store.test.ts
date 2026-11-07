@@ -23,4 +23,22 @@ describe("store", () => {
     s.undo();
     expect(s.get()).toBe(0);
   });
+  it("locks for a read-only look, and puts the history back after", async () => {
+    const s = createStore(0);
+    s.edit((n) => n + 1, "Add one");
+    const before = s.history();
+    const blocked = vi.fn();
+    s.edit(() => 10, "View version");
+    s.lock(blocked);
+    s.edit((n) => n + 1, "Add one");
+    s.undo();
+    expect(s.get()).toBe(10);
+    await Promise.resolve();
+    expect(blocked).toHaveBeenCalledTimes(2);
+    expect(s.canUndo()).toBe(false);
+    s.lock(null);
+    s.reset(before);
+    expect(s.get()).toBe(1);
+    expect(s.canUndo()).toBe(true);
+  });
 });
