@@ -107,7 +107,7 @@ test("recovers an autosave after the tab closes", async ({ page }) => {
     page.evaluate(
       () =>
         new Promise<number>((resolve) => {
-          const r = indexedDB.open("bettercad", 1);
+          const r = indexedDB.open("bettercad", 2);
           r.onsuccess = () => {
             const q = r.result.transaction("autosave").objectStore("autosave").count();
             q.onsuccess = () => resolve(q.result);

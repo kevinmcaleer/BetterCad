@@ -775,3 +775,14 @@ kbd {
   color: var(--bc-color-muted);
   white-space: nowrap;
 }
+
+/* ---- "BetterCad updated" (#94), over everything at the bottom of the window */
+.bc-update {
+  position: fixed;
+  left: 50%;
+  bottom: var(--bc-space-8);
+  transform: translateX(-50%);
+  z-index: 50;
+  width: min(520px, calc(100vw - 2 * var(--bc-space-8)));
+  background: none;
+}

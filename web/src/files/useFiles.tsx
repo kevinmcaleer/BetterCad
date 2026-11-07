@@ -9,6 +9,7 @@ import { createFileStore, type FileHandle, type FileStore, type Opened, type Rec
 import { useAccount } from "../cloud/account";
 import { ApiError, serverTime } from "../cloud/api";
 import { fillBlobs, stripBlobs } from "../cloud/cloudDoc";
+import { offline } from "../cloud/offline";
 import type { Store } from "../state/store";
 import type { History } from "../state/history";
 
@@ -215,10 +216,11 @@ export function useFiles(d: FilesDeps) {
       const current = store.get();
       const modelId = m.cloud?.modelId;
       setCloud({ modelId: modelId ?? "", state: "saving" });
+      let text: string | null = null;
       try {
         await auto.flush();
         const thumb = await thumbnail();
-        const text = saveBcad(await stripBlobs(api, current), { id: m.id, created: m.created ?? new Date().toISOString(), thumbnail: thumb });
+        text = saveBcad(await stripBlobs(api, current), { id: m.id, created: m.created ?? new Date().toISOString(), thumbnail: thumb });
         if (!m.cloud) {
           const made = await api.create(current.name, text, o.note);
           m.cloud = { modelId: made.id, version: made.version };
@@ -243,7 +245,15 @@ export function useFiles(d: FilesDeps) {
           return false;
         }
         setCloud({ modelId: modelId ?? "", state: err.status === 0 ? "offline" : "error" });
-        deps.current.say(err.status === 0 ? "Not saved: you're offline. It saves when you're back, and autosave keeps a copy here." : err.message, true);
+        // Offline (#96): the newest save of this model waits in the browser and goes when you're back.
+        if (err.status === 0 && m.cloud && text) {
+          await offline()
+            .queue({ modelId: m.cloud.modelId, name: current.name, bcad: text, note: o.note, version: m.cloud.version, at: Date.now() })
+            .catch(() => undefined);
+          if (o.note !== "autosave") deps.current.say("You're offline. This save waits and goes when you're back.");
+          return false;
+        }
+        deps.current.say(err.status === 0 ? "Not saved: you're offline. Autosave keeps a copy in this browser." : err.message, true);
         return false;
       }
     },
@@ -362,7 +372,19 @@ export function useFiles(d: FilesDeps) {
     async (modelId: string) => {
       deps.current.say("Opening…", false, true);
       try {
-        const got = await api.get(modelId);
+        let cached = false;
+        const got = await api.get(modelId).then(
+          (g) => {
+            void offline().rememberModel(g);
+            return g;
+          },
+          async (e: ApiError) => {
+            const copy = e.status === 0 ? await offline().lastModel(modelId) : null;
+            if (!copy) throw e;
+            cached = true;
+            return copy;
+          },
+        );
         const r = loadBcad(got.bcad);
         if (r instanceof BcadError) {
           deps.current.say(r.message, true);
@@ -378,7 +400,8 @@ export function useFiles(d: FilesDeps) {
         setCloud({ modelId, state: "saved" });
         setRecover((list) => list.filter((x) => x.id !== meta.current.id));
         deps.current.onSwitched();
-        deps.current.say(r.warning ?? `Opened ${got.name}`, !!r.warning);
+        if (cached) setCloud({ modelId, state: "offline" });
+        deps.current.say(r.warning ?? (cached ? `You're offline. ${got.name} is the copy from your last visit.` : `Opened ${got.name}`), !!r.warning);
         return true;
       } catch (e) {
         deps.current.say((e as Error).message, true);
@@ -404,13 +427,37 @@ export function useFiles(d: FilesDeps) {
     return () => clearTimeout(t);
   }, [cloudOn, dirty, conflict, doc, saveCloud]);
 
-  // Back online: send what's waiting.
+  // Back online (#96): send the saves that waited, and say how it went.
   useEffect(() => {
-    if (!cloudOn) return;
-    const on = () => dirtyNow.current && void saveCloud({ note: "autosave" });
-    window.addEventListener("online", on);
-    return () => window.removeEventListener("online", on);
-  }, [cloudOn, saveCloud]);
+    if (!signedIn) return;
+    const run = async () => {
+      const r = await offline().flush(api);
+      const cur = meta.current.cloud;
+      for (const x of r.saved) {
+        if (cur && x.modelId === cur.modelId) {
+          cur.version = x.version;
+          setCloud({ modelId: cur.modelId, state: dirtyNow.current ? "dirty" : "saved" });
+        }
+      }
+      if (r.saved.length) deps.current.say(`Saved ${r.saved.length} queued ${r.saved.length === 1 ? "change" : "changes"}`);
+      for (const c of r.conflicts) {
+        if (cur && c.modelId === cur.modelId) setConflict(true);
+        else deps.current.say(`A waiting save of ${c.name} met a newer version. Open it to check.`, true);
+      }
+    };
+    const online = () => void run();
+    const visible = () => document.visibilityState === "visible" && navigator.onLine && void run();
+    const gone = () => setCloud((c) => (c ? { ...c, state: "offline" } : c));
+    window.addEventListener("online", online);
+    window.addEventListener("offline", gone);
+    document.addEventListener("visibilitychange", visible);
+    if (navigator.onLine) void run();
+    return () => {
+      window.removeEventListener("online", online);
+      window.removeEventListener("offline", gone);
+      document.removeEventListener("visibilitychange", visible);
+    };
+  }, [signedIn, api]);
 
   const recoverOne = useCallback(
     (rec: AutosaveRecord) => {

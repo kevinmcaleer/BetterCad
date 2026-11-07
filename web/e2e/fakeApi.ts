@@ -25,6 +25,8 @@ interface Model {
 export interface FakeServer {
   models: Map<string, Model>;
   blobs: Map<string, Buffer>;
+  /** While true every request fails as if the network were gone. */
+  down: boolean;
   /** Signs a new account in on this context. */
   signIn(context: BrowserContext, name?: string): Promise<void>;
 }
@@ -62,7 +64,9 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     m.modified = now();
   };
 
+  const server = { down: false } as FakeServer;
   await context.route("**/api/**", async (route) => {
+    if (server.down) return route.abort("internetdisconnected");
     const req = route.request();
     const url = new URL(req.url());
     const path = url.pathname.replace(/^.*\/api\//, "");
@@ -198,15 +202,15 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     return fail(route, 404, "Not found");
   });
 
-  return {
+  return Object.assign(server, {
     models,
     blobs,
-    async signIn(ctx, name = "Kev") {
+    async signIn(ctx: BrowserContext, name = "Kev") {
       const u = { id: users.length + 1, email: `${name.toLowerCase()}${users.length}@example.com`, name, password: "password1", theme: null };
       users.push(u);
       const token = `s${++ids}`;
       sessions.set(token, { user: u.id, csrf: `c${ids}` });
       await ctx.addCookies([{ name: "bc_session", value: token, url: "http://127.0.0.1:4173" }]);
     },
-  };
+  });
 }

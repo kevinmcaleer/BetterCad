@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Dialog, ESC, Icon, MenuButton, cx, useEscape, type MenuEntry } from "@bettercad/ui";
+import { Banner, Button, Dialog, ESC, Icon, MenuButton, cx, useEscape, type MenuEntry } from "@bettercad/ui";
 import { fileName, saveBcad } from "@bettercad/kernel/bcad";
 import { newDoc } from "../state/document";
-import { serverTime, type ModelSummary, type Usage } from "../cloud/api";
+import { ApiError, serverTime, type ModelSummary, type Usage } from "../cloud/api";
+import { offline } from "../cloud/offline";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { ago } from "../files/autosave";
@@ -66,6 +67,7 @@ export function Library({ bin = false }: { bin?: boolean }) {
   const [status, setStatus] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<ModelSummary | null>(null);
+  const [stale, setStale] = useState(false);
 
   const load = useCallback(async () => {
     if (!account) return;
@@ -74,8 +76,16 @@ export function Library({ bin = false }: { bin?: boolean }) {
       setModels(list.models);
       setUsage(use);
       setError(null);
+      setStale(false);
+      if (!q && !bin) void offline().rememberList(list.models);
     } catch (e) {
-      setError((e as Error).message);
+      // Offline (#96): the last list this browser saw, read-only.
+      const last = e instanceof ApiError && e.status === 0 && !bin ? await offline().lastList() : null;
+      if (last) {
+        setModels(q ? last.filter((m) => m.name.toLowerCase().includes(q.toLowerCase())) : last);
+        setStale(true);
+        setError(null);
+      } else setError((e as Error).message);
     }
   }, [api, account, q, sort, bin]);
 
@@ -175,6 +185,7 @@ export function Library({ bin = false }: { bin?: boolean }) {
           {error}
         </p>
       )}
+      {stale && <Banner tone="warn">You&rsquo;re offline. Showing your last synced models.</Banner>}
       {bin && <p className="bc-page-note">Models stay in the bin for 30 days, then they&rsquo;re deleted.</p>}
       {models && models.length === 0 && (
         <div className="bc-lib-empty">

@@ -4,7 +4,9 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
   reporter: process.env.CI ? "github" : "list",
-  use: { baseURL: "http://127.0.0.1:4173", trace: "off" },
+  // Most tests run without the service worker (#94), so each new context doesn't download and cache the 25 MB app;
+  // pwa.spec.ts turns it on.
+  use: { baseURL: "http://127.0.0.1:4173", trace: "off", serviceWorkers: "block" },
   // SwiftShader gives headless Chromium WebGL 2 without a GPU, so the 3D view draws in CI.
   projects: [
     {
