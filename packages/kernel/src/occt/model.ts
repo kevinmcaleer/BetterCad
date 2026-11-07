@@ -11,6 +11,7 @@ import {
   place,
   prismOf,
   pushPull,
+  holes,
   revolveOf,
   shell,
   sphere,
@@ -92,6 +93,7 @@ export class ModelBuilder {
           if (o.op === "fillet" || o.op === "chamfer") local = (o.op === "fillet" ? fillet : chamfer)(oc, local, o.refs ?? [], o.size ?? 0);
           else if (o.op === "shell") local = shell(oc, local, o.refs ?? [], o.size ?? 0, o.outside);
           else if (o.op === "pushpull") local = pushPull(oc, local, o.refs?.[0] ?? -1, o.size ?? 0);
+          else if (o.op === "hole") local = holes(oc, local, o.holes!);
           else {
             // A body is built where it stood, then taken into this part's coordinates as they were then.
             const tool = o.body

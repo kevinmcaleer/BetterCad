@@ -82,7 +82,7 @@ export const TOOLS: Tool[] = [
   },
   { id: "fillet", label: "Fillet", icon: "fillet", key: "g", title: "Round or bevel edges", help: "Click the edges to round." },
   { id: "shell", label: "Shell", icon: "shell", key: "s", title: "Hollow a body to a wall", help: "Click the face to leave open, usually the top." },
-  { id: "hole", label: "Hole", icon: "hole", key: "h", title: "Make a hole", help: "Click a face where the hole goes.", epic: 6 },
+  { id: "hole", label: "Hole", icon: "hole", key: "h", title: "Make a screw hole", help: "Click a flat face where the hole goes." },
 ];
 
 export const VIEW_TOOLS = TOOLS.filter((t) => t.id === "select" || t.id === "move" || t.id === "turn" || t.id === "section");

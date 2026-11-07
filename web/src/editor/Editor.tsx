@@ -52,6 +52,8 @@ import { useFinish } from "../finish/useFinish";
 import { FinishBar } from "../finish/FinishBar";
 import { usePushPull } from "../finish/usePushPull";
 import { PushPullBar } from "../finish/PushPullBar";
+import { useHole } from "../hole/useHole";
+import { HoleBar } from "../hole/HoleBar";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -249,6 +251,17 @@ export function Editor() {
     parts,
     view: vp.ref,
     active: tool === "pushpull" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+  });
+
+  const hole = useHole({
+    store,
+    record,
+    doc,
+    parts,
+    view: vp.ref,
+    active: tool === "hole" && !sketch.editing,
     onClose: () => setTool("select"),
     say,
   });
@@ -526,11 +539,13 @@ export function Editor() {
           ? revolve.done()
           : pushpull.session
             ? pushpull.done()
-            : tool === "combine"
-              ? combine(selection, combineOp, keepTools)
-              : finish.tool
-                ? finish.done()
-                : undefined,
+            : hole.session
+              ? hole.done()
+              : tool === "combine"
+                ? combine(selection, combineOp, keepTools)
+                : finish.tool
+                  ? finish.done()
+                  : undefined,
   };
 
   useEffect(() => {
@@ -636,7 +651,7 @@ export function Editor() {
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -755,6 +770,20 @@ export function Editor() {
             },
           ]
         : []),
+      ...(f.type === "hole"
+        ? [
+            {
+              id: "edit",
+              label: "Edit hole",
+              icon: "hole" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("hole");
+                hole.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -842,8 +871,8 @@ export function Editor() {
         : `${selectedParts.length} parts selected.`;
   const helpText = sketch.help
     ? sketch.help
-    : extrude.help || revolve.help || pushpull.help
-      ? extrude.help || revolve.help || pushpull.help
+    : extrude.help || revolve.help || pushpull.help || hole.help
+      ? extrude.help || revolve.help || pushpull.help || hole.help
       : finish.help
         ? finish.help
         : vp.elementText
@@ -935,6 +964,7 @@ export function Editor() {
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />}
               {tool === "revolve" && <ExtrudeBar x={revolve} parts={parts} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />}
+              {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
                 <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
               )}

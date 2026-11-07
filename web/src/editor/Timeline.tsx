@@ -17,6 +17,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   shell: "shell",
   pushpull: "pushpull",
   revolve: "revolve",
+  hole: "hole",
 };
 
 /** The icon for a kind of part. */
