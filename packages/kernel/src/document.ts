@@ -25,7 +25,7 @@ export * from "./holes";
 export * from "./screws";
 export * from "./params";
 export * from "./print";
-import type { PrintSettings } from "./print";
+import { fitGap, type FitId, type PrintSettings } from "./print";
 
 export type PartKind = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "solid";
 
@@ -65,6 +65,10 @@ export interface Part {
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
   hole?: boolean;
+  /** A hole's fit (#183): cut with a printed gap round it when grouped. A named fit, or a custom `gap`. */
+  fit?: FitId;
+  /** A custom gap on each side, mm, when `fit` isn't set. */
+  gap?: number;
   /** A body brought in from a file (#82): the file's bytes are in the document's blobs. */
   imported?: ImportSpec;
 }
@@ -95,6 +99,8 @@ export interface BodyOp {
   rev?: RevolveSpec;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
   body?: Part;
+  /** A cut's printed gap (#183): the tool grows by this much on every side first, mm. */
+  gap?: number;
   /** Where the part itself stood when the body was combined into it, so the body moves with the part later. */
   at?: { position: Vec3; rotation?: Vec3 };
   feature: string;
@@ -178,12 +184,20 @@ export interface ExtrudeFeature extends FeatureBase {
  * Combine (#66): bodies joined to, cut from or intersected with a target. A Group is the Tinkercad way: solids
  * joined and holes cut in one step, the originals put away until it is undone or deleted (Ungroup).
  */
+export interface CombineTool {
+  id: string;
+  op: "join" | "cut" | "intersect";
+  /** Cuts only (#183): the named fit it was made with, so a printer change can offer to update it. */
+  fit?: FitId;
+  /** Cuts only: the gap on each side, mm, as it was when the step was made. */
+  gap?: number;
+}
 export interface CombineFeature extends FeatureBase {
   type: "combine";
   mode: "combine" | "group";
   target: string;
   /** Each tool body and what it does, in order. */
-  tools: { id: string; op: "join" | "cut" | "intersect" }[];
+  tools: CombineTool[];
   /** Leave the tool bodies in the model (Combine only). */
   keepTools?: boolean;
 }
@@ -256,6 +270,10 @@ export interface Look {
   ghost?: boolean;
   highlight?: boolean;
   hole?: boolean;
+  /** A hole's fit (#183). */
+  fit?: FitId;
+  /** A hole's custom gap, mm. */
+  gap?: number;
 }
 
 export interface ModelDoc {
@@ -555,12 +573,14 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           const i = find(x.id);
           const b = parts[i];
           if (!b || b === t) continue;
-          ops.push({
+          const op: BodyOp = {
             op: x.op,
-            body: { ...b, hole: undefined },
+            body: { ...b, hole: undefined, fit: undefined, gap: undefined },
             at: { position: { ...t.position }, rotation: t.rotation && { ...t.rotation } },
             feature: f.id,
-          });
+          };
+          if (x.op === "cut" && x.gap && x.gap > 0) op.gap = x.gap;
+          ops.push(op);
           if (!(f.mode === "combine" && f.keepTools)) parts.splice(i, 1);
         }
         t.ops = [...(t.ops ?? []), ...ops];
@@ -982,7 +1002,22 @@ function nextGroupName(doc: ModelDoc): string {
  * Group (Tinkercad): the first solid keeps its name; the other solids join it and the holes are cut from it. Returns
  * a reason instead when there is nothing to group.
  */
-export function groupParams(parts: Part[], ids: string[]): CombineParams | string {
+/** The gap a hole body cuts with (#183), mm: its named fit from the printer's tuning, or its custom gap. */
+export function holeGap(p: Pick<Part, "fit" | "gap">, print?: PrintSettings): number {
+  if (p.fit) return fitGap(p.fit, print?.fits);
+  return p.gap && p.gap > 0 ? p.gap : 0;
+}
+
+/** A cut tool with its fit (#183): the gap is fixed now, so changing printer never quietly resizes the cut. */
+export function cutTool(id: string, fit: FitId | null, gap: number, print?: PrintSettings): CombineTool {
+  const g = fit ? fitGap(fit, print?.fits) : gap;
+  const t: CombineTool = { id, op: "cut" };
+  if (fit) t.fit = fit;
+  if (g > 0) t.gap = g;
+  return t;
+}
+
+export function groupParams(parts: Part[], ids: string[], print?: PrintSettings): CombineParams | string {
   const picked = parts.filter((p) => ids.includes(p.id));
   if (picked.length < 2) return "Select two or more bodies to group them";
   const solids = picked.filter((p) => !p.hole);
@@ -992,7 +1027,7 @@ export function groupParams(parts: Part[], ids: string[]): CombineParams | strin
   return {
     mode: "group",
     target: target!.id,
-    tools: [...rest.map((p) => ({ id: p.id, op: "join" as const })), ...holes.map((p) => ({ id: p.id, op: "cut" as const }))],
+    tools: [...rest.map((p) => ({ id: p.id, op: "join" as const })), ...holes.map((p) => cutTool(p.id, p.fit ?? null, holeGap(p, print), print))],
   };
 }
 

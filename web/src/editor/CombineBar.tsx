@@ -1,5 +1,6 @@
 import { ArmedBar, Button } from "@bettercad/ui";
-import type { Part } from "../state/document";
+import type { FitGaps, Part } from "../state/document";
+import { FitMenu, type FitChoice } from "../fit/FitMenu";
 
 export type CombineOp = "join" | "cut" | "intersect";
 
@@ -16,12 +17,17 @@ export interface CombineBarProps {
   onOp: (op: CombineOp) => void;
   keepTools: boolean;
   onKeepTools: (on: boolean) => void;
+  /** A cut's fit (#183): the tools grow by its gap first. */
+  fit: FitChoice;
+  onFit: (c: FitChoice) => void;
+  /** The printer's tuned gaps. */
+  tuned?: FitGaps;
   onApply: () => void;
   onCancel: () => void;
 }
 
 /** Combine's strip (#66): the body to keep is the first one picked; Shift-click adds the bodies to join, cut or intersect. */
-export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, onApply, onCancel }: CombineBarProps) {
+export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, fit, onFit, tuned, onApply, onCancel }: CombineBarProps) {
   const [target, ...tools] = picked;
   const note = !target
     ? "Click the body to keep."
@@ -35,6 +41,7 @@ export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, onApply, 
           <Button key={o.id} label={o.label} title={o.title} on={op === o.id} onClick={() => onOp(o.id)} />
         ))}
       </span>
+      {op === "cut" && <FitMenu value={fit} onChange={onFit} tuned={tuned} />}
       <Button label="Keep tools" title="Leave the other bodies in the model" on={keepTools} onClick={() => onKeepTools(!keepTools)} />
       <span className="bc-armed-note">{note}</span>
       <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />

@@ -20,6 +20,7 @@ import {
   build,
   groupOf,
   groupParams,
+  cutTool,
   PRIMITIVES,
   changeParts,
   duplicateParts,
@@ -95,6 +96,7 @@ import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
+import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
 import { FinishBar } from "../finish/FinishBar";
@@ -217,6 +219,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [tool, setTool] = useState<ToolId>("select");
   const [combineOp, setCombineOp] = useState<CombineOp>("join");
   const [keepTools, setKeepTools] = useState(false);
+  const [combineFit, setCombineFit] = useState<FitChoice>(NO_FIT);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -497,7 +500,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   /** Group (Tinkercad): the selected solids joined and the holes cut, as one step. */
   const group = useCallback(
     (ids: string[]) => {
-      const params = groupParams(live.current.parts, ids);
+      const params = groupParams(live.current.parts, ids, live.current.doc.print);
       if (typeof params === "string") return say(params, true);
       const id = newId("f");
       record((d, at) => addCombine(d, params, id, at), "Group");
@@ -524,10 +527,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   /** Combine (Fusion): the first picked body keeps, the others join, cut or intersect it. */
   const combine = useCallback(
-    (ids: string[], op: CombineOp, keep: boolean) => {
+    (ids: string[], op: CombineOp, keep: boolean, fit: FitChoice = NO_FIT) => {
       const [target, ...tools] = ids;
       if (!target || !tools.length) return say("Select the body to keep, then the bodies to combine with it", true);
-      record((d, at) => addCombine(d, { mode: "combine", target, tools: tools.map((t) => ({ id: t, op })), keepTools: keep }, newId("f"), at), "Combine");
+      const print = live.current.doc.print;
+      const list = tools.map((t) => (op === "cut" ? cutTool(t, fit.fit, fit.gap, print) : { id: t, op }));
+      record((d, at) => addCombine(d, { mode: "combine", target, tools: list, keepTools: keep }, newId("f"), at), "Combine");
       setSelection([target]);
       setTool("select");
       say(`Combined ${tools.length === 1 ? "1 body" : `${tools.length} bodies`}`);
@@ -757,7 +762,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             : hole.session
               ? hole.done()
               : tool === "combine"
-                ? combine(selection, combineOp, keepTools)
+                ? combine(selection, combineOp, keepTools, combineFit)
                 : finish.tool
                   ? finish.done()
                   : undefined,
@@ -1636,7 +1641,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   onOp={setCombineOp}
                   keepTools={keepTools}
                   onKeepTools={setKeepTools}
-                  onApply={() => combine(selection, combineOp, keepTools)}
+                  fit={combineFit}
+                  onFit={setCombineFit}
+                  tuned={doc.print?.fits}
+                  onApply={() => combine(selection, combineOp, keepTools, combineFit)}
                   onCancel={() => setTool("select")}
                 />
               )}
@@ -1720,6 +1728,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 print={doc.print}
                 allParts={parts}
                 onHole={() => toggleHole(selection)}
+                onFit={(c) =>
+                  store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
+                }
               />
             </>
           )

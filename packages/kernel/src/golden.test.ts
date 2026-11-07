@@ -10,6 +10,7 @@ import {
   cone,
   cylinder,
   fillet,
+  grow,
   holes,
   measure,
   place,
@@ -126,6 +127,10 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
       place(oc, cylinder(oc, { x: 6, y: 6, z: 10 }), { position: { x: -10, y: 0, z: 0 } }),
       place(oc, cylinder(oc, { x: 6, y: 6, z: 10 }), { position: { x: 10, y: 0, z: 0 } }),
     ]),
+  // Cut with a fit (#183): a 10 mm cube and a 6 mm peg cut out of a plate with a 0.25 mm sliding gap.
+  "fit-cube-sliding": (oc) =>
+    boolean(oc, "cut", box(oc, { x: 30, y: 30, z: 10 }), [grow(oc, place(oc, box(oc, { x: 10, y: 10, z: 10 }), { position: { x: 0, y: 0, z: 5 } }), 0.25)]),
+  "fit-peg-sliding": (oc) => boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 10 }), [grow(oc, cylinder(oc, { x: 6, y: 6, z: 20 }), 0.25)]),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

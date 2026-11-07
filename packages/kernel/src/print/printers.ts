@@ -2,6 +2,8 @@
  * Printers (#100): bed sizes for the print bed preview and the fit check. Data only, so the other print checks (#11)
  * read the nozzle and the hole offset from the same place. Sizes are the build volume in mm, from each maker's specs.
  */
+import type { FitGaps } from "./fits";
+
 export interface Printer {
   id: string;
   name: string;
@@ -50,6 +52,8 @@ export interface PrintSettings {
   infill?: number;
   /** What printed holes add, mm (#104), when tuned away from the printer's default. */
   holeOffset?: number;
+  /** Fit gaps on each side, mm (#181), when tuned away from the defaults. */
+  fits?: FitGaps;
 }
 
 /** The hole offset in use: the tuned one, else the printer's. */
