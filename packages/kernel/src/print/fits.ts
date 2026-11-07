@@ -52,3 +52,12 @@ export function gapLabel(gap: number, fit?: FitId): string {
   const each = `${mm(gap)} gap each side`;
   return fit ? `${gapFitOf(fit).name}, ${each}` : each;
 }
+
+/**
+ * The gaps from the fit coupon (#182): the slot the peg pressed into sets press, the one it slid freely in sets
+ * sliding, and loose is 0.15 mm more than sliding.
+ */
+export function gapsFromCoupon(pressed: number, slid: number): Required<FitGaps> {
+  const sliding = Math.max(pressed, slid);
+  return { press: Math.min(pressed, slid), sliding, loose: Math.round((sliding + 0.15) * 100) / 100 };
+}

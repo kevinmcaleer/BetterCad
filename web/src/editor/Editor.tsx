@@ -1272,6 +1272,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       staleHoles={staleHoles.length}
       onUpdateHoles={updateHoles}
       onCalibrate={() => files.openSample("hole-calibration")}
+      onCalibrateFits={() => files.openSample("fit-calibration")}
     />
   );
 

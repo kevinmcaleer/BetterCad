@@ -997,6 +997,15 @@ kbd {
   width: 100%;
   margin-bottom: var(--bc-space-3);
 }
+.bc-print-details {
+  margin: var(--bc-space-2) 0 var(--bc-space-3);
+}
+.bc-print-details summary {
+  cursor: pointer;
+  margin-bottom: var(--bc-space-2);
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+}
 
 /* Orientation suggestions (#103). */
 .bc-orient {

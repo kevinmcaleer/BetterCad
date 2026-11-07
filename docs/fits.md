@@ -14,6 +14,12 @@ These are typical FDM starting points and vary by printer and material. The tabl
 
 **Each side, not the diameter.** A fit's gap is added on every side, so a 10 mm peg with a sliding fit leaves a 10.5 mm pocket. The hole offset used by the Hole tool (#104, [holes.md](holes.md)) is different: it's added to a hole's diameter, so a 0.4 mm hole offset is a 0.2 mm gap each side.
 
+## Calibrating your printer (#182)
+
+The Print panel's **Fits** group shows the gap for each fit, and you can type your own. To measure them, click **Calibrate fits**. That opens the fit calibration coupon (`web/public/samples/fit-calibration.bcad`): a 4 mm plate with six square slots and a 10 mm square peg to print beside it. Each slot is wider than the peg by a gap each side of 0.05, 0.1, 0.15, 0.2, 0.3 and 0.4 mm, from the left. The notches on the front edge count the slot: one notch is 0.05 mm, six is 0.4 mm. It is small and quick to print.
+
+Print the plate and the peg flat, then try the peg in each slot. Open **I've printed the fit coupon** in the Print panel, pick the slot the peg pressed into and the slot it slid freely in, and click **Set fits**. Press and sliding come from your answers, and loose is 0.15 mm wider than sliding. The gaps are saved with the model for now; printer profiles (#180) will keep them for every model.
+
 ## Cut with a fit (#183)
 
 - **Combine**: pick Cut and the Fit menu appears beside it. Choose No gap, a named fit, or Custom gap. The bodies being cut away are grown by the gap first, so the original stays the size you drew it.

@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { Banner, Button, Fields, NumberField } from "@bettercad/ui";
 import {
   DEFAULT_INFILL,
+  GAP_FITS,
   MATERIALS,
+  fitGap,
+  gapsFromCoupon,
   PRINTERS,
   formatWeight,
   materialOf,
@@ -11,6 +15,7 @@ import {
   type Printer,
   type PrintSettings,
 } from "../state/document";
+import { FIT_CALIBRATION_GAPS } from "@bettercad/kernel/samples";
 
 /**
  * The Print panel (#100, #105): the printer the model is for, its bed in the view, whether the model fits, and the
@@ -47,6 +52,8 @@ export interface PrintPanelProps {
   onUpdateHoles: () => void;
   /** Opens the hole calibration coupon. */
   onCalibrate: () => void;
+  /** Opens the fit calibration coupon (#182). */
+  onCalibrateFits: () => void;
 }
 
 /** An orientation suggestion with its thumbnail (a PNG data URL, or null where the view can't draw one). */
@@ -254,6 +261,8 @@ export function PrintPanel(p: PrintPanelProps) {
         onClick={p.onCalibrate}
       />
 
+      <FitSection settings={p.settings} onChange={p.onChange} onCalibrate={p.onCalibrateFits} />
+
       <h2 className="bc-panel-title">Material</h2>
       <label className="bc-field-label" htmlFor="bc-material">
         Material
@@ -283,6 +292,77 @@ export function PrintPanel(p: PrintPanelProps) {
         </p>
       )}
       <p className="bc-note bc-micro">An estimate from the volume and surface, usually within 20% of your slicer.</p>
+    </>
+  );
+}
+
+const slotName = (i: number) => `Slot ${i + 1}, ${FIT_CALIBRATION_GAPS[i]} mm`;
+
+/** Fits (#181, #182): the gap each side for press, sliding and loose fits, typed or read off the fit coupon. */
+function FitSection({ settings, onChange, onCalibrate }: { settings: PrintSettings; onChange: (c: Partial<PrintSettings>) => void; onCalibrate: () => void }) {
+  const [pressed, setPressed] = useState<number | null>(null);
+  const [slid, setSlid] = useState<number | null>(null);
+  const set = (id: (typeof GAP_FITS)[number]["id"], v: number) =>
+    onChange({ fits: { ...settings.fits, [id]: Math.round(Math.max(0, Math.min(2, v)) * 100) / 100 } });
+  const slotSelect = (id: string, label: string, value: number | null, pick: (i: number) => void) => (
+    <>
+      <label className="bc-field-label" htmlFor={id}>
+        {label}
+      </label>
+      <select id={id} className="bc-select bc-print-select" value={value ?? ""} onChange={(e) => pick(Number(e.target.value))}>
+        <option value="" disabled>
+          Pick a slot
+        </option>
+        {FIT_CALIBRATION_GAPS.map((_, i) => (
+          <option key={i} value={i}>
+            {slotName(i)}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+  return (
+    <>
+      <h2 className="bc-panel-title">Fits</h2>
+      <Fields>
+        {GAP_FITS.map((f) => (
+          <NumberField
+            key={f.id}
+            label={f.name.replace(" fit", "")}
+            value={fitGap(f.id, settings.fits)}
+            min={0}
+            max={2}
+            step={0.05}
+            precision={2}
+            unit="mm"
+            onCommit={(v) => set(f.id, v)}
+          />
+        ))}
+      </Fields>
+      <p className="bc-note">The gap on each side when one printed part goes into another. A sliding fit leaves a 10 mm peg a 10.5 mm pocket.</p>
+      <Button
+        size="wide"
+        icon="ruler"
+        label="Calibrate fits"
+        title="Open a test plate with a peg and six slots from 0.05 to 0.4 mm each side. Print it and try the peg in each slot."
+        onClick={onCalibrate}
+      />
+      <details className="bc-print-details">
+        <summary>I've printed the fit coupon</summary>
+        {slotSelect("bc-fit-pressed", "Which slot did the peg press into?", pressed, setPressed)}
+        {slotSelect("bc-fit-slid", "Which slot did it slide freely in?", slid, setSlid)}
+        <Button
+          variant="secondary"
+          size="wide"
+          label="Set fits"
+          title="Set press and sliding from the slots, and loose 0.15 mm wider than sliding"
+          disabled={pressed === null || slid === null}
+          onClick={() => {
+            if (pressed === null || slid === null) return;
+            onChange({ fits: gapsFromCoupon(FIT_CALIBRATION_GAPS[pressed]!, FIT_CALIBRATION_GAPS[slid]!) });
+          }}
+        />
+      </details>
     </>
   );
 }

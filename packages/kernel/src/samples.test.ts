@@ -3,7 +3,7 @@ import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 import { build, paramScope, updateParam } from "./document";
 import { saveBcad } from "./bcad";
-import { SAMPLES } from "./samples";
+import { FIT_CALIBRATION_GAPS, FIT_PEG, SAMPLES } from "./samples";
 
 /** The samples (#99) are regression fixtures too: each builds clean, fast and to the size it should. */
 let oc: OC;
@@ -19,12 +19,12 @@ describe("samples", () => {
     expect(build(doc).failed.size).toBe(0);
     const t = performance.now();
     const r = new ModelBuilder(oc).build(doc);
-    // The coupon is 40 cuts; shared CI runners are slower than a laptop.
-    expect(performance.now() - t).toBeLessThan(id === "hole-calibration" ? 6000 : 2000);
+    // The coupons are 20 to 40 cuts; shared CI runners are slower than a laptop.
+    expect(performance.now() - t).toBeLessThan(id.endsWith("-calibration") ? 6000 : 2000);
     expect(r.failed).toEqual([]);
     for (const b of r.bodies) expect(b.measure.volume).toBeGreaterThan(0);
     // Small enough to ship beside the app, with room for a thumbnail.
-    expect(saveBcad(doc).length).toBeLessThan(id === "hole-calibration" ? 80_000 : 15_000);
+    expect(saveBcad(doc).length).toBeLessThan(id.endsWith("-calibration") ? 80_000 : 15_000);
     // Every sample has parameters, and every step that sizes a part uses them.
     expect(doc.params!.length).toBeGreaterThanOrEqual(3);
   });
@@ -40,6 +40,20 @@ describe("samples", () => {
     // 15 notches, 1 mm wide, cutting 1.5 mm into the front edge.
     const notches = 15 * 1 * 1.5 * v.thickness!;
     expect(r.bodies[0]!.measure.volume).toBeCloseTo(plate - holes - notches, -1);
+  });
+
+  it("the fit coupon has slots 0.05 to 0.4 mm each side wider than its peg (#182)", () => {
+    const doc = sample("fit-calibration");
+    const r = new ModelBuilder(oc).build(doc);
+    expect(r.bodies.map((b) => b.id).sort()).toEqual(["peg", "plate"]);
+    const v = paramScope(doc);
+    const t = v.thickness!;
+    const plate = (5 * v.pitch! + 10 + 2 * v.edge!) * (10 + 2 * v.edge! + 4) * t;
+    const slots = FIT_CALIBRATION_GAPS.reduce((a, g) => a + (FIT_PEG + 2 * g) ** 2 * t, 0);
+    // 21 notches, 1 mm wide, cutting 1.5 mm into the front edge.
+    const notches = 21 * 1.5 * t;
+    expect(r.bodies.find((b) => b.id === "plate")!.measure.volume).toBeCloseTo(plate - slots - notches, 0);
+    expect(r.bodies.find((b) => b.id === "peg")!.measure.volume).toBeCloseTo(10 * 10 * (t + 8), 3);
   });
 
   it("the box is hollow with an open top, and the lid's lip fits inside it", () => {
