@@ -37,7 +37,10 @@ test("revolve a rectangle round the sketch's Y axis into a tube", async ({ page 
   await page.keyboard.press("Enter");
   await expect(page.getByText("Finished Sketch 1")).toBeVisible();
 
-  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: /^Revolve/ }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Revolve/ })
+    .click();
   await click(page, 15, 0);
   await expect(page.getByRole("button", { name: "Round the Y axis" })).toBeVisible();
   const angle = page.getByRole("textbox", { name: "Angle" });
