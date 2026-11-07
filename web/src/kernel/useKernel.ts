@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BodyMesh, KernelClient, KernelState, Measure, MeasureResult, TopoRef } from "@bettercad/kernel";
+import type { BodyMesh, Call, KernelClient, KernelState, Measure, MeasureResult, Methods, TopoRef } from "@bettercad/kernel";
 import type { ModelDoc, Part } from "@bettercad/kernel/document";
 
 /**
@@ -19,6 +19,8 @@ export interface KernelView {
   failed: Map<string, string>;
   /** Measures picks on the model as it is now; null when the engine is off. */
   measure(refs: TopoRef[]): Promise<MeasureResult | null>;
+  /** Any other kernel call (export, estimate); null when the engine is off. */
+  call<M extends keyof Methods>(method: M, params: Methods[M]["params"]): Call<Methods[M]["result"]> | null;
 }
 
 export const partKey = (p: Part) => JSON.stringify([p.kind, p.size, p.position, p.rotation ?? null]);
@@ -96,5 +98,7 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
     return c.call("measure", { doc: now.current.doc, upTo: now.current.upTo, refs });
   }, []);
 
-  return { state, bodies, failed: built.failed, measure };
+  const call = useCallback(<M extends keyof Methods>(method: M, params: Methods[M]["params"]) => kc.current?.call(method, params) ?? null, []);
+
+  return { state, bodies, failed: built.failed, measure, call };
 }

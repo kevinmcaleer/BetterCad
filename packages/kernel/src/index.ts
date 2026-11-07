@@ -11,6 +11,8 @@ export type { ModelResult, BuiltBody } from "./occt/model";
 export type { Measure } from "./occt/shapes";
 export type { MeasureResult, Single, Pair, TopoRef } from "./occt/measure";
 export type { Quality } from "./occt/tessellate";
+export type { ExportFormat, ExportRequest, ExportEstimate, ExportResult } from "./occt/exporter";
+export { DEFLECTION, type Resolution } from "./occt/deflection";
 
 export interface KernelStatus {
   ready: boolean;

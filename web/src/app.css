@@ -629,3 +629,40 @@ kbd {
   gap: var(--bc-space-2);
   width: min(480px, 100%);
 }
+.bc-export {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--bc-space-3) var(--bc-space-4);
+}
+.bc-export > .bc-check,
+.bc-export > .bc-export-estimate,
+.bc-export > .bc-banner,
+.bc-export > .bc-progress {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.bc-export .bc-segmented {
+  justify-self: start;
+}
+.bc-field-label {
+  color: var(--bc-color-muted);
+  font-size: 12px;
+}
+.bc-export-res {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--bc-space-2);
+}
+.bc-export-res .bc-note {
+  margin: 0;
+  font-size: 11px;
+}
+.bc-export-estimate {
+  font-variant-numeric: tabular-nums;
+}
+.bc-progress {
+  width: 100%;
+  accent-color: var(--bc-color-accent);
+}

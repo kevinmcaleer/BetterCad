@@ -2,6 +2,7 @@
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
+import { Exporter } from "./occt/exporter";
 import { KernelError, isKernelError } from "./errors";
 import type { Methods, Request, Response } from "./protocol";
 
@@ -13,6 +14,7 @@ const scope = self as unknown as DedicatedWorkerGlobalScope;
 const post = (msg: Response) => scope.postMessage(msg);
 
 let builder: ModelBuilder | null = null;
+let exporter: Exporter | null = null;
 const cancelled = new Set<number>();
 const queue: Request[] = [];
 let busy = false;
@@ -22,6 +24,7 @@ const ready: Promise<OC> = loadOCCT({ wasmUrl, onProgress: (fraction) => post({ 
 ready.then(
   (oc) => {
     builder = new ModelBuilder(oc);
+    exporter = new Exporter(oc, builder);
     post({ kind: "ready", ms: performance.now() - t0 });
   },
   (e) =>
@@ -35,6 +38,8 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
   ping: () => ({ ok: true, engine: "opencascade.js" }),
   build: ({ doc, upTo, quality }, id) => builder!.build(doc, upTo, quality, () => cancelled.has(id)),
   measure: ({ doc, upTo, refs }) => builder!.measure(doc, refs, upTo),
+  estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),
+  export: (params, id) => exporter!.export(params, () => cancelled.has(id)),
 };
 
 async function pump() {

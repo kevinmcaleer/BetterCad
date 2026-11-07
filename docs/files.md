@@ -47,3 +47,23 @@ Save downloads a `.bcad`.
 Every change is written to this browser's storage (IndexedDB) 3 seconds after you stop, and at once when the tab is
 hidden or closed. If a model has changes that never reached a file, the next visit offers to recover it. Discard
 keeps the copy for a day before it is gone. The last 20 models are kept.
+
+## Export
+
+Export (Ctrl+E, or Export in the Save menu) writes files for printing and for other CAD tools. Every export comes from
+the exact solids in the geometry engine, never from what the view draws.
+
+| Format | For                                     | What's in it                                                               |
+| ------ | --------------------------------------- | -------------------------------------------------------------------------- |
+| STL    | Any slicer                              | Binary triangles, "BetterCad name" in the header                           |
+| 3MF    | Modern slicers (Prusa, Bambu, Cura)     | Millimetres, the model's title, one named object per body                  |
+| STEP   | Fusion, FreeCAD, Onshape, CNC           | AP214 exact solids in millimetres, each body named                         |
+
+- Resolution sets how far the triangles may stray from the true surface: Draft 0.1 mm, Normal 0.02 mm, Fine
+  0.005 mm, or a custom value. It's an absolute distance, so small and large parts get the same accuracy. STEP is
+  exact and has no resolution.
+- The dialog estimates the triangle count and file size before you export; the export reuses those triangles.
+- Place on the bed moves everything so the lowest point is at Z = 0. Turn it off to keep the model's coordinates.
+- All bodies go in one file, or pick Selected, or Each on its own for one file per body (in Chrome and Edge you pick a
+  folder; elsewhere each file downloads).
+- Hole shapes that haven't been grouped with a solid are left out, with a warning and a Group them now button.

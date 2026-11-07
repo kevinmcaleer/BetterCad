@@ -305,7 +305,7 @@ export function useFiles(d: FilesDeps) {
     [recent, openRecent],
   );
 
-  return { save, saveAs, open, openRecent, newModel, dirty, banners, dialog, recentEntries, inPlace: files.kind === "disk", show };
+  return { save, saveAs, open, openRecent, newModel, dirty, banners, dialog, recentEntries, inPlace: files.kind === "disk", show, store: files };
 }
 
 export type Files = ReturnType<typeof useFiles>;
