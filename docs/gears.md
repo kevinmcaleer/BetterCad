@@ -32,3 +32,13 @@ Goldens: `gear-20t-m1`, `gear-12t-shifted-dflat-hub` and `gear-40t-horn`. Unit t
 - The tests build pairs in OCCT and check the solids don't overlap, and that half a tooth's turn would make them clash.
 
 Hinge joints at both centres and a drive link between them wait for joints (#164) and drive links (#194).
+
+## Racks and GT2 pulleys (#193)
+
+The Gear tool's bar switches the step between **Spur gear**, **Rack** and **GT2 pulley**.
+
+- **Rack**: module, length, height (solid under the roots) and width, with pressure angle, backlash and clearance under More. The teeth are straight-flanked, πm apart, one centred on the rack's middle. Right-click a spur gear and pick **Add rack** for one that runs against it: its pitch line touches the gear's pitch circle, slid so a gap meets the gear's tooth, and it follows the gear like a mating gear. The bar shows how far it moves for one turn of the gear.
+- **GT2 pulley**: teeth, **6 mm** or **9 mm belt** (the teeth are 1 mm wider than the belt), **Flanges** (1 mm discs 1.5 mm proud), bore and hub. The pitch diameter is 2z/π (12.73 mm for 20 teeth) and the outside 0.254 mm in from it each side. Each groove has the belt tooth's 0.555 mm round bottom, 0.75 mm deep, opening to about 1.5 mm across. That's a close fit to the GT2 profile for printing, not Gates' exact curve.
+- **Fit a belt**: pick two pulleys and it puts the stock GT2 belt nearest what they need on them, then moves the later pulley along the line between them so that belt fits exactly. Edit that pulley to pick another stock belt from the **Belt** menu (it moves to suit), type its angle, or **Take off belt**.
+
+Goldens: `rack-m1-60` and `gt2-20t-flanged`. Tests check the rack's tooth pitch and thickness, a rack against 20- and 13-tooth gears (no overlap, and a clash when slid half a tooth), the pulley's pitch diameter and size with flanges, belt lengths both ways, and fitting a stock belt.

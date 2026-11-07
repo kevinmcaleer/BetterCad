@@ -13,10 +13,7 @@ async function click(page: Page, x: number, y: number, z: number) {
 test("a spur gear on the ground, then 30 teeth with a D-flat bore", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  await page
-    .getByRole("toolbar", { name: "Model tools" })
-    .getByRole("button", { name: /^Spur gear/ })
-    .click();
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: /^Gear/ }).click();
   await expect(page.getByText("Click the ground or a flat face where the gear goes.").first()).toBeVisible();
   await click(page, 0, 0, 0);
   await expect(page.getByText("Pitch diameter 20 mm")).toBeVisible();
@@ -44,10 +41,7 @@ test("a spur gear on the ground, then 30 teeth with a D-flat bore", async ({ pag
 test("a mating gear meshes at the centre distance and follows the first", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  await page
-    .getByRole("toolbar", { name: "Model tools" })
-    .getByRole("button", { name: /^Spur gear/ })
-    .click();
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: /^Gear/ }).click();
   await click(page, 0, 0, 0);
   await page.keyboard.press("Enter");
   await expect(page.getByText(/^Made Gear 20T/)).toBeVisible();
@@ -66,4 +60,25 @@ test("a mating gear meshes at the centre distance and follows the first", async 
   await expect(page.getByText(/^Made Gear 40T/)).toBeVisible();
 
   await expect(page.getByRole("region", { name: "Timeline" }).getByRole("button", { name: /^Gear 40T, 40 teeth, meshes with Gear 20T, 2 : 1/ })).toBeVisible();
+});
+
+test("two GT2 pulleys and a stock belt between them", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  const tool = page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: /^Gear/ });
+  for (const x of [0, 40]) {
+    await tool.click();
+    await click(page, x, 0, 0);
+    await page.getByRole("button", { name: /^GT2 pulley/ }).click();
+    await expect(page.getByText("Pitch diameter 12.73 mm")).toBeVisible();
+    await page.keyboard.press("Enter");
+  }
+  await expect(page.getByText(/^Made Pulley 20T 2: 20 teeth, GT2/)).toBeVisible();
+
+  await page.getByRole("treeitem", { name: /Pulley 20T$/ }).click();
+  await page.getByRole("treeitem", { name: /Pulley 20T 2/ }).click({ modifiers: ["Shift"] });
+  await page.getByRole("treeitem", { name: /Pulley 20T 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Fit a belt" }).click();
+  // 40 mm apart needs 120 mm of belt; the nearest stock belt is 122 mm.
+  await expect(page.getByText(/^Fitted a 122 mm GT2 belt, 61 teeth \(they needed 120 mm/)).toBeVisible();
 });

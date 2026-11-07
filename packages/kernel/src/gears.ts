@@ -66,13 +66,13 @@ export function meshTurn(a: number, turnA: number, theta: number, b: number): nu
 }
 
 /** "2 : 1, the small gear turns twice as fast". */
-export function ratioText(driver: number, driven: number): string {
+export function ratioText(driver: number, driven: number, noun = "gear"): string {
   const big = Math.max(driver, driven);
   const small = Math.min(driver, driven);
   const r = Math.round((big / small) * 100) / 100;
   if (r === 1) return "1 : 1, both turn at the same speed";
   const how = r === 2 ? "twice" : r === 3 ? "three times" : `${r} times`;
-  return `${r} : 1, the small gear turns ${how} as fast`;
+  return `${r} : 1, the small ${noun} turns ${how} as fast`;
 }
 
 /** What's wrong with the settings, or null. */
@@ -267,3 +267,133 @@ export function dFlat(d: number, flat: number, n = 32): Vec2[] {
   }
   return pts;
 }
+
+// ---- Racks (#193) ----
+
+/** The rack's teeth, mm: the pitch line at y = 0 with teeth pointing +y, centred on x = 0 and `length` long. */
+export interface RackSize {
+  length: number;
+  /** Solid below the tooth roots, mm. */
+  height: number;
+}
+
+/**
+ * A rack's outline, anticlockwise: straight-flanked teeth `πm` apart, one centred on x = 0, as many as fit the
+ * length, on a bar `height` deep below the roots. Thinned by the backlash along the pitch line like a gear's teeth.
+ */
+export function rackOutline(p: GearParams, size: RackSize): Vec2[] {
+  const m = p.module;
+  const pitch = Math.PI * m;
+  const add = m * (1 + p.shift);
+  const ded = m * (1 + p.clearance - p.shift);
+  const tan = Math.tan(p.pressure * RAD);
+  const half = (pitch / 2 - p.backlash) / 2; // half the tooth at the pitch line
+  const tipHalf = half - add * tan;
+  const rootHalf = half + ded * tan;
+  const n = Math.max(1, Math.floor((size.length / 2 - rootHalf) / pitch));
+  const ends = n * pitch + Math.max(rootHalf, pitch / 2);
+  const out: Vec2[] = [[-ends, -ded - size.height]];
+  out.push([ends, -ded - size.height], [ends, -ded]);
+  for (let k = n; k >= -n; k--) {
+    const c = k * pitch;
+    out.push([c + rootHalf, -ded], [c + tipHalf, add], [c - tipHalf, add], [c - rootHalf, -ded]);
+  }
+  out.push([-ends, -ded]);
+  return out.map(tidy);
+}
+
+/** A rack's settings that can't make one, or null. */
+export function rackProblem(p: GearParams, size: RackSize): string | null {
+  if (!(p.module > 0)) return "Give it a module above 0 mm";
+  if (!(p.pressure >= 10 && p.pressure <= 35)) return "Keep the pressure angle between 10° and 35°";
+  if (!(size.height > 0)) return "Give the rack a height above 0 mm";
+  if (!(size.length >= 2 * Math.PI * p.module)) return `Make the rack at least ${Math.ceil(2 * Math.PI * p.module)} mm long`;
+  const half = (Math.PI * p.module) / 4 - p.backlash / 2;
+  if (half - p.module * (1 + p.shift) * Math.tan(p.pressure * RAD) <= 0) return "The teeth come to a point: use less backlash";
+  return null;
+}
+
+// ---- GT2 timing pulleys (#193) ----
+
+/** GT2: 2 mm pitch, the belt's pitch line 0.254 mm outside the pulley, teeth 0.75 mm tall. */
+export const GT2 = { pitch: 2, pld: 0.254, depth: 0.75, radius: 0.555, widths: [6, 9] } as const;
+
+/** A GT2 pulley's pitch diameter: the belt's pitch line, 2z/π mm (12.73 mm for 20 teeth). */
+export const gt2Pitch = (teeth: number) => (GT2.pitch * teeth) / Math.PI;
+/** Its outside diameter, under the belt's pitch line. */
+export const gt2Outside = (teeth: number) => gt2Pitch(teeth) - 2 * GT2.pld;
+
+/**
+ * A GT2 pulley's outline as segments, anticlockwise: lands on the outside circle and, between them, a groove for each
+ * belt tooth: a round bottom of the belt tooth's 0.555 mm radius, its centre 0.555 mm above the groove's floor
+ * 0.75 mm down, and flanks opening out to the land. A close fit to the GT2 profile for printing, not the exact curve.
+ */
+export function gt2Segs(teeth: number, spin = 0): ProfileSeg[] {
+  const ro = gt2Outside(teeth) / 2;
+  const step = (2 * Math.PI) / teeth;
+  const rb = ro - GT2.depth; // the floor
+  const rc = rb + GT2.radius; // the bottom's centre
+  const q = GT2.radius;
+  // The groove opens to about 1.5 mm across at the outside circle.
+  const mouth = 0.75 / ro;
+  const out: ProfileSeg[] = [];
+  for (let k = 0; k < teeth; k++) {
+    const t = spin + k * step; // the groove's centre
+    const P = (r: number, a: number): Vec2 => tidy(at(r, t + a));
+    // The round bottom, from the side further round to the nearer one, in the pulley's local frame.
+    const side = (s: number): Vec2 => {
+      // Where the circle about (rc, 0) meets the tangent at its side: straight out along ±y.
+      const [x, y] = [rc, s * q];
+      return tidy(turn([x, y], t));
+    };
+    const a1 = P(ro, -mouth);
+    const b1 = side(-1);
+    const bottom = tidy(turn([rb, 0], t));
+    const b2 = side(1);
+    const a2 = P(ro, mouth);
+    out.push({ kind: "line", a: a1, b: b1 }, { kind: "arc", a: b1, m: bottom, b: b2 }, { kind: "line", a: b2, b: a2 });
+    // The land to the next groove.
+    out.push({ kind: "arc", a: a2, m: P(ro, step / 2), b: P(ro, step - mouth) });
+  }
+  return out;
+}
+
+/** The pulley's tooth count that can't make one, or null. */
+export function pulleyProblem(teeth: number): string | null {
+  if (!Number.isInteger(teeth) || teeth < 10) return "Give the pulley at least 10 teeth";
+  if (teeth > 200) return "That's too many teeth for one pulley";
+  return null;
+}
+
+/** GT2 closed belts sold as stock, mm. */
+export const GT2_BELTS = [
+  100, 110, 112, 122, 140, 158, 160, 180, 200, 202, 210, 220, 232, 240, 250, 260, 270, 280, 288, 300, 310, 320, 330, 350, 360, 370, 376, 380, 400, 410, 420,
+  440, 450, 460, 480, 500, 530, 550, 560, 600, 610, 640, 660, 700, 710, 720, 750, 760, 800, 820, 846, 852, 880, 900, 950, 1000,
+];
+
+/** A belt's length round two pulleys `c` mm apart, mm, along its pitch line. */
+export function beltLength(c: number, teeth1: number, teeth2: number): number {
+  const [d1, d2] = [gt2Pitch(teeth1), gt2Pitch(teeth2)];
+  // The open-belt length, exact: straight runs plus the arcs each pulley wraps.
+  const r1 = d1 / 2;
+  const r2 = d2 / 2;
+  const s = Math.asin(Math.max(-1, Math.min(1, (r2 - r1) / c)));
+  return 2 * c * Math.cos(s) + r1 * (Math.PI - 2 * s) + r2 * (Math.PI + 2 * s);
+}
+
+/** The centre distance that makes a belt of `length` mm fit two pulleys, mm, or null if it's too short. */
+export function centreForBelt(length: number, teeth1: number, teeth2: number): number | null {
+  const lo0 = Math.abs(gt2Pitch(teeth2) - gt2Pitch(teeth1)) / 2 + (gt2Outside(Math.max(teeth1, teeth2)) + gt2Outside(Math.min(teeth1, teeth2))) / 2;
+  if (beltLength(lo0, teeth1, teeth2) > length) return null;
+  let lo = lo0;
+  let hi = length / 2;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (beltLength(mid, teeth1, teeth2) < length) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** The stock belt nearest a length, mm. */
+export const nearestBelt = (length: number) => GT2_BELTS.reduce((a, b) => (Math.abs(b - length) < Math.abs(a - length) ? b : a));

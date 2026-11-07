@@ -39,7 +39,8 @@ export function useGear(d: GearDeps) {
   const [last, setLast] = useState<Settings | null>(null);
   const feature = (d.doc.features.find((f) => f.id === session?.id && f.type === "gear") as GearFeature | undefined) ?? null;
   /** The gear it meshes with, as it stands (#192). */
-  const partner = feature?.mesh ? resolveGear(d.doc, feature.mesh.gear) : null;
+  const link = feature?.mesh?.gear ?? feature?.belt?.pulley;
+  const partner = link ? resolveGear(d.doc, link) : null;
   const live = useRef({ session, feature, last });
   live.current = { session, feature, last };
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
@@ -76,13 +77,14 @@ export function useGear(d: GearDeps) {
       },
       down: (p) => {
         const f = live.current.feature;
-        if (f?.mesh) {
-          // A meshed gear goes round the other one, toward the click.
-          const a = resolveGear(deps.current.doc, f.mesh.gear);
+        if (f?.mesh || f?.belt) {
+          // A meshed gear or belted pulley goes round the other one, toward the click.
+          const a = resolveGear(deps.current.doc, f.mesh?.gear ?? f.belt!.pulley);
           const w = a && eng.rayPlane(p.x, p.y, a.frame.origin, a.frame.normal);
           if (!a || !w) return true;
           const q = toSketch(a.frame, w);
-          change({ mesh: { ...f.mesh, angle: Math.round((Math.atan2(q[1], q[0]) * 180) / Math.PI) } });
+          const angle = Math.round((Math.atan2(q[1], q[0]) * 180) / Math.PI);
+          change(f.mesh ? { mesh: { ...f.mesh, angle } } : { belt: { ...f.belt!, angle } });
           return true;
         }
         if (f) {
@@ -133,7 +135,13 @@ export function useGear(d: GearDeps) {
     const f = s && (store.get().features.find((x) => x.id === s.id) as GearFeature | undefined);
     if (s && f) {
       store.seal();
-      deps.current.say(`${s.isNew ? "Made" : "Changed"} ${f.name}: ${f.gear.teeth} teeth, module ${f.gear.module}`);
+      const what =
+        f.form === "rack"
+          ? `module ${f.gear.module}, ${f.rack?.length ?? 0} mm long`
+          : f.form === "gt2"
+            ? `${f.gear.teeth} teeth, GT2`
+            : `${f.gear.teeth} teeth, module ${f.gear.module}`;
+      deps.current.say(`${s.isNew ? "Made" : "Changed"} ${f.name}: ${what}`);
     }
     setSession(null);
     deps.current.onClose();
@@ -159,8 +167,8 @@ export function useGear(d: GearDeps) {
 
   const help = !d.active
     ? null
-    : session && feature?.mesh
-      ? "Set the teeth, or click to move it round the other gear. Enter keeps it, Esc takes it back."
+    : session && (feature?.mesh || feature?.belt)
+      ? `Set the ${feature.form === "rack" ? "length" : "teeth"}, or click to move it round the other ${feature.belt ? "pulley" : "gear"}. Enter keeps it, Esc takes it back.`
       : session
         ? "Set the teeth and size, or click to move it. Enter keeps it, Esc takes it back."
         : "Click the ground or a flat face where the gear goes.";

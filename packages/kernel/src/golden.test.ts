@@ -193,6 +193,8 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
       bore: { kind: "dflat", diameter: 5, flat: 2 },
       hub: { diameter: 10, length: 4 },
     }),
+  "rack-m1-60": (oc) => gearOf(oc, { form: "rack", rack: { length: 60, height: 5 }, bore: { kind: "none", diameter: 0 } }),
+  "gt2-20t-flanged": (oc) => gearOf(oc, { form: "gt2", gear: { ...GEAR_DEFAULTS, teeth: 20 }, width: 7, flanges: true }),
   "gear-40t-horn": (oc) => gearOf(oc, { gear: { ...GEAR_DEFAULTS, teeth: 40 }, bore: { kind: "horn", diameter: 7, arm: 9 } }),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [

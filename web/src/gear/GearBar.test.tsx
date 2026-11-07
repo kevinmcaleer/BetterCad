@@ -53,4 +53,28 @@ describe("GearBar (#191)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Unmesh/ }));
     expect(x.change).toHaveBeenCalledWith(expect.objectContaining({ mesh: undefined, frame: expect.objectContaining({ origin: [30, 0, 0] }) }));
   });
+
+  it("switches form, and a rack has a length and height in place of teeth and bore", () => {
+    const x = session(feature());
+    const { rerender } = render(<GearBar x={x} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Rack/ }));
+    expect(x.change).toHaveBeenCalledWith(expect.objectContaining({ form: "rack", rack: { length: 60, height: 5 } }));
+    rerender(<GearBar x={session(feature({ form: "rack", rack: { length: 60, height: 5 }, bore: { kind: "none", diameter: 0 } }))} onCancel={() => {}} />);
+    expect(screen.getByLabelText(/Length/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Teeth/)).toBeNull();
+    expect(screen.queryByRole("group", { name: "Bore" })).toBeNull();
+    expect(screen.getByText("Tooth pitch 3.14 mm")).toBeInTheDocument();
+  });
+
+  it("shows a belted pulley's belt, ratio and centre distance", () => {
+    const a = feature({ id: "a", name: "Pulley 20T", form: "gt2", width: 7 });
+    const x = session(feature({ form: "gt2", width: 7, gear: { ...GEAR_DEFAULTS, teeth: 40 }, belt: { pulley: "a", angle: 0, length: 200 } }), a);
+    render(<GearBar x={x} onCancel={() => {}} />);
+    expect(screen.getByText("Pitch diameter 25.46 mm")).toBeInTheDocument();
+    expect(screen.getByText("Round Pulley 20T, 100 teeth. 2 : 1, the small pulley turns twice as fast.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /200 mm belt/ })).toBeInTheDocument();
+    expect(screen.getByText(/^Centres [\d.]+ mm apart\.$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /9 mm belt/ }));
+    expect(x.change).toHaveBeenCalledWith({ width: 10 });
+  });
 });

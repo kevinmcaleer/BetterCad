@@ -23,6 +23,8 @@ import {
   cutTool,
   cutPocket,
   addMatingGear,
+  addRack,
+  fitBelt,
   meshGears,
   ratioText,
   type GearFeature,
@@ -637,11 +639,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   /** The Gear step that made a body, if one did. */
   const gearOf = (id: string) => live.current.doc.features.find((f): f is GearFeature => f.type === "gear" && f.body.id === id);
 
+  const isSpur = (id: string) => (gearOf(id)?.form ?? "spur") === "spur" && !!gearOf(id);
+
   /** Add mating gear (#192): a gear beside the picked one, meshed, with the bar open to set its teeth. */
   const mateGear = useCallback(
     (id: string) => {
       const a = gearOf(id);
-      if (!a) return say("Pick a gear", true);
+      if (!a || (a.form ?? "spur") !== "spur") return say("Pick a spur gear", true);
       const fid = newId("f");
       record((d, at) => addMatingGear(d, a.id, a.gear.teeth, 0, fid, newId(), at), "Add mating gear", gearKey(fid));
       setTool("gear");
@@ -649,6 +653,34 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [record, say, gear.edit],
+  );
+
+  /** Add rack (#193): a rack meshed under the picked gear, with the bar open on it. */
+  const addRackTo = useCallback(
+    (id: string) => {
+      const a = gearOf(id);
+      if (!a || (a.form ?? "spur") !== "spur") return say("Pick a spur gear", true);
+      const fid = newId("f");
+      record((d, at) => addRack(d, a.id, -90, fid, newId(), at), "Add rack", gearKey(fid));
+      setTool("gear");
+      gear.edit(fid, true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [record, say, gear.edit],
+  );
+
+  /** Fit a belt (#193): the nearest stock GT2 belt round two picked pulleys, the later one moved to suit. */
+  const beltPicked = useCallback(
+    (ids: string[]) => {
+      const [a, b] = ids.map(gearOf);
+      if (a?.form !== "gt2" || b?.form !== "gt2") return say("Pick two GT2 pulleys", true);
+      const r = fitBelt(live.current.doc, a.id, b.id);
+      if (r.error) return say(r.error, true);
+      record((d) => fitBelt(d, a.id, b.id).doc, "Fit a belt");
+      const need = r.needed ? ` (they needed ${Math.round(r.needed * 10) / 10} mm where they were)` : "";
+      say(`Fitted a ${r.length} mm GT2 belt, ${r.length! / 2} teeth${need}. Edit the pulley to pick another.`);
+    },
+    [record, say],
   );
 
   /** Mesh gears (#192): the later of two picked gears moves beside the earlier one. */
@@ -859,6 +891,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     importReference: () => {},
     pocket: (_id: string) => {},
     mateGear: (_id: string) => {},
+    addRack: (_id: string) => {},
+    fitBelt: (_ids: string[]) => {},
     meshGears: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
@@ -896,6 +930,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggleReference,
     pocket,
     mateGear,
+    addRack: addRackTo,
+    fitBelt: beltPicked,
     meshGears: meshPicked,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
@@ -1100,8 +1136,28 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         group: "Edit",
         icon: "gear",
         run: () => h().mateGear(sel()[0]!),
-        when: () => sel().length === 1 && live.current.doc.features.some((f) => f.type === "gear" && f.body.id === sel()[0]),
+        when: () => sel().length === 1 && live.current.doc.features.some((f) => f.type === "gear" && (f.form ?? "spur") === "spur" && f.body.id === sel()[0]),
         keywords: "gear mesh pair drive ratio",
+      },
+      {
+        id: "gear.rack",
+        scope: "model",
+        label: "Add rack",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().addRack(sel()[0]!),
+        when: () => sel().length === 1 && live.current.doc.features.some((f) => f.type === "gear" && (f.form ?? "spur") === "spur" && f.body.id === sel()[0]),
+        keywords: "gear rack linear drive",
+      },
+      {
+        id: "gear.belt",
+        scope: "model",
+        label: "Fit a belt",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().fitBelt(sel()),
+        when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.form === "gt2" && f.body.id === id)),
+        keywords: "gt2 timing belt pulley length centre distance",
       },
       {
         id: "gear.mesh",
@@ -1691,10 +1747,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ...(chosen.length === 1 && chosen[0]!.catalogue
         ? [{ id: "pocket", label: "Cut pocket", icon: "extrude" as const, onSelect: () => pocket(chosen[0]!.id) }]
         : []),
-      ...(chosen.length === 1 && gearOf(chosen[0]!.id)
-        ? [{ id: "mate-gear", label: "Add mating gear", icon: "gear" as const, onSelect: () => mateGear(chosen[0]!.id) }]
+      ...(chosen.length === 1 && isSpur(chosen[0]!.id)
+        ? [
+            { id: "mate-gear", label: "Add mating gear", icon: "gear" as const, onSelect: () => mateGear(chosen[0]!.id) },
+            { id: "add-rack", label: "Add rack", icon: "gear" as const, onSelect: () => addRackTo(chosen[0]!.id) },
+          ]
         : []),
-      ...(chosen.length === 2 && chosen.every((p) => gearOf(p.id))
+      ...(chosen.length === 2 && chosen.every((p) => gearOf(p.id)?.form === "gt2")
+        ? [{ id: "fit-belt", label: "Fit a belt", icon: "gear" as const, onSelect: () => beltPicked(chosen.map((p) => p.id)) }]
+        : []),
+      ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
         ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
       {
