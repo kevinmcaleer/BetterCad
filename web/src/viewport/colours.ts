@@ -17,6 +17,10 @@ export const VIEW_COLOURS = [
   "axis-y",
   "axis-z",
   "stage",
+  "accent",
+  "ink",
+  "muted",
+  "danger",
 ] as const satisfies readonly ColourName[];
 export type ViewColour = (typeof VIEW_COLOURS)[number];
 export type Palette = Record<ViewColour, Color>;

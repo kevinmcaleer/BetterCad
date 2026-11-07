@@ -3,6 +3,8 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
+import { newSketch, type PlaneRef, type Sketch } from "@bettercad/sketch";
+
 export type PartKind = "box" | "cylinder" | "sphere";
 
 export interface Vec3 {
@@ -72,7 +74,12 @@ export interface DeleteFeature extends FeatureBase {
   type: "delete";
   parts: string[];
 }
-export type Feature = AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature;
+/** A sketch (epic #5): its geometry, constraints and dimensions, on a plane. Extrude (#6) turns its profiles into solids. */
+export interface SketchFeature extends FeatureBase {
+  type: "sketch";
+  sketch: Sketch;
+}
+export type Feature = AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -98,7 +105,14 @@ export interface ModelDoc {
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
 
 export const KIND_LABEL: Record<PartKind, string> = { box: "Box", cylinder: "Cylinder", sphere: "Sphere" };
-export const FEATURE_LABEL: Record<FeatureType, string> = { add: "Add", duplicate: "Duplicate", move: "Move", resize: "Resize", delete: "Delete" };
+export const FEATURE_LABEL: Record<FeatureType, string> = {
+  add: "Add",
+  duplicate: "Duplicate",
+  move: "Move",
+  resize: "Resize",
+  delete: "Delete",
+  sketch: "Sketch",
+};
 
 export function newDoc(name = "Untitled model"): ModelDoc {
   return { format: "bettercad", version: 2, name, features: [], looks: {} };
@@ -115,6 +129,8 @@ const clampAt = (doc: ModelDoc, at?: number) => (at === undefined ? doc.features
 
 export interface Build {
   parts: Part[];
+  /** Sketches on the timeline up to the marker, by feature id, in order. */
+  sketches: { id: string; name: string; sketch: Sketch }[];
   /** Features that could not apply, with the reason: the part they change is gone. */
   failed: Map<string, string>;
 }
@@ -122,6 +138,7 @@ export interface Build {
 /** Replays the first `upTo` features (all of them by default) into parts. */
 export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const parts: Part[] = [];
+  const sketches: Build["sketches"] = [];
   const failed = new Map<string, string>();
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
@@ -167,6 +184,9 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           if (i >= 0) parts.splice(i, 1);
         }
         break;
+      case "sketch":
+        sketches.push({ id: f.id, name: f.name, sketch: f.sketch });
+        break;
     }
   }
   const looked = parts.map((p) => {
@@ -178,7 +198,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     const r = (p: Part) => rank.get(p.id) ?? Number.MAX_SAFE_INTEGER;
     looked.sort((a, b) => r(a) - r(b));
   }
-  return { parts: looked, failed };
+  return { parts: looked, sketches, failed };
 }
 
 /** The parts after the whole timeline. */
@@ -364,6 +384,8 @@ export function featureParts(f: Feature): string[] {
       return [f.part.id];
     case "duplicate":
       return f.copies.map((c) => c.id);
+    case "sketch":
+      return [];
     default:
       return f.parts;
   }
@@ -405,7 +427,31 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       return `${who(f.parts)}, ${axes(f.size)}`;
     case "delete":
       return who(f.parts);
+    case "sketch":
+      return sketchSummary(f.sketch);
   }
+}
+
+/** "On the XY plane, 4 lines and 2 circles". */
+export function sketchSummary(s: Sketch): string {
+  const on = s.plane.kind === "world" ? `On the ${s.plane.plane} plane` : "On a face";
+  const offset = s.plane.offset ? `, ${mm(s.plane.offset)} up` : "";
+  const counts = (["line", "arc", "circle"] as const)
+    .map((k) => [k, s.entities.filter((e) => e.kind === k && !e.construction).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${n} ${k}${n === 1 ? "" : "s"}`);
+  return `${on}${offset}${counts.length ? `, ${counts.join(" and ").replace(/ and (?=.* and )/g, ", ")}` : ", empty"}`;
+}
+
+/** Starts a sketch on a plane as a new feature at `at` (the marker), or at the end. */
+export function addSketch(doc: ModelDoc, plane: PlaneRef, id = newId("f"), at?: number): ModelDoc {
+  const name = nextFeatureName(doc, "sketch");
+  return insert(doc, clampAt(doc, at), { id, type: "sketch", name, sketch: newSketch(plane, name, id) });
+}
+
+/** Changes a sketch in place (each drawing step is one undo step). */
+export function updateSketch(doc: ModelDoc, id: string, fn: (s: Sketch) => Sketch): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "sketch" ? { ...f, sketch: fn(f.sketch) } : f)) };
 }
 
 /** Turns an epic #2 file (a flat list of parts) into a timeline: one Add feature per part. */

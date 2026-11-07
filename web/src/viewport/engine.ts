@@ -81,6 +81,28 @@ export interface EngineBody {
   world?: boolean;
 }
 
+/**
+ * A tool that takes the pointer (sketching). While set, the left button and hover go to it instead of orbiting and
+ * picking; the right button still pans and the wheel still zooms.
+ */
+export interface EngineInput {
+  /** Return false to let the press orbit the view as usual. */
+  down?(p: ScreenPoint, mods: Mods): boolean;
+  move?(p: ScreenPoint, mods: Mods, pressed: boolean): void;
+  up?(p: ScreenPoint, mods: Mods): void;
+  leave?(): void;
+}
+export interface ScreenPoint {
+  x: number;
+  y: number;
+}
+export interface Mods {
+  shift: boolean;
+  mod: boolean;
+  alt: boolean;
+}
+export type WorldPlaneName = "XY" | "XZ" | "YZ";
+
 export interface Section {
   origin: V3;
   normal: V3;
@@ -221,10 +243,17 @@ export class Engine {
 
   // Input
   private pointers = new Map<number, { x: number; y: number }>();
-  private press: { x: number; y: number; button: number; shift: boolean; dragged: boolean; mod: boolean } | null = null;
+  private press: { x: number; y: number; button: number; shift: boolean; dragged: boolean; mod: boolean; input?: boolean } | null = null;
   private pinch: { d: number; mid: { x: number; y: number } } | null = null;
   private hoverAt: { x: number; y: number } | null = null;
   private hoverFrame = 0;
+
+  // Sketching: a tool that takes the pointer, overlays it draws, origin planes to pick
+  private input: EngineInput | null = null;
+  private overlays = new Set<Object3D>();
+  private lineMats = new Set<LineMaterial>();
+  private planes: Group;
+  private planeHover: WorldPlaneName | null = null;
 
   // Stats
   private statsOn = false;
@@ -317,6 +346,22 @@ export class Engine {
     this.arrow.visible = false;
     this.scene.add(this.arrow);
 
+    this.planes = new Group();
+    this.planes.visible = false;
+    this.planes.renderOrder = 4;
+    // Each square sits in its plane's positive quadrant, as Fusion's do: XZ turns X-up about X; YZ then turns about Z.
+    const planeTurn: Record<WorldPlaneName, [number, number, number]> = { XY: [0, 0, 0], XZ: [Math.PI / 2, 0, 0], YZ: [Math.PI / 2, 0, Math.PI / 2] };
+    for (const name of ["XY", "XZ", "YZ"] as WorldPlaneName[]) {
+      const m = new Mesh(
+        new PlaneGeometry(1, 1).translate(0.5, 0.5, 0),
+        new MeshBasicMaterial({ transparent: true, opacity: 0.15, depthWrite: false, side: 2 }),
+      );
+      m.name = name;
+      m.rotation.set(...planeTurn[name], "ZYX");
+      this.planes.add(m);
+    }
+    this.scene.add(this.planes);
+
     const quad = new Mesh(new PlaneGeometry(2, 2), this.outline);
     quad.frustumCulled = false;
     this.quadScene.add(quad);
@@ -344,6 +389,7 @@ export class Engine {
     this.renderer.getDrawingBufferSize(r);
     for (const m of [this.selectMat, this.hoverMat]) m.resolution.set(this.width, this.height);
     for (const b of this.order) (b.creases.material as LineMaterial).resolution.set(this.width, this.height);
+    for (const m of this.lineMats) m.resolution.set(this.width, this.height);
     this.idTarget?.dispose();
     this.idTarget = null;
     this.outline.uniforms.px!.value.set(1 / r.x, 1 / r.y);
@@ -555,6 +601,168 @@ export class Engine {
     return { body: body.body.id, point: [hit.point.x, hit.point.y, hit.point.z], normal: [n.x, n.y, n.z] };
   }
 
+  // ------------------------------------------------------------ sketching hooks
+
+  /** Lights up a face, edge or body as if hovered (the sketch plane picker). */
+  showHover(p: Pick | null): void {
+    this.setHover(p);
+  }
+
+  /** Hands the pointer to a tool (or back to the view, with null). */
+  setInput(input: EngineInput | null): void {
+    this.input = input;
+    if (input) this.setHover(null);
+    this.canvas.style.cursor = input ? "crosshair" : "";
+  }
+
+  /** Adds an object drawn over the model (a sketch). Line materials in it get the canvas size. */
+  addOverlay(o: Object3D): void {
+    this.overlays.add(o);
+    this.scene.add(o);
+    o.traverse((c) => {
+      const m = (c as { material?: unknown }).material;
+      if (m instanceof LineMaterial) this.lineMat(m);
+    });
+    this.invalidate();
+  }
+
+  removeOverlay(o: Object3D): void {
+    this.overlays.delete(o);
+    this.scene.remove(o);
+    this.invalidate();
+  }
+
+  /** Keeps a fat-line material's resolution in step with the canvas. */
+  lineMat(m: LineMaterial): void {
+    this.lineMats.add(m);
+    m.resolution.set(this.width, this.height);
+  }
+
+  /** Where the pointer's ray meets a plane, or null when it runs along it. */
+  rayPlane(x: number, y: number, origin: V3, normal: V3): V3 | null {
+    const ray = new Raycaster();
+    ray.setFromCamera(new Vector2((x / this.width) * 2 - 1, -(y / this.height) * 2 + 1), this.activeCamera);
+    const plane = new Plane().setFromNormalAndCoplanarPoint(new Vector3(...normal).normalize(), new Vector3(...origin));
+    const hit = ray.ray.intersectPlane(plane, new Vector3());
+    return hit ? [hit.x, hit.y, hit.z] : null;
+  }
+
+  /** Millimetres per screen pixel at a world point, for tolerances and dash lengths. */
+  pixelSize(at: V3): number {
+    const cam = this.activeCamera;
+    const { right } = cameraBasis(this.cam);
+    const a = new Vector3(...at).project(cam);
+    const b = new Vector3(...at).add(new Vector3(...right)).project(cam);
+    const px = (Math.hypot(b.x - a.x, b.y - a.y) * this.width) / 2;
+    return px > 1e-9 ? 1 / px : 1;
+  }
+
+  /** Turns to look straight at a plane, orthographic, keeping the zoom. The frame's X runs to the right when it can. */
+  lookAt(origin: V3, normal: V3, animate = true): void {
+    const n = new Vector3(...normal).normalize();
+    const elevation = (Math.asin(Math.max(-1, Math.min(1, n.z))) * 180) / Math.PI;
+    let azimuth = (Math.atan2(n.y, n.x) * 180) / Math.PI;
+    // Looking straight down or up, keep +Y up the screen, as the Top view does.
+    if (Math.abs(Math.abs(elevation) - 90) < 1e-6) azimuth = -90;
+    const base = this.tween?.to ?? this.cam;
+    this.setCamera({ ...base, target: origin, azimuth, elevation, ortho: true }, animate);
+  }
+
+  /** Shows the three origin planes to pick from, sized to the model (at least 40 mm), or hides them. */
+  showPlanes(on: boolean): void {
+    const s = this.bounds();
+    const size = Math.max(40, s ? s.radius * 1.2 : 40);
+    this.planes.scale.setScalar(size);
+    this.planes.visible = on;
+    this.planeHover = null;
+    this.paintPlanes();
+    this.invalidate();
+  }
+
+  /** The origin plane under a point, nearest first. */
+  planeAt(x: number, y: number): WorldPlaneName | null {
+    if (!this.planes.visible) return null;
+    const ray = new Raycaster();
+    ray.setFromCamera(new Vector2((x / this.width) * 2 - 1, -(y / this.height) * 2 + 1), this.activeCamera);
+    this.planes.updateMatrixWorld(true);
+    return (ray.intersectObjects(this.planes.children, false)[0]?.object.name as WorldPlaneName) ?? null;
+  }
+
+  hoverPlane(name: WorldPlaneName | null): void {
+    if (name === this.planeHover) return;
+    this.planeHover = name;
+    this.paintPlanes();
+    this.invalidate();
+  }
+
+  private paintPlanes(): void {
+    for (const m of this.planes.children as Mesh[]) {
+      const mat = m.material as MeshBasicMaterial;
+      mat.color.copy(this.palette.snap);
+      mat.opacity = m.name === this.planeHover ? 0.3 : 0.15;
+    }
+  }
+
+  /**
+   * A face's shape in world space, from its mesh: whether it is flat, its normal and centroid, and the direction of its
+   * longest boundary edge (for the sketch frame's X).
+   */
+  faceInfo(bodyId: string, face: number): { flat: boolean; normal: V3; centroid: V3; edge: V3 } | null {
+    const o = this.bodies.get(bodyId);
+    if (!o) return null;
+    const mesh = o.body.mesh;
+    const [t0, t1] = [mesh.faceTris[face], mesh.faceTris[face + 1]];
+    if (t0 === undefined || t1 === undefined || t1 <= t0) return null;
+    o.group.updateMatrixWorld(true);
+    const m = o.group.matrixWorld;
+    const P = (i: number) => new Vector3(mesh.positions[i * 3]!, mesh.positions[i * 3 + 1]!, mesh.positions[i * 3 + 2]!).applyMatrix4(m);
+    const normals: Vector3[] = [];
+    const centroid = new Vector3();
+    let area = 0;
+    const count = new Map<string, { a: number; b: number; n: number }>();
+    for (let t = t0; t < t1; t++) {
+      const ids = [mesh.indices[t * 3]!, mesh.indices[t * 3 + 1]!, mesh.indices[t * 3 + 2]!];
+      const [a, b, c] = ids.map(P) as [Vector3, Vector3, Vector3];
+      const n = new Vector3().subVectors(b, a).cross(new Vector3().subVectors(c, a));
+      const ar = n.length() / 2;
+      if (ar < 1e-12) continue;
+      normals.push(n.normalize());
+      centroid.addScaledVector(a.clone().add(b).add(c).divideScalar(3), ar);
+      area += ar;
+      for (let k = 0; k < 3; k++) {
+        const [u, v] = [ids[k]!, ids[(k + 1) % 3]!];
+        // Edges by position, so seams between vertex copies still pair up.
+        const key = [P(u), P(v)]
+          .map((q) =>
+            q
+              .toArray()
+              .map((x) => x.toFixed(4))
+              .join(),
+          )
+          .sort()
+          .join("|");
+        const e = count.get(key) ?? { a: u, b: v, n: 0 };
+        e.n++;
+        count.set(key, e);
+      }
+    }
+    if (!normals.length) return null;
+    const n0 = normals[0]!;
+    const flat = normals.every((n) => n.dot(n0) > 1 - 1e-5);
+    centroid.divideScalar(area);
+    let best = new Vector3(1, 0, 0);
+    let bestLen = -1;
+    for (const e of count.values()) {
+      if (e.n !== 1) continue;
+      const d = P(e.b).sub(P(e.a));
+      if (d.length() > bestLen + 1e-6) {
+        bestLen = d.length();
+        best = d;
+      }
+    }
+    return { flat, normal: [n0.x, n0.y, n0.z], centroid: [centroid.x, centroid.y, centroid.z], edge: [best.x, best.y, best.z] };
+  }
+
   invalidate(): void {
     this.dirty = true;
     if (!this.frame && !this.disposed) this.frame = requestAnimationFrame(() => this.tick());
@@ -740,6 +948,7 @@ export class Engine {
     this.arrow.setColor(p.snap);
     this.grid.visible = !this.roomOn;
     this.room.visible = this.roomOn;
+    this.paintPlanes?.();
   }
 
   /** Paints each face: the fill, the highlight, the selection tint, the hover tint. */
@@ -1021,7 +1230,9 @@ export class Engine {
         this.press = null;
         return;
       }
-      this.press = { ...p, button: e.button, shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, dragged: false };
+      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey };
+      const taken = e.button === 0 && !!this.input?.down?.(p, mods);
+      this.press = { ...p, button: e.button, shift: e.shiftKey, mod: mods.mod, dragged: false, input: taken };
       this.canvas.setPointerCapture(e.pointerId);
     });
     this.on("pointermove", (e) => {
@@ -1043,6 +1254,15 @@ export class Engine {
         return;
       }
       const press = this.press;
+      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey };
+      if (press?.input) {
+        this.input?.move?.(p, mods, true);
+        return;
+      }
+      if (this.input && !press) {
+        this.input.move?.(p, mods, false);
+        return;
+      }
       if (press && prev) {
         const dx = p.x - prev.x;
         const dy = p.y - prev.y;
@@ -1071,6 +1291,10 @@ export class Engine {
       }
       const press = this.press;
       this.press = null;
+      if (press?.input) {
+        this.input?.up?.(this.local(e), { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey });
+        return;
+      }
       if (!press || press.dragged || e.type === "pointercancel" || press.button !== 0) return;
       if (this.gizmo.dragging) return;
       const p = this.local(e);
@@ -1079,6 +1303,7 @@ export class Engine {
     this.on("pointerup", end);
     this.on("pointercancel", end);
     this.on("pointerleave", () => {
+      this.input?.leave?.();
       this.hoverAt = null;
       if (!this.press) this.setHover(null);
     });

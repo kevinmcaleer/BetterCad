@@ -10,7 +10,8 @@
   },
   "types": "dist/index.d.ts",
   "dependencies": {
-    "replicad-opencascadejs": "1.2.1"
+    "replicad-opencascadejs": "1.2.1",
+    "@bettercad/sketch": "*"
   },
   "exports": {
     ".": "./src/index.ts",

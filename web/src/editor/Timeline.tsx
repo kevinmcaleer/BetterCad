@@ -3,7 +3,14 @@ import { Icon, IconButton, cx, longPress, type ContextMenuState, type IconName }
 import type { Feature } from "../state/document";
 import { formatCombo } from "../state/commands";
 
-export const FEATURE_ICON: Record<Feature["type"], IconName> = { add: "cube", duplicate: "copy", move: "move", resize: "resize", delete: "trash" };
+export const FEATURE_ICON: Record<Feature["type"], IconName> = {
+  add: "cube",
+  duplicate: "copy",
+  move: "move",
+  resize: "resize",
+  delete: "trash",
+  sketch: "sketch",
+};
 
 /** The tile icon: an Add shows the shape it adds. */
 export function featureIcon(f: Feature): IconName {

@@ -163,3 +163,44 @@
   font-style: normal;
   color: var(--bc-color-muted);
 }
+/* Sketch labels: pills and constraint marks take clicks; the layer around them does not. */
+.bc-dim-pill,
+.bc-glyph {
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: inherit;
+}
+.bc-dim-input {
+  pointer-events: auto;
+  width: 9ch;
+  text-align: center;
+  font-family: inherit;
+  border-color: var(--bc-color-accent);
+  outline: none;
+}
+.bc-glyph {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: 4px;
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+.bc-glyph.bc-on {
+  border-color: var(--bc-color-accent);
+  color: var(--bc-color-accent);
+}
+.bc-glyph.bc-bad {
+  border-color: var(--bc-color-danger);
+  color: var(--bc-color-danger);
+}
+.bc-glyph.bc-off {
+  opacity: 0.45;
+}

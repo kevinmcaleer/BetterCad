@@ -110,6 +110,14 @@ export const stepBack = "M16 18 8 12l8-6z";
 export const stepForward = "m8 6 8 6-8 6z";
 export const skipEnd = "m6 5 9 7-9 7zM18 5v14";
 
+// Sketch tools (epic #5).
+export const line = "M6 18 18 6M4 16h4v4H4zM16 4h4v4h-4z";
+export const rect = "M4 6h16v12H4z";
+export const circle = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z";
+export const arc = "M4 18a8 8 0 0 1 16 0";
+export const polygon = "M7.5 4h9l4.5 8-4.5 8h-9L3 12z";
+export const finish = "M20 6 9 17l-5-5";
+
 export const ICONS = {
   undo,
   redo,
@@ -213,6 +221,12 @@ export const ICONS = {
   stepBack,
   stepForward,
   skipEnd,
+  line,
+  rect,
+  circle,
+  arc,
+  polygon,
+  finish,
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -39,6 +39,8 @@ import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { openFromDisk, saveToDisk } from "./files";
 import { Timeline } from "./Timeline";
+import { useSketch } from "../sketch/useSketch";
+import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -51,6 +53,7 @@ const PANELS: RailItem<PanelId>[] = [
 
 const THEME_LABEL: Record<ThemeSetting, string> = { system: "Match the system", light: "Light", dark: "Dark", holodeck: "Holodeck" };
 
+const NO_PICK = () => {};
 const NARROW = "(max-width: 899px)";
 const TIMELINE_KEY = "bettercad.timeline";
 
@@ -114,12 +117,12 @@ export function Editor() {
   const [status, say] = useStatus();
 
   // The registry reads the latest state through a ref, so commands are registered once.
-  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false });
-  live.current = { doc, parts, marker, at, selection, tool, dialogOpen: paletteOpen || shortcutsOpen };
+  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false });
+  live.current = { doc, parts, marker, at, selection, tool, dialogOpen: paletteOpen || shortcutsOpen, sketching: live.current.sketching };
   const [registry] = useState(() =>
     createRegistry((): CommandContext => ({
       hasSelection: live.current.selection.length > 0,
-      inSketch: live.current.tool === "sketch",
+      inSketch: live.current.sketching,
       toolActive: live.current.tool !== "select",
       canUndo: store.canUndo(),
       canRedo: store.canRedo(),
@@ -179,6 +182,31 @@ export function Editor() {
   });
   live.current.dialogOpen ||= vp.namingOpen;
   useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
+
+  const sketch = useSketch({
+    store,
+    record,
+    doc,
+    built: built.sketches,
+    view: vp.ref,
+    picking: tool === "sketch",
+    onStarted: () => setTool("select"),
+    say,
+    theme: resolved,
+  });
+  live.current.sketching = sketch.editing;
+  useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
+  // While sketching the model goes faint, so the sketch reads on top of it.
+  const viewParts = useMemo(() => (sketch.editing ? parts.map((p) => ({ ...p, ghost: true })) : parts), [parts, sketch.editing]);
+  const onCamera = vp.onCamera;
+  const sketchCamera = sketch.onCamera;
+  const composedCamera = useCallback(
+    (c: Parameters<typeof onCamera>[0]) => {
+      onCamera(c);
+      sketchCamera();
+    },
+    [onCamera, sketchCamera],
+  );
 
   const showPanel = useCallback((id: PanelId | null) => {
     setPanel(id);
@@ -380,6 +408,7 @@ export function Editor() {
       { id: "edit.redo", label: "Redo", group: "Edit", icon: "redo", keys: ["shift+mod+z", "mod+y"], run: () => h().doRedo(), when: (c) => c.canRedo },
       {
         id: "edit.selectAll",
+        scope: "model",
         label: "Select all parts",
         group: "Edit",
         icon: "arrow",
@@ -389,6 +418,7 @@ export function Editor() {
       },
       {
         id: "edit.rename",
+        scope: "model",
         label: "Rename part",
         group: "Edit",
         icon: "pencil",
@@ -399,11 +429,30 @@ export function Editor() {
         },
         when: (c) => c.hasSelection && sel().length === 1,
       },
-      { id: "edit.duplicate", label: "Duplicate", group: "Edit", icon: "copy", keys: ["mod+d"], run: () => h().duplicate(sel()), when: hasSel },
-      { id: "edit.hide", label: "Hide or show", group: "Edit", icon: "eye", keys: ["shift+h"], run: () => h().toggle(sel(), "hidden"), when: hasSel },
-      { id: "edit.delete", label: "Delete", group: "Edit", icon: "trash", keys: ["delete", "backspace"], run: () => h().remove(sel()), when: hasSel },
+      { id: "edit.duplicate", scope: "model", label: "Duplicate", group: "Edit", icon: "copy", keys: ["mod+d"], run: () => h().duplicate(sel()), when: hasSel },
+      {
+        id: "edit.hide",
+        scope: "model",
+        label: "Hide or show",
+        group: "Edit",
+        icon: "eye",
+        keys: ["shift+h"],
+        run: () => h().toggle(sel(), "hidden"),
+        when: hasSel,
+      },
+      {
+        id: "edit.delete",
+        scope: "model",
+        label: "Delete",
+        group: "Edit",
+        icon: "trash",
+        keys: ["delete", "backspace"],
+        run: () => h().remove(sel()),
+        when: hasSel,
+      },
       ...TOOLS.map<Command>((t) => ({
         id: `tool.${t.id}`,
+        scope: "model",
         label: t.label,
         group: "Tools",
         icon: t.icon,
@@ -512,6 +561,7 @@ export function Editor() {
     const f = doc.features[i];
     if (!f) return [];
     return [
+      ...(f.type === "sketch" ? [{ id: "edit", label: "Edit sketch", icon: "sketch" as const, onSelect: () => sketch.edit(id) }] : []),
       { id: "roll", label: "Roll to here", icon: "history", disabled: i + 1 === at, onSelect: () => moveMarker(i + 1) },
       {
         id: "rename",
@@ -560,11 +610,13 @@ export function Editor() {
       : selectedParts.length === 1
         ? `${selectedParts[0]!.name} selected.`
         : `${selectedParts.length} parts selected.`;
-  const helpText = vp.elementText
-    ? `${vp.elementText} Esc clears it.`
-    : tool === "select" && selectedParts.length
-      ? `${selectionText} Esc clears the selection.`
-      : activeTool.help;
+  const helpText = sketch.help
+    ? sketch.help
+    : vp.elementText
+      ? `${vp.elementText} Esc clears it.`
+      : tool === "select" && selectedParts.length
+        ? `${selectionText} Esc clears the selection.`
+        : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -640,11 +692,20 @@ export function Editor() {
             />
           )
         }
-        stageToolbar={<StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />}
+        stageToolbar={
+          sketch.editing ? (
+            <SketchBars s={sketch} />
+          ) : (
+            <>
+              <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
+              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
+            </>
+          )
+        }
         stage={
           <View3D
             ref={vp.ref}
-            parts={parts}
+            parts={viewParts}
             meshes={kernel.bodies}
             engine={kernel.state}
             picks={vp.picks}
@@ -655,12 +716,15 @@ export function Editor() {
             section={vp.section}
             stats={vp.stats}
             description={`${parts.length} parts. ${vp.elementText || selectionText}`}
-            onPick={vp.onPick}
+            onPick={sketch.editing ? NO_PICK : vp.onPick}
             onTransform={vp.onTransform}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
-            onCamera={vp.onCamera}
-          />
+            onCamera={composedCamera}
+            emptyHint={!sketch.editing && tool !== "sketch" && built.sketches.length === 0}
+          >
+            <SketchLabels s={sketch} />
+          </View3D>
         }
         timeline={
           timelineShown && (
@@ -677,7 +741,13 @@ export function Editor() {
           )
         }
         helpLine={helpText}
-        rightPanel={<Properties parts={selectedParts} totalParts={parts.length} onChange={onPropChange} onCommit={store.seal} />}
+        rightPanel={
+          sketch.editing ? (
+            <SketchPanel s={sketch} />
+          ) : (
+            <Properties parts={selectedParts} totalParts={parts.length} onChange={onPropChange} onCommit={store.seal} />
+          )
+        }
         rightOpen={propsOpen}
       />
       <span className="bc-sr-only" role="status" aria-live="polite">
