@@ -64,7 +64,7 @@ import { CommandPalette } from "./CommandPalette";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
-import { openFromDisk, saveToDisk } from "./files";
+import { useFiles } from "../files/useFiles";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
@@ -440,28 +440,18 @@ export function Editor() {
 
   const armTool = useCallback((id: ToolId) => setTool((t) => (t === id && id !== "select" ? "select" : id)), []);
 
-  const save = useCallback(() => {
-    const d = store.get();
-    saveToDisk(d);
-    say(`Saved ${d.name} to your downloads`);
-  }, [store, say]);
-  const open = useCallback(async () => {
-    try {
-      const d = await openFromDisk();
-      if (!d) return;
-      store.edit(() => d, `Open ${d.name}`);
+  const files = useFiles({
+    store,
+    doc,
+    view: vp.ref,
+    say,
+    onSwitched: () => {
       setMarker(null);
       setSelection([]);
-      say(`Opened ${d.name}`);
-    } catch (e) {
-      say((e as Error).message, true);
-    }
-  }, [store, say]);
-  const newModel = useCallback(() => {
-    store.edit(() => newDoc(), "New model");
-    setMarker(null);
-    setSelection([]);
-  }, [store]);
+      setActiveFeature(null);
+    },
+  });
+  const { save, saveAs, open, newModel } = files;
 
   // ---- timeline
   const selectFeature = useCallback((f: Feature) => {
@@ -539,6 +529,7 @@ export function Editor() {
     newModel,
     open,
     save,
+    saveAs,
     doUndo,
     doRedo,
     duplicate,
@@ -563,6 +554,7 @@ export function Editor() {
     newModel,
     open,
     save,
+    saveAs,
     doUndo,
     doRedo,
     duplicate,
@@ -604,9 +596,18 @@ export function Editor() {
     const sel = () => live.current.selection;
     const hasSel = (c: CommandContext) => c.hasSelection;
     const list: Command[] = [
-      { id: "file.new", label: "New model", group: "File", icon: "plus", run: () => h().newModel() },
-      { id: "file.open", label: "Open from disk…", group: "File", icon: "folder", keys: ["mod+o"], run: () => void h().open() },
-      { id: "file.save", label: "Save to disk", group: "File", icon: "save", keys: ["mod+s"], run: () => h().save(), keywords: "download export" },
+      { id: "file.new", label: "New model", group: "File", icon: "plus", keys: ["mod+n"], run: () => h().newModel() },
+      { id: "file.open", label: "Open…", group: "File", icon: "folder", keys: ["mod+o"], run: () => void h().open(), keywords: "load file disk" },
+      { id: "file.save", label: "Save", group: "File", icon: "save", keys: ["mod+s"], run: () => void h().save(), keywords: "disk download file" },
+      {
+        id: "file.saveAs",
+        label: "Save as…",
+        group: "File",
+        icon: "save",
+        keys: ["shift+mod+s"],
+        run: () => void h().saveAs(),
+        keywords: "disk download copy file",
+      },
       { id: "edit.undo", label: "Undo", group: "Edit", icon: "undo", keys: ["mod+z"], run: () => h().doUndo(), when: (c) => c.canUndo },
       { id: "edit.redo", label: "Redo", group: "Edit", icon: "redo", keys: ["shift+mod+z", "mod+y"], run: () => h().doRedo(), when: (c) => c.canRedo },
       {
@@ -918,9 +919,11 @@ export function Editor() {
   };
 
   const saveEntries: MenuEntry[] = [
-    { id: "save", label: "Save to disk", icon: "save", keys: formatCombo("mod+s"), onSelect: save },
-    { id: "open", label: "Open from disk…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
-    { id: "new", label: "New model", icon: "plus", onSelect: newModel },
+    { id: "save", label: files.inPlace ? "Save" : "Save (downloads a file)", icon: "save", keys: formatCombo("mod+s"), onSelect: () => void save() },
+    { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
+    { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
+    { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
+    ...files.recentEntries,
     { kind: "separator", id: "s1" },
     { id: "cloud", label: "Save to your account (coming with accounts)", icon: "user", disabled: true, onSelect: () => {} },
   ];
@@ -1106,6 +1109,7 @@ export function Editor() {
             <SketchBars s={sketch} />
           ) : (
             <>
+              {files.banners}
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && (
@@ -1232,6 +1236,7 @@ export function Editor() {
         entries={featureMenuAt ? featureMenu(featureMenuAt.id) : []}
       />
       {vp.namingDialog}
+      {files.dialog}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
       <TooltipLayer />
     </>

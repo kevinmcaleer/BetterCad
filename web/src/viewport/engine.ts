@@ -767,6 +767,58 @@ export class Engine {
     return { flat, normal: [n0.x, n0.y, n0.z], centroid: [centroid.x, centroid.y, centroid.z], edge: [best.x, best.y, best.z], boundary };
   }
 
+  /**
+   * A picture of the bodies from the current camera, for a saved file's thumbnail (#79): no grid, no overlays,
+   * transparent behind. A PNG data URL, or null where WebGL can't read back.
+   */
+  thumbnail(width = 320, height = 200): string | null {
+    const r = this.renderer;
+    const bodies = new Set<Object3D>(this.order.map((b) => b.group));
+    const hidden: Object3D[] = [];
+    for (const c of this.scene.children) {
+      if (c.visible && !bodies.has(c) && !(c instanceof HemisphereLight) && !(c instanceof DirectionalLight)) {
+        c.visible = false;
+        hidden.push(c);
+      }
+    }
+    const { width: w0, height: h0 } = this;
+    this.width = width;
+    this.height = height;
+    this.applyCamera();
+    const target = new WebGLRenderTarget(width, height);
+    const clear = r.getClearColor(new Color());
+    const alpha = r.getClearAlpha();
+    try {
+      r.setRenderTarget(target);
+      r.setClearColor(0x000000, 0);
+      r.clear();
+      r.render(this.scene, this.activeCamera);
+      const px = new Uint8Array(width * height * 4);
+      r.readRenderTargetPixels(target, 0, 0, width, height, px);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      const img = ctx.createImageData(width, height);
+      // WebGL rows run bottom up.
+      for (let y = 0; y < height; y++) img.data.set(px.subarray((height - 1 - y) * width * 4, (height - y) * width * 4), y * width * 4);
+      ctx.putImageData(img, 0, 0);
+      return canvas.toDataURL("image/png");
+    } catch {
+      return null;
+    } finally {
+      r.setRenderTarget(null);
+      r.setClearColor(clear, alpha);
+      target.dispose();
+      for (const c of hidden) c.visible = true;
+      this.width = w0;
+      this.height = h0;
+      this.applyCamera();
+      this.invalidate();
+    }
+  }
+
   invalidate(): void {
     this.dirty = true;
     if (!this.frame && !this.disposed) this.frame = requestAnimationFrame(() => this.tick());

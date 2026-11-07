@@ -1,0 +1,6 @@
+{
+  "format": "bettercad",
+  "version": 1,
+  "name": "Bracket",
+  "parts": [{ "id": "p1", "name": "Box 1", "kind": "box", "position": { "x": 0, "y": 0, "z": 10 }, "size": { "x": 40, "y": 20, "z": 20 } }]
+}
