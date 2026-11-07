@@ -594,6 +594,12 @@ kbd {
     max-width: 80%;
   }
 }
+@media (max-width: 420px) {
+  /* Room for Help (#110) beside Save on a phone. */
+  .bc-docname {
+    width: 80px;
+  }
+}
 
 /* ---- more contrast when the system asks for it */
 @media (prefers-contrast: more) {
