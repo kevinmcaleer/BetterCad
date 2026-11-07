@@ -247,6 +247,10 @@ export class Engine {
   private hoverMat = new LineMaterial({ linewidth: 2, worldUnits: false });
   private markers: Points;
   private markerMat = new PointsMaterial({ size: 10, sizeAttenuation: false });
+  /** The origin point, shown from the browser and while picking a plane: a dot at (0, 0, 0) over everything. */
+  private originMat = new PointsMaterial({ size: 9, sizeAttenuation: false, depthTest: false, transparent: true });
+  private originPoint = new Points(new BufferGeometry().setAttribute("position", new BufferAttribute(new Float32Array(3), 3)), this.originMat);
+  private originPointShown = false;
 
   // Gizmo
   private gizmo: TransformControls;
@@ -402,6 +406,10 @@ export class Engine {
       this.planes.add(m);
     }
     this.scene.add(this.planes);
+    this.originPoint.visible = false;
+    this.originPoint.renderOrder = 6;
+    this.originPoint.frustumCulled = false;
+    this.scene.add(this.originPoint);
 
     const quad = new Mesh(new PlaneGeometry(2, 2), this.outline);
     quad.frustumCulled = false;
@@ -812,9 +820,10 @@ export class Engine {
   }
 
   /** The origin planes to keep on show, as the browser's eyes set them, and the one chosen there. */
-  setOriginPlanes(shown: WorldPlaneName[], chosen: WorldPlaneName | null = null): void {
+  setOriginPlanes(shown: WorldPlaneName[], chosen: WorldPlaneName | null = null, point = false): void {
     this.originShown = shown;
     this.planeChosen = chosen;
+    this.originPointShown = point;
     this.layoutPlanes();
   }
 
@@ -825,6 +834,7 @@ export class Engine {
     const on = (n: WorldPlaneName) => this.planesPicking || this.originShown.includes(n) || this.planeChosen === n;
     for (const m of this.planes.children) m.visible = on(m.name as WorldPlaneName);
     this.planes.visible = this.planes.children.some((m) => m.visible);
+    this.originPoint.visible = this.planesPicking || this.originPointShown;
     this.paintPlanes();
     this.invalidate();
   }
@@ -1182,6 +1192,7 @@ export class Engine {
     this.selectMat.color.copy(p.snap);
     this.hoverMat.color.copy(p.snap);
     this.markerMat.color.copy(p.snap);
+    this.originMat.color.copy(p.snap);
     this.outline.uniforms.colour!.value.copy(p["part-line"]);
     this.capMat.uniforms.fill!.value.copy(p["part-fill"]);
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
@@ -1315,6 +1326,7 @@ export class Engine {
     const id = this.gizmoBody;
     const o = id ? this.bodies.get(id) : undefined;
     if (!o || !id) return;
+    if (!done && this.gizmo.mode === "translate") this.snapToOrigin();
     const e = new Euler().setFromQuaternion(this.proxy.quaternion, "ZYX");
     const round = (v: number) => Math.round(v * 1000) / 1000;
     const pos: V3 = [round(this.proxy.position.x), round(this.proxy.position.y), round(this.proxy.position.z)];
@@ -1330,6 +1342,20 @@ export class Engine {
     this.invalidate();
     if (done) this.events.transform?.(id, pos, rot);
     else this.events.transforming?.(id, pos, rot);
+  }
+
+  /**
+   * The origin is a snap point for the move gizmo: an axis being dragged locks to 0 within 8 px of it, so a part's
+   * placement point lands on the origin, or level with it, along that axis.
+   */
+  private snapToOrigin(): void {
+    const axis = this.gizmo.axis ?? "";
+    const p = this.proxy.position;
+    const tol = 8 * this.pixelSize([p.x, p.y, p.z]);
+    for (const k of ["x", "y", "z"] as const) {
+      if (axis.includes(k.toUpperCase()) && Math.abs(p[k]) <= tol) p[k] = 0;
+    }
+    this.proxy.updateMatrixWorld();
   }
 
   // ------------------------------------------------------------ camera and drawing

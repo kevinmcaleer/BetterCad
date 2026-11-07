@@ -13,7 +13,7 @@ describe("snap", () => {
   });
 
   it("prefers a corner over the middle of a line", () => {
-    expect(snap([0.3, 0.2], rect, { px: 0.1, grid: null }).kind).toBe("end");
+    expect(snap([40.3, 0.2], rect, { px: 0.1, grid: null }).kind).toBe("end");
     const m = snap([20.2, 0.3], rect, { px: 0.1, grid: null });
     expect(m.kind).toBe("middle");
     expect(m.xy).toEqual([20, 0]);
@@ -65,5 +65,17 @@ describe("snap", () => {
     const edge = entityAt([20, 0.2], rect, 1)!;
     expect(rect.entities.find((e) => e.id === edge)?.kind).toBe("line");
     expect(entityAt([20, 10], rect, 1)).toBeNull();
+  });
+
+  it("snaps to the origin first, reusing a point already on it", () => {
+    const empty = newSketch();
+    expect(snap([0.4, -0.3], empty, { px: 0.1, grid: 1 })).toMatchObject({ kind: "origin", xy: [0, 0], label: "Origin" });
+    expect(snap([0.4, -0.3], empty, { px: 0.1, grid: 1 }).ref).toBeUndefined();
+    const corner = rect.entities.find((e) => e.kind === "point" && e.x === 0 && e.y === 0)!;
+    expect(snap([0.4, -0.3], rect, { px: 0.1, grid: 1 })).toMatchObject({ kind: "origin", ref: corner.id });
+    // On a face, the origin is wherever the model's origin projects to; null leaves it out.
+    expect(snap([5.2, 4.9], empty, { px: 0.1, grid: null, origin: [5, 5] })).toMatchObject({ kind: "origin", xy: [5, 5] });
+    expect(snap([0.4, -0.3], empty, { px: 0.1, grid: null, origin: null }).kind).toBe("free");
+    expect(snap([0.4, -0.3], empty, { px: 0.1, grid: 1, off: true }).kind).toBe("free");
   });
 });

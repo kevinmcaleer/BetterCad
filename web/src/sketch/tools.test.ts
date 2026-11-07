@@ -53,4 +53,17 @@ describe("sketch tools", () => {
     expect(constraintsFor("coincident", s, [pts[0]!, lines[1]!])).toEqual([{ type: "pointOn", p: pts[0], e: lines[1] }]);
     expect(constraintsFor("fix", s, [lines[0]!])).toHaveLength(2);
   });
+
+  it("fixes a point drawn on the origin, once, and shares it", () => {
+    const origin: Snap = { xy: [0, 0], kind: "origin", label: "Origin" };
+    const line = commit("line", newSketch(), [origin, free(30, 0)])!;
+    const fixes = line.sketch.constraints.filter((c) => c.type === "fix");
+    expect(fixes).toHaveLength(1);
+    const p = (fixes[0] as { p: string }).p;
+    expect(line.sketch.entities.find((e) => e.id === p)).toMatchObject({ x: 0, y: 0 });
+    // A circle centred on the same point reuses it and adds no second fix.
+    const circle = commit("circle", line.sketch, [{ ...origin, ref: p }, free(5, 0)])!;
+    expect(circle.sketch.constraints.filter((c) => c.type === "fix")).toHaveLength(1);
+    expect(circle.sketch.entities.find((e) => e.kind === "circle")).toMatchObject({ c: p, r: 5 });
+  });
 });

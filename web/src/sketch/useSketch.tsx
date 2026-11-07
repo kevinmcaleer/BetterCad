@@ -499,6 +499,7 @@ export function useSketch(d: SketchDeps) {
         off: mods.shift,
         gridOnly: mods.mod,
         radius: mods.touch ? 16 : 8,
+        origin: L.frame ? toSketch(L.frame, [0, 0, 0]) : null,
       });
     };
     const done = (r: Sketch | string, label: string) => {
@@ -571,7 +572,7 @@ export function useSketch(d: SketchDeps) {
       setTyped([]);
       // The line tool chains from its last point, until it meets a point already there.
       const last = all[all.length - 1]!;
-      if (L.stool === "line" && c.end && !(last.kind === "end" || last.kind === "centre")) {
+      if (L.stool === "line" && c.end && !(last.ref && (last.kind === "end" || last.kind === "centre" || last.kind === "origin"))) {
         const p = c.sketch.entities.find((e) => e.id === c.end);
         setClicks(p?.kind === "point" ? [{ xy: [p.x, p.y], kind: "end", ref: p.id, label: "" }] : []);
       } else setClicks([]);
@@ -680,8 +681,10 @@ export function useSketch(d: SketchDeps) {
     const o = overlay.current;
     if (!o || !sketch || !frame) return;
     o.refreshPalette();
-    o.update(sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview));
-  }, [sketch, frame, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview]);
+    const view = sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview);
+    const px = engineOf()?.pixelSize(frame.origin);
+    o.update(px ? withOrigin(view, toSketch(frame, [0, 0, 0]), px) : view);
+  }, [sketch, frame, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf]);
 
   // Finished sketches stay on show, faintly, while the timeline includes them.
   useEffect(() => {
@@ -918,6 +921,33 @@ export function sketchView(
   }
   if (cursor) points.push({ xy: cursor.xy, shade: cursor.kind === "free" ? "preview" : "hover", big: cursor.kind !== "free" });
   return { frame, curves, points };
+}
+
+/** The model's origin drawn under the sketch: a fixed point with a small cross, 8 px each way, to snap to. */
+export function withOrigin(view: OverlayView, origin: Vec2, px: number): OverlayView {
+  const r = 8 * px;
+  const [x, y] = origin;
+  return {
+    ...view,
+    curves: [
+      {
+        pts: [
+          [x - r, y],
+          [x + r, y],
+        ],
+        shade: "fixed",
+      },
+      {
+        pts: [
+          [x, y - r],
+          [x, y + r],
+        ],
+        shade: "fixed",
+      },
+      ...view.curves,
+    ],
+    points: [{ xy: origin, shade: "fixed" }, ...view.points],
+  };
 }
 
 /** Offset toward the pointer: whichever side's copy lands nearer it. */

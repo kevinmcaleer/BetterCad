@@ -119,9 +119,15 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
 
 /**
  * Puts a snapped point in the draft: the point snapped to when there is one (shared corners), otherwise a new point,
- * tied to the line or curve it landed on.
+ * tied to the line or curve it landed on. A point on the origin is fixed there, as Fusion makes it coincident with
+ * the sketch's origin point.
  */
 export function place(d: Draft, s: Snap): Id {
+  if (s.kind === "origin") {
+    const p = s.ref ?? d.point(s.xy);
+    if (!d.constraints.some((c) => c.type === "fix" && c.p === p)) d.constrain({ type: "fix", p });
+    return p;
+  }
   if ((s.kind === "end" || s.kind === "centre") && s.ref) return s.ref;
   const p = d.point(s.xy);
   if (s.kind === "on" && s.ref) d.constrain({ type: "pointOn", p, e: s.ref });

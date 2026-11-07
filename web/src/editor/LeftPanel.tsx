@@ -19,7 +19,7 @@ import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
-import { BrowserPanel, type BrowserSketch } from "./Browser";
+import { BrowserPanel, type BrowserSketch, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
@@ -51,8 +51,8 @@ export interface LeftPanelProps {
   onRenameIdChange: (id: string | null) => void;
   /** The browser's sketches, origin planes and their eyes. */
   sketches: BrowserSketch[];
-  origin: WorldPlaneName[];
-  onOrigin: (shown: WorldPlaneName[]) => void;
+  origin: OriginItem[];
+  onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
   onSketchesHidden: (ids: string[], hidden: boolean) => void;
   onBrowserPicked: (id: string | null) => void;
