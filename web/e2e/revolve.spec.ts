@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 type View = { __bcView: { project(p: number[]): { x: number; y: number }; preset(p: string): void } };
 
@@ -21,6 +21,14 @@ async function click(page: Page, x: number, y: number, z = 0) {
   await page.mouse.move(p.x, p.y, { steps: 3 });
   await page.mouse.down();
   await page.mouse.up();
+}
+
+/** Clicks a closed sketch shape until the tool takes it (under load the first click can land before the view is ready). */
+async function pickShape(page: Page, x: number, y: number, taken: Locator) {
+  await expect(async () => {
+    if (!(await taken.count())) await click(page, x, y);
+    await expect(taken).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
 }
 
 test("revolve a rectangle round the sketch's Y axis into a tube", async ({ page }) => {
@@ -49,8 +57,7 @@ test("revolve a rectangle round the sketch's Y axis into a tube", async ({ page 
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Revolve/ })
     .click();
-  await click(page, 15, 0);
-  await expect(page.getByRole("button", { name: "Round the Y axis" })).toBeVisible();
+  await pickShape(page, 15, 0, page.getByRole("button", { name: "Round the Y axis" }));
   const angle = page.getByRole("textbox", { name: "Angle" });
   await expect(angle).toHaveValue(/360/);
   await angle.press("Enter");
