@@ -31,6 +31,10 @@ const GRID_FRAG = `
   uniform float minorAlpha;
   uniform float room;
   uniform vec3 eye;
+  uniform float dof;
+  uniform float focus;
+  uniform float range;
+  uniform vec3 bg;
   varying vec3 vWorld;
   varying vec3 vNormal;
   float lines(vec2 c) {
@@ -55,6 +59,13 @@ const GRID_FRAG = `
       if (onY > 0.01) { colour = yColour; a = max(a, onY); }
     }
     a *= f;
+    if (dof > 0.5) {
+      // Depth of field: opaque over the background, with how far out of focus this point is in alpha.
+      float d = distance(eye, vWorld);
+      float coc = smoothstep(0.0, focus, abs(d - focus) - range);
+      gl_FragColor = vec4(mix(bg, colour, a), coc);
+      return;
+    }
     if (a < 0.01) discard;
     gl_FragColor = vec4(colour, a);
   }`;
@@ -71,6 +82,10 @@ export function gridMaterial(room = false): ShaderMaterial {
       minorAlpha: { value: 0.7 },
       room: { value: room ? 1 : 0 },
       eye: { value: new Vector3() },
+      dof: { value: 0 },
+      focus: { value: 100 },
+      range: { value: 100 },
+      bg: { value: new Color() },
     },
     vertexShader: GRID_VERT,
     fragmentShader: GRID_FRAG,
@@ -152,6 +167,67 @@ export function outlineMaterial(): ShaderMaterial {
     depthTest: false,
     depthWrite: false,
     transparent: true,
+  });
+}
+
+// ------------------------------------------------------------ depth of field
+
+/**
+ * One direction of the Holodeck's blur. Alpha holds each pixel's circle of confusion (0 sharp, 1 fully blurred);
+ * the taps spread with it, and taps sharper than the pixel count for less, so the in-focus floor does not smear
+ * into the blurred walls.
+ */
+const BLUR_FRAG = `
+  uniform sampler2D tColour;
+  uniform vec2 spread;
+  varying vec2 vUv;
+  void main() {
+    vec4 here = texture2D(tColour, vUv);
+    float coc = here.a;
+    vec3 sum = here.rgb;
+    float total = 1.0;
+    for (int i = 1; i <= 8; i++) {
+      float t = float(i) / 8.0;
+      float w = exp(-3.0 * t * t);
+      vec2 off = spread * t * coc;
+      vec4 a = texture2D(tColour, vUv + off);
+      vec4 b = texture2D(tColour, vUv - off);
+      float wa = w * clamp(a.a * 4.0, 0.0, 1.0);
+      float wb = w * clamp(b.a * 4.0, 0.0, 1.0);
+      sum += a.rgb * wa + b.rgb * wb;
+      total += wa + wb;
+    }
+    gl_FragColor = vec4(sum / total, coc);
+  }`;
+
+export function blurMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: { tColour: { value: null }, spread: { value: new Vector2() } },
+    vertexShader: QUAD_VERT,
+    fragmentShader: BLUR_FRAG,
+    depthTest: false,
+    depthWrite: false,
+  });
+}
+
+/** Lays the room down as the background: sharp where it is in focus, the blurred copy where it is not. */
+const DOF_FRAG = `
+  uniform sampler2D tSharp;
+  uniform sampler2D tBlur;
+  varying vec2 vUv;
+  void main() {
+    vec4 sharp = texture2D(tSharp, vUv);
+    vec3 blur = texture2D(tBlur, vUv).rgb;
+    gl_FragColor = vec4(mix(sharp.rgb, blur, smoothstep(0.0, 0.25, sharp.a)), 1.0);
+  }`;
+
+export function dofMaterial(): ShaderMaterial {
+  return new ShaderMaterial({
+    uniforms: { tSharp: { value: null }, tBlur: { value: null } },
+    vertexShader: QUAD_VERT,
+    fragmentShader: DOF_FRAG,
+    depthTest: false,
+    depthWrite: false,
   });
 }
 
