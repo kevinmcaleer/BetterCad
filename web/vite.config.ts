@@ -57,7 +57,12 @@ function serviceWorker(): Plugin {
               .sort()
               .map((f) => `samples/${f}`)
           : [];
-        const files = ["index.html", ...["favicon.svg", "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png"].filter((f) => existsSync(join(outDir, f))), ...assets, ...samples];
+        const files = [
+          "index.html",
+          ...["favicon.svg", "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png"].filter((f) => existsSync(join(outDir, f))),
+          ...assets,
+          ...samples,
+        ];
         const version = createHash("sha256")
           .update(files.join("\n"))
           .update(readFileSync(join(outDir, "index.html")))
