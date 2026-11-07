@@ -45,6 +45,11 @@ import {
   KIND_LABEL,
   overhangs,
   type CheckArea,
+  ORIENT_WEIGHTS,
+  apply as applyTurn,
+  turnPlacement,
+  type Orientation,
+  type OrientWeights,
   centreMove,
   estimateWeight,
   fitCheck,
@@ -102,7 +107,7 @@ import { Versions } from "../cloud/Versions";
 import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
-import { PrintPanel, type PrintCheck } from "../print/PrintPanel";
+import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 
 const PANELS: RailItem<PanelId>[] = [
@@ -121,6 +126,19 @@ const THEME_LABEL: Record<ThemeSetting, string> = { system: "Match the system", 
 const NO_PICK = () => {};
 const NARROW = "(max-width: 899px)";
 const TIMELINE_KEY = "bettercad.timeline";
+
+const ORIENT_KEY = "bettercad.orientWeights";
+
+/** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
+function readOrientWeights(): OrientWeights {
+  try {
+    const w = JSON.parse(localStorage.getItem(ORIENT_KEY) ?? "null") as Partial<OrientWeights> | null;
+    if (w && (["contact", "overhang", "height"] as const).every((k) => typeof w[k] === "number" && w[k]! >= 0)) return w as OrientWeights;
+  } catch {
+    // Unreadable or blocked: the defaults.
+  }
+  return ORIENT_WEIGHTS;
+}
 
 function readTimelineShown() {
   try {
@@ -1081,6 +1099,77 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     };
   }, [check, printBodies, thinLimit, kernelCall]);
   const checkResult = check === "overhang" ? overhangResult : check === "thin" ? thinResult : null;
+
+  // Orientation suggestions (#103): worked out in the kernel while the Print panel is open, once per build.
+  const [orientWeights, setOrientWeightsState] = useState<OrientWeights>(readOrientWeights);
+  const setOrientWeights = useCallback((w: OrientWeights) => {
+    setOrientWeightsState(w);
+    try {
+      localStorage.setItem(ORIENT_KEY, JSON.stringify(w));
+    } catch {
+      // A private window: it lasts this visit.
+    }
+  }, []);
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+  const printOpen = panel === "print";
+  useEffect(() => {
+    setSuggestions(null);
+    if (!printOpen || !printBodies.length) return;
+    let pending: { cancel(): void } | null = null;
+    const t = setTimeout(() => {
+      const call = kernelCall("orient", {
+        bodies: printBodies.map((b) => ({ positions: b.mesh.positions, indices: b.mesh.indices, faceTris: b.mesh.faceTris })),
+        limit: overhangAngle,
+        weights: orientWeights,
+      });
+      call?.then(
+        (list) => {
+          const engine = vp.ref.current?.engine();
+          setSuggestions(list.map((o) => ({ ...o, picture: engine?.posed(o.turn, 96, 64) ?? null })));
+        },
+        () => undefined,
+      );
+      pending = call;
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      pending?.cancel();
+    };
+  }, [printOpen, printBodies, overhangAngle, orientWeights, kernelCall, vp.ref]);
+  const layDown = useCallback(
+    (o: Orientation) => {
+      if (o.current) return say("It already lies this way");
+      // Where the printing bodies end up once turned, to sit them on the middle of the bed.
+      const min: [number, number, number] = [Infinity, Infinity, Infinity];
+      const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+      for (const b of printBodies) {
+        const P = b.mesh.positions;
+        for (let i = 0; i < P.length; i += 3) {
+          const q = applyTurn(o.turn, [P[i]!, P[i + 1]!, P[i + 2]!]);
+          for (let k = 0; k < 3; k++) {
+            min[k] = Math.min(min[k]!, q[k]!);
+            max[k] = Math.max(max[k]!, q[k]!);
+          }
+        }
+      }
+      const delta = centreMove({ min, max });
+      const ids = parts.filter((p) => !p.hidden).map((p) => p.id);
+      store.edit((d) => {
+        let x = d;
+        let pos = marker === null ? undefined : at;
+        for (const id of ids) {
+          const part = parts.find((p) => p.id === id)!;
+          const turned = turnPlacement(part, o.turn);
+          const position = { x: turned.position.x + delta.x, y: turned.position.y + delta.y, z: turned.position.z + delta.z };
+          x = placePart(x, id, position, turned.rotation, pos);
+          if (pos !== undefined) pos++;
+        }
+        return x;
+      }, "Lay it on the bed");
+      say("Turned the model and laid it on the middle of the bed");
+    },
+    [printBodies, parts, store, say, at, marker],
+  );
   const showArea = useCallback((a: CheckArea) => vp.ref.current?.engine()?.fitBox(a.box.min, a.box.max), [vp.ref]);
 
   const printPanel = (
@@ -1102,6 +1191,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       onThinWall={setThinWall}
       areas={check === "none" ? [] : (checkResult?.areas ?? (check === "thin" && !printBodies.length ? [] : null))}
       onShowArea={showArea}
+      suggestions={suggestions}
+      onSuggestion={layDown}
     />
   );
 
@@ -1399,6 +1490,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             <LeftPanel
               paramsPanel={paramsPanel}
               printPanel={printPanel}
+              orientWeights={orientWeights}
+              onOrientWeights={setOrientWeights}
               panel={panel}
               doc={doc}
               parts={parts}

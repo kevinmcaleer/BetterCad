@@ -75,3 +75,30 @@ test("overhangs and thin walls: one check at a time, with the areas listed", asy
   await page.getByRole("group", { name: "Check" }).getByRole("button", { name: "Off" }).click();
   await expect(page.getByText(/thin area/)).toHaveCount(0);
 });
+
+test("orientation suggestions turn the model onto the bed in one undoable step", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Wedge", exact: true }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await openPrint(page);
+
+  const list = page.getByRole("list", { name: "Suggestions" });
+  await expect(list.getByRole("button")).toHaveCount(3, { timeout: 20_000 });
+  // Each says what it weighs up, in the tooltip and the name.
+  const first = list.getByRole("button").first();
+  await expect(first).toHaveAttribute("title", /^Contact [\d,]+ mm², overhang [\d,]+ mm², height [\d.]+ mm$/);
+  await expect(first.locator("img")).toHaveCount(1);
+  const other = list.getByRole("button", { name: /^Suggestion/ }).first();
+  await other.click();
+  await expect(page.getByText("Turned the model and laid it on the middle of the bed")).toBeVisible();
+  // Rebuilt, the chosen way down is now how it lies.
+  await expect(list.getByRole("button", { name: /^As it lies now/ })).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByRole("navigation").getByRole("button", { name: "Print" })).toBeVisible();
+
+  // The weights live in Settings, Advanced.
+  await page.getByRole("navigation").getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("group", { name: "Orientation suggestions" }).getByRole("textbox", { name: "Contact", exact: true })).toHaveValue("0.4");
+});

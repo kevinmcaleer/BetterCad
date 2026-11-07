@@ -5,6 +5,7 @@ import type { ImportFormat } from "./imports";
 import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
 import type { CheckArea } from "./print/checks";
+import type { Orientation, OrientWeights } from "./print/orient";
 import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
 
 /**
@@ -26,6 +27,11 @@ export interface Methods {
   thickness: {
     params: { bodies: { id: string; positions: Float32Array; indices: Uint32Array }[]; threshold: number };
     result: { id: string; values: Float32Array; areas: CheckArea[]; min: number | null }[];
+  };
+  /** Orientation suggestions (#103) for the bodies that print, together, in world space. */
+  orient: {
+    params: { bodies: { positions: Float32Array; indices: Uint32Array; faceTris?: Uint32Array }[]; limit: number; weights?: OrientWeights };
+    result: Orientation[];
   };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };

@@ -72,3 +72,14 @@ It runs in the geometry worker, so the editor stays responsive. Rays only test t
 - Orientation suggestions (#103).
 - Printed-fit hole sizes tied to the printer (#104).
 - Saving custom printers and a price per kilogram to your account.
+
+## Orientation suggestions (#103)
+
+The Print panel's Orientation group shows three ways to lay the model down, each with a thumbnail of the model turned that way. The kernel worker works them out once per build while the panel is open (`orient` in `packages/kernel/src/print/orient.ts`).
+
+- **Candidates**: flat kernel faces with more than 5% of the surface, plus the faces of the convex hull (quickhull over the mesh's points, with hull triangles within about 1° binned together), so a curved or open model can rest on the plane across its feet. Straight down as it lies now is always a candidate.
+- **Score**: contact area 0.4, overhang area 0.4 (lower is better, at the overhang check's angle), height 0.2 (lower is better). Each is divided by the largest among the candidates. You can change the weights in Settings, under Advanced; they're kept per browser.
+- **Applying one**: one Move per part, turned about the origin and then moved to the middle of the bed at Z = 0. It's one undo step. The way it lies now is marked in `accent-soft`.
+- **Speed**: about 0.4 s for a 40k-triangle sphere in the dev container, where every point is on the hull (the worst case for the hull). Flat-faced models are much faster.
+
+They're suggestions, never "best". A part that needs a particular face up for looks or strength may want another one.
