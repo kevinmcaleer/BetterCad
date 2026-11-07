@@ -74,7 +74,7 @@ export function App() {
       <ThemeSync />
       {over}
       <div className="bc-editor-host" style={over ? { display: "none" } : undefined}>
-        <Editor active={!over} model={route.page === "editor" ? route.model : undefined} />
+        <Editor active={!over} model={route.page === "editor" ? route.model : undefined} share={route.page === "view" ? route.token : undefined} />
       </div>
     </AccountProvider>
   );

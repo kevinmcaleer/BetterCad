@@ -38,8 +38,16 @@ export interface TopBarProps {
   accountsOn?: boolean;
   /** The model is saved to the account (#90): how that stands. */
   cloud?: CloudState | null;
-  onSaveCloud?: () => void;
+  /** The cloud icon opens the version history (#91). */
+  onHistory?: () => void;
+  /** Set when the model can be shared (#92). */
+  onShare?: () => void;
   onSignOut?: () => void;
+  /** A share link is open: read-only, with downloads and a way to make it yours. */
+  shared?: { owner: string } | null;
+  onOpenCopy?: () => void;
+  onDownloadBcad?: () => void;
+  onExport?: () => void;
 }
 
 export function TopBar(p: TopBarProps) {
@@ -53,6 +61,7 @@ export function TopBar(p: TopBarProps) {
         className="bc-text bc-docname"
         aria-label="Model name"
         value={p.name}
+        readOnly={!!p.shared}
         onChange={(e) => p.onRename(e.currentTarget.value)}
         onBlur={p.onRenameDone}
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
@@ -62,8 +71,8 @@ export function TopBar(p: TopBarProps) {
         <IconButton
           className={cx("bc-cloud", (p.cloud === "error" || p.cloud === "offline") && "bc-bad")}
           icon={p.cloud === "offline" ? "cloudOff" : "cloud"}
-          title={CLOUD_TEXT[p.cloud]}
-          onClick={p.onSaveCloud}
+          title={`${CLOUD_TEXT[p.cloud]}. Version history`}
+          onClick={p.onHistory}
         />
       )}
       <Separator />
@@ -87,12 +96,31 @@ export function TopBar(p: TopBarProps) {
       <span className="bc-grow" />
       <Button className="bc-find" icon="search" label="Find a command" title="Find a command" shortcut={formatCombo("mod+k")} onClick={p.onPalette} />
       <IconButton className="bc-props-toggle" icon="list" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
-      <MenuButton
-        label="Save"
-        align="end"
-        entries={p.saveEntries}
-        trigger={(t) => <Button {...t} variant="primary" icon="save" label="Save" title="Save your model" />}
-      />
+      {p.shared ? (
+        <>
+          <span className="bc-owner">by {p.shared.owner}</span>
+          <MenuButton
+            label="Download"
+            align="end"
+            entries={[
+              { id: "print", label: "STL, 3MF or STEP…", icon: "download", onSelect: () => p.onExport?.() },
+              { id: "bcad", label: "BetterCad model (.bcad)", icon: "save", onSelect: () => p.onDownloadBcad?.() },
+            ]}
+            trigger={(t) => <Button {...t} icon="download" label="Download" title="Download this model" />}
+          />
+          <Button variant="primary" icon="copy" label="Open a copy" title="Open a copy in BetterCad to change it" onClick={p.onOpenCopy} />
+        </>
+      ) : (
+        <>
+          {p.onShare && <Button icon="share" label="Share" title="Share a view-only link" onClick={p.onShare} />}
+          <MenuButton
+            label="Save"
+            align="end"
+            entries={p.saveEntries}
+            trigger={(t) => <Button {...t} variant="primary" icon="save" label="Save" title="Save your model" />}
+          />
+        </>
+      )}
       <MenuButton
         label="Account and theme"
         align="end"

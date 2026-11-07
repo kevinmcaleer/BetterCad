@@ -37,7 +37,10 @@ export default defineConfig({
   server: {
     port: 5173,
     headers: isolation,
-    proxy: { "/api": { target: process.env.API_URL ?? "http://127.0.0.1:8000", changeOrigin: true } },
+    proxy: {
+      "/api": { target: process.env.API_URL ?? "http://127.0.0.1:8000", changeOrigin: true },
+      "/view/": { target: process.env.API_URL ?? "http://127.0.0.1:8000", changeOrigin: true },
+    },
   },
   preview: { port: 4173, headers: isolation },
   // WASM binaries are loaded as files, never pre-bundled.

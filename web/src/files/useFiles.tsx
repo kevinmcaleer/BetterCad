@@ -7,8 +7,10 @@ import type { View3DHandle } from "../viewport/View3D";
 import { ago, createAutosave, recoverable, type Autosave, type AutosaveRecord } from "./autosave";
 import { createFileStore, type FileHandle, type FileStore, type Opened, type Recent } from "./fileStore";
 import { useAccount } from "../cloud/account";
-import { ApiError } from "../cloud/api";
+import { ApiError, serverTime } from "../cloud/api";
 import { fillBlobs, stripBlobs } from "../cloud/cloudDoc";
+import type { Store } from "../state/store";
+import type { History } from "../state/history";
 
 /** Where a model saved to an account stands (#90): shown by the cloud icon in the title. */
 export type CloudState = "saved" | "saving" | "dirty" | "offline" | "error";
@@ -28,10 +30,7 @@ const leaveCloudRoute = () => window.location.hash.startsWith("#/edit/") && setR
  * autosave to the browser and the Recover banner.
  */
 export interface FilesDeps {
-  store: {
-    get(): ModelDoc;
-    edit(fn: (d: ModelDoc) => ModelDoc, label: string, coalesceKey?: string): void;
-  };
+  store: Store<ModelDoc>;
   doc: ModelDoc;
   view: RefObject<View3DHandle>;
   say: (text: string, bad?: boolean, quiet?: boolean) => void;
@@ -71,12 +70,23 @@ export function useFiles(d: FilesDeps) {
     savedAt: null,
   });
   const [baseline, setBaseline] = useState<ModelDoc | null>(() => store.get());
+  const baselineNow = useRef(baseline);
+  baselineNow.current = baseline;
+  // Looking at an old version (#91) or a shared model (#92): read-only, with what to go back to.
+  const [viewing, setViewing] = useState<{ number: number; created: string; back: { history: History<ModelDoc>; baseline: ModelDoc | null } } | null>(null);
+  const [shared, setShared] = useState<{ token: string; name: string; owner: string } | null>(null);
   const dirty = doc !== baseline;
   const [recover, setRecover] = useState<AutosaveRecord[]>([]);
   const [recent, setRecent] = useState<Recent[]>([]);
   // A step that would replace unsaved work, waiting for Save or Don't save.
   const [ask, setAsk] = useState<{ run: () => Promise<unknown> } | null>(null);
   const warnedStorage = useRef(false);
+  /** Out of a read-only look, before another model opens. */
+  const unlock = useCallback(() => {
+    store.lock(null);
+    setViewing(null);
+    setShared(null);
+  }, [store]);
   const { api, account } = useAccount();
   const signedIn = !!account;
   const [cloud, setCloud] = useState<{ modelId: string; state: CloudState } | null>(null);
@@ -241,7 +251,13 @@ export function useFiles(d: FilesDeps) {
   );
 
   /** Ctrl+S: to the account when the model lives there and you're signed in, otherwise to disk. */
-  const save = useCallback(() => (meta.current.cloud && signedIn ? saveCloud() : write(false)), [saveCloud, signedIn, write]);
+  const save = useCallback(() => {
+    if (store.isLocked()) {
+      deps.current.say(shared ? "Open a copy to change and save it" : "Restore this version, or go back, to save", true);
+      return Promise.resolve(false);
+    }
+    return meta.current.cloud && signedIn ? saveCloud() : write(false);
+  }, [saveCloud, signedIn, write, store, shared]);
   const saveAs = useCallback(() => write(true), [write]);
 
   /** Runs a step that replaces the model, asking first to save unsaved changes. */
@@ -264,6 +280,7 @@ export function useFiles(d: FilesDeps) {
       meta.current = { id, created: r.meta.created, handle: opened.handle, file: opened.name, savedAt: Date.now() };
       setCloud(null);
       leaveCloudRoute();
+      unlock();
       store.edit(() => r.doc, `Open ${r.doc.name}`);
       setBaseline(r.doc);
       deps.current.onSwitched();
@@ -279,7 +296,7 @@ export function useFiles(d: FilesDeps) {
       deps.current.say(r.warning ?? `Opened ${opened.name}`, !!r.warning);
       return true;
     },
-    [auto, files, store, refreshRecent],
+    [auto, files, store, refreshRecent, unlock],
   );
 
   /** A chosen file: a model opens (after asking about unsaved changes); a mesh or STEP file is imported. */
@@ -332,10 +349,11 @@ export function useFiles(d: FilesDeps) {
     meta.current = { id: newId("m"), file: null, savedAt: null };
     setCloud(null);
     leaveCloudRoute();
+    unlock();
     store.edit(() => fresh, "New model");
     setBaseline(fresh);
     deps.current.onSwitched();
-  }, [auto, store]);
+  }, [auto, store, unlock]);
 
   const newModel = useCallback(() => confirmThen(startNew), [confirmThen, startNew]);
 
@@ -354,6 +372,7 @@ export function useFiles(d: FilesDeps) {
         await auto.flush();
         auto.cancel();
         meta.current = { id: r.meta.id ?? newId("m"), created: r.meta.created, file: null, savedAt: Date.now(), cloud: { modelId, version: got.version } };
+        unlock();
         store.edit(() => docIn, `Open ${got.name}`);
         setBaseline(docIn);
         setCloud({ modelId, state: "saved" });
@@ -366,7 +385,7 @@ export function useFiles(d: FilesDeps) {
         return false;
       }
     },
-    [api, auto, store],
+    [api, auto, store, unlock],
   );
   const openCloud = useCallback(
     (modelId: string) => {
@@ -404,6 +423,7 @@ export function useFiles(d: FilesDeps) {
       meta.current = { id: rec.id, created: r.meta.created, file: rec.source, savedAt: rec.savedAt };
       setCloud(null);
       leaveCloudRoute();
+      unlock();
       store.edit(() => r.doc, `Recover ${rec.name}`);
       // Recovered work is not in a file yet.
       setBaseline(null);
@@ -411,7 +431,7 @@ export function useFiles(d: FilesDeps) {
       deps.current.onSwitched();
       deps.current.say(`Recovered ${rec.name}. Save it to keep it in a file.`);
     },
-    [auto, store],
+    [auto, store, unlock],
   );
 
   const discardOne = useCallback(
@@ -421,6 +441,122 @@ export function useFiles(d: FilesDeps) {
     },
     [auto],
   );
+
+  /** Shows an old version read-only (#91), keeping the current one to come back to. */
+  const previewVersion = useCallback(
+    async (n: number) => {
+      const modelId = meta.current.cloud?.modelId;
+      if (!modelId) return;
+      try {
+        const v = await api.version(modelId, n);
+        const r = loadBcad(v.bcad);
+        if (r instanceof BcadError) return deps.current.say(r.message, true);
+        const old = await fillBlobs(api, { ...r.doc, name: v.name });
+        const back = viewing?.back ?? { history: store.history(), baseline: baselineNow.current };
+        store.lock(null);
+        store.edit(() => old, `Version ${n}`);
+        store.lock(() => deps.current.say("This is an old version. Restore it to change it.", true));
+        setBaseline(store.get());
+        setViewing({ number: n, created: v.created, back });
+        deps.current.onSwitched();
+      } catch (e) {
+        deps.current.say((e as Error).message, true);
+      }
+    },
+    [api, store, viewing],
+  );
+
+  /** Back from an old version to the current one, as it was. */
+  const backToCurrent = useCallback(() => {
+    if (!viewing) return;
+    store.lock(null);
+    store.reset(viewing.back.history);
+    setBaseline(viewing.back.baseline);
+    setViewing(null);
+    deps.current.onSwitched();
+  }, [store, viewing]);
+
+  /** Makes the version on show the newest one, as a copy, and carries on editing it. */
+  const restoreViewed = useCallback(async () => {
+    const modelId = meta.current.cloud?.modelId;
+    if (!viewing || !modelId) return;
+    try {
+      await api.restoreVersion(modelId, viewing.number);
+      store.lock(null);
+      store.reset(viewing.back.history);
+      setViewing(null);
+      meta.current.cloud = undefined;
+      await loadCloud(modelId);
+      deps.current.say(`Restored version ${viewing.number}`);
+    } catch (e) {
+      deps.current.say((e as Error).message, true);
+    }
+  }, [api, store, viewing, loadCloud]);
+
+  /** A share link (#92): the model read-only, rebuilt here from its recipe. */
+  const openShared = useCallback(
+    async (token: string) => {
+      try {
+        const got = await api.shared(token);
+        const r = loadBcad(got.bcad);
+        if (r instanceof BcadError) throw r;
+        const docIn = await fillBlobs(api, { ...r.doc, name: got.name }, token);
+        store.lock(null);
+        store.edit(() => docIn, `Open ${got.name}`);
+        store.lock(() => deps.current.say("Open a copy to change this model", true));
+        setBaseline(store.get());
+        setShared({ token, name: got.name, owner: got.owner });
+        setCloud(null);
+        deps.current.onSwitched();
+        return true;
+      } catch (e) {
+        setShared(null);
+        throw e;
+      }
+    },
+    [api, store],
+  );
+
+  /** "Open a copy in BetterCad": the shared model becomes a new, unsaved local one. */
+  const openCopy = useCallback(() => {
+    store.lock(null);
+    const name = `${store.get().name} (copy)`;
+    meta.current = { id: newId("m"), file: null, savedAt: null };
+    store.edit((d) => ({ ...d, name }), "Open a copy");
+    setBaseline(null);
+    setShared(null);
+    setRoute("#/");
+    deps.current.say(`Opened ${name}. Save it to keep it.`);
+  }, [store]);
+
+  /** Leaves a share link without a copy: back to a fresh model. */
+  const leaveShared = useCallback(() => {
+    if (!store.isLocked()) return;
+    store.lock(null);
+    setShared(null);
+    setViewing(null);
+    const fresh = newDoc();
+    meta.current = { id: newId("m"), file: null, savedAt: null };
+    store.edit(() => fresh, "New model");
+    setBaseline(fresh);
+    deps.current.onSwitched();
+  }, [store]);
+
+  const viewingBar = viewing ? (
+    <div className="bc-recover bc-viewing">
+      <Banner
+        tone="warn"
+        action={
+          <span className="bc-actions">
+            <Button size="dense" variant="primary" label="Restore" title="Make this the newest version" onClick={() => void restoreViewed()} />
+            <Button size="dense" label="Back" title="Back to the current version" onClick={backToCurrent} />
+          </span>
+        }
+      >
+        Viewing version {viewing.number} from {new Date(serverTime(viewing.created)).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+      </Banner>
+    </div>
+  ) : null;
 
   const banners = recover.length ? (
     <div className="bc-recover">
@@ -553,7 +689,19 @@ export function useFiles(d: FilesDeps) {
     openRecent,
     newModel,
     dirty,
-    banners,
+    banners: (
+      <>
+        {viewingBar}
+        {!viewing && !shared && banners}
+      </>
+    ),
+    viewing,
+    previewVersion,
+    backToCurrent,
+    shared,
+    openShared,
+    openCopy,
+    leaveShared,
     dialog: (
       <>
         {dialog}

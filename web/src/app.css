@@ -707,3 +707,71 @@ kbd {
 .bc-cloud.bc-bad {
   color: var(--bc-color-danger);
 }
+
+/* ---- version history (#91) and sharing (#92) */
+.bc-versions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-6);
+  max-height: 60vh;
+  overflow: auto;
+}
+.bc-version-note-row {
+  display: flex;
+  gap: var(--bc-space-3);
+  align-items: center;
+}
+.bc-version-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-2);
+}
+.bc-version {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  padding: var(--bc-space-2) var(--bc-space-3);
+  border-radius: var(--bc-radius-md);
+}
+.bc-version.bc-on {
+  background: var(--bc-color-accent-soft);
+}
+.bc-version-thumb {
+  flex: none;
+  width: 64px;
+  height: 40px;
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-thumb-bg);
+  overflow: hidden;
+}
+.bc-version-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bc-version-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bc-version-title {
+  font-weight: 600;
+}
+.bc-version-meta {
+  color: var(--bc-color-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-version-group {
+  padding-left: calc(64px + var(--bc-space-6));
+}
+.bc-owner {
+  color: var(--bc-color-muted);
+  white-space: nowrap;
+}
