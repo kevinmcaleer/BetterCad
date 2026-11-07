@@ -200,3 +200,6 @@
   max-width: 560px;
   margin: var(--bc-space-8) auto 0;
 }
+.bc-lib-foot {
+  margin-top: var(--bc-space-8);
+}

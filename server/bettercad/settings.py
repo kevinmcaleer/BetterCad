@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     smtp_from: str = ""
     github_report_token: str = ""
     github_report_repo: str = ""
+    # Analytics (#111): the accounts (comma-separated emails) that can read /api/stats.
+    stats_emails: str = ""
 
     @property
     def production(self) -> bool:
