@@ -130,6 +130,26 @@ export function fit(c: CameraState, centre: V3, radius: number, aspect = 1): Cam
   return { ...c, target: centre, distance: clampDistance(Math.max(vertical, horizontal) * 1.15) };
 }
 
+/** A rectangle of the view in CSS px from its top left: the part no floating panel covers. */
+export interface ViewRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Frames a sphere inside `rect` of a view `width` × `height` px: sized to the rect and centred on it, so nothing
+ * lands under the panels that float over the view. Without a usable rect it frames the whole view.
+ */
+export function fitInRect(c: CameraState, centre: V3, radius: number, width: number, height: number, rect?: ViewRect | null): CameraState {
+  const aspect = width / Math.max(height, 1);
+  if (!rect || rect.width < 80 || rect.height < 80) return fit(c, centre, radius, aspect);
+  const scale = Math.min(Math.max(width / rect.width, height / rect.height, 1), 4);
+  const f = fit(c, centre, radius * scale, aspect);
+  return pan(f, rect.left + rect.width / 2 - width / 2, rect.top + rect.height / 2 - height / 2, height);
+}
+
 /** Eases from a to b; t from 0 to 1. Azimuth takes the short way round. */
 export function lerpCamera(a: CameraState, b: CameraState, t: number): CameraState {
   const s = t * t * (3 - 2 * t);
