@@ -74,8 +74,15 @@ export interface FileStore {
   remember(handle: FileHandle, info: { name: string; thumbnail?: string }): Promise<void>;
 }
 
-export const OPEN_ACCEPT = [BCAD_EXT, ".json"];
+export const OPEN_ACCEPT = [BCAD_EXT, ".json", ".stl", ".step", ".stp", ".3mf"];
 const TYPES: PickerType[] = [{ description: "BetterCad model", accept: { [BCAD_MIME]: [BCAD_EXT], "application/json": [".json"] } }];
+/** Open also takes files to import (#82). */
+const OPEN_TYPES: PickerType[] = [
+  {
+    description: "BetterCad models, STL, STEP and 3MF",
+    accept: { [BCAD_MIME]: [BCAD_EXT], "application/json": [".json"], "model/stl": [".stl"], "model/step": [".step", ".stp"], "model/3mf": [".3mf"] },
+  },
+];
 const MAX_RECENT = 10;
 
 const isAbort = (e: unknown) => (e as { name?: string })?.name === "AbortError";
@@ -108,7 +115,7 @@ function diskStore(win: PickerWindow & Window, kv: KV<Recent>): FileStore {
     kind: "disk",
     async open() {
       try {
-        const [handle] = await win.showOpenFilePicker!({ types: TYPES });
+        const [handle] = await win.showOpenFilePicker!({ types: OPEN_TYPES });
         if (!handle) return undefined;
         return { name: handle.name, file: await handle.getFile(), handle };
       } catch (e) {

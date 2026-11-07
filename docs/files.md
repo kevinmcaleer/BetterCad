@@ -67,3 +67,17 @@ the exact solids in the geometry engine, never from what the view draws.
 - All bodies go in one file, or pick Selected, or Each on its own for one file per body (in Chrome and Edge you pick a
   folder; elsewhere each file downloads).
 - Hole shapes that haven't been grouped with a solid are left out, with a warning and a Group them now button.
+
+## Import
+
+Open (Ctrl+O) also takes STL, STEP (.step, .stp) and 3MF files, and so does dropping them on the view or pasting them.
+They're added to the open model as an Import step on the timeline; a dropped file stands where you drop it on the grid.
+
+- STEP files come in as exact solids, one body per solid. They work with every tool, fillets included.
+- STL and 3MF files come in as mesh bodies: their triangles are sewn into a solid, and flat runs of triangles merge
+  into single faces. You can move, turn, measure and combine them, but not fillet, chamfer, shell or push/pull them.
+  Use a STEP file for that.
+- A mesh with gaps stays open and can't be combined; BetterCad says so when you import it.
+- The file's bytes are kept in the `.bcad` (by content hash, once per file), so the model rebuilds without the
+  original.
+- Drop a `.bcad` to open it; BetterCad asks first if you have unsaved changes.

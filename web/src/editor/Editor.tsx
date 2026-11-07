@@ -65,6 +65,8 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { useFiles } from "../files/useFiles";
+import { importFiles } from "../files/importFiles";
+import { useDrop } from "../files/useDrop";
 import { ExportDialog } from "../export/ExportDialog";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
@@ -447,6 +449,7 @@ export function Editor() {
     doc,
     view: vp.ref,
     say,
+    onImport: (list, at) => importFiles(list, at, { call: kernel.call, record, say, select: setSelection }),
     onSwitched: () => {
       setMarker(null);
       setSelection([]);
@@ -454,6 +457,7 @@ export function Editor() {
     },
   });
   const { save, saveAs, open, newModel } = files;
+  const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
 
   // ---- timeline
   const selectFeature = useCallback((f: Feature) => {
@@ -611,6 +615,14 @@ export function Editor() {
         keys: ["shift+mod+s"],
         run: () => void h().saveAs(),
         keywords: "disk download copy file",
+      },
+      {
+        id: "file.import",
+        label: "Import STL, STEP or 3MF…",
+        group: "File",
+        icon: "upload",
+        run: () => void h().open(),
+        keywords: "open add mesh stl step stp 3mf",
       },
       {
         id: "file.export",
@@ -825,6 +837,16 @@ export function Editor() {
 
   const summary = useCallback((f: Feature) => featureSummary(doc, f), [doc]);
   const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
+  const sizes = useMemo(
+    () =>
+      new Map(
+        [...kernel.bodies].map(([id, b]) => {
+          const { min, max } = b.measure.bbox;
+          return [id, { x: max[0] - min[0], y: max[1] - min[1], z: max[2] - min[2] }];
+        }),
+      ),
+    [kernel.bodies],
+  );
 
   const featureMenu = (id: string): MenuEntry[] => {
     const i = doc.features.findIndex((f) => f.id === id);
@@ -936,6 +958,7 @@ export function Editor() {
     { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
+    { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
     { id: "export", label: "Export STL, 3MF or STEP…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
     ...files.recentEntries,
     { kind: "separator", id: "s1" },
@@ -1213,6 +1236,7 @@ export function Editor() {
                 onCommit={onPropCommit}
                 scope={scope}
                 volumes={volumes}
+                sizes={sizes}
                 onHole={() => toggleHole(selection)}
               />
             </>
@@ -1251,6 +1275,7 @@ export function Editor() {
       />
       {vp.namingDialog}
       {files.dialog}
+      {dropZone}
       <ExportDialog
         open={exportOpen}
         onClose={() => setExportOpen(false)}

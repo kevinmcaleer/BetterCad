@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Banner, Button, Dialog, type MenuEntry } from "@bettercad/ui";
 import { BcadError, fileName, loadBcad, nameFromFile, saveBcad } from "@bettercad/kernel/bcad";
-import { newDoc, newId, type ModelDoc } from "../state/document";
+import { newDoc, newId, type ModelDoc, type Vec3 } from "../state/document";
+import { importFormat, isBcad } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
 import { ago, createAutosave, recoverable, type Autosave, type AutosaveRecord } from "./autosave";
 import { createFileStore, type FileHandle, type FileStore, type Opened, type Recent } from "./fileStore";
@@ -20,6 +21,8 @@ export interface FilesDeps {
   say: (text: string, bad?: boolean, quiet?: boolean) => void;
   /** A different model is open: reset the marker and the selection. */
   onSwitched: () => void;
+  /** STL, STEP and 3MF files go into the open model (#82), standing at `at` (the origin if left out). */
+  onImport: (files: File[], at?: Vec3) => Promise<void>;
   /** For tests. */
   fileStore?: FileStore;
   autosave?: Autosave;
@@ -47,7 +50,8 @@ export function useFiles(d: FilesDeps) {
   const dirty = doc !== baseline;
   const [recover, setRecover] = useState<AutosaveRecord[]>([]);
   const [recent, setRecent] = useState<Recent[]>([]);
-  const [askNew, setAskNew] = useState(false);
+  // A step that would replace unsaved work, waiting for Save or Don't save.
+  const [ask, setAsk] = useState<{ run: () => Promise<unknown> } | null>(null);
   const warnedStorage = useRef(false);
 
   const refreshRecent = useCallback(() => {
@@ -157,8 +161,14 @@ export function useFiles(d: FilesDeps) {
   const save = useCallback(() => write(false), [write]);
   const saveAs = useCallback(() => write(true), [write]);
 
+  /** Runs a step that replaces the model, asking first to save unsaved changes. */
+  const confirmThen = useCallback((run: () => Promise<unknown>) => {
+    if (dirtyNow.current) setAsk({ run });
+    else void run();
+  }, []);
+
   /** Shows a model that was just read from a file. */
-  const show = useCallback(
+  const load = useCallback(
     async (opened: Opened) => {
       const r = loadBcad(await opened.file.text());
       if (r instanceof BcadError) {
@@ -187,6 +197,28 @@ export function useFiles(d: FilesDeps) {
     [auto, files, store, refreshRecent],
   );
 
+  /** A chosen file: a model opens (after asking about unsaved changes); a mesh or STEP file is imported. */
+  const show = useCallback(
+    async (opened: Opened) => {
+      if (importFormat(opened.name)) return deps.current.onImport([opened.file]);
+      confirmThen(() => load(opened));
+    },
+    [confirmThen, load],
+  );
+
+  /** Files dropped on the view or pasted (#85): one model to open, or meshes and STEP files to add at `at`. */
+  const openFiles = useCallback(
+    async (list: File[], at?: Vec3) => {
+      const models = list.filter((f) => isBcad(f.name));
+      const imports = list.filter((f) => importFormat(f.name));
+      if (models.length + imports.length < list.length) return deps.current.say("BetterCad opens .bcad, .stl, .step and .3mf files", true);
+      if (models.length > 1 || (models.length && imports.length)) return deps.current.say("Drop one BetterCad file at a time", true);
+      if (models[0]) return confirmThen(() => load({ name: models[0]!.name, file: models[0]! }));
+      await deps.current.onImport(imports, at);
+    },
+    [confirmThen, load],
+  );
+
   const open = useCallback(async () => {
     try {
       const opened = await files.open();
@@ -209,7 +241,6 @@ export function useFiles(d: FilesDeps) {
   );
 
   const startNew = useCallback(async () => {
-    setAskNew(false);
     await auto.flush();
     auto.cancel();
     const fresh = newDoc();
@@ -219,10 +250,7 @@ export function useFiles(d: FilesDeps) {
     deps.current.onSwitched();
   }, [auto, store]);
 
-  const newModel = useCallback(() => {
-    if (dirtyNow.current) setAskNew(true);
-    else void startNew();
-  }, [startNew]);
+  const newModel = useCallback(() => confirmThen(startNew), [confirmThen, startNew]);
 
   const recoverOne = useCallback(
     (rec: AutosaveRecord) => {
@@ -270,21 +298,28 @@ export function useFiles(d: FilesDeps) {
     </div>
   ) : null;
 
-  const dialog = askNew ? (
+  const dialog = ask ? (
     <Dialog
       open
       title={`Save changes to ${doc.name}?`}
       icon="save"
-      onCancel={() => setAskNew(false)}
+      onCancel={() => setAsk(null)}
       footer={
         <>
-          <Button kind="cancel" label="Cancel" onClick={() => setAskNew(false)} />
-          <Button label="Don't save" onClick={() => void startNew()} />
+          <Button kind="cancel" label="Cancel" onClick={() => setAsk(null)} />
+          <Button
+            label="Don't save"
+            onClick={() => {
+              setAsk(null);
+              void ask.run();
+            }}
+          />
           <Button
             variant="primary"
             label="Save"
             onClick={async () => {
-              if (await save()) await startNew();
+              setAsk(null);
+              if (await save()) await ask.run();
             }}
           />
         </>
@@ -305,7 +340,7 @@ export function useFiles(d: FilesDeps) {
     [recent, openRecent],
   );
 
-  return { save, saveAs, open, openRecent, newModel, dirty, banners, dialog, recentEntries, inPlace: files.kind === "disk", show, store: files };
+  return { save, saveAs, open, openRecent, newModel, dirty, banners, dialog, recentEntries, inPlace: files.kind === "disk", show, openFiles, store: files };
 }
 
 export type Files = ReturnType<typeof useFiles>;

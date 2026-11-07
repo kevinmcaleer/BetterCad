@@ -10,7 +10,7 @@ import { holeSection, type HoleSpec } from "../holes";
  * none of them touches its inputs. Sizes in mm, angles in degrees, Z up. Primitives sit on the XY plane with x and y
  * centred on the origin, the same as the placeholder meshes in primitives.ts.
  */
-export type ShapeKind = "solid" | "face" | "edge" | "vertex";
+export type ShapeKind = "solid" | "shell" | "face" | "edge" | "vertex";
 
 export interface Size3 {
   x: number;
@@ -397,7 +397,15 @@ export function count(oc: OC, shape: TopoDS_Shape, kind: ShapeKind): number {
 
 function abs(oc: OC, kind: ShapeKind) {
   const e = oc.TopAbs_ShapeEnum;
-  return kind === "solid" ? e.TopAbs_SOLID : kind === "face" ? e.TopAbs_FACE : kind === "edge" ? e.TopAbs_EDGE : e.TopAbs_VERTEX;
+  return kind === "solid"
+    ? e.TopAbs_SOLID
+    : kind === "shell"
+      ? e.TopAbs_SHELL
+      : kind === "face"
+        ? e.TopAbs_FACE
+        : kind === "edge"
+          ? e.TopAbs_EDGE
+          : e.TopAbs_VERTEX;
 }
 
 /** Rounds edges. A radius that does not fit fails with the largest that does, found by halving (#48). */
