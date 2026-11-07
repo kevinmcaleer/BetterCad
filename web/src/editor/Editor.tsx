@@ -120,6 +120,8 @@ import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { MountBar } from "../mount/MountBar";
+import { useGear } from "../gear/useGear";
+import { GearBar } from "../gear/GearBar";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
@@ -443,6 +445,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
+  const gear = useGear({
+    store,
+    record,
+    doc,
+    view: vp.ref,
+    active: tool === "gear" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+  });
+
   const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
   live.current.placing = !!place.part;
 
@@ -708,7 +720,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     else void run();
   }, [api, setAccount, say, files]);
   // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
-  const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && !sketch.editing;
+  const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && tool !== "gear" && !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
 
   // ---- timeline
@@ -859,11 +871,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               ? hole.done()
               : mount.session
                 ? mount.done()
-                : tool === "combine"
-                  ? combine(selection, combineOp, keepTools, combineFit)
-                  : finish.tool
-                    ? finish.done()
-                    : undefined,
+                : gear.session
+                  ? gear.done()
+                  : tool === "combine"
+                    ? combine(selection, combineOp, keepTools, combineFit)
+                    : finish.tool
+                      ? finish.done()
+                      : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -1059,7 +1073,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1542,6 +1556,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "gear"
+        ? [
+            {
+              id: "edit",
+              label: "Edit gear",
+              icon: "gear" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("gear");
+                gear.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -1719,8 +1747,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ? sketch.help
     : place.help
       ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || measure.help
         : finish.help
           ? finish.help
           : vp.elementText
@@ -1904,6 +1932,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
+              {tool === "gear" && <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "mount" && <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (

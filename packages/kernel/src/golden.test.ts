@@ -29,7 +29,20 @@ import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
 import { cataloguePart, placeOnFace } from "./catalogue";
-import { MOUNT_DEFAULTS, addMount, addPart, build, changeParts, cutPocket, insertCatalogue, newDoc, type MountParams } from "./document";
+import {
+  GEAR_DEFAULTS,
+  MOUNT_DEFAULTS,
+  addGear,
+  addMount,
+  addPart,
+  build,
+  changeParts,
+  cutPocket,
+  insertCatalogue,
+  newDoc,
+  type GearParamsStep,
+  type MountParams,
+} from "./document";
 import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
 
@@ -39,6 +52,17 @@ function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
   const frame = { origin: [0, 0, 5] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
   doc = addMount(doc, { ...MOUNT_DEFAULTS, kind: "standoffs", part: "plate", frame, points: [[0, 0]], ...params });
   return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "plate")!).shape;
+}
+
+/** A spur gear step (#191), built as the editor builds it. */
+function gearOf(oc: OC, change: Partial<GearParamsStep> = {}): TopoDS_Shape {
+  const doc = addGear(
+    newDoc(),
+    { gear: GEAR_DEFAULTS, width: 5, bore: { kind: "round", diameter: 5 }, frame: { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] }, ...change },
+    "g",
+    "gear",
+  );
+  return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "gear")!).shape;
 }
 
 /** A 60 × 40 × 5 mm plate with a catalogue part's pocket and holes cut in it (#188). */
@@ -162,6 +186,14 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   "standoffs-pi-through": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6 }),
   "standoffs-pi-insert": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6, hole: "insert" }),
   "horn-cross": (oc) => mountOn(oc, { kind: "horn", horn: "cross", size: "M2" }),
+  "gear-20t-m1": (oc) => gearOf(oc),
+  "gear-12t-shifted-dflat-hub": (oc) =>
+    gearOf(oc, {
+      gear: { ...GEAR_DEFAULTS, teeth: 12, module: 1.5, shift: 0.3 },
+      bore: { kind: "dflat", diameter: 5, flat: 2 },
+      hub: { diameter: 10, length: 4 },
+    }),
+  "gear-40t-horn": (oc) => gearOf(oc, { gear: { ...GEAR_DEFAULTS, teeth: 40 }, bore: { kind: "horn", diameter: 7, arm: 9 } }),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

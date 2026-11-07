@@ -33,6 +33,7 @@ import {
   type ExtrudeDirection,
   type ExtrudeOperation,
   type PrismSpec,
+  type ProfileSeg,
   type RevolveSpec,
 } from "./extrude";
 
@@ -40,6 +41,8 @@ export * from "./extrude";
 export * from "./holes";
 export * from "./screws";
 import { screw } from "./screws";
+import { dFlat, dFlatSegs, gearArea, gearCircles, gearProblem, gearSegs, polyArea, type GearParams } from "./gears";
+export * from "./gears";
 export * from "./params";
 export * from "./print";
 import { fitGap, holeOffsetOf, type FitId, type PrintSettings } from "./print";
@@ -309,7 +312,33 @@ export interface InsertFeature extends FeatureBase {
   position: Vec3;
   rotation?: Vec3;
 }
+/** A shaft hole through a gear: round, D-flat for a motor shaft, or a servo horn's hub and four arm holes. */
+export interface GearBore {
+  kind: "none" | "round" | "dflat" | "horn";
+  /** The hole's diameter, or the horn's hub, mm. */
+  diameter: number;
+  /** D-flat: the flat's distance from the centre, mm. */
+  flat?: number;
+  /** Horn: the arm holes' distance from the centre, mm. */
+  arm?: number;
+}
+
+/** Spur gear (#191): an involute gear made from its settings, standing `width` tall on its frame (its axis the normal). */
+export interface GearFeature extends FeatureBase {
+  type: "gear";
+  body: { id: string; name: string };
+  gear: GearParams;
+  width: number;
+  bore: GearBore;
+  /** A boss on top, round the bore. */
+  hub?: { diameter: number; length: number };
+  frame: Frame;
+  /** Degrees about the gear's axis, so a mating gear's teeth fall between this one's. */
+  turn?: number;
+}
+
 export type Feature =
+  | GearFeature
   | MountFeature
   | ImportFeature
   | InsertFeature
@@ -388,6 +417,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   import: "Import",
   insert: "Insert part",
   mount: "Mount",
+  gear: "Gear",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -412,6 +442,7 @@ export interface Build {
 }
 
 const BUILT = new Set<string>([
+  "gear",
   "mount",
   "import",
   "insert",
@@ -643,6 +674,25 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           head: r.head,
         };
         t.ops = [...(t.ops ?? []), { op: "hole", holes, feature: f.id }];
+        break;
+      }
+      case "gear": {
+        const r = gearSpec(f);
+        if (typeof r === "string") {
+          failed.set(f.id, r);
+          break;
+        }
+        if (find(f.body.id) < 0)
+          parts.push({
+            id: f.body.id,
+            name: f.body.name,
+            kind: "solid",
+            hidden: false,
+            position: { ...ZERO },
+            size: prismSize(r.prism),
+            prism: r.prism,
+            ops: r.ops,
+          });
         break;
       }
       case "mount": {
@@ -946,6 +996,8 @@ export function featureParts(f: Feature): string[] {
       return f.bodies.map((b) => b.id);
     case "insert":
       return [f.part.id];
+    case "gear":
+      return [f.body.id];
     default:
       return f.parts;
   }
@@ -969,6 +1021,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "gear":
+      return `${f.gear.teeth} teeth, module ${f.gear.module}, ${mm(f.width)} wide`;
     case "mount":
       return f.kind === "standoffs"
         ? `${f.points.length} × ${f.size}, ${mm(f.height)} tall${f.hole === "insert" ? ", heat-set inserts" : ""}`
@@ -1290,6 +1344,78 @@ export function insertCatalogue(
   });
 }
 
+/** A gear step's solid: the toothed prism, then its hub joined and bore cut, in world space. Or why it can't be made. */
+export function gearSpec(f: GearFeature): { prism: PrismSpec; ops: BodyOp[] } | string {
+  const problem = gearProblem(f.gear);
+  if (problem) return problem;
+  if (!(f.width > 0)) return "Give the gear a width above 0 mm";
+  const { root } = gearCircles(f.gear);
+  const turn = ((f.turn ?? 0) * Math.PI) / 180;
+  const frame = f.frame;
+  const prism: PrismSpec = { frame, profiles: [{ outer: gearSegs(f.gear, turn), holes: [], area: gearArea(f.gear) }], from: 0, to: f.width };
+  const ops: BodyOp[] = [];
+  const top = f.width + (f.hub && f.hub.length > 0 ? f.hub.length : 0);
+  if (f.hub && f.hub.length > 0) {
+    if (!(f.hub.diameter / 2 < root)) return "Make the hub narrower than the gear's root";
+    if (f.bore.kind !== "none" && !(f.hub.diameter > f.bore.diameter + 1)) return "Make the hub wider than the bore";
+    const r = f.hub.diameter / 2;
+    ops.push({
+      op: "join",
+      tool: { frame, profiles: [{ outer: [{ kind: "circle", c: [0, 0], r }], holes: [], area: Math.PI * r * r }], from: f.width - 0.01, to: top },
+      feature: f.id,
+    });
+  }
+  const cut = (outer: ProfileSeg[], area: number) =>
+    ops.push({ op: "cut", tool: { frame, profiles: [{ outer, holes: [], area }], from: -1, to: top + 1 }, feature: f.id });
+  const b = f.bore;
+  if (b.kind !== "none") {
+    if (!(b.diameter > 0)) return "Give the bore a diameter above 0 mm";
+    if (!(b.diameter / 2 < root - 0.5)) return "The bore is wider than the gear's root";
+    if (b.kind === "round" || b.kind === "horn") cut([{ kind: "circle", c: [0, 0], r: b.diameter / 2 }], (Math.PI * b.diameter ** 2) / 4);
+    if (b.kind === "dflat") {
+      const flat = b.flat ?? b.diameter * 0.4;
+      cut(dFlatSegs(b.diameter, flat, turn), polyArea(dFlat(b.diameter, flat)));
+    }
+    if (b.kind === "horn") {
+      const arm = b.arm ?? 7;
+      const d = screw("M2")!.printed;
+      if (!(arm + d / 2 < root - 0.5)) return "Put the horn's arm holes inside the gear's root";
+      if (!(arm - d / 2 > b.diameter / 2)) return "Put the horn's arm holes outside its hub";
+      const spin = ([x, y]: Vec2): Vec2 => [x * Math.cos(turn) - y * Math.sin(turn), x * Math.sin(turn) + y * Math.cos(turn)];
+      for (const q of hornPoints("cross", arm).map(spin)) cut([{ kind: "circle", c: q, r: d / 2 }], (Math.PI * d * d) / 4);
+    }
+  }
+  return { prism, ops };
+}
+
+export type GearParamsStep = Omit<GearFeature, "id" | "name" | "type" | "body">;
+
+/** Adds a Gear step making a new body. */
+export function addGear(doc: ModelDoc, params: GearParamsStep, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const taken = usedNames(doc);
+  doc.features.forEach((f) => taken.add(f.name));
+  const base = `Gear ${params.gear.teeth}T`;
+  let unique = base;
+  for (let n = 2; taken.has(unique); n += 1) unique = `${base} ${n}`;
+  return insert(doc, at, { id, type: "gear", name: unique, ...params, body: { id: bodyId, name: unique } });
+}
+
+/** Changes a Gear step (the bar edits it live, as one undo step). */
+export function updateGear(doc: ModelDoc, id: string, change: Partial<GearParamsStep>): ModelDoc {
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== id || f.type !== "gear") return f;
+      const next = { ...f, ...change };
+      // A name still saying the old tooth count follows the new one.
+      const was = `Gear ${f.gear.teeth}T`;
+      const now = `Gear ${next.gear.teeth}T`;
+      const rename = (n: string) => (was !== now && (n === was || n.startsWith(`${was} `)) ? now + n.slice(was.length) : n);
+      return { ...next, name: rename(f.name), body: { ...f.body, name: rename(f.body.name) } };
+    }),
+  };
+}
+
 /** The points a horn's arm holes sit on, about its centre: along x, both ways, or both ways along x and y. */
 export function hornPoints(horn: MountFeature["horn"], arm: number): Vec2[] {
   const out: Vec2[] = [[arm, 0]];
@@ -1483,6 +1609,7 @@ function partsRead(f: Feature): string[] {
       return [f.target, ...f.tools.map((t) => t.id)];
     case "import":
     case "insert":
+    case "gear":
       return [];
     default:
       return [f.part];
@@ -1495,6 +1622,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "duplicate") return f.copies.map((c) => c.id);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
+  if (f.type === "gear") return [f.body.id];
   if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
   return [];
 }
