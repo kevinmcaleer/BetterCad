@@ -37,22 +37,27 @@ const GRID_FRAG = `
   uniform vec3 bg;
   varying vec3 vWorld;
   varying vec3 vNormal;
-  float lines(vec2 c) {
-    vec2 g = abs(fract(c - 0.5) - 0.5) / fwidth(c);
+  // u is c / s, so its screen-space width is fw / s: one fwidth serves every scale (and the axes).
+  float lines(vec2 u, vec2 fu) {
+    vec2 g = abs(fract(u - 0.5) - 0.5) / fu;
     return 1.0 - min(min(g.x, g.y), 1.0);
   }
   void main() {
     vec3 n = abs(vNormal);
     vec2 c = n.z > 0.5 ? vWorld.xy : (n.x > 0.5 ? vWorld.yz : vWorld.xz);
-    // Lines closer together than a few pixels fade out, so the far grid does not shimmer.
-    vec2 dm = fwidth(c / step);
-    float minor = lines(c / step) * (1.0 - smoothstep(0.12, 0.35, max(dm.x, dm.y)));
-    float major = lines(c / (step * 10.0)) * (1.0 - smoothstep(0.12, 0.35, max(dm.x, dm.y) / 10.0));
     float f = 1.0 - smoothstep(fade * 0.35, fade, distance(eye, vWorld));
+    if (f <= 0.0 && dof < 0.5) discard;
+    vec2 fw = fwidth(c);
+    // Lines closer together than a few pixels fade out, so the far grid does not shimmer.
+    vec2 dm = fw / step;
+    float dmax = max(dm.x, dm.y);
+    float minor = lines(c / step, dm) * (1.0 - smoothstep(0.12, 0.35, dmax));
+    float major = lines(c / (step * 10.0), dm / 10.0) * (1.0 - smoothstep(0.12, 0.35, dmax / 10.0));
     vec3 colour = mix(minorColour, majorColour, major);
     float a = max(minor * minorAlpha, major);
     if (room < 0.5) {
-      vec2 w = fwidth(vWorld.xy) * 1.5;
+      // The floor's c is its world x and y.
+      vec2 w = fw * 1.5;
       float onX = 1.0 - smoothstep(0.0, w.y, abs(vWorld.y));
       float onY = 1.0 - smoothstep(0.0, w.x, abs(vWorld.x));
       if (onX > 0.01) { colour = xColour; a = max(a, onX); }
