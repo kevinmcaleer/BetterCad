@@ -7,6 +7,7 @@ import {
   cone,
   cylinder,
   fillet,
+  grow,
   measure,
   place,
   prismOf,
@@ -168,7 +169,7 @@ export class ModelBuilder {
               : o.rev
                 ? revolveOf(oc, o.rev)
                 : prismOf(oc, o.tool!);
-            local = boolean(oc, o.op, local, [tool]);
+            local = boolean(oc, o.op, local, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool]);
           }
         } catch (e) {
           this.opFailures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);

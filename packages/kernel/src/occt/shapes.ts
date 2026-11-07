@@ -487,6 +487,24 @@ export function shell(oc: OC, shape: TopoDS_Shape, openFaces: number[], thicknes
   });
 }
 
+/**
+ * A solid grown by `gap` on every side (#183), so a cut leaves room for a printed part to fit. Flat faces move out and
+ * meet at sharp corners, so a 10 mm cube grown by 0.25 mm is a 10.5 mm cube.
+ */
+export function grow(oc: OC, shape: TopoDS_Shape, gap: number): TopoDS_Shape {
+  if (!(gap > 0)) return shape;
+  const why = `This body can't be grown by ${mm(gap)} for its fit. Try a smaller gap or a simpler shape.`;
+  return guard(oc, "failed", why, () => {
+    const mk = new oc.BRepOffsetAPI_MakeOffsetShape();
+    mk.PerformByJoin(shape, gap, 1e-4, oc.BRepOffset_Mode.BRepOffset_Skin, false, false, oc.GeomAbs_JoinType.GeomAbs_Intersection, false, progress(oc));
+    if (!mk.IsDone()) throw new KernelError("failed", why);
+    const out = mk.Shape();
+    const solid = count(oc, out, "solid") ? out : solidOfShell(oc, out);
+    if (!valid(oc, solid)) throw new KernelError("non-manifold", why);
+    return solid;
+  });
+}
+
 /** A closed shell (what a sealed offset comes back as) made into a solid. */
 function solidOfShell(oc: OC, shape: TopoDS_Shape): TopoDS_Shape {
   const ex = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_SHELL, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);

@@ -25,6 +25,8 @@ Each Hole step keeps the offset it was made with, so changing the offset never q
 
 Insert holes don't use the offset: insert makers give the printed hole size directly.
 
+Fits between two printed parts, such as a peg in a pocket, are a gap on each side rather than an offset on the diameter: see [fits.md](fits.md).
+
 ## Heads
 
 - **Countersink** cuts a cone so a countersunk (flat) head sits flush: 90° for metric screws, 82° for imperial.

@@ -11,6 +11,7 @@ import {
   type PrintSettings,
   type Vec3,
 } from "../state/document";
+import { FitMenu, type FitChoice } from "../fit/FitMenu";
 
 export interface PropertiesProps {
   parts: Part[];
@@ -27,6 +28,8 @@ export interface PropertiesProps {
   sizes?: Map<string, Vec3>;
   /** Switches the selection between hole and solid. */
   onHole?: () => void;
+  /** Sets the selected holes' fit (#183): the gap they cut with when grouped. */
+  onFit?: (c: FitChoice) => void;
   /** Exact surface areas and bounding boxes from the kernel (#105), by part id. */
   measures?: Map<string, { area: number; bbox: Box3 }>;
   /** The document's material and infill, for the weight. */
@@ -92,6 +95,7 @@ export function Properties({
   volumes,
   sizes,
   onHole,
+  onFit,
   scope,
   measures,
   print,
@@ -174,6 +178,11 @@ export function Properties({
                 on={parts.every((p) => p.hole)}
                 onClick={onHole}
               />
+            </PropRow>
+          )}
+          {onFit && parts.every((p) => p.hole) && (
+            <PropRow label="Fit">
+              <FitMenu value={{ fit: parts[0]!.fit ?? null, gap: parts[0]!.gap ?? 0 }} onChange={onFit} tuned={print?.fits} />
             </PropRow>
           )}
         </>
