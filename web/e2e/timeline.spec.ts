@@ -43,8 +43,13 @@ test("deleting a sketch that an extrude uses asks first, and suppress names what
   await page.keyboard.press("Enter");
   await expect(page.getByText("Finished Sketch 1")).toBeVisible();
   await page.keyboard.press("e");
-  await click(page, 0, 0);
-  await page.getByRole("textbox", { name: "Distance" }).press("Enter");
+  // The pick can land before the view settles on a slow runner: click again until the shape is taken.
+  const distance = page.getByRole("textbox", { name: "Distance" });
+  await expect(async () => {
+    if (!(await distance.count())) await click(page, 0, 0);
+    await expect(distance).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
+  await distance.press("Enter");
   await expect(page.getByText("Extruded one shape 10 mm")).toBeVisible();
 
   const timeline = page.getByRole("region", { name: "Timeline" });

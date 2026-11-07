@@ -215,5 +215,5 @@ def test_view_page_previews_and_redirects(user, make_client):
         assert f"/api/shared/{token}/thumbnail" in page.text
         assert f"url=/#/view/{token}" in page.text
         assert "frame-ancestors" in page.headers["content-security-policy"]
-        odd = anon.get("/view/%3C%2Fscript%3E%3Cb%3E")
-        assert "</script><b>" not in odd.text and "BetterCad" in odd.text
+        odd = anon.get("/view/%3Cscript%3E%22x")
+        assert odd.status_code == 200 and '<script>"x' not in odd.text and "BetterCad" in odd.text
