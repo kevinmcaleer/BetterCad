@@ -45,3 +45,12 @@ Select a placed catalogue part and choose **Cut pocket** (right-click, or the co
 - a Hole step for each screw size, printed clearance, right through. `cutPocket()` can make heat-set insert holes instead, as deep as the insert plus 1 mm.
 
 Parts with no pocket (the boards) get only their holes. The steps follow the part's turn. If you move the part later, its pocket stays where it was: edit or delete the steps.
+
+## Mounting features (#189)
+
+The **Mount** tool makes one editable step on a flat face:
+
+- **Standoffs**: click to add posts, or pick a **Pattern**. You can choose one standoff, a 40 × 30 mm rectangle, a circle of four, or any catalogue part's holes (Pi 58 × 49 mm, Pico 47 × 11.4 mm, Zero 58 × 23 mm, servos…). Picking a part's pattern also picks its screw. Set the height and width, and choose **Through** for a printed clearance hole right through, or **Insert** for a heat-set insert hole at the top.
+- **Horn mount**: bolts a servo horn to a printed part, with no printed splines. It makes a recess for the hub, a screwdriver hole down to the servo's screw, and screw holes on the arms of a single, double or cross horn. The defaults suit a micro servo's horn, but measure yours.
+
+`mountOps()` in document.ts turns the step into a join and holes. `HOLE_PATTERNS`, `rectPattern()` and `circlePattern()` in the catalogue give the patterns. Goldens: `standoffs-pi-through`, `standoffs-pi-insert`, `horn-cross`.

@@ -29,8 +29,17 @@ import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
 import { cataloguePart, placeOnFace } from "./catalogue";
-import { addPart, build, changeParts, cutPocket, insertCatalogue, newDoc } from "./document";
+import { MOUNT_DEFAULTS, addMount, addPart, build, changeParts, cutPocket, insertCatalogue, newDoc, type MountParams } from "./document";
+import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
+
+/** A 100 × 80 × 5 mm plate with a mounting feature on its top (#189). */
+function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
+  let doc = changeParts(addPart(newDoc(), "box", "plate"), ["plate"], "size", { x: 100, y: 80, z: 5 });
+  const frame = { origin: [0, 0, 5] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
+  doc = addMount(doc, { ...MOUNT_DEFAULTS, kind: "standoffs", part: "plate", frame, points: [[0, 0]], ...params });
+  return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "plate")!).shape;
+}
 
 /** A 60 × 40 × 5 mm plate with a catalogue part's pocket and holes cut in it (#188). */
 function pocketIn(oc: OC, id: string): TopoDS_Shape {
@@ -149,6 +158,10 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Cut pocket (#188): an SG90's pocket at a sliding fit and its M2 holes through a 5 mm plate; a Pico's four holes.
   "pocket-sg90-plate": (oc) => pocketIn(oc, "sg90"),
   "pocket-pico-holes": (oc) => pocketIn(oc, "pico"),
+  // Mounting features (#189): M2.5 standoffs on a Pi's 58 × 49 mm pattern, through and with inserts; a cross horn.
+  "standoffs-pi-through": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6 }),
+  "standoffs-pi-insert": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6, hole: "insert" }),
+  "horn-cross": (oc) => mountOn(oc, { kind: "horn", horn: "cross", size: "M2" }),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

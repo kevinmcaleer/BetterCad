@@ -227,3 +227,46 @@ export function partFrame(position: Vec3, rotation?: Vec3): { origin: V3; x: V3;
   const r = rotation ?? { x: 0, y: 0, z: 0 };
   return { origin: [position.x, position.y, position.z], x: turnVec([1, 0, 0], r), normal: turnVec([0, 0, 1], r) };
 }
+
+export interface HolePattern {
+  id: string;
+  label: string;
+  /** The screw the part uses. */
+  screw: string;
+  /** Hole centres about the pattern's middle, mm. */
+  points: V2[];
+}
+
+const tidy = (n: number) => Math.round(n * 1e6) / 1e6 + 0;
+
+/** Hole patterns (#189): the catalogue parts with two or more screw holes, each centred on its own middle. */
+export const HOLE_PATTERNS: HolePattern[] = CATALOGUE.filter((p) => p.cutout.holes.length >= 2).map((p) => {
+  const hs = p.cutout.holes;
+  const mx = hs.reduce((a, h) => a + h.at[0], 0) / hs.length;
+  const my = hs.reduce((a, h) => a + h.at[1], 0) / hs.length;
+  const xs = hs.map((h) => h.at[0]);
+  const ys = hs.map((h) => h.at[1]);
+  const w = tidy(Math.max(...xs) - Math.min(...xs));
+  const h = tidy(Math.max(...ys) - Math.min(...ys));
+  return {
+    id: p.id,
+    label: `${p.name} (${h ? `${w} × ${h}` : w} mm)`,
+    screw: hs[0]!.screw,
+    points: hs.map((x) => [tidy(x.at[0] - mx), tidy(x.at[1] - my)] as V2),
+  };
+});
+
+/** Four holes on the corners of a rectangle, about its middle. */
+export const rectPattern = (w: number, h: number): V2[] => [
+  [tidy(-w / 2), tidy(-h / 2)],
+  [tidy(w / 2), tidy(-h / 2)],
+  [tidy(w / 2), tidy(h / 2)],
+  [tidy(-w / 2), tidy(h / 2)],
+];
+
+/** `n` holes evenly round a circle of diameter `d`, the first on +x. */
+export const circlePattern = (n: number, d: number): V2[] =>
+  Array.from({ length: Math.max(1, Math.round(n)) }, (_, i) => {
+    const a = (2 * Math.PI * i) / Math.max(1, Math.round(n));
+    return [tidy((d / 2) * Math.cos(a)), tidy((d / 2) * Math.sin(a))] as V2;
+  });

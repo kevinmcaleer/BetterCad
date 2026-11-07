@@ -14,6 +14,10 @@ export {
   checkPart,
   partBounds,
   partFrame,
+  HOLE_PATTERNS,
+  rectPattern,
+  circlePattern,
+  type HolePattern,
   placeOnFace,
   type CataloguePart,
   type CatalogueCategory,
@@ -268,6 +272,35 @@ export interface ImportFeature extends FeatureBase {
   bodies: { id: string; name: string }[];
   position: Vec3;
 }
+/**
+ * A mounting feature (#189) on a flat face: standoffs on a hole pattern, or a servo horn mount (the horn's hub
+ * recess, a screwdriver hole to the servo's own screw, and screw holes to bolt the horn's arms to the part).
+ */
+export interface MountFeature extends FeatureBase {
+  type: "mount";
+  kind: "standoffs" | "horn";
+  part: string;
+  /** The face's plane when the mount was placed: origin on the face, normal out of the body. */
+  frame: Frame;
+  /** Standoff centres, or the horn's centre first, in the face's plane, mm. */
+  points: Vec2[];
+  /** The screw, from the screw table. */
+  size: string;
+  /** The printer's hole offset when it was made (#104), mm. */
+  offset?: number;
+  /** Standoffs: how tall, how wide, and a clearance hole right through or a heat-set insert at the top. */
+  height: number;
+  outer: number;
+  hole: "through" | "insert";
+  /** Horn: which horn, the hub recess's diameter and depth, the arm holes' distance from the centre, and the hole to
+   * reach the servo's screw. */
+  horn: "single" | "double" | "cross";
+  hub: number;
+  recess: number;
+  arm: number;
+  access: number;
+}
+
 /** Insert part (#187): a catalogue part, with the record it used, placed as a reference body. */
 export interface InsertFeature extends FeatureBase {
   type: "insert";
@@ -277,6 +310,7 @@ export interface InsertFeature extends FeatureBase {
   rotation?: Vec3;
 }
 export type Feature =
+  | MountFeature
   | ImportFeature
   | InsertFeature
   | AddFeature
@@ -353,6 +387,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   hole: "Hole",
   import: "Import",
   insert: "Insert part",
+  mount: "Mount",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -377,6 +412,7 @@ export interface Build {
 }
 
 const BUILT = new Set<string>([
+  "mount",
   "import",
   "insert",
   "add",
@@ -607,6 +643,26 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           head: r.head,
         };
         t.ops = [...(t.ops ?? []), { op: "hole", holes, feature: f.id }];
+        break;
+      }
+      case "mount": {
+        const t = parts[find(f.part)];
+        if (!t) {
+          failed.set(f.id, "The body it changes is gone");
+          break;
+        }
+        const r = mountOps(f);
+        if (typeof r === "string") {
+          failed.set(f.id, r);
+          break;
+        }
+        const local = (op: BodyOp): BodyOp =>
+          op.tool
+            ? { ...op, tool: { ...op.tool, frame: frameToLocal(op.tool.frame, t) } }
+            : op.holes
+              ? { ...op, holes: { ...op.holes, frame: frameToLocal(op.holes.frame, t) } }
+              : op;
+        t.ops = [...(t.ops ?? []), ...r.map(local)];
         break;
       }
       case "combine": {
@@ -882,6 +938,7 @@ export function featureParts(f: Feature): string[] {
     case "shell":
     case "pushpull":
     case "hole":
+    case "mount":
       return [f.part];
     case "revolve":
       return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
@@ -912,6 +969,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "mount":
+      return f.kind === "standoffs"
+        ? `${f.points.length} × ${f.size}, ${mm(f.height)} tall${f.hole === "insert" ? ", heat-set inserts" : ""}`
+        : `${f.horn === "single" ? "Single" : f.horn === "double" ? "Double" : "Cross"} horn, ${f.size} holes ${mm(f.arm)} out`;
     case "insert":
       return `${f.record.name}, ${f.record.mass} g${f.record.checked ? "" : ", sizes not checked"}`;
     case "import":
@@ -1229,6 +1290,85 @@ export function insertCatalogue(
   });
 }
 
+/** The points a horn's arm holes sit on, about its centre: along x, both ways, or both ways along x and y. */
+export function hornPoints(horn: MountFeature["horn"], arm: number): Vec2[] {
+  const out: Vec2[] = [[arm, 0]];
+  if (horn !== "single") out.push([-arm, 0]);
+  if (horn === "cross") out.push([0, arm], [0, -arm]);
+  return out;
+}
+
+/** A mount's joins and holes, in world space, or why it can't be made. */
+export function mountOps(f: MountFeature): BodyOp[] | string {
+  if (!f.points.length) return "Click the face to place it";
+  const s = screw(f.size);
+  if (!s) return "Pick a screw size";
+  const printed = resolveHole({ size: f.size, fit: "printed", head: "none", depth: null, offset: f.offset });
+  if ("error" in printed) return printed.error;
+  const n = f.frame.normal;
+  const lift = (h: number): Frame => ({ ...f.frame, origin: [f.frame.origin[0] + n[0] * h, f.frame.origin[1] + n[1] * h, f.frame.origin[2] + n[2] * h] });
+  const holes = (frame: Frame, points: Vec2[], diameter: number, depth: number | null): BodyOp => ({
+    op: "hole",
+    holes: { frame, points: points.map((p) => [p[0], p[1]]), diameter, depth },
+    feature: f.id,
+  });
+  if (f.kind === "standoffs") {
+    if (!(f.height > 0)) return "Give the standoffs a height above 0 mm";
+    const insert = f.hole === "insert" ? s.insert : undefined;
+    if (f.hole === "insert" && !insert) return `There's no heat-set insert for ${s.label} in the screw table`;
+    const bore = insert ? insert.diameter : printed.diameter;
+    if (!(f.outer > bore + 0.8)) return `Make the standoffs wider than ${Math.round((bore + 0.8) * 100) / 100} mm, so they keep a wall`;
+    const r = f.outer / 2;
+    const tool: PrismSpec = {
+      frame: f.frame,
+      profiles: f.points.map((c) => ({ outer: [{ kind: "circle", c: [c[0], c[1]], r }], holes: [], area: Math.PI * r * r })),
+      from: 0,
+      to: f.height,
+    };
+    return [{ op: "join", tool, feature: f.id }, holes(lift(f.height), f.points, bore, insert ? insert.depth + 1 : null)];
+  }
+  if (!(f.hub > 0 && f.recess > 0)) return "Give the hub recess a diameter and depth above 0 mm";
+  if (!(f.arm > f.hub / 2)) return "Put the arm holes outside the hub";
+  const [cx, cy] = f.points[0]!;
+  const at = (p: Vec2): Vec2 => [cx + p[0], cy + p[1]];
+  const ops = [holes(f.frame, [[cx, cy]], f.hub, f.recess), holes(f.frame, hornPoints(f.horn, f.arm).map(at), printed.diameter, null)];
+  if (f.access > 0) ops.push(holes(f.frame, [[cx, cy]], f.access, null));
+  return ops;
+}
+
+/** The settings a new mount starts with: M2.5 standoffs 6 mm tall (a Pi's screws), or a micro servo's single-arm horn. */
+export const MOUNT_DEFAULTS: Omit<MountFeature, "id" | "name" | "type" | "kind" | "part" | "frame" | "points"> = {
+  size: "M2.5",
+  height: 6,
+  outer: 6,
+  hole: "through",
+  horn: "single",
+  hub: 7.5,
+  recess: 2,
+  arm: 10,
+  access: 3,
+};
+
+export type MountParams = Omit<MountFeature, "id" | "name" | "type">;
+
+/** Adds a Mount step at `at` (the marker), or at the end. */
+export function addMount(doc: ModelDoc, params: MountParams, id = newId("f"), at?: number): ModelDoc {
+  const name = params.kind === "standoffs" ? nextNamed(doc, "Standoffs") : nextNamed(doc, "Horn mount");
+  return insert(doc, at, { id, type: "mount", name, ...params });
+}
+
+/** Changes a Mount step (the tool edits it live, as one undo step). */
+export function updateMount(doc: ModelDoc, id: string, change: Partial<MountParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "mount" ? { ...f, ...change } : f)) };
+}
+
+function nextNamed(doc: ModelDoc, base: string): string {
+  const names = new Set(doc.features.map((f) => f.name));
+  let n = 1;
+  while (names.has(`${base} ${n}`)) n += 1;
+  return `${base} ${n}`;
+}
+
 export interface PocketOptions {
   /** The body the part sits on. */
   target: string;
@@ -1360,7 +1500,7 @@ function partsMade(f: Feature): string[] {
 }
 
 /** Features that pick edges or faces by number need the part exactly as the steps before left it. */
-const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "hole"]);
+const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "hole", "mount"]);
 
 /**
  * The features one feature needs before it on the timeline: the steps that made the parts it reads, its sketch, and

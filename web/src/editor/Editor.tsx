@@ -118,6 +118,8 @@ import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
+import { useMount } from "../mount/useMount";
+import { MountBar } from "../mount/MountBar";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
@@ -417,6 +419,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     parts,
     view: vp.ref,
     active: tool === "hole" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+  });
+
+  const mount = useMount({
+    store,
+    record,
+    doc,
+    parts,
+    view: vp.ref,
+    active: tool === "mount" && !sketch.editing,
     onClose: () => setTool("select"),
     say,
   });
@@ -825,11 +838,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             ? pushpull.done()
             : hole.session
               ? hole.done()
-              : tool === "combine"
-                ? combine(selection, combineOp, keepTools, combineFit)
-                : finish.tool
-                  ? finish.done()
-                  : undefined,
+              : mount.session
+                ? mount.done()
+                : tool === "combine"
+                  ? combine(selection, combineOp, keepTools, combineFit)
+                  : finish.tool
+                    ? finish.done()
+                    : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -1025,7 +1040,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1494,6 +1509,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "mount"
+        ? [
+            {
+              id: "edit",
+              label: "Edit mount",
+              icon: "screw" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("mount");
+                mount.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -1671,8 +1700,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ? sketch.help
     : place.help
       ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || measure.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
         : finish.help
           ? finish.help
           : vp.elementText
@@ -1849,6 +1878,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
+              {tool === "mount" && <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
                 <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
