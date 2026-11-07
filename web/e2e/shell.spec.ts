@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { bodyRows } from "./pages/editor";
 
 test("the editor shell loads with its slots", async ({ page }) => {
   await page.goto("/");
@@ -19,9 +20,9 @@ test("keyboard: tools, undo and the command palette", async ({ page }) => {
 
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
-  await expect(page.getByRole("treeitem")).toHaveCount(1);
+  await expect(bodyRows(page)).toHaveCount(1);
   await page.keyboard.press("ControlOrMeta+z");
-  await expect(page.getByRole("treeitem")).toHaveCount(0);
+  await expect(bodyRows(page)).toHaveCount(0);
 
   await page.keyboard.press("ControlOrMeta+k");
   await page.getByRole("combobox", { name: "Command" }).fill("holodeck");
@@ -67,7 +68,7 @@ test("parts: multi-select, edit size for both, rename inline", async ({ page }) 
   await page.getByRole("button", { name: "Box", exact: true }).click();
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
-  await expect(page.getByRole("treeitem")).toHaveCount(2);
+  await expect(bodyRows(page)).toHaveCount(2);
   await page.getByText("Box 1", { exact: true }).click();
   await page.getByText("Box 2", { exact: true }).click({ modifiers: ["Shift"] });
   await expect(page.getByRole("complementary", { name: "Properties" })).toContainText("2 parts");
@@ -100,18 +101,37 @@ test("timeline: each step shows, and the marker rolls the model back", async ({ 
   await page.getByRole("button", { name: "Add a box" }).click();
   await page.getByRole("button", { name: "Add a box" }).click();
   await expect(timeline.getByRole("button", { name: /^Box \d/ })).toHaveCount(2);
-  await expect(page.getByRole("treeitem")).toHaveCount(2);
+  await expect(bodyRows(page)).toHaveCount(2);
 
   await page.keyboard.press("Alt+ArrowLeft");
-  await expect(page.getByRole("treeitem")).toHaveCount(1);
+  await expect(bodyRows(page)).toHaveCount(1);
   await expect(timeline.getByRole("button", { name: /^Box 2.*not built/ })).toBeVisible();
 
   await timeline.getByRole("button", { name: /^Box 1/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Suppress" }).click();
-  await expect(page.getByRole("treeitem")).toHaveCount(0);
+  await expect(bodyRows(page)).toHaveCount(0);
 
   await page.keyboard.press("Alt+End");
-  await expect(page.getByRole("treeitem")).toHaveCount(1);
+  await expect(bodyRows(page)).toHaveCount(1);
   await page.getByRole("button", { name: "History" }).click();
   await expect(page.getByRole("tree", { name: "History" }).getByRole("treeitem")).toHaveCount(2);
+});
+
+test("browser: the model's folders, eyes, and a sketch on an origin plane", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Add a box" }).click();
+  const tree = page.getByRole("tree", { name: "Browser" });
+  await expect(tree.getByRole("treeitem", { name: /Untitled model/ })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: /Joints/ })).toContainText("None yet");
+  await tree.getByRole("button", { name: "Hide Bodies" }).click();
+  await expect(tree.getByRole("treeitem", { name: /Box 1/ })).toHaveClass(/bc-off/);
+  await tree.getByRole("button", { name: "Show Bodies" }).click();
+  await expect(tree.getByRole("treeitem", { name: /Box 1/ })).not.toHaveClass(/bc-off/);
+
+  await tree.getByRole("button", { name: "Show what is in Origin" }).click();
+  await tree.getByRole("button", { name: "Show XY plane" }).click();
+  await expect(tree.getByRole("treeitem", { name: /XY plane/ })).not.toHaveClass(/bc-off/);
+  await tree.getByText("XZ plane").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Sketch on the XZ plane" }).click();
+  await expect(page.getByText("Sketching on the XZ plane. Enter finishes.")).toBeVisible();
 });

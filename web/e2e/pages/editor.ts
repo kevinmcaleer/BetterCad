@@ -95,9 +95,9 @@ export class ViewPort {
 
 export class Properties {
   constructor(readonly page: Page) {}
-  /** Selects a part in the Parts panel, so Properties shows it. */
+  /** Selects a part in the browser, so Properties shows it. */
   async select(name: RegExp) {
-    if (!(await this.page.getByRole("treeitem", { name }).count())) await this.page.getByRole("navigation").getByRole("button", { name: "Parts" }).click();
+    if (!(await this.page.getByRole("treeitem", { name }).count())) await this.page.getByRole("navigation").getByRole("button", { name: "Browser" }).click();
     await this.page.getByRole("treeitem", { name }).click();
   }
   value(text: string | RegExp) {
@@ -119,6 +119,11 @@ export class ExportDialog {
 }
 
 /** Replaces the file pickers so saves and exports land in `window.__saved`, by file name. */
+/** The body rows in the browser: the parts, leaving out the model, folders, planes and sketches. */
+export function bodyRows(page: Page): Locator {
+  return page.getByRole("tree", { name: "Browser" }).locator('[role="treeitem"][data-kind="body"]');
+}
+
 export async function catchSaves(page: Page) {
   await page.addInitScript(() => {
     const w = window as unknown as Record<string, unknown>;
