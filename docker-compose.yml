@@ -17,16 +17,15 @@ services:
       # Only used for CORS outside production; the app is same-origin behind the proxy.
       ALLOWED_ORIGINS: https://bettercad.kevsrobots.com
 
-  # The Cloudflare Tunnel that serves bettercad.kevsrobots.com. Starts with the app when .env sets
-  # COMPOSE_PROFILES=tunnel and CLOUDFLARE_TUNNEL_TOKEN. In the Zero Trust dashboard, the tunnel's public hostname
-  # bettercad.kevsrobots.com points at http://bettercad:8000.
+  # The Cloudflare Tunnel that serves bettercad.kevsrobots.com. Starts with the app; needs CLOUDFLARE_TUNNEL_TOKEN
+  # in .env. In the Zero Trust dashboard, the tunnel's public hostname bettercad.kevsrobots.com points at
+  # http://bettercad:8000. To run the app on its own: docker compose up -d bettercad
   cloudflared:
     image: cloudflare/cloudflared:latest
-    profiles: [tunnel]
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env, or remove COMPOSE_PROFILES=tunnel}
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env, or start only the app with docker compose up -d bettercad}"
     depends_on:
       bettercad:
         condition: service_healthy

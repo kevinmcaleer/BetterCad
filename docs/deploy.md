@@ -29,13 +29,13 @@ Once:
 1. In Zero Trust → Networks → Tunnels, open the tunnel (or create one, type Cloudflared).
 2. Copy its token: Configure, then the long string after `--token` in the install command.
 3. Under Public Hostname, add `bettercad.kevsrobots.com` → Service `HTTP` → URL `bettercad:8000`.
-4. In `.env`, set `CLOUDFLARE_TUNNEL_TOKEN=<token>` (and keep `COMPOSE_PROFILES=tunnel`).
+4. In `.env`, set `CLOUDFLARE_TUNNEL_TOKEN=<token>`.
 
 The token only works for a tunnel managed from the dashboard. A tunnel made with `cloudflared tunnel create` and a
 local `config.yml` is managed locally instead: migrate it in the dashboard (Tunnels → the tunnel → Migrate), or
 make a new one there.
 
-To run the app without the tunnel, remove `COMPOSE_PROFILES=tunnel` from `.env`.
+To run the app without the tunnel: `docker compose up -d bettercad`.
 
 ### Reaching it locally
 
@@ -51,7 +51,7 @@ services:
 
 ## Another proxy instead of the tunnel
 
-If the machine is fronted by a proxy of its own, drop the tunnel profile, publish the port as above, and use:
+If the machine is fronted by a proxy of its own, start only the app (`docker compose up -d bettercad`), publish the port as above, and use:
 
 - Caddy: [`deploy/Caddyfile`](../deploy/Caddyfile). Certificates are automatic.
 - nginx: [`deploy/nginx.conf`](../deploy/nginx.conf), with `certbot --nginx -d <host>` for the certificate.
