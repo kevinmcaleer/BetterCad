@@ -6,7 +6,11 @@ import type { Snap } from "./snap";
  * The drawing tools (#53) as data: how many clicks each needs, what to preview while the pointer moves, which sizes
  * can be typed, and what one finished shape adds to the sketch. The sketch session routes pointer events here.
  */
-export type SketchToolId = "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "dimension";
+export type SketchToolId = "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "dimension" | "fillet" | "trim" | "offset" | "project";
+
+/** Tools that draw new shapes click by click (the rest pick existing geometry). */
+export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "polygon";
+export const isDrawTool = (t: SketchToolId): t is DrawToolId => t in CLICKS;
 
 export interface SketchTool {
   id: SketchToolId;
@@ -47,12 +51,30 @@ export const SKETCH_TOOLS: SketchTool[] = [
     help: "Click a line, circle or arc, or two points or two lines, to size them.",
     fields: [],
   },
+  {
+    id: "fillet",
+    label: "Fillet",
+    icon: "fillet",
+    key: "f",
+    help: "Click a corner, or two lines that meet, to round it. Set the radius in the bar.",
+    fields: [],
+  },
+  { id: "trim", label: "Trim", icon: "crop", key: "t", help: "Hover a piece between crossings and click to remove it.", fields: [] },
+  {
+    id: "offset",
+    label: "Offset",
+    icon: "shrink",
+    key: "o",
+    help: "Click a line, arc or circle. The copy goes on the side the pointer is on. Set the distance in the bar.",
+    fields: [],
+  },
+  { id: "project", label: "Project", icon: "body", key: "j", help: "Click a face of a part to bring its edges into the sketch.", fields: [] },
 ];
 
 export const toolById = (id: SketchToolId) => SKETCH_TOOLS.find((t) => t.id === id)!;
 
 /** How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. */
-export const CLICKS: Record<Exclude<SketchToolId, "select" | "dimension">, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, polygon: 2 };
+export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, polygon: 2 };
 
 export interface Preview {
   /** Polylines in sketch mm. */
@@ -104,6 +126,10 @@ export function place(d: Draft, s: Snap): Id {
   const p = d.point(s.xy);
   if (s.kind === "on" && s.ref) d.constrain({ type: "pointOn", p, e: s.ref });
   if (s.kind === "middle" && s.ref) d.constrain({ type: "midpoint", p, line: s.ref });
+  if (s.kind === "crossing" && s.ref && s.ref2) {
+    d.constrain({ type: "pointOn", p, e: s.ref });
+    d.constrain({ type: "pointOn", p, e: s.ref2 });
+  }
   return p;
 }
 

@@ -7,6 +7,12 @@ import {
   SketchIndex,
   Solver,
   angleOf,
+  filletAt,
+  filletLines,
+  offsetChain,
+  projectSegments,
+  trimAt,
+  trimPiece,
   dist,
   faceFrame,
   formatDimension,
@@ -31,7 +37,7 @@ import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { entityAt, snap, snapStep, type Snap } from "./snap";
-import { CLICKS, CONSTRAINT_TOOLS, SKETCH_TOOLS, commit, constraintsFor, preview, toolById, type ConstraintTool, type SketchToolId } from "./tools";
+import { CLICKS, CONSTRAINT_TOOLS, SKETCH_TOOLS, commit, constraintsFor, isDrawTool, preview, toolById, type ConstraintTool, type SketchToolId } from "./tools";
 
 /**
  * The sketch session (#51–#58): picking a plane, then drawing, constraining and dimensioning on it until Finish. The
@@ -94,6 +100,11 @@ export function useSketch(d: SketchDeps) {
   const [finishWarn, setFinishWarn] = useState(false);
   const [camTick, setCamTick] = useState(0);
   const [solver, setSolver] = useState<Solver | null>(null);
+  const [filletR, setFilletR] = useState(2);
+  const [offsetD, setOffsetD] = useState(2);
+  const [projectGuide, setProjectGuide] = useState(true);
+  /** What an editing tool would do under the pointer: the piece Trim removes (danger) or the copy Offset adds. */
+  const [editPreview, setEditPreview] = useState<{ lines: Vec2[][]; danger: boolean } | null>(null);
 
   const feature = d.doc.features.find((f): f is SketchFeature => f.id === editingId && f.type === "sketch") ?? null;
   const sketch = feature?.sketch ?? null;
@@ -122,6 +133,7 @@ export function useSketch(d: SketchDeps) {
 
   const setStool = useCallback((t: SketchToolId) => {
     setStoolState(t);
+    setEditPreview(null);
     setClicks([]);
     setTyped([]);
   }, []);
@@ -372,8 +384,44 @@ export function useSketch(d: SketchDeps) {
 
   // ---------------------------------------------------------------- the pointer
 
-  const live = useRef({ editingId, feature, sketch, frame, stool, clicks, cursor, typed, sel, sides, gridSnap, solver, apply, dimensionFor });
-  live.current = { editingId, feature, sketch, frame, stool, clicks, cursor, typed, sel, sides, gridSnap, solver, apply, dimensionFor };
+  const live = useRef({
+    editingId,
+    feature,
+    sketch,
+    frame,
+    stool,
+    clicks,
+    cursor,
+    typed,
+    sel,
+    sides,
+    gridSnap,
+    solver,
+    apply,
+    dimensionFor,
+    filletR,
+    offsetD,
+    projectGuide,
+  });
+  live.current = {
+    editingId,
+    feature,
+    sketch,
+    frame,
+    stool,
+    clicks,
+    cursor,
+    typed,
+    sel,
+    sides,
+    gridSnap,
+    solver,
+    apply,
+    dimensionFor,
+    filletR,
+    offsetD,
+    projectGuide,
+  };
 
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
   useEffect(() => {
@@ -437,10 +485,75 @@ export function useSketch(d: SketchDeps) {
       const w = eng.rayPlane(p.x, p.y, f.origin, f.normal);
       return w ? { xy: toSketch(f, w), px: eng.pixelSize(f.origin) } : null;
     };
-    const snapAt = (xy: Vec2, px: number, off: boolean, exclude?: Set<Id>): Snap => {
+    const snapAt = (xy: Vec2, px: number, mods: { shift: boolean; mod: boolean; touch?: boolean }, exclude?: Set<Id>): Snap => {
       const L = live.current;
       const from = L.clicks[L.clicks.length - 1]?.xy;
-      return snap(xy, L.sketch!, { px, grid: L.gridSnap ? snapStep(px) : null, from, exclude, off });
+      return snap(xy, L.sketch!, {
+        px,
+        grid: L.gridSnap || mods.mod ? snapStep(px) : null,
+        from,
+        exclude,
+        off: mods.shift,
+        gridOnly: mods.mod,
+        radius: mods.touch ? 16 : 8,
+      });
+    };
+    const done = (r: Sketch | string, label: string) => {
+      if (typeof r === "string") say(r, true);
+      else {
+        live.current.apply(r, label);
+        setSel([]);
+        setEditPreview(null);
+      }
+    };
+    /** The editing tools: Fillet, Trim, Offset and Project. */
+    const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
+      const L = live.current;
+      const s = L.sketch!;
+      const tol = 8 * hit.px;
+      if (L.stool === "project") {
+        const pick = eng.pick(p.x, p.y, "face");
+        const info = pick && eng.faceInfo(pick.body, pick.index);
+        if (!pick || !info) return false;
+        done(projectSegments(s, L.frame!, info.boundary, { body: pick.body, face: pick.index }, L.projectGuide), "Project a face");
+        return true;
+      }
+      if (L.stool === "fillet") {
+        const id = entityAt(hit.xy, s, tol);
+        const e = id ? s.entities.find((x) => x.id === id) : undefined;
+        if (!id || !e) return false;
+        if (e.kind === "point") done(filletAt(s, id, L.filletR), "Round a corner");
+        else if (e.kind === "line") {
+          const first = L.sel.find((x) => x !== id && s.entities.find((y) => y.id === x)?.kind === "line");
+          if (first) done(filletLines(s, first, id, L.filletR), "Round a corner");
+          else setSel([id]);
+        } else say("Pick a corner, or two lines that meet", true);
+        return true;
+      }
+      const id = entityAt(hit.xy, s, tol, true);
+      if (!id) return false;
+      if (L.stool === "trim") done(trimAt(s, id, hit.xy), "Trim");
+      else done(offsetToward(s, id, hit.xy, L.offsetD), "Offset");
+      return true;
+    };
+    const editMove = (p: ScreenPoint, hit: { xy: Vec2; px: number }) => {
+      const L = live.current;
+      const s = L.sketch!;
+      if (L.stool === "project") {
+        const pick = eng.pick(p.x, p.y, "face");
+        eng.showHover(pick);
+        return;
+      }
+      const curvesOnly = L.stool !== "fillet";
+      const id = entityAt(hit.xy, s, 8 * hit.px, curvesOnly);
+      setHover(id);
+      if (!id || L.stool === "fillet") return setEditPreview(null);
+      if (L.stool === "trim") {
+        const piece = trimPiece(s, id, hit.xy);
+        return setEditPreview(piece ? { lines: [piece.pts], danger: true } : null);
+      }
+      const r = offsetToward(s, id, hit.xy, L.offsetD);
+      setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
     };
     const finishShape = (all: Snap[]) => {
       const L = live.current;
@@ -466,6 +579,7 @@ export function useSketch(d: SketchDeps) {
         const L = live.current;
         const hit = at(p);
         if (!hit || !L.sketch) return false;
+        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
         if (L.stool === "select" || L.stool === "dimension") {
           const id = entityAt(hit.xy, L.sketch, 8 * hit.px);
           if (L.stool === "dimension") {
@@ -488,7 +602,7 @@ export function useSketch(d: SketchDeps) {
           if (e?.kind === "point") drag = { id, moved: false };
           return true;
         }
-        const s = snapAt(hit.xy, hit.px, mods.shift);
+        const s = snapAt(hit.xy, hit.px, mods);
         const all = [...L.clicks, s];
         const need = CLICKS[L.stool as keyof typeof CLICKS];
         if (all.length >= need) finishShape(all);
@@ -509,13 +623,14 @@ export function useSketch(d: SketchDeps) {
           }
           return;
         }
+        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
         if (L.stool === "select" || L.stool === "dimension") {
           setHover(entityAt(hit.xy, L.sketch, 8 * hit.px));
           setCursor(null);
           return;
         }
         setHover(null);
-        setCursor(snapAt(hit.xy, hit.px, mods.shift));
+        setCursor(snapAt(hit.xy, hit.px, mods));
       },
       up: () => {
         if (drag?.moved) store.seal();
@@ -524,10 +639,12 @@ export function useSketch(d: SketchDeps) {
       leave: () => {
         setHover(null);
         setCursor(null);
+        setEditPreview(null);
+        eng.showHover(null);
       },
     });
     return () => eng.setInput(null);
-  }, [editingId, engineOf, store]);
+  }, [editingId, engineOf, store, say]);
 
   // ---------------------------------------------------------------- drawing
 
@@ -545,7 +662,7 @@ export function useSketch(d: SketchDeps) {
 
   const previewNow = useMemo(
     () =>
-      cursor && stool !== "select" && stool !== "dimension"
+      cursor && isDrawTool(stool)
         ? preview(
             stool,
             clicks.map((c) => c.xy),
@@ -560,8 +677,8 @@ export function useSketch(d: SketchDeps) {
     const o = overlay.current;
     if (!o || !sketch || !frame) return;
     o.refreshPalette();
-    o.update(sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy));
-  }, [sketch, frame, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme]);
+    o.update(sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview));
+  }, [sketch, frame, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview]);
 
   // Finished sketches stay on show, faintly, while the timeline includes them.
   useEffect(() => {
@@ -580,7 +697,7 @@ export function useSketch(d: SketchDeps) {
 
   // Digits while a shape is under way go to its first size field.
   useEffect(() => {
-    if (!editingId || stool === "select" || stool === "dimension" || !clicks.length || !toolById(stool).fields.length) return;
+    if (!editingId || !isDrawTool(stool) || !clicks.length || !toolById(stool).fields.length) return;
     const onKey = (e: KeyboardEvent) => {
       if (!/^[0-9.]$/.test(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
@@ -609,13 +726,15 @@ export function useSketch(d: SketchDeps) {
   /** Commits the shape under way with the typed sizes, at the cursor. */
   const commitTyped = useCallback(() => {
     const L = live.current;
-    if (!L.sketch || !L.clicks.length || L.stool === "select" || L.stool === "dimension") return;
+    if (!L.sketch || !L.clicks.length || !isDrawTool(L.stool)) return;
     const last: Snap = L.cursor ?? L.clicks[L.clicks.length - 1]!;
     const all = [...L.clicks, last];
     const c = commit(L.stool, L.sketch, all, L.typed, L.sides);
     if (!c) return;
     L.apply(c.sketch, c.label);
     setTyped([]);
+    // Back to the view, so the next key is a shortcut again rather than more typing.
+    document.getElementById("bc-view")?.focus();
     if (L.stool === "line" && c.end) {
       const p = c.sketch.entities.find((e) => e.id === c.end);
       setClicks(p?.kind === "point" ? [{ xy: [p.x, p.y], kind: "end", ref: p.id, label: "" }] : []);
@@ -726,6 +845,12 @@ export function useSketch(d: SketchDeps) {
     hover,
     sides,
     setSides,
+    filletR,
+    setFilletR,
+    offsetD,
+    setOffsetD,
+    projectGuide,
+    setProjectGuide,
     gridSnap,
     setGridSnap,
     showConstraints,
@@ -759,6 +884,7 @@ export function sketchView(
   cursor: Snap | null,
   from: Vec2 | undefined,
   base?: Shade,
+  extra?: { lines: Vec2[][]; danger: boolean } | null,
 ): OverlayView {
   const idx = new SketchIndex(s);
   const bad = new Set<Id>();
@@ -782,9 +908,41 @@ export function sketchView(
     e.kind === "point" ? [{ xy: [e.x, e.y] as Vec2, shade: shade(e.id), big: sel.includes(e.id) || hover === e.id }] : [],
   );
   for (const l of previewLines) curves.push({ pts: l, shade: "preview" });
+  for (const l of extra?.lines ?? []) curves.push({ pts: l, shade: extra!.danger ? "conflict" : "preview" });
   if (cursor && from && (cursor.kind === "horizontal" || cursor.kind === "vertical") && dist(cursor.xy, from) > 1e-9) {
     curves.push({ pts: [from, cursor.xy], shade: "guide", dashed: true });
   }
   if (cursor) points.push({ xy: cursor.xy, shade: cursor.kind === "free" ? "preview" : "hover", big: cursor.kind !== "free" });
   return { frame, curves, points };
+}
+
+/** Offset toward the pointer: whichever side's copy lands nearer it. */
+function offsetToward(s: Sketch, id: Id, at: Vec2, d: number): Sketch | string {
+  const out = offsetChain(s, id, d);
+  const inn = offsetChain(s, id, -d);
+  if (typeof out === "string") return inn;
+  if (typeof inn === "string") return out;
+  const near = (r: Sketch) =>
+    Math.min(
+      ...addedLines(s, r)
+        .flat()
+        .map((p) => dist(p, at)),
+    );
+  return near(out) <= near(inn) ? out : inn;
+}
+
+/** The curves `after` has that `before` didn't, as polylines. */
+function addedLines(before: Sketch, after: Sketch): Vec2[][] {
+  const had = new Set(before.entities.map((e) => e.id));
+  const idx = new SketchIndex(after);
+  return after.entities.flatMap((e) => {
+    if (had.has(e.id)) return [];
+    if (e.kind === "line") return [[idx.xy(e.a), idx.xy(e.b)]];
+    if (e.kind === "circle") return [sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72)];
+    if (e.kind === "arc") {
+      const c = idx.xy(e.c);
+      return [sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c)))];
+    }
+    return [];
+  });
 }

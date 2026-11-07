@@ -80,3 +80,51 @@ test("an open shape asks before finishing", async ({ page }) => {
   await page.getByRole("button", { name: "Finish anyway" }).click();
   await expect(page.getByRole("toolbar", { name: "Model tools" })).toBeVisible();
 });
+
+test("offset a rectangle inward, round a corner, then trim", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await click(page, -10, -10);
+  const far = await at(page, 10, 5);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width" }).fill("40");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height" }).fill("20");
+  await page.keyboard.press("Enter");
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+  await expect(constraints).toHaveCount(4);
+
+  // Offset: click the bottom edge from just inside, so the copy goes in.
+  await page.keyboard.press("o");
+  await page.getByRole("textbox", { name: "Distance" }).fill("3");
+  await page.keyboard.press("Enter");
+  await click(page, 10, -9);
+  // Four parallels join the four level and upright constraints.
+  await expect(constraints).toHaveCount(8);
+  await expect(page.getByRole("button", { name: "3 mm", exact: true }).first()).toBeVisible();
+
+  // Fillet the outer bottom-left corner.
+  await page.keyboard.press("f");
+  await page.getByRole("textbox", { name: "Radius" }).fill("4");
+  await page.keyboard.press("Enter");
+  await click(page, -10, -10);
+  await expect(page.getByRole("button", { name: "R 4 mm", exact: true })).toBeVisible();
+  await expect(constraints.filter({ hasText: "Tangent" })).toHaveCount(2);
+
+  // Trim: a line nothing crosses goes whole.
+  await page.keyboard.press("l");
+  await click(page, 30, 30);
+  await click(page, 40, 30);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("t");
+  // The new line came with a horizontal constraint, which goes with it.
+  const n = await constraints.count();
+  await click(page, 35, 30);
+  await expect(constraints).toHaveCount(n - 1);
+  await page.screenshot({ path: test.info().outputPath("edited.png") });
+});

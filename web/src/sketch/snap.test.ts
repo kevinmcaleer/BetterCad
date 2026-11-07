@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { drawRectangle, drawCircle, newSketch } from "@bettercad/sketch";
+import { drawRectangle, drawCircle, drawLine, newSketch } from "@bettercad/sketch";
 import { entityAt, snap, snapStep } from "./snap";
 
 const rect = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
@@ -34,6 +34,19 @@ describe("snap", () => {
     const centre = c.sketch.entities.find((e) => e.kind === "point")!;
     expect(snap([100.3, 99.8], c.sketch, { px: 0.1, grid: null }).kind).toBe("centre");
     expect(snap([100.3, 99.8], c.sketch, { px: 0.1, grid: null, exclude: new Set([centre.id]) }).kind).toBe("free");
+  });
+
+  it("snaps to where two lines cross, after corners and midpoints", () => {
+    const x = drawLine(drawLine(newSketch(), [-10, 0], [10, 0]).sketch, [3, -10], [3, 20]).sketch;
+    const s = snap([3.4, 0.3], x, { px: 0.1, grid: null });
+    expect(s).toMatchObject({ kind: "crossing", label: "Crossing" });
+    expect(s.xy[0]).toBeCloseTo(3);
+    expect(s.ref && s.ref2).toBeTruthy();
+  });
+
+  it("snaps to the grid only with Ctrl", () => {
+    expect(snap([39.6, 20.4], rect, { px: 0.1, grid: 5, gridOnly: true })).toMatchObject({ kind: "grid", xy: [40, 20] });
+    expect(snap([1.2, 0.2], rect, { px: 0.1, grid: 5, gridOnly: true }).xy).toEqual([0, 0]);
   });
 
   it("turns off with Shift", () => {

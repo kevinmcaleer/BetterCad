@@ -22,13 +22,13 @@ import {
 } from "@bettercad/sketch";
 import { formatCombo } from "../state/commands";
 import { SNAP_LABEL } from "./snap";
-import { CONSTRAINT_TOOLS, SKETCH_TOOLS, toolById } from "./tools";
+import { CONSTRAINT_TOOLS, SKETCH_TOOLS, isDrawTool, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
 
 /** The sketch tool bar and the armed tool's strip, in place of the model bars while a sketch is open. */
 export function SketchBars({ s }: { s: SketchSession }) {
   const tool = toolById(s.stool);
-  const drawing = s.stool !== "select" && s.stool !== "dimension";
+  const drawing = isDrawTool(s.stool);
   const onFieldKey = (e: ReactKeyboardEvent) => {
     // The field takes its value on Enter; the shape is made just after.
     if (e.key === "Enter") setTimeout(s.commitTyped, 0);
@@ -71,6 +71,16 @@ export function SketchBars({ s }: { s: SketchSession }) {
             ))}
           </span>
         )}
+        {s.stool === "fillet" && <NumberField label="Radius" value={s.filletR} min={0.01} onCommit={(v) => s.setFilletR(v)} />}
+        {s.stool === "offset" && <NumberField label="Distance" value={s.offsetD} min={0.01} onCommit={(v) => s.setOffsetD(v)} />}
+        {s.stool === "project" && (
+          <Button
+            label="As construction"
+            title="Projected edges guide the sketch without making shapes"
+            on={s.projectGuide}
+            onClick={() => s.setProjectGuide(!s.projectGuide)}
+          />
+        )}
         {s.stool === "polygon" && (
           <NumberField label="Sides" unit="none" value={s.sides} min={3} max={12} step={1} precision={0} onCommit={(v) => s.setSides(Math.round(v))} />
         )}
@@ -91,6 +101,16 @@ export function SketchPickBar({ onCancel }: { onCancel: () => void }) {
     </ArmedBar>
   );
 }
+
+const DIM_LABEL: Record<Dimension["kind"], string> = {
+  length: "Length",
+  distance: "Distance",
+  distanceX: "Across",
+  distanceY: "Up",
+  radius: "Radius",
+  diameter: "Diameter",
+  angle: "Angle",
+};
 
 const round = (v: number | undefined) => (v === undefined ? null : Math.round(v * 100) / 100);
 
@@ -303,7 +323,7 @@ export function SketchPanel({ s }: { s: SketchSession }) {
           {sk.dimensions.map((d, i) => (
             <NumberField
               key={d.id}
-              label={`${d.kind === "angle" ? "Angle" : d.kind === "diameter" ? "Diameter" : d.kind === "radius" ? "Radius" : "Length"} ${i + 1}`}
+              label={`${DIM_LABEL[d.kind]} ${i + 1}`}
               value={Math.round(d.value * 1000) / 1000}
               unit={d.kind === "angle" ? "°" : "mm"}
               locked={!d.driving}

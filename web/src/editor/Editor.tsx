@@ -196,8 +196,9 @@ export function Editor() {
   });
   live.current.sketching = sketch.editing;
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
-  // While sketching the model goes faint, so the sketch reads on top of it.
-  const viewParts = useMemo(() => (sketch.editing ? parts.map((p) => ({ ...p, ghost: true })) : parts), [parts, sketch.editing]);
+  // While sketching the model goes faint, so the sketch reads on top of it. Project needs the faces solid to pick them.
+  const ghostParts = sketch.editing && sketch.stool !== "project";
+  const viewParts = useMemo(() => (ghostParts ? parts.map((p) => ({ ...p, ghost: true })) : parts), [parts, ghostParts]);
   const onCamera = vp.onCamera;
   const sketchCamera = sketch.onCamera;
   const composedCamera = useCallback(
