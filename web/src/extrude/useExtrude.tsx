@@ -7,6 +7,7 @@ import {
   axisOf,
   crossesAxis,
   newId,
+  setExpr,
   profileAt,
   seedOf,
   updateExtrude,
@@ -166,6 +167,18 @@ export function useExtrude(d: ExtrudeDeps) {
     [store],
   );
 
+  /** Keeps (or drops) the expression typed into a field (#75), in the same undo step as the value. */
+  const setFieldExpr = useCallback(
+    (path: string, expression: string | undefined) => {
+      const s = live.current.session;
+      const f = live.current.feature;
+      if (!s || (!expression && !f?.exprs?.[path])) return;
+      const label = deps.current.kind === "revolve" ? "Revolve" : "Extrude";
+      store.edit((doc) => setExpr(doc, s.id, path, expression), s.isNew ? label : `Edit ${f?.name ?? label.toLowerCase()}`, KEY(s.id));
+    },
+    [store],
+  );
+
   const pick = useCallback(
     (h: { sketch: string; profile: Profile; xy: Vec2 }) => {
       const L = live.current;
@@ -312,6 +325,7 @@ export function useExtrude(d: ExtrudeDeps) {
       change({ operation: op });
     },
     change,
+    setFieldExpr,
     done,
     cancel,
     edit,

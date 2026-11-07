@@ -1,0 +1,33 @@
+/* The Parameters panel (#75): a compact table of name, expression, unit, value and uses. */
+.bc-params {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: var(--bc-space-3);
+  font-size: 12px;
+}
+.bc-params th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--bc-color-muted);
+  padding: var(--bc-space-1) var(--bc-space-1);
+}
+.bc-params td {
+  padding: var(--bc-space-1);
+  vertical-align: middle;
+}
+.bc-params .bc-text,
+.bc-params .bc-select {
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--bc-space-2);
+}
+.bc-params .bc-mono {
+  font-family: var(--bc-font-mono);
+}
+.bc-params-value {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bc-params tr.bc-invalid .bc-params-value {
+  color: var(--bc-color-danger);
+}

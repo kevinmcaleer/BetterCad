@@ -11,7 +11,8 @@
   "types": "dist/index.d.ts",
   "dependencies": {
     "replicad-opencascadejs": "1.2.1",
-    "@bettercad/sketch": "*"
+    "@bettercad/sketch": "*",
+    "@bettercad/ui": "*"
   },
   "exports": {
     ".": "./src/index.ts",

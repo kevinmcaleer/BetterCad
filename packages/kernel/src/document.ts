@@ -5,6 +5,7 @@
  */
 import { newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
+import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import {
   axisOf,
   crossesAxis,
@@ -21,6 +22,7 @@ import {
 export * from "./extrude";
 export * from "./holes";
 export * from "./screws";
+export * from "./params";
 
 export type PartKind = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "solid";
 
@@ -107,6 +109,8 @@ interface FeatureBase {
   name: string;
   /** Suppressed features stay on the timeline but are skipped when the model is built. */
   suppressed?: boolean;
+  /** Expressions typed into this step's fields (#75), by field path ("distance", "size.x"), worked out at build time. */
+  exprs?: Record<string, string>;
 }
 
 export interface AddFeature extends FeatureBase {
@@ -240,6 +244,8 @@ export interface ModelDoc {
   order?: string[];
   /** Named views: saved cameras. */
   views?: NamedView[];
+  /** Parameters (#75): named values that feature fields can use. */
+  params?: Parameter[];
 }
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
@@ -303,8 +309,11 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     if (gone.length) failed.set(f.id, gone.length === ids.length ? "The parts it changes are gone" : "Some of the parts it changes are gone");
     return gone;
   };
-  for (const f of doc.features.slice(0, upTo)) {
-    if (f.suppressed) continue;
+  const { values } = evaluateParams(doc.params);
+  for (const raw of doc.features.slice(0, upTo)) {
+    if (raw.suppressed) continue;
+    const { feature: f, error } = bindExprs(raw, values);
+    if (error) failed.set(f.id, error);
     switch (f.type) {
       case "add":
         if (find(f.part.id) < 0) parts.push({ ...f.part, position: { ...f.part.position }, size: { ...f.part.size }, hidden: false });
@@ -1101,4 +1110,82 @@ export function suppressedNeed(doc: ModelDoc, id: string): string | null {
     return null;
   };
   return walk(id);
+}
+
+// ---- parameters (#75)
+
+/** Steps and parameters whose expressions use a name. */
+export function paramUses(doc: ModelDoc, name: string): { features: Feature[]; params: Parameter[] } {
+  return {
+    features: doc.features.filter((f) => Object.values(f.exprs ?? {}).some((e) => namesIn(e).includes(name))),
+    params: (doc.params ?? []).filter((p) => p.name !== name && namesIn(p.expression).includes(name)),
+  };
+}
+
+/** Why a name can't be used for a parameter, or null. */
+export function paramNameProblem(doc: ModelDoc, name: string, exceptId?: string): string | null {
+  if (!NAME_RE.test(name)) return "Use letters, digits and _, starting with a letter";
+  if (/^(mm|cm|m|in|deg)$/i.test(name)) return `${name} is a unit, so it can't be a name`;
+  if ((doc.params ?? []).some((p) => p.name === name && p.id !== exceptId)) return `There is already a parameter called ${name}`;
+  return null;
+}
+
+/** Adds a parameter with the next free name ("p1", "p2"). */
+export function addParam(doc: ModelDoc, p: Partial<Omit<Parameter, "id">> = {}, id = newId("p")): ModelDoc {
+  const list = doc.params ?? [];
+  let n = list.length + 1;
+  while (list.some((x) => x.name === `p${n}`)) n++;
+  return { ...doc, params: [...list, { id, name: p.name ?? `p${n}`, expression: p.expression ?? "10", unit: p.unit ?? "mm", comment: p.comment }] };
+}
+
+/** Changes a parameter. A new name is written into every expression that used the old one. */
+export function updateParam(doc: ModelDoc, id: string, change: Partial<Omit<Parameter, "id">>): ModelDoc {
+  const old = (doc.params ?? []).find((p) => p.id === id);
+  if (!old) return doc;
+  let params = (doc.params ?? []).map((p) => (p.id === id ? { ...p, ...change } : p));
+  let features = doc.features;
+  const to = change.name;
+  if (to && to !== old.name) {
+    params = params.map((p) => ({ ...p, expression: renameIn(p.expression, old.name, to) }));
+    features = features.map((f) =>
+      f.exprs && Object.values(f.exprs).some((e) => namesIn(e).includes(old.name))
+        ? { ...f, exprs: Object.fromEntries(Object.entries(f.exprs).map(([k, e]) => [k, renameIn(e, old.name, to)])) }
+        : f,
+    );
+  }
+  return { ...doc, params, features };
+}
+
+/** Why a parameter can't be deleted (it is in use), or null. */
+export function removeParamProblem(doc: ModelDoc, id: string): string | null {
+  const p = (doc.params ?? []).find((x) => x.id === id);
+  if (!p) return null;
+  const u = paramUses(doc, p.name);
+  const names = [...u.features.map((f) => f.name), ...u.params.map((q) => q.name)];
+  if (!names.length) return null;
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `${p.name} is used by ${list}`;
+}
+
+export function removeParam(doc: ModelDoc, id: string): ModelDoc {
+  return { ...doc, params: (doc.params ?? []).filter((p) => p.id !== id) };
+}
+
+/** Keeps (or with undefined, drops) the expression typed into one of a step's fields. */
+export function setExpr(doc: ModelDoc, featureId: string, path: string, expression: string | undefined): ModelDoc {
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== featureId) return f;
+      const exprs = { ...f.exprs };
+      if (expression === undefined) delete exprs[path];
+      else exprs[path] = expression;
+      return { ...f, exprs: Object.keys(exprs).length ? exprs : undefined };
+    }),
+  };
+}
+
+/** The values of every parameter, for number fields to use. */
+export function paramScope(doc: ModelDoc): Record<string, number> {
+  return evaluateParams(doc.params).values;
 }

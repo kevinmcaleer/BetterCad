@@ -29,6 +29,11 @@ import {
   removeFeature,
   removeParts,
   reorderFeature,
+  addParam,
+  paramScope,
+  removeParam,
+  setExpr,
+  updateParam,
   dependents,
   moveProblem,
   removeWithDependents,
@@ -53,6 +58,7 @@ import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
 import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
+import { ParamsPanel } from "./ParamsPanel";
 import { CommandPalette } from "./CommandPalette";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
@@ -79,6 +85,7 @@ const PANELS: RailItem<PanelId>[] = [
   { id: "bodies", icon: "body", label: "Bodies" },
   { id: "library", icon: "shapes", label: "Library" },
   { id: "history", icon: "history", label: "History" },
+  { id: "params", icon: "sliders", label: "Parameters" },
   { id: "settings", icon: "settings", label: "Settings" },
 ];
 
@@ -944,6 +951,36 @@ export function Editor() {
     );
   };
 
+  /** A size field's edit is done: keep the expression typed (#75) on the step that took the change, then seal it. */
+  const onPropCommit = (key: "position" | "size" | "rotation", axis: keyof Vec3, _value: number, expression?: string) => {
+    const ids = selection;
+    const d = store.get();
+    const type = key === "size" ? "resize" : "move";
+    const f = [...d.features.slice(0, live.current.marker ?? d.features.length)]
+      .reverse()
+      .find((x) => x.type === type && x.parts.length === ids.length && ids.every((id) => x.parts.includes(id)));
+    const path = `${key}.${axis}`;
+    if (f && (expression || f.exprs?.[path])) {
+      store.edit((x) => setExpr(x, f.id, path, expression), f.name, `props:${ids.join(",")}:${key}.${axis}`);
+    }
+    store.seal();
+  };
+  const scope = useMemo(() => paramScope(doc), [doc]);
+  const paramsPanel = (
+    <ParamsPanel
+      doc={doc}
+      onAdd={() => store.edit((d) => addParam(d), "Add a parameter")}
+      onChange={(id, change) => store.edit((d) => updateParam(d, id, change), "Change a parameter")}
+      onRemove={(id) => store.edit((d) => removeParam(d, id), "Delete a parameter")}
+      onShowUses={(fids) => {
+        if (fids[0]) setActiveFeature(fids[0]);
+        const names = doc.features.filter((f) => fids.includes(f.id)).map((f) => f.name);
+        if (names.length) say(`Used by ${names.join(", ")}`);
+      }}
+      say={say}
+    />
+  );
+
   return (
     <>
       <AppShell
@@ -975,6 +1012,7 @@ export function Editor() {
         leftPanel={
           panel && (
             <LeftPanel
+              paramsPanel={paramsPanel}
               panel={panel}
               doc={doc}
               parts={parts}
@@ -1015,8 +1053,12 @@ export function Editor() {
             <>
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
-              {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />}
-              {tool === "revolve" && <ExtrudeBar x={revolve} parts={parts} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />}
+              {tool === "extrude" && (
+                <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+              )}
+              {tool === "revolve" && (
+                <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+              )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
@@ -1084,7 +1126,8 @@ export function Editor() {
               parts={selectedParts}
               totalParts={parts.length}
               onChange={onPropChange}
-              onCommit={store.seal}
+              onCommit={onPropCommit}
+              scope={scope}
               volumes={volumes}
               onHole={() => toggleHole(selection)}
             />

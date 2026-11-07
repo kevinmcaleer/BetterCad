@@ -11,7 +11,8 @@
     "./tokens.css": "./src/tokens.css",
     "./styles/*": "./src/styles/*",
     "./tokens.json": "./src/tokens.json",
-    "./icons": "./src/icons.ts"
+    "./icons": "./src/icons.ts",
+    "./expr": "./src/expr.ts"
   },
   "scripts": {
     "tokens": "node scripts/build-tokens.ts",

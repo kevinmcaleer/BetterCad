@@ -7,7 +7,7 @@ import { MODEL_TOOLS, type ToolId } from "./tools";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
 
-export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "settings";
+export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "params" | "settings";
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   parts: "Parts",
@@ -15,6 +15,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   bodies: "Bodies",
   library: "Library",
   history: "History",
+  params: "Parameters",
   settings: "Settings",
 };
 
@@ -50,6 +51,8 @@ export interface LeftPanelProps {
   commands: Command[];
   onArmTool: (t: ToolId) => void;
   tool: ToolId;
+  /** The Parameters panel, made by the editor. */
+  paramsPanel: ReactNode;
 }
 
 export function LeftPanel(p: LeftPanelProps) {
@@ -68,6 +71,8 @@ export function LeftPanel(p: LeftPanelProps) {
       return <LibraryPanel {...p} />;
     case "history":
       return <HistoryPanel {...p} />;
+    case "params":
+      return <>{p.paramsPanel}</>;
     case "settings":
       return <SettingsPanel {...p} />;
   }

@@ -96,6 +96,7 @@ export const cylinder = "M4 6a8 3 0 1 0 16 0a8 3 0 1 0-16 0M4 6v12a8 3 0 0 0 16 
 export const sphere = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12a9 3.5 0 0 0 18 0";
 export const cone = "M12 3 4 18M12 3l8 15M4 18a8 3 0 0 0 16 0a8 3 0 0 0-16 0";
 export const torus = "M2 12a10 5 0 1 0 20 0a10 5 0 1 0-20 0M8 11.5a4 1.6 0 0 0 8 0M9.2 12.6a3.2 1.2 0 0 1 5.6 0";
+export const sliders = "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4";
 export const ruler = "M3 16 16 3l5 5L8 21zM7 12l2 2M10 9l2 2M13 6l2 2";
 export const revolve = "M12 2v20M5 10a7 3 0 1 0 7-3M9 4.5 12 7l-2.8 2.4";
 export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
@@ -221,6 +222,7 @@ export const ICONS = {
   shell,
   revolve,
   ruler,
+  sliders,
   settings,
   history,
   search,
