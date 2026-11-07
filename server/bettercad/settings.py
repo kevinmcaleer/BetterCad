@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     data_dir: Path = Path("data")
     database_path: Path | None = None
     max_upload_mb: int = 50
+    user_quota_mb: int = 500
+    backup_dir: Path | None = None
+    backup_days: int = 14
+    jobs: bool = True
     secret_key: str = ""
     allowed_origins: str = "http://localhost:5173"
     web_dist: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
@@ -25,6 +29,10 @@ class Settings(BaseSettings):
     @property
     def db_path(self) -> Path:
         return self.database_path or self.data_dir / "bettercad.db"
+
+    @property
+    def blob_dir(self) -> Path:
+        return self.data_dir / "blobs"
 
     @property
     def origins(self) -> list[str]:

@@ -1,5 +1,6 @@
 """App factory: /api routes, request logging, and the built web app with an index.html fallback."""
 
+import asyncio
 import logging
 import subprocess
 import time
@@ -11,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, db
+from . import __version__, auth, db, jobs, models
 from .settings import Settings, get_settings
 
 log = logging.getLogger("bettercad")
@@ -66,10 +67,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if applied:
             log.info("applied migrations %s", applied)
         app.state.db = conn
+        app.state.blobs = models.BlobStore(settings.blob_dir)
+        task = asyncio.create_task(jobs.run_daily(conn, settings)) if settings.jobs else None
         yield
+        if task:
+            task.cancel()
         conn.close()
 
-    app = FastAPI(title="BetterCad", version=version, lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json")
+    app = FastAPI(
+        title="BetterCad",
+        version=version,
+        lifespan=lifespan,
+        docs_url=None if settings.production else "/api/docs",
+        openapi_url=None if settings.production else "/api/openapi.json",
+    )
 
     if not settings.production:
         app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_methods=["*"], allow_headers=["*"])
@@ -88,7 +99,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"ok": True, "version": version}
 
-    @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    app.include_router(auth.router(secure=settings.production))
+    app.include_router(models.router(settings))
+
+    @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
     def api_not_found(rest: str) -> JSONResponse:
         return JSONResponse({"detail": "Not found"}, status_code=404)
 

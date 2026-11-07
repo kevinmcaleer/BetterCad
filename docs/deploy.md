@@ -59,12 +59,30 @@ If the machine is fronted by a proxy of its own, start only the app (`docker com
 Whichever route you use:
 
 - forward to `127.0.0.1:8010` and pass `X-Forwarded-Proto` and `X-Forwarded-For` (uvicorn runs with `--proxy-headers`);
-- allow request bodies of 60 MB, above `MAX_UPLOAD_MB` (50);
+- allow request bodies of 60 MB, above `MAX_UPLOAD_MB` (50), the largest single save;
 - set `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`, which the kernel needs (FastAPI sets them too);
 - compress responses, including `.wasm`.
 
 Check from outside the network: `curl https://bettercad.kevsrobots.com/api/health` returns `{"ok":true,...}`, and
 `curl -sI https://bettercad.kevsrobots.com/ | grep -i cross-origin` shows both COOP and COEP.
+
+## Backups
+
+Each night at 03:00 UTC the server copies the database (SQLite's online backup, safe while it runs) and the imported
+files into `BACKUP_DIR/<date>/`, and removes folders older than `BACKUP_DAYS` (14). docker-compose mounts
+`BACKUP_PATH` from `.env` (default `./backups` beside the compose file) there; point it at a USB disk or a synced
+folder to keep a copy off the machine. The app runs as user 10001, so make the folder writable once:
+`mkdir -p backups && sudo chown 10001 backups`.
+
+To restore: stop the app, copy `<date>/bettercad.db` over the volume's `bettercad.db` (and `<date>/blobs/` over
+`blobs/`), and start it again:
+
+```sh
+docker compose stop bettercad
+docker run --rm -v bettercad_bettercad-data:/data -v "$PWD/backups:/backups" alpine \
+  sh -c 'cp /backups/2026-11-07/bettercad.db /data/ && rm -f /data/bettercad.db-wal /data/bettercad.db-shm && cp -r /backups/2026-11-07/blobs /data/'
+docker compose start bettercad
+```
 
 ## Live preview
 
