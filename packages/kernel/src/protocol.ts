@@ -4,6 +4,7 @@ import type { ImportInfo, ModelResult } from "./occt/model";
 import type { ImportFormat } from "./imports";
 import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
+import type { Mate } from "./occt/mates";
 import type { CheckArea } from "./print/checks";
 import type { Orientation, OrientWeights } from "./print/orient";
 import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
@@ -33,6 +34,8 @@ export interface Methods {
     params: { bodies: { positions: Float32Array; indices: Uint32Array; faceTris?: Uint32Array }[]; limit: number; weights?: OrientWeights };
     result: Orientation[];
   };
+  /** Mating faces between printed bodies (#184): pins in holes and facing flat faces, with their gaps. */
+  mates: { params: { doc: ModelDoc; upTo?: number; limit?: number }; result: Mate[] };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };
 }

@@ -178,9 +178,56 @@ function holeCalibration(): ModelDoc {
   return s.doc;
 }
 
+/** Gaps each side the fit coupon tries, mm, one slot each from the left (#182). */
+export const FIT_CALIBRATION_GAPS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4] as const;
+/** The coupon's square peg, mm across. */
+export const FIT_PEG = 10;
+
+/**
+ * The fit calibration coupon (#182): a plate with six square slots, each wider than the 10 mm peg by a gap each side
+ * from 0.05 to 0.4 mm, and the peg beside it. The notches on the front edge count the slot: one notch is 0.05 mm, six is
+ * 0.4 mm. Print both flat, try the peg in each slot, and tell the Print panel which it pressed into and which it slid in.
+ */
+function fitCalibration(): ModelDoc {
+  const s = new Sample("Fit calibration");
+  s.param("pitch", "16", "Between slot centres");
+  s.param("thickness", "4", "Plate thickness, and how deep the peg goes in");
+  s.param("edge", "4", "Plate edge past the outer slots");
+  const n = FIT_CALIBRATION_GAPS.length;
+  const width = `${n - 1} * pitch + ${FIT_PEG} + 2 * edge`;
+  const depth = `${FIT_PEG} + 2 * edge + 4`;
+  s.part("plate", "Plate", "box", { x: width, y: depth, z: "thickness" });
+  const tools: { id: string; op: "cut" }[] = [];
+  const col = (i: number) => `(${i} - ${(n - 1) / 2}) * pitch`;
+  FIT_CALIBRATION_GAPS.forEach((g, i) => {
+    const id = `slot${i}`;
+    const w = `${FIT_PEG} + ${2 * g}`;
+    s.part(id, `Slot ${g} mm`, "box", { x: w, y: w, z: "thickness + 2" }, { x: col(i), y: "2", z: "-1" });
+    s.hole(id);
+    tools.push({ id, op: "cut" });
+    for (let k = 0; k <= i; k++) {
+      const nid = `notch${i}_${k}`;
+      s.part(
+        nid,
+        `Notch ${i + 1}.${k + 1}`,
+        "box",
+        { x: "1", y: "3", z: "thickness + 2" },
+        { x: `${col(i)} + ${(k - i / 2) * 2}`, y: `-(${depth}) / 2`, z: "-1" },
+      );
+      s.hole(nid);
+      tools.push({ id: nid, op: "cut" });
+    }
+  });
+  s.group("Slot plate", "plate", tools);
+  // The peg prints standing up beside the plate, a little taller than the plate so it's easy to hold.
+  s.part("peg", "Peg", "box", { x: `${FIT_PEG}`, y: `${FIT_PEG}`, z: "thickness + 8" }, { y: `(${depth}) / 2 + ${FIT_PEG} / 2 + 6` });
+  return s.doc;
+}
+
 export const SAMPLES: readonly SampleInfo[] = [
   { id: "box-with-lid", name: "Box with a lid", blurb: "A box with a lid that fits", build: boxWithLid },
   { id: "bracket", name: "Bracket", blurb: "An L bracket with M4 screw holes", build: bracket },
   { id: "phone-stand", name: "Phone stand", blurb: "Prints flat with no supports", build: phoneStand },
   { id: "hole-calibration", name: "Hole calibration", blurb: "Find the hole offset your printer needs", build: holeCalibration, card: false },
+  { id: "fit-calibration", name: "Fit calibration", blurb: "Find the gaps your printer needs for parts that fit", build: fitCalibration, card: false },
 ];

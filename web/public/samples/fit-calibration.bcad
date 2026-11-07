@@ -1,0 +1,1844 @@
+{
+  "schema": 1,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "sample-fit-calibration",
+  "created": "2026-11-07T00:00:00.000Z",
+  "modified": "2026-11-07T00:00:00.000Z",
+  "name": "Fit calibration",
+  "document": {
+    "features": [
+      {
+        "id": "f1",
+        "name": "Add Plate",
+        "part": {
+          "id": "plate",
+          "kind": "box",
+          "name": "Plate",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "5 * pitch + 10 + 2 * edge",
+          "size.y": "10 + 2 * edge + 4",
+          "size.z": "thickness"
+        },
+        "id": "f2",
+        "name": "Size Plate",
+        "parts": [
+          "plate"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f3",
+        "name": "Add Slot 0.05 mm",
+        "part": {
+          "id": "slot0",
+          "kind": "box",
+          "name": "Slot 0.05 mm",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "10 + 0.1",
+          "size.y": "10 + 0.1",
+          "size.z": "thickness + 2"
+        },
+        "id": "f4",
+        "name": "Size Slot 0.05 mm",
+        "parts": [
+          "slot0"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(0 - 2.5) * pitch",
+          "position.y": "2",
+          "position.z": "-1"
+        },
+        "id": "f5",
+        "name": "Place Slot 0.05 mm",
+        "parts": [
+          "slot0"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f6",
+        "name": "Add Notch 1.1",
+        "part": {
+          "id": "notch0_0",
+          "kind": "box",
+          "name": "Notch 1.1",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f7",
+        "name": "Size Notch 1.1",
+        "parts": [
+          "notch0_0"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(0 - 2.5) * pitch + 0",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f8",
+        "name": "Place Notch 1.1",
+        "parts": [
+          "notch0_0"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f9",
+        "name": "Add Slot 0.1 mm",
+        "part": {
+          "id": "slot1",
+          "kind": "box",
+          "name": "Slot 0.1 mm",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "10 + 0.2",
+          "size.y": "10 + 0.2",
+          "size.z": "thickness + 2"
+        },
+        "id": "f10",
+        "name": "Size Slot 0.1 mm",
+        "parts": [
+          "slot1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(1 - 2.5) * pitch",
+          "position.y": "2",
+          "position.z": "-1"
+        },
+        "id": "f11",
+        "name": "Place Slot 0.1 mm",
+        "parts": [
+          "slot1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f12",
+        "name": "Add Notch 2.1",
+        "part": {
+          "id": "notch1_0",
+          "kind": "box",
+          "name": "Notch 2.1",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f13",
+        "name": "Size Notch 2.1",
+        "parts": [
+          "notch1_0"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(1 - 2.5) * pitch + -1",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f14",
+        "name": "Place Notch 2.1",
+        "parts": [
+          "notch1_0"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f15",
+        "name": "Add Notch 2.2",
+        "part": {
+          "id": "notch1_1",
+          "kind": "box",
+          "name": "Notch 2.2",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f16",
+        "name": "Size Notch 2.2",
+        "parts": [
+          "notch1_1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(1 - 2.5) * pitch + 1",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f17",
+        "name": "Place Notch 2.2",
+        "parts": [
+          "notch1_1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f18",
+        "name": "Add Slot 0.15 mm",
+        "part": {
+          "id": "slot2",
+          "kind": "box",
+          "name": "Slot 0.15 mm",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "10 + 0.3",
+          "size.y": "10 + 0.3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f19",
+        "name": "Size Slot 0.15 mm",
+        "parts": [
+          "slot2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(2 - 2.5) * pitch",
+          "position.y": "2",
+          "position.z": "-1"
+        },
+        "id": "f20",
+        "name": "Place Slot 0.15 mm",
+        "parts": [
+          "slot2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f21",
+        "name": "Add Notch 3.1",
+        "part": {
+          "id": "notch2_0",
+          "kind": "box",
+          "name": "Notch 3.1",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f22",
+        "name": "Size Notch 3.1",
+        "parts": [
+          "notch2_0"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(2 - 2.5) * pitch + -2",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f23",
+        "name": "Place Notch 3.1",
+        "parts": [
+          "notch2_0"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f24",
+        "name": "Add Notch 3.2",
+        "part": {
+          "id": "notch2_1",
+          "kind": "box",
+          "name": "Notch 3.2",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f25",
+        "name": "Size Notch 3.2",
+        "parts": [
+          "notch2_1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(2 - 2.5) * pitch + 0",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f26",
+        "name": "Place Notch 3.2",
+        "parts": [
+          "notch2_1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f27",
+        "name": "Add Notch 3.3",
+        "part": {
+          "id": "notch2_2",
+          "kind": "box",
+          "name": "Notch 3.3",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f28",
+        "name": "Size Notch 3.3",
+        "parts": [
+          "notch2_2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(2 - 2.5) * pitch + 2",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f29",
+        "name": "Place Notch 3.3",
+        "parts": [
+          "notch2_2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f30",
+        "name": "Add Slot 0.2 mm",
+        "part": {
+          "id": "slot3",
+          "kind": "box",
+          "name": "Slot 0.2 mm",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "10 + 0.4",
+          "size.y": "10 + 0.4",
+          "size.z": "thickness + 2"
+        },
+        "id": "f31",
+        "name": "Size Slot 0.2 mm",
+        "parts": [
+          "slot3"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(3 - 2.5) * pitch",
+          "position.y": "2",
+          "position.z": "-1"
+        },
+        "id": "f32",
+        "name": "Place Slot 0.2 mm",
+        "parts": [
+          "slot3"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f33",
+        "name": "Add Notch 4.1",
+        "part": {
+          "id": "notch3_0",
+          "kind": "box",
+          "name": "Notch 4.1",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f34",
+        "name": "Size Notch 4.1",
+        "parts": [
+          "notch3_0"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(3 - 2.5) * pitch + -3",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f35",
+        "name": "Place Notch 4.1",
+        "parts": [
+          "notch3_0"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f36",
+        "name": "Add Notch 4.2",
+        "part": {
+          "id": "notch3_1",
+          "kind": "box",
+          "name": "Notch 4.2",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f37",
+        "name": "Size Notch 4.2",
+        "parts": [
+          "notch3_1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(3 - 2.5) * pitch + -1",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f38",
+        "name": "Place Notch 4.2",
+        "parts": [
+          "notch3_1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f39",
+        "name": "Add Notch 4.3",
+        "part": {
+          "id": "notch3_2",
+          "kind": "box",
+          "name": "Notch 4.3",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f40",
+        "name": "Size Notch 4.3",
+        "parts": [
+          "notch3_2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(3 - 2.5) * pitch + 1",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f41",
+        "name": "Place Notch 4.3",
+        "parts": [
+          "notch3_2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f42",
+        "name": "Add Notch 4.4",
+        "part": {
+          "id": "notch3_3",
+          "kind": "box",
+          "name": "Notch 4.4",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f43",
+        "name": "Size Notch 4.4",
+        "parts": [
+          "notch3_3"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(3 - 2.5) * pitch + 3",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f44",
+        "name": "Place Notch 4.4",
+        "parts": [
+          "notch3_3"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f45",
+        "name": "Add Slot 0.3 mm",
+        "part": {
+          "id": "slot4",
+          "kind": "box",
+          "name": "Slot 0.3 mm",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "10 + 0.6",
+          "size.y": "10 + 0.6",
+          "size.z": "thickness + 2"
+        },
+        "id": "f46",
+        "name": "Size Slot 0.3 mm",
+        "parts": [
+          "slot4"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(4 - 2.5) * pitch",
+          "position.y": "2",
+          "position.z": "-1"
+        },
+        "id": "f47",
+        "name": "Place Slot 0.3 mm",
+        "parts": [
+          "slot4"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f48",
+        "name": "Add Notch 5.1",
+        "part": {
+          "id": "notch4_0",
+          "kind": "box",
+          "name": "Notch 5.1",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f49",
+        "name": "Size Notch 5.1",
+        "parts": [
+          "notch4_0"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(4 - 2.5) * pitch + -4",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f50",
+        "name": "Place Notch 5.1",
+        "parts": [
+          "notch4_0"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f51",
+        "name": "Add Notch 5.2",
+        "part": {
+          "id": "notch4_1",
+          "kind": "box",
+          "name": "Notch 5.2",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f52",
+        "name": "Size Notch 5.2",
+        "parts": [
+          "notch4_1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(4 - 2.5) * pitch + -2",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f53",
+        "name": "Place Notch 5.2",
+        "parts": [
+          "notch4_1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f54",
+        "name": "Add Notch 5.3",
+        "part": {
+          "id": "notch4_2",
+          "kind": "box",
+          "name": "Notch 5.3",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f55",
+        "name": "Size Notch 5.3",
+        "parts": [
+          "notch4_2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(4 - 2.5) * pitch + 0",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f56",
+        "name": "Place Notch 5.3",
+        "parts": [
+          "notch4_2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f57",
+        "name": "Add Notch 5.4",
+        "part": {
+          "id": "notch4_3",
+          "kind": "box",
+          "name": "Notch 5.4",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f58",
+        "name": "Size Notch 5.4",
+        "parts": [
+          "notch4_3"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(4 - 2.5) * pitch + 2",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f59",
+        "name": "Place Notch 5.4",
+        "parts": [
+          "notch4_3"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f60",
+        "name": "Add Notch 5.5",
+        "part": {
+          "id": "notch4_4",
+          "kind": "box",
+          "name": "Notch 5.5",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f61",
+        "name": "Size Notch 5.5",
+        "parts": [
+          "notch4_4"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(4 - 2.5) * pitch + 4",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f62",
+        "name": "Place Notch 5.5",
+        "parts": [
+          "notch4_4"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f63",
+        "name": "Add Slot 0.4 mm",
+        "part": {
+          "id": "slot5",
+          "kind": "box",
+          "name": "Slot 0.4 mm",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "10 + 0.8",
+          "size.y": "10 + 0.8",
+          "size.z": "thickness + 2"
+        },
+        "id": "f64",
+        "name": "Size Slot 0.4 mm",
+        "parts": [
+          "slot5"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(5 - 2.5) * pitch",
+          "position.y": "2",
+          "position.z": "-1"
+        },
+        "id": "f65",
+        "name": "Place Slot 0.4 mm",
+        "parts": [
+          "slot5"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f66",
+        "name": "Add Notch 6.1",
+        "part": {
+          "id": "notch5_0",
+          "kind": "box",
+          "name": "Notch 6.1",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f67",
+        "name": "Size Notch 6.1",
+        "parts": [
+          "notch5_0"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(5 - 2.5) * pitch + -5",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f68",
+        "name": "Place Notch 6.1",
+        "parts": [
+          "notch5_0"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f69",
+        "name": "Add Notch 6.2",
+        "part": {
+          "id": "notch5_1",
+          "kind": "box",
+          "name": "Notch 6.2",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f70",
+        "name": "Size Notch 6.2",
+        "parts": [
+          "notch5_1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(5 - 2.5) * pitch + -3",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f71",
+        "name": "Place Notch 6.2",
+        "parts": [
+          "notch5_1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f72",
+        "name": "Add Notch 6.3",
+        "part": {
+          "id": "notch5_2",
+          "kind": "box",
+          "name": "Notch 6.3",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f73",
+        "name": "Size Notch 6.3",
+        "parts": [
+          "notch5_2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(5 - 2.5) * pitch + -1",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f74",
+        "name": "Place Notch 6.3",
+        "parts": [
+          "notch5_2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f75",
+        "name": "Add Notch 6.4",
+        "part": {
+          "id": "notch5_3",
+          "kind": "box",
+          "name": "Notch 6.4",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f76",
+        "name": "Size Notch 6.4",
+        "parts": [
+          "notch5_3"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(5 - 2.5) * pitch + 1",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f77",
+        "name": "Place Notch 6.4",
+        "parts": [
+          "notch5_3"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f78",
+        "name": "Add Notch 6.5",
+        "part": {
+          "id": "notch5_4",
+          "kind": "box",
+          "name": "Notch 6.5",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f79",
+        "name": "Size Notch 6.5",
+        "parts": [
+          "notch5_4"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(5 - 2.5) * pitch + 3",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f80",
+        "name": "Place Notch 6.5",
+        "parts": [
+          "notch5_4"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f81",
+        "name": "Add Notch 6.6",
+        "part": {
+          "id": "notch5_5",
+          "kind": "box",
+          "name": "Notch 6.6",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "1",
+          "size.y": "3",
+          "size.z": "thickness + 2"
+        },
+        "id": "f82",
+        "name": "Size Notch 6.6",
+        "parts": [
+          "notch5_5"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(5 - 2.5) * pitch + 5",
+          "position.y": "-(10 + 2 * edge + 4) / 2",
+          "position.z": "-1"
+        },
+        "id": "f83",
+        "name": "Place Notch 6.6",
+        "parts": [
+          "notch5_5"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f84",
+        "mode": "group",
+        "name": "Slot plate",
+        "target": "plate",
+        "tools": [
+          {
+            "id": "slot0",
+            "op": "cut"
+          },
+          {
+            "id": "notch0_0",
+            "op": "cut"
+          },
+          {
+            "id": "slot1",
+            "op": "cut"
+          },
+          {
+            "id": "notch1_0",
+            "op": "cut"
+          },
+          {
+            "id": "notch1_1",
+            "op": "cut"
+          },
+          {
+            "id": "slot2",
+            "op": "cut"
+          },
+          {
+            "id": "notch2_0",
+            "op": "cut"
+          },
+          {
+            "id": "notch2_1",
+            "op": "cut"
+          },
+          {
+            "id": "notch2_2",
+            "op": "cut"
+          },
+          {
+            "id": "slot3",
+            "op": "cut"
+          },
+          {
+            "id": "notch3_0",
+            "op": "cut"
+          },
+          {
+            "id": "notch3_1",
+            "op": "cut"
+          },
+          {
+            "id": "notch3_2",
+            "op": "cut"
+          },
+          {
+            "id": "notch3_3",
+            "op": "cut"
+          },
+          {
+            "id": "slot4",
+            "op": "cut"
+          },
+          {
+            "id": "notch4_0",
+            "op": "cut"
+          },
+          {
+            "id": "notch4_1",
+            "op": "cut"
+          },
+          {
+            "id": "notch4_2",
+            "op": "cut"
+          },
+          {
+            "id": "notch4_3",
+            "op": "cut"
+          },
+          {
+            "id": "notch4_4",
+            "op": "cut"
+          },
+          {
+            "id": "slot5",
+            "op": "cut"
+          },
+          {
+            "id": "notch5_0",
+            "op": "cut"
+          },
+          {
+            "id": "notch5_1",
+            "op": "cut"
+          },
+          {
+            "id": "notch5_2",
+            "op": "cut"
+          },
+          {
+            "id": "notch5_3",
+            "op": "cut"
+          },
+          {
+            "id": "notch5_4",
+            "op": "cut"
+          },
+          {
+            "id": "notch5_5",
+            "op": "cut"
+          }
+        ],
+        "type": "combine"
+      },
+      {
+        "id": "f85",
+        "name": "Add Peg",
+        "part": {
+          "id": "peg",
+          "kind": "box",
+          "name": "Peg",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "10",
+          "size.y": "10",
+          "size.z": "thickness + 8"
+        },
+        "id": "f86",
+        "name": "Size Peg",
+        "parts": [
+          "peg"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.y": "(10 + 2 * edge + 4) / 2 + 10 / 2 + 6"
+        },
+        "id": "f87",
+        "name": "Place Peg",
+        "parts": [
+          "peg"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {
+      "notch0_0": {
+        "hole": true
+      },
+      "notch1_0": {
+        "hole": true
+      },
+      "notch1_1": {
+        "hole": true
+      },
+      "notch2_0": {
+        "hole": true
+      },
+      "notch2_1": {
+        "hole": true
+      },
+      "notch2_2": {
+        "hole": true
+      },
+      "notch3_0": {
+        "hole": true
+      },
+      "notch3_1": {
+        "hole": true
+      },
+      "notch3_2": {
+        "hole": true
+      },
+      "notch3_3": {
+        "hole": true
+      },
+      "notch4_0": {
+        "hole": true
+      },
+      "notch4_1": {
+        "hole": true
+      },
+      "notch4_2": {
+        "hole": true
+      },
+      "notch4_3": {
+        "hole": true
+      },
+      "notch4_4": {
+        "hole": true
+      },
+      "notch5_0": {
+        "hole": true
+      },
+      "notch5_1": {
+        "hole": true
+      },
+      "notch5_2": {
+        "hole": true
+      },
+      "notch5_3": {
+        "hole": true
+      },
+      "notch5_4": {
+        "hole": true
+      },
+      "notch5_5": {
+        "hole": true
+      },
+      "slot0": {
+        "hole": true
+      },
+      "slot1": {
+        "hole": true
+      },
+      "slot2": {
+        "hole": true
+      },
+      "slot3": {
+        "hole": true
+      },
+      "slot4": {
+        "hole": true
+      },
+      "slot5": {
+        "hole": true
+      }
+    },
+    "name": "Fit calibration",
+    "params": [
+      {
+        "comment": "Between slot centres",
+        "expression": "16",
+        "id": "p_pitch",
+        "name": "pitch",
+        "unit": "mm"
+      },
+      {
+        "comment": "Plate thickness, and how deep the peg goes in",
+        "expression": "4",
+        "id": "p_thickness",
+        "name": "thickness",
+        "unit": "mm"
+      },
+      {
+        "comment": "Plate edge past the outer slots",
+        "expression": "4",
+        "id": "p_edge",
+        "name": "edge",
+        "unit": "mm"
+      }
+    ],
+    "version": 2
+  },
+  "thumbnail": "data:image/png;base64,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"
+}

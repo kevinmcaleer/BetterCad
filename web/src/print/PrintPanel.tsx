@@ -1,7 +1,15 @@
-import { Banner, Button, Fields, NumberField } from "@bettercad/ui";
+import { useState } from "react";
+import { Banner, Button, ESC, Fields, NumberField, useEscape } from "@bettercad/ui";
 import {
   DEFAULT_INFILL,
+  GAP_FITS,
   MATERIALS,
+  fitGap,
+  gapsFromCoupon,
+  matchesProfile,
+  mateStatus,
+  type FitId,
+  type PrinterProfile,
   PRINTERS,
   formatWeight,
   materialOf,
@@ -11,6 +19,8 @@ import {
   type Printer,
   type PrintSettings,
 } from "../state/document";
+import { FIT_CALIBRATION_GAPS } from "@bettercad/kernel/samples";
+import type { Mate } from "@bettercad/kernel";
 
 /**
  * The Print panel (#100, #105): the printer the model is for, its bed in the view, whether the model fits, and the
@@ -47,6 +57,24 @@ export interface PrintPanelProps {
   onUpdateHoles: () => void;
   /** Opens the hole calibration coupon. */
   onCalibrate: () => void;
+  /** Opens the fit calibration coupon (#182). */
+  onCalibrateFits: () => void;
+  /** Saved printers (#180) and what to do with them. */
+  profiles: PrinterProfile[];
+  onPickProfile: (id: string | null) => void;
+  onSaveProfile: (name: string) => void;
+  onUpdateProfile: () => void;
+  onDeleteProfile: () => void;
+  /** Fitted cuts made at another gap, and the update that brings them to the gaps set now. */
+  staleFits: number;
+  onUpdateFits: () => void;
+  /** The fits check (#184): where printed bodies meet, and the gap there. Null while it runs. */
+  fitsCheck: boolean;
+  onFitsCheck: (on: boolean) => void;
+  mates: Mate[] | null;
+  partName: (id: string) => string;
+  onShowMate: (m: Mate) => void;
+  onFixMate: (m: Mate, fit: FitId) => void;
 }
 
 /** An orientation suggestion with its thumbnail (a PNG data URL, or null where the view can't draw one). */
@@ -77,6 +105,14 @@ export function PrintPanel(p: PrintPanelProps) {
   return (
     <>
       <h2 className="bc-panel-title">Printer</h2>
+      <ProfilePicker
+        settings={p.settings}
+        profiles={p.profiles}
+        onPick={p.onPickProfile}
+        onSave={p.onSaveProfile}
+        onUpdate={p.onUpdateProfile}
+        onDelete={p.onDeleteProfile}
+      />
       <label className="bc-field-label" htmlFor="bc-printer">
         Printer
       </label>
@@ -249,10 +285,13 @@ export function PrintPanel(p: PrintPanelProps) {
       <Button
         size="wide"
         icon="ruler"
-        label="Calibrate"
+        label="Calibrate holes"
         title="Open a test plate with M2 to M6 holes at offsets from 0.2 to 0.6 mm. Print it and see which ones a screw slides through."
         onClick={p.onCalibrate}
       />
+
+      <FitSection settings={p.settings} onChange={p.onChange} onCalibrate={p.onCalibrateFits} stale={p.staleFits} onUpdate={p.onUpdateFits} />
+      <MateList {...p} />
 
       <h2 className="bc-panel-title">Material</h2>
       <label className="bc-field-label" htmlFor="bc-material">
@@ -283,6 +322,211 @@ export function PrintPanel(p: PrintPanelProps) {
         </p>
       )}
       <p className="bc-note bc-micro">An estimate from the volume and surface, usually within 20% of your slicer.</p>
+    </>
+  );
+}
+
+const slotName = (i: number) => `Slot ${i + 1}, ${FIT_CALIBRATION_GAPS[i]} mm`;
+
+/** Fits (#181, #182): the gap each side for press, sliding and loose fits, typed or read off the fit coupon. */
+function FitSection({
+  settings,
+  onChange,
+  onCalibrate,
+  stale,
+  onUpdate,
+}: {
+  settings: PrintSettings;
+  onChange: (c: Partial<PrintSettings>) => void;
+  onCalibrate: () => void;
+  stale: number;
+  onUpdate: () => void;
+}) {
+  const [pressed, setPressed] = useState<number | null>(null);
+  const [slid, setSlid] = useState<number | null>(null);
+  const set = (id: (typeof GAP_FITS)[number]["id"], v: number) =>
+    onChange({ fits: { ...settings.fits, [id]: Math.round(Math.max(0, Math.min(2, v)) * 100) / 100 } });
+  const slotSelect = (id: string, label: string, value: number | null, pick: (i: number) => void) => (
+    <>
+      <label className="bc-field-label" htmlFor={id}>
+        {label}
+      </label>
+      <select id={id} className="bc-select bc-print-select" value={value ?? ""} onChange={(e) => pick(Number(e.target.value))}>
+        <option value="" disabled>
+          Pick a slot
+        </option>
+        {FIT_CALIBRATION_GAPS.map((_, i) => (
+          <option key={i} value={i}>
+            {slotName(i)}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+  return (
+    <>
+      <h2 className="bc-panel-title">Fits</h2>
+      <Fields>
+        {GAP_FITS.map((f) => (
+          <NumberField
+            key={f.id}
+            label={f.name.replace(" fit", "")}
+            value={fitGap(f.id, settings.fits)}
+            min={0}
+            max={2}
+            step={0.05}
+            precision={2}
+            unit="mm"
+            onCommit={(v) => set(f.id, v)}
+          />
+        ))}
+      </Fields>
+      <p className="bc-note">The gap on each side when one printed part goes into another. A sliding fit leaves a 10 mm peg a 10.5 mm pocket.</p>
+      {stale > 0 && (
+        <Button
+          variant="secondary"
+          size="wide"
+          icon="combine"
+          label={stale === 1 ? "Update 1 fitted cut" : `Update ${stale} fitted cuts`}
+          title="Resize cuts made with other gaps to the fits set now"
+          onClick={onUpdate}
+        />
+      )}
+      <Button
+        size="wide"
+        icon="ruler"
+        label="Calibrate fits"
+        title="Open a test plate with a peg and six slots from 0.05 to 0.4 mm each side. Print it and try the peg in each slot."
+        onClick={onCalibrate}
+      />
+      <details className="bc-print-details">
+        <summary>I've printed the fit coupon</summary>
+        {slotSelect("bc-fit-pressed", "Which slot did the peg press into?", pressed, setPressed)}
+        {slotSelect("bc-fit-slid", "Which slot did it slide freely in?", slid, setSlid)}
+        <Button
+          variant="secondary"
+          size="wide"
+          label="Set fits"
+          title="Set press and sliding from the slots, and loose 0.15 mm wider than sliding"
+          disabled={pressed === null || slid === null}
+          onClick={() => {
+            if (pressed === null || slid === null) return;
+            onChange({ fits: gapsFromCoupon(FIT_CALIBRATION_GAPS[pressed]!, FIT_CALIBRATION_GAPS[slid]!) });
+          }}
+        />
+      </details>
+    </>
+  );
+}
+
+/** Saved printers (#180): pick one to copy its bed, hole offset and fits into this model, or save this model's as one. */
+function ProfilePicker({
+  settings,
+  profiles,
+  onPick,
+  onSave,
+  onUpdate,
+  onDelete,
+}: {
+  settings: PrintSettings;
+  profiles: PrinterProfile[];
+  onPick: (id: string | null) => void;
+  onSave: (name: string) => void;
+  onUpdate: () => void;
+  onDelete: () => void;
+}) {
+  const [naming, setNaming] = useState<string | null>(null);
+  useEscape(naming !== null, () => setNaming(null), ESC.panel);
+  const current = profiles.find((x) => x.id === settings.profile) ?? null;
+  const changed = current !== null && !matchesProfile(settings, current);
+  const finish = () => {
+    const name = naming?.trim();
+    if (name) onSave(name);
+    setNaming(null);
+  };
+  return (
+    <>
+      <label className="bc-field-label" htmlFor="bc-profile">
+        My printers
+      </label>
+      <select id="bc-profile" className="bc-select bc-print-select" value={current?.id ?? ""} onChange={(e) => onPick(e.target.value || null)}>
+        <option value="">{profiles.length ? "None: set for this model only" : "No saved printers yet"}</option>
+        {profiles.map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.name}
+          </option>
+        ))}
+      </select>
+      {changed && (
+        <>
+          <p className="bc-note">This model's settings differ from {current.name}.</p>
+          <Button variant="secondary" size="wide" label={`Save to ${current.name}`} title="Keep these settings in the saved printer" onClick={onUpdate} />
+        </>
+      )}
+      {naming === null ? (
+        <span className="bc-print-row">
+          <Button size="wide" label="Save as a printer" title="Keep this bed, hole offset and fits to use in other models" onClick={() => setNaming("")} />
+          {current && <Button label="Delete" title={`Delete ${current.name} from your printers`} onClick={onDelete} />}
+        </span>
+      ) : (
+        <form
+          className="bc-print-name"
+          onSubmit={(e) => {
+            e.preventDefault();
+            finish();
+          }}
+        >
+          <label className="bc-field-label" htmlFor="bc-profile-name">
+            Printer name
+          </label>
+          <input id="bc-profile-name" className="bc-text" autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="My Bambu A1" />
+          <span className="bc-print-row">
+            <Button kind="cancel" label="Cancel" title="Don't save" shortcut="Esc" onClick={() => setNaming(null)} />
+            <Button kind="done" label="Save" title="Save this printer" disabled={!naming.trim()} onClick={finish} />
+          </span>
+        </form>
+      )}
+    </>
+  );
+}
+
+/** The fits check (#184): pins in holes and facing flat faces, each with its gap and what kind of fit that is. */
+function MateList(p: PrintPanelProps) {
+  const list = p.mates;
+  return (
+    <>
+      <label className="bc-check">
+        <input type="checkbox" checked={p.fitsCheck} onChange={(e) => p.onFitsCheck(e.target.checked)} />
+        <span>Check where parts meet</span>
+      </label>
+      {p.fitsCheck &&
+        (!list ? (
+          <p className="bc-note" role="status">
+            Checking…
+          </p>
+        ) : !list.length ? (
+          <p className="bc-note" role="status">
+            No printed parts meet closely enough to need a fit.
+          </p>
+        ) : (
+          <ul className="bc-check-areas bc-mates" aria-label="Where parts meet">
+            {list.slice(0, 20).map((m, i) => {
+              const st = mateStatus(m.gap, p.settings.fits);
+              const what = m.kind === "pin" ? `${p.partName(m.b)} in ${p.partName(m.a)}` : `${p.partName(m.a)} and ${p.partName(m.b)}`;
+              return (
+                <li key={i}>
+                  <span>
+                    {what}: {st.text}
+                  </span>
+                  <Button size="dense" icon="frame" label="Show" title={`Show where ${what} meet`} onClick={() => p.onShowMate(m)} />
+                  {st.fix && (
+                    <Button size="dense" label="Fix" title={`Make it a ${st.fixName} (${st.fixGap} mm each side)`} onClick={() => p.onFixMate(m, st.fix!)} />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ))}
     </>
   );
 }

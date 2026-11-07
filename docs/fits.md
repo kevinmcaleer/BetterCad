@@ -14,6 +14,12 @@ These are typical FDM starting points and vary by printer and material. The tabl
 
 **Each side, not the diameter.** A fit's gap is added on every side, so a 10 mm peg with a sliding fit leaves a 10.5 mm pocket. The hole offset used by the Hole tool (#104, [holes.md](holes.md)) is different: it's added to a hole's diameter, so a 0.4 mm hole offset is a 0.2 mm gap each side.
 
+## Calibrating your printer (#182)
+
+The Print panel's **Fits** group shows the gap for each fit, and you can type your own. To measure them, click **Calibrate fits**. That opens the fit calibration coupon (`web/public/samples/fit-calibration.bcad`): a 4 mm plate with six square slots and a 10 mm square peg to print beside it. Each slot is wider than the peg by a gap each side of 0.05, 0.1, 0.15, 0.2, 0.3 and 0.4 mm, from the left. The notches on the front edge count the slot: one notch is 0.05 mm, six is 0.4 mm. It is small and quick to print.
+
+Print the plate and the peg flat, then try the peg in each slot. Open **I've printed the fit coupon** in the Print panel, pick the slot the peg pressed into and the slot it slid freely in, and click **Set fits**. Press and sliding come from your answers, and loose is 0.15 mm wider than sliding. The gaps are saved with the model. Save them as a printer (below) to use them in every model.
+
 ## Cut with a fit (#183)
 
 - **Combine**: pick Cut and the Fit menu appears beside it. Choose No gap, a named fit, or Custom gap. The bodies being cut away are grown by the gap first, so the original stays the size you drew it.
@@ -21,4 +27,28 @@ These are typical FDM starting points and vary by printer and material. The tabl
 
 The kernel grows the tool with `BRepOffsetAPI_MakeOffsetShape` (`grow` in `packages/kernel/src/occt/shapes.ts`). Flat faces move out and meet at sharp corners, so a box grows into a slightly bigger box and a cylinder into a wider cylinder.
 
-The step keeps the gap it was made with, so changing printer never quietly resizes a cut. Printer profiles (#180) will offer to update fitted cuts, as the Print panel does for holes.
+The step keeps the gap it was made with, so changing printer never quietly resizes a cut. When the fits change, the Print panel offers **Update N fitted cuts**, as it does for holes.
+
+## Your printers (#180)
+
+**Save as a printer** in the Print panel keeps this model's bed, hole offset, fit gaps and material under a name, such as "My Bambu A1". Pick it from **My printers** in any other model to copy those values in. Infill stays with each model.
+
+- Printers are kept in this browser, so they work offline and without an account. Signed in, they are also kept in your account (`/api/printers`, `server/bettercad/printers.py`), so they follow you to other machines. Printers made before signing in are added to the account when you sign in.
+- A model keeps its own copy of the values, so someone you share it with sees the same bed and fits without your printer.
+- If you change a setting after picking a printer, the panel offers **Save to** that printer.
+- Deleting a printer leaves models that used it as they are.
+
+## Where parts meet (#184)
+
+Tick **Check where parts meet** in the Print panel's Fits group. The kernel looks at every pair of printed bodies (holes and hidden bodies are left out) and lists two kinds of meeting:
+
+- **A pin in a hole**: two round faces on the same axis, one inside the other.
+- **Facing flat faces**: two flat faces pointing at each other less than 1 mm apart, sharing some area.
+
+Each line gives the gap on each side and the nearest named fit, such as "Pin in Bracket: sliding fit, 0.24 mm". A gap under half the press fit, or an overlap, says "too tight to print" and has a **Fix** button that makes it a sliding fit:
+
+- A pin that was cut out of the body it sits in (Combine, Cut, with Keep tools) gets a sliding fit on that cut.
+- Facing flat faces get a Push/pull step that moves the first body's face back.
+- A pin whose hole came from somewhere else gets a note saying how much wider to make the hole.
+
+The check runs in the geometry worker (`findMates` in `packages/kernel/src/occt/mates.ts`) a moment after each change, and Show frames each meeting.

@@ -1017,6 +1017,56 @@ export function cutTool(id: string, fit: FitId | null, gap: number, print?: Prin
   return t;
 }
 
+/** What a mate (#184) needs to change to fix its gap: the bodies, the faces and the gap now. */
+export interface MateRef {
+  kind: "pin" | "faces";
+  a: string;
+  b: string;
+  faceA: number;
+  gap: number;
+}
+
+/**
+ * Gives a mate (#184) the gap of a fit, as one edit. A pin cut out of the body it sits in gets the fit on that cut
+ * (#183); a pair of flat faces gets a Push/pull that moves body `a`'s face back. Returns why not, for a pin whose hole
+ * came from somewhere else.
+ */
+export function fixMate(doc: ModelDoc, m: MateRef, fit: FitId, at?: number): ModelDoc | string {
+  const want = fitGap(fit, doc.print?.fits);
+  if (m.kind === "pin") {
+    const f = [...doc.features]
+      .reverse()
+      .find((x): x is CombineFeature => x.type === "combine" && !x.suppressed && x.target === m.a && x.tools.some((t) => t.id === m.b && t.op === "cut"));
+    if (!f) return `This hole wasn't cut by the pin, so widen it by ${Math.round((want - m.gap) * 2 * 100) / 100} mm in the step that made it.`;
+    return {
+      ...doc,
+      features: doc.features.map((x) => (x === f ? { ...f, tools: f.tools.map((t) => (t.id === m.b && t.op === "cut" ? { ...t, fit, gap: want } : t)) } : x)),
+    };
+  }
+  const by = want - m.gap;
+  if (Math.abs(by) < 1e-6) return doc;
+  return addFinish(doc, { type: "pushpull", part: m.a, refs: [m.faceA], size: -by }, newId("f"), at);
+}
+
+/** Fitted cuts (#183) made with a gap other than the one their named fit comes to now: what a printer change can update. */
+export function staleFits(doc: ModelDoc, print?: PrintSettings): CombineFeature[] {
+  return doc.features.filter(
+    (f): f is CombineFeature => f.type === "combine" && f.tools.some((t) => t.fit && Math.abs((t.gap ?? 0) - fitGap(t.fit, print?.fits)) > 1e-9),
+  );
+}
+
+/** Brings every fitted cut to the gap its named fit comes to now (#180), as one edit. */
+export function updateFits(doc: ModelDoc, print?: PrintSettings): ModelDoc {
+  const stale = new Set(staleFits(doc, print).map((f) => f.id));
+  if (!stale.size) return doc;
+  return {
+    ...doc,
+    features: doc.features.map((f) =>
+      f.type === "combine" && stale.has(f.id) ? { ...f, tools: f.tools.map((t) => (t.fit ? { ...t, gap: fitGap(t.fit, print?.fits) } : t)) } : f,
+    ),
+  };
+}
+
 export function groupParams(parts: Part[], ids: string[], print?: PrintSettings): CombineParams | string {
   const picked = parts.filter((p) => ids.includes(p.id));
   if (picked.length < 2) return "Select two or more bodies to group them";
