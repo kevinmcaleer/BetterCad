@@ -36,6 +36,42 @@ export interface PrismSpec {
   to: number;
 }
 
+/** Revolve's geometry (#62): profiles turned round a line in their sketch plane. */
+export interface RevolveSpec {
+  frame: Frame;
+  profiles: ProfileShape[];
+  /** The axis, in sketch coordinates. */
+  axis: { origin: Vec2; dir: Vec2 };
+  /** Degrees turned, 1 to 360. */
+  angle: number;
+  /** Degrees to start from (minus half the angle for a symmetric revolve). */
+  start?: number;
+}
+
+/** What a revolve turns round: the sketch's own X or Y axis, or one of its lines. */
+export type AxisRef = { kind: "x" } | { kind: "y" } | { kind: "line"; id: string };
+
+/** An axis in sketch coordinates, or null when its line is gone. */
+export function axisOf(sketch: Sketch, ref: AxisRef): { origin: Vec2; dir: Vec2 } | null {
+  if (ref.kind === "x") return { origin: [0, 0], dir: [1, 0] };
+  if (ref.kind === "y") return { origin: [0, 0], dir: [0, 1] };
+  const idx = new SketchIndex(sketch);
+  const e = idx.get(ref.id);
+  if (!e || e.kind !== "line") return null;
+  const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
+  const d = sub(b, a);
+  const len = Math.hypot(d[0], d[1]);
+  return len > 1e-9 ? { origin: a, dir: [d[0] / len, d[1] / len] } : null;
+}
+
+/** Whether any picked shape lies on both sides of the axis (touching it along a line is fine). */
+export function crossesAxis(list: Profile[], axis: { origin: Vec2; dir: Vec2 }): boolean {
+  return list.some((pr) => {
+    const side = pr.points.map((p) => (p[0] - axis.origin[0]) * axis.dir[1] - (p[1] - axis.origin[1]) * axis.dir[0]);
+    return side.some((v) => v > 1e-6) && side.some((v) => v < -1e-6);
+  });
+}
+
 export type ExtrudeDirection = "one" | "symmetric" | "two";
 export type ExtrudeOperation = "new" | "join" | "cut" | "intersect";
 
@@ -94,7 +130,7 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
 }
 
 /** The picked profiles as lines and arcs. Seeds that no longer land in a profile are reported. */
-export function pickProfiles(sketch: Sketch, seeds: Vec2[]): { shapes: ProfileShape[]; lost: number } {
+export function pickProfiles(sketch: Sketch, seeds: Vec2[]): { shapes: ProfileShape[]; lost: number; picked: Profile[] } {
   const all = regions(sketch);
   const shapes: ProfileShape[] = [];
   const seen = new Set<Profile>();
@@ -109,7 +145,7 @@ export function pickProfiles(sketch: Sketch, seeds: Vec2[]): { shapes: ProfileSh
     seen.add(pr);
     shapes.push({ outer: segsOf(sketch, pr), holes: pr.holes.map((h) => segsOf(sketch, h)), area: pr.area - pr.holes.reduce((a, h) => a + h.area, 0) });
   }
-  return { shapes, lost };
+  return { shapes, lost, picked: [...seen] };
 }
 
 // ------------------------------------------------------------------ placement maths (no three.js here)

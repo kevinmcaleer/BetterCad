@@ -1,12 +1,13 @@
 import type { IconName } from "@bettercad/ui";
 
-export type ToolId = "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "pushpull" | "combine" | "fillet" | "shell" | "hole";
+export type ToolId = "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "revolve" | "pushpull" | "combine" | "fillet" | "shell" | "hole";
 
 export interface Tool {
   id: ToolId;
   label: string;
   icon: IconName;
-  key: string;
+  /** A single-letter shortcut; the rarer tools have none and live in the palette. */
+  key?: string;
   title: string;
   /** The help line under the viewport while the tool is armed. */
   help: string;
@@ -63,7 +64,14 @@ export const TOOLS: Tool[] = [
     title: "Extrude a sketch into a solid",
     help: "Click inside a closed sketch shape to extrude it.",
   },
-  { id: "pushpull", label: "Push/pull", icon: "pushpull", key: "p", title: "Push or pull a face", help: "Click a face and drag it in or out.", epic: 6 },
+  {
+    id: "revolve",
+    label: "Revolve",
+    icon: "revolve",
+    title: "Turn a sketch round an axis into a solid",
+    help: "Click inside a closed sketch shape to revolve it.",
+  },
+  { id: "pushpull", label: "Push/pull", icon: "pushpull", key: "p", title: "Push or pull a face", help: "Click a flat face and drag it in or out." },
   {
     id: "combine",
     label: "Combine",

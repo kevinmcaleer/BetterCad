@@ -167,7 +167,7 @@ function SketchPanel(p: LeftPanelProps) {
               <Icon name={t.icon} />
             </span>
             <span>{t.label}</span>
-            <span className="bc-keys">{t.key.toUpperCase()}</span>
+            {t.key && <span className="bc-keys">{t.key.toUpperCase()}</span>}
           </button>
         ))}
       </div>

@@ -169,3 +169,8 @@
 .bc-sk-fields .bc-field {
   width: 96px;
 }
+/* Why the armed tool's step cannot be made. */
+.bc-armed-note.bc-armed-error {
+  color: var(--bc-color-danger);
+  white-space: normal;
+}

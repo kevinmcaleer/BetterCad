@@ -3,10 +3,17 @@ import { ESC, useEscape } from "@bettercad/ui";
 import { planeFrame, regions, toSketch, type Profile, type Sketch, type Vec2 } from "@bettercad/sketch";
 import {
   addExtrude,
+  addRevolve,
+  axisOf,
+  crossesAxis,
   newId,
   profileAt,
   seedOf,
   updateExtrude,
+  updateRevolve,
+  type AxisRef,
+  type RevolveFeature,
+  type RevolveParams,
   type ExtrudeDirection,
   type ExtrudeFeature,
   type ExtrudeOperation,
@@ -25,6 +32,8 @@ import { SketchOverlay, type OverlayFill } from "../sketch/overlay";
  * keeps it as one undo step, Cancel (or Esc) takes it back.
  */
 export interface ExtrudeDeps {
+  /** Extrude pushes the shapes along the sketch's normal; Revolve (#62) turns them round an axis. */
+  kind: "extrude" | "revolve";
   store: {
     get(): ModelDoc;
     edit(fn: (d: ModelDoc) => ModelDoc, label: string, coalesceKey?: string): void;
@@ -59,7 +68,17 @@ export const OPERATIONS: { id: ExtrudeOperation; label: string; title: string }[
   { id: "intersect", label: "Intersect", title: "Keep only where it overlaps a body" },
 ];
 
-const KEY = (id: string) => `extrude:${id}`;
+const KEY = (id: string) => `profile:${id}`;
+type ProfileFeature = ExtrudeFeature | RevolveFeature;
+type Params = Partial<ExtrudeParams> & Partial<RevolveParams>;
+
+/** A revolve's first axis: a construction line if the sketch has one, else whichever sketch axis the shapes clear. */
+export function defaultAxis(sketch: Sketch, picked: Profile[]): AxisRef {
+  const guide = sketch.entities.find((e) => e.kind === "line" && e.construction);
+  if (guide) return { kind: "line", id: guide.id };
+  for (const a of [{ kind: "y" }, { kind: "x" }] as AxisRef[]) if (!crossesAxis(picked, axisOf(sketch, a)!)) return a;
+  return { kind: "y" };
+}
 
 const outlineFill = (pr: Profile, shade: OverlayFill["shade"]): OverlayFill => ({ outer: pr.points, holes: pr.holes.map((h) => h.points), shade });
 
@@ -73,7 +92,7 @@ export function useExtrude(d: ExtrudeDeps) {
   const [autoOp, setAutoOp] = useState(true);
   const [hover, setHover] = useState<{ sketch: string; profile: Profile } | null>(null);
 
-  const feature = d.doc.features.find((f): f is ExtrudeFeature => f.id === session?.id && f.type === "extrude") ?? null;
+  const feature = d.doc.features.find((f): f is ProfileFeature => f.id === session?.id && f.type === d.kind) ?? null;
   const live = useRef({ session, feature, autoOp });
   live.current = { session, feature, autoOp };
 
@@ -116,26 +135,33 @@ export function useExtrude(d: ExtrudeDeps) {
   );
 
   /** The defaults for a first pick: on a face, Join that face's body; on an origin plane, a new body. */
-  const defaults = useCallback((sketchId: string, seed: Vec2): ExtrudeParams => {
+  const defaults = useCallback((sketchId: string, seed: Vec2, profile: Profile): ExtrudeParams | RevolveParams => {
     const L = deps.current;
     const sk = L.sketches.find((s) => s.id === sketchId)!.sketch;
     const faceBody = sk.plane.kind === "face" ? sk.plane.face.body : undefined;
     const here = (id?: string) => (id && L.parts.some((p) => p.id === id) ? id : undefined);
     const target = here(faceBody) ?? here(L.selection[0]) ?? L.parts[L.parts.length - 1]?.id;
-    return { sketch: sketchId, seeds: [seed], distance: 10, direction: "one", operation: here(faceBody) ? "join" : "new", target };
+    const operation = here(faceBody) ? "join" : "new";
+    if (L.kind === "revolve") return { sketch: sketchId, seeds: [seed], axis: defaultAxis(sk, [profile]), angle: 360, operation, target };
+    return { sketch: sketchId, seeds: [seed], distance: 10, direction: "one", operation, target };
   }, []);
 
   const change = useCallback(
-    (c: Partial<ExtrudeParams>) => {
+    (c: Params) => {
       const s = live.current.session;
       if (!s) return;
       const f = live.current.feature;
       // On a face, pulling out joins and pushing in cuts, until an operation is picked.
-      if (c.distance !== undefined && f && live.current.autoOp && c.operation === undefined) {
+      if (c.distance !== undefined && f?.type === "extrude" && live.current.autoOp && c.operation === undefined) {
         const sk = deps.current.sketches.find((x) => x.id === f.sketch)?.sketch;
         if (sk?.plane.kind === "face" && f.operation !== "new" && f.operation !== "intersect") c = { ...c, operation: c.distance < 0 ? "cut" : "join" };
       }
-      store.edit((doc) => updateExtrude(doc, s.id, c), s.isNew ? "Extrude" : `Edit ${f?.name ?? "extrude"}`, KEY(s.id));
+      const label = deps.current.kind === "revolve" ? "Revolve" : "Extrude";
+      store.edit(
+        (doc) => (deps.current.kind === "revolve" ? updateRevolve(doc, s.id, c) : updateExtrude(doc, s.id, c)),
+        s.isNew ? label : `Edit ${f?.name ?? label.toLowerCase()}`,
+        KEY(s.id),
+      );
     },
     [store],
   );
@@ -145,8 +171,13 @@ export function useExtrude(d: ExtrudeDeps) {
       const L = live.current;
       if (!L.session) {
         const id = newId("f");
-        const params = defaults(h.sketch, seedOf(h.profile));
-        deps.current.record((doc, at) => addExtrude(doc, params, id, newId(), at), "Extrude", KEY(id));
+        const params = defaults(h.sketch, seedOf(h.profile), h.profile);
+        const revolve = deps.current.kind === "revolve";
+        deps.current.record(
+          (doc, at) => (revolve ? addRevolve(doc, params as RevolveParams, id, newId(), at) : addExtrude(doc, params as ExtrudeParams, id, newId(), at)),
+          revolve ? "Revolve" : "Extrude",
+          KEY(id),
+        );
         setSession({ id, isNew: true });
         setAutoOp(true);
         // Digits go straight to the distance.
@@ -212,11 +243,12 @@ export function useExtrude(d: ExtrudeDeps) {
   const done = useCallback(() => {
     const L = live.current;
     // The document, not the last render: Enter in the distance field commits it just before this.
-    const f = L.session && store.get().features.find((x): x is ExtrudeFeature => x.id === L.session!.id && x.type === "extrude");
+    const f = L.session && store.get().features.find((x): x is ProfileFeature => x.id === L.session!.id && (x.type === "extrude" || x.type === "revolve"));
     if (L.session && f) {
       store.seal();
       const n = f.seeds.length;
-      say(`${L.session.isNew ? "Extruded" : "Changed"} ${n === 1 ? "one shape" : `${n} shapes`} ${fmt(f.distance)} mm`);
+      const how = f.type === "revolve" ? `${fmt(f.angle)}°` : `${fmt(f.distance)} mm`;
+      say(`${L.session.isNew ? (f.type === "revolve" ? "Revolved" : "Extruded") : "Changed"} ${n === 1 ? "one shape" : `${n} shapes`} ${how}`);
     }
     setSession(null);
     deps.current.onClose();
@@ -245,9 +277,9 @@ export function useExtrude(d: ExtrudeDeps) {
   const commands = useMemo<Command[]>(
     () => [
       {
-        id: "extrude.done",
+        id: `${d.kind}.done`,
         scope: "model",
-        label: "Finish the extrude",
+        label: `Finish the ${d.kind}`,
         group: "Tools",
         icon: "check",
         // Enter is the editor's tool.confirm, shared with Combine.
@@ -255,7 +287,7 @@ export function useExtrude(d: ExtrudeDeps) {
         when: () => !!live.current.session,
       },
     ],
-    [done],
+    [done, d.kind],
   );
 
   const sketchCount = d.sketches.filter((s) => (regionsOf.get(s.id)?.length ?? 0) > 0).length;
@@ -264,11 +296,13 @@ export function useExtrude(d: ExtrudeDeps) {
     : !sketchCount
       ? "Draw a closed shape in a sketch first. Press K to start one."
       : session
-        ? "Click more shapes to add them, or a picked one to take it out. Enter keeps the extrude, Esc cancels it."
-        : "Click inside a closed sketch shape to extrude it.";
+        ? `Click more shapes to add them, or a picked one to take it out. Enter keeps the ${d.kind}, Esc cancels it.`
+        : `Click inside a closed sketch shape to ${d.kind} it.`;
 
   return {
     active: d.active,
+    kind: d.kind,
+    sketch: feature ? (d.sketches.find((s) => s.id === feature.sketch)?.sketch ?? null) : null,
     session,
     feature,
     picked: picked.length,

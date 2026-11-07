@@ -4,7 +4,18 @@
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
 import { newSketch, planeFrame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
-import { extent, frameToLocal, pickProfiles, type ExtrudeDirection, type ExtrudeOperation, type PrismSpec } from "./extrude";
+import {
+  axisOf,
+  crossesAxis,
+  extent,
+  frameToLocal,
+  pickProfiles,
+  type AxisRef,
+  type ExtrudeDirection,
+  type ExtrudeOperation,
+  type PrismSpec,
+  type RevolveSpec,
+} from "./extrude";
 
 export * from "./extrude";
 
@@ -40,6 +51,8 @@ export interface Part {
   rotation?: Vec3;
   /** A "solid" part's shape: profiles pushed along a sketch's normal (Extrude, #61), in world space before any move. */
   prism?: PrismSpec;
+  /** Or profiles turned round an axis (Revolve, #62). */
+  revolve?: RevolveSpec;
   /** Joins, cuts and intersections made into the part, in its own coordinates, in timeline order. */
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
@@ -49,7 +62,7 @@ export interface Part {
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
 export interface BodyOp {
   /** A boolean with a tool, or a finish on the part's own edges and faces. */
-  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell";
+  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull";
   /** Edges (fillet, chamfer) or faces left open (shell), numbered on the part as it was before this op. */
   refs?: number[];
   /** The fillet radius, chamfer distance or shell wall, mm. */
@@ -58,6 +71,8 @@ export interface BodyOp {
   outside?: boolean;
   /** An extrude's prism, in the part's own coordinates. */
   tool?: PrismSpec;
+  /** Or a revolve's solid, in the part's own coordinates. */
+  rev?: RevolveSpec;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
   body?: Part;
   /** Where the part itself stood when the body was combined into it, so the body moves with the part later. */
@@ -155,7 +170,8 @@ export interface CombineFeature extends FeatureBase {
  * Edges and faces are numbered as the kernel numbers them on the part at that point of the timeline.
  */
 export interface FinishFeature extends FeatureBase {
-  type: "fillet" | "chamfer" | "shell";
+  /** Push/pull (#65) moves one flat face along its normal: out joins, in cuts. Its size is signed. */
+  type: "fillet" | "chamfer" | "shell" | "pushpull";
   part: string;
   /** Edges for fillet and chamfer; faces to leave open for shell. */
   refs: number[];
@@ -164,8 +180,30 @@ export interface FinishFeature extends FeatureBase {
   /** Shell only: grow outward. */
   outside?: boolean;
 }
+/** Revolve (#62): closed shapes of a sketch turned round an axis, made into a new body or combined with one. */
+export interface RevolveFeature extends FeatureBase {
+  type: "revolve";
+  sketch: string;
+  seeds: Vec2[];
+  axis: AxisRef;
+  /** Degrees, 1 to 360. */
+  angle: number;
+  symmetric?: boolean;
+  operation: ExtrudeOperation;
+  target?: string;
+  body: { id: string; name: string };
+}
 export type Feature =
-  AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature | ExtrudeFeature | CombineFeature | FinishFeature;
+  | AddFeature
+  | DuplicateFeature
+  | MoveFeature
+  | ResizeFeature
+  | DeleteFeature
+  | SketchFeature
+  | ExtrudeFeature
+  | RevolveFeature
+  | CombineFeature
+  | FinishFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -212,6 +250,8 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   fillet: "Fillet",
   chamfer: "Chamfer",
   shell: "Shell",
+  pushpull: "Push/pull",
+  revolve: "Revolve",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -323,9 +363,50 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         t.ops = [...(t.ops ?? []), { op: f.operation, tool, feature: f.id }];
         break;
       }
+      case "revolve": {
+        const sk = sketchById.get(f.sketch);
+        if (!sk) {
+          failed.set(f.id, "Its sketch is gone or comes later on the timeline");
+          break;
+        }
+        const { shapes, lost, picked } = pickProfiles(sk, f.seeds);
+        if (!shapes.length) {
+          failed.set(f.id, "The shapes it revolved are no longer closed. Close them in the sketch, or edit the revolve.");
+          break;
+        }
+        if (lost) failed.set(f.id, `${lost === 1 ? "One shape" : `${lost} shapes`} it revolved ${lost === 1 ? "is" : "are"} no longer closed`);
+        const axis = axisOf(sk, f.axis);
+        if (!axis) {
+          failed.set(f.id, "The line it turns round is gone. Pick another axis.");
+          break;
+        }
+        if (crossesAxis(picked, axis)) {
+          failed.set(f.id, "The shape crosses the axis, so it can't be revolved. Move it to one side.");
+          break;
+        }
+        const angle = Math.min(360, Math.max(0, f.angle));
+        if (!(angle > 0)) {
+          failed.set(f.id, "Give it an angle from 1° to 360°");
+          break;
+        }
+        const spec: RevolveSpec = { frame: planeFrame(sk.plane), profiles: shapes, axis, angle, start: f.symmetric && angle < 360 ? -angle / 2 : 0 };
+        if (f.operation === "new") {
+          if (find(f.body.id) < 0)
+            parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: revolveSize(spec), revolve: spec });
+          break;
+        }
+        const t = f.target ? parts[find(f.target)] : undefined;
+        if (!t) {
+          failed.set(f.id, f.target ? "The body it changes is gone" : "Pick the body to change");
+          break;
+        }
+        t.ops = [...(t.ops ?? []), { op: f.operation, rev: { ...spec, frame: frameToLocal(spec.frame, t) }, feature: f.id }];
+        break;
+      }
       case "fillet":
       case "chamfer":
-      case "shell": {
+      case "shell":
+      case "pushpull": {
         const t = parts[find(f.part)];
         if (!t) {
           failed.set(f.id, "The body it changes is gone");
@@ -335,8 +416,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, `Pick at least one edge to ${f.type === "fillet" ? "round" : "bevel"}`);
           break;
         }
-        if (!(f.size > 0)) {
-          failed.set(f.id, "Give it a size above 0 mm");
+        if (f.type === "pushpull" ? !f.refs.length : !(f.size > 0)) {
+          failed.set(f.id, f.type === "pushpull" ? "Pick the face to pull" : "Give it a size above 0 mm");
           break;
         }
         t.ops = [...(t.ops ?? []), { op: f.type, refs: [...f.refs], size: f.size, outside: f.outside, feature: f.id }];
@@ -380,6 +461,23 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   return { parts: looked, sketches, failed };
 }
 
+/** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
+function revolveSize(spec: RevolveSpec): Vec3 {
+  const pts = spec.profiles.flatMap((p) =>
+    p.outer.flatMap((g) => (g.kind === "circle" ? [[g.c[0] + g.r, g.c[1]] as Vec2, [g.c[0] - g.r, g.c[1]] as Vec2] : [g.a, g.b])),
+  );
+  const { origin: o, dir: d } = spec.axis;
+  const r = Math.max(0, ...pts.map((p) => Math.abs((p[0] - o[0]) * d[1] - (p[1] - o[1]) * d[0])));
+  const along = pts.map((p) => (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1]);
+  const [a0, a1] = [Math.min(...along), Math.max(...along)];
+  const f = spec.frame;
+  const y = [f.normal[1] * f.x[2] - f.normal[2] * f.x[1], f.normal[2] * f.x[0] - f.normal[0] * f.x[2], f.normal[0] * f.x[1] - f.normal[1] * f.x[0]];
+  const axisW = [0, 1, 2].map((i) => f.x[i]! * d[0] + y[i]! * d[1]);
+  // Along the axis: its length; across: the radius both ways.
+  const span = (i: number) => Math.round((Math.abs(axisW[i]!) * (a1 - a0) + 2 * r * Math.sqrt(Math.max(0, 1 - axisW[i]! ** 2))) * 1000) / 1000;
+  return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
+}
+
 /** A prism's rough size along X, Y and Z, for the props panel and the gizmo. */
 function prismSize(spec: PrismSpec): Vec3 {
   const pts = spec.profiles.flatMap((p) =>
@@ -403,7 +501,7 @@ function usedNames(doc: ModelDoc): Set<string> {
   for (const f of doc.features) {
     if (f.type === "add") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
-    if (f.type === "extrude" && f.operation === "new") names.add(f.body.name);
+    if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") names.add(f.body.name);
   }
   Object.values(doc.looks).forEach((l) => l.name && names.add(l.name));
   return names;
@@ -587,7 +685,10 @@ export function featureParts(f: Feature): string[] {
     case "fillet":
     case "chamfer":
     case "shell":
+    case "pushpull":
       return [f.part];
+    case "revolve":
+      return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
     default:
       return f.parts;
   }
@@ -606,7 +707,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const g of doc.features) {
     if (g.type === "add") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
-    if (g.type === "extrude" && g.operation === "new") names.set(g.body.id, g.body.name);
+    if ((g.type === "extrude" || g.type === "revolve") && g.operation === "new") names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
@@ -641,6 +742,13 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     case "chamfer": {
       const n = f.refs.length;
       return `${f.type === "fillet" ? "R " : ""}${mm(f.size)}, ${n === 1 ? "1 edge" : `${n} edges`} of ${who([f.part])}`;
+    }
+    case "pushpull":
+      return `${f.size >= 0 ? "Out" : "In"} ${mm(Math.abs(f.size))}, ${who([f.part])}`;
+    case "revolve": {
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(f.target ? [f.target] : [])}`;
+      const axis = f.axis.kind === "line" ? "a sketch line" : `the sketch's ${f.axis.kind.toUpperCase()} axis`;
+      return `${f.angle >= 360 ? "Full turn" : `${Math.round(f.angle * 100) / 100}°${f.symmetric ? " both ways" : ""}`} round ${axis}, ${op}`;
     }
     case "shell": {
       const n = f.refs.length;
@@ -698,13 +806,25 @@ export function updateFinish(doc: ModelDoc, id: string, change: Partial<FinishPa
   return {
     ...doc,
     features: doc.features.map((f) => {
-      if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell")) return f;
+      if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "pushpull")) return f;
       const next = { ...f, ...change } as FinishFeature;
       // Switching between round and bevel renames a step that still has its default name.
       if (change.type && change.type !== f.type && f.name.startsWith(FEATURE_LABEL[f.type])) next.name = nextFeatureName(doc, change.type);
       return next;
     }),
   };
+}
+
+export type RevolveParams = Pick<RevolveFeature, "sketch" | "seeds" | "axis" | "angle" | "symmetric" | "operation" | "target">;
+
+/** Adds a Revolve step. Its new body (when it makes one) gets the part id `bodyId`. */
+export function addRevolve(doc: ModelDoc, params: RevolveParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "revolve", name: nextFeatureName(doc, "revolve"), ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+/** Changes a Revolve step's settings (the tool edits it live, as one undo step). */
+export function updateRevolve(doc: ModelDoc, id: string, change: Partial<RevolveParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "revolve" ? { ...f, ...change } : f)) };
 }
 
 export type CombineParams = Pick<CombineFeature, "mode" | "target" | "tools" | "keepTools">;

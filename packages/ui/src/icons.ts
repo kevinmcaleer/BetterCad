@@ -96,6 +96,7 @@ export const cylinder = "M4 6a8 3 0 1 0 16 0a8 3 0 1 0-16 0M4 6v12a8 3 0 0 0 16 
 export const sphere = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12a9 3.5 0 0 0 18 0";
 export const cone = "M12 3 4 18M12 3l8 15M4 18a8 3 0 0 0 16 0a8 3 0 0 0-16 0";
 export const torus = "M2 12a10 5 0 1 0 20 0a10 5 0 1 0-20 0M8 11.5a4 1.6 0 0 0 8 0M9.2 12.6a3.2 1.2 0 0 1 5.6 0";
+export const revolve = "M12 2v20M5 10a7 3 0 1 0 7-3M9 4.5 12 7l-2.8 2.4";
 export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
 export const wedge = "M3 20h12L3 8zM8 4v12h12M3 8l5-4M15 20l5-4M3 20l5-4";
@@ -217,6 +218,7 @@ export const ICONS = {
   wedge,
   chamfer,
   shell,
+  revolve,
   settings,
   history,
   search,
