@@ -19,12 +19,13 @@ export interface AppShellProps {
 }
 
 /**
- * The editor frame: top bar, then rail | left panel | stage | props panel. Later epics only fill the slots.
- * Under 900px the rail moves to the bottom and the panels become sheets over the stage.
+ * The editor frame. The 3D view fills the whole window; the top bar, rail, panels, tool bars and timeline float
+ * over it and never box it in. Later epics only fill the slots.
+ * Under 900px the rail floats along the bottom and the panels become sheets over the view.
  */
 export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
   return (
-    <div className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open")}>
+    <div className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", !timeline && "bc-no-timeline")}>
       <a className="bc-skip" href="#bc-view">
         Skip to the 3D view
       </a>
@@ -37,12 +38,16 @@ export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, sta
           </aside>
         )}
         <main className="bc-stage" aria-label="Stage">
-          <div className="bc-stage-bars">{stageToolbar}</div>
+          <div className="bc-stage-bars" data-floats="">
+            {stageToolbar}
+          </div>
           {stage}
-          {timeline}
-          <div className="bc-help">{helpLine}</div>
+          <div className="bc-stage-foot" data-floats="">
+            {timeline}
+            <div className="bc-help">{helpLine}</div>
+          </div>
         </main>
-        {rightPanel}
+        <div className="bc-right">{rightPanel}</div>
       </div>
     </div>
   );

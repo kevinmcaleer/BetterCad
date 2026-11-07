@@ -15,6 +15,12 @@ The source of truth is the design system artifact: https://claude.ai/artifact/Mf
 2. Run `npm run tokens` from the repo root.
 3. Run `npm test`: the contrast test fails if a text pair drops under 4.5:1 in any theme. Fix the token in the design system, not here.
 
+## Layout
+
+The 3D workspace fills the whole window. Everything else floats over it: the top bar, the rail, the side panels, the tool bars, the timeline, the help line and any overlay are cards (`--bc-color-bar`, a 1px `--bc-color-line` border, `--bc-radius-lg`, `--bc-shadow-float`) set `--bc-space-4` in from the window edge and from each other. Nothing docks beside the view or frames it. Panels are as tall as their content, so more of the model shows.
+
+In the editor, `.bc-app` sets `--bc-view-top`, `--bc-view-left`, `--bc-view-right` and `--bc-view-bottom`: the part of the view no card covers. Anything drawn inside the view (the view cube, hints, the empty state, stats) uses them to stay clear. Under 900px the rail floats along the bottom and the panels are sheets just above it.
+
 ## Variables
 
 | Token family | CSS variable |
