@@ -102,7 +102,8 @@ export class Properties {
   constructor(readonly page: Page) {}
   /** Selects a part in the browser, so Properties shows it. */
   async select(name: RegExp) {
-    if (!(await this.page.getByRole("treeitem", { name }).count())) await this.page.getByRole("banner").getByRole("button", { name: "Browser", exact: true }).click();
+    if (!(await this.page.getByRole("treeitem", { name }).count()))
+      await this.page.getByRole("banner").getByRole("button", { name: "Browser", exact: true }).click();
     await this.page.getByRole("treeitem", { name }).click();
   }
   value(text: string | RegExp) {

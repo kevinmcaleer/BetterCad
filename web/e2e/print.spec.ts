@@ -2,7 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { Editor } from "./pages/editor";
 
 const openPrint = async (page: Page) => {
-  if (!(await page.getByLabel("Printer", { exact: true }).isVisible())) await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
+  if (!(await page.getByLabel("Printer", { exact: true }).isVisible()))
+    await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
   await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
 };
 
