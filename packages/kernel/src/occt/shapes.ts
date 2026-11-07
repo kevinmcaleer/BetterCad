@@ -1,8 +1,8 @@
 import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
-import { toWorld, type Vec2 } from "@bettercad/sketch";
-import type { PrismSpec, ProfileSeg } from "../extrude";
+import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
+import type { PrismSpec, ProfileSeg, RevolveSpec } from "../extrude";
 
 /**
  * Making and changing solids with OpenCascade. Every function takes the loaded OC instance and returns a new shape;
@@ -167,7 +167,7 @@ export function prism(oc: OC, profile: TopoDS_Shape, vector: [number, number, nu
 }
 
 /** A closed outline of lines and arcs on a sketch frame, as a wire in world space. */
-function outlineWire(oc: OC, spec: PrismSpec, segs: ProfileSeg[], lift: number): TopoDS_Shape {
+function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: number): TopoDS_Shape {
   const f = spec.frame;
   const P = (p: Vec2) => {
     const w = toWorld(f, p);
@@ -208,6 +208,55 @@ export function prismOf(oc: OC, spec: PrismSpec): TopoDS_Shape {
   });
   if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to extrude.");
   return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1));
+}
+
+/**
+ * Revolve (#62): each profile turned round an axis in its sketch plane, holes cut, profiles joined. A symmetric
+ * revolve starts half its angle back.
+ */
+export function revolveOf(oc: OC, spec: RevolveSpec): TopoDS_Shape {
+  if (!(spec.angle > 0 && spec.angle <= 360)) throw new KernelError("invalid-size", "A revolve needs an angle from 1° to 360°.");
+  const f = spec.frame;
+  const o = toWorld(f, spec.axis.origin);
+  const tip = toWorld(f, [spec.axis.origin[0] + spec.axis.dir[0], spec.axis.origin[1] + spec.axis.dir[1]]);
+  const dir: [number, number, number] = [tip[0] - o[0], tip[1] - o[1], tip[2] - o[2]];
+  const solidOf = (segs: ProfileSeg[]) =>
+    guard(oc, "open-profile", "This shape could not be filled. Check it is closed and does not cross itself.", () => {
+      const mk = new oc.BRepBuilderAPI_MakeFace(oc.TopoDS.Wire(outlineWire(oc, spec, segs, 0)), true);
+      if (!mk.IsDone()) throw new KernelError("open-profile", "This shape could not be filled. Check it is closed and does not cross itself.");
+      let face: TopoDS_Shape = mk.Face();
+      if (spec.start) {
+        const t = new oc.gp_Trsf();
+        t.SetRotation(new oc.gp_Ax1(new oc.gp_Pnt(...o), new oc.gp_Dir(...dir)), spec.start * DEG);
+        face = new oc.BRepBuilderAPI_Transform(face, t, true, false).Shape();
+      }
+      const out = revolve(oc, face, o, dir, spec.angle);
+      return out;
+    });
+  const bodies = spec.profiles.map((p) => {
+    const outer = solidOf(p.outer);
+    return p.holes.length ? boolean(oc, "cut", outer, p.holes.map(solidOf)) : outer;
+  });
+  if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to revolve.");
+  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1));
+}
+
+/**
+ * Push/pull (#65): a flat face pushed along its outward normal by `distance`. Out joins the slab to the body; in
+ * cuts it away, so a box grows or shrinks and a pocket fills or deepens.
+ */
+export function pushPull(oc: OC, shape: TopoDS_Shape, faceIndex: number, distance: number): TopoDS_Shape {
+  if (!(Math.abs(distance) > 1e-9)) return shape;
+  const f = elements(oc, shape, "face")[faceIndex];
+  if (!f) throw new KernelError("reference-missing", "The face it pulls is not there any more. Pick it again.");
+  const face = oc.TopoDS.Face(f);
+  const surf = new oc.BRepAdaptor_Surface(face, true);
+  if (surf.GetType() !== oc.GeomAbs_SurfaceType.GeomAbs_Plane) throw new KernelError("failed", "Push/pull works on flat faces.");
+  const d = surf.Plane().Axis().Direction();
+  const flip = face.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1;
+  const n: [number, number, number] = [d.X() * flip, d.Y() * flip, d.Z() * flip];
+  const slab = prism(oc, face, [n[0] * distance, n[1] * distance, n[2] * distance]);
+  return boolean(oc, distance > 0 ? "join" : "cut", shape, [slab]);
 }
 
 /** Turns a face round an axis through `origin` along `dir`, by `degrees`. */

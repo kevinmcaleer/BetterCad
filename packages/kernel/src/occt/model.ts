@@ -1,6 +1,24 @@
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
-import { boolean, box, chamfer, cone, cylinder, fillet, measure, place, prismOf, shell, sphere, torus, unplace, wedge, type Measure } from "./shapes";
+import {
+  boolean,
+  box,
+  chamfer,
+  cone,
+  cylinder,
+  fillet,
+  measure,
+  place,
+  prismOf,
+  pushPull,
+  revolveOf,
+  shell,
+  sphere,
+  torus,
+  unplace,
+  wedge,
+  type Measure,
+} from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
 import { build, type ModelDoc, type Part } from "../document";
 import type { BodyMesh } from "../mesh";
@@ -24,17 +42,19 @@ export interface ModelResult {
 }
 
 const key = (p: Part, q: Quality) =>
-  JSON.stringify([p.kind, p.kind === "solid" ? null : p.size, p.position, p.rotation ?? null, p.prism ?? null, p.ops ?? null, q]);
+  JSON.stringify([p.kind, p.kind === "solid" ? null : p.size, p.position, p.rotation ?? null, p.prism ?? null, p.revolve ?? null, p.ops ?? null, q]);
 
 /** Steps that made a part, so a part that cannot be built marks its tile. */
 const makers = (doc: ModelDoc, id: string) =>
-  doc.features.find((x) => (x.type === "add" && x.part.id === id) || (x.type === "extrude" && x.operation === "new" && x.body.id === id));
+  doc.features.find(
+    (x) => (x.type === "add" && x.part.id === id) || ((x.type === "extrude" || x.type === "revolve") && x.operation === "new" && x.body.id === id),
+  );
 
 /** A part's own shape, before any join, cut or move. */
 function primitive(oc: OC, p: Part): TopoDS_Shape {
   switch (p.kind) {
     case "solid":
-      return prismOf(oc, p.prism!);
+      return p.revolve ? revolveOf(oc, p.revolve) : prismOf(oc, p.prism!);
     case "box":
       return box(oc, p.size);
     case "cylinder":
@@ -71,9 +91,14 @@ export class ModelBuilder {
         try {
           if (o.op === "fillet" || o.op === "chamfer") local = (o.op === "fillet" ? fillet : chamfer)(oc, local, o.refs ?? [], o.size ?? 0);
           else if (o.op === "shell") local = shell(oc, local, o.refs ?? [], o.size ?? 0, o.outside);
+          else if (o.op === "pushpull") local = pushPull(oc, local, o.refs?.[0] ?? -1, o.size ?? 0);
           else {
             // A body is built where it stood, then taken into this part's coordinates as they were then.
-            const tool = o.body ? unplace(oc, this.solid(o.body, quality).shape, o.at ?? { position: p.position, rotation: p.rotation }) : prismOf(oc, o.tool!);
+            const tool = o.body
+              ? unplace(oc, this.solid(o.body, quality).shape, o.at ?? { position: p.position, rotation: p.rotation })
+              : o.rev
+                ? revolveOf(oc, o.rev)
+                : prismOf(oc, o.tool!);
             local = boolean(oc, o.op, local, [tool]);
           }
         } catch (e) {

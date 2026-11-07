@@ -3,7 +3,25 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { loadOCCT, type OC } from "./occt/oc";
-import { boolean, box, chamfer, cone, cylinder, fillet, measure, place, prismOf, shell, sphere, torus, valid, wedge, type TopoDS_Shape } from "./occt/shapes";
+import {
+  boolean,
+  box,
+  chamfer,
+  cone,
+  cylinder,
+  fillet,
+  measure,
+  place,
+  prismOf,
+  pushPull,
+  revolveOf,
+  shell,
+  sphere,
+  torus,
+  valid,
+  wedge,
+  type TopoDS_Shape,
+} from "./occt/shapes";
 import type { PrismSpec, ProfileSeg } from "./extrude";
 import { tessellate } from "./occt/tessellate";
 import { meshVolume, triangleCount } from "./mesh";
@@ -28,6 +46,11 @@ const rect = (w: number, h: number): ProfileSeg[] => [
   { kind: "line", a: [w, h], b: [0, h] },
   { kind: "line", a: [0, h], b: [0, 0] },
 ];
+
+const XZ = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, -1, 0] } as PrismSpec["frame"];
+const Z_AXIS = { origin: [0, 0] as [number, number], dir: [0, 1] as [number, number] };
+const rectAt = (x: number, y: number, w: number, h: number): ProfileSeg[] =>
+  rect(w, h).map((g) => (g.kind === "line" ? { kind: "line", a: [g.a[0] + x, g.a[1] + y], b: [g.b[0] + x, g.b[1] + y] } : g));
 
 const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   box: (oc) => box(oc, { x: 20, y: 10, z: 5 }),
@@ -76,6 +99,16 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   tray: (oc) => shell(oc, fillet(oc, box(oc, { x: 40, y: 30, z: 15 }), [...Array(12).keys()], 3), [], 1.2),
   "hollow-sphere": (oc) => shell(oc, sphere(oc, { x: 20, y: 20, z: 20 }), [], 1),
   "shell-outside": (oc) => shell(oc, box(oc, { x: 20, y: 20, z: 20 }), [5], 2, true),
+  // Revolve (#62): a 10 × 30 mm rectangle beside the Z axis, a full turn and a quarter; a groove cut into a cylinder.
+  "revolve-full": (oc) => revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(5, 0, 10, 30), holes: [], area: 300 }], axis: Z_AXIS, angle: 360 }),
+  "revolve-quarter": (oc) => revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(5, 0, 10, 30), holes: [], area: 300 }], axis: Z_AXIS, angle: 90 }),
+  "revolve-groove": (oc) =>
+    boolean(oc, "cut", cylinder(oc, { x: 20, y: 20, z: 30 }), [
+      revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(8, 10, 4, 4), holes: [], area: 16 }], axis: Z_AXIS, angle: 360 }),
+    ]),
+  // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
+  "pushpull-out": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, 5),
+  "pushpull-in": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, -5),
   // Group (#66): a box with two hole cylinders is the box less both.
   group: (oc) =>
     boolean(oc, "cut", box(oc, { x: 40, y: 20, z: 10 }), [

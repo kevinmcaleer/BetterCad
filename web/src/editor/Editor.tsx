@@ -50,6 +50,8 @@ import { ExtrudeBar } from "../extrude/ExtrudeUI";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
 import { FinishBar } from "../finish/FinishBar";
+import { usePushPull } from "../finish/usePushPull";
+import { PushPullBar } from "../finish/PushPullBar";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -209,6 +211,7 @@ export function Editor() {
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
 
   const extrude = useExtrude({
+    kind: "extrude",
     store,
     record,
     doc,
@@ -222,6 +225,33 @@ export function Editor() {
     theme: resolved,
   });
   useEffect(() => registry.register(extrude.commands), [registry, extrude.commands]);
+
+  const revolve = useExtrude({
+    kind: "revolve",
+    store,
+    record,
+    doc,
+    sketches: built.sketches,
+    parts,
+    selection,
+    view: vp.ref,
+    active: tool === "revolve" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+    theme: resolved,
+  });
+  useEffect(() => registry.register(revolve.commands), [registry, revolve.commands]);
+
+  const pushpull = usePushPull({
+    store,
+    record,
+    doc,
+    parts,
+    view: vp.ref,
+    active: tool === "pushpull" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+  });
 
   const finish = useFinish({
     record,
@@ -489,7 +519,18 @@ export function Editor() {
     group,
     ungroup,
     toggleHole,
-    confirm: () => (extrude.session ? extrude.done() : tool === "combine" ? combine(selection, combineOp, keepTools) : finish.tool ? finish.done() : undefined),
+    confirm: () =>
+      extrude.session
+        ? extrude.done()
+        : revolve.session
+          ? revolve.done()
+          : pushpull.session
+            ? pushpull.done()
+            : tool === "combine"
+              ? combine(selection, combineOp, keepTools)
+              : finish.tool
+                ? finish.done()
+                : undefined,
   };
 
   useEffect(() => {
@@ -552,7 +593,7 @@ export function Editor() {
         label: t.label,
         group: "Tools",
         icon: t.icon,
-        keys: [t.key],
+        keys: t.key ? [t.key] : undefined,
         run: () => h().armTool(t.id),
         keywords: t.title,
       })),
@@ -595,7 +636,7 @@ export function Editor() {
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -714,6 +755,20 @@ export function Editor() {
             },
           ]
         : []),
+      ...(f.type === "revolve"
+        ? [
+            {
+              id: "edit",
+              label: "Edit revolve",
+              icon: "revolve" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("revolve");
+                revolve.edit(id);
+              },
+            },
+          ]
+        : []),
       { id: "roll", label: "Roll to here", icon: "history", disabled: i + 1 === at, onSelect: () => moveMarker(i + 1) },
       {
         id: "rename",
@@ -787,8 +842,8 @@ export function Editor() {
         : `${selectedParts.length} parts selected.`;
   const helpText = sketch.help
     ? sketch.help
-    : extrude.help
-      ? extrude.help
+    : extrude.help || revolve.help || pushpull.help
+      ? extrude.help || revolve.help || pushpull.help
       : finish.help
         ? finish.help
         : vp.elementText
@@ -878,7 +933,11 @@ export function Editor() {
             <>
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
-              {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} />}
+              {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />}
+              {tool === "revolve" && <ExtrudeBar x={revolve} parts={parts} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />}
+              {tool === "pushpull" && (
+                <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
+              )}
               {(tool === "fillet" || tool === "shell") && <FinishBar f={finish} onCancel={() => setTool("select")} />}
               {tool === "combine" && (
                 <CombineBar

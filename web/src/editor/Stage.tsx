@@ -12,7 +12,7 @@ export interface StageBarsProps {
 }
 
 const toolButton = (t: Tool, active: ToolId, onArm: (t: ToolId) => void) => (
-  <ToolButton key={t.id} icon={t.icon} label={t.label} shortcut={t.key.toUpperCase()} pressed={active === t.id} showLabel onPress={() => onArm(t.id)} />
+  <ToolButton key={t.id} icon={t.icon} label={t.label} shortcut={t.key?.toUpperCase()} pressed={active === t.id} showLabel onPress={() => onArm(t.id)} />
 );
 
 /** The floating tool bars over the viewport, and the armed tool's options strip. */
