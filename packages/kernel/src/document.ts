@@ -48,7 +48,14 @@ export interface Part {
 
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
 export interface BodyOp {
-  op: "join" | "cut" | "intersect";
+  /** A boolean with a tool, or a finish on the part's own edges and faces. */
+  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell";
+  /** Edges (fillet, chamfer) or faces left open (shell), numbered on the part as it was before this op. */
+  refs?: number[];
+  /** The fillet radius, chamfer distance or shell wall, mm. */
+  size?: number;
+  /** A shell that grows outward instead of keeping the outer size. */
+  outside?: boolean;
   /** An extrude's prism, in the part's own coordinates. */
   tool?: PrismSpec;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
@@ -143,7 +150,22 @@ export interface CombineFeature extends FeatureBase {
   /** Leave the tool bodies in the model (Combine only). */
   keepTools?: boolean;
 }
-export type Feature = AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature | ExtrudeFeature | CombineFeature;
+/**
+ * Fillet and chamfer (#67) round or bevel a part's edges; Shell (#68) hollows it to a wall, leaving faces open.
+ * Edges and faces are numbered as the kernel numbers them on the part at that point of the timeline.
+ */
+export interface FinishFeature extends FeatureBase {
+  type: "fillet" | "chamfer" | "shell";
+  part: string;
+  /** Edges for fillet and chamfer; faces to leave open for shell. */
+  refs: number[];
+  /** Radius, distance or wall thickness, mm. */
+  size: number;
+  /** Shell only: grow outward. */
+  outside?: boolean;
+}
+export type Feature =
+  AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature | ExtrudeFeature | CombineFeature | FinishFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -187,6 +209,9 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   sketch: "Sketch",
   extrude: "Extrude",
   combine: "Combine",
+  fillet: "Fillet",
+  chamfer: "Chamfer",
+  shell: "Shell",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -296,6 +321,25 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         const tool: PrismSpec = { ...spec, frame: frameToLocal(spec.frame, t) };
         t.ops = [...(t.ops ?? []), { op: f.operation, tool, feature: f.id }];
+        break;
+      }
+      case "fillet":
+      case "chamfer":
+      case "shell": {
+        const t = parts[find(f.part)];
+        if (!t) {
+          failed.set(f.id, "The body it changes is gone");
+          break;
+        }
+        if (f.type !== "shell" && !f.refs.length) {
+          failed.set(f.id, `Pick at least one edge to ${f.type === "fillet" ? "round" : "bevel"}`);
+          break;
+        }
+        if (!(f.size > 0)) {
+          failed.set(f.id, "Give it a size above 0 mm");
+          break;
+        }
+        t.ops = [...(t.ops ?? []), { op: f.type, refs: [...f.refs], size: f.size, outside: f.outside, feature: f.id }];
         break;
       }
       case "combine": {
@@ -540,6 +584,10 @@ export function featureParts(f: Feature): string[] {
       return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
     case "combine":
       return [f.target];
+    case "fillet":
+    case "chamfer":
+    case "shell":
+      return [f.part];
     default:
       return f.parts;
   }
@@ -589,6 +637,15 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(f.target ? [f.target] : [])}`;
       return `${mm(f.distance)}${how}, ${op}`;
     }
+    case "fillet":
+    case "chamfer": {
+      const n = f.refs.length;
+      return `${f.type === "fillet" ? "R " : ""}${mm(f.size)}, ${n === 1 ? "1 edge" : `${n} edges`} of ${who([f.part])}`;
+    }
+    case "shell": {
+      const n = f.refs.length;
+      return `${mm(f.size)} wall${f.outside ? " outside" : ""}, ${n ? `${n === 1 ? "1 face" : `${n} faces`} open` : "sealed"}, ${who([f.part])}`;
+    }
     case "combine": {
       const n = f.tools.length;
       const holes = f.tools.filter((x) => x.op === "cut").length;
@@ -627,6 +684,27 @@ export function addExtrude(doc: ModelDoc, params: ExtrudeParams, id = newId("f")
 /** Changes an Extrude step's settings (the dialog edits it live, as one undo step). */
 export function updateExtrude(doc: ModelDoc, id: string, change: Partial<ExtrudeParams>): ModelDoc {
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "extrude" ? { ...f, ...change } : f)) };
+}
+
+export type FinishParams = Pick<FinishFeature, "type" | "part" | "refs" | "size" | "outside">;
+
+/** Adds a Fillet, Chamfer or Shell step at `at` (the marker), or at the end. */
+export function addFinish(doc: ModelDoc, params: FinishParams, id = newId("f"), at?: number): ModelDoc {
+  return insert(doc, at, { id, name: nextFeatureName(doc, params.type), ...params });
+}
+
+/** Changes a Fillet, Chamfer or Shell step (the tool edits it live, as one undo step). */
+export function updateFinish(doc: ModelDoc, id: string, change: Partial<FinishParams>): ModelDoc {
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell")) return f;
+      const next = { ...f, ...change } as FinishFeature;
+      // Switching between round and bevel renames a step that still has its default name.
+      if (change.type && change.type !== f.type && f.name.startsWith(FEATURE_LABEL[f.type])) next.name = nextFeatureName(doc, change.type);
+      return next;
+    }),
+  };
 }
 
 export type CombineParams = Pick<CombineFeature, "mode" | "target" | "tools" | "keepTools">;

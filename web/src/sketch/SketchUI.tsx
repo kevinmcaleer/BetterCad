@@ -1,5 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { ArmedBar, Banner, Button, MenuButton, NumberField, PropRow, PropsPanel, ToolButton, Toolbar, type PropsSection } from "@bettercad/ui";
+import { ArmedBar, Banner, Button, MenuButton, NumberField, evaluate, PropRow, PropsPanel, ToolButton, Toolbar, type PropsSection } from "@bettercad/ui";
 import {
   CONSTRAINT_LABEL,
   SketchIndex,
@@ -30,8 +30,19 @@ export function SketchBars({ s }: { s: SketchSession }) {
   const tool = toolById(s.stool);
   const drawing = isDrawTool(s.stool);
   const onFieldKey = (e: ReactKeyboardEvent) => {
-    // The field takes its value on Enter; the shape is made just after.
-    if (e.key === "Enter") setTimeout(s.commitTyped, 0);
+    if (e.key !== "Enter") return;
+    // The shape is made with what the field holds now, which its own commit has not rendered yet.
+    const el = e.target as HTMLInputElement;
+    const i = Number(el.closest("[data-field]")?.getAttribute("data-field"));
+    let v: number | undefined;
+    try {
+      v = el.value.trim() ? evaluate(el.value) : undefined;
+    } catch {
+      return;
+    }
+    const typed = Number.isInteger(i) && v !== undefined && v > 0 ? Object.assign([...s.typed], { [i]: v }) : undefined;
+    // Now, not after a timeout: an Esc pressed straight after would clear the shape first.
+    s.commitTyped(typed);
   };
   return (
     <>
@@ -60,14 +71,16 @@ export function SketchBars({ s }: { s: SketchSession }) {
         {drawing && tool.fields.length > 0 && (
           <span className="bc-sk-fields" onKeyDown={onFieldKey}>
             {tool.fields.map((f, i) => (
-              <NumberField
-                key={`${s.stool}-${f}`}
-                id={`bc-sk-field-${i}`}
-                label={f}
-                value={s.typed[i] ?? (s.clicks.length ? round(s.previewValues[i]) : null)}
-                min={0.001}
-                onCommit={(v) => s.setTyped((t) => Object.assign([...t], { [i]: v }))}
-              />
+              <span key={`${s.stool}-${f}`} data-field={i}>
+                <NumberField
+                  key={`${s.stool}-${f}`}
+                  id={`bc-sk-field-${i}`}
+                  label={f}
+                  value={s.typed[i] ?? (s.clicks.length ? round(s.previewValues[i]) : null)}
+                  min={0.001}
+                  onCommit={(v) => s.setTyped((t) => Object.assign([...t], { [i]: v }))}
+                />
+              </span>
             ))}
           </span>
         )}

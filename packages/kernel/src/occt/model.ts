@@ -1,6 +1,6 @@
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
-import { boolean, box, cone, cylinder, measure, place, prismOf, sphere, torus, unplace, wedge, type Measure } from "./shapes";
+import { boolean, box, chamfer, cone, cylinder, fillet, measure, place, prismOf, shell, sphere, torus, unplace, wedge, type Measure } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
 import { build, type ModelDoc, type Part } from "../document";
 import type { BodyMesh } from "../mesh";
@@ -69,9 +69,13 @@ export class ModelBuilder {
       let local = primitive(oc, p);
       for (const o of p.ops ?? []) {
         try {
-          // A body is built where it stood, then taken into this part's coordinates as they were then.
-          const tool = o.body ? unplace(oc, this.solid(o.body, quality).shape, o.at ?? { position: p.position, rotation: p.rotation }) : prismOf(oc, o.tool!);
-          local = boolean(oc, o.op, local, [tool]);
+          if (o.op === "fillet" || o.op === "chamfer") local = (o.op === "fillet" ? fillet : chamfer)(oc, local, o.refs ?? [], o.size ?? 0);
+          else if (o.op === "shell") local = shell(oc, local, o.refs ?? [], o.size ?? 0, o.outside);
+          else {
+            // A body is built where it stood, then taken into this part's coordinates as they were then.
+            const tool = o.body ? unplace(oc, this.solid(o.body, quality).shape, o.at ?? { position: p.position, rotation: p.rotation }) : prismOf(oc, o.tool!);
+            local = boolean(oc, o.op, local, [tool]);
+          }
         } catch (e) {
           this.opFailures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
         }

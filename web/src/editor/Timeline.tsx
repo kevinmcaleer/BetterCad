@@ -12,6 +12,9 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   sketch: "sketch",
   extrude: "extrude",
   combine: "combine",
+  fillet: "fillet",
+  chamfer: "chamfer",
+  shell: "shell",
 };
 
 /** The icon for a kind of part. */
