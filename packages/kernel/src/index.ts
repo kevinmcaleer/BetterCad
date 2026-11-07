@@ -1,7 +1,10 @@
 /**
- * The OpenCascade kernel (epic #4) will live here, in a Web Worker. For now this package holds the status stub the
- * app imports and the WASM loading helper the kernel and its tests will share.
+ * The modelling kernel. OpenCascade (epic #4) will run in a Web Worker behind this package; until it lands, the
+ * placeholder primitives are tessellated here in the same BodyMesh shape the worker will hand the viewport.
  */
+export * from "./mesh";
+export * from "./primitives";
+
 export interface KernelStatus {
   ready: boolean;
   engine: "opencascade.js";

@@ -5,7 +5,7 @@ export interface PropertiesProps {
   parts: Part[];
   totalParts: number;
   /** Live change to every selected part; merges into one undo step until onCommit. */
-  onChange: (key: "position" | "size", axis: keyof Vec3, value: number) => void;
+  onChange: (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => void;
   onCommit: () => void;
 }
 
@@ -13,9 +13,10 @@ const AXES: (keyof Vec3)[] = ["x", "y", "z"];
 const SIZE_LABEL: Record<keyof Vec3, string> = { x: "W", y: "D", z: "H" };
 
 /** The value all parts share, or null (shown as "–") when they differ. */
-function shared(parts: Part[], key: "position" | "size", axis: keyof Vec3): number | null {
-  const first = parts[0]![key][axis];
-  return parts.every((p) => p[key][axis] === first) ? first : null;
+function shared(parts: Part[], key: "position" | "size" | "rotation", axis: keyof Vec3): number | null {
+  const of = (p: Part) => (key === "rotation" ? (p.rotation?.[axis] ?? 0) : p[key][axis]);
+  const first = of(parts[0]!);
+  return parts.every((p) => of(p) === first) ? first : null;
 }
 
 /** The right column: the selection's properties, or a summary of the model. */
@@ -42,7 +43,7 @@ export function Properties({ parts, totalParts, onChange, onCommit }: Properties
     );
   }
   const one = parts.length === 1 ? parts[0]! : null;
-  const fields = (key: "position" | "size") => (
+  const fields = (key: "position" | "size" | "rotation") => (
     <Fields>
       {AXES.map((a) => (
         <NumberField
@@ -50,6 +51,7 @@ export function Properties({ parts, totalParts, onChange, onCommit }: Properties
           label={key === "size" ? SIZE_LABEL[a] : a.toUpperCase()}
           value={shared(parts, key, a)}
           min={key === "size" ? 0.01 : undefined}
+          unit={key === "rotation" ? "°" : "mm"}
           onChange={(v) => onChange(key, a, v)}
           onCommit={onCommit}
         />
@@ -78,6 +80,7 @@ export function Properties({ parts, totalParts, onChange, onCommit }: Properties
         </>
       ),
     },
+    { id: "rotation", title: "Rotation", content: fields("rotation") },
   ];
   return <PropsPanel sections={sections} />;
 }

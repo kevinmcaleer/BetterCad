@@ -1,6 +1,6 @@
 import type { IconName } from "@bettercad/ui";
 
-export type ToolId = "select" | "move" | "turn" | "sketch" | "extrude" | "pushpull" | "combine" | "fillet" | "hole";
+export type ToolId = "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "pushpull" | "combine" | "fillet" | "hole";
 
 export interface Tool {
   id: ToolId;
@@ -29,8 +29,7 @@ export const TOOLS: Tool[] = [
     icon: "move",
     key: "m",
     title: "Move the selected part",
-    help: "Drag an arrow to move along it. Shift snaps to 5 mm steps.",
-    epic: 6,
+    help: "Click a part, then drag an arrow to move it. Shift snaps to 5 mm steps.",
   },
   {
     id: "turn",
@@ -38,8 +37,15 @@ export const TOOLS: Tool[] = [
     icon: "rotate",
     key: "r",
     title: "Turn the selected part",
-    help: "Drag a ring to turn round it. Shift snaps to 15° steps.",
-    epic: 6,
+    help: "Click a part, then drag a ring to turn it. Shift snaps to 15° steps.",
+  },
+  {
+    id: "section",
+    label: "Section",
+    icon: "section",
+    key: "x",
+    title: "Cut the view open",
+    help: "Click a face to cut through it, then drag the arrow or type how far.",
   },
   {
     id: "sketch",
@@ -73,7 +79,7 @@ export const TOOLS: Tool[] = [
   { id: "hole", label: "Hole", icon: "hole", key: "h", title: "Make a hole", help: "Click a face where the hole goes.", epic: 6 },
 ];
 
-export const VIEW_TOOLS = TOOLS.filter((t) => t.id === "select" || t.id === "move" || t.id === "turn");
+export const VIEW_TOOLS = TOOLS.filter((t) => t.id === "select" || t.id === "move" || t.id === "turn" || t.id === "section");
 export const MODEL_TOOLS = TOOLS.filter((t) => !VIEW_TOOLS.includes(t));
 
 export type ViewId = "iso" | "front" | "side" | "top";

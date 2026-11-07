@@ -25,11 +25,13 @@ import {
 import type { ThemeSetting } from "../state/theme";
 import { useTheme } from "../state/useTheme";
 import { createRegistry, formatCombo, type Command, type CommandContext } from "../state/commands";
-import { TOOLS, VIEWS, type ToolId, type ViewId } from "./tools";
+import { TOOLS, type ToolId } from "./tools";
 import { AppShell } from "./AppShell";
 import { TopBar } from "./TopBar";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
-import { StageBars, Viewport } from "./Stage";
+import { StageBars } from "./Stage";
+import { useViewport } from "./useViewport";
+import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
 import { CommandPalette } from "./CommandPalette";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -102,11 +104,10 @@ export function Editor() {
   const [panel, setPanel] = useState<PanelId | null>(() => (window.matchMedia?.(NARROW).matches ? null : "parts"));
   const [propsOpen, setPropsOpen] = useState(false);
   const [tool, setTool] = useState<ToolId>("select");
-  const [view, setView] = useState<ViewId>("iso");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolved } = useTheme();
   const [status, say] = useStatus();
 
   // The registry reads the latest state through a ref, so commands are registered once.
@@ -161,6 +162,20 @@ export function Editor() {
     },
     [store],
   );
+
+  const vp = useViewport({
+    doc,
+    parts,
+    selection,
+    setSelection,
+    tool,
+    theme: resolved,
+    record,
+    editDoc: store.edit,
+    say,
+  });
+  live.current.dialogOpen ||= vp.namingOpen;
+  useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
 
   const showPanel = useCallback((id: PanelId | null) => {
     setPanel(id);
@@ -304,7 +319,14 @@ export function Editor() {
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
   useEscape(tool !== "select", () => setTool("select"), ESC.tool);
   useEscape(narrow && (panel !== null || propsOpen), () => (propsOpen ? setPropsOpen(false) : setPanel(null)), ESC.panel);
-  useEscape(selection.length > 0, () => setSelection([]), ESC.selection);
+  useEscape(
+    selection.length > 0 || vp.elements.length > 0,
+    () => {
+      setSelection([]);
+      vp.clearElements();
+    },
+    ESC.selection,
+  );
 
   const handlers = useRef({
     newModel,
@@ -439,8 +461,6 @@ export function Editor() {
         run: () => h().setTimelineShown(!h().timelineShown),
         keywords: "steps features history",
       },
-      ...VIEWS.map<Command>((v) => ({ id: `view.${v.id}`, label: `${v.label} view`, group: "View", icon: "camera", keys: [v.key], run: () => setView(v.id) })),
-      { id: "view.fit", label: "Fit the parts in the view", group: "View", icon: "frame", keys: ["f"], run: () => h().say("Fit arrives with the 3D view") },
       ...PANELS.map<Command>((p) => ({ id: `panel.${p.id}`, label: `Show ${p.label}`, group: "Panels", icon: p.icon, run: () => h().showPanel(p.id) })),
       ...(Object.keys(THEME_LABEL) as ThemeSetting[]).map<Command>((t) => ({
         id: `theme.${t}`,
@@ -537,13 +557,18 @@ export function Editor() {
       : selectedParts.length === 1
         ? `${selectedParts[0]!.name} selected.`
         : `${selectedParts.length} parts selected.`;
-  const helpText = tool === "select" && selectedParts.length ? `${selectionText} Esc clears the selection.` : activeTool.help;
+  const helpText = vp.elementText
+    ? `${vp.elementText} Esc clears it.`
+    : tool === "select" && selectedParts.length
+      ? `${selectionText} Esc clears the selection.`
+      : activeTool.help;
 
-  const onPropChange = (key: "position" | "size", axis: keyof Vec3, value: number) => {
+  const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
+    const verb = key === "size" ? "Resize" : key === "rotation" ? "Turn" : "Move";
     record(
       (d, at) => changeParts(d, ids, key, { [axis]: value }, at),
-      `${key === "size" ? "Resize" : "Move"} ${selectedParts.length === 1 ? selectedParts[0]!.name : `${ids.length} parts`}`,
+      `${verb} ${selectedParts.length === 1 ? selectedParts[0]!.name : `${ids.length} parts`}`,
       `props:${ids.join(",")}:${key}.${axis}`,
     );
   };
@@ -612,8 +637,26 @@ export function Editor() {
             />
           )
         }
-        stageToolbar={<StageBars tool={activeTool} onArmTool={armTool} view={view} onView={setView} onFit={() => say("Fit arrives with the 3D view")} />}
-        stage={<Viewport view={view} onView={setView} description={`${parts.length} parts. ${selectionText}`} />}
+        stageToolbar={<StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />}
+        stage={
+          <View3D
+            ref={vp.ref}
+            parts={parts}
+            picks={vp.picks}
+            filter={vp.filter}
+            mode={vp.mode}
+            style={vp.style}
+            ortho={vp.ortho}
+            section={vp.section}
+            stats={vp.stats}
+            description={`${parts.length} parts. ${vp.elementText || selectionText}`}
+            onPick={vp.onPick}
+            onTransform={vp.onTransform}
+            onTransforming={vp.onTransforming}
+            onSection={vp.onSection}
+            onCamera={vp.onCamera}
+          />
+        }
         timeline={
           timelineShown && (
             <Timeline
@@ -643,6 +686,7 @@ export function Editor() {
         title={doc.features.find((f) => f.id === featureMenuAt?.id)?.name}
         entries={featureMenuAt ? featureMenu(featureMenuAt.id) : []}
       />
+      {vp.namingDialog}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
       <TooltipLayer />
     </>

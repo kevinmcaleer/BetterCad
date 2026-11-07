@@ -15,10 +15,12 @@
     "@bettercad/sketch": "*",
     "@bettercad/ui": "*",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
+    "@types/three": "^0.180.0",
     "vite-plugin-wasm": "^3.6.0"
   }
 }

@@ -32,3 +32,23 @@
   fill: var(--bc-color-axis-z);
   font: 700 12px var(--bc-font-sans);
 }
+.bc-cube-side {
+  outline: none;
+}
+.bc-cube-side:hover .bc-cube-face {
+  fill: var(--bc-color-accent-soft);
+  stroke: var(--bc-color-accent);
+}
+.bc-axis-line {
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.bc-axis-line-x {
+  stroke: var(--bc-color-axis-x);
+}
+.bc-axis-line-y {
+  stroke: var(--bc-color-axis-y);
+}
+.bc-axis-line-z {
+  stroke: var(--bc-color-axis-z);
+}

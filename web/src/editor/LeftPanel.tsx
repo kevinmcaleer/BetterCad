@@ -119,7 +119,7 @@ function PartsPanel(p: LeftPanelProps) {
       />
       {p.parts.length > 0 && <p className="bc-note">Shift-click selects a range, {formatCombo("mod")}-click adds one. Drag to reorder, F2 to rename.</p>}
       <div className="bc-section-gap" />
-      <Banner tone="info">The 3D view and the modelling kernel are not wired up yet, so parts are only listed here for now.</Banner>
+      <Banner tone="info">Parts are simple shapes for now. Real solids, sketches and booleans arrive with the modelling kernel.</Banner>
       <ContextMenu
         at={menu}
         onClose={() => setMenu(null)}
