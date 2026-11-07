@@ -1,4 +1,4 @@
-import { Button, Fields, NumberField, PropRow, PropsPanel, type PropsSection } from "@bettercad/ui";
+import { Button, Fields, NumberField, PropRow, PropsPanel, type PropsSection, type Scope } from "@bettercad/ui";
 import { KIND_LABEL, type Part, type Vec3 } from "../state/document";
 
 export interface PropertiesProps {
@@ -6,7 +6,10 @@ export interface PropertiesProps {
   totalParts: number;
   /** Live change to every selected part; merges into one undo step until onCommit. */
   onChange: (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => void;
-  onCommit: () => void;
+  /** The edit is finished: with the expression typed, when it was more than a number (#75). */
+  onCommit: (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number, expression?: string) => void;
+  /** Parameter values the fields can use. */
+  scope?: Scope;
   /** Exact volumes from the kernel, by part id, once built. */
   volumes?: Map<string, number>;
   /** Switches the selection between hole and solid. */
@@ -27,7 +30,7 @@ const fmt = (v: number) => String(Math.round(v * 100) / 100);
 const formatVolume = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-GB");
 
 /** The right column: the selection's properties, or a summary of the model. */
-export function Properties({ parts, totalParts, onChange, onCommit, volumes, onHole }: PropertiesProps) {
+export function Properties({ parts, totalParts, onChange, onCommit, volumes, onHole, scope }: PropertiesProps) {
   if (parts.length === 0) {
     return (
       <PropsPanel
@@ -62,7 +65,8 @@ export function Properties({ parts, totalParts, onChange, onCommit, volumes, onH
           min={key === "size" ? 0.01 : undefined}
           unit={key === "rotation" ? "°" : "mm"}
           onChange={(v) => onChange(key, a, v)}
-          onCommit={onCommit}
+          onCommit={(v, expr) => onCommit(key, a, v, expr)}
+          scope={scope}
         />
       ))}
     </Fields>

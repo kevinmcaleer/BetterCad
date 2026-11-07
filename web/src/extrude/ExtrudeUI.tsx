@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from "react";
-import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry } from "@bettercad/ui";
+import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry, type Scope } from "@bettercad/ui";
 import type { Part } from "../state/document";
 import { DIRECTIONS, OPERATIONS, type ExtrudeSession } from "./useExtrude";
 
@@ -7,7 +7,7 @@ import { DIRECTIONS, OPERATIONS, type ExtrudeSession } from "./useExtrude";
  * The strip for Extrude (distance and direction) and Revolve (angle and axis): what it does to the model, why it
  * cannot be made when it can't, and Done or Cancel.
  */
-export function ExtrudeBar({ x, parts, error }: { x: ExtrudeSession; parts: Part[]; error?: string }) {
+export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; parts: Part[]; error?: string; scope?: Scope }) {
   const f = x.feature;
   const title = x.kind === "revolve" ? "Revolve" : "Extrude";
   const icon = x.kind === "revolve" ? "revolve" : "extrude";
@@ -51,8 +51,12 @@ export function ExtrudeBar({ x, parts, error }: { x: ExtrudeSession; parts: Part
             value={f.angle}
             min={1}
             max={360}
+            scope={scope}
             onChange={(v) => x.change({ angle: v })}
-            onCommit={(v) => x.change({ angle: v })}
+            onCommit={(v, expr) => {
+              x.change({ angle: v });
+              x.setFieldExpr("angle", expr);
+            }}
           />
         </span>
         <MenuButton label="Axis" entries={axes} trigger={(p) => <Button {...p} label={`Round the ${axisLabel}`} title="The line it turns round" />} />
@@ -69,8 +73,12 @@ export function ExtrudeBar({ x, parts, error }: { x: ExtrudeSession; parts: Part
             id="bc-ex-distance"
             label={f.direction === "symmetric" ? "Total" : "Distance"}
             value={f.distance}
+            scope={scope}
             onChange={(v) => x.change({ distance: v })}
-            onCommit={(v) => x.change({ distance: v })}
+            onCommit={(v, expr) => {
+              x.change({ distance: v });
+              x.setFieldExpr("distance", expr);
+            }}
           />
           {f.direction === "two" && (
             <NumberField
