@@ -11,6 +11,8 @@ interface EntityBase {
   id: Id;
   /** Construction geometry guides the sketch but is never part of a profile. */
   construction?: boolean;
+  /** Projected from a body's face (#54): fixed in place, and re-projected when the body changes. */
+  projectedFrom?: TopoRef;
 }
 export interface Point extends EntityBase {
   kind: "point";

@@ -219,9 +219,10 @@ export function useViewport(d: ViewportDeps) {
     ];
     const list: Command[] = [
       ...presets.map<Command>((v) => ({ id: `view.${v.id}`, label: `${v.label} view`, group: "View", icon: "camera", keys: [v.key], run: () => preset(v.id) })),
-      { id: "view.fit", label: "Fit the parts in the view", group: "View", icon: "frame", keys: ["f"], run: fit },
+      { id: "view.fit", scope: "model", label: "Fit the parts in the view", group: "View", icon: "frame", keys: ["f"], run: fit },
       {
         id: "view.ortho",
+        scope: "model",
         label: "Switch perspective and orthographic",
         group: "View",
         icon: "cube",

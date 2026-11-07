@@ -100,6 +100,8 @@ export interface Mods {
   shift: boolean;
   mod: boolean;
   alt: boolean;
+  /** A finger, not a mouse: snapping reaches further. */
+  touch?: boolean;
 }
 export type WorldPlaneName = "XY" | "XZ" | "YZ";
 
@@ -705,9 +707,9 @@ export class Engine {
 
   /**
    * A face's shape in world space, from its mesh: whether it is flat, its normal and centroid, and the direction of its
-   * longest boundary edge (for the sketch frame's X).
+   * longest boundary edge (for the sketch frame's X), and the boundary itself (for projecting it into a sketch).
    */
-  faceInfo(bodyId: string, face: number): { flat: boolean; normal: V3; centroid: V3; edge: V3 } | null {
+  faceInfo(bodyId: string, face: number): { flat: boolean; normal: V3; centroid: V3; edge: V3; boundary: [V3, V3][] } | null {
     const o = this.bodies.get(bodyId);
     if (!o) return null;
     const mesh = o.body.mesh;
@@ -752,15 +754,17 @@ export class Engine {
     centroid.divideScalar(area);
     let best = new Vector3(1, 0, 0);
     let bestLen = -1;
+    const boundary: [V3, V3][] = [];
     for (const e of count.values()) {
       if (e.n !== 1) continue;
+      boundary.push([P(e.a).toArray() as V3, P(e.b).toArray() as V3]);
       const d = P(e.b).sub(P(e.a));
       if (d.length() > bestLen + 1e-6) {
         bestLen = d.length();
         best = d;
       }
     }
-    return { flat, normal: [n0.x, n0.y, n0.z], centroid: [centroid.x, centroid.y, centroid.z], edge: [best.x, best.y, best.z] };
+    return { flat, normal: [n0.x, n0.y, n0.z], centroid: [centroid.x, centroid.y, centroid.z], edge: [best.x, best.y, best.z], boundary };
   }
 
   invalidate(): void {
@@ -1230,7 +1234,7 @@ export class Engine {
         this.press = null;
         return;
       }
-      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey };
+      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey, touch: e.pointerType === "touch" };
       const taken = e.button === 0 && !!this.input?.down?.(p, mods);
       this.press = { ...p, button: e.button, shift: e.shiftKey, mod: mods.mod, dragged: false, input: taken };
       this.canvas.setPointerCapture(e.pointerId);
@@ -1254,7 +1258,7 @@ export class Engine {
         return;
       }
       const press = this.press;
-      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey };
+      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey, touch: e.pointerType === "touch" };
       if (press?.input) {
         this.input?.move?.(p, mods, true);
         return;

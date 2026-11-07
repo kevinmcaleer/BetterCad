@@ -1,17 +1,19 @@
-import { SketchIndex, closestOnSegment, dist, mid, sub, angleOf, onArc, polar, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { SketchIndex, allCrossings, closestOnSegment, dist, mid, sub, angleOf, onArc, polar, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
 
 /**
  * Snaps while drawing (#55): the cursor jumps to the meaningful point nearest it, within a tolerance in screen pixels
- * (8 px, 16 px for touch). Priority: end points, then centres, then midpoints, then a point on a line or curve, then
- * level or upright with the point the tool started from, then the grid.
+ * (8 px, 16 px for touch). Priority: end points, then centres, then midpoints, then crossings, then a point on a line
+ * or curve, then level or upright with the point the tool started from, then the grid. Ctrl snaps to the grid only.
  */
-export type SnapKind = "end" | "centre" | "middle" | "on" | "horizontal" | "vertical" | "grid" | "free";
+export type SnapKind = "end" | "centre" | "middle" | "crossing" | "on" | "horizontal" | "vertical" | "grid" | "free";
 
 export interface Snap {
   xy: Vec2;
   kind: SnapKind;
-  /** The point snapped to (end, centre), or the curve (middle, on). */
+  /** The point snapped to (end, centre), or the curve (middle, on, and the first of a crossing). */
   ref?: Id;
+  /** The second curve of a crossing. */
+  ref2?: Id;
   label: string;
 }
 
@@ -28,12 +30,15 @@ export interface SnapOptions {
   exclude?: Set<Id>;
   /** Shift turns snapping off. */
   off?: boolean;
+  /** Ctrl snaps to the grid and nothing else. */
+  gridOnly?: boolean;
 }
 
 export const SNAP_LABEL: Record<SnapKind, string> = {
   end: "End",
   centre: "Centre",
   middle: "Middle",
+  crossing: "Crossing",
   on: "On",
   horizontal: "Level",
   vertical: "Upright",
@@ -44,6 +49,10 @@ export const SNAP_LABEL: Record<SnapKind, string> = {
 export function snap(cursor: Vec2, sketch: Sketch, o: SnapOptions): Snap {
   const free: Snap = { xy: cursor, kind: "free", label: "" };
   if (o.off) return free;
+  if (o.gridOnly) {
+    const g = o.grid ?? 1;
+    return { xy: [Math.round(cursor[0] / g) * g, Math.round(cursor[1] / g) * g], kind: "grid", label: SNAP_LABEL.grid };
+  }
   const tol = (o.radius ?? 8) * o.px;
   const idx = new SketchIndex(sketch);
   const skip = o.exclude ?? new Set<Id>();
@@ -72,6 +81,10 @@ export function snap(cursor: Vec2, sketch: Sketch, o: SnapOptions): Snap {
     if (e.kind !== "line" || skip.has(e.id) || skip.has(e.a) || skip.has(e.b)) continue;
     consider({ xy: mid(idx.xy(e.a), idx.xy(e.b)), kind: "middle", ref: e.id, label: SNAP_LABEL.middle });
   }
+  if (best) return best;
+
+  // Where two curves cross.
+  for (const x of allCrossings(sketch, skip)) consider({ xy: x.xy, kind: "crossing", ref: x.a, ref2: x.b, label: SNAP_LABEL.crossing });
   if (best) return best;
 
   // On a curve.
@@ -124,13 +137,13 @@ export function snapStep(px: number): number {
   return steps.find((s) => s >= target) ?? 1000;
 }
 
-/** The entity nearest a point within `tol` mm: points first, then curves. */
-export function entityAt(p: Vec2, sketch: Sketch, tol: number): Id | null {
+/** The entity nearest a point within `tol` mm: points first, then curves (only curves with `curvesOnly`). */
+export function entityAt(p: Vec2, sketch: Sketch, tol: number, curvesOnly = false): Id | null {
   const idx = new SketchIndex(sketch);
   let best: Id | null = null;
   let bestD = tol;
   for (const e of sketch.entities) {
-    if (e.kind !== "point") continue;
+    if (e.kind !== "point" || curvesOnly) continue;
     const d = dist([e.x, e.y], p);
     if (d <= bestD) {
       best = e.id;

@@ -8,6 +8,7 @@ export * from "./profiles";
 export * from "./measure";
 export * from "./draw";
 export * from "./dof";
+export * from "./edit";
 export { Solver, toPrimitives, type SolveResult, type SolveStatusName } from "./solver";
 
 export interface SolverStatus {
