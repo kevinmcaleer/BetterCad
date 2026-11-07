@@ -1,5 +1,6 @@
 /**
- * A tiny key-value store over IndexedDB: one database ("bettercad"), a store per use (recent files, autosave).
+ * A tiny key-value store over IndexedDB: one database ("bettercad"), a store per use (recent files, autosave, the
+ * cloud's offline queue and cache).
  * File handles can only be kept here, not in localStorage. Tests use `memoryKV`.
  */
 export interface KV<T> {
@@ -10,14 +11,15 @@ export interface KV<T> {
 }
 
 const DB = "bettercad";
-const STORES = ["recent", "autosave", "discarded"] as const;
+// Version 2 adds the cloud's offline queue and cache (#96).
+const STORES = ["recent", "autosave", "discarded", "cloudQueue", "cloudCache"] as const;
 export type StoreName = (typeof STORES)[number];
 
 let opening: Promise<IDBDatabase> | null = null;
 
 function db(): Promise<IDBDatabase> {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const r = indexedDB.open(DB, 1);
+    const r = indexedDB.open(DB, 2);
     r.onupgradeneeded = () => {
       for (const s of STORES) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s);
     };

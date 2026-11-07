@@ -8,6 +8,7 @@ import { useTheme } from "./state/useTheme";
 import type { ThemeSetting } from "./state/theme";
 import { AccountPage, SignInPage, SignUpPage } from "./pages/AuthPages";
 import { Library } from "./pages/Library";
+import { UpdateBanner } from "./pwa/UpdateBanner";
 
 /** The component gallery ships in development and in preview builds (VITE_GALLERY=1), never in the release image. */
 export const GALLERY_ON = !!(import.meta.env.DEV || import.meta.env.VITE_GALLERY);
@@ -72,6 +73,7 @@ export function App() {
   return (
     <AccountProvider>
       <ThemeSync />
+      <UpdateBanner />
       {over}
       <div className="bc-editor-host" style={over ? { display: "none" } : undefined}>
         <Editor active={!over} model={route.page === "editor" ? route.model : undefined} share={route.page === "view" ? route.token : undefined} />

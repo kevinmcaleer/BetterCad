@@ -1,0 +1,13 @@
+{
+  "name": "BetterCad",
+  "short_name": "BetterCad",
+  "description": "A free, browser-based CAD tool for 3D printing.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e9ebef",
+  "theme_color": "#ffffff",
+  "categories": ["productivity", "utilities"],
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "file_handlers": [{ "action": "./", "accept": { "application/vnd.bettercad+json": [".bcad"] } }]
+}

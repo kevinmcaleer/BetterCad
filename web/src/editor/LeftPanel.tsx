@@ -1,11 +1,24 @@
-import { useState, type ReactNode } from "react";
-import { Banner, ContextMenu, Icon, PartsTree, WideButton, cx, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Banner,
+  Button,
+  ContextMenu,
+  Icon,
+  PartsTree,
+  WideButton,
+  cx,
+  type ContextMenuState,
+  type MenuEntry,
+  type RowToggle,
+  type TreeItem,
+} from "@bettercad/ui";
 import { KIND_LABEL, PRIMITIVES, type Feature, type ModelDoc, type Part, type PartKind } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
+import { cachedBytes, clearCachedApp } from "../pwa/register";
 
 export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "params" | "settings";
 
@@ -258,6 +271,7 @@ function SettingsPanel(p: LeftPanelProps) {
         <input type="checkbox" checked={p.timelineShown} onChange={(e) => p.onTimelineShown(e.target.checked)} />
         <span>Show the timeline under the view</span>
       </label>
+      <OfflineSettings />
       <h2 className="bc-panel-title">Units</h2>
       <p className="bc-note">Millimetres. Z points up.</p>
       <h2 className="bc-panel-title" id="bc-shortcuts-title">
@@ -292,6 +306,41 @@ function SettingsPanel(p: LeftPanelProps) {
           </a>
         </>
       ) : null}
+    </>
+  );
+}
+
+/** The cached app (#94): how much it takes, and a way to clear it. */
+function OfflineSettings() {
+  const [bytes, setBytes] = useState<number | null>(null);
+  const [cleared, setCleared] = useState(false);
+  useEffect(() => {
+    let gone = false;
+    void cachedBytes().then((b) => !gone && setBytes(b));
+    return () => {
+      gone = true;
+    };
+  }, []);
+  if (typeof caches === "undefined") return null;
+  return (
+    <>
+      <h2 className="bc-panel-title">Offline</h2>
+      <p className="bc-note">
+        BetterCad keeps itself in this browser so it opens offline
+        {bytes !== null ? `, using ${bytes >= 1024 * 1024 ? `${Math.round(bytes / (1024 * 1024))} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`}` : ""}.
+        {cleared ? " Cleared: the next load fetches it again." : ""}
+      </p>
+      <Button
+        label="Clear cached app"
+        title="Remove the cached app; your autosaves stay"
+        disabled={cleared}
+        onClick={() =>
+          void clearCachedApp().then(() => {
+            setCleared(true);
+            setBytes(null);
+          })
+        }
+      />
     </>
   );
 }

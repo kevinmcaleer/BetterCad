@@ -138,3 +138,39 @@ test("a save from a second tab warns about the first", async ({ page, context })
   const [model] = [...server.models.values()];
   expect(model!.versions.length).toBe(3);
 });
+
+test("offline saves wait in the browser and go when the network is back", async ({ page, context }) => {
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/");
+  await addBox(page);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Save to your account…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Bracket");
+  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
+  // One look at the library while online, so it has a list to show later.
+  await page.goto(page.url().replace(/#.*/, "#/library"));
+  await expect(page.getByRole("button", { name: "Open Bracket" })).toBeVisible();
+  await page.getByRole("button", { name: "Open Bracket" }).click();
+  await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
+
+  server.down = true;
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Cylinder", exact: true }).click();
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(page.getByText("You're offline. This save waits and goes when you're back.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Offline: saves when you're back/ })).toBeVisible();
+
+  // The library shows the last list it saw.
+  await page.goto("/#/library");
+  await expect(page.getByText(/Showing your last synced models/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Bracket" })).toBeVisible();
+
+  server.down = false;
+  await page.goto("/");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => [...server.models.values()][0]!.versions.length).toBe(2);
+  const latest = JSON.parse([...server.models.values()][0]!.versions[1]!.bcad);
+  expect(latest.document.features.map((f: { name: string }) => f.name)).toEqual(["Box 1", "Cylinder 1"]);
+});
