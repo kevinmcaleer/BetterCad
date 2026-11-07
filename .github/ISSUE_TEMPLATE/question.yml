@@ -1,0 +1,19 @@
+name: Question
+description: Not sure how to do something? Ask here, or on the kevsrobots Discord for a quicker answer.
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [Learn BetterCad course](https://www.kevsrobots.com/learn/bettercad/) and the kevsrobots Discord often answer faster.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: textarea
+    id: model
+    attributes:
+      label: Your model
+      description: Optional. Drag a .bcad file here if the question is about a model.
