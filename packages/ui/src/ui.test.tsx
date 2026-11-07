@@ -12,6 +12,7 @@ import { Rail } from "./Rail";
 import { PartsTree, type TreeItem } from "./PartsTree";
 import { PropsPanel } from "./PropsPanel";
 import { TooltipLayer } from "./Tooltip";
+import { ViewCube, classifyCubePoint, cubePlaceName } from "./ViewCube";
 
 describe("Button", () => {
   it("puts the shortcut in the tooltip and reflects pressed state", () => {
@@ -332,5 +333,55 @@ describe("PropsPanel", () => {
     unmount();
     render(<PropsPanel sections={sections} />);
     expect(screen.getByRole("button", { name: "Size" })).toHaveAttribute("aria-expanded", "false");
+  });
+});
+
+describe("ViewCube", () => {
+  it("names its 26 places and classifies points on the cube", () => {
+    expect(cubePlaceName([0, 0, 1])).toBe("the top");
+    expect(cubePlaceName([0, -1, 1])).toBe("the front top edge");
+    expect(cubePlaceName([1, -1, 1])).toBe("the front right top corner");
+    expect(classifyCubePoint([0.1, -1, 0.2])).toEqual([0, -1, 0]);
+    expect(classifyCubePoint([0.9, -1, 0.95])).toEqual([1, -1, 1]);
+  });
+
+  it("looks from a face, edge or corner when clicked", async () => {
+    const onPick = vi.fn();
+    const { container } = render(<ViewCube onPick={onPick} />);
+    // From the corner view you see the top, front and right.
+    expect(screen.getAllByRole("button", { name: /^Look from the/ })).toHaveLength(3);
+    const at = (place: string) => container.querySelector(`[data-place="${place}"]`)!;
+    await userEvent.click(at("0,-1,0"));
+    expect(onPick).toHaveBeenLastCalledWith([0, -1, 0]);
+    await userEvent.click(at("1,-1,1"));
+    expect(onPick).toHaveBeenLastCalledWith([1, -1, 1]);
+    screen.getByRole("button", { name: "Look from the top" }).focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onPick).toHaveBeenLastCalledWith([0, 0, 1]);
+  });
+
+  it("lights up the place under the pointer", async () => {
+    const { container } = render(<ViewCube />);
+    expect(container.querySelector(".bc-cube-light")).toBeNull();
+    await userEvent.hover(container.querySelector('[data-place="0,-1,1"]')!);
+    expect(container.querySelectorAll(".bc-cube-light").length).toBeGreaterThan(0);
+    await userEvent.unhover(container.querySelector("svg")!);
+    expect(container.querySelector(".bc-cube-light")).toBeNull();
+  });
+
+  it("turns the view when dragged, without picking", async () => {
+    const onPick = vi.fn();
+    const onOrbit = vi.fn();
+    const onOrbitEnd = vi.fn();
+    const { container } = render(<ViewCube onPick={onPick} onOrbit={onOrbit} onOrbitEnd={onOrbitEnd} />);
+    const place = container.querySelector('[data-place="0,0,1"]')!;
+    await userEvent.pointer([
+      { keys: "[MouseLeft>]", target: place, coords: { clientX: 10, clientY: 10 } },
+      { target: place, coords: { clientX: 30, clientY: 15 } },
+      { keys: "[/MouseLeft]", target: place, coords: { clientX: 30, clientY: 15 } },
+    ]);
+    expect(onOrbit).toHaveBeenCalledWith(20, 5);
+    expect(onOrbitEnd).toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
   });
 });

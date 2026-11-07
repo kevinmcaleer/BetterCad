@@ -112,6 +112,16 @@ export function toPreset(c: CameraState, p: Preset): CameraState {
   return { ...c, ...PRESETS[p] };
 }
 
+/**
+ * The camera looking from `dir` (towards the camera, any length) at the same target and distance: a view cube face,
+ * edge or corner. Straight down or up keeps the Top view's +Y up the screen.
+ */
+export function lookFrom(c: CameraState, dir: V3): CameraState {
+  const [x, y, z] = norm(dir);
+  if (Math.abs(z) > 0.9999) return { ...c, ...PRESETS[z > 0 ? "top" : "bottom"] };
+  return { ...c, azimuth: Math.atan2(y, x) / RAD, elevation: Math.asin(z) / RAD };
+}
+
 /** Which preset the camera is at, if any. */
 export function presetOf(c: CameraState): Preset | null {
   for (const [name, p] of Object.entries(PRESETS) as [Preset, { azimuth: number; elevation: number }][]) {

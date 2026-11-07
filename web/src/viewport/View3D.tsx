@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ViewCube, type ViewName } from "@bettercad/ui";
+import { ViewCube } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
@@ -68,7 +68,6 @@ function meshFor(p: Part): BodyMesh | null {
 
 /** Space kept between the framed model and a floating bar, in CSS px. */
 const FLOAT_GAP = 8;
-const CUBE_TO_PRESET: Record<ViewName, Preset> = { top: "top", bottom: "bottom", front: "front", back: "back", right: "side", left: "left" };
 
 /** The resolved theme on <html>, followed as it changes. */
 function useDocumentTheme(): string {
@@ -259,7 +258,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
         </div>
       )}
       {props.children}
-      <ViewCube rotation={rotation} onPick={(v) => engine.current?.preset(CUBE_TO_PRESET[v])} />
+      <ViewCube rotation={rotation} onPick={(d) => engine.current?.lookFrom(d)} onOrbit={(dx, dy) => engine.current?.orbitBy(dx, dy)} />
       {supported && parts.length === 0 && props.emptyHint !== false && (
         <div className="bc-view-hint" aria-hidden="true">
           Add a shape from the Library to start.
