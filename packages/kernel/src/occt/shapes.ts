@@ -3,6 +3,7 @@ import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
 import type { PrismSpec, ProfileSeg, RevolveSpec } from "../extrude";
+import { holeSection, type HoleSpec } from "../holes";
 
 /**
  * Making and changing solids with OpenCascade. Every function takes the loaded OC instance and returns a new shape;
@@ -257,6 +258,27 @@ export function pushPull(oc: OC, shape: TopoDS_Shape, faceIndex: number, distanc
   const n: [number, number, number] = [d.X() * flip, d.Y() * flip, d.Z() * flip];
   const slab = prism(oc, face, [n[0] * distance, n[1] * distance, n[2] * distance]);
   return boolean(oc, distance > 0 ? "join" : "cut", shape, [slab]);
+}
+
+/** Cuts screw holes (#70) into a shape: each a revolved section along the face's inward normal. */
+export function holes(oc: OC, shape: TopoDS_Shape, spec: HoleSpec): TopoDS_Shape {
+  const n = spec.frame.normal;
+  const a: [number, number, number] = [-n[0], -n[1], -n[2]];
+  const u = spec.frame.x;
+  let depth = spec.depth ?? 0;
+  if (spec.depth === null) {
+    // Through all: past the far side of the body, whichever way it faces.
+    const { min, max } = measure(oc, shape).bbox;
+    depth = 2 * Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) + 1;
+  }
+  const tools = spec.points.map((q) => {
+    const p = toWorld(spec.frame, q);
+    const pts = holeSection(spec, depth).map(
+      ([r, t]) => [p[0] + u[0] * r + a[0] * t, p[1] + u[1] * r + a[1] * t, p[2] + u[2] * r + a[2] * t] as [number, number, number],
+    );
+    return revolve(oc, polygonFace(oc, pts), p as [number, number, number], a, 360);
+  });
+  return boolean(oc, "cut", shape, tools);
 }
 
 /** Turns a face round an axis through `origin` along `dir`, by `degrees`. */

@@ -3,7 +3,8 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
-import { newSketch, planeFrame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import {
   axisOf,
   crossesAxis,
@@ -18,6 +19,8 @@ import {
 } from "./extrude";
 
 export * from "./extrude";
+export * from "./holes";
+export * from "./screws";
 
 export type PartKind = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "solid";
 
@@ -62,7 +65,7 @@ export interface Part {
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
 export interface BodyOp {
   /** A boolean with a tool, or a finish on the part's own edges and faces. */
-  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull";
+  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "hole";
   /** Edges (fillet, chamfer) or faces left open (shell), numbered on the part as it was before this op. */
   refs?: number[];
   /** The fillet radius, chamfer distance or shell wall, mm. */
@@ -71,6 +74,8 @@ export interface BodyOp {
   outside?: boolean;
   /** An extrude's prism, in the part's own coordinates. */
   tool?: PrismSpec;
+  /** Holes (#70) cut into the part, in its own coordinates. */
+  holes?: HoleSpec;
   /** Or a revolve's solid, in the part's own coordinates. */
   rev?: RevolveSpec;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
@@ -193,6 +198,15 @@ export interface RevolveFeature extends FeatureBase {
   target?: string;
   body: { id: string; name: string };
 }
+/** Hole (#70): screw holes on one flat face of a part, sized from the screw table. */
+export interface HoleFeature extends FeatureBase, HoleParams {
+  type: "hole";
+  part: string;
+  /** The face's plane in the world when the holes were placed: origin on the face, normal out of the body. */
+  frame: Frame;
+  /** Hole centres in the face's plane, mm. */
+  points: Vec2[];
+}
 export type Feature =
   | AddFeature
   | DuplicateFeature
@@ -203,7 +217,8 @@ export type Feature =
   | ExtrudeFeature
   | RevolveFeature
   | CombineFeature
-  | FinishFeature;
+  | FinishFeature
+  | HoleFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -252,6 +267,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   shell: "Shell",
   pushpull: "Push/pull",
   revolve: "Revolve",
+  hole: "Hole",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -421,6 +437,35 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           break;
         }
         t.ops = [...(t.ops ?? []), { op: f.type, refs: [...f.refs], size: f.size, outside: f.outside, feature: f.id }];
+        break;
+      }
+      case "hole": {
+        const t = parts[find(f.part)];
+        if (!t) {
+          failed.set(f.id, "The body it changes is gone");
+          break;
+        }
+        if (!f.points.length) {
+          failed.set(f.id, "Click the face to place a hole");
+          break;
+        }
+        const r = resolveHole(f);
+        if ("error" in r) {
+          failed.set(f.id, r.error);
+          break;
+        }
+        if (f.depth !== null && !(f.depth > 0)) {
+          failed.set(f.id, "Give it a depth above 0 mm, or choose Through all");
+          break;
+        }
+        const holes: HoleSpec = {
+          frame: frameToLocal(f.frame, t),
+          points: f.points.map((q) => [q[0], q[1]]),
+          diameter: r.diameter,
+          depth: f.depth,
+          head: r.head,
+        };
+        t.ops = [...(t.ops ?? []), { op: "hole", holes, feature: f.id }];
         break;
       }
       case "combine": {
@@ -686,6 +731,7 @@ export function featureParts(f: Feature): string[] {
     case "chamfer":
     case "shell":
     case "pushpull":
+    case "hole":
       return [f.part];
     case "revolve":
       return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
@@ -745,6 +791,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "pushpull":
       return `${f.size >= 0 ? "Out" : "In"} ${mm(Math.abs(f.size))}, ${who([f.part])}`;
+    case "hole": {
+      const n = f.points.length;
+      const head = f.head === "none" ? "" : `, ${f.head}`;
+      return `${n === 1 ? "1 hole" : `${n} holes`}, ${holeLabel(f)}${head}, ${f.depth === null ? "through" : `${mm(f.depth)} deep`}, ${who([f.part])}`;
+    }
     case "revolve": {
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(f.target ? [f.target] : [])}`;
       const axis = f.axis.kind === "line" ? "a sketch line" : `the sketch's ${f.axis.kind.toUpperCase()} axis`;
@@ -912,4 +963,16 @@ export function parseDoc(text: string): ModelDoc {
     };
   }
   throw new Error("That file is not a BetterCad model.");
+}
+
+export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "head" | "depth">;
+
+/** Adds a Hole step at `at` (the marker), or at the end. */
+export function addHole(doc: ModelDoc, params: HoleStepParams, id = newId("f"), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "hole", name: nextFeatureName(doc, "hole"), ...params });
+}
+
+/** Changes a Hole step (the tool edits it live, as one undo step). */
+export function updateHole(doc: ModelDoc, id: string, change: Partial<HoleStepParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "hole" ? { ...f, ...change } : f)) };
 }

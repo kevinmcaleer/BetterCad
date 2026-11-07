@@ -10,6 +10,7 @@ import {
   cone,
   cylinder,
   fillet,
+  holes,
   measure,
   place,
   prismOf,
@@ -23,6 +24,7 @@ import {
   type TopoDS_Shape,
 } from "./occt/shapes";
 import type { PrismSpec, ProfileSeg } from "./extrude";
+import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { meshVolume, triangleCount } from "./mesh";
 
@@ -51,6 +53,11 @@ const XZ = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, -1, 0] } as PrismSpec[
 const Z_AXIS = { origin: [0, 0] as [number, number], dir: [0, 1] as [number, number] };
 const rectAt = (x: number, y: number, w: number, h: number): ProfileSeg[] =>
   rect(w, h).map((g) => (g.kind === "line" ? { kind: "line", a: [g.a[0] + x, g.a[1] + y], b: [g.b[0] + x, g.b[1] + y] } : g));
+
+const holeOn = (top: number, p: HoleParams): HoleSpec => {
+  const r = resolveHole(p) as { diameter: number; head?: HoleSpec["head"] };
+  return { frame: { origin: [0, 0, top], x: [1, 0, 0], normal: [0, 0, 1] }, points: [[0, 0]], depth: p.depth, ...r };
+};
 
 const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   box: (oc) => box(oc, { x: 20, y: 10, z: 5 }),
@@ -109,6 +116,10 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
   "pushpull-out": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, 5),
   "pushpull-in": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, -5),
+  // Holes (#70), into the top of a plate.
+  "hole-m3-plate": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "none", depth: null })),
+  "hole-m3-countersunk": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "countersink", depth: null })),
+  "hole-m4-counterbore": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 10 }), holeOn(10, { size: "M4", fit: "printed", head: "counterbore", depth: 6 })),
   // Group (#66): a box with two hole cylinders is the box less both.
   group: (oc) =>
     boolean(oc, "cut", box(oc, { x: 40, y: 20, z: 10 }), [
