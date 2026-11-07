@@ -1,6 +1,7 @@
 import type { IconName } from "@bettercad/ui";
 
-export type ToolId = "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "revolve" | "pushpull" | "combine" | "fillet" | "shell" | "hole";
+export type ToolId =
+  "select" | "move" | "turn" | "section" | "sketch" | "extrude" | "revolve" | "pushpull" | "combine" | "fillet" | "shell" | "hole" | "measure";
 
 export interface Tool {
   id: ToolId;
@@ -82,6 +83,14 @@ export const TOOLS: Tool[] = [
   },
   { id: "fillet", label: "Fillet", icon: "fillet", key: "g", title: "Round or bevel edges", help: "Click the edges to round." },
   { id: "shell", label: "Shell", icon: "shell", key: "s", title: "Hollow a body to a wall", help: "Click the face to leave open, usually the top." },
+  {
+    id: "measure",
+    label: "Measure",
+    icon: "ruler",
+    key: "i",
+    title: "Measure distances, lengths and angles",
+    help: "Pick something to measure, then something else for the distance.",
+  },
   { id: "hole", label: "Hole", icon: "hole", key: "h", title: "Make a screw hole", help: "Click a flat face where the hole goes." },
 ];
 

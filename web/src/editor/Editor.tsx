@@ -54,6 +54,8 @@ import { usePushPull } from "../finish/usePushPull";
 import { PushPullBar } from "../finish/PushPullBar";
 import { useHole } from "../hole/useHole";
 import { HoleBar } from "../hole/HoleBar";
+import { useMeasure } from "../measure/useMeasure";
+import { MeasureBar } from "../measure/MeasureBar";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -254,6 +256,8 @@ export function Editor() {
     onClose: () => setTool("select"),
     say,
   });
+
+  const measure = useMeasure({ doc, parts, view: vp.ref, active: tool === "measure" && !sketch.editing, measure: kernel.measure });
 
   const hole = useHole({
     store,
@@ -871,8 +875,8 @@ export function Editor() {
         : `${selectedParts.length} parts selected.`;
   const helpText = sketch.help
     ? sketch.help
-    : extrude.help || revolve.help || pushpull.help || hole.help
-      ? extrude.help || revolve.help || pushpull.help || hole.help
+    : extrude.help || revolve.help || pushpull.help || hole.help || measure.help
+      ? extrude.help || revolve.help || pushpull.help || hole.help || measure.help
       : finish.help
         ? finish.help
         : vp.elementText
@@ -964,6 +968,7 @@ export function Editor() {
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />}
               {tool === "revolve" && <ExtrudeBar x={revolve} parts={parts} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />}
+              {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
                 <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
@@ -989,7 +994,7 @@ export function Editor() {
             parts={viewParts}
             meshes={kernel.bodies}
             engine={kernel.state}
-            picks={finish.tool ? finish.picks : vp.picks}
+            picks={finish.tool ? finish.picks : tool === "measure" ? measure.picks : vp.picks}
             filter={vp.filter}
             mode={vp.mode}
             style={vp.style}
