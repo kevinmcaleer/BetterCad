@@ -51,5 +51,12 @@ export function seal<T>(h: History<T>): History<T> {
   return h.coalesceKey ? { ...h, coalesceKey: undefined } : h;
 }
 
+/** Drops the open run of merged changes with this key, as if it never happened (a dialog's Cancel). No redo is kept. */
+export function discard<T>(h: History<T>, key: string): History<T> {
+  const prev = h.past[h.past.length - 1];
+  if (h.coalesceKey !== key || !prev) return h;
+  return { past: h.past.slice(0, -1), present: prev.state, label: prev.label, future: [] };
+}
+
 export const canUndo = (h: History<unknown>) => h.past.length > 0;
 export const canRedo = (h: History<unknown>) => h.future.length > 0;

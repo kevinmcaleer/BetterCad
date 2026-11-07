@@ -38,9 +38,11 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { openFromDisk, saveToDisk } from "./files";
-import { Timeline } from "./Timeline";
+import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
+import { useExtrude } from "../extrude/useExtrude";
+import { ExtrudeBar } from "../extrude/ExtrudeUI";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -196,6 +198,21 @@ export function Editor() {
   });
   live.current.sketching = sketch.editing;
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
+
+  const extrude = useExtrude({
+    store,
+    record,
+    doc,
+    sketches: built.sketches,
+    parts,
+    selection,
+    view: vp.ref,
+    active: tool === "extrude" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+    theme: resolved,
+  });
+  useEffect(() => registry.register(extrude.commands), [registry, extrude.commands]);
   // While sketching the model goes faint, so the sketch reads on top of it. Project needs the faces solid to pick them.
   const ghostParts = sketch.editing && sketch.stool !== "project";
   const viewParts = useMemo(() => (ghostParts ? parts.map((p) => ({ ...p, ghost: true })) : parts), [parts, ghostParts]);
@@ -465,7 +482,7 @@ export function Editor() {
         id: `add.${k}`,
         label: `Add a ${KIND_LABEL[k].toLowerCase()}`,
         group: "Tools",
-        icon: k === "box" ? "cube" : k,
+        icon: partIcon(k),
         run: () => h().add(k),
         keywords: "part primitive shape",
       })),
@@ -556,6 +573,7 @@ export function Editor() {
   }, [selection, activeFeature, doc.features, at]);
 
   const summary = useCallback((f: Feature) => featureSummary(doc, f), [doc]);
+  const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
 
   const featureMenu = (id: string): MenuEntry[] => {
     const i = doc.features.findIndex((f) => f.id === id);
@@ -563,6 +581,20 @@ export function Editor() {
     if (!f) return [];
     return [
       ...(f.type === "sketch" ? [{ id: "edit", label: "Edit sketch", icon: "sketch" as const, onSelect: () => sketch.edit(id) }] : []),
+      ...(f.type === "extrude"
+        ? [
+            {
+              id: "edit",
+              label: "Edit extrude",
+              icon: "extrude" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("extrude");
+                extrude.edit(id);
+              },
+            },
+          ]
+        : []),
       { id: "roll", label: "Roll to here", icon: "history", disabled: i + 1 === at, onSelect: () => moveMarker(i + 1) },
       {
         id: "rename",
@@ -613,11 +645,13 @@ export function Editor() {
         : `${selectedParts.length} parts selected.`;
   const helpText = sketch.help
     ? sketch.help
-    : vp.elementText
-      ? `${vp.elementText} Esc clears it.`
-      : tool === "select" && selectedParts.length
-        ? `${selectionText} Esc clears the selection.`
-        : activeTool.help;
+    : extrude.help
+      ? extrude.help
+      : vp.elementText
+        ? `${vp.elementText} Esc clears it.`
+        : tool === "select" && selectedParts.length
+          ? `${selectionText} Esc clears the selection.`
+          : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -700,6 +734,7 @@ export function Editor() {
             <>
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
+              {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} />}
             </>
           )
         }
@@ -746,7 +781,7 @@ export function Editor() {
           sketch.editing ? (
             <SketchPanel s={sketch} />
           ) : (
-            <Properties parts={selectedParts} totalParts={parts.length} onChange={onPropChange} onCommit={store.seal} />
+            <Properties parts={selectedParts} totalParts={parts.length} onChange={onPropChange} onCommit={store.seal} volumes={volumes} />
           )
         }
         rightOpen={propsOpen}

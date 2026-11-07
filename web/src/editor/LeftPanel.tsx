@@ -5,7 +5,7 @@ import type { ThemeSetting } from "../state/theme";
 import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
 import { ThemePicker } from "./ThemePicker";
-import { featureIcon } from "./Timeline";
+import { featureIcon, partIcon } from "./Timeline";
 
 export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "settings";
 
@@ -90,7 +90,7 @@ function PartsPanel(p: LeftPanelProps) {
   const items: TreeItem[] = p.parts.map((part) => ({
     id: part.id,
     name: part.name,
-    icon: part.kind === "box" ? "cube" : part.kind,
+    icon: partIcon(part.kind),
     hidden: part.hidden,
     ghost: part.ghost,
     highlight: part.highlight,
@@ -119,7 +119,7 @@ function PartsPanel(p: LeftPanelProps) {
       />
       {p.parts.length > 0 && <p className="bc-note">Shift-click selects a range, {formatCombo("mod")}-click adds one. Drag to reorder, F2 to rename.</p>}
       <div className="bc-section-gap" />
-      <Banner tone="info">Press K to sketch on a plane or a flat face. Extrude, booleans and fillets arrive with the modelling tools.</Banner>
+      <Banner tone="info">Press K to sketch on a plane or a flat face, then E to extrude a closed shape into a solid.</Banner>
       <ContextMenu
         at={menu}
         onClose={() => setMenu(null)}

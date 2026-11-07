@@ -7,6 +7,8 @@ export interface PropertiesProps {
   /** Live change to every selected part; merges into one undo step until onCommit. */
   onChange: (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => void;
   onCommit: () => void;
+  /** Exact volumes from the kernel, by part id, once built. */
+  volumes?: Map<string, number>;
 }
 
 const AXES: (keyof Vec3)[] = ["x", "y", "z"];
@@ -19,8 +21,11 @@ function shared(parts: Part[], key: "position" | "size" | "rotation", axis: keyo
   return parts.every((p) => of(p) === first) ? first : null;
 }
 
+const fmt = (v: number) => String(Math.round(v * 100) / 100);
+const formatVolume = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-GB");
+
 /** The right column: the selection's properties, or a summary of the model. */
-export function Properties({ parts, totalParts, onChange, onCommit }: PropertiesProps) {
+export function Properties({ parts, totalParts, onChange, onCommit, volumes }: PropertiesProps) {
   if (parts.length === 0) {
     return (
       <PropsPanel
@@ -43,6 +48,8 @@ export function Properties({ parts, totalParts, onChange, onCommit }: Properties
     );
   }
   const one = parts.length === 1 ? parts[0]! : null;
+  const vols = parts.map((p) => volumes?.get(p.id));
+  const volume = vols.every((v) => v !== undefined) ? vols.reduce<number>((a, v) => a + v!, 0) : null;
   const fields = (key: "position" | "size" | "rotation") => (
     <Fields>
       {AXES.map((a) => (
@@ -66,10 +73,22 @@ export function Properties({ parts, totalParts, onChange, onCommit }: Properties
         <>
           <PropRow label="Name">{one ? one.name : "Several"}</PropRow>
           <PropRow label="Shape">{one ? KIND_LABEL[one.kind] : [...new Set(parts.map((p) => KIND_LABEL[p.kind]))].join(", ")}</PropRow>
+          {volume !== null && <PropRow label="Volume">{`${formatVolume(volume)} mm³`}</PropRow>}
         </>
       ),
     },
-    { id: "size", title: "Size", content: fields("size") },
+    {
+      id: "size",
+      title: "Size",
+      // A body's size comes from its sketch and extrude, so it is shown, not typed.
+      content: parts.some((p) => p.kind === "solid") ? (
+        <p className="bc-note">
+          {one ? `${fmt(one.size.x)} × ${fmt(one.size.y)} × ${fmt(one.size.z)} mm. ` : ""}Change a body's sketch or its extrude to resize it.
+        </p>
+      ) : (
+        fields("size")
+      ),
+    },
     {
       id: "position",
       title: "Position",

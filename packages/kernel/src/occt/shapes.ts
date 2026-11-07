@@ -1,6 +1,8 @@
 import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
+import { toWorld, type Vec2 } from "@bettercad/sketch";
+import type { PrismSpec, ProfileSeg } from "../extrude";
 
 /**
  * Making and changing solids with OpenCascade. Every function takes the loaded OC instance and returns a new shape;
@@ -162,6 +164,50 @@ export function prism(oc: OC, profile: TopoDS_Shape, vector: [number, number, nu
     const mk = new oc.BRepPrimAPI_MakePrism(profile, v, false, true);
     return mk.Shape();
   });
+}
+
+/** A closed outline of lines and arcs on a sketch frame, as a wire in world space. */
+function outlineWire(oc: OC, spec: PrismSpec, segs: ProfileSeg[], lift: number): TopoDS_Shape {
+  const f = spec.frame;
+  const P = (p: Vec2) => {
+    const w = toWorld(f, p);
+    return new oc.gp_Pnt(w[0] + f.normal[0] * lift, w[1] + f.normal[1] * lift, w[2] + f.normal[2] * lift);
+  };
+  const mk = new oc.BRepBuilderAPI_MakeWire();
+  for (const g of segs) {
+    if (g.kind === "line") mk.Add(new oc.BRepBuilderAPI_MakeEdge(P(g.a), P(g.b)).Edge());
+    else if (g.kind === "arc") mk.Add(new oc.BRepBuilderAPI_MakeEdge(new oc.GC_MakeArcOfCircle(P(g.a), P(g.m), P(g.b)).Value()).Edge());
+    else {
+      const c = P(g.c);
+      const circ = new oc.gp_Circ(new oc.gp_Ax2(c, new oc.gp_Dir(f.normal[0], f.normal[1], f.normal[2]), new oc.gp_Dir(f.x[0], f.x[1], f.x[2])), g.r);
+      mk.Add(new oc.BRepBuilderAPI_MakeEdge(circ).Edge());
+    }
+  }
+  if (!mk.IsDone()) throw new KernelError("open-profile", "This shape's outline does not join up, so it cannot be extruded.");
+  return mk.Wire();
+}
+
+/**
+ * Extrude (#61): each profile's outline pushed from \`from\` to \`to\` along the frame's normal, its holes cut out, and
+ * the profiles joined into one body.
+ */
+export function prismOf(oc: OC, spec: PrismSpec): TopoDS_Shape {
+  const depth = spec.to - spec.from;
+  if (!(Math.abs(depth) > 1e-9)) throw new KernelError("invalid-size", "An extrude needs a distance other than 0 mm.");
+  const n = spec.frame.normal;
+  const v: [number, number, number] = [n[0] * depth, n[1] * depth, n[2] * depth];
+  const solidOf = (segs: ProfileSeg[]) =>
+    guard(oc, "open-profile", "This shape could not be filled. Check it is closed and does not cross itself.", () => {
+      const mk = new oc.BRepBuilderAPI_MakeFace(oc.TopoDS.Wire(outlineWire(oc, spec, segs, spec.from)), true);
+      if (!mk.IsDone()) throw new KernelError("open-profile", "This shape could not be filled. Check it is closed and does not cross itself.");
+      return prism(oc, mk.Face(), v);
+    });
+  const bodies = spec.profiles.map((p) => {
+    const outer = solidOf(p.outer);
+    return p.holes.length ? boolean(oc, "cut", outer, p.holes.map(solidOf)) : outer;
+  });
+  if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to extrude.");
+  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1));
 }
 
 /** Turns a face round an axis through `origin` along `dir`, by `degrees`. */

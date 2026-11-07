@@ -1,4 +1,4 @@
-import { createHistory, push, undo, redo, seal, canUndo, canRedo } from "./history";
+import { createHistory, push, undo, redo, seal, discard, canUndo, canRedo } from "./history";
 
 describe("history", () => {
   it("undoes and redoes with labels", () => {
@@ -36,5 +36,17 @@ describe("history", () => {
     expect(canUndo(h)).toBe(false);
     expect(undo(h)).toBe(h);
     expect(redo(h)).toBe(h);
+  });
+
+  it("discards an open run of merged changes, and nothing else", () => {
+    let h = push(createHistory(0), 1, "One");
+    h = push(h, 2, "Extrude", "ex");
+    h = push(h, 3, "Extrude", "ex");
+    expect(discard(h, "other")).toBe(h);
+    const d = discard(h, "ex");
+    expect(d.present).toBe(1);
+    expect(d.label).toBe("One");
+    expect(canRedo(d)).toBe(false);
+    expect(discard(seal(h), "ex").present).toBe(3);
   });
 });
