@@ -103,7 +103,7 @@ describe("extrude on the timeline", () => {
     d = addExtrude(d, params({ seeds: [[15, 10]], distance: -5, operation: "cut", target: "box" }), "e1");
     const box = build(d).parts.find((p) => p.id === "box")!;
     expect(box.ops).toHaveLength(1);
-    expect(box.ops![0]!.tool.frame.origin).toEqual([-15, -10, 10]);
+    expect(box.ops![0]!.tool!.frame.origin).toEqual([-15, -10, 10]);
   });
 });
 

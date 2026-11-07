@@ -70,6 +70,12 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
       from: -4,
       to: 4,
     }),
+  // Group (#66): a box with two hole cylinders is the box less both.
+  group: (oc) =>
+    boolean(oc, "cut", box(oc, { x: 40, y: 20, z: 10 }), [
+      place(oc, cylinder(oc, { x: 6, y: 6, z: 10 }), { position: { x: -10, y: 0, z: 0 } }),
+      place(oc, cylinder(oc, { x: 6, y: 6, z: 10 }), { position: { x: 10, y: 0, z: 0 } }),
+    ]),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

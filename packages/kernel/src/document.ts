@@ -8,7 +8,18 @@ import { extent, frameToLocal, pickProfiles, type ExtrudeDirection, type Extrude
 
 export * from "./extrude";
 
-export type PartKind = "box" | "cylinder" | "sphere" | "solid";
+export type PartKind = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "solid";
+
+/** The kinds the Library adds (#64). Cone: W is the base, H the height. Torus: W across, H the tube. */
+export const PRIMITIVES = ["box", "cylinder", "sphere", "cone", "torus", "wedge"] as const satisfies readonly PartKind[];
+export const DEFAULT_SIZE: Record<(typeof PRIMITIVES)[number], Vec3> = {
+  box: { x: 20, y: 20, z: 20 },
+  cylinder: { x: 20, y: 20, z: 30 },
+  sphere: { x: 20, y: 20, z: 20 },
+  cone: { x: 20, y: 20, z: 20 },
+  torus: { x: 26, y: 26, z: 6 },
+  wedge: { x: 20, y: 20, z: 20 },
+};
 
 export interface Vec3 {
   x: number;
@@ -31,12 +42,19 @@ export interface Part {
   prism?: PrismSpec;
   /** Joins, cuts and intersections made into the part, in its own coordinates, in timeline order. */
   ops?: BodyOp[];
+  /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
+  hole?: boolean;
 }
 
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
 export interface BodyOp {
   op: "join" | "cut" | "intersect";
-  tool: PrismSpec;
+  /** An extrude's prism, in the part's own coordinates. */
+  tool?: PrismSpec;
+  /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
+  body?: Part;
+  /** Where the part itself stood when the body was combined into it, so the body moves with the part later. */
+  at?: { position: Vec3; rotation?: Vec3 };
   feature: string;
 }
 
@@ -112,7 +130,20 @@ export interface ExtrudeFeature extends FeatureBase {
   /** The new body's part, for "new". */
   body: { id: string; name: string };
 }
-export type Feature = AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature | ExtrudeFeature;
+/**
+ * Combine (#66): bodies joined to, cut from or intersected with a target. A Group is the Tinkercad way: solids
+ * joined and holes cut in one step, the originals put away until it is undone or deleted (Ungroup).
+ */
+export interface CombineFeature extends FeatureBase {
+  type: "combine";
+  mode: "combine" | "group";
+  target: string;
+  /** Each tool body and what it does, in order. */
+  tools: { id: string; op: "join" | "cut" | "intersect" }[];
+  /** Leave the tool bodies in the model (Combine only). */
+  keepTools?: boolean;
+}
+export type Feature = AddFeature | DuplicateFeature | MoveFeature | ResizeFeature | DeleteFeature | SketchFeature | ExtrudeFeature | CombineFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -121,6 +152,7 @@ export interface Look {
   hidden?: boolean;
   ghost?: boolean;
   highlight?: boolean;
+  hole?: boolean;
 }
 
 export interface ModelDoc {
@@ -137,7 +169,15 @@ export interface ModelDoc {
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
 
-export const KIND_LABEL: Record<PartKind, string> = { box: "Box", cylinder: "Cylinder", sphere: "Sphere", solid: "Body" };
+export const KIND_LABEL: Record<PartKind, string> = {
+  box: "Box",
+  cylinder: "Cylinder",
+  sphere: "Sphere",
+  cone: "Cone",
+  torus: "Torus",
+  wedge: "Wedge",
+  solid: "Body",
+};
 export const FEATURE_LABEL: Record<FeatureType, string> = {
   add: "Add",
   duplicate: "Duplicate",
@@ -146,6 +186,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   delete: "Delete",
   sketch: "Sketch",
   extrude: "Extrude",
+  combine: "Combine",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -257,6 +298,30 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         t.ops = [...(t.ops ?? []), { op: f.operation, tool, feature: f.id }];
         break;
       }
+      case "combine": {
+        const t = parts[find(f.target)];
+        const gone = [f.target, ...f.tools.map((x) => x.id)].filter((id) => find(id) < 0);
+        if (!t) {
+          failed.set(f.id, "The body it keeps is gone");
+          break;
+        }
+        if (gone.length) failed.set(f.id, gone.length === 1 ? "One of the bodies it combines is gone" : `${gone.length} of the bodies it combines are gone`);
+        const ops: BodyOp[] = [];
+        for (const x of f.tools) {
+          const i = find(x.id);
+          const b = parts[i];
+          if (!b || b === t) continue;
+          ops.push({
+            op: x.op,
+            body: { ...b, hole: undefined },
+            at: { position: { ...t.position }, rotation: t.rotation && { ...t.rotation } },
+            feature: f.id,
+          });
+          if (!(f.mode === "combine" && f.keepTools)) parts.splice(i, 1);
+        }
+        t.ops = [...(t.ops ?? []), ...ops];
+        break;
+      }
     }
   }
   const looked = parts.map((p) => {
@@ -327,7 +392,7 @@ function insert(doc: ModelDoc, at: number | undefined, f: Feature): ModelDoc {
 /** Adds a part as a new feature at `at` (the marker), or at the end. */
 export function addPart(doc: ModelDoc, kind: PartKind, id = newId(), at?: number): ModelDoc {
   const i = clampAt(doc, at);
-  const size = kind === "cylinder" ? { x: 20, y: 20, z: 30 } : { x: 20, y: 20, z: 20 };
+  const size = { ...(kind === "solid" ? DEFAULT_SIZE.box : DEFAULT_SIZE[kind]) };
   const offset = partsOf(doc, i).length * 25;
   const name = nextName(doc, kind);
   return insert(doc, i, { id: newId("f"), type: "add", name, part: { id, name, kind, position: { x: offset, y: 0, z: 0 }, size } });
@@ -473,6 +538,8 @@ export function featureParts(f: Feature): string[] {
       return [];
     case "extrude":
       return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
+    case "combine":
+      return [f.target];
     default:
       return f.parts;
   }
@@ -522,6 +589,13 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(f.target ? [f.target] : [])}`;
       return `${mm(f.distance)}${how}, ${op}`;
     }
+    case "combine": {
+      const n = f.tools.length;
+      const holes = f.tools.filter((x) => x.op === "cut").length;
+      if (f.mode === "group")
+        return `${who([f.target])} with ${n === 1 ? "1 body" : `${n} bodies`}${holes ? `, ${holes === 1 ? "1 hole" : `${holes} holes`}` : ""}`;
+      return `${f.tools[0]?.op ?? "join"} ${n === 1 ? "1 body" : `${n} bodies`} ${f.tools[0]?.op === "join" ? "to" : f.tools[0]?.op === "cut" ? "from" : "with"} ${who([f.target])}`;
+    }
   }
 }
 
@@ -553,6 +627,45 @@ export function addExtrude(doc: ModelDoc, params: ExtrudeParams, id = newId("f")
 /** Changes an Extrude step's settings (the dialog edits it live, as one undo step). */
 export function updateExtrude(doc: ModelDoc, id: string, change: Partial<ExtrudeParams>): ModelDoc {
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "extrude" ? { ...f, ...change } : f)) };
+}
+
+export type CombineParams = Pick<CombineFeature, "mode" | "target" | "tools" | "keepTools">;
+
+/** Adds a Combine or Group step at `at` (the marker), or at the end. */
+export function addCombine(doc: ModelDoc, params: CombineParams, id = newId("f"), at?: number): ModelDoc {
+  const name = params.mode === "group" ? nextGroupName(doc) : nextFeatureName(doc, "combine");
+  return insert(doc, at, { id, type: "combine", name, ...params });
+}
+
+function nextGroupName(doc: ModelDoc): string {
+  const names = new Set(doc.features.map((f) => f.name));
+  let n = 1;
+  while (names.has(`Group ${n}`)) n += 1;
+  return `Group ${n}`;
+}
+
+/**
+ * Group (Tinkercad): the first solid keeps its name; the other solids join it and the holes are cut from it. Returns
+ * a reason instead when there is nothing to group.
+ */
+export function groupParams(parts: Part[], ids: string[]): CombineParams | string {
+  const picked = parts.filter((p) => ids.includes(p.id));
+  if (picked.length < 2) return "Select two or more bodies to group them";
+  const solids = picked.filter((p) => !p.hole);
+  if (!solids.length) return "Pick at least one solid to cut the holes from";
+  const [target, ...rest] = solids;
+  const holes = picked.filter((p) => p.hole);
+  return {
+    mode: "group",
+    target: target!.id,
+    tools: [...rest.map((p) => ({ id: p.id, op: "join" as const })), ...holes.map((p) => ({ id: p.id, op: "cut" as const }))],
+  };
+}
+
+/** The Group step that made a part, if the part is one (for Ungroup). */
+export function groupOf(doc: ModelDoc, partId: string, upTo = doc.features.length): CombineFeature | null {
+  for (const f of doc.features.slice(0, upTo).reverse()) if (f.type === "combine" && f.mode === "group" && f.target === partId && !f.suppressed) return f;
+  return null;
 }
 
 /** Changes a sketch in place (each drawing step is one undo step). */

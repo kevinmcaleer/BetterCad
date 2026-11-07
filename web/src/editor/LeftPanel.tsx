@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Banner, ContextMenu, Icon, PartsTree, WideButton, cx, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
-import type { Feature, ModelDoc, Part, PartKind } from "../state/document";
+import { KIND_LABEL, PRIMITIVES, type Feature, type ModelDoc, type Part, type PartKind } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo, type Command } from "../state/commands";
 import { MODEL_TOOLS, type ToolId } from "./tools";
@@ -176,15 +176,11 @@ function SketchPanel(p: LeftPanelProps) {
 }
 
 function LibraryPanel(p: LeftPanelProps) {
-  const shapes: { kind: PartKind; label: string; icon: "cube" | "cylinder" | "sphere" }[] = [
-    { kind: "box", label: "Box", icon: "cube" },
-    { kind: "cylinder", label: "Cylinder", icon: "cylinder" },
-    { kind: "sphere", label: "Sphere", icon: "sphere" },
-  ];
+  const shapes = PRIMITIVES.map((kind) => ({ kind, label: KIND_LABEL[kind], icon: partIcon(kind) }));
   return (
     <>
       <h2 className="bc-panel-title">Library</h2>
-      <p className="bc-note">Click a shape to add it. Dragging onto the view comes with the 3D view.</p>
+      <p className="bc-note">Click a shape to add it. Make one a hole in its properties, then Group it with a solid to cut it out.</p>
       <div className="bc-tiles bc-tiles-labelled">
         {shapes.map((s) => (
           <button key={s.kind} type="button" className="bc-tile" data-tip={`Add a ${s.label.toLowerCase()}`} onClick={() => p.onAdd(s.kind)}>

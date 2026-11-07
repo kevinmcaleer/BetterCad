@@ -48,7 +48,7 @@ export interface View3DProps {
 const meshCache = new Map<string, BodyMesh>();
 function meshFor(p: Part): BodyMesh | null {
   // A body from a sketch has no quick mesh: it shows once the kernel has built it.
-  if (p.kind === "solid") return null;
+  if (p.kind !== "box" && p.kind !== "cylinder" && p.kind !== "sphere") return null;
   const key = `${p.kind}:${p.size.x}:${p.size.y}:${p.size.z}`;
   let m = meshCache.get(key);
   if (!m) {

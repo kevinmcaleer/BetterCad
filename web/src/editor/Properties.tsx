@@ -1,4 +1,4 @@
-import { Fields, NumberField, PropRow, PropsPanel, type PropsSection } from "@bettercad/ui";
+import { Button, Fields, NumberField, PropRow, PropsPanel, type PropsSection } from "@bettercad/ui";
 import { KIND_LABEL, type Part, type Vec3 } from "../state/document";
 
 export interface PropertiesProps {
@@ -9,6 +9,8 @@ export interface PropertiesProps {
   onCommit: () => void;
   /** Exact volumes from the kernel, by part id, once built. */
   volumes?: Map<string, number>;
+  /** Switches the selection between hole and solid. */
+  onHole?: () => void;
 }
 
 const AXES: (keyof Vec3)[] = ["x", "y", "z"];
@@ -25,7 +27,7 @@ const fmt = (v: number) => String(Math.round(v * 100) / 100);
 const formatVolume = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-GB");
 
 /** The right column: the selection's properties, or a summary of the model. */
-export function Properties({ parts, totalParts, onChange, onCommit, volumes }: PropertiesProps) {
+export function Properties({ parts, totalParts, onChange, onCommit, volumes, onHole }: PropertiesProps) {
   if (parts.length === 0) {
     return (
       <PropsPanel
@@ -74,6 +76,17 @@ export function Properties({ parts, totalParts, onChange, onCommit, volumes }: P
           <PropRow label="Name">{one ? one.name : "Several"}</PropRow>
           <PropRow label="Shape">{one ? KIND_LABEL[one.kind] : [...new Set(parts.map((p) => KIND_LABEL[p.kind]))].join(", ")}</PropRow>
           {volume !== null && <PropRow label="Volume">{`${formatVolume(volume)} mm³`}</PropRow>}
+          {onHole && (
+            <PropRow label="Hole">
+              <Button
+                icon="hole"
+                label={parts.every((p) => p.hole) ? "Hole" : "Solid"}
+                title="A hole cuts the bodies it is grouped with"
+                on={parts.every((p) => p.hole)}
+                onClick={onHole}
+              />
+            </PropRow>
+          )}
         </>
       ),
     },

@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { ContextMenu, ESC, Rail, TooltipLayer, useEscape, type ContextMenuState, type MenuEntry, type RailItem, type RowToggle } from "@bettercad/ui";
 import { createStore } from "../state/store";
 import {
+  addCombine,
   addPart,
   build,
+  groupOf,
+  groupParams,
+  PRIMITIVES,
   changeParts,
   duplicateParts,
   featureParts,
@@ -43,6 +47,7 @@ import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
+import { CombineBar, type CombineOp } from "./CombineBar";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Parts" },
@@ -112,6 +117,8 @@ export function Editor() {
   const [panel, setPanel] = useState<PanelId | null>(() => (window.matchMedia?.(NARROW).matches ? null : "parts"));
   const [propsOpen, setPropsOpen] = useState(false);
   const [tool, setTool] = useState<ToolId>("select");
+  const [combineOp, setCombineOp] = useState<CombineOp>("join");
+  const [keepTools, setKeepTools] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
@@ -215,7 +222,7 @@ export function Editor() {
   useEffect(() => registry.register(extrude.commands), [registry, extrude.commands]);
   // While sketching the model goes faint, so the sketch reads on top of it. Project needs the faces solid to pick them.
   const ghostParts = sketch.editing && sketch.stool !== "project";
-  const viewParts = useMemo(() => (ghostParts ? parts.map((p) => ({ ...p, ghost: true })) : parts), [parts, ghostParts]);
+  const viewParts = useMemo(() => parts.map((p) => (ghostParts || p.hole ? { ...p, ghost: true } : p)), [parts, ghostParts]);
   const onCamera = vp.onCamera;
   const sketchCamera = sketch.onCamera;
   const composedCamera = useCallback(
@@ -294,6 +301,58 @@ export function Editor() {
       store.edit((d) => setLook(d, [id], () => ({ name: clean })), `Rename ${p.name}`);
     },
     [store],
+  );
+
+  /** Group (Tinkercad): the selected solids joined and the holes cut, as one step. */
+  const group = useCallback(
+    (ids: string[]) => {
+      const params = groupParams(live.current.parts, ids);
+      if (typeof params === "string") return say(params, true);
+      const id = newId("f");
+      record((d, at) => addCombine(d, params, id, at), "Group");
+      setSelection([params.target]);
+      say(`Grouped ${ids.length} bodies. ${formatCombo("shift+mod+g")} ungroups them.`);
+    },
+    [record, say],
+  );
+
+  const ungroup = useCallback(
+    (ids: string[]) => {
+      const d = store.get();
+      const f = ids.map((id) => groupOf(d, id, live.current.at)).find(Boolean);
+      if (!f) return say("Select a group to ungroup it", true);
+      const i = d.features.indexOf(f);
+      store.edit((x) => removeFeature(x, f.id), `Ungroup ${f.name}`);
+      const m = live.current.marker;
+      if (m !== null && i < m) setMarker(m - 1);
+      setSelection([f.target, ...f.tools.map((t) => t.id)]);
+      say(`Ungrouped ${f.name}`);
+    },
+    [store, say],
+  );
+
+  /** Combine (Fusion): the first picked body keeps, the others join, cut or intersect it. */
+  const combine = useCallback(
+    (ids: string[], op: CombineOp, keep: boolean) => {
+      const [target, ...tools] = ids;
+      if (!target || !tools.length) return say("Select the body to keep, then the bodies to combine with it", true);
+      record((d, at) => addCombine(d, { mode: "combine", target, tools: tools.map((t) => ({ id: t, op })), keepTools: keep }, newId("f"), at), "Combine");
+      setSelection([target]);
+      setTool("select");
+      say(`Combined ${tools.length === 1 ? "1 body" : `${tools.length} bodies`}`);
+    },
+    [record, say],
+  );
+
+  const toggleHole = useCallback(
+    (ids: string[]) => {
+      const chosen = live.current.parts.filter((p) => ids.includes(p.id));
+      if (!chosen.length) return;
+      const on = !chosen.every((p) => p.hole);
+      store.edit((d) => setLook(d, ids, () => ({ hole: on })), on ? "Make a hole" : "Make solid");
+      say(on ? `${chosen.length === 1 ? chosen[0]!.name : `${chosen.length} parts`} will cut when grouped` : "Made solid");
+    },
+    [store, say],
   );
 
   const armTool = useCallback((id: ToolId) => setTool((t) => (t === id && id !== "select" ? "select" : id)), []);
@@ -394,6 +453,10 @@ export function Editor() {
     moveMarker,
     setTimelineShown,
     timelineShown,
+    group,
+    ungroup,
+    toggleHole,
+    confirm: () => {},
   });
   handlers.current = {
     newModel,
@@ -412,6 +475,10 @@ export function Editor() {
     moveMarker,
     setTimelineShown,
     timelineShown,
+    group,
+    ungroup,
+    toggleHole,
+    confirm: () => (extrude.session ? extrude.done() : tool === "combine" ? combine(selection, combineOp, keepTools) : undefined),
   };
 
   useEffect(() => {
@@ -478,7 +545,48 @@ export function Editor() {
         run: () => h().armTool(t.id),
         keywords: t.title,
       })),
-      ...(["box", "cylinder", "sphere"] as PartKind[]).map<Command>((k) => ({
+      {
+        id: "edit.group",
+        scope: "model",
+        label: "Group",
+        group: "Edit",
+        icon: "combine",
+        keys: ["mod+g"],
+        run: () => h().group(sel()),
+        when: () => sel().length > 1,
+        keywords: "join holes combine union",
+      },
+      {
+        id: "edit.ungroup",
+        scope: "model",
+        label: "Ungroup",
+        group: "Edit",
+        icon: "unlink",
+        keys: ["shift+mod+g"],
+        run: () => h().ungroup(sel()),
+        when: hasSel,
+      },
+      {
+        id: "edit.hole",
+        scope: "model",
+        label: "Hole or solid",
+        group: "Edit",
+        icon: "hole",
+        run: () => h().toggleHole(sel()),
+        when: hasSel,
+        keywords: "cut subtract tinkercad",
+      },
+      {
+        id: "tool.confirm",
+        scope: "model",
+        label: "Finish the tool",
+        group: "Tools",
+        icon: "check",
+        keys: ["enter"],
+        run: () => h().confirm(),
+        when: () => live.current.tool === "extrude" || live.current.tool === "combine",
+      },
+      ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
         label: `Add a ${KIND_LABEL[k].toLowerCase()}`,
         group: "Tools",
@@ -617,6 +725,29 @@ export function Editor() {
     return [
       { id: "rename", label: "Rename", icon: "pencil", keys: "F2", disabled: ids.length !== 1, onSelect: () => setRenameId(ids[0] ?? null) },
       { id: "duplicate", label: "Duplicate", icon: "copy", keys: formatCombo("mod+d"), onSelect: () => duplicate(ids) },
+      ...(ids.length > 1
+        ? [
+            { id: "group", label: "Group", icon: "combine" as const, keys: formatCombo("mod+g"), onSelect: () => group(ids) },
+            {
+              id: "combine",
+              label: "Combine…",
+              icon: "combine" as const,
+              onSelect: () => {
+                setSelection(ids);
+                setTool("combine");
+              },
+            },
+          ]
+        : []),
+      ...(ids.some((id) => groupOf(doc, id, at))
+        ? [{ id: "ungroup", label: "Ungroup", icon: "unlink" as const, keys: formatCombo("shift+mod+g"), onSelect: () => ungroup(ids) }]
+        : []),
+      {
+        id: "hole",
+        label: chosen.length && chosen.every((p) => p.hole) ? "Make solid" : "Make a hole",
+        icon: "hole",
+        onSelect: () => toggleHole(ids),
+      },
       {
         id: "hide",
         label: allHidden ? "Show" : "Hide",
@@ -735,6 +866,17 @@ export function Editor() {
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && <ExtrudeBar x={extrude} parts={parts} />}
+              {tool === "combine" && (
+                <CombineBar
+                  picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
+                  op={combineOp}
+                  onOp={setCombineOp}
+                  keepTools={keepTools}
+                  onKeepTools={setKeepTools}
+                  onApply={() => combine(selection, combineOp, keepTools)}
+                  onCancel={() => setTool("select")}
+                />
+              )}
             </>
           )
         }
@@ -781,7 +923,14 @@ export function Editor() {
           sketch.editing ? (
             <SketchPanel s={sketch} />
           ) : (
-            <Properties parts={selectedParts} totalParts={parts.length} onChange={onPropChange} onCommit={store.seal} volumes={volumes} />
+            <Properties
+              parts={selectedParts}
+              totalParts={parts.length}
+              onChange={onPropChange}
+              onCommit={store.seal}
+              volumes={volumes}
+              onHole={() => toggleHole(selection)}
+            />
           )
         }
         rightOpen={propsOpen}

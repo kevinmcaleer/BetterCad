@@ -1,6 +1,6 @@
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
-import { boolean, box, cylinder, measure, place, prismOf, sphere, type Measure } from "./shapes";
+import { boolean, box, cone, cylinder, measure, place, prismOf, sphere, torus, unplace, wedge, type Measure } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
 import { build, type ModelDoc, type Part } from "../document";
 import type { BodyMesh } from "../mesh";
@@ -26,6 +26,30 @@ export interface ModelResult {
 const key = (p: Part, q: Quality) =>
   JSON.stringify([p.kind, p.kind === "solid" ? null : p.size, p.position, p.rotation ?? null, p.prism ?? null, p.ops ?? null, q]);
 
+/** Steps that made a part, so a part that cannot be built marks its tile. */
+const makers = (doc: ModelDoc, id: string) =>
+  doc.features.find((x) => (x.type === "add" && x.part.id === id) || (x.type === "extrude" && x.operation === "new" && x.body.id === id));
+
+/** A part's own shape, before any join, cut or move. */
+function primitive(oc: OC, p: Part): TopoDS_Shape {
+  switch (p.kind) {
+    case "solid":
+      return prismOf(oc, p.prism!);
+    case "box":
+      return box(oc, p.size);
+    case "cylinder":
+      return cylinder(oc, p.size);
+    case "sphere":
+      return sphere(oc, p.size);
+    case "cone":
+      return cone(oc, p.size.x, 0, p.size.z);
+    case "torus":
+      return torus(oc, p.size.x - p.size.z, p.size.z);
+    case "wedge":
+      return wedge(oc, p.size);
+  }
+}
+
 export class ModelBuilder {
   private cache = new Map<string, { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> }>();
   private used = new Set<string>();
@@ -42,11 +66,12 @@ export class ModelBuilder {
     let hit = this.cache.get(k);
     if (!hit) {
       const oc = this.oc;
-      let local =
-        p.kind === "solid" ? prismOf(oc, p.prism!) : p.kind === "box" ? box(oc, p.size) : p.kind === "cylinder" ? cylinder(oc, p.size) : sphere(oc, p.size);
+      let local = primitive(oc, p);
       for (const o of p.ops ?? []) {
         try {
-          local = boolean(oc, o.op, local, [prismOf(oc, o.tool)]);
+          // A body is built where it stood, then taken into this part's coordinates as they were then.
+          const tool = o.body ? unplace(oc, this.solid(o.body, quality).shape, o.at ?? { position: p.position, rotation: p.rotation }) : prismOf(oc, o.tool!);
+          local = boolean(oc, o.op, local, [tool]);
         } catch (e) {
           this.opFailures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
         }
@@ -72,7 +97,7 @@ export class ModelBuilder {
         bodies.push({ id: p.id, ...this.solid(p, quality).body });
       } catch (e) {
         const why = isKernelError(e) ? e.message : "This part could not be built.";
-        const f = doc.features.find((x) => (x.type === "add" && x.part.id === p.id) || (x.type === "extrude" && x.operation === "new" && x.body.id === p.id));
+        const f = makers(doc, p.id);
         if (f) out.push([f.id, why]);
       }
     }

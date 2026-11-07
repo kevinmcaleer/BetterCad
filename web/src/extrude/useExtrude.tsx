@@ -248,7 +248,7 @@ export function useExtrude(d: ExtrudeDeps) {
         label: "Finish the extrude",
         group: "Tools",
         icon: "check",
-        keys: ["enter"],
+        // Enter is the editor's tool.confirm, shared with Combine.
         run: () => done(),
         when: () => !!live.current.session,
       },

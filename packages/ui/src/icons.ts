@@ -94,6 +94,9 @@ export const warning = "M12 3 2 20h20zM12 10v4M12 17h.01";
 export const hole = "M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0";
 export const cylinder = "M4 6a8 3 0 1 0 16 0a8 3 0 1 0-16 0M4 6v12a8 3 0 0 0 16 0V6";
 export const sphere = "M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18M3 12a9 3.5 0 0 0 18 0";
+export const cone = "M12 3 4 18M12 3l8 15M4 18a8 3 0 0 0 16 0a8 3 0 0 0-16 0";
+export const torus = "M2 12a10 5 0 1 0 20 0a10 5 0 1 0-20 0M8 11.5a4 1.6 0 0 0 8 0M9.2 12.6a3.2 1.2 0 0 1 5.6 0";
+export const wedge = "M3 20h12L3 8zM8 4v12h12M3 8l5-4M15 20l5-4M3 20l5-4";
 export const settings = "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1";
 export const history = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3";
 export const search = "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-4.3-4.3";
@@ -207,6 +210,9 @@ export const ICONS = {
   hole,
   cylinder,
   sphere,
+  cone,
+  torus,
+  wedge,
   settings,
   history,
   search,

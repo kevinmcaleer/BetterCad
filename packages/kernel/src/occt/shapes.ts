@@ -219,8 +219,19 @@ export function revolve(oc: OC, profile: TopoDS_Shape, origin: [number, number, 
   });
 }
 
+/** Undoes a placement: a world shape in the part's own coordinates. */
+export function unplace(oc: OC, shape: TopoDS_Shape, p: Placement): TopoDS_Shape {
+  const mk = new oc.BRepBuilderAPI_Transform(shape, placement(oc, p).Inverted(), true, false);
+  return mk.Shape();
+}
+
 /** Moves and turns a shape: turn about the origin (Z, then Y, then X), then move. */
 export function place(oc: OC, shape: TopoDS_Shape, p: Placement): TopoDS_Shape {
+  const mk = new oc.BRepBuilderAPI_Transform(shape, placement(oc, p), true, false);
+  return mk.Shape();
+}
+
+function placement(oc: OC, p: Placement) {
   const r = p.rotation ?? { x: 0, y: 0, z: 0 };
   const trsf = new oc.gp_Trsf();
   const step = (axis: [number, number, number], deg: number) => {
@@ -237,8 +248,7 @@ export function place(oc: OC, shape: TopoDS_Shape, p: Placement): TopoDS_Shape {
   const move = new oc.gp_Trsf();
   move.SetTranslation(new oc.gp_Vec(p.position.x, p.position.y, p.position.z));
   trsf.PreMultiply(move);
-  const mk = new oc.BRepBuilderAPI_Transform(shape, trsf, true, false);
-  return mk.Shape();
+  return trsf;
 }
 
 export type BooleanOp = "join" | "cut" | "intersect";
