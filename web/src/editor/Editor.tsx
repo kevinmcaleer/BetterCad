@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
+  Banner,
   Button,
   ContextMenu,
   Dialog,
@@ -295,6 +296,7 @@ export function Editor() {
 
   const finish = useFinish({
     record,
+    update: (fn, label) => store.edit(fn, label),
     parts,
     view: vp.ref,
     tool: sketch.editing ? null : tool === "fillet" || tool === "shell" ? tool : null,
@@ -929,6 +931,59 @@ export function Editor() {
       : selectedParts.length === 1
         ? `${selectedParts[0]!.name} selected.`
         : `${selectedParts.length} parts selected.`;
+  /** A failed step's way out (#77): fix it where it can be fixed, or set it aside. */
+  const problemId = activeFeatureId && failed.has(activeFeatureId) ? activeFeatureId : null;
+  const problem = problemId ? doc.features.find((f) => f.id === problemId) : undefined;
+  const repick = (id: string) => {
+    const i = store.get().features.findIndex((f) => f.id === id);
+    const f = store.get().features[i];
+    if (!f || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell")) return;
+    const back = live.current.marker;
+    moveMarker(i);
+    setTool(f.type === "shell" ? "shell" : "fillet");
+    finish.repick(f, () => setMarker(back));
+    say(
+      `Pick the ${f.type === "shell" ? "faces to leave open" : "edges"} again on ${parts.find((p) => p.id === f.part)?.name ?? "the body"}, then press Enter`,
+    );
+  };
+  const editEntry = problem ? featureMenu(problem.id).find((e) => e.id === "edit") : undefined;
+  const problemBanner = problem && (
+    <div className="bc-problem">
+      <Banner
+        tone="warn"
+        action={
+          <span className="bc-actions">
+            {(problem.type === "fillet" || problem.type === "chamfer" || problem.type === "shell") && (
+              <Button size="dense" label="Re-pick" title="Pick the edges or faces again" onClick={() => repick(problem.id)} />
+            )}
+            {editEntry && "onSelect" in editEntry && <Button size="dense" label="Edit" onClick={editEntry.onSelect} />}
+            <Button size="dense" label={problem.suppressed ? "Unsuppress" : "Suppress"} onClick={() => suppressFeature(problem.id)} />
+            <Button size="dense" variant="danger" label="Delete" onClick={() => deleteFeature(problem.id)} />
+          </span>
+        }
+      >
+        {problem.name}: {failed.get(problem.id)}
+      </Banner>
+    </div>
+  );
+  const problemCount = failed.size;
+  const problemsButton =
+    problemCount > 0 && !sketch.editing && tool === "select" ? (
+      <Button
+        size="dense"
+        icon="warning"
+        label={`Rebuilt with ${problemCount === 1 ? "1 problem" : `${problemCount} problems`}`}
+        title="Select the first step with a problem"
+        onClick={() => {
+          const first = doc.features.find((f) => failed.has(f.id));
+          if (first) {
+            setActiveFeature(first.id);
+            setPropsOpen(true);
+          }
+        }}
+      />
+    ) : null;
+
   const helpText = sketch.help
     ? sketch.help
     : extrude.help || revolve.help || pushpull.help || hole.help || measure.help
@@ -1117,20 +1172,32 @@ export function Editor() {
             />
           )
         }
-        helpLine={helpText}
+        helpLine={
+          problemsButton ? (
+            <span className="bc-help-row">
+              {problemsButton}
+              <span>{helpText}</span>
+            </span>
+          ) : (
+            helpText
+          )
+        }
         rightPanel={
           sketch.editing ? (
             <SketchPanel s={sketch} />
           ) : (
-            <Properties
-              parts={selectedParts}
-              totalParts={parts.length}
-              onChange={onPropChange}
-              onCommit={onPropCommit}
-              scope={scope}
-              volumes={volumes}
-              onHole={() => toggleHole(selection)}
-            />
+            <>
+              {problemBanner}
+              <Properties
+                parts={selectedParts}
+                totalParts={parts.length}
+                onChange={onPropChange}
+                onCommit={onPropCommit}
+                scope={scope}
+                volumes={volumes}
+                onHole={() => toggleHole(selection)}
+              />
+            </>
           )
         }
         rightOpen={propsOpen}

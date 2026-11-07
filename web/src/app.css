@@ -608,3 +608,18 @@ kbd {
     color: var(--bc-color-ink);
   }
 }
+
+/* A failed step's banner over the properties (#77), and the problem count in the help line. */
+.bc-problem {
+  padding: var(--bc-space-3) var(--bc-space-4) 0;
+}
+.bc-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-2);
+}
+.bc-help-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+}
