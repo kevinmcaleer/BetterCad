@@ -27,6 +27,7 @@ import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
 import { readImport, type ImportedBody } from "./imports";
+import { findMates, type Mate } from "./mates";
 import { baseName, fromBase64, type ImportFormat } from "../imports";
 
 /**
@@ -210,6 +211,22 @@ export class ModelBuilder {
     // Keep the cache to what the last few builds used, so memory stays flat across many edits.
     if (this.cache.size > 400) for (const k of this.cache.keys()) if (!this.used.has(k)) this.cache.delete(k);
     return { bodies, failed: out, ms: performance.now() - t0 };
+  }
+
+  /** Mating faces (#184) between the bodies that print, as built up to `upTo`. */
+  mates(doc: ModelDoc, upTo = doc.features.length, limit = 1): Mate[] {
+    const { parts } = build(doc, upTo);
+    this.useBlobs(doc);
+    const bodies: { id: string; shape: TopoDS_Shape }[] = [];
+    for (const p of parts) {
+      if (p.hole || p.hidden) continue;
+      try {
+        bodies.push({ id: p.id, shape: this.solid(p).shape });
+      } catch {
+        // A body that can't build has no faces to check; the timeline already says why.
+      }
+    }
+    return findMates(this.oc, bodies, limit);
   }
 
   /** Measures one or two picks (#71) on the model as built up to `upTo`, from the cached solids. */

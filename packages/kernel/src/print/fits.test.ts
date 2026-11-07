@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GAP_FITS, fitGap, gapFitNote, gapLabel, gapsFromCoupon, isGapFit } from "./fits";
+import { GAP_FITS, fitGap, gapFitNote, gapLabel, gapsFromCoupon, isGapFit, mateStatus } from "./fits";
 
 describe("named fits (#181)", () => {
   it("has press, sliding and loose, tightest first", () => {
@@ -32,5 +32,15 @@ describe("gaps from the fit coupon (#182)", () => {
   });
   it("never makes press looser than sliding", () => {
     expect(gapsFromCoupon(0.3, 0.15)).toEqual({ press: 0.15, sliding: 0.3, loose: 0.45 });
+  });
+});
+
+describe("what a gap comes to (#184)", () => {
+  it("names the nearest fit, and offers a sliding fit when too tight", () => {
+    expect(mateStatus(0.24)).toEqual({ text: "sliding fit, 0.24 mm" });
+    expect(mateStatus(0.14)).toEqual({ text: "press fit, 0.14 mm" });
+    expect(mateStatus(0.6)).toEqual({ text: "loose fit, 0.6 mm" });
+    expect(mateStatus(0.02)).toMatchObject({ text: "gap 0.02 mm, too tight to print", fix: "sliding", fixGap: 0.25 });
+    expect(mateStatus(-0.1, { sliding: 0.3 })).toMatchObject({ text: "they overlap by 0.1 mm", fixGap: 0.3 });
   });
 });

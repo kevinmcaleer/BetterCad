@@ -7,6 +7,8 @@ import {
   fitGap,
   gapsFromCoupon,
   matchesProfile,
+  mateStatus,
+  type FitId,
   type PrinterProfile,
   PRINTERS,
   formatWeight,
@@ -18,6 +20,7 @@ import {
   type PrintSettings,
 } from "../state/document";
 import { FIT_CALIBRATION_GAPS } from "@bettercad/kernel/samples";
+import type { Mate } from "@bettercad/kernel";
 
 /**
  * The Print panel (#100, #105): the printer the model is for, its bed in the view, whether the model fits, and the
@@ -65,6 +68,13 @@ export interface PrintPanelProps {
   /** Fitted cuts made at another gap, and the update that brings them to the gaps set now. */
   staleFits: number;
   onUpdateFits: () => void;
+  /** The fits check (#184): where printed bodies meet, and the gap there. Null while it runs. */
+  fitsCheck: boolean;
+  onFitsCheck: (on: boolean) => void;
+  mates: Mate[] | null;
+  partName: (id: string) => string;
+  onShowMate: (m: Mate) => void;
+  onFixMate: (m: Mate, fit: FitId) => void;
 }
 
 /** An orientation suggestion with its thumbnail (a PNG data URL, or null where the view can't draw one). */
@@ -275,12 +285,13 @@ export function PrintPanel(p: PrintPanelProps) {
       <Button
         size="wide"
         icon="ruler"
-        label="Calibrate"
+        label="Calibrate holes"
         title="Open a test plate with M2 to M6 holes at offsets from 0.2 to 0.6 mm. Print it and see which ones a screw slides through."
         onClick={p.onCalibrate}
       />
 
       <FitSection settings={p.settings} onChange={p.onChange} onCalibrate={p.onCalibrateFits} stale={p.staleFits} onUpdate={p.onUpdateFits} />
+      <MateList {...p} />
 
       <h2 className="bc-panel-title">Material</h2>
       <label className="bc-field-label" htmlFor="bc-material">
@@ -475,6 +486,47 @@ function ProfilePicker({
           </span>
         </form>
       )}
+    </>
+  );
+}
+
+/** The fits check (#184): pins in holes and facing flat faces, each with its gap and what kind of fit that is. */
+function MateList(p: PrintPanelProps) {
+  const list = p.mates;
+  return (
+    <>
+      <label className="bc-check">
+        <input type="checkbox" checked={p.fitsCheck} onChange={(e) => p.onFitsCheck(e.target.checked)} />
+        <span>Check where parts meet</span>
+      </label>
+      {p.fitsCheck &&
+        (!list ? (
+          <p className="bc-note" role="status">
+            Checking…
+          </p>
+        ) : !list.length ? (
+          <p className="bc-note" role="status">
+            No printed parts meet closely enough to need a fit.
+          </p>
+        ) : (
+          <ul className="bc-check-areas bc-mates" aria-label="Where parts meet">
+            {list.slice(0, 20).map((m, i) => {
+              const st = mateStatus(m.gap, p.settings.fits);
+              const what = m.kind === "pin" ? `${p.partName(m.b)} in ${p.partName(m.a)}` : `${p.partName(m.a)} and ${p.partName(m.b)}`;
+              return (
+                <li key={i}>
+                  <span>
+                    {what}: {st.text}
+                  </span>
+                  <Button size="dense" icon="frame" label="Show" title={`Show where ${what} meet`} onClick={() => p.onShowMate(m)} />
+                  {st.fix && (
+                    <Button size="dense" label="Fix" title={`Make it a ${st.fixName} (${st.fixGap} mm each side)`} onClick={() => p.onFixMate(m, st.fix!)} />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ))}
     </>
   );
 }

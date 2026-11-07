@@ -37,3 +37,18 @@ The step keeps the gap it was made with, so changing printer never quietly resiz
 - A model keeps its own copy of the values, so someone you share it with sees the same bed and fits without your printer.
 - If you change a setting after picking a printer, the panel offers **Save to** that printer.
 - Deleting a printer leaves models that used it as they are.
+
+## Where parts meet (#184)
+
+Tick **Check where parts meet** in the Print panel's Fits group. The kernel looks at every pair of printed bodies (holes and hidden bodies are left out) and lists two kinds of meeting:
+
+- **A pin in a hole**: two round faces on the same axis, one inside the other.
+- **Facing flat faces**: two flat faces pointing at each other less than 1 mm apart, sharing some area.
+
+Each line gives the gap on each side and the nearest named fit, such as "Pin in Bracket: sliding fit, 0.24 mm". A gap under half the press fit, or an overlap, says "too tight to print" and has a **Fix** button that makes it a sliding fit:
+
+- A pin that was cut out of the body it sits in (Combine, Cut, with Keep tools) gets a sliding fit on that cut.
+- Facing flat faces get a Push/pull step that moves the first body's face back.
+- A pin whose hole came from somewhere else gets a note saying how much wider to make the hole.
+
+The check runs in the geometry worker (`findMates` in `packages/kernel/src/occt/mates.ts`) a moment after each change, and Show frames each meeting.

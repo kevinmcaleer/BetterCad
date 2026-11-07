@@ -61,3 +61,15 @@ export function gapsFromCoupon(pressed: number, slid: number): Required<FitGaps>
   const sliding = Math.max(pressed, slid);
   return { press: Math.min(pressed, slid), sliding, loose: Math.round((sliding + 0.15) * 100) / 100 };
 }
+
+/** What a gap between two printed parts comes to (#184), and the fit to make it when it won't print well. */
+export function mateStatus(gap: number, tuned?: FitGaps): { text: string; fix?: FitId; fixName?: string; fixGap?: number } {
+  const g = Math.round(gap * 100) / 100;
+  const sliding = fitGap("sliding", tuned);
+  const offer = { fix: "sliding" as const, fixName: "sliding fit", fixGap: sliding };
+  if (gap < -1e-6) return { text: `they overlap by ${mm(-gap)}`, ...offer };
+  const press = fitGap("press", tuned);
+  if (gap < press / 2) return { text: `gap ${mm(g)}, too tight to print`, ...offer };
+  const near = [...GAP_FITS].sort((a, b) => Math.abs(fitGap(a.id, tuned) - gap) - Math.abs(fitGap(b.id, tuned) - gap))[0]!;
+  return { text: `${near.name.toLowerCase()}, ${mm(g)}` };
+}

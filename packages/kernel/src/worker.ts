@@ -40,6 +40,7 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
   ping: () => ({ ok: true, engine: "opencascade.js" }),
   build: ({ doc, upTo, quality }, id) => builder!.build(doc, upTo, quality, () => cancelled.has(id)),
   measure: ({ doc, upTo, refs }) => builder!.measure(doc, refs, upTo),
+  mates: ({ doc, upTo, limit }) => builder!.mates(doc, upTo, limit),
   inspect: (params) => builder!.inspect(params),
   estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),
   export: (params, id) => exporter!.export(params, () => cancelled.has(id)),

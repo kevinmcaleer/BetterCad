@@ -41,6 +41,12 @@ function setup(settings: PrintPanelProps["settings"] = {}, extra: Partial<PrintP
       onDeleteProfile={noop}
       staleFits={0}
       onUpdateFits={noop}
+      fitsCheck={false}
+      onFitsCheck={noop}
+      mates={null}
+      partName={(id) => ({ plate: "Plate", pin: "Pin" })[id] ?? id}
+      onShowMate={noop}
+      onFixMate={noop}
       {...extra}
     />,
   );
@@ -93,5 +99,43 @@ describe("Print panel printers (#180)", () => {
     setup({}, { staleFits: 2, onUpdateFits });
     fireEvent.click(screen.getByRole("button", { name: /Update 2 fitted cuts/ }));
     expect(onUpdateFits).toHaveBeenCalled();
+  });
+});
+
+describe("Print panel fits check (#184)", () => {
+  const pin = {
+    kind: "pin" as const,
+    a: "plate",
+    b: "pin",
+    faceA: 1,
+    faceB: 0,
+    gap: 0,
+    box: { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] },
+  };
+
+  it("turns on", () => {
+    const onFitsCheck = vi.fn();
+    setup({}, { onFitsCheck });
+    fireEvent.click(screen.getByLabelText("Check where parts meet"));
+    expect(onFitsCheck).toHaveBeenCalledWith(true);
+  });
+
+  it("lists each meeting with its gap, Show and a fix when too tight", () => {
+    const onFixMate = vi.fn();
+    const onShowMate = vi.fn();
+    setup({}, { fitsCheck: true, mates: [pin, { ...pin, kind: "faces", gap: 0.24 }], onFixMate, onShowMate });
+    const list = screen.getByRole("list", { name: "Where parts meet" });
+    expect(list.textContent).toContain("Pin in Plate: gap 0 mm, too tight to print");
+    expect(list.textContent).toContain("Plate and Pin: sliding fit, 0.24 mm");
+    fireEvent.click(screen.getByRole("button", { name: /Fix/ }));
+    expect(onFixMate).toHaveBeenCalledWith(pin, "sliding");
+    fireEvent.click(screen.getAllByRole("button", { name: /Show/ })[0]!);
+    expect(onShowMate).toHaveBeenCalledWith(pin);
+    expect(screen.getAllByRole("button", { name: /Fix/ })).toHaveLength(1);
+  });
+
+  it("says when nothing meets", () => {
+    setup({}, { fitsCheck: true, mates: [] });
+    expect(screen.getByText(/No printed parts meet/)).toBeTruthy();
   });
 });

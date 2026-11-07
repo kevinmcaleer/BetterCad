@@ -23,6 +23,9 @@ import {
   cutTool,
   staleFits,
   updateFits,
+  fixMate,
+  gapFitOf,
+  type FitId,
   applyProfile,
   profileFromSettings,
   PRIMITIVES,
@@ -125,6 +128,7 @@ import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
+import type { Mate } from "@bettercad/kernel";
 import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 
@@ -1292,6 +1296,33 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say(n === 1 ? "1 fitted cut now uses the gaps set now" : `${n} fitted cuts now use the gaps set now`);
   }, [fitsStale, store, say]);
 
+  // Mating faces (#184): worked out in the kernel while the fits check is on, again after each change.
+  const [fitsCheck, setFitsCheck] = useState(false);
+  const [mates, setMates] = useState<Mate[] | null>(null);
+  useEffect(() => {
+    setMates(null);
+    if (!fitsCheck || !printOpen) return;
+    let pending: { cancel(): void } | null = null;
+    const t = setTimeout(() => {
+      const call = kernelCall("mates", { doc, upTo: at });
+      call?.then(setMates, () => setMates([]));
+      pending = call;
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      pending?.cancel();
+    };
+  }, [fitsCheck, printOpen, doc, at, kernelCall]);
+  const fixFit = useCallback(
+    (m: Mate, fit: FitId) => {
+      const r = fixMate(live.current.doc, m, fit);
+      if (typeof r === "string") return say(r, true);
+      store.edit(() => r, `Make a ${gapFitOf(fit).name.toLowerCase()}`);
+      say(`Made it a ${gapFitOf(fit).name.toLowerCase()}`);
+    },
+    [store, say],
+  );
+
   const printPanel = (
     <PrintPanel
       settings={doc.print ?? {}}
@@ -1324,6 +1355,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       onUpdateProfile={updateProfile}
       onDeleteProfile={deleteProfile}
       staleFits={fitsStale.length}
+      fitsCheck={fitsCheck}
+      onFitsCheck={setFitsCheck}
+      mates={mates}
+      partName={(id) => parts.find((x) => x.id === id)?.name ?? "A body"}
+      onShowMate={(m) => vp.ref.current?.engine()?.fitBox(m.box.min, m.box.max)}
+      onFixMate={fixFit}
       onUpdateFits={updateFitCuts}
     />
   );
