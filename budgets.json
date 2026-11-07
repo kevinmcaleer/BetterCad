@@ -24,9 +24,8 @@
     }
   },
   "viewport": {
-    "$comment": "Since #204 the view fills the 1280 x 800 window instead of a 636 x 489 box between the panels: 3.3 times the pixels, and SwiftShader's cost follows the pixels (16.7 ms before, 84 ms after on a runner). Re-based to 90 for that.",
     "tolerance": 0.25,
-    "baseline": { "Draw a frame of the calibration coupon": 90 }
+    "baseline": { "Draw a frame of the calibration coupon": 40 }
   },
   "lighthouse": {
     "$comment": "Desktop preset, Chromium with SwiftShader as CI runs it. Software WebGL compiles the view's shaders on the main thread (about 1 s of blocking time); with WebGL off the score is 100. The target is 0.85.",
