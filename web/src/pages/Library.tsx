@@ -8,6 +8,7 @@ import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { ago } from "../files/autosave";
 import { Page } from "./Page";
+import { SampleCards } from "../samples/SampleCards";
 
 /**
  * My models (#89): cards with thumbnails, search and sort, rename in place, duplicate, download, and a 30-day bin.
@@ -191,6 +192,7 @@ export function Library({ bin = false }: { bin?: boolean }) {
         <div className="bc-lib-empty">
           <p>{bin ? "The bin is empty." : q ? `No models match ‘${q}’.` : "No models yet"}</p>
           {!bin && !q && <Button variant="primary" icon="plus" label="New model" onClick={() => void create()} />}
+          {!bin && !q && <SampleCards onOpen={(id) => go(`#/sample/${id}`)} title="Or start from a sample" />}
         </div>
       )}
       {models && models.length > 0 && (

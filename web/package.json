@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "e2e": "playwright test --trace off --grep-invert @visual",
     "e2e:visual": "playwright test --trace off --grep @visual",
-    "size": "node scripts/bundle-report.mjs dist"
+    "size": "node scripts/bundle-report.mjs dist",
+    "build:samples": "vite-node scripts/build-samples.ts"
   },
   "dependencies": {
     "@bettercad/kernel": "*",

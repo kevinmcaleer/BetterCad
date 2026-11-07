@@ -1,0 +1,228 @@
+{
+  "schema": 1,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "sample-box-with-lid",
+  "created": "2026-11-07T00:00:00.000Z",
+  "modified": "2026-11-07T00:00:00.000Z",
+  "name": "Box with a lid",
+  "document": {
+    "features": [
+      {
+        "id": "f1",
+        "name": "Add Box",
+        "part": {
+          "id": "box",
+          "kind": "box",
+          "name": "Box",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "width",
+          "size.y": "depth",
+          "size.z": "height"
+        },
+        "id": "f2",
+        "name": "Size Box",
+        "parts": [
+          "box"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "size": "wall"
+        },
+        "id": "f3",
+        "name": "Hollow the box",
+        "part": "box",
+        "refs": [
+          5
+        ],
+        "size": 2,
+        "type": "shell"
+      },
+      {
+        "id": "f4",
+        "name": "Add Lid",
+        "part": {
+          "id": "lid",
+          "kind": "box",
+          "name": "Lid",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "width",
+          "size.y": "depth",
+          "size.z": "wall"
+        },
+        "id": "f5",
+        "name": "Size Lid",
+        "parts": [
+          "lid"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "width + 10"
+        },
+        "id": "f6",
+        "name": "Place Lid",
+        "parts": [
+          "lid"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f7",
+        "name": "Add Lip",
+        "part": {
+          "id": "lip",
+          "kind": "box",
+          "name": "Lip",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "width - 2 * wall - 2 * gap",
+          "size.y": "depth - 2 * wall - 2 * gap",
+          "size.z": "4"
+        },
+        "id": "f8",
+        "name": "Size Lip",
+        "parts": [
+          "lip"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "width + 10",
+          "position.z": "wall"
+        },
+        "id": "f9",
+        "name": "Place Lip",
+        "parts": [
+          "lip"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f10",
+        "mode": "group",
+        "name": "Lid with lip",
+        "target": "lid",
+        "tools": [
+          {
+            "id": "lip",
+            "op": "join"
+          }
+        ],
+        "type": "combine"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {},
+    "name": "Box with a lid",
+    "params": [
+      {
+        "comment": "Outside, left to right",
+        "expression": "60",
+        "id": "p_width",
+        "name": "width",
+        "unit": "mm"
+      },
+      {
+        "comment": "Outside, front to back",
+        "expression": "40",
+        "id": "p_depth",
+        "name": "depth",
+        "unit": "mm"
+      },
+      {
+        "comment": "Outside, without the lid",
+        "expression": "30",
+        "id": "p_height",
+        "name": "height",
+        "unit": "mm"
+      },
+      {
+        "comment": "Wall and lid thickness",
+        "expression": "2",
+        "id": "p_wall",
+        "name": "wall",
+        "unit": "mm"
+      },
+      {
+        "comment": "Room between the lid's lip and the walls, so it fits after printing",
+        "expression": "0.3",
+        "id": "p_gap",
+        "name": "gap",
+        "unit": "mm"
+      }
+    ],
+    "version": 2
+  },
+  "thumbnail": "data:image/png;base64,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"
+}

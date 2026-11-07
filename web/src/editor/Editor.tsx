@@ -86,6 +86,7 @@ import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { Versions } from "../cloud/Versions";
 import { ShareDialog } from "../cloud/ShareDialog";
+import { EmptyState } from "./EmptyState";
 import { Page } from "../pages/Page";
 
 const PANELS: RailItem<PanelId>[] = [
@@ -133,9 +134,11 @@ export interface EditorProps {
   model?: string;
   /** A share link's token ("#/view/<token>"): the model read-only (#92). */
   share?: string;
+  /** A sample model to open as a new one ("#/sample/<id>", #99). */
+  sample?: string;
 }
 
-export function Editor({ active = true, model, share }: EditorProps = {}) {
+export function Editor({ active = true, model, share, sample }: EditorProps = {}) {
   const [store] = useState(() => createStore<ModelDoc>(newDoc()));
   const history = useSyncExternalStore(store.subscribe, store.history);
   const doc = history.present;
@@ -504,6 +507,10 @@ export function Editor({ active = true, model, share }: EditorProps = {}) {
       () => setInactive(true),
     );
   }, [share]);
+  // "#/sample/<id>": the library's and the tour's sample links.
+  useEffect(() => {
+    if (sample) filesRef.current.openSample(sample);
+  }, [sample]);
   const signOut = useCallback(() => {
     const run = async () => {
       await api.signOut().catch(() => undefined);
@@ -513,6 +520,8 @@ export function Editor({ active = true, model, share }: EditorProps = {}) {
     if (files.cloud) files.confirmThen(run);
     else void run();
   }, [api, setAccount, say, files]);
+  // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
+  const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
 
   // ---- timeline
@@ -1295,9 +1304,17 @@ export function Editor({ active = true, model, share }: EditorProps = {}) {
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onCamera={composedCamera}
-            emptyHint={!sketch.editing && tool !== "sketch" && built.sketches.length === 0}
+            emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
             <SketchLabels s={sketch} />
+            {emptyState && (
+              <EmptyState
+                onShape={() => setPanel("library")}
+                onSketch={() => armTool("sketch")}
+                onOpen={() => void open()}
+                onSample={(id) => files.openSample(id)}
+              />
+            )}
           </View3D>
         }
         timeline={

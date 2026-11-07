@@ -53,6 +53,7 @@ describe("routes", () => {
   it("reads the hash", () => {
     expect(parseRoute("")).toEqual({ page: "editor" });
     expect(parseRoute("#/edit/m%201")).toEqual({ page: "editor", model: "m 1" });
+    expect(parseRoute("#/sample/bracket")).toEqual({ page: "editor", sample: "bracket" });
     expect(parseRoute("#/signin?next=%23%2Flibrary")).toEqual({ page: "signin", next: "#/library" });
     expect(parseRoute("#/library/bin")).toEqual({ page: "library", bin: true });
     expect(parseRoute("#/view/abc")).toEqual({ page: "view", token: "abc" });

@@ -11,6 +11,7 @@ import { ApiError, serverTime } from "../cloud/api";
 import { fillBlobs, stripBlobs } from "../cloud/cloudDoc";
 import { offline } from "../cloud/offline";
 import type { Store } from "../state/store";
+import { sampleUrl } from "../samples/samples";
 import type { History } from "../state/history";
 
 /** Where a model saved to an account stands (#90): shown by the cloud icon in the title. */
@@ -24,7 +25,7 @@ function setRoute(hash: string) {
   window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 /** A model that isn't the saved one any more: the address goes back to the plain editor. */
-const leaveCloudRoute = () => window.location.hash.startsWith("#/edit/") && setRoute("#/");
+const leaveCloudRoute = () => (window.location.hash.startsWith("#/edit/") || window.location.hash.startsWith("#/sample/")) && setRoute("#/");
 
 /**
  * The model's life on disk (#79, #83, #84): Open, Save, Save as and Recent files, the unsaved dot in the title,
@@ -366,6 +367,33 @@ export function useFiles(d: FilesDeps) {
   }, [auto, store, unlock]);
 
   const newModel = useCallback(() => confirmThen(startNew), [confirmThen, startNew]);
+
+  /** A sample model (#99), opened as a new, unsaved model to pull apart (after asking about unsaved changes). */
+  const openSample = useCallback(
+    (id: string) =>
+      confirmThen(async () => {
+        try {
+          const res = await fetch(sampleUrl(id));
+          if (!res.ok) throw new Error();
+          const r = loadBcad(await res.text());
+          if (r instanceof BcadError) throw r;
+          await auto.flush();
+          auto.cancel();
+          meta.current = { id: newId("m"), file: null, savedAt: null };
+          setCloud(null);
+          leaveCloudRoute();
+          unlock();
+          store.edit(() => r.doc, `Open ${r.doc.name}`);
+          setBaseline(r.doc);
+          deps.current.onSwitched();
+          deps.current.say(`Opened the ${r.doc.name.toLowerCase()} sample. Change it in Parameters.`);
+        } catch {
+          leaveCloudRoute();
+          deps.current.say("That sample didn't open. Check your connection and try again.", true);
+        }
+      }),
+    [confirmThen, auto, store, unlock],
+  );
 
   /** Opens a model saved to the account (#89, #90), after asking about unsaved changes. */
   const loadCloud = useCallback(
@@ -735,6 +763,7 @@ export function useFiles(d: FilesDeps) {
     open,
     openRecent,
     newModel,
+    openSample,
     dirty,
     banners: (
       <>
