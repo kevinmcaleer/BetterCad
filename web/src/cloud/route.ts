@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 
 /**
  * Hash routes, so the app runs from any static host: "#/" is the editor, then the pages of epic #9.
- * "#/edit/<id>" opens a saved model in the editor; "#/view/<token>" is a share link.
+ * "#/edit/<id>" opens a saved model in the editor; "#/view/<token>" is a share link; "#/sample/<id>" opens a sample (#99).
  */
 export type Route =
-  | { page: "editor"; model?: string }
+  | { page: "editor"; model?: string; sample?: string }
   | { page: "signin"; next?: string }
   | { page: "signup"; next?: string }
   | { page: "account" }
@@ -29,6 +29,8 @@ export function parseRoute(hash: string): Route {
       return { page: "library", bin: arg === "bin" };
     case "edit":
       return arg ? { page: "editor", model: decodeURIComponent(arg) } : { page: "editor" };
+    case "sample":
+      return arg ? { page: "editor", sample: decodeURIComponent(arg) } : { page: "editor" };
     case "view":
       return arg ? { page: "view", token: decodeURIComponent(arg) } : { page: "editor" };
     case "gallery":

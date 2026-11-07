@@ -1,0 +1,281 @@
+{
+  "schema": 1,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "sample-bracket",
+  "created": "2026-11-07T00:00:00.000Z",
+  "modified": "2026-11-07T00:00:00.000Z",
+  "name": "Bracket",
+  "document": {
+    "features": [
+      {
+        "id": "f1",
+        "name": "Add Bracket",
+        "part": {
+          "id": "base",
+          "kind": "box",
+          "name": "Bracket",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "leg",
+          "size.y": "width",
+          "size.z": "thickness"
+        },
+        "id": "f2",
+        "name": "Size Bracket",
+        "parts": [
+          "base"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f3",
+        "name": "Add Upright",
+        "part": {
+          "id": "upright",
+          "kind": "box",
+          "name": "Upright",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "thickness",
+          "size.y": "width",
+          "size.z": "leg"
+        },
+        "id": "f4",
+        "name": "Size Upright",
+        "parts": [
+          "upright"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "thickness / 2 - leg / 2"
+        },
+        "id": "f5",
+        "name": "Place Upright",
+        "parts": [
+          "upright"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f6",
+        "name": "Add Base hole",
+        "part": {
+          "id": "hole1",
+          "kind": "cylinder",
+          "name": "Base hole",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "hole",
+          "size.y": "hole",
+          "size.z": "thickness + 2"
+        },
+        "id": "f7",
+        "name": "Size Base hole",
+        "parts": [
+          "hole1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "thickness / 2",
+          "position.z": "-1"
+        },
+        "id": "f8",
+        "name": "Place Base hole",
+        "parts": [
+          "hole1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f9",
+        "name": "Add Upright hole",
+        "part": {
+          "id": "hole2",
+          "kind": "cylinder",
+          "name": "Upright hole",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "hole",
+          "size.y": "hole",
+          "size.z": "thickness + 2"
+        },
+        "id": "f10",
+        "name": "Size Upright hole",
+        "parts": [
+          "hole2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "-leg / 2 - 1",
+          "position.z": "(leg + thickness) / 2"
+        },
+        "id": "f11",
+        "name": "Place Upright hole",
+        "parts": [
+          "hole2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "rotation": {
+          "y": 90
+        },
+        "type": "move"
+      },
+      {
+        "id": "f12",
+        "mode": "group",
+        "name": "L bracket",
+        "target": "base",
+        "tools": [
+          {
+            "id": "upright",
+            "op": "join"
+          },
+          {
+            "id": "hole1",
+            "op": "cut"
+          },
+          {
+            "id": "hole2",
+            "op": "cut"
+          }
+        ],
+        "type": "combine"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {
+      "hole1": {
+        "hole": true
+      },
+      "hole2": {
+        "hole": true
+      }
+    },
+    "name": "Bracket",
+    "params": [
+      {
+        "comment": "Across the bracket",
+        "expression": "30",
+        "id": "p_width",
+        "name": "width",
+        "unit": "mm"
+      },
+      {
+        "comment": "Length of each leg",
+        "expression": "40",
+        "id": "p_leg",
+        "name": "leg",
+        "unit": "mm"
+      },
+      {
+        "comment": "Plate thickness",
+        "expression": "4",
+        "id": "p_thickness",
+        "name": "thickness",
+        "unit": "mm"
+      },
+      {
+        "comment": "Hole diameter: 4.5 mm clears an M4 screw",
+        "expression": "4.5",
+        "id": "p_hole",
+        "name": "hole",
+        "unit": "mm"
+      }
+    ],
+    "version": 2
+  },
+  "thumbnail": "data:image/png;base64,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"
+}

@@ -786,3 +786,187 @@ kbd {
   width: min(520px, calc(100vw - 2 * var(--bc-space-8)));
   background: none;
 }
+
+/* The empty editor (#99): centred over the grid, the grid still live around it. */
+.bc-empty-state-host {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--bc-space-6);
+  pointer-events: none;
+}
+.bc-empty-state {
+  pointer-events: auto;
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: var(--bc-space-8) var(--bc-space-8) var(--bc-space-6);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-xl);
+  box-shadow: var(--bc-shadow-frame);
+  text-align: center;
+}
+.bc-empty-title {
+  margin: 0 0 var(--bc-space-6);
+  font-size: var(--bc-type-panel-title-size);
+  font-weight: var(--bc-type-panel-title-weight);
+  line-height: var(--bc-type-panel-title-line);
+  color: var(--bc-color-ink);
+}
+.bc-empty-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bc-space-4);
+}
+.bc-empty-action {
+  display: grid;
+  justify-items: center;
+  gap: var(--bc-space-2);
+  padding: var(--bc-space-6) var(--bc-space-4);
+  font: inherit;
+  font-size: var(--bc-type-ui-strong-size);
+  font-weight: var(--bc-type-ui-strong-weight);
+  color: var(--bc-color-ink);
+  background: var(--bc-color-rail);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  cursor: pointer;
+}
+.bc-empty-action:hover {
+  border-color: var(--bc-color-accent);
+}
+.bc-empty-action:focus-visible,
+.bc-sample:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 2px;
+}
+.bc-empty-drop {
+  margin: var(--bc-space-4) 0 var(--bc-space-6);
+  font-size: var(--bc-type-small-size);
+  color: var(--bc-color-muted);
+}
+.bc-samples-title {
+  margin: 0 0 var(--bc-space-3);
+  font-size: var(--bc-type-small-strong-size);
+  font-weight: var(--bc-type-small-strong-weight);
+  color: var(--bc-color-muted);
+  text-align: left;
+}
+.bc-samples-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--bc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bc-sample {
+  display: grid;
+  width: 100%;
+  gap: var(--bc-space-1);
+  padding: var(--bc-space-2);
+  font: inherit;
+  text-align: left;
+  color: var(--bc-color-ink);
+  background: none;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  cursor: pointer;
+}
+.bc-sample:hover {
+  border-color: var(--bc-color-accent);
+}
+.bc-sample-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 10;
+  color: var(--bc-color-muted);
+  background: var(--bc-color-rail);
+  border-radius: var(--bc-radius-sm);
+  overflow: hidden;
+}
+.bc-sample-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.bc-sample-name {
+  font-size: var(--bc-type-small-strong-size);
+  font-weight: var(--bc-type-small-strong-weight);
+}
+.bc-sample-blurb {
+  font-size: var(--bc-type-micro-size);
+  color: var(--bc-color-muted);
+}
+@media (max-width: 520px) {
+  .bc-empty-state {
+    padding: var(--bc-space-6) var(--bc-space-4) var(--bc-space-4);
+  }
+  .bc-samples-row,
+  .bc-empty-actions {
+    gap: var(--bc-space-2);
+  }
+  .bc-sample-blurb {
+    display: none;
+  }
+}
+
+/* The first-run tour (#98): a bar card with the pop shadow beside the control a step needs. Dims and blocks nothing. */
+.bc-tour {
+  position: fixed;
+  z-index: 40;
+  width: min(340px, calc(100vw - 16px));
+  padding: var(--bc-space-4) var(--bc-space-5);
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-pop);
+  animation: bc-tour-in 120ms ease-out;
+}
+.bc-tour:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 2px;
+}
+@keyframes bc-tour-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bc-tour {
+    animation: none;
+  }
+}
+.bc-tour-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--bc-space-3);
+}
+.bc-tour-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--bc-type-ui-strong-size);
+  font-weight: var(--bc-type-ui-strong-weight);
+  line-height: var(--bc-type-ui-strong-line);
+}
+.bc-tour-count {
+  font-size: var(--bc-type-micro-size);
+  color: var(--bc-color-muted);
+  white-space: nowrap;
+}
+.bc-tour-body {
+  margin: var(--bc-space-2) 0 var(--bc-space-4);
+  font-size: var(--bc-type-small-size);
+  line-height: var(--bc-type-small-line);
+}
+.bc-tour .bc-samples {
+  margin-bottom: var(--bc-space-4);
+}
+.bc-tour-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+}

@@ -11,6 +11,8 @@ import type { FileStore } from "../files/fileStore";
 export interface ExportDialogProps {
   open: boolean;
   onClose: () => void;
+  /** After files were saved (the tour's last step, #98). */
+  onExported?: () => void;
   doc: ModelDoc;
   upTo: number;
   parts: Part[];
@@ -121,6 +123,7 @@ export function ExportDialog(p: ExportDialogProps) {
       const saved = await p.files.saveFiles(r.files.map((f) => ({ ...f, mime: MIME[c.format] })));
       if (!saved) return;
       p.say(`Exported ${saved.names.length === 1 ? saved.names[0] : `${saved.names.length} files`}`);
+      p.onExported?.();
       p.onClose();
     } catch (e) {
       const err = e as { message?: string; code?: string };

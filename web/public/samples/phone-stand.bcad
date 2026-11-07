@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "sample-phone-stand",
+  "created": "2026-11-07T00:00:00.000Z",
+  "modified": "2026-11-07T00:00:00.000Z",
+  "name": "Phone stand",
+  "document": {
+    "features": [
+      {
+        "id": "f1",
+        "name": "Add Phone stand",
+        "part": {
+          "id": "stand",
+          "kind": "box",
+          "name": "Phone stand",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "lean + shelf + 4",
+          "size.y": "width",
+          "size.z": "base"
+        },
+        "id": "f2",
+        "name": "Size Phone stand",
+        "parts": [
+          "stand"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f3",
+        "name": "Add Back rest",
+        "part": {
+          "id": "rest",
+          "kind": "wedge",
+          "name": "Back rest",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "lean",
+          "size.y": "width",
+          "size.z": "height"
+        },
+        "id": "f4",
+        "name": "Size Back rest",
+        "parts": [
+          "rest"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "lean / 2 - (lean + shelf + 4) / 2",
+          "position.z": "base"
+        },
+        "id": "f5",
+        "name": "Place Back rest",
+        "parts": [
+          "rest"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f6",
+        "name": "Add Lip",
+        "part": {
+          "id": "lip",
+          "kind": "box",
+          "name": "Lip",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "4",
+          "size.y": "width",
+          "size.z": "base + 8"
+        },
+        "id": "f7",
+        "name": "Size Lip",
+        "parts": [
+          "lip"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(lean + shelf + 4) / 2 - 2"
+        },
+        "id": "f8",
+        "name": "Place Lip",
+        "parts": [
+          "lip"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f9",
+        "mode": "group",
+        "name": "Phone stand",
+        "target": "stand",
+        "tools": [
+          {
+            "id": "rest",
+            "op": "join"
+          },
+          {
+            "id": "lip",
+            "op": "join"
+          }
+        ],
+        "type": "combine"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {},
+    "name": "Phone stand",
+    "params": [
+      {
+        "comment": "Across the stand",
+        "expression": "70",
+        "id": "p_width",
+        "name": "width",
+        "unit": "mm"
+      },
+      {
+        "comment": "How high the back rest reaches",
+        "expression": "50",
+        "id": "p_height",
+        "name": "height",
+        "unit": "mm"
+      },
+      {
+        "comment": "How far the back rest leans: the same as height is 45°, more leans further back",
+        "expression": "50",
+        "id": "p_lean",
+        "name": "lean",
+        "unit": "mm"
+      },
+      {
+        "comment": "Room for the phone in its case",
+        "expression": "14",
+        "id": "p_shelf",
+        "name": "shelf",
+        "unit": "mm"
+      },
+      {
+        "comment": "Base thickness",
+        "expression": "4",
+        "id": "p_base",
+        "name": "base",
+        "unit": "mm"
+      }
+    ],
+    "version": 2
+  },
+  "thumbnail": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAADICAYAAACZBDirAAAQAElEQVR4AeycS5LkxmGGa3gIeWR7zSB5BCv4OIq1mTmTeQRvRdpa2I7wMCj6BJJjtpYo7qzHfkb4uidn0FV4ZAH5AvJjDLpQQCIfXza++rOq2B9d/E8CEpBApwQUYKcT77AlIIHLRQH6WyABCXRLoGsBdjvrDlwCEnggoAAfMPhDAhLokYAC7HHWHbMEJPBAQAE+YOjwh0OWgAT8EMTfAQlIoF8CJsB+596RS6B7Agqw+1+BHgE4Zgk8ElCAjxz8KQEJdEhAAXY46Q5ZAhJ4JKAAHzn4UwK9EHCcIwIKcATDXQlIoC8CCrCv+Xa0EpDAiIACHMFwVwISODeB69EpwGsiPpeABLohoAC7mWoHKgEJXBNQgNdEfC4BCXRDoCsBdjOrDlQCEogioACjMFlIAhI4IwEFeMZZdUwSkEAUAQUYhekEhRyCBCRwQ0AB3iDxgAQk0AsBBdjLTDtOCUjghoACvEHigfMRcEQSmCagAKe5eFQCEuiAgALsYJIdogQkME1AAU5z8agEzkLAcSwQUIALcDwlAQmcm4ACPPf8OjoJSGCBgAJcgOMpCUjg2ATWeq8A1wh5XgISOC0BBXjaqW17YB999NG/sH3yySdveWy7t/burAQU4FlnttFxITuk98+//OULtn/6xS8uH3/88YtGu2u3Tk7g1AI8+dwdZnhIjy2ID+mNO89zzo+PuS+BEgQUYAnKnbaB1IL0QtqbQ2EKnCPj8ZwEFGBOuh3WjfTYgvhIdzEYKMc1MWUtI4FUBBRgKpKt1VO4P2PpraW9ua4hQeqZO+9xCaQmoABTE+2sPoRFctsqvWtcLoWvifg8JwEFmJPuSesO0kspvoDKFBhI+FiCgAIsQfkkbQTxhbSHrHIMbX8KzNEr6zwjAQV4xllNOKYgvRxpb66biJV25857XAKpCCjAVCRPVg8CGksPKZUcIimTPpRs07b6I6AA+5vz2REjHKTHhoBKS++6Yy6Fr4lEPbfQHQQU4B2wzlo0iC9Ir7b4Amf6Qd/Ccx8lkJqAAkxN9CD1IRa2VtLeHDZT4BwZj6cgoABTUDxQHWPphcTXcvdNgS3PTnt9u7dHCvBeYgcsj/TYWk97c2hNgXNkPL6XgALcS7Dh68fSO0Lam0NpCpwj4/G9BBTgXoKNXY/02I6a9uZwInDGNXfe4xLYQuBUAtwC4CzXIIcgPWRBajrL2MI4XAoHEj6mIqAAU5GsVM9YfGeU3hgr42O842PuS2APAQW4h16la5EAaY/trGlvDq0pcI6Mx7cQUIBbqFW6JogvSI9E9L4rnewwZjh0MlyHmZmAAswMeG/13OwkPbYgvr11Hv16U+DRZ7Cd/ivAdubiSU+C+IL0SD5PCnT8BBa8IHSMwKEnIqAAE4FMUU2QHjd3EF+Kes9YBxKE1+PY/CmBbQQU4DZuSa/iRh5Lj5s7aQMnrcyl8EkntuCwFGBB2OOmkB7bWHzj8+6vE+CFAobrJS0hgWkCCnCaS7aj3LBBei5z92M2BV72Q+y4BgVYYPKRHlsQH8mlQLNdNAFL2HYxWAeZnIACTI70Q4XcmEF6pr0PXFLvwRbWqeu1vvMTUICJ55gbkS2Ij4SSuAmrmyDgUngCSgeH9g5RAe4l+O76sfRIJIrvHZhCD/BmDgo1ZzMnIaAAE0zks2fP/l/pJQC5swpT4E6AHV6uABNM+iDAf/3N998nqMkq9hAwBe6h1+e1hxZgS1P2l7/8taXudNsXU2C3U79p4ApwE7anF7158+YlR0yBUKi7mQLr8j9a6wow4YyZAhPC3FEV78f6gcgOgB1dqgATTvaw/Lr8+t9/nbDGhao8tUhgmIsXiwU8KYGBgAIcIKT499NPf/yaeoYb7+JSGBJ1N5fCdfkfpXUFmGGmXApngLqhyuHFyBS4gVtPlyjADLM93HimwAxcP1QZt2cKjOPUcykFmGj2+ST49evX72szBb5HUXVneDEyBVadgbYbV4CZ5me48UyBmdjeUy0pkP8v+55rLNsPAQWYca6fP/+5EszIN7ZqJHiir8XEDttyEQQUYASkPUVcCu+hl+7aIZG7FE6H8zQ1KcCEUxm+CjOucrjxTIFjIJX2TYGVwDferAIsMEGmwAKQI5oYXoxMgRGcWi6Sum8KMDXRifqGG88UOMGl9CFTYGni7benABPO0fVXYcZVmwLHNOrtDy9GpsB6+JtrWQEWmpLhxjMFFmK91Awp0K/FLBHq69yhBHj0qfFrMW3MIBL0azFtzEXtXijAxDMw9UnwuAmXwmMa9faHRO5SuB7+ZlpWgIWnYrjxXAoXZj7VnClwikp/xxRghTnflAIr9PPsTQ4vRqbAs0/yyvgU4Aqge08vfRIc6hpuPFNggFHx0RRYEX4jTSvAShNhCqwE/qpZ/3z+FZDOnirAShNOCvTP58fCz1tumAuXwnkRN1u7AswwNWufBIcmhxvPpXCAUfHRpXBF+JWbVoCVJ8ClcOUJeNf88GJkCnzHoqcHBVh5tocbzxRYeQ5ovuEUSPfcMhFQgBnAxnwSPG7WFDimUW9/eDEyBdbDX6VlBVgF+9NGhxvPFPgUSZVnpsAq2Ks2qgCr4v/QuCnwA4uae34tpib927ZzH1GAmQjHfhIcmicF+rWYQKPu4zAXLoXrTkGx1hVgMdTrDQ03nkvhdUzZS7gUzo64mQYUYDNT8dgRl8KPHGr/HF6MTIG1J6FA+00LsMD4szVx7yfBoSPDjWcKDDAqPpoCK8Iv2LQCLAg7tilTYCypvOWGFyNTYF7E1WtXgNWn4LYDw41nCrzFUvwIKdA/n18ce9EGFWBG3Pd+EjzuyvPnP1eCYyCV9pGgfz6/EvwCzSrAApC3NuFSeCu5tNcNidylcFqkzdSmAJuZituODDeeKfAWS/EjpsDiyIs1qAAzot76SfC4S32mwDGBNvaHFyNTYBtTkbQXCjApzvSVDTeeKTA91rtrNAXejewQFyjAA0yTKbCNSRpejEyBbUxFsl4owGQopyva80lwqHG48UyBAUbFR1Jgga/FVBxhf00rwIPM+XO/FtPETCFBvxbTxFQk6YQCTIKxTCUuhctwXmtlSOQuhdcgHeS8AjzIRNHN4cZzKQyIypspMN8ElK5ZAWYmnuKrMOMumgLHNOrtDy9GpsB6+JO1rACToSxT0XDjmQLLoF5sxRS4iOcwJxXgYabqQ0dNgR9Y1Nzjz+c/e/bst3v6wPV+qLKH4L5rmxLgvqG0e3WKr8KMR0cK9M/nj4mU3//N999f/ueHHy4vX7789LPPPnu7RWJcx/Uvhv/Y31JH+ZGfq0UFeND5RILchAft/qG7Dfevvvrq8sUXXzyMg8fBYS9iBUY5hMd1DxUMP9inDo6TCodD/itAQAEWgJyrCZfCuchO14v4SH3Ib6pEEBiCmzrPMc5RDuHxfGobBPjd1HGPpSegANMzvakx6pPgm6vWD5gC1xmlKoH8EN+SuGiL8wiOJIfsOBY2jnEuPL9+/Oabby9//w//eH3Y5xkJKMCMcEtUbQrMT3kp9c21PhbhkOh+i/w4NlX+1atXF+T3yaefTp32WEYCCjAj3BJVmwLzUSb1Ib85ccW2zAcdc3UgP1JfkN///u53F1YMsXVbbh8BBbiPX/TVqT8JHjd8/BQ4Hk0b+4gvZsk711vExjYnPq4j9SE/9t3qEFCAdbgnbZUU6Ndi0iBNkfqC+Obkx3nkF1Jfmp5byxYCCnALtQavQYLcvA127TBdgt+e1MdAkduc+MJ5Ut+c/H788Q9fU86tDAEFWIbzw/s6r1+/ztqaS+FteBFfWPJuq+FyQXxsS/Ij9SG/qzZ8WpGAAqwIP3XTpsD7iSK/VKlvTn6IEfnNpb77e+0VqQgowFQkG6nHFBg/EXtTHy0htznxhfOkvhj5+QkwxMpuCrAg75yfBIdhmAIDiflHUh/yWxLX/NWPZxAf21IdpD7k93iFP6cI1D6mAGvPQIb2/fP581ARX+4lL60jv5jUR1m3egQUYD32WVt2KfwUb4rUR41rqY/zyg9Sx9gUYMF54hv+uT8JDsNxKRxIXB7+gGyK1Ifclpa8nGfJuyX58f7f73//f88+9Nq9EgSqCrDEAFtro8T7gGHMpsDLw9/sQ36ByZZHxIb42OauJ/Uhv7nzS8f/6z//42vlt0Qo3zkFmI/tZM2kwFev/rvIl117ToFHWfIiP34nJn9ZPJidgALMjvi2AX7hkWCJ5XCPKTDVBx0h+d3O4OMRzpP6ti55ld8jx5o/FWAl+m/evHn5449/eJZbgj2lwNSpL9eSN7zfxwthpV8/m31HQAG+A1HrAQmSBnO238PXYpAf7/UtSSuGMaluqQ7O837fltRH+6Q+3++DRBubAmxgHkgCuSV41qUw4gtL3j1TidjY1uS3dclL35Afc82+WxsEFGAb8/DwxxKQYK4lcVtL4TTQkV/K1LckP1If8tvSc5a8ym8LufzXKMD8jKNbIB2wJM4lwTOlwJKpD/ltXfIiP5a8zG30L4IFixFQgMVQxzeEBEmD8VfElTxDCiT1Ib+ltBZDIyx3l+qhDKlvq/xIfcgvpj+WqUNAAdbhvtoqiQEJpk6DR06BiC/lkndpEkh9yG+pzNw5Uh/yYw4nynioIQIKsKHJuO4KNxBpMKUESYFH+/P5KVMfqW4t9SG/rakP+ZH6mLvr+fR5ewQUYHtzctOjHBJEKjcNNXiAfqZMfWvyI/XtlV+DGO3SDAEFOAOmtcNIkCVxqn61vhRGfGHJu3fMa6mP+kl9yI/9LRtLXpLflmt7uqa1sSrA1mZkoT8sq5BgiiUxS2Eks9BctVP0K1XqW5Mf55HfntSH/JibasBseDMBBbgZXZ0LudFIgykk2GIKTJ36Six5mZM6vw22upeAAtxLsNL1KSTYUgok9SG/JWHFoibVrdVD6tuz5A0fdsT2yXJtEigqwDYRHLdXSJAl8Z4RtJACEd9RlrywZsnr+32QOP6mAA8+hyy/kODWJTEpsNbXYnKkvqXkRzIk9fl+38F/6RN2XwEmhFmrKiRIGtwjQWRUsv+0lyL10WfEtiQ+yqRa8sKa+tzOQUABlprHAu3skWDJpXBY8u5FgvjYluTHeeS3NfXRR5e8UDjnpgBPNq9IkCXxvcNiKUwqu/e6e8pTP/JbElZsfYiNetjmrqHMniUv9SI/Ux8kzrkpwBPOKzcsErx3SZwzBSK+FEtepMa2JD6mlNSH/NjfsvEpr/LbQu5Y1yjAY81XdG+RIGnwHgnmSIGPqe+Hy5qwYgYWxLdUF2WQ354lL/LjU14YxvTLMscloACPO3dRPb9Xgin/fD7yS5H6GChiWxJfKEPq2yM/Uh/yoz638xNQgOef4wsSZEkcO9S9S2HEF5a8sW3OlUN8bGvyI/Uhv7l6Yo4jP1NfDKnzlFGA55nLxZFwYyPBmCXxnqUw8kud+pbkhxyR357Ux5I3o/wW58WTdQkowLr8i7aOBEmDMRLct9tJ7AAABF5JREFUkgJTpT6gILYl8YUypL698mPJCxvqdOuLgALsa74fRhsjwXtSIKkP+a0J66HxlR+Ij22tLlIf8lupbvE0qQ/5LRby5KkJKMBTT+/84JAgS+L5EpdLTApEfC55lyj2fa710SvA1mcoY/9Y9iHBuSXxUgoMqe/zzz+/vH37dnGLGUJM6qMMqc8lbwxRy8QQUIAxlE5cBgmSBuckOPW1GOT35ZdfXpBfDJolQSI1thJLXj7scMkbM2P9lFGA/cz14kiRIGlwqlBYCiM+lrzIb6rcvce+++67B4ki0rEkr+vh/b49qY/6fL8PCm7XBLIK8Loxn7dNgDQ4JcGwFEZ8yCrFKIL8puoKMiQZ7pUfqQ/5MbaptjzWNwEF2Pf834weUSDB6yUxS2GkdXPBnQeog21NpJTx/b474Vr8bgIK8G5k578ACbIkvpbgz372d5df/eqbzQCQGuJjW6rk22//7YL8lsqsnSP5+X7fGiXPK8BcvwMnqBcJkgbHQ2E5jASR2fj42j7l18RHGeTn+31rND2fioACTEXypPWQBqckSBpEWDHDptyf/vTnC49z5TlH6tsjP1Kf7/fNEfb4FAEFOEXFY08IBAlOLYkR15PCM09IjnPSJPUhv5lLow4jP5a89DXqAgtJYCCgAAcI/lsngFhYEk9JkCXx0xrmnyHBUB55Ir89qY+WSH3Ij303CdxDQAHeQ8uyk39ai3SH1BBaDKJQntSXQn7IOaZdy0jgmoACvCbi81UCCOee9wX58OM6Oa42slKAJS/Jj76sFPW0BGYJKMBZNJ5YIoB4kOC12MZL3KXr95xDfix56cOeejJda7UHIqAADzRZrXUVAU29LxiWuDn6S+pDfjnqts7+CCjA/uY8+YiRIGlwXHGQYOz7guNr5/aRH9KdO+9xCdxLQAHeS8zykwQQ05QEWRLvlSBLXuU3ib25g0frkAI82ow13N8gwan3BUmEW7qO/FjyUveW671GAksEFOASHc/dTQBRsSS+luDdFQ0XkPqQ37DrPwlkIaAAs2C1UiR4vSSOpULqQ37INPYay0lgC4GkAtzSAa85LwEEdq8EkR+pj2vPS8aRtUJAAbYyEyftByJDgjFL4iC/k6JwWA0SUIANTsrZuoQEWRIvSZAlL8nvbGN3PG0TUICp5sd6VgkgQdLguCCpD/khyfFx9yVQgoACLEHZNt4TQHRBgsiP1Mex9wXckUBBAgqwIGybeiSA8H766Y9fI7/HI/6UQB0CCrAO95O1ev9wkOD9V3mFBNISUIBpeVqbBCRwIAIK8ECTZVclIIG0BBRgWp7W1h8BR3xgAgrwwJNn1yUggX0EFOA+fl4tAQkcmIACPPDk2XUJ1CZw9PYV4NFn0P5LQAKbCSjAzei8UAISODoBBXj0GbT/EpDAZgK7BLi5VS+UgAQk0AABBdjAJNgFCUigDgEFWIe7rUpAAg0QUIBbJ8HrJCCBwxNQgIefQgcgAQlsJfA3AAAA//8TG9lrAAAABklEQVQDAAb6fwn6IR8pAAAAAElFTkSuQmCC"
+}

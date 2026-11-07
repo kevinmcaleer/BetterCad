@@ -81,7 +81,12 @@ export function App() {
       <UpdateBanner />
       <Suspense fallback={null}>{over}</Suspense>
       <div className="bc-editor-host" style={over ? { display: "none" } : undefined}>
-        <Editor active={!over} model={route.page === "editor" ? route.model : undefined} share={route.page === "view" ? route.token : undefined} />
+        <Editor
+          active={!over}
+          model={route.page === "editor" ? route.model : undefined}
+          sample={route.page === "editor" ? route.sample : undefined}
+          share={route.page === "view" ? route.token : undefined}
+        />
       </div>
     </AccountProvider>
   );

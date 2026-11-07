@@ -51,7 +51,13 @@ function serviceWorker(): Plugin {
           .filter((f) => /\.(js|css|wasm|svg|png|woff2)$/.test(f))
           .sort()
           .map((f) => `assets/${f}`);
-        const files = ["index.html", ...["favicon.svg", "manifest.webmanifest"].filter((f) => existsSync(join(outDir, f))), ...assets];
+        // The sample models (#99) open offline too.
+        const samples = existsSync(join(outDir, "samples"))
+          ? readdirSync(join(outDir, "samples"))
+              .sort()
+              .map((f) => `samples/${f}`)
+          : [];
+        const files = ["index.html", ...["favicon.svg", "manifest.webmanifest"].filter((f) => existsSync(join(outDir, f))), ...assets, ...samples];
         const version = createHash("sha256")
           .update(files.join("\n"))
           .update(readFileSync(join(outDir, "index.html")))
