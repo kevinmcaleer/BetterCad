@@ -2,6 +2,8 @@
  * The model document. The timeline is the document: an ordered list of features, replayed to get the parts. Epic #2's
  * placeholder parts are the only geometry so far; the kernel (#4) replaces them with real bodies, keeping this shape.
  */
+import type { CameraState } from "../viewport/camera";
+
 export type PartKind = "box" | "cylinder" | "sphere";
 
 export interface Vec3 {
@@ -19,6 +21,15 @@ export interface Part {
   highlight?: boolean;
   position: Vec3;
   size: Vec3;
+  /** Degrees about X, Y and Z, applied Z first. Missing means not turned. */
+  rotation?: Vec3;
+}
+
+/** A saved camera (Named views, #40). */
+export interface NamedView {
+  id: string;
+  name: string;
+  camera: CameraState;
 }
 
 interface FeatureBase {
@@ -41,6 +52,8 @@ export interface MoveFeature extends FeatureBase {
   type: "move";
   parts: string[];
   position: Partial<Vec3>;
+  /** Turns, in degrees (the gizmo's turn handles and the Rotation fields). */
+  rotation?: Partial<Vec3>;
 }
 export interface ResizeFeature extends FeatureBase {
   type: "resize";
@@ -70,7 +83,11 @@ export interface ModelDoc {
   looks: Record<string, Look>;
   /** Parts tree order, when the person has dragged rows. Parts not listed follow in build order. */
   order?: string[];
+  /** Named views: saved cameras. */
+  views?: NamedView[];
 }
+
+const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
 
 export const KIND_LABEL: Record<PartKind, string> = { box: "Box", cylinder: "Cylinder", sphere: "Sphere" };
 export const FEATURE_LABEL: Record<FeatureType, string> = { add: "Add", duplicate: "Duplicate", move: "Move", resize: "Resize", delete: "Delete" };
@@ -129,7 +146,9 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         const change = f.type === "move" ? f.position : f.size;
         for (const id of f.parts) {
           const p = parts[find(id)];
-          if (p) p[key] = { ...p[key], ...change };
+          if (!p) continue;
+          p[key] = { ...p[key], ...change };
+          if (f.type === "move" && f.rotation) p.rotation = { ...ZERO, ...p.rotation, ...f.rotation };
         }
         break;
       }
@@ -228,19 +247,58 @@ const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((
  * Moves or resizes parts. A change right after a move (or resize) of the same parts folds into it, so scrubbing a
  * field or typing a value makes one feature, not one per keystroke.
  */
-export function changeParts(doc: ModelDoc, ids: string[], key: "position" | "size", change: Partial<Vec3>, at?: number): ModelDoc {
+export function changeParts(doc: ModelDoc, ids: string[], key: "position" | "size" | "rotation", change: Partial<Vec3>, at?: number): ModelDoc {
   if (!ids.length) return doc;
   const i = clampAt(doc, at);
-  const type = key === "position" ? "move" : "resize";
+  const type = key === "size" ? "resize" : "move";
   const prev = doc.features[i - 1];
   if (prev && prev.type === type && !prev.suppressed && sameSet(prev.parts, ids)) {
     const features = [...doc.features];
     features[i - 1] =
-      prev.type === "move" ? { ...prev, position: { ...prev.position, ...change } } : { ...prev, size: { ...(prev as ResizeFeature).size, ...change } };
+      prev.type === "move"
+        ? key === "rotation"
+          ? { ...prev, rotation: { ...prev.rotation, ...change } }
+          : { ...prev, position: { ...prev.position, ...change } }
+        : { ...prev, size: { ...(prev as ResizeFeature).size, ...change } };
     return { ...doc, features };
   }
   const base = { id: newId("f"), name: nextFeatureName(doc, type), parts: [...ids] };
-  return insert(doc, i, type === "move" ? { ...base, type, position: change } : { ...base, type, size: change });
+  if (type === "resize") return insert(doc, i, { ...base, type, size: change });
+  return insert(doc, i, key === "rotation" ? { ...base, type, position: {}, rotation: change } : { ...base, type, position: change });
+}
+
+/** Places one part where the gizmo left it: one Move feature with its position and turn. */
+export function placePart(doc: ModelDoc, id: string, position: Vec3, rotation: Vec3, at?: number): ModelDoc {
+  const i = clampAt(doc, at);
+  const before = partsOf(doc, i).find((p) => p.id === id);
+  if (!before) return doc;
+  const r0 = { ...ZERO, ...before.rotation };
+  const moved = (["x", "y", "z"] as const).some((a) => Math.abs(before.position[a] - position[a]) > 1e-9);
+  const turned = (["x", "y", "z"] as const).some((a) => Math.abs(r0[a] - rotation[a]) > 1e-9);
+  if (!moved && !turned) return doc;
+  const f: MoveFeature = { id: newId("f"), type: "move", name: nextFeatureName(doc, "move"), parts: [id], position: moved ? { ...position } : {} };
+  if (turned) f.rotation = { ...rotation };
+  return insert(doc, i, f);
+}
+
+// ---- named views
+
+export function saveView(doc: ModelDoc, view: NamedView): ModelDoc {
+  const views = doc.views ?? [];
+  const i = views.findIndex((v) => v.id === view.id);
+  return { ...doc, views: i < 0 ? [...views, view] : views.map((v) => (v.id === view.id ? view : v)) };
+}
+
+export function removeView(doc: ModelDoc, id: string): ModelDoc {
+  return { ...doc, views: (doc.views ?? []).filter((v) => v.id !== id) };
+}
+
+/** The next free view name: "View 1", "View 2"… */
+export function nextViewName(doc: ModelDoc): string {
+  const names = new Set((doc.views ?? []).map((v) => v.name));
+  let n = 1;
+  while (names.has(`View ${n}`)) n += 1;
+  return `View ${n}`;
 }
 
 export function removeParts(doc: ModelDoc, ids: string[], at?: number): ModelDoc {
@@ -326,8 +384,15 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "duplicate":
       return `Copies ${who(f.copies.map((c) => c.from))}`;
-    case "move":
-      return `${who(f.parts)}, ${axes(f.position)}`;
+    case "move": {
+      const turn = f.rotation
+        ? (["x", "y", "z"] as const)
+            .filter((a) => f.rotation![a] !== undefined)
+            .map((a) => `turn ${a.toUpperCase()} ${Math.round(f.rotation![a]! * 100) / 100}°`)
+            .join(", ")
+        : "";
+      return [who(f.parts), axes(f.position), turn].filter(Boolean).join(", ");
+    }
     case "resize":
       return `${who(f.parts)}, ${axes(f.size)}`;
     case "delete":
@@ -364,7 +429,16 @@ export function parseDoc(text: string): ModelDoc {
   if (d.version === 2 && Array.isArray(d.features)) {
     const looks = d.looks && typeof d.looks === "object" ? (d.looks as Record<string, Look>) : {};
     const order = Array.isArray(d.order) ? (d.order as string[]) : undefined;
-    return { format: "bettercad", version: 2, name: d.name, features: d.features as Feature[], looks, ...(order ? { order } : {}) };
+    const views = Array.isArray(d.views) ? (d.views as NamedView[]) : undefined;
+    return {
+      format: "bettercad",
+      version: 2,
+      name: d.name,
+      features: d.features as Feature[],
+      looks,
+      ...(order ? { order } : {}),
+      ...(views ? { views } : {}),
+    };
   }
   throw new Error("That file is not a BetterCad model.");
 }

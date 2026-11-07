@@ -1,12 +1,14 @@
-import { ArmedBar, Button, ToolButton, Toolbar, ViewCube } from "@bettercad/ui";
-import { MODEL_TOOLS, VIEW_TOOLS, VIEWS, type Tool, type ToolId, type ViewId } from "./tools";
+import { ArmedBar, Button, MenuButton, NumberField, ToolButton, Toolbar } from "@bettercad/ui";
+import { formatCombo } from "../state/commands";
+import { MODEL_TOOLS, VIEW_TOOLS, VIEWS, type Tool, type ToolId } from "./tools";
+import { FILTERS, type Viewport } from "./useViewport";
 
 export interface StageBarsProps {
   tool: Tool;
   onArmTool: (t: ToolId) => void;
-  view: ViewId;
-  onView: (v: ViewId) => void;
-  onFit: () => void;
+  vp: Viewport;
+  /** Whether exactly one part is picked (Move and Turn need one). */
+  onePart: boolean;
 }
 
 const toolButton = (t: Tool, active: ToolId, onArm: (t: ToolId) => void) => (
@@ -14,11 +16,17 @@ const toolButton = (t: Tool, active: ToolId, onArm: (t: ToolId) => void) => (
 );
 
 /** The floating tool bars over the viewport, and the armed tool's options strip. */
-export function StageBars({ tool, onArmTool, view, onView, onFit }: StageBarsProps) {
+export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
+  const filter = FILTERS.find((f) => f.id === vp.filter)!;
   return (
     <>
       <Toolbar label="View tools">
         {VIEW_TOOLS.map((t) => toolButton(t, tool.id, onArmTool))}
+        <MenuButton
+          label="Pick filter"
+          entries={vp.filterEntries}
+          trigger={(p) => <Button {...p} label={`Pick: ${filter.label}`} title="What a click picks" shortcut={formatCombo(filter.key)} />}
+        />
         <Toolbar.Separator />
         {VIEWS.map((v) => (
           <Button
@@ -26,55 +34,71 @@ export function StageBars({ tool, onArmTool, view, onView, onFit }: StageBarsPro
             label={v.label}
             title={`Look from the ${v.id === "iso" ? "corner" : v.label.toLowerCase()}`}
             shortcut={v.key}
-            on={view === v.id}
-            onClick={() => onView(v.id)}
+            on={vp.view === v.id}
+            onClick={() => vp.preset(v.id)}
           />
         ))}
+        <Button icon="frame" label="Fit" title="Fit the parts in the view" shortcut="F" onClick={vp.fit} />
+        <MenuButton label="Named views" entries={vp.viewEntries} trigger={(p) => <Button {...p} icon="camera" label="Views" title="Save and use views" />} />
         <Toolbar.Separator />
-        <Button icon="frame" label="Fit" title="Fit the parts in the view" shortcut="F" onClick={onFit} />
+        <Button
+          label={vp.ortho ? "Ortho" : "Persp"}
+          title={vp.ortho ? "Orthographic: parallel lines stay parallel" : "Perspective: far things look smaller"}
+          shortcut="O"
+          on={vp.ortho}
+          onClick={() => vp.setOrtho(!vp.ortho)}
+        />
+        <Button
+          icon="paint"
+          label={vp.style === "lineart" ? "Line art" : "Shaded"}
+          title="Switch shaded and line art"
+          shortcut="L"
+          on={vp.style === "lineart"}
+          onClick={vp.toggleStyle}
+        />
       </Toolbar>
       <Toolbar label="Model tools">{MODEL_TOOLS.map((t) => toolButton(t, tool.id, onArmTool))}</Toolbar>
-      {tool.id !== "select" && (
+      {tool.id === "section" && (
+        <ArmedBar title={tool.label} icon={tool.icon}>
+          {vp.section ? (
+            <>
+              <NumberField
+                label="Offset"
+                value={vp.section.offset}
+                step={1}
+                onChange={(v) => vp.setSection({ ...vp.section!, offset: v })}
+                onCommit={(v) => vp.setSection({ ...vp.section!, offset: v })}
+              />
+              <Button
+                label="Flip"
+                title="Keep the other side"
+                onClick={() => {
+                  const s = vp.section!;
+                  vp.setSection({ ...s, normal: [-s.normal[0], -s.normal[1], -s.normal[2]], offset: -s.offset });
+                }}
+              />
+              <Button label="Clear" title="Remove the cut" onClick={() => vp.setSection(null)} />
+            </>
+          ) : (
+            <span className="bc-armed-note">Click a face to cut through it.</span>
+          )}
+          <Button kind="done" label="Done" title="Keep the cut and put the tool down" shortcut="Esc" onClick={() => onArmTool("select")} />
+        </ArmedBar>
+      )}
+      {(tool.id === "move" || tool.id === "turn") && (
+        <ArmedBar title={tool.label} icon={tool.icon}>
+          <span className="bc-armed-note">
+            {onePart ? "Drag a handle. Hold Shift to snap." : "Click one part to put the handles on it."} Esc puts the tool down.
+          </span>
+          <Button kind="cancel" label="Done" title="Put the tool down" shortcut="Esc" onClick={() => onArmTool("select")} />
+        </ArmedBar>
+      )}
+      {tool.id !== "select" && tool.epic && (
         <ArmedBar title={tool.label} icon={tool.icon}>
           <span className="bc-armed-note">Comes with epic #{tool.epic}. Esc puts it down.</span>
           <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={() => onArmTool("select")} />
         </ArmedBar>
       )}
     </>
-  );
-}
-
-/** The viewport: an empty, focusable frame with the grid and view cube. Epic #3 mounts the three.js canvas here. */
-export function Viewport({ view, onView, description }: { view: ViewId; onView: (v: ViewId) => void; description: string }) {
-  return (
-    <div
-      id="bc-view"
-      className="bc-frame bc-viewport"
-      tabIndex={0}
-      role="application"
-      aria-label={`3D view, ${VIEWS.find((v) => v.id === view)!.label} view. ${description}`}
-      aria-roledescription="3D view"
-    >
-      <svg className="bc-grid-svg" aria-hidden="true">
-        <defs>
-          <pattern id="bc-grid-minor" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M20 0H0V20" className="bc-grid" fill="none" />
-          </pattern>
-          <pattern id="bc-grid-major" width="200" height="200" patternUnits="userSpaceOnUse">
-            <rect width="200" height="200" fill="url(#bc-grid-minor)" />
-            <path d="M200 0H0V200" className="bc-grid-major" fill="none" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#bc-grid-major)" />
-      </svg>
-      <ViewCube onPick={(v) => onView(v === "right" ? "side" : v)} />
-      <div className="bc-empty-view">
-        <strong>The 3D view goes here</strong>
-        <span>
-          three.js arrives with epic #3. Everything around it works now: try the tools, the rail, ? for shortcuts, or{" "}
-          {navigator.platform.includes("Mac") ? "⌘K" : "Ctrl+K"}.
-        </span>
-      </div>
-    </div>
   );
 }
