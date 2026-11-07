@@ -3,6 +3,7 @@ import type { KernelErrorData } from "./errors";
 import type { ModelResult } from "./occt/model";
 import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
+import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
 
 /**
  * The one message protocol between the app and the kernel worker (#44). Every request has an id, a method and typed
@@ -13,6 +14,10 @@ export interface Methods {
   build: { params: { doc: ModelDoc; upTo?: number; quality?: Quality }; result: ModelResult };
   /** Distances, lengths, areas and angles of one or two picks (#71). */
   measure: { params: { doc: ModelDoc; upTo?: number; refs: TopoRef[] }; result: MeasureResult };
+  /** How big an export would be (#86): triangles and bytes at the chosen resolution. Its triangles are kept for the export. */
+  estimate: { params: ExportRequest; result: ExportEstimate };
+  /** STL, 3MF or STEP files from the exact B-rep (#80, #81). */
+  export: { params: ExportRequest & { name: string }; result: ExportResult };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };
 }

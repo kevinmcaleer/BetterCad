@@ -22,7 +22,12 @@ interface PickerType {
   accept: Record<string, string[]>;
 }
 
+export interface DirHandle {
+  getFileHandle(name: string, o: { create: boolean }): Promise<FileHandle>;
+}
+
 export interface PickerWindow {
+  showDirectoryPicker?(o?: { mode?: "readwrite" }): Promise<DirHandle>;
   showOpenFilePicker?(o: { types?: PickerType[]; multiple?: boolean; excludeAcceptAllOption?: boolean }): Promise<FileHandle[]>;
   showSaveFilePicker?(o: { suggestedName?: string; types?: PickerType[] }): Promise<FileHandle>;
 }
@@ -38,6 +43,12 @@ export interface Saved {
   /** True when the file was written in place; false when it was downloaded. */
   inPlace: boolean;
   handle?: FileHandle;
+}
+
+export interface OutFile {
+  name: string;
+  data: ArrayBuffer;
+  mime: string;
 }
 
 export interface Recent {
@@ -57,6 +68,8 @@ export interface FileStore {
   saveAs(text: string, name: string): Promise<Saved | undefined>;
   recent(): Promise<Recent[]>;
   openRecent(id: string): Promise<Opened>;
+  /** Writes exported files (#86): asks where where it can, otherwise downloads them. Undefined if the person cancels. */
+  saveFiles(files: OutFile[]): Promise<{ names: string[]; inPlace: boolean } | undefined>;
   /** Puts a file at the top of Recent files. */
   remember(handle: FileHandle, info: { name: string; thumbnail?: string }): Promise<void>;
 }
@@ -71,10 +84,24 @@ export function createFileStore(win: PickerWindow & Window = window, recentKV: K
   return win.showSaveFilePicker && win.showOpenFilePicker ? diskStore(win, recentKV) : downloadStore(win);
 }
 
-function diskStore(win: PickerWindow, kv: KV<Recent>): FileStore {
-  const write = async (handle: FileHandle, text: string) => {
+const extOf = (name: string) => name.slice(name.lastIndexOf("."));
+
+function download(win: Window, data: BlobPart, name: string, mime: string) {
+  const doc = win.document;
+  const url = URL.createObjectURL(new Blob([data], { type: mime }));
+  const a = doc.createElement("a");
+  a.href = url;
+  a.download = name;
+  doc.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function diskStore(win: PickerWindow & Window, kv: KV<Recent>): FileStore {
+  const write = async (handle: FileHandle, data: BlobPart, mime = BCAD_MIME) => {
     const w = await handle.createWritable();
-    await w.write(new Blob([text], { type: BCAD_MIME }));
+    await w.write(new Blob([data], { type: mime }));
     await w.close();
   };
   const store: FileStore = {
@@ -127,6 +154,26 @@ function diskStore(win: PickerWindow, kv: KV<Recent>): FileStore {
         throw new Error(`${h.name} has moved or been deleted.`);
       }
     },
+    async saveFiles(files) {
+      try {
+        if (files.length === 1) {
+          const f = files[0]!;
+          const handle = await win.showSaveFilePicker!({ suggestedName: f.name, types: [{ description: f.name, accept: { [f.mime]: [extOf(f.name)] } }] });
+          await write(handle, f.data, f.mime);
+          return { names: [handle.name], inPlace: true };
+        }
+        if (win.showDirectoryPicker) {
+          const dir = await win.showDirectoryPicker({ mode: "readwrite" });
+          for (const f of files) await write(await dir.getFileHandle(f.name, { create: true }), f.data, f.mime);
+          return { names: files.map((f) => f.name), inPlace: true };
+        }
+      } catch (e) {
+        if (isAbort(e)) return undefined;
+        throw e;
+      }
+      for (const f of files) download(win, f.data, f.name, f.mime);
+      return { names: files.map((f) => f.name), inPlace: false };
+    },
     async remember(handle, info) {
       const all = await store.recent();
       let id: string | undefined;
@@ -143,17 +190,6 @@ function diskStore(win: PickerWindow, kv: KV<Recent>): FileStore {
 }
 
 function downloadStore(win: Window): FileStore {
-  const download = (text: string, name: string) => {
-    const doc = win.document;
-    const url = URL.createObjectURL(new Blob([text], { type: BCAD_MIME }));
-    const a = doc.createElement("a");
-    a.href = url;
-    a.download = name;
-    doc.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
   return {
     kind: "download",
     open() {
@@ -170,12 +206,16 @@ function downloadStore(win: Window): FileStore {
       });
     },
     async save(text, name) {
-      download(text, name);
+      download(win, text, name, BCAD_MIME);
       return { name, inPlace: false };
     },
     async saveAs(text, name) {
-      download(text, name);
+      download(win, text, name, BCAD_MIME);
       return { name, inPlace: false };
+    },
+    async saveFiles(files) {
+      for (const f of files) download(win, f.data, f.name, f.mime);
+      return { names: files.map((f) => f.name), inPlace: false };
     },
     recent: async () => [],
     openRecent: async () => {

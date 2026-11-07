@@ -65,6 +65,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { useFiles } from "../files/useFiles";
+import { ExportDialog } from "../export/ExportDialog";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
@@ -153,13 +154,14 @@ export function Editor() {
   const [keepTools, setKeepTools] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const { theme, setTheme, resolved } = useTheme();
   const [status, say] = useStatus();
 
   // The registry reads the latest state through a ref, so commands are registered once.
   const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false });
-  live.current = { doc, parts, marker, at, selection, tool, dialogOpen: paletteOpen || shortcutsOpen, sketching: live.current.sketching };
+  live.current = { doc, parts, marker, at, selection, tool, dialogOpen: paletteOpen || shortcutsOpen || exportOpen, sketching: live.current.sketching };
   const [registry] = useState(() =>
     createRegistry((): CommandContext => ({
       hasSelection: live.current.selection.length > 0,
@@ -526,6 +528,7 @@ export function Editor() {
   );
 
   const handlers = useRef({
+    openExport: () => {},
     newModel,
     open,
     save,
@@ -551,6 +554,7 @@ export function Editor() {
     activeFeature: (): string | null => null,
   });
   handlers.current = {
+    openExport: () => setExportOpen(true),
     newModel,
     open,
     save,
@@ -607,6 +611,15 @@ export function Editor() {
         keys: ["shift+mod+s"],
         run: () => void h().saveAs(),
         keywords: "disk download copy file",
+      },
+      {
+        id: "file.export",
+        label: "Export…",
+        group: "File",
+        icon: "download",
+        keys: ["mod+e"],
+        run: () => h().openExport(),
+        keywords: "stl 3mf step print slicer",
       },
       { id: "edit.undo", label: "Undo", group: "Edit", icon: "undo", keys: ["mod+z"], run: () => h().doUndo(), when: (c) => c.canUndo },
       { id: "edit.redo", label: "Redo", group: "Edit", icon: "redo", keys: ["shift+mod+z", "mod+y"], run: () => h().doRedo(), when: (c) => c.canRedo },
@@ -923,6 +936,7 @@ export function Editor() {
     { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
+    { id: "export", label: "Export STL, 3MF or STEP…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
     ...files.recentEntries,
     { kind: "separator", id: "s1" },
     { id: "cloud", label: "Save to your account (coming with accounts)", icon: "user", disabled: true, onSelect: () => {} },
@@ -1237,6 +1251,18 @@ export function Editor() {
       />
       {vp.namingDialog}
       {files.dialog}
+      <ExportDialog
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        doc={doc}
+        upTo={at}
+        parts={parts}
+        selection={selection}
+        call={kernel.call}
+        files={files.store}
+        say={say}
+        onGroup={(ids) => group(ids)}
+      />
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
       <TooltipLayer />
     </>

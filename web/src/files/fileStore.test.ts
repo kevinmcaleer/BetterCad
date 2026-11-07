@@ -105,6 +105,32 @@ describe("FileStore with the File System Access API (#83)", () => {
   });
 });
 
+describe("exported files (#86)", () => {
+  it("asks where to save one file, with its type", async () => {
+    const h = handle("Ball.stl");
+    const win = picker({ showSaveFilePicker: vi.fn(async () => h) });
+    const fs = createFileStore(win, memoryKV<Recent>());
+    const r = await fs.saveFiles([{ name: "Ball.stl", data: new TextEncoder().encode("solid").buffer as ArrayBuffer, mime: "model/stl" }]);
+    expect(r).toEqual({ names: ["Ball.stl"], inPlace: true });
+    expect(win.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: "Ball.stl", types: [{ description: "Ball.stl", accept: { "model/stl": [".stl"] } }] });
+    expect(h.body()).toBe("solid");
+  });
+
+  it("writes several files into a folder you pick", async () => {
+    const made = new Map<string, ReturnType<typeof handle>>();
+    const dir = { getFileHandle: vi.fn(async (n: string) => made.set(n, handle(n)).get(n)!) };
+    const fs = createFileStore(picker({ showDirectoryPicker: vi.fn(async () => dir) }), memoryKV<Recent>());
+    const data = new TextEncoder().encode("x").buffer as ArrayBuffer;
+    const r = await fs.saveFiles([
+      { name: "a.stl", data, mime: "model/stl" },
+      { name: "b.stl", data, mime: "model/stl" },
+    ]);
+    expect(r).toEqual({ names: ["a.stl", "b.stl"], inPlace: true });
+    expect([...made.keys()]).toEqual(["a.stl", "b.stl"]);
+    expect(made.get("b.stl")!.body()).toBe("x");
+  });
+});
+
 describe("FileStore without the API (Safari, Firefox)", () => {
   it("downloads the file", async () => {
     const fs = createFileStore(window as PickerWindow & Window, memoryKV<Recent>());
