@@ -169,6 +169,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             position: p.position,
             rotation: p.rotation,
             ghost: p.ghost,
+            reference: p.reference,
             highlight: p.highlight,
             warn: props.warn?.has(p.id),
           };

@@ -65,6 +65,8 @@ export interface Part {
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
   hole?: boolean;
+  /** A reference body (#185): shown to design around, but never printed, exported or weighed. */
+  reference?: boolean;
   /** A hole's fit (#183): cut with a printed gap round it when grouped. A named fit, or a custom `gap`. */
   fit?: FitId;
   /** A custom gap on each side, mm, when `fit` isn't set. */
@@ -270,6 +272,8 @@ export interface Look {
   ghost?: boolean;
   highlight?: boolean;
   hole?: boolean;
+  /** A reference body (#185). */
+  reference?: boolean;
   /** A hole's fit (#183). */
   fit?: FitId;
   /** A hole's custom gap, mm. */
@@ -1016,6 +1020,9 @@ export function cutTool(id: string, fit: FitId | null, gap: number, print?: Prin
   if (g > 0) t.gap = g;
   return t;
 }
+
+/** Whether a part is printed (#185): not hidden, not a hole and not a reference body. */
+export const printed = (p: Pick<Part, "hidden" | "hole" | "reference">) => !p.hidden && !p.hole && !p.reference;
 
 /** What a mate (#184) needs to change to fix its gap: the bodies, the faces and the gap now. */
 export interface MateRef {

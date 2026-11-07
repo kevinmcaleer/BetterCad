@@ -81,6 +81,8 @@ export interface EngineBody {
   highlight?: boolean;
   /** Off the printer's bed (#100): tinted warn. */
   warn?: boolean;
+  /** A reference body (#185): there to design around, never printed. Drawn see-through in the accent colour. */
+  reference?: boolean;
   /** The mesh is already in place (the kernel built it there); position and rotation only place the gizmo. */
   world?: boolean;
 }
@@ -1114,10 +1116,11 @@ export class Engine {
     o.flat.visible = !shaded;
     o.creases.visible = !shaded;
     const ghost = !!o.body.ghost;
+    const seeThrough = ghost || !!o.body.reference;
     for (const m of [o.shadedMaterial, o.flatMaterial]) {
-      m.transparent = ghost;
-      m.opacity = ghost ? 0.3 : 1;
-      m.depthWrite = !ghost;
+      m.transparent = seeThrough;
+      m.opacity = ghost ? 0.3 : seeThrough ? 0.55 : 1;
+      m.depthWrite = !seeThrough;
     }
     o.idMesh.visible = !ghost;
   }
@@ -1159,6 +1162,7 @@ export class Engine {
     const c2 = new Color();
     for (const o of this.order) {
       const base = c2.copy(o.body.highlight ? p["part-highlight"] : p["part-fill"]);
+      if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
       const attr = o.geometry.getAttribute("color") as BufferAttribute;
       const arr = attr.array as Float32Array;

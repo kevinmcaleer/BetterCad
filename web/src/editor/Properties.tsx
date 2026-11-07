@@ -28,6 +28,8 @@ export interface PropertiesProps {
   sizes?: Map<string, Vec3>;
   /** Switches the selection between hole and solid. */
   onHole?: () => void;
+  /** Switches the selection between reference and printed (#185). */
+  onReference?: () => void;
   /** Sets the selected holes' fit (#183): the gap they cut with when grouped. */
   onFit?: (c: FitChoice) => void;
   /** Exact surface areas and bounding boxes from the kernel (#105), by part id. */
@@ -53,7 +55,7 @@ const formatVolume = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en
 /** The right column: the selection's properties, or a summary of the model. */
 /** Volume, surface, size and weight of some bodies (#105); null until the kernel has measured them all. */
 function printFacts(parts: Part[], volumes: Map<string, number> | undefined, measures: PropertiesProps["measures"], print: PrintSettings | undefined) {
-  const solid = parts.filter((p) => !p.hole);
+  const solid = parts.filter((p) => !p.hole && !p.reference);
   if (!solid.length) return null;
   const all = solid.map((p) => ({ v: volumes?.get(p.id), m: measures?.get(p.id), mesh: !!p.imported?.mesh }));
   if (all.some((x) => x.v === undefined || !x.m)) return null;
@@ -95,6 +97,7 @@ export function Properties({
   volumes,
   sizes,
   onHole,
+  onReference,
   onFit,
   scope,
   measures,
@@ -180,6 +183,17 @@ export function Properties({
               />
             </PropRow>
           )}
+          {onReference && (
+            <PropRow label="Reference">
+              <Button
+                icon="ghost"
+                label={parts.every((p) => p.reference) ? "Reference" : "Printed"}
+                title="A reference body is there to design around. It doesn't print or export."
+                on={parts.every((p) => p.reference)}
+                onClick={onReference}
+              />
+            </PropRow>
+          )}
           {onFit && parts.every((p) => p.hole) && (
             <PropRow label="Fit">
               <FitMenu value={{ fit: parts[0]!.fit ?? null, gap: parts[0]!.gap ?? 0 }} onChange={onFit} tuned={print?.fits} />
@@ -215,6 +229,8 @@ export function Properties({
   ];
   const facts = printFacts(parts, volumes, measures, print);
   if (facts) sections.push({ id: "print", title: "Print", content: <PrintRows f={facts} /> });
+  else if (parts.every((p) => p.reference))
+    sections.push({ id: "print", title: "Print", content: <p className="bc-note">A reference body doesn't print, so it has no print weight.</p> });
   else if (parts.every((p) => p.hole))
     sections.push({ id: "print", title: "Print", content: <p className="bc-note">A hole has no weight: it cuts what it's grouped with.</p> });
   return <PropsPanel sections={sections} />;

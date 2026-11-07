@@ -22,7 +22,7 @@ import {
   type Measure,
 } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
-import { build, type ModelDoc, type Part } from "../document";
+import { build, printed, type ModelDoc, type Part } from "../document";
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
@@ -219,7 +219,7 @@ export class ModelBuilder {
     this.useBlobs(doc);
     const bodies: { id: string; shape: TopoDS_Shape }[] = [];
     for (const p of parts) {
-      if (p.hole || p.hidden) continue;
+      if (!printed(p)) continue;
       try {
         bodies.push({ id: p.id, shape: this.solid(p).shape });
       } catch {

@@ -48,9 +48,14 @@ export class Exporter {
   private pick(r: ExportRequest): { parts: Part[]; skipped: number } {
     const { parts } = build(r.doc, r.upTo);
     const wanted = r.bodies ? parts.filter((p) => r.bodies!.includes(p.id)) : parts;
-    const solid = wanted.filter((p) => !p.hole);
+    const solid = wanted.filter((p) => !p.hole && !p.reference);
     if (!solid.length) {
-      throw new KernelError("failed", wanted.length ? "Only hole shapes are chosen. Group them with a solid first." : "There is nothing to export yet.");
+      const why = !wanted.length
+        ? "There is nothing to export yet."
+        : wanted.every((p) => p.reference)
+          ? "Reference bodies aren't exported. Turn off Reference in Properties to export one."
+          : "Only hole shapes are chosen. Group them with a solid first.";
+      throw new KernelError("failed", why);
     }
     return { parts: solid, skipped: wanted.length - solid.length };
   }

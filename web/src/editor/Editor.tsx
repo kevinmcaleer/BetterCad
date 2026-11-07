@@ -24,6 +24,7 @@ import {
   staleFits,
   updateFits,
   fixMate,
+  printed,
   gapFitOf,
   type FitId,
   applyProfile,
@@ -560,6 +561,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [store, say],
   );
 
+  const referenceInput = useRef<HTMLInputElement>(null);
+  /** Reference bodies (#185): shown to design around, never printed or exported. */
+  const toggleReference = useCallback(
+    (ids: string[]) => {
+      const chosen = live.current.parts.filter((p) => ids.includes(p.id));
+      if (!chosen.length) return;
+      const on = !chosen.every((p) => p.reference);
+      store.edit((d) => setLook(d, ids, () => ({ reference: on || undefined })), on ? "Make a reference" : "Make printable");
+      const who = chosen.length === 1 ? chosen[0]!.name : `${chosen.length} parts`;
+      say(on ? `${who} won't print or export` : `${who} will print`);
+    },
+    [store, say],
+  );
+
   const armTool = useCallback((id: ToolId) => setTool((t) => (t === id && id !== "select" ? "select" : id)), []);
 
   const files = useFiles({
@@ -729,6 +744,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     group,
     ungroup,
     toggleHole,
+    toggleReference,
+    importReference: () => {},
     confirm: () => {},
     suppressActive: () => {},
     activeFeature: (): string | null => null,
@@ -761,6 +778,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     group,
     ungroup,
     toggleHole,
+    toggleReference,
+    importReference: () => referenceInput.current?.click(),
     confirm: () =>
       extrude.session
         ? extrude.done()
@@ -815,6 +834,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "upload",
         run: () => void h().open(),
         keywords: "open add mesh stl step stp 3mf",
+      },
+      {
+        id: "file.importReference",
+        label: "Import as a reference…",
+        group: "File",
+        icon: "ghost",
+        run: () => h().importReference(),
+        keywords: "design around mount servo stl step 3mf not printed",
       },
       {
         id: "file.export",
@@ -922,6 +949,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().toggleHole(sel()),
         when: hasSel,
         keywords: "cut subtract tinkercad",
+      },
+      {
+        id: "edit.reference",
+        scope: "model",
+        label: "Reference or printed",
+        group: "Edit",
+        icon: "ghost",
+        run: () => h().toggleReference(sel()),
+        when: hasSel,
+        keywords: "design around mount stl not printed",
       },
       {
         id: "tool.confirm",
@@ -1081,14 +1118,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   /** The bodies that print: shown, not holes, and measured by the kernel. */
   const printBoxes = useMemo(() => {
     const out = new Map<string, Box3>();
-    for (const p of parts) if (!p.hidden && !p.hole && measures.has(p.id)) out.set(p.id, measures.get(p.id)!.bbox);
+    for (const p of parts) if (printed(p) && measures.has(p.id)) out.set(p.id, measures.get(p.id)!.bbox);
     return out;
   }, [parts, measures]);
   const printBox = useMemo(() => unionBox([...printBoxes.values()]), [printBoxes]);
   const fitProblem = fitMessage(fitCheck(printBox, printer), printer);
   const offBed = useMemo(() => (showBed ? new Set(outside(printBoxes, printer)) : undefined), [showBed, printBoxes, printer]);
   const modelWeight = useMemo(() => {
-    const shown = parts.filter((p) => !p.hidden && !p.hole);
+    const shown = parts.filter(printed);
     if (!shown.length || shown.some((p) => !measures.has(p.id) || p.imported?.mesh)) return null;
     const volume = shown.reduce((a, p) => a + (volumes.get(p.id) ?? 0), 0);
     const area = shown.reduce((a, p) => a + measures.get(p.id)!.area, 0);
@@ -1128,7 +1165,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [thinWall, setThinWall] = useState<number | null>(null);
   const thinLimit = thinWall ?? printer.nozzle * 2;
   const printBodies = useMemo(
-    () => parts.filter((p) => !p.hidden && !p.hole && kernel.bodies.has(p.id)).map((p) => ({ id: p.id, mesh: kernel.bodies.get(p.id)!.mesh })),
+    () => parts.filter((p) => printed(p) && kernel.bodies.has(p.id)).map((p) => ({ id: p.id, mesh: kernel.bodies.get(p.id)!.mesh })),
     [parts, kernel.bodies],
   );
   const overhangResult = useMemo(() => {
@@ -1459,6 +1496,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         onSelect: () => toggleHole(ids),
       },
       {
+        id: "reference",
+        label: chosen.length && chosen.every((p) => p.reference) ? "Make printable" : "Make a reference",
+        icon: "ghost",
+        onSelect: () => toggleReference(ids),
+      },
+      {
         id: "hide",
         label: allHidden ? "Show" : "Hide",
         icon: allHidden ? "eye" : "eyeOff",
@@ -1491,6 +1534,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
+    { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
     { id: "export", label: "Export STL, 3MF or STEP…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
     ...files.recentEntries,
     { kind: "separator", id: "s1" },
@@ -1627,6 +1671,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   return (
     <>
+      <input
+        ref={referenceInput}
+        type="file"
+        hidden
+        multiple
+        accept=".stl,.step,.stp,.3mf"
+        aria-label="Import as a reference"
+        onChange={(e) => {
+          const list = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (list.length) void importFiles(list, undefined, { call: kernel.call, record, say, select: setSelection, reference: true });
+        }}
+      />
       <AppShell
         topBar={
           <TopBar
@@ -1818,6 +1875,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 print={doc.print}
                 allParts={parts}
                 onHole={() => toggleHole(selection)}
+                onReference={() => toggleReference(selection)}
                 onFit={(c) =>
                   store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
                 }
