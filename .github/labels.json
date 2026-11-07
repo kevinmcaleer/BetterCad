@@ -1,0 +1,42 @@
+[
+  {
+    "name": "bug",
+    "color": "c92a2a",
+    "description": "Something is broken or gives the wrong shape"
+  },
+  {
+    "name": "feature request",
+    "color": "7c3aed",
+    "description": "Something BetterCad should do"
+  },
+  {
+    "name": "question",
+    "color": "5f6670",
+    "description": "How do I\u2026"
+  },
+  {
+    "name": "good first issue",
+    "color": "a78bfa",
+    "description": "A small, well-described change for a first contribution"
+  },
+  {
+    "name": "needs-model",
+    "color": "b45309",
+    "description": "Waiting for a .bcad that shows the problem"
+  },
+  {
+    "name": "needs-triage",
+    "color": "ffc078",
+    "description": "New; Kev hasn't looked yet"
+  },
+  {
+    "name": "inactive",
+    "color": "dee2e6",
+    "description": "No activity for 90 days"
+  },
+  {
+    "name": "v2",
+    "color": "f1eafe",
+    "description": "Accepted, after v1"
+  }
+]

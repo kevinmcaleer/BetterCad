@@ -1,0 +1,25 @@
+name: Feature request
+description: Something BetterCad should do that it doesn't yet.
+labels: ["feature request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Tell us what you're trying to make. A problem to solve helps more than a button to add.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you're trying to make
+      description: The part or the job, and where BetterCad gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How you'd like it to work
+      description: Optional. How another CAD tool does it is useful too.
+  - type: textarea
+    id: model
+    attributes:
+      label: An example model
+      description: Optional. Drag a .bcad, STL or STEP here.

@@ -58,4 +58,24 @@ Fixtures work the same way, with `NIGHTLY=1 UPDATE_GOLDEN=1 npm run test:nightly
 - UI text follows the brand book: short, second person, sentence case, units with a space ("5 mm", "15°"), no
   exclamation marks, no emoji.
 
+## Pull requests
+
+The [pull request template](.github/pull_request_template.md) asks for What, Why, How tested, Screenshots and Budget
+impact. Screenshots for UI changes can come from the component gallery (`#/gallery` in `make dev`). CI comments with
+the performance budgets; say in the description if a number moved on purpose.
+
+## Writing UI text
+
+BetterCad talks like a helpful maker at the next bench:
+
+- Short and in the second person: "Click a flat face where the hole goes."
+- Sentence case for everything, including buttons and titles.
+- Units with a space: "5 mm", "15°", "1,200 mm²".
+- No exclamation marks, no emoji, no "Oops".
+- An error says what happened and what to do next: "Couldn't fillet: the radius is bigger than the edge. Try 2 mm."
+
+## Issues and triage
+
+Bugs, features and questions each have an issue form. Kev triages weekly; see [TRIAGE.md](TRIAGE.md).
+
 `CLAUDE.md` has the full list, and the decisions that need Kev's say before they change.

@@ -1,0 +1,31 @@
+# Keeps the labels in .github/labels.json in place (#112). Creates and updates; never deletes. Colours come from the
+# design system where one fits: danger, accent, warn and muted (light theme values).
+name: Labels
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/labels.json, .github/workflows/labels.yml]
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const want = JSON.parse(fs.readFileSync(".github/labels.json", "utf8"));
+            const have = await github.paginate(github.rest.issues.listLabelsForRepo, { ...context.repo, per_page: 100 });
+            for (const l of want) {
+              const found = have.find((h) => h.name.toLowerCase() === l.name.toLowerCase());
+              const body = { ...context.repo, color: l.color, description: l.description };
+              if (!found) await github.rest.issues.createLabel({ ...body, name: l.name });
+              else if (found.color !== l.color || found.description !== l.description)
+                await github.rest.issues.updateLabel({ ...body, name: found.name, new_name: l.name });
+            }

@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in BetterCad went wrong or gave the wrong shape.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for telling us. The quickest way is Help → Report a problem inside BetterCad: it fills most of this in for you and gives you a report id.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you were doing, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen again
+      placeholder: |
+        1. Open the bracket sample
+        2. Fillet the top edges at 3 mm
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: report
+    attributes:
+      label: Report id
+      description: If you sent a report from the app, its id (for example "Sent. Report 3f9a2c1d").
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and system
+      placeholder: Chrome 131 on Windows 11
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: BetterCad version
+      description: Help → About BetterCad shows it.
+  - type: textarea
+    id: model
+    attributes:
+      label: Your model
+      description: Drag the .bcad file here (Save → Save as… makes one). Zip it first if GitHub won't take it. It helps more than anything else.
+  - type: textarea
+    id: screens
+    attributes:
+      label: Screenshots
+      description: Optional.

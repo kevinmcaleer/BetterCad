@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask on the kevsrobots Discord
+    url: https://www.kevsrobots.com/discord
+    about: Quick questions and help from other makers. Look for the #bettercad channel.
+  - name: Learn BetterCad
+    url: https://www.kevsrobots.com/learn/bettercad/
+    about: The course, from your first sketch to a printed phone stand.

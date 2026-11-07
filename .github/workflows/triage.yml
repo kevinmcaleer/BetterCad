@@ -1,0 +1,64 @@
+# Gentle issue automation (#112): a one-maintainer project is hurt more by bots that close issues than by a backlog.
+# New issues get needs-triage, and a first-time reporter gets a short welcome. Once a week, issues with no activity for
+# 90 days are marked inactive with a note. Nothing is ever closed.
+name: Triage
+
+on:
+  issues:
+    types: [opened]
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  new-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            await github.rest.issues.addLabels({ ...context.repo, issue_number: issue.number, labels: ["needs-triage"] });
+            const theirs = await github.rest.search.issuesAndPullRequests({
+              q: `repo:${context.repo.owner}/${context.repo.repo} author:${issue.user.login}`,
+              per_page: 2,
+            });
+            if (theirs.data.total_count <= 1 && issue.user.type !== "Bot") {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: [
+                  "Thanks for your first issue. Kev reads new issues every week and replies within the week.",
+                  "",
+                  "If it's a bug, a `.bcad` file that shows it is the most useful thing you can add: Save → Save as… makes one.",
+                  "For quick questions, the kevsrobots Discord is often faster.",
+                ].join("\n"),
+              });
+            }
+
+  inactive:
+    if: github.event_name != 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+            const q = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open updated:<${cutoff} -label:inactive -label:epic`;
+            const found = await github.paginate(github.rest.search.issuesAndPullRequests, { q, per_page: 100 });
+            for (const issue of found) {
+              const labels = issue.labels.map((l) => (typeof l === "string" ? l : l.name));
+              // A bug that came with a model stays live: it can always be reproduced.
+              const hasModel = labels.includes("bug") && /\.bcad\b/i.test(issue.body ?? "");
+              if (hasModel) continue;
+              await github.rest.issues.addLabels({ ...context.repo, issue_number: issue.number, labels: ["inactive"] });
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issue.number,
+                body: "This has been quiet for 90 days, so it's marked inactive. It stays open: add a comment if it still matters to you.",
+              });
+            }
