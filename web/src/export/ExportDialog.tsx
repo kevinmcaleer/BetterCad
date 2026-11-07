@@ -11,6 +11,9 @@ import type { FileStore } from "../files/fileStore";
 export interface ExportDialogProps {
   open: boolean;
   onClose: () => void;
+  /** The printer the model is for, and why it doesn't fit, if it doesn't (#100). */
+  printer?: string;
+  fitProblem?: string | null;
   /** After files were saved (the tour's last step, #98). */
   onExported?: () => void;
   doc: ModelDoc;
@@ -157,7 +160,9 @@ export function ExportDialog(p: ExportDialogProps) {
         </>
       }
     >
+      {p.fitProblem && <Banner tone="warn">{p.fitProblem}</Banner>}
       <div className="bc-export">
+        {p.printer && !p.fitProblem && <p className="bc-note bc-export-printer">For {p.printer}.</p>}
         <span className="bc-field-label" id="bc-ex-format">
           Format
         </span>

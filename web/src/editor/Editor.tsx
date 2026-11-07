@@ -43,6 +43,18 @@ import {
   setLook,
   updateFeature,
   KIND_LABEL,
+  centreMove,
+  estimateWeight,
+  fitCheck,
+  fitMessage,
+  materialOf,
+  outside,
+  placePart,
+  printerOf,
+  unionBox,
+  DEFAULT_INFILL,
+  type Box3,
+  type PrintSettings,
   type Feature,
   type ModelDoc,
   type PartKind,
@@ -88,6 +100,7 @@ import { Versions } from "../cloud/Versions";
 import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
+import { PrintPanel } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 
 const PANELS: RailItem<PanelId>[] = [
@@ -97,6 +110,7 @@ const PANELS: RailItem<PanelId>[] = [
   { id: "library", icon: "shapes", label: "Library" },
   { id: "history", icon: "history", label: "History" },
   { id: "params", icon: "sliders", label: "Parameters" },
+  { id: "print", icon: "printer", label: "Print" },
   { id: "settings", icon: "settings", label: "Settings" },
 ];
 
@@ -943,6 +957,82 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [kernel.bodies],
   );
 
+  // ---- print readiness (#100, #105)
+  const measures = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, { area: b.measure.area, bbox: b.measure.bbox as Box3 }])), [kernel.bodies]);
+  const printer = printerOf(doc.print);
+  const [showBed, setShowBedState] = useState(() => {
+    try {
+      return localStorage.getItem("bettercad.showBed") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const setShowBed = useCallback((on: boolean) => {
+    setShowBedState(on);
+    try {
+      localStorage.setItem("bettercad.showBed", on ? "1" : "0");
+    } catch {
+      // A private window: it lasts this visit.
+    }
+  }, []);
+  /** The bodies that print: shown, not holes, and measured by the kernel. */
+  const printBoxes = useMemo(() => {
+    const out = new Map<string, Box3>();
+    for (const p of parts) if (!p.hidden && !p.hole && measures.has(p.id)) out.set(p.id, measures.get(p.id)!.bbox);
+    return out;
+  }, [parts, measures]);
+  const printBox = useMemo(() => unionBox([...printBoxes.values()]), [printBoxes]);
+  const fitProblem = fitMessage(fitCheck(printBox, printer), printer);
+  const offBed = useMemo(() => (showBed ? new Set(outside(printBoxes, printer)) : undefined), [showBed, printBoxes, printer]);
+  const modelWeight = useMemo(() => {
+    const shown = parts.filter((p) => !p.hidden && !p.hole);
+    if (!shown.length || shown.some((p) => !measures.has(p.id) || p.imported?.mesh)) return null;
+    const volume = shown.reduce((a, p) => a + (volumes.get(p.id) ?? 0), 0);
+    const area = shown.reduce((a, p) => a + measures.get(p.id)!.area, 0);
+    return estimateWeight({ volume, area, density: materialOf(doc.print?.material).density, infill: doc.print?.infill ?? DEFAULT_INFILL });
+  }, [parts, measures, volumes, doc.print]);
+  const changePrint = useCallback(
+    (change: Partial<PrintSettings>) =>
+      store.edit((d) => ({ ...d, print: { ...d.print, ...change } }), change.printer ? "Choose a printer" : "Change print settings"),
+    [store],
+  );
+  const centreOnBed = useCallback(() => {
+    if (!printBox) return;
+    const delta = centreMove(printBox);
+    if (Math.abs(delta.x) + Math.abs(delta.y) + Math.abs(delta.z) < 1e-6) return say("The model is already centred on the bed");
+    const ids = parts.filter((p) => !p.hidden).map((p) => p.id);
+    store.edit((d) => {
+      let x = d;
+      let pos = marker === null ? undefined : at;
+      for (const id of ids) {
+        const part = parts.find((p) => p.id === id)!;
+        x = placePart(
+          x,
+          id,
+          { x: part.position.x + delta.x, y: part.position.y + delta.y, z: part.position.z + delta.z },
+          part.rotation ?? { x: 0, y: 0, z: 0 },
+          pos,
+        );
+        if (pos !== undefined) pos++;
+      }
+      return x;
+    }, "Centre on bed");
+    say("Centred the model on the bed");
+  }, [printBox, parts, store, say, at, marker]);
+  const printPanel = (
+    <PrintPanel
+      settings={doc.print ?? {}}
+      printer={printer}
+      onChange={changePrint}
+      showBed={showBed}
+      onShowBed={setShowBed}
+      fitProblem={fitProblem}
+      hasModel={printBox !== null}
+      onCentre={centreOnBed}
+      weight={modelWeight}
+    />
+  );
+
   const featureMenu = (id: string): MenuEntry[] => {
     const i = doc.features.findIndex((f) => f.id === id);
     const f = doc.features[i];
@@ -1236,6 +1326,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           panel && (
             <LeftPanel
               paramsPanel={paramsPanel}
+              printPanel={printPanel}
               panel={panel}
               doc={doc}
               parts={parts}
@@ -1322,6 +1413,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onCamera={composedCamera}
+            bed={showBed && !share ? printer : null}
+            warn={offBed}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
             <SketchLabels s={sketch} />
@@ -1373,6 +1466,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 scope={scope}
                 volumes={volumes}
                 sizes={sizes}
+                measures={measures}
+                print={doc.print}
+                allParts={parts}
                 onHole={() => toggleHole(selection)}
               />
             </>
@@ -1417,6 +1513,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         open={exportOpen}
         onClose={() => setExportOpen(false)}
         onExported={tour.onExported}
+        printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
+        fitProblem={fitProblem}
         doc={doc}
         upTo={at}
         parts={parts}

@@ -37,6 +37,7 @@ import {
   WebGLRenderTarget,
   ZeroStencilOp,
   BoxGeometry,
+  EdgesGeometry,
   ArrowHelper,
   type Camera,
   type Material,
@@ -77,6 +78,8 @@ export interface EngineBody {
   rotation?: { x: number; y: number; z: number };
   ghost?: boolean;
   highlight?: boolean;
+  /** Off the printer's bed (#100): tinted warn. */
+  warn?: boolean;
   /** The mesh is already in place (the kernel built it there); position and rotation only place the gizmo. */
   world?: boolean;
 }
@@ -403,6 +406,7 @@ export class Engine {
     this.palette = readPalette();
     this.roomOn = room;
     this.applyPalette();
+    if (this.bedSpec) this.setBed(this.bedSpec);
     this.recolourAll();
     this.invalidate();
   }
@@ -443,6 +447,62 @@ export class Engine {
     }
     this.setCamera(fitCamera(base, [s.center.x, s.center.y, s.center.z], s.radius, this.width / this.height), true);
   }
+
+  /**
+   * The printer's bed (#100): a plate at Z = 0 with its outline, the build volume as a faint box, and the slicer's
+   * origin marked (centre, or the front-left corner). null takes it away. The grid stays for snapping.
+   */
+  setBed(bed: { x: number; y: number; z: number; origin: "centre" | "corner" } | null): void {
+    if (this.bed) {
+      this.scene.remove(this.bed);
+      this.bed.traverse((o) => {
+        const m = o as Mesh;
+        m.geometry?.dispose();
+        (m.material as Material | undefined)?.dispose();
+      });
+      this.bed = null;
+    }
+    if (bed) {
+      const g = new Group();
+      g.name = "bed";
+      const p = this.palette;
+      const plate = new Mesh(
+        new PlaneGeometry(bed.x, bed.y),
+        new MeshBasicMaterial({
+          color: p.rail,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: 1,
+          polygonOffsetUnits: 1,
+        }),
+      );
+      plate.renderOrder = -0.5;
+      const box = new BoxGeometry(bed.x, bed.y, bed.z).translate(0, 0, bed.z / 2);
+      const volume = new Mesh(box, new MeshBasicMaterial({ color: p.snap, transparent: true, opacity: 0.08, depthWrite: false, side: BackSide }));
+      const edges = new LineSegments(new EdgesGeometry(box), new LineBasicMaterial({ color: p.snap, transparent: true, opacity: 0.35 }));
+      const rim = new LineSegments(new EdgesGeometry(new PlaneGeometry(bed.x, bed.y)), new LineBasicMaterial({ color: p.line }));
+      // The origin: a small cross where the slicer's 0,0 is.
+      const o: [number, number] = bed.origin === "corner" ? [-bed.x / 2, -bed.y / 2] : [0, 0];
+      const k = Math.min(bed.x, bed.y) * 0.04;
+      const cross = new BufferGeometry().setAttribute(
+        "position",
+        new BufferAttribute(new Float32Array([o[0] - k, o[1], 0.05, o[0] + k, o[1], 0.05, o[0], o[1] - k, 0.05, o[0], o[1] + k, 0.05]), 3),
+      );
+      const mark = new LineSegments(cross, new LineBasicMaterial({ color: p.muted }));
+      for (const m of [plate, volume, edges, rim, mark]) {
+        m.userData.bed = true;
+        g.add(m);
+      }
+      this.bed = g;
+      this.bedSpec = bed;
+      this.scene.add(g);
+    } else this.bedSpec = null;
+    this.invalidate();
+  }
+  private bed: Group | null = null;
+  private bedSpec: { x: number; y: number; z: number; origin: "centre" | "corner" } | null = null;
 
   /** Puts the bodies on stage, reusing what has not changed. */
   setBodies(list: EngineBody[]): void {
@@ -1014,8 +1074,10 @@ export class Engine {
     const selFaces = new Map<string, Set<number>>();
     for (const s of this.selected) if (s.kind === "face") (selFaces.get(s.body) ?? selFaces.set(s.body, new Set()).get(s.body)!).add(s.index);
     const c = new Color();
+    const c2 = new Color();
     for (const o of this.order) {
-      const base = o.body.highlight ? p["part-highlight"] : p["part-fill"];
+      const base = c2.copy(o.body.highlight ? p["part-highlight"] : p["part-fill"]);
+      if (o.body.warn) base.lerp(p.warn, 0.65);
       const attr = o.geometry.getAttribute("color") as BufferAttribute;
       const arr = attr.array as Float32Array;
       const faces = selFaces.get(o.body.id);

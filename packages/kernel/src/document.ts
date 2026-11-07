@@ -24,6 +24,8 @@ export * from "./extrude";
 export * from "./holes";
 export * from "./screws";
 export * from "./params";
+export * from "./print";
+import type { PrintSettings } from "./print";
 
 export type PartKind = "box" | "cylinder" | "sphere" | "cone" | "torus" | "wedge" | "solid";
 
@@ -270,6 +272,8 @@ export interface ModelDoc {
   params?: Parameter[];
   /** Imported files' bytes, base64, by content hash (#82), so the model rebuilds without the original file. */
   blobs?: Record<string, string>;
+  /** The printer, material and infill (#100, #105), so a shared model shows the bed its author meant. */
+  print?: PrintSettings;
 }
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };

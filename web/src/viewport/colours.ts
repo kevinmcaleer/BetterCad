@@ -21,6 +21,9 @@ export const VIEW_COLOURS = [
   "ink",
   "muted",
   "danger",
+  "warn",
+  "rail",
+  "line",
 ] as const satisfies readonly ColourName[];
 export type ViewColour = (typeof VIEW_COLOURS)[number];
 export type Palette = Record<ViewColour, Color>;

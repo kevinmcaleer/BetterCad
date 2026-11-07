@@ -1,5 +1,16 @@
 import { Button, Fields, NumberField, PropRow, PropsPanel, type PropsSection, type Scope } from "@bettercad/ui";
-import { KIND_LABEL, type Part, type Vec3 } from "../state/document";
+import {
+  DEFAULT_INFILL,
+  KIND_LABEL,
+  estimateWeight,
+  formatWeight,
+  materialOf,
+  unionBox,
+  type Box3,
+  type Part,
+  type PrintSettings,
+  type Vec3,
+} from "../state/document";
 
 export interface PropertiesProps {
   parts: Part[];
@@ -16,6 +27,10 @@ export interface PropertiesProps {
   sizes?: Map<string, Vec3>;
   /** Switches the selection between hole and solid. */
   onHole?: () => void;
+  /** Exact surface areas and bounding boxes from the kernel (#105), by part id. */
+  measures?: Map<string, { area: number; bbox: Box3 }>;
+  /** The document's material and infill, for the weight. */
+  print?: PrintSettings;
 }
 
 const AXES: (keyof Vec3)[] = ["x", "y", "z"];
@@ -33,7 +48,55 @@ const sizeText = (v: Vec3) => `${fmt(v.x)} × ${fmt(v.y)} × ${fmt(v.z)} mm. `;
 const formatVolume = (v: number) => (Math.round(v * 10) / 10).toLocaleString("en-GB");
 
 /** The right column: the selection's properties, or a summary of the model. */
-export function Properties({ parts, totalParts, onChange, onCommit, volumes, sizes, onHole, scope }: PropertiesProps) {
+/** Volume, surface, size and weight of some bodies (#105); null until the kernel has measured them all. */
+function printFacts(parts: Part[], volumes: Map<string, number> | undefined, measures: PropertiesProps["measures"], print: PrintSettings | undefined) {
+  const solid = parts.filter((p) => !p.hole);
+  if (!solid.length) return null;
+  const all = solid.map((p) => ({ v: volumes?.get(p.id), m: measures?.get(p.id), mesh: !!p.imported?.mesh }));
+  if (all.some((x) => x.v === undefined || !x.m)) return null;
+  const volume = all.reduce((a, x) => a + x.v!, 0);
+  const area = all.reduce((a, x) => a + x.m!.area, 0);
+  const box = unionBox(all.map((x) => x.m!.bbox))!;
+  const material = materialOf(print?.material);
+  const infill = print?.infill ?? DEFAULT_INFILL;
+  return {
+    volume,
+    area,
+    size: { x: box.max[0] - box.min[0], y: box.max[1] - box.min[1], z: box.max[2] - box.min[2] },
+    // A mesh with holes in its surface has no true volume to weigh.
+    weight: all.some((x) => x.mesh) ? null : estimateWeight({ volume, area, density: material.density, infill }),
+    material: material.name,
+    infill,
+  };
+}
+
+const cm3 = (mm3: number) => `${(Math.round(mm3 / 100) / 10).toLocaleString("en-GB")} cm³`;
+const cm2 = (mm2: number) => `${(Math.round(mm2 / 10) / 10).toLocaleString("en-GB")} cm²`;
+
+function PrintRows({ f }: { f: NonNullable<ReturnType<typeof printFacts>> }) {
+  return (
+    <>
+      <PropRow label="Volume">{cm3(f.volume)}</PropRow>
+      <PropRow label="Surface">{cm2(f.area)}</PropRow>
+      <PropRow label="Size">{sizeText(f.size).trim()}</PropRow>
+      <PropRow label="Weight">{f.weight === null ? "–" : `${formatWeight(f.weight)} (${f.material}, ${f.infill}% infill)`}</PropRow>
+    </>
+  );
+}
+
+export function Properties({
+  parts,
+  totalParts,
+  onChange,
+  onCommit,
+  volumes,
+  sizes,
+  onHole,
+  scope,
+  measures,
+  print,
+  allParts,
+}: PropertiesProps & { allParts?: Part[] }) {
   if (parts.length === 0) {
     return (
       <PropsPanel
@@ -50,6 +113,25 @@ export function Properties({ parts, totalParts, onChange, onCommit, volumes, siz
               <dt>Up</dt>
               <dd>Z</dd>
             </dl>
+            {(() => {
+              const f = printFacts(
+                (allParts ?? []).filter((p) => !p.hidden),
+                volumes,
+                measures,
+                print,
+              );
+              return f ? (
+                <>
+                  <h2 className="bc-panel-title">Print</h2>
+                  <dl className="bc-facts">
+                    <dt>Volume</dt>
+                    <dd>{cm3(f.volume)}</dd>
+                    <dt>Weight</dt>
+                    <dd>{f.weight === null ? "–" : formatWeight(f.weight)}</dd>
+                  </dl>
+                </>
+              ) : null;
+            })()}
           </>
         }
       />
@@ -122,5 +204,9 @@ export function Properties({ parts, totalParts, onChange, onCommit, volumes, siz
     },
     { id: "rotation", title: "Rotation", content: fields("rotation") },
   ];
+  const facts = printFacts(parts, volumes, measures, print);
+  if (facts) sections.push({ id: "print", title: "Print", content: <PrintRows f={facts} /> });
+  else if (parts.every((p) => p.hole))
+    sections.push({ id: "print", title: "Print", content: <p className="bc-note">A hole has no weight: it cuts what it's grouped with.</p> });
   return <PropsPanel sections={sections} />;
 }

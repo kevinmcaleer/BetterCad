@@ -20,7 +20,7 @@ import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
-export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "params" | "settings";
+export type PanelId = "parts" | "sketch" | "bodies" | "library" | "history" | "params" | "print" | "settings";
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   parts: "Parts",
@@ -29,6 +29,7 @@ export const PANEL_TITLES: Record<PanelId, string> = {
   library: "Library",
   history: "History",
   params: "Parameters",
+  print: "Print",
   settings: "Settings",
 };
 
@@ -66,6 +67,8 @@ export interface LeftPanelProps {
   tool: ToolId;
   /** The Parameters panel, made by the editor. */
   paramsPanel: ReactNode;
+  /** The Print panel (#100), made by the editor. */
+  printPanel: ReactNode;
 }
 
 export function LeftPanel(p: LeftPanelProps) {
@@ -86,6 +89,8 @@ export function LeftPanel(p: LeftPanelProps) {
       return <HistoryPanel {...p} />;
     case "params":
       return <>{p.paramsPanel}</>;
+    case "print":
+      return <>{p.printPanel}</>;
     case "settings":
       return <SettingsPanel {...p} />;
   }

@@ -127,6 +127,8 @@ export const polygon = "M7.5 4h9l4.5 8-4.5 8h-9L3 12z";
 export const finish = "M20 6 9 17l-5-5";
 export const cloud = "M17.5 19H8a6 6 0 1 1 5.7-7.9h.3a4.5 4.5 0 0 1 3.5 7.9z";
 export const cloudOff = "M2 2l20 20M5.8 8.2A6 6 0 0 0 8 19h9M21 15.5a4.5 4.5 0 0 0-7-4.4M10 5.2A6 6 0 0 1 13.7 11";
+// Print readiness (#11).
+export const printer = "M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z";
 export const share = "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4";
 
 export const ICONS = {
@@ -249,6 +251,7 @@ export const ICONS = {
   cloud,
   cloudOff,
   share,
+  printer,
 } as const;
 
 export type IconName = keyof typeof ICONS;
