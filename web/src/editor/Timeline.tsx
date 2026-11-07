@@ -43,13 +43,16 @@ export interface TimelineProps {
   summary: (f: Feature) => string;
   onSelect: (f: Feature) => void;
   onMenu: (f: Feature, at: ContextMenuState) => void;
+  /** The same steps as a list, in the left panel. */
+  onHistory?: () => void;
+  historyOpen?: boolean;
 }
 
 /**
  * The Fusion-style timeline along the bottom of the stage: one tile per feature in order, a marker you drag to roll
  * the model back, and play controls. Features after the marker are greyed and not built.
  */
-export function Timeline({ features, at, onMarker, failed, activeId, summary, onSelect, onMenu }: TimelineProps) {
+export function Timeline({ features, at, onMarker, failed, activeId, summary, onSelect, onMenu, onHistory, historyOpen }: TimelineProps) {
   const strip = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -176,6 +179,7 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
       <span className="bc-tl-summary" aria-hidden="true">
         {n === 0 ? "No steps yet" : rolledBack ? `Step ${at} of ${n}` : `${n} ${n === 1 ? "step" : "steps"}`}
       </span>
+      {onHistory && <IconButton icon="history" title="History" on={!!historyOpen} onClick={onHistory} />}
     </section>
   );
 }

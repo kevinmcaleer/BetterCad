@@ -5,7 +5,7 @@ import {
   ContextMenu,
   Dialog,
   ESC,
-  Rail,
+  cx,
   TooltipLayer,
   useEscape,
   type ContextMenuState,
@@ -136,7 +136,6 @@ import type { WorldPlaneName } from "../viewport/engine";
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Browser" },
-  { id: "sketch", icon: "sketch", label: "Sketch" },
   { id: "library", icon: "shapes", label: "Library" },
   { id: "history", icon: "history", label: "History" },
   { id: "params", icon: "sliders", label: "Parameters" },
@@ -445,6 +444,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [onCamera, sketchCamera],
   );
 
+  const renameModel = useCallback(
+    (name: string) => {
+      const n = name.trim();
+      if (n && n !== store.get().name) store.edit((d) => ({ ...d, name: n }), "Rename model");
+    },
+    [store],
+  );
+
   const showPanel = useCallback((id: PanelId | null) => {
     setPanel(id);
     if (id && window.matchMedia?.(NARROW).matches) setPropsOpen(false);
@@ -714,6 +721,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
   useEscape(tool !== "select", () => setTool("select"), ESC.tool);
   useEscape(narrow && (panel !== null || propsOpen), () => (propsOpen ? setPropsOpen(false) : setPanel(null)), ESC.panel);
+  // On a wide screen the Library, Parameters, Print, History and Settings give way to the browser again.
+  useEscape(!narrow && panel !== null && panel !== "parts", () => setPanel("parts"), ESC.panel);
   useEscape(
     selection.length > 0 || vp.elements.length > 0,
     () => {
@@ -1649,16 +1658,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       <AppShell
         topBar={
           <TopBar
-            name={doc.name}
-            onRename={(name) => store.edit((d) => ({ ...d, name }), "Rename model", "doc-name")}
-            onRenameDone={store.seal}
+            tool={tool}
+            onArmTool={armTool}
+            panel={panel}
+            onPanel={showPanel}
             canUndo={store.canUndo()}
             canRedo={store.canRedo()}
             undoLabel={store.undoLabel()}
             redoLabel={store.redoLabel()}
             onUndo={doUndo}
             onRedo={doRedo}
-            status={status}
             saveEntries={saveEntries}
             helpEntries={helpEntries}
             account={account ? { name: account.name } : null}
@@ -1681,7 +1690,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             propsOpen={propsOpen}
           />
         }
-        rail={<Rail items={PANELS} value={panel} onChange={showPanel} controls="bc-left-panel" />}
+        status={
+          <span className={cx("bc-status", status.bad && "bc-bad")} role={status.bad ? "alert" : "status"} aria-live={status.bad ? "assertive" : "polite"}>
+            {status.text}
+          </span>
+        }
         leftLabel={panel ? PANEL_TITLES[panel] : undefined}
         leftPanel={
           panel && (
@@ -1698,6 +1711,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onAdd={add}
               onToggle={(id, what) => toggle(selection.includes(id) ? selection : [id], what)}
               onRename={rename}
+              onRenameModel={renameModel}
+              readOnly={!!files.shared}
+              onBack={() => showPanel("parts")}
               onReorder={(id, before) => store.edit((d) => reorderPart(d, id, before), "Reorder parts")}
               partMenu={partMenu}
               renameId={renameId}
@@ -1725,8 +1741,6 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               theme={theme}
               onTheme={setTheme}
               commands={commands}
-              onArmTool={armTool}
-              tool={tool}
             />
           )
         }
@@ -1814,6 +1828,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               summary={summary}
               onSelect={selectFeature}
               onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
+              onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
+              historyOpen={panel === "history"}
             />
           )
         }

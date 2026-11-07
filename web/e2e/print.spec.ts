@@ -1,7 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { Editor } from "./pages/editor";
 
 const openPrint = async (page: Page) => {
-  if (!(await page.getByLabel("Printer", { exact: true }).isVisible())) await page.getByRole("navigation").getByRole("button", { name: "Print" }).click();
+  if (!(await page.getByLabel("Printer", { exact: true }).isVisible())) await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
   await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
 };
 
@@ -18,7 +19,7 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
   await page.getByLabel("Printer", { exact: true }).selectOption("bambu-a1-mini");
 
   // 192 mm wide: 12 mm more than an A1 Mini's bed.
-  await page.getByRole("navigation").getByRole("button", { name: "Browser" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Browser", exact: true }).click();
   await page.getByRole("treeitem", { name: /Box 1/ }).click();
   const w = page.getByRole("textbox", { name: "W (mm)", exact: true });
   await w.fill("192");
@@ -96,9 +97,9 @@ test("orientation suggestions turn the model onto the bed in one undoable step",
   await expect(list.getByRole("button", { name: /^As it lies now/ })).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
 
   await page.keyboard.press("ControlOrMeta+z");
-  await expect(page.getByRole("navigation").getByRole("button", { name: "Print" })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Print", exact: true })).toBeVisible();
 
   // The weights live in Settings, Advanced.
-  await page.getByRole("navigation").getByRole("button", { name: "Settings" }).click();
+  await new Editor(page).panel("Settings");
   await expect(page.getByRole("group", { name: "Orientation suggestions" }).getByRole("textbox", { name: "Contact", exact: true })).toHaveValue("0.4");
 });

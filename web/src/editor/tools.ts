@@ -94,8 +94,18 @@ export const TOOLS: Tool[] = [
   { id: "hole", label: "Hole", icon: "hole", key: "h", title: "Make a screw hole", help: "Click a flat face where the hole goes." },
 ];
 
-export const VIEW_TOOLS = TOOLS.filter((t) => t.id === "select" || t.id === "move" || t.id === "turn" || t.id === "section");
-export const MODEL_TOOLS = TOOLS.filter((t) => !VIEW_TOOLS.includes(t));
+const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!);
+
+/**
+ * The tools on the top bar, in groups and ranked by how often you reach for them: arrange what is there, make
+ * something new, change it, then check it. The Library sits at the head of "make" (see TopBar).
+ */
+export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
+  { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
+  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve"]) },
+  { id: "change", label: "Change", tools: byId(["combine", "hole", "fillet", "shell"]) },
+  { id: "check", label: "Check", tools: byId(["measure", "section"]) },
+];
 
 export type ViewId = "iso" | "front" | "side" | "top";
 export const VIEWS: { id: ViewId; label: string; key: string }[] = [

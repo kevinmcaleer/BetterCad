@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { modelRow } from "./pages/editor";
 import { fakeApi } from "./fakeApi";
 
 /** Version history (#91) and share links (#92), against the in-test server in fakeApi.ts. */
@@ -75,10 +76,11 @@ test("share a link, view it read-only, open a copy, then turn the link off", { t
   await viewer.goto(`/#/view/${token}`);
   await expect(viewer.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
   await expect(viewer.getByText("by Kev")).toBeVisible();
-  await expect(viewer.getByRole("textbox", { name: "Model name" })).toHaveAttribute("readonly", "");
+  await modelRow(viewer).locator(".bc-row-name").dblclick();
+  await expect(viewer.getByRole("textbox", { name: /^Rename / })).toHaveCount(0);
   await expect(viewer.getByRole("button", { name: "Download" })).toBeVisible();
   await viewer.getByRole("button", { name: "Open a copy" }).click();
-  await expect(viewer.getByRole("textbox", { name: "Model name" })).toHaveValue("Bracket (copy)");
+  await expect(modelRow(viewer)).toContainText("Bracket (copy)");
   await expect(viewer).toHaveURL(/#\/$/);
   await add(viewer, "Cone");
   await expect(viewer.getByRole("treeitem", { name: /Cone 1/ })).toBeVisible();

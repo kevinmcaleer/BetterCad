@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { fakeApi } from "./fakeApi";
-import { bodyRows } from "./pages/editor";
+import { bodyRows, modelRow } from "./pages/editor";
 
 /** The empty editor and the sample models (#99). */
 
@@ -24,10 +24,10 @@ test("a sample opens as a new model driven by parameters", { tag: "@journey" }, 
   await page.goto("/");
   await page.getByRole("button", { name: "Open the bracket sample" }).click();
   await expect(page.getByText("Opened the bracket sample. Change it in Parameters.")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Model name" })).toHaveValue("Bracket");
+  await expect(modelRow(page)).toContainText("Bracket");
   await expect(bodyRows(page).filter({ hasText: "Bracket" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Start with a shape, a sketch, or open a file" })).toBeHidden();
-  await page.getByRole("button", { name: "Parameters" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Parameters", exact: true }).click();
   const hole = page.getByRole("textbox", { name: "Expression for hole" });
   await expect(hole).toHaveValue("4.5");
   await hole.fill("6");
@@ -42,5 +42,5 @@ test("the library's empty state links to the samples", async ({ page, context })
   await expect(page.getByText("No models yet")).toBeVisible();
   await page.getByRole("button", { name: "Open the phone stand sample" }).click();
   await expect(page).toHaveURL(/#\/$/);
-  await expect(page.getByRole("textbox", { name: "Model name" })).toHaveValue("Phone stand");
+  await expect(modelRow(page)).toContainText("Phone stand");
 });

@@ -7,7 +7,6 @@ import {
   NumberField,
   Icon,
   PartsTree,
-  cx,
   type ContextMenuState,
   type MenuEntry,
   type RowToggle,
@@ -16,18 +15,16 @@ import {
 import { KIND_LABEL, ORIENT_WEIGHTS, PRIMITIVES, type OrientWeights, type Feature, type ModelDoc, type Part, type PartKind } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo, type Command } from "../state/commands";
-import { MODEL_TOOLS, type ToolId } from "./tools";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
 import { BrowserPanel, type BrowserSketch } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
-export type PanelId = "parts" | "sketch" | "library" | "history" | "params" | "print" | "settings";
+export type PanelId = "parts" | "library" | "history" | "params" | "print" | "settings";
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   parts: "Browser",
-  sketch: "Sketch",
   library: "Library",
   history: "History",
   params: "Parameters",
@@ -45,6 +42,10 @@ export interface LeftPanelProps {
   onAdd: (kind: PartKind) => void;
   onToggle: (id: string, what: RowToggle) => void;
   onRename: (id: string, name: string) => void;
+  /** The model's name, renamed from the top of the browser. */
+  onRenameModel: (name: string) => void;
+  /** A view-only share. */
+  readOnly?: boolean;
   onReorder: (id: string, beforeId: string | null) => void;
   partMenu: (ids: string[]) => MenuEntry[];
   renameId: string | null;
@@ -73,10 +74,10 @@ export interface LeftPanelProps {
   theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
   commands: Command[];
-  onArmTool: (t: ToolId) => void;
-  tool: ToolId;
   /** The Parameters panel, made by the editor. */
   paramsPanel: ReactNode;
+  /** Back to the browser, from any other panel. */
+  onBack: () => void;
   /** The Print panel (#100), made by the editor. */
   printPanel: ReactNode;
   /** How orientation suggestions are scored (#103). */
@@ -84,12 +85,27 @@ export interface LeftPanelProps {
   onOrientWeights: (w: OrientWeights) => void;
 }
 
+/**
+ * The panel floating on the left. The browser is the home panel; the Library, Parameters, Print, History and Settings
+ * open in its place, from the top bar and the account menu, with a way back.
+ */
 export function LeftPanel(p: LeftPanelProps) {
+  if (p.panel === "parts") return <PartsPanel {...p} />;
+  return (
+    <>
+      <div className="bc-panel-back">
+        <Button size="dense" icon="chevron" className="bc-back-btn" label="Browser" title="Back to the browser" shortcut="Esc" onClick={p.onBack} />
+        <span className="bc-panel-back-title">{PANEL_TITLES[p.panel]}</span>
+      </div>
+      <PanelBody {...p} />
+    </>
+  );
+}
+
+function PanelBody(p: LeftPanelProps) {
   switch (p.panel) {
     case "parts":
       return <PartsPanel {...p} />;
-    case "sketch":
-      return <SketchPanel {...p} />;
     case "library":
       return <LibraryPanel {...p} />;
     case "history":
@@ -106,7 +122,7 @@ export function LeftPanel(p: LeftPanelProps) {
 function PartsPanel(p: LeftPanelProps) {
   return (
     <BrowserPanel
-      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin }}
+      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin, readOnly: p.readOnly }}
       selection={p.selection}
       onSelect={p.onSelect}
       onAdd={p.onAdd}
@@ -120,6 +136,7 @@ function PartsPanel(p: LeftPanelProps) {
         if (f) p.onSelectFeature(f);
       }}
       onRename={p.onRename}
+      onRenameModel={p.onRenameModel}
       onRenameSketch={p.onRenameFeature}
       onReorder={p.onReorder}
       onSketchOn={p.onSketchOn}
@@ -131,55 +148,10 @@ function PartsPanel(p: LeftPanelProps) {
   );
 }
 
-function SketchPanel(p: LeftPanelProps) {
-  return (
-    <>
-      <h2 className="bc-panel-title">Sketch</h2>
-      <p className="bc-note">Draw on a face or plane, then constrain and dimension it, the way Fusion does. Sketch tools arrive with epic #5.</p>
-      <div className="bc-tool-list">
-        {[
-          { id: "line", icon: "pencil" as const, label: "Line", key: "L" },
-          { id: "rect", icon: "border" as const, label: "Rectangle", key: "" },
-          { id: "circle", icon: "hole" as const, label: "Circle", key: "" },
-          { id: "dim", icon: "dimension" as const, label: "Dimension", key: "D" },
-          { id: "con", icon: "constraint" as const, label: "Constraint", key: "" },
-        ].map((t) => (
-          <button key={t.id} type="button" className="bc-menu-item" aria-disabled="true" data-tip={`${t.label} comes with sketching (#5)`}>
-            <span className="bc-menu-icon">
-              <Icon name={t.icon} />
-            </span>
-            <span>{t.label}</span>
-            {t.key && <span className="bc-keys">{t.key}</span>}
-          </button>
-        ))}
-      </div>
-      <h2 className="bc-panel-title">Model tools</h2>
-      <div className="bc-tool-list">
-        {MODEL_TOOLS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={cx("bc-menu-item", p.tool === t.id && "bc-on")}
-            aria-pressed={p.tool === t.id}
-            onClick={() => p.onArmTool(t.id)}
-          >
-            <span className="bc-menu-icon">
-              <Icon name={t.icon} />
-            </span>
-            <span>{t.label}</span>
-            {t.key && <span className="bc-keys">{t.key.toUpperCase()}</span>}
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-
 function LibraryPanel(p: LeftPanelProps) {
   const shapes = PRIMITIVES.map((kind) => ({ kind, label: KIND_LABEL[kind], icon: partIcon(kind) }));
   return (
     <>
-      <h2 className="bc-panel-title">Library</h2>
       <p className="bc-note">Click a shape to add it. Make one a hole in its properties, then Group it with a solid to cut it out.</p>
       <div className="bc-tiles bc-tiles-labelled">
         {shapes.map((s) => (

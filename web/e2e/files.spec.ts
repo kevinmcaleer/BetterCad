@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { modelRow } from "./pages/editor";
 
 /** Stands in for Chrome's file pickers: files live in `window.__files`, and every write is recorded. */
 async function mockPickers(page: Page, saveAs = "Bracket.bcad") {
@@ -52,7 +53,7 @@ test("saves a .bcad in place, names the model after the file, and saves again wi
   await expect(page).toHaveTitle(/^• Untitled model/);
   await page.keyboard.press("ControlOrMeta+s");
   await expect(page.getByText("Saved to Bracket.bcad")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Model name" })).toHaveValue("Bracket");
+  await expect(modelRow(page)).toContainText("Bracket");
   await expect(page).toHaveTitle("Bracket · BetterCad");
   const last = await page.evaluate(() => (window as unknown as { __writes: { text: string }[] }).__writes.at(-1)!.text);
   const file = JSON.parse(last);
@@ -85,7 +86,7 @@ test("opens a saved file", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+o");
   await expect(page.getByText("Opened Bracket.bcad")).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Model name" })).toHaveValue("Bracket");
+  await expect(modelRow(page)).toContainText("Bracket");
 });
 
 test("asks before a new model throws away unsaved changes", async ({ page }) => {

@@ -1,10 +1,11 @@
-import { Button, Icon, IconButton, MenuButton, Separator, cx, type MenuEntry } from "@bettercad/ui";
-import type { Status } from "./useStatus";
+import { Button, Icon, IconButton, MenuButton, Separator, ToolButton, Toolbar, cx, type MenuEntry } from "@bettercad/ui";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
 import type { CloudState } from "../files/useFiles";
 import { go } from "../cloud/route";
+import { TOOL_GROUPS, type ToolId } from "./tools";
+import type { PanelId } from "./LeftPanel";
 
 const CLOUD_TEXT: Record<CloudState, string> = {
   saved: "Saved to your account",
@@ -15,16 +16,18 @@ const CLOUD_TEXT: Record<CloudState, string> = {
 };
 
 export interface TopBarProps {
-  name: string;
-  onRename: (name: string) => void;
-  onRenameDone: () => void;
+  /** The armed tool, and arming one. Read-only shares have no tools. */
+  tool: ToolId;
+  onArmTool: (t: ToolId) => void;
+  /** The open left panel, and opening one (null folds it away). */
+  panel: PanelId | null;
+  onPanel: (p: PanelId | null) => void;
   canUndo: boolean;
   canRedo: boolean;
   undoLabel: string;
   redoLabel: string;
   onUndo: () => void;
   onRedo: () => void;
-  status: Status;
   saveEntries: MenuEntry[];
   onPalette: () => void;
   theme: ThemeSetting;
@@ -52,6 +55,9 @@ export interface TopBarProps {
   helpEntries?: MenuEntry[];
 }
 
+/** The panels a top-bar button opens: pressing it again goes back to the browser. */
+const panelToggle = (p: TopBarProps, id: PanelId) => () => p.onPanel(p.panel === id ? "parts" : id);
+
 export function TopBar(p: TopBarProps) {
   return (
     <header className="bc-top">
@@ -59,24 +65,14 @@ export function TopBar(p: TopBarProps) {
         <Icon name="cube" size={18} />
         <span className="bc-brand">BetterCad</span>
       </span>
-      <input
-        className="bc-text bc-docname"
-        aria-label="Model name"
-        value={p.name}
-        readOnly={!!p.shared}
-        onChange={(e) => p.onRename(e.currentTarget.value)}
-        onBlur={p.onRenameDone}
-        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-        spellCheck={false}
+      <IconButton
+        className="bc-browser-toggle"
+        icon="layers"
+        title="Browser"
+        on={p.panel === "parts"}
+        aria-controls="bc-left-panel"
+        onClick={() => p.onPanel(p.panel === "parts" ? null : "parts")}
       />
-      {p.cloud && (
-        <IconButton
-          className={cx("bc-cloud", (p.cloud === "error" || p.cloud === "offline") && "bc-bad")}
-          icon={p.cloud === "offline" ? "cloudOff" : "cloud"}
-          title={`${CLOUD_TEXT[p.cloud]}. Version history`}
-          onClick={p.onHistory}
-        />
-      )}
       <Separator />
       <Button
         icon="undo"
@@ -92,12 +88,46 @@ export function TopBar(p: TopBarProps) {
         disabled={!p.canRedo}
         onClick={p.onRedo}
       />
-      <span className={cx("bc-status", p.status.bad && "bc-bad")} role={p.status.bad ? "alert" : "status"} aria-live={p.status.bad ? "assertive" : "polite"}>
-        {p.status.text}
-      </span>
+      {!p.shared && (
+        <>
+          <Separator />
+          <Toolbar label="Model tools" className="bc-top-tools">
+            {TOOL_GROUPS.map((g, i) => (
+              <span key={g.id} className="bc-tool-group" role="group" aria-label={g.label}>
+                {i > 0 && <Toolbar.Separator />}
+                {g.id === "make" && <ToolButton icon="shapes" label="Library" pressed={p.panel === "library"} onPress={panelToggle(p, "library")} />}
+                {g.tools.map((t) => (
+                  <ToolButton
+                    key={t.id}
+                    icon={t.icon}
+                    label={t.label}
+                    shortcut={t.key?.toUpperCase()}
+                    pressed={p.tool === t.id}
+                    onPress={() => p.onArmTool(t.id)}
+                  />
+                ))}
+              </span>
+            ))}
+          </Toolbar>
+        </>
+      )}
       <span className="bc-grow" />
-      <Button className="bc-find" icon="search" label="Find a command" title="Find a command" shortcut={formatCombo("mod+k")} onClick={p.onPalette} />
+      <IconButton className="bc-find" icon="search" title={`Find a command (${formatCombo("mod+k")})`} onClick={p.onPalette} />
       <IconButton className="bc-props-toggle" icon="list" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
+      {!p.shared && (
+        <>
+          <IconButton icon="sliders" title="Parameters" on={p.panel === "params"} onClick={panelToggle(p, "params")} />
+          <IconButton icon="printer" title="Print" on={p.panel === "print"} onClick={panelToggle(p, "print")} />
+        </>
+      )}
+      {p.cloud && (
+        <IconButton
+          className={cx("bc-cloud", (p.cloud === "error" || p.cloud === "offline") && "bc-bad")}
+          icon={p.cloud === "offline" ? "cloudOff" : "cloud"}
+          title={`${CLOUD_TEXT[p.cloud]}. Version history`}
+          onClick={p.onHistory}
+        />
+      )}
       {p.shared ? (
         <>
           <span className="bc-owner">by {p.shared.owner}</span>
@@ -125,7 +155,7 @@ export function TopBar(p: TopBarProps) {
       )}
       {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="info" title="Help" />} />}
       <MenuButton
-        label="Account and theme"
+        label="Account and settings"
         align="end"
         entries={[
           ...(p.account
@@ -139,19 +169,20 @@ export function TopBar(p: TopBarProps) {
               ? [{ id: "signin", label: "Sign in", icon: "user" as const, onSelect: () => go("#/signin?next=%23%2F") }]
               : [{ id: "signin", label: "Accounts can't be reached here", icon: "cloudOff" as const, disabled: true, onSelect: () => {} }]),
           { kind: "separator", id: "s1" },
+          { id: "settings", label: "Settings", icon: "settings" as const, onSelect: () => p.onPanel("settings") },
           { kind: "title", id: "t", label: "Theme" },
         ]}
         trigger={(t) =>
           p.account ? (
-            <Button {...t} className="bc-avatar-btn" title={`${p.account.name}: account and theme`}>
+            <Button {...t} className="bc-avatar-btn" title={`${p.account.name}: account and settings`}>
               <span className="bc-avatar" aria-hidden>
                 {p.account.name.trim().charAt(0).toUpperCase() || "?"}
               </span>
             </Button>
           ) : p.accountsOn ? (
-            <Button {...t} icon="user" label="Sign in" title="Account and theme" />
+            <Button {...t} icon="user" label="Sign in" title="Account and settings" />
           ) : (
-            <Button {...t} icon="user" title="Account and theme" />
+            <Button {...t} icon="user" title="Account and settings" />
           )
         }
       >

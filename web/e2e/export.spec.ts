@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { renameModel } from "./pages/editor";
 
 const triangles = async (page: Page) => {
   const status = page.getByRole("dialog", { name: "Export" }).getByRole("status").filter({ hasText: "triangles" });
@@ -25,8 +26,7 @@ test("exports a sphere as STL at the chosen resolution, from the kernel", async 
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Sphere", exact: true }).click();
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  await page.getByRole("textbox", { name: "Model name" }).fill("Ball");
-  await page.getByRole("textbox", { name: "Model name" }).press("Enter");
+  await renameModel(page, "Ball");
 
   await page.keyboard.press("ControlOrMeta+e");
   const dialog = page.getByRole("dialog", { name: "Export" });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Banner, ContextMenu, PartsTree, WideButton, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
+import { Banner, ContextMenu, PartsTree, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
 import type { Part, PartKind } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
 import { formatCombo } from "../state/commands";
@@ -42,6 +42,8 @@ export interface BrowserModel {
   sketches: BrowserSketch[];
   /** Origin planes on show. */
   origin: WorldPlaneName[];
+  /** A shared, view-only model: its name can't be changed. */
+  readOnly?: boolean;
 }
 
 const count = (n: number) => (n ? `${n}` : "");
@@ -59,7 +61,8 @@ export function browserItems(m: BrowserModel): TreeItem[] {
     toggles: ["hidden"],
     ...extra,
   });
-  const items: TreeItem[] = [{ id: ROW.root, name: m.name, icon: "layers", kind: "component", drag: false, rename: false, toggles: [] }];
+  // The model's name heads the tree, as the file name heads Fusion's browser: double-click or F2 renames it.
+  const items: TreeItem[] = [{ id: ROW.root, name: m.name, icon: "layers", kind: "component", drag: false, rename: !m.readOnly, toggles: [] }];
   items.push(folder(ROW.origin, "Origin", { folded: true, hidden: m.origin.length === 0 }));
   for (const p of PLANES) {
     items.push({
@@ -137,6 +140,8 @@ export interface BrowserPanelProps {
   onPicked: (id: string | null) => void;
   onSelectSketch: (id: string) => void;
   onRename: (id: string, name: string) => void;
+  /** The model's own name, from the top row. */
+  onRenameModel: (name: string) => void;
   onRenameSketch: (id: string, name: string) => void;
   onReorder: (id: string, beforeId: string | null) => void;
   onSketchOn: (plane: WorldPlaneName) => void;
@@ -191,7 +196,11 @@ export function BrowserPanel(p: BrowserPanelProps) {
     p.onToggle(id, what);
   };
 
-  const rename = (id: string, name: string) => (model.sketches.some((s) => s.id === id) ? p.onRenameSketch(id, name) : p.onRename(id, name));
+  const rename = (id: string, name: string) => {
+    if (id === ROW.root) return p.onRenameModel(name);
+    if (model.sketches.some((s) => s.id === id)) return p.onRenameSketch(id, name);
+    p.onRename(id, name);
+  };
 
   const menuFor = (id: string): { title?: string; entries: MenuEntry[] } => {
     const plane = planeOf(id);
@@ -222,8 +231,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
 
   return (
     <>
-      <WideButton icon="plus" label="Add a box" variant="outline" onClick={() => p.onAdd("box")} />
-      <h2 className="bc-panel-title">Browser</h2>
+      <h2 className="bc-sr-only">Browser</h2>
       <PartsTree
         label="Browser"
         items={items}
@@ -240,7 +248,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
       <p className="bc-note">
         {model.parts.length > 0
           ? `Shift-click selects a range, ${formatCombo("mod")}-click adds one. Drag bodies to reorder, F2 to rename. Right-click a plane to sketch on it.`
-          : "Nothing here yet. Add a shape from the Library, or start a sketch (K)."}
+          : "Double-click the name to rename your model. Add a shape from the Library, or start a sketch (K)."}
       </p>
       <p className="bc-note">
         Joints arrive with hinges, wheels and sliders (<a href="https://github.com/kevinmcaleer/BetterCad/issues/172">#172</a>).
