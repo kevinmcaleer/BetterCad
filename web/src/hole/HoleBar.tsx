@@ -1,6 +1,6 @@
 import type { KeyboardEvent } from "react";
 import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry } from "@bettercad/ui";
-import { FITS, SCREWS, resolveHole } from "../state/document";
+import { DEFAULT_HOLE_OFFSET, FITS, SCREWS, fitLabel, fitNote, resolveHole, screw } from "../state/document";
 import type { HoleSession } from "./useHole";
 
 const HEADS = [
@@ -47,8 +47,18 @@ export function HoleBar({ x, error, onCancel }: { x: HoleSession; error?: string
       onSelect: () => x.change({ size: "custom", head: "none", diameter: f.diameter ?? 5 }),
     },
   ];
-  const fits: MenuEntry[] = FITS.map((t) => ({ id: t.id, label: t.label, checked: f.fit === t.id, onSelect: () => x.change({ fit: t.id }) }));
+  const s = screw(f.size);
+  const offset = f.offset ?? DEFAULT_HOLE_OFFSET;
+  // Each fit with what it comes to for this size (#104); an insert hole is blind, as deep as the insert and 1 mm more.
+  const fits: MenuEntry[] = FITS.map((t) => ({
+    id: t.id,
+    label: s ? fitLabel(s, t.id, offset) : t.label,
+    checked: f.fit === t.id,
+    disabled: t.id === "insert" && !s?.insert,
+    onSelect: () => x.change(t.id === "insert" && s?.insert && f.depth === null ? { fit: t.id, depth: s.insert.depth + 1 } : { fit: t.id }),
+  }));
   const fit = FITS.find((t) => t.id === f.fit)!;
+  const note = s ? fitNote(s, f.fit, offset) : null;
   const r = resolveHole(f);
   const dia = "diameter" in r ? `${Math.round(r.diameter * 100) / 100} mm` : "";
   const n = f.points.length;
@@ -65,7 +75,7 @@ export function HoleBar({ x, error, onCancel }: { x: HoleSession; error?: string
         </span>
       ) : (
         <>
-          <MenuButton label="Fit" entries={fits} trigger={(p) => <Button {...p} label={fit.label} title={fit.title} />} />
+          <MenuButton label="Fit" entries={fits} trigger={(p) => <Button {...p} label={s ? fitLabel(s, f.fit, offset) : fit.label} title={fit.title} />} />
           <span role="group" aria-label="Head" className="bc-segmented">
             {HEADS.map((h) => (
               <Button key={h.id} label={h.label} title={h.title} on={f.head === h.id} onClick={() => x.change({ head: h.id })} />
@@ -87,6 +97,7 @@ export function HoleBar({ x, error, onCancel }: { x: HoleSession; error?: string
         {n === 1 ? "1 hole" : `${n} holes`}
         {dia && `, ${dia}`}. X and Y are from the face's centre.
       </span>
+      {!custom && note && <span className="bc-armed-note bc-hole-fit-note">{note}</span>}
       {n > 1 && <Button label="Remove last" title="Take the last hole out" onClick={() => x.change({ points: f.points.slice(0, -1) })} />}
       {error && (
         <span className="bc-armed-note bc-armed-error" role="alert">

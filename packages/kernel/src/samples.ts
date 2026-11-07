@@ -12,6 +12,8 @@ export interface SampleInfo {
   /** One line under the card, in the brand book's voice. */
   blurb: string;
   build: () => ModelDoc;
+  /** Shown on the sample cards; false for a utility, opened from where it's needed. */
+  card?: boolean;
 }
 
 /** Writes a sample's timeline with stable ids, so the files only change when the model does. */
@@ -120,8 +122,65 @@ function phoneStand(): ModelDoc {
   return s.doc;
 }
 
+/** Offsets the coupon tries, mm, one column each from the left. */
+export const CALIBRATION_OFFSETS = [0.2, 0.3, 0.4, 0.5, 0.6] as const;
+/** Sizes, one row each from the front. */
+export const CALIBRATION_SIZES = [2, 3, 4, 5, 6] as const;
+
+/**
+ * The hole calibration coupon (#104): M2 to M6 holes (rows, front to back) at offsets 0.2 to 0.6 mm (columns, left
+ * to right). The notches on the front edge count the column: one notch is 0.2 mm, five is 0.6 mm. Print it flat, try
+ * a screw in each row, and set the Print panel's hole offset to the first column it slides through.
+ */
+function holeCalibration(): ModelDoc {
+  const s = new Sample("Hole calibration");
+  s.param("pitch", "14", "Between hole centres");
+  s.param("thickness", "3", "Plate thickness");
+  s.param("edge", "5", "Plate edge past the outer holes");
+  const n = CALIBRATION_OFFSETS.length;
+  s.part("plate", "Plate", "box", { x: `${n - 1} * pitch + 2 * edge + 6`, y: `${CALIBRATION_SIZES.length - 1} * pitch + 2 * edge + 10`, z: "thickness" });
+  const tools: { id: string; op: "cut" }[] = [];
+  const col = (i: number) => `(${i} - ${(n - 1) / 2}) * pitch`;
+  CALIBRATION_SIZES.forEach((d, j) => {
+    CALIBRATION_OFFSETS.forEach((o, i) => {
+      const id = `m${d}_${i}`;
+      s.part(
+        id,
+        `M${d} + ${o} mm`,
+        "cylinder",
+        { x: `${d} + ${o}`, y: `${d} + ${o}`, z: "thickness + 2" },
+        { x: col(i), y: `(${j} - ${(CALIBRATION_SIZES.length - 1) / 2}) * pitch + 2`, z: "-1" },
+      );
+      s.hole(id);
+      tools.push({ id, op: "cut" });
+    });
+  });
+  // Notches along the front edge: one for the first column, up to five for the last.
+  CALIBRATION_OFFSETS.forEach((_, i) => {
+    for (let k = 0; k <= i; k++) {
+      const id = `notch${i}_${k}`;
+      s.part(
+        id,
+        `Notch ${i + 1}.${k + 1}`,
+        "box",
+        { x: "1", y: "3", z: "thickness + 2" },
+        {
+          x: `${col(i)} + ${(k - i / 2) * 2}`,
+          y: `-(${CALIBRATION_SIZES.length - 1} * pitch + 2 * edge + 10) / 2`,
+          z: "-1",
+        },
+      );
+      s.hole(id);
+      tools.push({ id, op: "cut" });
+    }
+  });
+  s.group("Calibration plate", "plate", tools);
+  return s.doc;
+}
+
 export const SAMPLES: readonly SampleInfo[] = [
   { id: "box-with-lid", name: "Box with a lid", blurb: "A box with a lid that fits", build: boxWithLid },
   { id: "bracket", name: "Bracket", blurb: "An L bracket with M4 screw holes", build: bracket },
   { id: "phone-stand", name: "Phone stand", blurb: "Prints flat with no supports", build: phoneStand },
+  { id: "hole-calibration", name: "Hole calibration", blurb: "Find the hole offset your printer needs", build: holeCalibration, card: false },
 ];

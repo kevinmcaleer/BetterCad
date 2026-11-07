@@ -12,6 +12,8 @@ export interface HoleParams {
   size: string;
   fit: HoleFit;
   diameter?: number;
+  /** The printer's hole offset when the holes were made (#104): what a printed clearance adds. 0.4 mm if not set. */
+  offset?: number;
   head: HoleHead;
   /** mm into the face, or null for Through all. */
   depth: number | null;
@@ -35,7 +37,8 @@ export function resolveHole(p: HoleParams): { diameter: number; head?: HoleSpec[
   }
   const s = screw(p.size);
   if (!s) return { error: "That screw size is not in the table" };
-  const diameter = holeDiameter(s, p.fit);
+  const diameter = holeDiameter(s, p.fit, p.offset);
+  if (diameter === null) return { error: `There's no heat-set insert for ${s.label} in the table` };
   if (p.head === "counterbore") {
     // Printed clearance round the head too, and deep enough to sit the head flush.
     return { diameter, head: { kind: "counterbore", diameter: s.socketHead.diameter + 0.4, depth: s.socketHead.height + 0.2 } };

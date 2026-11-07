@@ -41,6 +41,12 @@ export interface PrintPanelProps {
   /** Ways to lay the model down (#103), best scored first; null while they're worked out. */
   suggestions: Suggestion[] | null;
   onSuggestion: (s: Suggestion) => void;
+  /** What printed holes add, mm (#104), and how many hole steps were made at another offset. */
+  holeOffset: number;
+  staleHoles: number;
+  onUpdateHoles: () => void;
+  /** Opens the hole calibration coupon. */
+  onCalibrate: () => void;
 }
 
 /** An orientation suggestion with its thumbnail (a PNG data URL, or null where the view can't draw one). */
@@ -216,6 +222,37 @@ export function PrintPanel(p: PrintPanelProps) {
           <p className="bc-note bc-micro">Suggestions weigh how much touches the bed, how much overhangs and how tall it stands. Pick one to turn the model.</p>
         </>
       )}
+
+      <h2 className="bc-panel-title">Holes</h2>
+      <Fields>
+        <NumberField
+          label="Hole offset"
+          value={p.holeOffset}
+          min={0}
+          max={1}
+          step={0.05}
+          unit="mm"
+          onCommit={(v) => p.onChange({ holeOffset: Math.round(Math.max(0, Math.min(1, v)) * 100) / 100 })}
+        />
+      </Fields>
+      <p className="bc-note">Printed holes come out small, so a printed clearance adds this to the screw's size. Most printers need 0.2 to 0.6 mm.</p>
+      {p.staleHoles > 0 && (
+        <Button
+          variant="secondary"
+          size="wide"
+          icon="hole"
+          label={p.staleHoles === 1 ? "Update 1 hole" : `Update ${p.staleHoles} holes`}
+          title={`Resize printed holes made at another offset to add ${p.holeOffset} mm`}
+          onClick={p.onUpdateHoles}
+        />
+      )}
+      <Button
+        size="wide"
+        icon="ruler"
+        label="Calibrate"
+        title="Open a test plate with M2 to M6 holes at offsets from 0.2 to 0.6 mm. Print it and see which ones a screw slides through."
+        onClick={p.onCalibrate}
+      />
 
       <h2 className="bc-panel-title">Material</h2>
       <label className="bc-field-label" htmlFor="bc-material">
