@@ -594,6 +594,12 @@ kbd {
     max-width: 80%;
   }
 }
+@media (max-width: 420px) {
+  /* Room for Help (#110) beside Save on a phone. */
+  .bc-docname {
+    width: 80px;
+  }
+}
 
 /* ---- more contrast when the system asks for it */
 @media (prefers-contrast: more) {
@@ -1075,4 +1081,16 @@ kbd {
   transform: translateX(-50%);
   z-index: 20;
   max-width: min(640px, calc(100% - 2 * var(--bc-space-4)));
+}
+
+/* Help → About (#110) */
+.bc-about-libs {
+  margin: 0 0 var(--bc-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-2);
+}
+.bc-about-libs dd {
+  margin: 0;
+  color: var(--bc-color-muted);
 }

@@ -48,6 +48,8 @@ export interface TopBarProps {
   onOpenCopy?: () => void;
   onDownloadBcad?: () => void;
   onExport?: () => void;
+  /** Help (#110): shortcuts, the tour, the course, reports and About. */
+  helpEntries?: MenuEntry[];
 }
 
 export function TopBar(p: TopBarProps) {
@@ -121,6 +123,7 @@ export function TopBar(p: TopBarProps) {
           />
         </>
       )}
+      {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="info" title="Help" />} />}
       <MenuButton
         label="Account and theme"
         align="end"

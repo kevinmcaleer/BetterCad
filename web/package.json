@@ -7,12 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "e2e": "playwright test --trace off --grep-invert \"@visual|@quarantine\"",
+    "e2e": "playwright test --trace off --grep-invert \"@visual|@quarantine|@docs\"",
     "e2e:quarantine": "playwright test --trace off --grep @quarantine --pass-with-no-tests",
     "e2e:visual": "playwright test --trace off --grep @visual",
     "size": "node scripts/bundle-report.mjs dist",
     "build:samples": "vite-node scripts/build-samples.ts",
-    "build:icons": "node scripts/build-icons.mjs"
+    "build:icons": "node scripts/build-icons.mjs",
+    "docs:shots": "playwright test --trace off --grep @docs"
   },
   "dependencies": {
     "@bettercad/kernel": "*",

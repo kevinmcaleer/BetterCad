@@ -110,6 +110,8 @@ import { Versions } from "../cloud/Versions";
 import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
+import { AboutDialog } from "../help/AboutDialog";
+import { COURSE_URL } from "../help/about";
 import { ReportDialog } from "../report/ReportDialog";
 import { actionLog, editSummary } from "../report/actionLog";
 import { browserName } from "../report/report";
@@ -217,6 +219,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [keepTools, setKeepTools] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
@@ -239,7 +242,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     at,
     selection,
     tool,
-    dialogOpen: paletteOpen || shortcutsOpen || exportOpen || report !== null,
+    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || exportOpen || report !== null,
     sketching: live.current.sketching,
   };
   const [registry] = useState(() =>
@@ -990,6 +993,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       { id: "help.report", label: "Report a problem", group: "Help", icon: "warning", run: () => setReport({}), keywords: "bug crash error feedback" },
       { id: "help.tour", label: "Take the tour", group: "Help", icon: "info", run: () => h().startTour(), keywords: "help start learn guide" },
       { id: "help.shortcuts", label: "Keyboard shortcuts", group: "Help", icon: "keyboard", keys: ["?"], run: () => setShortcutsOpen(true) },
+      {
+        id: "help.learn",
+        label: "Learn BetterCad",
+        group: "Help",
+        icon: "link",
+        run: () => window.open(COURSE_URL, "_blank", "noopener"),
+        keywords: "course lessons tutorial kevsrobots",
+      },
+      { id: "help.about", label: "About BetterCad", group: "Help", icon: "info", run: () => setAboutOpen(true), keywords: "version licence licenses" },
     ];
     if (import.meta.env.DEV || import.meta.env.VITE_GALLERY) {
       list.push({ id: "help.gallery", label: "Component gallery", group: "Help", icon: "template", run: () => (window.location.hash = "#/gallery") });
@@ -1363,6 +1375,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ];
   };
 
+  // Help (#110): the same commands as the palette's Help group.
+  const helpEntries: MenuEntry[] = [
+    { id: "shortcuts", label: "Keyboard shortcuts", icon: "keyboard", keys: "?", onSelect: () => registry.run("help.shortcuts") },
+    { id: "tour", label: "Take the tour", icon: "info", onSelect: () => registry.run("help.tour") },
+    { id: "learn", label: "Learn BetterCad", icon: "link", onSelect: () => registry.run("help.learn") },
+    { kind: "separator", id: "s1" },
+    { id: "report", label: "Report a problem…", icon: "warning", onSelect: () => registry.run("help.report") },
+    { id: "about", label: "About BetterCad", icon: "info", onSelect: () => registry.run("help.about") },
+  ];
   const saveEntries: MenuEntry[] = [
     {
       id: "save",
@@ -1525,6 +1546,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onRedo={doRedo}
             status={status}
             saveEntries={saveEntries}
+            helpEntries={helpEntries}
             account={account ? { name: account.name } : null}
             accountsOn={accountReady && accountsOn}
             cloud={files.cloud?.state ?? null}
@@ -1795,6 +1817,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       )}
       {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
       <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <TooltipLayer />
     </>
   );
