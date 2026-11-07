@@ -21,6 +21,8 @@ The first public release: free CAD for 3D printing in your browser.
 
 - A view cube, iso, front, side and top views, section views, line art, and selection of faces, edges and bodies (#3).
 - Light, Dark and Holodeck themes, every text pair at 4.5:1 or better (#2).
+- The 3D view fills the window: the top bar, panels, tool bars and timeline float over it, and Fit frames the model
+  in the space they leave clear.
 
 ### Files and accounts
 

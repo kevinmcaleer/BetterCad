@@ -1,8 +1,9 @@
 /* The view cube. Colours come only from tokens.css. */
 .bc-viewcube {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  /* In the editor the view fills the window, so the cube sits clear of the floating top bar and props panel. */
+  top: var(--bc-view-top, 6px);
+  right: var(--bc-view-right, 6px);
   z-index: 6;
   width: 104px;
   height: 104px;

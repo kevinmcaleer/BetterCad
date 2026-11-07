@@ -21,6 +21,13 @@ import {
   groupOf,
   groupParams,
   cutTool,
+  staleFits,
+  updateFits,
+  fixMate,
+  gapFitOf,
+  type FitId,
+  applyProfile,
+  profileFromSettings,
   PRIMITIVES,
   changeParts,
   duplicateParts,
@@ -96,6 +103,7 @@ import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
+import { newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
@@ -120,6 +128,7 @@ import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
+import type { Mate } from "@bettercad/kernel";
 import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 
@@ -1247,6 +1256,73 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say(`${n === 1 ? "1 printed hole now adds" : `${n} printed holes now add`} ${holeOffset} mm`);
   }, [staleHoles, holeOffset, store, say]);
 
+  // Printer profiles (#180) and fitted cuts made at other gaps (#183).
+  const printers = usePrinterProfiles(api, account);
+  const fitsStale = useMemo(() => staleFits(doc, doc.print), [doc]);
+  const pickProfile = useCallback(
+    (id: string | null) => {
+      const p = printers.profiles.find((x) => x.id === id);
+      if (!p) return store.edit((d) => ({ ...d, print: { ...d.print, profile: undefined } }), "Use this model's own printer settings");
+      store.edit((d) => ({ ...d, print: applyProfile(d.print ?? {}, p) }), `Use ${p.name}`);
+      say(`Using ${p.name}`);
+    },
+    [printers.profiles, store, say],
+  );
+  const saveProfile = useCallback(
+    (name: string) => {
+      const p = profileFromSettings(newProfileId(), name, doc.print ?? {});
+      printers.save(p);
+      store.edit((d) => ({ ...d, print: { ...d.print, profile: p.id } }), `Save ${name}`);
+      say(`Saved ${name} to your printers`);
+    },
+    [doc.print, printers, store, say],
+  );
+  const updateProfile = useCallback(() => {
+    const cur = printers.profiles.find((x) => x.id === doc.print?.profile);
+    if (!cur) return;
+    printers.save(profileFromSettings(cur.id, cur.name, doc.print ?? {}));
+    say(`Saved the changes to ${cur.name}`);
+  }, [doc.print, printers, say]);
+  const deleteProfile = useCallback(() => {
+    const cur = printers.profiles.find((x) => x.id === doc.print?.profile);
+    if (!cur) return;
+    printers.remove(cur.id);
+    store.edit((d) => ({ ...d, print: { ...d.print, profile: undefined } }), `Delete ${cur.name}`);
+    say(`Deleted ${cur.name}. This model keeps its settings.`);
+  }, [doc.print, printers, store, say]);
+  const updateFitCuts = useCallback(() => {
+    const n = fitsStale.length;
+    store.edit((d) => updateFits(d, d.print), n === 1 ? "Update 1 fitted cut" : `Update ${n} fitted cuts`);
+    say(n === 1 ? "1 fitted cut now uses the gaps set now" : `${n} fitted cuts now use the gaps set now`);
+  }, [fitsStale, store, say]);
+
+  // Mating faces (#184): worked out in the kernel while the fits check is on, again after each change.
+  const [fitsCheck, setFitsCheck] = useState(false);
+  const [mates, setMates] = useState<Mate[] | null>(null);
+  useEffect(() => {
+    setMates(null);
+    if (!fitsCheck || !printOpen) return;
+    let pending: { cancel(): void } | null = null;
+    const t = setTimeout(() => {
+      const call = kernelCall("mates", { doc, upTo: at });
+      call?.then(setMates, () => setMates([]));
+      pending = call;
+    }, 300);
+    return () => {
+      clearTimeout(t);
+      pending?.cancel();
+    };
+  }, [fitsCheck, printOpen, doc, at, kernelCall]);
+  const fixFit = useCallback(
+    (m: Mate, fit: FitId) => {
+      const r = fixMate(live.current.doc, m, fit);
+      if (typeof r === "string") return say(r, true);
+      store.edit(() => r, `Make a ${gapFitOf(fit).name.toLowerCase()}`);
+      say(`Made it a ${gapFitOf(fit).name.toLowerCase()}`);
+    },
+    [store, say],
+  );
+
   const printPanel = (
     <PrintPanel
       settings={doc.print ?? {}}
@@ -1272,6 +1348,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       staleHoles={staleHoles.length}
       onUpdateHoles={updateHoles}
       onCalibrate={() => files.openSample("hole-calibration")}
+      onCalibrateFits={() => files.openSample("fit-calibration")}
+      profiles={printers.profiles}
+      onPickProfile={pickProfile}
+      onSaveProfile={saveProfile}
+      onUpdateProfile={updateProfile}
+      onDeleteProfile={deleteProfile}
+      staleFits={fitsStale.length}
+      fitsCheck={fitsCheck}
+      onFitsCheck={setFitsCheck}
+      mates={mates}
+      partName={(id) => parts.find((x) => x.id === id)?.name ?? "A body"}
+      onShowMate={(m) => vp.ref.current?.engine()?.fitBox(m.box.min, m.box.max)}
+      onFixMate={fixFit}
+      onUpdateFits={updateFitCuts}
     />
   );
 

@@ -53,6 +53,7 @@ import {
   FOV,
   cameraBasis,
   fit as fitCamera,
+  fitInRect,
   gridStep,
   halfHeight,
   lerpCamera,
@@ -64,9 +65,10 @@ import {
   type CameraState,
   type Preset,
   type V3,
+  type ViewRect,
 } from "./camera";
 import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter } from "./ids";
-import { capMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
+import { blurMaterial, capMaterial, dofMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
 import { readPalette, type Palette } from "./colours";
 
 export type RenderStyle = "shaded" | "lineart";
@@ -140,6 +142,8 @@ export interface EngineEvents {
 
 const DEG = Math.PI / 180;
 const PICK_SIZE = 15;
+/** The Holodeck's widest depth-of-field blur, as a fraction of the view's height. */
+const DOF_BLUR = 0.025;
 
 /** Three's matrix for a body's place: move, then turn about its origin. */
 export function bodyMatrix(b: { position: EngineBody["position"]; rotation?: EngineBody["rotation"] }): Matrix4 {
@@ -209,6 +213,15 @@ export class Engine {
   private room: Mesh;
   private roomMat = gridMaterial(true);
   private roomOn = false;
+  // Depth of field: the room drawn on its own, blurred where it is far from the model, then laid down as the background.
+  private dofScene = new Scene();
+  private dofRoomMat = gridMaterial(true);
+  private blur = blurMaterial();
+  private dof = dofMaterial();
+  private dofRoom: Mesh;
+  private dofQuad: Mesh;
+  private dofQuadScene = new Scene();
+  private dofTargets: { sharp: WebGLRenderTarget; a: WebGLRenderTarget; b: WebGLRenderTarget } | null = null;
   private headlight = new DirectionalLight();
   private hemi = new HemisphereLight();
   private top = new DirectionalLight();
@@ -305,6 +318,21 @@ export class Engine {
     this.room.frustumCulled = false;
     this.room.renderOrder = -2;
     this.scene.add(this.room);
+    // The blurred room shares the room's uniforms, so the grid step, fade and eye stay in step.
+    this.dofRoomMat.uniforms = {
+      ...this.roomMat.uniforms,
+      dof: { value: 1 },
+      focus: { value: 100 },
+      range: { value: 100 },
+      bg: { value: new Color() },
+    };
+    Object.assign(this.dofRoomMat, { transparent: false, polygonOffset: false });
+    this.dofRoom = new Mesh(roomGeo, this.dofRoomMat);
+    this.dofRoom.frustumCulled = false;
+    this.dofScene.add(this.dofRoom);
+    this.dofQuad = new Mesh(new PlaneGeometry(2, 2), this.blur);
+    this.dofQuad.frustumCulled = false;
+    this.dofQuadScene.add(this.dofQuad);
 
     this.selectLines = new LineSegments2(new LineSegmentsGeometry(), this.selectMat);
     this.hoverLines = new LineSegments2(new LineSegmentsGeometry(), this.hoverMat);
@@ -398,6 +426,7 @@ export class Engine {
     for (const m of this.lineMats) m.resolution.set(this.width, this.height);
     this.idTarget?.dispose();
     this.idTarget = null;
+    this.disposeDof();
     this.outline.uniforms.px!.value.set(1 / r.x, 1 / r.y);
     this.applyCamera();
   }
@@ -438,11 +467,20 @@ export class Engine {
     this.setCamera({ ...this.cam, ortho: on });
   }
 
+  /**
+   * The part of the view no floating panel covers, in CSS px from the canvas's top left. Fit frames the model in it.
+   * The app measures it; the engine never reads the DOM.
+   */
+  private safeArea: (() => ViewRect | null) | null = null;
+  setSafeArea(fn: (() => ViewRect | null) | null): void {
+    this.safeArea = fn;
+  }
+
   /** Frames a box in world space (a print check's area, #101, #102). */
   fitBox(min: [number, number, number], max: [number, number, number]): void {
     const c: [number, number, number] = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
     const r = Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2, 5);
-    this.setCamera(fitCamera(this.tween?.to ?? this.cam, c, r * 1.4, this.width / this.height), true);
+    this.setCamera(fitInRect(this.tween?.to ?? this.cam, c, r * 1.4, this.width, this.height, this.safeArea?.()), true);
   }
 
   /**
@@ -464,7 +502,7 @@ export class Engine {
       this.setCamera({ ...base, target: [0, 0, 10], distance: DEFAULT_CAMERA.distance }, true);
       return;
     }
-    this.setCamera(fitCamera(base, [s.center.x, s.center.y, s.center.z], s.radius, this.width / this.height), true);
+    this.setCamera(fitInRect(base, [s.center.x, s.center.y, s.center.z], s.radius, this.width, this.height, this.safeArea?.()), true);
   }
 
   /**
@@ -944,6 +982,7 @@ export class Engine {
     this.gizmo.dispose();
     for (const b of this.order) this.removeBody(b);
     this.idTarget?.dispose();
+    this.disposeDof();
     this.pickTarget.dispose();
     this.renderer.dispose();
   }
@@ -1105,6 +1144,8 @@ export class Engine {
     const r = this.roomMat.uniforms;
     r.minorColour!.value.copy(p.grid);
     r.majorColour!.value.copy(p["grid-major"]);
+    // The screen is cleared in sRGB while the grid shader writes its colours as they are, so match the clear.
+    this.dofRoomMat.uniforms.bg!.value.copy(p.viewport).convertLinearToSRGB();
     this.hemi.color.set(1, 1, 1);
     this.hemi.groundColor.copy(p.stage);
     this.selectMat.color.copy(p.snap);
@@ -1297,8 +1338,12 @@ export class Engine {
     this.grid.position.set(Math.round(c.target[0] / (step * 10)) * step * 10, Math.round(c.target[1] / (step * 10)) * step * 10, 0);
     const R = Math.max(2000, Math.ceil((radius * 6) / 1000) * 1000);
     this.room.scale.set(R * 2, R * 2, R);
+    this.dofRoom.scale.copy(this.room.scale);
     this.roomMat.uniforms.fade!.value = R * 3;
     this.roomMat.uniforms.step!.value = Math.max(step, 10);
+    // Focus on the target; everything within the model's reach of it stays sharp.
+    this.dofRoomMat.uniforms.focus!.value = Math.max(c.distance, 1);
+    this.dofRoomMat.uniforms.range!.value = Math.max(radius, 20);
     this.invalidate();
   }
 
@@ -1338,7 +1383,7 @@ export class Engine {
     const cam = this.activeCamera;
     if (this.style === "shaded") {
       r.setRenderTarget(null);
-      r.render(this.scene, cam);
+      this.renderScene(cam);
       return;
     }
     // Line art, as Layers draws it: an ID pass, the flat fill with its fold lines, then the outline.
@@ -1352,13 +1397,70 @@ export class Engine {
     r.render(this.idScene, cam);
     r.setRenderTarget(null);
     r.setClearColor(clear, 1);
-    r.render(this.scene, cam);
+    this.renderScene(cam);
     this.outline.uniforms.tId!.value = this.idTarget.texture;
     this.outline.uniforms.width!.value = 2 * r.getPixelRatio();
     const auto = r.autoClear;
     r.autoClear = false;
     r.render(this.quadScene, this.quadCamera);
     r.autoClear = auto;
+  }
+
+  /** Draws the scene to the screen; in the Holodeck the room goes down first, its far walls out of focus. */
+  private renderScene(cam: Camera): void {
+    const r = this.renderer;
+    if (!this.roomOn) {
+      r.render(this.scene, cam);
+      return;
+    }
+    const size = r.getDrawingBufferSize(new Vector2());
+    if (!this.dofTargets) {
+      const half = (n: number) => Math.max(1, Math.round(n / 2));
+      this.dofTargets = {
+        sharp: new WebGLRenderTarget(size.x, size.y),
+        a: new WebGLRenderTarget(half(size.x), half(size.y)),
+        b: new WebGLRenderTarget(half(size.x), half(size.y)),
+      };
+    }
+    const t = this.dofTargets;
+    const auto = r.autoClear;
+    // The sharp room, with each pixel's blur in alpha. The room surrounds the camera, so it covers every pixel.
+    // The camera lives in the main scene, which has not drawn yet this frame, so bring its matrices up to date.
+    cam.updateMatrixWorld();
+    r.setRenderTarget(t.sharp);
+    r.render(this.dofScene, cam);
+    // Blur it across, then down, at half size.
+    const reach = DOF_BLUR * size.y;
+    const u = this.blur.uniforms;
+    this.dofQuad.material = this.blur;
+    for (const [from, to, dir] of [
+      [t.sharp, t.a, [1, 0]],
+      [t.a, t.b, [0, 1]],
+    ] as const) {
+      u.tColour!.value = from.texture;
+      u.spread!.value.set((dir[0] * reach) / size.x, (dir[1] * reach) / size.y);
+      r.setRenderTarget(to);
+      r.render(this.dofQuadScene, this.quadCamera);
+    }
+    // Lay it down, then the rest of the scene over it.
+    r.setRenderTarget(null);
+    this.dofQuad.material = this.dof;
+    this.dof.uniforms.tSharp!.value = t.sharp.texture;
+    this.dof.uniforms.tBlur!.value = t.b.texture;
+    r.render(this.dofQuadScene, this.quadCamera);
+    r.autoClear = false;
+    r.clearDepth();
+    r.clearStencil();
+    this.room.visible = false;
+    r.render(this.scene, cam);
+    this.room.visible = true;
+    r.autoClear = auto;
+  }
+
+  private disposeDof(): void {
+    if (!this.dofTargets) return;
+    for (const t of Object.values(this.dofTargets)) t.dispose();
+    this.dofTargets = null;
   }
 
   // ------------------------------------------------------------ input

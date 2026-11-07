@@ -19,7 +19,7 @@ The Fit menu shows each fit with the diameter it comes to, such as "Clearance fo
 
 Every printer prints holes a little differently. The Print panel's **Hole offset** sets what a printed clearance adds, from 0 to 1 mm. It's kept with the model.
 
-To find yours, click **Calibrate** in the Print panel. That opens the hole calibration coupon (`web/public/samples/hole-calibration.bcad`): a 3 mm plate with M2 to M6 holes, one row each from the front, at offsets of 0.2 to 0.6 mm, one column each from the left. The notches on the front edge count the column: one notch is 0.2 mm and five is 0.6 mm. Print it flat, try a screw in each row, and set the offset to the first column it slides through.
+To find yours, click **Calibrate holes** in the Print panel. That opens the hole calibration coupon (`web/public/samples/hole-calibration.bcad`): a 3 mm plate with M2 to M6 holes, one row each from the front, at offsets of 0.2 to 0.6 mm, one column each from the left. The notches on the front edge count the column: one notch is 0.2 mm and five is 0.6 mm. Print it flat, try a screw in each row, and set the offset to the first column it slides through.
 
 Each Hole step keeps the offset it was made with, so changing the offset never quietly resizes holes you've already placed. When some printed holes were made at another offset, the Print panel offers **Update N holes**. That edits those steps on the timeline, as one undo step.
 

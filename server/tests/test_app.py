@@ -47,7 +47,7 @@ def test_database_is_wal_and_migrated_once(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-    assert db.migrate(conn) == [1, 2, 3]
+    assert db.migrate(conn) == [1, 2, 3, 4]
     assert db.migrate(conn) == []
     assert conn.execute("SELECT name FROM sqlite_master WHERE name='meta'").fetchone()
     conn.close()

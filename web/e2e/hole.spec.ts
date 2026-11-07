@@ -74,6 +74,6 @@ test("the printer's hole offset sizes printed holes, and Update brings old ones 
 test("Calibrate opens the hole calibration coupon", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("navigation").getByRole("button", { name: "Print" }).click();
-  await page.getByRole("button", { name: "Calibrate" }).click();
+  await page.getByRole("button", { name: "Calibrate holes" }).click();
   await expect(page.getByText(/Opened the hole calibration sample/)).toBeVisible({ timeout: 20_000 });
 });
