@@ -10,7 +10,7 @@ export interface CommandContext {
   dialogOpen: boolean;
 }
 
-export type CommandGroup = "File" | "Edit" | "Tools" | "Timeline" | "View" | "Panels" | "Theme" | "Help";
+export type CommandGroup = "File" | "Edit" | "Tools" | "Sketch" | "Timeline" | "View" | "Panels" | "Theme" | "Help";
 
 /** One action reachable from the keyboard, the command palette, menus and tool bars. */
 export interface Command {
@@ -24,6 +24,11 @@ export interface Command {
   keywords?: string;
   /** Whether the command can run now. */
   when?: (ctx: CommandContext) => boolean;
+  /**
+   * Where it applies: "sketch" while a sketch is open, "model" otherwise, both when unset. Commands in different
+   * scopes may share a key (L is line art in the model and Line in a sketch).
+   */
+  scope?: "model" | "sketch";
   run: (ctx: CommandContext) => void;
 }
 
@@ -94,7 +99,7 @@ export function createRegistry(getContext: () => CommandContext) {
     const added = Array.isArray(list) ? list : [list];
     for (const c of added) {
       for (const k of c.keys ?? []) {
-        const clash = [...commands.values()].find((o) => o.id !== c.id && o.keys?.includes(k));
+        const clash = [...commands.values()].find((o) => o.id !== c.id && o.keys?.includes(k) && (!o.scope || !c.scope || o.scope === c.scope));
         if (clash && dev) throw new Error(`Shortcut ${k} is already used by ${clash.id}; ${c.id} cannot take it.`);
       }
       commands.set(c.id, c);
@@ -106,7 +111,8 @@ export function createRegistry(getContext: () => CommandContext) {
     };
   }
 
-  const enabled = (c: Command, ctx = getContext()) => !c.when || c.when(ctx);
+  const inScope = (c: Command, ctx: CommandContext) => !c.scope || (c.scope === "sketch") === ctx.inSketch;
+  const enabled = (c: Command, ctx = getContext()) => inScope(c, ctx) && (!c.when || c.when(ctx));
 
   function run(id: string): boolean {
     const c = commands.get(id);

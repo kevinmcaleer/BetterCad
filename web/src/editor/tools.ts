@@ -54,7 +54,6 @@ export const TOOLS: Tool[] = [
     key: "k",
     title: "Start a sketch on a face or plane",
     help: "Click a face or a plane to sketch on it.",
-    epic: 5,
   },
   {
     id: "extrude",

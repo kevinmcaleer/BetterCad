@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ViewCube, type ViewName } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
@@ -13,6 +13,8 @@ export interface View3DHandle {
   fit(ids?: string[]): void;
   camera(): CameraState;
   setCamera(c: CameraState, animate?: boolean): void;
+  /** The engine, for tools that draw over the view or take the pointer (sketching). */
+  engine(): Engine | null;
 }
 
 export interface View3DProps {
@@ -36,6 +38,10 @@ export interface View3DProps {
   onTransforming?: (id: string, position: V3, rotation: V3) => void;
   onSection: (s: Section) => void;
   onCamera?: (c: CameraState) => void;
+  /** Whether to show the empty-model hint (off while sketching). */
+  emptyHint?: boolean;
+  /** Labels drawn over the canvas (the sketch's sizes and marks). */
+  children?: ReactNode;
 }
 
 /** Meshes by shape and size, so a part's triangles are made once. The kernel worker replaces this with #4. */
@@ -85,6 +91,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       fit: (ids) => engine.current?.fit(ids),
       camera: () => engine.current?.camera ?? DEFAULT_CAMERA,
       setCamera: (c, animate = true) => engine.current?.setCamera(c, animate),
+      engine: () => engine.current,
     }),
     [],
   );
@@ -206,8 +213,9 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
           <span>Turn on hardware acceleration in your browser settings, or try another browser.</span>
         </div>
       )}
+      {props.children}
       <ViewCube rotation={rotation} onPick={(v) => engine.current?.preset(CUBE_TO_PRESET[v])} />
-      {supported && parts.length === 0 && (
+      {supported && parts.length === 0 && props.emptyHint !== false && (
         <div className="bc-view-hint" aria-hidden="true">
           Add a shape from the Library to start.
         </div>

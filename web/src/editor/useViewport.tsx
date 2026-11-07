@@ -229,7 +229,16 @@ export function useViewport(d: ViewportDeps) {
         run: () => setOrtho((o) => !o),
         keywords: "projection parallel",
       },
-      { id: "view.style", label: "Switch shaded and line art", group: "View", icon: "paint", keys: ["l"], run: toggleStyle, keywords: "render style outline" },
+      {
+        id: "view.style",
+        scope: "model",
+        label: "Switch shaded and line art",
+        group: "View",
+        icon: "paint",
+        keys: ["l"],
+        run: toggleStyle,
+        keywords: "render style outline",
+      },
       { id: "view.save", label: "Save this view…", group: "View", icon: "camera", run: startSaveView, keywords: "named view camera" },
       {
         id: "view.clearSection",
