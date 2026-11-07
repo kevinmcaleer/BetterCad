@@ -11,7 +11,8 @@
     "e2e:quarantine": "playwright test --trace off --grep @quarantine --pass-with-no-tests",
     "e2e:visual": "playwright test --trace off --grep @visual",
     "size": "node scripts/bundle-report.mjs dist",
-    "build:samples": "vite-node scripts/build-samples.ts"
+    "build:samples": "vite-node scripts/build-samples.ts",
+    "build:icons": "node scripts/build-icons.mjs"
   },
   "dependencies": {
     "@bettercad/kernel": "*",

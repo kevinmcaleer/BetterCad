@@ -22,6 +22,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:golden": "vitest run packages/kernel/src/golden.test.ts packages/sketch/src/golden.test.ts packages/kernel/src/timeline.test.ts",
+    "bench:kernel": "vite-node packages/kernel/bench/kernel.bench.ts --",
+    "bench:viewport": "node scripts/bench-viewport.mjs",
+    "budgets": "node scripts/budgets.mjs",
     "test:nightly": "NIGHTLY=1 vitest run packages/kernel/src/nightly.test.ts packages/kernel/src/golden.test.ts packages/sketch/src/golden.test.ts packages/kernel/src/timeline.test.ts packages/kernel/src/samples.test.ts",
     "e2e:visual": "npm run e2e:visual -w web",
     "e2e:update": "npm run e2e:visual -w web -- --update-snapshots=all"
