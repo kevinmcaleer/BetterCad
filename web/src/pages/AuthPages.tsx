@@ -113,6 +113,9 @@ export function SignUpPage({ next }: { next?: string }) {
           <Button type="submit" variant="primary" label={busy ? "Making your account…" : "Make account"} disabled={busy} />
           <a href={`#/signin${next ? `?next=${encodeURIComponent(next)}` : ""}`}>I have an account</a>
         </div>
+        <p className="bc-page-note">
+          Making an account means you agree to the <a href="#/terms">terms</a>. The <a href="#/privacy">privacy page</a> says what we keep.
+        </p>
       </form>
     </Page>
   );

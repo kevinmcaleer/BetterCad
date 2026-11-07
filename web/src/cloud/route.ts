@@ -11,7 +11,9 @@ export type Route =
   | { page: "account" }
   | { page: "library"; bin?: boolean }
   | { page: "view"; token: string }
-  | { page: "gallery" };
+  | { page: "gallery" }
+  | { page: "privacy" }
+  | { page: "terms" };
 
 export function parseRoute(hash: string): Route {
   const [path = "", query = ""] = hash.replace(/^#\/?/, "").split("?");
@@ -35,6 +37,10 @@ export function parseRoute(hash: string): Route {
       return arg ? { page: "view", token: decodeURIComponent(arg) } : { page: "editor" };
     case "gallery":
       return { page: "gallery" };
+    case "privacy":
+      return { page: "privacy" };
+    case "terms":
+      return { page: "terms" };
     default:
       return { page: "editor" };
   }

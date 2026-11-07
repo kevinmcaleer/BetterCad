@@ -4,6 +4,7 @@ import { solverStatus } from "@bettercad/sketch";
 import { Editor } from "./editor/Editor";
 import { AccountProvider, useAccount } from "./cloud/account";
 import { useRoute, type Route } from "./cloud/route";
+import { pageOf, ping } from "./cloud/ping";
 import { useTheme } from "./state/useTheme";
 import type { ThemeSetting } from "./state/theme";
 import { UpdateBanner } from "./pwa/UpdateBanner";
@@ -18,6 +19,8 @@ const SignInPage = lazy(() => pages().then((m) => ({ default: m.SignInPage })));
 const SignUpPage = lazy(() => pages().then((m) => ({ default: m.SignUpPage })));
 const AccountPage = lazy(() => pages().then((m) => ({ default: m.AccountPage })));
 const Library = lazy(() => pages().then((m) => ({ default: m.Library })));
+const PrivacyPage = lazy(() => pages().then((m) => ({ default: m.PrivacyPage })));
+const TermsPage = lazy(() => pages().then((m) => ({ default: m.TermsPage })));
 
 // Proves the workspace packages resolve; the kernel and solver arrive in epics #4 and #5.
 export const ENGINES = [kernelStatus(), solverStatus()];
@@ -56,6 +59,10 @@ function page(route: Route) {
       return <AccountPage />;
     case "library":
       return <Library bin={route.bin} />;
+    case "privacy":
+      return <PrivacyPage />;
+    case "terms":
+      return <TermsPage />;
     default:
       return null;
   }
@@ -67,6 +74,12 @@ function page(route: Route) {
  */
 export function App() {
   const route = useRoute();
+  const pageKey = pageOf(route);
+  // Page counts (#111): once per page per session, and nothing about who.
+  useEffect(() => {
+    ping(route);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageKey]);
   if (Gallery && route.page === "gallery") {
     return (
       <Suspense fallback={null}>

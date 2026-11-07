@@ -92,6 +92,13 @@ and, if the person ticks it, the model. The server keeps each one in `DATA_DIR/r
 (`GITHUB_REPORT_TOKEN`, `GITHUB_REPORT_REPO`). Use a private repository: a report can hold someone's model. If the
 server can't be reached, the dialog offers the same report as a zip to download.
 
+## Page counts
+
+The app pings `POST /api/ping` once per page per browser session, and the server adds one to that page's count for the
+day (`page_counts` in SQLite). No cookie, IP address, user agent or account is stored with it; the privacy page says
+so. To read the counts, list your account's email in `STATS_EMAILS` in `.env`, sign in, and open
+`/api/stats?days=30`.
+
 ## Live preview
 
 `.github/workflows/pages.yml` publishes the web app (no server) to GitHub Pages on every push to `main`. Turn it on once in Settings → Pages → Source: GitHub Actions.

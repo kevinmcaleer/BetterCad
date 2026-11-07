@@ -265,6 +265,9 @@ export function Library({ bin = false }: { bin?: boolean }) {
           <p>It goes to the bin for 30 days, where you can restore it.</p>
         </Dialog>
       )}
+      <footer className="bc-page-note bc-lib-foot">
+        <a href="#/privacy">Privacy</a> · <a href="#/terms">Terms</a>
+      </footer>
     </Page>
   );
 }

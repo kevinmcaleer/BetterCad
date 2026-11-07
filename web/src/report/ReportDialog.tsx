@@ -102,8 +102,8 @@ export function ReportDialog(p: ReportDialogProps) {
         <pre>{infoText(info)}</pre>
       </details>
       <p className="bc-note bc-micro">
-        Only what's listed here is sent, and only when you press Send. See the <a href="#/privacy">privacy page</a>. For a question, try the kevsrobots Discord
-        instead.
+        Only what's listed here is sent, and only when you press Send. See the <a href="#/privacy">privacy page</a> and <a href="#/terms">terms</a>. For a
+        question, try the kevsrobots Discord instead.
       </p>
       {failed && <Banner tone="warn">{failed} You can download the report and attach it to a bug report on GitHub instead.</Banner>}
     </Dialog>
