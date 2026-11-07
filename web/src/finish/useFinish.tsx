@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { addFinish, newId, type ModelDoc, type Part } from "../state/document";
+import { addFinish, newId, updateFinish, type FinishFeature, type ModelDoc, type Part } from "../state/document";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
@@ -10,6 +10,8 @@ import type { Pick } from "../viewport/ids";
  */
 export interface FinishDeps {
   record: (fn: (d: ModelDoc, at: number | undefined) => ModelDoc, label: string) => void;
+  /** Changes the document in place, as one undo step (re-picking a step's edges or faces). */
+  update: (fn: (d: ModelDoc) => ModelDoc, label: string) => void;
   parts: Part[];
   view: RefObject<View3DHandle>;
   /** The armed tool: fillet (round or bevel edges) or shell (faces left open). */
@@ -27,15 +29,22 @@ export function useFinish(d: FinishDeps) {
   const [radius, setRadius] = useState(1);
   const [wall, setWall] = useState(1.2);
   const [outside, setOutside] = useState(false);
+  /** A step whose picks are being made again (#77), and how to put the timeline marker back after. */
+  const editing = useRef<{ id: string; name: string; part: string; restore: () => void } | null>(null);
   const live = useRef({ part, refs, bevel, radius, wall, outside });
   live.current = { part, refs, bevel, radius, wall, outside };
 
   const kind = d.tool === "shell" ? "face" : "edge";
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
 
-  // A fresh start each time the tool is armed or changed.
+  // A fresh start each time the tool is armed or changed; putting it down ends a re-pick and rolls forward again.
   useEffect(() => {
-    setPart(null);
+    const e = editing.current;
+    if (e && !d.tool) {
+      editing.current = null;
+      e.restore();
+    }
+    setPart(editing.current?.part ?? null);
     setRefs([]);
   }, [d.tool]);
 
@@ -89,7 +98,12 @@ export function useFinish(d: FinishDeps) {
     const size = sizeNow ?? (type === "shell" ? wall : radius);
     if (sizeNow !== undefined) (type === "shell" ? setWall : setRadius)(sizeNow);
     const label = type === "shell" ? "Shell" : type === "fillet" ? "Fillet" : "Chamfer";
-    D.record((doc, at) => addFinish(doc, { type, part: p, refs: r, size, outside: type === "shell" ? outside : undefined }, newId("f"), at), label);
+    const e = editing.current;
+    if (e) {
+      editing.current = null;
+      D.update((doc) => updateFinish(doc, e.id, { type, refs: r, size, outside: type === "shell" ? outside : undefined }), `Re-pick ${e.name}`);
+      e.restore();
+    } else D.record((doc, at) => addFinish(doc, { type, part: p, refs: r, size, outside: type === "shell" ? outside : undefined }, newId("f"), at), label);
     const name = D.parts.find((x) => x.id === p)?.name ?? "the body";
     const n = r.length;
     D.say(
@@ -100,6 +114,18 @@ export function useFinish(d: FinishDeps) {
     setPart(null);
     setRefs([]);
     D.onClose();
+  }, []);
+
+  /** Makes a failed step's picks again on the part as it was just before it (#77). */
+  const repick = useCallback((f: FinishFeature, restore: () => void) => {
+    editing.current = { id: f.id, name: f.name, part: f.part, restore };
+    setPart(f.part);
+    setRefs([]);
+    setBevel(f.type === "chamfer");
+    if (f.type === "shell") {
+      setWall(f.size);
+      setOutside(!!f.outside);
+    } else setRadius(f.size);
   }, []);
 
   const clear = useCallback(() => {
@@ -134,6 +160,8 @@ export function useFinish(d: FinishDeps) {
     setOutside,
     done,
     clear,
+    repick,
+    repicking: editing.current?.name ?? null,
     help,
   };
 }
