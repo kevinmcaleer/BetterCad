@@ -53,6 +53,7 @@ import {
   FOV,
   cameraBasis,
   fit as fitCamera,
+  fitInRect,
   gridStep,
   halfHeight,
   lerpCamera,
@@ -64,6 +65,7 @@ import {
   type CameraState,
   type Preset,
   type V3,
+  type ViewRect,
 } from "./camera";
 import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter } from "./ids";
 import { blurMaterial, capMaterial, dofMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
@@ -467,11 +469,20 @@ export class Engine {
     this.setCamera({ ...this.cam, ortho: on });
   }
 
+  /**
+   * The part of the view no floating panel covers, in CSS px from the canvas's top left. Fit frames the model in it.
+   * The app measures it; the engine never reads the DOM.
+   */
+  private safeArea: (() => ViewRect | null) | null = null;
+  setSafeArea(fn: (() => ViewRect | null) | null): void {
+    this.safeArea = fn;
+  }
+
   /** Frames a box in world space (a print check's area, #101, #102). */
   fitBox(min: [number, number, number], max: [number, number, number]): void {
     const c: [number, number, number] = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
     const r = Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2, 5);
-    this.setCamera(fitCamera(this.tween?.to ?? this.cam, c, r * 1.4, this.width / this.height), true);
+    this.setCamera(fitInRect(this.tween?.to ?? this.cam, c, r * 1.4, this.width, this.height, this.safeArea?.()), true);
   }
 
   /**
@@ -493,7 +504,7 @@ export class Engine {
       this.setCamera({ ...base, target: [0, 0, 10], distance: DEFAULT_CAMERA.distance }, true);
       return;
     }
-    this.setCamera(fitCamera(base, [s.center.x, s.center.y, s.center.z], s.radius, this.width / this.height), true);
+    this.setCamera(fitInRect(base, [s.center.x, s.center.y, s.center.z], s.radius, this.width, this.height, this.safeArea?.()), true);
   }
 
   /**

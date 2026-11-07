@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CAMERA, cameraBasis, fit, gridStep, lerpCamera, orbit, pan, presetOf, snapTo, toPreset, viewDir, zoom } from "./camera";
+import { DEFAULT_CAMERA, cameraBasis, fit, fitInRect, gridStep, lerpCamera, orbit, pan, presetOf, snapTo, toPreset, viewDir, zoom } from "./camera";
 import { FACE_ONLY, decodeId, encodeId, findPick } from "./ids";
 
 const near = (a: number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i]!, 6));
@@ -49,6 +49,23 @@ describe("camera", () => {
     expect(f.distance).toBeGreaterThan(150);
     const mid = lerpCamera({ ...f, distance: 10 }, { ...f, distance: 1000 }, 0.5);
     expect(mid.distance).toBeCloseTo(100);
+  });
+
+  it("fit frames the model in the part of the view the panels leave clear", () => {
+    const whole = fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, null);
+    expect(whole).toEqual(fit(DEFAULT_CAMERA, [0, 0, 0], 50, 1000 / 800));
+    // A clear area half the height and centred on the view: twice as far back, same target.
+    const half = fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, { left: 250, top: 200, width: 500, height: 400 });
+    expect(half.distance).toBeCloseTo(whole.distance * 2);
+    expect(half.target[0]).toBeCloseTo(0);
+    expect(half.target[2]).toBeCloseTo(0);
+    // The clear area sits right of centre: the target moves left, so the model shows to the right.
+    const right = fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, { left: 500, top: 200, width: 500, height: 400 });
+    const { right: r } = cameraBasis(right);
+    const along = right.target[0] * r[0] + right.target[1] * r[1] + right.target[2] * r[2];
+    expect(along).toBeLessThan(0);
+    // Too small to use: frames the whole view.
+    expect(fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, { left: 0, top: 0, width: 20, height: 20 })).toEqual(whole);
   });
 
   it("the grid steps by powers of ten, never under 1 mm", () => {

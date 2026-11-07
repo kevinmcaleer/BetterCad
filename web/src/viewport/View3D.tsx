@@ -66,6 +66,8 @@ function meshFor(p: Part): BodyMesh | null {
   return m;
 }
 
+/** Space kept between the framed model and a floating bar, in CSS px. */
+const FLOAT_GAP = 8;
 const CUBE_TO_PRESET: Record<ViewName, Preset> = { top: "top", bottom: "bottom", front: "front", back: "back", right: "side", left: "left" };
 
 /** The resolved theme on <html>, followed as it changes. */
@@ -84,6 +86,7 @@ function useDocumentTheme(): string {
 export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(props, ref) {
   const { parts, meshes, engine: kernelState, picks, filter, mode, style, ortho, section, stats, description } = props;
   const host = useRef<HTMLDivElement>(null);
+  const safe = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = useRef<Engine | null>(null);
   const [supported] = useState(canDraw3D);
@@ -137,6 +140,25 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       stats: (s) => setFrame(s),
     });
     engine.current = e;
+    // Fit frames the model in the part of the view the floating panels leave clear: the probe's box (the
+    // --bc-view-* insets), less the bars that float along the top and the bottom (marked data-floats).
+    e.setSafeArea(() => {
+      const h = host.current;
+      const s = safe.current;
+      if (!h || !s) return null;
+      const hr = h.getBoundingClientRect();
+      const sr = s.getBoundingClientRect();
+      let top = sr.top;
+      let bottom = sr.bottom;
+      const mid = hr.top + hr.height / 2;
+      for (const el of h.parentElement?.querySelectorAll<HTMLElement>(":scope > [data-floats] > *") ?? []) {
+        const r = el.getBoundingClientRect();
+        if (!r.height) continue;
+        if (r.top + r.height / 2 < mid) top = Math.max(top, r.bottom + FLOAT_GAP);
+        else bottom = Math.min(bottom, r.top - FLOAT_GAP);
+      }
+      return { left: sr.left - hr.left, top: top - hr.top, width: sr.width, height: bottom - top };
+    });
     milestone("shell");
     // Test builds can ask where a world point lands on screen (the gizmo's handles, a face).
     if (import.meta.env.DEV || import.meta.env.VITE_GALLERY) (window as unknown as { __bcView?: Engine }).__bcView = e;
@@ -225,6 +247,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       aria-describedby="bc-view-keys"
       onKeyDown={onKeyDown}
     >
+      <div ref={safe} className="bc-view-safe" aria-hidden="true" />
       <span id="bc-view-keys" className="bc-sr-only">
         Arrow keys turn the view, Shift and the arrow keys move it, plus and minus zoom.
       </span>
