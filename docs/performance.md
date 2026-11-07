@@ -22,6 +22,22 @@ BetterCad has to open fast on a Raspberry Pi 5 and a phone (#97). These are the 
 
 - **The service worker** (#94) serves everything from cache after the first visit, which is where the "cached" budgets come from.
 
+## Budgets in CI (#108)
+
+[`budgets.json`](../budgets.json) holds every budget, and CI's `budgets` job checks them on each pull request. It posts one comment with the table and updates it on later runs.
+
+- **Bundle**, KB gzipped: the shell (first paint) 350, the pages chunk 120, the kernel client 30, all JavaScript 600.
+- **WASM**: OpenCascade under 24 MB (5.4 MB of it with Brotli), planegcs under 1 MB. The target is 12 MB, or 3.5 MB with Brotli. That needs a slimmer build of the same unmodified OCCT (#50), so the budget holds today's size until then.
+- **Kernel benchmarks** (`npm run bench:kernel`): building samples, a fillet, a fine mesh, the print checks. Each is the median of three runs and may be up to 20% over its baseline.
+- **Viewport** (`npm run bench:viewport`, against a gallery build being served): one frame of the calibration coupon in Chromium with SwiftShader, up to 25% over its baseline.
+- **Lighthouse** on the release build, desktop preset: performance at least 0.6, with 0.85 as the target. It must also be installable.
+
+Baselines are a CI runner's numbers, which run 2 to 3 times slower than a laptop. To change one, edit `budgets.json` in a pull request and say why. Nothing updates them automatically.
+
+Under SwiftShader, Lighthouse scores about 0.7. Nearly all of the cost is total blocking time: software WebGL compiles the view's shaders on the main thread for about 1 s, and with WebGL turned off the score is 100. Compiling shaders in parallel (`KHR_parallel_shader_compile`, three.js `compileAsync`) is the likely fix, and it should also help a Pi 5.
+
+The real-device numbers below stay manual.
+
 ## Measuring
 
 The app marks two milestones with `performance.mark`, each measured from the start of navigation:
