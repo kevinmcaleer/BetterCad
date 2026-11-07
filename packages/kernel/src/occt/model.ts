@@ -24,6 +24,7 @@ import { tessellate, type Quality } from "./tessellate";
 import { build, type ModelDoc, type Part } from "../document";
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
+import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
 
 /**
  * Turns a document revision into solids. Each part's solid is cached by what makes it (its shape, size and place),
@@ -136,5 +137,18 @@ export class ModelBuilder {
     // Keep the cache to what the last few builds used, so memory stays flat across many edits.
     if (this.cache.size > 400) for (const k of this.cache.keys()) if (!this.used.has(k)) this.cache.delete(k);
     return { bodies, failed: out, ms: performance.now() - t0 };
+  }
+
+  /** Measures one or two picks (#71) on the model as built up to `upTo`, from the cached solids. */
+  measure(doc: ModelDoc, refs: TopoRef[], upTo = doc.features.length): MeasureResult {
+    const { parts } = build(doc, upTo);
+    const picked = refs.slice(0, 2).map((r) => {
+      const p = parts.find((x) => x.id === r.body);
+      if (!p) throw new KernelError("reference-missing", "That body is not in the model any more.");
+      const { shape } = this.solid(p);
+      return { sub: subShape(this.oc, shape, r), info: describe(this.oc, shape, r) };
+    });
+    const [a, b] = picked;
+    return { items: picked.map((x) => x.info), pair: a && b ? between(this.oc, a.sub, b.sub, a.info, b.info) : undefined };
   }
 }

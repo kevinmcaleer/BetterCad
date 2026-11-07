@@ -2,6 +2,7 @@ import type { ModelDoc } from "./document";
 import type { KernelErrorData } from "./errors";
 import type { ModelResult } from "./occt/model";
 import type { Quality } from "./occt/tessellate";
+import type { MeasureResult, TopoRef } from "./occt/measure";
 
 /**
  * The one message protocol between the app and the kernel worker (#44). Every request has an id, a method and typed
@@ -10,6 +11,8 @@ import type { Quality } from "./occt/tessellate";
 export interface Methods {
   /** Builds a document revision (up to the timeline marker) into meshed, measured bodies. */
   build: { params: { doc: ModelDoc; upTo?: number; quality?: Quality }; result: ModelResult };
+  /** Distances, lengths, areas and angles of one or two picks (#71). */
+  measure: { params: { doc: ModelDoc; upTo?: number; refs: TopoRef[] }; result: MeasureResult };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };
 }

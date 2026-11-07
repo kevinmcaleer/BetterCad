@@ -174,3 +174,23 @@
   color: var(--bc-color-danger);
   white-space: normal;
 }
+/* Measure's values: label over value, with a copy button, in a wrapping row. */
+.bc-measure {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-2) var(--bc-space-4);
+  margin: 0;
+}
+.bc-measure-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+}
+.bc-measure-row dt {
+  color: var(--bc-color-muted);
+  font-size: 12px;
+}
+.bc-measure-row dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}

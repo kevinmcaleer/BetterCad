@@ -34,6 +34,7 @@ ready.then(
 const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: number) => Methods[M]["result"] } = {
   ping: () => ({ ok: true, engine: "opencascade.js" }),
   build: ({ doc, upTo, quality }, id) => builder!.build(doc, upTo, quality, () => cancelled.has(id)),
+  measure: ({ doc, upTo, refs }) => builder!.measure(doc, refs, upTo),
 };
 
 async function pump() {

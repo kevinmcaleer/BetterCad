@@ -9,6 +9,7 @@ export * from "./client";
 export type { Methods, Method, Request, Response } from "./protocol";
 export type { ModelResult, BuiltBody } from "./occt/model";
 export type { Measure } from "./occt/shapes";
+export type { MeasureResult, Single, Pair, TopoRef } from "./occt/measure";
 export type { Quality } from "./occt/tessellate";
 
 export interface KernelStatus {
