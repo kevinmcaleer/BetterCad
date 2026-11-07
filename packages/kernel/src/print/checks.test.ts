@@ -92,7 +92,8 @@ describe("thickness", () => {
     const ms = performance.now() - t;
     expect(tris).toBeGreaterThan(10_000);
     expect(r.areas).toHaveLength(0);
-    // About 10 µs a triangle keeps 200k under 2 s.
-    expect(ms / tris).toBeLessThan(0.01);
+    // About 10 µs a triangle locally keeps 200k under 2 s; shared CI runners are slower, so the guard is loose and
+    // only catches a step change (an allocation per ray, a lost BVH).
+    expect(ms / tris).toBeLessThan(0.04);
   });
 });
