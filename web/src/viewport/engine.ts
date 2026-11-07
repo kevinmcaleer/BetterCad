@@ -77,6 +77,8 @@ export interface EngineBody {
   rotation?: { x: number; y: number; z: number };
   ghost?: boolean;
   highlight?: boolean;
+  /** The mesh is already in place (the kernel built it there); position and rotation only place the gizmo. */
+  world?: boolean;
 }
 
 export interface Section {
@@ -421,7 +423,7 @@ export class Engine {
           .slice(0, 3)
           .map((v) => v / 255) as [number, number, number]),
       );
-      const m = bodyMatrix(b);
+      const m = b.world ? new Matrix4() : bodyMatrix(b);
       for (const g of [o.group, o.pick, o.idMesh]) {
         g.matrixAutoUpdate = false;
         g.matrix.copy(m);
@@ -863,6 +865,8 @@ export class Engine {
     const pos: V3 = [round(this.proxy.position.x), round(this.proxy.position.y), round(this.proxy.position.z)];
     const rot: V3 = [round(e.x / DEG), round(e.y / DEG), round(e.z / DEG)];
     const m = new Matrix4().compose(this.proxy.position, this.proxy.quaternion, new Vector3(1, 1, 1));
+    // A mesh built in place moves by the change from where it was, not to the new place.
+    if (o.body.world) m.multiply(bodyMatrix(o.body).invert());
     for (const g of [o.group, o.pick, o.idMesh]) {
       g.matrix.copy(m);
       g.matrixWorldNeedsUpdate = true;

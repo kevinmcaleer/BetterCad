@@ -36,6 +36,7 @@ import { Properties } from "./Properties";
 import { CommandPalette } from "./CommandPalette";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
+import { useKernel } from "../kernel/useKernel";
 import { openFromDisk, saveToDisk } from "./files";
 import { Timeline } from "./Timeline";
 
@@ -86,6 +87,8 @@ export function Editor() {
   const at = marker === null ? featureCount : Math.min(marker, featureCount);
   const built = useMemo(() => build(doc, at), [doc, at]);
   const parts = built.parts;
+  const kernel = useKernel(doc, at, parts);
+  const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
   const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
@@ -618,7 +621,7 @@ export function Editor() {
               onRenameIdChange={setRenameId}
               features={doc.features}
               at={at}
-              failed={built.failed}
+              failed={failed}
               summary={summary}
               activeFeatureId={activeFeatureId}
               onSelectFeature={selectFeature}
@@ -642,6 +645,8 @@ export function Editor() {
           <View3D
             ref={vp.ref}
             parts={parts}
+            meshes={kernel.bodies}
+            engine={kernel.state}
             picks={vp.picks}
             filter={vp.filter}
             mode={vp.mode}
@@ -663,7 +668,7 @@ export function Editor() {
               features={doc.features}
               at={at}
               onMarker={moveMarker}
-              failed={built.failed}
+              failed={failed}
               activeId={activeFeatureId}
               summary={summary}
               onSelect={selectFeature}

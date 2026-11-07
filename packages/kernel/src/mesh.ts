@@ -83,7 +83,12 @@ export class MeshBuilder {
   private edgeSegs = [0];
   private verts: number[] = [];
 
-  /** Starts a face; returns the index of its first vertex. */
+  /** The index the next vertex will get. */
+  get vertexCount(): number {
+    return this.pos.length / 3;
+  }
+
+  /** Adds a vertex; returns its index. */
   vertex(x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
     this.pos.push(x, y, z);
     this.nor.push(nx, ny, nz);

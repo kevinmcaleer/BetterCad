@@ -97,3 +97,19 @@ test("move: drag the gizmo's X arrow and a Move step lands on the timeline", asy
   await page.mouse.up();
   await expect(page.getByRole("textbox", { name: "X (mm)" })).not.toHaveValue("0");
 });
+
+type Bodies = { __bcView: { bodies: Map<string, { body: { world?: boolean; position: { x: number } } }> } };
+const kernelBodies = (page: Page) =>
+  page.evaluate(() => [...(window as unknown as Bodies).__bcView.bodies.values()].map((o) => ({ world: !!o.body.world, x: o.body.position.x })));
+
+test("the geometry engine loads in a worker and its solids replace the quick meshes", async ({ page }) => {
+  await page.goto("/");
+  await addShape(page, "Cylinder");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await expect.poll(() => kernelBodies(page)).toEqual([{ world: true, x: 0 }]);
+  // A change shows at once (the quick mesh), then the rebuilt solid lands in its new place.
+  const x = page.getByRole("textbox", { name: "X (mm)" });
+  await x.fill("25");
+  await x.press("Enter");
+  await expect.poll(() => kernelBodies(page)).toEqual([{ world: true, x: 25 }]);
+});

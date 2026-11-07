@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ViewCube, type ViewName } from "@bettercad/ui";
-import { primitiveMesh, type BodyMesh } from "@bettercad/kernel";
+import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
 import { Engine, canDraw3D, type RenderStyle, type Section, type Stats } from "./engine";
@@ -17,6 +17,10 @@ export interface View3DHandle {
 
 export interface View3DProps {
   parts: Part[];
+  /** Meshes the kernel built, by part id, already in place. Parts without one draw the JS primitive. */
+  meshes?: Map<string, { mesh: BodyMesh }>;
+  /** The geometry engine's state, for the loading note. */
+  engine?: KernelState;
   /** Whole parts picked (body filter), and faces, edges and vertices picked (the other filters). */
   picks: Pick[];
   filter: SelectFilter;
@@ -63,7 +67,7 @@ function useDocumentTheme(): string {
 
 /** The 3D view: the WebGL canvas, the view cube that turns with it, and (in dev) the frame-time overlay. */
 export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(props, ref) {
-  const { parts, picks, filter, mode, style, ortho, section, stats, description } = props;
+  const { parts, meshes, engine: kernelState, picks, filter, mode, style, ortho, section, stats, description } = props;
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const engine = useRef<Engine | null>(null);
@@ -137,8 +141,19 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
     () =>
       parts
         .filter((p) => !p.hidden)
-        .map((p) => ({ id: p.id, mesh: meshFor(p), position: p.position, rotation: p.rotation, ghost: p.ghost, highlight: p.highlight })),
-    [parts],
+        .map((p) => {
+          const built = meshes?.get(p.id);
+          return {
+            id: p.id,
+            mesh: built?.mesh ?? meshFor(p),
+            world: !!built,
+            position: p.position,
+            rotation: p.rotation,
+            ghost: p.ghost,
+            highlight: p.highlight,
+          };
+        }),
+    [parts, meshes],
   );
 
   // Frame the model when the first part arrives (a new model, an opened file).
@@ -195,6 +210,11 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       {supported && parts.length === 0 && (
         <div className="bc-view-hint" aria-hidden="true">
           Add a shape from the Library to start.
+        </div>
+      )}
+      {kernelState?.status === "loading" && parts.length > 0 && (
+        <div className="bc-view-engine" role="status">
+          Loading the geometry engine ({Math.round(kernelState.fraction * 100)}%)
         </div>
       )}
       {frame && (
