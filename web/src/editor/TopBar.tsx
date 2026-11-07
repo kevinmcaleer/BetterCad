@@ -3,6 +3,16 @@ import type { Status } from "./useStatus";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
+import type { CloudState } from "../files/useFiles";
+import { go } from "../cloud/route";
+
+const CLOUD_TEXT: Record<CloudState, string> = {
+  saved: "Saved to your account",
+  saving: "Saving to your account…",
+  dirty: "Changes not saved to your account yet",
+  offline: "Offline: saves when you're back",
+  error: "Not saved to your account",
+};
 
 export interface TopBarProps {
   name: string;
@@ -22,6 +32,14 @@ export interface TopBarProps {
   /** Under 900px: the button that opens the props sheet. */
   onProps: () => void;
   propsOpen: boolean;
+  /** Signed in (#88): who. Null when signed out. */
+  account?: { name: string } | null;
+  /** False when there is no server to sign in to. */
+  accountsOn?: boolean;
+  /** The model is saved to the account (#90): how that stands. */
+  cloud?: CloudState | null;
+  onSaveCloud?: () => void;
+  onSignOut?: () => void;
 }
 
 export function TopBar(p: TopBarProps) {
@@ -40,6 +58,14 @@ export function TopBar(p: TopBarProps) {
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
         spellCheck={false}
       />
+      {p.cloud && (
+        <IconButton
+          className={cx("bc-cloud", (p.cloud === "error" || p.cloud === "offline") && "bc-bad")}
+          icon={p.cloud === "offline" ? "cloudOff" : "cloud"}
+          title={CLOUD_TEXT[p.cloud]}
+          onClick={p.onSaveCloud}
+        />
+      )}
       <Separator />
       <Button
         icon="undo"
@@ -71,11 +97,32 @@ export function TopBar(p: TopBarProps) {
         label="Account and theme"
         align="end"
         entries={[
-          { id: "signin", label: "Sign in (coming with accounts)", icon: "user", disabled: true, onSelect: () => {} },
+          ...(p.account
+            ? [
+                { kind: "title" as const, id: "who", label: p.account.name },
+                { id: "library", label: "My models", icon: "folder" as const, onSelect: () => go("#/library") },
+                { id: "account", label: "Account", icon: "user" as const, onSelect: () => go("#/account") },
+                { id: "signout", label: "Sign out", icon: "close" as const, onSelect: () => p.onSignOut?.() },
+              ]
+            : p.accountsOn
+              ? [{ id: "signin", label: "Sign in", icon: "user" as const, onSelect: () => go("#/signin?next=%23%2F") }]
+              : [{ id: "signin", label: "Accounts can't be reached here", icon: "cloudOff" as const, disabled: true, onSelect: () => {} }]),
           { kind: "separator", id: "s1" },
           { kind: "title", id: "t", label: "Theme" },
         ]}
-        trigger={(t) => <Button {...t} icon="user" title="Account and theme" />}
+        trigger={(t) =>
+          p.account ? (
+            <Button {...t} className="bc-avatar-btn" title={`${p.account.name}: account and theme`}>
+              <span className="bc-avatar" aria-hidden>
+                {p.account.name.trim().charAt(0).toUpperCase() || "?"}
+              </span>
+            </Button>
+          ) : p.accountsOn ? (
+            <Button {...t} icon="user" label="Sign in" title="Account and theme" />
+          ) : (
+            <Button {...t} icon="user" title="Account and theme" />
+          )
+        }
       >
         <div className="bc-menu-extra">
           <ThemePicker value={p.theme} onChange={p.onTheme} compact />

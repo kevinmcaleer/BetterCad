@@ -394,6 +394,12 @@ def router(settings) -> APIRouter:
     def shared_thumbnail(token: str, request: Request) -> Response:
         return image(shared_model(conn(request), token)["thumbnail"], "private, no-store")
 
+    @r.get("/shared/{token}/blobs/{h}")
+    def shared_blob(token: str, h: str, request: Request) -> Response:
+        """A file the shared model imports, so the viewer can rebuild it without a session."""
+        m = shared_model(conn(request), token)
+        return send_blob(request, m["user_id"], h, "private, no-store")
+
     # --- Blobs ------------------------------------------------------------------------------------------------
 
     def blob_hash(h: str) -> str:
@@ -418,19 +424,22 @@ def router(settings) -> APIRouter:
             )
         return {"hash": h, "stored": True}
 
+    def send_blob(request: Request, user_id: int, h: str, cache: str) -> Response:
+        h = blob_hash(h)
+        row = conn(request).execute("SELECT mime FROM blobs WHERE hash = ? AND user_id = ?", (h, user_id)).fetchone()
+        path = request.app.state.blobs.path(user_id, h)
+        if not row or not path.is_file():
+            raise HTTPException(404, "That file isn't here.")
+        headers = {"Cache-Control": cache}
+        if request.method == "HEAD":
+            headers["Content-Length"] = str(path.stat().st_size)
+            return Response(b"", media_type=row["mime"], headers=headers)
+        return Response(path.read_bytes(), media_type=row["mime"], headers=headers)
+
     @r.head("/blobs/{h}", include_in_schema=False)
     @r.get("/blobs/{h}")
     def get_blob(h: str, request: Request, user: CurrentUser) -> Response:
-        h = blob_hash(h)
-        row = conn(request).execute("SELECT mime FROM blobs WHERE hash = ? AND user_id = ?", (h, user.id)).fetchone()
-        path = request.app.state.blobs.path(user.id, h)
-        if not row or not path.is_file():
-            raise HTTPException(404, "That file isn't here.")
-        body = b"" if request.method == "HEAD" else path.read_bytes()
-        headers = {"Cache-Control": "private, max-age=31536000, immutable"}
-        if request.method == "HEAD":
-            headers["Content-Length"] = str(path.stat().st_size)
-        return Response(body, media_type=row["mime"], headers=headers)
+        return send_blob(request, user.id, h, "private, max-age=31536000, immutable")
 
     # --- Usage ------------------------------------------------------------------------------------------------
 

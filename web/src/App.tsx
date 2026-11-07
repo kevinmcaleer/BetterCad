@@ -1,34 +1,81 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useRef } from "react";
 import { kernelStatus } from "@bettercad/kernel";
 import { solverStatus } from "@bettercad/sketch";
 import { Editor } from "./editor/Editor";
+import { AccountProvider, useAccount } from "./cloud/account";
+import { useRoute, type Route } from "./cloud/route";
+import { useTheme } from "./state/useTheme";
+import type { ThemeSetting } from "./state/theme";
+import { AccountPage, SignInPage, SignUpPage } from "./pages/AuthPages";
+import { Library } from "./pages/Library";
 
 /** The component gallery ships in development and in preview builds (VITE_GALLERY=1), never in the release image. */
 export const GALLERY_ON = !!(import.meta.env.DEV || import.meta.env.VITE_GALLERY);
 const Gallery = GALLERY_ON ? lazy(() => import("./gallery/Gallery").then((m) => ({ default: m.Gallery }))) : null;
 
-function useHash() {
-  const [hash, setHash] = useState(() => window.location.hash);
-  useEffect(() => {
-    const on = () => setHash(window.location.hash);
-    window.addEventListener("hashchange", on);
-    return () => window.removeEventListener("hashchange", on);
-  }, []);
-  return hash;
-}
-
 // Proves the workspace packages resolve; the kernel and solver arrive in epics #4 and #5.
 export const ENGINES = [kernelStatus(), solverStatus()];
 
-/** Hash routes keep the app working from any static host: "#/" is the editor, "#/gallery" the components. */
+const THEMES: readonly string[] = ["system", "light", "dark", "holodeck"];
+
+/** The theme follows the account (#88): its choice applies on sign-in, and a change is saved to it. */
+function ThemeSync() {
+  const { api, account, setAccount } = useAccount();
+  const { theme, setTheme } = useTheme();
+  const synced = useRef<number | null>(null);
+  useEffect(() => {
+    if (!account) {
+      synced.current = null;
+      return;
+    }
+    if (synced.current !== account.id) {
+      synced.current = account.id;
+      if (account.theme && THEMES.includes(account.theme)) {
+        if (account.theme !== theme) setTheme(account.theme as ThemeSetting);
+        return;
+      }
+    }
+    if (account.theme !== theme) api.updateMe({ theme }).then(setAccount, () => undefined);
+  }, [account, theme, api, setAccount, setTheme]);
+  return null;
+}
+
+function page(route: Route) {
+  switch (route.page) {
+    case "signin":
+      return <SignInPage next={route.next} />;
+    case "signup":
+      return <SignUpPage next={route.next} />;
+    case "account":
+      return <AccountPage />;
+    case "library":
+      return <Library bin={route.bin} />;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Hash routes keep the app working from any static host: "#/" is the editor, "#/edit/<id>" a saved model, and the
+ * account pages sit over it. The editor stays mounted under a page, so nothing open is lost going to the library.
+ */
 export function App() {
-  const hash = useHash();
-  if (Gallery && hash.startsWith("#/gallery")) {
+  const route = useRoute();
+  if (Gallery && route.page === "gallery") {
     return (
       <Suspense fallback={null}>
         <Gallery />
       </Suspense>
     );
   }
-  return <Editor />;
+  const over = page(route);
+  return (
+    <AccountProvider>
+      <ThemeSync />
+      {over}
+      <div className="bc-editor-host" style={over ? { display: "none" } : undefined}>
+        <Editor active={!over} model={route.page === "editor" ? route.model : undefined} />
+      </div>
+    </AccountProvider>
+  );
 }
