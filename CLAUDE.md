@@ -7,10 +7,11 @@ A free, browser-based CAD tool for 3D printing: Fusion-style constrained sketche
 - `make install` — npm install and uv sync
 - `make dev` — FastAPI on :8000 and Vite on :5173 (Vite proxies `/api`)
 - `make test` — Vitest across the workspaces, then pytest with coverage
+- `npm run test:golden` — kernel, sketch and timeline goldens (`UPDATE_GOLDEN=1` to accept a deliberate change); `npm run test:nightly` adds every sample and `fixtures/` model with STL and STEP round trips
 - `make lint` — ESLint, Prettier check, ruff
 - `make typecheck` — `tsc` (strict) over every TypeScript package
 - `make build` — regenerates tokens, builds `web/dist`
-- `npm run e2e` — builds, serves and runs Playwright (Chromium), including axe in all three themes
+- `npm run e2e` — builds, serves and runs Playwright (Chromium), including axe in all three themes. No retries: tag a flaky test `@quarantine`; `@journey` tests also run nightly in WebKit
 - `npm run e2e:visual` — screenshot tests (@visual). CI writes missing baselines; run the Update screenshots workflow to accept a deliberate change
 - `npm run tokens` — regenerate `packages/ui/src/tokens.css` and `tokens.ts` from `tokens.json`
 

@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "m-sample",
+  "created": "2026-11-07T10:00:00.000Z",
+  "modified": "2026-11-07T10:00:00.000Z",
+  "name": "Bracket",
+  "document": {
+    "features": [
+      {
+        "id": "f1",
+        "name": "Box 1",
+        "part": {
+          "id": "p1",
+          "kind": "box",
+          "name": "Box 1",
+          "position": { "x": 0, "y": 0, "z": 10 },
+          "size": { "x": 40, "y": 20, "z": 20 }
+        },
+        "type": "add"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {},
+    "name": "Bracket",
+    "version": 2
+  }
+}

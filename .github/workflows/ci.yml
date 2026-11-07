@@ -43,6 +43,52 @@ jobs:
           name: web-dist
           path: web/dist
           retention-days: 7
+      # Each test's last screenshot, so a failed run is easy to read.
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screens
+          path: web/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Tests tagged @quarantine (#107): flaky until fixed. They run here so they stay visible, but never block a merge.
+  quarantine:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - id: pw
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --only-shell chromium
+      - run: npm run e2e:quarantine -w web
+        env:
+          CI: "1"
+
+  # Geometry goldens (#106): kernel, sketch and timeline, with what moved and the time per case in the job summary.
+  golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:golden -- --reporter=default --reporter=json --outputFile=golden-report.json
+        env:
+          GOLDEN_SUMMARY: ${{ runner.temp }}/golden-moved.md
+      - if: always()
+        run: node scripts/test-report.mjs golden-report.json "Geometry goldens" "$RUNNER_TEMP/golden-moved.md" >> "$GITHUB_STEP_SUMMARY"
 
   # Screenshot tests (@visual). Baselines come from this Linux runner so fonts match: on a pull request from this
   # repository, any missing baseline is written and committed back to the branch, then everything is compared.

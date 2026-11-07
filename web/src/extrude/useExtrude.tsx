@@ -260,8 +260,11 @@ export function useExtrude(d: ExtrudeDeps) {
     if (L.session && f) {
       store.seal();
       const n = f.seeds.length;
-      const how = f.type === "revolve" ? `${fmt(f.angle)}°` : `${fmt(f.distance)} mm`;
-      say(`${L.session.isNew ? (f.type === "revolve" ? "Revolved" : "Extruded") : "Changed"} ${n === 1 ? "one shape" : `${n} shapes`} ${how}`);
+      // A cut reads as a cut, and its depth without a sign: "Cut one shape 10 mm deep".
+      const cut = f.operation === "cut";
+      const how = f.type === "revolve" ? `${fmt(f.angle)}°` : cut ? `${fmt(Math.abs(f.distance))} mm deep` : `${fmt(f.distance)} mm`;
+      const verb = !L.session.isNew ? "Changed" : f.type === "revolve" ? "Revolved" : cut ? "Cut" : "Extruded";
+      say(`${verb} ${n === 1 ? "one shape" : `${n} shapes`} ${how}`);
     }
     setSession(null);
     deps.current.onClose();
