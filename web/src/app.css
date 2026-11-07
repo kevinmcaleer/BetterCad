@@ -997,6 +997,15 @@ kbd {
   width: 100%;
   margin-bottom: var(--bc-space-3);
 }
+.bc-print-row {
+  display: flex;
+  gap: var(--bc-space-2);
+  margin-bottom: var(--bc-space-3);
+}
+.bc-print-name .bc-text {
+  width: 100%;
+  margin-bottom: var(--bc-space-2);
+}
 .bc-print-details {
   margin: var(--bc-space-2) 0 var(--bc-space-3);
 }

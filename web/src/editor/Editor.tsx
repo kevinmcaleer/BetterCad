@@ -21,6 +21,10 @@ import {
   groupOf,
   groupParams,
   cutTool,
+  staleFits,
+  updateFits,
+  applyProfile,
+  profileFromSettings,
   PRIMITIVES,
   changeParts,
   duplicateParts,
@@ -96,6 +100,7 @@ import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
+import { newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
@@ -1247,6 +1252,46 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say(`${n === 1 ? "1 printed hole now adds" : `${n} printed holes now add`} ${holeOffset} mm`);
   }, [staleHoles, holeOffset, store, say]);
 
+  // Printer profiles (#180) and fitted cuts made at other gaps (#183).
+  const printers = usePrinterProfiles(api, account);
+  const fitsStale = useMemo(() => staleFits(doc, doc.print), [doc]);
+  const pickProfile = useCallback(
+    (id: string | null) => {
+      const p = printers.profiles.find((x) => x.id === id);
+      if (!p) return store.edit((d) => ({ ...d, print: { ...d.print, profile: undefined } }), "Use this model's own printer settings");
+      store.edit((d) => ({ ...d, print: applyProfile(d.print ?? {}, p) }), `Use ${p.name}`);
+      say(`Using ${p.name}`);
+    },
+    [printers.profiles, store, say],
+  );
+  const saveProfile = useCallback(
+    (name: string) => {
+      const p = profileFromSettings(newProfileId(), name, doc.print ?? {});
+      printers.save(p);
+      store.edit((d) => ({ ...d, print: { ...d.print, profile: p.id } }), `Save ${name}`);
+      say(`Saved ${name} to your printers`);
+    },
+    [doc.print, printers, store, say],
+  );
+  const updateProfile = useCallback(() => {
+    const cur = printers.profiles.find((x) => x.id === doc.print?.profile);
+    if (!cur) return;
+    printers.save(profileFromSettings(cur.id, cur.name, doc.print ?? {}));
+    say(`Saved the changes to ${cur.name}`);
+  }, [doc.print, printers, say]);
+  const deleteProfile = useCallback(() => {
+    const cur = printers.profiles.find((x) => x.id === doc.print?.profile);
+    if (!cur) return;
+    printers.remove(cur.id);
+    store.edit((d) => ({ ...d, print: { ...d.print, profile: undefined } }), `Delete ${cur.name}`);
+    say(`Deleted ${cur.name}. This model keeps its settings.`);
+  }, [doc.print, printers, store, say]);
+  const updateFitCuts = useCallback(() => {
+    const n = fitsStale.length;
+    store.edit((d) => updateFits(d, d.print), n === 1 ? "Update 1 fitted cut" : `Update ${n} fitted cuts`);
+    say(n === 1 ? "1 fitted cut now uses the gaps set now" : `${n} fitted cuts now use the gaps set now`);
+  }, [fitsStale, store, say]);
+
   const printPanel = (
     <PrintPanel
       settings={doc.print ?? {}}
@@ -1273,6 +1318,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       onUpdateHoles={updateHoles}
       onCalibrate={() => files.openSample("hole-calibration")}
       onCalibrateFits={() => files.openSample("fit-calibration")}
+      profiles={printers.profiles}
+      onPickProfile={pickProfile}
+      onSaveProfile={saveProfile}
+      onUpdateProfile={updateProfile}
+      onDeleteProfile={deleteProfile}
+      staleFits={fitsStale.length}
+      onUpdateFits={updateFitCuts}
     />
   );
 

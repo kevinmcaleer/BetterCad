@@ -1017,6 +1017,25 @@ export function cutTool(id: string, fit: FitId | null, gap: number, print?: Prin
   return t;
 }
 
+/** Fitted cuts (#183) made with a gap other than the one their named fit comes to now: what a printer change can update. */
+export function staleFits(doc: ModelDoc, print?: PrintSettings): CombineFeature[] {
+  return doc.features.filter(
+    (f): f is CombineFeature => f.type === "combine" && f.tools.some((t) => t.fit && Math.abs((t.gap ?? 0) - fitGap(t.fit, print?.fits)) > 1e-9),
+  );
+}
+
+/** Brings every fitted cut to the gap its named fit comes to now (#180), as one edit. */
+export function updateFits(doc: ModelDoc, print?: PrintSettings): ModelDoc {
+  const stale = new Set(staleFits(doc, print).map((f) => f.id));
+  if (!stale.size) return doc;
+  return {
+    ...doc,
+    features: doc.features.map((f) =>
+      f.type === "combine" && stale.has(f.id) ? { ...f, tools: f.tools.map((t) => (t.fit ? { ...t, gap: fitGap(t.fit, print?.fits) } : t)) } : f,
+    ),
+  };
+}
+
 export function groupParams(parts: Part[], ids: string[], print?: PrintSettings): CombineParams | string {
   const picked = parts.filter((p) => ids.includes(p.id));
   if (picked.length < 2) return "Select two or more bodies to group them";

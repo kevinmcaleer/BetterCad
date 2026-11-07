@@ -71,7 +71,7 @@ It runs in the geometry worker, so the editor stays responsive. Rays only test t
 
 - Orientation suggestions (#103).
 - Printed-fit hole sizes tied to the printer (#104).
-- Saving custom printers and a price per kilogram to your account.
+- A price per kilogram. (Saving your printers is done: see [fits.md](fits.md#your-printers-180).)
 
 ## Orientation suggestions (#103)
 

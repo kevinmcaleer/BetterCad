@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Banner, Button, Fields, NumberField } from "@bettercad/ui";
+import { Banner, Button, ESC, Fields, NumberField, useEscape } from "@bettercad/ui";
 import {
   DEFAULT_INFILL,
   GAP_FITS,
   MATERIALS,
   fitGap,
   gapsFromCoupon,
+  matchesProfile,
+  type PrinterProfile,
   PRINTERS,
   formatWeight,
   materialOf,
@@ -54,6 +56,15 @@ export interface PrintPanelProps {
   onCalibrate: () => void;
   /** Opens the fit calibration coupon (#182). */
   onCalibrateFits: () => void;
+  /** Saved printers (#180) and what to do with them. */
+  profiles: PrinterProfile[];
+  onPickProfile: (id: string | null) => void;
+  onSaveProfile: (name: string) => void;
+  onUpdateProfile: () => void;
+  onDeleteProfile: () => void;
+  /** Fitted cuts made at another gap, and the update that brings them to the gaps set now. */
+  staleFits: number;
+  onUpdateFits: () => void;
 }
 
 /** An orientation suggestion with its thumbnail (a PNG data URL, or null where the view can't draw one). */
@@ -84,6 +95,14 @@ export function PrintPanel(p: PrintPanelProps) {
   return (
     <>
       <h2 className="bc-panel-title">Printer</h2>
+      <ProfilePicker
+        settings={p.settings}
+        profiles={p.profiles}
+        onPick={p.onPickProfile}
+        onSave={p.onSaveProfile}
+        onUpdate={p.onUpdateProfile}
+        onDelete={p.onDeleteProfile}
+      />
       <label className="bc-field-label" htmlFor="bc-printer">
         Printer
       </label>
@@ -261,7 +280,7 @@ export function PrintPanel(p: PrintPanelProps) {
         onClick={p.onCalibrate}
       />
 
-      <FitSection settings={p.settings} onChange={p.onChange} onCalibrate={p.onCalibrateFits} />
+      <FitSection settings={p.settings} onChange={p.onChange} onCalibrate={p.onCalibrateFits} stale={p.staleFits} onUpdate={p.onUpdateFits} />
 
       <h2 className="bc-panel-title">Material</h2>
       <label className="bc-field-label" htmlFor="bc-material">
@@ -299,7 +318,19 @@ export function PrintPanel(p: PrintPanelProps) {
 const slotName = (i: number) => `Slot ${i + 1}, ${FIT_CALIBRATION_GAPS[i]} mm`;
 
 /** Fits (#181, #182): the gap each side for press, sliding and loose fits, typed or read off the fit coupon. */
-function FitSection({ settings, onChange, onCalibrate }: { settings: PrintSettings; onChange: (c: Partial<PrintSettings>) => void; onCalibrate: () => void }) {
+function FitSection({
+  settings,
+  onChange,
+  onCalibrate,
+  stale,
+  onUpdate,
+}: {
+  settings: PrintSettings;
+  onChange: (c: Partial<PrintSettings>) => void;
+  onCalibrate: () => void;
+  stale: number;
+  onUpdate: () => void;
+}) {
   const [pressed, setPressed] = useState<number | null>(null);
   const [slid, setSlid] = useState<number | null>(null);
   const set = (id: (typeof GAP_FITS)[number]["id"], v: number) =>
@@ -340,6 +371,16 @@ function FitSection({ settings, onChange, onCalibrate }: { settings: PrintSettin
         ))}
       </Fields>
       <p className="bc-note">The gap on each side when one printed part goes into another. A sliding fit leaves a 10 mm peg a 10.5 mm pocket.</p>
+      {stale > 0 && (
+        <Button
+          variant="secondary"
+          size="wide"
+          icon="combine"
+          label={stale === 1 ? "Update 1 fitted cut" : `Update ${stale} fitted cuts`}
+          title="Resize cuts made with other gaps to the fits set now"
+          onClick={onUpdate}
+        />
+      )}
       <Button
         size="wide"
         icon="ruler"
@@ -363,6 +404,77 @@ function FitSection({ settings, onChange, onCalibrate }: { settings: PrintSettin
           }}
         />
       </details>
+    </>
+  );
+}
+
+/** Saved printers (#180): pick one to copy its bed, hole offset and fits into this model, or save this model's as one. */
+function ProfilePicker({
+  settings,
+  profiles,
+  onPick,
+  onSave,
+  onUpdate,
+  onDelete,
+}: {
+  settings: PrintSettings;
+  profiles: PrinterProfile[];
+  onPick: (id: string | null) => void;
+  onSave: (name: string) => void;
+  onUpdate: () => void;
+  onDelete: () => void;
+}) {
+  const [naming, setNaming] = useState<string | null>(null);
+  useEscape(naming !== null, () => setNaming(null), ESC.panel);
+  const current = profiles.find((x) => x.id === settings.profile) ?? null;
+  const changed = current !== null && !matchesProfile(settings, current);
+  const finish = () => {
+    const name = naming?.trim();
+    if (name) onSave(name);
+    setNaming(null);
+  };
+  return (
+    <>
+      <label className="bc-field-label" htmlFor="bc-profile">
+        My printers
+      </label>
+      <select id="bc-profile" className="bc-select bc-print-select" value={current?.id ?? ""} onChange={(e) => onPick(e.target.value || null)}>
+        <option value="">{profiles.length ? "None: set for this model only" : "No saved printers yet"}</option>
+        {profiles.map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.name}
+          </option>
+        ))}
+      </select>
+      {changed && (
+        <>
+          <p className="bc-note">This model's settings differ from {current.name}.</p>
+          <Button variant="secondary" size="wide" label={`Save to ${current.name}`} title="Keep these settings in the saved printer" onClick={onUpdate} />
+        </>
+      )}
+      {naming === null ? (
+        <span className="bc-print-row">
+          <Button size="wide" label="Save as a printer" title="Keep this bed, hole offset and fits to use in other models" onClick={() => setNaming("")} />
+          {current && <Button label="Delete" title={`Delete ${current.name} from your printers`} onClick={onDelete} />}
+        </span>
+      ) : (
+        <form
+          className="bc-print-name"
+          onSubmit={(e) => {
+            e.preventDefault();
+            finish();
+          }}
+        >
+          <label className="bc-field-label" htmlFor="bc-profile-name">
+            Printer name
+          </label>
+          <input id="bc-profile-name" className="bc-text" autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="My Bambu A1" />
+          <span className="bc-print-row">
+            <Button kind="cancel" label="Cancel" title="Don't save" shortcut="Esc" onClick={() => setNaming(null)} />
+            <Button kind="done" label="Save" title="Save this printer" disabled={!naming.trim()} onClick={finish} />
+          </span>
+        </form>
+      )}
     </>
   );
 }

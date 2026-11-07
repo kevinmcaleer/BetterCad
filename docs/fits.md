@@ -18,7 +18,7 @@ These are typical FDM starting points and vary by printer and material. The tabl
 
 The Print panel's **Fits** group shows the gap for each fit, and you can type your own. To measure them, click **Calibrate fits**. That opens the fit calibration coupon (`web/public/samples/fit-calibration.bcad`): a 4 mm plate with six square slots and a 10 mm square peg to print beside it. Each slot is wider than the peg by a gap each side of 0.05, 0.1, 0.15, 0.2, 0.3 and 0.4 mm, from the left. The notches on the front edge count the slot: one notch is 0.05 mm, six is 0.4 mm. It is small and quick to print.
 
-Print the plate and the peg flat, then try the peg in each slot. Open **I've printed the fit coupon** in the Print panel, pick the slot the peg pressed into and the slot it slid freely in, and click **Set fits**. Press and sliding come from your answers, and loose is 0.15 mm wider than sliding. The gaps are saved with the model for now; printer profiles (#180) will keep them for every model.
+Print the plate and the peg flat, then try the peg in each slot. Open **I've printed the fit coupon** in the Print panel, pick the slot the peg pressed into and the slot it slid freely in, and click **Set fits**. Press and sliding come from your answers, and loose is 0.15 mm wider than sliding. The gaps are saved with the model. Save them as a printer (below) to use them in every model.
 
 ## Cut with a fit (#183)
 
@@ -27,4 +27,13 @@ Print the plate and the peg flat, then try the peg in each slot. Open **I've pri
 
 The kernel grows the tool with `BRepOffsetAPI_MakeOffsetShape` (`grow` in `packages/kernel/src/occt/shapes.ts`). Flat faces move out and meet at sharp corners, so a box grows into a slightly bigger box and a cylinder into a wider cylinder.
 
-The step keeps the gap it was made with, so changing printer never quietly resizes a cut. Printer profiles (#180) will offer to update fitted cuts, as the Print panel does for holes.
+The step keeps the gap it was made with, so changing printer never quietly resizes a cut. When the fits change, the Print panel offers **Update N fitted cuts**, as it does for holes.
+
+## Your printers (#180)
+
+**Save as a printer** in the Print panel keeps this model's bed, hole offset, fit gaps and material under a name, such as "My Bambu A1". Pick it from **My printers** in any other model to copy those values in. Infill stays with each model.
+
+- Printers are kept in this browser, so they work offline and without an account. Signed in, they are also kept in your account (`/api/printers`, `server/bettercad/printers.py`), so they follow you to other machines. Printers made before signing in are added to the account when you sign in.
+- A model keeps its own copy of the values, so someone you share it with sees the same bed and fits without your printer.
+- If you change a setting after picking a printer, the panel offers **Save to** that printer.
+- Deleting a printer leaves models that used it as they are.

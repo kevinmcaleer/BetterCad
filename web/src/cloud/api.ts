@@ -172,6 +172,11 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
       return new Uint8Array(await r.arrayBuffer());
     },
     usage: () => call<Usage>("GET", "me/usage"),
+    /** Printer profiles (#180), each the editor's own JSON. */
+    printers: () => call<{ printers: (Record<string, unknown> & { id: string; name: string; modified: string })[] }>("GET", "printers"),
+    savePrinter: (id: string, name: string, data: Record<string, unknown>) =>
+      call<Record<string, unknown> & { id: string; modified: string }>("PUT", `printers/${encodeURIComponent(id)}`, { name, data }),
+    deletePrinter: (id: string) => call<{ ok: true }>("DELETE", `printers/${encodeURIComponent(id)}`),
     /** An API path (thumbnails) as a URL the page can load. */
     url: (path: string) => base + path.replace(/^\/?api\//, ""),
   };

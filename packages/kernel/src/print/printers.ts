@@ -54,6 +54,8 @@ export interface PrintSettings {
   holeOffset?: number;
   /** Fit gaps on each side, mm (#181), when tuned away from the defaults. */
   fits?: FitGaps;
+  /** The printer profile these values came from (#180), if any. The values themselves are the snapshot. */
+  profile?: string;
 }
 
 /** The hole offset in use: the tuned one, else the printer's. */
