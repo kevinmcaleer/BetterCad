@@ -89,6 +89,8 @@ const FIELD_KEYS = new Set(["mod+a", "mod+c", "mod+v", "mod+x", "mod+arrowleft",
 export function createRegistry(getContext: () => CommandContext) {
   const commands = new Map<string, Command>();
   const listeners = new Set<() => void>();
+  // Told each command id as it runs, for the problem report's action log (#109).
+  const ran = new Set<(id: string) => void>();
   let version = 0;
   const notify = () => {
     version++;
@@ -119,6 +121,7 @@ export function createRegistry(getContext: () => CommandContext) {
     const ctx = getContext();
     if (!c || !enabled(c, ctx)) return false;
     c.run(ctx);
+    ran.forEach((l) => l(c.id));
     notify();
     return true;
   }
@@ -137,6 +140,7 @@ export function createRegistry(getContext: () => CommandContext) {
     if (!c) return false;
     e.preventDefault();
     c.run(getContext());
+    ran.forEach((l) => l(c.id));
     notify();
     return true;
   }
@@ -144,6 +148,10 @@ export function createRegistry(getContext: () => CommandContext) {
   return {
     register,
     run,
+    onRun: (fn: (id: string) => void) => {
+      ran.add(fn);
+      return () => void ran.delete(fn);
+    },
     match,
     dispatch,
     get: (id: string) => commands.get(id),

@@ -84,6 +84,14 @@ docker run --rm -v bettercad_bettercad-data:/data -v "$PWD/backups:/backups" alp
 docker compose start bettercad
 ```
 
+## Problem reports
+
+Help → Report a problem sends a note, the browser and version, the last error, the last 20 edits (ids and types only)
+and, if the person ticks it, the model. The server keeps each one in `DATA_DIR/reports/<id>/` (five per IP per hour,
+2 MB at most) and, when `.env` sets them, emails it (`REPORT_EMAIL` and `SMTP_*`) or files it as an issue
+(`GITHUB_REPORT_TOKEN`, `GITHUB_REPORT_REPO`). Use a private repository: a report can hold someone's model. If the
+server can't be reached, the dialog offers the same report as a zip to download.
+
 ## Live preview
 
 `.github/workflows/pages.yml` publishes the web app (no server) to GitHub Pages on every push to `main`. Turn it on once in Settings → Pages → Source: GitHub Actions.

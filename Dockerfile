@@ -8,7 +8,8 @@ COPY packages/kernel/package.json packages/kernel/
 COPY packages/sketch/package.json packages/sketch/
 RUN npm ci
 COPY . .
-RUN npm run build
+ARG VERSION=""
+RUN VITE_VERSION=$VERSION npm run build
 
 FROM python:3.13-slim AS app
 ARG VERSION=""

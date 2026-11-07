@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     allowed_origins: str = "http://localhost:5173"
     web_dist: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
     version: str = ""
+    # Problem reports (#109): email them to Kev, or file them in a private repository.
+    report_email: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    github_report_token: str = ""
+    github_report_repo: str = ""
 
     @property
     def production(self) -> bool:

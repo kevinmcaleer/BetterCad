@@ -1,3 +1,4 @@
+import { caught } from "../report/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BodyMesh, Call, KernelClient, KernelState, Measure, MeasureResult, Methods, TopoRef } from "@bettercad/kernel";
 import { milestone } from "../perf";
@@ -77,8 +78,14 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
         const bodies = new Map<string, KernelBody & { key: string }>();
         for (const b of r.bodies) bodies.set(b.id, { mesh: b.mesh, measure: b.measure, key: sent.get(b.id) ?? "" });
         setBuilt({ bodies, failed: new Map(r.failed) });
+        // A step that failed is kept for a problem report (#109); its banner already says so.
+        const first = r.failed[0];
+        if (first) caught(`A step didn't build: ${first[1]}`);
       },
-      () => undefined,
+      (e: { code?: string; message?: string; detail?: unknown }) => {
+        // The worker died: offer a report. A cancelled build is just a newer one taking over.
+        if (e?.code === "kernel-crashed") caught(`${e.message ?? "The geometry engine stopped."} (${String(e.detail ?? "no detail")})`, { show: true });
+      },
     );
     return () => call.cancel();
     // parts follows doc and upTo.

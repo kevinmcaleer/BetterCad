@@ -20,6 +20,7 @@
     "./browser": "./src/browser.ts",
     "./occt": "./src/occt/index.ts",
     "./bcad": "./src/bcad.ts",
-    "./samples": "./src/samples.ts"
+    "./samples": "./src/samples.ts",
+    "./zip": "./src/export/zip.ts"
   }
 }

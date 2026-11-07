@@ -1039,3 +1039,40 @@ kbd {
   color: var(--bc-color-muted);
   font-size: var(--bc-type-small-size);
 }
+
+/* Report a problem (#109). */
+.bc-report-what {
+  height: auto;
+  padding: var(--bc-space-2) var(--bc-space-3);
+  margin-bottom: var(--bc-space-3);
+  resize: vertical;
+  font-family: var(--bc-font-sans);
+}
+.bc-report-info {
+  margin: var(--bc-space-2) 0;
+  font-size: var(--bc-type-small-size);
+}
+.bc-report-info summary {
+  cursor: pointer;
+  color: var(--bc-color-muted);
+}
+.bc-report-info pre {
+  max-height: 160px;
+  overflow: auto;
+  margin: var(--bc-space-2) 0 0;
+  padding: var(--bc-space-2);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-stage);
+  color: var(--bc-color-ink);
+  font-size: var(--bc-type-micro-size);
+  white-space: pre-wrap;
+}
+.bc-crash {
+  position: absolute;
+  top: var(--bc-space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: min(640px, calc(100% - 2 * var(--bc-space-4)));
+}
