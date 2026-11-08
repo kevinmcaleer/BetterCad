@@ -42,6 +42,8 @@ export interface View3DProps {
   onSection: (s: Section) => void;
   /** A left drag starting on a body, in Select (#173): a handler that poses its joint, or null to orbit. */
   onBodyDrag?: (pick: Pick, at: { x: number; y: number }) => BodyDrag | null;
+  /** A click that takes a point on a body (the tool point, #176) instead of selecting: true when it was taken. */
+  onPoint?: (hit: { body: string; point: V3 } | null) => boolean;
   onCamera?: (c: CameraState) => void;
   /** A long press with a finger, or a right click without a drag: what was under it and where to open a menu. */
   onMenu?: (pick: Pick | null, at: { x: number; y: number }) => void;
@@ -143,6 +145,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
           if (hit) p.onSection({ origin: hit.point, normal: hit.normal, offset: 0 });
           return;
         }
+        if (p.onPoint && p.onPoint(engine.current?.surfaceAt(at.x, at.y) ?? null)) return;
         p.onPick(pick, mods);
       },
       menu: (pick, at) => {

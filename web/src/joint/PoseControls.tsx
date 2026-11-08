@@ -18,6 +18,9 @@ export interface PoseControlsProps {
   onPlay?: (id: string | null) => void;
   /** Every joint's name, for "Driven by". */
   nameOf?: (id: string) => string;
+  /** Tool points (#176): joints kept out of the arm's drag, and the toggle; left out when there is no tool point. */
+  locked?: string[];
+  onLock?: (id: string, locked: boolean) => void;
 }
 
 /** The range a joint's slider covers: its limits, or a whole turn for a wheel. */
@@ -27,7 +30,19 @@ const range = (j: JointFeature) => (j.kind === "continuous" ? { min: -180, max: 
  * Posing (#173): a slider and a field for each joint that moves, in degrees or mm and kept to its limits. Trying the
  * mechanism isn't a step on the timeline: the pose is saved with the view.
  */
-export function PoseControls({ joints, pose, onChange, onCommit, onHome, drives = [], playing = null, onPlay, nameOf }: PoseControlsProps) {
+export function PoseControls({
+  joints,
+  pose,
+  onChange,
+  onCommit,
+  onHome,
+  drives = [],
+  playing = null,
+  onPlay,
+  nameOf,
+  locked = [],
+  onLock,
+}: PoseControlsProps) {
   // The last value a slider moved to, so letting go keeps it even before the new pose comes back round.
   const last = useRef(new Map<string, number>());
   const moving = joints.filter(movable);
@@ -79,6 +94,16 @@ export function PoseControls({ joints, pose, onChange, onCommit, onHome, drives 
               onChange={(x) => onChange(j.id, clampJoint(j, x))}
               onCommit={commit}
             />
+            {onLock && !by && (
+              <Button
+                icon={locked.includes(j.id) ? "lock" : "unlock"}
+                label={locked.includes(j.id) ? "Locked" : "Lock"}
+                title={locked.includes(j.id) ? `Let ${j.name} move when you drag the arm` : `Keep ${j.name} still when you drag the arm`}
+                size="dense"
+                on={locked.includes(j.id)}
+                onClick={() => onLock(j.id, !locked.includes(j.id))}
+              />
+            )}
             {drivesOthers && onPlay && (
               <Button
                 icon="stepForward"
