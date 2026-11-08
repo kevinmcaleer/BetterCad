@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Draft, Solver, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
-import { addConstraints, commit, constraintsFor, newlyRedundant, preview } from "./tools";
-import type { Snap } from "./snap";
+import { addConstraints, commit, constraintsFor, levelOrUpright, newlyRedundant, preview, resolveOrigin } from "./tools";
+import { ORIGIN, pickAt, type Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
 
@@ -110,7 +110,9 @@ describe("sketch tools", () => {
     expect(before.status).toBe("redundant");
     const solved = solver.solve(out);
     expect(newlyRedundant(before, solved)).toEqual([]);
-    const repeat = addConstraints("horizontal", t.sketch, [trapTop]) as Sketch;
+    const rd = new Draft(t.sketch);
+    rd.constrain({ type: "horizontal", e: trapTop });
+    const repeat = rd.done().sketch;
     expect(newlyRedundant(before, solver.solve(repeat)).length).toBeGreaterThan(0);
     const [x, y] = mid(solved.sketch, trapTop);
     expect(x).toBeCloseTo(30);
@@ -123,5 +125,81 @@ describe("sketch tools", () => {
     // A point and a line in either order still works.
     const p = added[0]!.id;
     expect(constraintsFor("midpoint", out, [t.ids[0]!, p])).toEqual([{ type: "midpoint", p, line: t.ids[0] }]);
+  });
+
+  it("makes a line horizontal up to 45° from the horizon and vertical past it", () => {
+    const d = new Draft(newSketch());
+    const line = (x: number, y: number) => d.line(d.point([0, 0]), d.point([x, y]), { auto: false });
+    const flat = line(10, 4);
+    const steep = line(-3, 10);
+    const diagonal = line(10, -10);
+    const s = d.done().sketch;
+    expect(levelOrUpright(s, flat)).toBe("horizontal");
+    expect(levelOrUpright(s, steep)).toBe("vertical");
+    expect(levelOrUpright(s, diagonal)).toBe("horizontal");
+    expect(constraintsFor("horizontalVertical", s, [flat, steep])).toEqual([
+      { type: "horizontal", e: flat },
+      { type: "vertical", e: steep },
+    ]);
+  });
+
+  it("skips lines that are already horizontal or vertical", () => {
+    const s = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
+    const lines = s.entities.filter((e) => e.kind === "line").map((e) => e.id);
+    expect(constraintsFor("horizontalVertical", s, [lines[0]!])).toBe("That line is already horizontal or vertical");
+    const pts = s.entities.filter((e) => e.kind === "point").map((e) => e.id);
+    expect(constraintsFor("horizontalVertical", s, [pts[0]!])).toBe("Pick lines");
+  });
+
+  it("places a point, on a line when it lands on one, and never doubles one", () => {
+    const one = commit("point", newSketch(), [free(5, 7)])!;
+    expect(one.label).toBe("Add a point");
+    expect(one.sketch.entities).toEqual([expect.objectContaining({ kind: "point", x: 5, y: 7 })]);
+    expect(one.sketch.constraints).toHaveLength(0);
+
+    const r = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
+    const bottom = r.entities.find((e) => e.kind === "line")!.id;
+    const on = commit("point", r, [{ xy: [10, 0], kind: "on", ref: bottom, label: "" }])!;
+    expect(on.sketch.constraints.at(-1)).toMatchObject({ type: "pointOn", e: bottom });
+
+    const corner = r.entities.find((e) => e.kind === "point")!;
+    expect(commit("point", r, [{ xy: [corner.x, corner.y], kind: "end", ref: corner.id, label: "" }])).toBeNull();
+    const atOrigin = commit("point", newSketch(), [{ xy: [0, 0], kind: "origin", label: "" }])!;
+    expect(atOrigin.sketch.constraints).toEqual([expect.objectContaining({ type: "fix" })]);
+  });
+
+  it("picks the origin when no point is nearer, and ties a line through it", async () => {
+    const d = new Draft(newSketch());
+    const line = d.line(d.point([5, 10]), d.point([30, 25]), { auto: false });
+    const s = d.done().sketch;
+    expect(pickAt([0.2, 0.1], s, 1, [0, 0])).toBe(ORIGIN);
+    expect(pickAt([0.2, 0.1], s, 1, null)).toBeNull();
+    expect(pickAt([17.5, 17.5], s, 1, [0, 0])).toBe(line);
+
+    // Coincident on a line and the origin: the line passes through a point fixed on the origin.
+    const out = addConstraints("coincident", s, [line, ORIGIN]);
+    if (typeof out === "string") throw new Error(out);
+    const o = out.entities.find((e) => e.kind === "point" && e.x === 0 && e.y === 0)!;
+    expect(out.constraints).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: "fix", p: o.id }), expect.objectContaining({ type: "pointOn", p: o.id, e: line })]),
+    );
+    const solved = (await Solver.load()).solve(out);
+    expect(solved.status).toBe("ok");
+    const i = new SketchIndex(solved.sketch);
+    const l = solved.sketch.entities.find((e) => e.id === line)!;
+    if (l.kind !== "line") throw new Error("not a line");
+    const [a, b] = [i.xy(l.a), i.xy(l.b)];
+    expect(Math.abs(a[0] * b[1] - a[1] * b[0])).toBeLessThan(1e-6);
+
+    // A second use of the origin reuses its point; a point picked onto the origin is coincident with it.
+    const again = resolveOrigin(out, [ORIGIN]);
+    expect(again.sketch).toBe(out);
+    expect(again.picked).toEqual([o.id]);
+    const end = (l as { a: string }).a;
+    const coin = addConstraints("coincident", out, [end, ORIGIN]) as Sketch;
+    expect(coin.constraints.at(-1)).toMatchObject({ type: "coincident", a: end, b: o.id });
+    // Midpoint: the line's midpoint on the origin.
+    const midOut = addConstraints("midpoint", s, [ORIGIN, line]) as Sketch;
+    expect(midOut.constraints.at(-1)).toMatchObject({ type: "midpoint", line });
   });
 });

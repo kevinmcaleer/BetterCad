@@ -44,6 +44,23 @@ export interface SnapOptions {
 const ON_ORIGIN = 1e-6;
 export const isAtOrigin = (xy: Vec2, origin: Vec2 = [0, 0]) => dist(xy, origin) < ON_ORIGIN;
 
+/**
+ * The sketch origin as a pick: Select, Dimension and the constraint tools can pick it where they take a point. It
+ * becomes a real point fixed on the origin when a constraint or size uses it (`resolveOrigin` in tools.ts).
+ */
+export const ORIGIN = "@origin";
+
+/**
+ * What a click picks: the nearest point, then the origin, then the nearest line or curve, all within `tol` mm. Null
+ * `origin` leaves the origin out.
+ */
+export function pickAt(p: Vec2, sketch: Sketch, tol: number, origin: Vec2 | null): Id | null {
+  const id = entityAt(p, sketch, tol);
+  if (id && sketch.entities.find((e) => e.id === id)?.kind === "point") return id;
+  if (origin && dist(p, origin) <= tol) return ORIGIN;
+  return id;
+}
+
 export const SNAP_LABEL: Record<SnapKind, string> = {
   origin: "Origin",
   end: "End",
