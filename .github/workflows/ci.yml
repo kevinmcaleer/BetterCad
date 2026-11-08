@@ -200,10 +200,16 @@ jobs:
         run: |
           npx vite preview --port 4173 --strictPort --host 127.0.0.1 &
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
-          CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())") \
+          # Lighthouse sometimes fails to record the trace at all (NO_NAVSTART) before it measures anything. That run
+          # says nothing about the page, so try once more; a low score is judged by budgets.mjs, never retried.
+          export CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())")
+          for attempt in 1 2; do
             npx -y lighthouse@11.7.1 http://127.0.0.1:4173/ --preset=desktop --only-categories=performance,pwa \
-            --chrome-flags="--headless=new --no-sandbox --use-angle=swiftshader --enable-unsafe-swiftshader" \
-            --output=json --output-path=../lighthouse.json --quiet
+              --chrome-flags="--headless=new --no-sandbox --use-angle=swiftshader --enable-unsafe-swiftshader" \
+              --output=json --output-path=../lighthouse.json --quiet && break
+            if [ "$attempt" = 2 ]; then exit 1; fi
+            echo "Lighthouse could not record the page load; trying once more."
+          done
       - run: node scripts/budgets.mjs --kernel kernel-bench.json --viewport viewport-bench.json --lighthouse lighthouse.json
       - if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
