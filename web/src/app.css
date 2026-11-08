@@ -1456,3 +1456,45 @@ kbd {
   background: var(--bc-color-accent);
   border-radius: var(--bc-radius-sm);
 }
+
+/* ---- Tips: one how-to at a time, at the bottom left of the view. Dismissing it shrinks it into the Help button. */
+.bc-tips-card {
+  position: absolute;
+  z-index: 9;
+  left: var(--bc-view-left);
+  bottom: var(--bc-view-bottom);
+  width: min(320px, calc(100% - var(--bc-view-right) - var(--bc-view-left)));
+  padding: var(--bc-space-3) var(--bc-space-4) var(--bc-space-4);
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+  transform-origin: center;
+}
+.bc-tips-head {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+}
+.bc-tips-head > svg {
+  flex: none;
+  color: var(--bc-color-accent);
+}
+.bc-tips-title {
+  flex: 1;
+  min-width: 0;
+}
+.bc-tips-count {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+  white-space: nowrap;
+}
+.bc-tips-card p {
+  margin: var(--bc-space-2) 0 var(--bc-space-3);
+}
+.bc-tips-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--bc-space-2);
+}

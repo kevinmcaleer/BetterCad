@@ -55,3 +55,33 @@ test("What's new names new features after an update and lists them all from Help
   await expect(page.getByRole("dialog", { name: "What's new" })).toBeVisible();
   await expect(card).toHaveCount(0);
 });
+
+test("Tips show until dismissed, tuck into Help and come back from Help → Tips", async ({ page }) => {
+  // A visitor who hasn't put the tips away yet.
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("seeded")) {
+      sessionStorage.setItem("seeded", "1");
+      localStorage.removeItem("bettercad.tips.hidden");
+    }
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("view-canvas")).toBeVisible({ timeout: 60_000 });
+  const tips = page.getByRole("complementary", { name: "Tips" });
+  await expect(tips).toBeVisible({ timeout: 15_000 });
+  await expect(tips).toContainText("Press K to sketch");
+  await tips.getByRole("button", { name: "Next tip" }).click();
+  await expect(tips).toContainText("2 of");
+  await tips.getByRole("button", { name: "Dismiss tips" }).click();
+  await expect(tips).toHaveCount(0);
+
+  // Dismissed stays dismissed.
+  await page.reload();
+  await expect(page.getByTestId("view-canvas")).toBeVisible({ timeout: 60_000 });
+  await page.waitForTimeout(2500);
+  await expect(tips).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Help" }).click();
+  await page.getByRole("menuitem", { name: "Tips" }).click();
+  await expect(tips).toBeVisible();
+  await expect(tips).toContainText("1 of");
+});
