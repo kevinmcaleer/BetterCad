@@ -1,7 +1,8 @@
-import { ArmedBar, Button, MenuButton, NumberField, Toolbar } from "@bettercad/ui";
+import { ArmedBar, Button, MenuButton, NumberField, Toolbar, type MenuEntry } from "@bettercad/ui";
 import { formatCombo } from "../state/commands";
 import { VIEWS, type Tool, type ToolId } from "./tools";
 import { FILTERS, type Viewport } from "./useViewport";
+import type { RenderStyle } from "../render/session";
 
 export interface StageBarsProps {
   tool: Tool;
@@ -9,8 +10,8 @@ export interface StageBarsProps {
   vp: Viewport;
   /** Whether exactly one part is picked (Move and Turn need one). */
   onePart: boolean;
-  /** Opens the Render view (#197). */
-  onRender?: () => void;
+  /** Opens the Render view (#197) in its colours or in paper white. */
+  onRender?: (style: RenderStyle) => void;
 }
 
 /** The view bar floating over the viewport (the tools live on the top bar), and the armed tool's options strip. */
@@ -37,15 +38,23 @@ export function StageBars({ tool, onArmTool, vp, onePart, onRender }: StageBarsP
         ))}
         <Button icon="frame" label="Fit" title="Fit the parts in the view" shortcut="F" onClick={vp.fit} />
         <MenuButton label="Named views" entries={vp.viewEntries} trigger={(p) => <Button {...p} icon="camera" label="Views" title="Save and use views" />} />
-        <Button
-          icon="paint"
-          label={vp.style === "lineart" ? "Line art" : "Shaded"}
-          title="Switch shaded and line art"
-          shortcut="L"
-          on={vp.style === "lineart"}
-          onClick={vp.toggleStyle}
+        <MenuButton
+          label="View style"
+          entries={[
+            { id: "shaded", label: "Shaded", checked: vp.style === "shaded", onSelect: () => vp.setStyle("shaded") },
+            { id: "lineart", label: "Line art", keys: "L", checked: vp.style === "lineart", onSelect: () => vp.setStyle("lineart") },
+            ...(onRender
+              ? ([
+                  { kind: "separator", id: "render-sep" },
+                  { id: "render", label: "Render", icon: "sun", keys: formatCombo("shift+r"), onSelect: () => onRender("finishes") },
+                  { id: "paper", label: "Render in paper", icon: "sun", onSelect: () => onRender("paper") },
+                ] as MenuEntry[])
+              : []),
+          ]}
+          trigger={(p) => (
+            <Button {...p} icon="paint" label={vp.style === "lineart" ? "Line art" : "Shaded"} title="How the view draws the model, or a rendered picture" />
+          )}
         />
-        {onRender && <Button icon="sun" label="Render" title="A photoreal picture you can save" shortcut={formatCombo("shift+r")} onClick={onRender} />}
       </Toolbar>
       {tool.id === "section" && (
         <ArmedBar title={tool.label} icon={tool.icon}>

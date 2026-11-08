@@ -235,10 +235,11 @@ export function useViewport(d: ViewportDeps) {
 
   const filterEntries: MenuEntry[] = FILTERS.map((f) => ({ id: f.id, label: f.label, checked: filter === f.id, onSelect: () => setFilter(f.id) }));
 
-  const toggleStyle = useCallback(() => {
+  /** Shaded or line art, or the other one of the two when `to` is left out. */
+  const setStyle = useCallback((to?: RenderStyle) => {
     setStyleSetting((s) => {
       const now: RenderStyle = s === "auto" ? (live.current.theme === "holodeck" ? "lineart" : "shaded") : s;
-      const next: RenderStyle = now === "shaded" ? "lineart" : "shaded";
+      const next: RenderStyle = to ?? (now === "shaded" ? "lineart" : "shaded");
       try {
         localStorage.setItem(STYLE_KEY, next);
       } catch {
@@ -248,6 +249,7 @@ export function useViewport(d: ViewportDeps) {
       return next;
     });
   }, []);
+  const toggleStyle = useCallback(() => setStyle(), [setStyle]);
 
   const sectionRef = useRef(section);
   sectionRef.current = section;
@@ -396,6 +398,7 @@ export function useViewport(d: ViewportDeps) {
     onCamera,
     onRotate,
     toggleStyle,
+    setStyle,
   };
 }
 
