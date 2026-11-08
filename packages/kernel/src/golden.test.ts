@@ -265,6 +265,18 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h"], plane: "YZ" });
     return new ModelBuilder(oc).solid(build(doc).parts[0]!).shape;
   },
+  // Mirror a mirror: an M3 hole mirrored across YZ, then the hole and that mirror mirrored across XZ, for four holes.
+  "mirror-of-mirror": (oc) => {
+    let doc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 20, z: 10 });
+    doc = addHole(
+      doc,
+      { part: "b", frame: { origin: [0, 0, 10], x: [1, 0, 0], normal: [0, 0, 1] }, points: [[12, 5]], size: "M3", fit: "printed", head: "none", depth: null },
+      "h",
+    );
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h"], plane: "YZ" }, "m1");
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h", "m1"], plane: "XZ" }, "m2");
+    return new ModelBuilder(oc).solid(build(doc).parts[0]!).shape;
+  },
   // Pattern of features: the same M3 hole copied 3 times along X, 10 mm apart, then twice round Z, on one plate.
   "pattern-hole-features": (oc) => {
     let doc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 20, z: 10 });

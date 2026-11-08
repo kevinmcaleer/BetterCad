@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { drawRectangle, type Sketch } from "@bettercad/sketch";
 import {
+  addExtrude,
   addHole,
   addJoint,
   addLink,
@@ -12,7 +14,9 @@ import {
   featureSummary,
   mirrorableFeatures,
   newDoc,
+  addSketch,
   updatePattern,
+  updateSketch,
   type ModelDoc,
   type PatternFeature,
   type Vec3,
@@ -331,5 +335,77 @@ describe("Pattern of features, and round a construction axis", () => {
     expect(build(doc).failed.size).toBe(0);
     expect(copiesWhat({ kind: "circle", of: "component" })).toBe("bodies");
     expect(copiesWhat({ kind: "mirror", of: "component" })).toBe("component");
+  });
+});
+
+describe("Mirror a mirror", () => {
+  /** A 40 × 20 × 10 chassis at the origin with a 4 × 4 mm stub sketched at (12, 4) on its top, extruded 5 mm by "x". */
+  function stubbed(operation: "join" | "new"): ModelDoc {
+    let doc = changeParts(addPart(newDoc(), "box", "c"), ["c"], "size", { x: 40, y: 20, z: 10 });
+    doc = addSketch(doc, { kind: "world", plane: "XY", offset: 10 }, "s");
+    doc = updateSketch(doc, "s", (k: Sketch) => drawRectangle(k, [12, 4], [16, 8]).sketch);
+    return addExtrude(
+      doc,
+      { sketch: "s", seeds: [[14, 6]], distance: 5, direction: "one", operation, ...(operation === "join" ? { target: "c" } : {}) },
+      "x",
+      "stub",
+    );
+  }
+
+  it("lists a mirror of features as a step to mirror again, and makes four holes from one", () => {
+    const kb = new ModelBuilder(oc);
+    let doc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 20, z: 20 });
+    doc = addHole(
+      doc,
+      {
+        part: "b",
+        frame: { origin: [0, 0, 20], x: [1, 0, 0], normal: [0, 0, 1] },
+        points: [[10, 5]],
+        size: "M3",
+        fit: "printed",
+        offset: 0,
+        head: "none",
+        depth: null,
+      },
+      "h1",
+    );
+    const one = 16000 - bbox(kb, doc, "b").volume;
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h1"], plane: "YZ" }, "m1");
+    expect(mirrorableFeatures(doc).map((f) => f.id)).toEqual(["h1", "m1"]);
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h1", "m1"], plane: "XZ" }, "m2");
+    expect(featureSummary(doc, doc.features.at(-1)!)).toBe("Hole 1, Mirror 1 across XZ");
+    expect(dependsOn(doc, "m2")).toEqual(expect.arrayContaining(["h1", "m1"]));
+    expect(build(doc).failed.size).toBe(0);
+    expect(16000 - bbox(kb, doc, "b").volume).toBeCloseTo(4 * one, 1);
+    // A pattern of a mirror works the same way: two of each of the two holes, 5 mm apart.
+    doc = { ...doc, features: doc.features.filter((f) => f.id !== "m2") };
+    doc = addPattern(doc, { parts: [], kind: "rect", of: "features", features: ["h1", "m1"], count1: 2, spacing1: -5 }, "p");
+    expect(build(doc).failed.size).toBe(0);
+    expect(16000 - bbox(kb, doc, "b").volume).toBeCloseTo(4 * one, 1);
+  });
+
+  it("mirrors a joined stub left to right, then both front to back, for four", () => {
+    const kb = new ModelBuilder(oc);
+    let doc = stubbed("join");
+    expect(bbox(kb, doc, "c").volume).toBeCloseTo(8000 + 80, 1);
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["x"], plane: "YZ" }, "m1");
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["x", "m1"], plane: "XZ" }, "m2");
+    expect(build(doc).failed.size).toBe(0);
+    expect(build(doc).parts).toHaveLength(1);
+    expect(bbox(kb, doc, "c").volume).toBeCloseTo(8000 + 4 * 80, 1);
+  });
+
+  it("mirrors a stub body and its mirror into four bodies, without making ops on a body twice", () => {
+    let doc = stubbed("new");
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["x"], plane: "YZ" }, "m1");
+    expect(mirrorableFeatures(doc).map((f) => f.id)).toContain("m1");
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["x", "m1"], plane: "XZ" }, "m2");
+    const b = build(doc);
+    expect(b.failed.size).toBe(0);
+    const stubs = b.parts.filter((p) => p.id !== "c");
+    expect(stubs).toHaveLength(4);
+    expect(stubs.every((p) => !(p.ops ?? []).some((o) => o.feature === "m2"))).toBe(true);
+    const kb = new ModelBuilder(oc);
+    for (const p of stubs) expect(kb.solid(p).body.measure.volume).toBeCloseTo(80, 1);
   });
 });

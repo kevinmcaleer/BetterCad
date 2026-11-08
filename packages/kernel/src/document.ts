@@ -903,9 +903,12 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         if (of === "features") {
           // Each picked feature's joins, cuts and holes, made again (mirrored, moved or turned) on the bodies they changed.
           const wanted = new Set(f.features);
+          // A body it copies whole already carries every op made on it, so those ops aren't made on it again.
+          const whole = new Set(f.parts);
           let made = 0;
           let skipped = 0;
           for (const p of parts) {
+            if (whole.has(p.id)) continue;
             const extra: BodyOp[] = [];
             for (const o of p.ops ?? []) {
               if (!wanted.has(o.feature)) continue;
@@ -2834,7 +2837,10 @@ function syncMirrorParts(doc: ModelDoc, id: string): ModelDoc {
   return { ...doc, features: doc.features.map((g) => (g.id === id ? { ...f, parts } : g)) };
 }
 
-/** The steps before `id` (or before the end) a Mirror or Pattern of features can copy: those that cut, joined, made holes or made a body. */
+/**
+ * The steps before `id` (or before the end) a Mirror or Pattern of features can copy: those that cut, joined, made holes
+ * or made a body, and earlier Mirror and Pattern steps that did, so a mirror can be mirrored again.
+ */
 export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length): Feature[] {
   const { parts } = build(doc, before);
   const ops = new Set(parts.flatMap((p) => (p.ops ?? []).filter((o) => MIRRORED_OPS.has(o.op)).map((o) => o.feature)));
@@ -2844,8 +2850,8 @@ export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length):
     .filter(
       (f) =>
         !f.suppressed &&
-        f.type !== "pattern" &&
-        (ops.has(f.id) || ((f.type === "extrude" || f.type === "revolve" || f.type === "gear") && partsMade(f).some((p) => here.has(p)))),
+        (ops.has(f.id) ||
+          ((f.type === "extrude" || f.type === "revolve" || f.type === "gear" || f.type === "pattern") && partsMade(f).some((p) => here.has(p)))),
     );
 }
 
