@@ -118,7 +118,6 @@ import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
-import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
@@ -167,6 +166,10 @@ const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ defa
 const CombineBar = lazy(() => import("./CombineBar").then((m) => ({ default: m.CombineBar })));
 const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
 // The sketch palette only shows while a sketch is open, so it loads then.
+// The sketch bars and labels load with the first sketch (Sketch's pick bar asks for them first).
+const SketchBars = lazy(() => import("../sketch/SketchUI").then((m) => ({ default: m.SketchBars })));
+const SketchLabels = lazy(() => import("../sketch/SketchUI").then((m) => ({ default: m.SketchLabels })));
+const SketchPickBar = lazy(() => import("../sketch/SketchUI").then((m) => ({ default: m.SketchPickBar })));
 const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
 const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
@@ -2557,7 +2560,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         }
         stageToolbar={
           sketch.editing ? (
-            <SketchBars s={sketch} />
+            <Suspense fallback={null}>
+              <SketchBars s={sketch} />
+            </Suspense>
           ) : (
             <>
               {files.banners}
@@ -2589,7 +2594,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <PlaceBar x={place} />
                 </Suspense>
               )}
-              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
+              {tool === "sketch" && (
+                <Suspense fallback={null}>
+                  <SketchPickBar onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {(tool === "extrude" || tool === "revolve") && (
                 <Suspense fallback={null}>
                   {tool === "extrude" ? (
@@ -2697,7 +2706,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             }}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
-            <SketchLabels s={sketch} />
+            {sketch.editing && (
+              <Suspense fallback={null}>
+                <SketchLabels s={sketch} />
+              </Suspense>
+            )}
             {render && (
               <Suspense fallback={null}>
                 <RenderPicture
