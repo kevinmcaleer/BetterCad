@@ -70,6 +70,7 @@ import {
   type ViewRect,
 } from "./camera";
 import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter } from "./ids";
+import { edgesOnOutline } from "./faceEdges";
 import { blurMaterial, capMaterial, dofMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
 import { readPalette, type Palette } from "./colours";
 
@@ -856,8 +857,11 @@ export class Engine {
     this.invalidate();
   }
 
-  /** What is under a point (CSS px from the canvas's top left), for the filter given. */
-  pick(x: number, y: number, filter: SelectFilter = this.filter): Pick | null {
+  /**
+   * What is under a point (CSS px from the canvas's top left), for the filter given. Ghosted bodies are passed over
+   * unless `ghosts` (a sketch ghosts the model, but its edges can still be sized to).
+   */
+  pick(x: number, y: number, filter: SelectFilter = this.filter, ghosts = false): Pick | null {
     if (!this.order.length) return null;
     const cam = this.activeCamera;
     const dpr = this.renderer.getPixelRatio();
@@ -872,7 +876,7 @@ export class Engine {
     cam.setViewOffset(W, H, x * dpr - half, y * dpr - half, size, size);
     for (const b of this.order) {
       const [faces, lines, points] = b.pick.children as [Mesh, LineSegments, Points];
-      b.pick.visible = !b.body.ghost || filter === "body";
+      b.pick.visible = !b.body.ghost || filter === "body" || ghosts;
       lines.visible = filter === "edge";
       points.visible = filter === "vertex";
       const faceElement = filter === "face" ? 0 : FACE_ONLY;
@@ -1088,6 +1092,43 @@ export class Engine {
       }
     }
     return { flat, normal: [n0.x, n0.y, n0.z], centroid: [centroid.x, centroid.y, centroid.z], edge: [best.x, best.y, best.z], boundary };
+  }
+
+  /** An edge's points in world space, in order along it (#54: projecting it into a sketch). */
+  edgePoints(bodyId: string, edge: number): V3[] | null {
+    const o = this.bodies.get(bodyId);
+    if (!o) return null;
+    const m = o.body.mesh;
+    const [s0, s1] = [m.edgeSegs[edge], m.edgeSegs[edge + 1]];
+    if (s0 === undefined || s1 === undefined || s1 <= s0) return null;
+    o.group.updateMatrixWorld(true);
+    const at = (k: number) =>
+      new Vector3(m.edgePositions[k]!, m.edgePositions[k + 1]!, m.edgePositions[k + 2]!).applyMatrix4(o.group.matrixWorld).toArray() as V3;
+    const out: V3[] = [at(s0 * 6)];
+    for (let s = s0; s < s1; s++) out.push(at(s * 6 + 3));
+    return out;
+  }
+
+  /** A vertex's place in world space. */
+  vertexPoint(bodyId: string, vertex: number): V3 | null {
+    const o = this.bodies.get(bodyId);
+    const v = o?.body.mesh.vertices;
+    if (!o || !v || vertex * 3 + 2 >= v.length) return null;
+    o.group.updateMatrixWorld(true);
+    return new Vector3(v[vertex * 3]!, v[vertex * 3 + 1]!, v[vertex * 3 + 2]!).applyMatrix4(o.group.matrixWorld).toArray() as V3;
+  }
+
+  /**
+   * The edges round a face, each as its points in world space, for projecting the face into a sketch as whole lines,
+   * arcs and circles. Any piece of the outline no edge covers comes back as a two-point edge of its own (edge −1).
+   */
+  faceEdges(bodyId: string, face: number): { edge: number; points: V3[] }[] | null {
+    const info = this.faceInfo(bodyId, face);
+    const o = this.bodies.get(bodyId);
+    if (!info || !o) return null;
+    const all = Array.from({ length: o.body.mesh.edgeSegs.length - 1 }, (_, i) => this.edgePoints(bodyId, i) ?? []);
+    const { edges, rest } = edgesOnOutline(all, info.boundary);
+    return [...edges.map((i) => ({ edge: i, points: all[i]! })), ...rest.map(([a, b]) => ({ edge: -1, points: [a, b] }))];
   }
 
   /**
