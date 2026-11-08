@@ -36,8 +36,10 @@ export interface RenderState {
   samples: number;
   /** Orbiting: the picture waits for you to stop. */
   moving: boolean;
-  /** No WebGL2, or under 2 samples after a few seconds. */
+  /** No WebGL2: the browser can't render at all. */
   slow: boolean;
+  /** Rendering, but slowly (under 2 samples after a few seconds): worth a passing note, not a warning. */
+  sluggish: boolean;
   /** Saving a picture: 0 to 1, or null. */
   saving: number | null;
 }
@@ -61,6 +63,7 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     samples: 0,
     moving: false,
     slow: false,
+    sluggish: false,
     saving: null,
   };
   const subs = new Set<() => void>();

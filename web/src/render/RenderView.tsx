@@ -1,9 +1,9 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
-import { Banner, Button, MenuButton, type MenuEntry } from "@bettercad/ui";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Banner, Button, MenuButton, ViewCube, type MenuEntry } from "@bettercad/ui";
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
-import { orbit, pan, zoom, type CameraState } from "../viewport/camera";
+import { lookFrom, orbit, pan, viewRotation, zoom, type CameraState } from "../viewport/camera";
 import type { Section } from "../viewport/engine";
 import type { CutPlane } from "./cut";
 
@@ -14,6 +14,8 @@ const SLOW_SAMPLES = 2;
 const SAVE_SAMPLES = 64;
 
 export const SLOW_TEXT = "Your browser can't render this well. Export glTF to render in Blender.";
+/** A passing note, in a toast, when the picture is coming but slowly (a tablet, say). */
+export const SLUGGISH_TEXT = "Rendering is slow on this device. The picture still clears, just give it longer.";
 
 /** The section as a plane through its pushed origin. */
 function cutPlane(s: Section | null): CutPlane | null {
@@ -37,8 +39,11 @@ export interface RenderPictureProps {
   camera: CameraState;
   /** The camera moved in the render view, so the modelling view can follow when you go back. */
   onCamera: (c: CameraState) => void;
-  /** Saves the picture's PNG. */
-  onSave: (png: Blob, size: SaveSize) => Promise<void>;
+  /**
+   * Saves the picture's PNG. Called at once on the click with the picture still being made, so it can ask where to
+   * save while the browser allows it.
+   */
+  onSave: (png: Promise<Blob>, size: SaveSize) => Promise<void>;
 }
 
 /**
@@ -70,17 +75,21 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     pr.setCamera(cam.current);
     session.set({ loading: false, samples: 0 });
     pr.start();
-    const slow = window.setTimeout(() => pr.samples < SLOW_SAMPLES && session.set({ slow: true }), SLOW_MS);
+    const slow = window.setTimeout(() => pr.samples < SLOW_SAMPLES && session.set({ sluggish: true }), SLOW_MS);
     session.save = async (size) => {
       const w = el.clientWidth,
         h = el.clientHeight;
-      const [sw, sh] =
-        size === "4k" ? [3840, 2160] : size === "double" ? [w * 2, h * 2] : [w * (window.devicePixelRatio || 1), h * (window.devicePixelRatio || 1)];
+      const [sw, sh] = size === "4k" ? [3840, 2160] : size === "double" ? [w * 2, h * 2] : [el.width, el.height];
       session.set({ saving: 0 });
+      const stop = new AbortController();
+      const png = pr.snapshot(Math.round(sw), Math.round(sh), testMax() ?? Math.max(SAVE_SAMPLES, pr.samples), (f) => session.set({ saving: f }), stop.signal);
+      png.catch(() => {});
       try {
-        const png = await pr.snapshot(Math.round(sw), Math.round(sh), Math.max(SAVE_SAMPLES, pr.samples), (f) => session.set({ saving: f }));
         await onSave(png, size);
       } finally {
+        // Cancelled in the picker: stop rendering a picture nobody will keep.
+        stop.abort();
+        await png.catch(() => {});
         session.set({ saving: null });
       }
     };
@@ -104,20 +113,33 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     if (r.current) r.current.maxSamples = testMax() ?? samplesFor(state.quality);
   }, [state.quality]);
 
+  const [rotation, setRotation] = useState(() => viewRotation(cam.current));
+  const move = useCallback(
+    (c: CameraState) => {
+      cam.current = c;
+      r.current?.setCamera(c);
+      setRotation(viewRotation(c));
+      onCamera(c);
+    },
+    [onCamera],
+  );
+  /** Dragging the picture or the view cube: the picture waits until you stop. */
+  const hold = useCallback(
+    (on: boolean) => {
+      r.current?.pause(on);
+      session.set({ moving: on });
+    },
+    [session],
+  );
+
   // Orbit, pan and zoom with the modelling view's own camera moves.
   useEffect(() => {
     const el = canvas.current!;
     let last: { x: number; y: number; button: number } | null = null;
-    const move = (c: CameraState) => {
-      cam.current = c;
-      r.current?.setCamera(c);
-      onCamera(c);
-    };
     const down = (e: PointerEvent) => {
       last = { x: e.clientX, y: e.clientY, button: e.button };
       el.setPointerCapture(e.pointerId);
-      r.current?.pause(true);
-      session.set({ moving: true });
+      hold(true);
     };
     const drag = (e: PointerEvent) => {
       if (!last) return;
@@ -129,8 +151,7 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     const up = () => {
       if (!last) return;
       last = null;
-      r.current?.pause(false);
-      session.set({ moving: false });
+      hold(false);
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -154,13 +175,35 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
       el.removeEventListener("wheel", wheel);
       el.removeEventListener("contextmenu", menu);
     };
-  }, [onCamera, session]);
+  }, [move, hold]);
 
-  return <canvas ref={canvas} className="bc-render-canvas" role="img" aria-label={`Rendered picture of the model, ${samplesText(state.samples)}`} />;
+  const orbiting = useRef(false);
+  return (
+    <>
+      <canvas ref={canvas} className="bc-render-canvas" role="img" aria-label={`Rendered picture of the model, ${samplesText(state.samples)}`} />
+      {/* The render's own view cube: it turns the picture's camera, as the modelling view's turns that one. */}
+      <div className="bc-render-cube">
+        <ViewCube
+          rotation={rotation}
+          onPick={(d) => move(lookFrom(cam.current, d))}
+          onOrbit={(dx, dy) => {
+            if (!orbiting.current) hold((orbiting.current = true));
+            move(orbit(cam.current, -dx * 0.5, dy * 0.5));
+          }}
+          onOrbitEnd={() => {
+            orbiting.current = false;
+            hold(false);
+          }}
+        />
+      </div>
+    </>
+  );
 }
 
 export interface RenderBarProps {
   session: RenderSession;
+  /** Shows a passing note in the top-right toast. */
+  onNote?: (text: string) => void;
   onClose: () => void;
   onExportGltf: () => void;
 }
@@ -220,8 +263,13 @@ function QualityBar({ session }: { session: RenderSession }) {
 }
 
 /** The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. */
-export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
+export function RenderBar({ session, onClose, onExportGltf, onNote }: RenderBarProps) {
   const s = useSession(session);
+  // A slow render still works, so it gets a toast that fades rather than a banner over the picture.
+  useEffect(() => {
+    if (s.sluggish && !s.slow) onNote?.(SLUGGISH_TEXT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.sluggish]);
   const save: MenuEntry[] = SIZES.map((z) => ({ id: z.id, label: z.label, disabled: s.saving !== null || s.slow, onSelect: () => void session.save?.(z.id) }));
   const status = s.loading
     ? "Loading the renderer…"

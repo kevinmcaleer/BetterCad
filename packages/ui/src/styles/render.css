@@ -13,9 +13,12 @@
 .bc-render-canvas:active {
   cursor: grabbing;
 }
-/* The view cube turns the modelling camera, which the picture hides: put it away while rendering. */
-.bc-viewport:has(.bc-render-canvas) .bc-viewcube {
+/* The modelling view's cube turns the modelling camera, which the picture hides: the render shows its own instead. */
+.bc-viewport:has(.bc-render-canvas) .bc-viewcube:not(.bc-render-cube .bc-viewcube) {
   display: none;
+}
+.bc-render-cube {
+  display: contents;
 }
 .bc-render-status {
   min-width: 10ch;
