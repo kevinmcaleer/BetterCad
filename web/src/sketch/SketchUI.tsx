@@ -200,6 +200,8 @@ export function SketchLabels({ s }: { s: SketchSession }) {
     .filter((d) => s.options.dimensions || s.dimEdit === d.id || s.sel.includes(d.id))
     .map((d) => ({ d, art: dimensionArt(idx, d, px, centre), on: s.sel.includes(d.id) || conflicting.has(d.id) }));
 
+  // While a constraint or the dimension tool is armed, marks let clicks through to the geometry under them.
+  const armed = !!s.ctool || s.stool === "dimension";
   const placed = new Map<string, number>();
   const glyphs = s.showConstraints
     ? s.sketch.constraints.flatMap((c) => {
@@ -278,7 +280,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
         <button
           key={c.id}
           type="button"
-          className={`bc-glyph${s.sel.includes(c.id) ? " bc-on" : ""}${conflicting.has(c.id) ? " bc-bad" : ""}${c.suppressed ? " bc-off" : ""}`}
+          className={`bc-glyph${armed ? " bc-pass" : ""}${s.sel.includes(c.id) ? " bc-on" : ""}${conflicting.has(c.id) ? " bc-bad" : ""}${c.suppressed ? " bc-off" : ""}`}
           style={{ left: x, top: y }}
           title={CONSTRAINT_LABEL[c.type]}
           aria-label={`${CONSTRAINT_LABEL[c.type]} constraint`}
@@ -287,7 +289,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
           {g}
         </button>
       ))}
-      {s.hover === ORIGIN && s.origin && (
+      {s.hover === ORIGIN && s.origin && !s.cursor && (
         <span className="bc-snap-label" style={{ left: at(s.origin).x, top: at(s.origin).y }}>
           {SNAP_LABEL.origin}
         </span>
@@ -299,7 +301,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
       )}
       {s.cursor && s.cursor.kind !== "free" && (
         <span className="bc-snap-label" style={{ left: at(s.cursor.xy).x, top: at(s.cursor.xy).y }}>
-          {SNAP_LABEL[s.cursor.kind]}
+          {s.cursor.label || SNAP_LABEL[s.cursor.kind]}
         </span>
       )}
     </div>

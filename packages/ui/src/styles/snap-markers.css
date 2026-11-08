@@ -250,6 +250,10 @@
 .bc-glyph.bc-off {
   opacity: 0.45;
 }
+/* A constraint tool is armed: the mark lets the click through to the point or line under it. */
+.bc-glyph.bc-pass {
+  pointer-events: none;
+}
 /* The armed constraint tool's tag: it rides below and right of the pointer until Esc. */
 .bc-tool-tag {
   transform: translate(14px, 10px);
