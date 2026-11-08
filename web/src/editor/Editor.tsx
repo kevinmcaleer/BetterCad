@@ -94,8 +94,6 @@ import {
   type PatternKind,
   type Vec3,
   homePose,
-  setToolPoint,
-  lockJoint,
   patternCopyIds,
   addDrive,
   updateDrive,
@@ -714,10 +712,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   poseState.current = { joints: built.joints, parts, moves: linkMoves, pose: shownPose, livePose, raw: pose, tools: doc.tools };
   // Tool points (#176): click a point on a link to drag the arm by; the solver loads once one is wanted.
   const [toolPick, setToolPick] = useState(false);
-  const ikMaths = useRef<typeof import("../state/ik") | null>(null);
+  const ikMaths = useRef<typeof import("../joint/ikDrag") | null>(null);
   const hasTools = !!doc.tools?.length;
   useEffect(() => {
-    if ((hasTools || toolPick) && !ikMaths.current) void import("../state/ik").then((m) => (ikMaths.current = m));
+    if ((hasTools || toolPick) && !ikMaths.current) void import("../joint/ikDrag").then((m) => (ikMaths.current = m));
   }, [hasTools, toolPick]);
   useEscape(
     toolPick,
@@ -737,10 +735,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         return true;
       }
       const m = moves.get(link);
-      void import("../state/ik").then((ik) => {
+      void import("../joint/ikDrag").then((ik) => {
         const home = m ? ik.homeOf(m, hit.point) : hit.point;
         const name = live.current.doc.features.find((f) => f.id === link)?.name ?? "the link";
-        store.edit((d) => setToolPoint(d, link, home), "Set the tool point");
+        store.edit((d) => ik.setToolPoint(d, link, home), "Set the tool point");
         store.seal();
         say(`Set the tool point on ${name}. Drag ${name} to move the arm.`);
       });
@@ -756,47 +754,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       const ik = ikMaths.current;
       if (!tool || !engine || !ik) return null;
       const problem = { joints, drives: drivesRef.current.drives, link, point: tool.point, locked: tool.locked };
-      // The tool point follows the pointer on screen: wherever it was grabbed, it keeps that offset from the tool point.
-      const shown = engine.project(ik.toolPoint(problem, raw));
-      const offset = { x: shown.x - at.x, y: shown.y - at.y };
-      let now: Pose = { ...raw };
-      let miss = 0;
-      let moved = false;
-      let done = false;
-      const finish = () => {
-        done = true;
-        setPoseDrag(null);
-      };
-      const cancel = () => {
-        if (done) return;
-        finish();
-        setLivePose(before);
-        say("Put the arm back");
-      };
-      setPoseDrag({ cancel });
-      return {
-        move: (p) => {
-          if (done) return;
-          const r = engine.ray(p.x + offset.x, p.y + offset.y);
-          // Aim at the point on the pointer's ray nearest the tool point, a few times over, so the arm settles where it
-          // comes closest to the ray (through it, when it can reach).
-          for (let k = 0; k < 4; k++) {
-            const tip = ik.toolPoint(problem, now);
-            const t = (tip[0] - r.origin[0]) * r.dir[0] + (tip[1] - r.origin[1]) * r.dir[1] + (tip[2] - r.origin[2]) * r.dir[2];
-            const target: [number, number, number] = [r.origin[0] + r.dir[0] * t, r.origin[1] + r.dir[1] * t, r.origin[2] + r.dir[2] * t];
-            const step = ik.solveIk(problem, now, target, 10);
-            now = step.pose;
-            miss = step.miss;
-          }
-          moved = true;
-          setLivePose(now);
-        },
-        end: () => {
-          if (done) return;
+      const finish = () => setPoseDrag(null);
+      const drag = ik.ikDrag(problem, raw ?? {}, engine, at, {
+        show: setLivePose,
+        commit: (kept, miss) => {
           finish();
-          if (!moved) return setLivePose(before);
-          const kept: Pose = {};
-          for (const [id, v] of Object.entries(now)) if (Math.abs(v) > 1e-9) kept[id] = Math.round(v * 1000) / 1000;
           if (store.isLocked()) setLivePose(kept);
           else {
             store.edit((d) => ({ ...d, pose: Object.keys(kept).length ? kept : undefined }), "Move the arm", "pose-ik");
@@ -805,8 +767,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           }
           if (miss >= 1) say(`Out of reach by ${Math.round(miss)} mm`);
         },
-        cancel,
-      };
+        revert: (cancelled) => {
+          finish();
+          setLivePose(before);
+          if (cancelled) say("Put the arm back");
+        },
+      });
+      setPoseDrag({ cancel: () => drag.cancel() });
+      return drag;
     },
     [vp.ref, store, say],
   );
@@ -3360,7 +3328,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                         nameOf: (id: string) => built.joints.find((j) => j.id === id)?.name ?? "another joint",
                         locked: doc.tools?.length ? [...new Set(doc.tools.flatMap((t) => t.locked ?? []))] : undefined,
                         onLock: doc.tools?.length
-                          ? (id: string, on: boolean) => store.edit((d) => lockJoint(d, id, on), on ? "Lock the joint" : "Unlock the joint")
+                          ? (id: string, on: boolean) => {
+                              const ik = ikMaths.current;
+                              if (ik) store.edit((d) => ik.lockJoint(d, id, on), on ? "Lock the joint" : "Unlock the joint");
+                            }
                           : undefined,
                       }
                     : undefined
