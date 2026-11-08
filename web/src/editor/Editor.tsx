@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Banner,
   Button,
@@ -127,7 +127,6 @@ import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { MountBar } from "../mount/MountBar";
 import { KEY as gearKey, useGear } from "../gear/useGear";
-import { GearBar } from "../gear/GearBar";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
@@ -149,6 +148,9 @@ import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPane
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
+
+/** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
+const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Browser" },
@@ -2073,7 +2075,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
-              {tool === "gear" && <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />}
+              {tool === "gear" && (
+                <Suspense fallback={null}>
+                  <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {tool === "mount" && <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
