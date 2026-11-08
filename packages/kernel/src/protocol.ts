@@ -7,6 +7,7 @@ import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
 import type { Mate } from "./occt/mates";
 import type { Clash } from "./occt/clashes";
+import type { SweepResult } from "./sweep";
 import type { CheckArea } from "./print/checks";
 import type { Orientation, OrientWeights } from "./print/orient";
 import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
@@ -40,6 +41,14 @@ export interface Methods {
   mates: { params: { doc: ModelDoc; upTo?: number; limit?: number }; result: Mate[] };
   /** Bodies that overlap or touch at the document's pose (#178), biggest overlap first. Posts progress. */
   clashes: { params: { doc: ModelDoc; upTo?: number; sameLink?: boolean; references?: boolean }; result: Clash[] };
+  /**
+   * The clash sweep (#179): where bodies hit as each joint moves through its range ("each", or one joint's id), or as
+   * all of them move together ("together", `samples` poses). Posts progress.
+   */
+  sweep: {
+    params: { doc: ModelDoc; upTo?: number; joint?: string; step?: { hinge?: number; slider?: number }; samples?: number; references?: boolean };
+    result: SweepResult;
+  };
   /** Mass, centre of mass and inertia of each body that has mass (#174), from the document's material and infill. */
   mass: { params: { doc: ModelDoc; upTo?: number }; result: BodyMass[] };
   /** Moves a timeline step (#286), finding moved fillets' and shells' edges and faces again by place. */

@@ -32,7 +32,10 @@ import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
 import { readImport, type ImportedBody } from "./imports";
 import { findMates, type Mate } from "./mates";
-import { findClashes, type Clash } from "./clashes";
+import { findClashes, overlapsAt, type Clash } from "./clashes";
+import { triangles } from "./export";
+import { meshTree, type MeshTree } from "../collide";
+import { sweepClashes, type SweepOptions, type SweepResult } from "../sweep";
 import { linkTransforms } from "../pose";
 import { resolvePose } from "../drivelinks";
 import { catalogueShape } from "./catalogue";
@@ -117,6 +120,8 @@ function primitive(oc: OC, p: Part): TopoDS_Shape {
 
 export class ModelBuilder {
   private cache = new Map<string, { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> }>();
+  /** Box trees over each body's mesh, for the clash sweep (#179). */
+  private trees = new Map<string, MeshTree>();
   private used = new Set<string>();
 
   constructor(private oc: OC) {}
@@ -284,6 +289,45 @@ export class ModelBuilder {
       }
     }
     return findClashes(this.oc, bodies, opts);
+  }
+
+  /**
+   * The clash sweep (#179): each joint through its range, or all together, at the document's pose otherwise, as built up
+   * to `upTo`. Bodies are meshed once for the fast test; the exact check settles the ends of each range. Holes never
+   * clash; reference bodies only when asked.
+   */
+  sweep(doc: ModelDoc, upTo = doc.features.length, opts: SweepOptions & { references?: boolean } = {}): SweepResult {
+    const { parts, joints, links, drives } = build(doc, upTo);
+    this.useBlobs(doc);
+    const linkOf = new Map<string, string>();
+    for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
+    const bodies = [];
+    const shapes = new Map<string, TopoDS_Shape>();
+    for (const p of parts) {
+      if (p.hole || (p.reference && !opts.references)) continue;
+      try {
+        const shape = this.solid(p).shape;
+        const k = partKey(p, "fast");
+        let tree = this.trees.get(k);
+        if (!tree) {
+          tree = meshTree(triangles(this.oc, shape, 0.05));
+          if (this.trees.size > 200) this.trees.clear();
+          this.trees.set(k, tree);
+        }
+        shapes.set(p.id, shape);
+        bodies.push({ id: p.id, link: linkOf.get(p.id), tree });
+      } catch {
+        // A body that can't build has nothing to clash with; the timeline already says why.
+      }
+    }
+    return sweepClashes(
+      joints,
+      drives,
+      doc.pose,
+      bodies,
+      (a, b, at) => overlapsAt(this.oc, shapes.get(a.id)!, a.link ? at.get(a.link) : undefined, shapes.get(b.id)!, b.link ? at.get(b.link) : undefined),
+      opts,
+    );
   }
 
   /**

@@ -85,3 +85,12 @@
   align-items: center;
   gap: var(--bc-space-3);
 }
+/* Clash sweep (#179): what to move, the step, Sweep, then the ranges and a suggested limit. */
+.bc-clash-sweep {
+  display: grid;
+  gap: var(--bc-space-3);
+  justify-items: start;
+  width: 100%;
+  padding-top: var(--bc-space-3);
+  border-top: 1px solid var(--bc-color-line);
+}

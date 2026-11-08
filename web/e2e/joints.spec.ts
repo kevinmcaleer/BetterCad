@@ -436,3 +436,48 @@ test("save a named pose and go back to it", async ({ page }) => {
   await expect(angle).toHaveValue("40");
   await expect(page.getByRole("button", { name: /^Undo go to reach/i })).toBeVisible();
 });
+
+test("sweep a joint for clashes and set the limit it suggests", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  // Box 2 sits 2 mm clear of Box 1 and turns about its own middle: past about 13° either way its corners hit Box 1.
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click();
+  const x = page.getByRole("textbox", { name: "X (mm)" });
+  await x.fill("22");
+  await x.press("Enter");
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  await click(page, 22, 0, 20);
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  await click(page, 22, 0, 20);
+  await expect(page.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ControlOrMeta+k");
+  const command = page.getByRole("combobox", { name: "Command" });
+  await expect(command).toBeFocused();
+  await command.fill("Sweep the joints");
+  await page.getByRole("option", { name: /Sweep the joints for clashes/ }).click();
+  const props = page.getByRole("complementary", { name: "Properties" });
+  const hits = props.getByRole("list", { name: "Hits" });
+  await expect(hits).toContainText(/Box 2 hits Box 1 from 1[23](\.\d)?° to 7[67](\.\d)?° on Joint 1/, { timeout: 30_000 });
+  await expect(hits.getByRole("listitem")).toHaveCount(2);
+
+  // Show poses the arm at the first clash; the suggested limits keep it clear.
+  await hits.getByRole("button", { name: "Show" }).first().click();
+  await expect(page.getByRole("button", { name: /^Undo show the clash/i })).toBeVisible();
+  await props.getByRole("button", { name: /^Set the limits to -1[23]° and 1[23]°$/ }).click();
+  await expect(hits).toHaveCount(0);
+  await props.getByRole("button", { name: "Sweep", exact: true }).click();
+  await expect(props.getByRole("status").filter({ hasText: "Nothing hits from end to end." })).toBeVisible({ timeout: 30_000 });
+});
