@@ -5,6 +5,8 @@ import { ThemePicker } from "./ThemePicker";
 import type { CloudState } from "../files/useFiles";
 import { go } from "../cloud/route";
 import { TOOL_GROUPS, type ToolId } from "./tools";
+import { CONSTRUCT_KINDS, type ConstructKind } from "../state/document";
+import { constructIcon } from "./Timeline";
 import type { PanelId } from "./LeftPanel";
 
 const CLOUD_TEXT: Record<CloudState, string> = {
@@ -55,6 +57,19 @@ export interface TopBarProps {
   onExport?: () => void;
   /** Help (#110): shortcuts, the tour, the course, reports and About. */
   helpEntries?: MenuEntry[];
+  /** The Construct menu (#265): arms the tool for a kind of plane, axis or point. */
+  onConstruct?: (k: ConstructKind) => void;
+}
+
+/** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
+export function constructEntries(on: (k: ConstructKind) => void): MenuEntry[] {
+  const out: MenuEntry[] = [];
+  for (const k of CONSTRUCT_KINDS) {
+    const prev = out.length ? CONSTRUCT_KINDS[CONSTRUCT_KINDS.indexOf(k) - 1] : undefined;
+    if (prev && prev.what !== k.what) out.push({ kind: "separator", id: `s-${k.what}` });
+    out.push({ id: k.id, label: k.label, icon: constructIcon(k.what), onSelect: () => on(k.id) });
+  }
+  return out;
 }
 
 /** The panels a top-bar button opens: pressing it again goes back to the browser. */
@@ -103,16 +118,25 @@ export function TopBar(p: TopBarProps) {
                     <ToolButton icon="screw" label="Catalogue" pressed={p.panel === "robot"} onPress={panelToggle(p, "robot")} />
                   </>
                 )}
-                {g.tools.map((t) => (
-                  <ToolButton
-                    key={t.id}
-                    icon={t.icon}
-                    label={t.label}
-                    shortcut={t.key?.toUpperCase()}
-                    pressed={p.tool === t.id}
-                    onPress={() => p.onArmTool(t.id)}
-                  />
-                ))}
+                {g.tools.map((t) =>
+                  t.id === "construct" ? (
+                    <MenuButton
+                      key={t.id}
+                      label="Construct"
+                      entries={constructEntries((k) => p.onConstruct?.(k))}
+                      trigger={({ onClick, ...rest }) => <ToolButton {...rest} icon={t.icon} label={t.label} pressed={p.tool === t.id} onPress={onClick} />}
+                    />
+                  ) : (
+                    <ToolButton
+                      key={t.id}
+                      icon={t.icon}
+                      label={t.label}
+                      shortcut={t.key?.toUpperCase()}
+                      pressed={p.tool === t.id}
+                      onPress={() => p.onArmTool(t.id)}
+                    />
+                  ),
+                )}
               </span>
             ))}
           </Toolbar>

@@ -40,6 +40,20 @@ import {
   planeToLocal,
 } from "./pattern";
 import type { CopySpec, MirrorFace, MirrorOf, MirrorPlane, PatternKind, Plane, WorldAxis } from "./pattern";
+import {
+  CONSTRUCT_BASE,
+  bodyGeo,
+  construct as constructGeo,
+  constructKind,
+  constructSummary,
+  geoOf,
+  originGeo,
+  refText,
+  type ConstructGeo,
+  type ConstructKind,
+  type ConstructRef,
+  type Geo,
+} from "./construct";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import { evaluate } from "@bettercad/ui/expr";
 import {
@@ -65,6 +79,7 @@ import {
 } from "./extrude";
 
 export * from "./extrude";
+export * from "./construct";
 export * from "./pattern";
 export * from "./holes";
 export * from "./screws";
@@ -248,6 +263,8 @@ export interface PatternFeature extends FeatureBase {
   offset: number;
   /** Mirror: a flat face to mirror across instead of `plane`. */
   face?: MirrorFace;
+  /** Mirror: a construction plane step (#265) to mirror across instead of `plane`, where it is now. */
+  step?: string;
   /** Mirror: what it copies. Bodies when not set. */
   of?: MirrorOf;
   /**
@@ -324,6 +341,16 @@ export interface DriveFeature extends FeatureBase {
 export interface DeleteFeature extends FeatureBase {
   type: "delete";
   parts: string[];
+}
+/**
+ * Construction geometry (#265): a plane, axis or point worked out from its picks, as Fusion's Construct menu makes them.
+ * `value` is the kind's one number, if it has one: a distance (mm), an angle (degrees) or how far along (%).
+ */
+export interface ConstructFeature extends FeatureBase {
+  type: "construct";
+  kind: ConstructKind;
+  refs: ConstructRef[];
+  value: number;
 }
 /** A sketch (epic #5): its geometry, constraints and dimensions, on a plane. Extrude (#6) turns its profiles into solids. */
 export interface SketchFeature extends FeatureBase {
@@ -515,6 +542,7 @@ export interface GearFeature extends FeatureBase {
 }
 
 export type Feature =
+  | ConstructFeature
   | DriveFeature
   | JointFeature
   | LinkFeature
@@ -622,6 +650,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   link: "Link",
   joint: "Joint",
   drive: "Drive",
+  construct: "Construct",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -649,6 +678,16 @@ export interface Build {
   joints: JointFeature[];
   /** Drive links (#194) that built, with their multipliers worked out. */
   drives: BuiltDrive[];
+  /** Construction planes, axes and points (#265) up to the marker that built, in timeline order. */
+  construct: BuiltConstruct[];
+}
+
+/** A construction step as built: its geometry in the world now. */
+export interface BuiltConstruct {
+  id: string;
+  name: string;
+  kind: ConstructKind;
+  geo: ConstructGeo;
 }
 
 /** A drive as built (#194): the driven joint's value is multiplier × the driver's. */
@@ -667,6 +706,7 @@ export interface BuiltLink {
 }
 
 const BUILT = new Set<string>([
+  "construct",
   "drive",
   "joint",
   "link",
@@ -704,6 +744,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   /** Joints as built (#172). */
   const joints: JointFeature[] = [];
   const drives: BuiltDrive[] = [];
+  const built: BuiltConstruct[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -772,7 +813,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, problem);
           break;
         }
-        const plane = f.kind === "mirror" ? mirrorPlane(f, parts) : undefined;
+        const plane = f.kind === "mirror" ? mirrorPlane(f, parts, built) : undefined;
         if (typeof plane === "string") {
           failed.set(f.id, plane);
           break;
@@ -855,6 +896,26 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         linkSteps.push(f);
         break;
       }
+      case "construct": {
+        const inputs: Geo[] = [];
+        let gone: string | null = null;
+        for (const r of f.refs) {
+          if ("origin" in r) inputs.push(originGeo(r.origin));
+          else if ("step" in r) {
+            const c = built.find((x) => x.id === r.step);
+            if (c) inputs.push(geoOf(c.geo));
+            else gone ??= "A step it was made from is gone";
+          } else {
+            const p = parts[find(r.body)];
+            if (p) inputs.push(bodyGeo(r, p));
+            else gone ??= "The body it was made from is gone";
+          }
+        }
+        const geo = gone ?? constructGeo(f.kind, inputs, f.value);
+        if (typeof geo === "string") failed.set(f.id, geo);
+        else built.push({ id: f.id, name: f.name, kind: f.kind, geo });
+        break;
+      }
       case "joint": {
         const here = (l: string) => linkSteps.some((x) => x.id === l) && parts.some((p) => p.link === l);
         const why = !here(f.child)
@@ -908,9 +969,17 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         break;
       case "sketch": {
-        sketches.push({ id: f.id, name: f.name, sketch: f.sketch });
-        sketchById.set(f.id, f.sketch);
-        const why = sketchLinkProblem(f.sketch, (id) => find(id) >= 0);
+        // A sketch on a construction plane sits where that plane is now.
+        let sk = f.sketch;
+        if (sk.plane.kind === "construct") {
+          const step = (sk.plane as { step: string }).step;
+          const on = built.find((c) => c.id === step);
+          if (on?.geo.what === "plane") sk = { ...sk, plane: { ...sk.plane, frame: on.geo.frame } };
+          else failed.set(f.id, "The plane it sits on is gone. Redefine its plane from the timeline menu.");
+        }
+        sketches.push({ id: f.id, name: f.name, sketch: sk });
+        sketchById.set(f.id, sk);
+        const why = sketchLinkProblem(sk, (id) => find(id) >= 0);
         if (why) failed.set(f.id, why);
         break;
       }
@@ -1166,7 +1235,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     }
   }
   const links = linkSteps.map((l) => ({ id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id) })).filter((l) => l.parts.length);
-  return { parts: looked, sketches, failed, links, joints, drives };
+  return { parts: looked, sketches, failed, links, joints, drives, construct: built };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
@@ -1436,6 +1505,7 @@ export function featureParts(f: Feature): string[] {
     case "link":
     case "joint":
     case "drive":
+    case "construct":
       return [];
     default:
       return f.parts;
@@ -1460,6 +1530,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "construct":
+      return constructSummary(f.kind, f.refs, f.value, (r) => refText(r, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name));
     case "link":
       return `${who(f.parts)}, one rigid link`;
     case "joint": {
@@ -1502,7 +1574,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
           : of === "component"
             ? (f.link && step(f.link)) || "a gone component"
             : who(f.parts);
-      return patternSummary(f, what, f.face && (names.get(f.face.body) ?? "a body"));
+      return patternSummary(
+        f,
+        what,
+        f.step ? (doc.features.find((g) => g.id === f.step)?.name ?? "a gone plane") : f.face && (names.get(f.face.body) ?? "a body"),
+      );
     }
     case "move": {
       const turn = f.rotation
@@ -1559,7 +1635,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
 
 /** "On the XY plane, 4 lines and 2 circles". */
 export function sketchSummary(s: Sketch): string {
-  const on = s.plane.kind === "world" ? `On the ${s.plane.plane} plane` : "On a face";
+  const on = s.plane.kind === "world" ? `On the ${s.plane.plane} plane` : s.plane.kind === "construct" ? "On a construction plane" : "On a face";
   const offset = s.plane.offset ? `, ${mm(s.plane.offset)} up` : "";
   const counts = (["line", "arc", "circle"] as const)
     .map((k) => [k, s.entities.filter((e) => e.kind === k && !e.construction).length] as const)
@@ -2286,6 +2362,8 @@ function partsRead(f: Feature): string[] {
       return targetsOf(f);
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
+    case "construct":
+      return [...new Set(f.refs.flatMap((r) => ("body" in r ? [r.body] : [])))];
     case "import":
     case "insert":
     case "gear":
@@ -2332,8 +2410,16 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   if (f.type === "extrude" || f.type === "revolve") {
     if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
   }
-  // A Mirror of features needs those features; a Mirror of a component needs its link.
+  // Construction geometry needs the steps it was made from; a sketch, the plane it sits on.
+  if (f.type === "construct") for (const r of f.refs) if ("step" in r && before.some((g) => g.id === r.step)) out.add(r.step);
+  if (f.type === "sketch" && f.sketch.plane.kind === "construct") {
+    const step = f.sketch.plane.step;
+    if (before.some((g) => g.id === step)) out.add(step);
+  }
+  // A Mirror of features needs those features; a Mirror of a component needs its link; one across a construction plane,
+  // that plane.
   if (f.type === "pattern") {
+    if (f.step && before.some((x) => x.id === f.step)) out.add(f.step);
     for (const g of [...(f.features ?? []), ...(f.link ? [f.link] : [])]) if (before.some((x) => x.id === g)) out.add(g);
   }
   // A joint needs the links it joins, and the joint its parent link hangs from.
@@ -2746,4 +2832,17 @@ export function updateJoint(doc: ModelDoc, id: string, change: Partial<JointPara
       return next;
     }),
   };
+}
+
+export type ConstructParams = Pick<ConstructFeature, "kind" | "refs" | "value">;
+
+/** Adds a construction plane, axis or point (#265), named "Plane 1", "Axis 1" or "Point 1". */
+export function addConstruct(doc: ModelDoc, params: ConstructParams, id = newId("f"), at?: number): ModelDoc {
+  const name = nextNamed(doc, CONSTRUCT_BASE[constructKind(params.kind).what]);
+  return insert(doc, clampAt(doc, at), { id, type: "construct", name, ...params });
+}
+
+/** Changes a construction step's picks or value. A change of kind keeps the step's name. */
+export function updateConstruct(doc: ModelDoc, id: string, change: Partial<ConstructParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "construct" ? { ...f, ...change } : f)) };
 }

@@ -38,7 +38,7 @@ import {
   type Sketch,
   type Vec2,
 } from "@bettercad/sketch";
-import { addSketch, newId, paramScope, redefineSketchPlane, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
+import { addSketch, newId, paramScope, redefineSketchPlane, updateSketch, type BuiltConstruct, type ModelDoc, type SketchFeature } from "../state/document";
 import { loadSolver } from "./solver";
 import { DEFAULT_FONT, layOut } from "./text/fonts";
 import type { Command } from "../state/commands";
@@ -90,6 +90,19 @@ export interface SketchDeps {
   onStarted: () => void;
   say: (text: string, error?: boolean) => void;
   theme: string;
+  /** Construction geometry built up to the marker (#265): its planes can be sketched on. */
+  construct?: BuiltConstruct[];
+  /** The construction plane under the pointer while picking, to draw it lit. */
+  onConstructHover?: (id: string | null) => void;
+}
+
+/** A sketch plane where it is now: a construction plane's frame comes from the step as built. */
+export function liveFrame(plane: PlaneRef, construct: BuiltConstruct[] = []): Frame {
+  if (plane.kind === "construct") {
+    const c = construct.find((x) => x.id === plane.step);
+    if (c?.geo.what === "plane") return planeFrame({ ...plane, frame: c.geo.frame });
+  }
+  return planeFrame(plane);
 }
 
 const DIM_NAME: Record<DimensionKind, string> = {
@@ -114,6 +127,8 @@ export interface Placing {
   /** The size as it would go down now, measured from the geometry, with its label where the pointer is. */
   dim: Dimension;
 }
+
+const PLANES_ONLY = new Set(["plane"] as const);
 
 /**
  * A text being set with the Text tool: where it goes, how it is set, and its outline laid out from the font for the
@@ -176,7 +191,7 @@ export function useSketch(d: SketchDeps) {
 
   const feature = d.doc.features.find((f): f is SketchFeature => f.id === editingId && f.type === "sketch") ?? null;
   const sketch = feature?.sketch ?? null;
-  const frame = useMemo<Frame | null>(() => (sketch ? planeFrame(sketch.plane) : null), [sketch]);
+  const frame = useMemo<Frame | null>(() => (sketch ? liveFrame(sketch.plane, d.construct) : null), [sketch, d.construct]);
   // Slice lasts for one sketch: each sketch starts with the whole model on show.
   useEffect(() => setOptions((o) => (o.slice ? { ...o, slice: false } : o)), [editingId]);
   const result = useMemo<SolveResult | null>(() => {
@@ -471,7 +486,7 @@ export function useSketch(d: SketchDeps) {
       if (!id || !s) return;
       const plane = { ...s.plane, offset: v } as PlaneRef;
       store.edit((doc) => updateSketch(doc, id, (x) => ({ ...x, plane })), "Move the sketch plane", `offset:${id}`);
-      const f = planeFrame(plane);
+      const f = liveFrame(plane, deps.current.construct);
       engineOf()?.lookAt(f.origin, f.normal);
     },
     [current, store, engineOf],
@@ -505,6 +520,15 @@ export function useSketch(d: SketchDeps) {
       say(`Sketching on ${what}${curves.length ? ", with its edges brought in" : ""}. Enter finishes.`);
     },
     [store, engineOf, setStool, say, options.autoProject],
+  );
+
+  /** Starts a sketch on a construction plane (#265), from the browser. */
+  const startOnStep = useCallback(
+    (id: string) => {
+      const c = deps.current.construct?.find((x) => x.id === id);
+      if (c?.geo.what === "plane") startOn({ kind: "construct", step: id, offset: 0, frame: c.geo.frame }, c.name);
+    },
+    [startOn],
   );
 
   /** Starts a sketch on an origin plane, as picking it in the view does (the browser's Sketch on). */
@@ -551,7 +575,7 @@ export function useSketch(d: SketchDeps) {
       setEditingId(id);
       setStool("select");
       setSel([]);
-      const fr = planeFrame(f.sketch.plane);
+      const fr = liveFrame(f.sketch.plane, deps.current.construct);
       engineOf()?.lookAt(fr.origin, fr.normal);
       say(`Editing ${f.name}. Enter finishes.`);
     },
@@ -768,7 +792,10 @@ export function useSketch(d: SketchDeps) {
     eng.showPlanes(true);
     let lastKey = "";
     let info = null as ReturnType<Engine["faceInfo"]>;
-    type Target = { kind: "face"; pick: Pick; info: NonNullable<typeof info> } | { kind: "plane"; plane: WorldPlaneName };
+    type Target =
+      | { kind: "face"; pick: Pick; info: NonNullable<typeof info> }
+      | { kind: "plane"; plane: WorldPlaneName }
+      | { kind: "construct"; id: string; frame: Frame; name: string };
     const target = (p: ScreenPoint): Target | null => {
       const pick = eng.pick(p.x, p.y, "face");
       if (pick) {
@@ -779,6 +806,10 @@ export function useSketch(d: SketchDeps) {
         }
         if (info?.flat) return { kind: "face", pick, info };
       }
+      // A construction plane (#265) where no face is: they are big and see-through, so faces come first.
+      const id = eng.constructAt(p.x, p.y, PLANES_ONLY);
+      const c = id ? deps.current.construct?.find((x) => x.id === id) : undefined;
+      if (c?.geo.what === "plane") return { kind: "construct", id: c.id, frame: c.geo.frame, name: c.name };
       const plane = eng.planeAt(p.x, p.y);
       return plane ? { kind: "plane", plane } : null;
     };
@@ -788,11 +819,14 @@ export function useSketch(d: SketchDeps) {
         const t = target(p);
         eng.showHover(t?.kind === "face" ? t.pick : null);
         eng.hoverPlane(t?.kind === "plane" ? t.plane : null);
+        deps.current.onConstructHover?.(t?.kind === "construct" ? t.id : null);
       },
       down: (p) => {
         const t = target(p);
         if (!t) return false;
+        deps.current.onConstructHover?.(null);
         if (t.kind === "plane") pickOn({ kind: "world", plane: t.plane, offset: 0 }, `the ${t.plane} plane`);
+        else if (t.kind === "construct") pickOn({ kind: "construct", step: t.id, offset: 0, frame: t.frame }, t.name);
         else
           pickOn(
             { kind: "face", face: { body: t.pick.body, face: t.pick.index }, offset: 0, frame: faceFrame(t.info.centroid, t.info.normal, t.info.edge) },
@@ -803,10 +837,12 @@ export function useSketch(d: SketchDeps) {
       leave: () => {
         eng.showHover(null);
         eng.hoverPlane(null);
+        deps.current.onConstructHover?.(null);
       },
     });
     return () => {
       eng.setInput(null);
+      deps.current.onConstructHover?.(null);
       eng.showPlanes(false);
       eng.showHover(null);
     };
@@ -1475,6 +1511,7 @@ export function useSketch(d: SketchDeps) {
     finish,
     edit,
     startOnPlane,
+    startOnStep,
     redefine,
     redefining: redefining?.name ?? null,
     cancelRedefine,

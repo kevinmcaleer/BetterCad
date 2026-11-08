@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { ESC, Icon, IconButton, cx, longPress, useEscape, type ContextMenuState, type IconName } from "@bettercad/ui";
-import type { Feature, PartKind } from "../state/document";
+import { constructKind, type ConstructWhat, type Feature, type PartKind } from "../state/document";
 import { formatCombo } from "../state/commands";
 
 export const FEATURE_ICON: Record<Feature["type"], IconName> = {
@@ -26,7 +26,11 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   link: "link",
   joint: "joint",
   drive: "gear",
+  construct: "plane",
 };
+
+/** The icon for construction geometry (#265). */
+export const constructIcon = (w: ConstructWhat): IconName => (w === "plane" ? "plane" : w === "axis" ? "axis" : "point");
 
 /** The icon for a kind of part. */
 export function partIcon(kind: PartKind): IconName {
@@ -36,6 +40,7 @@ export function partIcon(kind: PartKind): IconName {
 /** The tile icon: an Add shows the shape it adds. */
 export function featureIcon(f: Feature): IconName {
   if (f.type === "add") return partIcon(f.part.kind);
+  if (f.type === "construct") return constructIcon(constructKind(f.kind).what);
   return FEATURE_ICON[f.type];
 }
 

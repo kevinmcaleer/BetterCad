@@ -44,6 +44,7 @@ export interface SaveOptions {
 }
 
 const KNOWN: ReadonlySet<FeatureType> = new Set<FeatureType>([
+  "construct",
   "drive",
   "joint",
   "link",

@@ -130,6 +130,10 @@ export const rect = "M4 6h16v12H4z";
 export const circle = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z";
 export const arc = "M4 18a8 8 0 0 1 16 0";
 export const polygon = "M7.5 4h9l4.5 8-4.5 8h-9L3 12z";
+/** A construction plane (#265): a sheet seen at an angle. */
+export const plane = "M7 4h14l-4 16H3z";
+/** A construction axis (#265): a line running through, with a tick at each end. */
+export const axis = "M4 20 20 4M2 18l4 4M18 2l4 4";
 export const point = "M12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM12 3v4M12 17v4M3 12h4M17 12h4";
 export const finish = "M20 6 9 17l-5-5";
 export const cloud = "M17.5 19H8a6 6 0 1 1 5.7-7.9h.3a4.5 4.5 0 0 1 3.5 7.9z";
@@ -259,6 +263,8 @@ export const ICONS = {
   arc,
   polygon,
   point,
+  plane,
+  axis,
   finish,
   cloud,
   cloudOff,

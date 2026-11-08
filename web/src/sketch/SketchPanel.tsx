@@ -19,7 +19,7 @@ export function SketchPanel({ s }: { s: SketchSession }) {
   const pickedText = sk.texts?.find((t) => s.sel.length === 1 && s.sel[0] === t.id);
   const conflicting = new Set(s.result?.conflicting ?? []);
   const redundant = new Set(s.result?.redundant ?? []);
-  const plane = sk.plane.kind === "world" ? `${sk.plane.plane} plane` : "A face";
+  const plane = sk.plane.kind === "world" ? `${sk.plane.plane} plane` : sk.plane.kind === "construct" ? "A construction plane" : "A face";
   const state = conflicting.size > 0 ? "bad" : s.result?.dof === 0 ? "done" : "free";
   const sections: PropsSection[] = [
     {
