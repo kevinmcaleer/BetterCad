@@ -70,7 +70,13 @@ Check from outside the network: `curl https://bettercad.kevsrobots.com/api/healt
 
 People sign in with their kevsrobots.com account, kept by Chatter (docs/accounts.md). docker-compose sets
 `COOKIE_DOMAIN=.kevsrobots.com` and `CHATTER_URL=https://chatter.kevsrobots.com`, so nothing needs adding to `.env`.
-The machine must be able to reach `chatter.kevsrobots.com` over HTTPS.
+The server checks each sign-in with Chatter. By default it goes to `https://chatter.kevsrobots.com`, through
+Cloudflare, which can refuse server-to-server calls: the log then says `kevsrobots.com answered 530` (or 403) and the
+sign-in page says kevsrobots.com can't be reached. When Chatter runs on the same machine, set `CHATTER_API_URL` in
+`.env` to Chatter's address from inside the BetterCad container, such as `http://172.17.0.1:<Chatter's host port>`,
+and `docker compose up -d`. Check it with
+`docker compose exec bettercad python -c "import urllib.request as u; u.urlopen('$CHATTER_API_URL/accounts/me')"`,
+which should fail with 401 Unauthorized.
 
 Account ids are kevsrobots.com user ids, so accounts made with an earlier sign-in can't carry over by id. On the
 first start they are set aside instead: their models, versions, share links and files stay, share links keep working,
