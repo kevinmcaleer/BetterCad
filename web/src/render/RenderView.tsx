@@ -74,11 +74,10 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     session.save = async (size) => {
       const w = el.clientWidth,
         h = el.clientHeight;
-      const [sw, sh] =
-        size === "4k" ? [3840, 2160] : size === "double" ? [w * 2, h * 2] : [w * (window.devicePixelRatio || 1), h * (window.devicePixelRatio || 1)];
+      const [sw, sh] = size === "4k" ? [3840, 2160] : size === "double" ? [w * 2, h * 2] : [el.width, el.height];
       session.set({ saving: 0 });
       try {
-        const png = await pr.snapshot(Math.round(sw), Math.round(sh), Math.max(SAVE_SAMPLES, pr.samples), (f) => session.set({ saving: f }));
+        const png = await pr.snapshot(Math.round(sw), Math.round(sh), testMax() ?? Math.max(SAVE_SAMPLES, pr.samples), (f) => session.set({ saving: f }));
         await onSave(png, size);
       } finally {
         session.set({ saving: null });
