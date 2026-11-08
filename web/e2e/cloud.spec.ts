@@ -2,6 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { modelRow } from "./pages/editor";
 import { fakeApi } from "./fakeApi";
 
+/** A save draws a thumbnail and uploads it, which a busy CI runner can take well over the default 5 s to do. */
+const SAVE = { timeout: 15_000 };
+
 /** Accounts, the library and saving to the cloud (#88, #89, #90) against the in-test server in fakeApi.ts. */
 
 const addBox = async (page: Page) => {
@@ -48,9 +51,8 @@ test("save a box to the account, open it again from the library after a reload",
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
-  await expect(page).toHaveURL(/#\/edit\/m\d+$/);
-  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible();
+  await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
+  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
   const [model] = [...server.models.values()];
   expect(JSON.parse(model!.versions[0]!.bcad).document.features[0]).toMatchObject({ type: "add" });
 
@@ -58,7 +60,7 @@ test("save a box to the account, open it again from the library after a reload",
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();
   await page.keyboard.press("ControlOrMeta+s");
-  await expect.poll(() => model!.versions.length).toBe(2);
+  await expect.poll(() => model!.versions.length, SAVE).toBe(2);
 
   await page.goto("/#/library");
   await page.reload();
@@ -111,7 +113,7 @@ test("a save from a second tab warns about the first", async ({ page, context })
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  await expect(page).toHaveURL(/#\/edit\/m\d+$/);
+  await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
   const url = page.url();
 
   const other = await context.newPage();
@@ -120,14 +122,16 @@ test("a save from a second tab warns about the first", async ({ page, context })
   await other.getByRole("button", { name: "Library" }).click();
   await other.getByRole("button", { name: "Sphere", exact: true }).click();
   await other.keyboard.press("ControlOrMeta+s");
-  await expect(other.getByText(/to your account/)).toBeVisible();
+  await expect(other.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
 
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Cone", exact: true }).click();
   await page.keyboard.press("ControlOrMeta+s");
   await expect(page.getByRole("dialog", { name: "This model changed in another tab" })).toBeVisible();
   await page.getByRole("button", { name: "Save anyway" }).click();
-  await expect(page.getByText("Saved Untitled model to your account")).toBeVisible();
+  // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the cloud button
+  // says "Saved to your account" until the next change.
+  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
   const [model] = [...server.models.values()];
   expect(model!.versions.length).toBe(3);
 });
@@ -142,7 +146,9 @@ test("offline saves wait in the browser and go when the network is back", async 
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
   // The save's toast is brief and an Autosaved toast can replace it, so check the server got it.
-  await expect.poll(() => [...server.models.values()].map((m) => m.versions.length)).toEqual([1]);
+  await expect.poll(() => [...server.models.values()].map((m) => m.versions.length), SAVE).toEqual([1]);
+  // The server has it a moment before the editor takes the model's address; leave only once it has.
+  await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
   // One look at the library while online, so it has a list to show later.
   await page.goto(page.url().replace(/#.*/, "#/library"));
   await expect(page.getByRole("button", { name: "Open Bracket" })).toBeVisible();
@@ -164,7 +170,7 @@ test("offline saves wait in the browser and go when the network is back", async 
   server.down = false;
   await page.goto("/");
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
-  await expect.poll(() => [...server.models.values()][0]!.versions.length).toBe(2);
+  await expect.poll(() => [...server.models.values()][0]!.versions.length, SAVE).toBe(2);
   const latest = JSON.parse([...server.models.values()][0]!.versions[1]!.bcad);
   expect(latest.document.features.map((f: { name: string }) => f.name)).toEqual(["Box 1", "Cylinder 1"]);
 });
@@ -185,7 +191,9 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
+  // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the cloud button
+  // says "Saved to your account" until the next change.
+  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
   const [model] = [...server.models.values()];
   const thumb = JSON.parse(model!.versions[0]!.bcad).thumbnail as string;
   // The mean brightness of the drawn pixels: Holodeck's line art fill is near black, a Light shaded box is pale.
