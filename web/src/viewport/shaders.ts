@@ -19,7 +19,7 @@ const GRID_VERT = `
 /**
  * Minor and major lines, anti-aliased with fwidth, fading with distance from the camera. On the floor the X and Y
  * axes are drawn in their colours. `room` picks the plane's axes from its normal, so one shader draws the
- * Holodeck's floor, walls and ceiling.
+ * Holoroom's floor, walls and ceiling.
  */
 const GRID_FRAG = `
   uniform vec3 minorColour;
@@ -178,7 +178,7 @@ export function outlineMaterial(): ShaderMaterial {
 // ------------------------------------------------------------ depth of field
 
 /**
- * One direction of the Holodeck's blur. Alpha holds each pixel's circle of confusion (0 sharp, 1 fully blurred);
+ * One direction of the Holoroom's blur. Alpha holds each pixel's circle of confusion (0 sharp, 1 fully blurred);
  * the taps spread with it, and taps sharper than the pixel count for less, so the in-focus floor does not smear
  * into the blurred walls.
  */

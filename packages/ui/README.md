@@ -25,7 +25,7 @@ In the editor, `.bc-app` sets `--bc-view-top`, `--bc-view-left`, `--bc-view-righ
 
 | Token family | CSS variable |
 | --- | --- |
-| Colour | `--bc-color-<name>`, per theme under `[data-theme="light|dark|holodeck"]` |
+| Colour | `--bc-color-<name>`, per theme under `[data-theme="light|dark|holoroom"]` |
 | Spacing | `--bc-space-1` to `--bc-space-8`, `--bc-control`, `--bc-rail-width`, `--bc-side-width` |
 | Radius | `--bc-radius-sm/md/lg/xl/pill` |
 | Shadow | `--bc-shadow-float/frame/pop/dialog/editor` |

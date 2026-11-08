@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
  * changes; the pictures land in docs/images/. Tagged @docs so the normal run skips it.
  */
 const SAMPLES = ["bracket", "box-with-lid", "phone-stand", "hole-calibration"];
-const THEMES = ["light", "dark", "holodeck"] as const;
+const THEMES = ["light", "dark", "holoroom"] as const;
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "images");
 
 test.describe("@docs", () => {

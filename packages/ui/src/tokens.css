@@ -153,11 +153,11 @@
   --bc-color-thumb-ink: #9aa0a6;
   /* The overlay behind a full-screen workspace or dialog. */
   --bc-color-scrim: #14161a73;
-  /* The drawing grid's minor lines on `viewport`, every 2 mm at the default zoom. In Holodeck it is the yellow grid on the floor, walls and ceiling. */
+  /* The drawing grid's minor lines on `viewport`, every 2 mm at the default zoom. In Holoroom it is the yellow grid on the floor, walls and ceiling. */
   --bc-color-grid: #dde1e6;
-  /* Every tenth grid line, and the two axis lines through the origin. In Holodeck, the bright yellow of the room's grid. */
+  /* Every tenth grid line, and the two axis lines through the origin. In Holoroom, the bright yellow of the room's grid. */
   --bc-color-grid-major: #c3c7cd;
-  /* The far walls and ceiling of the drawing room, drawn behind the grid when the camera looks up or out. Light and dark barely differ from `viewport`; Holodeck is true black. */
+  /* The far walls and ceiling of the drawing room, drawn behind the grid when the camera looks up or out. Light and dark barely differ from `viewport`; Holoroom is true black. */
   --bc-color-room: #f6f7f9;
   /* A floating toolbar over the stage; a pressed rail button (0 1px 3px at 8%). */
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.12);
@@ -217,7 +217,7 @@
   --bc-shadow-dialog: 0 10px 32px rgba(0, 0, 0, 0.7);
   --bc-shadow-editor: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.4);
 }
-[data-theme="holodeck"] {
+[data-theme="holoroom"] {
   color-scheme: dark;
   --bc-color-accent: #a78bfa;
   --bc-color-accent-soft: #2d2546;

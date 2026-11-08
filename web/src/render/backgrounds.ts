@@ -1,6 +1,6 @@
 /**
  * The Render view's backgrounds: what is behind the model and what it stands on, separate from the lighting. The
- * Holodeck takes its black room and yellow grid from the Holodeck theme's own colours.
+ * Holoroom takes its black room and yellow grid from the Holoroom theme's own colours.
  */
 import { CanvasTexture, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
 import { GradientEquirectTexture } from "three-gpu-pathtracer";
@@ -11,7 +11,7 @@ export const BACKGROUNDS: { id: BackgroundId; label: string; title: string }[] =
   { id: "lightbox", label: "Lightbox", title: "A seamless white sweep" },
   { id: "grey", label: "Grey table", title: "A mid grey table that shows a reflection" },
   { id: "workbench", label: "Workbench", title: "A wooden bench in a warm room" },
-  { id: "holodeck", label: "Holodeck", title: "A black room with a yellow grid" },
+  { id: "holoroom", label: "Holoroom", title: "A black room with a yellow grid" },
 ];
 
 /** The floor's look: colour, roughness, and the grid it carries, if any. Picture values, not interface colours. */
@@ -22,10 +22,10 @@ export interface Floor {
   grid?: { map: Texture; cell: number };
 }
 
-const HOLO = COLOURS.holodeck;
+const HOLO = COLOURS.holoroom;
 
-/** One floor tile of the Holodeck grid: 100 mm, a minor line every 10 mm and a bright line round the edge. */
-function holodeckTile(): CanvasTexture {
+/** One floor tile of the Holoroom grid: 100 mm, a minor line every 10 mm and a bright line round the edge. */
+function holoroomTile(): CanvasTexture {
   const px = 512;
   const c = document.createElement("canvas");
   c.width = c.height = px;
@@ -53,7 +53,7 @@ export interface Background {
   /** What the camera sees past the floor (and past the walls' tops). */
   sky: Texture;
   floor: Floor;
-  /** Holodeck: grid walls round the model, in the floor's grid. */
+  /** Holoroom: grid walls and a roof round the model, in the floor's grid. */
   walls?: boolean;
 }
 
@@ -92,8 +92,8 @@ function make(id: BackgroundId): Background {
       return { sky: gradient(0xb9bcc1, 0x6d7075), floor: { colour: 0x8a8d91, roughness: 0.45 } };
     case "workbench":
       return { sky: gradient(0xf7e9d6, 0x5a4a3c), floor: { colour: 0xb08a63, roughness: 0.8 } };
-    case "holodeck":
-      // Black beyond the room; the walls are real gridded walls round the model, open to the light above.
-      return { sky: gradient(0x000000, 0x000000), floor: { colour: 0xffffff, roughness: 0.6, grid: { map: holodeckTile(), cell: 100 } }, walls: true };
+    case "holoroom":
+      // Black beyond the room; real gridded walls and a roof round the model. The roof lets the light through.
+      return { sky: gradient(0x000000, 0x000000), floor: { colour: 0xffffff, roughness: 0.6, grid: { map: holoroomTile(), cell: 100 } }, walls: true };
   }
 }

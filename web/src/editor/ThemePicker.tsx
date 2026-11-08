@@ -1,10 +1,10 @@
 import { THEME_NAMES, cx } from "@bettercad/ui";
 import type { ThemeSetting } from "../state/theme";
 
-const OPTIONS: ThemeSetting[] = ["system", "light", "dark", "holodeck"];
+const OPTIONS: ThemeSetting[] = ["system", "light", "dark", "holoroom"];
 
 /**
- * A segmented control for the theme. Each swatch previews its theme: Holodeck shows its black room and yellow grid,
+ * A segmented control for the theme. Each swatch previews its theme: Holoroom shows its black room and yellow grid,
  * never yellow as an accent.
  */
 export function ThemePicker({ value, onChange, compact }: { value: ThemeSetting; onChange: (t: ThemeSetting) => void; compact?: boolean }) {

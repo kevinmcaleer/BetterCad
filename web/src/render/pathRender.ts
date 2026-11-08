@@ -86,9 +86,17 @@ export class PathRender {
   private backgrounds = new Backgrounds();
   private background: BackgroundId = "lightbox";
   private reach = 100;
-  /** The Holodeck's four walls, round the model and open to the light above. */
+  /** The Holoroom's four walls and roof, round the model. */
   private walls = new Group();
   private wallMaterial = new MeshStandardMaterial({ roughness: 0.6, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.35 });
+  /**
+   * The roof carries the grid too, but lets the light through: the path tracer reads `castShadow` off a material, and
+   * with it false the sun and sky still reach the model past the roof.
+   */
+  private roofMaterial = Object.assign(new MeshStandardMaterial({ roughness: 0.6, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.35 }), {
+    castShadow: false,
+  });
+  private roof = new Mesh(new PlaneGeometry(1, 1), this.roofMaterial);
   private frame = 0;
   private watchdog = 0;
   private style: RenderStyle = "finishes";
@@ -134,6 +142,9 @@ export class PathRender {
       w.rotation.y = (i * Math.PI) / 2;
       this.walls.add(w);
     }
+    // Facing down into the room.
+    this.roof.rotation.x = Math.PI / 2;
+    this.walls.add(this.roof);
     this.scene.add(this.model, this.floor, this.sun, this.sun.target, this.camera);
   }
 
@@ -252,7 +263,10 @@ export class PathRender {
   private placeWalls(): void {
     const half = this.reach * 6,
       high = this.reach * 3;
+    this.roof.position.set(0, this.floor.position.y + high, 0);
+    this.roof.scale.set(half * 2, half * 2, 1);
     this.walls.children.forEach((w, i) => {
+      if (w === this.roof) return;
       const a = (i * Math.PI) / 2;
       // Each plane faces back into the room.
       w.position.set(-Math.sin(a) * half, this.floor.position.y + high / 2, -Math.cos(a) * half);
@@ -272,6 +286,11 @@ export class PathRender {
     wall.needsUpdate = true;
     this.wallMaterial.emissiveMap = wall;
     this.wallMaterial.needsUpdate = true;
+    const roof = (this.roofMaterial.map ??= g.map.clone());
+    roof.repeat.setScalar((this.reach * 12) / g.cell);
+    roof.needsUpdate = true;
+    this.roofMaterial.emissiveMap = roof;
+    this.roofMaterial.needsUpdate = true;
   }
 
   setPreset(p: LightPreset): void {
@@ -422,6 +441,9 @@ export class PathRender {
     this.backgrounds.dispose();
     this.wallMaterial.map?.dispose();
     this.wallMaterial.dispose();
+    this.roofMaterial.map?.dispose();
+    this.roofMaterial.dispose();
+    this.roof.geometry.dispose();
     (this.walls.children[0] as Mesh).geometry.dispose();
     this.tracer.dispose();
     this.renderer.dispose();

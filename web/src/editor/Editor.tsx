@@ -225,7 +225,7 @@ const PANELS: RailItem<PanelId>[] = [
   { id: "settings", icon: "settings", label: "Settings" },
 ];
 
-const THEME_LABEL: Record<ThemeSetting, string> = { system: "Match the system", light: "Light", dark: "Dark", holodeck: "Holodeck" };
+const THEME_LABEL: Record<ThemeSetting, string> = { system: "Match the system", light: "Light", dark: "Dark", holoroom: "Holoroom" };
 
 const NO_PICK = () => {};
 const NARROW = "(max-width: 899px)";
@@ -3476,6 +3476,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   camera={renderCam.current ?? DEFAULT_CAMERA}
                   onCamera={onRenderCamera}
                   onSave={saveRender}
+                  home={doc.home ?? null}
+                  onSetHome={vp.setHomeTo}
+                  onResetHome={vp.resetHome}
                 />
               </Suspense>
             )}

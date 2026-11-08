@@ -8,7 +8,7 @@
 Lessons 2 to 4 quote the first-run tour (`web/src/tour/tour.ts`) word for word, so the tour and the course teach the
 same thing. If the tour copy changes, change these lessons too.
 
-Screenshots come from `npm run docs:shots`, which saves every sample in Light, Dark and Holodeck to `docs/images/`. Run
+Screenshots come from `npm run docs:shots`, which saves every sample in Light, Dark and Holoroom to `docs/images/`. Run
 it again whenever the interface changes.
 
 Each lesson ends with a short exercise and a `.bcad` file you can compare your model against.
