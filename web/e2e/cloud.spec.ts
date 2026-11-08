@@ -214,10 +214,11 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
 
 test("after a save to the account, a rendered picture replaces the thumbnail", async ({ page, context }) => {
   // The path tracer on a software GPU (CI) takes a while to build its shader.
-  test.setTimeout(180_000);
+  test.setTimeout(270_000);
   const server = await fakeApi(context);
   await server.signIn(context);
-  await page.addInitScript(() => ((window as unknown as { __bcRenderThumbs: boolean }).__bcRenderThumbs = true));
+  // Two samples, and all the time the software GPU needs, rather than giving up after 20 s as a real browser would.
+  await page.addInitScript(() => ((window as unknown as { __bcRenderThumbs: object }).__bcRenderThumbs = { samples: 2, timeout: 200_000 }));
   await page.goto("/");
   await addBox(page);
   await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -228,7 +229,7 @@ test("after a save to the account, a rendered picture replaces the thumbnail", a
   await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
   const [model] = [...server.models.values()];
   expect(JSON.parse(model!.versions[0]!.bcad).thumbnail).toMatch(/^data:image\/png;base64,/);
-  await expect.poll(() => model!.versions[0]!.thumbnail ?? "", { timeout: 150_000 }).toMatch(/^data:image\/jpeg;base64,/);
+  await expect.poll(() => model!.versions[0]!.thumbnail ?? "", { timeout: 220_000 }).toMatch(/^data:image\/jpeg;base64,/);
   // A lit box on a pale floor: mostly light, and not one flat colour.
   const stats = await page.evaluate(async (src) => {
     const img = new Image();

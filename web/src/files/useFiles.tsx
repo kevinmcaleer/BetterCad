@@ -56,8 +56,12 @@ const IDENTITY = [
   [0, 0, 1],
 ];
 
-/** Playwright's browsers render on a software GPU, so tests turn rendered thumbnails on only where they check them. */
-const renderThumbs = () => !navigator.webdriver || !!(window as unknown as { __bcRenderThumbs?: boolean }).__bcRenderThumbs;
+/**
+ * Playwright's browsers render on a software GPU, so tests turn rendered thumbnails on only where they check them,
+ * with their own sample count and time limit. Null: no rendered thumbnail.
+ */
+const thumbOptions = (): { samples?: number; timeout?: number } | null =>
+  navigator.webdriver ? ((window as unknown as { __bcRenderThumbs?: { samples?: number; timeout?: number } }).__bcRenderThumbs ?? null) : {};
 
 /** The next frame, so the thumbnail is rendered after the click has painted. */
 const nextFrame = () => new Promise<void>((r) => (typeof requestAnimationFrame === "undefined" ? setTimeout(r, 0) : requestAnimationFrame(() => r())));
@@ -191,10 +195,11 @@ export function useFiles(d: FilesDeps) {
         return;
       }
       const bodies = deps.current.renderBodies?.() ?? [];
-      if (!bodies.length || !renderThumbs()) return;
+      const o = thumbOptions();
+      if (!bodies.length || !o) return;
       q.busy = true;
       void import("../render/thumbnail")
-        .then((t) => t.renderThumbnail(bodies))
+        .then((t) => t.renderThumbnail(bodies, o))
         .then((url) => (url ? api.setThumbnail(id, version, url) : null))
         .catch(() => undefined)
         .finally(() => {
