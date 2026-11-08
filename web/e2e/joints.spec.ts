@@ -450,7 +450,7 @@ test("sweep a joint for clashes and set the limit it suggests", async ({ page })
   await x.fill("22");
   await x.press("Enter");
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
