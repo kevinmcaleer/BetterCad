@@ -22,6 +22,17 @@ describe("the Render view's options (#197)", () => {
     expect(s.get().style).toBe("paper");
   });
 
+  it("picks a background apart from the lighting", async () => {
+    const s = renderSession();
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    s.set({ loading: false });
+    await userEvent.click(await screen.findByRole("button", { name: "Lightbox" }));
+    for (const name of ["Lightbox", "Grey table", "Workbench", "Holodeck"]) expect(screen.getByRole("menuitemradio", { name })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Holodeck" }));
+    expect(s.get().background).toBe("holodeck");
+    expect(s.get().preset).toBe("studio");
+  });
+
   it("sets the quality with a Good, Better, Best slider", async () => {
     const s = renderSession();
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);

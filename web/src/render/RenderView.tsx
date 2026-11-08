@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Banner, Button, MenuButton, type MenuEntry } from "@bettercad/ui";
+import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
 import { orbit, pan, zoom, type CameraState } from "../viewport/camera";
@@ -97,6 +98,7 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
   useEffect(() => r.current?.setBodies(bodies, cutPlane(section)), [bodies, section]);
   useEffect(() => r.current?.setPreset(state.preset), [state.preset]);
   useEffect(() => r.current?.setStyle(state.style), [state.style]);
+  useEffect(() => r.current?.setBackground(state.background), [state.background]);
   useEffect(() => {
     if (r.current) r.current.maxSamples = testMax() ?? samplesFor(state.quality);
   }, [state.quality]);
@@ -188,6 +190,11 @@ export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
           label="Lighting"
           entries={LIGHT_PRESETS.map((p) => ({ id: p.id, label: p.label, checked: s.preset === p.id, onSelect: () => session.set({ preset: p.id }) }))}
           trigger={(p) => <Button {...p} icon="sun" label={LIGHT_PRESETS.find((x) => x.id === s.preset)!.label} title="Lighting" />}
+        />
+        <MenuButton
+          label="Background"
+          entries={BACKGROUNDS.map((b) => ({ id: b.id, label: b.label, checked: s.background === b.id, onSelect: () => session.set({ background: b.id }) }))}
+          trigger={(p) => <Button {...p} icon="image" label={BACKGROUNDS.find((x) => x.id === s.background)!.label} title="Background" />}
         />
         <span role="group" aria-label="Surface" className="bc-segmented">
           <Button label="Colours" title="Each part's colour and finish" on={s.style === "finishes"} onClick={() => session.set({ style: "finishes" })} />
