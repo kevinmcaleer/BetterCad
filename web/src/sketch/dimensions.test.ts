@@ -160,7 +160,7 @@ describe("placing a size", () => {
     const across = { ...placed, labelOffset: offsetTo(idx, placed, [40, 30]) };
     const art = dimensionArt(idx, across, 0.1, [10, 10]);
     // The level line from x 0 to 20 at y 30, then on out to the label at x 40.
-    const out = art.lines.find(([u, v]) => Math.abs(v[0] - 40) < 1e-6 && Math.abs(v[1] - 30) < 1e-6);
+    const out = art.lines.find(([, v]) => Math.abs(v[0] - 40) < 1e-6 && Math.abs(v[1] - 30) < 1e-6);
     expect(out?.[0][0]).toBeCloseTo(20);
   });
 });
