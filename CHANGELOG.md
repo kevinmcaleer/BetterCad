@@ -30,6 +30,7 @@ The first public release: free CAD for 3D printing in your browser.
 ### Files and accounts
 
 - The `.bcad` format, STL, 3MF and STEP export, and STL, 3MF and STEP import (#8).
+- GLB and glTF export for Blender and web viewers: metres, Y up, a named node and a material per body (#195).
 - Optional accounts: save to your account with version history, share a view-only link, and a library of your
   models (#9).
 - Works offline as an installable app; the first-run tour and samples, including the phone stand (#10).
