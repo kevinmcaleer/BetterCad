@@ -3,7 +3,7 @@ import { ViewCube, type MenuEntry } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
-import { Engine, canDraw3D, type PreviewBody, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
+import { Engine, canDraw3D, type BodyDrag, type PreviewBody, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
 import { formatMilestones, milestone } from "../perf";
 import type { Pick, SelectFilter } from "./ids";
 
@@ -40,6 +40,8 @@ export interface View3DProps {
   onTransform: (id: string, position: V3, rotation: V3) => void;
   onTransforming?: (id: string, position: V3, rotation: V3) => void;
   onSection: (s: Section) => void;
+  /** A left drag starting on a body, in Select (#173): a handler that poses its joint, or null to orbit. */
+  onBodyDrag?: (pick: Pick, at: { x: number; y: number }) => BodyDrag | null;
   onCamera?: (c: CameraState) => void;
   /** A long press with a finger, or a right click without a drag: what was under it and where to open a menu. */
   onMenu?: (pick: Pick | null, at: { x: number; y: number }) => void;
@@ -153,6 +155,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
         const s = events.current.section;
         if (s) events.current.onSection({ ...s, offset });
       },
+      bodyDrag: (pick, at) => (events.current.mode === "select" ? (events.current.onBodyDrag?.(pick, at) ?? null) : null),
       stats: (s) => setFrame(s),
     });
     engine.current = e;

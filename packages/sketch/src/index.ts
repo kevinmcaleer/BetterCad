@@ -9,7 +9,8 @@ export * from "./measure";
 export * from "./draw";
 export * from "./dof";
 export * from "./edit";
-export { Solver, toPrimitives, type SolveResult, type SolveStatusName } from "./solver";
+// The solver loads on its own, from "@bettercad/sketch/solver", so planegcs stays out of the app's first paint.
+export type { Solver, SolveResult, SolveStatusName } from "./solver";
 
 export interface SolverStatus {
   ready: boolean;

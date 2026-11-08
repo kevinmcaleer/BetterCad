@@ -104,6 +104,8 @@ test("Esc cancels an extrude", async ({ page }) => {
 });
 
 test("cut a hole right through a body with Through all", async ({ page }) => {
+  // Two sketches and two extrudes: about 20 s on its own, more on a shared CI runner.
+  test.slow();
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
   await page.waitForTimeout(1200);
@@ -131,10 +133,11 @@ test("cut a hole right through a body with Through all", async ({ page }) => {
   await distance.press("Enter");
   await expect(page.getByText("Extruded one shape 20 mm")).toBeVisible();
 
-  // A 6 mm circle on the ground plane under it.
+  // A 6 mm circle on the ground plane under it. The body is still meshing, so opening the sketch can take a while
+  // on a busy machine.
   await page.keyboard.press("k");
   await click(page, 25, 25);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible({ timeout: 15_000 });
   await page.waitForTimeout(800);
   await page.keyboard.press("c");
   await click(page, 0, 0);

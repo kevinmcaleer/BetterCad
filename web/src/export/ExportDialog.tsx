@@ -41,10 +41,12 @@ interface Choices {
   res: Res;
   custom: number;
   keepPosition: boolean;
+  /** As the joints are posed (#173), not at home. */
+  posed: boolean;
 }
 
 const KEY = "bettercad.export";
-const DEFAULTS: Choices = { format: "stl", what: "all", res: "normal", custom: 0.05, keepPosition: false };
+const DEFAULTS: Choices = { format: "stl", what: "all", res: "normal", custom: 0.05, keepPosition: false, posed: false };
 const MIME: Record<string, string> = {
   ".stl": "model/stl",
   ".3mf": "model/3mf",
@@ -93,6 +95,7 @@ export function ExportDialog(p: ExportDialogProps) {
   const running = useRef<Call<unknown> | null>(null);
 
   const what: What = c.what === "selected" && !p.selection.length ? "all" : c.what;
+  const hasPose = !!p.doc.pose && Object.keys(p.doc.pose).length > 0;
   const deflection = c.res === "custom" ? Math.max(0.001, c.custom) : DEFLECTION[c.res];
   const req = useMemo<ExportRequest>(
     () => ({
@@ -103,8 +106,9 @@ export function ExportDialog(p: ExportDialogProps) {
       deflection,
       separate: what === "each",
       keepPosition: c.keepPosition,
+      posed: hasPose && c.posed,
     }),
-    [p.doc, p.upTo, p.selection, what, c.format, deflection, c.keepPosition],
+    [p.doc, p.upTo, p.selection, what, c.format, deflection, c.keepPosition, hasPose, c.posed],
   );
 
   // The estimate follows the choices; its triangles are kept for the export.
@@ -215,6 +219,12 @@ export function ExportDialog(p: ExportDialogProps) {
               <span>Place on the bed (lowest point at Z = 0)</span>
             </label>
           </>
+        )}
+        {hasPose && (
+          <label className="bc-check">
+            <input type="checkbox" checked={c.posed} onChange={(e) => set({ posed: e.target.checked })} />
+            <span>Export as posed (otherwise every joint is at home)</span>
+          </label>
         )}
         <p className="bc-export-estimate" role="status">
           {estimate === null
