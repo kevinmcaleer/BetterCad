@@ -267,6 +267,82 @@ describe("components (#171)", () => {
   });
 });
 
+describe("moving into components (#334)", () => {
+  const m = (): BrowserModel => {
+    let d = addPart(addPart(newDoc("Rover"), "box", "a"), "box", "b");
+    d = addLink(d, [], "L1");
+    d = addLink(d, ["b"], "L2");
+    const b = build(d);
+    return { ...model(), parts: b.parts, links: b.components, sketches: [{ id: "s1", name: "Sketch 1", hidden: false }] };
+  };
+  const panel = (onMoveInto: (ids: string[], to: string | null) => void, selection: string[] = []) => (
+    <BrowserPanel
+      model={m()}
+      selection={selection}
+      onSelect={() => {}}
+      onAdd={() => {}}
+      onToggle={() => {}}
+      onMoveInto={onMoveInto}
+      onBodiesHidden={() => {}}
+      onSketchesHidden={() => {}}
+      onOrigin={() => {}}
+      onPicked={() => {}}
+      onSelectSketch={() => {}}
+      onRename={() => {}}
+      onRenameModel={() => {}}
+      onRenameSketch={() => {}}
+      onReorder={() => {}}
+      onSketchOn={() => {}}
+      partMenu={() => []}
+      sketchMenu={() => []}
+      renameId={null}
+      onRenameIdChange={() => {}}
+    />
+  );
+  const drag = (from: HTMLElement, to: HTMLElement) => {
+    fireEvent.dragStart(from, { dataTransfer: { setData: () => {}, effectAllowed: "" } });
+    fireEvent.dragOver(to);
+    fireEvent.drop(to);
+  };
+
+  it("marks what can move and what takes it", () => {
+    const items = browserItems(m());
+    expect(items.find((i) => i.id === "a")).toMatchObject({ move: true });
+    expect(items.find((i) => i.id === "s1")).toMatchObject({ move: true });
+    expect(items.find((i) => i.id === "L1")).toMatchObject({ move: true, into: true });
+    expect(items[0]).toMatchObject({ into: true });
+    expect(browserItems({ ...m(), readOnly: true }).some((i) => i.move || i.into)).toBe(false);
+  });
+
+  it("drops a sketch onto a component, a body back onto the model, and a component into another", () => {
+    const onMoveInto = vi.fn();
+    render(panel(onMoveInto));
+    drag(row(/^Sketch 1/), row(/Component 1 Empty/));
+    expect(onMoveInto).toHaveBeenLastCalledWith(["s1"], "L1");
+    drag(row(/^Box 2/), row(/Rover/));
+    expect(onMoveInto).toHaveBeenLastCalledWith(["b"], null);
+    drag(row(/Component 2 1 body/), row(/Component 1 Empty/));
+    expect(onMoveInto).toHaveBeenLastCalledWith(["L2"], "L1");
+  });
+
+  it("drags the selected bodies together", () => {
+    const onMoveInto = vi.fn();
+    render(panel(onMoveInto, ["a", "b"]));
+    drag(row(/^Box 1/), row(/Component 1 Empty/));
+    expect(onMoveInto).toHaveBeenLastCalledWith(["a", "b"], "L1");
+  });
+
+  it("offers Move into from the menu, but not into where it is or into itself", async () => {
+    const onMoveInto = vi.fn();
+    render(panel(onMoveInto));
+    fireEvent.contextMenu(row(/Component 2 1 body/));
+    expect(screen.queryByRole("menuitem", { name: "Move into Component 2" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Move to Rover" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Move into Component 1" }));
+    expect(onMoveInto).toHaveBeenLastCalledWith(["L2"], "L1");
+  });
+});
+
 describe("joints in the browser (#172)", () => {
   it("lists joints, and names each component's joint on its row", () => {
     let d = addPart(addPart(addPart(newDoc("Arm"), "box", "a"), "box", "b"), "box", "c");

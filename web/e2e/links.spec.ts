@@ -76,3 +76,24 @@ test("see a component's mass, and give a body its datasheet mass", async ({ page
   await expect(props.getByText("From its datasheet, spread evenly.")).toBeVisible({ timeout: 20_000 });
   await expect(props.getByText("about 55 g")).toHaveCount(2);
 });
+
+/** Components (#334): drag a body into a component in the browser, then back out from its menu; undo puts it back. */
+test("drag a body into a component, and move it back to the model", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "New component" }).click();
+  await page.getByRole("button", { name: "Activate Untitled model" }).click();
+
+  const box = page.getByRole("treeitem", { name: /^Box 1/ });
+  await expect(box).toHaveAttribute("aria-level", "3");
+  await box.dragTo(page.getByRole("treeitem", { name: /Component 1 Empty/ }));
+  await expect(page.getByRole("treeitem", { name: /Component 1 1 body/ })).toBeVisible();
+  await expect(box).toHaveAttribute("aria-level", "4");
+
+  await box.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Move to Untitled model" }).click();
+  await expect(box).toHaveAttribute("aria-level", "3");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(box).toHaveAttribute("aria-level", "4");
+});

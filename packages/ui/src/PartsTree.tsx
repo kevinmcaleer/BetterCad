@@ -35,6 +35,10 @@ export interface TreeItem {
   folded?: boolean;
   /** What the row is (body, sketch, plane, folder), as `data-kind` for styling. */
   kind?: string;
+  /** It can be dragged onto a row that takes it (`into`), with `onDropInto`. */
+  move?: boolean;
+  /** Rows marked `move` can be dropped onto it: a component (#334). */
+  into?: boolean;
 }
 
 export interface PartsTreeProps {
@@ -47,6 +51,8 @@ export interface PartsTreeProps {
   onToggle?: (id: string, what: RowToggle) => void;
   /** Drag to reorder among siblings: move `id` before `beforeId` (null for the end). */
   onReorder?: (id: string, beforeId: string | null) => void;
+  /** Drag a `move` row onto an `into` row. */
+  onDropInto?: (id: string, into: string) => void;
   onContextMenu?: (id: string, at: { x: number; y: number }) => void;
   /** Row buttons to show, in order. */
   toggles?: RowToggle[];
@@ -80,7 +86,8 @@ export function depths(items: TreeItem[]): Map<string, number> {
 
 /**
  * The parts tree. Click selects, Ctrl/Cmd-click adds, Shift-click selects a range. Up and Down move, Left and Right
- * fold, Enter selects, F2 renames, Space adds to the selection. Rows can be dragged to reorder among siblings.
+ * fold, Enter selects, F2 renames, Space adds to the selection. Rows can be dragged to reorder among siblings, or
+ * onto a row that takes them.
  */
 export function PartsTree({
   label,
@@ -90,6 +97,7 @@ export function PartsTree({
   onRename,
   onToggle,
   onReorder,
+  onDropInto,
   onContextMenu,
   toggles = ["hidden"],
   empty,
@@ -103,6 +111,7 @@ export function PartsTree({
   const renaming = renameId !== undefined ? renameId : localRenaming;
   const setRenaming = onRenameIdChange ?? setLocalRenaming;
   const [dropBefore, setDropBefore] = useState<string | null | undefined>(undefined);
+  const [dropInto, setDropInto] = useState<string | null>(null);
   const anchor = useRef<string | null>(null);
   const dragId = useRef<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -190,6 +199,14 @@ export function PartsTree({
   };
   const onDragOver = (e: DragEvent, target: TreeItem) => {
     const id = dragId.current;
+    // Onto a row that takes it (#334): the row lights up, and the drop moves it in.
+    if (id && id !== target.id && target.into && onDropInto && items.find((i) => i.id === id)?.move) {
+      e.preventDefault();
+      setDropBefore(undefined);
+      setDropInto(target.id);
+      return;
+    }
+    setDropInto(null);
     if (!id || id === target.id || target.drag === false || !siblingsOf(id).some((s) => s.id === target.id)) return;
     e.preventDefault();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -200,9 +217,11 @@ export function PartsTree({
   };
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
-    if (dragId.current && dropBefore !== undefined && dropBefore !== dragId.current) onReorder?.(dragId.current, dropBefore);
+    if (dragId.current && dropInto) onDropInto?.(dragId.current, dropInto);
+    else if (dragId.current && dropBefore !== undefined && dropBefore !== dragId.current) onReorder?.(dragId.current, dropBefore);
     dragId.current = null;
     setDropBefore(undefined);
+    setDropInto(null);
   };
 
   return (
@@ -221,9 +240,15 @@ export function PartsTree({
             aria-selected={selected}
             aria-level={d + 1}
             aria-expanded={parent ? !collapsed.has(item.id) : undefined}
-            className={cx("bc-row", selected && "bc-on", item.hidden && "bc-off", dropBefore === item.id && "bc-drop-before")}
+            className={cx(
+              "bc-row",
+              selected && "bc-on",
+              item.hidden && "bc-off",
+              dropBefore === item.id && "bc-drop-before",
+              dropInto === item.id && "bc-drop-into",
+            )}
             style={{ ["--depth" as string]: d }}
-            draggable={!!onReorder && item.drag !== false && renaming !== item.id}
+            draggable={((!!onReorder && item.drag !== false) || (!!onDropInto && !!item.move)) && renaming !== item.id}
             onDragStart={(e) => {
               dragId.current = item.id;
               e.dataTransfer.effectAllowed = "move";
@@ -234,6 +259,7 @@ export function PartsTree({
             onDragEnd={() => {
               dragId.current = null;
               setDropBefore(undefined);
+              setDropInto(null);
             }}
             onContextMenu={(e: MouseEvent) => {
               if (!onContextMenu) return;

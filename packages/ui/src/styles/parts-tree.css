@@ -147,6 +147,9 @@
 .bc-drop-before {
   box-shadow: inset 0 2px 0 var(--bc-color-accent);
 }
+.bc-drop-into {
+  box-shadow: inset 0 0 0 2px var(--bc-color-accent);
+}
 .bc-drop-end {
   height: 6px;
   box-shadow: inset 0 2px 0 var(--bc-color-accent);
