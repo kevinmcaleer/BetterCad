@@ -120,7 +120,7 @@ export const TOOLS: Tool[] = [
     id: "pattern",
     label: "Pattern",
     icon: "distributeH",
-    title: "Mirror bodies, or copy them in rows or round an axis",
+    title: "Copy bodies in rows or round an axis",
     help: "Click the bodies to copy. Shift-click picks more than one.",
   },
   { id: "mount", label: "Mount", icon: "screw", title: "Standoffs or a servo horn mount", help: "Click a flat face where the mount goes." },
@@ -138,7 +138,7 @@ const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!)
 
 /**
  * The tools on the top bar, in groups and ranked by how often you reach for them: arrange what is there, make
- * something new, change it, then check it. The Library sits at the head of "make" (see TopBar).
+ * something new, change it, then check it. The Library sits at the head of "make", and Mirror just before Pattern (see TopBar).
  */
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
   { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
