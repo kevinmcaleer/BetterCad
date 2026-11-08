@@ -104,7 +104,6 @@ import { useViewport } from "./useViewport";
 import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
 import { ParamsPanel } from "./ParamsPanel";
-import { CommandPalette } from "./CommandPalette";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
@@ -159,6 +158,8 @@ const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: 
 const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
+// The command palette loads the first time it opens, to keep it out of first paint.
+const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ default: m.CommandPalette })));
 const CombineBar = lazy(() => import("./CombineBar").then((m) => ({ default: m.CombineBar })));
 const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
 // The sketch palette only shows while a sketch is open, so it loads then.
@@ -2575,7 +2576,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       {pendingDelete && (
         <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
       )}
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
+      {paletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette open onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
+        </Suspense>
+      )}
       <ContextMenu
         at={featureMenuAt?.at ?? null}
         onClose={() => setFeatureMenuAt(null)}
