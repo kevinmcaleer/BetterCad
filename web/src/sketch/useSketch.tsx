@@ -224,6 +224,13 @@ export function useSketch(d: SketchDeps) {
   const origin = useMemo<Vec2 | null>(() => (frame ? toSketch(frame, [0, 0, 0]) : null), [frame]);
 
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
+  // A sketch looks straight at its plane, orthographic; finishing it puts back the projection you had before.
+  const keptOrtho = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (editingId || keptOrtho.current === null) return;
+    if (!keptOrtho.current) engineOf()?.setOrtho(false);
+    keptOrtho.current = null;
+  }, [editingId, engineOf]);
 
   // The undo of "Start a sketch" takes the sketch away: the session ends with it.
   useEffect(() => {
@@ -526,7 +533,8 @@ export function useSketch(d: SketchDeps) {
       setStool("line");
       setSel([]);
       const f = planeFrame(plane);
-      engineOf()?.lookAt(f.origin, f.normal);
+      keptOrtho.current ??= eng?.camera.ortho ?? null;
+      eng?.lookAt(f.origin, f.normal);
       say(`Sketching on ${what}${curves.length ? ", with its edges brought in" : ""}. Enter finishes.`);
     },
     [store, engineOf, setStool, say, options.autoProject],
@@ -586,7 +594,9 @@ export function useSketch(d: SketchDeps) {
       setStool("select");
       setSel([]);
       const fr = liveFrame(f.sketch.plane, deps.current.construct);
-      engineOf()?.lookAt(fr.origin, fr.normal);
+      const eng = engineOf();
+      keptOrtho.current ??= eng?.camera.ortho ?? null;
+      eng?.lookAt(fr.origin, fr.normal);
       say(`Editing ${f.name}. Enter finishes.`);
     },
     [store, engineOf, setStool, say],

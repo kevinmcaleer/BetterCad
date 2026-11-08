@@ -534,3 +534,38 @@ test("place a size across, up or along a slanted line by where the pointer is, t
   const back = (await pill.boundingBox())!;
   expect(Math.abs(back.y - box.y)).toBeLessThan(3);
 });
+
+test("finishing a sketch puts the view back in perspective", async ({ page }) => {
+  await page.goto("/");
+  const view = page.getByRole("application", { name: /3D view/ });
+  const cube = page.getByRole("group", { name: "View cube" });
+  await expect(view).toHaveAttribute("data-projection", "perspective");
+
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(600);
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Sketch/ })
+    .click();
+  await click(page, 20, 20);
+  await expect(page.getByText("Sketching on the XY plane. Enter finishes.")).toBeVisible();
+  // Sketching looks straight at the plane, orthographic, and the menu says so.
+  await expect(view).toHaveAttribute("data-projection", "orthographic");
+  await cube.hover();
+  await cube.getByRole("button", { name: "View cube options" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Orthographic" })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("toolbar", { name: "Sketch tools" }).getByRole("button", { name: "Finish sketch" }).click();
+  await expect(view).toHaveAttribute("data-projection", "perspective");
+  await cube.hover();
+  await cube.getByRole("button", { name: "View cube options" }).click();
+  await expect(page.getByRole("menuitemradio", { name: "Perspective" })).toHaveAttribute("aria-checked", "true");
+
+  // Picking Orthographic then Perspective switches the camera each time.
+  await page.getByRole("menuitemradio", { name: "Orthographic" }).click();
+  await expect(view).toHaveAttribute("data-projection", "orthographic");
+  await cube.getByRole("button", { name: "View cube options" }).click();
+  await page.getByRole("menuitemradio", { name: "Perspective" }).click();
+  await expect(view).toHaveAttribute("data-projection", "perspective");
+});
