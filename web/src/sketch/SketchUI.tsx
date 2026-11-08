@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import {
   ArmedBar,
   Banner,
@@ -26,6 +33,7 @@ import {
   perp,
   scale,
   sub,
+  toSketch,
   toWorld,
   type Constraint,
   type Dimension,
@@ -35,7 +43,7 @@ import {
 import { formatCombo } from "../state/commands";
 import { ORIGIN, SNAP_LABEL } from "./snap";
 import { OPTION_ROWS } from "./options";
-import { anchorOf, dimensionArt } from "./dimensions";
+import { anchorOf, dimensionArt, offsetTo } from "./dimensions";
 import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, levelOrUpright, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
 
@@ -233,6 +241,10 @@ export function DimInput({
 /** The labels over the sketch: dimension pills (double-click to type a size), constraint marks and the snap label. */
 export function SketchLabels({ s }: { s: SketchSession }) {
   const eng = s.engineOf();
+  /** A size pill held down: where it was grabbed, and whether it has moved far enough to count as a drag. */
+  const grab = useRef<{ id: Id; cx: number; cy: number; x: number; y: number; moved: boolean; offset?: Vec2 } | null>(null);
+  /** The click that ends a drag does not pick the size. */
+  const dragged = useRef(false);
   if (!s.sketch || !s.frame || !eng) return null;
   const frame = s.frame;
   const px = eng.pixelSize(frame.origin);
@@ -247,6 +259,34 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   const dims = s.sketch.dimensions
     .filter((d) => s.options.dimensions || s.dimEdit === d.id || s.sel.includes(d.id))
     .map((d) => ({ d, art: dimensionArt(idx, d, px, centre), on: s.sel.includes(d.id) || conflicting.has(d.id) }));
+  // A size being placed follows the pointer until a click puts it down.
+  const placing = s.placing ? { d: s.placing.dim, art: dimensionArt(new SketchIndex(s.placing.sketch), s.placing.dim, px, centre) } : null;
+
+  // Dragging a size's pill moves its label, and with it the dimension line, as in Fusion.
+  const onGrab = (d: Dimension, e: ReactPointerEvent<HTMLElement>, x: number, y: number) => {
+    if (e.button !== 0) return;
+    grab.current = { id: d.id, cx: e.clientX, cy: e.clientY, x, y, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onDrag = (d: Dimension, e: ReactPointerEvent<HTMLElement>) => {
+    const g = grab.current;
+    if (!g || g.id !== d.id) return;
+    const dx = e.clientX - g.cx;
+    const dy = e.clientY - g.cy;
+    if (!g.moved && Math.hypot(dx, dy) < 4) return;
+    const w = eng.rayPlane(g.x + dx, g.y + dy, frame.origin, frame.normal);
+    if (!w) return;
+    g.moved = true;
+    g.offset = offsetTo(idx, d, toSketch(frame, w));
+    s.moveLabel(d.id, g.offset);
+  };
+  const onLetGo = (d: Dimension) => {
+    const g = grab.current;
+    grab.current = null;
+    if (!g || g.id !== d.id || !g.moved || !g.offset) return;
+    dragged.current = true;
+    s.moveLabel(d.id, g.offset, true);
+  };
 
   // While a constraint or the dimension tool is armed, marks let clicks through to the geometry under them.
   const armed = !!s.ctool || s.stool === "dimension";
@@ -275,9 +315,9 @@ export function SketchLabels({ s }: { s: SketchSession }) {
 
   return (
     <div className="bc-snaps" data-tick={s.camTick}>
-      {dims.length > 0 && (
+      {(dims.length > 0 || placing) && (
         <svg className="bc-dim-art" aria-hidden="true">
-          {dims.map(({ d, art, on }) => (
+          {[...dims, ...(placing ? [{ ...placing, on: true }] : [])].map(({ d, art, on }) => (
             <g key={d.id} className={cx("bc-dim-mark", on && "bc-on", !d.driving && "bc-driven")}>
               {art.lines.map(([a, b], i) => {
                 const p = at(a);
@@ -319,18 +359,41 @@ export function SketchLabels({ s }: { s: SketchSession }) {
             style={{ left: p.x, top: p.y }}
             title={
               !d.driving
-                ? "A reference size: it follows the geometry"
+                ? "A reference size: it follows the geometry. Drag to move it"
                 : isExpression(d.expression)
-                  ? `= ${d.expression}. Double-click to change it`
-                  : "Double-click to type a size"
+                  ? `= ${d.expression}. Double-click to change it, drag to move it`
+                  : "Double-click to type a size, drag to move it"
             }
-            onClick={(e) => pick(d.id, e)}
+            onPointerDown={(e) => onGrab(d, e, p.x, p.y)}
+            onPointerMove={(e) => onDrag(d, e)}
+            onPointerUp={() => onLetGo(d)}
+            onPointerCancel={() => onLetGo(d)}
+            onClick={(e) => {
+              if (dragged.current) {
+                dragged.current = false;
+                return;
+              }
+              pick(d.id, e);
+            }}
             onDoubleClick={() => s.setDimEdit(d.id)}
           >
             {d.driving ? formatDimension(d) : `(${formatDimension(d)})`}
           </button>
         );
       })}
+      {placing &&
+        (() => {
+          const p = at(placing.art.text);
+          return (
+            <div
+              className="bc-dim bc-dim-pill bc-on bc-placing"
+              style={{ left: p.x, top: p.y }}
+              aria-label={`${DIM_LABEL[placing.d.kind]} ${formatDimension(placing.d)}. Click to place it`}
+            >
+              {formatDimension(placing.d)}
+            </div>
+          );
+        })()}
       {glyphs.map(({ c, g, x, y }) => (
         <button
           key={c.id}

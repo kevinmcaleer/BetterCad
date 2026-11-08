@@ -69,7 +69,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
     label: "Dimension",
     icon: "dimension",
     key: "d",
-    help: "Click a line, circle or arc, or two points or two lines, to size them. The origin counts as a point.",
+    help: "Click a line, circle or arc, or two points or two lines, then click to place the size. Move off past the ends for a level or upright size. The origin counts as a point.",
     fields: [],
   },
   {
