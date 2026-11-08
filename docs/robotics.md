@@ -130,4 +130,14 @@ Set tool point (command palette) and click a point on a link that hangs on a joi
 - Out of reach, the arm stretches as near as it can and the status says "Out of reach by 12 mm".
 - With a tool point set, each joint in Properties has Lock, which keeps it still when you drag the arm. A joint driven by another (#194) follows its driver and isn't solved itself.
 - Esc during a drag puts the arm back. Each drag is one undo step, "Move the arm".
-- Not yet: constraining the drag to an axis with the move gizmo's arrows.
+- The move gizmo sits on the tool point (of the selected link, or the only one). Drag an arrow to move the tool point along that axis only, a square to keep it in that plane, or the centre to move it freely. The arm follows as above.
+
+## Clash check (#178)
+
+Check for clashes (command palette, or Check clashes under Properties with nothing selected) finds the bodies that overlap at the saved pose. It runs again after each change while it's on.
+
+- Each overlapping pair is listed with its volume, such as "Upper arm and Base overlap by 0.8 cm³". Both bodies are tinted, the overlap is outlined, and Show frames it.
+- Pairs that only touch, with no volume between them, are listed under Touching, because printed parts that touch fuse or bind.
+- Bodies in the same link are skipped, since they move together; tick Bodies in the same link to include them. Reference bodies are left out unless Reference bodies is ticked. Holes never clash.
+- The work runs in the kernel worker: bounding boxes first, then the exact common solid (`BRepAlgoAPI_Common`) of each pair whose boxes meet. A pair with none is touching when its gap is under 1 µm. Progress shows while it runs, and Esc or Stop ends it.
+- Not done yet: a triangle pass on the display meshes before the exact check, and checking a named pose (#177) instead of the saved one.

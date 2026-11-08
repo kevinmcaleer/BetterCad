@@ -22,7 +22,7 @@ export interface KernelView {
   /** Measures picks on the model as it is now; null when the engine is off. */
   measure(refs: TopoRef[]): Promise<MeasureResult | null>;
   /** Any other kernel call (export, estimate); null when the engine is off. */
-  call<M extends keyof Methods>(method: M, params: Methods[M]["params"]): Call<Methods[M]["result"]> | null;
+  call<M extends keyof Methods>(method: M, params: Methods[M]["params"], onProgress?: (fraction: number) => void): Call<Methods[M]["result"]> | null;
 }
 
 export const partKey = (p: Part) => JSON.stringify([p.kind, p.size, p.position, p.rotation ?? null]);
@@ -109,7 +109,11 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
     return c.call("measure", { doc: now.current.doc, upTo: now.current.upTo, refs });
   }, []);
 
-  const call = useCallback(<M extends keyof Methods>(method: M, params: Methods[M]["params"]) => kc.current?.call(method, params) ?? null, []);
+  const call = useCallback(
+    <M extends keyof Methods>(method: M, params: Methods[M]["params"], onProgress?: (fraction: number) => void) =>
+      kc.current?.call(method, params, onProgress) ?? null,
+    [],
+  );
 
   return { state, bodies, failed: built.failed, measure, call };
 }

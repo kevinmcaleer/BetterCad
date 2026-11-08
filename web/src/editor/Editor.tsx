@@ -162,7 +162,7 @@ import { lastError, onCaught, watchWindow, type Caught } from "../report/errors"
 import { APP_VERSION } from "../version";
 import { useWhatsNew } from "../whatsnew/useWhatsNew";
 import { saveBcad } from "@bettercad/kernel/bcad";
-import type { BodyMass, ExportFormat, Mate } from "@bettercad/kernel";
+import type { BodyMass, Clash, ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
 import { renderSession, type RenderSession, type RenderStyle, type SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
@@ -171,6 +171,8 @@ import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
 import type { BodyDrag, WorldPlaneName } from "../viewport/engine";
+import type { IkDragHooks } from "../joint/ikDrag";
+import type { IkProblem } from "../state/ik";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
@@ -719,9 +721,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // Tool points (#176): click a point on a link to drag the arm by; the solver loads once one is wanted.
   const [toolPick, setToolPick] = useState(false);
   const ikMaths = useRef<typeof import("../joint/ikDrag") | null>(null);
+  const [hasIk, setHasIk] = useState(false);
   const hasTools = !!doc.tools?.length;
   useEffect(() => {
-    if ((hasTools || toolPick) && !ikMaths.current) void import("../joint/ikDrag").then((m) => (ikMaths.current = m));
+    if ((hasTools || toolPick) && !ikMaths.current)
+      void import("../joint/ikDrag").then((m) => {
+        ikMaths.current = m;
+        setHasIk(true);
+      });
   }, [hasTools, toolPick]);
   useEscape(
     toolPick,
@@ -752,16 +759,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [store, say],
   );
+  /** Starts an arm drag by a link's tool point (#176): by the pointer on the link, or by the gizmo's arrows. */
   const ikDrag = useCallback(
-    (link: string, at: { x: number; y: number }): BodyDrag | null => {
+    <D extends { cancel(): void }>(
+      link: string,
+      make: (ik: typeof import("../joint/ikDrag"), problem: IkProblem, start: Pose, hooks: IkDragHooks) => D,
+    ): D | null => {
       const { joints, raw, livePose: before, tools } = poseState.current;
       const tool = tools?.find((t) => t.link === link);
-      const engine = vp.ref.current?.engine();
       const ik = ikMaths.current;
-      if (!tool || !engine || !ik) return null;
+      if (!tool || !ik) return null;
       const problem = { joints, drives: drivesRef.current.drives, link, point: tool.point, locked: tool.locked };
       const finish = () => setPoseDrag(null);
-      const drag = ik.ikDrag(problem, raw ?? {}, engine, at, {
+      const drag = make(ik, problem, raw ?? {}, {
         show: setLivePose,
         commit: (kept, miss) => {
           finish();
@@ -782,13 +792,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       setPoseDrag({ cancel: () => drag.cancel() });
       return drag;
     },
-    [vp.ref, store, say],
+    [store, say],
   );
   const bodyDrag = useCallback(
     (pick: { body: string }, at: { x: number; y: number }): BodyDrag | null => {
       const { joints, parts: all, moves, pose: now, livePose: before, tools } = poseState.current;
       const link = all.find((p) => p.id === pick.body)?.link;
-      if (link && tools?.some((t) => t.link === link)) return ikDrag(link, at);
+      if (link && tools?.some((t) => t.link === link)) {
+        const view = vp.ref.current?.engine();
+        return view ? ikDrag(link, (ik, problem, start, hooks) => ik.ikDrag(problem, start, view, at, hooks)) : null;
+      }
       const j = link ? joints.find((x) => x.child === link && movable(x)) : undefined;
       const engine = vp.ref.current?.engine();
       const maths = dragMaths.current;
@@ -842,6 +855,25 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       }),
     );
   }, [doc.tools, linkMoves, posing, vp.ref]);
+  // The move gizmo sits on the tool point of the selected link, or on the only one (#176): its arrows hold the drag to an
+  // axis, its squares to a plane.
+  const gizmoTool = useMemo(() => {
+    const tools = doc.tools ?? [];
+    const picked = parts.find((p) => selection.includes(p.id) && tools.some((t) => t.link === p.link))?.link;
+    return tools.find((t) => t.link === picked) ?? (tools.length === 1 ? tools[0] : undefined);
+  }, [doc.tools, parts, selection]);
+  useEffect(() => {
+    const eng = vp.ref.current?.engine();
+    if (!eng) return;
+    if (!posing || !gizmoTool || !hasIk) return eng.setPointGizmo(null);
+    const m = linkMoves.get(gizmoTool.link);
+    let drag: ReturnType<typeof import("../joint/ikDrag").ikGizmoDrag> | null = null;
+    eng.setPointGizmo(m ? mat4Apply(m, gizmoTool.point) : gizmoTool.point, {
+      start: () => (drag = ikDrag(gizmoTool.link, (ik, problem, start, hooks) => ik.ikGizmoDrag(problem, start, hooks))),
+      move: (p) => drag?.move(p),
+      end: () => drag?.end(),
+    });
+  }, [gizmoTool, linkMoves, posing, hasIk, ikDrag, vp.ref]);
   useEffect(() => {
     const moves = new Map<string, Matrix4>();
     if (posing)
@@ -1457,6 +1489,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     homeJoints: () => {},
     armToolPoint: () => {},
     clearToolPoints: () => {},
+    checkClashes: () => {},
     openExport: () => {},
     openRender: () => {},
     startTour: () => {},
@@ -1510,6 +1543,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     clearToolPoints: () => {
       store.edit((d) => ({ ...d, tools: undefined }), "Remove the tool points");
       say("Removed the tool points");
+    },
+    checkClashes: () => {
+      setSelection([]);
+      setPropsOpen(true);
+      setClashOn(true);
     },
     openExport: () => setExportOpen(true),
     openRender: () => openRender(),
@@ -1846,6 +1884,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().armToolPoint(),
         when: () => build(live.current.doc).joints.some(movable),
         keywords: "ik inverse kinematics gripper tip end effector arm drag robot",
+      },
+      {
+        id: "check.clashes",
+        scope: "model",
+        label: "Check for clashes",
+        group: "Edit",
+        icon: "warning",
+        run: () => h().checkClashes(),
+        when: () => live.current.parts.length > 1,
+        keywords: "collision interference overlap touch intersect robot pose",
       },
       {
         id: "pose.tool.clear",
@@ -2356,6 +2404,45 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           : undefined,
     };
   }, [hasLinks, selectedParts, masses, linkMass, store]);
+
+  // Clash check (#178): worked out in the kernel at the saved pose while it's on, again after each change.
+  const [clashOn, setClashOn] = useState(false);
+  const [clashOpts, setClashOpts] = useState<{ sameLink?: boolean; references?: boolean }>({});
+  const [clashes, setClashes] = useState<Clash[] | null>(null);
+  const [clashProgress, setClashProgress] = useState<number | null>(null);
+  const clashCall = useRef<{ cancel(): void } | null>(null);
+  useEffect(() => {
+    setClashes(null);
+    setClashProgress(null);
+    if (!clashOn) return;
+    let gone = false;
+    const t = setTimeout(() => {
+      setClashProgress(0);
+      const call = kernelCall("clashes", { doc, upTo: at, ...clashOpts }, (f) => !gone && setClashProgress(f));
+      clashCall.current = call;
+      call?.then(
+        (r) => !gone && setClashes(r),
+        () => undefined,
+      );
+      void call?.finally(() => !gone && setClashProgress(null));
+    }, 300);
+    return () => {
+      gone = true;
+      clearTimeout(t);
+      clashCall.current?.cancel();
+      clashCall.current = null;
+    };
+  }, [clashOn, clashOpts, doc, at, kernelCall]);
+  const stopClashes = useCallback(() => {
+    clashCall.current?.cancel();
+    setClashOn(false);
+    say("Stopped checking for clashes");
+  }, [say]);
+  useEscape(clashProgress !== null, stopClashes, ESC.tool);
+  const clashBodies = useMemo(() => (clashes?.length ? new Set(clashes.filter((c) => c.kind === "overlap").flatMap((c) => [c.a, c.b])) : null), [clashes]);
+  const viewWarn = useMemo(() => (clashBodies ? new Set([...(offBed ?? []), ...clashBodies]) : offBed), [clashBodies, offBed]);
+  useEffect(() => vp.ref.current?.engine()?.setClashBoxes(clashes?.length ? clashes.map((c) => c.box) : null), [clashes, vp.ref]);
+  const showClash = useCallback((c: Clash) => vp.ref.current?.engine()?.fitBox(c.box.min, c.box.max), [vp.ref]);
 
   // Mating faces (#184): worked out in the kernel while the fits check is on, again after each change.
   const [fitsCheck, setFitsCheck] = useState(false);
@@ -3235,7 +3322,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onHome={vp.goHome}
             cubeMenu={vp.cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
-            warn={offBed}
+            warn={viewWarn}
             check={checkResult?.values ?? null}
             originPlanes={{
               shown: sketch.editing ? [] : originShown.filter((x): x is WorldPlaneName => x !== "point"),
@@ -3328,6 +3415,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
                 }
                 mass={massInfo}
+                clashes={
+                  parts.length > 1
+                    ? {
+                        on: clashOn,
+                        onToggle: setClashOn,
+                        sameLink: !!clashOpts.sameLink,
+                        references: !!clashOpts.references,
+                        onOptions: (change) => setClashOpts((o) => ({ ...o, ...change })),
+                        progress: clashProgress,
+                        clashes,
+                        nameOf: (id: string) => parts.find((p) => p.id === id)?.name ?? "A body",
+                        onShow: showClash,
+                        onStop: stopClashes,
+                      }
+                    : undefined
+                }
                 pose={
                   built.joints.length
                     ? {

@@ -12,6 +12,7 @@ import {
   type Vec3,
 } from "../state/document";
 import type { PoseControlsProps } from "../joint/PoseControls";
+import type { ClashListProps } from "../joint/ClashList";
 import type { MassInfo } from "../joint/MassRows";
 import { FitMenu, type FitChoice } from "../fit/FitMenu";
 import { lazy, Suspense } from "react";
@@ -48,12 +49,15 @@ export interface PropertiesProps {
   /** Mass and centre of mass (#174) of the selected body and its link. */
   mass?: MassInfo;
   pose?: Omit<PoseControlsProps, "joints" | "onHome"> & { joints: PoseControlsProps["joints"]; selected: PoseControlsProps["joints"]; onHome: () => void };
+  /** The clash check (#178), on the model's summary. */
+  clashes?: ClashListProps;
 }
 
 /** Colour and Finish (#196) load with the first selection, keeping the first-paint bundle in budget. */
 /** The pose sliders (#173) load once a model has joints. */
 const MassRows = lazy(() => import("../joint/MassRows").then((m) => ({ default: m.MassRows })));
 const PoseControls = lazy(() => import("../joint/PoseControls").then((m) => ({ default: m.PoseControls })));
+const ClashList = lazy(() => import("../joint/ClashList").then((m) => ({ default: m.ClashList })));
 const LookControls = lazy(() => import("../looks/LookControls").then((m) => ({ default: m.LookControls })));
 
 const AXES: (keyof Vec3)[] = ["x", "y", "z"];
@@ -125,6 +129,7 @@ export function Properties({
   onFinish,
   pose,
   mass,
+  clashes,
 }: PropertiesProps & { allParts?: Part[] }) {
   if (parts.length === 0) {
     return (
@@ -166,6 +171,14 @@ export function Properties({
                 <h2 className="bc-panel-title">Pose</h2>
                 <Suspense fallback={null}>
                   <PoseControls {...pose} />
+                </Suspense>
+              </>
+            )}
+            {clashes && (
+              <>
+                <h2 className="bc-panel-title">Clashes</h2>
+                <Suspense fallback={null}>
+                  <ClashList {...clashes} />
                 </Suspense>
               </>
             )}
