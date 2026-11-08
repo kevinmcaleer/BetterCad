@@ -37,7 +37,19 @@ import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { entityAt, snap, snapStep, type Snap } from "./snap";
-import { CLICKS, CONSTRAINT_TOOLS, SKETCH_TOOLS, commit, constraintsFor, isDrawTool, preview, toolById, type ConstraintTool, type SketchToolId } from "./tools";
+import {
+  CLICKS,
+  CONSTRAINT_TOOLS,
+  SKETCH_TOOLS,
+  addConstraints,
+  commit,
+  newlyRedundant,
+  isDrawTool,
+  preview,
+  toolById,
+  type ConstraintTool,
+  type SketchToolId,
+} from "./tools";
 
 /**
  * The sketch session (#51–#58): picking a plane, then drawing, constraining and dimensioning on it until Finish. The
@@ -147,6 +159,12 @@ export function useSketch(d: SketchDeps) {
     return dm ? `the ${formatDimension(dm)} size` : "another constraint";
   }, []);
 
+  const current = useCallback((): Sketch | null => {
+    const id = live.current.editingId;
+    const f = store.get().features.find((x) => x.id === id);
+    return f?.type === "sketch" ? f.sketch : null;
+  }, [store]);
+
   /**
    * Solves and stores a changed sketch. A change that fights what is there is refused and named; `strict` also refuses
    * one that only repeats it (adding a constraint or a size).
@@ -158,7 +176,8 @@ export function useSketch(d: SketchDeps) {
       let solved = next;
       if (solver) {
         const r = solver.solve(next);
-        const bad = r.status === "conflicting" ? r.conflicting : opts.strict && r.status === "redundant" ? r.redundant : [];
+        const was = opts.strict && r.status === "redundant" ? current() : null;
+        const bad = r.status === "conflicting" ? r.conflicting : opts.strict ? newlyRedundant(was && solver.solve(was), r) : [];
         if (bad.length) {
           if (!opts.quiet) {
             const names = [...new Set(bad.map((x) => describe(next, x)))].slice(0, 3).join(" and ");
@@ -175,14 +194,8 @@ export function useSketch(d: SketchDeps) {
       store.edit((doc) => updateSketch(doc, id, () => solved), label, opts.key);
       return true;
     },
-    [solver, store, say, describe],
+    [solver, store, say, describe, current],
   );
-
-  const current = useCallback((): Sketch | null => {
-    const id = live.current.editingId;
-    const f = store.get().features.find((x) => x.id === id);
-    return f?.type === "sketch" ? f.sketch : null;
-  }, [store]);
 
   const addDimension = useCallback(
     (kind: DimensionKind, refs: Id[]) => {
@@ -269,14 +282,12 @@ export function useSketch(d: SketchDeps) {
       const s = current();
       if (!s) return;
       const picked = live.current.sel.filter((id) => s.entities.some((e) => e.id === id));
-      const out = constraintsFor(type, s, picked);
+      const out = addConstraints(type, s, picked);
       if (typeof out === "string") {
-        say(`${out}, then choose ${CONSTRAINT_TOOLS.find((t) => t.id === type)!.label} again.`);
+        say(`${out} (Shift-click to pick more than one), then choose ${CONSTRAINT_TOOLS.find((t) => t.id === type)!.label} again.`);
         return;
       }
-      const dr = new Draft(s);
-      for (const c of out) dr.constrain(c);
-      if (apply(dr.done().sketch, `Add ${CONSTRAINT_LABEL[out[0]!.type].toLowerCase()} constraint`, { strict: true })) setSel([]);
+      if (apply(out, `Add ${CONSTRAINT_LABEL[type].toLowerCase()} constraint`, { strict: true })) setSel([]);
     },
     [current, apply, say],
   );
