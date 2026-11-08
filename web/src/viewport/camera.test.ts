@@ -111,4 +111,12 @@ describe("picking IDs", () => {
     expect(findPick(px, size, "face")).toEqual({ body: 0, element: FACE_ONLY });
     expect(findPick(new Uint8Array(size * size * 4), size, "body")).toBeNull();
   });
+
+  it("finds a body a finger lands just off, which a cursor would miss", () => {
+    const size = 15;
+    const px = new Uint8Array(size * size * 4);
+    px.set(encodeId(2, 0), (7 * size + 13) * 4);
+    expect(findPick(px, size, "body")).toBeNull();
+    expect(findPick(px, size, "body", true)).toEqual({ body: 2, element: 0 });
+  });
 });

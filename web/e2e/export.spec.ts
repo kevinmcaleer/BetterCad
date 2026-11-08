@@ -35,8 +35,9 @@ test("exports a sphere as STL at the chosen resolution, from the kernel", async 
   const draft = await triangles(page);
   await dialog.getByRole("button", { name: "Fine" }).click();
   await expect(dialog.getByText("Within 0.005 mm of the true surface")).toBeVisible();
+  // The count is worked out again in the worker: it shows the draft count until the fine mesh is in.
+  await expect.poll(() => triangles(page), { timeout: 30_000 }).toBeGreaterThan(draft);
   const fine = await triangles(page);
-  expect(fine).toBeGreaterThan(draft);
 
   await dialog.getByRole("button", { name: "Export", exact: true }).click();
   await expect(page.getByText("Exported Ball.stl")).toBeVisible({ timeout: 30_000 });
