@@ -9,7 +9,7 @@ BetterCad has to open fast on a Raspberry Pi 5 and a phone (#97). These are the 
 
 ## How the app meets it
 
-- **First paint carries only the shell**: React, the UI, the viewport and three.js. CI fails the build when that JavaScript passes the shell budget in `budgets.json` (361 KB gzipped) (`npm run size -w web`, which also writes a table to the job summary).
+- **First paint carries only the shell**: React, the UI, the viewport and three.js. CI fails the build when that JavaScript passes the shell budget in `budgets.json` (362 KB gzipped) (`npm run size -w web`, which also writes a table to the job summary).
 - **The kernel arrives after first paint.** `useKernel` imports the client lazily. The worker then fetches the 23 MB OpenCascade WASM, reporting progress as it downloads, and the service worker keeps it for later visits. Calls made while it loads wait in the worker's queue, so an export or a build pressed early runs once it's ready.
 - **The sketch solver loads on first sketch.** planegcs is its own chunk and WASM.
 - **The account and library pages are their own chunk** (`pages/lazy.ts`).
@@ -26,7 +26,7 @@ BetterCad has to open fast on a Raspberry Pi 5 and a phone (#97). These are the 
 
 [`budgets.json`](../budgets.json) holds every budget, and CI's `budgets` job checks them on each pull request. It posts one comment with the table and updates it on later runs.
 
-- **Bundle**, KB gzipped: the shell (first paint) 361, the pages chunk 120, the kernel client 30, all JavaScript 630.
+- **Bundle**, KB gzipped: the shell (first paint) 362, the pages chunk 120, the kernel client 30, all JavaScript 630.
 - **WASM**: OpenCascade under 24 MB (5.4 MB of it with Brotli), planegcs under 1 MB. The target is 12 MB, or 3.5 MB with Brotli. That needs a slimmer build of the same unmodified OCCT (#50), so the budget holds today's size until then.
 - **Kernel benchmarks** (`npm run bench:kernel`): building samples, a fillet, a fine mesh, the print checks. Each is the median of three runs and may be up to 20% over its baseline.
 - **Viewport** (`npm run bench:viewport`, against a gallery build being served): one frame of the calibration coupon in Chromium with SwiftShader, up to 25% over its baseline.
