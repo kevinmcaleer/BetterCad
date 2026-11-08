@@ -41,7 +41,7 @@ describe("Save split button", () => {
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Share, versions and export" }));
     const items = screen.getAllByRole("menuitem").map((el) => el.dataset.label);
-    expect(items).toEqual(["Share…", "Versions…", "Export…", "Open…"]);
+    expect(items).toEqual(["Share…", "Versions…", "Export…", "Build steps (.zip)…", "Open…"]);
     fireEvent.click(screen.getByRole("menuitem", { name: /Versions/ }));
     expect(p.onHistory).toHaveBeenCalledOnce();
   });
