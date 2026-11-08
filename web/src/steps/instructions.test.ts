@@ -92,6 +92,7 @@ describe("build steps", () => {
   it("pads picture names so they sort", () => {
     expect(imageName(3, 12)).toBe("step-03.png");
     expect(imageName(7, 120)).toBe("step-007.png");
+    expect(imageName(3, 12, "-sketch")).toBe("step-03-sketch.png");
   });
 
   it("writes Markdown with the parameters, each step's picture and what failed", () => {
@@ -100,6 +101,7 @@ describe("build steps", () => {
     const md = stepsMarkdown(doc, steps, {
       modelFile: "Servo bracket.bcad",
       images: new Map(steps.map((s) => [s.n, `images/${imageName(s.n, steps.length)}`])),
+      diagrams: new Map([[1, "images/step-01-sketch.png"]]),
       finished: "images/finished.png",
       failed: new Map([["f4", "The edge is gone."]]),
     });
@@ -110,6 +112,7 @@ describe("build steps", () => {
     expect(md).toContain("## Step 2: Base\n\n![Step 2: Base](images/step-02.png)\n\nExtrude **Base sketch**: 6 mm, new body.\n\n- Distance: `thick`");
     expect(md).toContain("| `thick` | `2 * 3`, 6 mm |  |");
     expect(md).toContain("> This step didn't build: The edge is gone.");
+    expect(md).toContain("![Step 1: Base sketch](images/step-01.png)\n\n![Step 1: Base sketch, face on with its sizes](images/step-01-sketch.png)");
     expect(md).toContain("![Servo bracket, finished](images/finished.png)");
   });
 });

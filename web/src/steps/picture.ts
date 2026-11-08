@@ -17,10 +17,12 @@ import {
   Scene,
   SRGBColorSpace,
   WebGLRenderer,
+  Vector3,
   type Object3D,
 } from "three";
 import type { BodyMesh } from "@bettercad/kernel";
-import { sampleArc, textsOf, toWorld, type Frame, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { toWorld, type Frame, type Sketch } from "@bettercad/sketch";
+import { sketchCurves } from "./curves";
 import { cameraBasis, DEFAULT_CAMERA, fit, FOV, type V3 } from "../viewport/camera";
 import { readPalette, type Palette } from "../viewport/colours";
 
@@ -39,40 +41,18 @@ export interface PictureSketch {
   frame: Frame;
 }
 
-/** A sketch's curves (not construction), as pairs of world points, for line segments. */
-export function sketchSegments({ sketch, frame }: PictureSketch): number[] {
-  const pts = new Map<string, Vec2>();
-  for (const e of sketch.entities) if (e.kind === "point") pts.set(e.id, [e.x, e.y]);
-  const out: number[] = [];
-  const poly = (list: Vec2[], closed = false) => {
-    for (let i = 0; i + 1 < list.length + (closed ? 1 : 0); i++) {
-      const a = toWorld(frame, list[i]!);
-      const b = toWorld(frame, list[(i + 1) % list.length]!);
-      out.push(...a, ...b);
-    }
-  };
-  for (const e of sketch.entities) {
-    if (e.construction) continue;
-    if (e.kind === "line") {
-      const a = pts.get(e.a);
-      const b = pts.get(e.b);
-      if (a && b) poly([a, b]);
-    } else if (e.kind === "circle") {
-      const c = pts.get(e.c);
-      if (c) poly(sampleArc(c, e.r, 0, 2 * Math.PI, 72).slice(0, -1), true);
-    } else if (e.kind === "arc") {
-      const c = pts.get(e.c);
-      const a = pts.get(e.a);
-      const b = pts.get(e.b);
-      if (c && a && b) poly(sampleArc(c, e.r, Math.atan2(a[1] - c[1], a[0] - c[0]), Math.atan2(b[1] - c[1], b[0] - c[0])));
-    }
-  }
-  for (const t of textsOf(sketch)) if (!t.text.construction) for (const l of t.loops) poly(l, true);
-  return out;
+/** A sketch's own curves (not construction), as world-space polylines. */
+export function sketchLines({ sketch, frame }: PictureSketch): V3[][] {
+  return sketchCurves(sketch)
+    .filter((c) => !c.construction)
+    .map((c) => {
+      const pts = c.points.map((q) => toWorld(frame, q) as V3);
+      return c.closed && pts.length ? [...pts, pts[0]!] : pts;
+    });
 }
 
 /** The Light theme's view colours, whatever theme is on. */
-function lightPalette(): Palette {
+export function lightPalette(): Palette {
   const probe = document.body.appendChild(document.createElement("i"));
   probe.dataset.theme = "light";
   try {
@@ -106,6 +86,8 @@ export class Bounds {
 }
 
 /** One WebGL context for all of a model's pictures; dispose it when done. */
+export const toPng = (c: HTMLCanvasElement) => new Promise<Blob>((ok, bad) => c.toBlob((b) => (b ? ok(b) : bad(new Error("No picture"))), "image/png"));
+
 export class StepPictures {
   readonly canvas = document.createElement("canvas");
   private renderer: WebGLRenderer;
@@ -184,22 +166,33 @@ export class StepPictures {
       scene.add(new Mesh(g, m), new LineSegments(eg, em));
       made.push(g, m, eg, em);
     }
-    if (sketch) {
-      const seg = sketchSegments(sketch);
-      if (seg.length) {
-        const sg = new BufferGeometry();
-        sg.setAttribute("position", new BufferAttribute(new Float32Array(seg), 3));
-        // Drawn over the model, as a sketch shows while you draw it.
-        const sm = new LineBasicMaterial({ color: p.accent, depthTest: false });
-        const lines = new LineSegments(sg, sm);
-        lines.renderOrder = 10;
-        scene.add(lines);
-        made.push(sg, sm);
-      }
-    }
     try {
       this.renderer.render(scene, this.camera);
-      return await new Promise<Blob>((ok, bad) => this.canvas.toBlob((b) => (b ? ok(b) : bad(new Error("No picture"))), "image/png"));
+      if (!sketch) return await toPng(this.canvas);
+      // The sketch goes on top in 2D, so its lines can be thicker than WebGL draws lines.
+      const out = document.createElement("canvas");
+      out.width = this.width;
+      out.height = this.height;
+      const ctx = out.getContext("2d");
+      if (!ctx) return await toPng(this.canvas);
+      ctx.drawImage(this.canvas, 0, 0);
+      ctx.strokeStyle = `#${p.accent.getHexString()}`;
+      ctx.lineWidth = Math.max(2, this.width / 400);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      const v = new Vector3();
+      for (const line of sketchLines(sketch)) {
+        ctx.beginPath();
+        line.forEach((q, i) => {
+          v.set(...q).project(this.camera);
+          const x = ((v.x + 1) / 2) * this.width;
+          const y = ((1 - v.y) / 2) * this.height;
+          if (i) ctx.lineTo(x, y);
+          else ctx.moveTo(x, y);
+        });
+        ctx.stroke();
+      }
+      return await toPng(out);
     } finally {
       for (const x of made) x.dispose();
     }
