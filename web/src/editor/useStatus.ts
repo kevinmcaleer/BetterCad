@@ -33,24 +33,24 @@ export function useStatus() {
     if (asToast && !bad) {
       if (asToast === "minor" && showing.current) return;
       showing.current = asToast !== "minor";
-      window.clearTimeout(toastTimer.current);
       setToast((t) => ({ text, id: (t?.id ?? 0) + 1 }));
-      toastTimer.current = window.setTimeout(() => {
-        showing.current = false;
-        setToast(null);
-      }, TOAST_MS);
       return;
     }
     window.clearTimeout(timer.current);
     setStatus({ text, bad });
     timer.current = window.setTimeout(() => setStatus({ text: "" }), bad ? ERROR_MS : 5000);
   }, []);
-  useEffect(
-    () => () => {
-      window.clearTimeout(timer.current);
-      window.clearTimeout(toastTimer.current);
-    },
-    [],
-  );
+  // The toast's clock starts once it is on screen, not when it was asked for: a save that ends in a long frame (the
+  // thumbnail render) would otherwise spend the whole 3 s before the toast was ever drawn.
+  const toastId = toast?.id;
+  useEffect(() => {
+    if (toastId === undefined) return;
+    toastTimer.current = window.setTimeout(() => {
+      showing.current = false;
+      setToast(null);
+    }, TOAST_MS);
+    return () => window.clearTimeout(toastTimer.current);
+  }, [toastId]);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
   return [status, say, toast] as const;
 }

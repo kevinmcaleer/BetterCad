@@ -2,6 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { modelRow } from "./pages/editor";
 import { fakeApi } from "./fakeApi";
 
+/** A save draws a thumbnail and uploads it, which a busy CI runner can take well over the default 5 s to do. */
+const SAVE = { timeout: 15_000 };
+
 /** Version history (#91) and share links (#92), against the in-test server in fakeApi.ts. */
 
 const add = async (page: Page, shape: string) => {
@@ -16,7 +19,9 @@ async function savedModel(page: Page) {
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
+  // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the cloud button
+  // says "Saved to your account" until the next change.
+  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
 }
 
 test("save three times, look at version 1, and restore it", async ({ page, context }) => {
@@ -25,10 +30,10 @@ test("save three times, look at version 1, and restore it", async ({ page, conte
   await savedModel(page);
   await add(page, "Cylinder");
   await page.keyboard.press("ControlOrMeta+s");
-  await expect.poll(() => [...server.models.values()][0]!.versions.length).toBe(2);
+  await expect.poll(() => [...server.models.values()][0]!.versions.length, SAVE).toBe(2);
   await add(page, "Sphere");
   await page.keyboard.press("ControlOrMeta+s");
-  await expect.poll(() => [...server.models.values()][0]!.versions.length).toBe(3);
+  await expect.poll(() => [...server.models.values()][0]!.versions.length, SAVE).toBe(3);
 
   await page.getByRole("button", { name: /Saved to your account\. Version history/ }).click();
   const history = page.getByRole("dialog", { name: "Version history" });

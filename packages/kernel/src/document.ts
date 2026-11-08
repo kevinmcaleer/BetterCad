@@ -339,6 +339,8 @@ export interface ExtrudeFeature extends FeatureBase {
   /** The sketch step's id. */
   sketch: string;
   seeds: Vec2[];
+  /** Texts picked whole, by id: every letter, whatever the words become. */
+  texts?: string[];
   distance: number;
   direction: ExtrudeDirection;
   /** The second side's distance, for "two". */
@@ -402,6 +404,8 @@ export interface RevolveFeature extends FeatureBase {
   type: "revolve";
   sketch: string;
   seeds: Vec2[];
+  /** Texts picked whole, as for Extrude. */
+  texts?: string[];
   axis: AxisRef;
   /** Degrees, 1 to 360. */
   angle: number;
@@ -916,7 +920,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "Its sketch is gone or comes later on the timeline");
           break;
         }
-        const { shapes, lost, picked } = pickProfiles(sk, f.seeds);
+        const { shapes, lost, picked } = pickProfiles(sk, f.seeds, f.texts);
         if (!shapes.length) {
           failed.set(f.id, "The shapes it extruded are no longer closed. Close them in the sketch, or edit the extrude.");
           break;
@@ -973,7 +977,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "Its sketch is gone or comes later on the timeline");
           break;
         }
-        const { shapes, lost, picked } = pickProfiles(sk, f.seeds);
+        const { shapes, lost, picked } = pickProfiles(sk, f.seeds, f.texts);
         if (!shapes.length) {
           failed.set(f.id, "The shapes it revolved are no longer closed. Close them in the sketch, or edit the revolve.");
           break;
@@ -1572,7 +1576,7 @@ export function addSketch(doc: ModelDoc, plane: PlaneRef, id = newId("f"), at?: 
 
 export type ExtrudeParams = Pick<
   ExtrudeFeature,
-  "sketch" | "seeds" | "distance" | "direction" | "distance2" | "extent" | "to" | "operation" | "target" | "targets"
+  "sketch" | "seeds" | "texts" | "distance" | "direction" | "distance2" | "extent" | "to" | "operation" | "target" | "targets"
 >;
 
 /** Adds an Extrude step. Its new body (when it makes one) gets the part id `bodyId`. */
@@ -1607,7 +1611,7 @@ export function updateFinish(doc: ModelDoc, id: string, change: Partial<FinishPa
   };
 }
 
-export type RevolveParams = Pick<RevolveFeature, "sketch" | "seeds" | "axis" | "angle" | "symmetric" | "operation" | "target" | "targets">;
+export type RevolveParams = Pick<RevolveFeature, "sketch" | "seeds" | "texts" | "axis" | "angle" | "symmetric" | "operation" | "target" | "targets">;
 
 /** Adds a Revolve step. Its new body (when it makes one) gets the part id `bodyId`. */
 export function addRevolve(doc: ModelDoc, params: RevolveParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {

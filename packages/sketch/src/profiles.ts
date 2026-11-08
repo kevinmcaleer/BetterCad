@@ -1,4 +1,5 @@
 import { SketchIndex, type Arc, type Curve, type Id, type Sketch, type Vec2 } from "./model";
+import { textsOf } from "./text";
 import { angleOf, insidePolygon, perp, polygonArea, sampleArc, sub, wrap, norm, add, scale, mid } from "./geom2d";
 
 /**
@@ -10,6 +11,8 @@ export interface LoopEdge {
   id: Id;
   /** Walked from its second point to its first. */
   reversed: boolean;
+  /** For text: which of its outlines this loop is (the loop's points are the outline itself). */
+  loop?: number;
 }
 
 export interface Loop {
@@ -83,6 +86,16 @@ function nest(sketch: Sketch, all: boolean): Profiles {
     if (e.kind === "circle") loops.push(circleLoop(e.id, xy(e.c), e.r));
     else if (e.kind === "arc" && cls(e.a) === cls(e.b)) loops.push(circleLoop(e.id, xy(e.c), e.r));
     else if (!(e.kind === "line" && cls(e.a) === cls(e.b))) edges.push(e);
+  }
+
+  // Text outlines are loops of their own, anticlockwise like the rest.
+  for (const { text, loops: outlines } of textsOf(sketch)) {
+    if (text.construction) continue;
+    outlines.forEach((pts, i) => {
+      const points = polygonArea(pts) < 0 ? [...pts].reverse() : pts;
+      const area = Math.abs(polygonArea(points));
+      if (area > 1e-9) loops.push({ edges: [{ id: text.id, reversed: false, loop: i }], points, area, inner: innerPoint(points) });
+    });
   }
 
   // Degrees, then prune dangling chains so they do not split faces.

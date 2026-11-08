@@ -23,6 +23,11 @@ import {
   slideAcross,
   sub,
   toSketch,
+  placedLoops,
+  textAt,
+  textsOf,
+  TEXT_DEFAULTS,
+  type TextStyle,
   type Dimension,
   type DimensionKind,
   type Frame,
@@ -35,6 +40,7 @@ import {
 } from "@bettercad/sketch";
 import { addSketch, newId, paramScope, redefineSketchPlane, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
 import { loadSolver } from "./solver";
+import { DEFAULT_FONT, layOut } from "./text/fonts";
 import type { Command } from "../state/commands";
 import { caught } from "../report/errors";
 import type { View3DHandle } from "../viewport/View3D";
@@ -109,6 +115,20 @@ export interface Placing {
   dim: Dimension;
 }
 
+/**
+ * A text being set with the Text tool: where it goes, how it is set, and its outline laid out from the font for the
+ * preview. `id` is the text being changed, or null for a new one.
+ */
+export interface TextEdit {
+  id: Id | null;
+  at: Vec2;
+  /** An existing point the new text sits on, snapped to when it was placed. */
+  anchor?: Id;
+  style: TextStyle;
+  loops: Vec2[][];
+  loading: boolean;
+}
+
 export function useSketch(d: SketchDeps) {
   const { store, say } = d;
   // Callbacks read the latest deps through a ref, so the pointer handlers are not rebuilt on every render.
@@ -150,6 +170,9 @@ export function useSketch(d: SketchDeps) {
   const [projectGuide, setProjectGuide] = useState(true);
   /** What an editing tool would do under the pointer: the piece Trim removes (danger) or the copy Offset adds. */
   const [editPreview, setEditPreview] = useState<{ lines: Vec2[][]; danger: boolean } | null>(null);
+  const [textEdit, setTextEdit] = useState<TextEdit | null>(null);
+  /** How the last text was set, so the next starts the same way. */
+  const lastText = useRef<TextStyle>({ text: "Text", font: DEFAULT_FONT, ...TEXT_DEFAULTS });
 
   const feature = d.doc.features.find((f): f is SketchFeature => f.id === editingId && f.type === "sketch") ?? null;
   const sketch = feature?.sketch ?? null;
@@ -204,6 +227,7 @@ export function useSketch(d: SketchDeps) {
     setClicks([]);
     setTyped([]);
     setPlacing(null);
+    setTextEdit(null);
   }, []);
 
   // ---------------------------------------------------------------- changes
@@ -413,7 +437,7 @@ export function useSketch(d: SketchDeps) {
     const gone = new Set(ids);
     const next = removeEntities(
       { ...s, constraints: s.constraints.filter((c) => !gone.has(c.id)), dimensions: s.dimensions.filter((x) => !gone.has(x.id)) },
-      ids.filter((id) => s.entities.some((e) => e.id === id)),
+      ids.filter((id) => s.entities.some((e) => e.id === id) || s.texts?.some((t) => t.id === id)),
     );
     apply(next, ids.length === 1 ? "Delete from the sketch" : `Delete ${ids.length} items from the sketch`);
     setSel([]);
@@ -424,13 +448,18 @@ export function useSketch(d: SketchDeps) {
     if (!s) return;
     const ids = new Set(live.current.sel);
     const curves = s.entities.filter((e) => ids.has(e.id) && e.kind !== "point");
-    if (!curves.length) {
-      say("Pick lines, circles or arcs first");
+    const texts = (s.texts ?? []).filter((t) => ids.has(t.id));
+    if (!curves.length && !texts.length) {
+      say("Pick lines, circles, arcs or text first");
       return;
     }
-    const on = !curves.every((e) => e.construction);
+    const on = ![...curves, ...texts].every((e) => e.construction);
     apply(
-      { ...s, entities: s.entities.map((e) => (ids.has(e.id) && e.kind !== "point" ? { ...e, construction: on } : e)) },
+      {
+        ...s,
+        entities: s.entities.map((e) => (ids.has(e.id) && e.kind !== "point" ? { ...e, construction: on } : e)),
+        ...(s.texts ? { texts: s.texts.map((t) => (ids.has(t.id) ? { ...t, construction: on } : t)) } : {}),
+      },
       on ? "Make construction" : "Make normal geometry",
     );
   }, [current, apply, say]);
@@ -539,6 +568,7 @@ export function useSketch(d: SketchDeps) {
     setDimEdit(null);
     setFinishWarn(false);
     setCursor(null);
+    setTextEdit(null);
     if (name) say(`Finished ${name}`);
   }, [store, setStool, say]);
 
@@ -546,7 +576,7 @@ export function useSketch(d: SketchDeps) {
     (force = false) => {
       const s = current();
       if (!s) return end();
-      const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction);
+      const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction) || !!s.texts?.some((t) => !t.construction);
       if (!force && drawn && profiles(s).profiles.length === 0) {
         setFinishWarn(true);
         return;
@@ -581,6 +611,90 @@ export function useSketch(d: SketchDeps) {
     [engineOf, current, apply],
   );
 
+  // ---------------------------------------------------------------- text
+
+  /** Starts a new text at a point, set as the last one was; the Text card opens for its words. */
+  const openText = useCallback((at: Vec2, anchor?: Id) => {
+    setTextEdit({ id: null, at, anchor, style: { ...lastText.current }, loops: [], loading: true });
+    setSel([]);
+  }, []);
+
+  /** Opens a text already in the sketch to change it. */
+  const editText = useCallback(
+    (id: Id) => {
+      const s = current();
+      const t = s?.texts?.find((x) => x.id === id);
+      const p = t && s?.entities.find((e) => e.id === t.p);
+      if (!t || p?.kind !== "point") return;
+      const { text, font, height, angle, letterSpacing, lineSpacing } = t;
+      setTextEdit({ id, at: [p.x, p.y], style: { text, font, height, angle, letterSpacing, lineSpacing }, loops: t.loops, loading: false });
+      setSel([id]);
+    },
+    [current],
+  );
+
+  const setTextStyle = useCallback((change: Partial<TextStyle>) => {
+    setTextEdit((t) => (t ? { ...t, style: { ...t.style, ...change }, loading: true } : t));
+  }, []);
+
+  const cancelText = useCallback(() => setTextEdit(null), []);
+
+  // The preview follows the settings: the font loads the first time it is used, then lays the text out.
+  const textStyleKey = textEdit && JSON.stringify(textEdit.style);
+  useEffect(() => {
+    if (!textEdit) return;
+    const style = textEdit.style;
+    let alive = true;
+    layOut(style).then(
+      (loops) => {
+        if (alive) setTextEdit((t) => (t && t.style === style ? { ...t, loops, loading: false } : t));
+      },
+      () => {
+        if (!alive) return;
+        say("The font did not load. Check the connection and try again.", true);
+        setTextEdit((t) => (t && t.style === style ? { ...t, loading: false } : t));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+    // Only a change of settings lays the text out again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textStyleKey]);
+
+  /** Puts the text into the sketch (or changes the one being edited), laid out afresh from its font. */
+  const commitText = useCallback(async () => {
+    const t = live.current.textEdit;
+    if (!t) return;
+    if (!t.style.text.trim()) {
+      say("Type some text first", true);
+      return;
+    }
+    // The preview is laid out for these settings already, unless they have just changed: then wait for the font.
+    let loops = t.loops;
+    if (t.loading) {
+      try {
+        loops = await layOut(t.style);
+      } catch {
+        say("The font did not load. Check the connection and try again.", true);
+        return;
+      }
+    }
+    const s = current();
+    if (!s) return;
+    lastText.current = { ...t.style };
+    if (t.id) {
+      const next = { ...s, texts: (s.texts ?? []).map((x) => (x.id === t.id ? { ...x, ...t.style, loops } : x)) };
+      apply(next, "Change text");
+    } else {
+      const usable = t.anchor && s.entities.some((e) => e.id === t.anchor && e.kind === "point");
+      const p = usable ? t.anchor! : newId("p");
+      const entities = usable ? s.entities : [...s.entities, { id: p, kind: "point" as const, x: t.at[0], y: t.at[1] }];
+      apply({ ...s, entities, texts: [...(s.texts ?? []), { id: newId("x"), p, ...t.style, loops }] }, "Add text");
+    }
+    setTextEdit(null);
+  }, [current, apply, say]);
+
   // ---------------------------------------------------------------- the pointer
 
   const live = useRef({
@@ -610,6 +724,9 @@ export function useSketch(d: SketchDeps) {
     redefining,
     placing,
     place,
+    textEdit,
+    openText,
+    editText,
   });
   live.current = {
     autoProject: options.autoProject,
@@ -638,6 +755,9 @@ export function useSketch(d: SketchDeps) {
     origin,
     placing,
     place,
+    textEdit,
+    openText,
+    editText,
   };
 
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
@@ -697,7 +817,7 @@ export function useSketch(d: SketchDeps) {
     const eng = engineOf();
     if (!editingId || !eng) return;
     /** A point dragged to the pointer, or a line slid square across from where it was grabbed. */
-    let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 } } | null = null;
+    let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 }; offset?: Vec2 } | null = null;
     /** How near, in screen pixels, a pick reaches: a finger needs more room than a cursor. */
     let reach = 8;
     /**
@@ -879,6 +999,20 @@ export function useSketch(d: SketchDeps) {
           return true;
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
+        if (L.stool === "text") {
+          // A click on a text opens it; anywhere else places a new one there (or moves the one being set).
+          const t = L.textEdit?.id ? null : textAt(L.sketch, hit.xy, reach * hit.px);
+          if (t) {
+            L.editText(t.id);
+            return true;
+          }
+          if (L.textEdit?.id) return false;
+          const at = snapAt(hit.xy, hit.px, mods);
+          const anchor = at.ref && L.sketch.entities.some((e) => e.id === at.ref && e.kind === "point") ? at.ref : undefined;
+          if (L.textEdit) setTextEdit({ ...L.textEdit, at: at.xy, anchor });
+          else L.openText(at.xy, anchor);
+          return true;
+        }
         if (L.stool === "select" || L.stool === "dimension") {
           let id = pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
           if (L.stool === "dimension") {
@@ -900,6 +1034,14 @@ export function useSketch(d: SketchDeps) {
             return true;
           }
           if (!id) {
+            // A text is picked by its box, and dragged by its anchor.
+            const t = textAt(L.sketch, hit.xy, reach * hit.px);
+            const a = t && L.sketch.entities.find((e) => e.id === t.p);
+            if (t && a?.kind === "point") {
+              setSel((s) => (mods.shift || mods.mod ? (s.includes(t.id) ? s.filter((x) => x !== t.id) : [...s, t.id]) : [t.id]));
+              drag = { id: t.p, moved: false, offset: sub(hit.xy, [a.x, a.y]) };
+              return true;
+            }
             if (!mods.shift) setSel([]);
             return false;
           }
@@ -944,11 +1086,15 @@ export function useSketch(d: SketchDeps) {
               [ln.a, a],
               [ln.b, b],
             ]);
-          } else r = L.solver.drag(L.sketch, drag.id, hit.xy);
+          } else r = L.solver.drag(L.sketch, drag.id, drag.offset ? sub(hit.xy, drag.offset) : hit.xy);
           if (r.status === "ok" || r.status === "redundant") {
             drag.moved = true;
             const id = L.editingId!;
-            store.edit((doc) => updateSketch(doc, id, () => r.sketch), ln ? "Move a line" : "Move a point", `drag:${id}:${drag!.id}`);
+            store.edit(
+              (doc) => updateSketch(doc, id, () => r.sketch),
+              ln ? "Move a line" : drag.offset ? "Move text" : "Move a point",
+              `drag:${id}:${drag!.id}`,
+            );
           }
           return;
         }
@@ -962,8 +1108,15 @@ export function useSketch(d: SketchDeps) {
           setCursor(pick?.xy ? { xy: pick.xy, kind: pick.kind!, label: pick.label! } : null);
           return;
         }
+        if (L.stool === "text") {
+          const t = L.textEdit?.id ? null : textAt(L.sketch, hit.xy, reach * hit.px);
+          setHover(t?.id ?? null);
+          setCursor(t || L.textEdit?.id ? null : snapAt(hit.xy, hit.px, mods));
+          return;
+        }
         if (L.stool === "select" || L.stool === "dimension") {
-          const id = pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
+          const id =
+            pickAt(hit.xy, L.sketch, reach * hit.px, L.origin) ?? (L.stool === "select" ? (textAt(L.sketch, hit.xy, reach * hit.px)?.id ?? null) : null);
           setHover(id);
           setCursor(null);
           if (L.stool === "dimension") eng.showHover(id ? null : modelPick(p));
@@ -1051,14 +1204,18 @@ export function useSketch(d: SketchDeps) {
     const eng = engineOf();
     // A midpoint pick shows as its line.
     const shown = sel.map((id) => middleLine(id) ?? id);
+    // The text being set shows as its preview, in place of how it was.
+    const te = textEdit;
+    const textLines = te ? placedLoops({ loops: te.loops, angle: te.style.angle }, te.at).map((l) => [...l, l[0]!]) : [];
+    const base = te?.id ? { ...sketch, texts: sketch.texts?.filter((t) => t.id !== te.id) } : sketch;
     const view = sketchView(
-      sketch,
+      base,
       frame,
       result,
       shown,
       hover && (middleLine(hover) ?? hover),
-      previewNow?.lines ?? [],
-      cursor,
+      [...(previewNow?.lines ?? []), ...textLines],
+      te ? { xy: te.at, kind: "free", label: "" } : cursor,
       clicks[clicks.length - 1]?.xy,
       undefined,
       editPreview,
@@ -1077,7 +1234,7 @@ export function useSketch(d: SketchDeps) {
     }
     const mark: Shade = sel.includes(ORIGIN) ? "picked" : hover === ORIGIN ? "hover" : "fixed";
     o.update(px && origin ? { ...withOrigin(view, origin, px, mark), grid } : view);
-  }, [sketch, frame, origin, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options, stool]);
+  }, [sketch, frame, origin, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options, stool, textEdit]);
 
   // The sketch's own grid takes the floor grid's place while it is on.
   useEffect(() => {
@@ -1119,6 +1276,7 @@ export function useSketch(d: SketchDeps) {
   const editing = !!editingId;
   useEscape(editing && (dimEdit !== null || finishWarn), () => (dimEdit ? setDimEdit(null) : setFinishWarn(false)), ESC.tool + 4);
   useEscape(editing && placing !== null, () => setPlacing(null), ESC.tool + 3);
+  useEscape(editing && textEdit !== null, () => setTextEdit(null), ESC.tool + 3);
   useEscape(
     editing && clicks.length > 0,
     () => {
@@ -1207,7 +1365,10 @@ export function useSketch(d: SketchDeps) {
         group: "Sketch",
         icon: "arrow",
         keys: ["mod+a"],
-        run: () => setSel(live.current.sketch?.entities.filter((e) => e.kind !== "point").map((e) => e.id) ?? []),
+        run: () => {
+          const sk = live.current.sketch;
+          setSel(sk ? [...sk.entities.filter((e) => e.kind !== "point").map((e) => e.id), ...(sk.texts ?? []).map((t) => t.id)] : []);
+        },
       },
       {
         id: "sketch.construction",
@@ -1303,6 +1464,11 @@ export function useSketch(d: SketchDeps) {
     setDimension,
     placing,
     moveLabel,
+    textEdit,
+    setTextStyle,
+    commitText,
+    cancelText,
+    editText,
     scope,
     finishWarn,
     setFinishWarn,
@@ -1358,6 +1524,12 @@ export function sketchView(
       const c = idx.xy(e.c);
       curves.push({ pts: sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c))), shade: shade(e.id), dashed: e.construction });
     }
+  }
+  // Text: each outline closed, in its anchor's shade unless the text itself is picked or under the pointer.
+  for (const { text, loops } of textsOf(s)) {
+    if (text.construction && show && !show.construction && !sel.includes(text.id)) continue;
+    const sh: Shade = base ?? (sel.includes(text.id) ? "picked" : hover === text.id ? "hover" : shade(text.p));
+    for (const l of loops) curves.push({ pts: [...l, l[0]!], shade: sh, dashed: text.construction });
   }
   // The ends of lines and arcs are for finding a point to draw from or pick, so the Select tool shows only the one
   // under the pointer or picked. Centres and lone points always show.

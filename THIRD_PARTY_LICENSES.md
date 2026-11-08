@@ -6,6 +6,9 @@ BetterCad's own code is MIT. These libraries keep their own licences. The WASM b
 | --- | --- | --- | --- |
 | OpenCascade Technology (via replicad-opencascadejs 1.2.1, an opencascade.js build) | The modelling kernel (epic #4) | LGPL 2.1 with the OCCT exception | https://dev.opencascade.org/resources/licensing, https://github.com/sgenoud/replicad, https://github.com/donalffons/opencascade.js |
 | planegcs (FreeCAD's sketch solver, @salusoft89/planegcs 1.3.0) | Sketch constraints (epic #5) | LGPL 2.0 or later | https://github.com/Salusoft89/planegcs |
+| opentype.js 1.3.4 | Reading fonts for the sketch Text tool | MIT | https://github.com/opentypejs/opentype.js |
+| Inter, Archivo Black, JetBrains Mono, Allerta Stencil (via Fontsource, Latin subset) | Sketch Text tool fonts | SIL Open Font License 1.1 | https://github.com/fontsource/font-files |
+| Roboto Slab (via Fontsource, Latin subset) | Sketch Text tool font | Apache 2.0 | https://github.com/fontsource/font-files |
 | three.js | The 3D view (epic #3) | MIT | https://github.com/mrdoob/three.js |
 | React, React DOM | The interface | MIT | https://github.com/facebook/react |
 | FastAPI, Starlette, Pydantic, Uvicorn | The server | MIT / BSD-3-Clause | https://github.com/fastapi/fastapi |
@@ -18,16 +21,24 @@ The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VER
 
 | Package | Version | Licence | From |
 | --- | --- | --- | --- |
+| @fontsource/allerta-stencil | 5.3.0 | OFL-1.1 | npm |
+| @fontsource/archivo-black | 5.3.0 | OFL-1.1 | npm |
+| @fontsource/inter | 5.3.0 | OFL-1.1 | npm |
+| @fontsource/jetbrains-mono | 5.3.0 | OFL-1.1 | npm |
+| @fontsource/roboto-slab | 5.3.0 | Apache-2.0 | npm |
 | @salusoft89/planegcs | 1.3.0 | LGPL-2.0-or-later | npm |
 | js-tokens | 4.0.0 | MIT | npm |
 | loose-envify | 1.4.0 | MIT | npm |
+| opentype.js | 1.3.4 | MIT | npm |
 | react | 18.3.1 | MIT | npm |
 | react-dom | 18.3.1 | MIT | npm |
 | replicad-opencascadejs | 1.2.1 | LGPL-2.1-only | npm |
 | scheduler | 0.23.2 | MIT | npm |
+| string.prototype.codepointat | 0.2.1 | MIT | npm |
 | three | 0.180.0 | MIT | npm |
 | three-gpu-pathtracer | 0.0.24 | MIT | npm |
 | three-mesh-bvh | 0.9.18 | MIT | npm |
+| tiny-inflate | 1.0.3 | MIT | npm |
 | xatlas-web | 0.1.0 | MIT | npm |
 | annotated-doc | 0.0.5 | MIT | PyPI |
 | annotated-types | 0.8.0 | MIT | PyPI |

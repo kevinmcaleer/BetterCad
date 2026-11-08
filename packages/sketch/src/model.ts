@@ -109,6 +109,36 @@ export interface Frame {
 
 export type PlaneRef = { kind: "world"; plane: WorldPlane; offset: number } | { kind: "face"; face: TopoRef; offset: number; frame: Frame };
 
+/** How a text is set: its words, font and sizes. */
+export interface TextStyle {
+  /** The words; a new line starts a new line of text. */
+  text: string;
+  /** A font id from the app's bundled fonts ("inter", "stencil", ...). */
+  font: string;
+  /** How tall capitals stand, mm. */
+  height: number;
+  /** Degrees, anticlockwise about the anchor. */
+  angle: number;
+  /** Extra space between letters, mm (negative pulls them together). */
+  letterSpacing: number;
+  /** A multiple of the font's own line height. */
+  lineSpacing: number;
+}
+
+/**
+ * Text (sketch tool): placed by one point, the anchor at the first line's baseline and left. The outline is laid out
+ * from the font once, when the text is set, and kept here, so the sketch can be read, solved and extruded without the
+ * font. Moving or constraining the anchor moves the text.
+ */
+export interface SketchText extends TextStyle {
+  id: Id;
+  /** The anchor point's id. */
+  p: Id;
+  /** Closed outlines in mm, relative to the anchor, before the turn by `angle`. */
+  loops: Vec2[][];
+  construction?: boolean;
+}
+
 export interface Sketch {
   id: Id;
   name: string;
@@ -116,6 +146,8 @@ export interface Sketch {
   entities: Entity[];
   constraints: Constraint[];
   dimensions: Dimension[];
+  /** Text, kept apart from the entities as it is outlines rather than solvable curves. Missing in older files. */
+  texts?: SketchText[];
 }
 
 export const WORLD_FRAMES: Record<WorldPlane, Frame> = {
@@ -220,9 +252,14 @@ export function removeEntities(s: Sketch, ids: Id[]): Sketch {
   }
   // A point going takes the curves on it.
   for (const e of s.entities) if (e.kind !== "point" && curvePoints(e).some((p) => gone.has(p))) gone.add(e.id);
+  // A text goes with its anchor; picked by id, it takes its anchor unless something else uses it.
+  for (const t of s.texts ?? [])
+    if (gone.has(t.id) && idx.users(t.p).length === 0 && !(s.texts ?? []).some((o) => o !== t && o.p === t.p && !gone.has(o.id))) gone.add(t.p);
   const refs = (c: Constraint) => constraintRefs(c).some((r) => gone.has(r));
+  const texts = s.texts?.filter((t) => !gone.has(t.id) && !gone.has(t.p));
   return {
     ...s,
+    ...(texts ? { texts } : {}),
     entities: s.entities.filter((e) => !gone.has(e.id)),
     constraints: s.constraints.filter((c) => !refs(c)),
     dimensions: s.dimensions.filter((d) => !d.refs.some((r) => gone.has(r))),
@@ -281,5 +318,8 @@ export function parseSketch(value: unknown): Sketch {
   const ids = new Set(s.entities.map((e) => e.id));
   for (const e of s.entities)
     if (e.kind !== "point" && curvePoints(e).some((p) => !ids.has(p))) throw new Error(`Sketch entity ${e.id} refers to a missing point.`);
+  if (s.texts !== undefined && !Array.isArray(s.texts)) throw new Error("This is not a sketch.");
+  for (const t of s.texts ?? [])
+    if (!ids.has(t.p) || !Array.isArray(t.loops) || typeof t.text !== "string") throw new Error(`Sketch text ${t.id} is not readable.`);
   return s;
 }

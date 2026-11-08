@@ -1,6 +1,6 @@
 import { ArmedBar, Button, MenuButton, NumberField, Toolbar, type MenuEntry } from "@bettercad/ui";
 import { formatCombo } from "../state/commands";
-import { VIEWS, type Tool, type ToolId } from "./tools";
+import type { Tool, ToolId } from "./tools";
 import { FILTERS, type Viewport } from "./useViewport";
 import type { RenderStyle } from "../render/session";
 
@@ -26,16 +26,6 @@ export function StageBars({ tool, onArmTool, vp, onePart, onRender }: StageBarsP
           trigger={(p) => <Button {...p} label={`Pick: ${filter.label}`} title="What a click picks" shortcut={formatCombo(filter.key)} />}
         />
         <Toolbar.Separator />
-        {VIEWS.filter((v) => v.id !== "iso").map((v) => (
-          <Button
-            key={v.id}
-            label={v.label}
-            title={`Look from the ${v.label.toLowerCase()}`}
-            shortcut={v.key}
-            on={vp.view === v.id}
-            onClick={() => vp.preset(v.id)}
-          />
-        ))}
         <Button icon="frame" label="Fit" title="Fit the parts in the view" shortcut="F" onClick={vp.fit} />
         <MenuButton label="Named views" entries={vp.viewEntries} trigger={(p) => <Button {...p} icon="camera" label="Views" title="Save and use views" />} />
         <MenuButton
