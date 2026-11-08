@@ -30,7 +30,7 @@ import { parse } from "opentype.js";
 import { layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
-import { overlapOf } from "./occt/clashes";
+import { moved, overlapOf } from "./occt/clashes";
 import { catalogueShape } from "./occt/catalogue";
 import { placeOnFace } from "./catalogue";
 import { cataloguePart } from "./catalogue/list";
@@ -286,6 +286,13 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     ]),
   // Clash check (#178): what two 20 mm boxes 12 mm apart share, an 8 × 20 × 20 block, 3200 mm³.
   "clash-overlap": (oc) => overlapOf(oc, box(oc, { x: 20, y: 20, z: 20 }), place(oc, box(oc, { x: 20, y: 20, z: 20 }), { position: { x: 12, y: 0, z: 0 } }))!,
+  // Clash sweep (#179): a 20 mm block on a slider run 15 mm back into a 20 mm box shares a 5 × 20 × 20 block, 2000 mm³.
+  "clash-sweep-slide": (oc) =>
+    overlapOf(
+      oc,
+      box(oc, { x: 20, y: 20, z: 20 }),
+      moved(oc, place(oc, box(oc, { x: 20, y: 20, z: 20 }), { position: { x: 30, y: 0, z: 0 } }), [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -15, 0, 0, 1]),
+    )!,
   // To object: a 3 mm circle pushed down from the top until it meets a flat face 6 mm up from the bottom.
   "extrude-cut-to-face": (oc) => {
     const frame = { origin: [0, 0, 20] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
