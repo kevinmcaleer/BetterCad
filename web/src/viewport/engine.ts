@@ -346,6 +346,8 @@ export class Engine {
   private centres = new Group();
   /** Tool points (#176): a diamond at each, to grab and drag. */
   private tools = new Group();
+  /** Clashes (#178): a box round each overlap, drawn over the bodies. */
+  private clashBoxes = new Group();
   /** Construction planes, axes and points (#265), and the ones lit by the pointer or picked. */
   private construct = new Group();
   private constructItems: ConstructShape[] = [];
@@ -500,6 +502,7 @@ export class Engine {
     this.scene.add(this.jointArrows);
     this.scene.add(this.centres);
     this.scene.add(this.tools);
+    this.scene.add(this.clashBoxes);
     this.scene.add(this.construct);
 
     this.planes = new Group();
@@ -898,6 +901,28 @@ export class Engine {
   /** Marks each tool point (#176) with a diamond, drawn over the bodies, or none. */
   setTools(list: V3[] | null): void {
     this.drawMarkers(this.tools, list, "diamond");
+  }
+
+  /** Outlines each clash's box (#178) in the warning colour over the bodies, or none. */
+  setClashBoxes(list: { min: V3; max: V3 }[] | null): void {
+    for (const c of this.clashBoxes.children as LineSegments[]) {
+      c.geometry.dispose();
+      (c.material as Material).dispose();
+    }
+    this.clashBoxes.clear();
+    if (list?.length) {
+      const pts: number[] = [];
+      for (const { min: a, max: b } of list) {
+        const c = (i: number): V3 => [i & 1 ? b[0] : a[0], i & 2 ? b[1] : a[1], i & 4 ? b[2] : a[2]];
+        for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) if (!(i & bit)) pts.push(...c(i), ...c(i | bit));
+      }
+      const g = new BufferGeometry();
+      g.setAttribute("position", new BufferAttribute(new Float32Array(pts), 3));
+      const line = new LineSegments(g, new LineBasicMaterial({ color: this.palette.warn, depthTest: false, transparent: true }));
+      line.renderOrder = 6;
+      this.clashBoxes.add(line);
+    }
+    this.invalidate();
   }
 
   private drawMarkers(group: Group, list: V3[] | null, shape: "cross" | "diamond"): void {
@@ -1630,6 +1655,7 @@ export class Engine {
     this.arrow.setColor(p.snap);
     for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
     for (const c of [...this.centres.children, ...this.tools.children] as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
+    for (const c of this.clashBoxes.children as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.warn);
     if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
