@@ -120,7 +120,6 @@ import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
-import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
@@ -162,6 +161,11 @@ const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: 
 // The Extrude bar loads after first paint (the shell's budget), and is fetched as soon as the editor is up, so it is
 // there before the first E and the distance field can take focus.
 const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
+/** The sketch toolbars and size labels: fetched just after first paint, so sketching never waits on them. */
+const loadSketchUI = () => import("../sketch/SketchUI");
+const SketchBars = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchBars })));
+const SketchLabels = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchLabels })));
+const SketchPickBar = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchPickBar })));
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 // The command palette loads the first time it opens, to keep it out of first paint.
@@ -516,6 +520,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, [stepTargets]);
   useEffect(() => {
     void loadExtrudeBar();
+    void loadSketchUI();
   }, []);
   const selectFromBrowser = useCallback(
     (ids: string[]) => {
@@ -2592,7 +2597,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         }
         stageToolbar={
           sketch.editing ? (
-            <SketchBars s={sketch} />
+            <Suspense fallback={null}>
+              <SketchBars s={sketch} />
+            </Suspense>
           ) : (
             <>
               {files.banners}
@@ -2624,7 +2631,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <PlaceBar x={place} />
                 </Suspense>
               )}
-              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
+              {tool === "sketch" && (
+                <Suspense fallback={null}>
+                  <SketchPickBar onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {(tool === "extrude" || tool === "revolve") && (
                 <Suspense fallback={null}>
                   {tool === "extrude" ? (
@@ -2732,7 +2743,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             }}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
-            <SketchLabels s={sketch} />
+            {sketch.sketch && (
+              <Suspense fallback={null}>
+                <SketchLabels s={sketch} />
+              </Suspense>
+            )}
             {render && (
               <Suspense fallback={null}>
                 <RenderPicture
