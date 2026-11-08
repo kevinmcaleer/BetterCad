@@ -95,3 +95,8 @@ export function usePrinterProfiles(api: Api, account: Account | null): Profiles 
 
   return { profiles, save, remove };
 }
+
+/** The words on the bed (#100), Tinkercad-style: "Prusa MK4 build volume", or plain "Build volume" for a custom size. */
+export function bedLabel(printer: { id: string; name: string }): string {
+  return printer.id === "custom" ? "Build volume" : `${printer.name} build volume`;
+}
