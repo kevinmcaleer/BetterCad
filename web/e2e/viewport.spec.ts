@@ -26,16 +26,19 @@ test("presets, orbit and the pick filter", async ({ page }) => {
   await page.goto("/");
   await addShape(page, "Box");
   await page.getByRole("application", { name: /3D view/ }).focus();
+  // The view cube has the standard views; the view bar does not.
+  const bar = page.getByRole("toolbar", { name: "View tools" });
+  for (const name of ["Front", "Side", "Top"]) await expect(bar.getByRole("button", { name, exact: true })).toHaveCount(0);
   await page.keyboard.press("2");
-  await expect(page.getByRole("button", { name: "Front", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "front");
   // Arrow keys turn the view, so it is no longer a preset.
   await page.keyboard.press("ArrowLeft");
-  await expect(page.getByRole("button", { name: "Front", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("application", { name: /3D view/ })).not.toHaveAttribute("data-view", "front");
   await page.keyboard.press("3");
-  await expect(page.getByRole("button", { name: "Side", exact: true })).toHaveAttribute("aria-pressed", "true");
-  // Home is the corner view: no preset on the bar is lit.
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "side");
+  // Home is the corner view, not a side view.
   await page.keyboard.press("Home");
-  await expect(page.getByRole("button", { name: "Side", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("application", { name: /3D view/ })).not.toHaveAttribute("data-view", "side");
 
   await page.keyboard.press("Shift+2");
   await expect(page.getByRole("button", { name: /Pick: Faces/ })).toBeVisible();
@@ -50,7 +53,7 @@ test("presets, orbit and the pick filter", async ({ page }) => {
 test("the view cube turns the view", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Look from the top" }).click();
-  await expect(page.getByRole("button", { name: "Top", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "top");
 });
 
 test("the view cube's house and menu", async ({ page }) => {
@@ -58,10 +61,10 @@ test("the view cube's house and menu", async ({ page }) => {
   await addShape(page, "Box");
   const cube = page.getByRole("group", { name: "View cube" });
   await cube.getByRole("button", { name: "Look from the top" }).click();
-  await expect(page.getByRole("button", { name: "Top", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "top");
   await cube.hover();
   await cube.getByRole("button", { name: "Go home" }).click();
-  await expect(page.getByRole("button", { name: "Top", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("application", { name: /3D view/ })).not.toHaveAttribute("data-view", "top");
 
   // Perspective and orthographic live in the cube's menu now.
   await cube.getByRole("button", { name: "View cube options" }).click();
@@ -78,13 +81,13 @@ test("the view cube's house and menu", async ({ page }) => {
   await page.getByRole("menuitem", { name: "Set this view as home" }).click();
   await page.getByRole("application", { name: /3D view/ }).focus();
   await page.keyboard.press("4");
-  await expect(page.getByRole("button", { name: "Top", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "top");
   await page.keyboard.press("Home");
-  await expect(page.getByRole("button", { name: "Front", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "front");
   await cube.getByRole("button", { name: "View cube options" }).click();
   await page.getByRole("menuitem", { name: "Reset home" }).click();
   await page.keyboard.press("Home");
-  await expect(page.getByRole("button", { name: "Front", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("application", { name: /3D view/ })).not.toHaveAttribute("data-view", "front");
 });
 
 test("section: click a face, then type how far", async ({ page }) => {

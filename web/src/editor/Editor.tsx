@@ -2854,6 +2854,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             mode={vp.mode}
             style={vp.style}
             ortho={vp.ortho}
+            view={vp.view}
             section={sketch.slice ?? vp.section}
             stats={vp.stats}
             description={`${parts.length} parts. ${vp.elementText || selectionText}`}
