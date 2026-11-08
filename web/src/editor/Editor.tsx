@@ -94,6 +94,10 @@ import {
   type PatternKind,
   type Vec3,
   homePose,
+  namedPoseValues,
+  nextPoseName,
+  removePose,
+  savePose,
   patternCopyIds,
   addDrive,
   updateDrive,
@@ -719,6 +723,67 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (!store.isLocked() && live.current.doc.pose) store.edit(homePose, "Move the joints home");
     say("The joints are home");
   }, [store, say]);
+  // Named poses (#177): going to one moves the joints there over 300 ms (at once with reduced motion), as one undo step.
+  const poseAnim = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(poseAnim.current), []);
+  const goToPose = useCallback(
+    (id: string | null) => {
+      const d = live.current.doc;
+      const found = id ? namedPoseValues(d, id) : { values: {}, dropped: [] };
+      if (!found) return;
+      const name = id ? (d.poses?.find((x) => x.id === id)?.name ?? "the pose") : "Home";
+      const target = found.values;
+      const from: Pose = { ...(livePoseRef.current ?? d.pose) };
+      const finish = () => {
+        if (store.isLocked()) return setLivePose(target);
+        store.edit((x) => ({ ...x, pose: Object.keys(target).length ? target : undefined }), `Go to ${name}`);
+        store.seal();
+        setLivePose(null);
+      };
+      const n = found.dropped.length;
+      say(n ? `Went to ${name}. ${n === 1 ? "1 joint it had is" : `${n} joints it had are`} gone, so left out.` : `Went to ${name}`);
+      cancelAnimationFrame(poseAnim.current);
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return finish();
+      const keys = [...new Set([...Object.keys(from), ...Object.keys(target)])];
+      const t0 = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - t0) / 300);
+        const e = t * t * (3 - 2 * t);
+        if (t >= 1) return finish();
+        setLivePose(Object.fromEntries(keys.map((k) => [k, (from[k] ?? 0) + ((target[k] ?? 0) - (from[k] ?? 0)) * e])));
+        poseAnim.current = requestAnimationFrame(step);
+      };
+      poseAnim.current = requestAnimationFrame(step);
+    },
+    [store, say],
+  );
+  const samePose = (a: Pose | undefined, b: Pose | undefined) => {
+    for (const k of new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])) if (Math.abs((a?.[k] ?? 0) - (b?.[k] ?? 0)) > 1e-6) return false;
+    return true;
+  };
+  const atPose = livePose ? null : samePose(doc.pose, {}) ? "home" : (doc.poses?.find((x) => samePose(doc.pose, x.values))?.id ?? null);
+  const posesProps = {
+    poses: doc.poses?.map((x) => ({ id: x.id, name: x.name })),
+    atPose,
+    onPose: goToPose,
+    onSavePose: () => handlers.current.savePose(),
+    onUpdatePose: (id: string) => {
+      const x = live.current.doc.poses?.find((q) => q.id === id);
+      if (!x) return;
+      store.edit((d) => savePose(d, { ...x, values: d.pose ?? {} }), `Update ${x.name}`);
+      say(`Updated ${x.name} to the joints now`);
+    },
+    onRenamePose: (id: string, name: string) => {
+      const x = live.current.doc.poses?.find((q) => q.id === id);
+      if (x && name.trim() && name !== x.name) store.edit((d) => savePose(d, { ...x, name: name.trim() }), `Rename ${x.name}`);
+    },
+    onDeletePose: (id: string) => {
+      const x = live.current.doc.poses?.find((q) => q.id === id);
+      if (!x) return;
+      store.edit((d) => removePose(d, id), `Delete ${x.name}`);
+      say(`Deleted ${x.name}`);
+    },
+  };
   // Dragging a link in the view (#173): a body in a link that hangs on a joint that moves turns or slides it. Esc puts
   // it back where the drag started.
   const [poseDrag, setPoseDrag] = useState<{ cancel: () => void } | null>(null);
@@ -1511,6 +1576,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     armToolPoint: () => {},
     clearToolPoints: () => {},
     checkClashes: () => {},
+    savePose: () => {},
     openExport: () => {},
     openRender: () => {},
     startTour: () => {},
@@ -1565,6 +1631,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     clearToolPoints: () => {
       store.edit((d) => ({ ...d, tools: undefined }), "Remove the tool points");
       say("Removed the tool points");
+    },
+    savePose: () => {
+      const d = live.current.doc;
+      const id = newId("p");
+      const name = nextPoseName(d);
+      store.edit((x) => savePose(x, { id, name, values: x.pose ?? {} }), `Save ${name}`);
+      showPanel("parts");
+      setRenameId(id);
+      say(`Saved ${name}. Type a name, or press Enter to keep it.`);
     },
     checkClashes: () => {
       setSelection([]);
@@ -1911,6 +1986,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().armToolPoint(),
         when: () => build(live.current.doc).joints.some(movable),
         keywords: "ik inverse kinematics gripper tip end effector arm drag robot",
+      },
+      {
+        id: "pose.save",
+        scope: "model",
+        label: "Save pose",
+        group: "Edit",
+        icon: "joint",
+        run: () => h().savePose(),
+        when: () => build(live.current.doc).joints.some(movable),
+        keywords: "named pose robot arm joints remember position",
       },
       {
         id: "check.clashes",
@@ -2429,6 +2514,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // Clash check (#178): worked out in the kernel at the saved pose while it's on, again after each change.
   const [clashOn, setClashOn] = useState(false);
   const [clashOpts, setClashOpts] = useState<{ sameLink?: boolean; references?: boolean }>({});
+  /** Which pose to check (#177): the one now (null), Home, or a named pose's id. */
+  const [clashAt, setClashAt] = useState<string | null>(null);
   const [clashes, setClashes] = useState<Clash[] | null>(null);
   const [clashProgress, setClashProgress] = useState<number | null>(null);
   const clashCall = useRef<{ cancel(): void } | null>(null);
@@ -2439,7 +2526,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     let gone = false;
     const t = setTimeout(() => {
       setClashProgress(0);
-      const call = kernelCall("clashes", { doc, upTo: at, ...clashOpts }, (f) => !gone && setClashProgress(f));
+      const named = clashAt === "home" ? { values: {} } : clashAt ? namedPoseValues(doc, clashAt) : null;
+      const posed = named ? { ...doc, pose: named.values } : doc;
+      const call = kernelCall("clashes", { doc: posed, upTo: at, ...clashOpts }, (f) => !gone && setClashProgress(f));
       clashCall.current = call;
       call?.then(
         (r) => !gone && setClashes(r),
@@ -2453,7 +2542,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       clashCall.current?.cancel();
       clashCall.current = null;
     };
-  }, [clashOn, clashOpts, doc, at, kernelCall]);
+  }, [clashOn, clashOpts, clashAt, doc, at, kernelCall]);
   const stopClashes = useCallback(() => {
     clashCall.current?.cancel();
     setClashOn(false);
@@ -3158,6 +3247,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               sketches={browserSketches}
               links={built.links}
               joints={built.joints}
+              poses={posesProps}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
@@ -3451,6 +3541,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                         sameLink: !!clashOpts.sameLink,
                         references: !!clashOpts.references,
                         onOptions: (change) => setClashOpts((o) => ({ ...o, ...change })),
+                        poses: built.joints.length ? [{ id: "home", name: "Home" }, ...(doc.poses ?? []).map((x) => ({ id: x.id, name: x.name }))] : undefined,
+                        at: doc.poses?.some((x) => x.id === clashAt) || clashAt === "home" ? clashAt : null,
+                        onAt: setClashAt,
                         progress: clashProgress,
                         clashes,
                         nameOf: (id: string) => parts.find((p) => p.id === id)?.name ?? "A body",

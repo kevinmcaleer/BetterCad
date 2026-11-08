@@ -607,6 +607,15 @@ export interface ModelDoc {
   pose?: Pose;
   /** Tool points (#176): a point on a link to drag the arm by, one per chain. Not a step. */
   tools?: ToolPoint[];
+  /** Named poses (#177): joint values saved under a name, to go back to. Home (all zeros) is always there besides. */
+  poses?: NamedPose[];
+}
+
+/** A named pose (#177): each moving joint's value, by joint id, as in `pose`. */
+export interface NamedPose {
+  id: string;
+  name: string;
+  values: Pose;
 }
 
 /** A tool point (#176): where it sits on its link at home, and the joints kept out of the solve. */
@@ -2796,6 +2805,49 @@ export function homePose(doc: ModelDoc): ModelDoc {
   const next = { ...doc };
   delete next.pose;
   return next;
+}
+
+// ---- named poses (#177)
+
+/** Saves a named pose, or replaces the one with its id (Update, Rename). */
+export function savePose(doc: ModelDoc, pose: NamedPose): ModelDoc {
+  const poses = doc.poses ?? [];
+  const next = { ...pose, values: { ...pose.values } };
+  const i = poses.findIndex((p) => p.id === pose.id);
+  return { ...doc, poses: i < 0 ? [...poses, next] : poses.map((p) => (p.id === pose.id ? next : p)) };
+}
+
+export function removePose(doc: ModelDoc, id: string): ModelDoc {
+  const poses = (doc.poses ?? []).filter((p) => p.id !== id);
+  const next: ModelDoc = { ...doc, poses };
+  if (!poses.length) delete next.poses;
+  return next;
+}
+
+/** The next free pose name: "Pose 1", "Pose 2"… */
+export function nextPoseName(doc: ModelDoc): string {
+  const names = new Set((doc.poses ?? []).map((p) => p.name));
+  let n = 1;
+  while (names.has(`Pose ${n}`)) n += 1;
+  return `Pose ${n}`;
+}
+
+/**
+ * A named pose's values for the joints the model has now (#177): each kept to its joint's limits, and the ids of
+ * joints that have gone since it was saved, which are dropped.
+ */
+export function namedPoseValues(doc: ModelDoc, id: string): { values: Pose; dropped: string[] } | null {
+  const named = doc.poses?.find((p) => p.id === id);
+  if (!named) return null;
+  const joints = new Map(build(doc).joints.map((j) => [j.id, j]));
+  const values: Pose = {};
+  const dropped: string[] = [];
+  for (const [jid, v] of Object.entries(named.values)) {
+    const j = joints.get(jid);
+    if (!j) dropped.push(jid);
+    else if (j.kind !== "fixed" && v !== 0) values[jid] = clampJoint(j, v);
+  }
+  return { values, dropped };
 }
 
 export type DriveParams = Pick<DriveFeature, "kind" | "driver" | "driven" | "ratio" | "reverse">;

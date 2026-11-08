@@ -28,7 +28,7 @@ import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
-import { BrowserPanel, type BrowserConstruct, type BrowserSketch, type OriginItem } from "./Browser";
+import { BrowserPanel, type BrowserConstruct, type BrowserModel, type BrowserPanelProps, type BrowserSketch, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
@@ -68,6 +68,9 @@ export interface LeftPanelProps {
   links?: BuiltLink[];
   /** Joints (#172) as built. */
   joints?: JointFeature[];
+  /** Named poses (#177) and what to do with them, under Joints in the browser. */
+  poses?: Pick<BrowserModel, "poses" | "atPose"> &
+    Required<Pick<BrowserPanelProps, "onPose" | "onSavePose" | "onUpdatePose" | "onRenamePose" | "onDeletePose">>;
   origin: OriginItem[];
   onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
@@ -156,6 +159,8 @@ function PartsPanel(p: LeftPanelProps) {
         links: p.links,
         joints: p.joints,
         construct: p.construct,
+        poses: p.poses?.poses,
+        atPose: p.poses?.atPose,
       }}
       selection={p.selection}
       onSelect={p.onSelect}
@@ -179,6 +184,11 @@ function PartsPanel(p: LeftPanelProps) {
       sketchMenu={p.featureMenu}
       renameId={p.renameId}
       onRenameIdChange={p.onRenameIdChange}
+      onPose={p.poses?.onPose}
+      onSavePose={p.poses?.onSavePose}
+      onUpdatePose={p.poses?.onUpdatePose}
+      onRenamePose={p.poses?.onRenamePose}
+      onDeletePose={p.poses?.onDeletePose}
     />
   );
 }
