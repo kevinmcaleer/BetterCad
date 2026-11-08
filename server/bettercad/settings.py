@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # Sign-in (#88) is the kevsrobots.com account, kept by Chatter. Its cookie is set on COOKIE_DOMAIN
     # (.kevsrobots.com), and BetterCad has to sit under that domain to see it.
     chatter_url: str = "https://chatter.kevsrobots.com"
+    # Where this server asks Chatter who a cookie belongs to. Blank uses chatter_url; on the same machine, point it
+    # straight at Chatter (http://chatter:8000) so the check doesn't go out through Cloudflare and back.
+    chatter_api_url: str = ""
     cookie_domain: str = ""
     # Where people reach BetterCad, e.g. https://bettercad.kevsrobots.com: kevsrobots.com sends them back here.
     public_url: str = ""

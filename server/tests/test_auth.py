@@ -62,6 +62,9 @@ def test_kevsrobots_being_down_is_a_503_not_a_sign_out(make_client):
         client.kevsrobots.down = True
         r = client.get("/api/account")
         assert r.status_code == 503 and "kevsrobots.com" in r.json()["detail"]
+        # The sign-in page still gets its links, with the problem to show.
+        s = client.get("/api/auth/session").json()
+        assert s["user"] is None and s["signin_url"] and "kevsrobots.com" in s["problem"]
 
 
 def test_leaving_deletes_bettercad_data_only(user):

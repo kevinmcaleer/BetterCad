@@ -18,6 +18,8 @@ export interface AuthLinks {
   signin_url: string;
   signup_url: string;
   account_url: string;
+  /** Set when kevsrobots.com can't be asked who you are just now. */
+  problem?: string | null;
 }
 
 interface Session extends AuthLinks {
@@ -138,6 +140,7 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     async me(): Promise<Account | null> {
       try {
         const s = await session();
+        if (s.problem) throw new ApiError(s.problem, 503);
         // The account adds what only BetterCad keeps (the theme).
         return s.user ? remember(await call<Account>("GET", "account")) : null;
       } catch (e) {
@@ -149,8 +152,8 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     },
     /** kevsrobots.com's sign-in pages, set to send you back to `next` (a hash route) afterwards. */
     links: async (next = "#/library"): Promise<AuthLinks> => {
-      const { signin_url, signup_url, account_url } = await session(next);
-      return { signin_url, signup_url, account_url };
+      const { signin_url, signup_url, account_url, problem } = await session(next);
+      return { signin_url, signup_url, account_url, problem: problem ?? null };
     },
     /** Signs out of kevsrobots.com: the cookie is shared, so every kevsrobots app signs out. */
     async signOut() {
