@@ -70,7 +70,7 @@ describe("ExtrudeBar", () => {
     await userEvent.click(within(panel).getByRole("button", { name: "OK" }));
     expect(x.done).toHaveBeenCalled();
     // The title folds the rows away, to see more of the model; Cancel and OK stay.
-    await userEvent.click(within(panel).getByRole("button", { name: "Fold the extrude settings away" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Fold the settings away" }));
     expect(within(panel).queryByText("Operation")).toBeNull();
     expect(within(panel).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });

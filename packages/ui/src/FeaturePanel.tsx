@@ -51,7 +51,7 @@ export function FeaturePanel({ title, icon, children, cancel, ok, onFieldEnter, 
           type="button"
           className="bc-fpanel-fold"
           aria-expanded={!folded}
-          aria-label={folded ? `Show the ${title.toLowerCase()} settings` : `Fold the ${title.toLowerCase()} settings away`}
+          aria-label={folded ? "Show the settings" : "Fold the settings away"}
           data-tip={folded ? "Show the settings" : "Fold the settings away"}
           onClick={() => setFolded((f) => !f)}
         >
