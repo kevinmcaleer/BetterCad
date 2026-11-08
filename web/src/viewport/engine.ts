@@ -630,7 +630,16 @@ export class Engine {
     this.fit();
   }
 
+  /** Switches projection at once, even mid-glide (the glide carries on in the new projection). */
   setOrtho(on: boolean): void {
+    const t = this.tween;
+    if (t) {
+      if (t.to.ortho === on && t.from.ortho === on) return;
+      this.tween = { ...t, from: { ...t.from, ortho: on }, to: { ...t.to, ortho: on } };
+      this.invalidate();
+      return;
+    }
+    if (this.cam.ortho === on) return;
     this.setCamera({ ...this.cam, ortho: on });
   }
 
