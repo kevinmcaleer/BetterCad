@@ -69,6 +69,7 @@ import {
   type Preset,
   type V3,
   type ViewRect,
+  facing,
 } from "./camera";
 import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter } from "./ids";
 import { edgesOnOutline } from "./faceEdges";
@@ -1192,11 +1193,7 @@ export class Engine {
 
   /** Turns to look straight at a plane, orthographic, keeping the zoom. The frame's X runs to the right when it can. */
   lookAt(origin: V3, normal: V3, animate = true): void {
-    const n = new Vector3(...normal).normalize();
-    const elevation = (Math.asin(Math.max(-1, Math.min(1, n.z))) * 180) / Math.PI;
-    let azimuth = (Math.atan2(n.y, n.x) * 180) / Math.PI;
-    // Looking straight down or up, keep +Y up the screen, as the Top view does.
-    if (Math.abs(Math.abs(elevation) - 90) < 1e-6) azimuth = -90;
+    const { azimuth, elevation } = facing(normal);
     const base = this.tween?.to ?? this.cam;
     this.setCamera({ ...base, target: origin, azimuth, elevation, ortho: true }, animate);
   }

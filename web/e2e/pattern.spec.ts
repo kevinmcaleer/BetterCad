@@ -150,3 +150,35 @@ test("pick the features to mirror on the timeline", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect(page.getByText("Mirrored 1 feature")).toBeVisible();
 });
+
+test("pattern a hole picked on the timeline, not its body, and reopen it with its settings", async ({ page }) => {
+  await addBox(page);
+  await page.keyboard.press("h");
+  await click(page, 5, 5, 20);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Made 1 hole in Box 1")).toBeVisible();
+
+  // The hole picked on the timeline is what Pattern copies, not Box 1.
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  await timeline.getByRole("button", { name: /^Hole 1,/ }).click();
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Pattern", exact: true }).click();
+  await expect(page.getByText("Copying 1 feature in rows.")).toBeVisible();
+  await page.getByRole("button", { name: "Circle", exact: true }).click();
+  await expect(page.getByText("Copying 1 feature round the Z axis.")).toBeVisible();
+  const count = page.getByRole("textbox", { name: "Count" });
+  await count.fill("2");
+  await count.press("Enter");
+  await expect(page.getByText("Patterned 1 feature")).toBeVisible();
+  await expect(bodyRows(page)).toHaveCount(1);
+
+  // 20³ less two 3.4 mm bores, 20 mm long: the hole and its copy half way round Z.
+  await page.getByRole("treeitem", { name: /Box 1/ }).click();
+  await expect(page.getByText("7,636.8 mm³")).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press("Escape");
+
+  // A double-click on its tile opens it again as it was left.
+  await timeline.getByRole("button", { name: /^Pattern 1,/ }).dblclick();
+  await expect(page.getByRole("group", { name: "Kind" }).getByRole("button", { name: "Circle", pressed: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Count" })).toHaveValue("2");
+  await expect(page.getByText("Copying 1 feature round the Z axis.")).toBeVisible();
+});

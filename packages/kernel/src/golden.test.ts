@@ -265,6 +265,18 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h"], plane: "YZ" });
     return new ModelBuilder(oc).solid(build(doc).parts[0]!).shape;
   },
+  // Pattern of features: the same M3 hole copied 3 times along X, 10 mm apart, then twice round Z, on one plate.
+  "pattern-hole-features": (oc) => {
+    let doc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 20, z: 10 });
+    doc = addHole(
+      doc,
+      { part: "b", frame: { origin: [0, 0, 10], x: [1, 0, 0], normal: [0, 0, 1] }, points: [[15, 5]], size: "M3", fit: "printed", head: "none", depth: null },
+      "h",
+    );
+    doc = addPattern(doc, { parts: [], kind: "rect", of: "features", features: ["h"], count1: 3, spacing1: -10 }, "r");
+    doc = addPattern(doc, { parts: [], kind: "circle", of: "features", features: ["h"], count: 2 }, "c");
+    return new ModelBuilder(oc).solid(build(doc).parts[0]!).shape;
+  },
   "pattern-rect-pegs": (oc) => patterned(oc, "cylinder", { x: 6, y: 6, z: 10 }, 0, { kind: "rect", count1: 3, spacing1: 10, count2: 2, spacing2: 10 }),
   "pattern-circle-arms": (oc) => patterned(oc, "box", { x: 20, y: 4, z: 3 }, 12, { kind: "circle", count: 6, angle: 360 }),
   "extrude-cut": (oc) =>

@@ -11,7 +11,10 @@ import { partFrame } from "./catalogue";
 export type WorldAxis = "x" | "y" | "z";
 export type MirrorPlane = "XY" | "XZ" | "YZ";
 export type PatternKind = "mirror" | "rect" | "circle";
-/** What a Mirror copies: whole bodies, the cuts, joins and holes of chosen features, or every body of a component. */
+/**
+ * What a Mirror or Pattern copies: whole bodies, the cuts, joins and holes of chosen features (onto the same bodies), or
+ * every body of a component (Mirror only).
+ */
 export type MirrorOf = "bodies" | "features" | "component";
 
 /** A plane in the world (or in a part's own coordinates): a point on it and its unit normal. */
@@ -70,12 +73,19 @@ const tidy = (v: Vec3): Vec3 => ({ x: tidyN(v.x), y: tidyN(v.y), z: tidyN(v.z) }
 /** Rounds away float dust (1e-12) so a turned copy at 90° sits exactly where a person would type it. */
 const tidyN = (n: number) => Math.round(n * 1e9) / 1e9 + 0;
 
+/** What the step copies: a Pattern never copies a component, so one switched from a Mirror of a component copies bodies. */
+export function copiesWhat(f: Pick<PatternFeature, "kind" | "of">): MirrorOf {
+  const of = f.of ?? "bodies";
+  return of === "component" && f.kind !== "mirror" ? "bodies" : of;
+}
+
 /** Why the step can't be made as set, or null. */
 export function patternProblem(f: PatternFeature): string | null {
   const whole = (n: number) => Number.isInteger(n) && n >= 1;
-  if (f.kind === "mirror" && f.of === "features") {
-    if (!f.features?.length) return "Pick the features to mirror";
-  } else if (f.kind === "mirror" && f.of === "component") {
+  const of = copiesWhat(f);
+  if (of === "features") {
+    if (!f.features?.length) return f.kind === "mirror" ? "Pick the features to mirror" : "Pick the features to copy";
+  } else if (of === "component") {
     if (!f.link) return "Pick the component to mirror";
   } else if (!f.parts.length) return "Pick the bodies to copy";
   if (f.kind === "rect") {
@@ -89,7 +99,8 @@ export function patternProblem(f: PatternFeature): string | null {
     if (!whole(f.count) || f.count < 2) return "Give it a count of 2 or more";
     if (!(f.angle > 0 && f.angle <= 360)) return "Give it an angle from 1° to 360°";
   }
-  if (copiesPer(f) * f.parts.length > PATTERN_LIMIT) return `That's more than ${PATTERN_LIMIT} copies. Use fewer.`;
+  if (copiesPer(f) * Math.max(f.parts.length, of === "features" ? (f.features?.length ?? 0) : 0) > PATTERN_LIMIT)
+    return `That's more than ${PATTERN_LIMIT} copies. Use fewer.`;
   return null;
 }
 
@@ -100,8 +111,17 @@ export function copiesPer(f: PatternFeature): number {
   return Math.max(0, Math.floor(f.count) - 1);
 }
 
-/** Each copy's move from the original, in order; the original itself is left out. A mirror uses `plane` when given. */
-export function patternMoves(f: PatternFeature, plane?: Plane): CopyMove[] {
+/** An axis a circular pattern turns round, in the world: a point on it and its unit direction. */
+export interface Axis {
+  origin: Vec3;
+  dir: Vec3;
+}
+
+/**
+ * Each copy's move from the original, in order; the original itself is left out. A mirror uses `plane` when given, a
+ * circle `axis` (a construction axis) in place of its world axis.
+ */
+export function patternMoves(f: PatternFeature, plane?: Plane, axis?: Axis): CopyMove[] {
   if (f.kind === "mirror") {
     if (plane) return [{ mirror: plane }];
     const normal = AXIS[NORMAL[f.plane]];
@@ -118,7 +138,22 @@ export function patternMoves(f: PatternFeature, plane?: Plane): CopyMove[] {
   const n = Math.floor(f.count);
   // A full circle shares the turn out evenly; a part circle puts the last copy on the end of the angle.
   const step = f.angle >= 360 ? 360 / n : f.angle / (n - 1);
-  return Array.from({ length: n - 1 }, (_, k) => ({ turn: { origin: { x: 0, y: 0, z: 0 }, axis: AXIS[f.axis], deg: (k + 1) * step } }));
+  const round = axis ? { origin: axis.origin, axis: unit(axis.dir) } : { origin: { x: 0, y: 0, z: 0 }, axis: AXIS[f.axis] };
+  return Array.from({ length: n - 1 }, (_, k) => ({ turn: { ...round, deg: (k + 1) * step } }));
+}
+
+/**
+ * The construction axis a circular pattern turns round (`axisStep`), where it is now; undefined for a world axis, and a
+ * message when the axis is gone.
+ */
+export function patternAxis(
+  f: PatternFeature,
+  construct: readonly { id: string; geo: { what: string; origin?: readonly number[]; dir?: readonly number[] } }[] = [],
+): Axis | string | undefined {
+  if (f.kind !== "circle" || !f.axisStep) return undefined;
+  const c = construct.find((x) => x.id === f.axisStep);
+  if (c?.geo.what !== "axis" || !c.geo.origin || !c.geo.dir) return "The axis it turns round is gone";
+  return { origin: v3(c.geo.origin), dir: unit(v3(c.geo.dir)) };
 }
 
 const unit = (v: Vec3): Vec3 => scale(v, 1 / (Math.hypot(v.x, v.y, v.z) || 1));
@@ -133,6 +168,35 @@ function turnToWorld(v: Vec3, p: Placed): Vec3 {
   const z = v3(fr.normal);
   const y = cross(z, x);
   return add(add(scale(x, v.x), scale(y, v.y)), scale(z, v.z));
+}
+
+/**
+ * A copy's move in a part's own coordinates, as the part stands now: how a feature's cut or join is made again on the
+ * same body (Mirror and Pattern of features).
+ */
+export function moveToLocal(m: CopyMove, p: Placed): CopyMove {
+  if ("mirror" in m) return { mirror: planeToLocal(m.mirror, p) };
+  if ("turn" in m) {
+    const l = planeToLocal({ origin: m.turn.origin, normal: m.turn.axis }, p);
+    return { turn: { origin: l.origin, axis: l.normal, deg: m.turn.deg } };
+  }
+  // A move is a direction: where the part's own origin goes, seen from the part.
+  return { move: planeToLocal({ origin: add(p.position, m.move), normal: AXIS.z }, p).origin };
+}
+
+/**
+ * The moves an op is made with, in the part's own coordinates, first first: `mirror` (older files) then `by`. Each
+ * Mirror or Pattern of features adds one to the end.
+ */
+export function opMoves(o: { mirror?: Plane[]; by?: CopyMove[] }): CopyMove[] {
+  return [...(o.mirror ?? []).map((m): CopyMove => ({ mirror: m })), ...(o.by ?? [])];
+}
+
+/** The move that undoes a copy's move. */
+export function undoMove(m: CopyMove): CopyMove {
+  if ("mirror" in m) return m;
+  if ("turn" in m) return { turn: { ...m.turn, deg: -m.turn.deg } };
+  return { move: scale(m.move, -1) };
 }
 
 /** A world plane in a part's own coordinates, as the part stands now. */
@@ -176,7 +240,7 @@ export function mirrorPlane(
   return { origin: tidy(add(w.origin, scale(w.normal, f.offset))), normal: w.normal };
 }
 
-/** Body steps a Mirror of features can copy: joins, cuts, intersections and holes (fillets and shells pick by number). */
+/** Body steps a Mirror or Pattern of features can copy: joins, cuts, intersections and holes (fillets and shells pick by number). */
 export const MIRRORED_OPS = new Set(["join", "cut", "intersect", "hole"]);
 
 /** Where a point goes under a copy's move. */
@@ -234,13 +298,13 @@ export function copyPart(src: Part, m: CopyMove, id: string, name: string): Part
   };
 }
 
-/** The step's summary on its tile: "Box 1, 3 × 2 at 20 mm". */
-export function patternSummary(f: PatternFeature, who: string, faceOwner?: string): string {
+/** The step's summary on its tile: "Box 1, 3 × 2 at 20 mm". `axisName` names a circle's construction axis. */
+export function patternSummary(f: PatternFeature, who: string, faceOwner?: string, axisName?: string): string {
   const joined = f.join ? ", joined" : "";
   if (f.kind === "mirror") return `${who} across ${mirrorPlaneText(f, faceOwner)}${joined}`;
   if (f.kind === "rect") {
     const two = f.count2 > 1 ? ` × ${f.count2} along ${f.dir2.toUpperCase()} at ${f.spacing2} mm` : "";
     return `${who}, ${f.count1} along ${f.dir1.toUpperCase()} at ${f.spacing1} mm${two}${joined}`;
   }
-  return `${who}, ${f.count} round ${f.axis.toUpperCase()}${f.angle < 360 ? ` over ${f.angle}°` : ""}${joined}`;
+  return `${who}, ${f.count} round ${f.axisStep ? (axisName ?? "an axis") : f.axis.toUpperCase()}${f.angle < 360 ? ` over ${f.angle}°` : ""}${joined}`;
 }

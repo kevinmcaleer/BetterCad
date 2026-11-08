@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { ESC, useEscape } from "@bettercad/ui";
 import {
   addPattern,
+  copiesWhat,
   featureParts,
   mirrorFace,
   mirrorableFeatures,
   newId,
   updatePattern,
+  type BuiltConstruct,
   type BuiltLink,
   type MirrorOf,
   type ModelDoc,
@@ -22,8 +24,10 @@ import type { View3DHandle } from "../viewport/View3D";
  * timeline at once, so the copies show as you change the settings on the bar. The step copies whatever is picked:
  * Shift-click adds a body or takes it out. Enter keeps the step, Esc takes it back.
  *
- * A Mirror can copy bodies, the cuts, joins and holes of chosen features, or a whole component (click one of its bodies,
- * or choose it from the bar). Its plane is an origin plane, or a flat face picked in the view.
+ * A Mirror or Pattern can copy bodies, or the cuts, joins and holes of chosen features onto the same bodies (click the
+ * steps on the timeline, or have one picked there when the tool comes up). A Mirror can also copy a whole component
+ * (click one of its bodies, or choose it from the bar). Its plane is an origin plane, or a flat face picked in the view.
+ * A circular pattern turns round X, Y or Z, or a construction axis clicked in the view or chosen from the bar.
  */
 export interface PatternDeps {
   store: {
@@ -40,7 +44,11 @@ export interface PatternDeps {
   /** The bodies and components as built up to the marker, and how many steps that is. */
   parts: Part[];
   links: BuiltLink[];
+  /** Construction geometry as built up to the marker: a circular pattern can turn round one of its axes. */
+  construct: BuiltConstruct[];
   upTo: number;
+  /** The step picked on the timeline, if any: the tool starts by copying that feature. */
+  pickedStep: () => string | null;
   view: RefObject<View3DHandle>;
   active: boolean;
   /** What the tool starts as: Mirror from its command, the last kind used otherwise. */
@@ -53,6 +61,7 @@ const KEY = (id: string) => `pattern:${id}`;
 const label = (k: PatternKind) => (k === "mirror" ? "Mirror" : "Pattern");
 
 const PLANES_ONLY = new Set(["plane"] as const);
+const AXES_ONLY = new Set(["axis"] as const);
 
 export function usePattern(d: PatternDeps) {
   const deps = useRef(d);
@@ -62,11 +71,13 @@ export function usePattern(d: PatternDeps) {
   const [last, setLast] = useState<Partial<PatternParams> & { kind: PatternKind }>({ kind: "rect" });
   /** Picking the mirror plane in the view: a flat face or an origin plane. */
   const [pickingPlane, setPickingPlane] = useState(false);
+  /** Picking a construction axis in the view, for a circular pattern to turn round. */
+  const [pickingAxis, setPickingAxis] = useState(false);
   const feature = (d.doc.features.find((f) => f.id === session?.id && f.type === "pattern") as PatternFeature | undefined) ?? null;
   // Mirror has its own button (it always says so), so Pattern starts as the last row or circle used.
   const kind = feature?.kind ?? d.startKind ?? (last.kind === "mirror" ? "rect" : last.kind);
-  /** What a Mirror copies; a pattern always copies bodies. */
-  const of: MirrorOf = kind !== "mirror" ? "bodies" : ((feature ? feature.of : last.of) ?? "bodies");
+  /** What it copies: bodies, features, or (a Mirror only) a component. */
+  const of: MirrorOf = copiesWhat({ kind, of: feature ? feature.of : last.of });
   const live = useRef({ session, feature, last, of });
   live.current = { session, feature, last, of };
 
@@ -83,7 +94,7 @@ export function usePattern(d: PatternDeps) {
 
   /** Starts the step with what it copies, or changes what an open one copies. */
   const pick = useCallback(
-    (c: Pick<Partial<PatternParams>, "parts" | "features" | "link">) => {
+    (c: Pick<Partial<PatternParams>, "parts" | "features" | "link" | "of">) => {
       const s = live.current.session;
       const f = live.current.feature;
       if (!s) {
@@ -92,6 +103,7 @@ export function usePattern(d: PatternDeps) {
         const params = { ...live.current.last, kind, parts: [], ...c };
         deps.current.record((doc, at) => addPattern(doc, params, id, at), label(kind), KEY(id));
         setSession({ id, isNew: true });
+        if (c.of) setLast((l) => ({ ...l, of: c.of }));
         return;
       }
       if (f) store.edit((doc) => updatePattern(doc, s.id, c), s.isNew ? label(f.kind) : `Edit ${f.name}`, KEY(s.id));
@@ -99,13 +111,26 @@ export function usePattern(d: PatternDeps) {
     [store],
   );
 
+  // A step picked on the timeline when the tool comes up is what it copies: the feature, not the bodies it changed.
+  useEffect(() => {
+    if (!d.active || live.current.session || live.current.of === "component") return;
+    const step = deps.current.pickedStep();
+    if (!step || !mirrorableFeatures(deps.current.doc, deps.current.upTo).some((f) => f.id === step)) return;
+    deps.current.setSelection([]);
+    pick({ of: "features", features: [step] });
+    // Only as the tool comes up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.active]);
+
   // The picked bodies become the step's bodies: the first pick starts it, and it follows the picks after that. A
-  // Mirror of a component takes the component of the body clicked; a Mirror of features is picked on the bar.
+  // Mirror of a component takes the component of the body clicked; features are picked on the timeline or the bar.
   const copies = feature ? new Set(featureParts(feature)) : null;
   const picked = d.selection.filter((id) => !copies?.has(id));
   const pickedKey = picked.join(",");
   useEffect(() => {
     if (!d.active) return;
+    // A step picked on the timeline starts the tool on that feature (above), not on the bodies it selects.
+    if (!live.current.session && deps.current.pickedStep()) return;
     const ids = pickedKey ? pickedKey.split(",") : [];
     const f = live.current.feature;
     const what = live.current.of;
@@ -126,6 +151,7 @@ export function usePattern(d: PatternDeps) {
       delete kept.features;
       delete kept.link;
       delete kept.face;
+      delete kept.axisStep;
       setLast((l) => ({ ...l, ...kept }));
       const s = live.current.session;
       const f = live.current.feature;
@@ -138,14 +164,14 @@ export function usePattern(d: PatternDeps) {
     [store],
   );
 
-  /** The steps a Mirror of features can copy, before the step (or the marker, before it starts). */
+  /** The steps a Mirror or Pattern of features can copy, before the step (or the marker, before it starts). */
   const index = feature ? d.doc.features.indexOf(feature) : d.upTo;
   const mirrorable = useMemo(
     () => (d.active && of === "features" ? mirrorableFeatures(d.doc, index).map((f) => ({ id: f.id, name: f.name })) : []),
     [d.active, of, d.doc, index],
   );
 
-  /** Ticks a feature in or out of a Mirror of features. */
+  /** Ticks a feature in or out of a Mirror or Pattern of features. */
   const toggleFeature = useCallback(
     (id: string) => {
       const now = live.current.feature?.features ?? [];
@@ -207,6 +233,29 @@ export function usePattern(d: PatternDeps) {
     if (!session || !d.active) setPickingPlane(false);
   }, [session, d.active]);
 
+  // Picking the axis: construction axes light up under the pointer.
+  useEffect(() => {
+    const eng = d.view.current?.engine();
+    if (!d.active || !pickingAxis || !session || !eng) return;
+    eng.setInput({
+      move: () => {},
+      down: (p) => {
+        const step = eng.constructAt(p.x, p.y, AXES_ONLY);
+        if (!step) {
+          deps.current.say("Click a construction axis, or make one with Construct.", true);
+          return true;
+        }
+        change({ axisStep: step });
+        setPickingAxis(false);
+        return true;
+      },
+    });
+    return () => eng.setInput(null);
+  }, [d.active, d.view, pickingAxis, session, change]);
+  useEffect(() => {
+    if (!session || !d.active || kind !== "circle") setPickingAxis(false);
+  }, [session, d.active, kind]);
+
   const done = useCallback(() => {
     const s = live.current.session;
     const f = s && (store.get().features.find((x) => x.id === s.id) as PatternFeature | undefined);
@@ -214,18 +263,19 @@ export function usePattern(d: PatternDeps) {
       store.seal();
       const n = f.parts.length;
       const k = f.features?.length ?? 0;
+      const of = copiesWhat(f);
       const what =
-        f.kind === "mirror" && f.of === "features"
+        of === "features"
           ? k === 1
             ? "1 feature"
             : `${k} features`
-          : f.kind === "mirror" && f.of === "component"
+          : of === "component"
             ? (deps.current.links.find((l) => l.id === f.link)?.name ?? "the component")
             : n === 1
               ? "1 body"
               : `${n} bodies`;
       deps.current.say(`${s.isNew ? (f.kind === "mirror" ? "Mirrored" : "Patterned") : "Changed"} ${what}${f.join ? ", joined" : ""}`);
-      deps.current.setSelection(f.parts);
+      deps.current.setSelection(of === "features" ? [] : f.parts);
     }
     setSession(null);
     deps.current.onClose();
@@ -243,7 +293,7 @@ export function usePattern(d: PatternDeps) {
     (id: string) => {
       store.seal();
       const f = store.get().features.find((x) => x.id === id);
-      if (f?.type === "pattern") deps.current.setSelection(f.parts);
+      if (f?.type === "pattern") deps.current.setSelection(copiesWhat(f) === "features" ? [] : f.parts);
       setSession({ id, isNew: false });
     },
     [store],
@@ -252,22 +302,25 @@ export function usePattern(d: PatternDeps) {
   useEscape(!!session, cancel, ESC.tool + 1);
   // Esc while picking the plane stops picking, and keeps the step.
   useEscape(pickingPlane, () => setPickingPlane(false), ESC.tool + 2);
+  useEscape(pickingAxis, () => setPickingAxis(false), ESC.tool + 2);
 
   const help = !d.active
     ? null
     : pickingPlane
       ? "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
-      : of === "features"
-        ? session
-          ? "Click more steps on the timeline, or click Face to mirror across a face. Enter keeps the mirror, Esc takes it back."
-          : "Click the steps to mirror on the timeline, or choose them on the bar."
-        : of === "component"
+      : pickingAxis
+        ? "Click a construction axis to turn round. Esc stops picking."
+        : of === "features"
           ? session
-            ? "Click a body in another component to mirror that one instead. Enter keeps the mirror, Esc takes it back."
-            : "Click a body in the component to mirror, or choose it on the bar."
-          : session
-            ? "Shift-click to add a body or take one out. Enter keeps the copies, Esc takes them back."
-            : "Click the bodies to copy. Shift-click picks more than one.";
+            ? `Click more steps on the timeline to ${kind === "mirror" ? "mirror" : "copy"} them too. Enter keeps it, Esc takes it back.`
+            : `Click the steps to ${kind === "mirror" ? "mirror" : "copy"} on the timeline, or choose them on the bar.`
+          : of === "component"
+            ? session
+              ? "Click a body in another component to mirror that one instead. Enter keeps the mirror, Esc takes it back."
+              : "Click a body in the component to mirror, or choose it on the bar."
+            : session
+              ? "Shift-click to add a body or take one out. Enter keeps the copies, Esc takes them back."
+              : "Click the bodies to copy. Shift-click picks more than one.";
 
   return {
     session,
@@ -279,11 +332,22 @@ export function usePattern(d: PatternDeps) {
     pick,
     toggleFeature,
     pickingPlane,
-    setPickingPlane,
-    /** The construction plane a Mirror goes across (#265), by name. */
+    setPickingPlane: (on: boolean) => {
+      setPickingAxis(false);
+      setPickingPlane(on);
+    },
+    pickingAxis,
+    setPickingAxis: (on: boolean) => {
+      setPickingPlane(false);
+      setPickingAxis(on);
+    },
+    /** Construction geometry up to the marker: a circle turns round one of its axes. */
+    construct: d.construct,
+    /** A step's name, by id. */
+    nameOf: (id: string) => d.doc.features.find((f) => f.id === id)?.name,
     stepName: feature?.step ? d.doc.features.find((f) => f.id === feature.step)?.name : undefined,
     change,
-    /** Sets what a Mirror copies before it starts, or switches an open one. */
+    /** Sets what it copies before it starts, or switches an open one. */
     setOf: (o: MirrorOf) => (live.current.session ? change({ of: o }) : (setLast((l) => ({ ...l, of: o })), deps.current.setSelection([]))),
     done,
     cancel,
