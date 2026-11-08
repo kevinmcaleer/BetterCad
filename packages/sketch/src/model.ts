@@ -11,8 +11,8 @@ interface EntityBase {
   id: Id;
   /** Construction geometry guides the sketch but is never part of a profile. */
   construction?: boolean;
-  /** Projected from a body's face (#54): fixed in place, and re-projected when the body changes. */
-  projectedFrom?: TopoRef;
+  /** Projected from a body's face, edge or vertex (#54): fixed in place, and re-projected when the body changes. */
+  projectedFrom?: ProjectedRef;
 }
 export interface Point extends EntityBase {
   kind: "point";
@@ -90,6 +90,14 @@ export type WorldPlane = "XY" | "XZ" | "YZ";
 export interface TopoRef {
   body: Id;
   face: number;
+}
+
+/** Where projected geometry came from: a body's face, or one of its edges or vertices. */
+export interface ProjectedRef {
+  body: Id;
+  face?: number;
+  edge?: number;
+  vertex?: number;
 }
 
 /** The sketch frame in world space: origin, X direction and normal (Y = normal × X). */

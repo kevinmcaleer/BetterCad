@@ -225,6 +225,8 @@ export function freedom(sketch: Sketch): Freedom {
   };
 
   for (const c of sketch.constraints) if (!c.suppressed) constraint(c);
+  // A projected circle's radius is held, as the solver holds it.
+  for (const e of sketch.entities) if (e.kind === "circle" && e.projectedFrom) add([rr(e.id)], (v) => v[rr(e.id)]! - v0[rr(e.id)]!);
   for (const d of sketch.dimensions) if (d.driving && !d.suppressed) dimension(d);
 
   // Independent groups of numbers: those linked by any residual.

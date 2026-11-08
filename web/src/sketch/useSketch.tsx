@@ -10,7 +10,7 @@ import {
   filletAt,
   filletLines,
   offsetChain,
-  projectSegments,
+  projectCurves,
   trimAt,
   trimPiece,
   dist,
@@ -27,6 +27,7 @@ import {
   type DimensionKind,
   type Frame,
   type Id,
+  type ModelCurve,
   type PlaneRef,
   type SolveResult,
   type Sketch,
@@ -161,8 +162,13 @@ export function useSketch(d: SketchDeps) {
       return null;
     }
   }, [sketch, solver]);
-  // Any change to the sketch (an undo, say) drops a size being placed, which was measured on the sketch before it.
-  useEffect(() => setPlacing(null), [sketch]);
+  /** The sketch as a model edge brought in for a size left it: the size being placed was measured on it, so it stays. */
+  const keepPlacing = useRef<Sketch | null>(null);
+  // Any other change to the sketch (an undo, say) drops a size being placed, which was measured on the sketch before it.
+  useEffect(() => {
+    if (sketch && sketch === keepPlacing.current) return;
+    setPlacing(null);
+  }, [sketch]);
   /** The model's origin in sketch mm, which Select, Dimension and the constraint tools can pick. */
   const origin = useMemo<Vec2 | null>(() => (frame ? toSketch(frame, [0, 0, 0]) : null), [frame]);
 
@@ -450,7 +456,13 @@ export function useSketch(d: SketchDeps) {
   const startOn = useCallback(
     (plane: PlaneRef, what: string) => {
       const id = newId();
-      deps.current.record((doc, at) => addSketch(doc, plane, id, at), "Start a sketch");
+      // Auto project, as in Fusion: a sketch on a face starts with the face's edges in it, held in place.
+      const eng = engineOf();
+      const curves = plane.kind === "face" && options.autoProject && eng ? faceCurves(eng, plane.face.body, plane.face.face) : [];
+      deps.current.record((doc, at) => {
+        const next = addSketch(doc, plane, id, at);
+        return curves.length ? updateSketch(next, id, (s) => projectCurves(s, planeFrame(plane), curves).sketch) : next;
+      }, "Start a sketch");
       store.seal();
       deps.current.onStarted();
       setEditingId(id);
@@ -458,9 +470,9 @@ export function useSketch(d: SketchDeps) {
       setSel([]);
       const f = planeFrame(plane);
       engineOf()?.lookAt(f.origin, f.normal);
-      say(`Sketching on ${what}. Enter finishes.`);
+      say(`Sketching on ${what}${curves.length ? ", with its edges brought in" : ""}. Enter finishes.`);
     },
-    [store, engineOf, setStool, say],
+    [store, engineOf, setStool, say, options.autoProject],
   );
 
   /** Starts a sketch on an origin plane, as picking it in the view does (the browser's Sketch on). */
@@ -541,9 +553,37 @@ export function useSketch(d: SketchDeps) {
     [current, end],
   );
 
+  /**
+   * Auto project: brings a model edge or vertex picked by a size or constraint tool into the sketch, held in place,
+   * and gives back the sketch entity it became (the one already there if it was brought in before).
+   */
+  const projectModel = useCallback(
+    (pick: Pick): Id | null => {
+      const eng = engineOf();
+      const s = current();
+      const f = live.current.frame;
+      if (!eng || !s || !f) return null;
+      const vertex = pick.kind === "vertex" ? eng.vertexPoint(pick.body, pick.index) : null;
+      const points = vertex ? [vertex] : pick.kind === "edge" ? eng.edgePoints(pick.body, pick.index) : null;
+      if (!points?.length) return null;
+      const from = pick.kind === "vertex" ? { body: pick.body, vertex: pick.index } : { body: pick.body, edge: pick.index };
+      const { sketch: next, ids } = projectCurves(s, f, [{ points, from }]);
+      const id = ids[0];
+      if (!id) return null;
+      if (next.entities.length === s.entities.length) return id;
+      if (!apply(next, vertex ? "Project a point" : "Project an edge")) return null;
+      keepPlacing.current = current();
+      return id;
+    },
+    [engineOf, current, apply],
+  );
+
   // ---------------------------------------------------------------- the pointer
 
   const live = useRef({
+    autoProject: options.autoProject,
+    projectModel,
+    current,
     editingId,
     feature,
     sketch,
@@ -569,6 +609,9 @@ export function useSketch(d: SketchDeps) {
     place,
   });
   live.current = {
+    autoProject: options.autoProject,
+    projectModel,
+    current,
     redefining,
     editingId,
     feature,
@@ -698,9 +741,10 @@ export function useSketch(d: SketchDeps) {
       const tol = reach * hit.px;
       if (L.stool === "project") {
         const pick = eng.pick(p.x, p.y, "face");
-        const info = pick && eng.faceInfo(pick.body, pick.index);
-        if (!pick || !info) return false;
-        done(projectSegments(s, L.frame!, info.boundary, { body: pick.body, face: pick.index }, L.projectGuide), "Project a face");
+        const curves = pick ? faceCurves(eng, pick.body, pick.index) : [];
+        if (!pick || !curves.length) return false;
+        const out = projectCurves(s, L.frame!, curves, L.projectGuide).sketch;
+        done(out.entities.length > s.entities.length ? out : "That face is already in the sketch", "Project a face");
         return true;
       }
       if (L.stool === "fillet") {
@@ -776,6 +820,12 @@ export function useSketch(d: SketchDeps) {
       return id ? { id } : null;
     };
 
+    /** With auto project on, the model edge or corner under the pointer, for a size or constraint to use. */
+    const modelPick = (p: ScreenPoint): Pick | null => {
+      if (!live.current.autoProject) return null;
+      return eng.pick(p.x, p.y, "vertex", true) ?? eng.pick(p.x, p.y, "edge", true);
+    };
+
     /** Adds a drawing tool's click, and draws the shape once it has them all. */
     const addClick = (s: Snap) => {
       const L = live.current;
@@ -804,29 +854,43 @@ export function useSketch(d: SketchDeps) {
         }
         if (L.ctool) {
           // Each pick adds to the tool's picks; once there are enough, the constraint goes on and the tool stays armed.
-          const id = constraintPick(L.ctool, hit.xy, hit.px)?.id ?? null;
+          let id = constraintPick(L.ctool, hit.xy, hit.px)?.id ?? null;
+          // Nothing in the sketch there: a model edge or corner comes in to be picked.
+          const mp = id ? null : modelPick(p);
+          if (mp) {
+            id = L.projectModel(mp);
+            eng.showHover(null);
+          }
           if (!id) return true;
+          const sk = (mp && L.current()) || L.sketch;
           // Only geometry carries over from the selection: a constraint or size picked by its mark is not a pick.
-          const picked = [...L.sel.filter((x) => x !== id && isPickable(L.sketch!, x)), id];
-          if (!picksReady(L.ctool, L.sketch, picked)) {
+          const picked = [...L.sel.filter((x) => x !== id && isPickable(sk, x)), id];
+          if (!picksReady(L.ctool, sk, picked)) {
             setSel(picked);
             return true;
           }
           if (L.applyConstraint(L.ctool, picked)) setSel([]);
           // A pick that fits on its own (a line after a lone point, for Horizontal/Vertical) goes on by itself.
-          else if (picked.length > 1 && picksReady(L.ctool, L.sketch, [id]) && L.applyConstraint(L.ctool, [id], true)) setSel([]);
+          else if (picked.length > 1 && picksReady(L.ctool, sk, [id]) && L.applyConstraint(L.ctool, [id], true)) setSel([]);
           else setSel(picked.length > 1 ? [id] : []);
           return true;
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
         if (L.stool === "select" || L.stool === "dimension") {
-          const id = pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
+          let id = pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
           if (L.stool === "dimension") {
+            // Nothing in the sketch there: a model edge or corner comes in to be sized to.
+            const mp = id ? null : modelPick(p);
+            if (mp) {
+              id = L.projectModel(mp);
+              eng.showHover(null);
+            }
             if (!id) return false;
+            const sk = (mp && L.current()) || L.sketch;
             const picked = [...L.sel.filter((x) => x !== id), id];
-            const e = L.sketch.entities.find((x) => x.id === id);
+            const e = sk.entities.find((x) => x.id === id);
             // A line, circle or arc sizes at once unless a point waits for it; a point waits for a second pick.
-            const waiting = L.sel.some((x) => x === ORIGIN || L.sketch!.entities.find((y) => y.id === x)?.kind === "point");
+            const waiting = L.sel.some((x) => x === ORIGIN || sk.entities.find((y) => y.id === x)?.kind === "point");
             if (e && e.kind !== "point" && !waiting && L.dimensionFor([id])) return true;
             if (picked.length >= 2 && L.dimensionFor(picked.slice(-2))) return true;
             setSel([id]);
@@ -890,13 +954,16 @@ export function useSketch(d: SketchDeps) {
           // The Coincident tool snaps to the point, origin or midpoint under the pointer, and lets go further away.
           setPointer({ x: p.x, y: p.y });
           const pick = constraintPick(L.ctool, hit.xy, hit.px);
+          eng.showHover(pick ? null : modelPick(p));
           setHover(pick?.id ?? null);
           setCursor(pick?.xy ? { xy: pick.xy, kind: pick.kind!, label: pick.label! } : null);
           return;
         }
         if (L.stool === "select" || L.stool === "dimension") {
-          setHover(pickAt(hit.xy, L.sketch, reach * hit.px, L.origin));
+          const id = pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
+          setHover(id);
           setCursor(null);
+          if (L.stool === "dimension") eng.showHover(id ? null : modelPick(p));
           return;
         }
         setHover(null);
@@ -1375,4 +1442,9 @@ function addedLines(before: Sketch, after: Sketch): Vec2[][] {
     }
     return [];
   });
+}
+
+/** A face's edges as model curves to project: whole edges where the mesh has them, outline pieces where it does not. */
+function faceCurves(eng: Engine, body: string, face: number): ModelCurve[] {
+  return (eng.faceEdges(body, face) ?? []).map((e) => ({ points: e.points, from: e.edge >= 0 ? { body, face, edge: e.edge } : { body, face } }));
 }
