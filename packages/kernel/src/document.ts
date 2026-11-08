@@ -9,13 +9,10 @@ import type { ImportFormat } from "./imports";
 import { partBounds, partFrame, type CataloguePart } from "./catalogue";
 import type { FinishId } from "./looks";
 export {
-  CATALOGUE,
   CATALOGUE_CATEGORIES,
-  cataloguePart,
   checkPart,
   partBounds,
   partFrame,
-  HOLE_PATTERNS,
   rectPattern,
   circlePattern,
   type HolePattern,

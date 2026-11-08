@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { cataloguePart, partBounds, placeOnFace, type CataloguePart } from "./catalogue";
+import { partBounds, placeOnFace, type CataloguePart } from "./catalogue";
+import { cataloguePart } from "./catalogue/list";
 import { addPart, build, changeParts, insertCatalogue, newDoc, printed } from "./document";
 import { loadBcad, saveBcad } from "./bcad";
 import { loadOCCT, type OC } from "./occt/oc";

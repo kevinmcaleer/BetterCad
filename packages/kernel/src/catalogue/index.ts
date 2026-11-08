@@ -9,7 +9,6 @@
 import { validate, type Schema } from "../bcad";
 import { screw } from "../screws";
 import schemaJson from "./part.schema.json";
-import { PARTS } from "./parts";
 
 export type CatalogueCategory = "servo" | "motor" | "board" | "sensor" | "bearing" | "power";
 type V2 = [number, number];
@@ -73,11 +72,8 @@ export const CATALOGUE_CATEGORIES: { id: CatalogueCategory; label: string }[] = 
   { id: "power", label: "Power" },
 ];
 
-export const CATALOGUE: readonly CataloguePart[] = PARTS;
-
-export function cataloguePart(id: string): CataloguePart | undefined {
-  return CATALOGUE.find((p) => p.id === id);
-}
+// The parts themselves, cataloguePart and HOLE_PATTERNS are in list.ts (`@bettercad/kernel/catalogue`), so that the
+// document, which needs only the helpers here, does not bring the whole list into the app's first paint (#320).
 
 /** A shape's box as [min, max]. */
 export function shapeBounds(s: CatalogueShape): [V3, V3] {
@@ -237,24 +233,7 @@ export interface HolePattern {
   points: V2[];
 }
 
-const tidy = (n: number) => Math.round(n * 1e6) / 1e6 + 0;
-
-/** Hole patterns (#189): the catalogue parts with two or more screw holes, each centred on its own middle. */
-export const HOLE_PATTERNS: HolePattern[] = CATALOGUE.filter((p) => p.cutout.holes.length >= 2).map((p) => {
-  const hs = p.cutout.holes;
-  const mx = hs.reduce((a, h) => a + h.at[0], 0) / hs.length;
-  const my = hs.reduce((a, h) => a + h.at[1], 0) / hs.length;
-  const xs = hs.map((h) => h.at[0]);
-  const ys = hs.map((h) => h.at[1]);
-  const w = tidy(Math.max(...xs) - Math.min(...xs));
-  const h = tidy(Math.max(...ys) - Math.min(...ys));
-  return {
-    id: p.id,
-    label: `${p.name} (${h ? `${w} × ${h}` : w} mm)`,
-    screw: hs[0]!.screw,
-    points: hs.map((x) => [tidy(x.at[0] - mx), tidy(x.at[1] - my)] as V2),
-  };
-});
+export const tidy = (n: number) => Math.round(n * 1e6) / 1e6 + 0;
 
 /** Four holes on the corners of a rectangle, about its middle. */
 export const rectPattern = (w: number, h: number): V2[] => [
