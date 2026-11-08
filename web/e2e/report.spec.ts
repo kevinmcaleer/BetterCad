@@ -12,6 +12,8 @@ test("report a problem with the model attached, and see what else is sent", asyn
   await page.getByRole("button", { name: "Box", exact: true }).click();
 
   await page.keyboard.press("ControlOrMeta+k");
+  // The palette focuses its field a tick after it opens; letters typed before then would run shortcuts.
+  await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
   await page.keyboard.type("Report a problem");
   await page.getByRole("option", { name: /Report a problem/ }).click();
   const dialog = page.getByRole("dialog", { name: "Report a problem" });
@@ -35,6 +37,8 @@ test("offline, the report downloads as a .zip instead", async ({ page }) => {
   await expect(page.getByTestId("view-canvas")).toBeVisible();
   await page.waitForTimeout(500);
   await page.keyboard.press("ControlOrMeta+k");
+  // The palette focuses its field a tick after it opens; letters typed before then would run shortcuts.
+  await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
   await page.keyboard.type("Report a problem");
   await page.getByRole("option", { name: /Report a problem/ }).click();
   const dialog = page.getByRole("dialog", { name: "Report a problem" });
