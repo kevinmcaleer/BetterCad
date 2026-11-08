@@ -93,6 +93,11 @@ import {
   type PartKind,
   type PatternKind,
   type Vec3,
+  homePose,
+  linkTransforms,
+  posedFrames,
+  setPose,
+  type Pose,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { useTheme } from "../state/useTheme";
@@ -172,6 +177,8 @@ const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: 
 const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
 const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
+const ParamsPanel = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsPanel })));
+const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
@@ -581,11 +588,48 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     measure: kernel.measure,
   });
 
-  // Joint glyphs in the view (#172), on unless turned off from the View menu.
+  // Posing (#173): a live pose while a slider moves, kept in the model when it stops. Shown with the Select tool only, so
+  // tools that pick and move bodies work on them where they really are.
+  const [livePose, setLivePose] = useState<Pose | null>(null);
+  const pose = livePose ?? doc.pose;
+  const livePoseRef = useRef(livePose);
+  livePoseRef.current = livePose;
+  const posing = tool === "select" && !sketch.editing;
+  const linkMoves = useMemo(() => linkTransforms(built.joints, pose), [built.joints, pose]);
+  const changePose = useCallback((id: string, value: number) => setLivePose((p) => ({ ...(p ?? live.current.doc.pose), [id]: value })), []);
+  const commitPose = useCallback(
+    (id: string, value: number) => {
+      // A shared or old version can still be posed; the pose just isn't kept.
+      if (store.isLocked()) return changePose(id, value);
+      const name = live.current.doc.features.find((f) => f.id === id)?.name ?? "the joint";
+      store.edit((d) => setPose(d, id, value), `Move ${name}`, `pose-${id}`);
+      store.seal();
+      setLivePose(null);
+    },
+    [store, changePose],
+  );
+  const homeJoints = useCallback(() => {
+    setLivePose(null);
+    if (!store.isLocked() && live.current.doc.pose) store.edit(homePose, "Move the joints home");
+    say("The joints are home");
+  }, [store, say]);
+  useEffect(() => {
+    const moves = new Map<string, Matrix4>();
+    if (posing)
+      for (const l of built.links) {
+        const m = linkMoves.get(l.id);
+        if (m) for (const id of l.parts) moves.set(id, new Matrix4().fromArray(m));
+      }
+    vp.ref.current?.engine()?.setPose(moves);
+  }, [posing, linkMoves, built.links, vp.ref]);
+
+  // Joint glyphs in the view (#172), on unless turned off from the View menu. They ride on the pose.
   const [jointsShown, setJointsShown] = useState(true);
   useEffect(() => {
-    vp.ref.current?.engine()?.setJoints(jointsShown ? built.joints : null);
-  }, [built.joints, jointsShown, vp.ref]);
+    if (!jointsShown) return vp.ref.current?.engine()?.setJoints(null);
+    const frames = posing ? posedFrames(built.joints, linkMoves) : null;
+    vp.ref.current?.engine()?.setJoints(built.joints.map((j) => frames?.get(j.id) ?? j));
+  }, [built.joints, jointsShown, vp.ref, posing, linkMoves]);
 
   const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
   const pattern = usePattern({
@@ -1105,6 +1149,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
 
   const handlers = useRef({
+    homeJoints: () => {},
     openExport: () => {},
     openRender: () => {},
     startTour: () => {},
@@ -1148,6 +1193,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     deleteStep: (_id: string) => {},
   });
   handlers.current = {
+    homeJoints,
     openExport: () => setExportOpen(true),
     openRender: () => openRender(),
     startTour: tour.start,
@@ -1442,6 +1488,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().meshGears(sel()),
         when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.body.id === id)),
         keywords: "gear pair centre distance drive ratio",
+      },
+      {
+        id: "pose.home",
+        scope: "model",
+        label: "Move the joints home",
+        group: "View",
+        icon: "home",
+        run: () => h().homeJoints(),
+        when: () => !!livePoseRef.current || !!live.current.doc.pose,
+        keywords: "pose reset joints zero",
       },
       {
         id: "view.joints",
@@ -2756,6 +2812,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 onFinish={(finish) => store.edit((d) => setLook(d, selection, () => ({ finish })), "Set the finish")}
                 onFit={(c) =>
                   store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
+                }
+                pose={
+                  built.joints.length
+                    ? {
+                        joints: built.joints,
+                        selected: built.joints.filter((j) => selectedParts.some((p) => p.link === j.child)),
+                        pose,
+                        onChange: changePose,
+                        onCommit: commitPose,
+                        onHome: homeJoints,
+                      }
+                    : undefined
                 }
               />
             </>

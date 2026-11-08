@@ -24,6 +24,7 @@ export {
   type CatalogueCategory,
 } from "./catalogue";
 import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
+import { clampJoint, type Pose } from "./pose";
 import { PATTERN_DEFAULTS, copyName, copyPart, copyId, patternCopyIds, patternMoves, patternProblem, patternSummary } from "./pattern";
 import type { CopySpec, MirrorPlane, PatternKind, WorldAxis } from "./pattern";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
@@ -78,6 +79,7 @@ import {
 } from "./gears";
 export * from "./gears";
 export * from "./joints";
+export * from "./pose";
 export * from "./params";
 export * from "./print";
 import { fitGap, holeOffsetOf, type FitId, type PrintSettings } from "./print";
@@ -510,6 +512,8 @@ export interface ModelDoc {
   blobs?: Record<string, string>;
   /** The printer, material and infill (#100, #105), so a shared model shows the bed its author meant. */
   print?: PrintSettings;
+  /** How the joints are posed (#173), saved with the view so a shared model opens as it was left. Not a step. */
+  pose?: Pose;
 }
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
@@ -2384,6 +2388,25 @@ export type JointParams = Pick<JointFeature, "kind" | "child" | "parent" | "orig
 /** Adds a joint (#172): "Joint 1". */
 export function addJoint(doc: ModelDoc, params: JointParams, id = newId("f"), at?: number): ModelDoc {
   return insert(doc, clampAt(doc, at), { id, type: "joint", name: nextNamed(doc, "Joint"), ...params });
+}
+
+/** Sets one joint's value in the pose (#173), kept in range. Back at home, the joint leaves the pose. */
+export function setPose(doc: ModelDoc, id: string, value: number): ModelDoc {
+  const j = doc.features.find((f): f is JointFeature => f.id === id && f.type === "joint");
+  if (!j) return doc;
+  const v = clampJoint(j, value);
+  const pose: Pose = { ...doc.pose };
+  if (v === 0) delete pose[id];
+  else pose[id] = v;
+  return { ...doc, pose: Object.keys(pose).length ? pose : undefined };
+}
+
+/** Puts every joint back home (#173). */
+export function homePose(doc: ModelDoc): ModelDoc {
+  if (!doc.pose) return doc;
+  const next = { ...doc };
+  delete next.pose;
+  return next;
 }
 
 /** Changes a joint (its bar edits it live). Switching kind brings that kind's starting limits. */
