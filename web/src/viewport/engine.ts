@@ -1400,6 +1400,11 @@ export class Engine {
     this.ortho.up.set(...up);
     this.ortho.lookAt(...c.target);
     this.ortho.updateProjectionMatrix();
+    // The cameras live in the main scene, but the ID, pick and room passes render other scenes first, and three.js only
+    // refreshes a camera's world matrix when it renders the camera's own scene. Bring them up to date here, or those
+    // passes draw from last frame's view and the line-art outline trails the model while it turns.
+    this.persp.updateMatrixWorld();
+    this.ortho.updateMatrixWorld();
     this.gizmo.camera = this.activeCamera;
 
     // The grid: steps adapt to the zoom, and fade before the horizon.
@@ -1501,8 +1506,6 @@ export class Engine {
     const t = this.dofTargets;
     const auto = r.autoClear;
     // The sharp room, with each pixel's blur in alpha. The room surrounds the camera, so it covers every pixel.
-    // The camera lives in the main scene, which has not drawn yet this frame, so bring its matrices up to date.
-    cam.updateMatrixWorld();
     r.setRenderTarget(t.sharp);
     r.render(this.dofScene, cam);
     // Blur it across, then down, at half size.

@@ -113,3 +113,21 @@ test("the geometry engine loads in a worker and its solids replace the quick mes
   await x.press("Enter");
   await expect.poll(() => kernelBodies(page)).toEqual([{ world: true, x: 25 }]);
 });
+
+type Orbit = { __bcView: { orbitBy(dx: number, dy: number): void; invalidate(): void; setStyle(s: string): void } };
+const nextFrame = (page: Page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+test("the line-art outline turns with the model, not a frame behind", async ({ page }) => {
+  await page.goto("/");
+  await addShape(page, "Box");
+  await page.evaluate(() => (window as unknown as Orbit).__bcView.setStyle("lineart"));
+  await page.waitForTimeout(500);
+  // One orbit step draws one frame. Drawing it again with the camera still should change nothing: a stale outline would.
+  await page.evaluate(() => (window as unknown as Orbit).__bcView.orbitBy(120, 40));
+  await nextFrame(page);
+  const turned = await canvas(page).screenshot();
+  await page.evaluate(() => (window as unknown as Orbit).__bcView.invalidate());
+  await nextFrame(page);
+  const again = await canvas(page).screenshot();
+  expect(turned.equals(again)).toBe(true);
+});
