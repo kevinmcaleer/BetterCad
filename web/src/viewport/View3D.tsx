@@ -138,6 +138,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
           lastRot = key;
           setRotation(r);
         }
+        // The camera's real projection, for tests: it must always match the view cube's menu.
+        host.current?.setAttribute("data-projection", c.ortho ? "orthographic" : "perspective");
         events.current.onCamera?.(c);
       },
       click: (pick, mods, at) => {
