@@ -4,6 +4,7 @@ import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
 import type { PrismSpec, ProfileSeg, RevolveSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
+import type { CopySpec } from "../pattern";
 
 /**
  * Making and changing solids with OpenCascade. Every function takes the loaded OC instance and returns a new shape;
@@ -293,6 +294,20 @@ export function revolve(oc: OC, profile: TopoDS_Shape, origin: [number, number, 
 /** Undoes a placement: a world shape in the part's own coordinates. */
 export function unplace(oc: OC, shape: TopoDS_Shape, p: Placement): TopoDS_Shape {
   const mk = new oc.BRepBuilderAPI_Transform(shape, placement(oc, p).Inverted(), true, false);
+  return mk.Shape();
+}
+
+/** A mirrored or turned copy of a shape in the world (#69). A mirror flips the faces' sense; OCCT puts them right. */
+export function copyShape(oc: OC, shape: TopoDS_Shape, by: CopySpec["by"]): TopoDS_Shape {
+  const t = new oc.gp_Trsf();
+  if ("mirror" in by) {
+    const { origin: o, normal: n } = by.mirror;
+    t.SetMirror(new oc.gp_Ax2(new oc.gp_Pnt(o.x, o.y, o.z), new oc.gp_Dir(n.x, n.y, n.z)));
+  } else {
+    const { origin: o, axis: a, deg } = by.turn;
+    t.SetRotation(new oc.gp_Ax1(new oc.gp_Pnt(o.x, o.y, o.z), new oc.gp_Dir(a.x, a.y, a.z)), deg * DEG);
+  }
+  const mk = new oc.BRepBuilderAPI_Transform(shape, t, true, false);
   return mk.Shape();
 }
 

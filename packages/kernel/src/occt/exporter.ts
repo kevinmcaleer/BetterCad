@@ -1,4 +1,4 @@
-import type { ModelBuilder } from "./model";
+import { partKey, type ModelBuilder } from "./model";
 import type { OC } from "./oc";
 import { triangles, writeStep } from "./export";
 import { build, type ModelDoc, type Part } from "../document";
@@ -62,7 +62,7 @@ export class Exporter {
 
   private mesh(p: Part, deflection: number): MeshBody {
     const shape = this.model.solid(p).shape;
-    const k = `${JSON.stringify([p.kind, p.size, p.position, p.rotation ?? null, p.prism ?? null, p.revolve ?? null, p.ops ?? null])}@${deflection}`;
+    const k = `${partKey(p, "fine")}@${deflection}`;
     let t = this.tris.get(k);
     if (!t) {
       t = triangles(this.oc, shape, deflection);
