@@ -11,6 +11,7 @@ import {
   setExpr,
   profileAt,
   seedOf,
+  seedProfile,
   textProfiles,
   updateExtrude,
   updateRevolve,
@@ -135,6 +136,8 @@ export function useExtrude(d: ExtrudeDeps) {
   const [wantTo, setWantTo] = useState(false);
   /** Revolve: the next click on an axis, a sketch line or a straight edge sets what it turns round. */
   const [wantAxis, setWantAxis] = useState(false);
+  /** Picking the shapes again from the bar: every shape of the step's sketch shows, so hidden sketches can be picked. */
+  const [wantShapes, setWantShapes] = useState(false);
   /** Revolve: the sketch line under the pointer while it wants an axis, lit in the sketch. */
   const [axisLine, setAxisLine] = useState<string | null>(null);
   const arrow = useRef<ExtrudeArrow | null>(null);
@@ -154,7 +157,7 @@ export function useExtrude(d: ExtrudeDeps) {
 
   const feature = d.doc.features.find((f): f is ProfileFeature => f.id === session?.id && f.type === d.kind) ?? null;
   /** Revolve asks for its axis after the shapes, and again when the axis is picked from the bar. */
-  const pickingAxis = feature?.type === "revolve" && (wantAxis || !feature.axis);
+  const pickingAxis = feature?.type === "revolve" && !wantShapes && (wantAxis || !feature.axis);
   const live = useRef({ session, feature, autoOp, autoTargets, wantTo, pickingAxis });
   live.current = { session, feature, autoOp, autoTargets, wantTo, pickingAxis };
 
@@ -169,6 +172,7 @@ export function useExtrude(d: ExtrudeDeps) {
     if (!session) {
       setWantTo(false);
       setWantAxis(false);
+      setWantShapes(false);
     }
   }, [session]);
 
@@ -224,7 +228,7 @@ export function useExtrude(d: ExtrudeDeps) {
       if (!s || !L.bounds?.size) return [];
       const all = regionsOf.get(f.sketch) ?? [];
       const letters = (f.texts ?? []).flatMap((t) => textProfiles(s.sketch, t, all).map((p) => p.points));
-      const outlines = [...f.seeds.map((p) => profileAt(all, p)?.points).filter((p): p is Vec2[] => !!p), ...letters];
+      const outlines = [...f.seeds.map((p) => seedProfile(all, p)?.points).filter((p): p is Vec2[] => !!p), ...letters];
       if (!outlines.length) return [];
       const { from, to } = extent(f.direction, f.distance, f.distance2, f.extent === "all" && throughAllAllowed(f.operation));
       // Reference bodies are there to design round, and hidden ones out of mind: neither is cut unless picked.
@@ -344,7 +348,7 @@ export function useExtrude(d: ExtrudeDeps) {
         return;
       }
       const all = regionsOf.get(f.sketch) ?? [];
-      const has = f.seeds.findIndex((s) => profileAt(all, s) === h.profile);
+      const has = f.seeds.findIndex((s) => seedProfile(all, s) === h.profile);
       change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedIn(all, h)] });
     },
     [defaults, change, regionsOf],
@@ -378,7 +382,7 @@ export function useExtrude(d: ExtrudeDeps) {
   const pickedOf = useCallback(
     (f: ProfileFeature): Profile[] => {
       const all = regionsOf.get(f.sketch) ?? [];
-      return [...new Set(f.seeds.map((s) => profileAt(all, s)).filter((p): p is Profile => !!p))];
+      return [...new Set(f.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p))];
     },
     [regionsOf],
   );
@@ -547,7 +551,7 @@ export function useExtrude(d: ExtrudeDeps) {
     const all = regionsOf.get(feature.sketch) ?? [];
     const sk = d.sketches.find((x) => x.id === feature.sketch)?.sketch;
     const letters = sk ? (feature.texts ?? []).flatMap((t) => textProfiles(sk, t, all)) : [];
-    return [...new Set([...feature.seeds.map((s) => profileAt(all, s)).filter((p): p is Profile => !!p), ...letters])];
+    return [...new Set([...feature.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p), ...letters])];
   }, [feature, regionsOf, d.sketches]);
 
   useEffect(() => {
@@ -555,6 +559,8 @@ export function useExtrude(d: ExtrudeDeps) {
     if (!d.active || !eng) return;
     const bySketch = new Map<string, OverlayFill[]>();
     const add = (id: string, f: OverlayFill) => bySketch.set(id, [...(bySketch.get(id) ?? []), f]);
+    // While the shapes are picked again, the sketch's other shapes show faintly, ready to click.
+    if (feature && wantShapes) for (const p of regionsOf.get(feature.sketch) ?? []) if (!picked.includes(p)) add(feature.sketch, outlineFill(p, "guide"));
     if (feature) picked.forEach((p) => add(feature.sketch, outlineFill(p, "picked")));
     if (hover && !picked.includes(hover.profile)) {
       // A text lights up whole, as it is picked whole.
@@ -578,7 +584,7 @@ export function useExtrude(d: ExtrudeDeps) {
       return o;
     });
     return () => list.forEach((o) => o.dispose());
-  }, [d.active, engineOf, feature, picked, hover, d.theme, regionsOf, axisLine]);
+  }, [d.active, engineOf, feature, picked, hover, d.theme, regionsOf, axisLine, wantShapes]);
 
   // The arrow and To object (extrude only), loaded with the first step so they cost the first paint nothing.
   const [Arrow, setArrow] = useState<typeof ExtrudeArrow | null>(null);
@@ -650,13 +656,25 @@ export function useExtrude(d: ExtrudeDeps) {
       setSession({ id, isNew: false });
       setAutoOp(false);
       setAutoTargets(false);
+      // Shapes the sketch no longer has are dropped when the step is opened, so it builds again; click to pick more.
+      const f = store.get().features.find((x): x is ProfileFeature => x.id === id && (x.type === "extrude" || x.type === "revolve"));
+      const s = f && deps.current.sketches.find((x) => x.id === f.sketch);
+      if (!f || !s) return;
+      const all = regions(s.sketch);
+      const kept = f.seeds.filter((p) => seedProfile(all, p));
+      if (kept.length === f.seeds.length || (!kept.length && !f.texts?.length)) return;
+      const label = `Edit ${f.name}`;
+      store.edit((doc) => (f.type === "revolve" ? updateRevolve(doc, id, { seeds: kept }) : updateExtrude(doc, id, { seeds: kept })), label, KEY(id));
+      const n = f.seeds.length - kept.length;
+      say(`Took out ${n === 1 ? "a shape" : `${n} shapes`} the sketch no longer has. Click a shape to add it.`);
     },
-    [store],
+    [store, say],
   );
 
   // Esc backs out of the step before the tool's own Esc puts the tool down; first out of picking a new axis.
   useEscape(!!session, cancel, ESC.tool + 1);
   useEscape(wantAxis && !!feature && feature.type === "revolve" && !!feature.axis, () => setWantAxis(false), ESC.tool + 2);
+  useEscape(wantShapes && !!feature, () => setWantShapes(false), ESC.tool + 2);
 
   const commands = useMemo<Command[]>(
     () => [
@@ -682,13 +700,15 @@ export function useExtrude(d: ExtrudeDeps) {
     : !sketchCount
       ? "Draw a closed shape in a sketch first. Press K to start one."
       : session
-        ? pickingAxis
-          ? "Click an axis, a sketch line or a straight edge to turn it round. Click shapes to add or take them out."
-          : pickingTo
-            ? `Click a face, edge or point for it to go up to. Drag the arrow to give it a distance instead.${keep}`
-            : targeting && feature?.operation !== "join"
-              ? `Click shapes to add or take them out, and bodies to choose what it ${feature?.operation === "cut" ? "cuts" : "keeps"}.${dragText}${keep}`
-              : `Click more shapes to add them, or a picked one to take it out.${dragText}${keep}`
+        ? wantShapes
+          ? `Click shapes to add them or take them out. Esc when you're done picking.`
+          : pickingAxis
+            ? "Click an axis, a sketch line or a straight edge to turn it round. Click shapes to add or take them out."
+            : pickingTo
+              ? `Click a face, edge or point for it to go up to. Drag the arrow to give it a distance instead.${keep}`
+              : targeting && feature?.operation !== "join"
+                ? `Click shapes to add or take them out, and bodies to choose what it ${feature?.operation === "cut" ? "cuts" : "keeps"}.${dragText}${keep}`
+                : `Click more shapes to add them, or a picked one to take it out.${dragText}${keep}`
         : `Click inside a closed sketch shape to ${d.kind} it.`;
 
   return {
@@ -723,7 +743,20 @@ export function useExtrude(d: ExtrudeDeps) {
     /** Revolve: whether the next click on an axis, a sketch line or a straight edge sets what it turns round. */
     pickingAxis,
     /** Revolve: pick the axis again in the view. */
-    repickAxis: () => setWantAxis(true),
+    repickAxis: () => {
+      setWantShapes(false);
+      setWantAxis(true);
+    },
+    /** Whether the shapes are being picked again, with every shape of the sketch showing. */
+    pickingShapes: wantShapes,
+    /** Pick the shapes again in the view; `clear` takes out the ones picked first. */
+    repickShapes: (clear = false) => {
+      setWantAxis(false);
+      setWantShapes(true);
+      if (clear) change({ seeds: [], texts: [] });
+    },
+    /** Stop picking shapes. */
+    stopShapes: () => setWantShapes(false),
     pickAxis,
     /** Construction steps as built, for the axis menu. */
     construct: d.construct ?? [],

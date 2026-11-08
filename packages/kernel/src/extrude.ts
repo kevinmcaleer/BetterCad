@@ -161,6 +161,25 @@ export function profileAt(list: Profile[], p: Vec2): Profile | null {
   return best;
 }
 
+/**
+ * The profile a stored seed picks: the one it lands in, or, for a seed that sits on an outline (older steps could
+ * store a corner of the shape), the one shape whose outline it is on. A seed on the line between two shapes stays
+ * unresolved, as there's no telling which was meant.
+ */
+export function seedProfile(list: Profile[], p: Vec2): Profile | null {
+  const inside = profileAt(list, p);
+  if (inside) return inside;
+  const near = (pts: Vec2[]) =>
+    pts.some((a, i) => {
+      const b = pts[(i + 1) % pts.length]!;
+      const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(a[0] + dx * t - p[0], a[1] + dy * t - p[1]) < 1e-4;
+    });
+  const on = list.filter((pr) => near(pr.points) || pr.holes.some((h) => near(h.points)));
+  return on.length === 1 ? on[0]! : null;
+}
+
 /** A point well inside a profile, to remember the pick by (it survives the sketch being edited a little). */
 export function seedOf(pr: Profile): Vec2 {
   // Try the middle of the outline's bounding box, then points along a grid, until one is inside and out of holes.
@@ -226,7 +245,7 @@ export function pickProfiles(sketch: Sketch, seeds: Vec2[], texts: string[] = []
     shapes.push({ outer: segsOf(sketch, pr), holes: pr.holes.map((h) => segsOf(sketch, h)), area: pr.area - pr.holes.reduce((a, h) => a + h.area, 0) });
   };
   for (const s of seeds) {
-    const pr = profileAt(all, s);
+    const pr = seedProfile(all, s);
     if (pr) take(pr);
     else lost++;
   }
