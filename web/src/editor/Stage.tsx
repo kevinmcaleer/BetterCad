@@ -1,6 +1,6 @@
-import { ArmedBar, Button, MenuButton, NumberField, ToolButton, Toolbar } from "@bettercad/ui";
+import { ArmedBar, Button, MenuButton, NumberField, Toolbar } from "@bettercad/ui";
 import { formatCombo } from "../state/commands";
-import { MODEL_TOOLS, VIEW_TOOLS, VIEWS, type Tool, type ToolId } from "./tools";
+import { VIEWS, type Tool, type ToolId } from "./tools";
 import { FILTERS, type Viewport } from "./useViewport";
 
 export interface StageBarsProps {
@@ -11,17 +11,12 @@ export interface StageBarsProps {
   onePart: boolean;
 }
 
-const toolButton = (t: Tool, active: ToolId, onArm: (t: ToolId) => void) => (
-  <ToolButton key={t.id} icon={t.icon} label={t.label} shortcut={t.key?.toUpperCase()} pressed={active === t.id} showLabel onPress={() => onArm(t.id)} />
-);
-
-/** The floating tool bars over the viewport, and the armed tool's options strip. */
+/** The view bar floating over the viewport (the tools live on the top bar), and the armed tool's options strip. */
 export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
   const filter = FILTERS.find((f) => f.id === vp.filter)!;
   return (
     <>
       <Toolbar label="View tools">
-        {VIEW_TOOLS.map((t) => toolButton(t, tool.id, onArmTool))}
         <MenuButton
           label="Pick filter"
           entries={vp.filterEntries}
@@ -57,7 +52,6 @@ export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
           onClick={vp.toggleStyle}
         />
       </Toolbar>
-      <Toolbar label="Model tools">{MODEL_TOOLS.map((t) => toolButton(t, tool.id, onArmTool))}</Toolbar>
       {tool.id === "section" && (
         <ArmedBar title={tool.label} icon={tool.icon}>
           {vp.section ? (

@@ -25,9 +25,10 @@ A free, browser-based CAD tool for 3D printing: Fusion-style constrained sketche
 
 ## Rules
 
-- The 3D view fills the whole window. The top bar, rail, panels, tool bars, timeline and overlays float over it as cards and never box it in: no docked columns, no frame around the view. Overlays inside the view keep clear of the cards with the `--bc-view-top/left/right/bottom` insets set on `.bc-app`.
+- The 3D view fills the whole window. The top bar (logo and tools on one row), panels, view bar, timeline and overlays float over it as cards and never box it in: no docked columns, no frame around the view. Overlays inside the view keep clear of the cards with the `--bc-view-top/left/right/bottom` insets set on `.bc-app`.
 - Tokens only. Components use `var(--bc-…)`; no literal colours outside the generated `tokens.css`. A test enforces it.
 - Never edit `tokens.css` or `tokens.ts` by hand. Change the design system, copy `tokens.json`, run `npm run tokens`.
+- Tools sit on the top bar beside the logo, grouped and ranked by how often they are used (`TOOL_GROUPS` in `web/src/editor/tools.ts`). The left panel is the browser, headed by the model name; Library, Parameters and Print open in its place from top-bar buttons, Settings from the account menu, History from the timeline.
 - Every action is a command in `web/src/state/commands.ts` style: label, keys, run. Shortcuts show in tooltips as "Label (K)".
 - Esc always backs out one layer: register it with `useEscape(active, fn, ESC.<level>)`, never a raw keydown listener. Single-letter shortcuts never fire while typing in a field.
 - The kernel never touches the DOM; the app never calls OCCT directly, only through `@bettercad/kernel`.

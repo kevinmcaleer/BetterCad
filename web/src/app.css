@@ -23,7 +23,7 @@ body {
   outline-offset: 1px;
 }
 
-/* ---- editor frame: the 3D view fills the whole window. The top bar, rail, panels, tool bars and timeline float
+/* ---- editor frame: the 3D view fills the whole window. The top bar (with the tools), panels, view bar and timeline float
    over it as cards and never box it in. The --bc-view-* insets are the part of the view nothing covers, so
    overlays inside the view (the view cube, hints, the empty state) sit clear of the floating cards. */
 .bc-app {
@@ -31,19 +31,19 @@ body {
   --bc-top-height: 46px;
   --bc-props-width: 280px;
   --bc-view-top: calc(var(--bc-top-height) + 2 * var(--bc-float-gap));
-  --bc-view-left: calc(var(--bc-rail-width) + var(--bc-side-width) + 3 * var(--bc-float-gap));
+  --bc-view-left: calc(var(--bc-side-width) + 2 * var(--bc-float-gap));
   --bc-view-right: calc(var(--bc-props-width) + 2 * var(--bc-float-gap));
   --bc-view-bottom: 96px;
   --bc-viewcube-room: 112px;
-  /* Room the tool bars take at the top of the view, so the empty state starts below them. */
-  --bc-bars-room: 156px;
+  /* Room the view bar takes at the top of the view, so the empty state starts below it. */
+  --bc-bars-room: 56px;
   position: relative;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
 }
 .bc-app.bc-left-closed {
-  --bc-view-left: calc(var(--bc-rail-width) + 2 * var(--bc-float-gap));
+  --bc-view-left: var(--bc-float-gap);
 }
 .bc-app.bc-no-timeline {
   --bc-view-bottom: 44px;
@@ -68,8 +68,7 @@ body {
   inset: 0;
   display: block;
 }
-/* The rail and the panels: cards over the view, as tall as their content. */
-.bc-app .bc-rail,
+/* The panels: cards over the view, as tall as their content. */
 .bc-app .bc-left,
 .bc-app .bc-right {
   position: absolute;
@@ -77,17 +76,13 @@ body {
   top: var(--bc-view-top);
   max-height: calc(100% - var(--bc-view-top) - var(--bc-float-gap));
 }
-.bc-app .bc-rail,
 .bc-app .bc-side {
   border: 1px solid var(--bc-color-line);
   border-radius: var(--bc-radius-lg);
   box-shadow: var(--bc-shadow-float);
 }
-.bc-app .bc-rail {
-  left: var(--bc-float-gap);
-}
 .bc-app .bc-left {
-  left: calc(var(--bc-rail-width) + 2 * var(--bc-float-gap));
+  left: var(--bc-float-gap);
   width: var(--bc-side-width);
 }
 /* The right column: a failed step's banner over the props panel. Only the cards take clicks. */
@@ -196,15 +191,50 @@ body {
 .bc-brand {
   white-space: nowrap;
 }
-.bc-docname {
-  width: 200px;
-  height: 30px;
-  border-color: transparent;
+/* The tools ride on the top bar, beside the logo: no card of their own. Squeezed, they scroll sideways. */
+.bc-top > .bc-top-tools {
+  flex: 0 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  padding: 0;
   background: transparent;
-  font-weight: var(--bc-type-ui-strong-weight);
+  box-shadow: none;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.bc-docname:hover {
-  border-color: var(--bc-color-line);
+.bc-tool-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bc-space-1);
+  flex: none;
+}
+/* The latest status message floats over the timeline, and only while there is one. */
+.bc-status-pill {
+  max-width: 100%;
+  padding: var(--bc-space-1) var(--bc-space-5);
+  background: var(--bc-color-bar);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+}
+.bc-status-pill:has(.bc-status:empty) {
+  display: none;
+}
+.bc-status-pill .bc-status {
+  margin: 0;
+}
+/* Library, Parameters, Print, History and Settings open in the browser's place, with a way back. */
+.bc-panel-back {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  margin-bottom: var(--bc-space-3);
+}
+.bc-back-btn .bc-icon {
+  transform: scaleX(-1);
+}
+.bc-panel-back-title {
+  font-weight: var(--bc-type-ui-strong-weight);
 }
 .bc-status {
   min-width: 0;
@@ -653,7 +683,7 @@ kbd {
   text-overflow: ellipsis;
 }
 
-/* ---- under 900px the stage takes the screen: the rail is a bottom bar, the panels are sheets over the stage */
+/* ---- under 900px the stage takes the screen: the tools are a bottom bar, the panels are sheets over the stage */
 @media (max-width: 899px) {
   .bc-app,
   .bc-app.bc-left-closed {
@@ -667,7 +697,7 @@ kbd {
   .bc-app.bc-no-timeline {
     --bc-view-bottom: calc(var(--bc-rail-bar) + 36px);
   }
-  /* The panels are sheets over the view, just above the rail. */
+  /* The panels are sheets over the view, just above the tools. */
   .bc-app .bc-left,
   .bc-app .bc-right {
     top: auto;
@@ -690,19 +720,21 @@ kbd {
   .bc-props-toggle {
     display: inline-flex;
   }
-  /* The rail floats along the bottom. */
-  .bc-app .bc-rail {
-    top: auto;
+  /* The tools leave the top bar and float along the bottom, where a thumb reaches them. */
+  .bc-app .bc-top > .bc-top-tools {
+    position: fixed;
     left: var(--bc-float-gap);
     right: var(--bc-float-gap);
     bottom: var(--bc-float-gap);
-    width: auto;
     height: var(--bc-rail-bar);
-    flex-direction: row;
-    justify-content: space-around;
-    padding: var(--bc-space-1);
+    justify-content: safe center;
+    padding: 0 var(--bc-space-2);
+    border: 1px solid var(--bc-color-line);
+    border-radius: var(--bc-radius-lg);
+    background: var(--bc-color-bar);
+    box-shadow: var(--bc-shadow-float);
   }
-  .bc-app .bc-rail-btn {
+  .bc-app .bc-top > .bc-top-tools + .bc-grow {
     flex: 1;
   }
   .bc-stage-foot {
@@ -715,15 +747,12 @@ kbd {
   .bc-app .bc-viewcube {
     top: calc(var(--bc-view-top) + var(--bc-bars-room));
   }
-  .bc-docname {
-    width: 130px;
-  }
   .bc-gallery-cols {
     grid-template-columns: 1fr;
   }
 }
 @media (max-width: 640px) {
-  /* The rail drops its labels here, so its bar is shorter. */
+  /* A shorter tool bar on a phone. */
   .bc-app,
   .bc-app.bc-left-closed {
     --bc-rail-bar: 46px;
@@ -733,27 +762,14 @@ kbd {
   .bc-app .bc-top > .bc-sep {
     display: none;
   }
-  .bc-docname {
-    width: 110px;
-  }
-  .bc-app .bc-rail {
-    width: auto;
-  }
   .bc-empty-view {
     max-width: 80%;
-  }
-}
-@media (max-width: 420px) {
-  /* Room for Help (#110) beside Save on a phone. */
-  .bc-docname {
-    width: 72px;
   }
 }
 
 /* ---- more contrast when the system asks for it */
 @media (prefers-contrast: more) {
   .bc-app .bc-side,
-  .bc-app .bc-rail,
   .bc-app .bc-top,
   .bc-tools {
     border-color: var(--bc-color-ink);

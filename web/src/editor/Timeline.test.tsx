@@ -77,18 +77,24 @@ describe("Timeline", () => {
   });
 });
 
+/** Adds a box from the Library on the top bar. */
+function addBox() {
+  fireEvent.click(screen.getByRole("button", { name: "Library" }));
+  fireEvent.click(screen.getByRole("button", { name: "Box" }));
+}
+
 describe("Editor timeline", () => {
   it("rolls the model back and inserts new steps at the marker", () => {
     render(<Editor />);
-    fireEvent.click(screen.getByRole("button", { name: "Add a box" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add a box" }));
+    addBox();
+    addBox();
     expect(screen.getAllByRole("treeitem", { name: /^Box/ })).toHaveLength(2);
 
     fireEvent.click(screen.getByRole("button", { name: /^Step back/ }));
     expect(screen.getAllByRole("treeitem", { name: /^Box/ })).toHaveLength(1);
     expect(screen.getByRole("button", { name: /^Box 2.*not built/ })).toHaveClass("bc-after");
 
-    fireEvent.click(screen.getByRole("button", { name: "Add a box" }));
+    addBox();
     const tiles = within(screen.getByRole("region", { name: "Timeline" }))
       .getAllByRole("button", { name: /^Box/ })
       .map((b) => b.getAttribute("aria-label")!.split(",")[0]);

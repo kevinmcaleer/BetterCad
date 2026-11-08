@@ -10,7 +10,13 @@ function model(over: Partial<BrowserModel> = {}): BrowserModel {
   return { name: d.name, parts: build(d).parts, sketches: [{ id: "s1", name: "Sketch 1", hidden: false }], origin: [], ...over };
 }
 
-function Harness(spy: { onSelectSketch?: (id: string) => void; onSketchOn?: (p: WorldPlaneName) => void; onPicked?: (id: string | null) => void }) {
+function Harness(spy: {
+  onSelectSketch?: (id: string) => void;
+  onSketchOn?: (p: WorldPlaneName) => void;
+  onPicked?: (id: string | null) => void;
+  readOnly?: boolean;
+}) {
+  const [name, setName] = useState("Rover");
   const [parts, setParts] = useState<Part[]>(model().parts);
   const [sketches, setSketches] = useState<BrowserSketch[]>(model().sketches);
   const [origin, setOrigin] = useState<OriginItem[]>([]);
@@ -19,7 +25,7 @@ function Harness(spy: { onSelectSketch?: (id: string) => void; onSketchOn?: (p: 
   const hide = (ids: string[], hidden: boolean) => setParts((ps) => ps.map((p) => (ids.includes(p.id) ? { ...p, hidden } : p)));
   return (
     <BrowserPanel
-      model={{ name: "Rover", parts, sketches, origin }}
+      model={{ name, parts, sketches, origin, readOnly: spy.readOnly }}
       selection={selection}
       onSelect={setSelection}
       onAdd={() => {}}
@@ -30,6 +36,7 @@ function Harness(spy: { onSelectSketch?: (id: string) => void; onSketchOn?: (p: 
       onPicked={spy.onPicked ?? (() => {})}
       onSelectSketch={spy.onSelectSketch ?? (() => {})}
       onRename={() => {}}
+      onRenameModel={setName}
       onRenameSketch={() => {}}
       onReorder={() => {}}
       onSketchOn={spy.onSketchOn ?? (() => {})}
@@ -82,6 +89,21 @@ describe("BrowserPanel", () => {
     expect(screen.queryByRole("treeitem", { name: /^XY plane/ })).not.toBeInTheDocument();
     expect(row(/^Box 1/)).toHaveAttribute("aria-level", "3");
     expect(row(/^Joints/)).toHaveTextContent("None yet");
+  });
+
+  it("heads the tree with the model's name, renamed with a double-click", async () => {
+    render(<Harness />);
+    await userEvent.dblClick(screen.getByText("Rover"));
+    const box = screen.getByRole("textbox", { name: "Rename Rover" });
+    await userEvent.clear(box);
+    await userEvent.type(box, "Rover arm{Enter}");
+    expect(row(/^Rover arm/)).toHaveAttribute("aria-level", "1");
+  });
+
+  it("keeps a shared model's name as it is", async () => {
+    render(<Harness readOnly />);
+    await userEvent.dblClick(screen.getByText("Rover"));
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
   it("selects a body, and every body from the folder", async () => {

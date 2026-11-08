@@ -1,5 +1,5 @@
 import { Algorithm, SolveStatus, init_planegcs_module, GcsWrapper, type SketchPrimitive } from "@salusoft89/planegcs";
-import { SketchIndex, type Constraint, type Dimension, type Id, type Sketch } from "./model";
+import { SketchIndex, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
 import { angleOf, cross, dot, sub } from "./geom2d";
 import { freedom } from "./dof";
 import { measureDimension } from "./measure";
@@ -47,6 +47,20 @@ export class Solver {
       { id: "#drag-x", type: "coordinate_x", p_id: pointId, x: to[0], temporary: true },
       { id: "#drag-y", type: "coordinate_y", p_id: pointId, y: to[1], temporary: true },
     ]);
+  }
+
+  /**
+   * Moves several points toward targets at once, as far as the constraints allow. The targets are soft: planegcs
+   * meets the sketch's constraints first and gets the points as near their targets as those allow.
+   */
+  dragPoints(sketch: Sketch, targets: [Id, Vec2][]): SolveResult {
+    return this.run(
+      sketch,
+      targets.flatMap(([p, [x, y]], i): SketchPrimitive[] => [
+        { id: `#drag-x${i}`, type: "coordinate_x", p_id: p, x, temporary: true },
+        { id: `#drag-y${i}`, type: "coordinate_y", p_id: p, y, temporary: true },
+      ]),
+    );
   }
 
   private run(sketch: Sketch, extra: SketchPrimitive[]): SolveResult {

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("a box sized by a parameter follows when the parameter changes", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Parameters" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Parameters", exact: true }).click();
   await page.getByRole("button", { name: "Add parameter" }).click();
   const name = page.getByRole("textbox", { name: "Name of p1" });
   await name.fill("width");
@@ -22,7 +22,7 @@ test("a box sized by a parameter follows when the parameter changes", async ({ p
   await expect(page.getByText("12,000 mm³")).toBeVisible({ timeout: 20_000 });
 
   // Change the parameter: the box follows.
-  await page.getByRole("button", { name: "Parameters" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Parameters", exact: true }).click();
   await expect(page.getByRole("button", { name: "1", exact: true })).toBeVisible();
   const again = page.getByRole("textbox", { name: "Expression for width" });
   await again.fill("40");
@@ -31,7 +31,7 @@ test("a box sized by a parameter follows when the parameter changes", async ({ p
   // In use, so it can't be deleted.
   await page.getByRole("button", { name: "Delete width" }).click();
   await expect(page.getByText("width is used by Resize 1, so it can't be deleted")).toBeVisible();
-  await page.getByRole("button", { name: "Browser" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Browser", exact: true }).click();
   await page.getByRole("treeitem", { name: /Box 1/ }).click();
   await expect(page.getByText("16,000 mm³")).toBeVisible({ timeout: 20_000 });
 });

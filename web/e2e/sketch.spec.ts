@@ -201,3 +201,33 @@ test("the sketch palette shows the state, hides sizes and looks at the sketch", 
   await palette.getByRole("button", { name: "Finish sketch" }).click();
   await expect(page.getByText("Finished Sketch 1")).toBeVisible();
 });
+
+test("drag a line to slide it square across, and line ends show only while drawing", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // An unsized 20 × 10 rectangle.
+  await page.keyboard.press("r");
+  await click(page, -10, -5);
+  await click(page, 10, 5);
+  await page.keyboard.press("v");
+  await page.screenshot({ path: test.info().outputPath("select.png") });
+
+  // Grab the top edge and pull it up 7 mm, and sideways too: only the upward part counts.
+  const from = await at(page, 0, 5);
+  const to = await at(page, 4, 12);
+  await page.mouse.move(from.x, from.y, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  await page.screenshot({ path: test.info().outputPath("dragged.png") });
+
+  // The right edge is now 17 mm long.
+  await click(page, 30, 30);
+  await page.keyboard.press("d");
+  await click(page, 10, 0);
+  await expect(page.getByLabel("Length 1")).toHaveValue(/^17(\.0+)?$/);
+});
