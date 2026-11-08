@@ -3,7 +3,7 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
-import { drawCentreRectangle, drawCircle, newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { drawCentreRectangle, drawCircle, newSketch, planeFrame, removeEntities, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
 import { partBounds, partFrame, type CataloguePart } from "./catalogue";
@@ -521,10 +521,13 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           if (i >= 0) parts.splice(i, 1);
         }
         break;
-      case "sketch":
+      case "sketch": {
         sketches.push({ id: f.id, name: f.name, sketch: f.sketch });
         sketchById.set(f.id, f.sketch);
+        const why = sketchLinkProblem(f.sketch, (id) => find(id) >= 0);
+        if (why) failed.set(f.id, why);
         break;
+      }
       case "extrude": {
         const sk = sketchById.get(f.sketch);
         if (!sk) {
@@ -1205,6 +1208,46 @@ export function groupOf(doc: ModelDoc, partId: string, upTo = doc.features.lengt
 }
 
 /** Changes a sketch in place (each drawing step is one undo step). */
+/** The projected entities whose body is gone at that point on the timeline: their links are broken. */
+export function brokenProjections(sketch: Sketch, hasBody: (id: string) => boolean): string[] {
+  return sketch.entities.filter((e) => e.projectedFrom && !hasBody(e.projectedFrom.body)).map((e) => e.id);
+}
+
+/** What is wrong with a sketch's links to the model: the face it sits on is gone, or projected edges lost their body. */
+export function sketchLinkProblem(sketch: Sketch, hasBody: (id: string) => boolean): string | null {
+  if (sketch.plane.kind === "face" && !hasBody(sketch.plane.face.body)) return "The face it sits on is gone. Redefine its plane from the timeline menu.";
+  const lost = brokenProjections(sketch, hasBody).filter((id) => sketch.entities.find((e) => e.id === id)?.kind !== "point").length;
+  if (!lost) return null;
+  return `${lost === 1 ? "1 projected edge has" : `${lost} projected edges have`} lost the body they came from. Fix the links from the timeline menu.`;
+}
+
+/** A sketch's broken projections, found against the model just before it. */
+export function sketchBrokenLinks(doc: ModelDoc, id: string): string[] {
+  const i = doc.features.findIndex((f) => f.id === id);
+  const f = doc.features[i];
+  if (f?.type !== "sketch") return [];
+  const here = new Set(build(doc, i).parts.map((p) => p.id));
+  return brokenProjections(f.sketch, (b) => here.has(b));
+}
+
+/** Fixes broken projections: "keep" leaves the geometry where it is as ordinary fixed lines, "delete" removes it. */
+export function fixSketchLinks(doc: ModelDoc, id: string, how: "keep" | "delete"): ModelDoc {
+  const broken = new Set(sketchBrokenLinks(doc, id));
+  if (!broken.size) return doc;
+  const unlink = (s: Sketch): Sketch => ({ ...s, entities: s.entities.map((e) => (broken.has(e.id) ? { ...e, projectedFrom: undefined } : e)) });
+  return updateSketch(doc, id, (s) => {
+    if (how === "keep") return unlink(s);
+    // The curves go; a point stays (unlinked) while your own geometry still uses it.
+    const curves = s.entities.filter((e) => broken.has(e.id) && e.kind !== "point").map((e) => e.id);
+    return unlink(removeEntities(s, curves));
+  });
+}
+
+/** Moves a sketch onto another plane or face. Its geometry keeps its place in the sketch's own frame, as in Fusion. */
+export function redefineSketchPlane(doc: ModelDoc, id: string, plane: PlaneRef): ModelDoc {
+  return updateSketch(doc, id, (s) => ({ ...s, plane }));
+}
+
 export function updateSketch(doc: ModelDoc, id: string, fn: (s: Sketch) => Sketch): ModelDoc {
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "sketch" ? { ...f, sketch: fn(f.sketch) } : f)) };
 }

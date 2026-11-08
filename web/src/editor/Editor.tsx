@@ -40,6 +40,8 @@ import {
   newId,
   removeFeature,
   removeParts,
+  fixSketchLinks,
+  sketchBrokenLinks,
   reorderFeature,
   addParam,
   paramScope,
@@ -1509,6 +1511,38 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (!f) return [];
     return [
       ...(f.type === "sketch" ? [{ id: "edit", label: "Edit sketch", icon: "sketch" as const, onSelect: () => sketch.edit(id) }] : []),
+      ...(f.type === "sketch"
+        ? [
+            {
+              id: "replane",
+              label: "Redefine sketch plane",
+              icon: "move" as const,
+              onSelect: () => {
+                // Pick against the model as it was before the sketch, so a face from a later step can't be chosen.
+                const back = live.current.marker;
+                setTool("select");
+                moveMarker(i);
+                sketch.redefine(id, () => setMarker(back));
+              },
+            },
+          ]
+        : []),
+      ...(f.type === "sketch" && sketchBrokenLinks(doc, id).length
+        ? [
+            {
+              id: "unlink",
+              label: "Keep lost projections as lines",
+              icon: "unlink" as const,
+              onSelect: () => store.edit((d) => fixSketchLinks(d, id, "keep"), `Fix ${f.name}'s links`),
+            },
+            {
+              id: "droplinks",
+              label: "Delete lost projections",
+              icon: "trash" as const,
+              onSelect: () => store.edit((d) => fixSketchLinks(d, id, "delete"), `Fix ${f.name}'s links`),
+            },
+          ]
+        : []),
       ...(f.type === "extrude"
         ? [
             {
