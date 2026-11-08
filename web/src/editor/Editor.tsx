@@ -115,10 +115,9 @@ import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
 import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
-import { ExtrudeBar } from "../extrude/ExtrudeUI";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
-import { CombineBar, type CombineOp } from "./CombineBar";
+import type { CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
 import { usePushPull } from "../finish/usePushPull";
 import { useHole } from "../hole/useHole";
@@ -127,6 +126,7 @@ import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { PlaceBar } from "../catalogue/PlaceBar";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
+import { useJoint } from "../joint/useJoint";
 import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
@@ -146,7 +146,7 @@ import { lastError, onCaught, watchWindow, type Caught } from "../report/errors"
 import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import type { Mate } from "@bettercad/kernel";
-import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
+import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
@@ -160,6 +160,10 @@ const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.H
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
+const ExtrudeBar = lazy(() => import("../extrude/ExtrudeUI").then((m) => ({ default: m.ExtrudeBar })));
+const CombineBar = lazy(() => import("./CombineBar").then((m) => ({ default: m.CombineBar })));
+const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
+const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -475,6 +479,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onClose: () => setTool("select"),
     say,
   });
+
+  const joint = useJoint({
+    store,
+    record,
+    doc,
+    parts,
+    links: built.links,
+    joints: built.joints,
+    view: vp.ref,
+    active: tool === "joint" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+    measure: kernel.measure,
+  });
+
+  // Joint glyphs in the view (#172), on unless turned off from the View menu.
+  const [jointsShown, setJointsShown] = useState(true);
+  useEffect(() => {
+    vp.ref.current?.engine()?.setJoints(jointsShown ? built.joints : null);
+  }, [built.joints, jointsShown, vp.ref]);
 
   const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
   const pattern = usePattern({
@@ -1057,13 +1081,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 ? mount.done()
                 : gear.session
                   ? gear.done()
-                  : pattern.session
-                    ? pattern.done()
-                    : tool === "combine"
-                      ? combine(selection, combineOp, keepTools, combineFit)
-                      : finish.tool
-                        ? finish.done()
-                        : undefined,
+                  : tool === "joint"
+                    ? joint.stage === "parent"
+                      ? joint.pickParent(null)
+                      : joint.done()
+                    : pattern.session
+                      ? pattern.done()
+                      : tool === "combine"
+                        ? combine(selection, combineOp, keepTools, combineFit)
+                        : finish.tool
+                          ? finish.done()
+                          : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -1297,6 +1325,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "gear pair centre distance drive ratio",
       },
       {
+        id: "view.joints",
+        scope: "model",
+        label: "Show or hide joints",
+        group: "View",
+        icon: "joint",
+        run: () => setJointsShown((on) => !on),
+        when: () => live.current.doc.features.some((f) => f.type === "joint"),
+        keywords: "robot joint axis arrow glyph",
+      },
+      {
         id: "link.make",
         scope: "model",
         label: "Make link",
@@ -1335,7 +1373,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1734,45 +1772,47 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
 
   const printPanel = (
-    <PrintPanel
-      settings={doc.print ?? {}}
-      printer={printer}
-      onChange={changePrint}
-      showBed={showBed}
-      onShowBed={setShowBed}
-      fitProblem={fitProblem}
-      hasModel={printBox !== null}
-      onCentre={centreOnBed}
-      weight={modelWeight}
-      check={check}
-      onCheck={setCheck}
-      overhangAngle={overhangAngle}
-      onOverhangAngle={setOverhangAngle}
-      thinWall={thinLimit}
-      onThinWall={setThinWall}
-      areas={check === "none" ? [] : (checkResult?.areas ?? (check === "thin" && !printBodies.length ? [] : null))}
-      onShowArea={showArea}
-      suggestions={suggestions}
-      onSuggestion={layDown}
-      holeOffset={holeOffset}
-      staleHoles={staleHoles.length}
-      onUpdateHoles={updateHoles}
-      onCalibrate={() => files.openSample("hole-calibration")}
-      onCalibrateFits={() => files.openSample("fit-calibration")}
-      profiles={printers.profiles}
-      onPickProfile={pickProfile}
-      onSaveProfile={saveProfile}
-      onUpdateProfile={updateProfile}
-      onDeleteProfile={deleteProfile}
-      staleFits={fitsStale.length}
-      fitsCheck={fitsCheck}
-      onFitsCheck={setFitsCheck}
-      mates={mates}
-      partName={(id) => parts.find((x) => x.id === id)?.name ?? "A body"}
-      onShowMate={(m) => vp.ref.current?.engine()?.fitBox(m.box.min, m.box.max)}
-      onFixMate={fixFit}
-      onUpdateFits={updateFitCuts}
-    />
+    <Suspense fallback={null}>
+      <PrintPanel
+        settings={doc.print ?? {}}
+        printer={printer}
+        onChange={changePrint}
+        showBed={showBed}
+        onShowBed={setShowBed}
+        fitProblem={fitProblem}
+        hasModel={printBox !== null}
+        onCentre={centreOnBed}
+        weight={modelWeight}
+        check={check}
+        onCheck={setCheck}
+        overhangAngle={overhangAngle}
+        onOverhangAngle={setOverhangAngle}
+        thinWall={thinLimit}
+        onThinWall={setThinWall}
+        areas={check === "none" ? [] : (checkResult?.areas ?? (check === "thin" && !printBodies.length ? [] : null))}
+        onShowArea={showArea}
+        suggestions={suggestions}
+        onSuggestion={layDown}
+        holeOffset={holeOffset}
+        staleHoles={staleHoles.length}
+        onUpdateHoles={updateHoles}
+        onCalibrate={() => files.openSample("hole-calibration")}
+        onCalibrateFits={() => files.openSample("fit-calibration")}
+        profiles={printers.profiles}
+        onPickProfile={pickProfile}
+        onSaveProfile={saveProfile}
+        onUpdateProfile={updateProfile}
+        onDeleteProfile={deleteProfile}
+        staleFits={fitsStale.length}
+        fitsCheck={fitsCheck}
+        onFitsCheck={setFitsCheck}
+        mates={mates}
+        partName={(id) => parts.find((x) => x.id === id)?.name ?? "A body"}
+        onShowMate={(m) => vp.ref.current?.engine()?.fitBox(m.box.min, m.box.max)}
+        onFixMate={fixFit}
+        onUpdateFits={updateFitCuts}
+      />
+    </Suspense>
   );
 
   const featureMenu = (id: string): MenuEntry[] => {
@@ -1883,6 +1923,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onSelect: () => {
                 setTool("gear");
                 gear.edit(id);
+              },
+            },
+          ]
+        : []),
+      ...(f.type === "joint"
+        ? [
+            {
+              id: "edit",
+              label: "Edit joint",
+              icon: "joint" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("joint");
+                joint.edit(id);
               },
             },
           ]
@@ -2134,8 +2188,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ? sketch.help
     : place.help
       ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
         : finish.help
           ? finish.help
           : vp.elementText
@@ -2306,6 +2360,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onRenameIdChange={setRenameId}
               sketches={browserSketches}
               links={built.links}
+              joints={built.joints}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
@@ -2342,14 +2397,23 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               {place.part && <PlaceBar x={place} />}
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && (
-                <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+                <Suspense fallback={null}>
+                  <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+                </Suspense>
               )}
               {tool === "revolve" && (
-                <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+                <Suspense fallback={null}>
+                  <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+                </Suspense>
               )}
               {tool === "measure" && (
                 <Suspense fallback={null}>
                   <MeasureBar m={measure} onDone={() => setTool("select")} />
+                </Suspense>
+              )}
+              {tool === "joint" && (
+                <Suspense fallback={null}>
+                  <JointBar x={joint} scope={scope} error={joint.session ? failed.get(joint.session.id) : undefined} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
               {tool === "gear" && (
@@ -2382,18 +2446,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 </Suspense>
               )}
               {tool === "combine" && (
-                <CombineBar
-                  picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
-                  op={combineOp}
-                  onOp={setCombineOp}
-                  keepTools={keepTools}
-                  onKeepTools={setKeepTools}
-                  fit={combineFit}
-                  onFit={setCombineFit}
-                  tuned={doc.print?.fits}
-                  onApply={() => combine(selection, combineOp, keepTools, combineFit)}
-                  onCancel={() => setTool("select")}
-                />
+                <Suspense fallback={null}>
+                  <CombineBar
+                    picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
+                    op={combineOp}
+                    onOp={setCombineOp}
+                    keepTools={keepTools}
+                    onKeepTools={setKeepTools}
+                    fit={combineFit}
+                    onFit={setCombineFit}
+                    tuned={doc.print?.fits}
+                    onApply={() => combine(selection, combineOp, keepTools, combineFit)}
+                    onCancel={() => setTool("select")}
+                  />
+                </Suspense>
               )}
             </>
           )

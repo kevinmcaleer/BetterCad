@@ -8,7 +8,7 @@ function openSettings() {
 
 describe("Build volume toggle", () => {
   beforeEach(() => localStorage.clear());
-  it("hides the build volume from Settings and Print alike", () => {
+  it("hides the build volume from Settings and Print alike", async () => {
     render(<Editor />);
     openSettings();
     const inSettings = screen.getByRole("checkbox", { name: "Show the build volume" });
@@ -17,7 +17,8 @@ describe("Build volume toggle", () => {
     expect(localStorage.getItem("bettercad.showBed")).toBe("0");
 
     fireEvent.click(screen.getByRole("button", { name: /^Print/ }));
-    const inPrint = screen.getByRole("checkbox", { name: "Show the build volume" });
+    // The Print panel loads on first use.
+    const inPrint = await screen.findByRole("checkbox", { name: "Show the build volume" });
     expect(inPrint).not.toBeChecked();
     fireEvent.click(inPrint);
     openSettings();

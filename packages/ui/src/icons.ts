@@ -70,6 +70,8 @@ export const move = "M5 9 2 12l3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h
 export const rotate = "M21 12a9 9 0 1 1-3-6.7M21 3v6h-6";
 export const frame = "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5";
 export const link = "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1";
+/** A hinge (#172): two arms meeting at a pin. */
+export const joint = "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6M9.9 14.1L4 20M14.1 9.9L20 4M4 20h4M20 4v4";
 export const unlink = "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1M4 4l16 16";
 export const pencil = "M4 20h4l10-10-4-4L4 16zM13 7l4 4";
 export const download = "M12 3v12M7 10l5 5 5-5M4 21h16";
@@ -201,6 +203,7 @@ export const ICONS = {
   rotate,
   frame,
   link,
+  joint,
   unlink,
   pencil,
   download,

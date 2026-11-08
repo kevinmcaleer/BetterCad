@@ -23,6 +23,7 @@ export {
   type CataloguePart,
   type CatalogueCategory,
 } from "./catalogue";
+import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
 import { PATTERN_DEFAULTS, copyName, copyPart, copyId, patternCopyIds, patternMoves, patternProblem, patternSummary } from "./pattern";
 import type { CopySpec, MirrorPlane, PatternKind, WorldAxis } from "./pattern";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
@@ -73,6 +74,7 @@ import {
   type RackSize,
 } from "./gears";
 export * from "./gears";
+export * from "./joints";
 export * from "./params";
 export * from "./print";
 import { fitGap, holeOffsetOf, type FitId, type PrintSettings } from "./print";
@@ -247,6 +249,21 @@ export interface ResizeFeature extends FeatureBase {
 export interface LinkFeature extends FeatureBase {
   type: "link";
   parts: string[];
+}
+/**
+ * A joint (#172): a child link hanging from a parent link (null for Base), as URDF has it. The origin and axis are
+ * stored in world space when it's made, as a hole's frame is, so they don't move if the picked geometry changes.
+ * Limits are degrees for a hinge, mm for a slider; a wheel and a fixed joint have none.
+ */
+export interface JointFeature extends FeatureBase {
+  type: "joint";
+  kind: JointKind;
+  child: string;
+  parent: string | null;
+  origin: [number, number, number];
+  axis: [number, number, number];
+  lower: number;
+  upper: number;
 }
 export interface DeleteFeature extends FeatureBase {
   type: "delete";
@@ -427,6 +444,7 @@ export interface GearFeature extends FeatureBase {
 }
 
 export type Feature =
+  | JointFeature
   | LinkFeature
   | GearFeature
   | MountFeature
@@ -517,6 +535,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   mount: "Mount",
   gear: "Gear",
   link: "Link",
+  joint: "Joint",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -540,6 +559,8 @@ export interface Build {
   failed: Map<string, string>;
   /** Links (#171) up to the marker, in timeline order, with the bodies in each now. Empty links are left out. */
   links: BuiltLink[];
+  /** Joints (#172) up to the marker that built, in timeline order. */
+  joints: JointFeature[];
 }
 
 /** A link as built: its step's id and name, and its bodies. */
@@ -550,6 +571,7 @@ export interface BuiltLink {
 }
 
 const BUILT = new Set<string>([
+  "joint",
   "link",
   "gear",
   "mount",
@@ -582,6 +604,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const gearSteps = new Map<string, GearFeature>();
   /** Link steps as built (#171), in order. */
   const linkSteps: LinkFeature[] = [];
+  /** Joints as built (#172). */
+  const joints: JointFeature[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -690,6 +714,18 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           parts[i] = { ...parts[i]!, link: f.id };
         }
         linkSteps.push(f);
+        break;
+      }
+      case "joint": {
+        const here = (l: string) => linkSteps.some((x) => x.id === l) && parts.some((p) => p.link === l);
+        const why = !here(f.child)
+          ? "The link it moves is gone"
+          : f.parent !== null && !here(f.parent)
+            ? "The link it hangs from is gone"
+            : (jointLinkProblem(joints, f.child, f.parent) ??
+              (Math.hypot(...f.axis) < 1e-9 ? "Pick an axis" : limitUnit(f.kind) && f.lower > f.upper ? "The lower limit is above the upper one" : null));
+        if (why) failed.set(f.id, why);
+        else joints.push(f);
         break;
       }
       case "delete":
@@ -936,7 +972,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     }
   }
   const links = linkSteps.map((l) => ({ id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id) })).filter((l) => l.parts.length);
-  return { parts: looked, sketches, failed, links };
+  return { parts: looked, sketches, failed, links, joints };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
@@ -1186,6 +1222,7 @@ export function featureParts(f: Feature): string[] {
     case "gear":
       return [f.body.id];
     case "link":
+    case "joint":
       return [];
     default:
       return f.parts;
@@ -1212,6 +1249,13 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   switch (f.type) {
     case "link":
       return `${who(f.parts)}, one rigid link`;
+    case "joint": {
+      const name = (l: string | null) => (l === null ? "Base" : (doc.features.find((g) => g.id === l)?.name ?? "a gone link"));
+      const k = JOINT_KINDS.find((x) => x.id === f.kind)!;
+      const u = limitUnit(f.kind);
+      const lim = u ? `, ${f.lower}${u === "°" ? "°" : " mm"} to ${f.upper}${u === "°" ? "°" : " mm"}` : "";
+      return `${k.label} (${k.urdf}): ${name(f.child)} on ${name(f.parent)}${lim}`;
+    }
     case "gear": {
       const a = f.mesh && doc.features.find((g): g is GearFeature => g.id === f.mesh!.gear && g.type === "gear");
       if (a) return `${f.gear.teeth} teeth, meshes with ${a.name}, ${ratioText(a.gear.teeth, f.gear.teeth).split(",")[0]}`;
@@ -2011,6 +2055,7 @@ function partsRead(f: Feature): string[] {
     case "import":
     case "insert":
     case "gear":
+    case "joint":
       return [];
     default:
       return [f.part];
@@ -2050,6 +2095,12 @@ export function dependsOn(doc: ModelDoc, id: string): string[] {
   }
   if (f.type === "extrude" || f.type === "revolve") {
     if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
+  }
+  // A joint needs the links it joins, and the joint its parent link hangs from.
+  if (f.type === "joint") {
+    for (const l of [f.child, f.parent]) if (l && before.some((g) => g.id === l)) out.add(l);
+    const up = before.find((g) => g.type === "joint" && g.child === f.parent);
+    if (up) out.add(up.id);
   }
   return [...out];
 }
@@ -2264,4 +2315,24 @@ export function updatePattern(doc: ModelDoc, id: string, change: Partial<Pattern
 /** Makes a link (#171) of bodies: "Link 1". The bodies leave any link they were in. */
 export function addLink(doc: ModelDoc, parts: string[], id = newId("f"), at?: number): ModelDoc {
   return insert(doc, clampAt(doc, at), { id, type: "link", name: nextNamed(doc, "Link"), parts: [...parts] });
+}
+
+export type JointParams = Pick<JointFeature, "kind" | "child" | "parent" | "origin" | "axis" | "lower" | "upper">;
+
+/** Adds a joint (#172): "Joint 1". */
+export function addJoint(doc: ModelDoc, params: JointParams, id = newId("f"), at?: number): ModelDoc {
+  return insert(doc, clampAt(doc, at), { id, type: "joint", name: nextNamed(doc, "Joint"), ...params });
+}
+
+/** Changes a joint (its bar edits it live). Switching kind brings that kind's starting limits. */
+export function updateJoint(doc: ModelDoc, id: string, change: Partial<JointParams>): ModelDoc {
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== id || f.type !== "joint") return f;
+      const next = { ...f, ...change };
+      if (change.kind && change.kind !== f.kind && change.lower === undefined && change.upper === undefined) Object.assign(next, JOINT_LIMITS[change.kind]);
+      return next;
+    }),
+  };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Banner, ContextMenu, PartsTree, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
-import type { BuiltLink, Part, PartKind } from "../state/document";
+import { JOINT_KINDS, type BuiltLink, type JointFeature, type Part, type PartKind } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
 import { formatCombo } from "../state/commands";
 import { partIcon } from "./Timeline";
@@ -56,7 +56,11 @@ export interface BrowserModel {
   readOnly?: boolean;
   /** Links (#171): rigid groups of bodies. Bodies in none are in the base link. */
   links?: BuiltLink[];
+  /** Joints (#172): each hangs a child link from a parent link, or from Base. */
+  joints?: Pick<JointFeature, "id" | "name" | "kind" | "child" | "parent">[];
 }
+
+const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
 
 const bodies = (n: number) => (n === 1 ? "1 body" : `${n} bodies`);
 
@@ -131,8 +135,9 @@ export function browserItems(m: BrowserModel): TreeItem[] {
       warning: s.warning,
     });
   }
-  // The robot (#171): Base, then each link. Flat until joints (#172) hang links from each other.
+  // The robot (#171): Base, then each link under the link it hangs from (#172), with its joint named.
   const links = m.links ?? [];
+  const joints = m.joints ?? [];
   if (links.length) {
     const inLink = new Set(links.flatMap((l) => l.parts));
     items.push(folder(ROW.robot, "Robot", { icon: "link", note: count(links.length), toggles: [] }));
@@ -147,12 +152,27 @@ export function browserItems(m: BrowserModel): TreeItem[] {
       toggles: [],
       note: bodies(m.parts.filter((p) => !inLink.has(p.id)).length),
     });
-    for (const l of links) {
-      items.push({ id: l.id, name: l.name, icon: "link", kind: "link", parentId: ROW.robot, drag: false, toggles: [], note: bodies(l.parts.length) });
-    }
+    const jointOf = new Map(joints.map((j) => [j.child, j]));
+    const known = new Set(links.map((l) => l.id));
+    const under = (row: string, parent: string | null | undefined) => {
+      for (const l of links) {
+        const j = jointOf.get(l.id);
+        // A link hangs under its joint's parent; one with no joint (or whose parent is gone) sits loose under Robot.
+        const from = j && (j.parent === null || known.has(j.parent)) ? j.parent : undefined;
+        if (parent === undefined ? from !== undefined : from !== parent) continue;
+        const note = j && from !== undefined ? `${bodies(l.parts.length)}, ${kindLabel(j.kind).toLowerCase()} on ${j.name}` : bodies(l.parts.length);
+        items.push({ id: l.id, name: l.name, icon: "link", kind: "link", parentId: row, drag: false, toggles: [], note });
+        under(l.id, l.id);
+      }
+    };
+    under(ROW.base, null);
+    under(ROW.robot, undefined);
   }
-  // Joints (#172) fill this in. Until then it stays, empty, so the tree has the shape it will keep.
-  items.push(folder(ROW.joints, "Joints", { note: "None yet", toggles: [] }));
+  // Joints (#172): each hangs a link from another.
+  items.push(folder(ROW.joints, "Joints", { note: joints.length ? count(joints.length) : "None yet", toggles: [] }));
+  for (const j of joints) {
+    items.push({ id: j.id, name: j.name, icon: "joint", kind: "joint", parentId: ROW.joints, drag: false, toggles: [], note: kindLabel(j.kind) });
+  }
   return items;
 }
 
@@ -221,7 +241,9 @@ export function BrowserPanel(p: BrowserPanelProps) {
     const r = browserPick(ids, model);
     setOther(r.other);
     ours.current = true;
-    if (r.other && model.sketches.some((s) => s.id === r.other) && ids[ids.length - 1] === r.other) p.onSelectSketch(r.other);
+    const last = ids[ids.length - 1];
+    if (last && model.joints?.some((j) => j.id === last)) p.onSelectSketch(last);
+    else if (r.other && model.sketches.some((s) => s.id === r.other) && last === r.other) p.onSelectSketch(r.other);
     else p.onSelect(r.parts);
   };
 
@@ -249,7 +271,8 @@ export function BrowserPanel(p: BrowserPanelProps) {
 
   const rename = (id: string, name: string) => {
     if (id === ROW.root) return p.onRenameModel(name);
-    if (model.sketches.some((s) => s.id === id) || model.links?.some((l) => l.id === id)) return p.onRenameSketch(id, name);
+    if (model.sketches.some((s) => s.id === id) || model.links?.some((l) => l.id === id) || model.joints?.some((j) => j.id === id))
+      return p.onRenameSketch(id, name);
     p.onRename(id, name);
   };
 
@@ -277,6 +300,12 @@ export function BrowserPanel(p: BrowserPanelProps) {
     if (sk)
       return {
         title: sk.name,
+        entries: p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+      };
+    const joint = model.joints?.find((j) => j.id === id);
+    if (joint)
+      return {
+        title: joint.name,
         entries: p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
       };
     const link = model.links?.find((l) => l.id === id);
@@ -317,9 +346,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
           ? `Shift-click selects a range, ${formatCombo("mod")}-click adds one. Drag bodies to reorder, F2 to rename. Right-click a plane to sketch on it.`
           : "Double-click the name to rename your model. Add a shape from the Library, or start a sketch (K)."}
       </p>
-      <p className="bc-note">
-        Joints arrive with hinges, wheels and sliders (<a href="https://github.com/kevinmcaleer/BetterCad/issues/172">#172</a>).
-      </p>
+      <p className="bc-note">Make links from bodies, then use the Joint tool to hang each from another.</p>
       <div className="bc-section-gap" />
       <Banner tone="info">Press K to sketch on a plane or a flat face, then E to extrude a closed shape into a solid.</Banner>
       <ContextMenu
