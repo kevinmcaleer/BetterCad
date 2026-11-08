@@ -135,12 +135,9 @@ import { useMeasure } from "../measure/useMeasure";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { Versions } from "../cloud/Versions";
-import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
-import { AboutDialog } from "../help/AboutDialog";
 import { COURSE_URL } from "../help/about";
-import { ReportDialog } from "../report/ReportDialog";
 import { actionLog, editSummary } from "../report/actionLog";
 import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
@@ -189,6 +186,10 @@ const ORIENT_KEY = "bettercad.orientWeights";
 
 /** The Export and Keyboard shortcuts dialogs load on first use, keeping the first-paint bundle in budget. */
 const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+// Rarely opened dialogs load when first opened, to keep the first paint under its budget.
+const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
+const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
+const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
@@ -2626,14 +2627,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           </Banner>
         </div>
       )}
-      <ReportDialog
-        open={report !== null}
-        prefill={report?.prefill}
-        onClose={() => setReport(null)}
-        model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
-        info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
-        say={say}
-      />
+      {report !== null && (
+        <Suspense fallback={null}>
+          <ReportDialog
+            open
+            prefill={report.prefill}
+            onClose={() => setReport(null)}
+            model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
+            info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
+            say={say}
+          />
+        </Suspense>
+      )}
       {exportOpen && (
         <Suspense fallback={null}>
           <ExportDialog
@@ -2664,13 +2669,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           say={say}
         />
       )}
-      {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
+      {shareOpen && files.cloud && (
+        <Suspense fallback={null}>
+          <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />
+        </Suspense>
+      )}
       {shortcutsOpen && (
         <Suspense fallback={null}>
           <ShortcutsDialog open onClose={() => setShortcutsOpen(false)} commands={commands} />
         </Suspense>
       )}
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {aboutOpen && (
+        <Suspense fallback={null}>
+          <AboutDialog open onClose={() => setAboutOpen(false)} />
+        </Suspense>
+      )}
       <TooltipLayer />
     </>
   );
