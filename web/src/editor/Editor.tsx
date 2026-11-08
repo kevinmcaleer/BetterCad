@@ -159,6 +159,7 @@ import { actionLog, editSummary } from "../report/actionLog";
 import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
+import { useWhatsNew } from "../whatsnew/useWhatsNew";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import type { BodyMass, Clash, ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
@@ -199,6 +200,9 @@ const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ de
 const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: m.Versions })));
 const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
 const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
+// Release notes (What's new) load in their own chunk, after first paint.
+const WhatsNewDialog = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewDialog })));
+const WhatsNewCard = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewCard })));
 const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
 const ParamsPanel = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsPanel })));
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
@@ -339,6 +343,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const whatsNew = useWhatsNew();
+  const showWhatsNew = whatsNew.show;
   const [exportOpen, setExportOpen] = useState(false);
   /** The format the Export dialog opens on, when something other than your last choice asks (Render's glTF offer). */
   const [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
@@ -367,7 +373,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     at,
     selection,
     tool,
-    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || exportOpen || report !== null,
+    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null,
     sketching: live.current.sketching,
     placing: live.current.placing,
   };
@@ -976,6 +982,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (tool !== "pattern") setPatternStart(null);
   }, [tool]);
+  const mirrorOn = tool === "pattern" && pattern.kind === "mirror";
+  /** The top bar's Mirror and Pattern: each switches an open one to its kind, and closes its own. */
+  const toolbarPattern = (mirroring: boolean) => {
+    if (tool === "pattern" && mirrorOn === mirroring) return setTool("select");
+    if (tool === "pattern" && pattern.feature) return pattern.change({ kind: mirroring ? "mirror" : "rect" });
+    setPatternStart(mirroring ? "mirror" : null);
+    setTool("pattern");
+  };
 
   const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
   live.current.placing = !!place.part;
@@ -2080,13 +2094,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => window.open(COURSE_URL, "_blank", "noopener"),
         keywords: "course lessons tutorial kevsrobots",
       },
+      { id: "help.whatsNew", label: "What's new", group: "Help", icon: "star", run: showWhatsNew, keywords: "release notes changes update changelog" },
       { id: "help.about", label: "About BetterCad", group: "Help", icon: "info", run: () => setAboutOpen(true), keywords: "version licence licenses" },
     ];
     if (import.meta.env.DEV || import.meta.env.VITE_GALLERY) {
       list.push({ id: "help.gallery", label: "Component gallery", group: "Help", icon: "template", run: () => (window.location.hash = "#/gallery") });
     }
     return registry.register(list);
-  }, [registry]);
+  }, [registry, showWhatsNew]);
 
   // One keyboard handler for the whole editor. Escape goes through the layered stack instead.
   useEffect(() => {
@@ -2806,6 +2821,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     { id: "learn", label: "Learn BetterCad", icon: "link", onSelect: () => registry.run("help.learn") },
     { kind: "separator", id: "s1" },
     { id: "report", label: "Report a problem…", icon: "warning", onSelect: () => registry.run("help.report") },
+    { id: "whatsNew", label: "What's new", icon: "star", onSelect: () => registry.run("help.whatsNew") },
     { id: "about", label: "About BetterCad", icon: "info", onSelect: () => registry.run("help.about") },
   ];
   const saveEntries: MenuEntry[] = [
@@ -3056,8 +3072,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         topBar={
           <TopBar
             tool={tool}
-            onArmTool={armTool}
+            onArmTool={(id) => (id === "pattern" ? toolbarPattern(false) : armTool(id))}
             onConstruct={startConstruct}
+            mirrorOn={mirrorOn}
+            onMirror={() => toolbarPattern(true)}
             panel={panel}
             onPanel={showPanel}
             canUndo={store.canUndo()}
@@ -3092,13 +3110,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           </span>
         }
         toast={
-          <div className="bc-toast-slot" role="status" aria-live="polite">
-            {toast && (
-              <div key={toast.id} className="bc-toast">
-                {toast.text}
-              </div>
+          <>
+            <div className="bc-toast-slot" role="status" aria-live="polite">
+              {toast && (
+                <div key={toast.id} className="bc-toast">
+                  {toast.text}
+                </div>
+              )}
+            </div>
+            {whatsNew.card && (
+              <Suspense fallback={null}>
+                <WhatsNewCard fresh={whatsNew.fresh} onOpen={whatsNew.show} onDismiss={whatsNew.dismiss} />
+              </Suspense>
             )}
-          </div>
+          </>
         }
         leftLabel={panel ? PANEL_TITLES[panel] : undefined}
         leftPanel={
@@ -3580,6 +3605,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       {aboutOpen && (
         <Suspense fallback={null}>
           <AboutDialog open onClose={() => setAboutOpen(false)} />
+        </Suspense>
+      )}
+      {whatsNew.open && (
+        <Suspense fallback={null}>
+          <WhatsNewDialog fresh={whatsNew.fresh} onClose={whatsNew.close} />
         </Suspense>
       )}
       <TooltipLayer />

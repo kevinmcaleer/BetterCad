@@ -1387,3 +1387,57 @@ kbd {
 .bc-pick-list > .bc-btn {
   align-self: flex-end;
 }
+
+/* ---- What's new: the note after an update, at the bottom right of the view, and the full list (Help menu) */
+.bc-whatsnew-card {
+  position: absolute;
+  z-index: 9;
+  right: var(--bc-view-right);
+  bottom: var(--bc-view-bottom);
+  width: min(300px, calc(100% - var(--bc-view-right) - var(--bc-view-left)));
+  padding: var(--bc-space-3) var(--bc-space-4) var(--bc-space-4);
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+}
+.bc-whatsnew-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-2);
+}
+.bc-whatsnew-card ul {
+  margin: var(--bc-space-2) 0 var(--bc-space-3);
+  padding-left: 1.25em;
+  list-style: disc outside;
+}
+.bc-whatsnew {
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+}
+.bc-whatsnew section + section {
+  margin-top: var(--bc-space-6);
+}
+.bc-whatsnew-note h4 {
+  margin: var(--bc-space-4) 0 var(--bc-space-1);
+}
+.bc-whatsnew-note p,
+.bc-whatsnew-note ul {
+  margin: 0 0 var(--bc-space-2);
+}
+.bc-whatsnew-note ul {
+  padding-left: 1.25em;
+  list-style: disc outside;
+}
+.bc-whatsnew-new {
+  margin-left: var(--bc-space-2);
+  padding: 0 var(--bc-space-2);
+  color: var(--bc-color-on-accent);
+  font-size: var(--bc-type-small-size);
+  font-weight: 600;
+  vertical-align: middle;
+  background: var(--bc-color-accent);
+  border-radius: var(--bc-radius-sm);
+}

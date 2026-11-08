@@ -59,11 +59,12 @@ export function usePattern(d: PatternDeps) {
   deps.current = d;
   const { store } = d;
   const [session, setSession] = useState<{ id: string; isNew: boolean } | null>(null);
-  const [last, setLast] = useState<Partial<PatternParams> & { kind: PatternKind }>({ kind: "mirror" });
+  const [last, setLast] = useState<Partial<PatternParams> & { kind: PatternKind }>({ kind: "rect" });
   /** Picking the mirror plane in the view: a flat face or an origin plane. */
   const [pickingPlane, setPickingPlane] = useState(false);
   const feature = (d.doc.features.find((f) => f.id === session?.id && f.type === "pattern") as PatternFeature | undefined) ?? null;
-  const kind = feature?.kind ?? d.startKind ?? last.kind;
+  // Mirror has its own button (it always says so), so Pattern starts as the last row or circle used.
+  const kind = feature?.kind ?? d.startKind ?? (last.kind === "mirror" ? "rect" : last.kind);
   /** What a Mirror copies; a pattern always copies bodies. */
   const of: MirrorOf = kind !== "mirror" ? "bodies" : ((feature ? feature.of : last.of) ?? "bodies");
   const live = useRef({ session, feature, last, of });
@@ -87,7 +88,7 @@ export function usePattern(d: PatternDeps) {
       const f = live.current.feature;
       if (!s) {
         const id = newId("f");
-        const kind = deps.current.startKind ?? live.current.last.kind;
+        const kind = deps.current.startKind ?? (live.current.last.kind === "mirror" ? "rect" : live.current.last.kind);
         const params = { ...live.current.last, kind, parts: [], ...c };
         deps.current.record((doc, at) => addPattern(doc, params, id, at), label(kind), KEY(id));
         setSession({ id, isNew: true });

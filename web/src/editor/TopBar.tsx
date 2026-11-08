@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Button, Icon, IconButton, MenuButton, Separator, ToolButton, Toolbar, cx, type MenuEntry } from "@bettercad/ui";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
@@ -59,6 +60,9 @@ export interface TopBarProps {
   helpEntries?: MenuEntry[];
   /** The Construct menu (#265): arms the tool for a kind of plane, axis or point. */
   onConstruct?: (k: ConstructKind) => void;
+  /** Mirror (#69): its own button before Pattern, though both arm the Pattern tool. */
+  mirrorOn?: boolean;
+  onMirror?: () => void;
 }
 
 /** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
@@ -119,7 +123,12 @@ export function TopBar(p: TopBarProps) {
                   </>
                 )}
                 {g.tools.map((t) =>
-                  t.id === "construct" ? (
+                  t.id === "pattern" ? (
+                    <Fragment key={t.id}>
+                      <ToolButton icon="flipH" label="Mirror" pressed={!!p.mirrorOn} onPress={p.onMirror} />
+                      <ToolButton icon={t.icon} label={t.label} pressed={p.tool === t.id && !p.mirrorOn} onPress={() => p.onArmTool(t.id)} />
+                    </Fragment>
+                  ) : t.id === "construct" ? (
                     <MenuButton
                       key={t.id}
                       label="Construct"

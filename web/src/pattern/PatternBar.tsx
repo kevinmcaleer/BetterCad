@@ -65,7 +65,7 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
   const f = x.feature;
   if (!f) {
     return (
-      <ArmedBar title={x.kind === "mirror" ? "Mirror" : "Pattern"} icon="distributeH">
+      <ArmedBar title={x.kind === "mirror" ? "Mirror" : "Pattern"} icon={x.kind === "mirror" ? "flipH" : "distributeH"}>
         {x.kind === "mirror" && <MirrorObjects x={x} />}
         <span className="bc-armed-note">{x.help}</span>
         <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
@@ -88,7 +88,7 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
           ? "1 body"
           : `${n} bodies`;
   return (
-    <ArmedBar title={f.kind === "mirror" ? "Mirror" : "Pattern"} icon="distributeH">
+    <ArmedBar title={f.kind === "mirror" ? "Mirror" : "Pattern"} icon={f.kind === "mirror" ? "flipH" : "distributeH"}>
       <span role="group" aria-label="Kind" className="bc-segmented">
         {KINDS.map((k) => (
           <Button key={k.id} label={k.label} title={k.title} on={f.kind === k.id} onClick={() => x.change({ kind: k.id })} />
