@@ -25,6 +25,7 @@ export {
 } from "./catalogue";
 import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
 import { clampJoint, type Pose } from "./pose";
+import { driveMultiplier, driveProblem, driveTo, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
 import { PATTERN_DEFAULTS, copyName, copyPart, copyId, patternCopyIds, patternMoves, patternProblem, patternSummary } from "./pattern";
 import type { CopySpec, MirrorPlane, PatternKind, WorldAxis } from "./pattern";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
@@ -34,13 +35,17 @@ import {
   crossesAxis,
   extent,
   frameToLocal,
+  fromPartLocal,
   pickProfiles,
+  profilesMiddle,
+  upToDistance,
   targetsOf,
   throughAllAllowed,
   type AxisRef,
   type ExtrudeDirection,
   type ExtrudeExtent,
   type ExtrudeOperation,
+  type ExtrudeUpTo,
   type PrismSpec,
   type ProfileSeg,
   type ProfileShape,
@@ -80,6 +85,7 @@ import {
 export * from "./gears";
 export * from "./joints";
 export * from "./pose";
+export * from "./drivelinks";
 export * from "./mass";
 export * from "./params";
 export * from "./print";
@@ -273,6 +279,20 @@ export interface JointFeature extends FeatureBase {
   lower: number;
   upper: number;
 }
+/**
+ * A drive link (#194): turning the driver joint turns (or slides) the driven one by a ratio. For gears, a belt or a
+ * rack, the ratio comes from the tooth counts of the gears on the two joints' links when they are there; `ratio` is
+ * used for a custom drive and when they aren't. `ratio` is the driven joint's move per unit of the driver's (mm a degree
+ * from a hinge to a slider). `reverse` turns it the other way.
+ */
+export interface DriveFeature extends FeatureBase {
+  type: "drive";
+  kind: DriveKind;
+  driver: string;
+  driven: string;
+  ratio: number;
+  reverse?: boolean;
+}
 export interface DeleteFeature extends FeatureBase {
   type: "delete";
   parts: string[];
@@ -297,8 +317,13 @@ export interface ExtrudeFeature extends FeatureBase {
   direction: ExtrudeDirection;
   /** The second side's distance, for "two". */
   distance2?: number;
-  /** A distance (the default), or through all (Cut and Intersect). Through all keeps `distance` for its side. */
+  /**
+   * A distance (the default), through all (Cut and Intersect), or "to": up to the face, edge or point in `to`, one
+   * side only. Through all keeps `distance` for its side; "to" keeps the distance it last reached there.
+   */
   extent?: ExtrudeExtent;
+  /** For extent "to": what it ends at. */
+  to?: ExtrudeUpTo;
   operation: ExtrudeOperation;
   /** The part joined to, cut or intersected (not for "new"). The first of `targets` when there are several. */
   target?: string;
@@ -462,6 +487,7 @@ export interface GearFeature extends FeatureBase {
 }
 
 export type Feature =
+  | DriveFeature
   | JointFeature
   | LinkFeature
   | GearFeature
@@ -558,6 +584,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   gear: "Gear",
   link: "Link",
   joint: "Joint",
+  drive: "Drive",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -583,6 +610,16 @@ export interface Build {
   links: BuiltLink[];
   /** Joints (#172) up to the marker that built, in timeline order. */
   joints: JointFeature[];
+  /** Drive links (#194) that built, with their multipliers worked out. */
+  drives: BuiltDrive[];
+}
+
+/** A drive as built (#194): the driven joint's value is multiplier × the driver's. */
+export interface BuiltDrive extends PoseDrive {
+  name: string;
+  kind: DriveKind;
+  /** Whether the ratio came from the gears' teeth rather than the typed ratio. */
+  fromTeeth: boolean;
 }
 
 /** A link as built: its step's id and name, and its bodies. */
@@ -593,6 +630,7 @@ export interface BuiltLink {
 }
 
 const BUILT = new Set<string>([
+  "drive",
   "joint",
   "link",
   "gear",
@@ -628,6 +666,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const linkSteps: LinkFeature[] = [];
   /** Joints as built (#172). */
   const joints: JointFeature[] = [];
+  const drives: BuiltDrive[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -750,6 +789,39 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         else joints.push(f);
         break;
       }
+      case "drive": {
+        const why = driveProblem(joints, drives, f.driver, f.driven);
+        if (why) {
+          failed.set(f.id, why);
+          break;
+        }
+        const a = joints.find((j) => j.id === f.driver)!;
+        const b = joints.find((j) => j.id === f.driven)!;
+        let m: number | null = null;
+        if (f.kind !== "custom") {
+          const gears = (l: string) =>
+            [...gearSteps.values()].filter((g) => parts.find((p) => p.id === g.body.id)?.link === l).map((g) => ({ step: g, gear: driveGear(g) }));
+          const ga = gears(a.child);
+          const gb = gears(b.child);
+          const linked = (x: GearFeature, y: GearFeature) =>
+            x.mesh?.gear === y.id || y.mesh?.gear === x.id || x.belt?.pulley === y.id || y.belt?.pulley === x.id;
+          const dot = a.axis[0] * b.axis[0] + a.axis[1] * b.axis[1] + a.axis[2] * b.axis[2];
+          // Gears that mesh or share a belt first, then any pair that fits.
+          const pairs = ga.flatMap((x) => gb.map((y) => ({ x, y, linked: linked(x.step, y.step) }))).sort((p, q) => Number(q.linked) - Number(p.linked));
+          for (const { x, y } of pairs) {
+            m = driveMultiplier(f.kind, { kind: a.kind, gear: x.gear }, { kind: b.kind, gear: y.gear }, dot);
+            if (m !== null) break;
+          }
+        }
+        const fromTeeth = m !== null;
+        const ratio = m ?? f.ratio;
+        if (!Number.isFinite(ratio) || ratio === 0) {
+          failed.set(f.id, "Give it a ratio other than 0");
+          break;
+        }
+        drives.push({ id: f.id, name: f.name, kind: f.kind, driver: f.driver, driven: f.driven, multiplier: f.reverse ? -ratio : ratio, offset: 0, fromTeeth });
+        break;
+      }
       case "delete":
         missing(f, f.parts);
         for (const id of f.parts) {
@@ -770,13 +842,36 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "Its sketch is gone or comes later on the timeline");
           break;
         }
-        const { shapes, lost } = pickProfiles(sk, f.seeds, f.texts);
+        const { shapes, lost, picked } = pickProfiles(sk, f.seeds, f.texts);
         if (!shapes.length) {
           failed.set(f.id, "The shapes it extruded are no longer closed. Close them in the sketch, or edit the extrude.");
           break;
         }
         if (lost) failed.set(f.id, `${lost === 1 ? "One shape" : `${lost} shapes`} it extruded ${lost === 1 ? "is" : "are"} no longer closed`);
-        if (!(Math.abs(f.distance) > 1e-9)) {
+        let side = f.direction;
+        let distance = f.distance;
+        if (f.extent === "to") {
+          // To object: one side, as far as the picked face, edge or point is along the normal, where its body is now.
+          const by = f.to ? parts[find(f.to.body)] : undefined;
+          if (!f.to || !by) {
+            failed.set(
+              f.id,
+              f.to ? "The body it goes up to is gone. Pick something else, or give it a distance." : "Click a face, edge or point for it to go up to",
+            );
+            break;
+          }
+          const reach = upToDistance(planeFrame(sk.plane), profilesMiddle(picked), {
+            point: fromPartLocal(f.to.point, by),
+            normal: f.to.normal && fromPartLocal(f.to.normal, by, true),
+          });
+          if (typeof reach === "string") {
+            failed.set(f.id, reach);
+            break;
+          }
+          side = "one";
+          distance = reach;
+        }
+        if (!(Math.abs(distance) > 1e-9)) {
           failed.set(f.id, "Give it a distance other than 0 mm");
           break;
         }
@@ -785,7 +880,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "Through all works with Cut and Intersect. Give it a distance to join or make a body.");
           break;
         }
-        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, ...extent(f.direction, f.distance, f.distance2, all) };
+        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, ...extent(side, distance, f.distance2, all) };
         if (f.operation === "new") {
           if (find(f.body.id) < 0)
             parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: prismSize(spec), prism: spec });
@@ -993,7 +1088,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     }
   }
   const links = linkSteps.map((l) => ({ id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id) })).filter((l) => l.parts.length);
-  return { parts: looked, sketches, failed, links, joints };
+  return { parts: looked, sketches, failed, links, joints, drives };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
@@ -1262,6 +1357,7 @@ export function featureParts(f: Feature): string[] {
       return [f.body.id];
     case "link":
     case "joint":
+    case "drive":
       return [];
     default:
       return f.parts;
@@ -1294,6 +1390,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const u = limitUnit(f.kind);
       const lim = u ? `, ${f.lower}${u === "°" ? "°" : " mm"} to ${f.upper}${u === "°" ? "°" : " mm"}` : "";
       return `${k.label} (${k.urdf}): ${name(f.child)} on ${name(f.parent)}${lim}`;
+    }
+    case "drive": {
+      const name = (id: string) => doc.features.find((g) => g.id === id)?.name ?? "a gone joint";
+      const k = DRIVE_KIND_LABEL[f.kind];
+      return `${k}: ${name(f.driver)} drives ${name(f.driven)}`;
     }
     case "gear": {
       const a = f.mesh && doc.features.find((g): g is GearFeature => g.id === f.mesh!.gear && g.type === "gear");
@@ -1335,6 +1436,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const all = f.extent === "all";
       const how = f.direction === "symmetric" || (all && f.direction === "two") ? ", both ways" : f.direction === "two" ? ` and ${mm(f.distance2 ?? 0)}` : "";
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
+      if (f.extent === "to") return `Up to ${f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face"}, ${op}`;
       return `${f.extent === "all" ? "Through all" : mm(f.distance)}${how}, ${op}`;
     }
     case "fillet":
@@ -1387,7 +1489,7 @@ export function addSketch(doc: ModelDoc, plane: PlaneRef, id = newId("f"), at?: 
 
 export type ExtrudeParams = Pick<
   ExtrudeFeature,
-  "sketch" | "seeds" | "texts" | "distance" | "direction" | "distance2" | "extent" | "operation" | "target" | "targets"
+  "sketch" | "seeds" | "texts" | "distance" | "direction" | "distance2" | "extent" | "to" | "operation" | "target" | "targets"
 >;
 
 /** Adds an Extrude step. Its new body (when it makes one) gets the part id `bodyId`. */
@@ -2091,6 +2193,7 @@ function partsRead(f: Feature): string[] {
     case "link":
       return f.parts;
     case "extrude":
+      return f.extent === "to" && f.to ? [...new Set([...targetsOf(f), f.to.body])] : targetsOf(f);
     case "revolve":
       return targetsOf(f);
     case "combine":
@@ -2099,6 +2202,7 @@ function partsRead(f: Feature): string[] {
     case "insert":
     case "gear":
     case "joint":
+    case "drive":
       return [];
     default:
       return [f.part];
@@ -2144,6 +2248,12 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   if (f.type === "joint") {
     for (const l of [f.child, f.parent]) if (l && before.some((g) => g.id === l)) out.add(l);
     const up = before.find((g) => g.type === "joint" && g.child === f.parent);
+    if (up) out.add(up.id);
+  }
+  // A drive needs its two joints, and the drive that drives its driver.
+  if (f.type === "drive") {
+    for (const j of [f.driver, f.driven]) if (before.some((g) => g.id === j)) out.add(j);
+    const up = before.find((g) => g.type === "drive" && g.driven === f.driver);
     if (up) out.add(up.id);
   }
   return [...out];
@@ -2402,14 +2512,21 @@ export function addJoint(doc: ModelDoc, params: JointParams, id = newId("f"), at
   return insert(doc, clampAt(doc, at), { id, type: "joint", name: nextNamed(doc, "Joint"), ...params });
 }
 
-/** Sets one joint's value in the pose (#173), kept in range. Back at home, the joint leaves the pose. */
+/**
+ * Sets one joint's value in the pose (#173), kept in range. Back at home, the joint leaves the pose. A joint in a drive
+ * (#194) sets the joint driving it instead, within every limit along the drive.
+ */
 export function setPose(doc: ModelDoc, id: string, value: number): ModelDoc {
   const j = doc.features.find((f): f is JointFeature => f.id === id && f.type === "joint");
   if (!j) return doc;
-  const v = clampJoint(j, value);
+  const hasDrives = doc.features.some((f) => f.type === "drive");
+  const { joints, drives } = hasDrives ? build(doc) : { joints: [], drives: [] };
+  const to = hasDrives ? driveTo(joints, drives, doc.pose, id, value) : { id, value: clampJoint(j, value) };
+  const v = to.value;
   const pose: Pose = { ...doc.pose };
-  if (v === 0) delete pose[id];
-  else pose[id] = v;
+  delete pose[id];
+  if (v === 0) delete pose[to.id];
+  else pose[to.id] = v;
   return { ...doc, pose: Object.keys(pose).length ? pose : undefined };
 }
 
@@ -2420,6 +2537,29 @@ export function homePose(doc: ModelDoc): ModelDoc {
   delete next.pose;
   return next;
 }
+
+export type DriveParams = Pick<DriveFeature, "kind" | "driver" | "driven" | "ratio" | "reverse">;
+
+/** Adds a drive link (#194): "Drive 1". The driven joint leaves the pose, since its driver sets it now. */
+export function addDrive(doc: ModelDoc, params: DriveParams, id = newId("f"), at?: number): ModelDoc {
+  const next = insert(doc, clampAt(doc, at), { id, type: "drive", name: nextNamed(doc, "Drive"), ...params });
+  if (!next.pose?.[params.driven]) return next;
+  const pose: Pose = { ...next.pose };
+  delete pose[params.driven];
+  return { ...next, pose: Object.keys(pose).length ? pose : undefined };
+}
+
+/** Changes a drive link. */
+export function updateDrive(doc: ModelDoc, id: string, change: Partial<DriveParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "drive" ? { ...f, ...change } : f)) };
+}
+
+/** A gear step as a drive reads it. */
+function driveGear(g: GearFeature): DriveGear {
+  return { teeth: g.gear.teeth, module: g.gear.module, form: g.form ?? "spur" };
+}
+
+const DRIVE_KIND_LABEL: Record<DriveKind, string> = { gear: "Gears", belt: "Belt", rack: "Rack", custom: "Custom" };
 
 /** Changes a joint (its bar edits it live). Switching kind brings that kind's starting limits. */
 export function updateJoint(doc: ModelDoc, id: string, change: Partial<JointParams>): ModelDoc {

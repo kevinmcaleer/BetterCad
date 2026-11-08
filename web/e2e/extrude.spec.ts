@@ -5,11 +5,13 @@ type View = { __bcView: { project(p: number[]): { x: number; y: number }; preset
 async function at(page: Page, x: number, y: number, z = 0) {
   // Wait for the camera to stop (finishing a sketch turns the view back), so the point is where it will be.
   const where = () => page.evaluate((p) => (window as unknown as View).__bcView.project(p), [x, y, z]);
+  // Still for four reads in a row: under load a camera move can stall for a frame and look finished.
   let q = await where();
-  for (let i = 0; i < 40; i++) {
+  let still = 0;
+  for (let i = 0; i < 80 && still < 4; i++) {
     await page.waitForTimeout(50);
     const r = await where();
-    if (Math.abs(r.x - q.x) < 0.5 && Math.abs(r.y - q.y) < 0.5) break;
+    still = Math.abs(r.x - q.x) < 0.5 && Math.abs(r.y - q.y) < 0.5 ? still + 1 : 0;
     q = r;
   }
   const box = (await page.getByTestId("view-canvas").boundingBox())!;
@@ -165,4 +167,72 @@ test("cut a hole right through a body with Through all", async ({ page }) => {
   // 30 × 20 × 20 less a 6 mm hole 20 mm long.
   await page.getByRole("treeitem", { name: /Body 1/ }).click();
   await expect(page.getByText("11,434.5 mm³")).toBeVisible({ timeout: 20_000 });
+});
+
+test("cut up to a face, then drag the arrow to set how deep", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+
+  // A 30 × 20 mm block, 20 mm tall.
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await click(page, -10, -10);
+  const far = await at(page, 10, 5);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width" }).fill("30");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height" }).fill("20");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Finished Sketch 1")).toBeVisible();
+  await page.keyboard.press("e");
+  const distance = page.getByRole("textbox", { name: "Distance" });
+  await pickShape(page, 0, 0, distance);
+  await distance.fill("20");
+  await distance.press("Enter");
+  await expect(page.getByText("Extruded one shape 20 mm")).toBeVisible();
+
+  // A 6 mm circle on the ground plane under it.
+  await page.keyboard.press("k");
+  await click(page, 25, 25);
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.keyboard.press("c");
+  await click(page, 0, 0);
+  const edge = await at(page, 3, 0);
+  await page.mouse.move(edge.x, edge.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Diameter" }).fill("6");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Finished Sketch 2")).toBeVisible();
+
+  // Cut, To object, then a click on the block's top face: the cut goes up to it.
+  await page.keyboard.press("e");
+  const ops = page.getByRole("group", { name: "Operation" });
+  await pickShape(page, 0, 0, ops.getByRole("button", { name: "New body", pressed: true }));
+  await ops.getByRole("button", { name: "Cut" }).click();
+  const bar = page.getByRole("group", { name: "Extrude options" });
+  await bar.getByRole("button", { name: /^Distance/ }).click();
+  await page.getByRole("menuitemradio", { name: "To object" }).click();
+  await expect(bar.getByRole("status")).toHaveText("Click a face, edge or point");
+  await click(page, 12, 7);
+  await expect(bar.getByRole("status")).toHaveText("Up to a face, 20 mm");
+
+  // In the corner view, drag the arrow's head from the top face halfway down: it becomes a 10 mm cut.
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("iso"));
+  const from = await at(page, 0, 0, 20);
+  const to = await at(page, 0, 0, 10);
+  await page.mouse.move(from.x, from.y, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(distance).toHaveValue(/^(9\.\d|10(\.\d)?)/);
+  await bar.getByRole("button", { name: /^Done/ }).click();
+  await expect(page.getByText(/Cut one shape (9\.\d|10(\.\d)?) mm deep/)).toBeVisible();
 });

@@ -235,6 +235,42 @@ body {
 .bc-status-pill .bc-status {
   margin: 0;
 }
+/* Save notices: a toast at the top right of the view, under the view cube and clear of the props panel. It floats
+   over the view, takes no clicks and fades out, so a save never moves the timeline or covers a panel. */
+.bc-toast-slot {
+  position: absolute;
+  z-index: 9;
+  top: calc(var(--bc-view-top) + var(--bc-viewcube-room));
+  right: var(--bc-view-right);
+  max-width: min(320px, calc(100% - var(--bc-view-right) - var(--bc-view-left)));
+  pointer-events: none;
+}
+.bc-toast {
+  padding: var(--bc-space-2) var(--bc-space-4);
+  overflow: hidden;
+  color: var(--bc-color-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+  animation: bc-toast 3000ms ease-out forwards;
+}
+@keyframes bc-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  6%,
+  80% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 /* Library, Parameters, Print, History and Settings open in the browser's place, with a way back. */
 .bc-panel-back {
   display: flex;
@@ -756,6 +792,9 @@ kbd {
   /* The tool bars take the top width, so the cube sits just under them. */
   .bc-app .bc-viewcube {
     top: calc(var(--bc-view-top) + var(--bc-bars-room));
+  }
+  .bc-app .bc-toast-slot {
+    top: calc(var(--bc-view-top) + var(--bc-bars-room) + var(--bc-viewcube-room));
   }
   .bc-gallery-cols {
     grid-template-columns: 1fr;
