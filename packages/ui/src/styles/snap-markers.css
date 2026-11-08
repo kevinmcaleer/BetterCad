@@ -250,3 +250,8 @@
 .bc-glyph.bc-off {
   opacity: 0.45;
 }
+/* The armed constraint tool's tag: it rides below and right of the pointer until Esc. */
+.bc-tool-tag {
+  transform: translate(14px, 10px);
+  background: var(--bc-color-accent);
+}
