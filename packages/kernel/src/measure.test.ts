@@ -1,6 +1,6 @@
 import { beforeAll, describe as group, expect, it } from "vitest";
 import { loadOCCT, type OC } from "./occt/oc";
-import { box, cylinder, elements, place } from "./occt/shapes";
+import { boolean, box, cylinder, elements, place } from "./occt/shapes";
 import { between, describe, subShape, type TopoRef } from "./occt/measure";
 
 let oc: OC;
@@ -76,5 +76,20 @@ group("measure", () => {
     expect(p.centres).toBeCloseTo(25, 6);
     expect(p.distance).toBeCloseTo(25 - 5 - 3, 6);
     expect(describe(oc, a, ref("body", 0))).toMatchObject({ kind: "body" });
+  });
+
+  it("puts a round face's centre on its axis level with the face, not where the surface started", () => {
+    // A bore cut by a long pin that starts 100 mm below the block: the bore's axis is right, its middle is in the block.
+    const block = place(oc, box(oc, { x: 20, y: 20, z: 10 }), { position: { x: 40, y: 0, z: 0 } });
+    const pin = place(oc, cylinder(oc, { x: 6, y: 6, z: 200 }), { position: { x: 40, y: 0, z: -100 } });
+    const s = boolean(oc, "cut", block, [pin]);
+    const bore = elements(oc, s, "face")
+      .map((_, i) => describe(oc, s, ref("face", i)))
+      .find((d) => d.kind === "face" && d.circle);
+    expect(bore?.kind === "face" && bore.circle).toBeTruthy();
+    const c = (bore as { circle: { centre: number[] } }).circle.centre;
+    expect(c[0]).toBeCloseTo(40, 6);
+    expect(c[1]).toBeCloseTo(0, 6);
+    expect(c[2]).toBeCloseTo(5, 6);
   });
 });

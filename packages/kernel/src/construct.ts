@@ -406,8 +406,10 @@ export function construct(kind: ConstructKind, inputs: Geo[], value = 0): Constr
       return plane(at, dir, g0.t === "circle" ? sub(at, g0.centre) : undefined);
     }
     case "cylinder": {
+      // Centred where the face was clicked, so the axis is drawn through the hole or pin, not off along its line.
       const c = circleIn(g0);
-      return axis(c.centre, unit(c.axis)!);
+      const a = unit(c.axis)!;
+      return axis(c.start ? add(c.centre, scale(a, dot(sub(c.start, c.centre), a))) : c.centre, a);
     }
     case "normal": {
       const p = planeIn(g0);
