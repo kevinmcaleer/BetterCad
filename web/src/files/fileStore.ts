@@ -47,7 +47,11 @@ export interface Saved {
 
 export interface OutFile {
   name: string;
-  data: ArrayBuffer;
+  /**
+   * The bytes, or bytes still being made (a render): the browser only lets a page ask where to save straight after a
+   * click, so the picker opens first and the file is written when its bytes arrive.
+   */
+  data: ArrayBuffer | Promise<ArrayBuffer>;
   mime: string;
 }
 
@@ -166,19 +170,19 @@ function diskStore(win: PickerWindow & Window, kv: KV<Recent>): FileStore {
         if (files.length === 1) {
           const f = files[0]!;
           const handle = await win.showSaveFilePicker!({ suggestedName: f.name, types: [{ description: f.name, accept: { [f.mime]: [extOf(f.name)] } }] });
-          await write(handle, f.data, f.mime);
+          await write(handle, await f.data, f.mime);
           return { names: [handle.name], inPlace: true };
         }
         if (win.showDirectoryPicker) {
           const dir = await win.showDirectoryPicker({ mode: "readwrite" });
-          for (const f of files) await write(await dir.getFileHandle(f.name, { create: true }), f.data, f.mime);
+          for (const f of files) await write(await dir.getFileHandle(f.name, { create: true }), await f.data, f.mime);
           return { names: files.map((f) => f.name), inPlace: true };
         }
       } catch (e) {
         if (isAbort(e)) return undefined;
         throw e;
       }
-      for (const f of files) download(win, f.data, f.name, f.mime);
+      for (const f of files) download(win, await f.data, f.name, f.mime);
       return { names: files.map((f) => f.name), inPlace: false };
     },
     async remember(handle, info) {
@@ -221,7 +225,7 @@ function downloadStore(win: Window): FileStore {
       return { name, inPlace: false };
     },
     async saveFiles(files) {
-      for (const f of files) download(win, f.data, f.name, f.mime);
+      for (const f of files) download(win, await f.data, f.name, f.mime);
       return { names: files.map((f) => f.name), inPlace: false };
     },
     recent: async () => [],

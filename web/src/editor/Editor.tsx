@@ -455,9 +455,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const onRenderCamera = useCallback((c: CameraState) => {
     renderCam.current = c;
   }, []);
-  const saveRender = async (png: Blob, size: SaveSize) => {
+  // Called straight from the click, before the picture is ready, so the browser still lets it ask where to save.
+  const saveRender = async (png: Promise<Blob>, size: SaveSize) => {
     const name = `${live.current.doc.name}${size === "view" ? "" : size === "double" ? " 2x" : " 4K"}.png`;
-    const saved = await files.store.saveFiles([{ name, data: await png.arrayBuffer(), mime: "image/png" }]);
+    const saved = await files.store.saveFiles([{ name, data: png.then((b) => b.arrayBuffer()), mime: "image/png" }]);
     if (saved) say(`Saved ${saved.names[0]}`);
   };
   const renderBodies = useMemo<RenderBody[]>(

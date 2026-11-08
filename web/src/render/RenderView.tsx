@@ -37,8 +37,11 @@ export interface RenderPictureProps {
   camera: CameraState;
   /** The camera moved in the render view, so the modelling view can follow when you go back. */
   onCamera: (c: CameraState) => void;
-  /** Saves the picture's PNG. */
-  onSave: (png: Blob, size: SaveSize) => Promise<void>;
+  /**
+   * Saves the picture's PNG. Called at once on the click with the picture still being made, so it can ask where to
+   * save while the browser allows it.
+   */
+  onSave: (png: Promise<Blob>, size: SaveSize) => Promise<void>;
 }
 
 /**
@@ -76,10 +79,15 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
         h = el.clientHeight;
       const [sw, sh] = size === "4k" ? [3840, 2160] : size === "double" ? [w * 2, h * 2] : [el.width, el.height];
       session.set({ saving: 0 });
+      const stop = new AbortController();
+      const png = pr.snapshot(Math.round(sw), Math.round(sh), testMax() ?? Math.max(SAVE_SAMPLES, pr.samples), (f) => session.set({ saving: f }), stop.signal);
+      png.catch(() => {});
       try {
-        const png = await pr.snapshot(Math.round(sw), Math.round(sh), testMax() ?? Math.max(SAVE_SAMPLES, pr.samples), (f) => session.set({ saving: f }));
         await onSave(png, size);
       } finally {
+        // Cancelled in the picker: stop rendering a picture nobody will keep.
+        stop.abort();
+        await png.catch(() => {});
         session.set({ saving: null });
       }
     };

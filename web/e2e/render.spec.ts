@@ -119,6 +119,34 @@ test("Save image saves the picture already rendered, without rendering it again"
   expect(diff).toBeLessThan(1);
 });
 
+test("Save image at a bigger size asks where to save straight away, while the click still counts", async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.addInitScript(() => {
+    (window as unknown as { __bcRenderMax: number }).__bcRenderMax = 2;
+    // Like Chrome, the picker only opens straight after a click. Chrome allows a few seconds, more than a render
+    // takes here, so this asks for it within 300 ms of the click: before the picture is made, not after.
+    let clicked = 0;
+    window.addEventListener("pointerup", () => (clicked = performance.now()), true);
+    (window as unknown as Record<string, unknown>).showSaveFilePicker = async (o: { suggestedName: string }) => {
+      if (performance.now() - clicked > 300) throw new DOMException("Must be handling a user gesture to show a file picker.", "SecurityError");
+      return {
+        name: o.suggestedName,
+        createWritable: async () => ({ write: async () => {}, close: async () => {} }),
+      };
+    };
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.keyboard.press("Shift+R");
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 200_000 });
+  await bar.getByRole("button", { name: "Save image" }).click({ force: true });
+  await page.getByRole("menuitem", { name: "Twice the view size" }).click({ force: true });
+  await expect(page.getByText(/Saved .* 2x\.png/)).toBeVisible({ timeout: 200_000 });
+});
+
 test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 900, height: 600 });
