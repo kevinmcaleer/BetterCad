@@ -318,11 +318,11 @@ export function useSketch(d: SketchDeps) {
   );
 
   const addSize = useCallback(
-    (kind: DimensionKind, refs: Id[], base?: Sketch, labelOffset?: Vec2) => {
+    (kind: DimensionKind, refs: Id[], base?: Sketch, extra: Partial<Dimension> = {}) => {
       const s = base ?? current();
       if (!s) return;
       const dr = new Draft(s);
-      const id = dr.dimension(kind, refs, undefined, labelOffset ? { labelOffset } : {});
+      const id = dr.dimension(kind, refs, undefined, extra);
       const withDim = dr.done().sketch;
       if (apply(withDim, "Add a dimension", { strict: true, quiet: true })) {
         setDimEdit(id);
@@ -383,7 +383,7 @@ export function useSketch(d: SketchDeps) {
     const pl = live.current.placing;
     if (!pl) return;
     setPlacing(null);
-    addSize(pl.dim.kind, pl.dim.refs, pl.sketch, pl.dim.labelOffset);
+    addSize(pl.dim.kind, pl.dim.refs, pl.sketch, { labelOffset: pl.dim.labelOffset, ...(pl.dim.arms && { arms: pl.dim.arms }) });
   }, [addSize]);
 
   /** Moves a size's label (dragged by its pill), live; `last` ends the drag as one undo step. */
@@ -1046,6 +1046,15 @@ export function useSketch(d: SketchDeps) {
         const hit = at(p);
         if (!hit || !L.sketch) return false;
         if (L.placing) {
+          // A line's size is following the pointer and another line is clicked: size the angle between them, as in
+          // Fusion (or the gap, if they are parallel).
+          const [first, more] = L.placing.dim.refs;
+          const other = !more && L.stool === "dimension" && pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
+          const isLine = (id?: Id | false) => L.placing!.sketch.entities.some((e) => e.id === id && e.kind === "line");
+          if (other !== first && isLine(first) && isLine(other) && L.dimensionFor([first!, other as Id])) {
+            setPlacing((pl) => pl && { ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy) });
+            return true;
+          }
           if (mods.touch) {
             // The size jumps to the finger, follows it, and goes down where it lifts.
             const pl = L.placing;

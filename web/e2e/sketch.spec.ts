@@ -537,6 +537,46 @@ test("place a size across, up or along a slanted line by where the pointer is, t
   expect(Math.abs(back.y - box.y)).toBeLessThan(3);
 });
 
+test("size the angle between two lines, on the side the pointer is, and type it", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // A level line and one rising at 45°, joined at the origin.
+  await click(page, 20, 0);
+  await click(page, 0, 0);
+  await click(page, 20, 20);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await page.keyboard.press("d");
+  const hover = async (x: number, y: number) => {
+    const p = await at(page, x, y);
+    await page.mouse.move(p.x, p.y, { steps: 3 });
+  };
+  const placing = page.locator(".bc-placing");
+  // The first line's length follows the pointer; picking the second line makes it an angle.
+  await click(page, 10, 0);
+  await expect(placing).toHaveAttribute("aria-label", /^Length 20 mm/);
+  await click(page, 12, 12);
+  await hover(14, 4);
+  await expect(placing).toHaveAttribute("aria-label", /^Angle 45°/);
+  // Over the sloping line, on the far side: the other angle.
+  await hover(-6, 10);
+  await expect(placing).toHaveAttribute("aria-label", /^Angle 135°/);
+  await page.screenshot({ path: test.info().outputPath("angle-placing.png") });
+
+  await click(page, -6, 10);
+  const input = page.getByRole("textbox", { name: "Angle in degrees" });
+  await expect(input).toBeFocused();
+  await input.fill("120 deg");
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "120°", exact: true })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("angle-set.png") });
+});
+
 test("finishing a sketch puts the view back in perspective", async ({ page }) => {
   await page.goto("/");
   const view = page.getByRole("application", { name: /3D view/ });

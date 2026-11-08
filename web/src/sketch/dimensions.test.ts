@@ -164,3 +164,54 @@ describe("placing a size", () => {
     expect(out?.[0][0]).toBeCloseTo(20);
   });
 });
+
+describe("an angle between two lines", () => {
+  /** A level line and one rising at 45°, meeting at the origin. */
+  function corner() {
+    const d = new Draft(newSketch());
+    const o = d.point([0, 0]);
+    const h = d.line(o, [20, 0]);
+    const s = d.line(o, [20, 20]);
+    return { sketch: d.done().sketch, h, s };
+  }
+
+  it("measures the quadrant the pointer is in", () => {
+    const { sketch, h, s } = corner();
+    // Between the two lines: 45°.
+    const inside = placeAt(sketch, "angle", [h, s], [10, 3]);
+    expect(inside.arms).toEqual([1, 1]);
+    expect(inside.value).toBeCloseTo(45);
+    // Above the sloping line, on the left: the other side, 135°.
+    const over = placeAt(sketch, "angle", [h, s], [-5, 10]);
+    expect(over.arms).toEqual([-1, 1]);
+    expect(over.value).toBeCloseTo(135);
+    // Opposite quadrants measure the same.
+    expect(placeAt(sketch, "angle", [h, s], [-10, -3]).value).toBeCloseTo(45);
+    expect(placeAt(sketch, "angle", [h, s], [5, -10]).value).toBeCloseTo(135);
+  });
+
+  it("draws an arc through its label at the corner, with an arrow on each arm", () => {
+    const { sketch, h, s } = corner();
+    const dim = placeAt(sketch, "angle", [h, s], [10, 3]);
+    const art = dimensionArt(new SketchIndex(sketch), dim, 0.1, [10, 5]);
+    expect(art.text[0]).toBeCloseTo(10);
+    expect(art.text[1]).toBeCloseTo(3);
+    const r = Math.hypot(10, 3);
+    for (const [a, b] of art.lines) {
+      expect(Math.hypot(...a)).toBeCloseTo(r, 6);
+      expect(Math.hypot(...b)).toBeCloseTo(r, 6);
+    }
+    expect(art.arrows.map((a) => a.tip.map((x) => Math.round(x * 100) / 100))).toEqual([
+      [Math.round(r * 100) / 100, 0],
+      [Math.round((r / Math.SQRT2) * 100) / 100, Math.round((r / Math.SQRT2) * 100) / 100],
+    ]);
+  });
+
+  it("runs extension lines out along an arm when the arc passes its line's end", () => {
+    const { sketch, h, s } = corner();
+    const dim = placeAt(sketch, "angle", [h, s], [40, 10]);
+    const art = dimensionArt(new SketchIndex(sketch), dim, 0.1, [10, 5]);
+    const straight = art.lines.filter(([a, b]) => Math.abs(Math.hypot(...a) - Math.hypot(...b)) > 1);
+    expect(straight.length).toBe(2);
+  });
+});
