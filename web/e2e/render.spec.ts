@@ -45,7 +45,26 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   await page.keyboard.press("Escape");
   await page.keyboard.press("Shift+R");
   await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("4 samples", { timeout: 200_000 });
-  // The picture has stopped at 4 samples, so one capture is enough: no waiting for two matching frames.
-  const shot = await page.screenshot({ clip: { x: 300, y: 120, width: 300, height: 300 }, timeout: 120_000 });
-  expect(shot).toMatchSnapshot("render-box.png", { maxDiffPixelRatio: 0.02 });
+  // Four samples are grainy and the grain differs every run, so compare the picture shrunk to 60 × 40: halving it
+  // step by step averages each pixel with its neighbours, which keeps the shape, colour and shadow and drops the grain.
+  const url = await page.locator(".bc-render-canvas").evaluate((el: HTMLCanvasElement) => {
+    let src: HTMLCanvasElement = el;
+    while (src.width > 120) {
+      const half = document.createElement("canvas");
+      half.width = Math.max(60, Math.round(src.width / 2));
+      half.height = Math.max(40, Math.round(src.height / 2));
+      const g = half.getContext("2d")!;
+      g.imageSmoothingQuality = "high";
+      g.drawImage(src, 0, 0, half.width, half.height);
+      src = half;
+    }
+    const out = document.createElement("canvas");
+    out.width = 60;
+    out.height = 40;
+    const g = out.getContext("2d")!;
+    g.imageSmoothingQuality = "high";
+    g.drawImage(src, 0, 0, 60, 40);
+    return out.toDataURL("image/png");
+  });
+  expect(Buffer.from(url.split(",")[1], "base64")).toMatchSnapshot("render-box.png", { maxDiffPixelRatio: 0.02, threshold: 0.1 });
 });
