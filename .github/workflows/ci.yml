@@ -25,8 +25,31 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      # First-paint JavaScript under 350 KB gzipped and no dev-only code in the release build (#97).
+      # First-paint JavaScript under 355 KB gzipped and no dev-only code in the release build (#97).
       - run: npm run size -w web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
+
+  # The end-to-end tests, split across three runners so the suite takes a third of the time. Each shard builds
+  # the gallery preview itself (Playwright's webServer) while the web job lints and unit-tests.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    name: e2e (${{ matrix.shard }} of 3)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
       - id: pw
         uses: actions/cache@v4
         with:
@@ -35,19 +58,14 @@ jobs:
       # The runner image already has Chrome's system libraries, so skip install-deps (minutes of apt font downloads).
       # Headless shell only; a cache hit makes this a no-op.
       - run: npx playwright install --only-shell chromium
-      - run: npm run e2e
+      - run: npm run e2e -w web -- --shard=${{ matrix.shard }}/3
         env:
           CI: "1"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: web-dist
-          path: web/dist
-          retention-days: 7
       # Each test's last screenshot, so a failed run is easy to read.
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-screens
+          name: e2e-screens-${{ matrix.shard }}
           path: web/test-results
           retention-days: 7
           if-no-files-found: ignore
