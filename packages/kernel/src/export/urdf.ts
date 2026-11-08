@@ -10,6 +10,7 @@
 import type { V3 } from "../joints";
 import type { JointFeature } from "../document";
 import { combine, type MassProps } from "../mass";
+import type { PoseDrive } from "../drivelinks";
 
 /** What the planner needs of a body. */
 export interface UrdfBody {
@@ -32,6 +33,8 @@ export interface UrdfOptions {
   /** Defaults for each moving joint's effort (N·m or N) and velocity (rad/s or m/s): URDF requires them. */
   effort?: number;
   velocity?: number;
+  /** Drive links (#194): each driven joint is written with a `<mimic>` of its driver. */
+  drives?: PoseDrive[];
 }
 
 export interface UrdfLinkOut {
@@ -98,6 +101,8 @@ export function buildUrdf(bodies: UrdfBody[], links: { id: string; name: string 
   const velocity = o.velocity ?? 1;
   const dir = o.rosPackage ? `package://${robot}/meshes` : "meshes";
 
+  // Joint names first, so a mimic can name a joint written after it.
+  const jointName = new Map(links.map((l) => [l.id, urdfName(jointOf.get(l.id)?.name ?? `${l.name} fixed`, taken)]));
   const out: string[] = [`<?xml version="1.0"?>`, `<robot name="${esc(robot)}">`];
   const meshes: UrdfLinkOut[] = [];
   const colours = new Map<string, string>();
@@ -152,7 +157,7 @@ export function buildUrdf(bodies: UrdfBody[], links: { id: string; name: string 
     const child = l.id;
     const from = originOf(parent);
     const to = originOf(child);
-    const name = urdfName(j ? j.name : `${l.name} fixed`, taken);
+    const name = jointName.get(l.id)!;
     const kind = j ? URDF_TYPE[j.kind] : "fixed";
     out.push(
       `  <joint name="${name}" type="${kind}">`,
@@ -172,6 +177,14 @@ export function buildUrdf(bodies: UrdfBody[], links: { id: string; name: string 
           `    <limit lower="${n(Math.min(j.lower, j.upper) / 1000)}" upper="${n(Math.max(j.lower, j.upper) / 1000)}" effort="${n(effort)}" velocity="${n(velocity)}"/>`,
         );
       else out.push(`    <limit effort="${n(effort)}" velocity="${n(velocity)}"/>`);
+      const d = j && o.drives?.find((x) => x.driven === j.id);
+      const by = d && joints.find((x) => x.id === d.driver);
+      const byName = by && jointName.get(by.child);
+      if (d && by && byName) {
+        // BetterCad's ratio is in degrees and mm; URDF's in radians and metres.
+        const si = (k: JointFeature["kind"]) => (k === "prismatic" ? 1000 : 180 / Math.PI);
+        out.push(`    <mimic joint="${byName}" multiplier="${sig((d.multiplier * si(by.kind)) / si(j.kind))}" offset="${sig(d.offset / si(j.kind))}"/>`);
+      }
     }
     out.push(`  </joint>`);
   }

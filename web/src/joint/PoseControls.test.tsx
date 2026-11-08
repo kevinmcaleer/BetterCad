@@ -63,4 +63,31 @@ describe("PoseControls", () => {
     render(<PoseControls joints={[bolt]} pose={undefined} onChange={vi.fn()} onCommit={vi.fn()} />);
     expect(screen.getByText("A fixed joint doesn't move.")).toBeVisible();
   });
+
+  it("says what drives a driven joint, and plays a driver", async () => {
+    const onPlay = vi.fn();
+    const drives = [{ id: "D1", name: "Drive 1", kind: "gear" as const, driver: "J1", driven: "J2", multiplier: 0.5, offset: 0, fromTeeth: true }];
+    const names: Record<string, string> = { J1: "Joint 1", J2: "Joint 2" };
+    const { rerender } = render(
+      <PoseControls joints={[hinge, slider]} pose={{}} onChange={vi.fn()} onCommit={vi.fn()} drives={drives} onPlay={onPlay} nameOf={(id) => names[id]!} />,
+    );
+    expect(within(screen.getByRole("group", { name: "Joint 2, slider" })).getByText("Driven by Joint 1")).toBeVisible();
+    expect(within(screen.getByRole("group", { name: "Joint 2, slider" })).queryByRole("button", { name: "Play" })).toBeNull();
+    await userEvent.click(within(screen.getByRole("group", { name: "Joint 1, hinge" })).getByRole("button", { name: "Play" }));
+    expect(onPlay).toHaveBeenCalledWith("J1");
+    rerender(
+      <PoseControls
+        joints={[hinge, slider]}
+        pose={{}}
+        onChange={vi.fn()}
+        onCommit={vi.fn()}
+        drives={drives}
+        onPlay={onPlay}
+        playing="J1"
+        nameOf={(id) => names[id]!}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(onPlay).toHaveBeenLastCalledWith(null);
+  });
 });
