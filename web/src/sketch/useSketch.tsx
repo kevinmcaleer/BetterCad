@@ -23,6 +23,7 @@ import {
   slideAcross,
   sub,
   toSketch,
+  toWorld,
   placedLoops,
   textAt,
   textsOf,
@@ -44,7 +45,10 @@ import { DEFAULT_FONT, layOut } from "./text/fonts";
 import type { Command } from "../state/commands";
 import { caught } from "../report/errors";
 import type { View3DHandle } from "../viewport/View3D";
-import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
+import type { Engine, Mods, ScreenPoint, WorldPlaneName } from "../viewport/engine";
+import { readPalette } from "../viewport/colours";
+import { isTyping } from "../state/commands";
+import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, drawLoupe, lensed, loupeZoom, type Loupe } from "./loupe";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide, type SketchOption, type SketchOptions } from "./options";
@@ -157,6 +161,12 @@ export function useSketch(d: SketchDeps) {
   const [ctool, setCtool] = useState<ConstraintToolId | null>(null);
   /** Where the pointer is on the view while a constraint tool is armed, for the tag that follows it. */
   const [pointer, setPointer] = useState<ScreenPoint | null>(null);
+  /** The magnifier loupe, while it is open. */
+  const [loupe, setLoupe] = useState<Loupe | null>(null);
+  const closeLoupe = useRef<() => void>(() => {});
+  /** The loupe's canvas, and the last picture of the sketch it magnifies. */
+  const loupeCanvas = useRef<HTMLCanvasElement | null>(null);
+  const lastView = useRef<OverlayView | null>(null);
   const [clicks, setClicks] = useState<Snap[]>([]);
   const [cursor, setCursor] = useState<Snap | null>(null);
   const [typed, setTyped] = useState<(number | undefined)[]>([]);
@@ -865,18 +875,20 @@ export function useSketch(d: SketchDeps) {
     let tapPlace = false;
     /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
     const SLIDE = 12;
+    const zoomNow = () => (lens && lens.why !== "touch" ? lens.zoom : 1);
     const at = (p: ScreenPoint): { xy: Vec2; px: number } | null => {
       const f = live.current.frame;
       if (!f) return null;
       const w = eng.rayPlane(p.x, p.y, f.origin, f.normal);
-      return w ? { xy: toSketch(f, w), px: eng.pixelSize(f.origin) } : null;
+      // With the loupe open, picks reach only as far as its zoom allows.
+      return w ? { xy: toSketch(f, w), px: eng.pixelSize(f.origin) / zoomNow() } : null;
     };
     const snapAt = (xy: Vec2, px: number, mods: { shift: boolean; mod: boolean; touch?: boolean }, exclude?: Set<Id>): Snap => {
       const L = live.current;
       const from = L.clicks[L.clicks.length - 1]?.xy;
       return snap(xy, L.sketch!, {
         px,
-        grid: L.gridSnap || mods.mod ? snapStep(px) : null,
+        grid: L.gridSnap || mods.mod ? snapStep(px * zoomNow()) : null,
         from,
         exclude,
         off: mods.shift,
@@ -994,8 +1006,8 @@ export function useSketch(d: SketchDeps) {
       else setClicks(all);
     };
 
-    eng.setInput({
-      down: (p, mods) => {
+    const input = {
+      down: (p: ScreenPoint, mods: Mods): boolean => {
         const L = live.current;
         reach = mods.touch ? 18 : 8;
         const hit = at(p);
@@ -1100,7 +1112,7 @@ export function useSketch(d: SketchDeps) {
         addClick(s);
         return true;
       },
-      move: (p, mods, pressed) => {
+      move: (p: ScreenPoint, mods: Mods, pressed: boolean) => {
         const L = live.current;
         if (!pressed) reach = mods.touch ? 18 : 8;
         const hit = at(p);
@@ -1169,7 +1181,7 @@ export function useSketch(d: SketchDeps) {
         }
         setCursor(snapAt(hit.xy, hit.px, mods));
       },
-      up: (p, mods) => {
+      up: (p: ScreenPoint, mods: Mods) => {
         if (drag?.moved) store.seal();
         drag = null;
         const L = live.current;
@@ -1202,8 +1214,106 @@ export function useSketch(d: SketchDeps) {
         setEditPreview(null);
         eng.showHover(null);
       },
+    };
+
+    // ------------------------------------------------ the loupe
+    /** The loupe as the handlers see it; `setLoupe` shows it. */
+    let lens: Loupe | null = null;
+    let dwell: number | undefined;
+    let last: { p: ScreenPoint; mods: Mods } | null = null;
+    /** Esc closed the loupe: it stays shut until the pointer leaves the crowd. */
+    let quiet = false;
+    const show = (l: Loupe | null) => {
+      lens = l;
+      setLoupe(l);
+    };
+    closeLoupe.current = () => {
+      if (lens?.why === "crowd") quiet = true;
+      show(null);
+    };
+    /** The sketch's points and the origin, where they are on screen. */
+    const screenPoints = (): ScreenPoint[] => {
+      const L = live.current;
+      const f = L.frame;
+      if (!f || !L.sketch) return [];
+      const pts = L.sketch.entities.flatMap((e) => (e.kind === "point" ? [eng.project(toWorld(f, [e.x, e.y]))] : []));
+      if (L.origin) pts.push(eng.project(toWorld(f, L.origin)));
+      return pts;
+    };
+    const openAt = (p: ScreenPoint, why: Loupe["why"], gap?: number | null) =>
+      show({ anchor: p, pointer: p, zoom: loupeZoom(gap === undefined ? (crowding(screenPoints(), p)?.gap ?? null) : gap), why });
+    /** Opens, follows or closes the loupe as the pointer moves, before the move is handled. */
+    const watch = (p: ScreenPoint, mods: Mods, pressed: boolean) => {
+      window.clearTimeout(dwell);
+      if (live.current.placing || live.current.textEdit) return lens && show(null);
+      if (mods.touch) {
+        if (lens?.why === "touch") show({ ...lens, anchor: p, pointer: p });
+        return;
+      }
+      if (lens) {
+        if (lens.why === "alt" && !mods.alt) return show(null);
+        const away = Math.hypot(p.x - lens.anchor.x, p.y - lens.anchor.y) > LOUPE_REACH;
+        // Moving off the loupe's edge closes it, or with Alt held, moves it to the pointer.
+        if (away && !pressed) return lens.why === "alt" ? openAt(p, "alt") : show(null);
+        return show({ ...lens, pointer: p });
+      }
+      if (pressed) return;
+      if (mods.alt && !mods.shift) return openAt(p, "alt");
+      const crowd = crowding(screenPoints(), p);
+      if (!crowd) quiet = false;
+      if (!crowd || quiet) return;
+      dwell = window.setTimeout(() => {
+        if (lens || !last || last.mods.alt) return;
+        const now = crowding(screenPoints(), last.p);
+        if (now) openAt(last.p, "crowd", now.gap);
+      }, CROWD_DWELL);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Alt" || isTyping(e.target)) return;
+      if (e.type === "keydown") {
+        // Alt alone would focus the browser's menu bar on Windows.
+        e.preventDefault();
+        if (!lens && last && !last.mods.touch) openAt(last.p, "alt");
+      } else if (lens?.why === "alt") show(null);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+
+    eng.setInput({
+      down: (p, mods) => {
+        const handled = input.down(lensed(lens, p), mods);
+        // A finger hides what it's on: the loupe shows it while the finger is down.
+        if (handled && mods.touch) openAt(p, "touch");
+        return handled;
+      },
+      move: (p, mods, pressed) => {
+        last = { p, mods };
+        watch(p, mods, pressed);
+        input.move(lensed(lens, p), mods, pressed);
+      },
+      up: (p, mods) => {
+        input.up(lensed(lens, p), mods);
+        if (lens?.why === "touch") show(null);
+      },
+      cancel: () => {
+        input.cancel();
+        if (lens?.why === "touch") show(null);
+      },
+      leave: () => {
+        window.clearTimeout(dwell);
+        last = null;
+        if (lens) show(null);
+        input.leave();
+      },
     });
-    return () => eng.setInput(null);
+    return () => {
+      window.clearTimeout(dwell);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+      closeLoupe.current = () => {};
+      setLoupe(null);
+      eng.setInput(null);
+    };
   }, [editingId, engineOf, store, say]);
 
   // ---------------------------------------------------------------- drawing
@@ -1219,6 +1329,31 @@ export function useSketch(d: SketchDeps) {
       overlay.current = null;
     };
   }, [editingId, engineOf]);
+
+  const loupeNow = useRef<Loupe | null>(null);
+  loupeNow.current = loupe;
+  const paintLoupe = useCallback(() => {
+    const cv = loupeCanvas.current;
+    const l = loupeNow.current;
+    const v = lastView.current;
+    const eng = engineOf();
+    const ctx = cv?.getContext("2d");
+    if (!cv || !ctx || !l || !v || !eng) return;
+    const dpr = window.devicePixelRatio || 1;
+    const side = Math.round(LOUPE_SIZE * dpr);
+    if (cv.width !== side) cv.width = cv.height = side;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pal = readPalette();
+    const css = (k: keyof typeof pal) => `#${pal[k].getHexString()}`;
+    drawLoupe(ctx, v, l, (xy) => eng.project(toWorld(v.frame, xy)), {
+      snap: css("snap"),
+      ink: css("ink"),
+      accent: css("accent"),
+      danger: css("danger"),
+      muted: css("muted"),
+      viewport: css("viewport"),
+    });
+  }, [engineOf]);
 
   const previewNow = useMemo(
     () =>
@@ -1269,8 +1404,14 @@ export function useSketch(d: SketchDeps) {
       if (w) grid = sketchGrid(toSketch(frame, w), px * Math.hypot(width, height) * 0.6, px);
     }
     const mark: Shade = sel.includes(ORIGIN) ? "picked" : hover === ORIGIN ? "hover" : "fixed";
-    o.update(px && origin ? { ...withOrigin(view, origin, px, mark), grid } : view);
-  }, [sketch, frame, origin, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options, stool, textEdit]);
+    const final = px && origin ? { ...withOrigin(view, origin, px, mark), grid } : view;
+    o.update(final);
+    lastView.current = final;
+    paintLoupe();
+  }, [sketch, frame, origin, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options, stool, textEdit, paintLoupe]);
+
+  // The loupe redraws as the pointer moves in it, and with the sketch above.
+  useEffect(() => paintLoupe(), [loupe, paintLoupe]);
 
   // The sketch's own grid takes the floor grid's place while it is on.
   useEffect(() => {
@@ -1329,6 +1470,7 @@ export function useSketch(d: SketchDeps) {
     },
     ESC.tool + 2,
   );
+  useEscape(editing && loupe !== null, () => closeLoupe.current(), ESC.tool + 5);
   useEscape(editing && sel.length > 0, () => setSel([]), ESC.tool + 1);
   // Esc never drops the sketch by accident: the last layer only says how to finish.
   useEscape(editing, () => say("Enter or the Finish button finishes the sketch."), ESC.tool);
@@ -1471,6 +1613,8 @@ export function useSketch(d: SketchDeps) {
     stool,
     ctool,
     pointer,
+    loupe,
+    loupeCanvas,
     origin,
     pickTool,
     clicks,
