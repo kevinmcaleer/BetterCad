@@ -25,6 +25,10 @@ export function ShortcutsDialog({ open, onClose, commands }: { open: boolean; on
         </section>
       ))}
       <p className="bc-note">Esc backs out one step at a time: a menu, then the tool, then the selection.</p>
+      <p className="bc-note">
+        While sketching, hold Shift to stop snapping, Ctrl (⌘) to snap to the grid only, and Alt (⌥) to magnify the sketch by the pointer. The magnifier also
+        opens by itself when points sit too close together to pick.
+      </p>
     </Dialog>
   );
 }

@@ -148,6 +148,12 @@ export interface Mods {
   touch?: boolean;
 }
 export type WorldPlaneName = "XY" | "XZ" | "YZ";
+/** A drag of the point gizmo (#176): told where the point goes, then that the drag ended. */
+export interface PointDrag {
+  start(): void;
+  move(p: V3): void;
+  end(): void;
+}
 
 export interface Section {
   origin: V3;
@@ -323,6 +329,10 @@ export class Engine {
   // Gizmo
   private gizmo: TransformControls;
   private proxy = new Object3D();
+  /** The move gizmo on a point instead of a body (#176): its arrows drag the point along an axis. */
+  private pointGizmo: { at: V3; drag: PointDrag } | null = null;
+  /** The point drag under way: the one the gizmo was pressed with, though the point moves on (and is set anew). */
+  private pointDragging: PointDrag | null = null;
   private gizmoBody: string | null = null;
 
   // Section
@@ -334,6 +344,8 @@ export class Engine {
   /** Joint glyphs (#172): an arrow along each joint's axis, from its origin. */
   private jointArrows = new Group();
   private centres = new Group();
+  /** Tool points (#176): a diamond at each, to grab and drag. */
+  private tools = new Group();
   /** Construction planes, axes and points (#265), and the ones lit by the pointer or picked. */
   private construct = new Group();
   private constructItems: ConstructShape[] = [];
@@ -460,6 +472,11 @@ export class Engine {
     this.scene.add(helper);
     this.gizmo.enabled = false;
     this.gizmo.addEventListener("change", () => this.invalidate());
+    this.gizmo.addEventListener("mouseDown", () => {
+      if (this.gizmoBody || !this.pointGizmo) return;
+      this.pointDragging = this.pointGizmo.drag;
+      this.pointDragging.start();
+    });
     this.gizmo.addEventListener("objectChange", () => this.onGizmoMove(false));
     this.gizmo.addEventListener("mouseUp", () => this.onGizmoMove(true));
 
@@ -482,6 +499,7 @@ export class Engine {
     this.scene.add(this.arrow);
     this.scene.add(this.jointArrows);
     this.scene.add(this.centres);
+    this.scene.add(this.tools);
     this.scene.add(this.construct);
 
     this.planes = new Group();
@@ -826,6 +844,16 @@ export class Engine {
     this.invalidate();
   }
 
+  /**
+   * Puts the move gizmo on a point (#176), when no body has it: dragging an arrow moves the point along that axis, a
+   * square in that plane. Null takes it off.
+   */
+  setPointGizmo(at: V3 | null, drag?: PointDrag): void {
+    this.pointGizmo = at && drag ? { at: [...at], drag } : null;
+    if (!this.pointDragging) this.syncGizmo();
+    this.invalidate();
+  }
+
   /** Shift snaps the gizmo to 5 mm and 15° steps. */
   setSnap(on: boolean): void {
     this.gizmo.setTranslationSnap(on ? 5 : null);
@@ -864,20 +892,48 @@ export class Engine {
 
   /** Marks each link's centre of mass (#174) with a small three-axis cross, drawn over the bodies, or none. */
   setCentres(list: V3[] | null): void {
-    for (const c of this.centres.children as LineSegments[]) {
+    this.drawMarkers(this.centres, list, "cross");
+  }
+
+  /** Marks each tool point (#176) with a diamond, drawn over the bodies, or none. */
+  setTools(list: V3[] | null): void {
+    this.drawMarkers(this.tools, list, "diamond");
+  }
+
+  private drawMarkers(group: Group, list: V3[] | null, shape: "cross" | "diamond"): void {
+    for (const c of group.children as LineSegments[]) {
       c.geometry.dispose();
       (c.material as Material).dispose();
     }
-    this.centres.clear();
+    group.clear();
     if (list?.length) {
       const r = Math.max(4, (this.bounds()?.radius ?? 50) * 0.06);
       const pts: number[] = [];
-      for (const [x, y, z] of list) pts.push(x - r, y, z, x + r, y, z, x, y - r, z, x, y + r, z, x, y, z - r, x, y, z + r);
+      for (const [x, y, z] of list) {
+        if (shape === "cross") pts.push(x - r, y, z, x + r, y, z, x, y - r, z, x, y + r, z, x, y, z - r, x, y, z + r);
+        else {
+          // An octahedron's twelve edges.
+          const tips: V3[] = [
+            [x + r, y, z],
+            [x - r, y, z],
+            [x, y + r, z],
+            [x, y - r, z],
+          ];
+          for (const [a, b] of [
+            [0, 2],
+            [2, 1],
+            [1, 3],
+            [3, 0],
+          ] as const)
+            pts.push(...tips[a]!, ...tips[b]!);
+          for (const t of tips) pts.push(...t, x, y, z + r, ...t, x, y, z - r);
+        }
+      }
       const g = new BufferGeometry();
       g.setAttribute("position", new BufferAttribute(new Float32Array(pts), 3));
       const line = new LineSegments(g, new LineBasicMaterial({ color: this.palette.snap, depthTest: false, transparent: true }));
       line.renderOrder = 6;
-      this.centres.add(line);
+      group.add(line);
     }
     this.invalidate();
   }
@@ -1573,7 +1629,7 @@ export class Engine {
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
     this.arrow.setColor(p.snap);
     for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
-    for (const c of this.centres.children as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
+    for (const c of [...this.centres.children, ...this.tools.children] as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
     if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
@@ -1697,8 +1753,15 @@ export class Engine {
   private syncGizmo(): void {
     const o = this.gizmoBody ? this.bodies.get(this.gizmoBody) : undefined;
     const helper = this.gizmo.getHelper();
-    this.gizmo.enabled = !!o;
-    helper.visible = !!o;
+    const point = !o && this.pointGizmo ? this.pointGizmo.at : null;
+    this.gizmo.enabled = !!o || !!point;
+    helper.visible = !!o || !!point;
+    if (point && !this.pointDragging) {
+      this.gizmo.setMode("translate");
+      this.proxy.position.set(...point);
+      this.proxy.rotation.set(0, 0, 0);
+      this.proxy.updateMatrixWorld();
+    }
     if (!o) return;
     const r = o.body.rotation ?? { x: 0, y: 0, z: 0 };
     this.proxy.position.set(o.body.position.x, o.body.position.y, o.body.position.z);
@@ -1707,6 +1770,17 @@ export class Engine {
   }
 
   private onGizmoMove(done: boolean): void {
+    if (this.pointDragging) {
+      const drag = this.pointDragging;
+      const p = this.proxy.position;
+      if (done) {
+        this.pointDragging = null;
+        drag.end();
+        this.syncGizmo();
+      } else drag.move([p.x, p.y, p.z]);
+      this.invalidate();
+      return;
+    }
     const id = this.gizmoBody;
     const o = id ? this.bodies.get(id) : undefined;
     if (!o || !id) return;

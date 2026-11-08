@@ -25,6 +25,7 @@ import {
   type Vec2,
 } from "@bettercad/sketch";
 import { ORIGIN, SNAP_LABEL } from "./snap";
+import { loupeBox } from "./loupe";
 import { anchorOf, dimensionArt, offsetTo } from "./dimensions";
 import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, isPointPick, levelOrUpright, levelOrUprightPoints, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
@@ -399,6 +400,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
           {toolTag(s)}
         </span>
       )}
+      {s.loupe && <SketchLoupe s={s} view={eng.size} />}
       {s.cursor && s.cursor.kind !== "free" && (
         <span className="bc-snap-label" style={{ left: at(s.cursor.xy).x, top: at(s.cursor.xy).y }}>
           {s.cursor.label || SNAP_LABEL[s.cursor.kind]}
@@ -421,4 +423,23 @@ function toolTag(s: SketchSession): string {
     if (k) return CONSTRAINT_LABEL[k];
   }
   return t.tag;
+}
+
+/**
+ * The magnifier loupe: the sketch near the pointer, zoomed in, above the pointer (below it near the top of the view).
+ * The session draws into its canvas; this places it and says how far it zooms.
+ */
+/** About where the top bar and the sketch tool bars end, in view pixels. */
+const TOOLBARS_BOTTOM = 140;
+
+function SketchLoupe({ s, view }: { s: SketchSession; view: { width: number; height: number } }) {
+  const l = s.loupe!;
+  // Keep clear of the top bar and the sketch's tool bars, which float over the top of the view.
+  const box = loupeBox(l.why === "touch" ? l.pointer : l.anchor, { ...view, top: TOOLBARS_BOTTOM });
+  return (
+    <div className={cx("bc-loupe", box.below && "bc-below")} style={{ left: box.left, top: box.top }} aria-hidden="true">
+      <canvas ref={s.loupeCanvas} />
+      <span className="bc-loupe-zoom">{l.zoom}×</span>
+    </div>
+  );
 }

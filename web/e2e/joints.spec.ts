@@ -278,3 +278,84 @@ test("drive one hinge from another, and play it", async ({ page }) => {
   await expect(one.getByRole("button", { name: "Play" })).toBeVisible();
   await expect(one.getByRole("textbox", { name: /^Angle/ })).toHaveValue("-20");
 });
+
+/** Inverse kinematics (#176): a tool point on a link, dragged, turns the hinge it hangs on; Esc mid-drag puts it back. */
+test("drag an arm by its tool point", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  await click(page, 25, 0, 20);
+  await expect(page.getByText("Moves: Link 1")).toBeVisible();
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  await expect(page.getByText("Hangs from: Base")).toBeVisible();
+  await click(page, 25, 0, 20);
+  await expect(page.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
+  await page.keyboard.type("Set tool point");
+  await page.getByRole("option", { name: /Set tool point/ }).click();
+  await expect(page.getByText("Click a point on a link to drag the arm by. Esc cancels.")).toBeVisible();
+  await click(page, 33, 0, 20);
+  await expect(page.getByText("Set the tool point on Link 1. Drag Link 1 to move the arm.")).toBeVisible();
+
+  const box = (await page.getByTestId("view-canvas").boundingBox())!;
+  const at = async (p: number[]) => {
+    const q = await page.evaluate((v) => (window as unknown as View).__bcView.project(v), p);
+    return { x: box.x + q.x, y: box.y + q.y };
+  };
+  const angle = page.getByRole("complementary", { name: "Properties" }).getByRole("textbox", { name: /^Angle/ });
+  await expect(angle).toHaveValue("0");
+  // Drag the link a quarter turn round the hinge, by a point clear of the gizmo on the tool point: the tool point
+  // keeps its offset from the pointer.
+  const tool = await at([33, 0, 20]);
+  const from = await at([29, -5, 20]);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (const d of [20, 45, 70, 90]) {
+    const q = await at([25 + 8 * Math.cos((d * Math.PI) / 180), 8 * Math.sin((d * Math.PI) / 180), 20]);
+    await page.mouse.move(q.x + from.x - tool.x, q.y + from.y - tool.y, { steps: 3 });
+  }
+  await page.mouse.up();
+  await expect.poll(async () => Number(await angle.inputValue())).toBeGreaterThan(60);
+  await expect(page.getByRole("button", { name: /^Undo move the arm/i })).toBeVisible();
+
+  // Another drag, called off with Esc.
+  const kept = await angle.inputValue();
+  const start = await at([25, 8, 20]);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  const q = await at([25, -8, 20]);
+  await page.mouse.move(q.x, q.y, { steps: 6 });
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(page.getByText("Put the arm back")).toBeVisible();
+  await expect(angle).toHaveValue(kept);
+
+  // The gizmo on the tool point: its X arrow holds the drag to X, so the arm swings back towards the X axis.
+  const tip = await at([25, 8, 20]);
+  const ahead = await at([26, 8, 20]);
+  const len = Math.hypot(ahead.x - tip.x, ahead.y - tip.y);
+  const dir = { x: (ahead.x - tip.x) / len, y: (ahead.y - tip.y) / len };
+  const grab = { x: tip.x + dir.x * 45, y: tip.y + dir.y * 45 };
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + dir.x * 40, grab.y + dir.y * 40, { steps: 4 });
+  await page.mouse.move(grab.x + dir.x * 120, grab.y + dir.y * 120, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await angle.inputValue())).toBeLessThan(Number(kept) - 10);
+});

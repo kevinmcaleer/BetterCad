@@ -605,6 +605,15 @@ export interface ModelDoc {
   print?: PrintSettings;
   /** How the joints are posed (#173), saved with the view so a shared model opens as it was left. Not a step. */
   pose?: Pose;
+  /** Tool points (#176): a point on a link to drag the arm by, one per chain. Not a step. */
+  tools?: ToolPoint[];
+}
+
+/** A tool point (#176): where it sits on its link at home, and the joints kept out of the solve. */
+export interface ToolPoint {
+  link: string;
+  point: [number, number, number];
+  locked?: string[];
 }
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
@@ -2738,6 +2747,47 @@ export function setPose(doc: ModelDoc, id: string, value: number): ModelDoc {
   if (v === 0) delete pose[to.id];
   else pose[to.id] = v;
   return { ...doc, pose: Object.keys(pose).length ? pose : undefined };
+}
+
+/** The links above `link` on the joint tree, and it. */
+function linksUp(doc: ModelDoc, link: string): Set<string> {
+  const { joints } = build(doc);
+  const out = new Set<string>([link]);
+  for (let at: string | null = link, n = 0; at !== null && n <= joints.length; n++) {
+    const j: JointFeature | undefined = joints.find((x) => x.child === at);
+    at = j?.parent ?? null;
+    if (at) out.add(at);
+  }
+  return out;
+}
+
+/** Sets a link's tool point (#176), in place of any other on the same chain (above or below it). */
+export function setToolPoint(doc: ModelDoc, link: string, point: [number, number, number]): ModelDoc {
+  const up = linksUp(doc, link);
+  const kept = (doc.tools ?? []).filter((t) => !up.has(t.link) && !linksUp(doc, t.link).has(link));
+  return { ...doc, tools: [...kept, { link, point: [...point] }] };
+}
+
+/** Takes a link's tool point off. */
+export function clearToolPoint(doc: ModelDoc, link: string): ModelDoc {
+  const tools = (doc.tools ?? []).filter((t) => t.link !== link);
+  const next: ModelDoc = { ...doc, tools };
+  if (!tools.length) delete next.tools;
+  return next;
+}
+
+/** Keeps a joint out of every tool point's solve (#176), or lets it back in. */
+export function lockJoint(doc: ModelDoc, joint: string, locked: boolean): ModelDoc {
+  if (!doc.tools?.length) return doc;
+  return {
+    ...doc,
+    tools: doc.tools.map((t) => {
+      const rest = (t.locked ?? []).filter((id) => id !== joint);
+      const next: ToolPoint = { ...t, locked: locked ? [...rest, joint] : rest };
+      if (!next.locked!.length) delete next.locked;
+      return next;
+    }),
+  };
 }
 
 /** Puts every joint back home (#173). */

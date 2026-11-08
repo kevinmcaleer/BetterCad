@@ -120,3 +120,14 @@ A drive link makes one joint drive another, so turning one turns the other. Open
 - The pose keeps only the driving joint's value. Moving the driven joint, with its slider, its field or a drag in the view, moves the driver to match. Limits on either side stop both. A wheel goes the short way round, so what it drives doesn't jump at 180°. Drives can chain, but a joint can be driven only once, and a loop is refused.
 - Play, beside a joint that drives others in Properties, turns it out to each limit and home again over 4 seconds (a wheel turns once). It poses live only; Esc or Stop puts the pose back.
 - URDF export writes each driven joint with `<mimic joint multiplier offset>`, its multiplier in radians and metres.
+
+## Inverse kinematics (#176)
+
+Set tool point (command palette) and click a point on a link that hangs on a joint: the gripper's tip, say. A diamond marks it. Then drag any body in that link with the Select tool and the joints between it and Base move so the tool point follows the pointer, within their limits.
+
+- One tool point per chain: setting one on a link replaces any above or below it on the joint tree. Tool points are saved in the file (`tools` in the document, beside `pose`), and Remove the tool points takes them all off.
+- The solver is damped least squares over the chain's hinges, wheels and sliders, in `web/src/state/ik.ts` (pure TypeScript, no DOM or kernel). Position only. On each move it aims at the point on the pointer's ray nearest the tool point, so the arm settles where it comes closest to the ray.
+- Out of reach, the arm stretches as near as it can and the status says "Out of reach by 12 mm".
+- With a tool point set, each joint in Properties has Lock, which keeps it still when you drag the arm. A joint driven by another (#194) follows its driver and isn't solved itself.
+- Esc during a drag puts the arm back. Each drag is one undo step, "Move the arm".
+- The move gizmo sits on the tool point (of the selected link, or the only one). Drag an arrow to move the tool point along that axis only, a square to keep it in that plane, or the centre to move it freely. The arm follows as above.

@@ -170,6 +170,8 @@ import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
 import type { BodyDrag, WorldPlaneName } from "../viewport/engine";
+import type { IkDragHooks } from "../joint/ikDrag";
+import type { IkProblem } from "../state/ik";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
@@ -709,12 +711,92 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (hasJoints && !dragMaths.current) void import("../joint/poseDrag").then((m) => (dragMaths.current = m));
   }, [hasJoints]);
   useEscape(poseDrag !== null, () => poseDrag?.cancel(), ESC.drag);
-  const poseState = useRef({ joints: built.joints, parts, moves: linkMoves, pose: shownPose, livePose });
-  poseState.current = { joints: built.joints, parts, moves: linkMoves, pose: shownPose, livePose };
+  const poseState = useRef({ joints: built.joints, parts, moves: linkMoves, pose: shownPose, livePose, raw: pose, tools: doc.tools });
+  poseState.current = { joints: built.joints, parts, moves: linkMoves, pose: shownPose, livePose, raw: pose, tools: doc.tools };
+  // Tool points (#176): click a point on a link to drag the arm by; the solver loads once one is wanted.
+  const [toolPick, setToolPick] = useState(false);
+  const ikMaths = useRef<typeof import("../joint/ikDrag") | null>(null);
+  const [hasIk, setHasIk] = useState(false);
+  const hasTools = !!doc.tools?.length;
+  useEffect(() => {
+    if ((hasTools || toolPick) && !ikMaths.current)
+      void import("../joint/ikDrag").then((m) => {
+        ikMaths.current = m;
+        setHasIk(true);
+      });
+  }, [hasTools, toolPick]);
+  useEscape(
+    toolPick,
+    () => {
+      setToolPick(false);
+      say("Put the tool point down");
+    },
+    ESC.tool,
+  );
+  const takePoint = useCallback(
+    (hit: { body: string; point: [number, number, number] } | null) => {
+      setToolPick(false);
+      const { joints, parts: all, moves } = poseState.current;
+      const link = hit ? all.find((p) => p.id === hit.body)?.link : undefined;
+      if (!hit || !link || !joints.some((j) => j.child === link)) {
+        say("Pick a point on a link that hangs on a joint", true);
+        return true;
+      }
+      const m = moves.get(link);
+      void import("../joint/ikDrag").then((ik) => {
+        const home = m ? ik.homeOf(m, hit.point) : hit.point;
+        const name = live.current.doc.features.find((f) => f.id === link)?.name ?? "the link";
+        store.edit((d) => ik.setToolPoint(d, link, home), "Set the tool point");
+        store.seal();
+        say(`Set the tool point on ${name}. Drag ${name} to move the arm.`);
+      });
+      return true;
+    },
+    [store, say],
+  );
+  /** Starts an arm drag by a link's tool point (#176): by the pointer on the link, or by the gizmo's arrows. */
+  const ikDrag = useCallback(
+    <D extends { cancel(): void }>(
+      link: string,
+      make: (ik: typeof import("../joint/ikDrag"), problem: IkProblem, start: Pose, hooks: IkDragHooks) => D,
+    ): D | null => {
+      const { joints, raw, livePose: before, tools } = poseState.current;
+      const tool = tools?.find((t) => t.link === link);
+      const ik = ikMaths.current;
+      if (!tool || !ik) return null;
+      const problem = { joints, drives: drivesRef.current.drives, link, point: tool.point, locked: tool.locked };
+      const finish = () => setPoseDrag(null);
+      const drag = make(ik, problem, raw ?? {}, {
+        show: setLivePose,
+        commit: (kept, miss) => {
+          finish();
+          if (store.isLocked()) setLivePose(kept);
+          else {
+            store.edit((d) => ({ ...d, pose: Object.keys(kept).length ? kept : undefined }), "Move the arm", "pose-ik");
+            store.seal();
+            setLivePose(null);
+          }
+          if (miss >= 1) say(`Out of reach by ${Math.round(miss)} mm`);
+        },
+        revert: (cancelled) => {
+          finish();
+          setLivePose(before);
+          if (cancelled) say("Put the arm back");
+        },
+      });
+      setPoseDrag({ cancel: () => drag.cancel() });
+      return drag;
+    },
+    [store, say],
+  );
   const bodyDrag = useCallback(
     (pick: { body: string }, at: { x: number; y: number }): BodyDrag | null => {
-      const { joints, parts: all, moves, pose: now, livePose: before } = poseState.current;
+      const { joints, parts: all, moves, pose: now, livePose: before, tools } = poseState.current;
       const link = all.find((p) => p.id === pick.body)?.link;
+      if (link && tools?.some((t) => t.link === link)) {
+        const view = vp.ref.current?.engine();
+        return view ? ikDrag(link, (ik, problem, start, hooks) => ik.ikDrag(problem, start, view, at, hooks)) : null;
+      }
       const j = link ? joints.find((x) => x.child === link && movable(x)) : undefined;
       const engine = vp.ref.current?.engine();
       const maths = dragMaths.current;
@@ -755,8 +837,38 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         cancel,
       };
     },
-    [vp.ref, changePose, commitPose, say],
+    [vp.ref, changePose, commitPose, say, ikDrag],
   );
+  useEffect(() => {
+    const eng = vp.ref.current?.engine();
+    const tools = doc.tools ?? [];
+    if (!posing || !tools.length) return eng?.setTools(null);
+    eng?.setTools(
+      tools.map((t) => {
+        const m = linkMoves.get(t.link);
+        return m ? mat4Apply(m, t.point) : t.point;
+      }),
+    );
+  }, [doc.tools, linkMoves, posing, vp.ref]);
+  // The move gizmo sits on the tool point of the selected link, or on the only one (#176): its arrows hold the drag to an
+  // axis, its squares to a plane.
+  const gizmoTool = useMemo(() => {
+    const tools = doc.tools ?? [];
+    const picked = parts.find((p) => selection.includes(p.id) && tools.some((t) => t.link === p.link))?.link;
+    return tools.find((t) => t.link === picked) ?? (tools.length === 1 ? tools[0] : undefined);
+  }, [doc.tools, parts, selection]);
+  useEffect(() => {
+    const eng = vp.ref.current?.engine();
+    if (!eng) return;
+    if (!posing || !gizmoTool || !hasIk) return eng.setPointGizmo(null);
+    const m = linkMoves.get(gizmoTool.link);
+    let drag: ReturnType<typeof import("../joint/ikDrag").ikGizmoDrag> | null = null;
+    eng.setPointGizmo(m ? mat4Apply(m, gizmoTool.point) : gizmoTool.point, {
+      start: () => (drag = ikDrag(gizmoTool.link, (ik, problem, start, hooks) => ik.ikGizmoDrag(problem, start, hooks))),
+      move: (p) => drag?.move(p),
+      end: () => drag?.end(),
+    });
+  }, [gizmoTool, linkMoves, posing, hasIk, ikDrag, vp.ref]);
   useEffect(() => {
     const moves = new Map<string, Matrix4>();
     if (posing)
@@ -1370,6 +1482,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const handlers = useRef({
     homeJoints: () => {},
+    armToolPoint: () => {},
+    clearToolPoints: () => {},
     openExport: () => {},
     openRender: () => {},
     startTour: () => {},
@@ -1415,6 +1529,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   });
   handlers.current = {
     homeJoints,
+    armToolPoint: () => {
+      setTool("select");
+      setToolPick(true);
+      say("Click a point on a link to drag the arm by. Esc cancels.");
+    },
+    clearToolPoints: () => {
+      store.edit((d) => ({ ...d, tools: undefined }), "Remove the tool points");
+      say("Removed the tool points");
+    },
     openExport: () => setExportOpen(true),
     openRender: () => openRender(),
     startTour: tour.start,
@@ -1740,6 +1863,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "joint",
         run: () => setCentresShown((on) => !on),
         keywords: "mass weight balance com links robot",
+      },
+      {
+        id: "pose.tool",
+        scope: "model",
+        label: "Set tool point",
+        group: "Edit",
+        icon: "point",
+        run: () => h().armToolPoint(),
+        when: () => build(live.current.doc).joints.some(movable),
+        keywords: "ik inverse kinematics gripper tip end effector arm drag robot",
+      },
+      {
+        id: "pose.tool.clear",
+        scope: "model",
+        label: "Remove the tool points",
+        group: "Edit",
+        icon: "point",
+        run: () => h().clearToolPoints(),
+        when: () => !!live.current.doc.tools?.length,
+        keywords: "ik inverse kinematics gripper tip end effector",
       },
       {
         id: "drive.add",
@@ -3098,6 +3241,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onBodyDrag={posing ? bodyDrag : undefined}
+            onPoint={toolPick ? takePoint : undefined}
             onCamera={composedCamera}
             onMenu={(pick, at) => {
               if (sketch.editing) return;
@@ -3215,6 +3359,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                         playing,
                         onPlay: play,
                         nameOf: (id: string) => built.joints.find((j) => j.id === id)?.name ?? "another joint",
+                        locked: doc.tools?.length ? [...new Set(doc.tools.flatMap((t) => t.locked ?? []))] : undefined,
+                        onLock: doc.tools?.length
+                          ? (id: string, on: boolean) => {
+                              const ik = ikMaths.current;
+                              if (ik) store.edit((d) => ik.lockJoint(d, id, on), on ? "Lock the joint" : "Unlock the joint");
+                            }
+                          : undefined,
                       }
                     : undefined
                 }

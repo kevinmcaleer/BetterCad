@@ -1,8 +1,8 @@
 {
   "$comment": "Performance budgets (#108), checked by `npm run budgets` in CI's budgets job. Raise a number only in a pull request that says why. Kernel and viewport baselines are a CI runner's own medians (2 to 3 times a laptop's); the check fails when a median is over its baseline by more than the tolerance.",
   "bundle": {
-    "$comment": "KB gzipped, per chunk. The shell is the JavaScript index.html loads before first paint. totalJs went from 600 to 620 in #312: main was already at 601.9 after the text tool (#309) added fonts (glyphs, 50 KB, loaded only when you place text), alongside the path tracer (63 KB, loaded only for Render); the shell cap is what guards first paint.",
-    "shell": 355,
+    "$comment": "KB gzipped, per chunk. The shell is the JavaScript index.html loads before first paint. totalJs went from 600 to 620 in #312: main was already at 601.9 after the text tool (#309) added fonts (glyphs, 50 KB, loaded only when you place text), alongside the path tracer (63 KB, loaded only for Render); the shell cap is what guards first paint. The shell went from 355 to 358 in #310: main was at 354.6, and dragging an arm by its tool point (#176) adds 1.2 KB of glue (the tool marker, the palette commands, the lock toggle) after its solver and drag moved to a lazy chunk.",
+    "shell": 358,
     "pages": 120,
     "kernelClient": 30,
     "totalJs": 620
