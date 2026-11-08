@@ -40,7 +40,7 @@ describe("useWhatsNew", () => {
   const settle = async () => {
     await act(async () => {
       vi.advanceTimersByTime(10);
-      await import("./notes");
+      await import("./check");
     });
     await act(async () => {});
   };
@@ -60,7 +60,10 @@ describe("useWhatsNew", () => {
     await settle();
     expect(result.current.card).toBe(true);
     expect(result.current.fresh).toEqual([NOTES[0]!.id]);
-    act(() => result.current.show());
+    await act(async () => {
+      result.current.show();
+      await import("./check");
+    });
     expect(result.current.open).toBe(true);
     expect(result.current.card).toBe(false);
     expect(loadSeen()?.has(NOTES[0]!.id)).toBe(true);
