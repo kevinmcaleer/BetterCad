@@ -104,7 +104,6 @@ import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
 import { ParamsPanel } from "./ParamsPanel";
 import { CommandPalette } from "./CommandPalette";
-import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { useFiles } from "../files/useFiles";
@@ -181,8 +180,9 @@ const TIMELINE_KEY = "bettercad.timeline";
 
 const ORIENT_KEY = "bettercad.orientWeights";
 
-/** The Export dialog loads on first use, keeping the first-paint bundle in budget. */
+/** The Export and Keyboard shortcuts dialogs load on first use, keeping the first-paint bundle in budget. */
 const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
 function readOrientWeights(): OrientWeights {
@@ -2579,7 +2579,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         />
       )}
       {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
-      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog open onClose={() => setShortcutsOpen(false)} commands={commands} />
+        </Suspense>
+      )}
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <TooltipLayer />
     </>
