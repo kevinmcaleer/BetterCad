@@ -1,27 +1,25 @@
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { ArmedBar, Banner, Button, MenuButton, NumberField, evaluate, PropRow, PropsPanel, ToolButton, Toolbar, type PropsSection } from "@bettercad/ui";
+import { ArmedBar, Banner, Button, MenuButton, cx, NumberField, evaluate, PropRow, PropsPanel, ToolButton, Toolbar, type PropsSection } from "@bettercad/ui";
 import {
   CONSTRAINT_LABEL,
   SketchIndex,
   add,
-  angleOf,
   constraintRefs,
   formatDimension,
-  mid,
   norm,
   perp,
-  polar,
   scale,
   sub,
   toWorld,
   type Constraint,
   type Dimension,
-  type Entity,
   type Id,
   type Vec2,
 } from "@bettercad/sketch";
 import { formatCombo } from "../state/commands";
 import { SNAP_LABEL } from "./snap";
+import { OPTION_ROWS } from "./options";
+import { anchorOf, dimensionArt } from "./dimensions";
 import { CONSTRAINT_TOOLS, SKETCH_TOOLS, isDrawTool, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
 
@@ -97,8 +95,6 @@ export function SketchBars({ s }: { s: SketchSession }) {
         {s.stool === "polygon" && (
           <NumberField label="Sides" unit="none" value={s.sides} min={3} max={12} step={1} precision={0} onCommit={(v) => s.setSides(Math.round(v))} />
         )}
-        {drawing && <Button label="Grid" title="Snap to the grid. Hold Shift to place freely." on={s.gridSnap} onClick={() => s.setGridSnap(!s.gridSnap)} />}
-        <Button label="Constraints" title="Show the constraint marks" on={s.showConstraints} onClick={() => s.setShowConstraints(!s.showConstraints)} />
         <span className="bc-armed-note">{s.status}</span>
       </ArmedBar>
     </>
@@ -140,35 +136,16 @@ const GLYPH: Partial<Record<Constraint["type"], string>> = {
   symmetric: "S",
 };
 
-/** Where a dimension's pill sits, in sketch mm. */
-function dimAnchor(idx: SketchIndex, d: Dimension, px: number, centre: Vec2): Vec2 {
-  const [r0, r1] = d.refs;
-  const e0 = idx.get(r0!);
-  const e1 = r1 ? idx.get(r1) : undefined;
-  let base: Vec2 = [0, 0];
-  if (d.kind === "length" && e0?.kind === "line") {
-    const a = idx.xy(e0.a);
-    const b = idx.xy(e0.b);
-    // Outside the shape: on the side of the line away from the middle of the sketch.
-    const n = perp(norm(sub(b, a)));
-    const m = mid(a, b);
-    const side = n[0] * (centre[0] - m[0]) + n[1] * (centre[1] - m[1]) > 0 ? -1 : 1;
-    base = add(m, scale(n, side * 18 * px));
-  } else if ((d.kind === "radius" || d.kind === "diameter") && (e0?.kind === "circle" || e0?.kind === "arc")) {
-    const c = idx.xy(e0.c);
-    const ang = e0.kind === "arc" ? (angleOf(sub(idx.xy(e0.a), c)) + angleOf(sub(idx.xy(e0.b), c))) / 2 : Math.PI / 4;
-    base = polar(c, e0.r, ang);
-  } else if (e0 && e1) base = mid(anchorOf(idx, e0), anchorOf(idx, e1));
-  else if (e0) base = anchorOf(idx, e0);
-  return add(base, d.labelOffset);
-}
-
-function anchorOf(idx: SketchIndex, e: Entity): Vec2 {
-  if (e.kind === "point") return [e.x, e.y];
-  if (e.kind === "line") return mid(idx.xy(e.a), idx.xy(e.b));
-  if (e.kind === "circle") return polar(idx.xy(e.c), e.r, -Math.PI / 4);
-  const c = idx.xy(e.c);
-  return polar(c, e.r, (angleOf(sub(idx.xy(e.a), c)) + angleOf(sub(idx.xy(e.b), c))) / 2);
+/** An arrowhead 9 px long and 6 px wide, its tip at `tip`, pointing away from `back` (a pixel behind it). */
+function arrowHead(tip: { x: number; y: number }, back: { x: number; y: number }): string {
+  let dx = tip.x - back.x;
+  let dy = tip.y - back.y;
+  const l = Math.hypot(dx, dy) || 1;
+  dx /= l;
+  dy /= l;
+  const bx = tip.x - dx * 9;
+  const by = tip.y - dy * 9;
+  return `${tip.x},${tip.y} ${bx - dy * 3},${by + dx * 3} ${bx + dy * 3},${by - dx * 3}`;
 }
 
 /** Typing a size into a dimension's pill. Enter or leaving the field sets it; Esc (through the Esc stack) cancels. */
@@ -216,6 +193,11 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   const conflicting = new Set(s.result?.conflicting ?? []);
   const pick = (id: Id, e: ReactMouseEvent) => s.setSel((sel) => (e.shiftKey ? (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]) : [id]));
 
+  // Sizes hide with the palette's Dimensions option, except one being typed into or picked.
+  const dims = s.sketch.dimensions
+    .filter((d) => s.options.dimensions || s.dimEdit === d.id || s.sel.includes(d.id))
+    .map((d) => ({ d, art: dimensionArt(idx, d, px, centre), on: s.sel.includes(d.id) || conflicting.has(d.id) }));
+
   const placed = new Map<string, number>();
   const glyphs = s.showConstraints
     ? s.sketch.constraints.flatMap((c) => {
@@ -241,9 +223,26 @@ export function SketchLabels({ s }: { s: SketchSession }) {
 
   return (
     <div className="bc-snaps" data-tick={s.camTick}>
-      {s.sketch.dimensions.map((d) => {
-        const p = at(dimAnchor(idx, d, px, centre));
-        const on = s.sel.includes(d.id) || conflicting.has(d.id);
+      {dims.length > 0 && (
+        <svg className="bc-dim-art" aria-hidden="true">
+          {dims.map(({ d, art, on }) => (
+            <g key={d.id} className={cx("bc-dim-mark", on && "bc-on", !d.driving && "bc-driven")}>
+              {art.lines.map(([a, b], i) => {
+                const p = at(a);
+                const q = at(b);
+                return <line key={i} x1={p.x} y1={p.y} x2={q.x} y2={q.y} />;
+              })}
+              {art.arrows.map(({ tip, dir }, i) => {
+                const t = at(tip);
+                const back = at(add(tip, scale(dir, -px)));
+                return <polygon key={`a${i}`} points={arrowHead(t, back)} />;
+              })}
+            </g>
+          ))}
+        </svg>
+      )}
+      {dims.map(({ d, art, on }) => {
+        const p = at(art.text);
         if (s.dimEdit === d.id) {
           return (
             <DimInput
@@ -295,22 +294,30 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   );
 }
 
-/** The right column while sketching: the sketch's plane and state, its sizes and its constraints. */
+/**
+ * The sketch palette, floating on the right while a sketch is open, after Fusion's: how constrained the sketch is,
+ * its plane, what the view shows (the grid, snapping, profiles, points, sizes, constraint marks, projected and
+ * construction geometry), Look at, the sizes and constraints, and Finish sketch at the foot.
+ */
 export function SketchPanel({ s }: { s: SketchSession }) {
   if (!s.sketch || !s.feature) return null;
   const sk = s.sketch;
   const conflicting = new Set(s.result?.conflicting ?? []);
   const redundant = new Set(s.result?.redundant ?? []);
   const plane = sk.plane.kind === "world" ? `${sk.plane.plane} plane` : "A face";
+  const state = conflicting.size > 0 ? "bad" : s.result?.dof === 0 ? "done" : "free";
   const sections: PropsSection[] = [
     {
       id: "sketch",
       title: s.feature.name,
       content: (
         <>
+          <p className={`bc-sk-status bc-sk-${state}`} role="status">
+            <span className="bc-sk-dot" aria-hidden="true" />
+            {s.status}
+          </p>
           <PropRow label="On">{plane}</PropRow>
           <NumberField label="Offset" value={sk.plane.offset} step={1} onCommit={(v) => s.setOffset(v)} />
-          <PropRow label="State">{s.status}</PropRow>
           {conflicting.size > 0 && <Banner tone="danger">Some constraints fight each other. Delete one of the ones in red.</Banner>}
           {s.finishWarn && (
             <Banner
@@ -325,6 +332,24 @@ export function SketchPanel({ s }: { s: SketchSession }) {
               This sketch has no closed shape yet, so it can't be extruded.
             </Banner>
           )}
+        </>
+      ),
+    },
+    {
+      id: "sketch-options",
+      title: "Options",
+      content: (
+        <>
+          <div className="bc-check-row">
+            <span>Look at</span>
+            <Button icon="camera" size="dense" title="Look straight at the sketch" onClick={s.lookAtSketch} />
+          </div>
+          {OPTION_ROWS.map((o) => (
+            <label key={o.id} className="bc-check-row" title={o.title}>
+              <span>{o.label}</span>
+              <input type="checkbox" checked={s.options[o.id]} onChange={(e) => s.setOption(o.id, e.currentTarget.checked)} />
+            </label>
+          ))}
         </>
       ),
     },
@@ -376,5 +401,11 @@ export function SketchPanel({ s }: { s: SketchSession }) {
       ),
     },
   ];
-  return <PropsPanel label="Sketch" sections={sections} />;
+  return (
+    <PropsPanel
+      label="Sketch palette"
+      sections={sections}
+      footer={<Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />}
+    />
+  );
 }

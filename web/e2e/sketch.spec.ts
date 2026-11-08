@@ -83,7 +83,7 @@ test("an open shape asks before finishing", async ({ page }) => {
   await click(page, 0, 0);
   await click(page, 20, 0);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Finish sketch" }).click();
+  await page.getByRole("toolbar", { name: "Sketch tools" }).getByRole("button", { name: "Finish sketch" }).click();
   await expect(page.getByText("This sketch has no closed shape yet, so it can't be extruded.")).toBeVisible();
   await page.getByRole("button", { name: "Finish anyway" }).click();
   await expect(page.getByRole("toolbar", { name: "Model tools" })).toBeVisible();
@@ -162,4 +162,42 @@ test("the origin is a snap point: a rectangle sized from it is fully constrained
   // Four from the rectangle, and the corner fixed on the origin.
   await expect(page.getByRole("list", { name: "Constraints" }).getByRole("listitem")).toHaveCount(5);
   await expect(page.locator(".bc-help")).toContainText(/fully constrained/i);
+});
+
+test("the sketch palette shows the state, hides sizes and looks at the sketch", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await click(page, -10, -10);
+  const far = await at(page, 10, 5);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width" }).fill("30");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height" }).fill("20");
+  await page.keyboard.press("Enter");
+
+  const palette = page.getByRole("complementary", { name: "Sketch palette" });
+  await expect(palette.getByRole("status")).toHaveText("2 degrees of freedom");
+  const sizes = palette.getByRole("checkbox", { name: "Dimensions" });
+  await expect(sizes).toBeChecked();
+  await sizes.uncheck();
+  await expect(page.getByRole("button", { name: "30 mm", exact: true })).toBeHidden();
+  await sizes.check();
+  await expect(page.getByRole("button", { name: "30 mm", exact: true })).toBeVisible();
+
+  // Turned to the side, Look at brings the view square on to the sketch again.
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("iso"));
+  await page.waitForTimeout(1200);
+  await palette.getByRole("button", { name: "Look straight at the sketch" }).click();
+  await page.waitForTimeout(1200);
+  const a = await at(page, 0, 0);
+  const b = await at(page, 10, 0);
+  expect(Math.abs(a.y - b.y)).toBeLessThan(1);
+
+  await palette.getByRole("button", { name: "Finish sketch" }).click();
+  await expect(page.getByText("Finished Sketch 1")).toBeVisible();
 });

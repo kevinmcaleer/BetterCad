@@ -157,3 +157,52 @@
   display: inline-flex;
   gap: 6px;
 }
+/* The sketch palette: its state line, the option rows (label left, checkbox or button right) and Finish at the foot. */
+.bc-sk-status {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  margin: 0;
+  font-weight: 600;
+}
+.bc-sk-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bc-color-snap);
+}
+.bc-sk-done .bc-sk-dot {
+  background: var(--bc-color-ink);
+}
+.bc-sk-bad {
+  color: var(--bc-color-danger);
+}
+.bc-sk-bad .bc-sk-dot {
+  background: var(--bc-color-danger);
+}
+.bc-check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-3);
+  min-height: 28px;
+  cursor: pointer;
+}
+.bc-check-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--bc-color-accent);
+  cursor: pointer;
+}
+.bc-props-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--bc-space-6));
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--bc-space-5) calc(-1 * var(--bc-space-6)) calc(-1 * var(--bc-space-6));
+  padding: var(--bc-space-4) var(--bc-space-6);
+  border-top: 1px solid var(--bc-color-line);
+  background: var(--bc-color-rail);
+}

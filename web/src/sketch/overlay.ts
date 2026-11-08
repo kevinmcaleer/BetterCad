@@ -43,11 +43,19 @@ export interface OverlayFill {
   holes: Vec2[][];
   shade: Shade;
 }
+/** The sketch grid on the sketch's plane: minor and major lines, in sketch mm. */
+export interface OverlayGrid {
+  minor: Vec2[][];
+  major: Vec2[][];
+}
 export interface OverlayView {
   frame: Frame;
   curves: OverlayCurve[];
   points: OverlayPoint[];
   fills?: OverlayFill[];
+  /** How strong the fills are: 0.35 for Extrude's pickable shapes, fainter for the profiles shown while sketching. */
+  fillOpacity?: number;
+  grid?: OverlayGrid | null;
 }
 
 const ORDER = 20;
@@ -82,6 +90,17 @@ export class SketchOverlay {
     m.frustumCulled = false;
     this.group.add(m);
     return m;
+  })();
+  /** The sketch grid, under everything else in the sketch, one pixel wide and faint. */
+  private gridMat = new LineMaterial({ linewidth: 1, vertexColors: true, worldUnits: false, transparent: true, opacity: 0.6 });
+  private gridLines = (() => {
+    this.gridMat.depthTest = false;
+    const l = new LineSegments2(new LineSegmentsGeometry(), this.gridMat);
+    l.renderOrder = ORDER - 2;
+    l.frustumCulled = false;
+    l.visible = false;
+    this.group.add(l);
+    return l;
   })();
   private palette: Palette = readPalette();
 
@@ -150,6 +169,8 @@ export class SketchOverlay {
       this.points[i]!.geometry.dispose();
       this.points[i]!.geometry = g;
     });
+    this.drawGrid(v.grid ?? null);
+    this.fillMat.opacity = v.fillOpacity ?? 0.35;
     const pos: number[] = [];
     const col: number[] = [];
     for (const f of v.fills ?? []) {
@@ -175,8 +196,34 @@ export class SketchOverlay {
     this.engine.invalidate();
   }
 
+  private drawGrid(grid: OverlayGrid | null): void {
+    const g = new LineSegmentsGeometry();
+    const pos: number[] = [];
+    const col: number[] = [];
+    if (grid) {
+      for (const [lines, c] of [
+        [grid.minor, this.palette.grid],
+        [grid.major, this.palette["grid-major"]],
+      ] as const) {
+        for (const [a, b] of lines) {
+          pos.push(a![0], a![1], 0, b![0], b![1], 0);
+          col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+        }
+      }
+    }
+    if (pos.length) {
+      g.setPositions(pos);
+      g.setColors(col);
+    }
+    this.gridLines.geometry.dispose();
+    this.gridLines.geometry = g;
+    this.gridLines.visible = pos.length > 0;
+  }
+
   dispose(): void {
     this.engine.removeOverlay(this.group);
+    this.gridLines.geometry.dispose();
+    this.gridMat.dispose();
     for (const l of this.lines) l.geometry.dispose();
     for (const p of this.points) p.geometry.dispose();
     this.fill.geometry.dispose();

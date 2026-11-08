@@ -113,6 +113,8 @@
   --bc-color-part-ghost: #a6a6a6;
   /* Geometry feedback: snap points, joint rows and icons, the section arrow, the angle dial, face tints (at 32% alpha), the Section bar's title. Never for UI chrome, so blue always means geometry. */
   --bc-color-snap: #1f6fe0;
+  /* Sketch dimensions: the extension lines, arrows and sizes drawn on a sketch, green as in Fusion. Holds 4.5:1 on `viewport`. */
+  --bc-color-dimension: #237a2e;
   /* The snap or face already picked (the second face of a joint), with `picked-edge` as its ring. */
   --bc-color-picked: #ff922b;
   /* Ring round a `picked` snap marker. */
@@ -184,6 +186,7 @@
   --bc-color-part-highlight: #5b86d6;
   --bc-color-part-ghost: #6b6f78;
   --bc-color-snap: #5b9cf6;
+  --bc-color-dimension: #6fd47a;
   --bc-color-picked: #ffa94d;
   --bc-color-picked-edge: #ff922b;
   --bc-color-danger: #ff6b6b;
@@ -229,6 +232,7 @@
   --bc-color-part-highlight: #3b6fd6;
   --bc-color-part-ghost: #6b6f78;
   --bc-color-snap: #5b9cf6;
+  --bc-color-dimension: #6fd47a;
   --bc-color-picked: #ffa94d;
   --bc-color-picked-edge: #ff922b;
   --bc-color-danger: #ff6b6b;
