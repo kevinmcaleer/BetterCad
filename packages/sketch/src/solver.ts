@@ -107,14 +107,20 @@ export function toPrimitives(sketch: Sketch): SketchPrimitive[] {
   }
   for (const e of sketch.entities) {
     if (e.kind === "line") out.push({ id: e.id, type: "line", p1_id: e.a, p2_id: e.b });
-    else if (e.kind === "circle") out.push({ id: e.id, type: "circle", c_id: e.c, radius: e.r });
-    else if (e.kind === "arc") {
+    else if (e.kind === "circle") {
+      out.push({ id: e.id, type: "circle", c_id: e.c, radius: e.r });
+      // A projected circle is the model's: its radius is held as well as its centre.
+      if (e.projectedFrom) out.push({ id: `${e.id}#held`, type: "circle_radius", c_id: e.id, radius: e.r });
+    } else if (e.kind === "arc") {
       const c = idx.xy(e.c);
       const a0 = angleOf(sub(idx.xy(e.a), c));
       let a1 = angleOf(sub(idx.xy(e.b), c));
       if (a1 <= a0) a1 += 2 * Math.PI;
       out.push({ id: e.id, type: "arc", c_id: e.c, start_id: e.a, end_id: e.b, start_angle: a0, end_angle: a1, radius: e.r });
-      out.push({ id: `${e.id}#rules`, type: "arc_rules", a_id: e.id });
+      // A projected arc with its centre and ends all held needs no rules tying them (they would only repeat the
+      // holds): its radius is held instead.
+      if (e.projectedFrom && fixed.has(e.c) && fixed.has(e.a) && fixed.has(e.b)) out.push({ id: `${e.id}#held`, type: "arc_radius", a_id: e.id, radius: e.r });
+      else out.push({ id: `${e.id}#rules`, type: "arc_rules", a_id: e.id });
     }
   }
   for (const c of sketch.constraints) if (!c.suppressed) out.push(...constraintPrimitives(c, idx));

@@ -520,6 +520,23 @@ export function grow(oc: OC, shape: TopoDS_Shape, gap: number): TopoDS_Shape {
   });
 }
 
+/**
+ * The body shrunk by `d` on every side (#174): the core a slicer fills at the infill percentage. Null when the offset
+ * can't be made or leaves nothing (a body thinner than twice `d`).
+ */
+export function inset(oc: OC, shape: TopoDS_Shape, d: number): TopoDS_Shape | null {
+  try {
+    const mk = new oc.BRepOffsetAPI_MakeOffsetShape();
+    mk.PerformByJoin(shape, -d, 1e-4, oc.BRepOffset_Mode.BRepOffset_Skin, false, false, oc.GeomAbs_JoinType.GeomAbs_Intersection, false, progress(oc));
+    if (!mk.IsDone()) return null;
+    const out = mk.Shape();
+    const solid = count(oc, out, "solid") ? out : solidOfShell(oc, out);
+    return valid(oc, solid) ? solid : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A closed shell (what a sealed offset comes back as) made into a solid. */
 function solidOfShell(oc: OC, shape: TopoDS_Shape): TopoDS_Shape {
   const ex = new oc.TopExp_Explorer(shape, oc.TopAbs_ShapeEnum.TopAbs_SHELL, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
@@ -545,6 +562,8 @@ export interface Measure {
   volume: number;
   area: number;
   centroid: [number, number, number];
+  /** Inertia about the centroid at unit density, mm⁵, as [ixx, iyy, izz, ixy, ixz, iyz] tensor entries (#174). */
+  inertia: [number, number, number, number, number, number];
   bbox: { min: [number, number, number]; max: [number, number, number] };
   solids: number;
   faces: number;
@@ -565,10 +584,22 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
   oc.BRepBndLib.AddOptimal(shape, box, false, false);
   const lo = box.CornerMin();
   const hi = box.CornerMax();
+  // gp_Mat isn't bound, so the tensor comes from moments about six axes through the centre of mass: the three axes give
+  // the diagonal, and the diagonals between two axes give the products, I(u) = (Iaa + Ibb)/2 + Iab for u = (a + b)/√2.
+  const about = (x: number, y: number, z: number) => {
+    const ax = new oc.gp_Ax1(c, new oc.gp_Dir(x, y, z));
+    const v = props.MomentOfInertia(ax);
+    ax.delete();
+    return v;
+  };
+  const [ixx, iyy, izz] = [about(1, 0, 0), about(0, 1, 0), about(0, 0, 1)];
+  const product = (a: number, b: number, u: number) => u - (a + b) / 2;
+  const inertia: Measure["inertia"] = [ixx, iyy, izz, product(ixx, iyy, about(1, 1, 0)), product(ixx, izz, about(1, 0, 1)), product(iyy, izz, about(0, 1, 1))];
   const out: Measure = {
     volume,
     area: surf.Mass(),
     centroid: [c.X(), c.Y(), c.Z()],
+    inertia,
     bbox: { min: [lo.X(), lo.Y(), lo.Z()], max: [hi.X(), hi.Y(), hi.Z()] },
     solids: count(oc, shape, "solid"),
     faces: count(oc, shape, "face"),

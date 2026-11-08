@@ -1,7 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Banner, Button, MenuButton, type MenuEntry } from "@bettercad/ui";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
-import { samplesText, type RenderSession, type SaveSize } from "./session";
+import { QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
 import { orbit, pan, zoom, type CameraState } from "../viewport/camera";
 
 /** Under this many samples after SLOW_MS, the browser can't render this well. */
@@ -11,6 +11,9 @@ const SLOW_SAMPLES = 2;
 const SAVE_SAMPLES = 64;
 
 export const SLOW_TEXT = "Your browser can't render this well. Export glTF to render in Blender.";
+
+/** Tests cap the samples so a software GPU finishes. */
+const testMax = () => (window as unknown as { __bcRenderMax?: number }).__bcRenderMax;
 
 const useSession = (s: RenderSession) => useSyncExternalStore(s.subscribe, s.get);
 
@@ -46,8 +49,7 @@ export function RenderPicture({ session, bodies, camera, onCamera, onSave }: Ren
       return;
     }
     r.current = pr;
-    const t = window as unknown as { __bcRenderMax?: number };
-    if (t.__bcRenderMax) pr.maxSamples = t.__bcRenderMax;
+    pr.maxSamples = testMax() ?? samplesFor(session.get().quality);
     const fit = () => pr.setSize(Math.max(1, el.clientWidth), Math.max(1, el.clientHeight));
     fit();
     const ro = new ResizeObserver(fit);
@@ -83,6 +85,9 @@ export function RenderPicture({ session, bodies, camera, onCamera, onSave }: Ren
   useEffect(() => r.current?.setBodies(bodies), [bodies]);
   useEffect(() => r.current?.setPreset(state.preset), [state.preset]);
   useEffect(() => r.current?.setStyle(state.style), [state.style]);
+  useEffect(() => {
+    if (r.current) r.current.maxSamples = testMax() ?? samplesFor(state.quality);
+  }, [state.quality]);
 
   // Orbit, pan and zoom with the modelling view's own camera moves.
   useEffect(() => {
@@ -161,7 +166,8 @@ export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
       ? `Saving the picture, ${Math.round(s.saving * 100)}%`
       : s.moving
         ? "Waiting for you to stop moving"
-        : samplesText(s.samples);
+        : `${s.samples.toLocaleString("en-GB")} of ${samplesText(testMax() ?? samplesFor(s.quality))}`;
+  const q = QUALITIES.findIndex((x) => x.id === s.quality);
   return (
     <>
       <div role="group" aria-label="Render options" className="bc-tools bc-armed bc-render-bar">
@@ -180,6 +186,19 @@ export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
             onClick={() => session.set({ style: "paper" })}
           />
         </span>
+        <label className="bc-render-quality" title="More samples clear the picture further but take longer">
+          <span>{QUALITIES[q].label}</span>
+          <input
+            type="range"
+            aria-label="Quality"
+            aria-valuetext={`${QUALITIES[q].label}, ${samplesText(QUALITIES[q].samples)}`}
+            min={0}
+            max={QUALITIES.length - 1}
+            step={1}
+            value={q}
+            onChange={(e) => session.set({ quality: QUALITIES[Number(e.currentTarget.value)].id })}
+          />
+        </label>
         <span className="bc-armed-note bc-render-status" role="status">
           {status}
         </span>

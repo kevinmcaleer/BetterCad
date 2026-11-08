@@ -61,16 +61,13 @@ test("pose a hinge with its slider and send it home", async ({ page }) => {
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: /Make link/ }).click();
-  // Each pick waits for the tool to take it: under load a click can land before the link is built.
   await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
-  await expect(async () => {
-    if (!(await page.getByText("Moves: Link 1").count())) await click(page, 25, 0, 20);
-    await expect(page.getByText("Moves: Link 1")).toBeVisible({ timeout: 1500 });
-  }).toPass({ timeout: 15_000 });
+  await click(page, 25, 0, 20);
+  await expect(page.getByText("Moves: Link 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
   await expect(page.getByText("Hangs from: Base")).toBeVisible();
   await click(page, 25, 0, 20);
@@ -110,16 +107,13 @@ test("drag a link round its hinge in the view, and Esc puts it back", async ({ p
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: /Make link/ }).click();
-  // Each pick waits for the tool to take it: under load a click can land before the link is built.
   await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
-  await expect(async () => {
-    if (!(await page.getByText("Moves: Link 1").count())) await click(page, 25, 0, 20);
-    await expect(page.getByText("Moves: Link 1")).toBeVisible({ timeout: 1500 });
-  }).toPass({ timeout: 15_000 });
+  await click(page, 25, 0, 20);
+  await expect(page.getByText("Moves: Link 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
   await expect(page.getByText("Hangs from: Base")).toBeVisible();
   // The top face: a hinge about Z through (25, 0, 20).

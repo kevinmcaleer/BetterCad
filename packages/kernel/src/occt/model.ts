@@ -10,6 +10,7 @@ import {
   fillet,
   grow,
   measure,
+  inset,
   place,
   prismOf,
   pushPull,
@@ -24,6 +25,8 @@ import {
 } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
 import { build, printed, type ModelDoc, type Part } from "../document";
+import { DEFAULT_INFILL, SHELL_MM, estimateWeight, materialOf } from "../print/materials";
+import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeProps } from "../mass";
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
@@ -54,6 +57,12 @@ export interface ModelResult {
 }
 
 /** Everything a part's shape depends on, for caches. */
+/** A body's mass properties (#174) and how they were found. */
+export interface BodyMass extends MassProps {
+  id: string;
+  method: MassMethod;
+}
+
 export const partKey = (p: Part, q: Quality) =>
   JSON.stringify([
     p.kind,
@@ -239,6 +248,62 @@ export class ModelBuilder {
     }
     return findMates(this.oc, bodies, limit);
   }
+
+  /**
+   * Mass properties (#174) of each body that has mass, as built up to `upTo`: printed bodies as a shell and infill of
+   * the document's material, and any body with a datasheet mass (its own, or its catalogue part's) as uniform at that
+   * mass. Holes and reference bodies without a datasheet mass weigh nothing and are left out.
+   */
+  mass(doc: ModelDoc, upTo = doc.features.length): BodyMass[] {
+    const { parts } = build(doc, upTo);
+    this.useBlobs(doc);
+    const material = materialOf(doc.print?.material);
+    const infill = doc.print?.infill ?? DEFAULT_INFILL;
+    const out: BodyMass[] = [];
+    for (const p of parts) {
+      const datasheet = p.mass ?? p.catalogue?.mass;
+      if (p.hole || (p.reference && datasheet === undefined)) continue;
+      let shape: TopoDS_Shape;
+      let m: Measure;
+      try {
+        const s = this.solid(p);
+        shape = s.shape;
+        m = s.body.measure;
+      } catch {
+        continue;
+      }
+      const full: VolumeProps = { volume: m.volume, centroid: m.centroid, inertia: m.inertia };
+      if (datasheet !== undefined) {
+        out.push({ id: p.id, ...scaledTo(full, datasheet), method: "datasheet" });
+        continue;
+      }
+      const core = this.core(p, shape, m);
+      if (core) out.push({ id: p.id, ...shellAndInfill(full, core, material.density, infill), method: "shell" });
+      else {
+        const estimate = estimateWeight({ volume: m.volume, area: m.area, density: material.density, infill });
+        out.push({ id: p.id, ...scaledTo(full, estimate), method: "uniform" });
+      }
+    }
+    return out;
+  }
+
+  /** A body's infill core: its volume properties, cached by its shape; null when there's none (too thin, or failed). */
+  private core(p: Part, shape: TopoDS_Shape, m: Measure): VolumeProps | null {
+    const k = partKey(p, "fast");
+    if (this.cores.has(k)) return this.cores.get(k)!;
+    let v: VolumeProps | null = null;
+    // A body thinner than the shell is solid all through: no core.
+    const thin = Math.min(...[0, 1, 2].map((i) => m.bbox.max[i]! - m.bbox.min[i]!)) <= 2 * SHELL_MM;
+    const inner = thin ? null : inset(this.oc, shape, SHELL_MM);
+    if (inner) {
+      const c = measure(this.oc, inner);
+      if (c.volume > 0 && c.volume < m.volume) v = { volume: c.volume, centroid: c.centroid, inertia: c.inertia };
+    } else if (thin) v = { volume: 0, centroid: m.centroid, inertia: [0, 0, 0, 0, 0, 0] };
+    if (this.cores.size > 200) this.cores.clear();
+    this.cores.set(k, v);
+    return v;
+  }
+  private cores = new Map<string, VolumeProps | null>();
 
   /** Measures one or two picks (#71) on the model as built up to `upTo`, from the cached solids. */
   measure(doc: ModelDoc, refs: TopoRef[], upTo = doc.features.length): MeasureResult {

@@ -10,6 +10,7 @@ import {
   type Frame,
   type Id,
   type Line,
+  type ProjectedRef,
   type Sketch,
   type TopoRef,
   type Vec2,
@@ -19,6 +20,7 @@ import {
   add,
   angleOf,
   circleCircle,
+  circleFrom3,
   dist,
   dot,
   filletCorner,
@@ -479,4 +481,128 @@ export function projectSegments(sketch: Sketch, frame: Frame, segments: [Vec3, V
   }
   if (!added) return "That face is edge-on to the sketch, so nothing projects";
   return d.done().sketch;
+}
+
+/**
+ * A model edge flattened onto the sketch plane: a point (an edge square to the plane, or a vertex), a line, a circle,
+ * an arc (anticlockwise from a to b) or, for any other shape, a chain of lines.
+ */
+export type FlatCurve =
+  | { kind: "point"; p: Vec2 }
+  | { kind: "line"; a: Vec2; b: Vec2 }
+  | { kind: "circle"; c: Vec2; r: number }
+  | { kind: "arc"; c: Vec2; r: number; a: Vec2; b: Vec2 }
+  | { kind: "polyline"; pts: Vec2[] };
+
+/** How far, in mm, a flattened point may stray and still count as on a line or circle. */
+const FLAT_TOL = 1e-3;
+
+/** Flattens an edge's points (in order along it, world mm) onto the sketch plane and names its shape. */
+export function flattenCurve(frame: Frame, points: Vec3[]): FlatCurve {
+  const raw = points.map((p) => toSketch(frame, p));
+  // Repeated points (an edge square to the plane flattens to one spot) collapse.
+  const pts: Vec2[] = [];
+  for (const p of raw) if (!pts.length || dist(p, pts[pts.length - 1]!) > 1e-6) pts.push(p);
+  if (pts.length >= 2 && dist(pts[0]!, pts[pts.length - 1]!) <= 1e-6 && pts.length === 2) pts.pop();
+  if (pts.length === 1 || pts.every((p) => dist(p, pts[0]!) <= 1e-6)) return { kind: "point", p: pts[0] ?? [0, 0] };
+  const first = pts[0]!;
+  const last = pts[pts.length - 1]!;
+  const closed = pts.length >= 4 && dist(first, last) <= FLAT_TOL;
+  if (!closed) {
+    const u = sub(last, first);
+    const len = Math.hypot(u[0], u[1]);
+    const off = (p: Vec2) => Math.abs(u[0] * (p[1] - first[1]) - u[1] * (p[0] - first[0])) / len;
+    // A line runs one way: its points stay on the chord and in order along it.
+    if (len > 1e-6 && pts.every((p) => off(p) <= FLAT_TOL)) {
+      const along = pts.map((p) => dot(sub(p, first), u) / len);
+      if (along.every((t, i) => i === 0 || t >= along[i - 1]! - FLAT_TOL)) return { kind: "line", a: first, b: last };
+    }
+  }
+  const ring = closed ? pts.slice(0, -1) : pts;
+  if (ring.length >= 3) {
+    const n = ring.length;
+    const c3 = closed ? circleFrom3(ring[0]!, ring[Math.floor(n / 3)]!, ring[Math.floor((2 * n) / 3)]!) : circleFrom3(first, ring[Math.floor(n / 2)]!, last);
+    if (c3 && ring.every((p) => Math.abs(dist(p, c3.c) - c3.r) <= FLAT_TOL + 1e-4 * c3.r)) {
+      if (closed) return { kind: "circle", c: c3.c, r: c3.r };
+      // Which way it turns: the sum of the small steps in angle round the centre.
+      let turn = 0;
+      for (let i = 1; i < n; i++) turn += wrapPi(angleOf(sub(ring[i]!, c3.c)) - angleOf(sub(ring[i - 1]!, c3.c)));
+      return turn >= 0 ? { kind: "arc", c: c3.c, r: c3.r, a: first, b: last } : { kind: "arc", c: c3.c, r: c3.r, a: last, b: first };
+    }
+  }
+  return { kind: "polyline", pts };
+}
+
+const wrapPi = (a: number) => {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+};
+
+/** One model edge (or vertex, a single point) to bring into a sketch, and where it came from. */
+export interface ModelCurve {
+  points: Vec3[];
+  from: ProjectedRef;
+}
+
+/** Points closer than this, in mm, are one point when projecting. */
+const SAME_POINT = 1e-4;
+
+/**
+ * Brings model edges and vertices into the sketch (#54), as Fusion projects them: each flattened onto the plane and
+ * named by its shape, so a hole comes in as a circle and a rounded corner as an arc. Everything is held in place
+ * (fixed points; a projected circle keeps its radius), construction by default, and remembers what it came from.
+ * Geometry already projected there is reused, not doubled. `ids` holds, per input, the entity it became (a polyline
+ * gives its first line), or null when it adds nothing.
+ */
+export function projectCurves(sketch: Sketch, frame: Frame, curves: ModelCurve[], construction = true): { sketch: Sketch; ids: (Id | null)[] } {
+  const d = new Draft(sketch);
+  const projected = (e: Entity) => !!e.projectedFrom;
+  // Points already projected are shared, so an edge meets the face outline it came with.
+  const pts: { id: Id; xy: Vec2 }[] = sketch.entities.flatMap((e) => (e.kind === "point" && projected(e) ? [{ id: e.id, xy: [e.x, e.y] as Vec2 }] : []));
+  const tag = (id: Id, from: ProjectedRef) => {
+    d.entities = d.entities.map((e) => (e.id === id ? { ...e, projectedFrom: from } : e));
+    return id;
+  };
+  const point = (xy: Vec2, from: ProjectedRef): Id => {
+    const near = pts.find((p) => dist(p.xy, xy) <= SAME_POINT);
+    if (near) return near.id;
+    const id = tag(d.point(xy, construction), from);
+    d.constrain({ type: "fix", p: id });
+    pts.push({ id, xy });
+    return id;
+  };
+  const existing = (match: (e: Entity) => boolean): Id | null => d.entities.find((e) => projected(e) && match(e))?.id ?? null;
+  const ids: (Id | null)[] = [];
+  for (const { points, from } of curves) {
+    const f = flattenCurve(frame, points);
+    if (f.kind === "point") {
+      ids.push(point(f.p, from));
+      continue;
+    }
+    if (f.kind === "line" || f.kind === "polyline") {
+      const chain = f.kind === "line" ? [f.a, f.b] : f.pts;
+      let firstId: Id | null = null;
+      for (let i = 0; i + 1 < chain.length; i++) {
+        const a = point(chain[i]!, from);
+        const b = point(chain[i + 1]!, from);
+        if (a === b) continue;
+        const l =
+          existing((e) => e.kind === "line" && ((e.a === a && e.b === b) || (e.a === b && e.b === a))) ??
+          tag(d.line(a, b, { construction, auto: false }), from);
+        firstId ??= l;
+      }
+      ids.push(firstId);
+      continue;
+    }
+    const c = point(f.c, from);
+    if (f.kind === "circle") {
+      ids.push(existing((e) => e.kind === "circle" && e.c === c && Math.abs(e.r - f.r) <= SAME_POINT) ?? tag(d.circle(c, f.r, construction), from));
+      continue;
+    }
+    const a = point(f.a, from);
+    const b = point(f.b, from);
+    ids.push(existing((e) => e.kind === "arc" && e.c === c && e.a === a && e.b === b) ?? tag(d.arc(c, a, b, construction), from));
+  }
+  return { sketch: d.done().sketch, ids };
 }

@@ -40,7 +40,7 @@ import {
   Box3,
   EdgesGeometry,
   ArrowHelper,
-  type Camera,
+  Camera,
   type Material,
   type Texture,
 } from "three";
@@ -70,6 +70,7 @@ import {
   type ViewRect,
 } from "./camera";
 import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter } from "./ids";
+import { edgesOnOutline } from "./faceEdges";
 import { blurMaterial, capMaterial, dofMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
 import { readPalette, type Palette } from "./colours";
 
@@ -321,6 +322,7 @@ export class Engine {
   private arrow: ArrowHelper;
   /** Joint glyphs (#172): an arrow along each joint's axis, from its origin. */
   private jointArrows = new Group();
+  private centres = new Group();
   private arrowDrag: { startOffset: number; x: number; y: number } | null = null;
 
   // Input
@@ -464,6 +466,7 @@ export class Engine {
     this.arrow.visible = false;
     this.scene.add(this.arrow);
     this.scene.add(this.jointArrows);
+    this.scene.add(this.centres);
 
     this.planes = new Group();
     this.planes.visible = false;
@@ -843,6 +846,26 @@ export class Engine {
     this.invalidate();
   }
 
+  /** Marks each link's centre of mass (#174) with a small three-axis cross, drawn over the bodies, or none. */
+  setCentres(list: V3[] | null): void {
+    for (const c of this.centres.children as LineSegments[]) {
+      c.geometry.dispose();
+      (c.material as Material).dispose();
+    }
+    this.centres.clear();
+    if (list?.length) {
+      const r = Math.max(4, (this.bounds()?.radius ?? 50) * 0.06);
+      const pts: number[] = [];
+      for (const [x, y, z] of list) pts.push(x - r, y, z, x + r, y, z, x, y - r, z, x, y + r, z, x, y, z - r, x, y, z + r);
+      const g = new BufferGeometry();
+      g.setAttribute("position", new BufferAttribute(new Float32Array(pts), 3));
+      const line = new LineSegments(g, new LineBasicMaterial({ color: this.palette.snap, depthTest: false, transparent: true }));
+      line.renderOrder = 6;
+      this.centres.add(line);
+    }
+    this.invalidate();
+  }
+
   /** Shows an arrow along each joint's axis (#172), or none. Drawn over the bodies so it shows inside them. */
   setJoints(list: { origin: V3; axis: V3 }[] | null): void {
     for (const a of this.jointArrows.children as ArrowHelper[]) a.dispose();
@@ -869,8 +892,11 @@ export class Engine {
     this.invalidate();
   }
 
-  /** What is under a point (CSS px from the canvas's top left), for the filter given. */
-  pick(x: number, y: number, filter: SelectFilter = this.filter): Pick | null {
+  /**
+   * What is under a point (CSS px from the canvas's top left), for the filter given. Ghosted bodies are passed over
+   * unless `ghosts` (a sketch ghosts the model, but its edges can still be sized to).
+   */
+  pick(x: number, y: number, filter: SelectFilter = this.filter, ghosts = false): Pick | null {
     if (!this.order.length) return null;
     const cam = this.activeCamera;
     const dpr = this.renderer.getPixelRatio();
@@ -885,7 +911,7 @@ export class Engine {
     cam.setViewOffset(W, H, x * dpr - half, y * dpr - half, size, size);
     for (const b of this.order) {
       const [faces, lines, points] = b.pick.children as [Mesh, LineSegments, Points];
-      b.pick.visible = !b.body.ghost || filter === "body";
+      b.pick.visible = !b.body.ghost || filter === "body" || ghosts;
       lines.visible = filter === "edge";
       points.visible = filter === "vertex";
       const faceElement = filter === "face" ? 0 : FACE_ONLY;
@@ -1103,43 +1129,74 @@ export class Engine {
     return { flat, normal: [n0.x, n0.y, n0.z], centroid: [centroid.x, centroid.y, centroid.z], edge: [best.x, best.y, best.z], boundary };
   }
 
-  /** A picked corner, or the middle of a picked edge, in world space (Extrude's To object). */
-  pointOf(bodyId: string, kind: "edge" | "vertex", index: number): V3 | null {
+  /** An edge's points in world space, in order along it (#54: projecting it into a sketch). */
+  edgePoints(bodyId: string, edge: number): V3[] | null {
     const o = this.bodies.get(bodyId);
     if (!o) return null;
     const m = o.body.mesh;
+    const [s0, s1] = [m.edgeSegs[edge], m.edgeSegs[edge + 1]];
+    if (s0 === undefined || s1 === undefined || s1 <= s0) return null;
     o.group.updateMatrixWorld(true);
-    const sum = new Vector3();
-    let n = 0;
-    const add = (arr: Float32Array, i: number) => {
-      sum.add(new Vector3(arr[i]!, arr[i + 1]!, arr[i + 2]!));
-      n++;
-    };
-    if (kind === "vertex") {
-      if (index * 3 + 2 >= m.vertices.length) return null;
-      add(m.vertices, index * 3);
-    } else {
-      const [a, b] = [m.edgeSegs[index], m.edgeSegs[index + 1]];
-      if (a === undefined || b === undefined) return null;
-      for (let s = a; s < b; s++) {
-        add(m.edgePositions, s * 6);
-        add(m.edgePositions, s * 6 + 3);
-      }
-    }
-    if (!n) return null;
-    return sum.divideScalar(n).applyMatrix4(o.group.matrixWorld).toArray() as V3;
+    const at = (k: number) =>
+      new Vector3(m.edgePositions[k]!, m.edgePositions[k + 1]!, m.edgePositions[k + 2]!).applyMatrix4(o.group.matrixWorld).toArray() as V3;
+    const out: V3[] = [at(s0 * 6)];
+    for (let s = s0; s < s1; s++) out.push(at(s * 6 + 3));
+    return out;
+  }
+
+  /** A vertex's place in world space. */
+  vertexPoint(bodyId: string, vertex: number): V3 | null {
+    const o = this.bodies.get(bodyId);
+    const v = o?.body.mesh.vertices;
+    if (!o || !v || vertex * 3 + 2 >= v.length) return null;
+    o.group.updateMatrixWorld(true);
+    return new Vector3(v[vertex * 3]!, v[vertex * 3 + 1]!, v[vertex * 3 + 2]!).applyMatrix4(o.group.matrixWorld).toArray() as V3;
+  }
+
+  /**
+   * The edges round a face, each as its points in world space, for projecting the face into a sketch as whole lines,
+   * arcs and circles. Any piece of the outline no edge covers comes back as a two-point edge of its own (edge −1).
+   */
+  faceEdges(bodyId: string, face: number): { edge: number; points: V3[] }[] | null {
+    const info = this.faceInfo(bodyId, face);
+    const o = this.bodies.get(bodyId);
+    if (!info || !o) return null;
+    const all = Array.from({ length: o.body.mesh.edgeSegs.length - 1 }, (_, i) => this.edgePoints(bodyId, i) ?? []);
+    const { edges, rest } = edgesOnOutline(all, info.boundary);
+    return [...edges.map((i) => ({ edge: i, points: all[i]! })), ...rest.map(([a, b]) => ({ edge: -1, points: [a, b] }))];
   }
 
   /**
    * A picture of the bodies from the current camera, for a saved file's thumbnail (#79): no grid, no overlays,
-   * transparent behind. A PNG data URL, or null where WebGL can't read back.
+   * transparent behind. A PNG data URL, or null where WebGL can't read back. Always Shaded in the Light theme's part
+   * colours, with no selection, hover or check tints, so a thumbnail looks the same whatever the view was set to.
    */
   thumbnail(width = 320, height = 200): string | null {
+    const look = { style: this.style, palette: this.palette, selected: this.selected, hover: this.hover, check: this.check };
+    // The Light theme's colours; the background and grid are cleared or hidden anyway.
+    const probe = document.body.appendChild(document.createElement("i"));
+    probe.dataset.theme = "light";
+    this.palette = readPalette(probe);
+    probe.remove();
+    Object.assign(this, { selected: [], hover: null, check: null });
+    this.setStyle("shaded");
+    this.recolourAll();
+    try {
+      return this.snapshot(width, height);
+    } finally {
+      Object.assign(this, look);
+      this.setStyle(look.style);
+      this.recolourAll();
+    }
+  }
+
+  private snapshot(width: number, height: number): string | null {
     const r = this.renderer;
     const bodies = new Set<Object3D>(this.order.map((b) => b.group));
     const hidden: Object3D[] = [];
     for (const c of this.scene.children) {
-      if (c.visible && !bodies.has(c) && !(c instanceof HemisphereLight) && !(c instanceof DirectionalLight)) {
+      // The cameras carry the key light, so they stay.
+      if (c.visible && !bodies.has(c) && !(c instanceof HemisphereLight) && !(c instanceof DirectionalLight) && !(c instanceof Camera)) {
         c.visible = false;
         hidden.push(c);
       }
@@ -1416,6 +1473,7 @@ export class Engine {
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
     this.arrow.setColor(p.snap);
     for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
+    for (const c of this.centres.children as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
     this.paintPlanes?.();

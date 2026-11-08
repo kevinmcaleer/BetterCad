@@ -189,8 +189,9 @@ export function upToOf(
     const info = eng.faceInfo(hit.body, hit.index);
     if (info) at = info.flat ? { point: info.centroid, normal: info.normal } : { point: eng.surfaceAt(p.x, p.y)?.point ?? info.centroid };
   } else if (hit.kind === "edge" || hit.kind === "vertex") {
-    const point = eng.pointOf(hit.body, hit.kind, hit.index);
-    if (point) at = { point };
+    // An edge stops level with its middle, a corner with itself.
+    const pts = hit.kind === "edge" ? eng.edgePoints(hit.body, hit.index) : [eng.vertexPoint(hit.body, hit.index)].filter((q): q is V3 => !!q);
+    if (pts?.length) at = { point: [0, 1, 2].map((i) => pts.reduce((a, q) => a + q[i]!, 0) / pts.length) as V3 };
   }
   if (!at) return null;
   const reach = upToDistance(frame, profilesMiddle(picked), at);

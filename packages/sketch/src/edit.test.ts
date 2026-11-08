@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { SketchIndex, newSketch, planeFrame, type Sketch } from "./model";
-import { drawLine, drawPolyline, drawRectangle, drawCircle } from "./draw";
-import { chainOf, cutsOn, filletAt, filletLines, offsetChain, projectSegments, trimAt, trimPiece } from "./edit";
+import { Draft, drawLine, drawPolyline, drawRectangle, drawCircle } from "./draw";
+import { chainOf, cutsOn, filletAt, filletLines, flattenCurve, offsetChain, projectCurves, projectSegments, trimAt, trimPiece } from "./edit";
 import { profiles } from "./profiles";
 import { Solver } from "./solver";
 import { angleOf, dist, sub } from "./geom2d";
@@ -204,5 +204,105 @@ describe("project", () => {
         { body: "b1", face: 1 },
       ),
     ).toMatch(/edge-on/);
+  });
+});
+
+describe("project model edges", () => {
+  const XZ = planeFrame({ kind: "world", plane: "XZ", offset: 0 });
+  const ring = (c: [number, number, number], r: number, n: number, from = 0, to = 2 * Math.PI): [number, number, number][] =>
+    Array.from({ length: n + 1 }, (_, i) => {
+      const t = from + ((to - from) * i) / n;
+      return [c[0] + r * Math.cos(t), c[1], c[2] + r * Math.sin(t)];
+    });
+
+  it("names an edge's shape on the plane", () => {
+    expect(
+      flattenCurve(XZ, [
+        [0, 0, 0],
+        [5, 0, 0],
+        [10, 0, 0],
+      ]).kind,
+    ).toBe("line");
+    expect(
+      flattenCurve(XZ, [
+        [3, 0, 4],
+        [3, 10, 4],
+      ]),
+    ).toEqual({ kind: "point", p: [3, 4] });
+    const circle = flattenCurve(XZ, ring([10, 0, 5], 2, 24));
+    expect(circle.kind).toBe("circle");
+    if (circle.kind === "circle") {
+      expect(circle.c[0]).toBeCloseTo(10);
+      expect(circle.c[1]).toBeCloseTo(5);
+      expect(circle.r).toBeCloseTo(2);
+    }
+    // A quarter arc running clockwise comes back anticlockwise, ends swapped.
+    const arc = flattenCurve(XZ, ring([0, 0, 0], 3, 6, Math.PI / 2, 0));
+    expect(arc.kind).toBe("arc");
+    if (arc.kind === "arc") {
+      expect(arc.a[0]).toBeCloseTo(3);
+      expect(arc.b[1]).toBeCloseTo(3);
+    }
+    // A zig-zag is neither: a chain of lines.
+    expect(
+      flattenCurve(XZ, [
+        [0, 0, 0],
+        [5, 0, 1],
+        [10, 0, 0],
+        [15, 0, 3],
+      ]).kind,
+    ).toBe("polyline");
+  });
+
+  it("brings in a face's outline with its hole, held in place, and shares corners", () => {
+    const box: [number, number, number][] = [
+      [0, 0, 0],
+      [40, 0, 0],
+      [40, 0, 20],
+      [0, 0, 20],
+    ];
+    const from = { body: "b1", face: 2 };
+    const edges = box.map((p, i) => ({ points: [p, box[(i + 1) % 4]!], from }));
+    const hole = { points: ring([20, 0, 10], 2, 32), from };
+    const { sketch: out, ids } = projectCurves(newSketch({ kind: "world", plane: "XZ", offset: 0 }), XZ, [...edges, hole]);
+    expect(lines(out)).toHaveLength(4);
+    expect(out.entities.filter((e) => e.kind === "circle")).toHaveLength(1);
+    // Four shared corners and the hole's centre.
+    expect(out.entities.filter((e) => e.kind === "point")).toHaveLength(5);
+    expect(out.entities.every((e) => e.construction && e.projectedFrom?.body === "b1")).toBe(true);
+    expect(ids.every((x) => !!x)).toBe(true);
+    const r = solver.solve(out);
+    expect(r.status).toBe("ok");
+    expect(r.dof).toBe(0);
+
+    // Projecting the same edge again reuses it.
+    const again = projectCurves(out, XZ, [{ points: box.slice(0, 2), from: { body: "b1", edge: 0 } }]);
+    expect(again.ids[0]).toBe(ids[0]);
+    expect(again.sketch.entities).toHaveLength(out.entities.length);
+  });
+
+  it("holds a projected rounded corner and lets a size measure to it", () => {
+    const from = { body: "b1", edge: 7 };
+    const { sketch: out, ids } = projectCurves(newSketch({ kind: "world", plane: "XZ", offset: 0 }), XZ, [
+      { points: ring([5, 0, 5], 5, 8, Math.PI, 1.5 * Math.PI), from },
+    ]);
+    expect(arcs(out)).toHaveLength(1);
+    const r = solver.solve(out);
+    expect(r.status).toBe("ok");
+    expect(r.dof).toBe(0);
+    // A circle placed by sizes from the arc's centre, as you would size a hole from a rounded corner.
+    const dr = new Draft(out);
+    const centre = (out.entities.find((e) => e.id === ids[0]) as { c: string }).c;
+    const circle = dr.circle([20, 9], 2);
+    const c = (dr.done().sketch.entities.find((e) => e.id === circle) as { c: string }).c;
+    dr.dimension("distanceX", [centre, c], 12);
+    dr.dimension("distanceY", [centre, c], 3);
+    dr.dimension("diameter", [circle], 4);
+    const sized = solver.solve(dr.done().sketch);
+    expect(sized.status).toBe("ok");
+    expect(sized.dof).toBe(0);
+    const at = sized.sketch.entities.find((e) => e.id === c) as { x: number; y: number };
+    expect(at.x).toBeCloseTo(17);
+    expect(at.y).toBeCloseTo(8);
   });
 });
