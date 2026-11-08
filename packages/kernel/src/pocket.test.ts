@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { cataloguePart, placeOnFace } from "./catalogue";
+import { placeOnFace } from "./catalogue";
+import { cataloguePart } from "./catalogue/list";
 import { addPart, build, changeParts, cutPocket, insertCatalogue, newDoc, type ExtrudeFeature, type HoleFeature, type ModelDoc } from "./document";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";

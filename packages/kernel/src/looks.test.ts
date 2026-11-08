@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addPart, build, newDoc, setLook } from "./document";
 import { loadBcad, saveBcad } from "./bcad";
-import { CATALOGUE } from "./catalogue";
+import { CATALOGUE } from "./catalogue/list";
 import { FINISHES, finishOf, linearRgb, parseHex, pbrOf } from "./looks";
 
 describe("colours and finishes (#196)", () => {

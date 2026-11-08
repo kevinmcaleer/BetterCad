@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry } from "@bettercad/ui";
-import { HOLE_PATTERNS, SCREWS, circlePattern, rectPattern, screw, type MountFeature } from "../state/document";
+import { HOLE_PATTERNS } from "@bettercad/kernel/catalogue";
+import { SCREWS, circlePattern, rectPattern, screw, type MountFeature } from "../state/document";
 import { middle, type MountSession } from "./useMount";
 
 const HORNS: { id: MountFeature["horn"]; label: string; title: string }[] = [
