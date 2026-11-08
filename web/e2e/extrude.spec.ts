@@ -137,7 +137,14 @@ test("cut a hole right through a body with Through all", async ({ page }) => {
   // on a busy machine.
   await page.keyboard.press("k");
   await click(page, 25, 25);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible({ timeout: 15_000 });
+  try {
+    await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible({ timeout: 15_000 });
+  } catch (e) {
+    // TEMP diagnostics for CI (#286): what the page shows when the second sketch doesn't open.
+    console.log("DIAG active", await page.evaluate(() => document.activeElement?.outerHTML.slice(0, 200)));
+    console.log("DIAG snapshot\n" + (await page.locator("body").ariaSnapshot()));
+    throw e;
+  }
   await page.waitForTimeout(800);
   await page.keyboard.press("c");
   await click(page, 0, 0);
