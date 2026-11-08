@@ -26,6 +26,12 @@
     /* Quick taps on buttons stay taps: no double-tap zoom on the page. */
     touch-action: manipulation;
   }
+  /* A field's label is its scrub handle: drag it sideways to change the value without the keyboard. */
+  .bc-scrub {
+    display: inline-block;
+    min-height: 24px;
+    padding: var(--bc-space-1) var(--bc-space-4) var(--bc-space-1) 0;
+  }
   /* A finger held still on the view slides a point to a snap: no text selection, magnifier or callout. */
   .bc-canvas {
     -webkit-user-select: none;

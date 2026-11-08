@@ -150,6 +150,7 @@ export function NumberField({ label, value, onChange, onCommit, unit = "mm", ste
         className="bc-num"
         type="text"
         inputMode="decimal"
+        enterKeyHint="done"
         autoComplete="off"
         spellCheck={false}
         aria-label={unitText ? `${label} (${unitText})` : label}

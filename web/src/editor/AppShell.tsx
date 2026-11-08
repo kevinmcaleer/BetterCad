@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { cx } from "@bettercad/ui";
+import { trackKeyboard } from "./keyboardInset";
 
 export interface AppShellProps {
   topBar: ReactNode;
@@ -39,6 +40,8 @@ export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, s
     ro.observe(foot);
     return () => ro.disconnect();
   }, []);
+  // An on-screen keyboard (iPad, phones) covers the bottom of the window: the tool bars rise above it.
+  useLayoutEffect(() => trackKeyboard(appRef.current!), []);
   return (
     <div ref={appRef} className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", !timeline && "bc-no-timeline")}>
       <a className="bc-skip" href="#bc-view">
