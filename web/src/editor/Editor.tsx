@@ -94,6 +94,7 @@ import {
   type PatternKind,
   type Vec3,
   homePose,
+  patternCopyIds,
   linkTransforms,
   posedFrames,
   setPose,
@@ -703,6 +704,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     selection,
     setSelection,
+    parts,
+    links: built.links,
+    upTo: at,
+    view: vp.ref,
     active: tool === "pattern" && !sketch.editing,
     startKind: patternStart,
     onClose: () => setTool("select"),
@@ -744,7 +749,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const preview = finish.preview ? finishPreview.bodies : combineRequest ? combinePreview.bodies : null;
   // While sketching the model goes faint, so the sketch reads on top of it. Project needs the faces solid to pick them.
   const ghostParts = sketch.editing && sketch.stool !== "project";
-  const viewParts = useMemo(() => parts.map((p) => (ghostParts || p.hole ? { ...p, ghost: true } : p)), [parts, ghostParts]);
+  // Picking a Mirror's plane passes over the mirror's own copies, so a face under one can be picked.
+  const planeGhosts = useMemo(
+    () => new Set(pattern.pickingPlane && pattern.feature ? patternCopyIds(pattern.feature) : []),
+    [pattern.pickingPlane, pattern.feature],
+  );
+  const viewParts = useMemo(
+    () => parts.map((p) => (ghostParts || p.hole || planeGhosts.has(p.id) ? { ...p, ghost: true } : p)),
+    [parts, ghostParts, planeGhosts],
+  );
   const onCamera = vp.onCamera;
   const sketchCamera = sketch.onCamera;
   const tourCamera = useRef<() => void>(() => undefined);

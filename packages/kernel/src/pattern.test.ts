@@ -1,6 +1,23 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { addPart, addPattern, build, changeParts, dependsOn, featureParts, featureSummary, newDoc, updatePattern, type ModelDoc } from "./document";
-import { copiesPer, movePoint, patternMoves, patternProblem, type CopyMove } from "./pattern";
+import {
+  addHole,
+  addJoint,
+  addLink,
+  addPart,
+  addPattern,
+  build,
+  changeParts,
+  dependsOn,
+  featureParts,
+  featureSummary,
+  mirrorableFeatures,
+  newDoc,
+  updatePattern,
+  type ModelDoc,
+  type PatternFeature,
+  type Vec3,
+} from "./document";
+import { copiesPer, mirrorFace, mirrorPlane, movePoint, patternMoves, patternProblem, type CopyMove } from "./pattern";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 
@@ -117,5 +134,112 @@ describe("mirror and patterns on the timeline (#69)", () => {
     const doc = addPattern(boxAt15(), { parts: ["a"], kind: "rect", spacing1: 0 }, "r");
     expect(build(doc).failed.get("r")).toBe("Give it a spacing other than 0 mm");
     expect(build(doc).parts).toHaveLength(1);
+  });
+});
+
+describe("Mirror across a face, of features and of a component", () => {
+  const X: Vec3 = { x: 1, y: 0, z: 0 };
+
+  it("mirrors across a picked face, and the plane follows the face's body when it moves", () => {
+    // Box a spans x 5 to 25; its +X face is at x 25, so the mirror image spans 25 to 45.
+    const start = boxAt15();
+    const a = build(start).parts[0]!;
+    let doc = addPattern(start, { parts: ["a"], kind: "mirror", face: mirrorFace(a, 3, { x: 25, y: 0, z: 0 }, X) }, "m");
+    expect(featureSummary(doc, doc.features.at(-1)!)).toBe("Box 1 across a face of Box 1");
+    const kb = new ModelBuilder(oc);
+    let m = bbox(kb, doc, "m.a.0");
+    expect(m.bbox.min[0]).toBeCloseTo(25, 6);
+    expect(m.bbox.max[0]).toBeCloseTo(45, 6);
+    // An offset moves the plane out along the face's normal.
+    doc = updatePattern(doc, "m", { offset: 5 });
+    expect(bbox(kb, doc, "m.a.0").bbox.min[0]).toBeCloseTo(35, 6);
+    // Moving the box before the mirror carries the face, and so the copy.
+    doc = updatePattern(doc, "m", { offset: 0 });
+    doc = { ...doc, features: [doc.features[0]!, ...changeParts(boxAt15(), ["a"], "position", { x: 30 }).features.slice(1), doc.features.at(-1)!] };
+    m = bbox(kb, doc, "m.a.0");
+    expect(m.bbox.min[0]).toBeCloseTo(40, 6);
+    expect(m.bbox.max[0]).toBeCloseTo(60, 6);
+  });
+
+  it("follows a turned body's face", () => {
+    let doc = changeParts(boxAt15(), ["a"], "rotation", { z: 90 });
+    const a = build(doc).parts[0]!;
+    // Turned 90° about Z round its centre (15, 0): it spans y -10 to 10, so its far face in +Y is at y 10.
+    doc = addPattern(doc, { parts: ["a"], kind: "mirror", face: mirrorFace(a, 0, { x: 15, y: 10, z: 0 }, { x: 0, y: 1, z: 0 }) }, "m");
+    const f = doc.features.at(-1) as PatternFeature;
+    const w = mirrorPlane(f, build(doc).parts);
+    expect(w).toEqual({ origin: { x: 15, y: 10, z: 0 }, normal: { x: 0, y: 1, z: 0 } });
+  });
+
+  it("says when the face's body is gone", () => {
+    const start = boxAt15();
+    const a = build(start).parts[0]!;
+    let doc = addPart(start, "box", "b");
+    doc = addPattern(doc, { parts: ["b"], kind: "mirror", face: mirrorFace(a, 3, { x: 25, y: 0, z: 0 }, X) }, "m");
+    doc = { ...doc, features: doc.features.filter((g) => g.id !== doc.features[0]!.id) };
+    expect(build(doc).failed.get("m")).toBe("The face it mirrors across is gone");
+  });
+
+  it("mirrors a hole onto the same body, across the body's middle", () => {
+    // A 40 × 20 × 20 box at the origin with an M3 hole 10 mm right of centre; mirrored across YZ, it has two.
+    let doc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 20, z: 20 });
+    doc = addHole(
+      doc,
+      {
+        part: "b",
+        frame: { origin: [0, 0, 20], x: [1, 0, 0], normal: [0, 0, 1] },
+        points: [[10, 0]],
+        size: "M3",
+        fit: "printed",
+        offset: 0,
+        head: "none",
+        depth: null,
+      },
+      "h1",
+    );
+    expect(mirrorableFeatures(doc).map((f) => f.id)).toEqual(["h1"]);
+    const kb = new ModelBuilder(oc);
+    const one = bbox(kb, doc, "b").volume;
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h1"], plane: "YZ" }, "m");
+    const f = doc.features.at(-1)!;
+    expect(featureSummary(doc, f)).toBe("Hole 1 across YZ");
+    expect(featureParts(f)).toEqual([]);
+    expect(dependsOn(doc, "m")).toContain("h1");
+    const b = build(doc);
+    expect(b.failed.size).toBe(0);
+    expect(b.parts).toHaveLength(1);
+    const two = bbox(kb, doc, "b").volume;
+    expect(16000 - two).toBeCloseTo(2 * (16000 - one), 1);
+    expect(16000 - one).toBeGreaterThan(100);
+    // Across a plane where the hole lands on itself, nothing more is cut.
+    doc = updatePattern(doc, "m", { plane: "XZ" });
+    expect(bbox(kb, doc, "b").volume).toBeCloseTo(one, 1);
+  });
+
+  it("mirrors a body a feature made as a whole body, and says when its features are gone", () => {
+    let doc = addPattern(boxAt15(), { parts: [], kind: "mirror", of: "features", features: ["gone"] }, "m");
+    expect(build(doc).failed.get("m")).toBe("The features it mirrors are gone");
+    doc = updatePattern(doc, "m", { features: [] });
+    expect(build(doc).failed.get("m")).toBe("Pick the features to mirror");
+  });
+
+  it("mirrors a component into a new component that joints can move", () => {
+    let doc = addPart(boxAt15(), "box", "c");
+    doc = changeParts(doc, ["c"], "position", { x: 15, y: 30 });
+    doc = addLink(doc, ["a", "c"], "L1");
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "component", link: "L1", plane: "YZ" }, "m");
+    const f = doc.features.at(-1) as PatternFeature;
+    expect(f.parts).toEqual(["a", "c"]);
+    expect(featureParts(f)).toEqual(["m.a.0", "m.c.0"]);
+    expect(featureSummary(doc, f)).toBe("Link 1 across YZ");
+    expect(dependsOn(doc, "m")).toContain("L1");
+    const b = build(doc);
+    expect(b.links).toEqual([
+      { id: "L1", name: "Link 1", parts: ["a", "c"] },
+      { id: "m", name: "Link 1 mirrored", parts: ["m.a.0", "m.c.0"] },
+    ]);
+    expect(b.parts.find((p) => p.id === "m.c.0")!.position).toEqual({ x: -15, y: 30, z: 0 });
+    doc = addJoint(doc, { kind: "revolute", child: "m", parent: "L1", origin: [0, 0, 0], axis: [0, 0, 1], lower: -90, upper: 90 }, "j");
+    expect(build(doc).failed.get("j")).toBeUndefined();
   });
 });
