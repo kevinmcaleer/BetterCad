@@ -98,3 +98,15 @@ test("circle and polygon take two taps, an arc three", async ({ page }) => {
   // An arc: centre, radius and two end angles.
   await expect.poll(() => curves(page)).toContain("12 degrees of freedom");
 });
+
+test("the tool bar rises above an on-screen keyboard", async ({ page }) => {
+  await startSketch(page);
+  const bar = page.locator(".bc-stage-bars .bc-armed").last();
+  const before = (await bar.boundingBox())!;
+  const height = page.viewportSize()!.height;
+  // Headless Chromium has no on-screen keyboard: say one covers the bottom 400px, as Safari's visual viewport would.
+  await page.locator(".bc-app").evaluate((el: HTMLElement) => el.style.setProperty("--bc-keyboard", "400px"));
+  await expect.poll(async () => (await bar.boundingBox())!.y + (await bar.boundingBox())!.height).toBeLessThanOrEqual(height - 400);
+  await page.locator(".bc-app").evaluate((el: HTMLElement) => el.style.setProperty("--bc-keyboard", "0px"));
+  await expect.poll(async () => (await bar.boundingBox())!.y).toBeCloseTo(before.y, 0);
+});

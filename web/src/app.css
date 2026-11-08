@@ -38,7 +38,9 @@ body {
      its foot, always end a gap above it, whatever the stack holds. */
   --bc-foot-bottom: 0px;
   --bc-foot-height: 64px;
-  --bc-view-bottom: calc(var(--bc-foot-bottom) + var(--bc-foot-height) + var(--bc-float-gap));
+  /* Above the bottom stack, or above an on-screen keyboard (iPad, phones) while a field is being typed in, so tool
+     bars and dialogs never sit under the keys. AppShell publishes --bc-keyboard. */
+  --bc-view-bottom: max(calc(var(--bc-foot-bottom) + var(--bc-foot-height) + var(--bc-float-gap)), calc(var(--bc-keyboard, 0px) + var(--bc-float-gap)));
   --bc-viewcube-room: 112px;
   /* Room the view bar takes at the top of the view, so the empty state starts below it. */
   --bc-bars-room: 56px;
