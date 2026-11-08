@@ -2122,7 +2122,6 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onBedShown={setShowBed}
               theme={theme}
               onTheme={setTheme}
-              commands={commands}
             />
           )
         }

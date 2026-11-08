@@ -14,7 +14,7 @@ import {
 } from "@bettercad/ui";
 import { KIND_LABEL, ORIENT_WEIGHTS, PRIMITIVES, type OrientWeights, type Feature, type ModelDoc, type Part, type PartKind } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
-import { formatCombo, type Command } from "../state/commands";
+import { formatCombo } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
 import { BrowserPanel, type BrowserSketch, type OriginItem } from "./Browser";
@@ -77,7 +77,6 @@ export interface LeftPanelProps {
   onBedShown: (on: boolean) => void;
   theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
-  commands: Command[];
   /** The Parameters panel, made by the editor. */
   paramsPanel: ReactNode;
   /** Back to the browser, from any other panel. */
@@ -221,8 +220,6 @@ function HistoryPanel(p: LeftPanelProps) {
 }
 
 function SettingsPanel(p: LeftPanelProps) {
-  const groups = new Map<string, Command[]>();
-  for (const c of p.commands) if (c.keys?.length) groups.set(c.group, [...(groups.get(c.group) ?? []), c]);
   return (
     <>
       <h2 className="bc-panel-title">Theme</h2>
@@ -242,29 +239,8 @@ function SettingsPanel(p: LeftPanelProps) {
       <OfflineSettings />
       <h2 className="bc-panel-title">Units</h2>
       <p className="bc-note">Millimetres. Z points up.</p>
-      <h2 className="bc-panel-title" id="bc-shortcuts-title">
-        Keyboard shortcuts
-      </h2>
-      <p className="bc-note">Press ? to see these any time, or {formatCombo("mod+k")} to find any command.</p>
-      <div aria-labelledby="bc-shortcuts-title">
-        {[...groups].map(([group, list]) => (
-          <div key={group}>
-            <h3 className="bc-sub">{group}</h3>
-            <dl className="bc-shortcuts">
-              {list.map((c) => (
-                <div key={c.id}>
-                  <dt>{c.label}</dt>
-                  <dd>
-                    {c.keys!.map((k) => (
-                      <kbd key={k}>{formatCombo(k)}</kbd>
-                    ))}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        ))}
-      </div>
+      <h2 className="bc-panel-title">Keyboard shortcuts</h2>
+      <p className="bc-note">Press ? or open Help to see them, or {formatCombo("mod+k")} to find any command.</p>
       <h2 className="bc-panel-title">Advanced</h2>
       <h3 className="bc-sub" id="bc-orient-weights">
         Orientation suggestions
