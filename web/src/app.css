@@ -33,8 +33,12 @@ body {
   --bc-view-top: calc(var(--bc-top-height) + 2 * var(--bc-float-gap));
   --bc-view-left: calc(var(--bc-side-width) + 2 * var(--bc-float-gap));
   --bc-view-right: calc(var(--bc-props-width) + 2 * var(--bc-float-gap));
-  /* The timeline (flush on the bottom edge) and the help line just above it. */
-  --bc-view-bottom: 80px;
+  /* The bottom stack (status, help line, rolled-back warning, timeline) starts --bc-foot-bottom up from the edge.
+     AppShell measures its height into --bc-foot-height, so the view's clear area, and the tool dialogs that sit at
+     its foot, always end a gap above it, whatever the stack holds. */
+  --bc-foot-bottom: 0px;
+  --bc-foot-height: 64px;
+  --bc-view-bottom: calc(var(--bc-foot-bottom) + var(--bc-foot-height) + var(--bc-float-gap));
   --bc-viewcube-room: 112px;
   /* Room the view bar takes at the top of the view, so the empty state starts below it. */
   --bc-bars-room: 56px;
@@ -47,7 +51,7 @@ body {
   --bc-view-left: var(--bc-float-gap);
 }
 .bc-app.bc-no-timeline {
-  --bc-view-bottom: 44px;
+  --bc-foot-bottom: var(--bc-float-gap);
 }
 .bc-app .bc-top {
   position: absolute;
@@ -176,16 +180,12 @@ body {
   z-index: 8;
   left: var(--bc-view-left);
   right: var(--bc-view-right);
-  bottom: 0;
+  bottom: var(--bc-foot-bottom);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--bc-space-3);
   pointer-events: none;
-}
-/* With the timeline hidden from Settings, the help line keeps its gap from the edge. */
-.bc-app.bc-no-timeline .bc-stage-foot {
-  bottom: var(--bc-float-gap);
 }
 .bc-app .bc-stage-foot > .bc-timeline {
   border-bottom-left-radius: 0;
@@ -702,10 +702,8 @@ kbd {
     --bc-bars-room: 120px;
     --bc-view-left: var(--bc-float-gap);
     --bc-view-right: var(--bc-float-gap);
-    --bc-view-bottom: calc(var(--bc-rail-bar) + 84px);
-  }
-  .bc-app.bc-no-timeline {
-    --bc-view-bottom: calc(var(--bc-rail-bar) + 36px);
+    /* The tools take the bottom edge; the bottom stack sits just above them. */
+    --bc-foot-bottom: calc(var(--bc-rail-bar) + 2 * var(--bc-float-gap));
   }
   /* The panels are sheets over the view, just above the tools. */
   .bc-app .bc-left,
@@ -746,11 +744,6 @@ kbd {
   }
   .bc-app .bc-top > .bc-top-tools + .bc-grow {
     flex: 1;
-  }
-  /* On a narrow screen the tools take the bottom edge, where a thumb reaches them; the timeline sits just above. */
-  .bc-app .bc-stage-foot,
-  .bc-app.bc-no-timeline .bc-stage-foot {
-    bottom: calc(var(--bc-rail-bar) + 2 * var(--bc-float-gap));
   }
   .bc-app .bc-stage-foot > .bc-timeline {
     border-radius: var(--bc-radius-md);

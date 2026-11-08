@@ -322,6 +322,33 @@ test("Horizontal/Vertical stays on the pointer and picks the nearer one per line
   await expect(page.getByRole("group", { name: "Select options" })).toBeVisible();
 });
 
+test("Horizontal/Vertical lines up two points: a point and the origin", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+  await page.keyboard.press("p");
+  await click(page, 25, 4);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".bc-help")).toContainText("2 degrees of freedom");
+
+  await page.getByRole("button", { name: "Constrain", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Horizontal/Vertical" }).click();
+  await expect(page.locator(".bc-help")).toContainText("Pick lines, or two points to line them up");
+  // The first point waits for a second; the pair sits nearer level, so it goes horizontal.
+  await click(page, 25, 4);
+  await expect(constraints).toHaveCount(0);
+  const origin = await at(page, 0, 0);
+  await page.mouse.move(origin.x, origin.y, { steps: 3 });
+  await expect(page.locator(".bc-tool-tag")).toHaveText("Horizontal");
+  await click(page, 0, 0);
+  await expect(constraints.filter({ hasText: "Horizontal" })).toHaveCount(1);
+  await expect(page.locator(".bc-help")).toContainText("1 degree of freedom");
+});
+
 test("place a point, size it from the origin, and put a line through the origin", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));

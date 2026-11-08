@@ -104,7 +104,6 @@ import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
 import { ParamsPanel } from "./ParamsPanel";
 import { CommandPalette } from "./CommandPalette";
-import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { useFiles } from "../files/useFiles";
@@ -114,7 +113,7 @@ import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
-import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
+import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
@@ -155,6 +154,8 @@ import type { WorldPlaneName } from "../viewport/engine";
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+// The sketch palette only shows while a sketch is open, so it loads then.
+const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
 const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
@@ -179,8 +180,9 @@ const TIMELINE_KEY = "bettercad.timeline";
 
 const ORIENT_KEY = "bettercad.orientWeights";
 
-/** The Export dialog loads on first use, keeping the first-paint bundle in budget. */
+/** The Export and Keyboard shortcuts dialogs load on first use, keeping the first-paint bundle in budget. */
 const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
 function readOrientWeights(): OrientWeights {
@@ -2468,7 +2470,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         }
         rightPanel={
           sketch.editing ? (
-            <SketchPanel s={sketch} />
+            <Suspense fallback={null}>
+              <SketchPanel s={sketch} />
+            </Suspense>
           ) : (
             <>
               {problemBanner}
@@ -2575,7 +2579,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         />
       )}
       {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
-      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog open onClose={() => setShortcutsOpen(false)} commands={commands} />
+        </Suspense>
+      )}
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <TooltipLayer />
     </>

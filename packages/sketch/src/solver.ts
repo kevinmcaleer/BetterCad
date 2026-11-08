@@ -139,9 +139,9 @@ function constraintPrimitives(c: Constraint, idx: SketchIndex): SketchPrimitive[
       return [{ id, type: "point_on_arc", p_id: c.p, a_id: c.e }];
     }
     case "horizontal":
-      return [{ id, type: "horizontal_l", l_id: c.e }];
+      return c.b ? [{ id, type: "horizontal_pp", p1_id: c.e, p2_id: c.b }] : [{ id, type: "horizontal_l", l_id: c.e }];
     case "vertical":
-      return [{ id, type: "vertical_l", l_id: c.e }];
+      return c.b ? [{ id, type: "vertical_pp", p1_id: c.e, p2_id: c.b }] : [{ id, type: "vertical_l", l_id: c.e }];
     case "parallel":
       return [{ id, type: "parallel", l1_id: c.a, l2_id: c.b }];
     case "perpendicular":
