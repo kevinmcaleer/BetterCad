@@ -2,8 +2,10 @@
  * The Render view's state (#197), shared by the picture and its options bar, which load together on first use.
  * Framework-free and tiny, so the shell can hold it without the path tracer.
  */
-export type LightPresetId = "studio" | "daylight" | "workbench";
+export type LightPresetId = "studio" | "daylight" | "workbench" | "lightbox";
 export type SaveSize = "view" | "double" | "4k";
+/** What is behind the model and what it stands on. */
+export type BackgroundId = "lightbox" | "grey" | "workbench" | "holodeck";
 /** How long the picture keeps clearing: each step adds samples and takes longer. */
 export type RenderQuality = "good" | "better" | "best";
 export const QUALITIES: { id: RenderQuality; label: string; samples: number }[] = [
@@ -20,6 +22,7 @@ export interface RenderState {
   loading: boolean;
   preset: LightPresetId;
   style: RenderStyle;
+  background: BackgroundId;
   /** Where the picture stops adding samples. */
   quality: RenderQuality;
   samples: number;
@@ -40,7 +43,17 @@ export interface RenderSession {
 }
 
 export function renderSession(style: RenderStyle = "finishes"): RenderSession {
-  let state: RenderState = { loading: true, preset: "studio", style, quality: "better", samples: 0, moving: false, slow: false, saving: null };
+  let state: RenderState = {
+    loading: true,
+    preset: "studio",
+    style,
+    background: "lightbox",
+    quality: "better",
+    samples: 0,
+    moving: false,
+    slow: false,
+    saving: null,
+  };
   const subs = new Set<() => void>();
   return {
     get: () => state,

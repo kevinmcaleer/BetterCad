@@ -2905,6 +2905,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 <RenderPicture
                   session={render}
                   bodies={renderBodies}
+                  section={vp.section}
                   camera={renderCam.current ?? DEFAULT_CAMERA}
                   onCamera={onRenderCamera}
                   onSave={saveRender}
