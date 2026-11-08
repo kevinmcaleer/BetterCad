@@ -115,7 +115,6 @@ import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
-import { ExtrudeBar } from "../extrude/ExtrudeUI";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
@@ -158,6 +157,10 @@ import type { WorldPlaneName } from "../viewport/engine";
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+// The Extrude bar loads after first paint (the shell's budget), and is fetched as soon as the editor is up, so it is
+// there before the first E and the distance field can take focus.
+const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
+const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -439,6 +442,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (stepTargets) setSelection(stepTargets.split(" "));
   }, [stepTargets]);
+  useEffect(() => {
+    void loadExtrudeBar();
+  }, []);
   const selectFromBrowser = useCallback(
     (ids: string[]) => {
       if (!profileStep) return setSelection(ids);
@@ -2311,11 +2317,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               {place.part && <PlaceBar x={place} />}
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
-              {tool === "extrude" && (
-                <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
-              )}
-              {tool === "revolve" && (
-                <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+              {(tool === "extrude" || tool === "revolve") && (
+                <Suspense fallback={null}>
+                  {tool === "extrude" ? (
+                    <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+                  ) : (
+                    <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+                  )}
+                </Suspense>
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
               {tool === "gear" && (
