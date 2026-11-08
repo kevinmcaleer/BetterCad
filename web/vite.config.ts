@@ -48,7 +48,7 @@ function serviceWorker(): Plugin {
       order: "post",
       handler() {
         const assets = readdirSync(join(outDir, "assets"))
-          .filter((f) => /\.(js|css|wasm|svg|png|woff2)$/.test(f))
+          .filter((f) => /\.(js|css|wasm|svg|png|woff2?)$/.test(f))
           .sort()
           .map((f) => `assets/${f}`);
         // The sample models (#99) open offline too.
