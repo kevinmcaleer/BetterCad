@@ -22,6 +22,13 @@ export interface BodyMesh {
   edgeSegs: Uint32Array;
   /** x, y, z per topological vertex (a box has 8, a cylinder none). */
   vertices: Float32Array;
+  /**
+   * The B-rep edges round each face: face i's edge numbers are faceEdgeList[faceEdgeStart[i]] ..
+   * faceEdgeList[faceEdgeStart[i + 1] - 1]. Only the OCCT kernel knows them; without them the viewport works them out
+   * from the triangles.
+   */
+  faceEdgeList?: Uint32Array;
+  faceEdgeStart?: Uint32Array;
 }
 
 export interface Bounds {
@@ -82,6 +89,8 @@ export class MeshBuilder {
   private edges: number[] = [];
   private edgeSegs = [0];
   private verts: number[] = [];
+  private faceEdgeList: number[] = [];
+  private faceEdgeStart: number[] | null = null;
 
   /** The index the next vertex will get. */
   get vertexCount(): number {
@@ -106,6 +115,12 @@ export class MeshBuilder {
     for (let i = 0; i + 5 < points.length; i += 3) this.edges.push(...points.slice(i, i + 6));
     this.edgeSegs.push(this.edges.length / 6);
   }
+  /** The edges round the next face, in face order (call once per face, after the faces). */
+  faceEdges(edges: number[]): void {
+    this.faceEdgeStart ??= [0];
+    this.faceEdgeList.push(...edges);
+    this.faceEdgeStart.push(this.faceEdgeList.length);
+  }
   point(x: number, y: number, z: number): void {
     this.verts.push(x, y, z);
   }
@@ -119,6 +134,7 @@ export class MeshBuilder {
       edgePositions: new Float32Array(this.edges),
       edgeSegs: new Uint32Array(this.edgeSegs),
       vertices: new Float32Array(this.verts),
+      ...(this.faceEdgeStart ? { faceEdgeList: new Uint32Array(this.faceEdgeList), faceEdgeStart: new Uint32Array(this.faceEdgeStart) } : {}),
     };
   }
 }

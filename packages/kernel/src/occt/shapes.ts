@@ -395,6 +395,18 @@ export function elements(oc: OC, shape: TopoDS_Shape, kind: ShapeKind): TopoDS_S
   return out;
 }
 
+/** Finds an edge's number in `edges` (as `elements` lists them), or -1. Bucketed by where the edge's middle is. */
+export function edgeNumbering(oc: OC, edges: TopoDS_Shape[]): (e: TopoDS_Shape) => number {
+  const buckets = new Map<string, number[]>();
+  edges.forEach((e, i) => {
+    const k = spot(oc, e, "edge");
+    const b = buckets.get(k);
+    if (b) b.push(i);
+    else buckets.set(k, [i]);
+  });
+  return (e) => buckets.get(spot(oc, e, "edge"))?.find((i) => edges[i]!.IsSame(e)) ?? -1;
+}
+
 const r6 = (n: number) => (Math.round(n * 1e5) / 1e5).toFixed(5);
 
 /** Where an edge's middle or a vertex is, as a bucket key. */

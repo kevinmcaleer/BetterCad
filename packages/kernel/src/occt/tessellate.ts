@@ -1,6 +1,6 @@
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
-import { elements } from "./shapes";
+import { edgeNumbering, elements } from "./shapes";
 import { MeshBuilder, type BodyMesh } from "../mesh";
 
 /**
@@ -75,7 +75,8 @@ export function tessellate(oc: OC, shape: TopoDS_Shape, quality: Quality = "fast
     ex.delete();
   }
   const seams = (e: TopoDS_Shape) => seamEdges.some((s) => s.IsSame(e));
-  for (const e of elements(oc, shape, "edge")) {
+  const edges = elements(oc, shape, "edge");
+  for (const e of edges) {
     const edge = oc.TopoDS.Edge(e);
     if (oc.BRep_Tool.Degenerated(edge) || seams(e)) {
       b.edge([]);
@@ -94,6 +95,19 @@ export function tessellate(oc: OC, shape: TopoDS_Shape, quality: Quality = "fast
     sampler.delete();
     curve.delete();
     b.edge(pts);
+  }
+
+  // The edges round each face, from the B-rep, so a face projected into a sketch brings in its true circles and arcs.
+  const numberOf = edgeNumbering(oc, edges);
+  for (const f of faces) {
+    const ids: number[] = [];
+    const ex = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    for (; ex.More(); ex.Next()) {
+      const i = numberOf(ex.Current());
+      if (i >= 0 && !ids.includes(i)) ids.push(i);
+    }
+    ex.delete();
+    b.faceEdges(ids);
   }
 
   for (const v of elements(oc, shape, "vertex")) {
