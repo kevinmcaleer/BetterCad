@@ -1,6 +1,6 @@
 import { Algorithm, SolveStatus, init_planegcs_module, GcsWrapper, type SketchPrimitive } from "@salusoft89/planegcs";
 import { SketchIndex, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
-import { angleOf, cross, dot, sub } from "./geom2d";
+import { angleOf, cross, dot, scale, sub } from "./geom2d";
 import { freedom } from "./dof";
 import { measureDimension } from "./measure";
 
@@ -226,10 +226,15 @@ function dimensionPrimitives(d: Dimension, idx: SketchIndex): SketchPrimitive[] 
       const l0 = idx.get(r0);
       const l1 = idx.get(r1!);
       if (l0?.kind !== "line" || l1?.kind !== "line") return [];
-      const u = sub(idx.xy(l0.b), idx.xy(l0.a));
-      const v = sub(idx.xy(l1.b), idx.xy(l1.a));
+      // The angle is between the measured arms (one quadrant of the crossing); planegcs turns line to line, a to b, so
+      // an arm run back along its line adds half a turn.
+      const [s0, s1] = d.arms ?? [1, 1];
+      const u = scale(sub(idx.xy(l0.b), idx.xy(l0.a)), s0);
+      const v = scale(sub(idx.xy(l1.b), idx.xy(l1.a)), s1);
       const sign = Math.atan2(cross(u, v), dot(u, v)) < 0 ? -1 : 1;
-      return [{ id, type: "l2l_angle_ll", l1_id: r0, l2_id: r1!, angle: sign * d.value * DEG }];
+      let turn = sign * d.value * DEG + (s0 === s1 ? 0 : Math.PI);
+      if (turn > Math.PI) turn -= 2 * Math.PI;
+      return [{ id, type: "l2l_angle_ll", l1_id: r0, l2_id: r1!, angle: turn }];
     }
     default:
       break;

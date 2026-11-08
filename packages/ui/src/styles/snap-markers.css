@@ -214,8 +214,10 @@
   touch-action: none;
 }
 /* A size being placed rides with the pointer and lets the placing click through to the view. */
+/* A size being placed sits up and to the right of the pointer, so the line or point to pick next stays in sight. */
 .bc-dim-pill.bc-placing {
   pointer-events: none;
+  transform: translate(14px, calc(-100% - 10px));
 }
 /* Sketch labels: pills and constraint marks take clicks; the layer around them does not. */
 .bc-dim-pill,

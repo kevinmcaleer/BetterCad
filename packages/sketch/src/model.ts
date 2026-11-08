@@ -81,6 +81,11 @@ export interface Dimension {
   driving: boolean;
   /** Where the label sits, relative to the measured geometry, in sketch mm. */
   labelOffset: Vec2;
+  /**
+   * Angles only: which way along each line the measured arms run from where the lines cross, 1 along the line (a to b)
+   * or -1 back along it. So two lines give four angles, one per quadrant. Missing means [1, 1].
+   */
+  arms?: [1 | -1, 1 | -1];
   suppressed?: boolean;
 }
 

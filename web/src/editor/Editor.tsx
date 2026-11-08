@@ -692,8 +692,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           : { id: c.id, what: c.geo.what, origin: c.geo.at },
     );
     const lit = [constructHover, browserPicked, construct.session?.id].filter((x): x is string => !!x);
-    eng.setConstruct([...shapes, ...(construct.active ? originShapes(construct.slot) : [])], lit);
-  }, [shownConstruct, constructHover, browserPicked, construct.active, construct.slot, construct.session, vp.ref, kernel.bodies]);
+    // The sketch's Dimension tool can measure from an axis too.
+    const want = construct.active ? construct.slot : sketch.editing && sketch.stool === "dimension" ? "line" : null;
+    eng.setConstruct([...shapes, ...originShapes(want)], lit);
+  }, [shownConstruct, constructHover, browserPicked, construct.active, construct.slot, construct.session, vp.ref, kernel.bodies, sketch.editing, sketch.stool]);
 
   // Posing (#173): a live pose while a slider moves, kept in the model when it stops. Shown with the Select tool only, so
   // tools that pick and move bodies work on them where they really are.

@@ -1,8 +1,11 @@
 import {
   SketchIndex,
   add,
+  angleCorner,
+  armsAt,
   measureDimension,
   angleOf,
+  cross,
   dist,
   mid,
   norm,
@@ -10,6 +13,7 @@ import {
   polar,
   scale,
   sub,
+  wrap,
   type Dimension,
   type DimensionKind,
   type Entity,
@@ -21,7 +25,7 @@ import {
 /**
  * How a dimension is drawn on the sketch, in sketch mm, as a drawing office would and as Fusion does: extension lines
  * out from the geometry, a dimension line with an arrow at each end, and the size sitting on it. `text` is where the
- * size sits; `arrows` point at their tips along `dir`. Angles have only their text for now.
+ * size sits; `arrows` point at their tips along `dir`. Angles draw an arc between the lines, in the quadrant measured.
  */
 export interface DimensionArt {
   text: Vec2;
@@ -93,7 +97,7 @@ export function kindFor(refs: string[], idx: SketchIndex, dir: DimDirection): Di
 }
 
 /** The point a size's label offset is measured from: the middle of what it measures, a rim point, or the foot on a line. */
-export function dimensionAnchor(idx: SketchIndex, d: Pick<Dimension, "kind" | "refs">): Vec2 {
+export function dimensionAnchor(idx: SketchIndex, d: Pick<Dimension, "kind" | "refs" | "arms">): Vec2 {
   const e0 = d.refs[0] ? idx.get(d.refs[0]) : undefined;
   const e1 = d.refs[1] ? idx.get(d.refs[1]) : undefined;
   if (!e0) return [0, 0];
@@ -103,7 +107,7 @@ export function dimensionAnchor(idx: SketchIndex, d: Pick<Dimension, "kind" | "r
     return polar(idx.xy(e0.c), e0.r, rimAngle(idx, e0));
   }
   if (!e1) return anchorOf(idx, e0);
-  if (d.kind === "angle") return mid(anchorOf(idx, e0), anchorOf(idx, e1));
+  if (d.kind === "angle") return angleCorner(idx, d)?.at ?? mid(anchorOf(idx, e0), anchorOf(idx, e1));
   const p = anchorOf(idx, e0);
   if (e1.kind === "line" && e0.kind === "point") {
     const q = footOn(idx, p, e1);
@@ -226,7 +230,11 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
     return roundArt(d.kind, idx.xy(e0.c), e0.r, rimAngle(idx, e0), d.labelOffset, px);
   }
 
-  if (d.kind === "angle" || !e1) return textOnly(e1 ? mid(anchorOf(idx, e0), anchorOf(idx, e1)) : anchorOf(idx, e0));
+  if (d.kind === "angle") {
+    const c = angleCorner(idx, d);
+    return c ? angleArt(idx, d, c, px) : textOnly(e1 ? mid(anchorOf(idx, e0), anchorOf(idx, e1)) : anchorOf(idx, e0));
+  }
+  if (!e1) return textOnly(anchorOf(idx, e0));
 
   // Distances: between two points, or from a point to where it meets a line square on.
   const p = anchorOf(idx, e0);
@@ -249,6 +257,48 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
   }
   if (d.kind === "distanceX" || d.kind === "distanceY") return levelled(d.kind, p, q, px, centre, textAt);
   return aligned(p, q, px, centre, d.labelOffset);
+}
+
+/**
+ * An angle as Fusion draws it: an arc centred where the lines cross, through the label, with an arrow on each line's
+ * arm. Extension lines run out along an arm when the arc passes its line's end, and the arc runs on to a label dragged
+ * outside the angle. Until placed, the label sits on the bisector a little out from the corner.
+ */
+function angleArt(idx: SketchIndex, d: Dimension, c: { at: Vec2; u: Vec2; v: Vec2 }, px: number): DimensionArt {
+  // Run the arc anticlockwise from u to v, the short way.
+  const [u, v] = cross(c.u, c.v) < 0 ? [c.v, c.u] : [c.u, c.v];
+  const text = isPlaced(d) ? add(c.at, d.labelOffset) : add(c.at, scale(norm(add(u, v)), 40 * px));
+  const r = Math.max(dist(text, c.at), 6 * px);
+  const a0 = angleOf(u);
+  const span = wrap(angleOf(v) - a0);
+  // A label outside the angle: the arc runs on past the nearer arm to it.
+  const t = wrap(angleOf(sub(text, c.at)) - a0);
+  const [from, to] = t <= span ? [0, span] : t - span < 2 * Math.PI - t ? [0, t] : [t - 2 * Math.PI, span];
+  const steps = Math.max(2, Math.ceil((to - from) / 0.1));
+  const lines: [Vec2, Vec2][] = [];
+  for (let i = 0; i < steps; i++)
+    lines.push([polar(c.at, r, a0 + from + ((to - from) * i) / steps), polar(c.at, r, a0 + from + ((to - from) * (i + 1)) / steps)]);
+  // Extension lines along each arm, from its line's end to just past the arc.
+  for (const [arm, id] of [
+    [c.u, d.refs[0]],
+    [c.v, d.refs[1]],
+  ] as const) {
+    const l = idx.get(id!);
+    if (l?.kind !== "line") continue;
+    const ts = [idx.xy(l.a), idx.xy(l.b)].map((p) => dot(sub(p, c.at), arm));
+    const [lo, hi] = [Math.min(...ts), Math.max(...ts)];
+    const out = (k: number) => add(c.at, scale(arm, k));
+    if (r > hi + 4 * px) lines.push([out(hi + 3 * px), out(r + 5 * px)]);
+    else if (r < lo - 4 * px) lines.push([out(r - 5 * px), out(lo - 3 * px)]);
+  }
+  return {
+    text,
+    lines,
+    arrows: [
+      { tip: add(c.at, scale(u, r)), dir: scale(perp(u), -1) },
+      { tip: add(c.at, scale(v, r)), dir: perp(v) },
+    ],
+  };
 }
 
 /** Across: a level dimension line above or below; Up: an upright one to the left or right. */
@@ -293,6 +343,9 @@ export function placeAt(sketch: Sketch, kind: DimensionKind, refs: Id[], xy: Vec
   const k = ends && xy ? kindFor(refs, idx, directionAt(ends[0], ends[1], xy)) : kind;
   // A level or upright size on two points names the points; on a line it names the line.
   const dim: Dimension = { id: "placing", kind: k, refs, expression: "", value: 0, driving: true, labelOffset: [0, 0] };
+  // Two lines make four angles; the one the pointer is in is measured.
+  const arms = k === "angle" && xy ? armsAt(idx, refs, xy) : null;
+  if (arms) dim.arms = arms;
   dim.value = measureDimension(sketch, dim);
   if (xy) dim.labelOffset = offsetTo(idx, dim, xy);
   return dim;
