@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { HOLE_PATTERNS, circlePattern, rectPattern } from "./catalogue";
+import { circlePattern, rectPattern } from "./catalogue";
+import { HOLE_PATTERNS } from "./catalogue/list";
 import { MOUNT_DEFAULTS, addMount, addPart, build, changeParts, hornPoints, newDoc, updateMount, type ModelDoc, type MountParams } from "./document";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";

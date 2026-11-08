@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { CataloguePanel, matches } from "./CataloguePanel";
-import { cataloguePart } from "../state/document";
+import { cataloguePart } from "@bettercad/kernel/catalogue";
 
 describe("Robot parts panel (#187)", () => {
   it("lists parts by category", () => {

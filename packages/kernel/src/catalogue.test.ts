@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { CATALOGUE, CATALOGUE_CATEGORIES, cataloguePart, checkPart, partBounds, type CataloguePart } from "./catalogue";
+import { CATALOGUE_CATEGORIES, checkPart, partBounds, type CataloguePart } from "./catalogue";
+import { CATALOGUE, cataloguePart } from "./catalogue/list";
 import { loadOCCT, type OC } from "./occt/oc";
 import { catalogueShape } from "./occt/catalogue";
 import { measure, valid } from "./occt/shapes";

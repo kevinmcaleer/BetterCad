@@ -133,7 +133,6 @@ import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
 import { useFiles } from "../files/useFiles";
-import { importFiles } from "../files/importFiles";
 import { useDrop } from "../files/useDrop";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
@@ -160,7 +159,7 @@ import { go } from "../cloud/route";
 import { useTour } from "../tour/Tour";
 import { COURSE_URL } from "../help/about";
 import { actionLog, editSummary } from "../report/actionLog";
-import { browserName } from "../report/report";
+import { browserName } from "../report/browser";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { useWhatsNew } from "../whatsnew/useWhatsNew";
@@ -241,6 +240,8 @@ const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ d
 const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
+/** Importing a mesh or STEP file loads its code when you first do it (#320). */
+const importFiles: typeof import("../files/importFiles").importFiles = (...a) => import("../files/importFiles").then((m) => m.importFiles(...a));
 const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */

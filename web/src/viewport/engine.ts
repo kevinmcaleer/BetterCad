@@ -48,7 +48,7 @@ import {
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
-import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
+import type { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { faceCount, type BodyMesh } from "@bettercad/kernel";
 import {
   DEFAULT_CAMERA,
@@ -327,7 +327,10 @@ export class Engine {
   private originPointShown = false;
 
   // Gizmo
-  private gizmo: TransformControls;
+  /** Loaded just after first paint (#320): it is only needed once something is selected. */
+  private gizmo: TransformControls | null = null;
+  private gizmoMode: "translate" | "rotate" = "translate";
+  private snap = false;
   private proxy = new Object3D();
   /** The move gizmo on a point instead of a body (#176): its arrows drag the point along an axis. */
   private pointGizmo: { at: V3; drag: PointDrag } | null = null;
@@ -464,23 +467,10 @@ export class Engine {
     this.markerMat.depthTest = false;
     this.scene.add(this.markers);
 
-    this.gizmo = new TransformControls(this.persp, canvas);
-    this.gizmo.setSpace("world");
-    this.gizmo.setSize(0.9);
-    this.gizmo.attach(this.proxy);
     this.scene.add(this.proxy);
-    const helper = this.gizmo.getHelper();
-    helper.visible = false;
-    this.scene.add(helper);
-    this.gizmo.enabled = false;
-    this.gizmo.addEventListener("change", () => this.invalidate());
-    this.gizmo.addEventListener("mouseDown", () => {
-      if (this.gizmoBody || !this.pointGizmo) return;
-      this.pointDragging = this.pointGizmo.drag;
-      this.pointDragging.start();
+    void import("three/examples/jsm/controls/TransformControls.js").then(({ TransformControls }) => {
+      if (!this.disposed) this.initGizmo(new TransformControls(this.persp, canvas));
     });
-    this.gizmo.addEventListener("objectChange", () => this.onGizmoMove(false));
-    this.gizmo.addEventListener("mouseUp", () => this.onGizmoMove(true));
 
     this.cap = new Mesh(new PlaneGeometry(1, 1), this.capMat);
     this.cap.visible = false;
@@ -851,7 +841,8 @@ export class Engine {
   /** Shows the gizmo on a body, or hides it (null). */
   setGizmo(id: string | null, mode: "translate" | "rotate" = "translate"): void {
     this.gizmoBody = id;
-    this.gizmo.setMode(mode);
+    this.gizmoMode = mode;
+    this.gizmo?.setMode(mode);
     this.syncGizmo();
     this.invalidate();
   }
@@ -868,8 +859,9 @@ export class Engine {
 
   /** Shift snaps the gizmo to 5 mm and 15° steps. */
   setSnap(on: boolean): void {
-    this.gizmo.setTranslationSnap(on ? 5 : null);
-    this.gizmo.setRotationSnap(on ? 15 * DEG : null);
+    this.snap = on;
+    this.gizmo?.setTranslationSnap(on ? 5 : null);
+    this.gizmo?.setRotationSnap(on ? 15 * DEG : null);
   }
 
   setSection(s: Section | null, showArrow = false): void {
@@ -1473,7 +1465,7 @@ export class Engine {
     window.clearTimeout(this.holdTimer);
     cancelAnimationFrame(this.hoverFrame);
     this.unlisten();
-    this.gizmo.dispose();
+    this.gizmo?.dispose();
     for (const b of this.order) this.removeBody(b);
     this.clearPreviews();
     this.idTarget?.dispose();
@@ -1785,14 +1777,43 @@ export class Engine {
 
   // ------------------------------------------------------------ gizmo
 
+  private initGizmo(gizmo: TransformControls): void {
+    this.gizmo = gizmo;
+    gizmo.setSpace("world");
+    gizmo.setSize(0.9);
+    gizmo.attach(this.proxy);
+    const helper = gizmo.getHelper();
+    helper.visible = false;
+    this.scene.add(helper);
+    gizmo.enabled = false;
+    gizmo.addEventListener("change", () => this.invalidate());
+    gizmo.addEventListener("mouseDown", () => {
+      if (this.gizmoBody || !this.pointGizmo) return;
+      this.pointDragging = this.pointGizmo.drag;
+      this.pointDragging.start();
+    });
+    gizmo.addEventListener("objectChange", () => this.onGizmoMove(false));
+    gizmo.addEventListener("mouseUp", () => this.onGizmoMove(true));
+    gizmo.camera = this.activeCamera;
+    // The gizmo has to see each press before the view does, as it did when it loaded with the view: listen again after it.
+    this.unlisten();
+    this.handlers = [];
+    this.listen();
+    this.setSnap(this.snap);
+    this.syncGizmo();
+    this.invalidate();
+  }
+
   private syncGizmo(): void {
+    const gizmo = this.gizmo;
+    if (!gizmo) return;
     const o = this.gizmoBody ? this.bodies.get(this.gizmoBody) : undefined;
-    const helper = this.gizmo.getHelper();
+    const helper = gizmo.getHelper();
     const point = !o && this.pointGizmo ? this.pointGizmo.at : null;
-    this.gizmo.enabled = !!o || !!point;
+    gizmo.enabled = !!o || !!point;
     helper.visible = !!o || !!point;
+    gizmo.setMode(point && !o ? "translate" : this.gizmoMode);
     if (point && !this.pointDragging) {
-      this.gizmo.setMode("translate");
       this.proxy.position.set(...point);
       this.proxy.rotation.set(0, 0, 0);
       this.proxy.updateMatrixWorld();
@@ -1819,7 +1840,7 @@ export class Engine {
     const id = this.gizmoBody;
     const o = id ? this.bodies.get(id) : undefined;
     if (!o || !id) return;
-    if (!done && this.gizmo.mode === "translate") this.snapToOrigin();
+    if (!done && this.gizmo?.mode === "translate") this.snapToOrigin();
     const e = new Euler().setFromQuaternion(this.proxy.quaternion, "ZYX");
     const round = (v: number) => Math.round(v * 1000) / 1000;
     const pos: V3 = [round(this.proxy.position.x), round(this.proxy.position.y), round(this.proxy.position.z)];
@@ -1842,7 +1863,7 @@ export class Engine {
    * placement point lands on the origin, or level with it, along that axis.
    */
   private snapToOrigin(): void {
-    const axis = this.gizmo.axis ?? "";
+    const axis = this.gizmo?.axis ?? "";
     const p = this.proxy.position;
     const tol = 8 * this.pixelSize([p.x, p.y, p.z]);
     for (const k of ["x", "y", "z"] as const) {
@@ -1879,7 +1900,7 @@ export class Engine {
     // passes draw from last frame's view and the line-art outline trails the model while it turns.
     this.persp.updateMatrixWorld();
     this.ortho.updateMatrixWorld();
-    this.gizmo.camera = this.activeCamera;
+    if (this.gizmo) this.gizmo.camera = this.activeCamera;
 
     // The grid: steps adapt to the zoom, and fade before the horizon.
     const step = gridStep(2 * h);
@@ -2062,7 +2083,7 @@ export class Engine {
       this.pointers.set(e.pointerId, p);
       this.touchPick = e.pointerType === "touch";
       // The gizmo has the pointer when it is over a handle.
-      if (this.gizmo.enabled && (this.gizmo.dragging || this.gizmo.axis !== null)) return;
+      if (this.gizmo?.enabled && (this.gizmo.dragging || this.gizmo.axis !== null)) return;
       if (this.arrow.visible && this.onArrow(p)) {
         this.arrowDrag = { startOffset: this.section!.offset, ...p };
         this.canvas.setPointerCapture(e.pointerId);
@@ -2160,7 +2181,7 @@ export class Engine {
         else this.setCamera(orbit(this.cam, -dx * 0.4, dy * 0.4));
         return;
       }
-      if (!this.hoverEnabled || this.gizmo.dragging || e.pointerType === "touch") return;
+      if (!this.hoverEnabled || this.gizmo?.dragging || e.pointerType === "touch") return;
       this.hoverAt = p;
       if (!this.hoverFrame) {
         this.hoverFrame = requestAnimationFrame(() => {
@@ -2198,7 +2219,7 @@ export class Engine {
         return;
       }
       if (press.button !== 0) return;
-      if (this.gizmo.dragging) return;
+      if (this.gizmo?.dragging) return;
       const p = this.local(e);
       this.events.click?.(this.pick(p.x, p.y), { shift: press.shift, mod: press.mod }, p);
     };
