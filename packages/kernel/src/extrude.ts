@@ -15,6 +15,7 @@ import {
   type Vec2,
   type Vec3,
 } from "@bettercad/sketch";
+import type { ConstructRef } from "./construct";
 
 /**
  * Extrude's geometry, without OCCT (#61): which closed shapes of a sketch were picked, what they are as lines and
@@ -42,19 +43,52 @@ export interface PrismSpec {
 export interface RevolveSpec {
   frame: Frame;
   profiles: ProfileShape[];
-  /** The axis, in sketch coordinates. */
-  axis: { origin: Vec2; dir: Vec2 };
+  /**
+   * The axis, in sketch coordinates. It runs along the sketch plane, `offset` mm off it along the normal when it is a
+   * construction axis or edge that lies above or below the plane.
+   */
+  axis: SketchAxis;
   /** Degrees turned, 1 to 360. */
   angle: number;
   /** Degrees to start from (minus half the angle for a symmetric revolve). */
   start?: number;
 }
 
-/** What a revolve turns round: the sketch's own X or Y axis, or one of its lines. */
-export type AxisRef = { kind: "x" } | { kind: "y" } | { kind: "line"; id: string };
+/** A revolve's axis in its sketch's coordinates: a line along the plane, `offset` mm off it along the normal. */
+export interface SketchAxis {
+  origin: Vec2;
+  dir: Vec2;
+  offset?: number;
+}
 
-/** An axis in sketch coordinates, or null when its line is gone. */
-export function axisOf(sketch: Sketch, ref: AxisRef): { origin: Vec2; dir: Vec2 } | null {
+/**
+ * What a revolve turns round: the sketch's own X or Y axis, one of its lines, or something picked in the view (`ref`):
+ * an origin axis, a construction axis or a straight edge of a body, read the way construction steps read their picks.
+ */
+export type AxisRef = { kind: "x" } | { kind: "y" } | { kind: "line"; id: string } | { kind: "ref"; ref: ConstructRef };
+
+/**
+ * A world line as a revolve axis in a sketch's coordinates, or why it can't be one: it has to run along the plane
+ * (parallel to it), not through it.
+ */
+export function axisInSketch(f: Frame, origin: Vec3, dir: Vec3): SketchAxis | string {
+  const y: Vec3 = [f.normal[1] * f.x[2] - f.normal[2] * f.x[1], f.normal[2] * f.x[0] - f.normal[0] * f.x[2], f.normal[0] * f.x[1] - f.normal[1] * f.x[0]];
+  const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const len = Math.hypot(...dir);
+  if (!(len > 1e-9)) return "Pick a straight edge, a line or an axis to turn it round";
+  const d: Vec3 = [dir[0] / len, dir[1] / len, dir[2] / len];
+  if (Math.abs(dot(d, f.normal)) > 1e-4) return "The axis has to run along the sketch's plane. Pick one that lies flat with the sketch.";
+  const rel: Vec3 = [origin[0] - f.origin[0], origin[1] - f.origin[1], origin[2] - f.origin[2]];
+  const [du, dv] = [dot(d, f.x), dot(d, y)];
+  const k = Math.hypot(du, dv);
+  const offset = dot(rel, f.normal);
+  const tidy = (v: number) => (Math.abs(v) < 1e-9 ? 0 : v);
+  return { origin: [tidy(dot(rel, f.x)), tidy(dot(rel, y))], dir: [tidy(du / k), tidy(dv / k)], ...(Math.abs(offset) > 1e-9 ? { offset } : {}) };
+}
+
+/** An axis in sketch coordinates, or null when its line is gone. A picked axis (`ref`) is resolved by the document. */
+export function axisOf(sketch: Sketch, ref: AxisRef): SketchAxis | null {
+  if (ref.kind === "ref") return null;
   if (ref.kind === "x") return { origin: [0, 0], dir: [1, 0] };
   if (ref.kind === "y") return { origin: [0, 0], dir: [0, 1] };
   const idx = new SketchIndex(sketch);

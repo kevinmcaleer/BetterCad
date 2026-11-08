@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry, type Scope } from "@bettercad/ui";
 import type { Part } from "../state/document";
-import { throughAllAllowed } from "../state/document";
+import { refText, throughAllAllowed, type AxisRef } from "../state/document";
 import { DIRECTIONS, EXTENTS, OPERATIONS, type ExtrudeSession } from "./useExtrude";
 
 /**
@@ -48,17 +48,32 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
   let fields;
   if (f.type === "revolve") {
     const lines = (x.sketch?.entities ?? []).filter((e) => e.kind === "line");
+    const set = (axis: AxisRef) => () => x.pickAxis(axis);
+    const builtAxes = x.construct.filter((c) => c.geo.what === "axis");
+    // Picking in the view first; then the axes it can take by name. Sketch lines are picked in the view (a sketch can
+    // have dozens), but its construction lines are listed too.
     const axes: MenuEntry[] = [
-      { id: "x", label: "The sketch's X axis", onSelect: () => x.change({ axis: { kind: "x" } }) },
-      { id: "y", label: "The sketch's Y axis", onSelect: () => x.change({ axis: { kind: "y" } }) },
-      ...lines.map((l, i) => ({
-        id: l.id,
-        label: `Line ${i + 1}${"construction" in l && l.construction ? " (construction)" : ""}`,
-        onSelect: () => x.change({ axis: { kind: "line" as const, id: l.id } }),
-      })),
+      { id: "pick", label: "Pick in the view", checked: x.pickingAxis, onSelect: x.repickAxis },
+      { kind: "separator", id: "sep-sketch" },
+      { id: "x", label: "The sketch's X axis", onSelect: set({ kind: "x" }) },
+      { id: "y", label: "The sketch's Y axis", onSelect: set({ kind: "y" }) },
+      ...lines
+        .map((l, i) => ({ l, i }))
+        .filter(({ l }) => "construction" in l && l.construction)
+        .map(({ l, i }) => ({ id: l.id, label: `Line ${i + 1} (construction)`, onSelect: set({ kind: "line", id: l.id }) })),
+      { kind: "separator", id: "sep-origin" },
+      ...(["X", "Y", "Z"] as const).map((o) => ({ id: `origin:${o}`, label: `The ${o} axis`, onSelect: set({ kind: "ref", ref: { origin: o } }) })),
+      ...builtAxes.map((c) => ({ id: c.id, label: c.name, onSelect: set({ kind: "ref", ref: { step: c.id } }) })),
     ];
+    const names = new Map<string, string>([...parts.map((p) => [p.id, p.name] as const), ...x.construct.map((c) => [c.id, c.name] as const)]);
     const axis = f.axis;
-    const axisLabel = axis.kind === "line" ? `Line ${lines.findIndex((l) => l.id === axis.id) + 1}` : `${axis.kind.toUpperCase()} axis`;
+    const axisLabel = !axis
+      ? "Pick an axis"
+      : axis.kind === "line"
+        ? `Round Line ${lines.findIndex((l) => l.id === axis.id) + 1}`
+        : axis.kind === "ref"
+          ? `Round ${refText(axis.ref, (id) => names.get(id))}`
+          : `Round the sketch's ${axis.kind.toUpperCase()} axis`;
     fields = (
       <>
         <span className="bc-sk-fields" onKeyDown={onFieldKey}>
@@ -77,7 +92,16 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
             }}
           />
         </span>
-        <MenuButton label="Axis" entries={axes} trigger={(p) => <Button {...p} label={`Round the ${axisLabel}`} title="The line it turns round" />} />
+        <MenuButton
+          label="Axis"
+          entries={axes}
+          trigger={(p) => <Button {...p} label={axisLabel} on={x.pickingAxis} title="What it turns round: an axis, a sketch line or a straight edge" />}
+        />
+        {x.pickingAxis && (
+          <span className="bc-armed-note" role="status">
+            Click an axis, a sketch line or a straight edge
+          </span>
+        )}
         <Button label="Symmetric" title="Turn half the angle each way" on={!!f.symmetric} onClick={() => x.change({ symmetric: !f.symmetric })} />
       </>
     );
@@ -160,13 +184,20 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
         ) : (
           <span className="bc-armed-note">There is no body to change yet.</span>
         ))}
-      {error && (
+      {error && !(f.type === "revolve" && !f.axis) && (
         <span className="bc-armed-note bc-armed-error" role="alert">
           {error}
         </span>
       )}
       <Button kind="cancel" label="Cancel" title={`Take the ${x.kind} back`} shortcut="Esc" onClick={x.cancel} />
-      <Button kind="done" label="Done" title={`Keep the ${x.kind}`} shortcut="Enter" disabled={!x.picked} onClick={x.done} />
+      <Button
+        kind="done"
+        label="Done"
+        title={`Keep the ${x.kind}`}
+        shortcut="Enter"
+        disabled={!x.picked || (f.type === "revolve" && !f.axis)}
+        onClick={x.done}
+      />
     </ArmedBar>
   );
 }

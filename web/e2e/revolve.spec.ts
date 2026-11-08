@@ -31,7 +31,7 @@ async function pickShape(page: Page, x: number, y: number, taken: Locator) {
   }).toPass({ timeout: 15_000 });
 }
 
-test("revolve a rectangle round the sketch's Y axis into a tube", async ({ page }) => {
+test("revolve a rectangle round the Y axis, picked after the shape, into a tube", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
   await page.waitForTimeout(1200);
@@ -57,7 +57,10 @@ test("revolve a rectangle round the sketch's Y axis into a tube", async ({ page 
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Revolve/ })
     .click();
-  await pickShape(page, 15, 0, page.getByRole("button", { name: "Round the Y axis" }));
+  // The shape first, then the axis to turn it round: the origin's Y axis, clicked in the view.
+  await pickShape(page, 15, 0, page.getByRole("button", { name: "Pick an axis", exact: true }));
+  await expect(page.getByRole("button", { name: "Done" })).toBeDisabled();
+  await pickShape(page, 0, 15, page.getByRole("button", { name: "Round the Y axis", exact: true }));
   const angle = page.getByRole("textbox", { name: "Angle" });
   await expect(angle).toHaveValue(/360/);
   await angle.press("Enter");

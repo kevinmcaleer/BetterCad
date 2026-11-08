@@ -575,6 +575,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onClose: () => setTool("select"),
     say,
     theme: resolved,
+    construct: built.construct,
+    // Declared further down; called only on pointer moves, after the first render.
+    onConstructHover: (id) => setConstructHover(id),
   });
   useEffect(() => registry.register(revolve.commands), [registry, revolve.commands]);
 
@@ -691,9 +694,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           ? { id: c.id, what: c.geo.what, origin: c.geo.origin, dir: c.geo.dir }
           : { id: c.id, what: c.geo.what, origin: c.geo.at },
     );
-    const lit = [constructHover, browserPicked, construct.session?.id].filter((x): x is string => !!x);
-    eng.setConstruct([...shapes, ...(construct.active ? originShapes(construct.slot) : [])], lit);
-  }, [shownConstruct, constructHover, browserPicked, construct.active, construct.slot, construct.session, vp.ref, kernel.bodies]);
+    const lit = [constructHover, browserPicked, construct.session?.id, revolve.axisShape].filter((x): x is string => !!x);
+    // Revolve shows the origin's axes while it wants an axis, and keeps the one it turns round.
+    const origin = construct.active
+      ? originShapes(construct.slot)
+      : revolve.pickingAxis
+        ? originShapes("line")
+        : originShapes("line").filter((o) => o.id === revolve.axisShape);
+    eng.setConstruct([...shapes, ...origin], lit);
+  }, [
+    shownConstruct,
+    constructHover,
+    browserPicked,
+    construct.active,
+    construct.slot,
+    construct.session,
+    revolve.pickingAxis,
+    revolve.axisShape,
+    vp.ref,
+    kernel.bodies,
+  ]);
 
   // Posing (#173): a live pose while a slider moves, kept in the model when it stops. Shown with the Select tool only, so
   // tools that pick and move bodies work on them where they really are.
