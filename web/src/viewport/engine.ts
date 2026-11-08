@@ -1344,12 +1344,12 @@ export class Engine {
     const o = this.bodies.get(bodyId);
     if (!info || !o) return null;
     const m = o.body.mesh;
+    const at = m.faceEdgeStart;
     // The kernel's own list of the face's edges, where it gave one: whole B-rep edges, so circles stay circles.
-    if (m.faceEdgeList && m.faceEdgeStart && face + 1 < m.faceEdgeStart.length) {
-      const own = Array.from(m.faceEdgeList.subarray(m.faceEdgeStart[face]!, m.faceEdgeStart[face + 1]!));
-      const out = own.map((i) => ({ edge: i, points: this.edgePoints(bodyId, i) ?? [] })).filter((e) => e.points.length >= 2);
-      if (out.length) return out;
-    }
+    const own = at
+      ? [...m.faceEdgeList!.subarray(at[face], at[face + 1])].map((edge) => ({ edge, points: this.edgePoints(bodyId, edge) ?? [] })).filter((e) => e.points[1])
+      : [];
+    if (own.length) return own;
     const all = Array.from({ length: m.edgeSegs.length - 1 }, (_, i) => this.edgePoints(bodyId, i) ?? []);
     const { edges, rest } = edgesOnOutline(all, info.boundary);
     return [...edges.map((i) => ({ edge: i, points: all[i]! })), ...rest.map(([a, b]) => ({ edge: -1, points: [a, b] }))];

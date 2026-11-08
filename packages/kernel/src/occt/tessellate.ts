@@ -64,18 +64,24 @@ export function tessellate(oc: OC, shape: TopoDS_Shape, quality: Quality = "fast
 
   // Seams (where a cylinder's surface closes on itself) are edges of the B-rep but not lines you would draw.
   // Found face by face (only the edges each face owns), so a body with many faces doesn't check every pair.
+  // The same pass lists each face's own edges, so a face projected into a sketch brings in its true circles and arcs.
+  const edges = elements(oc, shape, "edge");
+  const numberOf = edgeNumbering(oc, edges);
   const seamEdges: TopoDS_Shape[] = [];
   for (const f of faces) {
     const face = oc.TopoDS.Face(f);
+    const ids: number[] = [];
     const ex = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
     for (; ex.More(); ex.Next()) {
       const e = ex.Current();
       if (oc.BRep_Tool.IsClosed(oc.TopoDS.Edge(e), face) && !seamEdges.some((s) => s.IsSame(e))) seamEdges.push(e);
+      const i = numberOf(e);
+      if (i >= 0 && !ids.includes(i)) ids.push(i);
     }
     ex.delete();
+    b.faceEdges(ids);
   }
   const seams = (e: TopoDS_Shape) => seamEdges.some((s) => s.IsSame(e));
-  const edges = elements(oc, shape, "edge");
   for (const e of edges) {
     const edge = oc.TopoDS.Edge(e);
     if (oc.BRep_Tool.Degenerated(edge) || seams(e)) {
@@ -95,19 +101,6 @@ export function tessellate(oc: OC, shape: TopoDS_Shape, quality: Quality = "fast
     sampler.delete();
     curve.delete();
     b.edge(pts);
-  }
-
-  // The edges round each face, from the B-rep, so a face projected into a sketch brings in its true circles and arcs.
-  const numberOf = edgeNumbering(oc, edges);
-  for (const f of faces) {
-    const ids: number[] = [];
-    const ex = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
-    for (; ex.More(); ex.Next()) {
-      const i = numberOf(ex.Current());
-      if (i >= 0 && !ids.includes(i)) ids.push(i);
-    }
-    ex.delete();
-    b.faceEdges(ids);
   }
 
   for (const v of elements(oc, shape, "vertex")) {
