@@ -147,9 +147,12 @@ export const share = "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 
 export const component = "M3 3h8v8H3zM13 13h8v8h-8zM7 11v6h6M17 13V7h-6";
 export const radioOff = "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z";
 export const radioOn = "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z";
+// Tips: a light bulb.
+export const bulb = "M9 18h6M10 22h4M15 14c.2-1 .7-1.7 1.5-2.5A5.5 5.5 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.8.8 1.3 1.5 1.5 2.5";
 
 export const ICONS = {
   component,
+  bulb,
   radioOff,
   radioOn,
   undo,
