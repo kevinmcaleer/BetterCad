@@ -2,6 +2,7 @@
 import wasmUrl from "replicad-opencascadejs/wasm?url";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
+import { reorderWithPicks } from "./occt/repick";
 import { Exporter } from "./occt/exporter";
 import { KernelError, isKernelError } from "./errors";
 import type { Methods, Request, Response } from "./protocol";
@@ -16,6 +17,7 @@ const scope = self as unknown as DedicatedWorkerGlobalScope;
 const post = (msg: Response) => scope.postMessage(msg);
 
 let builder: ModelBuilder | null = null;
+let occt: OC | null = null;
 let exporter: Exporter | null = null;
 const cancelled = new Set<number>();
 const queue: Request[] = [];
@@ -25,6 +27,7 @@ const t0 = performance.now();
 const ready: Promise<OC> = loadOCCT({ wasmUrl, onProgress: (fraction) => post({ kind: "load", fraction }) });
 ready.then(
   (oc) => {
+    occt = oc;
     builder = new ModelBuilder(oc);
     exporter = new Exporter(oc, builder);
     post({ kind: "ready", ms: performance.now() - t0 });
@@ -41,6 +44,7 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
   build: ({ doc, upTo, quality }, id) => builder!.build(doc, upTo, quality, () => cancelled.has(id)),
   measure: ({ doc, upTo, refs }) => builder!.measure(doc, refs, upTo),
   mates: ({ doc, upTo, limit }) => builder!.mates(doc, upTo, limit),
+  reorder: ({ doc, id, beforeId }) => reorderWithPicks(occt!, builder!, doc, id, beforeId),
   inspect: (params) => builder!.inspect(params),
   estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),
   export: (params, id) => exporter!.export(params, () => cancelled.has(id)),

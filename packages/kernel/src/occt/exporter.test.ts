@@ -4,7 +4,7 @@ import { loadOCCT, type OC } from "./oc";
 import { ModelBuilder } from "./model";
 import { Exporter } from "./exporter";
 import { DEFLECTION, readStep } from "./export";
-import { addExtrude, addPart, addSketch, newDoc, setLook, updateSketch, type ModelDoc } from "../document";
+import { addExtrude, addJoint, addLink, addPart, addSketch, newDoc, setLook, setPose, updateSketch, type ModelDoc } from "../document";
 import { meshVolume, read3mf, readStl } from "../export/mesh";
 import { measure } from "./shapes";
 import { readGlb } from "../export/gltf";
@@ -132,5 +132,39 @@ describe("exports of the model (#80, #81, #86)", () => {
     const [plain, blue] = json.materials.map((m) => m.pbrMetallicRoughness);
     expect(plain).toEqual({ baseColorFactor: [...linearRgb(DEFAULT_COLOUR), 1], roughnessFactor: 0.85, metallicFactor: 0 });
     expect(blue).toEqual({ baseColorFactor: [...linearRgb("#2d6fd0"), 1], roughnessFactor: 0.3, metallicFactor: 1 });
+  });
+});
+
+describe("exporting as posed (#173)", () => {
+  // A box made a link on a slider along +Z, posed 30 mm up.
+  function posed(): ModelDoc {
+    let d = addPart(newDoc("Arm"), "box", "a");
+    d = addLink(d, ["a"], "l1");
+    d = addJoint(d, { kind: "prismatic", child: "l1", parent: null, origin: [0, 0, 0], axis: [0, 0, 1], lower: 0, upper: 50 }, "j1");
+    return setPose(d, "j1", 30);
+  }
+
+  it("exports the home pose unless asked, and the posed one when asked, as STL", () => {
+    const d = posed();
+    const zs = (posedToo: boolean) => {
+      const t = readStl(
+        x.export({ doc: d, bodies: null, format: "stl", deflection: DEFLECTION.normal, name: "Arm", keepPosition: true, posed: posedToo }).files[0]!.data,
+      );
+      return [...t].filter((_, i) => i % 3 === 2);
+    };
+    const home = Math.min(...zs(false));
+    expect(Math.min(...zs(true)) - home).toBeCloseTo(30, 3);
+  });
+
+  it("moves the exact solid in STEP", () => {
+    const d = posed();
+    const at = (posedToo: boolean) => {
+      const r = x.export({ doc: d, bodies: null, format: "step", deflection: 0, name: "Arm", posed: posedToo });
+      return measure(oc, readStep(oc, r.files[0]!.data)[0]!.shape);
+    };
+    const home = at(false);
+    const moved = at(true);
+    expect(moved.bbox.min[2] - home.bbox.min[2]).toBeCloseTo(30, 3);
+    expect(moved.volume).toBeCloseTo(home.volume, 1);
   });
 });

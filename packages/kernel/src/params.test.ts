@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { Solver, drawRectangle, type Sketch } from "@bettercad/sketch";
+import { drawRectangle, type Sketch } from "@bettercad/sketch";
+import { Solver } from "@bettercad/sketch/solver";
 import {
   addParam,
   addPart,

@@ -697,8 +697,15 @@ export function useSketch(d: SketchDeps) {
     let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 } } | null = null;
     /** How near, in screen pixels, a pick reaches: a finger needs more room than a cursor. */
     let reach = 8;
-    /** A finger is down with a drawing tool: the point follows it and goes in where it lifts. */
-    let tap = false;
+    /**
+     * A finger is down with a drawing tool: the point follows it and goes in where it lifts. A finger that slides away
+     * first puts a point where it came down, so one drag draws a line, rectangle, circle or polygon.
+     */
+    let tap: { at: ScreenPoint; start: Snap; base: Snap[]; dragged: boolean } | null = null;
+    /** A finger is down placing a size: it goes down where the finger lifts. */
+    let tapPlace = false;
+    /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
+    const SLIDE = 12;
     const at = (p: ScreenPoint): { xy: Vec2; px: number } | null => {
       const f = live.current.frame;
       if (!f) return null;
@@ -839,7 +846,7 @@ export function useSketch(d: SketchDeps) {
             // The size jumps to the finger, follows it, and goes down where it lifts.
             const pl = L.placing;
             setPlacing({ ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy) });
-            tap = true;
+            tapPlace = true;
             return true;
           }
           L.place();
@@ -905,7 +912,7 @@ export function useSketch(d: SketchDeps) {
         const s = snapAt(hit.xy, hit.px, mods);
         if (mods.touch) {
           // No hover with a finger: show the point now, let it slide to a snap, and place it on lift.
-          tap = true;
+          tap = { at: p, start: s, base: L.clicks, dragged: false };
           setCursor(s);
           return true;
         }
@@ -960,26 +967,40 @@ export function useSketch(d: SketchDeps) {
           return;
         }
         setHover(null);
+        if (pressed && tap && !tap.dragged && Math.hypot(p.x - tap.at.x, p.y - tap.at.y) > SLIDE) {
+          // A drag: where the finger came down is a click, and the shape follows the finger from it.
+          const need = CLICKS[L.stool as keyof typeof CLICKS];
+          if (tap.base.length + 2 <= need) {
+            tap.dragged = true;
+            setClicks([...tap.base, tap.start]);
+          }
+        }
         setCursor(snapAt(hit.xy, hit.px, mods));
       },
       up: (p, mods) => {
         if (drag?.moved) store.seal();
         drag = null;
-        if (!tap) return;
-        tap = false;
         const L = live.current;
-        if (L.placing) {
+        if (tapPlace) {
+          tapPlace = false;
           L.place();
           return;
         }
+        const t = tap;
+        tap = null;
         const hit = at(p);
-        if (hit && L.sketch) addClick(snapAt(hit.xy, hit.px, mods));
+        if (!t || !hit || !L.sketch) return;
+        const all = [...t.base, ...(t.dragged ? [t.start] : []), snapAt(hit.xy, hit.px, mods)];
+        if (all.length >= CLICKS[L.stool as keyof typeof CLICKS]) finishShape(all);
+        else setClicks(all);
       },
       cancel: () => {
         // A second finger came down to pinch or pan: nothing goes in.
         if (drag?.moved) store.seal();
         drag = null;
-        tap = false;
+        if (tap?.dragged) setClicks(tap.base);
+        tap = null;
+        tapPlace = false;
         setCursor(null);
       },
       leave: () => {

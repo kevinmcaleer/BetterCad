@@ -139,6 +139,103 @@ describe("Timeline marker drag", () => {
   });
 });
 
+describe("Timeline reorder", () => {
+  /** Lays the tiles out 30 px apart, as jsdom has no layout. */
+  function layOut() {
+    screen
+      .getByRole("region", { name: "Timeline" })
+      .querySelectorAll<HTMLElement>(".bc-tl-tile")
+      .forEach((t) => {
+        const i = (Number(t.style.order) - 1) / 2;
+        t.getBoundingClientRect = () => ({ left: i * 30, width: 24, top: 0, height: 24, right: i * 30 + 24, bottom: 24, x: i * 30, y: 0, toJSON: () => ({}) });
+      });
+  }
+  function host(problem: (id: string, beforeId: string | null) => string | null = () => null) {
+    if (!("PointerEvent" in window)) vi.stubGlobal("PointerEvent", class extends MouseEvent {});
+    let d = addPart(newDoc(), "box", "a");
+    for (const k of ["b", "c", "d"]) d = addPart(d, "box", k);
+    const onReorder = vi.fn();
+    const onSelect = vi.fn();
+    render(
+      <Timeline
+        features={d.features}
+        at={4}
+        onMarker={() => {}}
+        failed={new Map()}
+        activeId={null}
+        summary={() => "x"}
+        onSelect={onSelect}
+        onMenu={() => {}}
+        onEdit={() => {}}
+        onReorder={onReorder}
+        moveProblem={problem}
+      />,
+    );
+    layOut();
+    return { d, onReorder, onSelect };
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("moves a dragged step before the gap it's dropped in, without selecting it", () => {
+    const { d, onReorder, onSelect } = host();
+    const box4 = screen.getByRole("button", { name: /^Box 4/ });
+    expect(box4.getAttribute("data-tip")).toBe("Box 4 · x. Double-click to edit, drag to reorder");
+    fireEvent.pointerDown(box4, { button: 0, pointerId: 1, clientX: 100 });
+    fireEvent.pointerMove(box4, { pointerId: 1, clientX: 50 });
+    expect(box4).toHaveClass("bc-moving");
+    expect(document.querySelector(".bc-tl-drop")).not.toBeNull();
+    fireEvent.pointerUp(box4, { pointerId: 1 });
+    fireEvent.click(box4, { detail: 1 });
+    expect(onReorder).toHaveBeenCalledWith(d.features[3]!.id, d.features[2]!.id);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(box4).not.toHaveClass("bc-moving");
+  });
+
+  it("drops at the end, and does nothing for a small wobble or a drop where it was", () => {
+    const { d, onReorder, onSelect } = host();
+    const box1 = screen.getByRole("button", { name: /^Box 1/ });
+    fireEvent.pointerDown(box1, { button: 0, pointerId: 1, clientX: 10 });
+    fireEvent.pointerMove(box1, { pointerId: 1, clientX: 13 });
+    fireEvent.pointerUp(box1, { pointerId: 1 });
+    fireEvent.click(box1, { detail: 1 });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    fireEvent.pointerDown(box1, { button: 0, pointerId: 1, clientX: 10 });
+    fireEvent.pointerMove(box1, { pointerId: 1, clientX: 20 });
+    expect(document.querySelector(".bc-tl-drop")).toBeNull();
+    fireEvent.pointerUp(box1, { pointerId: 1 });
+    expect(onReorder).not.toHaveBeenCalled();
+    fireEvent.pointerDown(box1, { button: 0, pointerId: 1, clientX: 10 });
+    fireEvent.pointerMove(box1, { pointerId: 1, clientX: 200 });
+    fireEvent.pointerUp(box1, { pointerId: 1 });
+    expect(onReorder).toHaveBeenCalledWith(d.features[0]!.id, null);
+  });
+
+  it("says why a step can't go somewhere, and won't drop it there", () => {
+    const { d, onReorder } = host((_id, before) => (before === null ? "Box 9 needs Box 1 before it" : null));
+    const box1 = screen.getByRole("button", { name: /^Box 1/ });
+    fireEvent.pointerDown(box1, { button: 0, pointerId: 1, clientX: 10 });
+    fireEvent.pointerMove(box1, { pointerId: 1, clientX: 200 });
+    expect(screen.getByRole("status")).toHaveTextContent("Box 9 needs Box 1 before it, so it can't go there");
+    expect(document.querySelector(".bc-tl-drop")).toHaveClass("bc-blocked");
+    fireEvent.pointerMove(box1, { pointerId: 1, clientX: 70 });
+    expect(screen.queryByRole("status")).toBeNull();
+    fireEvent.pointerMove(box1, { pointerId: 1, clientX: 200 });
+    fireEvent.pointerUp(box1, { pointerId: 1 });
+    expect(onReorder).not.toHaveBeenCalled();
+    expect(d.features).toHaveLength(4);
+  });
+
+  it("drops nothing when Esc cancels the drag", () => {
+    const { onReorder } = host();
+    const box1 = screen.getByRole("button", { name: /^Box 1/ });
+    fireEvent.pointerDown(box1, { button: 0, pointerId: 1, clientX: 10 });
+    fireEvent.pointerMove(box1, { pointerId: 1, clientX: 200 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.pointerUp(box1, { pointerId: 1 });
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+});
+
 describe("Timeline edit", () => {
   it("opens a step on a double-click", () => {
     const onEdit = vi.fn();
@@ -238,6 +335,20 @@ describe("Editor timeline", () => {
     fireEvent.click(screen.getByRole("treeitem", { name: /^Box 1/ }));
     fireEvent.keyDown(window, { key: "Delete" });
     expect(tiles()).toEqual(["Box 1", "Delete 1"]);
+  });
+
+  it("moves a step from its menu, as one undoable change", () => {
+    render(<Editor />);
+    addBox();
+    addBox();
+    fireEvent.contextMenu(tile(/^Box 1/));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Move later/ }));
+    expect(tiles()).toEqual(["Box 2", "Box 1"]);
+    fireEvent.contextMenu(tile(/^Box 1/));
+    expect(screen.getByRole("menuitem", { name: /Move later/ })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(tiles()).toEqual(["Box 1", "Box 2"]);
   });
 
   it("warns on the timeline while rolled back", () => {
