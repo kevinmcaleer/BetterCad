@@ -5,11 +5,13 @@ type View = { __bcView: { project(p: number[]): { x: number; y: number }; preset
 async function at(page: Page, x: number, y: number, z = 0) {
   // Wait for the camera to stop (finishing a sketch turns the view back), so the point is where it will be.
   const where = () => page.evaluate((p) => (window as unknown as View).__bcView.project(p), [x, y, z]);
+  // Still for four reads in a row: under load a camera move can stall for a frame and look finished.
   let q = await where();
-  for (let i = 0; i < 40; i++) {
+  let still = 0;
+  for (let i = 0; i < 80 && still < 4; i++) {
     await page.waitForTimeout(50);
     const r = await where();
-    if (Math.abs(r.x - q.x) < 0.5 && Math.abs(r.y - q.y) < 0.5) break;
+    still = Math.abs(r.x - q.x) < 0.5 && Math.abs(r.y - q.y) < 0.5 ? still + 1 : 0;
     q = r;
   }
   const box = (await page.getByTestId("view-canvas").boundingBox())!;
