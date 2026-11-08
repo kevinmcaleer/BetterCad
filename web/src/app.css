@@ -952,11 +952,26 @@ kbd {
   font-weight: 600;
   font-size: 12px;
 }
-.bc-cloud {
-  color: var(--bc-color-muted);
+/* Save as a split button: Save, then the arrow for Share, Versions and Export, joined by a hairline. */
+.bc-split {
+  display: inline-flex;
+  align-items: center;
 }
-.bc-cloud.bc-bad {
-  color: var(--bc-color-danger);
+.bc-split > .bc-btn.bc-done:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.bc-split > .bc-btn.bc-done.bc-split-arrow {
+  min-width: 0;
+  padding: 0 var(--bc-space-3);
+  border-left: 1px solid var(--bc-color-bar);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* Not saved to the account: the icon on Save carries the warning, outlined so it reads on the accent fill. */
+.bc-split.bc-bad > .bc-btn.bc-done:first-child {
+  outline: 2px solid var(--bc-color-danger);
+  outline-offset: 1px;
 }
 
 /* ---- version history (#91) and sharing (#92) */

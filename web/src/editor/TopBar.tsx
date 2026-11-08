@@ -31,7 +31,11 @@ export interface TopBarProps {
   redoLabel: string;
   onUndo: () => void;
   onRedo: () => void;
+  /** The arrow beside Save: Save as, Open, New, Import and the recent files, after Share, Versions and Export. */
   saveEntries: MenuEntry[];
+  /** The Save button's tooltip when the model is not saved to an account: where a click saves to. */
+  saveTip?: string;
+  onSave?: () => void;
   onPalette: () => void;
   theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
@@ -44,7 +48,7 @@ export interface TopBarProps {
   accountsOn?: boolean;
   /** The model is saved to the account (#90): how that stands. */
   cloud?: CloudState | null;
-  /** The cloud icon opens the version history (#91). */
+  /** Versions in the Save menu opens the version history (#91). */
   onHistory?: () => void;
   /** Set when the model can be shared (#92). */
   onShare?: () => void;
@@ -74,6 +78,50 @@ export function constructEntries(on: (k: ConstructKind) => void): MenuEntry[] {
     out.push({ id: k.id, label: k.label, icon: constructIcon(k.what), onSelect: () => on(k.id) });
   }
   return out;
+}
+
+/** The arrow's entries: Share, Versions and Export first, then the file entries from the editor. */
+export function saveMenuEntries(p: Pick<TopBarProps, "saveEntries" | "onShare" | "onHistory" | "onExport" | "cloud">): MenuEntry[] {
+  return [
+    // Share and Versions need the model in an account; they stay in the menu, greyed, so you know where they are.
+    { id: "share", label: "Share…", icon: "share", disabled: !p.onShare, onSelect: () => p.onShare?.() },
+    { id: "versions", label: "Versions…", icon: "history", disabled: !(p.cloud && p.onHistory), onSelect: () => p.onHistory?.() },
+    { id: "export", label: "Export…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => p.onExport?.() },
+    { kind: "separator", id: "s-file" },
+    ...p.saveEntries,
+  ];
+}
+
+/**
+ * Save as a split button: a click on Save saves, the arrow beside it opens Share, Versions, Export and the file
+ * entries. When the model is saved to an account, the icon and description say how that stands.
+ */
+function SaveSplit(p: TopBarProps) {
+  const bad = p.cloud === "error" || p.cloud === "offline";
+  return (
+    <span className={cx("bc-split", bad && "bc-bad")} role="group" aria-label="Save">
+      <Button
+        variant="primary"
+        icon={p.cloud === "offline" ? "cloudOff" : p.cloud === "error" ? "warning" : p.cloud ? "cloud" : "save"}
+        label="Save"
+        title={p.cloud ? CLOUD_TEXT[p.cloud] : (p.saveTip ?? "Save your model")}
+        shortcut={formatCombo("mod+s")}
+        aria-describedby={p.cloud ? "bc-cloud-state" : undefined}
+        onClick={p.onSave}
+      />
+      {p.cloud && (
+        <span id="bc-cloud-state" className="bc-sr-only">
+          {CLOUD_TEXT[p.cloud]}
+        </span>
+      )}
+      <MenuButton
+        label="Save options"
+        align="end"
+        entries={saveMenuEntries(p)}
+        trigger={(t) => <Button {...t} variant="primary" className="bc-split-arrow" icon="chevronDown" title="Share, versions and export" />}
+      />
+    </span>
+  );
 }
 
 /** The panels a top-bar button opens: pressing it again goes back to the browser. */
@@ -160,14 +208,6 @@ export function TopBar(p: TopBarProps) {
           <IconButton icon="printer" title="Print" on={p.panel === "print"} onClick={panelToggle(p, "print")} />
         </>
       )}
-      {p.cloud && (
-        <IconButton
-          className={cx("bc-cloud", (p.cloud === "error" || p.cloud === "offline") && "bc-bad")}
-          icon={p.cloud === "offline" ? "cloudOff" : "cloud"}
-          title={`${CLOUD_TEXT[p.cloud]}. Version history`}
-          onClick={p.onHistory}
-        />
-      )}
       {p.shared ? (
         <>
           <span className="bc-owner">by {p.shared.owner}</span>
@@ -184,13 +224,7 @@ export function TopBar(p: TopBarProps) {
         </>
       ) : (
         <>
-          {p.onShare && <Button icon="share" label="Share" title="Share a view-only link" onClick={p.onShare} />}
-          <MenuButton
-            label="Save"
-            align="end"
-            entries={p.saveEntries}
-            trigger={(t) => <Button {...t} variant="primary" icon="save" label="Save" title="Save your model" />}
-          />
+          <SaveSplit {...p} />
         </>
       )}
       {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="help" title="Help" />} />}

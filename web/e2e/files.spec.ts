@@ -118,7 +118,7 @@ test("opens a saved file", async ({ page }) => {
   // The save's toast is brief; the title says it's saved until the next change.
   await expect(page).toHaveTitle("Bracket · BetterCad", SAVE);
   // Start again, then open it back.
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: /New model/ }).click();
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toHaveCount(0);
   // The fresh model's baseline lands a render after its document; Open before then would ask to save it.
@@ -132,7 +132,7 @@ test("opens a saved file", async ({ page }) => {
 test("asks before a new model throws away unsaved changes", async ({ page }) => {
   await page.goto("/");
   await addBox(page);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: /New model/ }).click();
   const dialog = page.getByRole("dialog", { name: "Save changes to Untitled model?" });
   await expect(dialog).toBeVisible();
