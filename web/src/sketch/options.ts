@@ -1,4 +1,4 @@
-import type { Vec2 } from "@bettercad/sketch";
+import type { Frame, Vec2 } from "@bettercad/sketch";
 import { snapStep } from "./snap";
 
 /**
@@ -20,6 +20,11 @@ export interface SketchOptions {
    * any model edge or corner brings that in too.
    */
   autoProject: boolean;
+  /**
+   * Slice, as in Fusion: hide the model on the near side of the sketch's plane, so a sketch on an inner face shows.
+   * Off at the start of every sketch, so it is never remembered.
+   */
+  slice: boolean;
 }
 
 export type SketchOption = keyof SketchOptions;
@@ -34,6 +39,7 @@ export const DEFAULT_OPTIONS: SketchOptions = {
   projected: true,
   construction: true,
   autoProject: true,
+  slice: false,
 };
 
 /** The palette's rows, in order, with what each one does. */
@@ -51,7 +57,11 @@ export const OPTION_ROWS: { id: SketchOption; label: string; title: string }[] =
     label: "Auto project geometry",
     title: "Bring in the edges of the face you sketch on, and any model edge or corner you size or constrain to",
   },
+  { id: "slice", label: "Slice", title: "Hide the model between you and the sketch's plane" },
 ];
+
+/** Options that last for one sketch only. */
+const NOT_SAVED: SketchOption[] = ["slice"];
 
 const KEY = "bettercad.sketchOptions";
 
@@ -59,7 +69,7 @@ export function loadOptions(): SketchOptions {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<SketchOptions>;
     const out = { ...DEFAULT_OPTIONS };
-    for (const k of Object.keys(DEFAULT_OPTIONS) as SketchOption[]) if (typeof saved[k] === "boolean") out[k] = saved[k];
+    for (const k of Object.keys(DEFAULT_OPTIONS) as SketchOption[]) if (typeof saved[k] === "boolean" && !NOT_SAVED.includes(k)) out[k] = saved[k];
     return out;
   } catch {
     return { ...DEFAULT_OPTIONS };
@@ -68,10 +78,31 @@ export function loadOptions(): SketchOptions {
 
 export function saveOptions(o: SketchOptions): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(o));
+    const kept: Partial<SketchOptions> = { ...o };
+    for (const k of NOT_SAVED) delete kept[k];
+    localStorage.setItem(KEY, JSON.stringify(kept));
   } catch {
     /* storage blocked: the options last for this visit */
   }
+}
+
+/** How far in front of the sketch's plane the slice cuts, mm, so the face you sketch on stays whole. */
+export const SLICE_GAP = 0.01;
+
+/** Which side of a sketch's plane the camera is on: 1 in front of its normal, -1 behind. `toCamera` points from the view's target towards the camera. */
+export function sliceSide(frame: Frame, toCamera: readonly [number, number, number]): 1 | -1 {
+  const n = frame.normal;
+  return n[0] * toCamera[0] + n[1] * toCamera[1] + n[2] * toCamera[2] >= 0 ? 1 : -1;
+}
+
+/**
+ * The section that slices the model at a sketch's plane, cutting away the camera's `side` (see `sliceSide`) so the
+ * material in front of the sketch goes, whichever way you look. Shaped like the viewport's section: the kept side is
+ * the one behind `normal`.
+ */
+export function sliceSection(frame: Frame, side: 1 | -1): { origin: [number, number, number]; normal: [number, number, number]; offset: number } {
+  const n = frame.normal;
+  return { origin: [frame.origin[0], frame.origin[1], frame.origin[2]], normal: [n[0] * side, n[1] * side, n[2] * side], offset: SLICE_GAP };
 }
 
 /**
