@@ -25,8 +25,10 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(page.getByRole("img", { name: /Rendered picture/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeVisible();
 
-  // The view bar's button opens it too.
-  await page.getByRole("button", { name: "Render" }).click();
+  // The view style menu opens it too, in paper white.
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await page.getByRole("menuitem", { name: "Render in paper" }).click();
+  await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true");
   // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done.
   await expect(bar.getByRole("status")).toHaveText("2 samples", { timeout: 120_000 });
   await bar.getByRole("button", { name: "Done" }).click();
