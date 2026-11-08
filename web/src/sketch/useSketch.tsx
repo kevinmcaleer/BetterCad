@@ -20,6 +20,7 @@ import {
   profiles,
   removeEntities,
   sampleArc,
+  slideAcross,
   sub,
   toSketch,
   type DimensionKind,
@@ -546,7 +547,8 @@ export function useSketch(d: SketchDeps) {
   useEffect(() => {
     const eng = engineOf();
     if (!editingId || !eng) return;
-    let drag: { id: Id; moved: boolean } | null = null;
+    /** A point dragged to the pointer, or a line slid square across from where it was grabbed. */
+    let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 } } | null = null;
     const at = (p: ScreenPoint): { xy: Vec2; px: number } | null => {
       const f = live.current.frame;
       if (!f) return null;
@@ -682,6 +684,10 @@ export function useSketch(d: SketchDeps) {
           setSel((s) => (mods.shift || mods.mod ? (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]) : s.includes(id) ? s : [id]));
           const e = L.sketch.entities.find((x) => x.id === id);
           if (e?.kind === "point") drag = { id, moved: false };
+          else if (e?.kind === "line") {
+            const idx = new SketchIndex(L.sketch);
+            drag = { id, moved: false, line: { a: e.a, b: e.b, from: [idx.xy(e.a), idx.xy(e.b)], grab: hit.xy } };
+          }
           return true;
         }
         const s = snapAt(hit.xy, hit.px, mods);
@@ -697,11 +703,19 @@ export function useSketch(d: SketchDeps) {
         if (!hit || !L.sketch) return;
         if (pressed && drag) {
           if (!L.solver) return;
-          const r = L.solver.drag(L.sketch, drag.id, hit.xy);
+          const ln = drag.line;
+          let r: SolveResult;
+          if (ln) {
+            const [a, b] = slideAcross(ln.from[0], ln.from[1], ln.grab, hit.xy);
+            r = L.solver.dragPoints(L.sketch, [
+              [ln.a, a],
+              [ln.b, b],
+            ]);
+          } else r = L.solver.drag(L.sketch, drag.id, hit.xy);
           if (r.status === "ok" || r.status === "redundant") {
             drag.moved = true;
             const id = L.editingId!;
-            store.edit((doc) => updateSketch(doc, id, () => r.sketch), "Move a point", `drag:${id}:${drag!.id}`);
+            store.edit((doc) => updateSketch(doc, id, () => r.sketch), ln ? "Move a line" : "Move a point", `drag:${id}:${drag!.id}`);
           }
           return;
         }
@@ -762,7 +776,10 @@ export function useSketch(d: SketchDeps) {
     if (!o || !sketch || !frame) return;
     o.refreshPalette();
     const eng = engineOf();
-    const view = sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview, options);
+    const view = sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview, {
+      ...options,
+      ends: stool !== "select",
+    });
     const px = eng?.pixelSize(frame.origin);
     let grid: OverlayView["grid"] = null;
     if (eng && px && options.grid) {
@@ -773,7 +790,7 @@ export function useSketch(d: SketchDeps) {
     }
     const mark: Shade = sel.includes(ORIGIN) ? "picked" : hover === ORIGIN ? "hover" : "fixed";
     o.update(px && origin ? { ...withOrigin(view, origin, px, mark), grid } : view);
-  }, [sketch, frame, origin, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options]);
+  }, [sketch, frame, origin, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options, stool]);
 
   // The sketch's own grid takes the floor grid's place while it is on.
   useEffect(() => {
@@ -1033,8 +1050,12 @@ export function sketchView(
       curves.push({ pts: sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c))), shade: shade(e.id), dashed: e.construction });
     }
   }
+  // The ends of lines and arcs are for finding a point to draw from or pick, so the Select tool shows only the one
+  // under the pointer or picked. Centres and lone points always show.
+  const ends = new Set<Id>();
+  if (show && show.ends === false) for (const e of s.entities) if (e.kind === "line" || e.kind === "arc") ends.add(e.a).add(e.b);
   const points: OverlayPoint[] = s.entities.flatMap((e) =>
-    e.kind === "point" && (!show || show.points || sel.includes(e.id) || hover === e.id)
+    e.kind === "point" && (sel.includes(e.id) || hover === e.id || ((!show || show.points) && !ends.has(e.id)))
       ? [{ xy: [e.x, e.y] as Vec2, shade: shade(e.id), big: sel.includes(e.id) || hover === e.id }]
       : [],
   );
@@ -1052,7 +1073,10 @@ export function sketchView(
 }
 
 /** What the overlay leaves out or adds, from the palette's options. */
-type ShowOptions = { [K in "points" | "profile" | "projected" | "construction"]: SketchOptions[K] };
+type ShowOptions = { [K in "points" | "profile" | "projected" | "construction"]: SketchOptions[K] } & {
+  /** Whether the ends of lines and arcs show; off for the Select tool. Shown when left out. */
+  ends?: boolean;
+};
 
 /** The model's origin drawn under the sketch: a fixed point with a small cross, 8 px each way, to snap to and pick. */
 export function withOrigin(view: OverlayView, origin: Vec2, px: number, shade: Shade = "fixed"): OverlayView {

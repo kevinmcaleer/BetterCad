@@ -59,6 +59,21 @@ describe("sketch view", () => {
     const picked = sketchView(s, WORLD_FRAMES.XY, null, [guide], null, [], null, undefined, undefined, null, { ...ALL, construction: false });
     expect(picked.curves).toHaveLength(5);
   });
+
+  it("shows line ends only while drawing, or the one under the pointer or picked", () => {
+    const d = new Draft(drawRectangle(newSketch(), [0, 0], [30, 20]).sketch);
+    const lone = d.point([50, 50]);
+    const circle = drawCircle(d.done().sketch, [80, 0], 5);
+    const s = circle.sketch;
+    const corners = s.entities.filter((e) => e.kind === "point" && e.id !== lone).map((e) => e.id);
+    const drawing = sketchView(s, WORLD_FRAMES.XY, null, [], null, [], null, undefined, undefined, null, ALL);
+    // Four corners, the lone point and the circle's centre.
+    expect(drawing.points).toHaveLength(6);
+    const selecting = sketchView(s, WORLD_FRAMES.XY, null, [], null, [], null, undefined, undefined, null, { ...ALL, ends: false });
+    expect(selecting.points).toHaveLength(2);
+    const near = sketchView(s, WORLD_FRAMES.XY, null, [corners[0]!], corners[1]!, [], null, undefined, undefined, null, { ...ALL, ends: false });
+    expect(near.points).toHaveLength(4);
+  });
 });
 
 describe("dimension drawing", () => {

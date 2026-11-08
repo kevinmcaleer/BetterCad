@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { modelRow } from "./pages/editor";
 import { fakeApi } from "./fakeApi";
 
 /** Accounts, the library and saving to the cloud (#88, #89, #90) against the in-test server in fakeApi.ts. */
@@ -11,7 +12,7 @@ const addBox = async (page: Page) => {
 
 test("without a server the editor works and the account menu says so", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Account and theme" }).click();
+  await page.getByRole("button", { name: "Account and settings" }).click();
   await expect(page.getByRole("menuitem", { name: "Accounts can't be reached here" })).toBeVisible();
 });
 
@@ -29,7 +30,7 @@ test("sign up, see the empty library, open the account page and sign out", async
   await page.getByLabel("Password", { exact: true }).fill("correct horse");
   await page.getByRole("button", { name: "Make account" }).click();
   // Back where sign-in started: the editor.
-  await page.getByRole("button", { name: "Kev: account and theme" }).click();
+  await page.getByRole("button", { name: "Kev: account and settings" }).click();
   await page.getByRole("menuitem", { name: "My models" }).click();
   await expect(page.getByRole("heading", { name: "My models" })).toBeVisible();
   await expect(page.getByText("No models yet")).toBeVisible();
@@ -54,7 +55,7 @@ test("save a box to the account, open it again from the library after a reload",
   const server = await fakeApi(context);
   await server.signIn(context);
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Kev: account and theme" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Kev: account and settings" })).toBeVisible();
   await addBox(page);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
@@ -75,7 +76,7 @@ test("save a box to the account, open it again from the library after a reload",
   await page.goto("/#/library");
   await page.reload();
   await page.getByRole("button", { name: "Open Bracket" }).click();
-  await expect(page.getByRole("textbox", { name: "Model name" })).toHaveValue("Bracket");
+  await expect(modelRow(page)).toContainText("Bracket");
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
 });

@@ -47,9 +47,14 @@ export class Editor {
     await expect(d.root).toBeVisible();
     return d;
   }
-  /** Picks a panel on the left rail: Parts, Library, Print… */
+  /** Opens a left panel from its top-bar button (Browser, Library, Parameters, Print), or Settings from the account menu. */
   async panel(name: string) {
-    await this.page.getByRole("navigation").getByRole("button", { name, exact: true }).click();
+    if (name === "Settings") {
+      await this.page.getByRole("button", { name: /account and settings|^Sign in$/i }).click();
+      await this.page.getByRole("menuitem", { name: "Settings" }).click();
+      return;
+    }
+    await this.page.getByRole("banner").getByRole("button", { name, exact: true }).click();
   }
 }
 
@@ -97,7 +102,8 @@ export class Properties {
   constructor(readonly page: Page) {}
   /** Selects a part in the browser, so Properties shows it. */
   async select(name: RegExp) {
-    if (!(await this.page.getByRole("treeitem", { name }).count())) await this.page.getByRole("navigation").getByRole("button", { name: "Browser" }).click();
+    if (!(await this.page.getByRole("treeitem", { name }).count()))
+      await this.page.getByRole("banner").getByRole("button", { name: "Browser", exact: true }).click();
     await this.page.getByRole("treeitem", { name }).click();
   }
   value(text: string | RegExp) {
@@ -120,6 +126,19 @@ export class ExportDialog {
 
 /** Replaces the file pickers so saves and exports land in `window.__saved`, by file name. */
 /** The body rows in the browser: the parts, leaving out the model, folders, planes and sketches. */
+/** The browser's top row: the model's name. */
+export function modelRow(page: Page): Locator {
+  return page.getByRole("tree", { name: "Browser" }).locator('[role="treeitem"][data-kind="component"]').first();
+}
+
+/** Renames the model from the top of the browser: double-click its name, type, Enter. */
+export async function renameModel(page: Page, name: string) {
+  await modelRow(page).locator(".bc-row-name").first().dblclick();
+  const box = page.getByRole("textbox", { name: /^Rename / });
+  await box.fill(name);
+  await box.press("Enter");
+}
+
 export function bodyRows(page: Page): Locator {
   return page.getByRole("tree", { name: "Browser" }).locator('[role="treeitem"][data-kind="body"]');
 }

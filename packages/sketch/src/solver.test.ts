@@ -3,6 +3,7 @@ import { Solver } from "./solver";
 import { newSketch, SketchIndex, type Sketch } from "./model";
 import { Draft, drawCircle, drawPolygon, drawRectangle } from "./draw";
 import { measureDimension } from "./measure";
+import { slideAcross } from "./geom2d";
 
 let solver: Solver;
 beforeAll(async () => {
@@ -145,6 +146,39 @@ describe("planegcs solver", () => {
     const xs = r.sketch.entities.filter((e) => e.kind === "point").map((p) => (p as { x: number }).x);
     expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(40, 6);
     expect(new SketchIndex(r.sketch).xy(pt)).toEqual([expect.closeTo(100, 6), expect.closeTo(50, 6)]);
+  });
+
+  it("dragging a line slides it square across, and the lines joined to it follow", () => {
+    // A 40 × 20 rectangle, no sizes, bottom-left corner fixed: dragging the top line up makes it taller.
+    const r = drawRectangle(newSketch(), [0, 0], [40, 20]);
+    const lines = r.ids.map((id) => r.sketch.entities.find((e) => e.id === id) as { a: string; b: string });
+    const d = new Draft(r.sketch);
+    d.constrain({ type: "fix", p: lines[0]!.a });
+    const sketch = d.done().sketch;
+    const top = lines[2]!;
+    const idx = new SketchIndex(sketch);
+    // Grabbed at x 20, pulled up 10 and sideways 7: the sideways part does nothing.
+    const [a, b] = slideAcross(idx.xy(top.a), idx.xy(top.b), [20, 20], [27, 30]);
+    const moved = solver.dragPoints(sketch, [
+      [top.a, a],
+      [top.b, b],
+    ]);
+    expect(moved.status).toBe("ok");
+    const after = new SketchIndex(moved.sketch);
+    expect(after.xy(top.a)).toEqual([expect.closeTo(40, 6), expect.closeTo(30, 6)]);
+    expect(after.xy(top.b)).toEqual([expect.closeTo(0, 6), expect.closeTo(30, 6)]);
+    expect(after.xy(lines[0]!.a)).toEqual([expect.closeTo(0, 6), expect.closeTo(0, 6)]);
+
+    // With its height sized the line can't move up, and the drag leaves it where it was.
+    const { sketch: sized, lines: sizedLines } = rect();
+    const topS = sized.entities.find((e) => e.id === sizedLines[2]) as { a: string; b: string };
+    const si = new SketchIndex(sized);
+    const [sa, sb] = slideAcross(si.xy(topS.a), si.xy(topS.b), [20, 20], [20, 30]);
+    const held = solver.dragPoints(sized, [
+      [topS.a, sa],
+      [topS.b, sb],
+    ]);
+    expect(new SketchIndex(held.sketch).xy(topS.a)[1]).toBeCloseTo(20, 6);
   });
 
   it("solves a 200-circle sketch quickly", () => {
