@@ -18,7 +18,7 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(bar).toBeVisible();
   await expect(page.getByRole("img", { name: /Rendered picture of the model/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Pick: Bodies" })).toHaveCount(0);
-  await expect(bar.getByRole("status")).toHaveText("2 samples", { timeout: 120_000 });
+  await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 120_000 });
 
   await page.keyboard.press("Escape");
   await expect(bar).toHaveCount(0);
@@ -30,7 +30,7 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await page.getByRole("menuitem", { name: "Render in paper" }).click();
   await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true");
   // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done.
-  await expect(bar.getByRole("status")).toHaveText("2 samples", { timeout: 120_000 });
+  await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 120_000 });
   await bar.getByRole("button", { name: "Done" }).click();
   await expect(bar).toHaveCount(0);
 });
@@ -46,7 +46,7 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   await page.getByRole("group", { name: "Colour" }).getByRole("button", { name: "Orange" }).click();
   await page.keyboard.press("Escape");
   await page.keyboard.press("Shift+R");
-  await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("4 samples", { timeout: 200_000 });
+  await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("4 of 4 samples", { timeout: 200_000 });
   // Four samples are grainy and the grain differs every run, so compare the picture shrunk to 60 × 40: halving it
   // step by step averages each pixel with its neighbours, which keeps the shape, colour and shadow and drops the grain.
   const url = await page.locator(".bc-render-canvas").evaluate((el: HTMLCanvasElement) => {
