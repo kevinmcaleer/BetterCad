@@ -164,6 +164,8 @@ test("the line-art outline turns with the model, not a frame behind", async ({ p
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
   await expect.poll(() => kernelBodies(page)).toEqual([{ world: true, x: 0 }]);
   await page.evaluate(() => (window as unknown as Orbit).__bcView.setStyle("lineart"));
+  // The save toast floats over the canvas and can come or go between the shots.
+  await page.addStyleTag({ content: ".bc-toast { visibility: hidden !important; }" });
   await page.waitForTimeout(500);
   // One orbit step draws one frame. Drawing it again with the camera still should change nothing: a stale outline would.
   await page.evaluate(() => (window as unknown as Orbit).__bcView.orbitBy(120, 40));
