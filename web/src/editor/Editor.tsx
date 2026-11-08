@@ -40,6 +40,7 @@ import {
   PRIMITIVES,
   addLink,
   stampComponent,
+  moveInto,
   changeParts,
   duplicateParts,
   featureParts,
@@ -505,14 +506,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const shownSketches = useMemo(() => built.sketches.filter((s) => !doc.looks[s.id]?.hidden), [built.sketches, doc.looks]);
   const browserConstruct = useMemo(
     () =>
-      doc.features
-        .slice(0, at)
-        .flatMap((f) =>
-          f.type === "construct" && !f.suppressed
-            ? [{ id: f.id, name: f.name, what: kindInfo(f.kind).what, hidden: !!doc.looks[f.id]?.hidden, warning: failed.get(f.id), component: f.component }]
-            : [],
-        ),
-    [doc.features, doc.looks, at, failed],
+      doc.features.slice(0, at).flatMap((f) =>
+        f.type === "construct" && !f.suppressed
+          ? [
+              {
+                id: f.id,
+                name: f.name,
+                what: kindInfo(f.kind).what,
+                hidden: !!doc.looks[f.id]?.hidden,
+                warning: failed.get(f.id),
+                component: (doc.owners && f.id in doc.owners ? doc.owners[f.id] : f.component) ?? undefined,
+              },
+            ]
+          : [],
+      ),
+    [doc.features, doc.looks, doc.owners, at, failed],
   );
   const browserSketches = useMemo(
     () => built.sketches.map((s) => ({ id: s.id, name: s.name, hidden: !!doc.looks[s.id]?.hidden, warning: failed.get(s.id), component: s.component })),
@@ -1171,6 +1179,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [say],
   );
+  // Drag into a component (#334): bodies, sketches, construction and components, by id. One undo step.
+  const moveIn = useCallback(
+    (ids: string[], to: string | null) => {
+      if (!ids.length) return;
+      const d = live.current.doc;
+      const name = (id: string | null) =>
+        id === null ? d.name : (live.current.parts.find((x) => x.id === id)?.name ?? d.features.find((f) => f.id === id)?.name ?? "it");
+      const what = ids.length === 1 ? name(ids[0]!) : `${ids.length} items`;
+      store.edit((x) => moveInto(x, ids, to), `Move ${what} ${to === null ? "to" : "into"} ${name(to)}`);
+    },
+    [store],
+  );
   // New component: of the selected bodies, kept as separate bodies, or an empty one to work in, which becomes active.
   // Either sits inside the active component.
   const makeLink = useCallback(
@@ -1178,7 +1198,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       const id = newId("f");
       const parent = workIn ?? undefined;
       const name = addLink(live.current.doc, ids, id, undefined, parent).features.find((f) => f.id === id)!.name;
-      record((d, at) => addLink(d, ids, id, at, parent), `Make ${name}`);
+      // The bodies leave wherever they were dragged to (#334): the new component takes them.
+      const unmove = (d: ModelDoc) =>
+        d.owners && ids.some((x) => x in d.owners!) ? { ...d, owners: Object.fromEntries(Object.entries(d.owners).filter(([k]) => !ids.includes(k))) } : d;
+      record((d, at) => addLink(unmove(d), ids, id, at, parent), `Make ${name}`);
       if (!ids.length) return activate(id);
       say(`Made ${name} of ${ids.length === 1 ? "1 body" : `${ids.length} bodies`}. They stay separate bodies.`);
     },
@@ -3315,6 +3338,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               links={built.components}
               activeComponent={workIn}
               onActivate={activate}
+              onMoveInto={moveIn}
               joints={built.joints}
               poses={posesProps}
               origin={originShown}

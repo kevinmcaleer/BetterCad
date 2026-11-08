@@ -599,6 +599,11 @@ export interface ModelDoc {
   looks: Record<string, Look>;
   /** Parts tree order, when the person has dragged rows. Parts not listed follow in build order. */
   order?: string[];
+  /**
+   * Where bodies, sketches, construction steps and components were moved in the browser (#334), by id: the component
+   * each now sits in, or null for the model. It wins over where they were made. Not a step, as looks aren't.
+   */
+  owners?: Record<string, string | null>;
   /** Named views: saved cameras. */
   views?: NamedView[];
   /** The view cube's home view, when set from the cube's menu. Without it, home is the corner view, fitted. */
@@ -777,10 +782,21 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const { values } = evaluateParams(doc.params);
   // Bodies a step makes while a component is active go into it, unless they already have one (a copy keeps its own).
   let owner: { component: string; had: Set<string> } | null = null;
+  // Then a move in the browser (#334) wins.
+  const moved = doc.owners ?? {};
   const own = () => {
     if (owner) for (let i = 0; i < parts.length; i++) if (!owner.had.has(parts[i]!.id) && !parts[i]!.link) parts[i] = { ...parts[i]!, link: owner.component };
     owner = null;
+    for (let i = 0; i < parts.length; i++) {
+      const to = moved[parts[i]!.id];
+      if (to === undefined || (parts[i]!.link ?? null) === to) continue;
+      parts[i] = { ...parts[i]! };
+      if (to) parts[i]!.link = to;
+      else delete parts[i]!.link;
+    }
   };
+  /** The component a sketch, construction step or component sits in: where it was moved, or where it was made. */
+  const ownerOf = (id: string, made?: string) => (id in moved ? moved[id] : made) ?? undefined;
   for (const raw of doc.features.slice(0, upTo)) {
     own();
     if (raw.suppressed) continue;
@@ -951,7 +967,10 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         const geo = gone ?? constructGeo(f.kind, inputs, f.value);
         if (typeof geo === "string") failed.set(f.id, geo);
-        else built.push({ id: f.id, name: f.name, kind: f.kind, geo, ...(f.component ? { component: f.component } : {}) });
+        else {
+          const component = ownerOf(f.id, f.component);
+          built.push({ id: f.id, name: f.name, kind: f.kind, geo, ...(component ? { component } : {}) });
+        }
         break;
       }
       case "joint": {
@@ -1015,7 +1034,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           if (on?.geo.what === "plane") sk = { ...sk, plane: { ...sk.plane, frame: on.geo.frame } };
           else failed.set(f.id, "The plane it sits on is gone. Redefine its plane from the timeline menu.");
         }
-        sketches.push({ id: f.id, name: f.name, sketch: sk, ...(f.component ? { component: f.component } : {}) });
+        const component = ownerOf(f.id, f.component);
+        sketches.push({ id: f.id, name: f.name, sketch: sk, ...(component ? { component } : {}) });
         sketchById.set(f.id, sk);
         const why = sketchLinkProblem(sk, (id) => find(id) >= 0);
         if (why) failed.set(f.id, why);
@@ -1281,12 +1301,10 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       if (why) failed.set(id, why);
     }
   }
-  const components: BuiltLink[] = linkSteps.map((l) => ({
-    id: l.id,
-    name: l.name,
-    parts: looked.filter((p) => p.link === l.id).map((p) => p.id),
-    ...(l.parent ? { parent: l.parent } : {}),
-  }));
+  const components: BuiltLink[] = linkSteps.map((l) => {
+    const parent = ownerOf(l.id, l.parent);
+    return { id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id), ...(parent ? { parent } : {}) };
+  });
   const links = components
     .filter((l) => l.parts.length)
     .map((l) => {
@@ -2791,6 +2809,26 @@ export function updatePattern(doc: ModelDoc, id: string, change: Partial<Pattern
  */
 export function addLink(doc: ModelDoc, parts: string[], id = newId("f"), at?: number, parent?: string): ModelDoc {
   return insert(doc, clampAt(doc, at), { id, type: "link", name: nextNamed(doc, "Component"), parts: [...parts], ...(parent ? { parent } : {}) });
+}
+
+/**
+ * Moves bodies, sketches, construction steps or components into a component, or into the model (null), as the browser
+ * does when you drag them (#334). A component never goes inside itself or one of its own.
+ */
+export function moveInto(doc: ModelDoc, ids: string[], to: string | null): ModelDoc {
+  const owners = { ...doc.owners };
+  const parentOf = (c: string) => {
+    if (c in owners) return owners[c];
+    const f = doc.features.find((g) => g.id === c);
+    return f?.type === "link" ? f.parent : undefined;
+  };
+  for (const id of ids) {
+    // Up from the target: if this id is on the way, it would sit inside itself.
+    let loop = false;
+    for (let up: string | null | undefined = to, n = 0; up && n < 1000; up = parentOf(up), n++) if (up === id) loop = true;
+    if (!loop) owners[id] = to;
+  }
+  return { ...doc, owners };
 }
 
 /** Marks the steps `after` has that `before` didn't as made in `component` (#171), so their bodies go into it. */

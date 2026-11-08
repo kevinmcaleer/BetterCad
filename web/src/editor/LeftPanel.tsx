@@ -67,6 +67,7 @@ export interface LeftPanelProps {
   links?: BuiltLink[];
   activeComponent?: string | null;
   onActivate?: (id: string | null) => void;
+  onMoveInto?: (ids: string[], to: string | null) => void;
   /** Joints (#172) as built. */
   joints?: JointFeature[];
   /** Named poses (#177) and what to do with them, under Joints in the browser. */
@@ -165,6 +166,7 @@ function PartsPanel(p: LeftPanelProps) {
       onAdd={p.onAdd}
       onToggle={p.onToggle}
       onActivate={p.onActivate}
+      onMoveInto={p.onMoveInto}
       onBodiesHidden={p.onBodiesHidden}
       onSketchesHidden={p.onSketchesHidden}
       onOrigin={p.onOrigin}

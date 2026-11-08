@@ -128,7 +128,9 @@ export function browserItems(m: BrowserModel): TreeItem[] {
     ...extra,
   });
   // The model's name heads the tree, as the file name heads Fusion's browser: double-click or F2 renames it.
-  const items: TreeItem[] = [{ id: ROW.root, name: m.name, icon: "layers", kind: "component", drag: false, rename: !m.readOnly, toggles: [] }];
+  // Rows can be dragged into a component, or back to the model, unless the model is view-only (#334).
+  const move = !m.readOnly;
+  const items: TreeItem[] = [{ id: ROW.root, name: m.name, icon: "layers", kind: "component", drag: false, rename: !m.readOnly, toggles: [], into: move }];
   items.push(folder(ROW.origin, "Origin", { folded: true, hidden: m.origin.length === 0 }));
   items.push({
     id: ROW.point,
@@ -163,7 +165,13 @@ export function browserItems(m: BrowserModel): TreeItem[] {
     const cons = o.construct(c);
     if (cons.length)
       items.push(
-        folder(inComp(ROW.construct, c), "Construction", { parentId: row, icon: "plane", note: count(cons.length), hidden: cons.every((x) => x.hidden) }),
+        folder(inComp(ROW.construct, c), "Construction", {
+          parentId: row,
+          icon: "plane",
+          note: count(cons.length),
+          hidden: cons.every((x) => x.hidden),
+          into: move,
+        }),
       );
     for (const x of cons) {
       items.push({
@@ -173,13 +181,15 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         kind: x.what,
         parentId: inComp(ROW.construct, c),
         drag: false,
+        move,
         toggles: ["hidden"],
         hidden: x.hidden,
         warning: x.warning,
       });
     }
     const ps = o.parts(c);
-    if (ps.length) items.push(folder(inComp(ROW.bodies, c), "Bodies", { parentId: row, note: count(ps.length), hidden: ps.every((p) => p.hidden) }));
+    if (ps.length)
+      items.push(folder(inComp(ROW.bodies, c), "Bodies", { parentId: row, note: count(ps.length), hidden: ps.every((p) => p.hidden), into: move }));
     for (const part of ps) {
       items.push({
         id: part.id,
@@ -187,13 +197,15 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         icon: partIcon(part.kind as PartKind),
         kind: "body",
         parentId: inComp(ROW.bodies, c),
+        move,
         hidden: part.hidden,
         ghost: part.ghost,
         highlight: part.highlight,
       });
     }
     const sks = o.sketches(c);
-    if (sks.length) items.push(folder(inComp(ROW.sketches, c), "Sketches", { parentId: row, note: count(sks.length), hidden: sks.every((x) => x.hidden) }));
+    if (sks.length)
+      items.push(folder(inComp(ROW.sketches, c), "Sketches", { parentId: row, note: count(sks.length), hidden: sks.every((x) => x.hidden), into: move }));
     for (const x of sks) {
       items.push({
         id: x.id,
@@ -202,6 +214,7 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         kind: "sketch",
         parentId: inComp(ROW.sketches, c),
         drag: false,
+        move,
         toggles: ["hidden"],
         hidden: x.hidden,
         warning: x.warning,
@@ -218,6 +231,8 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         kind: "component",
         parentId: row,
         drag: false,
+        move,
+        into: move,
         toggles: m.readOnly ? [] : ["active"],
         active: m.active === k.id,
         note,
@@ -273,6 +288,8 @@ export interface BrowserPanelProps {
   onToggle: (id: string, what: Exclude<RowToggle, "active">) => void;
   /** Makes a component (#171) the one you work in, or the model (null). */
   onActivate?: (id: string | null) => void;
+  /** Moves bodies, sketches, construction or components into a component, or the model (null) (#334). */
+  onMoveInto?: (ids: string[], to: string | null) => void;
   /** Hide (true) or show bodies, all at once. */
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
   /** Hide (true) or show sketches. */
@@ -456,7 +473,42 @@ export function BrowserPanel(p: BrowserPanelProps) {
     }
     return { entries: [] };
   };
-  const open = menu ? menuFor(menu.id) : null;
+  // Move into a component (#334): what a drag does, from the menu, for touch and the keyboard.
+  const o = owners(model);
+  const ownerOf = (id: string): string | undefined => {
+    const c = o.comps.find((x) => x.id === id);
+    if (c) return o.parentOf(c);
+    const part = model.parts.find((x) => x.id === id);
+    const known = (k?: string) => (k && o.comps.some((x) => x.id === k) ? k : undefined);
+    if (part) return known(part.link);
+    return known([...model.sketches, ...(model.construct ?? [])].find((x) => x.id === id)?.component);
+  };
+  const movable = (id: string) => items.some((i) => i.id === id && i.move);
+  /** What a drag of `id` moves: the selection's bodies with it, when it's one of them. */
+  const moving = (id: string) => (p.selection.includes(id) ? [...new Set([id, ...p.selection.filter(movable)])] : [id]);
+  const moveTo = (ids: string[], to: string | null) =>
+    p.onMoveInto?.(
+      ids.filter((x) => (ownerOf(x) ?? null) !== to && x !== to),
+      to,
+    );
+  const dropInto = (id: string, row: string) => {
+    const f = folderOf(row);
+    moveTo(moving(id), row === ROW.root ? null : f ? (f.c ?? null) : row);
+  };
+  const moveEntries = (id: string): MenuEntry[] => {
+    if (!movable(id) || !p.onMoveInto) return [];
+    const now = ownerOf(id);
+    const inside = new Set([id, ...o.inside(id)]);
+    return [
+      ...(now ? [{ id: "move-model", label: `Move to ${model.name}`, icon: "layers" as const, onSelect: () => moveTo(moving(id), null) }] : []),
+      ...o.comps
+        .filter((c) => c.id !== now && !inside.has(c.id))
+        .map((c) => ({ id: `move-${c.id}`, label: `Move into ${c.name}`, icon: "component" as const, onSelect: () => moveTo(moving(id), c.id) })),
+    ];
+  };
+  const shown = menu ? menuFor(menu.id) : null;
+  const extra = menu ? moveEntries(menu.id) : [];
+  const open = shown && extra.length ? { ...shown, entries: [...shown.entries, { kind: "separator" as const, id: "move-sep" }, ...extra] } : shown;
 
   return (
     <>
@@ -469,6 +521,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
         onRename={rename}
         onToggle={toggle}
         onReorder={(id, before) => model.parts.some((x) => x.id === id) && p.onReorder(id, before)}
+        onDropInto={p.onMoveInto && !model.readOnly ? dropInto : undefined}
         toggles={["hidden", "ghost", "highlight"]}
         renameId={p.renameId}
         onRenameIdChange={p.onRenameIdChange}

@@ -5,6 +5,7 @@ import {
   addLink,
   addSketch,
   stampComponent,
+  moveInto,
   linkTransforms,
   addPart,
   addPattern,
@@ -176,5 +177,40 @@ describe("components (#171)", () => {
     const m = linkTransforms([hinge], { J: 90 }, [{ id: "C1" }, { id: "C2", parent: "C1" }]);
     expect(m.get("C2")).toEqual(m.get("C1"));
     expect(m.get("C2")![0]).toBeCloseTo(0);
+  });
+});
+
+describe("moving into components (#334)", () => {
+  const two = () => {
+    let doc = addLink(newDoc(), [], "C1");
+    doc = addLink(doc, [], "C2", undefined, "C1");
+    doc = addPart(doc, "box", "a");
+    return addSketch(doc, { kind: "world", plane: "XY", offset: 0 }, "s1");
+  };
+
+  it("moves a body, a sketch and a component, and back to the model", () => {
+    let doc = moveInto(two(), ["a", "s1"], "C2");
+    let b = build(doc);
+    expect(linkOf(doc, "a")).toBe("C2");
+    expect(b.sketches[0]).toMatchObject({ component: "C2" });
+    doc = moveInto(doc, ["C2"], null);
+    expect(build(doc).components.find((c) => c.id === "C2")!.parent).toBeUndefined();
+    doc = moveInto(doc, ["a"], null);
+    b = build(doc);
+    expect(linkOf(doc, "a")).toBeUndefined();
+    expect(b.links).toEqual([]);
+  });
+
+  it("never puts a component inside itself or one of its own", () => {
+    const doc = moveInto(two(), ["C1"], "C2");
+    expect(doc.owners?.C1).toBeUndefined();
+    expect(build(doc).components.find((c) => c.id === "C1")!.parent).toBeUndefined();
+  });
+
+  it("wins over the component a body was made in", () => {
+    let doc = addLink(newDoc(), [], "C1");
+    doc = stampComponent(doc, addPart(doc, "box", "a"), "C1");
+    doc = moveInto(doc, ["a"], null);
+    expect(linkOf(doc, "a")).toBeUndefined();
   });
 });
