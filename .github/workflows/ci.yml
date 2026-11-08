@@ -68,7 +68,7 @@ jobs:
           path: web/dist
           retention-days: 7
 
-  # The end-to-end tests, split test by test across three runners (fullyParallel) so each takes a third of the
+  # The end-to-end tests, split test by test across five runners (fullyParallel) so each takes a fifth of the
   # suite. Each shard builds the gallery preview itself (Playwright's webServer) while the web job lints and tests.
   # The shards always start, so their checks keep their names; on a docs, server or Markdown only pull request every
   # step is skipped and the shard passes in seconds.
@@ -80,8 +80,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
-    name: e2e (${{ matrix.shard }} of 3)
+        shard: [1, 2, 3, 4, 5]
+    name: e2e (${{ matrix.shard }} of 5)
     env:
       RUN: ${{ needs.changes.outputs.app != 'false' }}
     steps:
@@ -105,7 +105,7 @@ jobs:
       - if: env.RUN == 'true'
         run: npx playwright install --only-shell chromium
       - if: env.RUN == 'true'
-        run: npm run e2e -w web -- --shard=${{ matrix.shard }}/3
+        run: npm run e2e -w web -- --shard=${{ matrix.shard }}/5
         env:
           CI: "1"
       # Each test's last screenshot, so a failed run is easy to read.
