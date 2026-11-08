@@ -1686,6 +1686,38 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       `Pick the ${f.type === "shell" ? "faces to leave open" : "edges"} again on ${parts.find((p) => p.id === f.part)?.name ?? "the body"}, then press Enter`,
     );
   };
+  /**
+   * A double-click or double-tap on a timeline tile (#73): a sketch opens in sketch mode, a step with settings opens
+   * its tool on the step, fillet, chamfer and shell open to pick again, and the rest select their parts for Properties.
+   * A step past the marker is rolled forward to first, so it is built while you change it.
+   */
+  const editStep = (f: Feature) => {
+    const i = store.get().features.findIndex((x) => x.id === f.id);
+    if (i < 0) return;
+    if (f.type === "fillet" || f.type === "chamfer" || f.type === "shell") return repick(f.id);
+    if (i >= at) moveMarker(i + 1);
+    switch (f.type) {
+      case "sketch":
+        return sketch.edit(f.id);
+      case "extrude":
+      case "hole":
+      case "mount":
+      case "revolve":
+      case "pushpull": {
+        setTool(f.type);
+        ({ extrude, hole, mount, revolve, pushpull })[f.type].edit(f.id);
+        return;
+      }
+      case "add":
+      case "move":
+      case "resize":
+        selectFeature(f);
+        return say(`Change ${f.name} in Properties.`);
+      default:
+        selectFeature(f);
+        return say(`${f.name} has no settings to change. Right-click it for more.`);
+    }
+  };
   const editEntry = problem ? featureMenu(problem.id).find((e) => e.id === "edit") : undefined;
   const problemBanner = problem && (
     <div className="bc-problem">
@@ -1992,6 +2024,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               summary={summary}
               onSelect={selectFeature}
               onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
+              onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
               historyOpen={panel === "history"}
             />
