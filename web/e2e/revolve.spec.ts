@@ -59,8 +59,8 @@ test("revolve a rectangle round the Y axis, picked after the shape, into a tube"
     .click();
   // The shape first, then the axis to turn it round: the origin's Y axis, clicked in the view.
   await pickShape(page, 15, 0, page.getByRole("button", { name: "Pick an axis", exact: true }));
-  await expect(page.getByRole("button", { name: "Done" })).toBeDisabled();
-  await pickShape(page, 0, 15, page.getByRole("button", { name: "Round the Y axis", exact: true }));
+  await expect(page.getByRole("button", { name: "OK", exact: true })).toBeDisabled();
+  await pickShape(page, 0, 15, page.getByRole("group", { name: "Axis" }).getByRole("button", { name: "1 selected" }));
   const angle = page.getByRole("textbox", { name: "Angle" });
   await expect(angle).toHaveValue(/360/);
   await angle.press("Enter");

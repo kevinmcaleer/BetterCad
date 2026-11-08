@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { BodyMesh } from "@bettercad/kernel";
@@ -38,12 +38,16 @@ describe("FinishBar's pick list", () => {
     expect(list).toHaveTextContent("Edge 2, 58 mm");
     await userEvent.click(screen.getByRole("button", { name: "Take Edge 2 out" }));
     expect(f.drop).toHaveBeenCalledWith(7);
+    await userEvent.click(screen.getByRole("button", { name: "Take every edge out" }));
+    expect(f.clear).toHaveBeenCalled();
   });
 
   it("hides the list from the count and shows why the preview fails", async () => {
     render(<FinishBar f={session()} preview={{ bodies: null, error: "The radius is too big.", busy: false }} onCancel={() => {}} />);
     expect(screen.getByRole("alert")).toHaveTextContent("The radius is too big.");
-    await userEvent.click(screen.getByRole("button", { name: "Hide the list of picked edges" }));
+    // The Edges row's "2 selected" folds the list away; its × takes every edge out.
+    const edges = within(screen.getByRole("group", { name: "Edges" }));
+    await userEvent.click(edges.getByRole("button", { name: "2 selected" }));
     expect(screen.queryByRole("group", { name: "Picked edges" })).toBeNull();
   });
 });
