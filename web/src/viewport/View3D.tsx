@@ -236,7 +236,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   useEffect(() => engine.current?.setSelection(picks), [picks]);
   useEffect(() => engine.current?.setFilter(mode === "section" ? "face" : filter), [filter, mode]);
   useEffect(() => engine.current?.setHoverEnabled(mode === "select" || mode === "section" || mode === "move" || mode === "turn"), [mode]);
-  useEffect(() => engine.current?.setTheme(theme === "holodeck"), [theme]);
+  useEffect(() => engine.current?.setTheme(theme === "holoroom"), [theme]);
   useEffect(() => engine.current?.setStyle(style), [style]);
   const check = props.check ?? null;
   useEffect(() => engine.current?.setCheck(check), [check, bodies]);

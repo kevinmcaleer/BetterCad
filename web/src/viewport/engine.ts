@@ -210,7 +210,7 @@ export function pickSize(touch: boolean, dpr: number): number {
   const n = Math.min(99, Math.max(PICK_SIZE, Math.round(TOUCH_PICK * dpr)));
   return n % 2 ? n : n + 1;
 }
-/** The Holodeck's widest depth-of-field blur, as a fraction of the view's height. */
+/** The Holoroom's widest depth-of-field blur, as a fraction of the view's height. */
 const DOF_BLUR = 0.016;
 
 /** Three's matrix for a body's place: move, then turn about its origin. */
@@ -258,7 +258,7 @@ function edgeElements(m: BodyMesh): Float32Array {
 }
 
 /**
- * The 3D view: one WebGL canvas drawing the bodies the kernel hands it, with the grid (or the Holodeck room), the
+ * The 3D view: one WebGL canvas drawing the bodies the kernel hands it, with the grid (or the Holoroom room), the
  * gizmo, the section and ID-buffer picking. It draws only when something changes.
  */
 export class Engine {
@@ -554,7 +554,7 @@ export class Engine {
     return { width: this.width, height: this.height };
   }
 
-  /** Shows or hides the floor grid (the Holodeck room stays). A sketch hides it while it draws its own. */
+  /** Shows or hides the floor grid (the Holoroom room stays). A sketch hides it while it draws its own. */
   setFloorGrid(on: boolean): void {
     if (this.floorGrid === on) return;
     this.floorGrid = on;
@@ -578,7 +578,7 @@ export class Engine {
     this.applyCamera();
   }
 
-  /** Re-reads the theme's colours; `room` turns on the Holodeck room. */
+  /** Re-reads the theme's colours; `room` turns on the Holoroom room. */
   setTheme(room: boolean): void {
     this.palette = readPalette();
     this.roomOn = room;
@@ -1961,7 +1961,7 @@ export class Engine {
     r.autoClear = auto;
   }
 
-  /** Draws the scene to the screen; in the Holodeck the room goes down first, its far walls out of focus. */
+  /** Draws the scene to the screen; in the Holoroom the room goes down first, its far walls out of focus. */
   private renderScene(cam: Camera): void {
     const r = this.renderer;
     if (!this.roomOn) {

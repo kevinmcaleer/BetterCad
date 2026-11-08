@@ -6,7 +6,7 @@ import { AccountProvider, useAccount } from "./cloud/account";
 import { useRoute, type Route } from "./cloud/route";
 import { pageOf, ping } from "./cloud/ping";
 import { useTheme } from "./state/useTheme";
-import type { ThemeSetting } from "./state/theme";
+import { renamedTheme, type ThemeSetting } from "./state/theme";
 import { UpdateBanner } from "./pwa/UpdateBanner";
 
 /** The component gallery ships in development and in preview builds (VITE_GALLERY=1), never in the release image. */
@@ -25,7 +25,7 @@ const TermsPage = lazy(() => pages().then((m) => ({ default: m.TermsPage })));
 // Proves the workspace packages resolve; the kernel and solver arrive in epics #4 and #5.
 export const ENGINES = [kernelStatus(), solverStatus()];
 
-const THEMES: readonly string[] = ["system", "light", "dark", "holodeck"];
+const THEMES: readonly string[] = ["system", "light", "dark", "holoroom"];
 
 /** The theme follows the account (#88): its choice applies on sign-in, and a change is saved to it. */
 function ThemeSync() {
@@ -39,8 +39,9 @@ function ThemeSync() {
     }
     if (synced.current !== account.id) {
       synced.current = account.id;
-      if (account.theme && THEMES.includes(account.theme)) {
-        if (account.theme !== theme) setTheme(account.theme as ThemeSetting);
+      const saved = renamedTheme(account.theme);
+      if (saved && THEMES.includes(saved)) {
+        if (saved !== theme) setTheme(saved as ThemeSetting);
         return;
       }
     }

@@ -26,9 +26,9 @@ test("keyboard: tools, undo and the command palette", async ({ page }) => {
   await expect(bodyRows(page)).toHaveCount(0);
 
   await page.keyboard.press("ControlOrMeta+k");
-  await page.getByRole("combobox", { name: "Command" }).fill("holodeck");
+  await page.getByRole("combobox", { name: "Command" }).fill("holoroom");
   await page.keyboard.press("Enter");
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "holodeck");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "holoroom");
 });
 
 test("the saved theme applies before first paint", async ({ page }) => {
@@ -36,14 +36,14 @@ test("the saved theme applies before first paint", async ({ page }) => {
   await page.goto("/");
   const first = await page.evaluate(() => document.documentElement.dataset.theme);
   expect(first).toBe("dark");
-  await page.evaluate(() => localStorage.setItem("bettercad.theme", "holodeck"));
+  await page.evaluate(() => localStorage.setItem("bettercad.theme", "holoroom"));
   await page.reload();
-  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("holodeck");
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe("holoroom");
 });
 
 test("the component gallery renders every theme", async ({ page }) => {
   await page.goto("/#/gallery");
-  for (const name of ["Light", "Dark", "Holodeck"]) {
+  for (const name of ["Light", "Dark", "Holoroom"]) {
     await expect(page.getByRole("region", { name })).toBeVisible();
   }
 });

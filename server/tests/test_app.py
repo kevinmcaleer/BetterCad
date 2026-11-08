@@ -47,11 +47,24 @@ def test_database_is_wal_and_migrated_once(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-    assert db.migrate(conn) == [1, 2, 3, 4, 5, 6]
+    assert db.migrate(conn) == [1, 2, 3, 4, 5, 6, 7]
     assert db.migrate(conn) == []
     assert conn.execute("SELECT name FROM sqlite_master WHERE name='meta'").fetchone()
     conn.close()
     assert isinstance(sqlite3.connect(tmp_path / "t.db"), sqlite3.Connection)
+
+
+def test_holodeck_theme_becomes_holoroom(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    db.migrate(conn)
+    # An account saved before the rename, with migration 7 not yet run.
+    with conn:
+        conn.execute("DELETE FROM schema_version WHERE version = 7")
+        conn.execute("INSERT INTO accounts (id, name, theme) VALUES (1, 'Kev', 'holodeck'), (2, 'Ann', 'dark')")
+    assert db.migrate(conn) == [7]
+    themes = dict(conn.execute("SELECT name, theme FROM accounts").fetchall())
+    assert themes == {"Kev": "holoroom", "Ann": "dark"}
+    conn.close()
 
 
 def test_serves_precompressed_assets(make_client, tmp_path):

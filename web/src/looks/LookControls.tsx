@@ -37,7 +37,7 @@ export function LookControls({ parts, onColour, onFinish }: LookControlsProps) {
             type="button"
             className="bc-chip bc-chip-none"
             aria-label="Theme colour"
-            title="Theme colour: follows Light, Dark or Holodeck"
+            title="Theme colour: follows Light, Dark or Holoroom"
             aria-pressed={colour === ""}
             onClick={() => onColour(undefined)}
           />

@@ -43,8 +43,8 @@ def test_changes_need_the_csrf_token(user):
     token = user.headers.pop("X-CSRF-Token")
     assert user.patch("/api/account", json={"theme": "dark"}).status_code == 403
     user.headers["X-CSRF-Token"] = token
-    assert user.patch("/api/account", json={"theme": "holodeck"}).json()["theme"] == "holodeck"
-    assert user.get("/api/account").json()["theme"] == "holodeck"
+    assert user.patch("/api/account", json={"theme": "holoroom"}).json()["theme"] == "holoroom"
+    assert user.get("/api/account").json()["theme"] == "holoroom"
 
 
 def test_sign_out_clears_the_suite_cookie(make_client):

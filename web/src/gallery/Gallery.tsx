@@ -28,7 +28,7 @@ import {
 } from "@bettercad/ui";
 
 /**
- * Every component in its states, under Light, Dark and Holodeck side by side. The visual check for UI changes:
+ * Every component in its states, under Light, Dark and Holoroom side by side. The visual check for UI changes:
  * the Playwright screenshot tests photograph each block. Hover, focus and pressed are pinned with data-state so a
  * screenshot shows them without a pointer.
  */

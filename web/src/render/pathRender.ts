@@ -86,7 +86,7 @@ export class PathRender {
   private backgrounds = new Backgrounds();
   private background: BackgroundId = "lightbox";
   private reach = 100;
-  /** The Holodeck's four walls, round the model and open to the light above. */
+  /** The Holoroom's four walls, round the model and open to the light above. */
   private walls = new Group();
   private wallMaterial = new MeshStandardMaterial({ roughness: 0.6, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.35 });
   private frame = 0;

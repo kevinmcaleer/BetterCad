@@ -72,7 +72,7 @@ export function useViewport(d: ViewportDeps) {
   const live = useRef(d);
   live.current = d;
 
-  const style: RenderStyle = styleSetting === "auto" ? (d.theme === "holodeck" ? "lineart" : "shaded") : styleSetting;
+  const style: RenderStyle = styleSetting === "auto" ? (d.theme === "holoroom" ? "lineart" : "shaded") : styleSetting;
 
   // Element picks go when their part does, or when the filter changes.
   useEffect(() => {
@@ -240,7 +240,7 @@ export function useViewport(d: ViewportDeps) {
   /** Shaded or line art, or the other one of the two when `to` is left out. */
   const setStyle = useCallback((to?: RenderStyle) => {
     setStyleSetting((s) => {
-      const now: RenderStyle = s === "auto" ? (live.current.theme === "holodeck" ? "lineart" : "shaded") : s;
+      const now: RenderStyle = s === "auto" ? (live.current.theme === "holoroom" ? "lineart" : "shaded") : s;
       const next: RenderStyle = to ?? (now === "shaded" ? "lineart" : "shaded");
       try {
         localStorage.setItem(STYLE_KEY, next);
