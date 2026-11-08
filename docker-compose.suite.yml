@@ -1,0 +1,84 @@
+# BetterCad and Markdown Studio on one machine under kevsrobots.com, with one login (#88). Kev chose this on
+# 8 November 2026. Both apps open the same users database (Studio's studio.db, on this machine's own disk), and both
+# set the sign-in cookie on .kevsrobots.com, so signing in to either signs you in to both. docs/deploy.md ("One login
+# with Markdown Studio") has the steps, including moving Studio's data over from the Pi.
+#
+#   docker compose -f docker-compose.suite.yml up -d --build
+#
+# The two apps run as the same user (10001), because SQLite's journal files must be writable by both.
+services:
+  bettercad:
+    image: ghcr.io/kevinmcaleer/bettercad:latest
+    build: .
+    restart: unless-stopped
+    volumes:
+      - bettercad-data:/data
+      - ${BACKUP_PATH:-./backups}:/backups
+      # The shared users database. A bind mount of a local folder: never NFS or SMB.
+      - ${SUITE_DATA:-./suite-data}:/suite
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      DATA_DIR: /data
+      MAX_UPLOAD_MB: "50"
+      USER_QUOTA_MB: ${USER_QUOTA_MB:-500}
+      BACKUP_DIR: /backups
+      ALLOWED_ORIGINS: https://bettercad.kevsrobots.com
+      AUTH_DATABASE_PATH: /suite/studio.db
+      COOKIE_DOMAIN: .kevsrobots.com
+      COOKIE_PREFIX: ms
+      PUBLIC_URL: https://bettercad.kevsrobots.com
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    depends_on:
+      # Studio owns studio.db: it creates the file and its tables first.
+      studio:
+        condition: service_healthy
+
+  studio:
+    image: ghcr.io/kevinmcaleer/markdown-studio:${STUDIO_TAG:-latest}
+    restart: unless-stopped
+    init: true
+    volumes:
+      - ${SUITE_DATA:-./suite-data}:/data
+      - ${STUDIO_BACKUP_PATH:-./studio-backups}:/backups
+    environment:
+      DATABASE_PATH: /data/studio.db
+      PORT: "8000"
+      # Studio signs its CSRF tokens with its own key, so it needn't match BetterCad's.
+      SECRET_KEY: ${STUDIO_SECRET_KEY:?Set STUDIO_SECRET_KEY in .env}
+      PUBLIC_URL: https://studio.kevsrobots.com
+      HTTPS: "true"
+      TRUST_PROXY: "true"
+      COOKIE_DOMAIN: .kevsrobots.com
+      ALLOW_REGISTRATION: ${STUDIO_ALLOW_REGISTRATION:-true}
+      PUID: "10001"
+      PGID: "10001"
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  # One tunnel for both: in Zero Trust, point bettercad.kevsrobots.com at http://bettercad:8000 and
+  # studio.kevsrobots.com at http://studio:8000.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN:?Set CLOUDFLARE_TUNNEL_TOKEN in .env}"
+    depends_on:
+      bettercad:
+        condition: service_healthy
+
+volumes:
+  bettercad-data:
