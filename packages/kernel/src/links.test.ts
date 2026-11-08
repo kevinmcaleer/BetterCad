@@ -5,6 +5,7 @@ import {
   addLink,
   addSketch,
   stampComponent,
+  addConstruct,
   moveInto,
   linkTransforms,
   addPart,
@@ -142,6 +143,12 @@ describe("components (#171)", () => {
     expect(build(next).sketches[0]).toMatchObject({ id: "s1", component: "C1" });
     // Nothing new, nothing stamped; a joint never is.
     expect(stampComponent(next, next, "C1")).toBe(next);
+  });
+
+  it("files a construction plane made while a component is active under it", () => {
+    const doc = addLink(newDoc(), [], "C1");
+    const next = stampComponent(doc, addConstruct(doc, { kind: "offset", refs: [{ origin: "XY" }], value: 5 }, "p1"), "C1");
+    expect(build(next).construct[0]).toMatchObject({ id: "p1", component: "C1" });
   });
 
   it("gives a deleted component's bodies back to the model", () => {

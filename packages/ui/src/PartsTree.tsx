@@ -243,6 +243,7 @@ export function PartsTree({
             className={cx(
               "bc-row",
               selected && "bc-on",
+              item.active && "bc-row-active",
               item.hidden && "bc-off",
               dropBefore === item.id && "bc-drop-before",
               dropInto === item.id && "bc-drop-into",

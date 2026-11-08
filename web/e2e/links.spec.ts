@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { bodyRows } from "./pages/editor";
 
 /** Components (#171): two bodies made one component, kept as separate bodies, inside it in the browser. */
@@ -96,4 +96,57 @@ test("drag a body into a component, and move it back to the model", async ({ pag
   await expect(box).toHaveAttribute("aria-level", "3");
   await page.keyboard.press("ControlOrMeta+z");
   await expect(box).toHaveAttribute("aria-level", "4");
+});
+
+type View = { __bcView: { project(p: number[]): { x: number; y: number }; preset(p: string): void } };
+
+/** Clicks a point on the ground once the camera has stopped. */
+async function clickAt(page: Page, x: number, y: number) {
+  const where = () => page.evaluate((p) => (window as unknown as View).__bcView.project(p), [x, y, 0]);
+  let q = await where();
+  for (let i = 0, still = 0; i < 80 && still < 4; i++) {
+    await page.waitForTimeout(50);
+    const r = await where();
+    still = Math.abs(r.x - q.x) < 0.5 && Math.abs(r.y - q.y) < 0.5 ? still + 1 : 0;
+    q = r;
+  }
+  const box = (await page.getByTestId("view-canvas").boundingBox())!;
+  await page.mouse.move(box.x + q.x, box.y + q.y, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.up();
+}
+
+/** Components (#171): picking a component's row makes it active; a sketch and the body extruded from it go into it. */
+test("pick a component in the browser, then sketch and extrude inside it", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "New component" }).click();
+  await page.getByRole("button", { name: "Activate Untitled model" }).click();
+  await expect(page.getByRole("button", { name: "Working in Untitled model" })).toBeVisible();
+
+  // Picking the row is enough; it stays active after you pick something else.
+  await page.getByRole("treeitem", { name: /Component 1 Empty/ }).click();
+  await expect(page.getByRole("button", { name: "Working in Component 1" })).toBeVisible();
+
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await clickAt(page, 20, 20);
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await clickAt(page, -10, -10);
+  await clickAt(page, 10, 5);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Finished Sketch 1")).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /^Sketch 1/ })).toHaveAttribute("aria-level", "4");
+
+  await page.keyboard.press("e");
+  await expect(async () => {
+    await clickAt(page, 0, -2);
+    await expect(page.getByRole("textbox", { name: "Distance" })).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /Component 1 1 body/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Working in Component 1" })).toBeVisible();
 });
