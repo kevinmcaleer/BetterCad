@@ -6,6 +6,7 @@ import { formatCombo } from "../state/commands";
 export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   add: "cube",
   duplicate: "copy",
+  pattern: "distributeH",
   move: "move",
   resize: "resize",
   delete: "trash",

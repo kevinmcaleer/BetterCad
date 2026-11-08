@@ -14,6 +14,8 @@ The first public release: free CAD for 3D printing in your browser.
   sketch re-solves when a parameter it uses changes (#75).
 - Extrude, push and pull, revolve, fillet, chamfer and shell, on OpenCascade running in a Web Worker (#4, #6).
 - Shapes (box, cylinder, sphere, cone, torus, wedge), moving and turning parts, and join, cut and intersect (#6).
+- Mirror bodies across a plane, or copy them in rows and columns or round an axis, as separate bodies or joined into
+  one (#69).
 - Holes sized for printing: screw sizes, clearance, tap and heat-set insert fits, a printer hole offset and a
   calibration coupon (#11).
 - A parametric timeline: edit any earlier step, roll back, and drive the model from named parameters (#7).
