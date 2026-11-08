@@ -58,7 +58,15 @@ describe("browserItems", () => {
     const folders = items.filter((i) => i.kind === "folder").map((i) => i.name);
     expect(folders).toEqual(["Origin", "Bodies", "Sketches", "Joints"]);
     expect(items.filter((i) => i.parentId === ROW.bodies).map((i) => i.name)).toEqual(["Box 1", "Cylinder 1"]);
-    expect(items.filter((i) => i.parentId === ROW.origin).map((i) => i.name)).toEqual(["Origin point", "XY plane", "XZ plane", "YZ plane"]);
+    expect(items.filter((i) => i.parentId === ROW.origin).map((i) => i.name)).toEqual([
+      "Origin point",
+      "X axis",
+      "Y axis",
+      "Z axis",
+      "XY plane",
+      "XZ plane",
+      "YZ plane",
+    ]);
     expect(items.find((i) => i.id === ROW.joints)).toMatchObject({ note: "None yet", toggles: [] });
   });
 
@@ -171,6 +179,22 @@ describe("BrowserPanel", () => {
     expect(onPicked).toHaveBeenLastCalledWith(ROW.point);
   });
 
+  it("shows, hides and picks the X, Y and Z axes", async () => {
+    const onPicked = vi.fn();
+    render(<Harness onPicked={onPicked} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show what is in Origin" }));
+    expect(row(/^Z axis/)).toHaveClass("bc-off");
+    await userEvent.click(screen.getByRole("button", { name: "Show Z axis" }));
+    expect(row(/^Z axis/)).not.toHaveClass("bc-off");
+    expect(row(/^X axis/)).toHaveClass("bc-off");
+    expect(row(/^Origin(?! point)/)).not.toHaveClass("bc-off");
+    await userEvent.click(screen.getByText("X axis"));
+    expect(onPicked).toHaveBeenLastCalledWith(ROW.axis("X"));
+    fireEvent.contextMenu(screen.getByText("Z axis"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Hide/ }));
+    expect(row(/^Z axis/)).toHaveClass("bc-off");
+  });
+
   it("doesn't rename or drag the folders", () => {
     render(<Harness />);
     fireEvent.doubleClick(screen.getByText("Bodies"));
@@ -196,6 +220,9 @@ describe("components (#171)", () => {
       "- > Rover",
       `${ROW.root} > Origin`,
       `${ROW.origin} > Origin point`,
+      `${ROW.origin} > X axis`,
+      `${ROW.origin} > Y axis`,
+      `${ROW.origin} > Z axis`,
       `${ROW.origin} > XY plane`,
       `${ROW.origin} > XZ plane`,
       `${ROW.origin} > YZ plane`,

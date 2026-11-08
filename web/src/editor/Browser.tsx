@@ -12,9 +12,12 @@ import { constructIcon, partIcon } from "./Timeline";
  */
 
 export const PLANES: WorldPlaneName[] = ["XY", "XZ", "YZ"];
-/** What the Origin folder holds: the origin point, then the three planes. */
-export type OriginItem = WorldPlaneName | "point";
-export const ORIGIN: OriginItem[] = ["point", ...PLANES];
+/** The origin's three axes, as Fusion's browser lists them. */
+export type OriginAxis = "X" | "Y" | "Z";
+export const AXES: OriginAxis[] = ["X", "Y", "Z"];
+/** What the Origin folder holds: the origin point, the three axes, then the three planes. */
+export type OriginItem = WorldPlaneName | OriginAxis | "point";
+export const ORIGIN: OriginItem[] = ["point", ...AXES, ...PLANES];
 
 /** Row ids for the browser's own rows, kept apart from part and feature ids. */
 export const ROW = {
@@ -27,6 +30,7 @@ export const ROW = {
   poses: "browser:poses",
   home: "browser:pose-home",
   plane: (p: WorldPlaneName) => `browser:plane:${p}`,
+  axis: (a: OriginAxis) => `browser:axis:${a}`,
   point: "browser:origin-point",
 } as const;
 
@@ -35,9 +39,14 @@ const PLANE_ROWS = new Map(PLANES.map((p) => [ROW.plane(p), p]));
 export function planeOf(id: string): WorldPlaneName | null {
   return PLANE_ROWS.get(id) ?? null;
 }
-/** The origin item a row id names: the origin point or a plane. */
+const AXIS_ROWS = new Map(AXES.map((a) => [ROW.axis(a), a]));
+/** The origin axis a row id names, if it is one. */
+export function axisOf(id: string): OriginAxis | null {
+  return AXIS_ROWS.get(id) ?? null;
+}
+/** The origin item a row id names: the origin point, an axis or a plane. */
 export function originItemOf(id: string): OriginItem | null {
-  return id === ROW.point ? "point" : planeOf(id);
+  return id === ROW.point ? "point" : (axisOf(id) ?? planeOf(id));
 }
 
 export interface BrowserSketch {
@@ -59,7 +68,7 @@ export interface BrowserModel {
   name: string;
   parts: Part[];
   sketches: BrowserSketch[];
-  /** The origin point and planes on show. */
+  /** The origin point, axes and planes on show. */
   origin: OriginItem[];
   /** A shared, view-only model: its name can't be changed. */
   readOnly?: boolean;
@@ -142,6 +151,19 @@ export function browserItems(m: BrowserModel): TreeItem[] {
     toggles: ["hidden"],
     hidden: !m.origin.includes("point"),
   });
+  for (const a of AXES) {
+    items.push({
+      id: ROW.axis(a),
+      name: `${a} axis`,
+      icon: "axis",
+      kind: "axis",
+      parentId: ROW.origin,
+      drag: false,
+      rename: false,
+      toggles: ["hidden"],
+      hidden: !m.origin.includes(a),
+    });
+  }
   for (const p of PLANES) {
     items.push({
       id: ROW.plane(p),
@@ -294,7 +316,7 @@ export interface BrowserPanelProps {
   /** Hide (true) or show sketches. */
   onSketchesHidden: (ids: string[], hidden: boolean) => void;
   onOrigin: (shown: OriginItem[]) => void;
-  /** The sketch, plane or origin point picked in the browser, for the view to mark. */
+  /** The sketch, plane, axis or origin point picked in the browser, for the view to mark. */
   onPicked: (id: string | null) => void;
   onSelectSketch: (id: string) => void;
   onRename: (id: string, name: string) => void;
@@ -401,6 +423,14 @@ export function BrowserPanel(p: BrowserPanelProps) {
           { id: "sketch", label: `Sketch on the ${plane} plane`, icon: "sketch", onSelect: () => p.onSketchOn(plane) },
           { id: "show", label: shown ? "Hide" : "Show", icon: shown ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") },
         ],
+      };
+    }
+    const axis = axisOf(id);
+    if (axis) {
+      const shown = model.origin.includes(axis);
+      return {
+        title: `${axis} axis`,
+        entries: [{ id: "show", label: shown ? "Hide" : "Show", icon: shown ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") }],
       };
     }
     if (id === ROW.point) {

@@ -174,7 +174,7 @@ import type { RenderBody } from "../render/pathRender";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
-import { ROW, planeOf, type OriginItem } from "./Browser";
+import { AXES, ROW, axisOf, planeOf, type OriginItem } from "./Browser";
 import type { BodyDrag, WorldPlaneName } from "../viewport/engine";
 import type { IkDragHooks } from "../joint/ikDrag";
 import type { IkProblem } from "../state/ik";
@@ -684,39 +684,6 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     setConstructKind(k);
     setTool("construct");
   }, []);
-  // Planes, axes and points in the view: those not hidden from the browser, the origin's axes and point while the tool
-  // wants one, lit under the pointer or when picked in the browser.
-  const shownConstruct = useMemo(() => built.construct.filter((c) => !doc.looks[c.id]?.hidden), [built.construct, doc.looks]);
-  useEffect(() => {
-    const eng = vp.ref.current?.engine();
-    if (!eng) return;
-    const shapes = shownConstruct.map((c) =>
-      c.geo.what === "plane"
-        ? { id: c.id, what: c.geo.what, origin: c.geo.frame.origin, x: c.geo.frame.x, normal: c.geo.frame.normal }
-        : c.geo.what === "axis"
-          ? { id: c.id, what: c.geo.what, origin: c.geo.origin, dir: c.geo.dir }
-          : { id: c.id, what: c.geo.what, origin: c.geo.at },
-    );
-    const lit = [constructHover, browserPicked, construct.session?.id, revolve.axisShape].filter((x): x is string => !!x);
-    // The sketch's Dimension tool can measure from an axis too; Revolve shows them while it wants an axis, and keeps
-    // the one it turns round.
-    const want = construct.active ? construct.slot : (sketch.editing && sketch.stool === "dimension") || revolve.pickingAxis ? "line" : null;
-    const origin = want ? originShapes(want) : originShapes("line").filter((o) => o.id === revolve.axisShape);
-    eng.setConstruct([...shapes, ...origin], lit);
-  }, [
-    shownConstruct,
-    constructHover,
-    browserPicked,
-    construct.active,
-    construct.slot,
-    construct.session,
-    revolve.pickingAxis,
-    revolve.axisShape,
-    vp.ref,
-    kernel.bodies,
-    sketch.editing,
-    sketch.stool,
-  ]);
 
   // Posing (#173): a live pose while a slider moves, kept in the model when it stops. Shown with the Select tool only, so
   // tools that pick and move bodies work on them where they really are.
@@ -1087,6 +1054,55 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (tool !== "pattern") setPatternStart(null);
   }, [tool]);
   const mirrorOn = tool === "pattern" && pattern.kind === "mirror";
+  // Planes, axes and points in the view: those not hidden from the browser, the origin's axes and point while the tool
+  // wants one or the browser shows them, lit under the pointer or when picked in the browser.
+  const shownConstruct = useMemo(() => built.construct.filter((c) => !doc.looks[c.id]?.hidden), [built.construct, doc.looks]);
+  const patternAxis =
+    tool === "pattern" && pattern.feature?.kind === "circle" && !pattern.feature.axisStep ? `origin:${pattern.feature.axis.toUpperCase()}` : null;
+  const jointAxis = tool === "joint" && joint.stage === "axis";
+  useEffect(() => {
+    const eng = vp.ref.current?.engine();
+    if (!eng) return;
+    const shapes = shownConstruct.map((c) =>
+      c.geo.what === "plane"
+        ? { id: c.id, what: c.geo.what, origin: c.geo.frame.origin, x: c.geo.frame.x, normal: c.geo.frame.normal }
+        : c.geo.what === "axis"
+          ? { id: c.id, what: c.geo.what, origin: c.geo.origin, dir: c.geo.dir }
+          : { id: c.id, what: c.geo.what, origin: c.geo.at },
+    );
+    // An origin axis picked in the browser lights as `origin:X`.
+    const pickedAxis = axisOf(browserPicked ?? "");
+    const picked = pickedAxis ? `origin:${pickedAxis}` : browserPicked;
+    const lit = [constructHover, picked, construct.session?.id, revolve.axisShape, patternAxis].filter((x): x is string => !!x);
+    // The sketch's Dimension tool, Revolve, a round Pattern and Joint can use an axis too, so the origin's show while
+    // they want one; Revolve and Pattern keep the one they turn round. The browser's eyes keep the rest on show.
+    const want = construct.active
+      ? construct.slot
+      : (sketch.editing && sketch.stool === "dimension") || revolve.pickingAxis || pattern.pickingAxis || jointAxis
+        ? "line"
+        : null;
+    const keep = new Set([revolve.axisShape, patternAxis, picked, ...originShown.filter((x) => (AXES as string[]).includes(x)).map((a) => `origin:${a}`)]);
+    const all = [...(want ? originShapes(want) : []), ...originShapes("line").filter((o) => keep.has(o.id))];
+    const origin = [...new Map(all.map((o) => [o.id, o])).values()];
+    eng.setConstruct([...shapes, ...origin], lit);
+  }, [
+    shownConstruct,
+    constructHover,
+    browserPicked,
+    construct.active,
+    construct.slot,
+    construct.session,
+    revolve.pickingAxis,
+    revolve.axisShape,
+    pattern.pickingAxis,
+    patternAxis,
+    jointAxis,
+    originShown,
+    vp.ref,
+    kernel.bodies,
+    sketch.editing,
+    sketch.stool,
+  ]);
   /** The top bar's Mirror and Pattern: each switches an open one to its kind, and closes its own. */
   const toolbarPattern = (mirroring: boolean) => {
     if (tool === "pattern" && mirrorOn === mirroring) return setTool("select");
@@ -3575,7 +3591,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             warn={viewWarn}
             check={checkResult?.values ?? null}
             originPlanes={{
-              shown: sketch.editing ? [] : originShown.filter((x): x is WorldPlaneName => x !== "point"),
+              shown: sketch.editing ? [] : originShown.filter((x): x is WorldPlaneName => x.length === 2),
               chosen: sketch.editing ? null : planeOf(browserPicked ?? ""),
               point: !sketch.editing && (originShown.includes("point") || browserPicked === ROW.point),
             }}
