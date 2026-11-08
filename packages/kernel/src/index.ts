@@ -15,6 +15,7 @@ export type { Measure } from "./occt/shapes";
 export type { MeasureResult, Single, Pair, TopoRef } from "./occt/measure";
 export type { Mate } from "./occt/mates";
 export type { Clash } from "./occt/clashes";
+export type { SweepRange, SweepPair, SweepLimit, SweepResult } from "./sweep";
 export type { Quality } from "./occt/tessellate";
 export type { ExportFormat, ExportRequest, ExportEstimate, ExportResult } from "./occt/exporter";
 export { DEFLECTION, type Resolution } from "./occt/deflection";

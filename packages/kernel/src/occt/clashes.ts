@@ -69,6 +69,17 @@ export function overlapOf(oc: OC, a: TopoDS_Shape, b: TopoDS_Shape): TopoDS_Shap
   return out;
 }
 
+/** Whether two posed bodies really share some volume (#179): the exact check the clash sweep ends its ranges with. */
+export function overlapsAt(oc: OC, a: TopoDS_Shape, ma: Mat4 | undefined, b: TopoDS_Shape, mb: Mat4 | undefined): boolean {
+  const shape = overlapOf(oc, moved(oc, a, ma), moved(oc, b, mb));
+  if (!shape) return false;
+  const props = new oc.GProp_GProps();
+  oc.BRepGProp.VolumeProperties(shape, props, false, false, false);
+  const volume = props.Mass();
+  props.delete();
+  return volume > MIN_VOLUME;
+}
+
 /**
  * Pairs of bodies that overlap or touch (#178). Boxes first, then the exact common volume of each pair whose boxes
  * meet; a pair with none is touching when its gap is under a micron. Pairs in one link are skipped unless asked for.

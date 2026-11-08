@@ -52,6 +52,15 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
       cancelled: () => cancelled.has(id),
       progress: (fraction) => post({ kind: "progress", id, fraction }),
     }),
+  sweep: ({ doc, upTo, joint, step, samples, references }, id) =>
+    builder!.sweep(doc, upTo, {
+      joint,
+      step,
+      samples,
+      references,
+      cancelled: () => cancelled.has(id),
+      progress: (fraction) => post({ kind: "progress", id, fraction }),
+    }),
   reorder: ({ doc, id, beforeId }) => reorderWithPicks(occt!, builder!, doc, id, beforeId),
   inspect: (params) => builder!.inspect(params),
   estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),

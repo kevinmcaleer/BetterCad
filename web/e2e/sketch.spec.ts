@@ -285,6 +285,49 @@ test("drag a line to slide it square across, and line ends show only while drawi
   await expect(page.getByLabel("Length 1")).toHaveValue(/^17(\.0+)?$/);
 });
 
+test("a point dropped on another point or a line is made coincident with it, and undo takes it back", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // A 20 × 10 rectangle, and a slanted line off to the right.
+  await page.keyboard.press("r");
+  await click(page, -10, -5);
+  await click(page, 10, 5);
+  await page.keyboard.press("l");
+  await click(page, 25, -10);
+  await click(page, 35, 15);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("v");
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+  await expect(constraints.filter({ hasText: "Coincident" })).toHaveCount(0);
+
+  const drag = async (fx: number, fy: number, tx: number, ty: number) => {
+    const from = await at(page, fx, fy);
+    const to = await at(page, tx, ty);
+    await page.mouse.move(from.x, from.y, { steps: 3 });
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+  };
+
+  // The line's top end, let go just off the rectangle's corner, snaps onto it.
+  await drag(35, 15, 10.3, 5.3);
+  await expect(constraints.filter({ hasText: "Coincident" })).toHaveCount(1);
+  await page.screenshot({ path: test.info().outputPath("dropped-on-corner.png") });
+
+  // Undo takes back the move and the constraint together.
+  await page.keyboard.press("Control+z");
+  await expect(constraints.filter({ hasText: "Coincident" })).toHaveCount(0);
+
+  // Its bottom end, let go near the rectangle's right edge, sits on it.
+  await drag(25, -10, 10.3, 0);
+  await page.screenshot({ path: test.info().outputPath("dropped-on-edge.png") });
+  await expect(constraints.filter({ hasText: /^On/ })).toHaveCount(1);
+});
+
 test("Horizontal/Vertical stays on the pointer and picks the nearer one per line", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
