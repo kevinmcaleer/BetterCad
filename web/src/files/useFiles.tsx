@@ -198,7 +198,10 @@ export function useFiles(d: FilesDeps) {
       const o = thumbOptions();
       if (!bodies.length || !o) return;
       q.busy = true;
-      void import("../render/thumbnail")
+      // Wait for a quiet moment: building the path tracer's shader can hold the page for a second or two, and the
+      // "Saved" message should show first.
+      void new Promise((r) => (typeof requestIdleCallback === "undefined" ? setTimeout(r, 500) : requestIdleCallback(r, { timeout: 3000 })))
+        .then(() => import("../render/thumbnail"))
         .then((t) => t.renderThumbnail(bodies, o))
         .then((url) => (url ? api.setThumbnail(id, version, url) : null))
         .catch(() => undefined)
