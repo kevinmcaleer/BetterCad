@@ -6,6 +6,13 @@ export type LightPresetId = "studio" | "daylight" | "workbench" | "lightbox";
 export type SaveSize = "view" | "double" | "4k";
 /** What is behind the model and what it stands on. */
 export type BackgroundId = "lightbox" | "grey" | "workbench" | "holodeck";
+/** Depth of field: everything sharp, or the model sharp and what is nearer and further softly or strongly blurred. */
+export type FocusId = "sharp" | "soft" | "shallow";
+export const FOCUSES: { id: FocusId; label: string; title: string; /** Aperture as a share of the distance to the model. */ aperture: number }[] = [
+  { id: "sharp", label: "All sharp", title: "Everything in focus", aperture: 0 },
+  { id: "soft", label: "Soft focus", title: "The model sharp, the background softly blurred", aperture: 0.012 },
+  { id: "shallow", label: "Shallow focus", title: "Only the middle of the model sharp, like a close-up photo", aperture: 0.035 },
+];
 /** How long the picture keeps clearing: each step adds samples and takes longer. */
 export type RenderQuality = "good" | "better" | "best";
 export const QUALITIES: { id: RenderQuality; label: string; samples: number }[] = [
@@ -23,6 +30,7 @@ export interface RenderState {
   preset: LightPresetId;
   style: RenderStyle;
   background: BackgroundId;
+  focus: FocusId;
   /** Where the picture stops adding samples. */
   quality: RenderQuality;
   samples: number;
@@ -48,6 +56,7 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     preset: "studio",
     style,
     background: "lightbox",
+    focus: "soft",
     quality: "better",
     samples: 0,
     moving: false,

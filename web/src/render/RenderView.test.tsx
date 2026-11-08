@@ -72,6 +72,15 @@ describe("the Render view's options (#197)", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("sets the depth of field", async () => {
+    const s = renderSession();
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    s.set({ loading: false });
+    await userEvent.click(await screen.findByRole("button", { name: "Soft focus" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "All sharp" }));
+    expect(s.get().focus).toBe("sharp");
+  });
+
   it("fills the quality bar evenly between the Good, Better and Best stops", () => {
     expect(barPosition(0)).toBe(0);
     expect(barPosition(64)).toBeCloseTo(1 / 6);

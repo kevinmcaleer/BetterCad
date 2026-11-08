@@ -2,7 +2,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Banner, Button, MenuButton, type MenuEntry } from "@bettercad/ui";
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
-import { QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
+import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
 import { orbit, pan, zoom, type CameraState } from "../viewport/camera";
 import type { Section } from "../viewport/engine";
 import type { CutPlane } from "./cut";
@@ -99,6 +99,7 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
   useEffect(() => r.current?.setPreset(state.preset), [state.preset]);
   useEffect(() => r.current?.setStyle(state.style), [state.style]);
   useEffect(() => r.current?.setBackground(state.background), [state.background]);
+  useEffect(() => r.current?.setFocus(FOCUSES.find((f) => f.id === state.focus)!.aperture), [state.focus]);
   useEffect(() => {
     if (r.current) r.current.maxSamples = testMax() ?? samplesFor(state.quality);
   }, [state.quality]);
@@ -242,6 +243,11 @@ export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
           label="Background"
           entries={BACKGROUNDS.map((b) => ({ id: b.id, label: b.label, checked: s.background === b.id, onSelect: () => session.set({ background: b.id }) }))}
           trigger={(p) => <Button {...p} icon="image" label={BACKGROUNDS.find((x) => x.id === s.background)!.label} title="Background" />}
+        />
+        <MenuButton
+          label="Depth of field"
+          entries={FOCUSES.map((f) => ({ id: f.id, label: f.label, checked: s.focus === f.id, onSelect: () => session.set({ focus: f.id }) }))}
+          trigger={(p) => <Button {...p} icon="camera" label={FOCUSES.find((x) => x.id === s.focus)!.label} title="Depth of field" />}
         />
         <span role="group" aria-label="Surface" className="bc-segmented">
           <Button label="Colours" title="Each part's colour and finish" on={s.style === "finishes"} onClick={() => session.set({ style: "finishes" })} />
