@@ -1513,8 +1513,11 @@ export class Engine {
         arr[v * 3 + 2] = c.b;
       }
       attr.needsUpdate = true;
-      (o.edges.material as LineBasicMaterial).color.copy(p["part-line"]);
-      (o.creases.material as LineMaterial).color.copy(p["part-line"]);
+      // A pale part keeps dark edges in every theme, as in Light; a dark part keeps the theme's own line colour.
+      // Colours here are linear, so 0.2 is about mid-grey.
+      const line = 0.2126 * base.r + 0.7152 * base.g + 0.0722 * base.b > 0.2 ? p["part-line-dark"] : p["part-line"];
+      (o.edges.material as LineBasicMaterial).color.copy(line);
+      (o.creases.material as LineMaterial).color.copy(line);
     }
     this.updateOverlays();
   }

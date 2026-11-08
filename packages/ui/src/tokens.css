@@ -107,6 +107,8 @@
   --bc-color-part-fill: #ffffff;
   /* Fold lines (1px) and the bold outline (3px) round each part, as on a flat-pack sheet. */
   --bc-color-part-line: #111111;
+  /* Edge lines on a light-coloured part in every theme, so a pale part keeps dark outlines as in Light. Darker parts use `part-line`. */
+  --bc-color-part-line-dark: #111111;
   /* Fill of a highlighted (selected, or this step's) part in the viewport. From Layers' HIGHLIGHT. */
   --bc-color-part-highlight: #9db8f5;
   /* Lines of a ghost part (fitted in an earlier step, or a reference body); its fill is a pale mix of `part-fill` and this. From Layers' GHOST. */
@@ -183,6 +185,7 @@
   --bc-color-viewport: #1c1f25;
   --bc-color-part-fill: #3a3f48;
   --bc-color-part-line: #f1f3f5;
+  --bc-color-part-line-dark: #111111;
   --bc-color-part-highlight: #5b86d6;
   --bc-color-part-ghost: #6b6f78;
   --bc-color-snap: #5b9cf6;
@@ -229,6 +232,7 @@
   --bc-color-viewport: #000000;
   --bc-color-part-fill: #17181c;
   --bc-color-part-line: #f3f3f1;
+  --bc-color-part-line-dark: #111111;
   --bc-color-part-highlight: #3b6fd6;
   --bc-color-part-ghost: #6b6f78;
   --bc-color-snap: #5b9cf6;
