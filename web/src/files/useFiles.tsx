@@ -36,7 +36,7 @@ export interface FilesDeps {
   store: Store<ModelDoc>;
   doc: ModelDoc;
   view: RefObject<View3DHandle>;
-  say: (text: string, bad?: boolean, quiet?: boolean) => void;
+  say: (text: string, bad?: boolean, toast?: boolean) => void;
   /** A different model is open: reset the marker and the selection. */
   onSwitched: () => void;
   /** STL, STEP and 3MF files go into the open model (#82), standing at `at` (the origin if left out). */
@@ -232,7 +232,8 @@ export function useFiles(d: FilesDeps) {
         await auto.markSaved(m.id, m.savedAt, saved.name);
         if (saved.handle) await files.remember(saved.handle, { name: saved.name, thumbnail: thumb }).catch(() => undefined);
         refreshRecent();
-        deps.current.say(saved.inPlace ? `Saved to ${saved.name}` : `Downloaded ${saved.name}. Your browser can't save in place.`);
+        if (saved.inPlace) deps.current.say(`Saved to ${saved.name}`, false, true);
+        else deps.current.say(`Downloaded ${saved.name}. Your browser can't save in place.`);
         return true;
       } catch (e) {
         deps.current.say((e as Error).message || "That didn't save.", true);
@@ -278,7 +279,7 @@ export function useFiles(d: FilesDeps) {
         await auto.markSaved(m.id, m.savedAt);
         setCloud({ modelId: m.cloud.modelId, state: "saved" });
         renderCloudThumb(m.cloud.modelId, m.cloud.version);
-        if (o.note !== "autosave") deps.current.say(`Saved ${current.name} to your account`);
+        if (o.note !== "autosave") deps.current.say(`Saved ${current.name} to your account`, false, true);
         return true;
       } catch (e) {
         const err = e as ApiError;
@@ -509,7 +510,7 @@ export function useFiles(d: FilesDeps) {
           setCloud({ modelId: cur.modelId, state: dirtyNow.current ? "dirty" : "saved" });
         }
       }
-      if (r.saved.length) deps.current.say(`Saved ${r.saved.length} queued ${r.saved.length === 1 ? "change" : "changes"}`);
+      if (r.saved.length) deps.current.say(`Saved ${r.saved.length} queued ${r.saved.length === 1 ? "change" : "changes"}`, false, true);
       for (const c of r.conflicts) {
         if (cur && c.modelId === cur.modelId) setConflict(true);
         else deps.current.say(`A waiting save of ${c.name} met a newer version. Open it to check.`, true);

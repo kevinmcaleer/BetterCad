@@ -74,8 +74,23 @@ export function crossesAxis(list: Profile[], axis: { origin: Vec2; dir: Vec2 }):
 
 export type ExtrudeDirection = "one" | "symmetric" | "two";
 export type ExtrudeOperation = "new" | "join" | "cut" | "intersect";
-/** How far an extrude goes: a set distance, or through everything in its way (Cut and Intersect only). */
-export type ExtrudeExtent = "distance" | "all";
+/**
+ * How far an extrude goes: a set distance, through everything in its way (Cut and Intersect only), or up to a face,
+ * edge or point picked in the view ("To object").
+ */
+export type ExtrudeExtent = "distance" | "all" | "to";
+
+/**
+ * Where a "To object" extrude ends, kept in the picked body's own coordinates so it follows the body when the body is
+ * moved. A flat face keeps its plane (`normal`), so the extrude ends where the plane crosses it; an edge, a point or a
+ * curved face keeps one point, and the extrude ends level with it.
+ */
+export interface ExtrudeUpTo {
+  body: string;
+  kind: "face" | "edge" | "vertex";
+  point: Vec3;
+  normal?: Vec3;
+}
 
 /** How far "through all" reaches each way, mm: well past any printer's bed, so every body in its way is cut. */
 export const THROUGH_ALL = 10_000;
@@ -194,11 +209,68 @@ const mulT = (m: M3, v: Vec3): Vec3 => [
   m[0][2] * v[0] + m[1][2] * v[1] + m[2][2] * v[2],
 ];
 
+const mul = (m: M3, v: Vec3): Vec3 => [
+  m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2],
+  m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2],
+  m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2],
+];
+
+type Place = { position: { x: number; y: number; z: number }; rotation?: { x: number; y: number; z: number } };
+
+/** A world point or direction in a part's own coordinates (a direction ignores the move). */
+export function toPartLocal(v: Vec3, place: Place, direction = false): Vec3 {
+  const p = place.position;
+  const o: Vec3 = direction ? v : [v[0] - p.x, v[1] - p.y, v[2] - p.z];
+  return mulT(rotation(place.rotation ?? { x: 0, y: 0, z: 0 }), o);
+}
+
+/** A part's own point or direction in the world. */
+export function fromPartLocal(v: Vec3, place: Place, direction = false): Vec3 {
+  const w = mul(rotation(place.rotation ?? { x: 0, y: 0, z: 0 }), v);
+  const p = place.position;
+  return direction ? w : [w[0] + p.x, w[1] + p.y, w[2] + p.z];
+}
+
+const dot3 = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/** The middle of the picked shapes' box, on the sketch's plane, in sketch mm. */
+export function profilesMiddle(picked: { points: Vec2[] }[]): Vec2 {
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const pr of picked)
+    for (const [x, y] of pr.points) {
+      x0 = Math.min(x0, x);
+      x1 = Math.max(x1, x);
+      y0 = Math.min(y0, y);
+      y1 = Math.max(y1, y);
+    }
+  return Number.isFinite(x0) ? [(x0 + x1) / 2, (y0 + y1) / 2] : [0, 0];
+}
+
+/**
+ * How far along the sketch's normal a "To object" extrude goes (signed), from the middle of its shapes (in sketch mm),
+ * to a point or plane in the world. A string says why it can't: the plane runs along the extrude, or the object sits
+ * on the sketch's own plane.
+ */
+export function upToDistance(frame: Frame, middle: Vec2, at: { point: Vec3; normal?: Vec3 }): number | string {
+  const n = frame.normal;
+  const y: Vec3 = [n[1] * frame.x[2] - n[2] * frame.x[1], n[2] * frame.x[0] - n[0] * frame.x[2], n[0] * frame.x[1] - n[1] * frame.x[0]];
+  const c: Vec3 = [0, 1, 2].map((i) => frame.origin[i]! + frame.x[i]! * middle[0] + y[i]! * middle[1]) as Vec3;
+  const d: Vec3 = [at.point[0] - c[0], at.point[1] - c[1], at.point[2] - c[2]];
+  let t: number;
+  if (at.normal) {
+    const along = dot3(n, at.normal);
+    if (Math.abs(along) < 1e-6) return "That face runs alongside the extrude, so it never reaches it. Pick another.";
+    t = dot3(d, at.normal) / along;
+  } else t = dot3(d, n);
+  if (Math.abs(t) < 1e-6) return "That is on the sketch's own plane. Pick something in front of or behind it.";
+  return Math.round(t * 1e6) / 1e6;
+}
+
 /**
  * A world frame in a part's own coordinates (before its move and turn), so a cut made into the part moves with it
  * when the part is moved later on the timeline.
  */
-export function frameToLocal(frame: Frame, place: { position: { x: number; y: number; z: number }; rotation?: { x: number; y: number; z: number } }): Frame {
+export function frameToLocal(frame: Frame, place: Place): Frame {
   const r = rotation(place.rotation ?? { x: 0, y: 0, z: 0 });
   const p = place.position;
   const o: Vec3 = [frame.origin[0] - p.x, frame.origin[1] - p.y, frame.origin[2] - p.z];

@@ -96,3 +96,17 @@ URDF needs each link's mass, centre of mass and inertia. Once the model has link
 - Link totals combine their bodies with the parallel axis theorem. Bodies in no link make up Base.
 - Properties shows the selected body's mass and how it was found, and its link's mass and centre of mass. "Show or hide centres of mass" in the command palette marks each link's centre in the view; the marks follow the pose.
 - Inertia is about the centre of mass in g·mm², as tensor entries [ixx, iyy, izz, ixy, ixz, iyz], so the products carry URDF's sign. `measure` now reports each body's inertia at unit density, and the kernel goldens include it.
+
+## URDF export (#175)
+
+Export (Ctrl+E), then URDF, saves the robot as one .zip for Snakie, ROS, MuJoCo and Gazebo:
+
+- `<robot>/<robot>.urdf`, and `<robot>/meshes/<link>.stl` for each link with bodies. The robot's name is the model's, made URDF-safe (letters, digits and underscores).
+- Every body that isn't a hole goes in, at home whatever the pose. Reference bodies go in too, since a servo you buy still has a shape and, with a datasheet mass, a weight. Bodies in no link make `base_link`, at the world origin.
+- Each link's frame sits at the origin of the joint it hangs from, with axes parallel to the world's. So every joint's `origin` is the child's joint origin less the parent's, its `rpy` is always 0, and its `axis` is the joint's own, as a unit vector. Each link's mesh is moved into its frame.
+- Units are URDF's: metres, kilograms, radians and kg·m². Z stays up. Inertia is written to six significant figures, so a small part's few millionths of a kg·m² keep their precision.
+- A hinge's limits go out in radians, a slider's in metres, low to high. URDF needs an effort and a velocity for every moving joint: BetterCad writes 10 and 1 for now. A wheel (`continuous`) has no lower or upper.
+- A link that hangs from no joint is fixed to `base_link` where it stands, and a joint whose parent link has no bodies hangs from `base_link`, so the file is always one tree.
+- "Paths for a ROS package" writes mesh paths as `package://<robot>/meshes/…` instead of `meshes/…`, so the folder in the .zip can go straight into a ROS workspace's `src/`.
+- Collision uses the same mesh as the visual. The colour of the link's first coloured body becomes its material.
+- The .zip needs at least one joint; without one, the dialog says "Add a joint first to export a robot."

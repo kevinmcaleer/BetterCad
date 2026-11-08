@@ -1,19 +1,14 @@
 import { newDoc, type Feature, type ModelDoc, type PartKind, type Vec3 } from "./document";
 import type { Parameter } from "./params";
+import { SAMPLE_CARDS, type SampleCard } from "./sampleList";
 
 /**
  * Sample models (#99), built from the document API so they follow the format when it changes. Each one is driven by
  * parameters (#75), so the first edit can be a number in the Parameters panel. `npm run build:samples` writes them to
  * web/public/samples/ with thumbnails; the kernel tests build them as regression fixtures.
  */
-export interface SampleInfo {
-  id: string;
-  name: string;
-  /** One line under the card, in the brand book's voice. */
-  blurb: string;
+export interface SampleInfo extends SampleCard {
   build: () => ModelDoc;
-  /** Shown on the sample cards; false for a utility, opened from where it's needed. */
-  card?: boolean;
 }
 
 /** Writes a sample's timeline with stable ids, so the files only change when the model does. */
@@ -224,10 +219,12 @@ function fitCalibration(): ModelDoc {
   return s.doc;
 }
 
-export const SAMPLES: readonly SampleInfo[] = [
-  { id: "box-with-lid", name: "Box with a lid", blurb: "A box with a lid that fits", build: boxWithLid },
-  { id: "bracket", name: "Bracket", blurb: "An L bracket with M4 screw holes", build: bracket },
-  { id: "phone-stand", name: "Phone stand", blurb: "Prints flat with no supports", build: phoneStand },
-  { id: "hole-calibration", name: "Hole calibration", blurb: "Find the hole offset your printer needs", build: holeCalibration, card: false },
-  { id: "fit-calibration", name: "Fit calibration", blurb: "Find the gaps your printer needs for parts that fit", build: fitCalibration, card: false },
-];
+const BUILDS: Record<string, () => ModelDoc> = {
+  "box-with-lid": boxWithLid,
+  bracket,
+  "phone-stand": phoneStand,
+  "hole-calibration": holeCalibration,
+  "fit-calibration": fitCalibration,
+};
+
+export const SAMPLES: readonly SampleInfo[] = SAMPLE_CARDS.map((c) => ({ ...c, build: BUILDS[c.id]! }));
