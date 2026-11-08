@@ -32,6 +32,8 @@ export interface View3DProps {
   mode: ViewMode;
   style: RenderStyle;
   ortho: boolean;
+  /** The standard view the camera is in ("front", "top"…), or null once you turn away. Shown as data-view for tests. */
+  view?: string | null;
   section: Section | null;
   stats: boolean;
   /** For screen readers: what is in the view. */
@@ -97,7 +99,7 @@ function useDocumentTheme(): string {
 
 /** The 3D view: the WebGL canvas, the view cube that turns with it, and (in dev) the frame-time overlay. */
 export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(props, ref) {
-  const { parts, meshes, engine: kernelState, picks, filter, mode, style, ortho, section, stats, description } = props;
+  const { parts, meshes, engine: kernelState, picks, filter, mode, style, ortho, view, section, stats, description } = props;
   const host = useRef<HTMLDivElement>(null);
   const safe = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -274,6 +276,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       aria-label={`3D view. ${description}`}
       aria-roledescription="3D view"
       aria-describedby="bc-view-keys"
+      data-view={view ?? "free"}
       onKeyDown={onKeyDown}
     >
       <div ref={safe} className="bc-view-safe" aria-hidden="true" />
