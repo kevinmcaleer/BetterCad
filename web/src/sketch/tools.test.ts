@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Draft, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
 import { Solver } from "@bettercad/sketch/solver";
-import { addConstraints, commit, constraintsFor, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
+import { addConstraints, axisLine, commit, constraintsFor, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
 import { ORIGIN, middleOf, pickAt, pointPickAt, type Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
@@ -291,5 +291,26 @@ describe("sketch tools", () => {
     // A line's own end can't go on its midpoint.
     const end = (s.entities.find((e) => e.id === a) as { a: string }).a;
     expect(addConstraints("coincident", s, [end, middleOf(a)])).toBe("A line's end can't sit on its own midpoint");
+  });
+});
+
+describe("an axis as a line to measure from", () => {
+  it("comes in as a fixed construction line through the axis, past the pick, and is reused", () => {
+    const s = newSketch();
+    const { sketch, id } = axisLine(s, [0, 0], [1, 0], [40, 2]);
+    const idx = new SketchIndex(sketch);
+    const l = idx.get(id);
+    expect(l?.kind === "line" && l.construction).toBe(true);
+    if (l?.kind !== "line") return;
+    const [a, b] = [idx.xy(l.a), idx.xy(l.b)];
+    expect(a[1]).toBeCloseTo(0);
+    expect(b[1]).toBeCloseTo(0);
+    expect(Math.min(a[0], b[0])).toBeLessThan(0);
+    expect(Math.max(a[0], b[0])).toBeGreaterThan(40);
+    expect(sketch.constraints.filter((c) => c.type === "fix")).toHaveLength(2);
+    // Picking the same axis again gives the same line.
+    const again = axisLine(sketch, [5, 0], [6, 0], [-20, 0]);
+    expect(again.id).toBe(id);
+    expect(again.sketch).toBe(sketch);
   });
 });
