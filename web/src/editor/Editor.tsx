@@ -13,7 +13,7 @@ import {
   type RowToggle,
 } from "@bettercad/ui";
 import { createStore } from "../state/store";
-import { DeleteStepDialog, earlierWarning, laterText, moveText, type MoveNote } from "./DeleteStepDialog";
+import { earlierWarning, laterText, moveText, type MoveNote } from "./DeleteStepDialog";
 import {
   addCombine,
   addPart,
@@ -157,7 +157,6 @@ import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
-import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
 import { COURSE_URL } from "../help/about";
 import { actionLog, editSummary } from "../report/actionLog";
@@ -180,6 +179,8 @@ import type { IkProblem } from "../state/ik";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
+const DeleteStepDialog = lazy(() => import("./DeleteStep").then((m) => ({ default: m.DeleteStepDialog })));
+const EmptyState = lazy(() => import("./EmptyState").then((m) => ({ default: m.EmptyState })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
 // The Extrude bar loads after first paint (the shell's budget), and is fetched as soon as the editor is up, so it is
 // there before the first E and the distance field can take focus.
@@ -229,6 +230,7 @@ const THEME_LABEL: Record<ThemeSetting, string> = { system: "Match the system", 
 const NO_PICK = () => {};
 const NARROW = "(max-width: 899px)";
 const TIMELINE_KEY = "bettercad.timeline";
+const PROPS_HIDDEN_KEY = "bettercad.props.hidden";
 
 const ORIENT_KEY = "bettercad.orientWeights";
 
@@ -252,11 +254,19 @@ function readOrientWeights(): OrientWeights {
   return ORIENT_WEIGHTS;
 }
 
-function readTimelineShown() {
+/** A view setting kept between visits. Private windows can refuse storage: it then lasts for this visit. */
+function recall(key: string): string | null {
   try {
-    return localStorage.getItem(TIMELINE_KEY) !== "off";
+    return localStorage.getItem(key);
   } catch {
-    return true;
+    return null;
+  }
+}
+function keep(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* lasts for this visit */
   }
 }
 
@@ -311,14 +321,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
   const [viewMenuAt, setViewMenuAt] = useState<{ ids: string[]; at: ContextMenuState } | null>(null);
   const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
-  const [timelineShown, setTimelineShownState] = useState(readTimelineShown);
+  const [timelineShown, setTimelineShownState] = useState(() => recall(TIMELINE_KEY) !== "off");
   const setTimelineShown = useCallback((on: boolean) => {
     setTimelineShownState(on);
-    try {
-      localStorage.setItem(TIMELINE_KEY, on ? "on" : "off");
-    } catch {
-      // Private windows can refuse storage; the setting then lasts for this visit.
-    }
+    keep(TIMELINE_KEY, on ? "on" : "off");
   }, []);
 
   const narrow = useMedia(NARROW);
@@ -328,6 +334,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [browserPicked, setBrowserPicked] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelId | null>(() => (window.matchMedia?.(NARROW).matches ? null : "parts"));
   const [propsOpen, setPropsOpen] = useState(false);
+  // From 900px up the props panel shows unless put away; the choice lasts between visits.
+  const [propsHidden, setPropsHiddenNow] = useState(() => recall(PROPS_HIDDEN_KEY) === "1");
+  const setPropsHidden = useCallback((hidden: boolean) => {
+    setPropsHiddenNow(hidden);
+    keep(PROPS_HIDDEN_KEY, hidden ? "1" : "");
+  }, []);
   const [tool, setTool] = useState<ToolId>("select");
   const [combineOp, setCombineOp] = useState<CombineOp>("join");
   const [keepTools, setKeepTools] = useState(false);
@@ -467,9 +479,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const onRenderCamera = useCallback((c: CameraState) => {
     renderCam.current = c;
   }, []);
-  const saveRender = async (png: Blob, size: SaveSize) => {
+  // Called straight from the click, before the picture is ready, so the browser still lets it ask where to save.
+  const saveRender = async (png: Promise<Blob>, size: SaveSize) => {
     const name = `${live.current.doc.name}${size === "view" ? "" : size === "double" ? " 2x" : " 4K"}.png`;
-    const saved = await files.store.saveFiles([{ name, data: await png.arrayBuffer(), mime: "image/png" }]);
+    const saved = await files.store.saveFiles([{ name, data: png.then((b) => b.arrayBuffer()), mime: "image/png" }]);
     if (saved) say(`Saved ${saved.names[0]}`);
   };
   const renderBodies = useMemo<RenderBody[]>(
@@ -1035,6 +1048,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (tool !== "pattern") setPatternStart(null);
   }, [tool]);
+  const mirrorOn = tool === "pattern" && pattern.kind === "mirror";
+  /** The top bar's Mirror and Pattern: each switches an open one to its kind, and closes its own. */
+  const toolbarPattern = (mirroring: boolean) => {
+    if (tool === "pattern" && mirrorOn === mirroring) return setTool("select");
+    if (tool === "pattern" && pattern.feature) return pattern.change({ kind: mirroring ? "mirror" : "rect" });
+    setPatternStart(mirroring ? "mirror" : null);
+    setTool("pattern");
+  };
 
   const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
   live.current.placing = !!place.part;
@@ -1560,6 +1581,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     openRender: () => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
+    toggleProps: () => {},
     saveCloud: () => {},
     newModel,
     open,
@@ -1630,6 +1652,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
       showPanel("print");
+    },
+    toggleProps: () => {
+      if (!narrow) return setPropsHidden(!propsHidden);
+      setPropsOpen((o) => !o);
+      setPanel(null);
     },
     saveCloud: () => void files.saveCloud(),
     newModel,
@@ -2001,6 +2028,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "drive gear belt rack ratio mimic joint robot link",
       },
       {
+        id: "view.props",
+        label: "Show or hide properties",
+        group: "View",
+        icon: "info",
+        run: () => h().toggleProps(),
+        keywords: "panel this part details collapse",
+      },
+      {
         id: "view.joints",
         scope: "model",
         label: "Show or hide joints",
@@ -2200,20 +2235,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const measures = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, { area: b.measure.area, bbox: b.measure.bbox as Box3 }])), [kernel.bodies]);
   measuresRef.current = measures;
   const printer = printerOf(doc.print);
-  const [showBed, setShowBedState] = useState(() => {
-    try {
-      return localStorage.getItem("bettercad.showBed") !== "0";
-    } catch {
-      return true;
-    }
-  });
+  const [showBed, setShowBedState] = useState(() => recall("bettercad.showBed") !== "0");
   const setShowBed = useCallback((on: boolean) => {
     setShowBedState(on);
-    try {
-      localStorage.setItem("bettercad.showBed", on ? "1" : "0");
-    } catch {
-      // A private window: it lasts this visit.
-    }
+    keep("bettercad.showBed", on ? "1" : "0");
   }, []);
   /** The bodies that print: shown, not holes, and measured by the kernel. */
   const printBoxes = useMemo(() => {
@@ -2310,11 +2335,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [orientWeights, setOrientWeightsState] = useState<OrientWeights>(readOrientWeights);
   const setOrientWeights = useCallback((w: OrientWeights) => {
     setOrientWeightsState(w);
-    try {
-      localStorage.setItem(ORIENT_KEY, JSON.stringify(w));
-    } catch {
-      // A private window: it lasts this visit.
-    }
+    keep(ORIENT_KEY, JSON.stringify(w));
   }, []);
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const printOpen = panel === "print";
@@ -3017,6 +3038,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           if (first) {
             setActiveFeature(first.id);
             setPropsOpen(true);
+            setPropsHidden(false);
           }
         }}
       />
@@ -3140,8 +3162,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         topBar={
           <TopBar
             tool={tool}
-            onArmTool={armTool}
+            onArmTool={(id) => (id === "pattern" ? toolbarPattern(false) : armTool(id))}
             onConstruct={startConstruct}
+            mirrorOn={mirrorOn}
+            onMirror={() => toolbarPattern(true)}
             panel={panel}
             onPanel={showPanel}
             canUndo={store.canUndo()}
@@ -3166,11 +3190,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onPalette={() => setPaletteOpen(true)}
             theme={theme}
             onTheme={setTheme}
-            onProps={() => {
-              setPropsOpen((o) => !o);
-              if (narrow) setPanel(null);
-            }}
-            propsOpen={propsOpen}
+            onProps={() => registry.run("view.props")}
+            propsOpen={narrow ? propsOpen : !propsHidden}
           />
         }
         status={
@@ -3281,6 +3302,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <RenderBar
                     session={render}
                     onClose={closeRender}
+                    onNote={(text) => say(text, false, true)}
                     onExportGltf={() => {
                       closeRender();
                       setExportFormat("glb");
@@ -3439,12 +3461,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               </Suspense>
             )}
             {emptyState && (
-              <EmptyState
-                onShape={() => setPanel("library")}
-                onSketch={() => armTool("sketch")}
-                onOpen={() => void open()}
-                onSample={(id) => files.openSample(id)}
-              />
+              <Suspense fallback={null}>
+                <EmptyState
+                  onShape={() => setPanel("library")}
+                  onSketch={() => armTool("sketch")}
+                  onOpen={() => void open()}
+                  onSample={(id) => files.openSample(id)}
+                />
+              </Suspense>
             )}
           </View3D>
         }
@@ -3552,6 +3576,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           )
         }
         rightOpen={propsOpen}
+        rightHidden={!narrow && propsHidden}
+        onHideRight={() => (narrow ? setPropsOpen(false) : setPropsHidden(true))}
       />
       <span className="bc-sr-only" role="status" aria-live="polite">
         {selectionText} {tool === "select" ? "" : `${activeTool.label} tool armed.`}
@@ -3562,7 +3588,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         </Suspense>
       )}
       {pendingDelete && (
-        <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
+        <Suspense fallback={null}>
+          <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
+        </Suspense>
       )}
       {paletteOpen && (
         <Suspense fallback={null}>

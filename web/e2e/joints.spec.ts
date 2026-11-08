@@ -373,7 +373,10 @@ test("check for clashes: an overlap, then a touch", async ({ page }) => {
   await x.fill("10");
   await x.press("Enter");
   await page.keyboard.press("ControlOrMeta+k");
-  await page.keyboard.type("Check for clashes");
+  // The palette focuses its field a tick after it opens; letters typed before then would run shortcuts.
+  const command = page.getByRole("combobox", { name: "Command" });
+  await expect(command).toBeFocused();
+  await command.fill("Check for clashes");
   await page.getByRole("option", { name: /Check for clashes/ }).click();
   const props = page.getByRole("complementary", { name: "Properties" });
   await expect(props.getByRole("button", { name: "Check clashes", pressed: true })).toBeVisible();

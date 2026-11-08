@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { Icon } from "./Icon";
 import { cx } from "./cx";
 
@@ -20,6 +20,9 @@ export interface PropsPanelProps {
 
 const KEY = "bettercad.props.folded";
 
+/** The shell's way to put the panel away: given, the panel shows a hide button at its top right. */
+export const PropsHide = createContext<(() => void) | null>(null);
+
 function loadFolded(): Set<string> {
   try {
     return new Set(JSON.parse(localStorage.getItem(KEY) ?? "[]") as string[]);
@@ -31,6 +34,7 @@ function loadFolded(): Set<string> {
 /** The right-hand panel: titled sections that fold, each a grid of label and field rows. */
 export function PropsPanel({ label = "Properties", sections, empty, footer }: PropsPanelProps) {
   const [folded, setFolded] = useState(loadFolded);
+  const hide = useContext(PropsHide);
   const toggle = (id: string) =>
     setFolded((f) => {
       const n = new Set(f);
@@ -45,6 +49,11 @@ export function PropsPanel({ label = "Properties", sections, empty, footer }: Pr
     });
   return (
     <aside className="bc-side bc-props" aria-label={label}>
+      {hide && (
+        <button type="button" className="bc-props-hide" aria-label="Hide properties" title="Hide properties" onClick={hide}>
+          <Icon name="chevron" size={14} />
+        </button>
+      )}
       {sections.length === 0
         ? (empty ?? <p className="bc-note">Select something to see its properties.</p>)
         : sections.map((s) => {

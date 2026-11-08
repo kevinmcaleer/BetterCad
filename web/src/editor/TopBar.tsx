@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Button, Icon, IconButton, MenuButton, Separator, ToolButton, Toolbar, cx, type MenuEntry } from "@bettercad/ui";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
@@ -59,6 +60,9 @@ export interface TopBarProps {
   helpEntries?: MenuEntry[];
   /** The Construct menu (#265): arms the tool for a kind of plane, axis or point. */
   onConstruct?: (k: ConstructKind) => void;
+  /** Mirror (#69): its own button before Pattern, though both arm the Pattern tool. */
+  mirrorOn?: boolean;
+  onMirror?: () => void;
 }
 
 /** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
@@ -119,7 +123,12 @@ export function TopBar(p: TopBarProps) {
                   </>
                 )}
                 {g.tools.map((t) =>
-                  t.id === "construct" ? (
+                  t.id === "pattern" ? (
+                    <Fragment key={t.id}>
+                      <ToolButton icon="flipH" label="Mirror" pressed={!!p.mirrorOn} onPress={p.onMirror} />
+                      <ToolButton icon={t.icon} label={t.label} pressed={p.tool === t.id && !p.mirrorOn} onPress={() => p.onArmTool(t.id)} />
+                    </Fragment>
+                  ) : t.id === "construct" ? (
                     <MenuButton
                       key={t.id}
                       label="Construct"
@@ -144,7 +153,7 @@ export function TopBar(p: TopBarProps) {
       )}
       <span className="bc-grow" />
       <IconButton className="bc-find" icon="search" title={`Find a command (${formatCombo("mod+k")})`} onClick={p.onPalette} />
-      <IconButton className="bc-props-toggle" icon="list" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
+      <IconButton className="bc-props-toggle" icon="info" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
       {!p.shared && (
         <>
           <IconButton icon="sliders" title="Parameters" on={p.panel === "params"} onClick={panelToggle(p, "params")} />
@@ -184,7 +193,7 @@ export function TopBar(p: TopBarProps) {
           />
         </>
       )}
-      {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="info" title="Help" />} />}
+      {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="help" title="Help" />} />}
       <MenuButton
         label="Account and settings"
         align="end"

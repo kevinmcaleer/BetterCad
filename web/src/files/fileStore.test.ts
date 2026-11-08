@@ -116,6 +116,18 @@ describe("exported files (#86)", () => {
     expect(h.body()).toBe("solid");
   });
 
+  it("asks where to save before a file's bytes are ready, while the click still counts", async () => {
+    const h = handle("Box.png");
+    const win = picker({ showSaveFilePicker: vi.fn(async () => h) });
+    const fs = createFileStore(win, memoryKV<Recent>());
+    let ready!: (b: ArrayBuffer) => void;
+    const saving = fs.saveFiles([{ name: "Box.png", data: new Promise<ArrayBuffer>((r) => (ready = r)), mime: "image/png" }]);
+    expect(win.showSaveFilePicker).toHaveBeenCalled();
+    ready(new TextEncoder().encode("png").buffer as ArrayBuffer);
+    expect(await saving).toEqual({ names: ["Box.png"], inPlace: true });
+    expect(h.body()).toBe("png");
+  });
+
   it("writes several files into a folder you pick", async () => {
     const made = new Map<string, ReturnType<typeof handle>>();
     const dir = { getFileHandle: vi.fn(async (n: string) => made.set(n, handle(n)).get(n)!) };

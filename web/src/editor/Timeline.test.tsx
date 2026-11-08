@@ -317,13 +317,13 @@ describe("Editor timeline", () => {
     expect(tiles()).toEqual(["Box 1", "Box 2"]);
   });
 
-  it("warns before deleting an earlier step, then just removes it", () => {
+  it("warns before deleting an earlier step, then just removes it", async () => {
     render(<Editor />);
     addBox();
     addBox();
     fireEvent.click(tile(/^Box 1/), { detail: 1 });
     fireEvent.keyDown(window, { key: "Delete" });
-    const dialog = screen.getByRole("dialog", { name: "Delete Box 1" });
+    const dialog = await screen.findByRole("dialog", { name: "Delete Box 1" });
     expect(within(dialog).getByText(/1 later step comes after Box 1\. It rebuilds without it/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(tiles()).toEqual(["Box 2"]);
