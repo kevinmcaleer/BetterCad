@@ -141,6 +141,7 @@ export function copyPart(src: Part, m: CopyMove, id: string, name: string): Part
     ...(src.fit ? { fit: src.fit } : {}),
     ...(src.gap !== undefined ? { gap: src.gap } : {}),
     ...(src.reference ? { reference: true } : {}),
+    ...(src.link ? { link: src.link } : {}),
   };
 }
 

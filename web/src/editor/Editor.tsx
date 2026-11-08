@@ -38,6 +38,7 @@ import {
   applyProfile,
   profileFromSettings,
   PRIMITIVES,
+  addLink,
   changeParts,
   duplicateParts,
   featureParts,
@@ -119,21 +120,17 @@ import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
-import { FinishBar } from "../finish/FinishBar";
 import { usePushPull } from "../finish/usePushPull";
-import { PushPullBar } from "../finish/PushPullBar";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { PlaceBar } from "../catalogue/PlaceBar";
-import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
 import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
-import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { Versions } from "../cloud/Versions";
@@ -157,6 +154,10 @@ import type { WorldPlaneName } from "../viewport/engine";
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
+const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
+const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
+const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -568,6 +569,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [record, say],
   );
 
+  // Links (#171): bodies named as one rigid part of a robot, kept as separate bodies.
+  const makeLink = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
+      const id = newId("f");
+      const name = addLink(live.current.doc, ids, id).features.find((f) => f.id === id)!.name;
+      record((d, at) => addLink(d, ids, id, at), `Make ${name}`);
+      say(`Made ${name} of ${ids.length === 1 ? "1 body" : `${ids.length} bodies`}. They stay separate bodies.`);
+    },
+    [record, say],
+  );
+  const selectLink = useCallback(
+    (ids: string[]) => {
+      const part = live.current.parts.find((p) => ids.includes(p.id) && p.link);
+      if (!part) return say("That body isn't in a link", true);
+      setSelection(live.current.parts.filter((p) => p.link === part.link).map((p) => p.id));
+    },
+    [say],
+  );
+
   const duplicate = useCallback(
     (ids: string[]) => {
       if (!ids.length) return;
@@ -973,6 +994,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     addRack: (_id: string) => {},
     fitBelt: (_ids: string[]) => {},
     meshGears: (_ids: string[]) => {},
+    makeLink: (_ids: string[]) => {},
+    selectLink: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
     suppressActive: () => {},
@@ -1015,6 +1038,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     addRack: addRackTo,
     fitBelt: beltPicked,
     meshGears: meshPicked,
+    makeLink,
+    selectLink,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
@@ -1268,6 +1293,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().meshGears(sel()),
         when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.body.id === id)),
         keywords: "gear pair centre distance drive ratio",
+      },
+      {
+        id: "link.make",
+        scope: "model",
+        label: "Make link",
+        group: "Edit",
+        icon: "link",
+        run: () => h().makeLink(sel()),
+        when: hasSel,
+        keywords: "robot rigid link body group joint urdf",
+      },
+      {
+        id: "link.select",
+        scope: "model",
+        label: "Select link",
+        group: "Edit",
+        icon: "link",
+        run: () => h().selectLink(sel()),
+        when: () => live.current.parts.some((p) => sel().includes(p.id) && !!p.link),
+        keywords: "robot rigid link bodies",
       },
       {
         id: "place.turn",
@@ -1933,6 +1978,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
         ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
+      { id: "make-link", label: "Make link", icon: "link", onSelect: () => makeLink(ids) },
+      ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select link", icon: "link" as const, onSelect: () => selectLink(ids) }] : []),
       {
         id: "reference",
         label: chosen.length && chosen.every((p) => p.reference) ? "Make printable" : "Make a reference",
@@ -2256,6 +2303,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               renameId={renameId}
               onRenameIdChange={setRenameId}
               sketches={browserSketches}
+              links={built.links}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
@@ -2297,7 +2345,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               {tool === "revolve" && (
                 <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
               )}
-              {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
+              {tool === "measure" && (
+                <Suspense fallback={null}>
+                  <MeasureBar m={measure} onDone={() => setTool("select")} />
+                </Suspense>
+              )}
               {tool === "gear" && (
                 <Suspense fallback={null}>
                   <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
@@ -2312,11 +2364,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   )}
                 </Suspense>
               )}
-              {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
-              {tool === "pushpull" && (
-                <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
+              {tool === "hole" && (
+                <Suspense fallback={null}>
+                  <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
               )}
-              {(tool === "fillet" || tool === "shell") && <FinishBar f={finish} onCancel={() => setTool("select")} />}
+              {tool === "pushpull" && (
+                <Suspense fallback={null}>
+                  <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
+              {(tool === "fillet" || tool === "shell") && (
+                <Suspense fallback={null}>
+                  <FinishBar f={finish} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {tool === "combine" && (
                 <CombineBar
                   picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
