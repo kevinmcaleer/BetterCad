@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RenderBar, SLOW_TEXT } from "./RenderView";
 import { renderSession } from "./session";
@@ -10,7 +10,7 @@ describe("the Render view's options (#197)", () => {
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading the renderer…");
     s.set({ loading: false, samples: 24 });
-    expect(await screen.findByText("24 samples")).toBeInTheDocument();
+    expect(await screen.findByText("24 of 512 samples")).toBeInTheDocument();
     s.set({ moving: true });
     expect(await screen.findByText("Waiting for you to stop moving")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Studio" }));
@@ -19,6 +19,20 @@ describe("the Render view's options (#197)", () => {
     expect(screen.getByRole("button", { name: "Daylight" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Paper" }));
     expect(s.get().style).toBe("paper");
+  });
+
+  it("sets the quality with a Good, Better, Best slider", async () => {
+    const s = renderSession();
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    s.set({ loading: false, samples: 3 });
+    const slider = await screen.findByRole("slider", { name: "Quality" });
+    expect(slider).toHaveAttribute("aria-valuetext", "Better, 512 samples");
+    fireEvent.change(slider, { target: { value: "2" } });
+    expect(s.get().quality).toBe("best");
+    expect(screen.getByRole("status")).toHaveTextContent("3 of 2,048 samples");
+    fireEvent.change(slider, { target: { value: "0" } });
+    expect(s.get().quality).toBe("good");
+    expect(slider).toHaveAttribute("aria-valuetext", "Good, 128 samples");
   });
 
   it("offers glTF for Blender when the browser can't render well", async () => {
