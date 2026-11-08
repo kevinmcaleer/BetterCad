@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { addCombine, addPart, changeParts, cutTool, fixMate, newDoc, type ModelDoc } from "./document";
+import { addCombine, addPart, changeParts, cutTool, fixMate, newDoc, printed, type ModelDoc } from "./document";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 
@@ -45,10 +45,13 @@ describe("mating faces (#184)", () => {
     expect(new ModelBuilder(oc).mates(plates(5))).toEqual([]);
   });
 
-  it("leaves out holes and hidden bodies", () => {
-    let d = plates(0);
-    d = { ...d, looks: { b: { hidden: true } } };
-    expect(new ModelBuilder(oc).mates(d)).toEqual([]);
+  it("leaves out holes, hidden bodies and reference bodies (#185)", () => {
+    const d = plates(0);
+    expect(new ModelBuilder(oc).mates({ ...d, looks: { b: { hidden: true } } })).toEqual([]);
+    expect(new ModelBuilder(oc).mates({ ...d, looks: { b: { reference: true } } })).toEqual([]);
+    expect(printed({ hidden: false })).toBe(true);
+    expect(printed({ hidden: false, reference: true })).toBe(false);
+    expect(printed({ hidden: false, hole: true })).toBe(false);
   });
 });
 

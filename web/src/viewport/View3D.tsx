@@ -46,7 +46,8 @@ export interface View3DProps {
   /** A print check's per-vertex tint by body (#101, #102). */
   check?: Map<string, Float32Array> | null;
   /** Origin planes on show from the browser, and the one chosen there. */
-  originPlanes?: { shown: WorldPlaneName[]; chosen: WorldPlaneName | null };
+  /** Origin planes on show and the one picked, and whether the origin point shows. */
+  originPlanes?: { shown: WorldPlaneName[]; chosen: WorldPlaneName | null; point?: boolean };
   /** Whether to show the empty-model hint (off while sketching). */
   emptyHint?: boolean;
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
@@ -192,6 +193,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             position: p.position,
             rotation: p.rotation,
             ghost: p.ghost,
+            reference: p.reference,
             highlight: p.highlight,
             warn: props.warn?.has(p.id),
           };
@@ -221,9 +223,9 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bedKey]);
   const origin = props.originPlanes;
-  const originKey = origin ? `${origin.shown.join(",")}|${origin.chosen ?? ""}` : "";
+  const originKey = origin ? `${origin.shown.join(",")}|${origin.chosen ?? ""}|${origin.point ? 1 : 0}` : "";
   useEffect(() => {
-    engine.current?.setOriginPlanes(origin?.shown ?? [], origin?.chosen ?? null);
+    engine.current?.setOriginPlanes(origin?.shown ?? [], origin?.chosen ?? null, origin?.point ?? false);
     // Redrawn when the planes change, and with the bodies, so they keep to the model's size.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [originKey, bodies]);

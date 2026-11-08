@@ -17,15 +17,16 @@ import type { ThemeSetting } from "../state/theme";
 import { formatCombo, type Command } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
-import { BrowserPanel, type BrowserSketch } from "./Browser";
+import { BrowserPanel, type BrowserSketch, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
-export type PanelId = "parts" | "library" | "history" | "params" | "print" | "settings";
+export type PanelId = "parts" | "library" | "robot" | "history" | "params" | "print" | "settings";
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   parts: "Browser",
   library: "Library",
+  robot: "Catalogue",
   history: "History",
   params: "Parameters",
   print: "Print",
@@ -52,8 +53,8 @@ export interface LeftPanelProps {
   onRenameIdChange: (id: string | null) => void;
   /** The browser's sketches, origin planes and their eyes. */
   sketches: BrowserSketch[];
-  origin: WorldPlaneName[];
-  onOrigin: (shown: WorldPlaneName[]) => void;
+  origin: OriginItem[];
+  onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
   onSketchesHidden: (ids: string[], hidden: boolean) => void;
   onBrowserPicked: (id: string | null) => void;
@@ -80,6 +81,8 @@ export interface LeftPanelProps {
   onBack: () => void;
   /** The Print panel (#100), made by the editor. */
   printPanel: ReactNode;
+  /** Robot parts (#187), made by the editor. */
+  robotPanel: ReactNode;
   /** How orientation suggestions are scored (#103). */
   orientWeights: OrientWeights;
   onOrientWeights: (w: OrientWeights) => void;
@@ -114,6 +117,8 @@ function PanelBody(p: LeftPanelProps) {
       return <>{p.paramsPanel}</>;
     case "print":
       return <>{p.printPanel}</>;
+    case "robot":
+      return <>{p.robotPanel}</>;
     case "settings":
       return <SettingsPanel {...p} />;
   }

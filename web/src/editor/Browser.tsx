@@ -11,6 +11,9 @@ import { partIcon } from "./Timeline";
  */
 
 export const PLANES: WorldPlaneName[] = ["XY", "XZ", "YZ"];
+/** What the Origin folder holds: the origin point, then the three planes. */
+export type OriginItem = WorldPlaneName | "point";
+export const ORIGIN: OriginItem[] = ["point", ...PLANES];
 
 /** Row ids for the browser's own rows, kept apart from part and feature ids. */
 export const ROW = {
@@ -20,12 +23,17 @@ export const ROW = {
   sketches: "browser:sketches",
   joints: "browser:joints",
   plane: (p: WorldPlaneName) => `browser:plane:${p}`,
+  point: "browser:origin-point",
 } as const;
 
 const PLANE_ROWS = new Map(PLANES.map((p) => [ROW.plane(p), p]));
 /** The origin plane a row id names, if it is one. */
 export function planeOf(id: string): WorldPlaneName | null {
   return PLANE_ROWS.get(id) ?? null;
+}
+/** The origin item a row id names: the origin point or a plane. */
+export function originItemOf(id: string): OriginItem | null {
+  return id === ROW.point ? "point" : planeOf(id);
 }
 
 export interface BrowserSketch {
@@ -40,8 +48,8 @@ export interface BrowserModel {
   name: string;
   parts: Part[];
   sketches: BrowserSketch[];
-  /** Origin planes on show. */
-  origin: WorldPlaneName[];
+  /** The origin point and planes on show. */
+  origin: OriginItem[];
   /** A shared, view-only model: its name can't be changed. */
   readOnly?: boolean;
 }
@@ -64,6 +72,17 @@ export function browserItems(m: BrowserModel): TreeItem[] {
   // The model's name heads the tree, as the file name heads Fusion's browser: double-click or F2 renames it.
   const items: TreeItem[] = [{ id: ROW.root, name: m.name, icon: "layers", kind: "component", drag: false, rename: !m.readOnly, toggles: [] }];
   items.push(folder(ROW.origin, "Origin", { folded: true, hidden: m.origin.length === 0 }));
+  items.push({
+    id: ROW.point,
+    name: "Origin point",
+    icon: "position",
+    kind: "point",
+    parentId: ROW.origin,
+    drag: false,
+    rename: false,
+    toggles: ["hidden"],
+    hidden: !m.origin.includes("point"),
+  });
   for (const p of PLANES) {
     items.push({
       id: ROW.plane(p),
@@ -120,7 +139,7 @@ export function browserPick(ids: string[], m: BrowserModel): { parts: string[]; 
   const whole = ids.includes(ROW.root) || ids.includes(ROW.bodies);
   const parts = whole ? m.parts.map((p) => p.id) : ids.filter((id) => partIds.has(id));
   const sketchIds = new Set(m.sketches.map((s) => s.id));
-  const other = [...ids].reverse().find((id) => sketchIds.has(id) || planeOf(id) !== null) ?? null;
+  const other = [...ids].reverse().find((id) => sketchIds.has(id) || originItemOf(id) !== null) ?? null;
   return { parts, other };
 }
 
@@ -135,8 +154,8 @@ export interface BrowserPanelProps {
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
   /** Hide (true) or show sketches. */
   onSketchesHidden: (ids: string[], hidden: boolean) => void;
-  onOrigin: (shown: WorldPlaneName[]) => void;
-  /** The sketch or plane picked in the browser, for the view to mark. */
+  onOrigin: (shown: OriginItem[]) => void;
+  /** The sketch, plane or origin point picked in the browser, for the view to mark. */
   onPicked: (id: string | null) => void;
   onSelectSketch: (id: string) => void;
   onRename: (id: string, name: string) => void;
@@ -175,9 +194,9 @@ export function BrowserPanel(p: BrowserPanelProps) {
   };
 
   const toggle = (id: string, what: RowToggle) => {
-    const plane = planeOf(id);
-    if (plane) return p.onOrigin(model.origin.includes(plane) ? model.origin.filter((x) => x !== plane) : [...model.origin, plane]);
-    if (id === ROW.origin) return p.onOrigin(model.origin.length ? [] : PLANES);
+    const item = originItemOf(id);
+    if (item) return p.onOrigin(model.origin.includes(item) ? model.origin.filter((x) => x !== item) : [...model.origin, item]);
+    if (id === ROW.origin) return p.onOrigin(model.origin.length ? [] : ORIGIN);
     if (id === ROW.bodies) {
       return p.onBodiesHidden(
         model.parts.map((x) => x.id),
@@ -212,6 +231,13 @@ export function BrowserPanel(p: BrowserPanelProps) {
           { id: "sketch", label: `Sketch on the ${plane} plane`, icon: "sketch", onSelect: () => p.onSketchOn(plane) },
           { id: "show", label: shown ? "Hide" : "Show", icon: shown ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") },
         ],
+      };
+    }
+    if (id === ROW.point) {
+      const shown = model.origin.includes("point");
+      return {
+        title: "Origin point",
+        entries: [{ id: "show", label: shown ? "Hide" : "Show", icon: shown ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") }],
       };
     }
     const sk = model.sketches.find((s) => s.id === id);

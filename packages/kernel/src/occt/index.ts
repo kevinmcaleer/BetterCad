@@ -3,3 +3,4 @@ export * from "./oc";
 export * from "./shapes";
 export * from "./tessellate";
 export * from "./model";
+export * from "./catalogue";

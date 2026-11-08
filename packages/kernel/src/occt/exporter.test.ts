@@ -77,6 +77,16 @@ describe("exports of the model (#80, #81, #86)", () => {
     expect(() => x.estimate({ doc: d, bodies: ["h"], format: "stl", deflection: 0.1 })).toThrow("Only hole shapes are chosen");
   });
 
+  it("leaves reference bodies out (#185)", () => {
+    let d = addPart(newDoc("Mount"), "box", "a");
+    d = addPart(d, "cylinder", "servo");
+    d = setLook(d, ["servo"], () => ({ reference: true }));
+    const r = x.export({ doc: d, bodies: null, format: "3mf", deflection: DEFLECTION.draft, name: "Mount" });
+    expect(r.skipped).toBe(1);
+    expect(read3mf(r.files[0]!.data).map((b) => b.name)).toEqual(["Box 1"]);
+    expect(() => x.estimate({ doc: d, bodies: ["servo"], format: "stl", deflection: 0.1 })).toThrow("Reference bodies aren't exported");
+  });
+
   it("round-trips the timeline test model through STEP with the same volume and faces", () => {
     const d = tower();
     const built = m.build(d).bodies[0]!.measure;

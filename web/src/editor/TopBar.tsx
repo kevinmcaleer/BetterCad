@@ -95,7 +95,12 @@ export function TopBar(p: TopBarProps) {
             {TOOL_GROUPS.map((g, i) => (
               <span key={g.id} className="bc-tool-group" role="group" aria-label={g.label}>
                 {i > 0 && <Toolbar.Separator />}
-                {g.id === "make" && <ToolButton icon="shapes" label="Library" pressed={p.panel === "library"} onPress={panelToggle(p, "library")} />}
+                {g.id === "make" && (
+                  <>
+                    <ToolButton icon="shapes" label="Library" pressed={p.panel === "library"} onPress={panelToggle(p, "library")} />
+                    <ToolButton icon="screw" label="Catalogue" pressed={p.panel === "robot"} onPress={panelToggle(p, "robot")} />
+                  </>
+                )}
                 {g.tools.map((t) => (
                   <ToolButton
                     key={t.id}
