@@ -148,7 +148,7 @@ export interface EngineEvents {
 const DEG = Math.PI / 180;
 const PICK_SIZE = 15;
 /** The Holodeck's widest depth-of-field blur, as a fraction of the view's height. */
-const DOF_BLUR = 0.025;
+const DOF_BLUR = 0.016;
 
 /** Three's matrix for a body's place: move, then turn about its origin. */
 export function bodyMatrix(b: { position: EngineBody["position"]; rotation?: EngineBody["rotation"] }): Matrix4 {
