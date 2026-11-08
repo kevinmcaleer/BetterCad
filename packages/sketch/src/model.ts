@@ -51,9 +51,9 @@ export type Constraint = ConstraintBase &
     | { type: "coincident"; a: Id; b: Id }
     /** A point on a line, circle or arc. */
     | { type: "pointOn"; p: Id; e: Id }
-    /** A line, or two points, level. */
-    | { type: "horizontal"; e: Id }
-    | { type: "vertical"; e: Id }
+    /** A line level or upright; with `b`, `e` and `b` are two points lined up across (same y) or up (same x). */
+    | { type: "horizontal"; e: Id; b?: Id }
+    | { type: "vertical"; e: Id; b?: Id }
     | { type: "parallel"; a: Id; b: Id }
     | { type: "perpendicular"; a: Id; b: Id }
     | { type: "tangent"; a: Id; b: Id }
@@ -227,7 +227,7 @@ export function constraintRefs(c: Constraint): Id[] {
   switch (c.type) {
     case "horizontal":
     case "vertical":
-      return [c.e];
+      return c.b ? [c.e, c.b] : [c.e];
     case "pointOn":
       return [c.p, c.e];
     case "midpoint":
