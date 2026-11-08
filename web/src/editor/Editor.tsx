@@ -2118,7 +2118,6 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onTimelineShown={setTimelineShown}
               theme={theme}
               onTheme={setTheme}
-              commands={commands}
             />
           )
         }
