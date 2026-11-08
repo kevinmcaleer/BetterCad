@@ -47,6 +47,12 @@ export interface FilesDeps {
 
 const MB = 1024 * 1024;
 
+const IDENTITY = [
+  [1, 0, 0],
+  [0, 1, 0],
+  [0, 0, 1],
+];
+
 /** The next frame, so the thumbnail is rendered after the click has painted. */
 const nextFrame = () => new Promise<void>((r) => (typeof requestAnimationFrame === "undefined" ? setTimeout(r, 0) : requestAnimationFrame(() => r())));
 
@@ -163,7 +169,9 @@ export function useFiles(d: FilesDeps) {
 
   const thumbnail = useCallback(async () => {
     await nextFrame();
-    return deps.current.view.current?.engine()?.thumbnail() ?? undefined;
+    // Framed from the default view, so a save made zoomed in or mid-sketch still shows the whole model (#272).
+    const engine = deps.current.view.current?.engine();
+    return (engine?.posed(IDENTITY, 320, 200) ?? engine?.thumbnail()) || undefined;
   }, []);
 
   const write = useCallback(
