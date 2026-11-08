@@ -14,9 +14,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps webkit
-      - run: npm run e2e -- --project=webkit
+      - run: npx playwright test --project=webkit --reporter=list
+        working-directory: web
         env:
           CI: "1"
           PW_WEBKIT: "1"
-      - if: failure()
-        run: for f in web/test-results/*/error-context.md; do echo "::group::$f"; cat "$f"; echo "::endgroup::"; done
