@@ -12,6 +12,8 @@ import {
   type Vec3,
 } from "../state/document";
 import { FitMenu, type FitChoice } from "../fit/FitMenu";
+import { LookControls } from "../looks/LookControls";
+import type { FinishId } from "@bettercad/kernel";
 
 export interface PropertiesProps {
   parts: Part[];
@@ -36,6 +38,10 @@ export interface PropertiesProps {
   measures?: Map<string, { area: number; bbox: Box3 }>;
   /** The document's material and infill, for the weight. */
   print?: PrintSettings;
+  /** Colours the selection (#196); undefined goes back to the theme's colour. */
+  onColour?: (hex: string | undefined) => void;
+  /** Sets the selection's finish for renders and glTF (#196). */
+  onFinish?: (id: FinishId) => void;
 }
 
 const AXES: (keyof Vec3)[] = ["x", "y", "z"];
@@ -103,6 +109,8 @@ export function Properties({
   measures,
   print,
   allParts,
+  onColour,
+  onFinish,
 }: PropertiesProps & { allParts?: Part[] }) {
   if (parts.length === 0) {
     return (
@@ -194,6 +202,7 @@ export function Properties({
               />
             </PropRow>
           )}
+          {onColour && onFinish && !parts.some((p) => p.hole) && <LookControls parts={parts} onColour={onColour} onFinish={onFinish} />}
           {one?.catalogue && (
             <PropRow label="Part">
               <span className="bc-note">

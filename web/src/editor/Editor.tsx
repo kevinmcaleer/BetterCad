@@ -1814,7 +1814,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
     { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
-    { id: "export", label: "Export STL, 3MF or STEP…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
+    { id: "export", label: "Export STL, 3MF, STEP or glTF…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
     ...files.recentEntries,
     { kind: "separator", id: "s1" },
     account
@@ -2253,6 +2253,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 allParts={parts}
                 onHole={() => toggleHole(selection)}
                 onReference={() => toggleReference(selection)}
+                onColour={(colour) => store.edit((d) => setLook(d, selection, () => ({ colour })), colour ? "Set the colour" : "Clear the colour")}
+                onFinish={(finish) => store.edit((d) => setLook(d, selection, () => ({ finish })), "Set the finish")}
                 onFit={(c) =>
                   store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
                 }

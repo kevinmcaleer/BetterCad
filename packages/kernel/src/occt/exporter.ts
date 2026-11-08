@@ -5,6 +5,7 @@ import { build, type ModelDoc, type Part } from "../document";
 import { placeOnBed, stlBytes, triangleCount, write3mf, writeStl, type MeshBody } from "../export/mesh";
 import { gltfBytes, writeGlb, writeGltf } from "../export/gltf";
 import { fileName } from "../bcad";
+import { pbrOf } from "../looks";
 import { KernelError } from "../errors";
 
 /** glb and gltf (#195) are for Blender and web viewers: metres, Y up, a node and material per body. */
@@ -62,7 +63,7 @@ export class Exporter {
     return { parts: solid, skipped: wanted.length - solid.length };
   }
 
-  private mesh(p: Part, deflection: number): MeshBody {
+  private mesh(p: Part, deflection: number): MeshBody & { look: ReturnType<typeof pbrOf> } {
     const shape = this.model.solid(p).shape;
     const k = `${partKey(p, "fine")}@${deflection}`;
     let t = this.tris.get(k);
@@ -71,7 +72,7 @@ export class Exporter {
       if (this.tris.size > 200) this.tris.clear();
       this.tris.set(k, t);
     }
-    return { name: p.name, triangles: t };
+    return { name: p.name, triangles: t, look: pbrOf(p) };
   }
 
   estimate(r: ExportRequest, cancelled: () => boolean = () => false): ExportEstimate {
