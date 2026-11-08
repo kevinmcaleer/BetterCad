@@ -63,7 +63,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
   {
     id: "export",
     title: "Export an STL",
-    body: "Press Ctrl+E, or Export in the Save menu, and save the STL.",
+    body: "Press Ctrl+E, or Export from the arrow beside Save, and save the STL.",
     anchor: { kind: "button", label: "Save" },
     done: (s) => s.exported,
   },

@@ -59,8 +59,8 @@ test("STEP shows the solid count instead of a resolution, and downloads where it
   await page.goto("/");
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await page.getByRole("menuitem", { name: /Export STL, 3MF, STEP or glTF/ }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("menuitem", { name: /^Export…/ }).click();
   const dialog = page.getByRole("dialog", { name: "Export" });
   await dialog.getByRole("button", { name: "STEP" }).click();
   await expect(dialog.getByRole("group", { name: "Resolution" })).toHaveCount(0);
