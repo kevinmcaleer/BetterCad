@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { Draft, Solver, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
+import { Draft, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
+import { Solver } from "@bettercad/sketch/solver";
 import { addConstraints, commit, constraintsFor, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
 import { ORIGIN, middleOf, pickAt, pointPickAt, type Snap } from "./snap";
 

@@ -2,6 +2,7 @@ import { partKey, type ModelBuilder } from "./model";
 import type { OC } from "./oc";
 import { triangles, writeStep } from "./export";
 import { build, type ModelDoc, type Part } from "../document";
+import { linkTransforms, type Mat4 } from "../pose";
 import { placeOnBed, stlBytes, triangleCount, write3mf, writeStl, type MeshBody } from "../export/mesh";
 import { gltfBytes, writeGlb, writeGltf } from "../export/gltf";
 import { fileName } from "../bcad";
@@ -23,6 +24,8 @@ export interface ExportRequest {
   separate?: boolean;
   /** Leave bodies where they are instead of putting the lowest point on Z = 0. */
   keepPosition?: boolean;
+  /** Export the bodies as the joints are posed (#173) instead of at home. */
+  posed?: boolean;
 }
 
 export interface ExportEstimate {
@@ -48,8 +51,17 @@ export class Exporter {
     private model: ModelBuilder,
   ) {}
 
-  private pick(r: ExportRequest): { parts: Part[]; skipped: number } {
-    const { parts } = build(r.doc, r.upTo);
+  private pick(r: ExportRequest): { parts: Part[]; skipped: number; moves: Map<string, Mat4> } {
+    const { parts, joints, links } = build(r.doc, r.upTo);
+    // Each body's move from home, when posed: its link's.
+    const moves = new Map<string, Mat4>();
+    if (r.posed && r.doc.pose) {
+      const byLink = linkTransforms(joints, r.doc.pose);
+      for (const l of links) {
+        const m = byLink.get(l.id);
+        if (m) for (const id of l.parts) moves.set(id, m);
+      }
+    }
     const wanted = r.bodies ? parts.filter((p) => r.bodies!.includes(p.id)) : parts;
     const solid = wanted.filter((p) => !p.hole && !p.reference);
     if (!solid.length) {
@@ -60,7 +72,35 @@ export class Exporter {
           : "Only hole shapes are chosen. Group them with a solid first.";
       throw new KernelError("failed", why);
     }
-    return { parts: solid, skipped: wanted.length - solid.length };
+    return { parts: solid, skipped: wanted.length - solid.length, moves };
+  }
+
+  /** A body's solid, moved to its pose when it has one. */
+  private shape(p: Part, move?: Mat4) {
+    const shape = this.model.solid(p).shape;
+    if (!move) return shape;
+    const t = new this.oc.gp_Trsf();
+    const m = move;
+    t.SetValues(m[0]!, m[4]!, m[8]!, m[12]!, m[1]!, m[5]!, m[9]!, m[13]!, m[2]!, m[6]!, m[10]!, m[14]!);
+    return new this.oc.BRepBuilderAPI_Transform(shape, t, true, false).Shape();
+  }
+
+  /** A body's triangles, moved to its pose when it has one. */
+  private posedMesh(p: Part, deflection: number, move?: Mat4) {
+    const b = this.mesh(p, deflection);
+    if (!move) return b;
+    const t = b.triangles;
+    const out = new Float32Array(t.length);
+    const m = move;
+    for (let i = 0; i < t.length; i += 3) {
+      const x = t[i]!;
+      const y = t[i + 1]!;
+      const z = t[i + 2]!;
+      out[i] = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
+      out[i + 1] = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
+      out[i + 2] = m[2]! * x + m[6]! * y + m[10]! * z + m[14]!;
+    }
+    return { ...b, triangles: out };
   }
 
   private mesh(p: Part, deflection: number): MeshBody & { look: ReturnType<typeof pbrOf> } {
@@ -89,7 +129,7 @@ export class Exporter {
   }
 
   export(r: ExportRequest & { name: string }, cancelled: () => boolean = () => false): ExportResult {
-    const { parts, skipped } = this.pick(r);
+    const { parts, skipped, moves } = this.pick(r);
     const ext = `.${r.format}`;
     const groups: { file: string; parts: Part[] }[] =
       r.separate && parts.length > 1
@@ -104,12 +144,12 @@ export class Exporter {
           name: g.file,
           data: writeStep(
             this.oc,
-            g.parts.map((p) => ({ name: p.name, shape: this.model.solid(p).shape })),
+            g.parts.map((p) => ({ name: p.name, shape: this.shape(p, moves.get(p.id)) })),
           ),
         });
         continue;
       }
-      let bodies = g.parts.map((p) => this.mesh(p, r.deflection));
+      let bodies = g.parts.map((p) => this.posedMesh(p, r.deflection, moves.get(p.id)));
       if (!r.keepPosition) bodies = placeOnBed(bodies);
       total += triangleCount(bodies);
       if (r.format === "gltf") {

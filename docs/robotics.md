@@ -73,14 +73,15 @@ Esc backs out one pick at a time. The joint starts as a hinge from −90° to 90
 - The origin and axis are stored in world space when the joint is made, as a hole's frame is, so editing the picked geometry later doesn't move the joint.
 - The browser's Joints folder lists each joint. In the Robot folder each link sits under the link it hangs from, with its joint named.
 - An arrow along each joint's axis shows in the view. Show or hide joints is in the command palette's View group.
-- Still to come: dragging links in the view (#173), mass and inertia (#174), and URDF export (#175).
+- Still to come: mass and inertia (#174) and URDF export (#175).
 
 ## Posing (#173)
 
 Try the mechanism without adding a step. With the Select tool, Properties shows a slider and a field for each joint that moves: on the model's summary when nothing is selected, and under **Joint** when a body in a jointed link is selected. Hinges and sliders stay between their limits; a wheel turns all the way round (−180° to 180°).
 
 - Forward kinematics runs down the joint tree, so moving a parent carries everything below it, joint arrows included.
-- Posing moves the drawn bodies only: the kernel doesn't rebuild, and STL, 3MF and STEP export the home pose.
+- Drag a body in a jointed link to turn it round its hinge or wheel, or slide it along its slider. It snaps to 5° or 1 mm; hold Alt to move freely. Esc during the drag puts it back. A drag that starts on a body in Base, or on empty space, orbits as before.
+- Posing moves the drawn bodies only: the kernel doesn't rebuild. Exports use the home pose unless you tick **Export as posed**, which moves the exact solids for STEP and the triangles for STL, 3MF and glTF.
 - The pose is saved in the model (`pose`, joint values by joint id), so a shared model opens as it was left. A shared or old version can still be posed; the pose just isn't kept.
 - Each move is one undo step. **Home** (or "Move the joints home" in the command palette) puts every joint back where it was made.
 - Other tools show the model at home, so picks and moves land on the bodies where they really are.

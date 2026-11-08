@@ -95,6 +95,8 @@ import {
   linkTransforms,
   posedFrames,
   setPose,
+  jointValue,
+  movable,
   type Pose,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
@@ -152,7 +154,7 @@ import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
-import type { WorldPlaneName } from "../viewport/engine";
+import type { BodyDrag, WorldPlaneName } from "../viewport/engine";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
@@ -606,6 +608,64 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (!store.isLocked() && live.current.doc.pose) store.edit(homePose, "Move the joints home");
     say("The joints are home");
   }, [store, say]);
+  // Dragging a link in the view (#173): a body in a link that hangs on a joint that moves turns or slides it. Esc puts
+  // it back where the drag started.
+  const [poseDrag, setPoseDrag] = useState<{ cancel: () => void } | null>(null);
+  // The drag maths loads once the model has a joint, keeping it out of the first paint.
+  const dragMaths = useRef<typeof import("../joint/poseDrag") | null>(null);
+  const hasJoints = built.joints.length > 0;
+  useEffect(() => {
+    if (hasJoints && !dragMaths.current) void import("../joint/poseDrag").then((m) => (dragMaths.current = m));
+  }, [hasJoints]);
+  useEscape(poseDrag !== null, () => poseDrag?.cancel(), ESC.drag);
+  const poseState = useRef({ joints: built.joints, parts, moves: linkMoves, pose, livePose });
+  poseState.current = { joints: built.joints, parts, moves: linkMoves, pose, livePose };
+  const bodyDrag = useCallback(
+    (pick: { body: string }, at: { x: number; y: number }): BodyDrag | null => {
+      const { joints, parts: all, moves, pose: now, livePose: before } = poseState.current;
+      const link = all.find((p) => p.id === pick.body)?.link;
+      const j = link ? joints.find((x) => x.child === link && movable(x)) : undefined;
+      const engine = vp.ref.current?.engine();
+      const maths = dragMaths.current;
+      if (!j || !engine || !maths) return null;
+      const frame = posedFrames([j], moves).get(j.id) ?? j;
+      const start = jointValue(j, now);
+      const drag = maths.startDrag(
+        { ...j, ...frame },
+        { project: (p) => engine.project(p), towards: engine.towards(), ray: (p) => engine.ray(p.x, p.y) },
+        at,
+        start,
+      );
+      let value = start;
+      let done = false;
+      const finish = () => {
+        done = true;
+        setPoseDrag(null);
+      };
+      const cancel = () => {
+        if (done) return;
+        finish();
+        setLivePose(before);
+        say(`Put ${j.name} back`);
+      };
+      setPoseDrag({ cancel });
+      return {
+        move: (p, mods) => {
+          if (done) return;
+          value = drag.at(p, mods.alt);
+          changePose(j.id, value);
+        },
+        end: () => {
+          if (done) return;
+          finish();
+          if (value !== start) commitPose(j.id, value);
+          else setLivePose(before);
+        },
+        cancel,
+      };
+    },
+    [vp.ref, changePose, commitPose, say],
+  );
   useEffect(() => {
     const moves = new Map<string, Matrix4>();
     if (posing)
@@ -2677,6 +2737,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransform={vp.onTransform}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
+            onBodyDrag={posing ? bodyDrag : undefined}
             onCamera={composedCamera}
             onMenu={(pick, at) => {
               if (sketch.editing) return;
