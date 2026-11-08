@@ -3,10 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
-  // Tests are independent, so CI shards split them one by one rather than file by file (even shards), and each
-  // runner uses all four of its cores.
+  // Tests are independent, so CI shards split them one by one rather than file by file, and the shards finish
+  // together. Workers stay at Playwright's default (half the cores): four on a 4-core runner starved the software
+  // WebGL renderer, and a save's thumbnail outran its 5 s wait.
   fullyParallel: true,
-  workers: process.env.CI ? 4 : undefined,
   // No retries (#107): a flaky test is fixed, or tagged @quarantine so it runs in its own job that can't block a merge.
   retries: 0,
   reporter: process.env.CI ? "github" : "list",
