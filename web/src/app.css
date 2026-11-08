@@ -517,7 +517,7 @@ body {
 .bc-swatch[data-swatch="dark"] {
   background: linear-gradient(135deg, var(--bc-color-bar) 50%, var(--bc-color-accent) 50%);
 }
-.bc-swatch[data-swatch="holodeck"] {
+.bc-swatch[data-swatch="holoroom"] {
   background-color: var(--bc-color-room);
   background-image: linear-gradient(var(--bc-color-grid-major) 1px, transparent 1px), linear-gradient(90deg, var(--bc-color-grid-major) 1px, transparent 1px);
   background-size: 7px 7px;

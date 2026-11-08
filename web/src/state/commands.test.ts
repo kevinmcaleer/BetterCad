@@ -71,7 +71,7 @@ describe("palette search", () => {
   it("fuzzy matches letters in order and ranks word starts", () => {
     expect(fuzzyScore("Keyboard shortcuts", "ksc")).toBeGreaterThan(0);
     expect(fuzzyScore("Undo", "xyz")).toBe(-1);
-    expect(fuzzyScore("Theme: Holodeck", "holo")).toBeGreaterThan(fuzzyScore("Theme: Holodeck", "hdk"));
+    expect(fuzzyScore("Theme: Holoroom", "holo")).toBeGreaterThan(fuzzyScore("Theme: Holoroom", "hdk"));
   });
   it("orders results best first and searches keywords", () => {
     const { reg } = setup();

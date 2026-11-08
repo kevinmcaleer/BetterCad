@@ -8,7 +8,7 @@ import { readStl, stlVolume } from "./lib/stl";
  * volume against the formula.
  */
 test("draw a box with a hole, fillet it, export STL, and the volume is right", { tag: "@journey" }, async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   await catchSaves(page);
   const ed = await new Editor(page).open();
   await ed.view.preset("top");
@@ -90,7 +90,8 @@ test("draw a box with a hole, fillet it, export STL, and the volume is right", {
   await dialog.resolution("Fine");
   await dialog.export();
   const done = ed.said(/^Exported .*\.stl$/);
-  await expect(done).toBeVisible({ timeout: 30_000 });
+  // A fine mesh of the filleted box takes over 30 s on a runner shared with a path-traced render.
+  await expect(done).toBeVisible({ timeout: 60_000 });
   const name = (await done.textContent())!.replace(/^Exported /, "");
   const volume = stlVolume(readStl(await savedFile(page, name)));
 

@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const THEMES = ["light", "dark", "holodeck"] as const;
+const THEMES = ["light", "dark", "holoroom"] as const;
 
 for (const theme of THEMES) {
   test(`the editor has no axe violations in ${theme}`, async ({ page }) => {
@@ -16,7 +16,7 @@ for (const theme of THEMES) {
 
 test("the component gallery has no axe violations", async ({ page }) => {
   await page.goto("/#/gallery");
-  await expect(page.getByRole("region", { name: "Holodeck" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Holoroom" })).toBeVisible();
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
   expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 });

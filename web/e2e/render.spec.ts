@@ -40,8 +40,12 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done. Paper builds
   // it again, and on a busy runner that has taken over 120 s.
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 240_000 });
+  // The render's cube has the house too: home is the corner view, so the top view is left behind.
+  await cube.hover({ force: true });
+  await cube.getByRole("button", { name: "Go home" }).click({ force: true });
   await bar.getByRole("button", { name: "Done" }).click();
   await expect(bar).toHaveCount(0);
+  await expect(page.getByRole("application", { name: /3D view/ })).not.toHaveAttribute("data-view", "top");
 });
 
 /** The middle of the render canvas, averaged: is the box there coloured or paper white? */
@@ -169,6 +173,8 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("4 of 4 samples", { timeout: 200_000 });
   // Four samples are grainy and the grain differs every run, so compare the picture shrunk to 60 × 40: halving it
   // step by step averages each pixel with its neighbours, which keeps the shape, colour and shadow and drops the grain.
+  // Some grain survives along the box's edges (3% of pixels on one run), so allow 5%: a wrong shape, colour or
+  // shadow moves far more.
   const url = await page.locator(".bc-render-canvas").evaluate((el: HTMLCanvasElement) => {
     let src: HTMLCanvasElement = el;
     while (src.width > 120) {
@@ -188,5 +194,5 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
     g.drawImage(src, 0, 0, 60, 40);
     return out.toDataURL("image/png");
   });
-  expect(Buffer.from(url.split(",")[1], "base64")).toMatchSnapshot("render-box.png", { maxDiffPixelRatio: 0.02, threshold: 0.1 });
+  expect(Buffer.from(url.split(",")[1], "base64")).toMatchSnapshot("render-box.png", { maxDiffPixelRatio: 0.05, threshold: 0.1 });
 });

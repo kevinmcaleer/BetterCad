@@ -1,12 +1,12 @@
 // BetterCad — generated from tokens.json by scripts/build-tokens.ts. Do not edit by hand.
 
-export const THEME_IDS = ["light","dark","holodeck"] as const;
+export const THEME_IDS = ["light","dark","holoroom"] as const;
 export type ThemeId = (typeof THEME_IDS)[number];
 
 export const THEME_NAMES: Record<ThemeId, string> = {
   "light": "Light",
   "dark": "Dark",
-  "holodeck": "Holodeck"
+  "holoroom": "Holoroom"
 };
 
 export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room";
@@ -95,7 +95,7 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "grid-major": "#3d424c",
     "room": "#15171b"
   },
-  "holodeck": {
+  "holoroom": {
     "accent": "#a78bfa",
     "accent-soft": "#2d2546",
     "on-accent": "#15102a",

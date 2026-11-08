@@ -72,7 +72,7 @@ export function useViewport(d: ViewportDeps) {
   const live = useRef(d);
   live.current = d;
 
-  const style: RenderStyle = styleSetting === "auto" ? (d.theme === "holodeck" ? "lineart" : "shaded") : styleSetting;
+  const style: RenderStyle = styleSetting === "auto" ? (d.theme === "holoroom" ? "lineart" : "shaded") : styleSetting;
 
   // Element picks go when their part does, or when the filter changes.
   useEffect(() => {
@@ -152,12 +152,15 @@ export function useViewport(d: ViewportDeps) {
   const goHome = useCallback(() => {
     view3d.current?.home(live.current.doc.home ?? null);
   }, []);
-  const setHomeHere = useCallback(() => {
-    const camera = view3d.current?.camera();
-    if (!camera) return;
+  /** Makes `camera` home: the modelling view's own camera, or the render's. */
+  const setHomeTo = useCallback((camera: CameraState) => {
     live.current.editDoc((doc) => setHome(doc, camera), "Set the home view");
     live.current.say("Home is now this view");
   }, []);
+  const setHomeHere = useCallback(() => {
+    const camera = view3d.current?.camera();
+    if (camera) setHomeTo(camera);
+  }, [setHomeTo]);
   const resetHome = useCallback(() => {
     if (!live.current.doc.home) return;
     live.current.editDoc((doc) => setHome(doc, null), "Reset the home view");
@@ -240,7 +243,7 @@ export function useViewport(d: ViewportDeps) {
   /** Shaded or line art, or the other one of the two when `to` is left out. */
   const setStyle = useCallback((to?: RenderStyle) => {
     setStyleSetting((s) => {
-      const now: RenderStyle = s === "auto" ? (live.current.theme === "holodeck" ? "lineart" : "shaded") : s;
+      const now: RenderStyle = s === "auto" ? (live.current.theme === "holoroom" ? "lineart" : "shaded") : s;
       const next: RenderStyle = to ?? (now === "shaded" ? "lineart" : "shaded");
       try {
         localStorage.setItem(STYLE_KEY, next);
@@ -389,6 +392,8 @@ export function useViewport(d: ViewportDeps) {
     fit,
     viewEntries,
     goHome,
+    setHomeTo,
+    resetHome,
     cubeMenu,
     namingOpen: !!naming,
     namingDialog,

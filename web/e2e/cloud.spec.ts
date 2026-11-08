@@ -179,11 +179,11 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   const server = await fakeApi(context);
   await server.signIn(context);
   await page.goto("/");
-  await page.evaluate(() => localStorage.setItem("bettercad.theme", "holodeck"));
+  await page.evaluate(() => localStorage.setItem("bettercad.theme", "holoroom"));
   await page.reload();
-  await expect(page.locator("html")).toHaveAttribute("data-theme", "holodeck");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "holoroom");
   await addBox(page);
-  // Holodeck may already draw line art; choose it either way.
+  // Holoroom may already draw line art; choose it either way.
   await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
   await page.getByRole("menuitemradio", { name: "Line art" }).click();
   await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
@@ -196,7 +196,7 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
   const [model] = [...server.models.values()];
   const thumb = JSON.parse(model!.versions[0]!.bcad).thumbnail as string;
-  // The mean brightness of the drawn pixels: Holodeck's line art fill is near black, a Light shaded box is pale.
+  // The mean brightness of the drawn pixels: Holoroom's line art fill is near black, a Light shaded box is pale.
   const mean = await page.evaluate(async (src) => {
     const img = new Image();
     img.src = src;
@@ -278,8 +278,9 @@ test("after a save to the account, a rendered picture replaces the thumbnail", a
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  // The save doesn't wait for the render: it lands with the shaded PNG first.
-  await expect.poll(() => server.models.size).toBe(1);
+  // The save doesn't wait for the render: it lands with the shaded PNG first. A loaded runner takes more than the
+  // default 5 s to shade the thumbnail and send it.
+  await expect.poll(() => server.models.size, { timeout: 30_000 }).toBe(1);
   const [model] = [...server.models.values()];
   expect(JSON.parse(model!.versions[0]!.bcad).thumbnail).toMatch(/^data:image\/png;base64,/);
   await expect.poll(() => model!.versions[0]!.thumbnail ?? "", { timeout: 220_000 }).toMatch(/^data:image\/jpeg;base64,/);

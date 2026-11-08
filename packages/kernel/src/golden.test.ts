@@ -32,7 +32,8 @@ import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { moved, overlapOf } from "./occt/clashes";
 import { catalogueShape } from "./occt/catalogue";
-import { cataloguePart, placeOnFace } from "./catalogue";
+import { placeOnFace } from "./catalogue";
+import { cataloguePart } from "./catalogue/list";
 import {
   GEAR_DEFAULTS,
   MOUNT_DEFAULTS,

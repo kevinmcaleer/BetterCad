@@ -20,6 +20,7 @@
     "./browser": "./src/browser.ts",
     "./occt": "./src/occt/index.ts",
     "./bcad": "./src/bcad.ts",
+    "./catalogue": "./src/catalogue/list.ts",
     "./samples": "./src/samples.ts",
     "./sample-list": "./src/sampleList.ts",
     "./zip": "./src/export/zip.ts",

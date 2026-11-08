@@ -3,10 +3,16 @@ import { COLOURS, type ThemeId } from "@bettercad/ui";
 export type ThemeSetting = ThemeId | "system";
 export const THEME_KEY = "bettercad.theme";
 
+/** Holodeck is now Holoroom: a choice saved under the old id still loads. */
+export function renamedTheme<T extends string | null | undefined>(v: T): T | "holoroom" {
+  return v === "holodeck" ? "holoroom" : v;
+}
+
 export function loadThemeSetting(): ThemeSetting {
   try {
-    const v = localStorage.getItem(THEME_KEY);
-    if (v === "light" || v === "dark" || v === "holodeck" || v === "system") return v;
+    let v = localStorage.getItem(THEME_KEY);
+    v = renamedTheme(v);
+    if (v === "light" || v === "dark" || v === "holoroom" || v === "system") return v;
   } catch {
     /* storage blocked: fall through */
   }

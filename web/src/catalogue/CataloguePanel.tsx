@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Icon, cx, type IconName } from "@bettercad/ui";
-import { CATALOGUE, CATALOGUE_CATEGORIES, type CatalogueCategory, type CataloguePart } from "../state/document";
+import { CATALOGUE } from "@bettercad/kernel/catalogue";
+import { CATALOGUE_CATEGORIES, type CatalogueCategory, type CataloguePart } from "../state/document";
 
 /** Each category's icon in the list. */
 const ICON: Record<CatalogueCategory, IconName> = {

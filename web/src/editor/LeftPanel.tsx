@@ -266,7 +266,7 @@ function SettingsPanel(p: LeftPanelProps) {
     <>
       <h2 className="bc-panel-title">Theme</h2>
       <ThemePicker value={p.theme} onChange={p.onTheme} />
-      <p className="bc-note">System follows your device, light or dark. Holodeck is a black drawing room with a yellow grid.</p>
+      <p className="bc-note">System follows your device, light or dark. Holoroom is a black drawing room with a yellow grid.</p>
       <h2 className="bc-panel-title">Timeline</h2>
       <label className="bc-check">
         <input type="checkbox" checked={p.timelineShown} onChange={(e) => p.onTimelineShown(e.target.checked)} />

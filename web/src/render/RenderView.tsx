@@ -3,7 +3,8 @@ import { Banner, Button, MenuButton, ViewCube, type MenuEntry } from "@bettercad
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
-import { lookFrom, orbit, pan, viewRotation, zoom, type CameraState } from "../viewport/camera";
+import { DEFAULT_CAMERA, fit, lookFrom, orbit, pan, PRESETS, viewRotation, zoom, type CameraState } from "../viewport/camera";
+import { Box3, Sphere, Vector3 } from "three";
 import type { Section } from "../viewport/engine";
 import type { CutPlane } from "./cut";
 
@@ -44,13 +45,30 @@ export interface RenderPictureProps {
    * save while the browser allows it.
    */
   onSave: (png: Promise<Blob>, size: SaveSize) => Promise<void>;
+  /** The model's home view, if one is set; otherwise home is the corner view, fitted to the model. */
+  home?: CameraState | null;
+  onSetHome?: (camera: CameraState) => void;
+  onResetHome?: () => void;
+}
+
+/** The corner view, fitted round the bodies: home when the model has none of its own. */
+function cornerView(bodies: RenderBody[], aspect: number): CameraState {
+  const box = new Box3();
+  const p = new Vector3();
+  for (const b of bodies) {
+    const pos = b.mesh.positions;
+    for (let i = 0; i < pos.length; i += 3) box.expandByPoint(p.set(pos[i], pos[i + 1], pos[i + 2]).applyMatrix4(b.matrix));
+  }
+  if (box.isEmpty()) return DEFAULT_CAMERA;
+  const s = box.getBoundingSphere(new Sphere());
+  return fit({ ...DEFAULT_CAMERA, ...PRESETS.iso }, [s.center.x, s.center.y, s.center.z], s.radius, aspect);
 }
 
 /**
  * The Render view's picture (#197): a path-traced image of the model that clears over a few seconds. Drag to orbit
  * (right drag pans, the wheel zooms); the picture waits while you move and starts again when you stop.
  */
-export function RenderPicture({ session, bodies, section = null, camera, onCamera, onSave }: RenderPictureProps) {
+export function RenderPicture({ session, bodies, section = null, camera, onCamera, onSave, home = null, onSetHome, onResetHome }: RenderPictureProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const r = useRef<PathRender | null>(null);
   const cam = useRef(camera);
@@ -178,6 +196,17 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
   }, [move, hold]);
 
   const orbiting = useRef(false);
+  const goHome = () => {
+    const el = canvas.current!;
+    move(home ? { ...home, ortho: false } : cornerView(bodies, el.clientWidth / Math.max(1, el.clientHeight)));
+  };
+  // As the modelling view's cube, less the projection: a path-traced picture is always in perspective.
+  const cubeMenu: MenuEntry[] = [
+    { id: "home", label: "Go home", icon: "home", onSelect: goHome },
+    { kind: "separator", id: "s1" },
+    { id: "set-home", label: "Set this view as home", onSelect: () => onSetHome?.(cam.current) },
+    { id: "reset-home", label: "Reset home", disabled: !home, onSelect: () => onResetHome?.() },
+  ];
   return (
     <>
       <canvas ref={canvas} className="bc-render-canvas" role="img" aria-label={`Rendered picture of the model, ${samplesText(state.samples)}`} />
@@ -194,6 +223,8 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
             orbiting.current = false;
             hold(false);
           }}
+          onHome={goHome}
+          menu={cubeMenu}
         />
       </div>
     </>
