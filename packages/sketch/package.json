@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Sketching: the sketch model, profiles, drawing tools' records and the planegcs solver (WASM).",
   "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./solver": "./src/solver.ts"
+  },
   "scripts": {
     "build": "tsc -b"
   },
