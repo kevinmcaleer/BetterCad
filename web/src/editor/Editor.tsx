@@ -106,7 +106,7 @@ import { useSketch } from "../sketch/useSketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
-import { newProfileId, usePrinterProfiles } from "../print/profiles";
+import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
@@ -1880,6 +1880,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onFeatureRenameIdChange={setFeatureRenameId}
               timelineShown={timelineShown}
               onTimelineShown={setTimelineShown}
+              bedShown={showBed}
+              onBedShown={setShowBed}
               theme={theme}
               onTheme={setTheme}
               commands={commands}
@@ -1946,7 +1948,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onCamera={composedCamera}
-            bed={showBed && !share ? printer : null}
+            bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
             warn={offBed}
             check={checkResult?.values ?? null}
             originPlanes={{

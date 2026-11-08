@@ -145,7 +145,7 @@ export function PrintPanel(p: PrintPanelProps) {
       )}
       <label className="bc-check">
         <input type="checkbox" checked={p.showBed} onChange={(e) => p.onShowBed(e.target.checked)} />
-        <span>Show the bed</span>
+        <span>Show the build volume</span>
       </label>
       {p.hasModel &&
         (p.fitProblem ? (

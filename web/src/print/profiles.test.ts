@@ -1,4 +1,4 @@
-import { loadLocal, merge, saveLocal } from "./profiles";
+import { bedLabel, loadLocal, merge, saveLocal } from "./profiles";
 import { profileFromSettings } from "../state/document";
 
 describe("printer profiles in the browser (#180)", () => {
@@ -19,5 +19,14 @@ describe("printer profiles in the browser (#180)", () => {
     const b = profileFromSettings("b", "Local B", {});
     const b2 = { ...b, name: "Account B" };
     expect(merge([a, b], [b2]).map((p) => p.name)).toEqual(["Local A", "Account B"]);
+  });
+});
+
+describe("bedLabel", () => {
+  it("names the printer's build volume", () => {
+    expect(bedLabel({ id: "prusa-mk4", name: "Prusa MK4" })).toBe("Prusa MK4 build volume");
+  });
+  it("says just build volume for a custom size", () => {
+    expect(bedLabel({ id: "custom", name: "Custom printer" })).toBe("Build volume");
   });
 });
