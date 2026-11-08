@@ -8,9 +8,14 @@ import { gltfBytes, writeGlb, writeGltf } from "../export/gltf";
 import { fileName } from "../bcad";
 import { pbrOf } from "../looks";
 import { KernelError } from "../errors";
+import { buildUrdf } from "../export/urdf";
+import { zip } from "../export/zip";
 
-/** glb and gltf (#195) are for Blender and web viewers: metres, Y up, a node and material per body. */
-export type ExportFormat = "stl" | "3mf" | "step" | "glb" | "gltf";
+/**
+ * glb and gltf (#195) are for Blender and web viewers: metres, Y up, a node and material per body. urdf (#175) is the
+ * robot for Snakie, ROS, MuJoCo and Gazebo: a .zip of the .urdf and one STL per link.
+ */
+export type ExportFormat = "stl" | "3mf" | "step" | "glb" | "gltf" | "urdf";
 
 export interface ExportRequest {
   doc: ModelDoc;
@@ -26,6 +31,8 @@ export interface ExportRequest {
   keepPosition?: boolean;
   /** Export the bodies as the joints are posed (#173) instead of at home. */
   posed?: boolean;
+  /** URDF only: mesh paths as `package://<robot>/meshes/…` for a ROS package. */
+  rosPackage?: boolean;
 }
 
 export interface ExportEstimate {
@@ -115,7 +122,32 @@ export class Exporter {
     return { name: p.name, triangles: t, look: pbrOf(p) };
   }
 
+  /**
+   * The robot (#175): every body that isn't a hole, at home, in its link. Reference bodies go in too, since a servo
+   * bought rather than printed still has a shape and a weight.
+   */
+  private robot(r: ExportRequest & { name: string }, cancelled: () => boolean) {
+    const { parts, links, joints } = build(r.doc, r.upTo);
+    if (!joints.length) throw new KernelError("failed", "Add a joint first to export a robot.");
+    const linkOf = new Map<string, string>();
+    for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
+    const masses = new Map(this.model.mass(r.doc, r.upTo).map((m) => [m.id, m]));
+    const bodies = parts
+      .filter((p) => !p.hole)
+      .map((p) => {
+        if (cancelled()) throw new KernelError("cancelled", "Stopped.");
+        return { id: p.id, name: p.name, link: linkOf.get(p.id), colour: p.colour, triangles: this.mesh(p, r.deflection).triangles, mass: masses.get(p.id) };
+      });
+    if (!bodies.length) throw new KernelError("failed", "There is nothing to export yet.");
+    return buildUrdf(bodies, links, joints, { name: r.name, rosPackage: r.rosPackage });
+  }
+
   estimate(r: ExportRequest, cancelled: () => boolean = () => false): ExportEstimate {
+    if (r.format === "urdf") {
+      const out = this.robot({ ...r, name: "robot" }, cancelled);
+      const n = out.links.reduce((a, l) => a + l.triangles.length / 9, 0);
+      return { triangles: n, bytes: stlBytes(n) + out.urdf.length, solids: out.links.length, skipped: 0 };
+    }
     const { parts, skipped } = this.pick(r);
     if (r.format === "step") return { triangles: 0, bytes: 0, solids: parts.length, skipped };
     let n = 0;
@@ -129,6 +161,19 @@ export class Exporter {
   }
 
   export(r: ExportRequest & { name: string }, cancelled: () => boolean = () => false): ExportResult {
+    if (r.format === "urdf") {
+      const out = this.robot(r, cancelled);
+      const files = [
+        { name: `${out.robot}/${out.robot}.urdf`, data: new TextEncoder().encode(out.urdf) },
+        ...out.links.map((l) => ({ name: `${out.robot}/${l.mesh}`, data: new Uint8Array(writeStl(l.name, [l])) })),
+      ];
+      const data = zip(files);
+      return {
+        files: [{ name: fileName(r.name, ".zip"), data: data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer }],
+        triangles: out.links.reduce((a, l) => a + l.triangles.length / 9, 0),
+        skipped: 0,
+      };
+    }
     const { parts, skipped, moves } = this.pick(r);
     const ext = `.${r.format}`;
     const groups: { file: string; parts: Part[] }[] =
