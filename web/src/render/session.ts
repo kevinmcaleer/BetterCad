@@ -4,6 +4,14 @@
  */
 export type LightPresetId = "studio" | "daylight" | "workbench";
 export type SaveSize = "view" | "double" | "4k";
+/** How long the picture keeps clearing: each step adds samples and takes longer. */
+export type RenderQuality = "good" | "better" | "best";
+export const QUALITIES: { id: RenderQuality; label: string; samples: number }[] = [
+  { id: "good", label: "Good", samples: 128 },
+  { id: "better", label: "Better", samples: 512 },
+  { id: "best", label: "Best", samples: 2048 },
+];
+export const samplesFor = (q: RenderQuality) => QUALITIES.find((x) => x.id === q)!.samples;
 /** Each body's colour and finish, or every part in matte paper white (a clay render). */
 export type RenderStyle = "finishes" | "paper";
 
@@ -12,6 +20,8 @@ export interface RenderState {
   loading: boolean;
   preset: LightPresetId;
   style: RenderStyle;
+  /** Where the picture stops adding samples. */
+  quality: RenderQuality;
   samples: number;
   /** Orbiting: the picture waits for you to stop. */
   moving: boolean;
@@ -30,7 +40,7 @@ export interface RenderSession {
 }
 
 export function renderSession(style: RenderStyle = "finishes"): RenderSession {
-  let state: RenderState = { loading: true, preset: "studio", style, samples: 0, moving: false, slow: false, saving: null };
+  let state: RenderState = { loading: true, preset: "studio", style, quality: "better", samples: 0, moving: false, slow: false, saving: null };
   const subs = new Set<() => void>();
   return {
     get: () => state,
