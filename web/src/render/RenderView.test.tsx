@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { RenderBar, SLOW_TEXT } from "./RenderView";
+import { barPosition, RenderBar, SLOW_TEXT } from "./RenderView";
 import { renderSession } from "./session";
 
 describe("the Render view's options (#197)", () => {
@@ -70,5 +70,24 @@ describe("the Render view's options (#197)", () => {
     expect(save).toHaveBeenCalledWith("4k");
     await userEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("sets the depth of field", async () => {
+    const s = renderSession();
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    s.set({ loading: false });
+    await userEvent.click(await screen.findByRole("button", { name: "Soft focus" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "All sharp" }));
+    expect(s.get().focus).toBe("sharp");
+  });
+
+  it("fills the quality bar evenly between the Good, Better and Best stops", () => {
+    expect(barPosition(0)).toBe(0);
+    expect(barPosition(64)).toBeCloseTo(1 / 6);
+    expect(barPosition(128)).toBeCloseTo(1 / 3);
+    expect(barPosition(320)).toBeCloseTo(1 / 2);
+    expect(barPosition(512)).toBeCloseTo(2 / 3);
+    expect(barPosition(2048)).toBe(1);
+    expect(barPosition(5000)).toBe(1);
   });
 });

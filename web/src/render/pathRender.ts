@@ -17,13 +17,12 @@ import {
   Mesh,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
-  PerspectiveCamera,
   PlaneGeometry,
   Scene,
   Vector3,
   WebGLRenderer,
 } from "three";
-import { GradientEquirectTexture, WebGLPathTracer } from "three-gpu-pathtracer";
+import { GradientEquirectTexture, PhysicalCamera, WebGLPathTracer } from "three-gpu-pathtracer";
 import { DEFAULT_COLOUR, finishById, finishOf, type FinishId } from "@bettercad/kernel";
 import { cameraBasis, FOV, type CameraState } from "../viewport/camera";
 import { Backgrounds } from "./backgrounds";
@@ -76,7 +75,10 @@ export class PathRender {
   readonly renderer: WebGLRenderer;
   private tracer: WebGLPathTracer;
   private scene = new Scene();
-  private camera = new PerspectiveCamera(FOV, 1, 1, 100_000);
+  private camera = new PhysicalCamera(FOV, 1, 1, 100_000);
+  /** The lens opening as a share of the distance to the model: 0 keeps everything sharp. */
+  private aperture = 0;
+  private distance = 100;
   private model = new Group();
   private floor: Mesh<PlaneGeometry, MeshStandardMaterial>;
   private sun = new DirectionalLight();
@@ -84,6 +86,9 @@ export class PathRender {
   private backgrounds = new Backgrounds();
   private background: BackgroundId = "lightbox";
   private reach = 100;
+  /** The Holodeck's four walls, round the model and open to the light above. */
+  private walls = new Group();
+  private wallMaterial = new MeshStandardMaterial({ roughness: 0.6, metalness: 0, emissive: 0xffffff, emissiveIntensity: 0.35 });
   private frame = 0;
   private watchdog = 0;
   private style: RenderStyle = "finishes";
@@ -123,6 +128,12 @@ export class PathRender {
     this.sky.update();
     this.scene.environment = this.sky;
     this.applyBackground("lightbox");
+    const plane = new PlaneGeometry(1, 1);
+    for (let i = 0; i < 4; i++) {
+      const w = new Mesh(plane, this.wallMaterial);
+      w.rotation.y = (i * Math.PI) / 2;
+      this.walls.add(w);
+    }
     this.scene.add(this.model, this.floor, this.sun, this.sun.target, this.camera);
   }
 
@@ -193,6 +204,7 @@ export class PathRender {
     this.floor.position.set(0, Number.isFinite(low) ? low : 0, 0);
     this.floor.scale.setScalar(reach * 40);
     this.reach = reach;
+    this.placeWalls();
     this.fitGrid();
     this.floor.updateMatrixWorld();
     const d = LOOKS.studio.sunDir;
@@ -209,7 +221,10 @@ export class PathRender {
 
   /** What is behind the model and what it stands on; the lighting stays as it is. */
   setBackground(id: BackgroundId): void {
+    const walls = !!this.walls.parent;
     this.applyBackground(id);
+    // Walls coming or going change the scene's shape, so the tracer re-reads it.
+    if (!!this.walls.parent !== walls && this.model.children.length) this.tracer.setScene(this.scene, this.camera);
     this.tracer.updateEnvironment();
     this.tracer.updateMaterials();
     this.restart();
@@ -218,6 +233,8 @@ export class PathRender {
   private applyBackground(id: BackgroundId): void {
     this.background = id;
     const b = this.backgrounds.get(id);
+    if (b.walls) this.scene.add(this.walls);
+    else this.scene.remove(this.walls);
     this.scene.background = b.sky;
     const m = this.floor.material;
     m.color.set(b.floor.colour);
@@ -230,10 +247,30 @@ export class PathRender {
     this.fitGrid();
   }
 
+  /** Each wall stands on the floor, a square room six times the model's reach from the middle, three reaches high. */
+  private placeWalls(): void {
+    const half = this.reach * 6,
+      high = this.reach * 3;
+    this.walls.children.forEach((w, i) => {
+      const a = (i * Math.PI) / 2;
+      // Each plane faces back into the room.
+      w.position.set(-Math.sin(a) * half, this.floor.position.y + high / 2, -Math.cos(a) * half);
+      w.scale.set(half * 2, high, 1);
+    });
+    this.walls.updateMatrixWorld(true);
+  }
+
   /** The grid's cells stay the same size in millimetres however big the floor is. */
   private fitGrid(): void {
     const g = this.backgrounds.get(this.background).floor.grid;
-    if (g) g.map.repeat.setScalar((this.reach * 40) / g.cell);
+    if (!g) return;
+    g.map.repeat.setScalar((this.reach * 40) / g.cell);
+    // The walls carry the same grid at the same cell size, from a copy so they repeat on their own.
+    const wall = (this.wallMaterial.map ??= g.map.clone());
+    wall.repeat.set((this.reach * 12) / g.cell, (this.reach * 3) / g.cell);
+    wall.needsUpdate = true;
+    this.wallMaterial.emissiveMap = wall;
+    this.wallMaterial.needsUpdate = true;
   }
 
   setPreset(p: LightPreset): void {
@@ -257,11 +294,29 @@ export class PathRender {
     this.restart();
   }
 
+  /** Depth of field: focused on the point the camera turns round, which is the model. */
+  setFocus(aperture: number): void {
+    this.aperture = aperture;
+    this.focusLens();
+    this.tracer.updateCamera();
+    this.restart();
+  }
+
+  private focusLens(): void {
+    this.camera.focusDistance = this.distance;
+    // The tracer reads bokehSize in millimetres and the scene in metres; this scene is in millimetres already.
+    this.camera.bokehSize = this.distance * this.aperture * 1000;
+    // Six blades make round-ish highlights, like a real lens.
+    this.camera.apertureBlades = this.aperture ? 6 : 0;
+  }
+
   setCamera(c: CameraState): void {
     const { position, up } = cameraBasis(c);
     this.camera.position.copy(yUp(position));
     this.camera.up.copy(yUp(up));
     this.camera.lookAt(yUp(c.target));
+    this.distance = c.distance;
+    this.focusLens();
     this.camera.near = Math.max(0.1, c.distance / 1000);
     this.camera.far = c.distance * 100 + 10_000;
     this.camera.updateProjectionMatrix();
@@ -356,6 +411,9 @@ export class PathRender {
     this.paper.dispose();
     this.sky.dispose();
     this.backgrounds.dispose();
+    this.wallMaterial.map?.dispose();
+    this.wallMaterial.dispose();
+    (this.walls.children[0] as Mesh).geometry.dispose();
     this.tracer.dispose();
     this.renderer.dispose();
   }
