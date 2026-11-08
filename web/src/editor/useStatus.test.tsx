@@ -26,6 +26,16 @@ describe("useStatus", () => {
     expect(result.current[2]?.text).toBe("Saved to Bracket.bcad");
   });
 
+  it("never lets Autosaved cover a save notice still showing", () => {
+    const { result } = renderHook(() => useStatus());
+    act(() => result.current[1]("Saved Bracket to your account", false, true));
+    act(() => result.current[1]("Autosaved", false, "minor"));
+    expect(result.current[2]?.text).toBe("Saved Bracket to your account");
+    act(() => vi.advanceTimersByTime(TOAST_MS));
+    act(() => result.current[1]("Autosaved", false, "minor"));
+    expect(result.current[2]?.text).toBe("Autosaved");
+  });
+
   it("keeps errors on the status line, where they stay long enough to read", () => {
     const { result } = renderHook(() => useStatus());
     act(() => result.current[1]("That didn't save.", true, true));
