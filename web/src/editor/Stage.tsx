@@ -9,10 +9,12 @@ export interface StageBarsProps {
   vp: Viewport;
   /** Whether exactly one part is picked (Move and Turn need one). */
   onePart: boolean;
+  /** Opens the Render view (#197). */
+  onRender?: () => void;
 }
 
 /** The view bar floating over the viewport (the tools live on the top bar), and the armed tool's options strip. */
-export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
+export function StageBars({ tool, onArmTool, vp, onePart, onRender }: StageBarsProps) {
   const filter = FILTERS.find((f) => f.id === vp.filter)!;
   return (
     <>
@@ -43,6 +45,7 @@ export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
           on={vp.style === "lineart"}
           onClick={vp.toggleStyle}
         />
+        {onRender && <Button icon="sun" label="Render" title="A photoreal picture you can save" shortcut={formatCombo("shift+r")} onClick={onRender} />}
       </Toolbar>
       {tool.id === "section" && (
         <ArmedBar title={tool.label} icon={tool.icon}>
