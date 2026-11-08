@@ -31,7 +31,7 @@ import {
   type Sketch,
   type Vec2,
 } from "@bettercad/sketch";
-import { addSketch, newId, paramScope, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
+import { addSketch, newId, paramScope, redefineSketchPlane, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
 import { loadSolver } from "./solver";
 import type { Command } from "../state/commands";
 import { caught } from "../report/errors";
@@ -99,6 +99,8 @@ export function useSketch(d: SketchDeps) {
   const deps = useRef(d);
   deps.current = d;
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** A sketch being moved onto another plane or face (the timeline's Redefine sketch plane), and how to end it. */
+  const [redefining, setRedefining] = useState<{ id: string; name: string; end: () => void } | null>(null);
   const [stool, setStoolState] = useState<SketchToolId>("select");
   /** The armed constraint tool: it stays on the pointer, picking line after line, until Esc. */
   const [ctool, setCtool] = useState<ConstraintToolId | null>(null);
@@ -419,6 +421,40 @@ export function useSketch(d: SketchDeps) {
   /** Starts a sketch on an origin plane, as picking it in the view does (the browser's Sketch on). */
   const startOnPlane = useCallback((plane: "XY" | "XZ" | "YZ") => startOn({ kind: "world", plane, offset: 0 }, `the ${plane} plane`), [startOn]);
 
+  /**
+   * Redefine sketch plane, as in Fusion: pick a new plane or flat face for a sketch. The geometry keeps its place on
+   * the sketch's own grid. `end` runs when it is done or cancelled (the editor rolls the marker back where it was).
+   */
+  const redefine = useCallback(
+    (id: string, end: () => void) => {
+      const f = store.get().features.find((x) => x.id === id);
+      if (f?.type !== "sketch") return;
+      store.seal();
+      setRedefining({ id, name: f.name, end });
+      say(`Pick a plane or a flat face for ${f.name}. Esc keeps it where it is.`);
+    },
+    [store, say],
+  );
+  const cancelRedefine = useCallback(() => {
+    setRedefining((r) => {
+      r?.end();
+      return null;
+    });
+  }, []);
+  const redefineOn = useCallback(
+    (plane: PlaneRef, what: string) => {
+      const r = live.current.redefining;
+      if (!r) return;
+      store.edit((doc) => redefineSketchPlane(doc, r.id, plane), `Redefine ${r.name}'s plane`);
+      store.seal();
+      setRedefining(null);
+      r.end();
+      say(`Moved ${r.name} onto ${what}.`);
+    },
+    [store, say],
+  );
+  useEscape(!!redefining, cancelRedefine, ESC.tool + 1);
+
   const edit = useCallback(
     (id: string) => {
       const f = store.get().features.find((x) => x.id === id);
@@ -483,8 +519,10 @@ export function useSketch(d: SketchDeps) {
     ctool,
     applyConstraint,
     origin,
+    redefining,
   });
   live.current = {
+    redefining,
     editingId,
     feature,
     sketch,
@@ -510,7 +548,8 @@ export function useSketch(d: SketchDeps) {
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
   useEffect(() => {
     const eng = engineOf();
-    if (!d.picking || editingId || !eng) return;
+    if (!(d.picking || redefining) || editingId || !eng) return;
+    const pickOn = redefining ? redefineOn : startOn;
     eng.showPlanes(true);
     let lastKey = "";
     let info = null as ReturnType<Engine["faceInfo"]>;
@@ -538,9 +577,9 @@ export function useSketch(d: SketchDeps) {
       down: (p) => {
         const t = target(p);
         if (!t) return false;
-        if (t.kind === "plane") startOn({ kind: "world", plane: t.plane, offset: 0 }, `the ${t.plane} plane`);
+        if (t.kind === "plane") pickOn({ kind: "world", plane: t.plane, offset: 0 }, `the ${t.plane} plane`);
         else
-          startOn(
+          pickOn(
             { kind: "face", face: { body: t.pick.body, face: t.pick.index }, offset: 0, frame: faceFrame(t.info.centroid, t.info.normal, t.info.edge) },
             "a face",
           );
@@ -556,7 +595,7 @@ export function useSketch(d: SketchDeps) {
       eng.showPlanes(false);
       eng.showHover(null);
     };
-  }, [d.picking, editingId, engineOf, startOn]);
+  }, [d.picking, redefining, editingId, engineOf, startOn, redefineOn]);
 
   // Editing: the pointer draws, picks and drags on the sketch plane.
   useEffect(() => {
@@ -1007,7 +1046,13 @@ export function useSketch(d: SketchDeps) {
           : `${dof} degree${dof === 1 ? "" : "s"} of freedom`;
 
   const toolHelp = ctool ? `${constraintToolById(ctool).hint}. Esc puts the tool down.` : toolById(stool).help;
-  const help = d.picking && !editing ? "Click a face or a plane to sketch on it." : editing ? `${toolHelp} ${status ?? ""}.`.replace(/\.\.$/, ".") : null;
+  const help = redefining
+    ? `Click a face or a plane to move ${redefining.name} onto it. Esc keeps it where it is.`
+    : d.picking && !editing
+      ? "Click a face or a plane to sketch on it."
+      : editing
+        ? `${toolHelp} ${status ?? ""}.`.replace(/\.\.$/, ".")
+        : null;
 
   return {
     editing,
@@ -1053,6 +1098,9 @@ export function useSketch(d: SketchDeps) {
     finish,
     edit,
     startOnPlane,
+    redefine,
+    redefining: redefining?.name ?? null,
+    cancelRedefine,
     constrain,
     removeSelected,
     setOffset,

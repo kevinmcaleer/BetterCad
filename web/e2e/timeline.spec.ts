@@ -63,6 +63,15 @@ test("deleting a sketch that an extrude uses asks first, and suppress names what
   await page.keyboard.press("Enter");
   await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toHaveCount(0);
 
+  // Redefine sketch plane rolls back to before the sketch to pick; Esc keeps it where it was and rolls forward again.
+  const marker = timeline.getByRole("slider", { name: "Timeline marker" });
+  await timeline.getByRole("button", { name: /^Sketch 1/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Redefine sketch plane" }).click();
+  await expect(page.getByText("Pick a plane or a flat face for Sketch 1. Esc keeps it where it is.").first()).toBeVisible();
+  await expect(marker).toHaveAttribute("aria-valuenow", "0");
+  await page.keyboard.press("Escape");
+  await expect(marker).toHaveAttribute("aria-valuenow", "2");
+
   // Suppress the sketch: the extrude says what it needs.
   await timeline.getByRole("button", { name: /^Sketch 1/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Suppress" }).click();
