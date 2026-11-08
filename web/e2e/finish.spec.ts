@@ -50,3 +50,36 @@ test("round the four top edges of a box", async ({ page }) => {
   await expect(page.getByText("Rounded 4 edges of Box 1, 2 mm")).toBeVisible();
   await expect(page.getByRole("button", { name: /Fillet 1/ }).first()).toBeVisible();
 });
+
+// The tool dialog sits above the bottom stack (status, help line, rolled-back warning, timeline), never under it.
+for (const size of [
+  { name: "desktop", width: 1280, height: 800 },
+  { name: "phone", width: 390, height: 844 },
+]) {
+  test(`a tool dialog clears the help line and the rolled-back warning (${size.name})`, async ({ page }) => {
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await addBox(page);
+    const box = page.getByRole("button", { name: "Box", exact: true });
+    if (!(await box.isVisible())) await page.getByRole("button", { name: "Library" }).click();
+    await box.click();
+    // On a phone the library is a sheet over the view; fold the left panel away to see the bottom stack.
+    if (await box.isVisible()) {
+      await page.getByRole("button", { name: "Library" }).click();
+      await page.getByRole("banner").getByRole("button", { name: "Browser" }).click();
+    }
+    await expect(box).toBeHidden();
+    await page.keyboard.press("Alt+ArrowLeft");
+    await expect(page.getByText(/^Rolled back/)).toBeVisible();
+    await page.getByRole("application", { name: /3D view/ }).focus();
+    await page.keyboard.press("s");
+    await click(page, 0, 0, 20);
+    await expect(page.getByText("1 face open on Box 1.")).toBeVisible();
+
+    const foot = (await page.locator(".bc-stage-foot").boundingBox())!;
+    const bars = page.locator(".bc-stage-bars > *");
+    for (let k = 0; k < (await bars.count()); k++) {
+      const bar = await bars.nth(k).boundingBox();
+      if (bar) expect(bar.y + bar.height, `bar ${k} ends above the bottom stack`).toBeLessThanOrEqual(foot.y);
+    }
+  });
+}

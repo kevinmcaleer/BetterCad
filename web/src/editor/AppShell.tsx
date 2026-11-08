@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { cx } from "@bettercad/ui";
 
 export interface AppShellProps {
@@ -26,8 +26,23 @@ export interface AppShellProps {
  * Under 900px the tools float along the bottom and the panels become sheets over the view.
  */
 export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
+  const appRef = useRef<HTMLDivElement>(null);
+  const footRef = useRef<HTMLDivElement>(null);
+  // The bottom stack (status, help line, rolled-back warning, timeline) changes height as its parts come and go or
+  // wrap. Publish its real height so --bc-view-bottom, and every tool dialog and overlay above it, clears it exactly.
+  useLayoutEffect(() => {
+    const app = appRef.current;
+    const foot = footRef.current;
+    if (!app || !foot) return;
+    const publish = () => app.style.setProperty("--bc-foot-height", `${Math.ceil(foot.getBoundingClientRect().height)}px`);
+    publish();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(publish);
+    ro.observe(foot);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", !timeline && "bc-no-timeline")}>
+    <div ref={appRef} className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", !timeline && "bc-no-timeline")}>
       <a className="bc-skip" href="#bc-view">
         Skip to the 3D view
       </a>
@@ -43,7 +58,7 @@ export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, s
             {stageToolbar}
           </div>
           {stage}
-          <div className="bc-stage-foot" data-floats="">
+          <div className="bc-stage-foot" data-floats="" ref={footRef}>
             {status && <div className="bc-status-pill">{status}</div>}
             <div className="bc-help">{helpLine}</div>
             {timeline}
