@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Bundle budget (#97): the scripts index.html loads before first paint must stay under 355 KB gzipped, and a release
- * build must carry no dev-only code. Prints a table of every chunk, adds it to the GitHub job summary when there is
- * one, and exits 1 over budget. Run after `npm run build` (without VITE_GALLERY).
+ * Bundle budget (#97): the scripts index.html loads before first paint must stay under the shell budget in
+ * budgets.json (KB gzipped), and a release build must carry no dev-only code. Prints a table of every chunk, adds it
+ * to the GitHub job summary when there is one, and exits 1 over budget. Run after `npm run build` (without VITE_GALLERY).
  */
 import { appendFileSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 
-const BUDGET_KB = 355;
+const BUDGET_KB = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../budgets.json"), "utf8")).bundle.shell;
 // Strings only dev or gallery builds contain. A release build that has one shipped a guard that didn't hold.
 const DEV_ONLY = ["__bcView", "Gallery-", "react-dom.development", "Download the React DevTools"];
 
