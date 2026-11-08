@@ -652,6 +652,10 @@ export function useSketch(d: SketchDeps) {
     if (!editingId || !eng) return;
     /** A point dragged to the pointer, or a line slid square across from where it was grabbed. */
     let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 } } | null = null;
+    /** How near, in screen pixels, a pick reaches: a finger needs more room than a cursor. */
+    let reach = 8;
+    /** A finger is down with a drawing tool: the point follows it and goes in where it lifts. */
+    let tap = false;
     const at = (p: ScreenPoint): { xy: Vec2; px: number } | null => {
       const f = live.current.frame;
       if (!f) return null;
@@ -668,7 +672,7 @@ export function useSketch(d: SketchDeps) {
         exclude,
         off: mods.shift,
         gridOnly: mods.mod,
-        radius: mods.touch ? 16 : 8,
+        radius: mods.touch ? 18 : 8,
         origin: L.origin,
       });
     };
@@ -684,7 +688,7 @@ export function useSketch(d: SketchDeps) {
     const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
       const L = live.current;
       const s = L.sketch!;
-      const tol = 8 * hit.px;
+      const tol = reach * hit.px;
       if (L.stool === "project") {
         const pick = eng.pick(p.x, p.y, "face");
         const info = pick && eng.faceInfo(pick.body, pick.index);
@@ -719,7 +723,7 @@ export function useSketch(d: SketchDeps) {
         return;
       }
       const curvesOnly = L.stool !== "fillet";
-      const id = entityAt(hit.xy, s, 8 * hit.px, curvesOnly);
+      const id = entityAt(hit.xy, s, reach * hit.px, curvesOnly);
       setHover(id);
       if (!id || L.stool === "fillet") return setEditPreview(null);
       if (L.stool === "trim") {
@@ -753,24 +757,41 @@ export function useSketch(d: SketchDeps) {
       const L = live.current;
       if (!L.sketch) return null;
       if (tool === "coincident") {
-        const snapped = pointPickAt(xy, L.sketch, 8 * px, L.origin);
+        const snapped = pointPickAt(xy, L.sketch, reach * px, L.origin);
         if (snapped) return snapped;
       }
       // Horizontal/Vertical snaps to points and the origin too (not midpoints, which stand for their line).
       if (tool === "horizontalVertical") {
-        const snapped = pointPickAt(xy, L.sketch, 8 * px, L.origin);
+        const snapped = pointPickAt(xy, L.sketch, reach * px, L.origin);
         if (snapped && snapped.kind !== "middle") return snapped;
       }
-      const id = pickAt(xy, L.sketch, 8 * px, L.origin);
+      const id = pickAt(xy, L.sketch, reach * px, L.origin);
       return id ? { id } : null;
+    };
+
+    /** Adds a drawing tool's click, and draws the shape once it has them all. */
+    const addClick = (s: Snap) => {
+      const L = live.current;
+      const all = [...L.clicks, s];
+      const need = CLICKS[L.stool as keyof typeof CLICKS];
+      if (all.length >= need) finishShape(all);
+      else setClicks(all);
     };
 
     eng.setInput({
       down: (p, mods) => {
         const L = live.current;
+        reach = mods.touch ? 18 : 8;
         const hit = at(p);
         if (!hit || !L.sketch) return false;
         if (L.placing) {
+          if (mods.touch) {
+            // The size jumps to the finger, follows it, and goes down where it lifts.
+            const pl = L.placing;
+            setPlacing({ ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy) });
+            tap = true;
+            return true;
+          }
           L.place();
           return true;
         }
@@ -792,7 +813,7 @@ export function useSketch(d: SketchDeps) {
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
         if (L.stool === "select" || L.stool === "dimension") {
-          const id = pickAt(hit.xy, L.sketch, 8 * hit.px, L.origin);
+          const id = pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
           if (L.stool === "dimension") {
             if (!id) return false;
             const picked = [...L.sel.filter((x) => x !== id), id];
@@ -818,14 +839,18 @@ export function useSketch(d: SketchDeps) {
           return true;
         }
         const s = snapAt(hit.xy, hit.px, mods);
-        const all = [...L.clicks, s];
-        const need = CLICKS[L.stool as keyof typeof CLICKS];
-        if (all.length >= need) finishShape(all);
-        else setClicks(all);
+        if (mods.touch) {
+          // No hover with a finger: show the point now, let it slide to a snap, and place it on lift.
+          tap = true;
+          setCursor(s);
+          return true;
+        }
+        addClick(s);
         return true;
       },
       move: (p, mods, pressed) => {
         const L = live.current;
+        if (!pressed) reach = mods.touch ? 18 : 8;
         const hit = at(p);
         if (!hit || !L.sketch) return;
         if (L.placing) {
@@ -863,16 +888,32 @@ export function useSketch(d: SketchDeps) {
           return;
         }
         if (L.stool === "select" || L.stool === "dimension") {
-          setHover(pickAt(hit.xy, L.sketch, 8 * hit.px, L.origin));
+          setHover(pickAt(hit.xy, L.sketch, reach * hit.px, L.origin));
           setCursor(null);
           return;
         }
         setHover(null);
         setCursor(snapAt(hit.xy, hit.px, mods));
       },
-      up: () => {
+      up: (p, mods) => {
         if (drag?.moved) store.seal();
         drag = null;
+        if (!tap) return;
+        tap = false;
+        const L = live.current;
+        if (L.placing) {
+          L.place();
+          return;
+        }
+        const hit = at(p);
+        if (hit && L.sketch) addClick(snapAt(hit.xy, hit.px, mods));
+      },
+      cancel: () => {
+        // A second finger came down to pinch or pan: nothing goes in.
+        if (drag?.moved) store.seal();
+        drag = null;
+        tap = false;
+        setCursor(null);
       },
       leave: () => {
         setHover(null);
