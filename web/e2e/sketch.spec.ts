@@ -302,10 +302,52 @@ test("place a point, size it from the origin, and put a line through the origin"
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Constrain", exact: true }).click();
   await page.getByRole("menuitem", { name: "Coincident" }).click();
-  await click(page, -12.5, 20);
+  // Off the line's middle, which Coincident would snap to.
+  await click(page, -8.75, 25);
   await click(page, 0, 0);
   await expect(constraints.filter({ hasText: "On" })).toHaveCount(1);
   await page.screenshot({ path: test.info().outputPath("origin.png") });
   // The line now runs through the origin.
   await page.keyboard.press("Escape");
+});
+
+test("Coincident snaps to the origin and a midpoint, and a constraint mark doesn't get in the way", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+
+  // A rectangle round the origin and a point in it.
+  await page.keyboard.press("r");
+  await click(page, -20, -10);
+  await click(page, 20, 10);
+  await page.keyboard.press("p");
+  await click(page, 10, 5);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Constrain", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Coincident" }).click();
+  // Near the top line's midpoint the pointer snaps to it; further off it lets go.
+  const near = await at(page, 0.5, 9.6);
+  await page.mouse.move(near.x, near.y, { steps: 3 });
+  await expect(page.locator(".bc-snap-label", { hasText: "Middle" })).toBeVisible();
+  const off = await at(page, 6, 3);
+  await page.mouse.move(off.x, off.y, { steps: 3 });
+  await expect(page.locator(".bc-snap-label", { hasText: "Middle" })).toHaveCount(0);
+
+  // The point onto the top line's midpoint: a midpoint constraint.
+  await click(page, 10, 5);
+  await click(page, 0.5, 9.6);
+  await expect(constraints.filter({ hasText: "Midpoint" })).toHaveCount(1);
+
+  // Its mark sits by the line; with the tool armed a click on the mark reaches what is under it, never the mark.
+  const mark = page.getByRole("button", { name: "Midpoint constraint", exact: true });
+  await expect(mark).toHaveCSS("pointer-events", "none");
+  await page.keyboard.press("Escape");
+  await expect(mark).toHaveCSS("pointer-events", "auto");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });

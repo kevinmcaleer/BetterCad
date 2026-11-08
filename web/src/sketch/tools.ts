@@ -13,7 +13,7 @@ import {
   type NewConstraint,
 } from "@bettercad/sketch";
 import type { IconName } from "@bettercad/ui";
-import { ORIGIN, isAtOrigin, type Snap } from "./snap";
+import { ORIGIN, isAtOrigin, middleLine, type Snap } from "./snap";
 
 /**
  * The drawing tools (#53) as data: how many clicks each needs, what to preview while the pointer moves, which sizes
@@ -334,7 +334,32 @@ export const MIDPOINT_OF_FIRST = "@midpoint";
  * fit. Midpoint on two lines adds a construction point at the first line's midpoint and ties both lines to it.
  */
 export function addConstraints(type: ConstraintToolId, base: Sketch, chosen: Id[], origin?: Vec2): Sketch | string {
+  const hint = constraintToolById(type).hint;
+  // Only geometry, the origin and line midpoints are picks: a constraint or size picked by its mark is not.
+  const known = new Set(base.entities.map((e) => e.id));
+  if (chosen.some((id) => id !== ORIGIN && !known.has(middleLine(id) ?? id))) return hint;
   const { sketch, picked } = resolveOrigin(base, chosen, origin);
+  if (new Set(picked).size < picked.length) return type === "coincident" ? "Pick two different points" : hint;
+  const middles = picked.flatMap((id) => middleLine(id) ?? []);
+  if (middles.length) {
+    // Coincident on a line's midpoint is a midpoint constraint; any other tool takes the line itself.
+    if (type !== "coincident")
+      return addConstraints(
+        type,
+        sketch,
+        picked.map((id) => middleLine(id) ?? id),
+        origin,
+      );
+    const others = picked.filter((id) => !middleLine(id));
+    const point = others.length === 1 && sketch.entities.find((e) => e.id === others[0])?.kind === "point" ? others[0]! : null;
+    if (middles.length === 2 && middles[0] !== middles[1]) return addConstraints("midpoint", sketch, middles, origin);
+    if (middles.length === 1 && point) {
+      const line = sketch.entities.find((e) => e.id === middles[0]);
+      if (line?.kind === "line" && (line.a === point || line.b === point)) return "A line's end can't sit on its own midpoint";
+      return addConstraints("midpoint", sketch, [point, middles[0]!], origin);
+    }
+    return hint;
+  }
   const out = constraintsFor(type, sketch, picked);
   if (typeof out === "string") return out;
   const dr = new Draft(sketch);
