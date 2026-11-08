@@ -1,3 +1,4 @@
+import { vi } from "vitest";
 import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -256,5 +257,71 @@ describe("joints in the browser (#172)", () => {
     // Children come after their parent.
     const order = items.map((i) => i.id);
     expect(order.indexOf("L2")).toBeGreaterThan(order.indexOf("L1"));
+  });
+});
+
+describe("named poses in the browser (#177)", () => {
+  function robot(over: Partial<BrowserModel> = {}): BrowserModel {
+    let d = addPart(addPart(newDoc("Arm"), "box", "a"), "box", "b");
+    d = addLink(d, ["b"], "L1");
+    d = addJoint(d, { kind: "revolute", child: "L1", parent: null, origin: [0, 0, 0], axis: [0, 0, 1], lower: -90, upper: 90 }, "J1");
+    const b = build(d);
+    return { ...model(), parts: b.parts, links: b.links, joints: b.joints, poses: [{ id: "p1", name: "Reach" }], ...over };
+  }
+  const panel = (m: BrowserModel, spy: { onPose?: (id: string | null) => void; onSavePose?: () => void; onDeletePose?: (id: string) => void } = {}) => (
+    <BrowserPanel
+      model={m}
+      selection={[]}
+      onSelect={() => {}}
+      onAdd={() => {}}
+      onToggle={() => {}}
+      onBodiesHidden={() => {}}
+      onSketchesHidden={() => {}}
+      onOrigin={() => {}}
+      onPicked={() => {}}
+      onSelectSketch={() => {}}
+      onRename={() => {}}
+      onRenameModel={() => {}}
+      onRenameSketch={() => {}}
+      onReorder={() => {}}
+      onSketchOn={() => {}}
+      partMenu={() => []}
+      sketchMenu={() => []}
+      renameId={null}
+      onRenameIdChange={() => {}}
+      {...spy}
+    />
+  );
+
+  it("lists Home and each pose under Poses once there are joints, marking the one the joints are in", () => {
+    expect(browserItems(model()).some((i) => i.id === ROW.poses)).toBe(false);
+    const items = browserItems(robot({ atPose: "p1" }));
+    expect(items.filter((i) => i.parentId === ROW.poses).map((i) => [i.name, i.note])).toEqual([
+      ["Home", undefined],
+      ["Reach", "Now"],
+    ]);
+  });
+
+  it("goes to a pose on click, and saves and deletes from the menu", async () => {
+    const onPose = vi.fn();
+    const onSavePose = vi.fn();
+    const onDeletePose = vi.fn();
+    render(panel(robot(), { onPose, onSavePose, onDeletePose }));
+    await userEvent.click(screen.getByText("Reach"));
+    expect(onPose).toHaveBeenCalledWith("p1");
+    await userEvent.click(screen.getByText("Home"));
+    expect(onPose).toHaveBeenLastCalledWith(null);
+    fireEvent.contextMenu(row(/^Poses/));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Save pose/ }));
+    expect(onSavePose).toHaveBeenCalled();
+    fireEvent.contextMenu(row(/^Reach/));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Delete/ }));
+    expect(onDeletePose).toHaveBeenCalledWith("p1");
+  });
+
+  it("offers only Go to in a shared model", () => {
+    render(panel(robot({ readOnly: true })));
+    fireEvent.contextMenu(row(/^Reach/));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Go to Reach"]);
   });
 });
