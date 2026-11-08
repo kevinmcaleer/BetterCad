@@ -118,7 +118,7 @@ const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!)
  */
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
   { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
-  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve"]) },
+  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "gear"]) },
   { id: "change", label: "Change", tools: byId(["combine", "hole", "fillet", "shell", "mount"]) },
   { id: "check", label: "Check", tools: byId(["measure", "section"]) },
 ];
