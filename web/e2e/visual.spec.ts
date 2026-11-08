@@ -9,7 +9,7 @@ const SIZES = [
   { name: "desktop", width: 1280, height: 800 },
   { name: "phone", width: 390, height: 844 },
 ];
-const BLOCKS = ["buttons", "toolbar", "fields", "rail", "tree", "props", "menu", "dialog", "banner"];
+const BLOCKS = ["buttons", "toolbar", "panel", "fields", "rail", "tree", "props", "menu", "dialog", "banner"];
 
 for (const theme of THEMES) {
   for (const size of SIZES) {

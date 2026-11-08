@@ -100,7 +100,7 @@ test("the picked edges show as a list, and reopening the step keeps them", async
   if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/fillet-preview.png` });
   await list.getByRole("button", { name: "Take Edge 2 out" }).click();
   await expect(page.getByText("1 edge on Box 1.")).toBeVisible();
-  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "OK", exact: true }).click();
   await expect(page.getByText("Rounded 1 edge of Box 1, 4 mm")).toBeVisible();
 
   await page

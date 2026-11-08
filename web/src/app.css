@@ -195,6 +195,25 @@ body {
 .bc-app .bc-stage-bars .bc-armed-note {
   white-space: normal;
 }
+/*
+ * A tool's settings panel stands tall at the right of the view, like Fusion's feature dialog. On a wide screen it
+ * takes the properties panel's place (you are setting up a step, not looking at a part), so the model keeps the clear
+ * area it had. Under 900px it floats under the view cube; on a phone it is a sheet along the bottom. Its title folds
+ * it away.
+ */
+.bc-app .bc-stage-bars > .bc-fpanel {
+  position: fixed;
+  top: var(--bc-view-top);
+  right: var(--bc-float-gap);
+  width: var(--bc-props-width);
+  max-height: calc(100dvh - var(--bc-view-top) - var(--bc-view-bottom));
+}
+.bc-app:has(.bc-stage-bars > .bc-fpanel) {
+  --bc-view-right: calc(var(--bc-props-width) + 2 * var(--bc-float-gap));
+}
+.bc-app:has(.bc-stage-bars > .bc-fpanel) .bc-right {
+  visibility: hidden;
+}
 /* The help line floats just above the timeline, and the timeline sits flush on the bottom edge, so the model gets
    every pixel above it. */
 .bc-stage-foot {
@@ -806,6 +825,17 @@ kbd {
   .bc-app .bc-stage-bars {
     right: var(--bc-view-right);
   }
+  .bc-app .bc-stage-bars > .bc-fpanel {
+    top: calc(var(--bc-view-top) + var(--bc-bars-room) + var(--bc-viewcube-room));
+    width: 300px;
+    max-height: calc(100dvh - var(--bc-view-top) - var(--bc-bars-room) - var(--bc-viewcube-room) - var(--bc-view-bottom));
+  }
+  .bc-app:has(.bc-stage-bars > .bc-fpanel) {
+    --bc-view-right: var(--bc-float-gap);
+  }
+  .bc-app:has(.bc-stage-bars > .bc-fpanel) .bc-right {
+    visibility: visible;
+  }
   /* The tool bars take the top width, so the cube sits just under them. */
   .bc-app .bc-viewcube {
     top: calc(var(--bc-view-top) + var(--bc-bars-room));
@@ -818,6 +848,14 @@ kbd {
   }
 }
 @media (max-width: 640px) {
+  /* A sheet along the bottom, no taller than 45% of the view, so the model shows above it. */
+  .bc-app .bc-stage-bars > .bc-fpanel {
+    top: auto;
+    left: var(--bc-float-gap);
+    bottom: var(--bc-view-bottom);
+    width: auto;
+    max-height: 45dvh;
+  }
   /* A shorter tool bar on a phone. */
   .bc-app,
   .bc-app.bc-left-closed {

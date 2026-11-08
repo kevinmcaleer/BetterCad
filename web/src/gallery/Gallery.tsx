@@ -1,6 +1,11 @@
 import { useState, type ReactNode } from "react";
 import {
   ArmedBar,
+  FeatureCheck,
+  FeaturePanel,
+  FeaturePicker,
+  FeatureRow,
+  PanelNote,
   Banner,
   Button,
   Dialog,
@@ -201,6 +206,28 @@ function Column({ theme }: { theme: ThemeId }) {
         </ArmedBar>
         <div className="bc-gallery-gap" />
         <TooltipSample text="Move (M)" />
+      </Block>
+
+      <Block id="panel" title="Feature panel">
+        <FeaturePanel
+          title="Revolve"
+          icon="revolve"
+          cancel={{ title: "Take the revolve back", onClick: () => {} }}
+          ok={{ title: "Keep the revolve", onClick: () => {} }}
+        >
+          <FeaturePicker label="Profile" count={1} empty="Pick shapes" title="The closed shapes it turns" onPick={() => {}} onClear={() => {}} />
+          <FeaturePicker label="Axis" count={1} empty="Pick an axis" title="What it turns round" onPick={() => {}} onClear={() => {}} />
+          <NumberField label="Angle" value={360} unit="°" onChange={() => {}} />
+          <FeatureCheck label="Symmetric" title="Turn half the angle each way" on={false} onChange={() => {}} />
+          <FeatureRow label="Operation">
+            <span role="group" aria-label="Operation" className="bc-segmented">
+              <Button label="New body" on />
+              <Button label="Join" />
+              <Button label="Cut" />
+            </span>
+          </FeatureRow>
+          <PanelNote>Click an axis, a sketch line or a straight edge.</PanelNote>
+        </FeaturePanel>
       </Block>
 
       <Block id="fields" title="Number fields">

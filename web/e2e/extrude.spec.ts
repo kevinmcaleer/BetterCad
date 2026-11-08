@@ -161,7 +161,7 @@ test("cut a hole right through a body with Through all", async ({ page }) => {
   await bar.getByRole("button", { name: /^Distance/ }).click();
   await page.getByRole("menuitemradio", { name: "Through all" }).click();
   await expect(page.getByRole("textbox", { name: "Distance" })).toHaveCount(0);
-  await bar.getByRole("button", { name: /^Done/ }).click();
+  await bar.getByRole("button", { name: /^OK/ }).click();
   await expect(page.getByText("Cut one shape through all")).toBeVisible();
 
   // 30 × 20 × 20 less a 6 mm hole 20 mm long.
@@ -233,6 +233,6 @@ test("cut up to a face, then drag the arrow to set how deep", async ({ page }) =
   await page.mouse.move(to.x, to.y, { steps: 8 });
   await page.mouse.up();
   await expect(distance).toHaveValue(/^(9\.\d|10(\.\d)?)/);
-  await bar.getByRole("button", { name: /^Done/ }).click();
+  await bar.getByRole("button", { name: /^OK/ }).click();
   await expect(page.getByText(/Cut one shape (9\.\d|10(\.\d)?) mm deep/)).toBeVisible();
 });

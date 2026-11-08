@@ -1,0 +1,183 @@
+/* The tall floating panel for a tool's settings (Fusion's feature dialog): title, labelled rows, Cancel and OK.
+   Where it floats is the shell's business (app.css). Colours come only from tokens.css. */
+.bc-fpanel {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-width: 100%;
+  min-height: 0;
+  border: 1px solid var(--bc-color-accent);
+  border-radius: var(--bc-radius-lg);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  font-size: 12px;
+  color: var(--bc-color-ink);
+}
+.bc-fpanel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-4);
+  padding: var(--bc-space-3) var(--bc-space-3) var(--bc-space-3) var(--bc-space-6);
+  border-bottom: 1px solid var(--bc-color-line);
+}
+.bc-fpanel.bc-folded .bc-fpanel-head {
+  border-bottom: 0;
+}
+.bc-fpanel-fold {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-muted);
+  cursor: pointer;
+}
+.bc-fpanel-fold:hover {
+  color: var(--bc-color-ink);
+  background: var(--bc-color-accent-soft);
+}
+.bc-fpanel-fold[aria-expanded="false"] .bc-icon {
+  transform: rotate(180deg);
+}
+.bc-fpanel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-4);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--bc-space-5) var(--bc-space-6);
+}
+.bc-fpanel-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-4) var(--bc-space-6);
+  border-top: 1px solid var(--bc-color-line);
+}
+.bc-fpanel.bc-folded .bc-fpanel-foot {
+  border-top: 0;
+  padding-top: 0;
+}
+.bc-fpanel-foot .bc-btn {
+  min-width: 72px;
+  justify-content: center;
+}
+
+/* A row: the setting's name in a fixed column, the control filling the rest. */
+.bc-fpanel {
+  --bc-frow-label: 88px;
+}
+.bc-frow,
+.bc-fpanel-body > .bc-field {
+  display: grid;
+  grid-template-columns: var(--bc-frow-label) minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--bc-space-4);
+  min-height: var(--bc-control);
+}
+.bc-frow-label,
+.bc-fpanel-body > .bc-field > .bc-scrub {
+  color: var(--bc-color-muted);
+  overflow-wrap: anywhere;
+}
+.bc-frow-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bc-space-2);
+  min-width: 0;
+}
+.bc-frow-ctl > .bc-btn,
+.bc-frow-ctl > .bc-segmented {
+  flex: 1 1 auto;
+}
+.bc-frow-ctl > .bc-btn {
+  justify-content: flex-start;
+  min-width: 0;
+}
+.bc-frow-ctl > .bc-btn > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Controls in a row look like fields: outlined, and a menu shows its chevron. */
+.bc-frow-ctl > .bc-btn {
+  box-shadow: inset 0 0 0 1px var(--bc-color-line);
+}
+.bc-frow-ctl > .bc-btn[aria-haspopup]::after {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-right: 1.5px solid var(--bc-color-muted);
+  border-bottom: 1.5px solid var(--bc-color-muted);
+  transform: translateY(-2px) rotate(45deg);
+}
+/* A panel has room for its words on a phone too, where icon buttons elsewhere drop theirs. */
+.bc-fpanel .bc-btn .bc-icon + span {
+  display: inline;
+}
+.bc-fpanel-body > .bc-field > .bc-field-error {
+  grid-column: 2;
+}
+/* Toggles in a row share it and wrap when they run out of room. */
+.bc-fpanel .bc-segmented {
+  display: flex;
+  flex-wrap: wrap;
+}
+.bc-fpanel .bc-segmented > .bc-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+/* A picker: "1 selected", lit while picking, with an × to clear. */
+.bc-picker {
+  flex-wrap: nowrap;
+}
+.bc-picker-btn {
+  flex: 1 1 auto;
+}
+.bc-fcheck {
+  cursor: pointer;
+}
+.bc-fcheck input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--bc-color-accent);
+}
+.bc-fpanel-note {
+  margin: 0;
+  color: var(--bc-color-muted);
+  line-height: 1.4;
+}
+.bc-fpanel-note.bc-armed-error {
+  color: var(--bc-color-danger);
+}
+/* A list inside a row, such as Fillet's picked edges. */
+.bc-fpanel .bc-pick-list {
+  grid-column: 1 / -1;
+}
+/* While shapes are being picked again: what to do, and the way out. */
+.bc-fpanel-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-4);
+}
+/* A list of choices too long to share a line, one under another (Joint's kinds). */
+.bc-fpanel .bc-segmented.bc-stack {
+  flex-direction: column;
+}
+.bc-fpanel .bc-segmented.bc-stack > .bc-btn {
+  justify-content: flex-start;
+}
+/* Opens the finer settings under it (Gear's More settings). */
+.bc-fpanel-more {
+  align-self: flex-start;
+}
+.bc-fpanel-more[aria-expanded="true"] .bc-icon {
+  transform: rotate(180deg);
+}

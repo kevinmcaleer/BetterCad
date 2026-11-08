@@ -24,7 +24,7 @@ test("mirror a box, switch to a row of four, then join them into one body", asyn
   await expect(bodyRows(page)).toHaveCount(4);
 
   // Four 20 mm cubes side by side, 20 mm apart: one 80 × 20 × 20 mm bar.
-  await page.getByRole("button", { name: "Join", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Join" }).check();
   await expect(bodyRows(page)).toHaveCount(1);
   await page.keyboard.press("Enter");
   await expect(page.getByText("Patterned 1 body, joined")).toBeVisible();
