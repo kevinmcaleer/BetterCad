@@ -140,4 +140,14 @@ Check for clashes (command palette, or Check clashes under Properties with nothi
 - Pairs that only touch, with no volume between them, are listed under Touching, because printed parts that touch fuse or bind.
 - Bodies in the same link are skipped, since they move together; tick Bodies in the same link to include them. Reference bodies are left out unless Reference bodies is ticked. Holes never clash.
 - The work runs in the kernel worker: bounding boxes first, then the exact common solid (`BRepAlgoAPI_Common`) of each pair whose boxes meet. A pair with none is touching when its gap is under 1 µm. Progress shows while it runs, and Esc or Stop ends it.
-- Not done yet: a triangle pass on the display meshes before the exact check, and checking a named pose (#177) instead of the saved one.
+- At picks the pose to check: the one now, Home, or a named pose (#177).
+- Not done yet: a triangle pass on the display meshes before the exact check.
+
+## Named poses (#177)
+
+Save pose (command palette, or right-click Poses in the browser) keeps every joint's value under a name, "Pose 1" until you type another. Poses sit under Joints in the browser, with Home always first.
+
+- Click a pose to go to it. The joints move there over 300 ms, or at once with reduced motion. Each go is one undo step, "Go to Reach". The pose the joints are in now is marked Now.
+- Right-click a pose to update it to the joints now, rename it (or press F2) or delete it.
+- Poses are saved in the `.bcad` file (`poses`, beside `pose`). A pose whose joint was deleted drops that joint, and the status says how many were left out. Values are kept to each joint's limits as they are now.
+- The clash check (At) and Export as posed (Pose) can use a named pose. A shared, view-only model lists its poses and can go to them, but can't change them.

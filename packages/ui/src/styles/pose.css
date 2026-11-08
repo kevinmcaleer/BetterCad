@@ -80,3 +80,8 @@
   font-weight: 600;
   color: var(--bc-color-muted);
 }
+.bc-clash-at {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+}

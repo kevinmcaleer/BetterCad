@@ -38,6 +38,18 @@
         "looks": { "type": "object" },
         "print": { "type": "object" },
         "pose": { "type": "object", "additionalProperties": { "type": "number" } },
+        "poses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "values"],
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "values": { "type": "object", "additionalProperties": { "type": "number" } }
+            }
+          }
+        },
         "order": { "type": "array", "items": { "type": "string" } },
         "views": {
           "type": "array",
