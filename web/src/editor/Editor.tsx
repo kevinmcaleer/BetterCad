@@ -85,6 +85,7 @@ import {
   DEFAULT_INFILL,
   type Box3,
   type PrintSettings,
+  type CombineParams,
   type Feature,
   type ModelDoc,
   type PartKind,
@@ -106,6 +107,7 @@ import { ParamsPanel } from "./ParamsPanel";
 import { CommandPalette } from "./CommandPalette";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
+import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
 import { useFiles } from "../files/useFiles";
 import { importFiles } from "../files/importFiles";
 import { useDrop } from "../files/useDrop";
@@ -117,7 +119,7 @@ import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
-import { CombineBar, type CombineOp } from "./CombineBar";
+import type { CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
 import { usePushPull } from "../finish/usePushPull";
 import { useHole } from "../hole/useHole";
@@ -161,6 +163,7 @@ const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: 
 const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
+const CombineBar = lazy(() => import("./CombineBar").then((m) => ({ default: m.CombineBar })));
 const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
 // The sketch palette only shows while a sketch is open, so it loads then.
 const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
@@ -213,6 +216,12 @@ function readTimelineShown() {
   } catch {
     return true;
   }
+}
+
+/** A combine step: the first body keeps, the rest join, cut (grown by the fit's gap) or intersect it. */
+function combineParams(target: string, tools: string[], op: CombineOp, keep: boolean, fit: FitChoice, print?: PrintSettings): CombineParams {
+  const list = tools.map((t) => (op === "cut" ? cutTool(t, fit.fit, fit.gap, print) : { id: t, op }));
+  return { mode: "combine", target, tools: list, keepTools: keep };
 }
 
 function useMedia(query: string) {
@@ -576,11 +585,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     record,
     update: (fn, label) => store.edit(fn, label),
     parts,
+    meshes: kernel.bodies,
+    doc,
+    at,
     view: vp.ref,
     tool: sketch.editing ? null : tool === "fillet" || tool === "shell" ? tool : null,
     onClose: () => setTool("select"),
     say,
   });
+  const finishPreview = usePreview(kernel.call, finish.preview);
+  // Combine shows its result as the bodies are picked and the settings change.
+  const combineRequest = useMemo<PreviewRequest | null>(() => {
+    const [target, ...tools] = selection;
+    if (tool !== "combine" || sketch.editing || !target || !tools.length) return null;
+    const params = combineParams(target, tools, combineOp, keepTools, combineFit, doc.print);
+    return { doc: addCombine(doc, params, PREVIEW_ID, at), upTo: at + 1, step: PREVIEW_ID, show: [target], dim: keepTools ? [] : tools };
+  }, [tool, sketch.editing, selection, combineOp, keepTools, combineFit, doc, at]);
+  const combinePreview = usePreview(kernel.call, combineRequest);
+  const preview = finish.preview ? finishPreview.bodies : combineRequest ? combinePreview.bodies : null;
   // While sketching the model goes faint, so the sketch reads on top of it. Project needs the faces solid to pick them.
   const ghostParts = sketch.editing && sketch.stool !== "project";
   const viewParts = useMemo(() => parts.map((p) => (ghostParts || p.hole ? { ...p, ghost: true } : p)), [parts, ghostParts]);
@@ -737,9 +759,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     (ids: string[], op: CombineOp, keep: boolean, fit: FitChoice = NO_FIT) => {
       const [target, ...tools] = ids;
       if (!target || !tools.length) return say("Select the body to keep, then the bodies to combine with it", true);
-      const print = live.current.doc.print;
-      const list = tools.map((t) => (op === "cut" ? cutTool(t, fit.fit, fit.gap, print) : { id: t, op }));
-      record((d, at) => addCombine(d, { mode: "combine", target, tools: list, keepTools: keep }, newId("f"), at), "Combine");
+      const params = combineParams(target, tools, op, keep, fit, live.current.doc.print);
+      record((d, at) => addCombine(d, params, newId("f"), at), "Combine");
       setSelection([target]);
       setTool("select");
       say(`Combined ${tools.length === 1 ? "1 body" : `${tools.length} bodies`}`);
@@ -2134,12 +2155,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     const f = store.get().features[i];
     if (!f || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell")) return;
     const back = live.current.marker;
+    // A step that built keeps its picks: they number the edges of the body just before it, which has not changed.
+    const keep = !failed.has(f.id) && f.refs.length > 0;
     moveMarker(i);
     setTool(f.type === "shell" ? "shell" : "fillet");
-    finish.repick(f, () => setMarker(back));
-    say(
-      `Pick the ${f.type === "shell" ? "faces to leave open" : "edges"} again on ${parts.find((p) => p.id === f.part)?.name ?? "the body"}, then press Enter`,
-    );
+    finish.repick(f, () => setMarker(back), keep);
+    const name = parts.find((p) => p.id === f.part)?.name ?? "the body";
+    const what = f.type === "shell" ? "faces to leave open" : "edges";
+    say(keep ? `Change the ${what} or the size on ${name}, then press Enter` : `Pick the ${what} again on ${name}, then press Enter`);
   };
   /**
    * A double-click or double-tap on a timeline tile (#73): a sketch opens in sketch mode, a step with settings opens
@@ -2495,22 +2518,25 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
               {(tool === "fillet" || tool === "shell") && (
                 <Suspense fallback={null}>
-                  <FinishBar f={finish} onCancel={() => setTool("select")} />
+                  <FinishBar f={finish} preview={finishPreview} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
               {tool === "combine" && (
-                <CombineBar
-                  picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
-                  op={combineOp}
-                  onOp={setCombineOp}
-                  keepTools={keepTools}
-                  onKeepTools={setKeepTools}
-                  fit={combineFit}
-                  onFit={setCombineFit}
-                  tuned={doc.print?.fits}
-                  onApply={() => combine(selection, combineOp, keepTools, combineFit)}
-                  onCancel={() => setTool("select")}
-                />
+                <Suspense fallback={null}>
+                  <CombineBar
+                    picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
+                    op={combineOp}
+                    onOp={setCombineOp}
+                    keepTools={keepTools}
+                    onKeepTools={setKeepTools}
+                    fit={combineFit}
+                    onFit={setCombineFit}
+                    tuned={doc.print?.fits}
+                    onApply={() => combine(selection, combineOp, keepTools, combineFit)}
+                    error={combineRequest ? combinePreview.error : null}
+                    onCancel={() => setTool("select")}
+                  />
+                </Suspense>
               )}
             </>
           )
@@ -2522,6 +2548,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             meshes={kernel.bodies}
             engine={kernel.state}
             picks={finish.tool ? finish.picks : tool === "measure" ? measure.picks : vp.picks}
+            preview={preview}
             filter={vp.filter}
             mode={vp.mode}
             style={vp.style}
