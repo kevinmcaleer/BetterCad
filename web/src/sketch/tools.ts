@@ -1,4 +1,17 @@
-import { Draft, arcFrom3, dist, polygonPoints, sub, angleOf, sampleArc, type Id, type Sketch, type Vec2, type NewConstraint } from "@bettercad/sketch";
+import {
+  Draft,
+  arcFrom3,
+  type SolveResult,
+  dist,
+  polygonPoints,
+  sub,
+  angleOf,
+  sampleArc,
+  type Id,
+  type Sketch,
+  type Vec2,
+  type NewConstraint,
+} from "@bettercad/sketch";
 import type { IconName } from "@bettercad/ui";
 import type { Snap } from "./snap";
 
@@ -250,10 +263,37 @@ export const CONSTRAINT_TOOLS: ConstraintTool[] = [
   { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves" },
   { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs" },
   { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs" },
-  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line" },
+  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line, or two lines to line up their midpoints" },
   { id: "fix", label: "Fix", hint: "Pick points, lines or curves" },
   { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line" },
 ];
+
+/** Stands in for a new construction point at the first picked line's midpoint; `addConstraints` makes it. */
+export const MIDPOINT_OF_FIRST = "@midpoint";
+
+/**
+ * A constraint tool on a selection: the sketch with its constraints added, or the hint when the selection does not
+ * fit. Midpoint on two lines adds a construction point at the first line's midpoint and ties both lines to it.
+ */
+export function addConstraints(type: ConstraintTool["id"], sketch: Sketch, picked: Id[]): Sketch | string {
+  const out = constraintsFor(type, sketch, picked);
+  if (typeof out === "string") return out;
+  const dr = new Draft(sketch);
+  let mid: Id | undefined;
+  for (const c of out) {
+    if (c.type === "midpoint" && c.p === MIDPOINT_OF_FIRST) {
+      if (!mid) {
+        const l = sketch.entities.find((e) => e.id === c.line);
+        if (l?.kind !== "line") return CONSTRAINT_TOOLS.find((t) => t.id === type)!.hint;
+        const [ax, ay] = dr.xy(l.a);
+        const [bx, by] = dr.xy(l.b);
+        mid = dr.point([(ax + bx) / 2, (ay + by) / 2], true);
+      }
+      dr.constrain({ ...c, p: mid });
+    } else dr.constrain(c);
+  }
+  return dr.done().sketch;
+}
 
 /**
  * The constraints a constraint tool adds for a selection, or the hint when the selection does not fit. Lines and
@@ -288,7 +328,18 @@ export function constraintsFor(type: ConstraintTool["id"], sketch: Sketch, picke
     case "midpoint": {
       const p = picked[kinds.indexOf("point")];
       const line = picked[kinds.indexOf("line")];
-      return two && p && line ? [{ type, p, line }] : hint;
+      if (two && p && line) return [{ type, p, line }];
+      // Two lines: their midpoints meet, through one line's midpoint (a new construction point if it has none).
+      if (two && only(["line"])) {
+        const mid = sketch.constraints.find((c) => c.type === "midpoint" && !c.suppressed && c.line === a);
+        return mid?.type === "midpoint"
+          ? [{ type, p: mid.p, line: b }]
+          : [
+              { type, p: MIDPOINT_OF_FIRST, line: a },
+              { type, p: MIDPOINT_OF_FIRST, line: b },
+            ];
+      }
+      return hint;
     }
     case "fix": {
       const pts = new Set<Id>();
@@ -309,4 +360,16 @@ export function constraintsFor(type: ConstraintTool["id"], sketch: Sketch, picke
     default:
       return hint;
   }
+}
+
+/**
+ * The redundant constraints a strict change adds: none when the sketch was already this redundant before it (a fixed
+ * line that is also horizontal, say), so old redundancy never blocks a new constraint.
+ */
+export function newlyRedundant(before: Pick<SolveResult, "status" | "redundant"> | null, after: Pick<SolveResult, "status" | "redundant">): Id[] {
+  if (after.status !== "redundant") return [];
+  const old = new Set(before?.status === "redundant" ? before.redundant : []);
+  if (after.redundant.length <= old.size) return [];
+  const fresh = after.redundant.filter((id) => !old.has(id));
+  return fresh.length ? fresh : after.redundant;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { drawRectangle, newSketch, profiles } from "@bettercad/sketch";
-import { commit, constraintsFor, preview } from "./tools";
+import { Draft, Solver, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
+import { addConstraints, commit, constraintsFor, newlyRedundant, preview } from "./tools";
 import type { Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
@@ -65,5 +65,63 @@ describe("sketch tools", () => {
     const circle = commit("circle", line.sketch, [{ ...origin, ref: p }, free(5, 0)])!;
     expect(circle.sketch.constraints.filter((c) => c.type === "fix")).toHaveLength(1);
     expect(circle.sketch.entities.find((e) => e.kind === "circle")).toMatchObject({ c: p, r: 5 });
+  });
+
+  it("lines up two lines' midpoints, one of them fixed, the way Fusion's Midpoint does", async () => {
+    // A fixed 60 × 30 rectangle with a free, level trapezoid above it, off to one side.
+    const r = drawRectangle(newSketch(), [0, 0], [60, 30]);
+    const d = new Draft(r.sketch);
+    for (const e of r.sketch.entities) if (e.kind === "point") d.constrain({ type: "fix", p: e.id });
+    const t = drawPolyline(
+      d.done().sketch,
+      [
+        [5, 40],
+        [25, 40],
+        [30, 48],
+        [0, 48],
+      ],
+      true,
+    );
+    const idx = new SketchIndex(t.sketch);
+    const level = (s: Sketch, id: string) => {
+      const l = new SketchIndex(s).get(id) as { a: string; b: string };
+      return Math.abs(new SketchIndex(s).xy(l.a)[1] - new SketchIndex(s).xy(l.b)[1]) < 1e-6;
+    };
+    const rectTop = r.ids.find((id) => level(t.sketch, id) && idx.xy((idx.get(id) as { a: string }).a)[1] === 30)!;
+    const trapTop = t.ids[2]!;
+    const mid = (s: Sketch, id: string) => {
+      const i = new SketchIndex(s);
+      const l = i.get(id) as { a: string; b: string };
+      const [a, b] = [i.xy(l.a), i.xy(l.b)];
+      return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    };
+
+    // Two lines were refused before: now they share a construction point at both midpoints.
+    const out = addConstraints("midpoint", t.sketch, [trapTop, rectTop]);
+    if (typeof out === "string") throw new Error(out);
+    const added = out.entities.filter((e) => !t.sketch.entities.includes(e));
+    expect(added).toEqual([expect.objectContaining({ kind: "point", construction: true })]);
+    expect(out.constraints.filter((c) => c.type === "midpoint")).toHaveLength(2);
+
+    // The drawn rectangle is level and fixed, so it is redundant already, as Kev's projected one was. That old
+    // redundancy no longer blocks the new constraint; a repeat of one still does.
+    const solver = await Solver.load();
+    const before = solver.solve(t.sketch);
+    expect(before.status).toBe("redundant");
+    const solved = solver.solve(out);
+    expect(newlyRedundant(before, solved)).toEqual([]);
+    const repeat = addConstraints("horizontal", t.sketch, [trapTop]) as Sketch;
+    expect(newlyRedundant(before, solver.solve(repeat)).length).toBeGreaterThan(0);
+    const [x, y] = mid(solved.sketch, trapTop);
+    expect(x).toBeCloseTo(30);
+    expect(y).toBeCloseTo(30);
+    expect(mid(solved.sketch, rectTop)).toEqual([30, 30]);
+
+    // A line with a midpoint point already reuses it rather than adding another.
+    const reuse = addConstraints("midpoint", out, [trapTop, t.ids[0]!]) as Sketch;
+    expect(reuse.entities).toHaveLength(out.entities.length);
+    // A point and a line in either order still works.
+    const p = added[0]!.id;
+    expect(constraintsFor("midpoint", out, [t.ids[0]!, p])).toEqual([{ type: "midpoint", p, line: t.ids[0] }]);
   });
 });
