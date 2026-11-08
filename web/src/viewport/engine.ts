@@ -89,6 +89,8 @@ export interface EngineBody {
   reference?: boolean;
   /** The mesh is already in place (the kernel built it there); position and rotation only place the gizmo. */
   world?: boolean;
+  /** The body's own colour (#196), sRGB "#rrggbb", in place of the theme's part colour. */
+  colour?: string;
 }
 
 /**
@@ -1258,7 +1260,7 @@ export class Engine {
     const c = new Color();
     const c2 = new Color();
     for (const o of this.order) {
-      const base = c2.copy(o.body.highlight ? p["part-highlight"] : p["part-fill"]);
+      const base = o.body.highlight ? c2.copy(p["part-highlight"]) : o.body.colour ? c2.setStyle(o.body.colour) : c2.copy(p["part-fill"]);
       if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
       const attr = o.geometry.getAttribute("color") as BufferAttribute;

@@ -201,6 +201,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             ghost: p.ghost,
             reference: p.reference,
             highlight: p.highlight,
+            colour: p.colour && /^#[0-9a-f]{6}$/i.test(p.colour) ? p.colour : undefined,
             warn: props.warn?.has(p.id),
           };
         }),

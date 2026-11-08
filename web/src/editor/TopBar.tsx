@@ -142,7 +142,7 @@ export function TopBar(p: TopBarProps) {
             label="Download"
             align="end"
             entries={[
-              { id: "print", label: "STL, 3MF or STEP…", icon: "download", onSelect: () => p.onExport?.() },
+              { id: "print", label: "STL, 3MF, STEP or glTF…", icon: "download", onSelect: () => p.onExport?.() },
               { id: "bcad", label: "BetterCad model (.bcad)", icon: "save", onSelect: () => p.onDownloadBcad?.() },
             ]}
             trigger={(t) => <Button {...t} icon="download" label="Download" title="Download this model" />}

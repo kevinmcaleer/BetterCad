@@ -7,6 +7,7 @@ import { drawCentreRectangle, drawCircle, newSketch, planeFrame, removeEntities,
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
 import { partBounds, partFrame, type CataloguePart } from "./catalogue";
+import type { FinishId } from "./looks";
 export {
   CATALOGUE,
   CATALOGUE_CATEGORIES,
@@ -96,6 +97,10 @@ export interface Part {
   imported?: ImportSpec;
   /** A catalogue part (#187): the record it was inserted from, kept whole so a catalogue change never moves it. */
   catalogue?: CataloguePart;
+  /** Its colour (#196), sRGB "#rrggbb"; none means the theme's part colour. From its look. */
+  colour?: string;
+  /** Its finish in renders and glTF (#196). From its look. */
+  finish?: FinishId;
   /** A mirrored or turned copy of another body (#69), made from it as it stood. */
   copy?: CopySpec;
 }
@@ -371,6 +376,10 @@ export interface Look {
   fit?: FitId;
   /** A hole's custom gap, mm. */
   gap?: number;
+  /** Its colour (#196), sRGB "#rrggbb". Shown in the view, renders and glTF. */
+  colour?: string;
+  /** Its finish (#196): roughness and metalness in renders and glTF. */
+  finish?: FinishId;
 }
 
 export interface ModelDoc {
