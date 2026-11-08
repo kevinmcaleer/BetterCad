@@ -42,7 +42,7 @@ export interface View3DProps {
   onSection: (s: Section) => void;
   onCamera?: (c: CameraState) => void;
   /** The printer's bed to draw (#100), or null for none. */
-  bed?: { x: number; y: number; z: number; origin: "centre" | "corner" } | null;
+  bed?: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null;
   /** Bodies off the bed, tinted warn. */
   warn?: Set<string>;
   /** A print check's per-vertex tint by body (#101, #102). */
@@ -201,6 +201,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             ghost: p.ghost,
             reference: p.reference,
             highlight: p.highlight,
+            colour: p.colour && /^#[0-9a-f]{6}$/i.test(p.colour) ? p.colour : undefined,
             warn: props.warn?.has(p.id),
           };
         }),
@@ -222,7 +223,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   const check = props.check ?? null;
   useEffect(() => engine.current?.setCheck(check), [check, bodies]);
   const bed = props.bed;
-  const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin}` : "";
+  const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin},${bed.label ?? ""}` : "";
   useEffect(() => {
     engine.current?.setBed(bed ?? null);
     // Only a different bed redraws it.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Banner,
   Button,
@@ -103,7 +103,6 @@ import { useKernel } from "../kernel/useKernel";
 import { useFiles } from "../files/useFiles";
 import { importFiles } from "../files/importFiles";
 import { useDrop } from "../files/useDrop";
-import { ExportDialog } from "../export/ExportDialog";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
@@ -111,7 +110,7 @@ import type { Solver } from "@bettercad/sketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
-import { newProfileId, usePrinterProfiles } from "../print/profiles";
+import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
@@ -168,6 +167,9 @@ const NARROW = "(max-width: 899px)";
 const TIMELINE_KEY = "bettercad.timeline";
 
 const ORIENT_KEY = "bettercad.orientWeights";
+
+/** The Export dialog loads on first use, keeping the first-paint bundle in budget. */
+const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
 function readOrientWeights(): OrientWeights {
@@ -1814,7 +1816,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
     { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
-    { id: "export", label: "Export STL, 3MF or STEP…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
+    { id: "export", label: "Export STL, 3MF, STEP or glTF…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
     ...files.recentEntries,
     { kind: "separator", id: "s1" },
     account
@@ -2116,6 +2118,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onFeatureRenameIdChange={setFeatureRenameId}
               timelineShown={timelineShown}
               onTimelineShown={setTimelineShown}
+              bedShown={showBed}
+              onBedShown={setShowBed}
               theme={theme}
               onTheme={setTheme}
             />
@@ -2184,7 +2188,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onCamera={composedCamera}
             onHome={vp.goHome}
             cubeMenu={vp.cubeMenu}
-            bed={showBed && !share ? printer : null}
+            bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
             warn={offBed}
             check={checkResult?.values ?? null}
             originPlanes={{
@@ -2252,6 +2256,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 allParts={parts}
                 onHole={() => toggleHole(selection)}
                 onReference={() => toggleReference(selection)}
+                onColour={(colour) => store.edit((d) => setLook(d, selection, () => ({ colour })), colour ? "Set the colour" : "Clear the colour")}
+                onFinish={(finish) => store.edit((d) => setLook(d, selection, () => ({ finish })), "Set the finish")}
                 onFit={(c) =>
                   store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
                 }
@@ -2309,21 +2315,25 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
         say={say}
       />
-      <ExportDialog
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
-        onExported={tour.onExported}
-        printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
-        fitProblem={fitProblem}
-        doc={doc}
-        upTo={at}
-        parts={parts}
-        selection={selection}
-        call={kernel.call}
-        files={files.store}
-        say={say}
-        onGroup={(ids) => group(ids)}
-      />
+      {exportOpen && (
+        <Suspense fallback={null}>
+          <ExportDialog
+            open={exportOpen}
+            onClose={() => setExportOpen(false)}
+            onExported={tour.onExported}
+            printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
+            fitProblem={fitProblem}
+            doc={doc}
+            upTo={at}
+            parts={parts}
+            selection={selection}
+            call={kernel.call}
+            files={files.store}
+            say={say}
+            onGroup={(ids) => group(ids)}
+          />
+        </Suspense>
+      )}
       {versionsOpen && files.cloud && (
         <Versions
           api={api}

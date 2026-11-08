@@ -33,13 +33,16 @@ const p = (id: string, name: string, x: number, y: number, z: number, origin: Pr
 export const PRINTERS: readonly Printer[] = [
   p("bambu-a1-mini", "Bambu A1 Mini", 180, 180, 180, "centre"),
   p("bambu-a1", "Bambu A1, P1 or X1", 256, 256, 256, "centre"),
+  p("prusa-core-one", "Prusa Core One", 250, 220, 270, "centre"),
+  p("prusa-core-one-l", "Prusa Core One L", 300, 300, 330, "centre"),
   p("prusa-mk4", "Prusa MK4", 250, 210, 220, "centre"),
   p("prusa-mini", "Prusa Mini", 180, 180, 180, "centre"),
   p("ender-3", "Ender 3", 220, 220, 250, "corner"),
   p("elegoo-neptune-4", "Elegoo Neptune 4", 225, 225, 265, "corner"),
 ];
 
-export const DEFAULT_PRINTER = "bambu-a1";
+/** What a model without a chosen printer shows. A printer someone picked is stored in the model and wins. */
+export const DEFAULT_PRINTER = "prusa-core-one";
 
 /** The print settings a document keeps (#100, #105), so a shared model shows the bed its author meant. */
 export interface PrintSettings {

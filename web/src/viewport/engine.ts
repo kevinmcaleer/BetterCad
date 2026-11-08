@@ -42,6 +42,7 @@ import {
   ArrowHelper,
   type Camera,
   type Material,
+  type Texture,
 } from "three";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
@@ -88,6 +89,8 @@ export interface EngineBody {
   reference?: boolean;
   /** The mesh is already in place (the kernel built it there); position and rotation only place the gizmo. */
   world?: boolean;
+  /** The body's own colour (#196), sRGB "#rrggbb", in place of the theme's part colour. */
+  colour?: string;
 }
 
 /**
@@ -566,13 +569,15 @@ export class Engine {
    * The printer's bed (#100): a plate at Z = 0 with its outline, the build volume as a faint box, and the slicer's
    * origin marked (centre, or the front-left corner). null takes it away. The grid stays for snapping.
    */
-  setBed(bed: { x: number; y: number; z: number; origin: "centre" | "corner" } | null): void {
+  setBed(bed: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null): void {
     if (this.bed) {
       this.scene.remove(this.bed);
       this.bed.traverse((o) => {
         const m = o as Mesh;
         m.geometry?.dispose();
-        (m.material as Material | undefined)?.dispose();
+        const mat = m.material as (Material & { map?: Texture | null }) | undefined;
+        mat?.map?.dispose();
+        mat?.dispose();
       });
       this.bed = null;
     }
@@ -609,6 +614,17 @@ export class Engine {
         m.userData.bed = true;
         g.add(m);
       }
+      // The printer's name on the floor loads on its own, off the first-paint bundle.
+      const text = bed.label;
+      if (text)
+        void import("./bedLabel").then(({ bedLabelMesh }) => {
+          if (this.bed !== g) return; // a different bed, or none, since
+          const label = bedLabelMesh(text, bed.x, bed.y, p.snap);
+          if (!label) return;
+          label.userData.bed = true;
+          g.add(label);
+          this.invalidate();
+        });
       this.bed = g;
       this.bedSpec = bed;
       this.scene.add(g);
@@ -616,7 +632,7 @@ export class Engine {
     this.invalidate();
   }
   private bed: Group | null = null;
-  private bedSpec: { x: number; y: number; z: number; origin: "centre" | "corner" } | null = null;
+  private bedSpec: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null = null;
 
   /** Puts the bodies on stage, reusing what has not changed. */
   setBodies(list: EngineBody[]): void {
@@ -1244,7 +1260,7 @@ export class Engine {
     const c = new Color();
     const c2 = new Color();
     for (const o of this.order) {
-      const base = c2.copy(o.body.highlight ? p["part-highlight"] : p["part-fill"]);
+      const base = o.body.highlight ? c2.copy(p["part-highlight"]) : o.body.colour ? c2.setStyle(o.body.colour) : c2.copy(p["part-fill"]);
       if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
       const attr = o.geometry.getAttribute("color") as BufferAttribute;

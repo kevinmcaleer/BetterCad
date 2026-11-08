@@ -10,7 +10,7 @@ export interface MeshBody {
 }
 
 /** Moves bodies together so the lowest point sits on Z = 0, the slicer's bed. */
-export function placeOnBed(bodies: MeshBody[]): MeshBody[] {
+export function placeOnBed<T extends MeshBody>(bodies: T[]): T[] {
   let low = Infinity;
   for (const b of bodies) for (let i = 2; i < b.triangles.length; i += 3) low = Math.min(low, b.triangles[i]!);
   if (!Number.isFinite(low) || low === 0) return bodies;

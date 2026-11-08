@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { Button, Dialog } from "@bettercad/ui";
 import { fileName } from "@bettercad/kernel/bcad";
 import { serverTime, type Api, type VersionInfo } from "./api";
-import { formatBytes } from "../export/ExportDialog";
+import { formatBytes } from "../export/format";
 
 /**
  * Version history (#91): every save to the account, newest first. Autosaves fold into one row per run; a version

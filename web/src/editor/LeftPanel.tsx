@@ -72,6 +72,9 @@ export interface LeftPanelProps {
   onFeatureRenameIdChange: (id: string | null) => void;
   timelineShown: boolean;
   onTimelineShown: (on: boolean) => void;
+  /** The printer's build volume in the view (#100), shared with the Print panel. */
+  bedShown: boolean;
+  onBedShown: (on: boolean) => void;
   theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
   /** The Parameters panel, made by the editor. */
@@ -227,6 +230,12 @@ function SettingsPanel(p: LeftPanelProps) {
         <input type="checkbox" checked={p.timelineShown} onChange={(e) => p.onTimelineShown(e.target.checked)} />
         <span>Show the timeline under the view</span>
       </label>
+      <h2 className="bc-panel-title">Build volume</h2>
+      <label className="bc-check">
+        <input type="checkbox" checked={p.bedShown} onChange={(e) => p.onBedShown(e.target.checked)} />
+        <span>Show the build volume</span>
+      </label>
+      <p className="bc-note">The space your printer can print in. Choose your printer in Print.</p>
       <OfflineSettings />
       <h2 className="bc-panel-title">Units</h2>
       <p className="bc-note">Millimetres. Z points up.</p>

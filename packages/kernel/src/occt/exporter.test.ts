@@ -8,6 +8,7 @@ import { addExtrude, addPart, addSketch, newDoc, setLook, updateSketch, type Mod
 import { meshVolume, read3mf, readStl } from "../export/mesh";
 import { measure } from "./shapes";
 import { readGlb } from "../export/gltf";
+import { DEFAULT_COLOUR, linearRgb } from "../looks";
 
 let oc: OC;
 let m: ModelBuilder;
@@ -121,5 +122,15 @@ describe("exports of the model (#80, #81, #86)", () => {
 
     const g = x.export({ doc: d, bodies: null, format: "gltf", deflection: DEFLECTION.draft, separate: true, name: "Kit" });
     expect(g.files.map((f) => f.name)).toEqual(["Kit-Box 1.gltf", "Kit-Box 1.bin", "Kit-Cylinder 1.gltf", "Kit-Cylinder 1.bin"]);
+  });
+
+  it("carries each body's colour and finish into the glTF materials (#196)", () => {
+    let d = addPart(newDoc("Kit"), "box", "a");
+    d = addPart(d, "cylinder", "c");
+    d = setLook(d, ["c"], () => ({ colour: "#2d6fd0", finish: "metal" }));
+    const { json } = readGlb(x.export({ doc: d, bodies: null, format: "glb", deflection: DEFLECTION.draft, name: "Kit" }).files[0]!.data);
+    const [plain, blue] = json.materials.map((m) => m.pbrMetallicRoughness);
+    expect(plain).toEqual({ baseColorFactor: [...linearRgb(DEFAULT_COLOUR), 1], roughnessFactor: 0.85, metallicFactor: 0 });
+    expect(blue).toEqual({ baseColorFactor: [...linearRgb("#2d6fd0"), 1], roughnessFactor: 0.3, metallicFactor: 1 });
   });
 });

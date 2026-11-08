@@ -1,0 +1,47 @@
+/* Colour chips (#196): a body's colour in Properties. The swatch colours are the model's data, set inline; the
+   chrome round them comes only from tokens.css. */
+.bc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bc-space-2);
+}
+.bc-chip {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-part-fill);
+  cursor: pointer;
+}
+.bc-chip[aria-pressed="true"] {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 2px;
+}
+.bc-chip:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 2px;
+}
+/* "Theme": no colour of its own, shown as the theme's part colour with a slash. */
+.bc-chip-none {
+  background: linear-gradient(135deg, transparent 45%, var(--bc-color-muted) 45%, var(--bc-color-muted) 55%, transparent 55%), var(--bc-color-part-fill);
+}
+.bc-chip-custom {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--bc-color-muted);
+}
+.bc-chip-custom input {
+  position: absolute;
+  inset: -4px;
+  width: calc(100% + 8px);
+  height: calc(100% + 8px);
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}

@@ -10,6 +10,7 @@ export type { Methods, Method, Request, Response } from "./protocol";
 export type { ModelResult, BuiltBody, ImportInfo } from "./occt/model";
 export * from "./imports";
 export * from "./catalogue";
+export * from "./looks";
 export type { Measure } from "./occt/shapes";
 export type { MeasureResult, Single, Pair, TopoRef } from "./occt/measure";
 export type { Mate } from "./occt/mates";
