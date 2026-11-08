@@ -107,7 +107,14 @@ export interface Frame {
   normal: Vec3;
 }
 
-export type PlaneRef = { kind: "world"; plane: WorldPlane; offset: number } | { kind: "face"; face: TopoRef; offset: number; frame: Frame };
+/**
+ * Where a sketch sits: an origin plane, a flat face (its frame as it was picked), or a construction plane step (its
+ * frame as last built: the model's build keeps it up to date).
+ */
+export type PlaneRef =
+  | { kind: "world"; plane: WorldPlane; offset: number }
+  | { kind: "face"; face: TopoRef; offset: number; frame: Frame }
+  | { kind: "construct"; step: string; offset: number; frame: Frame };
 
 /** How a text is set: its words, font and sizes. */
 export interface TextStyle {

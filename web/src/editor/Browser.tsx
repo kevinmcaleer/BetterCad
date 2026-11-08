@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Banner, ContextMenu, PartsTree, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
-import { JOINT_KINDS, type BuiltLink, type JointFeature, type Part, type PartKind } from "../state/document";
+import { JOINT_KINDS, type BuiltLink, type ConstructWhat, type JointFeature, type Part, type PartKind } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
 import { formatCombo } from "../state/commands";
-import { partIcon } from "./Timeline";
+import { constructIcon, partIcon } from "./Timeline";
 
 /**
  * The browser (Fusion's): the model at the top, then its origin planes, bodies, sketches and joints in folders. Eyes
@@ -21,6 +21,7 @@ export const ROW = {
   origin: "browser:origin",
   bodies: "browser:bodies",
   sketches: "browser:sketches",
+  construct: "browser:construct",
   joints: "browser:joints",
   robot: "browser:robot",
   base: "browser:base",
@@ -46,6 +47,11 @@ export interface BrowserSketch {
   warning?: string;
 }
 
+/** A construction plane, axis or point (#265) in the browser. */
+export interface BrowserConstruct extends BrowserSketch {
+  what: ConstructWhat;
+}
+
 export interface BrowserModel {
   name: string;
   parts: Part[];
@@ -58,6 +64,8 @@ export interface BrowserModel {
   links?: BuiltLink[];
   /** Joints (#172): each hangs a child link from a parent link, or from Base. */
   joints?: Pick<JointFeature, "id" | "name" | "kind" | "child" | "parent">[];
+  /** Construction planes, axes and points (#265). */
+  construct?: BrowserConstruct[];
 }
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
@@ -104,6 +112,22 @@ export function browserItems(m: BrowserModel): TreeItem[] {
       rename: false,
       toggles: ["hidden"],
       hidden: !m.origin.includes(p),
+    });
+  }
+  // Construction geometry (#265) sits under Origin, as in Fusion, once there is some.
+  const cons = m.construct ?? [];
+  if (cons.length) items.push(folder(ROW.construct, "Construction", { icon: "plane", note: count(cons.length), hidden: cons.every((c) => c.hidden) }));
+  for (const c of cons) {
+    items.push({
+      id: c.id,
+      name: c.name,
+      icon: constructIcon(c.what),
+      kind: c.what,
+      parentId: ROW.construct,
+      drag: false,
+      toggles: ["hidden"],
+      hidden: c.hidden,
+      warning: c.warning,
     });
   }
   // Bodies and Sketches show once they have something in them, as Fusion's do.
@@ -190,7 +214,7 @@ export function browserPick(ids: string[], m: BrowserModel): { parts: string[]; 
     id === ROW.base ? m.parts.filter((p) => !inLink.has(p.id)).map((p) => p.id) : (links.find((l) => l.id === id)?.parts ?? []),
   );
   const parts = whole ? m.parts.map((p) => p.id) : [...new Set([...ids.filter((id) => partIds.has(id)), ...linked])];
-  const sketchIds = new Set(m.sketches.map((s) => s.id));
+  const sketchIds = new Set([...m.sketches, ...(m.construct ?? [])].map((s) => s.id));
   const other = [...ids].reverse().find((id) => sketchIds.has(id) || originItemOf(id) !== null) ?? null;
   return { parts, other };
 }
@@ -216,6 +240,8 @@ export interface BrowserPanelProps {
   onRenameSketch: (id: string, name: string) => void;
   onReorder: (id: string, beforeId: string | null) => void;
   onSketchOn: (plane: WorldPlaneName) => void;
+  /** Starts a sketch on a construction plane (#265). */
+  onSketchOnStep?: (id: string) => void;
   partMenu: (ids: string[]) => MenuEntry[];
   sketchMenu: (id: string) => MenuEntry[];
   renameId: string | null;
@@ -242,7 +268,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
     setOther(r.other);
     ours.current = true;
     const last = ids[ids.length - 1];
-    if (last && model.joints?.some((j) => j.id === last)) p.onSelectSketch(last);
+    if (last && (model.joints?.some((j) => j.id === last) || model.construct?.some((c) => c.id === last))) p.onSelectSketch(last);
     else if (r.other && model.sketches.some((s) => s.id === r.other) && last === r.other) p.onSelectSketch(r.other);
     else p.onSelect(r.parts);
   };
@@ -264,14 +290,25 @@ export function BrowserPanel(p: BrowserPanelProps) {
         anyShown,
       );
     }
-    const sk = model.sketches.find((s) => s.id === id);
+    const cons = model.construct ?? [];
+    if (id === ROW.construct)
+      return p.onSketchesHidden(
+        cons.map((c) => c.id),
+        cons.some((c) => !c.hidden),
+      );
+    const sk = model.sketches.find((s) => s.id === id) ?? cons.find((c) => c.id === id);
     if (sk) return p.onSketchesHidden([id], !sk.hidden);
     p.onToggle(id, what);
   };
 
   const rename = (id: string, name: string) => {
     if (id === ROW.root) return p.onRenameModel(name);
-    if (model.sketches.some((s) => s.id === id) || model.links?.some((l) => l.id === id) || model.joints?.some((j) => j.id === id))
+    if (
+      model.sketches.some((s) => s.id === id) ||
+      model.links?.some((l) => l.id === id) ||
+      model.joints?.some((j) => j.id === id) ||
+      model.construct?.some((c) => c.id === id)
+    )
       return p.onRenameSketch(id, name);
     p.onRename(id, name);
   };
@@ -301,6 +338,18 @@ export function BrowserPanel(p: BrowserPanelProps) {
       return {
         title: sk.name,
         entries: p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+      };
+    const con = model.construct?.find((c) => c.id === id);
+    if (con)
+      return {
+        title: con.name,
+        entries: [
+          ...(con.what === "plane" && p.onSketchOnStep && !con.warning
+            ? [{ id: "sketch", label: `Sketch on ${con.name}`, icon: "sketch" as const, onSelect: () => p.onSketchOnStep!(id) }]
+            : []),
+          { id: "show", label: con.hidden ? "Show" : "Hide", icon: con.hidden ? ("eye" as const) : ("eyeOff" as const), onSelect: () => toggle(id, "hidden") },
+          ...p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+        ],
       };
     const joint = model.joints?.find((j) => j.id === id);
     if (joint)

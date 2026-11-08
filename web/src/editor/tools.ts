@@ -6,6 +6,7 @@ export type ToolId =
   | "turn"
   | "section"
   | "sketch"
+  | "construct"
   | "extrude"
   | "revolve"
   | "pushpull"
@@ -74,6 +75,13 @@ export const TOOLS: Tool[] = [
     help: "Click a face or a plane to sketch on it.",
   },
   {
+    id: "construct",
+    label: "Construct",
+    icon: "plane",
+    title: "Construction planes, axes and points",
+    help: "Pick what to make from the Construct menu.",
+  },
+  {
     id: "extrude",
     label: "Extrude",
     icon: "extrude",
@@ -134,7 +142,7 @@ const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!)
  */
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
   { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
-  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "gear"]) },
+  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "gear", "construct"]) },
   { id: "change", label: "Change", tools: byId(["combine", "hole", "fillet", "shell", "pattern", "mount", "joint"]) },
   { id: "check", label: "Check", tools: byId(["measure", "section"]) },
 ];

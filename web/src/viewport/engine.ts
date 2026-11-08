@@ -77,6 +77,16 @@ import { readPalette, type Palette } from "./colours";
 
 export type RenderStyle = "shaded" | "lineart";
 
+/** Construction geometry to draw (#265): a plane's frame, an axis's line, or a point. */
+export interface ConstructShape {
+  id: string;
+  what: "plane" | "axis" | "point";
+  origin: V3;
+  x?: V3;
+  normal?: V3;
+  dir?: V3;
+}
+
 /**
  * A step's result shown while its tool is open (Fillet, Shell, Combine). A body with a mesh is drawn from that mesh in
  * place of its own; a dim one is drawn see-through (a body a combine uses up). Picks still land on the bodies as they
@@ -324,6 +334,10 @@ export class Engine {
   /** Joint glyphs (#172): an arrow along each joint's axis, from its origin. */
   private jointArrows = new Group();
   private centres = new Group();
+  /** Construction planes, axes and points (#265), and the ones lit by the pointer or picked. */
+  private construct = new Group();
+  private constructItems: ConstructShape[] = [];
+  private constructLit = new Set<string>();
   private arrowDrag: { startOffset: number; x: number; y: number } | null = null;
 
   // Input
@@ -468,6 +482,7 @@ export class Engine {
     this.scene.add(this.arrow);
     this.scene.add(this.jointArrows);
     this.scene.add(this.centres);
+    this.scene.add(this.construct);
 
     this.planes = new Group();
     this.planes.visible = false;
@@ -885,6 +900,88 @@ export class Engine {
       this.jointArrows.add(a);
     }
     this.invalidate();
+  }
+
+  /**
+   * Draws construction geometry (#265): a plane as a see-through square round its origin, an axis as a line through
+   * the model, a point as a dot, over the bodies. `lit` are drawn brighter: hovered or picked.
+   */
+  setConstruct(items: ConstructShape[], lit: string[] = []): void {
+    this.constructItems = items;
+    this.constructLit = new Set(lit);
+    for (const o of this.construct.children as Mesh[]) {
+      o.geometry.dispose();
+      (o.material as Material).dispose();
+    }
+    this.construct.clear();
+    const r = Math.max(20, this.bounds()?.radius ?? 40);
+    const colour = this.palette.snap;
+    for (const it of items) {
+      const on = this.constructLit.has(it.id);
+      const o = new Vector3(...it.origin);
+      if (it.what === "plane") {
+        const n = new Vector3(...it.normal!).normalize();
+        const x = new Vector3(...it.x!).normalize();
+        const y = n.clone().cross(x);
+        const h = r * 0.6;
+        const c = [x.clone().multiplyScalar(-h).addScaledVector(y, -h), x.clone().multiplyScalar(h).addScaledVector(y, -h)];
+        c.push(c[1]!.clone().negate(), c[0]!.clone().negate());
+        const pts = c.map((v) => v.add(o));
+        const g = new BufferGeometry().setFromPoints([pts[0]!, pts[1]!, pts[2]!, pts[0]!, pts[2]!, pts[3]!]);
+        const sheet = new Mesh(g, new MeshBasicMaterial({ color: colour, transparent: true, opacity: on ? 0.3 : 0.12, depthWrite: false, side: 2 }));
+        sheet.name = it.id;
+        sheet.renderOrder = 4;
+        this.construct.add(sheet);
+        const edge = new LineSegments(
+          new BufferGeometry().setFromPoints([pts[0]!, pts[1]!, pts[1]!, pts[2]!, pts[2]!, pts[3]!, pts[3]!, pts[0]!]),
+          new LineBasicMaterial({ color: colour, transparent: true, opacity: on ? 1 : 0.6 }),
+        );
+        edge.renderOrder = 4;
+        this.construct.add(edge);
+      } else if (it.what === "axis") {
+        const d = new Vector3(...it.dir!).normalize().multiplyScalar(r * 1.5);
+        const line = new LineSegments(
+          new BufferGeometry().setFromPoints([o.clone().sub(d), o.clone().add(d)]),
+          new LineBasicMaterial({ color: colour, depthTest: false, transparent: true, opacity: on ? 1 : 0.7 }),
+        );
+        line.renderOrder = 6;
+        this.construct.add(line);
+      } else {
+        const dot = new Points(
+          new BufferGeometry().setFromPoints([o]),
+          new PointsMaterial({ color: colour, size: on ? 11 : 8, sizeAttenuation: false, depthTest: false, transparent: true }),
+        );
+        dot.renderOrder = 6;
+        dot.frustumCulled = false;
+        this.construct.add(dot);
+      }
+    }
+    this.invalidate();
+  }
+
+  /**
+   * The construction geometry under a point, if any: a point within 8 px first, then an axis within 6 px, then the
+   * nearest plane. `what` limits it to the kinds a tool can take.
+   */
+  constructAt(x: number, y: number, what?: ReadonlySet<ConstructShape["what"]>): string | null {
+    const take = (it: ConstructShape) => !what || what.has(it.what);
+    const near = (it: ConstructShape, px: number) => {
+      const a = this.project(it.origin);
+      if (it.what === "point") return Math.hypot(a.x - x, a.y - y) <= px;
+      const r = Math.max(20, this.bounds()?.radius ?? 40) * 1.5;
+      const p = this.project([it.origin[0] - it.dir![0] * r, it.origin[1] - it.dir![1] * r, it.origin[2] - it.dir![2] * r]);
+      const q = this.project([it.origin[0] + it.dir![0] * r, it.origin[1] + it.dir![1] * r, it.origin[2] + it.dir![2] * r]);
+      const [dx, dy] = [q.x - p.x, q.y - p.y];
+      const t = Math.max(0, Math.min(1, ((x - p.x) * dx + (y - p.y) * dy) / (dx * dx + dy * dy || 1)));
+      return Math.hypot(p.x + dx * t - x, p.y + dy * t - y) <= px;
+    };
+    for (const it of this.constructItems) if (it.what === "point" && take(it) && near(it, 8)) return it.id;
+    for (const it of this.constructItems) if (it.what === "axis" && take(it) && near(it, 6)) return it.id;
+    if (what && !what.has("plane")) return null;
+    const ray = new Raycaster();
+    ray.setFromCamera(new Vector2((x / this.width) * 2 - 1, -(y / this.height) * 2 + 1), this.activeCamera);
+    const sheets = this.construct.children.filter((c) => c instanceof Mesh);
+    return ray.intersectObjects(sheets, false)[0]?.object.name ?? null;
   }
 
   showStats(on: boolean): void {
@@ -1477,6 +1574,7 @@ export class Engine {
     this.arrow.setColor(p.snap);
     for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
     for (const c of this.centres.children as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
+    if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
     this.paintPlanes?.();

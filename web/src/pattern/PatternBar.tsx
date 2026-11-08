@@ -102,17 +102,17 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
               key={p}
               label={p}
               title={`Mirror across the ${p} plane`}
-              on={!f.face && !x.pickingPlane && f.plane === p}
+              on={!f.face && !f.step && !x.pickingPlane && f.plane === p}
               onClick={() => {
                 x.setPickingPlane(false);
-                x.change({ plane: p, face: undefined });
+                x.change({ plane: p, face: undefined, step: undefined });
               }}
             />
           ))}
           <Button
             label="Face"
-            title="Click a flat face, or an origin plane in the view, to mirror across"
-            on={!!f.face || x.pickingPlane}
+            title="Click a flat face, a construction plane or an origin plane in the view, to mirror across"
+            on={!!f.face || !!f.step || x.pickingPlane}
             onClick={() => x.setPickingPlane(!x.pickingPlane)}
           />
         </span>
@@ -141,8 +141,8 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
       <span className="bc-armed-note">
         {f.kind === "mirror"
           ? x.pickingPlane
-            ? "Click a flat face or an origin plane."
-            : `Mirroring ${what} across ${f.face ? "a face" : f.plane}.`
+            ? "Click a flat face, a construction plane or an origin plane."
+            : `Mirroring ${what} across ${f.step ? (x.stepName ?? "a construction plane") : f.face ? "a face" : f.plane}.`
           : f.kind === "rect"
             ? `Copying ${what} in rows.`
             : `Copying ${what} round the ${f.axis.toUpperCase()} axis.`}

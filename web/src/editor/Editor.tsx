@@ -110,6 +110,9 @@ import {
   mat4Apply,
   type MassProps,
   type Pose,
+  CONSTRUCT_KINDS,
+  constructKind as kindInfo,
+  type ConstructKind,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { useTheme } from "../state/useTheme";
@@ -143,6 +146,7 @@ import { usePlacePart } from "../catalogue/usePlacePart";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
 import { useJoint } from "../joint/useJoint";
+import { originShapes, useConstruct } from "../construct/useConstruct";
 import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
@@ -195,6 +199,7 @@ const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ defa
 const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
 const ParamsPanel = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsPanel })));
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
+const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => ({ default: m.ConstructBar })));
 const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
@@ -470,6 +475,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
 
   const shownSketches = useMemo(() => built.sketches.filter((s) => !doc.looks[s.id]?.hidden), [built.sketches, doc.looks]);
+  const browserConstruct = useMemo(
+    () =>
+      doc.features
+        .slice(0, at)
+        .flatMap((f) =>
+          f.type === "construct" && !f.suppressed
+            ? [{ id: f.id, name: f.name, what: kindInfo(f.kind).what, hidden: !!doc.looks[f.id]?.hidden, warning: failed.get(f.id) }]
+            : [],
+        ),
+    [doc.features, doc.looks, at, failed],
+  );
   const browserSketches = useMemo(
     () => built.sketches.map((s) => ({ id: s.id, name: s.name, hidden: !!doc.looks[s.id]?.hidden, warning: failed.get(s.id) })),
     [built.sketches, doc.looks, failed],
@@ -484,6 +500,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onStarted: () => setTool("select"),
     say,
     theme: resolved,
+    construct: built.construct,
+    onConstructHover: (id) => setConstructHover(id),
   });
   live.current.sketching = sketch.editing;
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
@@ -602,6 +620,44 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
     measure: kernel.measure,
   });
+
+  // Construction geometry (#265): the Construct menu arms the tool for one kind.
+  const [constructKind, setConstructKind] = useState<ConstructKind | null>(null);
+  const [constructHover, setConstructHover] = useState<string | null>(null);
+  const construct = useConstruct({
+    store,
+    record,
+    doc,
+    parts,
+    construct: built.construct,
+    view: vp.ref,
+    armed: tool === "construct" && !sketch.editing,
+    kind: tool === "construct" ? constructKind : null,
+    onClose: () => setTool("select"),
+    say,
+    onHover: setConstructHover,
+    measure: kernel.measure,
+  });
+  const startConstruct = useCallback((k: ConstructKind) => {
+    setConstructKind(k);
+    setTool("construct");
+  }, []);
+  // Planes, axes and points in the view: those not hidden from the browser, the origin's axes and point while the tool
+  // wants one, lit under the pointer or when picked in the browser.
+  const shownConstruct = useMemo(() => built.construct.filter((c) => !doc.looks[c.id]?.hidden), [built.construct, doc.looks]);
+  useEffect(() => {
+    const eng = vp.ref.current?.engine();
+    if (!eng) return;
+    const shapes = shownConstruct.map((c) =>
+      c.geo.what === "plane"
+        ? { id: c.id, what: c.geo.what, origin: c.geo.frame.origin, x: c.geo.frame.x, normal: c.geo.frame.normal }
+        : c.geo.what === "axis"
+          ? { id: c.id, what: c.geo.what, origin: c.geo.origin, dir: c.geo.dir }
+          : { id: c.id, what: c.geo.what, origin: c.geo.at },
+    );
+    const lit = [constructHover, browserPicked, construct.session?.id].filter((x): x is string => !!x);
+    eng.setConstruct([...shapes, ...(construct.active ? originShapes(construct.slot) : [])], lit);
+  }, [shownConstruct, constructHover, browserPicked, construct.active, construct.slot, construct.session, vp.ref, kernel.bodies]);
 
   // Posing (#173): a live pose while a slider moves, kept in the model when it stops. Shown with the Select tool only, so
   // tools that pick and move bodies work on them where they really are.
@@ -1328,6 +1384,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    startConstruct: (_k: ConstructKind) => {},
     mirror: () => {},
     add,
     showPanel,
@@ -1375,6 +1432,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    startConstruct,
     mirror,
     add,
     showPanel,
@@ -1409,17 +1467,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 ? mount.done()
                 : gear.session
                   ? gear.done()
-                  : tool === "joint"
-                    ? joint.stage === "parent"
-                      ? joint.pickParent(null)
-                      : joint.done()
-                    : pattern.session
-                      ? pattern.done()
-                      : tool === "combine"
-                        ? combine(selection, combineOp, keepTools, combineFit)
-                        : finish.tool
-                          ? finish.done()
-                          : undefined,
+                  : construct.session
+                    ? construct.done()
+                    : tool === "joint"
+                      ? joint.stage === "parent"
+                        ? joint.pickParent(null)
+                        : joint.done()
+                      : pattern.session
+                        ? pattern.done()
+                        : tool === "combine"
+                          ? combine(selection, combineOp, keepTools, combineFit)
+                          : finish.tool
+                            ? finish.done()
+                            : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -1538,8 +1598,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         group: "Tools",
         icon: t.icon,
         keys: t.key ? [t.key] : undefined,
-        run: () => h().armTool(t.id),
+        run: () => (t.id === "construct" ? h().startConstruct("offset") : h().armTool(t.id)),
         keywords: t.title,
+      })),
+      ...CONSTRUCT_KINDS.map<Command>((k) => ({
+        id: `construct.${k.id}`,
+        scope: "model",
+        label: k.label,
+        group: "Tools",
+        icon: k.what === "plane" ? "plane" : k.what === "axis" ? "axis" : "point",
+        run: () => h().startConstruct(k.id),
+        keywords: `construction ${k.what} ${k.title}`,
       })),
       {
         id: "tool.mirror",
@@ -1730,7 +1799,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () =>
+          ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
+            live.current.tool,
+          ),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -2350,6 +2422,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "construct"
+        ? [
+            {
+              id: "edit",
+              label: `Edit ${f.name}`,
+              icon: "plane" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("construct");
+                construct.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "joint"
         ? [
             {
@@ -2582,6 +2669,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         ({ extrude, hole, mount, revolve, pushpull })[f.type].edit(f.id);
         return;
       }
+      case "construct":
+        setEditingStep(f.id);
+        setTool("construct");
+        return construct.edit(f.id);
       case "drive":
         return setDriveDialog({ editing: f });
       case "add":
@@ -2642,8 +2733,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? sketch.help
       : place.help
         ? place.help
-        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
-          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
+        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help || construct.help
+          ? extrude.help ||
+            revolve.help ||
+            pushpull.help ||
+            hole.help ||
+            mount.help ||
+            gear.help ||
+            joint.help ||
+            pattern.help ||
+            measure.help ||
+            construct.help
           : finish.help
             ? finish.help
             : vp.elementText
@@ -2746,6 +2846,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           <TopBar
             tool={tool}
             onArmTool={armTool}
+            onConstruct={startConstruct}
             panel={panel}
             onPanel={showPanel}
             canUndo={store.canUndo()}
@@ -2834,6 +2935,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onSketchesHidden={(ids, hidden) => setHidden(ids, hidden, "sketches")}
               onBrowserPicked={setBrowserPicked}
               onSketchOn={sketch.startOnPlane}
+              construct={browserConstruct}
+              onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
               failed={failed}
@@ -2907,6 +3010,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               {tool === "measure" && (
                 <Suspense fallback={null}>
                   <MeasureBar m={measure} onDone={() => setTool("select")} />
+                </Suspense>
+              )}
+              {tool === "construct" && construct.info && (
+                <Suspense fallback={null}>
+                  <ConstructBar
+                    x={construct}
+                    scope={scope}
+                    error={construct.session ? failed.get(construct.session.id) : undefined}
+                    onCancel={() => setTool("select")}
+                  />
                 </Suspense>
               )}
               {tool === "joint" && (
