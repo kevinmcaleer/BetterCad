@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { cx } from "./cx";
 import { evaluate, ExprError, isExpression, type Scope } from "./expr";
+import { useNameComplete } from "./useNameComplete";
 
 export type Unit = "mm" | "deg" | "%" | "none";
 
@@ -64,6 +65,11 @@ export function NumberField({ label, value, onChange, onCommit, unit = "mm", ste
   const [error, setError] = useState<string | null>(null);
   const [expression, setExpression] = useState<string | undefined>();
   const drag = useRef<{ x: number; start: number; last: number } | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const names = useNameComplete(scope, input, (text) => {
+    setDraft(text);
+    setError(null);
+  });
 
   const finish = (v: number, expr?: string) => {
     const next = clamp(roundTo(v, places), min, max);
@@ -86,6 +92,7 @@ export function NumberField({ label, value, onChange, onCommit, unit = "mm", ste
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (names.onKeyDown(e)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       commitDraft();
@@ -138,6 +145,7 @@ export function NumberField({ label, value, onChange, onCommit, unit = "mm", ste
         {label}
       </label>
       <input
+        ref={input}
         id={fieldId}
         className="bc-num"
         type="text"
@@ -151,15 +159,21 @@ export function NumberField({ label, value, onChange, onCommit, unit = "mm", ste
         placeholder={value === null ? "–" : undefined}
         value={shown}
         disabled={locked}
+        {...names.inputProps}
         onChange={(e) => {
           setDraft(e.currentTarget.value);
           setError(null);
+          names.update(e.currentTarget.value, e.currentTarget.selectionStart);
         }}
         onKeyDown={onKeyDown}
-        onBlur={commitDraft}
+        onBlur={() => {
+          names.close();
+          commitDraft();
+        }}
         onFocus={(e) => e.currentTarget.select()}
       />
       {unitText && <em>{unitText}</em>}
+      {names.list}
       {error && (
         <span id={`${fieldId}-err`} className="bc-field-error" role="alert">
           {error}

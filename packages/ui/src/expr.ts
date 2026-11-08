@@ -116,3 +116,42 @@ export function evaluate(src: string, scope: Scope = {}): number {
 export function isExpression(src: string): boolean {
   return !/^\s*-?(\d+\.?\d*|\.\d+)\s*(mm|deg|°)?\s*$/.test(src);
 }
+
+/** The name being typed at the caret, and the names in scope it could be. */
+export interface Completion {
+  /** Where the typed part of the name starts and ends in the text. */
+  from: number;
+  to: number;
+  typed: string;
+  names: string[];
+}
+
+const UNIT_WORDS = new Set(["mm", "cm", "m", "in", "deg"]);
+
+/**
+ * The names an expression could take at the caret: those that start with what is typed come first, then those that
+ * hold it. Null when the caret is not on a name, the name is a unit after a number ("5 mm"), or it is already whole.
+ */
+export function completeAt(text: string, caret: number, names: Iterable<string>, limit = 8): Completion | null {
+  const before = /[A-Za-z_][A-Za-z0-9_]*$/.exec(text.slice(0, caret));
+  if (!before) return null;
+  const from = before.index;
+  // A name glued to a number ("5mm", "2e3") is not a name.
+  if (from > 0 && /[0-9.]/.test(text[from - 1]!)) return null;
+  const after = /^[A-Za-z0-9_]*/.exec(text.slice(caret))![0];
+  const to = caret + after.length;
+  const typed = before[0];
+  const lower = typed.toLowerCase();
+  if (UNIT_WORDS.has(lower) && /\d\s*$/.test(text.slice(0, from))) return null;
+  const all = [...new Set(names)];
+  const starts = all.filter((n) => n.toLowerCase().startsWith(lower)).sort((a, b) => a.length - b.length || a.localeCompare(b));
+  const holds = all.filter((n) => !n.toLowerCase().startsWith(lower) && n.toLowerCase().includes(lower)).sort((a, b) => a.localeCompare(b));
+  const found = [...starts, ...holds].slice(0, limit);
+  if (!found.length || (found.length === 1 && found[0] === typed + after)) return null;
+  return { from, to, typed, names: found };
+}
+
+/** The text with the name at the completion put in, and where the caret goes after it. */
+export function applyCompletion(text: string, c: Completion, name: string): { text: string; caret: number } {
+  return { text: text.slice(0, c.from) + name + text.slice(c.to), caret: c.from + name.length };
+}

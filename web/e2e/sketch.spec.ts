@@ -73,6 +73,56 @@ test("draw a sized rectangle on the XY plane and finish the sketch", async ({ pa
   await expect(page.getByRole("button", { name: /Sketch 1/ }).first()).toBeVisible();
 });
 
+test("a sketch size uses a parameter, offered by name, and follows it", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("banner").getByRole("button", { name: "Parameters", exact: true }).click();
+  await page.getByRole("button", { name: "Add parameter" }).click();
+  const name = page.getByRole("textbox", { name: "Name of p1" });
+  await name.fill("width");
+  await name.press("Enter");
+  const expr = page.getByRole("textbox", { name: "Expression for width" });
+  await expr.fill("20");
+  await expr.press("Enter");
+
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Sketch/ })
+    .click();
+  await click(page, 20, 20);
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await click(page, -10, -10);
+  const far = await at(page, 10, 5);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width (mm)", exact: true }).fill("30");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height (mm)", exact: true }).fill("20");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "30 mm", exact: true })).toBeVisible();
+
+  // Start typing a name: the parameters that fit are offered, and Enter puts one in.
+  await page.getByRole("button", { name: "30 mm", exact: true }).dblclick();
+  const input = page.getByRole("textbox", { name: "Size in mm" });
+  await expect(input).toBeFocused();
+  await input.fill("");
+  await input.pressSequentially("wi");
+  await expect(page.getByRole("listbox", { name: "Parameters" }).getByRole("option", { name: /width/ })).toBeVisible();
+  await input.press("Enter");
+  await expect(input).toHaveValue("width");
+  await input.pressSequentially(" * 2");
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "40 mm", exact: true })).toBeVisible();
+
+  // Change the parameter (its panel is still open): the sketch follows.
+  const again = page.getByRole("textbox", { name: "Expression for width" });
+  await again.fill("25");
+  await again.press("Enter");
+  await expect(page.getByRole("button", { name: "50 mm", exact: true })).toBeVisible();
+});
+
 test("an open shape asks before finishing", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
