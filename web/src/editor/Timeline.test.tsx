@@ -200,4 +200,53 @@ describe("Editor timeline", () => {
     expect(screen.getByRole("slider", { name: "Timeline marker" })).toHaveAttribute("aria-valuenow", "2");
     expect(screen.getAllByText("Change Box 2 in Properties.").length).toBeGreaterThan(0);
   });
+  const tile = (name: RegExp) => within(screen.getByRole("region", { name: "Timeline" })).getByRole("button", { name });
+  const tiles = () =>
+    within(screen.getByRole("region", { name: "Timeline" }))
+      .queryAllByRole("button")
+      .filter((b) => b.classList.contains("bc-tl-tile"))
+      .map((b) => b.getAttribute("aria-label")!.split(",")[0]);
+
+  it("deletes the last step picked on the timeline with Delete, without adding a step", () => {
+    render(<Editor />);
+    addBox();
+    addBox();
+    fireEvent.click(tile(/^Box 2/), { detail: 1 });
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(screen.queryByRole("dialog", { name: /^Delete/ })).toBeNull();
+    expect(tiles()).toEqual(["Box 1"]);
+    // Undo brings the step back; the timeline never gained a delete step.
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(tiles()).toEqual(["Box 1", "Box 2"]);
+  });
+
+  it("warns before deleting an earlier step, then just removes it", () => {
+    render(<Editor />);
+    addBox();
+    addBox();
+    fireEvent.click(tile(/^Box 1/), { detail: 1 });
+    fireEvent.keyDown(window, { key: "Delete" });
+    const dialog = screen.getByRole("dialog", { name: "Delete Box 1" });
+    expect(within(dialog).getByText(/1 later step comes after Box 1\. It rebuilds without it/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(tiles()).toEqual(["Box 2"]);
+  });
+
+  it("still records a delete step for parts picked in the model", () => {
+    render(<Editor />);
+    addBox();
+    fireEvent.click(screen.getByRole("treeitem", { name: /^Box 1/ }));
+    fireEvent.keyDown(window, { key: "Delete" });
+    expect(tiles()).toEqual(["Box 1", "Delete 1"]);
+  });
+
+  it("warns on the timeline while rolled back", () => {
+    render(<Editor />);
+    addBox();
+    addBox();
+    const bar = screen.getByRole("region", { name: "Timeline" });
+    expect(within(bar).queryByText(/Rolled back/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Step back/ }));
+    expect(within(bar).getByText("Rolled back. What you add goes before 1 later step, which may break.")).toBeInTheDocument();
+  });
 });

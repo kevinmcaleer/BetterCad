@@ -3,7 +3,6 @@ import {
   Banner,
   Button,
   ContextMenu,
-  Dialog,
   ESC,
   cx,
   TooltipLayer,
@@ -14,6 +13,7 @@ import {
   type RowToggle,
 } from "@bettercad/ui";
 import { createStore } from "../state/store";
+import { DeleteStepDialog, earlierWarning, laterText } from "./DeleteStepDialog";
 import {
   addCombine,
   addPart,
@@ -50,7 +50,6 @@ import {
   dependents,
   moveProblem,
   removeWithDependents,
-  usedByText,
   reorderPart,
   setLook,
   updateFeature,
@@ -765,8 +764,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const selectFeature = useCallback((f: Feature) => {
     setActiveFeature(f.id);
     const here = new Set(live.current.parts.map((p) => p.id));
-    setSelection(featureParts(f).filter((id) => here.has(id)));
+    const sel = featureParts(f).filter((id) => here.has(id));
+    setSelection(sel);
+    return sel;
   }, []);
+  /**
+   * The step picked on the timeline, with the selection it made. It stays picked until anything else changes the
+   * selection, so Delete then deletes the step itself instead of recording a new "delete" step for its parts.
+   */
+  const [picked, setPicked] = useState<{ id: string; sel: string[] } | null>(null);
+  const pickStep = useCallback(
+    (f: Feature) => {
+      setPicked({ id: f.id, sel: selectFeature(f) });
+    },
+    [selectFeature],
+  );
+  const pickedStep = picked && picked.sel === selection && doc.features.some((f) => f.id === picked.id) ? picked.id : null;
+  /** A step being changed: its tool is open for it. Sketches use sketch.editingId instead. */
+  const [editingStep, setEditingStep] = useState<string | null>(null);
   const renameFeature = useCallback(
     (id: string, name: string) => {
       const f = store.get().features.find((x) => x.id === id);
@@ -802,9 +817,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [store, say],
   );
+  /** Deleting the last step just deletes it. Anything earlier asks first, since the steps after it rebuild. */
   const deleteFeature = useCallback(
     (id: string) => {
-      if (dependents(store.get(), id).length) setPendingDelete(id);
+      const d = store.get();
+      const i = d.features.findIndex((f) => f.id === id);
+      if (i < 0) return;
+      if (i < d.features.length - 1) setPendingDelete(id);
       else deleteNow(id, false);
     },
     [store, deleteNow],
@@ -827,9 +846,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // On a wide screen the Library, Parameters, Print, History and Settings give way to the browser again.
   useEscape(!narrow && panel !== null && panel !== "parts", () => setPanel("parts"), ESC.panel);
   useEscape(
-    selection.length > 0 || vp.elements.length > 0,
+    selection.length > 0 || vp.elements.length > 0 || pickedStep !== null,
     () => {
       setSelection([]);
+      setPicked(null);
       vp.clearElements();
     },
     ESC.selection,
@@ -868,6 +888,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     confirm: () => {},
     suppressActive: () => {},
     activeFeature: (): string | null => null,
+    pickedStep: (): string | null => null,
+    deleteStep: (_id: string) => {},
   });
   handlers.current = {
     openExport: () => setExportOpen(true),
@@ -924,6 +946,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
     activeFeature: () => activeFeatureId,
+    pickedStep: () => pickedStep,
+    deleteStep: deleteFeature,
   };
 
   useEffect(() => {
@@ -1021,8 +1045,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         group: "Edit",
         icon: "trash",
         keys: ["delete", "backspace"],
-        run: () => h().remove(sel()),
-        when: hasSel,
+        // A step picked on the timeline is deleted from it; parts picked anywhere else get a delete step.
+        run: () => {
+          const step = h().pickedStep();
+          if (step) h().deleteStep(step);
+          else h().remove(sel());
+        },
+        when: (c) => c.hasSelection || !!h().pickedStep(),
       },
       ...TOOLS.map<Command>((t) => ({
         id: `tool.${t.id}`,
@@ -1241,6 +1270,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, [selection, activeFeature, doc.features, at]);
 
   const summary = useCallback((f: Feature) => featureSummary(doc, f), [doc]);
+  // A step's tool closing ends the change to it.
+  useEffect(() => {
+    if (tool === "select" && editingStep) setEditingStep(null);
+  }, [tool, editingStep]);
+  const timelineWarning = earlierWarning(doc, at, sketch.editingId ?? editingStep);
   const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
   const sizes = useMemo(
     () =>
@@ -1573,6 +1607,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "extrude" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("extrude");
                 extrude.edit(id);
               },
@@ -1587,6 +1622,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "hole" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("hole");
                 hole.edit(id);
               },
@@ -1601,6 +1637,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "distributeH" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("pattern");
                 pattern.edit(id);
               },
@@ -1615,6 +1652,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "screw" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("mount");
                 mount.edit(id);
               },
@@ -1629,6 +1667,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "revolve" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("revolve");
                 revolve.edit(id);
               },
@@ -1792,17 +1831,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       case "mount":
       case "revolve":
       case "pushpull": {
+        setEditingStep(f.id);
         setTool(f.type);
         ({ extrude, hole, mount, revolve, pushpull })[f.type].edit(f.id);
         return;
       }
       case "add":
       case "move":
-      case "resize":
-        selectFeature(f);
-        return say(`Change ${f.name} in Properties.`);
+      case "resize": {
+        pickStep(f);
+        const later = store.get().features.length - i - 1;
+        return say(
+          later ? `Change ${f.name} in Properties. ${laterText(later, ["rebuilds", "rebuild"])} after it and may break.` : `Change ${f.name} in Properties.`,
+        );
+      }
       default:
-        selectFeature(f);
+        pickStep(f);
         return say(`${f.name} has no settings to change. Right-click it for more.`);
     }
   };
@@ -2133,9 +2177,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               at={at}
               onMarker={moveMarker}
               failed={failed}
-              activeId={activeFeatureId}
+              activeId={pickedStep ?? activeFeatureId}
               summary={summary}
-              onSelect={selectFeature}
+              onSelect={pickStep}
+              warning={timelineWarning}
               onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
               onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
@@ -2185,22 +2230,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         {selectionText} {tool === "select" ? "" : `${activeTool.label} tool armed.`}
       </span>
       {pendingDelete && (
-        <Dialog
-          open
-          title={`Delete ${doc.features.find((f) => f.id === pendingDelete)?.name ?? "this step"}`}
-          icon="trash"
-          onCancel={() => setPendingDelete(null)}
-          footer={
-            <>
-              <Button kind="cancel" label="Cancel" onClick={() => setPendingDelete(null)} />
-              <Button label="Delete just this one" onClick={() => deleteNow(pendingDelete, false)} />
-              <Button variant="danger" label={`Delete all ${dependents(doc, pendingDelete).length + 1}`} onClick={() => deleteNow(pendingDelete, true)} />
-            </>
-          }
-        >
-          <p>{usedByText(doc, pendingDelete)}.</p>
-          <p className="bc-note">Delete them too, or keep them and fix them afterwards. {formatCombo("mod+z")} undoes either.</p>
-        </Dialog>
+        <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
       <ContextMenu
