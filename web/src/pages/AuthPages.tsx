@@ -1,13 +1,18 @@
 import { useState, type FormEvent } from "react";
 import { Button, Dialog } from "@bettercad/ui";
-import { ApiError } from "../cloud/api";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { useTheme } from "../state/useTheme";
 import { ThemePicker } from "../editor/ThemePicker";
 import { Field, FormError, Page } from "./Page";
 
-/** Sign in, sign up and the account page (#88). Errors sit under the field; nothing here is a modal but Delete. */
+/**
+ * Sign in, sign up, password reset and the account page (#88), on powertools-auth: the login Kev's other apps share.
+ * Errors sit under the field; nothing here is a modal but Delete.
+ */
+
+/** powertools-auth's rule, shared with Kev's other apps. */
+const MIN_PASSWORD = 12;
 
 const message = (e: unknown) => (e instanceof Error ? e.message : "That didn't work.");
 
@@ -22,7 +27,7 @@ function Unavailable() {
 
 export function SignInPage({ next }: { next?: string }) {
   const { api, setAccount, available } = useAccount();
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -32,7 +37,7 @@ export function SignInPage({ next }: { next?: string }) {
     setBusy(true);
     setError(null);
     try {
-      setAccount(await api.signIn(email, password));
+      setAccount(await api.signIn(login.trim(), password));
       go(next ?? "#/library");
     } catch (err) {
       setError(message(err));
@@ -45,7 +50,7 @@ export function SignInPage({ next }: { next?: string }) {
     <Page title="Sign in">
       {!available && <Unavailable />}
       <form className="bc-page-form" onSubmit={submit} noValidate>
-        <Field label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Field label="Username or email" autoComplete="username" required value={login} onChange={(e) => setLogin(e.target.value)} />
         <Field
           label="Password"
           type="password"
@@ -56,10 +61,12 @@ export function SignInPage({ next }: { next?: string }) {
           error={error ?? undefined}
         />
         <div className="bc-page-actions">
-          <Button type="submit" variant="primary" label={busy ? "Signing in…" : "Sign in"} disabled={busy || !email || !password} />
+          <Button type="submit" variant="primary" label={busy ? "Signing in…" : "Sign in"} disabled={busy || !login || !password} />
           <a href={`#/signup${next ? `?next=${encodeURIComponent(next)}` : ""}`}>Make an account</a>
         </div>
-        <p className="bc-page-note">Forgot your password? Ask Kev to reset it for now; email resets come later.</p>
+        <p className="bc-page-note">
+          <a href="#/forgot">Forgot your password?</a>
+        </p>
       </form>
     </Page>
   );
@@ -67,26 +74,29 @@ export function SignInPage({ next }: { next?: string }) {
 
 export function SignUpPage({ next }: { next?: string }) {
   const { api, setAccount, available } = useAccount();
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-  const [errors, setErrors] = useState<{ email?: string; name?: string; password?: string; form?: string }>({});
+  const [errors, setErrors] = useState<{ email?: string; username?: string; password?: string; form?: string }>({});
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     const found: typeof errors = {};
+    if (!/^[A-Za-z0-9_.-]{3,32}$/.test(username.trim())) found.username = "Use 3 to 32 letters, numbers, dots, dashes or underscores.";
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) found.email = "Enter an email address, like you@example.com.";
-    if (!name.trim()) found.name = "Enter the name to show on your models.";
-    if (password.length < 8) found.password = "Use at least 8 characters.";
+    if (password.length < MIN_PASSWORD) found.password = `Use at least ${MIN_PASSWORD} characters.`;
     setErrors(found);
     if (Object.keys(found).length) return;
     setBusy(true);
     try {
-      setAccount(await api.signUp(email.trim(), name.trim(), password));
+      setAccount(await api.signUp(username.trim(), email.trim(), password));
       go(next ?? "#/library");
     } catch (err) {
-      setErrors(err instanceof ApiError && err.status === 409 ? { email: err.message } : { form: message(err) });
+      const text = message(err);
+      setErrors(
+        /username/i.test(text) ? { username: text } : /email/i.test(text) ? { email: text } : /password/i.test(text) ? { password: text } : { form: text },
+      );
     } finally {
       setBusy(false);
     }
@@ -97,8 +107,15 @@ export function SignUpPage({ next }: { next?: string }) {
       {!available && <Unavailable />}
       <p>An account keeps your models online, so you can open them on any computer and share a link. The editor works without one.</p>
       <form className="bc-page-form" onSubmit={submit} noValidate>
+        <Field
+          label="Username"
+          autoComplete="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          error={errors.username}
+          hint="Shown on the models you share."
+        />
         <Field label="Email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} error={errors.email} />
-        <Field label="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} error={errors.name} />
         <Field
           label="Password"
           type="password"
@@ -106,7 +123,7 @@ export function SignUpPage({ next }: { next?: string }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={errors.password}
-          hint="At least 8 characters."
+          hint={`At least ${MIN_PASSWORD} characters.`}
         />
         <FormError text={errors.form ?? null} />
         <div className="bc-page-actions">
@@ -121,14 +138,95 @@ export function SignUpPage({ next }: { next?: string }) {
   );
 }
 
+export function ForgotPage() {
+  const { api, available } = useAccount();
+  const [login, setLogin] = useState("");
+  const [state, setState] = useState<{ sent?: boolean; error?: string }>({});
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.forgotPassword(login.trim());
+      setState({ sent: true });
+    } catch (err) {
+      setState({ error: message(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Page title="Reset your password">
+      {!available && <Unavailable />}
+      {state.sent ? (
+        <p role="status">If that account has an email address, a link to reset the password is on its way. It works once, for an hour.</p>
+      ) : (
+        <form className="bc-page-form" onSubmit={submit} noValidate>
+          <Field label="Username or email" autoComplete="username" value={login} onChange={(e) => setLogin(e.target.value)} error={state.error} />
+          <div className="bc-page-actions">
+            <Button type="submit" variant="primary" label={busy ? "Sending…" : "Send a reset link"} disabled={busy || !login.trim()} />
+            <a href="#/signin">Back to sign in</a>
+          </div>
+        </form>
+      )}
+    </Page>
+  );
+}
+
+export function ResetPage({ token }: { token: string }) {
+  const { api, setAccount } = useAccount();
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (password.length < MIN_PASSWORD) return setError(`Use at least ${MIN_PASSWORD} characters.`);
+    setBusy(true);
+    try {
+      setAccount(await api.resetPassword(token, password));
+      go("#/library");
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Page title="Choose a new password">
+      <form className="bc-page-form" onSubmit={submit} noValidate>
+        <Field
+          label="New password"
+          type="password"
+          autoComplete="new-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          error={error ?? undefined}
+          hint={`At least ${MIN_PASSWORD} characters. Other devices are signed out.`}
+        />
+        <div className="bc-page-actions">
+          <Button type="submit" variant="primary" label={busy ? "Saving…" : "Save password"} disabled={busy || !password} />
+          <a href="#/forgot">Send a new link</a>
+        </div>
+      </form>
+    </Page>
+  );
+}
+
 export function AccountPage() {
   const { api, account, ready, setAccount } = useAccount();
   const { theme, setTheme } = useTheme();
-  const [name, setName] = useState(account?.name ?? "");
+  const [email, setEmail] = useState(account?.email ?? "");
+  const [emailPassword, setEmailPassword] = useState("");
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
-  const [note, setNote] = useState<{ name?: string; password?: string; saved?: string }>({});
+  const [note, setNote] = useState<{ email?: string; password?: string; saved?: string }>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   if (!ready) return <Page title="Account">{null}</Page>;
   if (!account)
@@ -140,21 +238,21 @@ export function AccountPage() {
       </Page>
     );
 
-  const saveName = async (e: FormEvent) => {
+  const saveEmail = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return setNote({ name: "Enter a name." });
     try {
-      setAccount(await api.updateMe({ name: name.trim() }));
-      setNote({ saved: "Name saved" });
+      setAccount(await api.changeEmail(email.trim(), emailPassword));
+      setEmailPassword("");
+      setNote({ saved: "Email saved" });
     } catch (err) {
-      setNote({ name: message(err) });
+      setNote({ email: message(err) });
     }
   };
   const savePassword = async (e: FormEvent) => {
     e.preventDefault();
-    if (password.length < 8) return setNote({ password: "Use at least 8 characters." });
+    if (password.length < MIN_PASSWORD) return setNote({ password: `Use at least ${MIN_PASSWORD} characters.` });
     try {
-      setAccount(await api.updateMe({ password, current_password: current }));
+      setAccount(await api.changePassword(current, password));
       setCurrent("");
       setPassword("");
       setNote({ saved: "Password changed. Other devices are signed out." });
@@ -169,32 +267,49 @@ export function AccountPage() {
   };
   const remove = async () => {
     try {
-      await api.deleteMe();
+      await api.deleteMe(typed.trim());
       setAccount(null);
       go("#/");
     } catch (err) {
-      setConfirmDelete(false);
-      setNote({ saved: message(err) });
+      setDeleteError(message(err));
     }
   };
 
   return (
     <Page title="Account" bar={<Button label="My models" icon="folder" onClick={() => go("#/library")} />}>
       <p>
-        Signed in as <strong>{account.email}</strong>.
+        Signed in as <strong>{account.username}</strong>.
       </p>
       <p role="status" className="bc-page-note">
         {note.saved ?? ""}
       </p>
-      <form className="bc-page-form" onSubmit={saveName}>
-        <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} error={note.name} autoComplete="name" />
-        <div className="bc-page-actions">
-          <Button type="submit" label="Save name" disabled={name.trim() === account.name} />
-        </div>
-      </form>
       <section className="bc-page-section">
         <h2>Theme</h2>
         <ThemePicker value={theme} onChange={setTheme} />
+      </section>
+      <section className="bc-page-section">
+        <h2>Email</h2>
+        <form className="bc-page-form" onSubmit={saveEmail}>
+          <Field
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            hint="Password reset links go here."
+          />
+          <Field
+            label="Password to confirm"
+            type="password"
+            autoComplete="current-password"
+            value={emailPassword}
+            onChange={(e) => setEmailPassword(e.target.value)}
+            error={note.email}
+          />
+          <div className="bc-page-actions">
+            <Button type="submit" label="Save email" disabled={!emailPassword || email.trim() === (account.email ?? "")} />
+          </div>
+        </form>
       </section>
       <section className="bc-page-section">
         <h2>Password</h2>
@@ -230,11 +345,17 @@ export function AccountPage() {
           footer={
             <>
               <Button kind="cancel" label="Cancel" onClick={() => setConfirmDelete(false)} />
-              <Button variant="danger" label="Delete account" onClick={() => void remove()} />
+              <Button
+                variant="danger"
+                label="Delete account"
+                disabled={typed.trim().toLowerCase() !== account.username.toLowerCase()}
+                onClick={() => void remove()}
+              />
             </>
           }
         >
-          <p>This deletes your account and every model saved to it, with their versions and share links. It can&rsquo;t be undone.</p>
+          <p>This deletes every model saved to your BetterCad account, with their versions and share links. It can&rsquo;t be undone.</p>
+          <Field label="Type your username to confirm" value={typed} onChange={(e) => setTyped(e.target.value)} error={deleteError ?? undefined} />
         </Dialog>
       )}
     </Page>

@@ -194,16 +194,37 @@ jobs:
 
   server:
     runs-on: ubuntu-latest
+    env:
+      UV_VERSION: "0.11.32"
     defaults:
       run:
         working-directory: server
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      # Python from the runner's tool cache, so uv never has to download one.
+      - uses: actions/setup-python@v5
         with:
+          python-version: "3.13"
+      # Pinned so setup-uv skips the "latest" lookup. GitHub release downloads
+      # sometimes 504; if they do, fall back to PyPI below.
+      - id: setup-uv
+        uses: astral-sh/setup-uv@v6
+        continue-on-error: true
+        with:
+          version: ${{ env.UV_VERSION }}
+          working-directory: server
           python-version: "3.13"
           enable-cache: true
           cache-dependency-glob: server/uv.lock
+      - name: Install uv from PyPI (fallback)
+        if: steps.setup-uv.outcome == 'failure'
+        run: |
+          for attempt in 1 2 3; do
+            python -m pip install "uv==$UV_VERSION" && break
+            sleep $((attempt * 10))
+          done
+          uv --version
+          echo "UV_PYTHON=3.13" >> "$GITHUB_ENV"
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .

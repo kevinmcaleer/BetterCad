@@ -34,7 +34,9 @@ import {
   MOUNT_DEFAULTS,
   addGear,
   addMount,
+  addPattern,
   addPart,
+  type PatternParams,
   build,
   changeParts,
   cutPocket,
@@ -63,6 +65,20 @@ function gearOf(oc: OC, change: Partial<GearParamsStep> = {}): TopoDS_Shape {
     "gear",
   );
   return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "gear")!).shape;
+}
+
+/** A part copied by a joined Mirror or Pattern step (#69), built as the one body it becomes. */
+function patterned(
+  oc: OC,
+  kind: "wedge" | "cylinder" | "box",
+  size: { x: number; y: number; z: number },
+  x: number,
+  p: Partial<PatternParams> & { kind: PatternParams["kind"] },
+): TopoDS_Shape {
+  let doc = changeParts(addPart(newDoc(), kind, "a"), ["a"], "size", size);
+  doc = changeParts(doc, ["a"], "position", { x, y: 0, z: 0 });
+  doc = addPattern(doc, { parts: ["a"], join: true, ...p });
+  return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
 }
 
 /** A 60 × 40 × 5 mm plate with a catalogue part's pocket and holes cut in it (#188). */
@@ -196,6 +212,11 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   "rack-m1-60": (oc) => gearOf(oc, { form: "rack", rack: { length: 60, height: 5 }, bore: { kind: "none", diameter: 0 } }),
   "gt2-20t-flanged": (oc) => gearOf(oc, { form: "gt2", gear: { ...GEAR_DEFAULTS, teeth: 20 }, width: 7, flanges: true }),
   "gear-40t-horn": (oc) => gearOf(oc, { gear: { ...GEAR_DEFAULTS, teeth: 40 }, bore: { kind: "horn", diameter: 7, arm: 9 } }),
+  // Mirror and patterns (#69), joined into one body: a wedge and its mirror image meet at the YZ plane; a 3 × 2 grid of
+  // 6 mm pegs; six arms round Z.
+  "mirror-wedge": (oc) => patterned(oc, "wedge", { x: 20, y: 10, z: 10 }, 10, { kind: "mirror", plane: "YZ" }),
+  "pattern-rect-pegs": (oc) => patterned(oc, "cylinder", { x: 6, y: 6, z: 10 }, 0, { kind: "rect", count1: 3, spacing1: 10, count2: 2, spacing2: 10 }),
+  "pattern-circle-arms": (oc) => patterned(oc, "box", { x: 20, y: 4, z: 3 }, 12, { kind: "circle", count: 6, angle: 360 }),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

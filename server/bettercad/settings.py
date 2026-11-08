@@ -3,6 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +19,13 @@ class Settings(BaseSettings):
     backup_days: int = 14
     jobs: bool = True
     secret_key: str = ""
+    # Sign-in (#88) is powertools-auth. To share the login with Kev's other apps, point this at the database that
+    # holds their users, and set the cookie domain and prefix to theirs. Unset: BetterCad keeps its own users.
+    auth_database_path: Path | None = None
+    cookie_domain: str = ""
+    cookie_prefix: str = "bc"
+    # Where people reach BetterCad, e.g. https://bettercad.kevsrobots.com: password reset emails link here.
+    public_url: str = ""
     allowed_origins: str = "http://localhost:5173"
     web_dist: Path = Path(__file__).resolve().parents[2] / "web" / "dist"
     version: str = ""
@@ -33,6 +41,12 @@ class Settings(BaseSettings):
     # Analytics (#111): the accounts (comma-separated emails) that can read /api/stats.
     stats_emails: str = ""
 
+    @field_validator("auth_database_path", "database_path", "backup_dir", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v: object) -> object:
+        # docker compose passes an unset variable as an empty string.
+        return None if v == "" else v
+
     @property
     def production(self) -> bool:
         return self.env == "production"
@@ -40,6 +54,14 @@ class Settings(BaseSettings):
     @property
     def db_path(self) -> Path:
         return self.database_path or self.data_dir / "bettercad.db"
+
+    @property
+    def auth_db_path(self) -> Path:
+        return self.auth_database_path or self.db_path
+
+    @property
+    def shared_login(self) -> bool:
+        return self.auth_database_path is not None and self.auth_database_path.resolve() != self.db_path.resolve()
 
     @property
     def blob_dir(self) -> Path:

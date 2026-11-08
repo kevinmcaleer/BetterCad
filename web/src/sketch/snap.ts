@@ -61,6 +61,56 @@ export function pickAt(p: Vec2, sketch: Sketch, tol: number, origin: Vec2 | null
   return id;
 }
 
+/**
+ * A line's midpoint as a pick: the Coincident tool snaps to it, and a point picked with it gets a midpoint
+ * constraint on that line.
+ */
+const MIDDLE_PREFIX = "@middle:";
+export const middleOf = (line: Id): Id => `${MIDDLE_PREFIX}${line}`;
+/** The line a midpoint pick stands for, or null when the id is not one. */
+export const middleLine = (id: Id): Id | null => (id.startsWith(MIDDLE_PREFIX) ? id.slice(MIDDLE_PREFIX.length) : null);
+
+/** What the Coincident tool snaps to under the pointer: a pick and the exact spot it stands for. */
+export interface PointPick {
+  id: Id;
+  xy: Vec2;
+  kind: SnapKind;
+  label: string;
+}
+
+/**
+ * The nearest point-like pick within `tol` mm, for the Coincident tool: points (ends, centres, points), the origin,
+ * then line midpoints. Null when nothing is near enough, so moving away lets go of the snap.
+ */
+export function pointPickAt(p: Vec2, sketch: Sketch, tol: number, origin: Vec2 | null): PointPick | null {
+  const idx = new SketchIndex(sketch);
+  const centres = new Set(sketch.entities.flatMap((e) => (e.kind === "circle" || e.kind === "arc" ? [e.c] : [])));
+  const ends = new Set(sketch.entities.flatMap((e) => (e.kind === "line" || e.kind === "arc" ? [e.a, e.b] : [])));
+  let best = null as PointPick | null;
+  let bestD = tol;
+  const consider = (c: PointPick) => {
+    const d = dist(c.xy, p);
+    if (d <= bestD) {
+      best = c;
+      bestD = d;
+    }
+  };
+  for (const e of sketch.entities) {
+    if (e.kind !== "point") continue;
+    const kind: SnapKind = centres.has(e.id) ? "centre" : "end";
+    consider({ id: e.id, xy: [e.x, e.y], kind, label: centres.has(e.id) || ends.has(e.id) ? SNAP_LABEL[kind] : "Point" });
+  }
+  // A point of the sketch's own wins over the origin under it.
+  if (best) return best;
+  if (origin) consider({ id: ORIGIN, xy: origin, kind: "origin", label: SNAP_LABEL.origin });
+  if (best) return best;
+  for (const e of sketch.entities) {
+    if (e.kind !== "line") continue;
+    consider({ id: middleOf(e.id), xy: mid(idx.xy(e.a), idx.xy(e.b)), kind: "middle", label: SNAP_LABEL.middle });
+  }
+  return best;
+}
+
 export const SNAP_LABEL: Record<SnapKind, string> = {
   origin: "Origin",
   end: "End",

@@ -1,4 +1,4 @@
-import { act, render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { Button, IconButton, ToolButton } from "./Button";
@@ -116,6 +116,45 @@ describe("NumberField", () => {
     expect(field()).toHaveValue("22");
     expect(onCommit).toHaveBeenCalledWith(22, "40/2 + wall");
     expect(field()).toHaveAttribute("data-tip", "= 40/2 + wall");
+  });
+  it("offers parameter names as you type one, and Enter puts it in", async () => {
+    const onCommit = vi.fn();
+    render(<NumberField label="Depth" value={5} onCommit={onCommit} scope={{ width: 20, wall: 2, height: 10 }} />);
+    const f = screen.getByRole("textbox", { name: "Depth (mm)" });
+    await userEvent.clear(f);
+    await userEvent.type(f, "w");
+    const list = screen.getByRole("listbox", { name: "Parameters" });
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["wall2", "width20"]);
+    expect(f).toHaveAttribute("aria-activedescendant", within(list).getByRole("option", { name: /wall/ }).id);
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(f).toHaveValue("width");
+    expect(onCommit).not.toHaveBeenCalled();
+    await userEvent.type(f, " * 2{Enter}");
+    expect(onCommit).toHaveBeenCalledWith(40, "width * 2");
+  });
+  it("closes the names with Esc and keeps what was typed", async () => {
+    render(<NumberField label="Depth" value={5} scope={{ height: 10 }} />);
+    const f = screen.getByRole("textbox", { name: "Depth (mm)" });
+    await userEvent.clear(f);
+    await userEvent.type(f, "3 + he");
+    expect(screen.getByRole("option", { name: /height/ })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(f).toHaveValue("3 + he");
+  });
+  it("picks a name with the pointer", async () => {
+    render(<NumberField label="Depth" value={5} scope={{ height: 10 }} />);
+    const f = screen.getByRole("textbox", { name: "Depth (mm)" });
+    await userEvent.clear(f);
+    await userEvent.type(f, "(h");
+    fireEvent.mouseDown(screen.getByRole("option", { name: /height/ }));
+    expect(f).toHaveValue("(height");
+    expect(f).toHaveFocus();
   });
   it("converts units", async () => {
     render(<Harness />);
@@ -337,6 +376,34 @@ describe("PropsPanel", () => {
 });
 
 describe("ViewCube", () => {
+  it("has a Go home button and a menu, also on a right-click", async () => {
+    const onHome = vi.fn();
+    const onOrtho = vi.fn();
+    const { container } = render(
+      <ViewCube
+        onHome={onHome}
+        menu={[
+          { id: "home", label: "Go home", onSelect: onHome },
+          { id: "ortho", label: "Orthographic", checked: false, onSelect: onOrtho },
+        ]}
+      />,
+    );
+    const cube = screen.getByRole("group", { name: "View cube" });
+    await userEvent.click(within(cube).getByRole("button", { name: "Go home" }));
+    expect(onHome).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(cube).getByRole("button", { name: "View cube options" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Orthographic" }));
+    expect(onOrtho).toHaveBeenCalled();
+    fireEvent.contextMenu(container.querySelector("svg")!);
+    expect(screen.getByRole("menu", { name: "View cube" })).toBeInTheDocument();
+  });
+
+  it("leaves the buttons out when it has nowhere to send them", () => {
+    render(<ViewCube />);
+    expect(screen.queryByRole("button", { name: "Go home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View cube options" })).toBeNull();
+  });
+
   it("names its 26 places and classifies points on the cube", () => {
     expect(cubePlaceName([0, 0, 1])).toBe("the top");
     expect(cubePlaceName([0, -1, 1])).toBe("the front top edge");

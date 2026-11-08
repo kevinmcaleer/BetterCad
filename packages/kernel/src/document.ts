@@ -3,10 +3,11 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
-import { drawCentreRectangle, drawCircle, newSketch, planeFrame, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { drawCentreRectangle, drawCircle, newSketch, planeFrame, removeEntities, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
 import { partBounds, partFrame, type CataloguePart } from "./catalogue";
+import type { FinishId } from "./looks";
 export {
   CATALOGUE,
   CATALOGUE_CATEGORIES,
@@ -22,7 +23,10 @@ export {
   type CataloguePart,
   type CatalogueCategory,
 } from "./catalogue";
+import { PATTERN_DEFAULTS, copyName, copyPart, copyId, patternCopyIds, patternMoves, patternProblem, patternSummary } from "./pattern";
+import type { CopySpec, MirrorPlane, PatternKind, WorldAxis } from "./pattern";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
+import { evaluate } from "@bettercad/ui/expr";
 import {
   axisOf,
   crossesAxis,
@@ -39,6 +43,7 @@ import {
 } from "./extrude";
 
 export * from "./extrude";
+export * from "./pattern";
 export * from "./holes";
 export * from "./screws";
 import { screw } from "./screws";
@@ -120,6 +125,12 @@ export interface Part {
   imported?: ImportSpec;
   /** A catalogue part (#187): the record it was inserted from, kept whole so a catalogue change never moves it. */
   catalogue?: CataloguePart;
+  /** Its colour (#196), sRGB "#rrggbb"; none means the theme's part colour. From its look. */
+  colour?: string;
+  /** Its finish in renders and glTF (#196). From its look. */
+  finish?: FinishId;
+  /** A mirrored or turned copy of another body (#69), made from it as it stood. */
+  copy?: CopySpec;
 }
 
 /** Where an imported body comes from: body `index` of the file kept as `blob`. Meshes (STL, 3MF) can't be filleted. */
@@ -188,6 +199,31 @@ export interface AddFeature extends FeatureBase {
 export interface DuplicateFeature extends FeatureBase {
   type: "duplicate";
   copies: { from: string; id: string; name: string }[];
+}
+/**
+ * Mirror and patterns (#69): copies of bodies across a world plane, in rows along world axes, or round a world axis.
+ * Every kind's settings are kept, so switching kind on the bar and back loses nothing.
+ */
+export interface PatternFeature extends FeatureBase {
+  type: "pattern";
+  kind: PatternKind;
+  parts: string[];
+  /** Mirror: the plane, moved along its normal by `offset` mm. */
+  plane: MirrorPlane;
+  offset: number;
+  /** Rectangle: `count1` along `dir1` every `spacing1` mm, and `count2` along `dir2` (1 for a single row). */
+  dir1: WorldAxis;
+  count1: number;
+  spacing1: number;
+  dir2: WorldAxis;
+  count2: number;
+  spacing2: number;
+  /** Circle: `count` round the world `axis` through the origin, over `angle` degrees (360 for all the way round). */
+  axis: WorldAxis;
+  count: number;
+  angle: number;
+  /** Join each copy to its original, for one printable body, instead of keeping separate bodies. */
+  join: boolean;
 }
 export interface MoveFeature extends FeatureBase {
   type: "move";
@@ -386,6 +422,7 @@ export type Feature =
   | InsertFeature
   | AddFeature
   | DuplicateFeature
+  | PatternFeature
   | MoveFeature
   | ResizeFeature
   | DeleteFeature
@@ -410,6 +447,10 @@ export interface Look {
   fit?: FitId;
   /** A hole's custom gap, mm. */
   gap?: number;
+  /** Its colour (#196), sRGB "#rrggbb". Shown in the view, renders and glTF. */
+  colour?: string;
+  /** Its finish (#196): roughness and metalness in renders and glTF. */
+  finish?: FinishId;
 }
 
 export interface ModelDoc {
@@ -422,6 +463,8 @@ export interface ModelDoc {
   order?: string[];
   /** Named views: saved cameras. */
   views?: NamedView[];
+  /** The view cube's home view, when set from the cube's menu. Without it, home is the corner view, fitted. */
+  home?: ViewCamera;
   /** Parameters (#75): named values that feature fields can use. */
   params?: Parameter[];
   /** Imported files' bytes, base64, by content hash (#82), so the model rebuilds without the original file. */
@@ -444,6 +487,7 @@ export const KIND_LABEL: Record<PartKind, string> = {
 export const FEATURE_LABEL: Record<FeatureType, string> = {
   add: "Add",
   duplicate: "Duplicate",
+  pattern: "Pattern",
   move: "Move",
   resize: "Resize",
   delete: "Delete",
@@ -490,6 +534,7 @@ const BUILT = new Set<string>([
   "insert",
   "add",
   "duplicate",
+  "pattern",
   "move",
   "resize",
   "delete",
@@ -573,6 +618,29 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           parts.splice(i + 1, 0, { ...src, id: c.id, name: c.name, position: { ...src.position, x: src.position.x + 10 }, size: { ...src.size } });
         }
         break;
+      case "pattern": {
+        missing(f, f.parts);
+        const problem = patternProblem(f);
+        if (problem) {
+          failed.set(f.id, problem);
+          break;
+        }
+        const moves = patternMoves(f);
+        for (const from of f.parts) {
+          const i = find(from);
+          const src = parts[i];
+          if (!src) continue;
+          const copies = moves.map((m, k) => copyPart(src, m, copyId(f, from, k), copyName(f, src.name, k)));
+          if (f.join) {
+            const at = { position: { ...src.position }, rotation: src.rotation && { ...src.rotation } };
+            src.ops = [
+              ...(src.ops ?? []),
+              ...copies.map((c): BodyOp => ({ op: "join", body: { ...c, hole: undefined, fit: undefined, gap: undefined }, at, feature: f.id })),
+            ];
+          } else parts.splice(i + 1, 0, ...copies.filter((c) => find(c.id) < 0));
+        }
+        break;
+      }
       case "move":
       case "resize": {
         missing(f, f.parts);
@@ -596,10 +664,13 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           if (i >= 0) parts.splice(i, 1);
         }
         break;
-      case "sketch":
+      case "sketch": {
         sketches.push({ id: f.id, name: f.name, sketch: f.sketch });
         sketchById.set(f.id, f.sketch);
+        const why = sketchLinkProblem(f.sketch, (id) => find(id) >= 0);
+        if (why) failed.set(f.id, why);
         break;
+      }
       case "extrude": {
         const sk = sketchById.get(f.sketch);
         if (!sk) {
@@ -984,6 +1055,14 @@ export function removeView(doc: ModelDoc, id: string): ModelDoc {
   return { ...doc, views: (doc.views ?? []).filter((v) => v.id !== id) };
 }
 
+/** Sets the home view, or clears it back to the corner view with null. */
+export function setHome(doc: ModelDoc, camera: ViewCamera | null): ModelDoc {
+  if (camera) return { ...doc, home: { ...camera, target: [...camera.target] } };
+  const rest = { ...doc };
+  delete rest.home;
+  return rest;
+}
+
 /** The next free view name: "View 1", "View 2"… */
 export function nextViewName(doc: ModelDoc): string {
   const names = new Set((doc.views ?? []).map((v) => v.name));
@@ -1047,6 +1126,8 @@ export function featureParts(f: Feature): string[] {
       return [f.part.id];
     case "duplicate":
       return f.copies.map((c) => c.id);
+    case "pattern":
+      return f.join ? [...f.parts] : patternCopyIds(f);
     case "sketch":
       return [];
     case "extrude":
@@ -1110,6 +1191,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "duplicate":
       return `Copies ${who(f.copies.map((c) => c.from))}`;
+    case "pattern":
+      return patternSummary(f, who(f.parts));
     case "move": {
       const turn = f.rotation
         ? (["x", "y", "z"] as const)
@@ -1332,6 +1415,46 @@ export function groupOf(doc: ModelDoc, partId: string, upTo = doc.features.lengt
 }
 
 /** Changes a sketch in place (each drawing step is one undo step). */
+/** The projected entities whose body is gone at that point on the timeline: their links are broken. */
+export function brokenProjections(sketch: Sketch, hasBody: (id: string) => boolean): string[] {
+  return sketch.entities.filter((e) => e.projectedFrom && !hasBody(e.projectedFrom.body)).map((e) => e.id);
+}
+
+/** What is wrong with a sketch's links to the model: the face it sits on is gone, or projected edges lost their body. */
+export function sketchLinkProblem(sketch: Sketch, hasBody: (id: string) => boolean): string | null {
+  if (sketch.plane.kind === "face" && !hasBody(sketch.plane.face.body)) return "The face it sits on is gone. Redefine its plane from the timeline menu.";
+  const lost = brokenProjections(sketch, hasBody).filter((id) => sketch.entities.find((e) => e.id === id)?.kind !== "point").length;
+  if (!lost) return null;
+  return `${lost === 1 ? "1 projected edge has" : `${lost} projected edges have`} lost the body they came from. Fix the links from the timeline menu.`;
+}
+
+/** A sketch's broken projections, found against the model just before it. */
+export function sketchBrokenLinks(doc: ModelDoc, id: string): string[] {
+  const i = doc.features.findIndex((f) => f.id === id);
+  const f = doc.features[i];
+  if (f?.type !== "sketch") return [];
+  const here = new Set(build(doc, i).parts.map((p) => p.id));
+  return brokenProjections(f.sketch, (b) => here.has(b));
+}
+
+/** Fixes broken projections: "keep" leaves the geometry where it is as ordinary fixed lines, "delete" removes it. */
+export function fixSketchLinks(doc: ModelDoc, id: string, how: "keep" | "delete"): ModelDoc {
+  const broken = new Set(sketchBrokenLinks(doc, id));
+  if (!broken.size) return doc;
+  const unlink = (s: Sketch): Sketch => ({ ...s, entities: s.entities.map((e) => (broken.has(e.id) ? { ...e, projectedFrom: undefined } : e)) });
+  return updateSketch(doc, id, (s) => {
+    if (how === "keep") return unlink(s);
+    // The curves go; a point stays (unlinked) while your own geometry still uses it.
+    const curves = s.entities.filter((e) => broken.has(e.id) && e.kind !== "point").map((e) => e.id);
+    return unlink(removeEntities(s, curves));
+  });
+}
+
+/** Moves a sketch onto another plane or face. Its geometry keeps its place in the sketch's own frame, as in Fusion. */
+export function redefineSketchPlane(doc: ModelDoc, id: string, plane: PlaneRef): ModelDoc {
+  return updateSketch(doc, id, (s) => ({ ...s, plane }));
+}
+
 export function updateSketch(doc: ModelDoc, id: string, fn: (s: Sketch) => Sketch): ModelDoc {
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "sketch" ? { ...f, sketch: fn(f.sketch) } : f)) };
 }
@@ -1837,6 +1960,7 @@ function partsRead(f: Feature): string[] {
     case "move":
     case "resize":
     case "delete":
+    case "pattern":
       return f.parts;
     case "extrude":
     case "revolve":
@@ -1856,6 +1980,7 @@ function partsRead(f: Feature): string[] {
 function partsMade(f: Feature): string[] {
   if (f.type === "add") return [f.part.id];
   if (f.type === "duplicate") return f.copies.map((c) => c.id);
+  if (f.type === "pattern") return patternCopyIds(f);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
   if (f.type === "gear") return [f.body.id];
@@ -1952,10 +2077,17 @@ export function suppressedNeed(doc: ModelDoc, id: string): string | null {
 
 // ---- parameters (#75)
 
+/** Every expression a step holds: its fields' and, for a sketch, its dimensions'. */
+function featureExprs(f: Feature): string[] {
+  const out = Object.values(f.exprs ?? {});
+  if (f.type === "sketch") for (const d of f.sketch.dimensions) out.push(d.expression);
+  return out;
+}
+
 /** Steps and parameters whose expressions use a name. */
 export function paramUses(doc: ModelDoc, name: string): { features: Feature[]; params: Parameter[] } {
   return {
-    features: doc.features.filter((f) => Object.values(f.exprs ?? {}).some((e) => namesIn(e).includes(name))),
+    features: doc.features.filter((f) => featureExprs(f).some((e) => namesIn(e).includes(name))),
     params: (doc.params ?? []).filter((p) => p.name !== name && namesIn(p.expression).includes(name)),
   };
 }
@@ -1985,11 +2117,14 @@ export function updateParam(doc: ModelDoc, id: string, change: Partial<Omit<Para
   const to = change.name;
   if (to && to !== old.name) {
     params = params.map((p) => ({ ...p, expression: renameIn(p.expression, old.name, to) }));
-    features = features.map((f) =>
-      f.exprs && Object.values(f.exprs).some((e) => namesIn(e).includes(old.name))
-        ? { ...f, exprs: Object.fromEntries(Object.entries(f.exprs).map(([k, e]) => [k, renameIn(e, old.name, to)])) }
-        : f,
-    );
+    features = features.map((f) => {
+      if (!featureExprs(f).some((e) => namesIn(e).includes(old.name))) return f;
+      const exprs = f.exprs && Object.fromEntries(Object.entries(f.exprs).map(([k, e]) => [k, renameIn(e, old.name, to)]));
+      const g = { ...f, exprs } as Feature;
+      if (g.type !== "sketch") return g;
+      const dimensions = g.sketch.dimensions.map((d) => ({ ...d, expression: renameIn(d.expression, old.name, to) }));
+      return { ...g, sketch: { ...g.sketch, dimensions } };
+    });
   }
   return { ...doc, params, features };
 }
@@ -2023,7 +2158,64 @@ export function setExpr(doc: ModelDoc, featureId: string, path: string, expressi
   };
 }
 
+/**
+ * Sketch sizes that use parameters, worked out again after the parameters change, and each sketch that moved solved
+ * by `solve` (the planegcs solver, which the app loads). A size whose expression no longer works, or a sketch the
+ * solver can't meet, keeps what it had.
+ */
+export function relinkSketches(doc: ModelDoc, solve: (sketch: Sketch) => Sketch | null): ModelDoc {
+  const scope = paramScope(doc);
+  let changed = false;
+  const features = doc.features.map((f) => {
+    if (f.type !== "sketch") return f;
+    let moved = false;
+    const dimensions = f.sketch.dimensions.map((d) => {
+      if (!d.driving || !namesIn(d.expression).length) return d;
+      let v: number;
+      try {
+        v = evaluate(d.expression, scope);
+      } catch {
+        return d;
+      }
+      if (!(v > 0) || (d.kind === "angle" && v >= 180) || Math.abs(v - d.value) < 1e-9) return d;
+      moved = true;
+      return { ...d, value: v };
+    });
+    if (!moved) return f;
+    const solved = solve({ ...f.sketch, dimensions });
+    if (!solved) return f;
+    changed = true;
+    return { ...f, sketch: solved };
+  });
+  return changed ? { ...doc, features } : doc;
+}
+
 /** The values of every parameter, for number fields to use. */
 export function paramScope(doc: ModelDoc): Record<string, number> {
   return evaluateParams(doc.params).values;
+}
+
+// ---- mirror and patterns (#69)
+
+export type PatternParams = Omit<PatternFeature, "id" | "name" | "type">;
+
+/** Adds a Mirror or Pattern step for `parts`, with the defaults for anything not given. */
+export function addPattern(doc: ModelDoc, params: Partial<PatternParams> & { parts: string[]; kind: PatternKind }, id = newId("f"), at?: number): ModelDoc {
+  const name = params.kind === "mirror" ? nextNamed(doc, "Mirror") : nextFeatureName(doc, "pattern");
+  return insert(doc, clampAt(doc, at), { id, type: "pattern", name, ...PATTERN_DEFAULTS, ...params });
+}
+
+/** Changes a Mirror or Pattern step (the tool edits it live, as one undo step). Switching kind renames a default name. */
+export function updatePattern(doc: ModelDoc, id: string, change: Partial<PatternParams>): ModelDoc {
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== id || f.type !== "pattern") return f;
+      const next: PatternFeature = { ...f, ...change };
+      const was = f.kind === "mirror" ? "Mirror" : "Pattern";
+      const now = next.kind === "mirror" ? "Mirror" : "Pattern";
+      if (was !== now && new RegExp(`^${was} \\d+$`).test(f.name)) next.name = nextNamed(doc, now);
+      return next;
+    }),
+  };
 }

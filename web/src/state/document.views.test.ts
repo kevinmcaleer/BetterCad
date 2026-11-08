@@ -1,4 +1,4 @@
-import { addPart, changeParts, featureSummary, newDoc, nextViewName, parseDoc, partsOf, placePart, removeView, saveView } from "./document";
+import { addPart, changeParts, featureSummary, newDoc, nextViewName, parseDoc, partsOf, placePart, removeView, saveView, setHome } from "./document";
 import { DEFAULT_CAMERA } from "../viewport/camera";
 
 describe("document: turning and named views", () => {
@@ -30,5 +30,11 @@ describe("document: turning and named views", () => {
     expect(d.views).toHaveLength(1);
     expect(parseDoc(JSON.stringify(d)).views![0]!.camera.distance).toBe(50);
     expect(removeView(d, "v1").views).toEqual([]);
+  });
+
+  it("sets, saves and resets the home view", () => {
+    const d = setHome(newDoc(), { ...DEFAULT_CAMERA, azimuth: 10 });
+    expect(parseDoc(JSON.stringify(d)).home!.azimuth).toBe(10);
+    expect("home" in setHome(d, null)).toBe(false);
   });
 });

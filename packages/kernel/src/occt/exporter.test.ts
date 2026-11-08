@@ -7,6 +7,8 @@ import { DEFLECTION, readStep } from "./export";
 import { addExtrude, addPart, addSketch, newDoc, setLook, updateSketch, type ModelDoc } from "../document";
 import { meshVolume, read3mf, readStl } from "../export/mesh";
 import { measure } from "./shapes";
+import { readGlb } from "../export/gltf";
+import { DEFAULT_COLOUR, linearRgb } from "../looks";
 
 let oc: OC;
 let m: ModelBuilder;
@@ -98,5 +100,37 @@ describe("exports of the model (#80, #81, #86)", () => {
     expect(Math.abs(got.volume - built.volume)).toBeLessThan(1e-6 * built.volume);
     expect(got.faces).toBe(built.faces);
     expect(x.estimate({ doc: d, bodies: null, format: "step", deflection: 0 })).toMatchObject({ solids: 1, triangles: 0 });
+  });
+
+  it("exports GLB and glTF (#195): a node per body, metres, Y up, on the bed", () => {
+    let d = addPart(newDoc("Kit"), "box", "a");
+    d = addPart(d, "cylinder", "c");
+    const r = x.export({ doc: d, bodies: null, format: "glb", deflection: DEFLECTION.draft, name: "Kit" });
+    expect(r.files.map((f) => f.name)).toEqual(["Kit.glb"]);
+    const { json } = readGlb(r.files[0]!.data);
+    const root = json.nodes[json.scenes[0]!.nodes[0]!]!;
+    expect(root.name).toBe("Kit");
+    expect(root.children!.map((i) => json.nodes[i]!.name)).toEqual(["Box 1", "Cylinder 1"]);
+    // On the bed: the lowest point is at glTF Y = 0, and a 20 mm box is 0.02 m tall.
+    const box = json.accessors[json.meshes[0]!.primitives[0]!.attributes.POSITION!]!;
+    expect(Math.abs(box.min![1]!)).toBeLessThan(1e-9);
+    expect(box.max![1]! - box.min![1]!).toBeCloseTo(0.02, 6);
+
+    const est = x.estimate({ doc: d, bodies: null, format: "glb", deflection: DEFLECTION.draft });
+    expect(est.bytes / r.files[0]!.data.byteLength).toBeGreaterThan(0.5);
+    expect(est.bytes / r.files[0]!.data.byteLength).toBeLessThan(2);
+
+    const g = x.export({ doc: d, bodies: null, format: "gltf", deflection: DEFLECTION.draft, separate: true, name: "Kit" });
+    expect(g.files.map((f) => f.name)).toEqual(["Kit-Box 1.gltf", "Kit-Box 1.bin", "Kit-Cylinder 1.gltf", "Kit-Cylinder 1.bin"]);
+  });
+
+  it("carries each body's colour and finish into the glTF materials (#196)", () => {
+    let d = addPart(newDoc("Kit"), "box", "a");
+    d = addPart(d, "cylinder", "c");
+    d = setLook(d, ["c"], () => ({ colour: "#2d6fd0", finish: "metal" }));
+    const { json } = readGlb(x.export({ doc: d, bodies: null, format: "glb", deflection: DEFLECTION.draft, name: "Kit" }).files[0]!.data);
+    const [plain, blue] = json.materials.map((m) => m.pbrMetallicRoughness);
+    expect(plain).toEqual({ baseColorFactor: [...linearRgb(DEFAULT_COLOUR), 1], roughnessFactor: 0.85, metallicFactor: 0 });
+    expect(blue).toEqual({ baseColorFactor: [...linearRgb("#2d6fd0"), 1], roughnessFactor: 0.3, metallicFactor: 1 });
   });
 });

@@ -50,6 +50,7 @@ const KNOWN: ReadonlySet<FeatureType> = new Set<FeatureType>([
   "import",
   "add",
   "duplicate",
+  "pattern",
   "move",
   "resize",
   "delete",

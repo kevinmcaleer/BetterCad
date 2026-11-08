@@ -46,6 +46,8 @@ export interface TopBarProps {
   /** Set when the model can be shared (#92). */
   onShare?: () => void;
   onSignOut?: () => void;
+  /** Install BetterCad as an app (#95), when the browser offers it. */
+  onInstall?: () => void;
   /** A share link is open: read-only, with downloads and a way to make it yours. */
   shared?: { owner: string } | null;
   onOpenCopy?: () => void;
@@ -140,7 +142,7 @@ export function TopBar(p: TopBarProps) {
             label="Download"
             align="end"
             entries={[
-              { id: "print", label: "STL, 3MF or STEP…", icon: "download", onSelect: () => p.onExport?.() },
+              { id: "print", label: "STL, 3MF, STEP or glTF…", icon: "download", onSelect: () => p.onExport?.() },
               { id: "bcad", label: "BetterCad model (.bcad)", icon: "save", onSelect: () => p.onDownloadBcad?.() },
             ]}
             trigger={(t) => <Button {...t} icon="download" label="Download" title="Download this model" />}
@@ -175,6 +177,7 @@ export function TopBar(p: TopBarProps) {
               : [{ id: "signin", label: "Accounts can't be reached here", icon: "cloudOff" as const, disabled: true, onSelect: () => {} }]),
           { kind: "separator", id: "s1" },
           { id: "settings", label: "Settings", icon: "settings" as const, onSelect: () => p.onPanel("settings") },
+          ...(p.onInstall ? [{ id: "install", label: "Install BetterCad", icon: "download" as const, onSelect: p.onInstall }] : []),
           { kind: "title", id: "t", label: "Theme" },
         ]}
         trigger={(t) =>

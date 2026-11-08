@@ -21,6 +21,18 @@ services:
       BACKUP_DIR: /backups
       # Only used for CORS outside production; the app is same-origin behind the proxy.
       ALLOWED_ORIGINS: https://bettercad.kevsrobots.com
+      # Sign-in (docs/accounts.md). All empty: BetterCad keeps its own users. To share Kev's apps' login, set the
+      # three in .env and mount the folder holding the shared users database (on this machine's disk) into the container.
+      AUTH_DATABASE_PATH: ${AUTH_DATABASE_PATH:-}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      COOKIE_PREFIX: ${COOKIE_PREFIX:-bc}
+      # Password reset emails link here, and go out through the SMTP server below.
+      PUBLIC_URL: ${PUBLIC_URL:-https://bettercad.kevsrobots.com}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
 
   # The Cloudflare Tunnel that serves bettercad.kevsrobots.com. Starts with the app; needs CLOUDFLARE_TUNNEL_TOKEN
   # in .env. In the Zero Trust dashboard, the tunnel's public hostname bettercad.kevsrobots.com points at

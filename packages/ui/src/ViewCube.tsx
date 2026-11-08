@@ -1,4 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Button } from "./Button";
+import { ContextMenu, MenuButton, type ContextMenuState, type MenuEntry } from "./Menu";
 
 export type ViewName = "top" | "bottom" | "front" | "back" | "right" | "left";
 
@@ -73,6 +75,10 @@ export interface ViewCubeProps {
   /** The cube is being dragged: turn the view by this many pixels. */
   onOrbit?: (dxPx: number, dyPx: number) => void;
   onOrbitEnd?: () => void;
+  /** Go home: shows a house by the cube while the pointer is over it (always, on touch screens). */
+  onHome?: () => void;
+  /** The cube's own menu (Go home, projection, home view), under a small arrow by the cube and on a right-click. */
+  menu?: MenuEntry[];
 }
 
 /**
@@ -81,9 +87,10 @@ export interface ViewCubeProps {
  * place under the pointer lights up. X, Y and Z (red, green, blue) run along the edges from the bottom-front-left
  * corner.
  */
-export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd }: ViewCubeProps) {
+export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, menu }: ViewCubeProps) {
   const r = rotation;
   const [hover, setHover] = useState<string | null>(null);
+  const [context, setContext] = useState<ContextMenuState | null>(null);
   const press = useRef<{ x: number; y: number; lastX: number; lastY: number; moved: boolean; raw: V3 | null } | null>(null);
 
   const depthOf = (p: V3) => r[6]! * p[0] + r[7]! * p[1] + r[8]! * p[2];
@@ -198,96 +205,111 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd }: ViewCu
   };
 
   return (
-    <svg
-      className="bc-viewcube"
-      viewBox={`0 0 ${SIZE} ${SIZE}`}
-      role="group"
-      aria-label="View cube"
-      onPointerDown={onDown}
-      onPointerMove={onMove}
-      onPointerUp={(e) => end(e, false)}
-      onPointerCancel={(e) => end(e, true)}
-      onPointerLeave={() => !press.current && setHover(null)}
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <defs>
-        <linearGradient id="bc-cube-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="var(--bc-color-cube-face)" />
-          <stop offset="1" stopColor="var(--bc-color-cube-face-low)" />
-        </linearGradient>
-      </defs>
-      {behind}
-      {labels(false)}
-      {faces.map((f) => {
-        const up = f.down.map((v) => -v) as V3;
-        const left = f.right.map((v) => -v) as V3;
-        const outline = [add(add(f.n, left), up), add(add(f.n, f.right), up), add(add(f.n, f.right), f.down), add(add(f.n, left), f.down)];
-        const inset = (s: number) => [
-          add(add(f.n, left, s), up, s),
-          add(add(f.n, f.right, s), up, s),
-          add(add(f.n, f.right, s), f.down, s),
-          add(add(f.n, left, s), f.down, s),
-        ];
-        const c = proj(f.n);
-        const pr = proj(add(f.n, f.right));
-        const pd = proj(add(f.n, f.down));
-        const u = { x: pr.x - c.x, y: pr.y - c.y };
-        const v = { x: pd.x - c.x, y: pd.y - c.y };
-        // Text is laid out for a face 25 px from centre to side, then bent onto the face as it is now.
-        const k = 25;
-        const name = `Look from the ${f.view}`;
-        // The face in a 3 × 3 grid of places: its corners and edges are the cube's corners and edges.
-        const bands = [
-          [-1, -EDGE],
-          [-EDGE, EDGE],
-          [EDGE, 1],
-        ] as const;
-        const cells = [-1, 0, 1].flatMap((i) =>
-          [-1, 0, 1].map((j) => {
-            const [a0, a1] = bands[i + 1]!;
-            const [b0, b1] = bands[j + 1]!;
-            const at = (a: number, b: number) => add(add(f.n, f.right, a), f.down, b);
-            const raw = add(add(f.n, f.right, i), f.down, j);
-            return (
-              <polygon key={`${i}${j}`} className="bc-cube-place" data-place={key(raw)} points={pts([at(a0, b0), at(a1, b0), at(a1, b1), at(a0, b1)])}>
-                <title>{`Look from ${cubePlaceName(raw)}`}</title>
-              </polygon>
-            );
-          }),
-        );
-        return (
-          <g
-            key={f.view}
-            className="bc-cube-side"
-            role="button"
-            tabIndex={-1}
-            aria-label={name}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onPick?.(f.n);
-              }
-            }}
-          >
-            <polygon className="bc-cube-face" points={pts(outline)} />
-            <polygon className="bc-cube-frame" points={pts(inset(0.92))} />
-            <text
-              className={`bc-cube-label${f.label.length > 5 ? " bc-cube-label-long" : ""}`}
-              transform={`matrix(${(u.x / k).toFixed(4)} ${(u.y / k).toFixed(4)} ${(v.x / k).toFixed(4)} ${(v.y / k).toFixed(4)} ${c.x.toFixed(2)} ${c.y.toFixed(2)})`}
-              y="3.5"
-              pointerEvents="none"
+    <div className="bc-viewcube" role="group" aria-label="View cube">
+      <svg
+        className="bc-viewcube-svg"
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={(e) => end(e, false)}
+        onPointerCancel={(e) => end(e, true)}
+        onPointerLeave={() => !press.current && setHover(null)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          if (menu?.length) setContext({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        <defs>
+          <linearGradient id="bc-cube-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="var(--bc-color-cube-face)" />
+            <stop offset="1" stopColor="var(--bc-color-cube-face-low)" />
+          </linearGradient>
+        </defs>
+        {behind}
+        {labels(false)}
+        {faces.map((f) => {
+          const up = f.down.map((v) => -v) as V3;
+          const left = f.right.map((v) => -v) as V3;
+          const outline = [add(add(f.n, left), up), add(add(f.n, f.right), up), add(add(f.n, f.right), f.down), add(add(f.n, left), f.down)];
+          const inset = (s: number) => [
+            add(add(f.n, left, s), up, s),
+            add(add(f.n, f.right, s), up, s),
+            add(add(f.n, f.right, s), f.down, s),
+            add(add(f.n, left, s), f.down, s),
+          ];
+          const c = proj(f.n);
+          const pr = proj(add(f.n, f.right));
+          const pd = proj(add(f.n, f.down));
+          const u = { x: pr.x - c.x, y: pr.y - c.y };
+          const v = { x: pd.x - c.x, y: pd.y - c.y };
+          // Text is laid out for a face 25 px from centre to side, then bent onto the face as it is now.
+          const k = 25;
+          const name = `Look from the ${f.view}`;
+          // The face in a 3 × 3 grid of places: its corners and edges are the cube's corners and edges.
+          const bands = [
+            [-1, -EDGE],
+            [-EDGE, EDGE],
+            [EDGE, 1],
+          ] as const;
+          const cells = [-1, 0, 1].flatMap((i) =>
+            [-1, 0, 1].map((j) => {
+              const [a0, a1] = bands[i + 1]!;
+              const [b0, b1] = bands[j + 1]!;
+              const at = (a: number, b: number) => add(add(f.n, f.right, a), f.down, b);
+              const raw = add(add(f.n, f.right, i), f.down, j);
+              return (
+                <polygon key={`${i}${j}`} className="bc-cube-place" data-place={key(raw)} points={pts([at(a0, b0), at(a1, b0), at(a1, b1), at(a0, b1)])}>
+                  <title>{`Look from ${cubePlaceName(raw)}`}</title>
+                </polygon>
+              );
+            }),
+          );
+          return (
+            <g
+              key={f.view}
+              className="bc-cube-side"
+              role="button"
+              tabIndex={-1}
+              aria-label={name}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onPick?.(f.n);
+                }
+              }}
             >
-              {f.label}
-            </text>
-            {cells}
-          </g>
-        );
-      })}
-      {hlFaces.map((h) => (
-        <polygon key={h.k} className="bc-cube-light" points={h.points} aria-hidden="true" />
-      ))}
-      {front}
-      {labels(true)}
-    </svg>
+              <polygon className="bc-cube-face" points={pts(outline)} />
+              <polygon className="bc-cube-frame" points={pts(inset(0.92))} />
+              <text
+                className={`bc-cube-label${f.label.length > 5 ? " bc-cube-label-long" : ""}`}
+                transform={`matrix(${(u.x / k).toFixed(4)} ${(u.y / k).toFixed(4)} ${(v.x / k).toFixed(4)} ${(v.y / k).toFixed(4)} ${c.x.toFixed(2)} ${c.y.toFixed(2)})`}
+                y="3.5"
+                pointerEvents="none"
+              >
+                {f.label}
+              </text>
+              {cells}
+            </g>
+          );
+        })}
+        {hlFaces.map((h) => (
+          <polygon key={h.k} className="bc-cube-light" points={h.points} aria-hidden="true" />
+        ))}
+        {front}
+        {labels(true)}
+      </svg>
+      {onHome && <Button className="bc-cube-btn bc-cube-home" size="dense" icon="home" title="Go home" onClick={onHome} />}
+      {menu?.length ? (
+        <>
+          <MenuButton
+            label="View cube"
+            align="end"
+            entries={menu}
+            trigger={(p) => <Button {...p} className="bc-cube-btn bc-cube-more" size="dense" icon="chevronDown" title="View cube options" />}
+          />
+          <ContextMenu at={context} onClose={() => setContext(null)} entries={menu} label="View cube" />
+        </>
+      ) : null}
+    </div>
   );
 }

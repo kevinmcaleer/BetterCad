@@ -1,5 +1,22 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { addParam, addPart, build, changeParts, newDoc, paramUses, removeParamProblem, setExpr, updateParam, type ModelDoc } from "./document";
+import { Solver, drawRectangle, type Sketch } from "@bettercad/sketch";
+import {
+  addParam,
+  addPart,
+  addSketch,
+  build,
+  changeParts,
+  newDoc,
+  paramUses,
+  relinkSketches,
+  removeParam,
+  removeParamProblem,
+  setExpr,
+  updateParam,
+  updateSketch,
+  type ModelDoc,
+  type SketchFeature,
+} from "./document";
 import { evaluateParams, namesIn, renameIn, setPath } from "./params";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
@@ -68,5 +85,54 @@ describe("parameters in the model", () => {
     const m = model("30");
     const d = setExpr(m, m.features[1]!.id, "size.y", "missing + 1");
     expect(build(d).failed.get(d.features[1]!.id)).toBe("No value called missing");
+  });
+});
+
+describe("parameters in sketch sizes", () => {
+  let solver: Solver;
+  beforeAll(async () => {
+    solver = await Solver.load();
+  });
+  const solve = (s: Sketch) => {
+    const r = solver.solve(s);
+    return r.status === "ok" || r.status === "redundant" ? r.sketch : null;
+  };
+
+  /** A 40 × 20 rectangle sketch whose width is `width * 2` and height is `height`. */
+  function model(): ModelDoc {
+    let d = addParam(newDoc(), { name: "width", expression: "20" }, "pw");
+    d = addParam(d, { name: "height", expression: "10" }, "ph");
+    d = addSketch(d, { kind: "world", plane: "XY", offset: 0 }, "s");
+    return updateSketch(d, "s", (s) => {
+      const r = drawRectangle(s, [0, 0], [40, 20], { width: 40, height: 20 });
+      const exprs = ["width * 2", "height + 10"];
+      return solve({ ...r.sketch, dimensions: r.sketch.dimensions.map((dm, i) => ({ ...dm, expression: exprs[i]! })) })!;
+    });
+  }
+  const sketchOf = (d: ModelDoc) => (d.features.find((f) => f.id === "s") as SketchFeature).sketch;
+  const xs = (s: Sketch) => s.entities.flatMap((e) => (e.kind === "point" ? [Math.round(e.x * 1e6) / 1e6] : []));
+  const ys = (s: Sketch) => s.entities.flatMap((e) => (e.kind === "point" ? [Math.round(e.y * 1e6) / 1e6] : []));
+
+  it("re-solves a sketch when a parameter its sizes use changes", () => {
+    const d = relinkSketches(updateParam(model(), "pw", { expression: "30" }), solve);
+    const s = sketchOf(d);
+    expect(s.dimensions.map((x) => x.value)).toEqual([60, 20]);
+    expect(Math.max(...xs(s)) - Math.min(...xs(s))).toBeCloseTo(60, 6);
+    expect(Math.max(...ys(s)) - Math.min(...ys(s))).toBeCloseTo(20, 6);
+  });
+
+  it("leaves the document alone when nothing moved, and keeps the old size when an expression breaks", () => {
+    const m = model();
+    expect(relinkSketches(m, solve)).toBe(m);
+    const broken = removeParam(m, "ph");
+    expect(relinkSketches(broken, solve)).toBe(broken);
+  });
+
+  it("counts a sketch as a use, and renames inside its sizes", () => {
+    let d = model();
+    expect(paramUses(d, "width").features.map((f) => f.id)).toEqual(["s"]);
+    expect(removeParamProblem(d, "pw")).toBe("width is used by Sketch 1");
+    d = updateParam(d, "pw", { name: "w" });
+    expect(sketchOf(d).dimensions.map((x) => x.expression)).toEqual(["w * 2", "height + 10"]);
   });
 });

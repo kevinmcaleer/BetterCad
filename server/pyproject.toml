@@ -8,6 +8,7 @@ dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.34",
   "pydantic-settings>=2.9",
+  "powertools-auth",
 ]
 
 [dependency-groups]
@@ -34,3 +35,6 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+
+[tool.uv.sources]
+powertools-auth = { git = "https://github.com/kevinmcaleer/markdown-studio", subdirectory = "packages/powertools-auth", rev = "4865bbd1f8d5646e3e40d060cc3fd50bfb440e37" }

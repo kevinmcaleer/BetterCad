@@ -145,7 +145,7 @@ export function PrintPanel(p: PrintPanelProps) {
       )}
       <label className="bc-check">
         <input type="checkbox" checked={p.showBed} onChange={(e) => p.onShowBed(e.target.checked)} />
-        <span>Show the bed</span>
+        <span>Show the build volume</span>
       </label>
       {p.hasModel &&
         (p.fitProblem ? (
@@ -479,7 +479,7 @@ function ProfilePicker({
           <label className="bc-field-label" htmlFor="bc-profile-name">
             Printer name
           </label>
-          <input id="bc-profile-name" className="bc-text" autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="My Bambu A1" />
+          <input id="bc-profile-name" className="bc-text" autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="My Core One" />
           <span className="bc-print-row">
             <Button kind="cancel" label="Cancel" title="Don't save" shortcut="Esc" onClick={() => setNaming(null)} />
             <Button kind="done" label="Save" title="Save this printer" disabled={!naming.trim()} onClick={finish} />

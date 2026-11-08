@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Draft, Solver, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
 import { addConstraints, commit, constraintsFor, levelOrUpright, newlyRedundant, preview, resolveOrigin } from "./tools";
-import { ORIGIN, pickAt, type Snap } from "./snap";
+import { ORIGIN, middleOf, pickAt, pointPickAt, type Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
 
@@ -201,5 +201,54 @@ describe("sketch tools", () => {
     // Midpoint: the line's midpoint on the origin.
     const midOut = addConstraints("midpoint", s, [ORIGIN, line]) as Sketch;
     expect(midOut.constraints.at(-1)).toMatchObject({ type: "midpoint", line });
+  });
+
+  it("refuses a constraint mark or the same point twice as Coincident picks, instead of crashing the solver", async () => {
+    const solver = await Solver.load();
+    let s = solver.solve(commit("rectangle", newSketch(), [free(-20, -10), free(20, 10)])!.sketch).sketch;
+    const lines = s.entities.filter((e) => e.kind === "line").map((e) => e.id);
+    s = solver.solve(addConstraints("midpoint", s, [lines[0]!, lines[2]!]) as Sketch).sketch;
+    const mark = s.constraints.find((c) => c.type === "midpoint")!;
+    // The M mark covered the origin, so a click picked the constraint: it is not geometry.
+    expect(addConstraints("coincident", s, [mark.id, ORIGIN])).toBe("Pick two points, or a point and a line or curve");
+    expect(addConstraints("coincident", s, [ORIGIN, mark.id])).toBe("Pick two points, or a point and a line or curve");
+    // The origin and the point already fixed on it are the same point.
+    const fixed = addConstraints("coincident", s, [ORIGIN, (mark as { p: string }).p]) as Sketch;
+    const o = fixed.constraints.find((c) => c.type === "fix")!;
+    expect(addConstraints("coincident", fixed, [ORIGIN, (o as { p: string }).p])).toBe("Pick two different points");
+  });
+
+  it("snaps Coincident to points, then the origin, then midpoints, and lets go further away", () => {
+    const d = new Draft(newSketch());
+    const p = d.point([5, 5]);
+    const line = d.line(d.point([10, 0]), d.point([30, 0]), { auto: false });
+    const s = d.done().sketch;
+    expect(pointPickAt([5.5, 5], s, 1, [0, 0])).toMatchObject({ id: p, xy: [5, 5], label: "Point" });
+    expect(pointPickAt([0.5, 0], s, 1, [0, 0])).toMatchObject({ id: ORIGIN, kind: "origin" });
+    expect(pointPickAt([10.4, 0], s, 1, [0, 0])).toMatchObject({ kind: "end", label: "End" });
+    expect(pointPickAt([20.5, 0.3], s, 1, [0, 0])).toMatchObject({ id: middleOf(line), xy: [20, 0], kind: "middle" });
+    expect(pointPickAt([24, 0], s, 1, [0, 0])).toBeNull();
+  });
+
+  it("puts a point on a line's midpoint when Coincident picks the midpoint", async () => {
+    const d = new Draft(newSketch());
+    const p = d.point([5, 5]);
+    const a = d.line(d.point([10, 0]), d.point([30, 0]), { auto: false });
+    const b = d.line(d.point([10, 10]), d.point([30, 20]), { auto: false });
+    const s = d.done().sketch;
+    const out = addConstraints("coincident", s, [p, middleOf(a)]) as Sketch;
+    expect(out.constraints.at(-1)).toMatchObject({ type: "midpoint", p, line: a });
+    const solved = (await Solver.load()).solve(out);
+    expect(solved.status).toBe("ok");
+    const i = new SketchIndex(solved.sketch);
+    const la = solved.sketch.entities.find((e) => e.id === a) as { a: string; b: string };
+    const [m0, m1] = [(i.xy(la.a)[0] + i.xy(la.b)[0]) / 2, (i.xy(la.a)[1] + i.xy(la.b)[1]) / 2];
+    expect(i.xy(p)).toEqual([expect.closeTo(m0), expect.closeTo(m1)]);
+    // The origin on a midpoint, and two midpoints together.
+    expect((addConstraints("coincident", s, [ORIGIN, middleOf(a)]) as Sketch).constraints.at(-1)).toMatchObject({ type: "midpoint", line: a });
+    expect((addConstraints("coincident", s, [middleOf(a), middleOf(b)]) as Sketch).constraints.filter((c) => c.type === "midpoint")).toHaveLength(2);
+    // A line's own end can't go on its midpoint.
+    const end = (s.entities.find((e) => e.id === a) as { a: string }).a;
+    expect(addConstraints("coincident", s, [end, middleOf(a)])).toBe("A line's end can't sit on its own midpoint");
   });
 });

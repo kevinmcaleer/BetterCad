@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { ViewCube } from "@bettercad/ui";
+import { ViewCube, type MenuEntry } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
@@ -12,6 +12,8 @@ export type ViewMode = "select" | "move" | "turn" | "section" | "none";
 export interface View3DHandle {
   preset(p: Preset): void;
   fit(ids?: string[]): void;
+  /** Go home: to `camera`, or the corner view fitted. */
+  home(camera?: CameraState | null): void;
   camera(): CameraState;
   setCamera(c: CameraState, animate?: boolean): void;
   /** The engine, for tools that draw over the view or take the pointer (sketching). */
@@ -40,7 +42,7 @@ export interface View3DProps {
   onSection: (s: Section) => void;
   onCamera?: (c: CameraState) => void;
   /** The printer's bed to draw (#100), or null for none. */
-  bed?: { x: number; y: number; z: number; origin: "centre" | "corner" } | null;
+  bed?: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null;
   /** Bodies off the bed, tinted warn. */
   warn?: Set<string>;
   /** A print check's per-vertex tint by body (#101, #102). */
@@ -50,6 +52,9 @@ export interface View3DProps {
   originPlanes?: { shown: WorldPlaneName[]; chosen: WorldPlaneName | null; point?: boolean };
   /** Whether to show the empty-model hint (off while sketching). */
   emptyHint?: boolean;
+  /** The view cube's Go home button and its menu. */
+  onHome?: () => void;
+  cubeMenu?: MenuEntry[];
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
   children?: ReactNode;
 }
@@ -103,7 +108,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
     () => ({
       preset: (p) => engine.current?.preset(p),
       fit: (ids) => engine.current?.fit(ids),
-      camera: () => engine.current?.camera ?? DEFAULT_CAMERA,
+      home: (c) => engine.current?.home(c),
+      camera: () => engine.current?.goal ?? DEFAULT_CAMERA,
       setCamera: (c, animate = true) => engine.current?.setCamera(c, animate),
       engine: () => engine.current,
     }),
@@ -195,6 +201,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             ghost: p.ghost,
             reference: p.reference,
             highlight: p.highlight,
+            colour: p.colour && /^#[0-9a-f]{6}$/i.test(p.colour) ? p.colour : undefined,
             warn: props.warn?.has(p.id),
           };
         }),
@@ -216,7 +223,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   const check = props.check ?? null;
   useEffect(() => engine.current?.setCheck(check), [check, bodies]);
   const bed = props.bed;
-  const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin}` : "";
+  const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin},${bed.label ?? ""}` : "";
   useEffect(() => {
     engine.current?.setBed(bed ?? null);
     // Only a different bed redraws it.
@@ -269,7 +276,13 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
         </div>
       )}
       {props.children}
-      <ViewCube rotation={rotation} onPick={(d) => engine.current?.lookFrom(d)} onOrbit={(dx, dy) => engine.current?.orbitBy(dx, dy)} />
+      <ViewCube
+        rotation={rotation}
+        onPick={(d) => engine.current?.lookFrom(d)}
+        onOrbit={(dx, dy) => engine.current?.orbitBy(dx, dy)}
+        onHome={props.onHome}
+        menu={props.cubeMenu}
+      />
       {supported && parts.length === 0 && props.emptyHint !== false && (
         <div className="bc-view-hint" aria-hidden="true">
           Add a shape from the Library to start.

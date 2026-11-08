@@ -77,6 +77,8 @@ export const star = "m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 
 export const list = "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01";
 export const arrow = "M4 12h16M14 6l6 6-6 6";
 export const screw = "M12 2v4M9 6h6M10 6v12l2 4 2-4V6M10 10h4M10 14h4";
+export const home = "M3 11.5 12 4l9 7.5M5.5 9.5V20h5v-5.5h3V20h5V9.5";
+export const chevronDown = "m6 9 6 6 6-6";
 export const camera = "M4 8h3l2-3h6l2 3h3v11H4zM12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
 export const track = "M7 8h10a4 4 0 0 1 0 8H7a4 4 0 0 1 0-8zM7 12h.01M17 12h.01M10 8v-2M14 8v-2M10 16v2M14 16v2";
 export const sketch = "M4 20 14 10M14 10l2-6 4 4-6 2zM4 20h4";
@@ -206,6 +208,8 @@ export const ICONS = {
   list,
   arrow,
   screw,
+  home,
+  chevronDown,
   camera,
   track,
   sketch,

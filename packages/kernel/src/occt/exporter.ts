@@ -1,12 +1,15 @@
-import type { ModelBuilder } from "./model";
+import { partKey, type ModelBuilder } from "./model";
 import type { OC } from "./oc";
 import { triangles, writeStep } from "./export";
 import { build, type ModelDoc, type Part } from "../document";
 import { placeOnBed, stlBytes, triangleCount, write3mf, writeStl, type MeshBody } from "../export/mesh";
+import { gltfBytes, writeGlb, writeGltf } from "../export/gltf";
 import { fileName } from "../bcad";
+import { pbrOf } from "../looks";
 import { KernelError } from "../errors";
 
-export type ExportFormat = "stl" | "3mf" | "step";
+/** glb and gltf (#195) are for Blender and web viewers: metres, Y up, a node and material per body. */
+export type ExportFormat = "stl" | "3mf" | "step" | "glb" | "gltf";
 
 export interface ExportRequest {
   doc: ModelDoc;
@@ -60,16 +63,16 @@ export class Exporter {
     return { parts: solid, skipped: wanted.length - solid.length };
   }
 
-  private mesh(p: Part, deflection: number): MeshBody {
+  private mesh(p: Part, deflection: number): MeshBody & { look: ReturnType<typeof pbrOf> } {
     const shape = this.model.solid(p).shape;
-    const k = `${JSON.stringify([p.kind, p.size, p.position, p.rotation ?? null, p.prism ?? null, p.revolve ?? null, p.ops ?? null])}@${deflection}`;
+    const k = `${partKey(p, "fine")}@${deflection}`;
     let t = this.tris.get(k);
     if (!t) {
       t = triangles(this.oc, shape, deflection);
       if (this.tris.size > 200) this.tris.clear();
       this.tris.set(k, t);
     }
-    return { name: p.name, triangles: t };
+    return { name: p.name, triangles: t, look: pbrOf(p) };
   }
 
   estimate(r: ExportRequest, cancelled: () => boolean = () => false): ExportEstimate {
@@ -81,7 +84,8 @@ export class Exporter {
       n += this.mesh(p, r.deflection).triangles.length / 9;
     }
     // A 3MF shares corners between triangles (about half as many corners as triangles), as text.
-    return { triangles: n, bytes: r.format === "stl" ? stlBytes(n) : Math.round(n * 70 + 1500), solids: parts.length, skipped };
+    const bytes = r.format === "stl" ? stlBytes(n) : r.format === "3mf" ? Math.round(n * 70 + 1500) : gltfBytes(n);
+    return { triangles: n, bytes, solids: parts.length, skipped };
   }
 
   export(r: ExportRequest & { name: string }, cancelled: () => boolean = () => false): ExportResult {
@@ -108,7 +112,12 @@ export class Exporter {
       let bodies = g.parts.map((p) => this.mesh(p, r.deflection));
       if (!r.keepPosition) bodies = placeOnBed(bodies);
       total += triangleCount(bodies);
-      files.push({ name: g.file, data: r.format === "stl" ? writeStl(r.name, bodies) : write3mf(r.name, bodies) });
+      if (r.format === "gltf") {
+        const bin = g.file.replace(/\.gltf$/, ".bin");
+        const out = writeGltf(r.name, bodies, bin);
+        files.push({ name: g.file, data: out.gltf }, { name: bin, data: out.bin });
+      } else if (r.format === "glb") files.push({ name: g.file, data: writeGlb(r.name, bodies) });
+      else files.push({ name: g.file, data: r.format === "stl" ? writeStl(r.name, bodies) : write3mf(r.name, bodies) });
     }
     return { files, triangles: total, skipped };
   }

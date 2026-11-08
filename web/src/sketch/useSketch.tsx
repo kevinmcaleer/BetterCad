@@ -31,14 +31,16 @@ import {
   type Sketch,
   type Vec2,
 } from "@bettercad/sketch";
-import { addSketch, newId, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
+import { addSketch, newId, paramScope, redefineSketchPlane, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
+import { loadSolver } from "./solver";
 import type { Command } from "../state/commands";
+import { caught } from "../report/errors";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { loadOptions, saveOptions, sketchGrid, type SketchOption, type SketchOptions } from "./options";
-import { ORIGIN, entityAt, pickAt, snap, snapStep, type Snap } from "./snap";
+import { ORIGIN, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type Snap } from "./snap";
 import {
   CLICKS,
   CONSTRAINT_TOOLS,
@@ -79,12 +81,6 @@ export interface SketchDeps {
   theme: string;
 }
 
-let solverLoad: Promise<Solver> | null = null;
-function loadSolver(): Promise<Solver> {
-  solverLoad ??= import("@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url").then((m) => Solver.load(m.default));
-  return solverLoad;
-}
-
 const DIM_NAME: Record<DimensionKind, string> = {
   length: "Length",
   distance: "Distance",
@@ -103,6 +99,8 @@ export function useSketch(d: SketchDeps) {
   const deps = useRef(d);
   deps.current = d;
   const [editingId, setEditingId] = useState<string | null>(null);
+  /** A sketch being moved onto another plane or face (the timeline's Redefine sketch plane), and how to end it. */
+  const [redefining, setRedefining] = useState<{ id: string; name: string; end: () => void } | null>(null);
   const [stool, setStoolState] = useState<SketchToolId>("select");
   /** The armed constraint tool: it stays on the pointer, picking line after line, until Esc. */
   const [ctool, setCtool] = useState<ConstraintToolId | null>(null);
@@ -128,6 +126,8 @@ export function useSketch(d: SketchDeps) {
   const [finishWarn, setFinishWarn] = useState(false);
   const [camTick, setCamTick] = useState(0);
   const [solver, setSolver] = useState<Solver | null>(null);
+  /** Parameter values (#75), for the sketch's size fields. */
+  const scope = useMemo(() => paramScope(d.doc), [d.doc]);
   const [filletR, setFilletR] = useState(2);
   const [offsetD, setOffsetD] = useState(2);
   const [projectGuide, setProjectGuide] = useState(true);
@@ -137,7 +137,15 @@ export function useSketch(d: SketchDeps) {
   const feature = d.doc.features.find((f): f is SketchFeature => f.id === editingId && f.type === "sketch") ?? null;
   const sketch = feature?.sketch ?? null;
   const frame = useMemo<Frame | null>(() => (sketch ? planeFrame(sketch.plane) : null), [sketch]);
-  const result = useMemo<SolveResult | null>(() => (sketch && solver ? solver.solve(sketch) : null), [sketch, solver]);
+  const result = useMemo<SolveResult | null>(() => {
+    if (!sketch || !solver) return null;
+    try {
+      return solver.solve(sketch);
+    } catch (e) {
+      caught(`Sketch solver: ${(e as Error).message}`, { stack: (e as Error).stack });
+      return null;
+    }
+  }, [sketch, solver]);
   /** The model's origin in sketch mm, which Select, Dimension and the constraint tools can pick. */
   const origin = useMemo<Vec2 | null>(() => (frame ? toSketch(frame, [0, 0, 0]) : null), [frame]);
 
@@ -165,6 +173,7 @@ export function useSketch(d: SketchDeps) {
     setStoolState(t);
     setCtool(null);
     setPointer(null);
+    setCursor(null);
     setEditPreview(null);
     setClicks([]);
     setTyped([]);
@@ -195,7 +204,15 @@ export function useSketch(d: SketchDeps) {
       if (!id) return false;
       let solved = next;
       if (solver) {
-        const r = solver.solve(next);
+        let r: SolveResult;
+        try {
+          r = solver.solve(next);
+        } catch (e) {
+          // The solver refusing a sketch it can't read is a no, not a crash; it still goes in a report's details.
+          caught(`Sketch solver: ${(e as Error).message}`, { stack: (e as Error).stack });
+          if (!opts.quiet) say("The sketch can't take that shape.", true);
+          return false;
+        }
         const was = opts.strict && r.status === "redundant" ? current() : null;
         const bad = r.status === "conflicting" ? r.conflicting : opts.strict ? newlyRedundant(was && solver.solve(was), r) : [];
         if (bad.length) {
@@ -281,7 +298,7 @@ export function useSketch(d: SketchDeps) {
       if (!s || !dm) return;
       let v: number;
       try {
-        v = evaluate(text);
+        v = evaluate(text, paramScope(deps.current.doc));
       } catch (e) {
         say((e as Error).message, true);
         return;
@@ -325,7 +342,7 @@ export function useSketch(d: SketchDeps) {
     (type: ConstraintToolId) => {
       const s = current();
       if (!s) return;
-      const picked = live.current.sel.filter((id) => id === ORIGIN || s.entities.some((e) => e.id === id));
+      const picked = live.current.sel.filter((id) => isPickable(s, id));
       if (picked.length) applyConstraint(type, picked, true);
       setStool("select");
       setSel([]);
@@ -404,6 +421,40 @@ export function useSketch(d: SketchDeps) {
   /** Starts a sketch on an origin plane, as picking it in the view does (the browser's Sketch on). */
   const startOnPlane = useCallback((plane: "XY" | "XZ" | "YZ") => startOn({ kind: "world", plane, offset: 0 }, `the ${plane} plane`), [startOn]);
 
+  /**
+   * Redefine sketch plane, as in Fusion: pick a new plane or flat face for a sketch. The geometry keeps its place on
+   * the sketch's own grid. `end` runs when it is done or cancelled (the editor rolls the marker back where it was).
+   */
+  const redefine = useCallback(
+    (id: string, end: () => void) => {
+      const f = store.get().features.find((x) => x.id === id);
+      if (f?.type !== "sketch") return;
+      store.seal();
+      setRedefining({ id, name: f.name, end });
+      say(`Pick a plane or a flat face for ${f.name}. Esc keeps it where it is.`);
+    },
+    [store, say],
+  );
+  const cancelRedefine = useCallback(() => {
+    setRedefining((r) => {
+      r?.end();
+      return null;
+    });
+  }, []);
+  const redefineOn = useCallback(
+    (plane: PlaneRef, what: string) => {
+      const r = live.current.redefining;
+      if (!r) return;
+      store.edit((doc) => redefineSketchPlane(doc, r.id, plane), `Redefine ${r.name}'s plane`);
+      store.seal();
+      setRedefining(null);
+      r.end();
+      say(`Moved ${r.name} onto ${what}.`);
+    },
+    [store, say],
+  );
+  useEscape(!!redefining, cancelRedefine, ESC.tool + 1);
+
   const edit = useCallback(
     (id: string) => {
       const f = store.get().features.find((x) => x.id === id);
@@ -468,8 +519,10 @@ export function useSketch(d: SketchDeps) {
     ctool,
     applyConstraint,
     origin,
+    redefining,
   });
   live.current = {
+    redefining,
     editingId,
     feature,
     sketch,
@@ -495,7 +548,8 @@ export function useSketch(d: SketchDeps) {
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
   useEffect(() => {
     const eng = engineOf();
-    if (!d.picking || editingId || !eng) return;
+    if (!(d.picking || redefining) || editingId || !eng) return;
+    const pickOn = redefining ? redefineOn : startOn;
     eng.showPlanes(true);
     let lastKey = "";
     let info = null as ReturnType<Engine["faceInfo"]>;
@@ -523,9 +577,9 @@ export function useSketch(d: SketchDeps) {
       down: (p) => {
         const t = target(p);
         if (!t) return false;
-        if (t.kind === "plane") startOn({ kind: "world", plane: t.plane, offset: 0 }, `the ${t.plane} plane`);
+        if (t.kind === "plane") pickOn({ kind: "world", plane: t.plane, offset: 0 }, `the ${t.plane} plane`);
         else
-          startOn(
+          pickOn(
             { kind: "face", face: { body: t.pick.body, face: t.pick.index }, offset: 0, frame: faceFrame(t.info.centroid, t.info.normal, t.info.edge) },
             "a face",
           );
@@ -541,7 +595,7 @@ export function useSketch(d: SketchDeps) {
       eng.showPlanes(false);
       eng.showHover(null);
     };
-  }, [d.picking, editingId, engineOf, startOn]);
+  }, [d.picking, redefining, editingId, engineOf, startOn, redefineOn]);
 
   // Editing: the pointer draws, picks and drags on the sketch plane.
   useEffect(() => {
@@ -645,6 +699,18 @@ export function useSketch(d: SketchDeps) {
       } else setClicks([]);
     };
 
+    /** What a constraint tool picks at a spot: Coincident snaps to points, the origin and midpoints first. */
+    const constraintPick = (tool: ConstraintToolId, xy: Vec2, px: number): { id: Id; xy?: Vec2; kind?: Snap["kind"]; label?: string } | null => {
+      const L = live.current;
+      if (!L.sketch) return null;
+      if (tool === "coincident") {
+        const snapped = pointPickAt(xy, L.sketch, 8 * px, L.origin);
+        if (snapped) return snapped;
+      }
+      const id = pickAt(xy, L.sketch, 8 * px, L.origin);
+      return id ? { id } : null;
+    };
+
     eng.setInput({
       down: (p, mods) => {
         const L = live.current;
@@ -652,9 +718,10 @@ export function useSketch(d: SketchDeps) {
         if (!hit || !L.sketch) return false;
         if (L.ctool) {
           // Each pick adds to the tool's picks; once there are enough, the constraint goes on and the tool stays armed.
-          const id = pickAt(hit.xy, L.sketch, 8 * hit.px, L.origin);
+          const id = constraintPick(L.ctool, hit.xy, hit.px)?.id ?? null;
           if (!id) return true;
-          const picked = [...L.sel.filter((x) => x !== id), id];
+          // Only geometry carries over from the selection: a constraint or size picked by its mark is not a pick.
+          const picked = [...L.sel.filter((x) => x !== id && isPickable(L.sketch!, x)), id];
           if (picked.length < constraintToolById(L.ctool).picks) {
             setSel(picked);
             return true;
@@ -720,7 +787,14 @@ export function useSketch(d: SketchDeps) {
           return;
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
-        if (L.ctool) setPointer({ x: p.x, y: p.y });
+        if (L.ctool) {
+          // The Coincident tool snaps to the point, origin or midpoint under the pointer, and lets go further away.
+          setPointer({ x: p.x, y: p.y });
+          const pick = constraintPick(L.ctool, hit.xy, hit.px);
+          setHover(pick?.id ?? null);
+          setCursor(pick?.xy ? { xy: pick.xy, kind: pick.kind!, label: pick.label! } : null);
+          return;
+        }
         if (L.stool === "select" || L.stool === "dimension") {
           setHover(pickAt(hit.xy, L.sketch, 8 * hit.px, L.origin));
           setCursor(null);
@@ -776,10 +850,24 @@ export function useSketch(d: SketchDeps) {
     if (!o || !sketch || !frame) return;
     o.refreshPalette();
     const eng = engineOf();
-    const view = sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview, {
-      ...options,
-      ends: stool !== "select",
-    });
+    // A midpoint pick shows as its line.
+    const shown = sel.map((id) => middleLine(id) ?? id);
+    const view = sketchView(
+      sketch,
+      frame,
+      result,
+      shown,
+      hover && (middleLine(hover) ?? hover),
+      previewNow?.lines ?? [],
+      cursor,
+      clicks[clicks.length - 1]?.xy,
+      undefined,
+      editPreview,
+      {
+        ...options,
+        ends: stool !== "select",
+      },
+    );
     const px = eng?.pixelSize(frame.origin);
     let grid: OverlayView["grid"] = null;
     if (eng && px && options.grid) {
@@ -958,7 +1046,13 @@ export function useSketch(d: SketchDeps) {
           : `${dof} degree${dof === 1 ? "" : "s"} of freedom`;
 
   const toolHelp = ctool ? `${constraintToolById(ctool).hint}. Esc puts the tool down.` : toolById(stool).help;
-  const help = d.picking && !editing ? "Click a face or a plane to sketch on it." : editing ? `${toolHelp} ${status ?? ""}.`.replace(/\.\.$/, ".") : null;
+  const help = redefining
+    ? `Click a face or a plane to move ${redefining.name} onto it. Esc keeps it where it is.`
+    : d.picking && !editing
+      ? "Click a face or a plane to sketch on it."
+      : editing
+        ? `${toolHelp} ${status ?? ""}.`.replace(/\.\.$/, ".")
+        : null;
 
   return {
     editing,
@@ -998,11 +1092,15 @@ export function useSketch(d: SketchDeps) {
     dimEdit,
     setDimEdit,
     setDimension,
+    scope,
     finishWarn,
     setFinishWarn,
     finish,
     edit,
     startOnPlane,
+    redefine,
+    redefining: redefining?.name ?? null,
+    cancelRedefine,
     constrain,
     removeSelected,
     setOffset,
@@ -1106,6 +1204,13 @@ export function withOrigin(view: OverlayView, origin: Vec2, px: number, shade: S
 }
 
 /** Offset toward the pointer: whichever side's copy lands nearer it. */
+/** Whether an id can be a constraint tool's pick: geometry, the origin or a line's midpoint, not a constraint or size. */
+function isPickable(s: Sketch, id: Id): boolean {
+  if (id === ORIGIN) return true;
+  const line = middleLine(id);
+  return s.entities.some((e) => e.id === (line ?? id));
+}
+
 function offsetToward(s: Sketch, id: Id, at: Vec2, d: number): Sketch | string {
   const out = offsetChain(s, id, d);
   const inn = offsetChain(s, id, -d);
