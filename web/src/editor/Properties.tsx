@@ -165,7 +165,7 @@ export function Properties({
               <>
                 <h2 className="bc-panel-title">Pose</h2>
                 <Suspense fallback={null}>
-                  <PoseControls joints={pose.joints} pose={pose.pose} onChange={pose.onChange} onCommit={pose.onCommit} onHome={pose.onHome} />
+                  <PoseControls {...pose} />
                 </Suspense>
               </>
             )}
@@ -279,7 +279,7 @@ export function Properties({
       title: pose.selected.length === 1 ? "Joint" : "Joints",
       content: (
         <Suspense fallback={null}>
-          <PoseControls joints={pose.selected} pose={pose.pose} onChange={pose.onChange} onCommit={pose.onCommit} />
+          <PoseControls {...pose} joints={pose.selected} onHome={undefined} />
         </Suspense>
       ),
     });

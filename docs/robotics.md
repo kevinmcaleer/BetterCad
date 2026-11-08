@@ -110,3 +110,13 @@ Export (Ctrl+E), then URDF, saves the robot as one .zip for Snakie, ROS, MuJoCo 
 - "Paths for a ROS package" writes mesh paths as `package://<robot>/meshes/…` instead of `meshes/…`, so the folder in the .zip can go straight into a ROS workspace's `src/`.
 - Collision uses the same mesh as the visual. The colour of the link's first coloured body becomes its material.
 - The .zip needs at least one joint; without one, the dialog says "Add a joint first to export a robot."
+
+## Drive links (#194)
+
+A drive link makes one joint drive another, so turning one turns the other. Open it from the command palette (Drive link) once the model has two joints that move. Edit it from its step on the timeline.
+
+- Through gears, the driven joint turns the other way by the tooth ratio: a 12-tooth gear turns a 36-tooth one −1/3. Through a belt, it turns the same way. Through a rack, a turn of the gear slides the rack one pitch circle (π × module × teeth: 62.83 mm for module 1 and 20 teeth). The ratio comes from the teeth of the generated gears or pulleys on the two joints' links, preferring a pair that mesh or share a belt. If the joints' axes point opposite ways, the direction flips to match.
+- Custom takes the ratio you type: unitless between two hinges, mm a degree from a hinge to a slider. The typed ratio is also used when the links don't both have the gears. "Turn the other way" flips any of them.
+- The pose keeps only the driving joint's value. Moving the driven joint, with its slider, its field or a drag in the view, moves the driver to match. Limits on either side stop both. A wheel goes the short way round, so what it drives doesn't jump at 180°. Drives can chain, but a joint can be driven only once, and a loop is refused.
+- Play, beside a joint that drives others in Properties, turns it out to each limit and home again over 4 seconds (a wheel turns once). It poses live only; Esc or Stop puts the pose back.
+- URDF export writes each driven joint with `<mimic joint multiplier offset>`, its multiplier in radians and metres.

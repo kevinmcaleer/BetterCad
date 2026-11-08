@@ -210,3 +210,71 @@ test("export the robot as URDF", async ({ page }) => {
   expect(out.text).toMatch(/<mesh filename="package:\/\/\w+\/meshes\/Link_1\.stl"\/>/);
   expect(out.text).toContain("/meshes/base_link.stl");
 });
+
+/** Drive links (#194): two hinges linked at 1:2, so turning one turns the other, and Play runs it until Esc. */
+test("drive one hinge from another, and play it", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  for (const [box, link] of [
+    ["Box 2", "Link 1"],
+    ["Box 1", "Link 2"],
+  ] as const) {
+    await page.getByRole("treeitem", { name: new RegExp(`^${box}`) }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Make link/ }).click();
+    await expect(page.getByText(`Made ${link} of 1 body`)).toBeVisible();
+  }
+  for (const [x, link, joint] of [
+    [25, "Link 1", "Joint 1"],
+    [0, "Link 2", "Joint 2"],
+  ] as const) {
+    await page
+      .getByRole("toolbar", { name: "Model tools" })
+      .getByRole("button", { name: /^Joint/ })
+      .click();
+    await click(page, x, 0, 20);
+    await expect(page.getByText(`Moves: ${link}`)).toBeVisible();
+    await page.getByRole("button", { name: "Base", exact: true }).click();
+    await expect(page.getByText("Hangs from: Base")).toBeVisible();
+    await click(page, x, 0, 20);
+    await expect(page.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("treeitem", { name: new RegExp(`^${joint}`) })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+  }
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
+  await page.keyboard.type("Drive link");
+  await page.getByRole("option", { name: /Drive link/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Drive link" });
+  await expect(dialog.getByRole("combobox", { name: "Driver" })).toHaveValue(/.+/);
+  await dialog.getByRole("button", { name: "Custom" }).click();
+  await dialog.getByRole("textbox", { name: /^Ratio/ }).fill("0.5");
+  await dialog.getByRole("textbox", { name: /^Ratio/ }).press("Enter");
+  await expect(dialog.getByRole("status")).toHaveText("0.5×, the same way");
+  await dialog.getByRole("button", { name: "Add drive" }).click();
+  await expect(page.getByText("Added Drive 1. Move either joint and the other follows.")).toBeVisible();
+
+  const props = page.getByRole("complementary", { name: "Properties" });
+  const one = props.getByRole("group", { name: "Joint 1, hinge" });
+  const two = props.getByRole("group", { name: "Joint 2, hinge" });
+  await expect(two.getByText("Driven by Joint 1")).toBeVisible();
+  await one.getByRole("textbox", { name: /^Angle/ }).fill("40");
+  await one.getByRole("textbox", { name: /^Angle/ }).press("Enter");
+  await expect(two.getByRole("textbox", { name: /^Angle/ })).toHaveValue("20");
+  // Moving the driven one moves its driver.
+  await two.getByRole("textbox", { name: /^Angle/ }).fill("-10");
+  await two.getByRole("textbox", { name: /^Angle/ }).press("Enter");
+  await expect(one.getByRole("textbox", { name: /^Angle/ })).toHaveValue("-20");
+
+  await one.getByRole("button", { name: "Play" }).click();
+  await expect(page.getByText("Playing Joint 1. Esc stops.")).toBeVisible();
+  await expect(one.getByRole("button", { name: "Stop" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(one.getByRole("button", { name: "Play" })).toBeVisible();
+  await expect(one.getByRole("textbox", { name: /^Angle/ })).toHaveValue("-20");
+});
