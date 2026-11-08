@@ -41,6 +41,7 @@ import {
   EdgesGeometry,
   ArrowHelper,
   Camera,
+  SRGBColorSpace,
   type Material,
   type Texture,
 } from "three";
@@ -1205,7 +1206,9 @@ export class Engine {
     this.width = width;
     this.height = height;
     this.applyCamera();
-    const target = new WebGLRenderTarget(width, height);
+    // An sRGB target, so three encodes the colours as it does for the screen. Without it the pixels stay linear, and
+    // read back as darker, redder versions of the view's colours.
+    const target = new WebGLRenderTarget(width, height, { colorSpace: SRGBColorSpace });
     const clear = r.getClearColor(new Color());
     const alpha = r.getClearAlpha();
     try {

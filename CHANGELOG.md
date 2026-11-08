@@ -12,6 +12,9 @@ The first public release: free CAD for 3D printing in your browser.
 - Sketches with constraints and dimensions, solved by planegcs: lines, arcs, circles, rectangles and polygons, with
   expressions such as `20 / 2` or `width * 2` in any dimension (#5). Parameter names are offered as you type, and a
   sketch re-solves when a parameter it uses changes (#75).
+- Text in sketches: click to place it, then set the words, font (six bundled open-licence fonts), height, rotation,
+  letter and line spacing with a live preview. Letters are closed shapes with their holes, so text extrudes, cuts and
+  embosses; one click picks the whole text, and changing the words later reshapes the extrude.
 - Extrude, push and pull, revolve, fillet, chamfer and shell, on OpenCascade running in a Web Worker (#4, #6).
 - Shapes (box, cylinder, sphere, cone, torus, wedge), moving and turning parts, and join, cut and intersect (#6).
 - Mirror bodies across a plane, or copy them in rows and columns or round an axis, as separate bodies or joined into

@@ -212,3 +212,96 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   // The view keeps its own style.
   await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
 });
+
+test("a thumbnail has the view's colours", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await addBox(page);
+  await page.keyboard.press("Escape");
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(500);
+  const canvas = page.getByTestId("view-canvas");
+  const size = (await canvas.boundingBox())!;
+  const shot = (await canvas.screenshot()).toString("base64");
+  // Drawn at the view's own size, so each body pixel sits where it does on screen.
+  const diff = await page.evaluate(
+    async ({ shot, w, h }) => {
+      const view = (window as unknown as { __bcView: { thumbnail(w: number, h: number): string | null } }).__bcView;
+      const pixels = async (src: string) => {
+        const img = new Image();
+        img.src = src;
+        await img.decode();
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+        return ctx.getImageData(0, 0, w, h).data;
+      };
+      const t = await pixels(view.thumbnail(w, h)!);
+      const v = await pixels(`data:image/png;base64,${shot}`);
+      let thumb = 0;
+      let screen = 0;
+      let n = 0;
+      for (let i = 0; i < t.length; i += 4) {
+        if (t[i + 3]! < 255) continue;
+        thumb += t[i]! + t[i + 1]! + t[i + 2]!;
+        screen += v[i]! + v[i + 1]! + v[i + 2]!;
+        n++;
+      }
+      return n > 500 ? Math.abs(thumb - screen) / (n * 3) : 999;
+    },
+    { shot, w: Math.round(size.width), h: Math.round(size.height) },
+  );
+  // Linear pixels read back about 35 levels darker on a pale box.
+  expect(diff).toBeLessThan(12);
+});
+
+test("after a save to the account, a rendered picture replaces the thumbnail", async ({ page, context }) => {
+  // The path tracer on a software GPU (CI) takes a while to build its shader.
+  test.setTimeout(270_000);
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  // One sample, and all the time the software GPU needs, rather than giving up after 20 s as a real browser would.
+  await page.addInitScript(() => ((window as unknown as { __bcRenderThumbs: object }).__bcRenderThumbs = { samples: 1, timeout: 200_000 }));
+  await page.goto("/");
+  await addBox(page);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Save to your account…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Bracket");
+  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  // The save doesn't wait for the render: it lands with the shaded PNG first.
+  await expect.poll(() => server.models.size).toBe(1);
+  const [model] = [...server.models.values()];
+  expect(JSON.parse(model!.versions[0]!.bcad).thumbnail).toMatch(/^data:image\/png;base64,/);
+  await expect.poll(() => model!.versions[0]!.thumbnail ?? "", { timeout: 220_000 }).toMatch(/^data:image\/jpeg;base64,/);
+  // A lit box on a pale floor: mostly light, and not one flat colour.
+  const stats = await page.evaluate(async (src) => {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let sum = 0;
+    let min = 255;
+    let max = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = (d[i]! + d[i + 1]! + d[i + 2]!) / 3;
+      sum += l;
+      min = Math.min(min, l);
+      max = Math.max(max, l);
+    }
+    return { w: c.width, h: c.height, mean: sum / (d.length / 4), range: max - min };
+  }, model!.versions[0]!.thumbnail!);
+  expect(stats).toMatchObject({ w: 320, h: 200 });
+  expect(stats.mean).toBeGreaterThan(100);
+  expect(stats.range).toBeGreaterThan(40);
+  // The library shows the rendered picture.
+  await page.goto("/#/library");
+  const thumb = page.getByRole("button", { name: "Open Bracket" }).locator("img");
+  await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(320);
+});
