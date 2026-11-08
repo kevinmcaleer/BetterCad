@@ -23,7 +23,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   insert: "screw",
   mount: "hole",
   gear: "gear",
-  link: "link",
+  link: "component",
   joint: "joint",
   drive: "gear",
   construct: "plane",

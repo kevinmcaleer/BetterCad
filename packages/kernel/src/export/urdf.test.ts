@@ -57,6 +57,15 @@ describe("URDF export (#175)", () => {
     ]);
   });
 
+  it("fixes a component with no joint to the component it sits inside, where it stands (#171)", () => {
+    const r = buildUrdf(bodies, [...links.slice(0, 2), { id: "l4", name: "Camera", parent: "l1" }], joints, { name: "Arm" });
+    const j = parse(r.urdf).querySelector('joint[name="Camera_fixed"]')!;
+    expect(j.getAttribute("type")).toBe("fixed");
+    expect(j.querySelector("parent")!.getAttribute("link")).toBe("Arm");
+    // Its frame is the world's, so it sits 20 mm below the arm's hinge.
+    expect(j.querySelector("origin")!.getAttribute("xyz")).toBe("0 0 -0.02");
+  });
+
   it("puts each joint where it sits relative to its parent's, in metres, with a unit axis", () => {
     expect(joint1("Shoulder").querySelector("origin")!.getAttribute("xyz")).toBe("0 0 0.02");
     expect(joint1("Grip").querySelector("origin")!.getAttribute("xyz")).toBe("0.1 0 0");

@@ -231,12 +231,12 @@ describe("Mirror across a face, of features and of a component", () => {
     const f = doc.features.at(-1) as PatternFeature;
     expect(f.parts).toEqual(["a", "c"]);
     expect(featureParts(f)).toEqual(["m.a.0", "m.c.0"]);
-    expect(featureSummary(doc, f)).toBe("Link 1 across YZ");
+    expect(featureSummary(doc, f)).toBe("Component 1 across YZ");
     expect(dependsOn(doc, "m")).toContain("L1");
     const b = build(doc);
     expect(b.links).toEqual([
-      { id: "L1", name: "Link 1", parts: ["a", "c"] },
-      { id: "m", name: "Link 1 mirrored", parts: ["m.a.0", "m.c.0"] },
+      { id: "L1", name: "Component 1", parts: ["a", "c"] },
+      { id: "m", name: "Component 1 mirrored", parts: ["m.a.0", "m.c.0"] },
     ]);
     expect(b.parts.find((p) => p.id === "m.c.0")!.position).toEqual({ x: -15, y: 30, z: 0 });
     doc = addJoint(doc, { kind: "revolute", child: "m", parent: "L1", origin: [0, 0, 0], axis: [0, 0, 1], lower: -90, upper: 90 }, "j");

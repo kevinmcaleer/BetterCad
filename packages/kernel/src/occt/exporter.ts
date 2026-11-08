@@ -60,11 +60,11 @@ export class Exporter {
   ) {}
 
   private pick(r: ExportRequest): { parts: Part[]; skipped: number; moves: Map<string, Mat4> } {
-    const { parts, joints, links, drives } = build(r.doc, r.upTo);
+    const { parts, joints, links, drives, components } = build(r.doc, r.upTo);
     // Each body's move from home, when posed: its link's.
     const moves = new Map<string, Mat4>();
     if (r.posed && r.doc.pose) {
-      const byLink = linkTransforms(joints, resolvePose(drives, r.doc.pose));
+      const byLink = linkTransforms(joints, resolvePose(drives, r.doc.pose), components);
       for (const l of links) {
         const m = byLink.get(l.id);
         if (m) for (const id of l.parts) moves.set(id, m);

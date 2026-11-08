@@ -85,9 +85,10 @@ function rgba(hex: string | undefined): string {
 
 /**
  * Plans and writes the robot. `links` are the model's link steps in timeline order; `joints` the joints that built.
- * Links that hang from no joint are fixed to Base where they stand, so the URDF is always one tree.
+ * Links that hang from no joint are fixed where they stand to the component they sit inside (#171), or to Base, so the
+ * URDF is always one tree.
  */
-export function buildUrdf(bodies: UrdfBody[], links: { id: string; name: string }[], joints: JointFeature[], o: UrdfOptions): UrdfResult {
+export function buildUrdf(bodies: UrdfBody[], links: { id: string; name: string; parent?: string }[], joints: JointFeature[], o: UrdfOptions): UrdfResult {
   if (!joints.length) throw new Error("Add a joint first to export a robot.");
   const taken = new Set<string>();
   const robot = urdfName(o.name, new Set());
@@ -153,7 +154,8 @@ export function buildUrdf(bodies: UrdfBody[], links: { id: string; name: string 
   for (const l of links) {
     const j = jointOf.get(l.id);
     // A parent link with no bodies left isn't written, so its children hang from Base.
-    const parent = j?.parent && nameOf.has(j.parent) ? j.parent : BASE;
+    const up = j ? j.parent : l.parent;
+    const parent = up && nameOf.has(up) ? up : BASE;
     const child = l.id;
     const from = originOf(parent);
     const to = originOf(child);

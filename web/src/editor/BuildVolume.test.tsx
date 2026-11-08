@@ -1,9 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Editor } from "./Editor";
 
-function openSettings() {
+/** Settings and Print settings both open from the account menu. */
+function openSettings(name = "Settings") {
   fireEvent.click(screen.getByRole("button", { name: /account and settings/i }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+  fireEvent.click(screen.getByRole("menuitem", { name }));
 }
 
 describe("Build volume toggle", () => {
@@ -16,7 +17,7 @@ describe("Build volume toggle", () => {
     fireEvent.click(inSettings);
     expect(localStorage.getItem("bettercad.showBed")).toBe("0");
 
-    fireEvent.click(screen.getByRole("button", { name: /^Print/ }));
+    openSettings("Print settings");
     // The Print panel loads when it first opens.
     const inPrint = await screen.findByRole("checkbox", { name: "Show the build volume" });
     expect(inPrint).not.toBeChecked();

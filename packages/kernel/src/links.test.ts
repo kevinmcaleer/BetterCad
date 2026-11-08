@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   addLink,
+  addSketch,
+  stampComponent,
+  linkTransforms,
   addPart,
   addPattern,
   build,
@@ -24,8 +27,8 @@ const linkOf = (doc: ModelDoc, id: string) => build(doc).parts.find((p) => p.id 
 describe("links (#171)", () => {
   it("names bodies as one link, leaving the rest in the base link", () => {
     const doc = addLink(three(), ["a", "b"], "L1");
-    expect(doc.features.at(-1)).toMatchObject({ type: "link", name: "Link 1", parts: ["a", "b"] });
-    expect(build(doc).links).toEqual([{ id: "L1", name: "Link 1", parts: ["a", "b"] }]);
+    expect(doc.features.at(-1)).toMatchObject({ type: "link", name: "Component 1", parts: ["a", "b"] });
+    expect(build(doc).links).toEqual([{ id: "L1", name: "Component 1", parts: ["a", "b"] }]);
     expect(linkOf(doc, "c")).toBeUndefined();
     // The bodies stay separate: still three parts.
     expect(build(doc).parts).toHaveLength(3);
@@ -34,10 +37,10 @@ describe("links (#171)", () => {
   it("numbers new links and moves a body from an earlier link to a later one", () => {
     let doc = addLink(three(), ["a", "b"], "L1");
     doc = addLink(doc, ["b", "c"], "L2");
-    expect(doc.features.at(-1)!.name).toBe("Link 2");
+    expect(doc.features.at(-1)!.name).toBe("Component 2");
     expect(build(doc).links).toEqual([
-      { id: "L1", name: "Link 1", parts: ["a"] },
-      { id: "L2", name: "Link 2", parts: ["b", "c"] },
+      { id: "L1", name: "Component 1", parts: ["a"] },
+      { id: "L2", name: "Component 2", parts: ["b", "c"] },
     ]);
   });
 
@@ -69,7 +72,7 @@ describe("links (#171)", () => {
   it("takes a deleted body out of its link, and drops a link left empty", () => {
     let doc = addLink(three(), ["a", "b"], "L1");
     doc = removeParts(doc, ["a"]);
-    expect(build(doc).links).toEqual([{ id: "L1", name: "Link 1", parts: ["b"] }]);
+    expect(build(doc).links).toEqual([{ id: "L1", name: "Component 1", parts: ["b"] }]);
     doc = removeParts(doc, ["b"]);
     expect(build(doc).links).toEqual([]);
   });
@@ -87,7 +90,7 @@ describe("links (#171)", () => {
 
   it("summarises the step", () => {
     const doc = addLink(three(), ["a", "b"], "L1");
-    expect(featureSummary(doc, doc.features.at(-1)!)).toBe("2 parts, one rigid link");
+    expect(featureSummary(doc, doc.features.at(-1)!)).toBe("2 parts, one rigid component");
   });
 
   it("round-trips through .bcad, and a schema 1 file opens with every body in base", () => {
@@ -95,11 +98,83 @@ describe("links (#171)", () => {
     const back = loadBcad(saveBcad(doc));
     if (back instanceof BcadError) throw back;
     expect(back.warning).toBeUndefined();
-    expect(build(back.doc).links).toEqual([{ id: "L1", name: "Link 1", parts: ["a"] }]);
+    expect(build(back.doc).links).toEqual([{ id: "L1", name: "Component 1", parts: ["a"] }]);
     const old = loadBcad(readFileSync(join(__dirname, "testdata", "bcad", "schema1.bcad"), "utf8"));
     if (old instanceof BcadError) throw old;
     expect(old.meta.schema).toBe(2);
     expect(build(old.doc).links).toEqual([]);
     expect(build(old.doc).parts.every((p) => p.link === undefined)).toBe(true);
+  });
+});
+
+describe("components (#171)", () => {
+  /** Adds a box the way the editor does while `component` is active. */
+  const addIn = (doc: ModelDoc, id: string, component: string | null) => stampComponent(doc, addPart(doc, "box", id), component);
+
+  it("starts empty, nests inside another, and lists both", () => {
+    let doc = addLink(newDoc(), [], "C1");
+    doc = addLink(doc, [], "C2", undefined, "C1");
+    const b = build(doc);
+    expect(b.failed.size).toBe(0);
+    expect(b.components).toEqual([
+      { id: "C1", name: "Component 1", parts: [] },
+      { id: "C2", name: "Component 2", parts: [], parent: "C1" },
+    ]);
+    // Empty components aren't URDF links.
+    expect(b.links).toEqual([]);
+    expect(featureSummary(doc, doc.features[0]!)).toBe("A component to work in");
+  });
+
+  it("puts bodies made while a component is active into it, and others into the model", () => {
+    let doc = addLink(newDoc(), [], "C1");
+    doc = addIn(doc, "a", "C1");
+    doc = addIn(doc, "b", null);
+    expect(doc.features.find((f) => f.id !== "C1" && f.type === "add" && f.part.id === "a")).toMatchObject({ component: "C1" });
+    expect(linkOf(doc, "a")).toBe("C1");
+    expect(linkOf(doc, "b")).toBeUndefined();
+    expect(build(doc).links).toEqual([{ id: "C1", name: "Component 1", parts: ["a"] }]);
+  });
+
+  it("files a sketch made while a component is active under it", () => {
+    const doc = addLink(newDoc(), [], "C1");
+    const next = stampComponent(doc, addSketch(doc, { kind: "world", plane: "XY", offset: 0 }, "s1"), "C1");
+    expect(build(next).sketches[0]).toMatchObject({ id: "s1", component: "C1" });
+    // Nothing new, nothing stamped; a joint never is.
+    expect(stampComponent(next, next, "C1")).toBe(next);
+  });
+
+  it("gives a deleted component's bodies back to the model", () => {
+    let doc = addLink(newDoc(), [], "C1");
+    doc = addIn(doc, "a", "C1");
+    doc = removeFeature(doc, "C1");
+    expect(linkOf(doc, "a")).toBeUndefined();
+  });
+
+  it("hangs a URDF link from its nearest enclosing component with bodies", () => {
+    let doc = addLink(newDoc(), [], "C1");
+    doc = addIn(doc, "a", "C1");
+    doc = addLink(doc, [], "C2", undefined, "C1");
+    doc = addLink(doc, [], "C3", undefined, "C2");
+    doc = addIn(doc, "c", "C3");
+    expect(build(doc).links).toEqual([
+      { id: "C1", name: "Component 1", parts: ["a"] },
+      { id: "C3", name: "Component 3", parts: ["c"], parent: "C1" },
+    ]);
+  });
+
+  it("carries a nested component with no joint along with its jointed parent", () => {
+    const hinge = {
+      id: "J",
+      kind: "revolute" as const,
+      child: "C1",
+      parent: null,
+      origin: [0, 0, 0] as [number, number, number],
+      axis: [0, 0, 1] as [number, number, number],
+      lower: -90,
+      upper: 90,
+    };
+    const m = linkTransforms([hinge], { J: 90 }, [{ id: "C1" }, { id: "C2", parent: "C1" }]);
+    expect(m.get("C2")).toEqual(m.get("C1"));
+    expect(m.get("C2")![0]).toBeCloseTo(0);
   });
 });

@@ -20,6 +20,8 @@ export function createStore<T>(initial: T) {
   const listeners = new Set<() => void>();
   // Read-only (#91, #92): an old version or a shared model can be looked at, not changed.
   let locked: null | (() => void) = null;
+  // A last word on every edit (the active component stamping new steps, #171).
+  let stamp: null | ((before: T, after: T) => T) = null;
   const guard =
     <A extends unknown[]>(fn: (...a: A) => void) =>
     (...a: A) => {
@@ -36,7 +38,14 @@ export function createStore<T>(initial: T) {
     get: () => h.present,
     history: () => h,
     /** Applies a change as one undo step; changes with the same key in a row merge (a scrub, typing a name). */
-    edit: guard((fn: (s: T) => T, label: string, coalesceKey?: string) => set(push(h, fn(h.present), label, coalesceKey))),
+    edit: guard((fn: (s: T) => T, label: string, coalesceKey?: string) => {
+      const next = fn(h.present);
+      set(push(h, stamp ? stamp(h.present, next) : next, label, coalesceKey));
+    }),
+    /** Sets what every later edit passes through, or null for none. */
+    setStamp: (fn: typeof stamp) => {
+      stamp = fn;
+    },
     /** Ends a run of merged changes. */
     seal: () => set(seal(h)),
     /** Takes back the open run of changes with this key (Cancel on a live dialog). */

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { Editor } from "./pages/editor";
 
 type View = { __bcView: { project(p: number[]): { x: number; y: number } } };
 
@@ -56,7 +57,7 @@ test("the printer's hole offset sizes printed holes, and Update brings old ones 
   await expect(page.getByText("Made 1 hole in Box 1")).toBeVisible();
 
   // A tighter printer: the hole made at 0.4 mm is offered an update.
-  await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
+  await new Editor(page).panel("Print");
   const offset = page.getByRole("textbox", { name: "Hole offset (mm)" });
   await expect(offset).toHaveValue("0.4");
   await offset.fill("0.2");
@@ -73,7 +74,7 @@ test("the printer's hole offset sizes printed holes, and Update brings old ones 
 
 test("Calibrate opens the hole calibration coupon", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
+  await new Editor(page).panel("Print");
   await page.getByRole("button", { name: "Calibrate holes" }).click();
   await expect(page.getByText(/Opened the hole calibration sample/)).toBeVisible({ timeout: 20_000 });
 });

@@ -240,6 +240,11 @@ interface FeatureBase {
   suppressed?: boolean;
   /** Expressions typed into this step's fields (#75), by field path ("distance", "size.x"), worked out at build time. */
   exprs?: Record<string, string>;
+  /**
+   * The component (a link step, #171) that was active when this step was made: the bodies it makes go into it, and its
+   * sketch or construction geometry sits under it in the browser. None means the model itself.
+   */
+  component?: string;
 }
 
 export interface AddFeature extends FeatureBase {
@@ -301,13 +306,17 @@ export interface ResizeFeature extends FeatureBase {
   size: Partial<Vec3>;
 }
 /**
- * A link (#171): bodies named as one rigid part of a robot, without joining them. Each keeps its own look and still
- * prints and exports on its own. A body is in at most one link: a later link takes it from an earlier one. Bodies in no
- * link are in the base link.
+ * A component (Fusion's), stored as a link step (#171): bodies named as one rigid part, without joining them, and the
+ * sketches and construction geometry made while it was active (each step's `component`). Each body keeps its own look
+ * and still prints and exports on its own. A body is in at most one component: a later one takes it from an earlier
+ * one. Bodies in none belong to the model itself, which is URDF's base link. Each component is one URDF link; one
+ * inside another (`parent`) with no joint of its own is fixed to its parent.
  */
 export interface LinkFeature extends FeatureBase {
   type: "link";
   parts: string[];
+  /** The component it sits inside; none for the model itself. */
+  parent?: string;
 }
 /**
  * A joint (#172): a child link hanging from a parent link (null for Base), as URDF has it. The origin and axis are
@@ -656,7 +665,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   insert: "Insert part",
   mount: "Mount",
   gear: "Gear",
-  link: "Link",
+  link: "Component",
   joint: "Joint",
   drive: "Drive",
   construct: "Construct",
@@ -677,12 +686,17 @@ const clampAt = (doc: ModelDoc, at?: number) => (at === undefined ? doc.features
 
 export interface Build {
   parts: Part[];
-  /** Sketches on the timeline up to the marker, by feature id, in order. */
-  sketches: { id: string; name: string; sketch: Sketch }[];
+  /** Sketches on the timeline up to the marker, by feature id, in order, with the component each was made in. */
+  sketches: { id: string; name: string; sketch: Sketch; component?: string }[];
   /** Features that could not apply, with the reason: the part they change is gone. */
   failed: Map<string, string>;
-  /** Links (#171) up to the marker, in timeline order, with the bodies in each now. Empty links are left out. */
+  /**
+   * Links (#171) up to the marker, in timeline order, with the bodies in each now. Empty links are left out, and each
+   * one's `parent` is its nearest enclosing component that has bodies, so URDF always gets one tree.
+   */
   links: BuiltLink[];
+  /** Every component up to the marker, empty ones too, as the person nests them (`parent` as stored). */
+  components: BuiltLink[];
   /** Joints (#172) up to the marker that built, in timeline order. */
   joints: JointFeature[];
   /** Drive links (#194) that built, with their multipliers worked out. */
@@ -695,6 +709,8 @@ export interface Build {
 export interface BuiltConstruct {
   id: string;
   name: string;
+  /** The component it was made in (#171). */
+  component?: string;
   kind: ConstructKind;
   geo: ConstructGeo;
 }
@@ -707,11 +723,12 @@ export interface BuiltDrive extends PoseDrive {
   fromTeeth: boolean;
 }
 
-/** A link as built: its step's id and name, and its bodies. */
+/** A link as built: its step's id and name, its bodies, and the component it sits inside. */
 export interface BuiltLink {
   id: string;
   name: string;
   parts: string[];
+  parent?: string;
 }
 
 const BUILT = new Set<string>([
@@ -761,8 +778,16 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     return gone;
   };
   const { values } = evaluateParams(doc.params);
+  // Bodies a step makes while a component is active go into it, unless they already have one (a copy keeps its own).
+  let owner: { component: string; had: Set<string> } | null = null;
+  const own = () => {
+    if (owner) for (let i = 0; i < parts.length; i++) if (!owner.had.has(parts[i]!.id) && !parts[i]!.link) parts[i] = { ...parts[i]!, link: owner.component };
+    owner = null;
+  };
   for (const raw of doc.features.slice(0, upTo)) {
+    own();
     if (raw.suppressed) continue;
+    if (raw.component && raw.type !== "link") owner = { component: raw.component, had: new Set(parts.map((p) => p.id)) };
     const { feature: f, error } = bindExprs(raw, values);
     if (error) failed.set(f.id, error);
     if (!BUILT.has(f.type)) {
@@ -874,8 +899,14 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         // A mirrored component is a component of its own, which joints can move.
         if (of === "component" && !f.join && component.length) {
-          const name = linkSteps.find((l) => l.id === f.link)?.name ?? "Component";
-          linkSteps.push({ id: f.id, type: "link", name: `${name} mirrored`, parts: component });
+          const of = linkSteps.find((l) => l.id === f.link);
+          linkSteps.push({
+            id: f.id,
+            type: "link",
+            name: `${of?.name ?? "Component"} mirrored`,
+            parts: component,
+            ...(of?.parent ? { parent: of.parent } : {}),
+          });
         }
         break;
       }
@@ -897,7 +928,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       }
       case "link": {
         const here = f.parts.filter((id) => find(id) >= 0);
-        if (!here.length) failed.set(f.id, "The bodies it links are gone");
+        // A new component starts empty; one whose bodies have all gone says so.
+        if (f.parts.length && !here.length) failed.set(f.id, "The bodies it links are gone");
         for (const id of here) {
           const i = find(id);
           parts[i] = { ...parts[i]!, link: f.id };
@@ -922,7 +954,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         const geo = gone ?? constructGeo(f.kind, inputs, f.value);
         if (typeof geo === "string") failed.set(f.id, geo);
-        else built.push({ id: f.id, name: f.name, kind: f.kind, geo });
+        else built.push({ id: f.id, name: f.name, kind: f.kind, geo, ...(f.component ? { component: f.component } : {}) });
         break;
       }
       case "joint": {
@@ -986,7 +1018,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           if (on?.geo.what === "plane") sk = { ...sk, plane: { ...sk.plane, frame: on.geo.frame } };
           else failed.set(f.id, "The plane it sits on is gone. Redefine its plane from the timeline menu.");
         }
-        sketches.push({ id: f.id, name: f.name, sketch: sk });
+        sketches.push({ id: f.id, name: f.name, sketch: sk, ...(f.component ? { component: f.component } : {}) });
         sketchById.set(f.id, sk);
         const why = sketchLinkProblem(sk, (id) => find(id) >= 0);
         if (why) failed.set(f.id, why);
@@ -1227,6 +1259,15 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       }
     }
   }
+  own();
+  // A body made in a component that is gone (deleted, or after the marker) belongs to the model.
+  const steps = new Set(linkSteps.map((l) => l.id));
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i]!.link && !steps.has(parts[i]!.link!)) {
+      parts[i] = { ...parts[i]! };
+      delete parts[i]!.link;
+    }
+  }
   const looked = parts.map((p) => {
     const look = doc.looks[p.id];
     return look ? { ...p, ...look, name: look.name ?? p.name, hidden: !!look.hidden } : p;
@@ -1243,8 +1284,27 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       if (why) failed.set(id, why);
     }
   }
-  const links = linkSteps.map((l) => ({ id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id) })).filter((l) => l.parts.length);
-  return { parts: looked, sketches, failed, links, joints, drives, construct: built };
+  const components: BuiltLink[] = linkSteps.map((l) => ({
+    id: l.id,
+    name: l.name,
+    parts: looked.filter((p) => p.link === l.id).map((p) => p.id),
+    ...(l.parent ? { parent: l.parent } : {}),
+  }));
+  const links = components
+    .filter((l) => l.parts.length)
+    .map((l) => {
+      // Up past empty or gone components to the nearest one with bodies (a loop stops at the model).
+      const seen = new Set([l.id]);
+      let up = l.parent;
+      while (up && !seen.has(up)) {
+        seen.add(up);
+        const c = components.find((x) => x.id === up);
+        if (c?.parts.length) return { ...l, parent: up };
+        up = c?.parent;
+      }
+      return { id: l.id, name: l.name, parts: l.parts };
+    });
+  return { parts: looked, sketches, failed, links, components, joints, drives, construct: built };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
@@ -1542,7 +1602,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     case "construct":
       return constructSummary(f.kind, f.refs, f.value, (r) => refText(r, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name));
     case "link":
-      return `${who(f.parts)}, one rigid link`;
+      return f.parts.length ? `${who(f.parts)}, one rigid component` : "A component to work in";
     case "joint": {
       const name = (l: string | null) => (l === null ? "Base" : (doc.features.find((g) => g.id === l)?.name ?? "a gone link"));
       const k = JOINT_KINDS.find((x) => x.id === f.kind)!;
@@ -2728,9 +2788,25 @@ export function updatePattern(doc: ModelDoc, id: string, change: Partial<Pattern
   return syncMirrorParts(out, id);
 }
 
-/** Makes a link (#171) of bodies: "Link 1". The bodies leave any link they were in. */
-export function addLink(doc: ModelDoc, parts: string[], id = newId("f"), at?: number): ModelDoc {
-  return insert(doc, clampAt(doc, at), { id, type: "link", name: nextNamed(doc, "Link"), parts: [...parts] });
+/**
+ * Makes a component (#171) of bodies, or an empty one to work in: "Component 1", inside `parent` when given. The bodies
+ * leave any component they were in.
+ */
+export function addLink(doc: ModelDoc, parts: string[], id = newId("f"), at?: number, parent?: string): ModelDoc {
+  return insert(doc, clampAt(doc, at), { id, type: "link", name: nextNamed(doc, "Component"), parts: [...parts], ...(parent ? { parent } : {}) });
+}
+
+/** Marks the steps `after` has that `before` didn't as made in `component` (#171), so their bodies go into it. */
+export function stampComponent(before: ModelDoc, after: ModelDoc, component: string | null): ModelDoc {
+  if (!component || after.features === before.features) return after;
+  const had = new Set(before.features.map((f) => f.id));
+  let changed = false;
+  const features = after.features.map((f) => {
+    if (had.has(f.id) || f.component || f.type === "link" || f.type === "joint" || f.type === "drive") return f;
+    changed = true;
+    return { ...f, component };
+  });
+  return changed ? { ...after, features } : after;
 }
 
 export type JointParams = Pick<JointFeature, "kind" | "child" | "parent" | "origin" | "axis" | "lower" | "upper">;

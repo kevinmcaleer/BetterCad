@@ -185,12 +185,12 @@ describe("exporting a robot as URDF (#175)", () => {
     const r = x.export({ doc: setPose(arm(), "j1", 45), bodies: null, format: "urdf", deflection: DEFLECTION.draft, name: "Arm bot" });
     expect(r.files.map((f) => f.name)).toEqual(["Arm bot.zip"]);
     const files = unzip(new Uint8Array(r.files[0]!.data));
-    expect([...files.keys()]).toEqual(["Arm_bot/Arm_bot.urdf", "Arm_bot/meshes/base_link.stl", "Arm_bot/meshes/Link_1.stl"]);
+    expect([...files.keys()]).toEqual(["Arm_bot/Arm_bot.urdf", "Arm_bot/meshes/base_link.stl", "Arm_bot/meshes/Component_1.stl"]);
     const urdf = new TextDecoder().decode(files.get("Arm_bot/Arm_bot.urdf"));
     expect(urdf).toContain('<origin xyz="0 0 0.04" rpy="0 0 0"/>');
     expect(urdf).toContain('<axis xyz="1 0 0"/>');
     // The link's cube sits at its joint's origin, so its mesh starts there, at home whatever the pose.
-    const link = readStl(files.get("Arm_bot/meshes/Link_1.stl")!.slice().buffer);
+    const link = readStl(files.get("Arm_bot/meshes/Component_1.stl")!.slice().buffer);
     const zs = [...link].filter((_, i) => i % 3 === 2);
     expect(Math.min(...zs)).toBeCloseTo(0, 6);
     expect(Math.max(...zs)).toBeCloseTo(0.02, 6);

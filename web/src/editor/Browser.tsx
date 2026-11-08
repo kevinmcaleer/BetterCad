@@ -6,8 +6,10 @@ import { formatCombo } from "../state/commands";
 import { constructIcon, partIcon } from "./Timeline";
 
 /**
- * The browser (Fusion's): the model at the top, then its origin planes, bodies, sketches and joints in folders. Eyes
- * show and hide, clicks select. Bodies keep the parts tree's ghost and highlight, drag and rename.
+ * The browser (Fusion's): the model at the top, then its origin planes, construction, bodies and sketches in folders,
+ * then its components (#171), each with folders of its own and the components inside it, then joints. Eyes show and
+ * hide, clicks select, a component's radio makes it the one you work in. Bodies keep the parts tree's ghost and
+ * highlight, drag and rename.
  */
 
 export const PLANES: WorldPlaneName[] = ["XY", "XZ", "YZ"];
@@ -23,10 +25,8 @@ export const ROW = {
   sketches: "browser:sketches",
   construct: "browser:construct",
   joints: "browser:joints",
-  robot: "browser:robot",
   poses: "browser:poses",
   home: "browser:pose-home",
-  base: "browser:base",
   plane: (p: WorldPlaneName) => `browser:plane:${p}`,
   point: "browser:origin-point",
 } as const;
@@ -47,6 +47,8 @@ export interface BrowserSketch {
   hidden: boolean;
   /** Why it failed to build, if it did. */
   warning?: string;
+  /** The component it was made in (#171). */
+  component?: string;
 }
 
 /** A construction plane, axis or point (#265) in the browser. */
@@ -62,8 +64,10 @@ export interface BrowserModel {
   origin: OriginItem[];
   /** A shared, view-only model: its name can't be changed. */
   readOnly?: boolean;
-  /** Links (#171): rigid groups of bodies. Bodies in none are in the base link. */
+  /** Components (#171), empty ones too: rigid groups of bodies, nested by `parent`. Bodies in none are the model's. */
   links?: BuiltLink[];
+  /** The component you're working in; none for the model. */
+  active?: string | null;
   /** Joints (#172): each hangs a child link from a parent link, or from Base. */
   joints?: Pick<JointFeature, "id" | "name" | "kind" | "child" | "parent">[];
   /** Construction planes, axes and points (#265). */
@@ -76,7 +80,37 @@ export interface BrowserModel {
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
 
-const bodies = (n: number) => (n === 1 ? "1 body" : `${n} bodies`);
+const bodies = (n: number) => (n === 1 ? "1 body" : n ? `${n} bodies` : "Empty");
+
+/** A folder's row id in a component (#171); the model's own folders keep the plain ids. */
+const inComp = (folder: string, c?: string) => (c ? `${folder}:${c}` : folder);
+/** The folder kind and component a folder row id names, if it is one. */
+function folderOf(id: string): { folder: string; c?: string } | null {
+  for (const folder of [ROW.bodies, ROW.sketches, ROW.construct])
+    if (id === folder || id.startsWith(`${folder}:`)) return { folder, c: id.slice(folder.length + 1) || undefined };
+  return null;
+}
+
+/** Who owns what (#171): each body, sketch and construction step's component, if it's still there. */
+function owners(m: BrowserModel) {
+  const comps = m.links ?? [];
+  const known = new Set(comps.map((c) => c.id));
+  const own = (c?: string) => (c && known.has(c) ? c : undefined);
+  // A component's parent, if it's there and not inside the component itself.
+  const parentOf = (c: BuiltLink) => {
+    for (let up = own(c.parent), n = 0; up && n <= comps.length; up = own(comps.find((x) => x.id === up)?.parent), n++) if (up === c.id) return undefined;
+    return own(c.parent);
+  };
+  const inside = (c: string): string[] => comps.filter((x) => parentOf(x) === c).flatMap((x) => [x.id, ...inside(x.id)]);
+  return {
+    comps,
+    parentOf,
+    inside,
+    parts: (c?: string) => m.parts.filter((p) => own(p.link) === c),
+    sketches: (c?: string) => m.sketches.filter((s) => own(s.component) === c),
+    construct: (c?: string) => (m.construct ?? []).filter((s) => own(s.component) === c),
+  };
+}
 
 const count = (n: number) => (n ? `${n}` : "");
 
@@ -120,85 +154,80 @@ export function browserItems(m: BrowserModel): TreeItem[] {
       hidden: !m.origin.includes(p),
     });
   }
-  // Construction geometry (#265) sits under Origin, as in Fusion, once there is some.
-  const cons = m.construct ?? [];
-  if (cons.length) items.push(folder(ROW.construct, "Construction", { icon: "plane", note: count(cons.length), hidden: cons.every((c) => c.hidden) }));
-  for (const c of cons) {
-    items.push({
-      id: c.id,
-      name: c.name,
-      icon: constructIcon(c.what),
-      kind: c.what,
-      parentId: ROW.construct,
-      drag: false,
-      toggles: ["hidden"],
-      hidden: c.hidden,
-      warning: c.warning,
-    });
-  }
-  // Bodies and Sketches show once they have something in them, as Fusion's do.
-  if (m.parts.length) items.push(folder(ROW.bodies, "Bodies", { note: count(m.parts.length), hidden: m.parts.length > 0 && m.parts.every((p) => p.hidden) }));
-  for (const part of m.parts) {
-    items.push({
-      id: part.id,
-      name: part.name,
-      icon: partIcon(part.kind as PartKind),
-      kind: "body",
-      parentId: ROW.bodies,
-      hidden: part.hidden,
-      ghost: part.ghost,
-      highlight: part.highlight,
-    });
-  }
-  if (m.sketches.length)
-    items.push(folder(ROW.sketches, "Sketches", { note: count(m.sketches.length), hidden: m.sketches.length > 0 && m.sketches.every((s) => s.hidden) }));
-  for (const s of m.sketches) {
-    items.push({
-      id: s.id,
-      name: s.name,
-      icon: "sketch",
-      kind: "sketch",
-      parentId: ROW.sketches,
-      drag: false,
-      toggles: ["hidden"],
-      hidden: s.hidden,
-      warning: s.warning,
-    });
-  }
-  // The robot (#171): Base, then each link under the link it hangs from (#172), with its joint named.
-  const links = m.links ?? [];
+  // Then the model's own folders and components, and each component's, inside out (#171).
+  const o = owners(m);
   const joints = m.joints ?? [];
-  if (links.length) {
-    const inLink = new Set(links.flatMap((l) => l.parts));
-    items.push(folder(ROW.robot, "Robot", { icon: "link", note: count(links.length), toggles: [] }));
-    items.push({
-      id: ROW.base,
-      name: "Base",
-      icon: "link",
-      kind: "link",
-      parentId: ROW.robot,
-      drag: false,
-      rename: false,
-      toggles: [],
-      note: bodies(m.parts.filter((p) => !inLink.has(p.id)).length),
-    });
-    const jointOf = new Map(joints.map((j) => [j.child, j]));
-    const known = new Set(links.map((l) => l.id));
-    const under = (row: string, parent: string | null | undefined) => {
-      for (const l of links) {
-        const j = jointOf.get(l.id);
-        // A link hangs under its joint's parent; one with no joint (or whose parent is gone) sits loose under Robot.
-        const from = j && (j.parent === null || known.has(j.parent)) ? j.parent : undefined;
-        if (parent === undefined ? from !== undefined : from !== parent) continue;
-        const note = j && from !== undefined ? `${bodies(l.parts.length)}, ${kindLabel(j.kind).toLowerCase()} on ${j.name}` : bodies(l.parts.length);
-        items.push({ id: l.id, name: l.name, icon: "link", kind: "link", parentId: row, drag: false, toggles: [], note });
-        under(l.id, l.id);
-      }
-    };
-    under(ROW.base, null);
-    under(ROW.robot, undefined);
-  }
-  // Joints (#172): each hangs a link from another.
+  const jointOf = new Map(joints.map((j) => [j.child, j]));
+  const contents = (c: string | undefined, row: string) => {
+    // Construction geometry (#265), as in Fusion; Bodies and Sketches show once they have something in them.
+    const cons = o.construct(c);
+    if (cons.length)
+      items.push(
+        folder(inComp(ROW.construct, c), "Construction", { parentId: row, icon: "plane", note: count(cons.length), hidden: cons.every((x) => x.hidden) }),
+      );
+    for (const x of cons) {
+      items.push({
+        id: x.id,
+        name: x.name,
+        icon: constructIcon(x.what),
+        kind: x.what,
+        parentId: inComp(ROW.construct, c),
+        drag: false,
+        toggles: ["hidden"],
+        hidden: x.hidden,
+        warning: x.warning,
+      });
+    }
+    const ps = o.parts(c);
+    if (ps.length) items.push(folder(inComp(ROW.bodies, c), "Bodies", { parentId: row, note: count(ps.length), hidden: ps.every((p) => p.hidden) }));
+    for (const part of ps) {
+      items.push({
+        id: part.id,
+        name: part.name,
+        icon: partIcon(part.kind as PartKind),
+        kind: "body",
+        parentId: inComp(ROW.bodies, c),
+        hidden: part.hidden,
+        ghost: part.ghost,
+        highlight: part.highlight,
+      });
+    }
+    const sks = o.sketches(c);
+    if (sks.length) items.push(folder(inComp(ROW.sketches, c), "Sketches", { parentId: row, note: count(sks.length), hidden: sks.every((x) => x.hidden) }));
+    for (const x of sks) {
+      items.push({
+        id: x.id,
+        name: x.name,
+        icon: "sketch",
+        kind: "sketch",
+        parentId: inComp(ROW.sketches, c),
+        drag: false,
+        toggles: ["hidden"],
+        hidden: x.hidden,
+        warning: x.warning,
+      });
+    }
+    // Its components, each with its joint (#172) named.
+    for (const k of o.comps.filter((x) => o.parentOf(x) === c)) {
+      const j = jointOf.get(k.id);
+      const note = j ? `${bodies(k.parts.length)}, ${kindLabel(j.kind).toLowerCase()} on ${j.name}` : bodies(k.parts.length);
+      items.push({
+        id: k.id,
+        name: k.name,
+        icon: "component",
+        kind: "component",
+        parentId: row,
+        drag: false,
+        toggles: m.readOnly ? [] : ["active"],
+        active: m.active === k.id,
+        note,
+      });
+      contents(k.id, k.id);
+    }
+  };
+  if (o.comps.length && !m.readOnly) Object.assign(items[0]!, { toggles: ["active"], active: !m.active });
+  contents(undefined, ROW.root);
+  // Joints (#172): each hangs a component from another.
   items.push(folder(ROW.joints, "Joints", { note: joints.length ? count(joints.length) : "None yet", toggles: [] }));
   for (const j of joints) {
     items.push({ id: j.id, name: j.name, icon: "joint", kind: "joint", parentId: ROW.joints, drag: false, toggles: [], note: kindLabel(j.kind) });
@@ -221,13 +250,14 @@ export function browserItems(m: BrowserModel): TreeItem[] {
  */
 export function browserPick(ids: string[], m: BrowserModel): { parts: string[]; other: string | null } {
   const partIds = new Set(m.parts.map((p) => p.id));
-  const whole = ids.includes(ROW.root) || ids.includes(ROW.bodies);
-  // A link row picks its bodies; Base picks the bodies in no link.
-  const links = m.links ?? [];
-  const inLink = new Set(links.flatMap((l) => l.parts));
-  const linked = ids.flatMap((id) =>
-    id === ROW.base ? m.parts.filter((p) => !inLink.has(p.id)).map((p) => p.id) : (links.find((l) => l.id === id)?.parts ?? []),
-  );
+  const whole = ids.includes(ROW.root);
+  // A component row picks its bodies and those of the components inside it (#171); a Bodies folder, its own.
+  const o = owners(m);
+  const linked = ids.flatMap((id) => {
+    const f = folderOf(id);
+    if (f?.folder === ROW.bodies) return o.parts(f.c).map((p) => p.id);
+    return o.comps.some((c) => c.id === id) ? [id, ...o.inside(id)].flatMap((c) => o.parts(c).map((p) => p.id)) : [];
+  });
   const parts = whole ? m.parts.map((p) => p.id) : [...new Set([...ids.filter((id) => partIds.has(id)), ...linked])];
   const sketchIds = new Set([...m.sketches, ...(m.construct ?? [])].map((s) => s.id));
   const other = [...ids].reverse().find((id) => sketchIds.has(id) || originItemOf(id) !== null) ?? null;
@@ -240,7 +270,9 @@ export interface BrowserPanelProps {
   onSelect: (ids: string[]) => void;
   onAdd: (kind: PartKind) => void;
   /** A body's eye, ghost or highlight. */
-  onToggle: (id: string, what: RowToggle) => void;
+  onToggle: (id: string, what: Exclude<RowToggle, "active">) => void;
+  /** Makes a component (#171) the one you work in, or the model (null). */
+  onActivate?: (id: string | null) => void;
   /** Hide (true) or show bodies, all at once. */
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
   /** Hide (true) or show sketches. */
@@ -297,28 +329,28 @@ export function BrowserPanel(p: BrowserPanelProps) {
   };
 
   const toggle = (id: string, what: RowToggle) => {
+    if (what === "active") return p.onActivate?.(id === ROW.root ? null : id);
     const item = originItemOf(id);
     if (item) return p.onOrigin(model.origin.includes(item) ? model.origin.filter((x) => x !== item) : [...model.origin, item]);
     if (id === ROW.origin) return p.onOrigin(model.origin.length ? [] : ORIGIN);
-    if (id === ROW.bodies) {
-      return p.onBodiesHidden(
-        model.parts.map((x) => x.id),
-        model.parts.some((x) => !x.hidden),
-      );
-    }
-    if (id === ROW.sketches) {
-      const anyShown = model.sketches.some((s) => !s.hidden);
+    // A folder's eye: everything in it, in the model or in one component.
+    const f = folderOf(id);
+    if (f) {
+      const o = owners(model);
+      if (f.folder === ROW.bodies) {
+        const ps = o.parts(f.c);
+        return p.onBodiesHidden(
+          ps.map((x) => x.id),
+          ps.some((x) => !x.hidden),
+        );
+      }
+      const xs = f.folder === ROW.sketches ? o.sketches(f.c) : o.construct(f.c);
       return p.onSketchesHidden(
-        model.sketches.map((s) => s.id),
-        anyShown,
+        xs.map((x) => x.id),
+        xs.some((x) => !x.hidden),
       );
     }
     const cons = model.construct ?? [];
-    if (id === ROW.construct)
-      return p.onSketchesHidden(
-        cons.map((c) => c.id),
-        cons.some((c) => !c.hidden),
-      );
     const sk = model.sketches.find((s) => s.id === id) ?? cons.find((c) => c.id === id);
     if (sk) return p.onSketchesHidden([id], !sk.hidden);
     p.onToggle(id, what);
@@ -409,10 +441,15 @@ export function BrowserPanel(p: BrowserPanelProps) {
       return {
         title: link.name,
         entries: [
-          { id: "select", label: "Select its bodies", icon: "link", onSelect: () => select([id]) },
+          ...(model.readOnly || model.active === id
+            ? []
+            : [{ id: "activate", label: "Activate", icon: "radioOn" as const, onSelect: () => p.onActivate?.(id) }]),
+          { id: "select", label: "Select its bodies", icon: "component", onSelect: () => select([id]) },
           { id: "rename", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => p.onRenameIdChange(id) },
         ],
       };
+    if (id === ROW.root && model.active && !model.readOnly)
+      return { title: model.name, entries: [{ id: "activate", label: "Activate the model", icon: "radioOn", onSelect: () => p.onActivate?.(null) }] };
     if (model.parts.some((x) => x.id === id)) {
       const chosen = model.parts.filter((x) => p.selection.includes(x.id));
       return { title: chosen.length > 1 ? `${chosen.length} parts` : chosen[0]?.name, entries: p.partMenu(p.selection) };
@@ -442,7 +479,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
           ? `Shift-click selects a range, ${formatCombo("mod")}-click adds one. Drag bodies to reorder, F2 to rename. Right-click a plane to sketch on it.`
           : "Double-click the name to rename your model. Add a shape from the Library, or start a sketch (K)."}
       </p>
-      <p className="bc-note">Make links from bodies, then use the Joint tool to hang each from another.</p>
+      <p className="bc-note">Make a component to work in, or one from bodies, then use the Joint tool to hang each from another.</p>
       <div className="bc-section-gap" />
       <Banner tone="info">Press K to sketch on a plane or a flat face, then E to extrude a closed shape into a solid.</Banner>
       <ContextMenu

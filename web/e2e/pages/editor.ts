@@ -47,11 +47,11 @@ export class Editor {
     await expect(d.root).toBeVisible();
     return d;
   }
-  /** Opens a left panel from its top-bar button (Browser, Library, Parameters, Print), or Settings from the account menu. */
+  /** Opens a left panel from its top-bar button (Browser, Library, Parameters), or Settings or Print from the account menu. */
   async panel(name: string) {
-    if (name === "Settings") {
+    if (name === "Settings" || name === "Print") {
       await this.page.getByRole("button", { name: /account and settings|^Sign in$/i }).click();
-      await this.page.getByRole("menuitem", { name: "Settings" }).click();
+      await this.page.getByRole("menuitem", { name: name === "Print" ? "Print settings" : "Settings", exact: true }).click();
       return;
     }
     await this.page.getByRole("banner").getByRole("button", { name, exact: true }).click();

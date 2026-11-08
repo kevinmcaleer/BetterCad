@@ -268,9 +268,9 @@ export class ModelBuilder {
     upTo = doc.features.length,
     opts: { sameLink?: boolean; references?: boolean; cancelled?: () => boolean; progress?: (f: number) => void } = {},
   ): Clash[] {
-    const { parts, joints, links, drives } = build(doc, upTo);
+    const { parts, joints, links, drives, components } = build(doc, upTo);
     this.useBlobs(doc);
-    const byLink = doc.pose ? linkTransforms(joints, resolvePose(drives, doc.pose)) : new Map();
+    const byLink = doc.pose ? linkTransforms(joints, resolvePose(drives, doc.pose), components) : new Map();
     const linkOf = new Map<string, string>();
     for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
     const bodies = [];

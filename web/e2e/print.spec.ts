@@ -2,8 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { Editor } from "./pages/editor";
 
 const openPrint = async (page: Page) => {
-  if (!(await page.getByLabel("Printer", { exact: true }).isVisible()))
-    await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
+  if (!(await page.getByLabel("Printer", { exact: true }).isVisible())) await new Editor(page).panel("Print");
   await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
 };
 
@@ -101,7 +100,7 @@ test("orientation suggestions turn the model onto the bed in one undoable step",
   await expect(list.getByRole("button", { name: /^As it lies now/ })).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
 
   await page.keyboard.press("ControlOrMeta+z");
-  await expect(page.getByRole("banner").getByRole("button", { name: "Print", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Printer", { exact: true })).toBeVisible();
 
   // The weights live in Settings, Advanced.
   await new Editor(page).panel("Settings");
