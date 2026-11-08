@@ -1097,28 +1097,19 @@ export class Engine {
    */
   thumbnail(width = 320, height = 200): string | null {
     const look = { style: this.style, palette: this.palette, selected: this.selected, hover: this.hover, check: this.check };
-    const probe = document.createElement("span");
+    // The Light theme's colours; the background and grid are cleared or hidden anyway.
+    const probe = document.body.appendChild(document.createElement("i"));
     probe.dataset.theme = "light";
-    probe.hidden = true;
-    document.body.append(probe);
-    try {
-      const light = readPalette(probe);
-      // Body colours and lighting from Light; the rest (background, grid) are hidden or cleared anyway.
-      this.palette = { ...this.palette, "part-fill": light["part-fill"], "part-line": light["part-line"], "part-highlight": light["part-highlight"] };
-    } finally {
-      probe.remove();
-    }
-    this.selected = [];
-    this.hover = null;
-    this.check = null;
-    this.style = "shaded";
-    for (const b of this.order) this.applyStyle(b);
+    this.palette = readPalette(probe);
+    probe.remove();
+    Object.assign(this, { selected: [], hover: null, check: null });
+    this.setStyle("shaded");
     this.recolourAll();
     try {
       return this.snapshot(width, height);
     } finally {
       Object.assign(this, look);
-      for (const b of this.order) this.applyStyle(b);
+      this.setStyle(look.style);
       this.recolourAll();
     }
   }
