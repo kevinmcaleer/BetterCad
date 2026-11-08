@@ -192,7 +192,11 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       m.deleted_at = null;
       return json(route, 200, summary(m));
     }
-    if (sub === "thumbnail") return fail(route, 404, "There's no picture for that model.");
+    if (sub === "thumbnail") {
+      const thumb = /^data:(image\/\w+);base64,(.+)$/.exec(JSON.parse(latest.bcad).thumbnail ?? "");
+      if (!thumb) return fail(route, 404, "There's no picture for that model.");
+      return route.fulfill({ status: 200, contentType: thumb[1], body: Buffer.from(thumb[2]!, "base64") });
+    }
     if (sub === "share") {
       if (method === "DELETE") delete m.share;
       else m.share ??= `t${String(++ids).padStart(21, "0")}`;
