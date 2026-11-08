@@ -1,6 +1,6 @@
 /**
  * The Render view's path tracer (#197): three-gpu-pathtracer over a scene of its own, built from the bodies' meshes
- * with each body's colour and finish (#196), a floor that catches a soft shadow, and one of three lighting presets.
+ * with each body's colour and finish (#196), a floor that catches a soft shadow, a lighting preset and a background.
  * The grid, the bed and every overlay stay out. This module loads only when you first press Render.
  *
  * The scene is Y up, the way the path tracer's sky gradient expects: points go from BetterCad's Z up by
@@ -24,22 +24,25 @@ import {
   WebGLRenderer,
 } from "three";
 import { GradientEquirectTexture, WebGLPathTracer } from "three-gpu-pathtracer";
-import { DEFAULT_COLOUR, finishById, finishOf, type BodyMesh, type FinishId } from "@bettercad/kernel";
+import { DEFAULT_COLOUR, finishById, finishOf, type FinishId } from "@bettercad/kernel";
 import { cameraBasis, FOV, type CameraState } from "../viewport/camera";
+import { Backgrounds } from "./backgrounds";
+import { cutMesh, type CutPlane, type Triangles } from "./cut";
 
 export type { LightPresetId as LightPreset } from "./session";
-import type { LightPresetId as LightPreset, RenderStyle } from "./session";
+import type { BackgroundId, LightPresetId as LightPreset, RenderStyle } from "./session";
 
 export const LIGHT_PRESETS: { id: LightPreset; label: string; title: string }[] = [
-  { id: "studio", label: "Studio", title: "Soft white light on a seamless floor" },
+  { id: "studio", label: "Studio", title: "Soft white light from above and to one side" },
   { id: "daylight", label: "Daylight", title: "A blue sky and a low sun" },
   { id: "workbench", label: "Workbench", title: "Warm overhead light on a bench" },
+  { id: "lightbox", label: "Lightbox", title: "Even white light from every side and a soft shadow straight down" },
 ];
 
 /** A body as the render needs it: its triangles, where they sit, and how they look. */
 export interface RenderBody {
   id: string;
-  mesh: BodyMesh;
+  mesh: Triangles;
   /** Places the mesh; identity when the kernel built it in place. */
   matrix: Matrix4;
   colour?: string;
@@ -48,17 +51,20 @@ export interface RenderBody {
 }
 
 /**
- * Each preset's sky, floor and sun. These are lighting values for the rendered picture, not interface colours, so
+ * Each preset's sky (the light all round) and sun. These are lighting values for the rendered picture, not interface colours, so
  * they live here rather than in the design tokens.
  */
-const LOOKS: Record<LightPreset, { skyTop: number; skyBottom: number; floor: number; sun: number; sunIntensity: number; sunDir: [number, number, number] }> = {
-  studio: { skyTop: 0xffffff, skyBottom: 0x9a9da3, floor: 0xf2f2f2, sun: 0xffffff, sunIntensity: 1.2, sunDir: [-0.5, 1, 0.6] },
-  daylight: { skyTop: 0x6fa8e6, skyBottom: 0xd9dfe6, floor: 0xd6d3cc, sun: 0xfff1dc, sunIntensity: 3, sunDir: [0.8, 0.7, 0.4] },
-  workbench: { skyTop: 0xf7e9d6, skyBottom: 0x5a4a3c, floor: 0xb08a63, sun: 0xffe2b8, sunIntensity: 1.8, sunDir: [0.1, 1, 0.2] },
+const LOOKS: Record<LightPreset, { skyTop: number; skyBottom: number; sun: number; sunIntensity: number; sunDir: [number, number, number] }> = {
+  studio: { skyTop: 0xffffff, skyBottom: 0x9a9da3, sun: 0xffffff, sunIntensity: 1.2, sunDir: [-0.5, 1, 0.6] },
+  daylight: { skyTop: 0x6fa8e6, skyBottom: 0xd9dfe6, sun: 0xfff1dc, sunIntensity: 3, sunDir: [0.8, 0.7, 0.4] },
+  // A light tent: white all round, so nothing falls dark, and a faint sun overhead for a soft shadow under the model.
+  lightbox: { skyTop: 0xffffff, skyBottom: 0xf2f2f2, sun: 0xffffff, sunIntensity: 1, sunDir: [0.05, 1, 0.08] },
+  workbench: { skyTop: 0xf7e9d6, skyBottom: 0x5a4a3c, sun: 0xffe2b8, sunIntensity: 1.8, sunDir: [0.1, 1, 0.2] },
 };
 
 /** Z up, millimetres, to the render scene's Y up. */
 const yUp = (v: [number, number, number]) => new Vector3(v[0], v[2], -v[1]);
+const IDENTITY = new Matrix4();
 const Z_TO_Y = new Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
 
 export interface PathRenderOptions {
@@ -75,6 +81,9 @@ export class PathRender {
   private floor: Mesh<PlaneGeometry, MeshStandardMaterial>;
   private sun = new DirectionalLight();
   private sky = new GradientEquirectTexture();
+  private backgrounds = new Backgrounds();
+  private background: BackgroundId = "lightbox";
+  private reach = 100;
   private frame = 0;
   private watchdog = 0;
   private style: RenderStyle = "finishes";
@@ -112,25 +121,47 @@ export class PathRender {
     this.floor = new Mesh(new PlaneGeometry(1, 1), new MeshStandardMaterial({ roughness: 1, metalness: 0 }));
     this.floor.rotation.x = -Math.PI / 2;
     this.sky.update();
-    this.scene.background = this.sky;
     this.scene.environment = this.sky;
+    this.applyBackground("lightbox");
     this.scene.add(this.model, this.floor, this.sun, this.sun.target, this.camera);
   }
 
-  /** Builds the scene from the bodies: one standard material per body from its colour and finish. */
-  setBodies(bodies: RenderBody[]): void {
+  /**
+   * Builds the scene from the bodies: one standard material per body from its colour and finish. With a section
+   * plane, each body is cut and capped there, as the modelling view shows it.
+   */
+  setBodies(bodies: RenderBody[], section: CutPlane | null = null): void {
     this.clearModel();
     for (const b of bodies) {
       const g = new BufferGeometry();
-      g.setAttribute("position", new BufferAttribute(b.mesh.positions, 3));
-      g.setAttribute("normal", new BufferAttribute(b.mesh.normals, 3));
-      g.setIndex(new BufferAttribute(b.mesh.indices, 1));
+      let matrix = b.matrix;
+      let tris = b.mesh;
+      if (section) {
+        // Cut in model space: place the mesh first, then the plane needs no moving.
+        if (!b.matrix.equals(IDENTITY)) {
+          const placed = new BufferGeometry();
+          placed.setAttribute("position", new BufferAttribute(b.mesh.positions.slice(), 3));
+          placed.setAttribute("normal", new BufferAttribute(b.mesh.normals.slice(), 3));
+          placed.applyMatrix4(b.matrix);
+          tris = {
+            positions: placed.getAttribute("position").array as Float32Array,
+            normals: placed.getAttribute("normal").array as Float32Array,
+            indices: b.mesh.indices,
+          };
+          matrix = IDENTITY;
+        }
+        tris = cutMesh(tris, section);
+        if (!tris.indices.length) continue;
+      }
+      g.setAttribute("position", new BufferAttribute(tris.positions, 3));
+      g.setAttribute("normal", new BufferAttribute(tris.normals, 3));
+      g.setIndex(new BufferAttribute(tris.indices, 1));
       const f = finishById(finishOf(b));
       const material = new MeshStandardMaterial({ color: new Color(b.colour ?? DEFAULT_COLOUR), roughness: f.roughness, metalness: f.metalness });
       const mesh = new Mesh(g, this.style === "paper" ? this.paper : material);
       mesh.userData.finish = material;
       mesh.matrixAutoUpdate = false;
-      mesh.matrix.multiplyMatrices(Z_TO_Y, b.matrix);
+      mesh.matrix.multiplyMatrices(Z_TO_Y, matrix);
       this.model.add(mesh);
     }
     this.model.updateMatrixWorld(true);
@@ -161,6 +192,8 @@ export class PathRender {
     }
     this.floor.position.set(0, Number.isFinite(low) ? low : 0, 0);
     this.floor.scale.setScalar(reach * 40);
+    this.reach = reach;
+    this.fitGrid();
     this.floor.updateMatrixWorld();
     const d = LOOKS.studio.sunDir;
     this.sun.position.set(d[0] * reach * 4, d[1] * reach * 4, d[2] * reach * 4);
@@ -174,12 +207,40 @@ export class PathRender {
     this.restart();
   }
 
+  /** What is behind the model and what it stands on; the lighting stays as it is. */
+  setBackground(id: BackgroundId): void {
+    this.applyBackground(id);
+    this.tracer.updateEnvironment();
+    this.tracer.updateMaterials();
+    this.restart();
+  }
+
+  private applyBackground(id: BackgroundId): void {
+    this.background = id;
+    const b = this.backgrounds.get(id);
+    this.scene.background = b.sky;
+    const m = this.floor.material;
+    m.color.set(b.floor.colour);
+    m.roughness = b.floor.roughness;
+    m.map = b.floor.grid?.map ?? null;
+    m.emissiveMap = b.floor.grid?.map ?? null;
+    m.emissive.set(b.floor.grid ? 0xffffff : 0x000000);
+    m.emissiveIntensity = b.floor.grid ? 0.6 : 0;
+    m.needsUpdate = true;
+    this.fitGrid();
+  }
+
+  /** The grid's cells stay the same size in millimetres however big the floor is. */
+  private fitGrid(): void {
+    const g = this.backgrounds.get(this.background).floor.grid;
+    if (g) g.map.repeat.setScalar((this.reach * 40) / g.cell);
+  }
+
   setPreset(p: LightPreset): void {
     const l = LOOKS[p];
     this.sky.topColor.set(l.skyTop);
     this.sky.bottomColor.set(l.skyBottom);
     this.sky.update();
-    this.floor.material.color.set(l.floor);
     this.sun.color.set(l.sun);
     this.sun.intensity = l.sunIntensity;
     const dist = this.sun.position.length() || 400;
@@ -294,6 +355,7 @@ export class PathRender {
     this.floor.material.dispose();
     this.paper.dispose();
     this.sky.dispose();
+    this.backgrounds.dispose();
     this.tracer.dispose();
     this.renderer.dispose();
   }
