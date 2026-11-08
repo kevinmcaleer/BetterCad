@@ -2240,6 +2240,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     setShowBedState(on);
     keep("bettercad.showBed", on ? "1" : "0");
   }, []);
+  const cubeMenu: MenuEntry[] = [
+    ...vp.cubeMenu,
+    { kind: "separator", id: "s-bed" },
+    { id: "bed", label: "Show build volume", checked: showBed, multiple: true, onSelect: () => setShowBed(!showBed) },
+  ];
   /** The bodies that print: shown, not holes, and measured by the kernel. */
   const printBoxes = useMemo(() => {
     const out = new Map<string, Box3>();
@@ -3427,7 +3432,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               setViewMenuAt({ ids, at });
             }}
             onHome={vp.goHome}
-            cubeMenu={vp.cubeMenu}
+            cubeMenu={cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
             warn={viewWarn}
             check={checkResult?.values ?? null}
@@ -3615,7 +3620,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         title={
           !viewMenuAt?.ids.length ? "View" : viewMenuAt.ids.length > 1 ? `${viewMenuAt.ids.length} parts` : parts.find((p) => p.id === viewMenuAt.ids[0])?.name
         }
-        entries={!viewMenuAt ? [] : viewMenuAt.ids.length ? partMenu(viewMenuAt.ids) : vp.cubeMenu}
+        entries={!viewMenuAt ? [] : viewMenuAt.ids.length ? partMenu(viewMenuAt.ids) : cubeMenu}
       />
       {vp.namingDialog}
       {files.dialog}
