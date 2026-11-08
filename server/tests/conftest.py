@@ -20,12 +20,23 @@ BCAD = (
 )
 
 
+PASSWORD = "correct horse battery"
+
+
+def csrf(client: TestClient) -> str:
+    """Asks for a CSRF token (bound to the anonymous or session cookie) and sends it from now on."""
+    token = client.get("/api/auth/session").json()["csrf_token"]
+    client.headers["X-CSRF-Token"] = token
+    return token
+
+
 def sign_up(client: TestClient, email: str = "kev@example.com", name: str = "Kev") -> dict:
-    """Signs up and sets the CSRF header on the client for later writes."""
-    r = client.post("/api/auth/signup", json={"email": email, "name": name, "password": "correct horse"})
-    assert r.status_code == 201, r.text
-    client.headers["X-CSRF-Token"] = r.json()["csrf"]
-    return r.json()
+    """Registers `name` with powertools-auth and sets the CSRF header on the client for later writes."""
+    csrf(client)
+    r = client.post("/api/auth/register", json={"username": name, "email": email, "password": PASSWORD})
+    assert r.status_code == 200, r.text
+    client.headers["X-CSRF-Token"] = r.json()["csrf_token"]
+    return r.json()["user"]
 
 
 @pytest.fixture

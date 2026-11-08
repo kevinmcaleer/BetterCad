@@ -29,12 +29,16 @@ The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VER
 | annotated-doc | 0.0.5 | MIT | PyPI |
 | annotated-types | 0.8.0 | MIT | PyPI |
 | anyio | 4.16.0 | MIT | PyPI |
+| argon2-cffi | 25.1.0 | MIT | PyPI |
+| argon2-cffi-bindings | 26.1.0 | MIT | PyPI |
+| cffi | 2.1.1 | MIT-0 | PyPI |
 | click | 8.5.0 | BSD-3-Clause | PyPI |
 | fastapi | 0.162.0 | MIT | PyPI |
 | h11 | 0.16.0 | MIT | PyPI |
 | httptools | 0.9.0 | MIT | PyPI |
 | idna | 3.20 | BSD-3-Clause | PyPI |
 | opentelemetry-api | 1.45.2 | Apache-2.0 | PyPI |
+| pycparser | 3.12 | BSD-3-Clause | PyPI |
 | pydantic | 2.14.3 | MIT | PyPI |
 | pydantic-core | 2.50.4 | MIT | PyPI |
 | pydantic-settings | 2.16.2 | MIT | PyPI |

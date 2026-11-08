@@ -82,6 +82,7 @@ import {
   type Feature,
   type ModelDoc,
   type PartKind,
+  type PatternKind,
   type Vec3,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
@@ -125,6 +126,10 @@ import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { MountBar } from "../mount/MountBar";
+import { usePattern } from "../pattern/usePattern";
+import { PatternBar } from "../pattern/PatternBar";
+import { install, useInstallable, useLaunchFiles } from "../pwa/install";
+import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
@@ -447,6 +452,27 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
+  const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
+  const pattern = usePattern({
+    store,
+    record,
+    doc,
+    selection,
+    setSelection,
+    active: tool === "pattern" && !sketch.editing,
+    startKind: patternStart,
+    onClose: () => setTool("select"),
+    say,
+  });
+  /** Mirror (#69): the Pattern tool, starting as a mirror. */
+  const mirror = useCallback(() => {
+    setPatternStart("mirror");
+    setTool((t) => (t === "pattern" ? t : "pattern"));
+  }, []);
+  useEffect(() => {
+    if (tool !== "pattern") setPatternStart(null);
+  }, [tool]);
+
   const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
   live.current.placing = !!place.part;
 
@@ -719,6 +745,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (files.cloud) files.confirmThen(run);
     else void run();
   }, [api, setAccount, say, files]);
+  // Installing the app, and .bcad files it is asked to open (#95).
+  const installable = useInstallable();
+  const installApp = useCallback(() => {
+    void install().then((done) => done && say("Installed BetterCad. Open it from your apps."));
+  }, [say]);
+  const openLaunched = useCallback(
+    (handle: FileHandle) =>
+      void handle.getFile().then(
+        (file) => filesRef.current.show({ name: handle.name, file, handle }),
+        () => say("That file didn't open.", true),
+      ),
+    [say],
+  );
+  useLaunchFiles(openLaunched);
   // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
   const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
@@ -812,6 +852,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    mirror: () => {},
     add,
     showPanel,
     setTheme,
@@ -848,6 +889,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    mirror,
     add,
     showPanel,
     setTheme,
@@ -873,11 +915,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               ? hole.done()
               : mount.session
                 ? mount.done()
-                : tool === "combine"
-                  ? combine(selection, combineOp, keepTools, combineFit)
-                  : finish.tool
-                    ? finish.done()
-                    : undefined,
+                : pattern.session
+                  ? pattern.done()
+                  : tool === "combine"
+                    ? combine(selection, combineOp, keepTools, combineFit)
+                    : finish.tool
+                      ? finish.done()
+                      : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -993,6 +1037,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: t.title,
       })),
       {
+        id: "tool.mirror",
+        scope: "model",
+        label: "Mirror",
+        group: "Tools",
+        icon: "flipH",
+        run: () => h().mirror(),
+        keywords: "mirror image flip symmetric copy across a plane",
+      },
+      {
         id: "timeline.suppress",
         scope: "model",
         label: "Suppress or unsuppress the step",
@@ -1073,7 +1126,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1574,6 +1627,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "pattern"
+        ? [
+            {
+              id: "edit",
+              label: `Edit ${f.kind === "mirror" ? "mirror" : "pattern"}`,
+              icon: "distributeH" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("pattern");
+                pattern.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "mount"
         ? [
             {
@@ -1624,6 +1691,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     return [
       { id: "rename", label: "Rename", icon: "pencil", keys: "F2", disabled: ids.length !== 1, onSelect: () => setRenameId(ids[0] ?? null) },
       { id: "duplicate", label: "Duplicate", icon: "copy", keys: formatCombo("mod+d"), onSelect: () => duplicate(ids) },
+      {
+        id: "mirror",
+        label: "Mirror…",
+        icon: "flipH",
+        onSelect: () => {
+          setSelection(ids);
+          mirror();
+        },
+      },
+      {
+        id: "pattern",
+        label: "Pattern…",
+        icon: "distributeH",
+        onSelect: () => {
+          setSelection(ids);
+          setTool("pattern");
+        },
+      },
       ...(ids.length > 1
         ? [
             { id: "group", label: "Group", icon: "combine" as const, keys: formatCombo("mod+g"), onSelect: () => group(ids) },
@@ -1797,8 +1882,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ? sketch.help
     : place.help
       ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
         : finish.help
           ? finish.help
           : vp.elementText
@@ -1919,6 +2004,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onDownloadBcad={files.saveToDisk}
             onExport={() => setExportOpen(true)}
             onSignOut={signOut}
+            onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}
             theme={theme}
             onTheme={setTheme}
@@ -2009,6 +2095,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
               {tool === "mount" && <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />}
+              {tool === "pattern" && (
+                <PatternBar x={pattern} error={pattern.session ? failed.get(pattern.session.id) : undefined} onCancel={() => setTool("select")} />
+              )}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
                 <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />

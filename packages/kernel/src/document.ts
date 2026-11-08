@@ -22,6 +22,8 @@ export {
   type CataloguePart,
   type CatalogueCategory,
 } from "./catalogue";
+import { PATTERN_DEFAULTS, copyName, copyPart, copyId, patternCopyIds, patternMoves, patternProblem, patternSummary } from "./pattern";
+import type { CopySpec, MirrorPlane, PatternKind, WorldAxis } from "./pattern";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import { evaluate } from "@bettercad/ui/expr";
 import {
@@ -38,6 +40,7 @@ import {
 } from "./extrude";
 
 export * from "./extrude";
+export * from "./pattern";
 export * from "./holes";
 export * from "./screws";
 import { screw } from "./screws";
@@ -93,6 +96,8 @@ export interface Part {
   imported?: ImportSpec;
   /** A catalogue part (#187): the record it was inserted from, kept whole so a catalogue change never moves it. */
   catalogue?: CataloguePart;
+  /** A mirrored or turned copy of another body (#69), made from it as it stood. */
+  copy?: CopySpec;
 }
 
 /** Where an imported body comes from: body `index` of the file kept as `blob`. Meshes (STL, 3MF) can't be filleted. */
@@ -161,6 +166,31 @@ export interface AddFeature extends FeatureBase {
 export interface DuplicateFeature extends FeatureBase {
   type: "duplicate";
   copies: { from: string; id: string; name: string }[];
+}
+/**
+ * Mirror and patterns (#69): copies of bodies across a world plane, in rows along world axes, or round a world axis.
+ * Every kind's settings are kept, so switching kind on the bar and back loses nothing.
+ */
+export interface PatternFeature extends FeatureBase {
+  type: "pattern";
+  kind: PatternKind;
+  parts: string[];
+  /** Mirror: the plane, moved along its normal by `offset` mm. */
+  plane: MirrorPlane;
+  offset: number;
+  /** Rectangle: `count1` along `dir1` every `spacing1` mm, and `count2` along `dir2` (1 for a single row). */
+  dir1: WorldAxis;
+  count1: number;
+  spacing1: number;
+  dir2: WorldAxis;
+  count2: number;
+  spacing2: number;
+  /** Circle: `count` round the world `axis` through the origin, over `angle` degrees (360 for all the way round). */
+  axis: WorldAxis;
+  count: number;
+  angle: number;
+  /** Join each copy to its original, for one printable body, instead of keeping separate bodies. */
+  join: boolean;
 }
 export interface MoveFeature extends FeatureBase {
   type: "move";
@@ -316,6 +346,7 @@ export type Feature =
   | InsertFeature
   | AddFeature
   | DuplicateFeature
+  | PatternFeature
   | MoveFeature
   | ResizeFeature
   | DeleteFeature
@@ -374,6 +405,7 @@ export const KIND_LABEL: Record<PartKind, string> = {
 export const FEATURE_LABEL: Record<FeatureType, string> = {
   add: "Add",
   duplicate: "Duplicate",
+  pattern: "Pattern",
   move: "Move",
   resize: "Resize",
   delete: "Delete",
@@ -418,6 +450,7 @@ const BUILT = new Set<string>([
   "insert",
   "add",
   "duplicate",
+  "pattern",
   "move",
   "resize",
   "delete",
@@ -499,6 +532,29 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           parts.splice(i + 1, 0, { ...src, id: c.id, name: c.name, position: { ...src.position, x: src.position.x + 10 }, size: { ...src.size } });
         }
         break;
+      case "pattern": {
+        missing(f, f.parts);
+        const problem = patternProblem(f);
+        if (problem) {
+          failed.set(f.id, problem);
+          break;
+        }
+        const moves = patternMoves(f);
+        for (const from of f.parts) {
+          const i = find(from);
+          const src = parts[i];
+          if (!src) continue;
+          const copies = moves.map((m, k) => copyPart(src, m, copyId(f, from, k), copyName(f, src.name, k)));
+          if (f.join) {
+            const at = { position: { ...src.position }, rotation: src.rotation && { ...src.rotation } };
+            src.ops = [
+              ...(src.ops ?? []),
+              ...copies.map((c): BodyOp => ({ op: "join", body: { ...c, hole: undefined, fit: undefined, gap: undefined }, at, feature: f.id })),
+            ];
+          } else parts.splice(i + 1, 0, ...copies.filter((c) => find(c.id) < 0));
+        }
+        break;
+      }
       case "move":
       case "resize": {
         missing(f, f.parts);
@@ -931,6 +987,8 @@ export function featureParts(f: Feature): string[] {
       return [f.part.id];
     case "duplicate":
       return f.copies.map((c) => c.id);
+    case "pattern":
+      return f.join ? [...f.parts] : patternCopyIds(f);
     case "sketch":
       return [];
     case "extrude":
@@ -987,6 +1045,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "duplicate":
       return `Copies ${who(f.copies.map((c) => c.from))}`;
+    case "pattern":
+      return patternSummary(f, who(f.parts));
     case "move": {
       const turn = f.rotation
         ? (["x", "y", "z"] as const)
@@ -1519,6 +1579,7 @@ function partsRead(f: Feature): string[] {
     case "move":
     case "resize":
     case "delete":
+    case "pattern":
       return f.parts;
     case "extrude":
     case "revolve":
@@ -1537,6 +1598,7 @@ function partsRead(f: Feature): string[] {
 function partsMade(f: Feature): string[] {
   if (f.type === "add") return [f.part.id];
   if (f.type === "duplicate") return f.copies.map((c) => c.id);
+  if (f.type === "pattern") return patternCopyIds(f);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
   if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
@@ -1748,4 +1810,29 @@ export function relinkSketches(doc: ModelDoc, solve: (sketch: Sketch) => Sketch 
 /** The values of every parameter, for number fields to use. */
 export function paramScope(doc: ModelDoc): Record<string, number> {
   return evaluateParams(doc.params).values;
+}
+
+// ---- mirror and patterns (#69)
+
+export type PatternParams = Omit<PatternFeature, "id" | "name" | "type">;
+
+/** Adds a Mirror or Pattern step for `parts`, with the defaults for anything not given. */
+export function addPattern(doc: ModelDoc, params: Partial<PatternParams> & { parts: string[]; kind: PatternKind }, id = newId("f"), at?: number): ModelDoc {
+  const name = params.kind === "mirror" ? nextNamed(doc, "Mirror") : nextFeatureName(doc, "pattern");
+  return insert(doc, clampAt(doc, at), { id, type: "pattern", name, ...PATTERN_DEFAULTS, ...params });
+}
+
+/** Changes a Mirror or Pattern step (the tool edits it live, as one undo step). Switching kind renames a default name. */
+export function updatePattern(doc: ModelDoc, id: string, change: Partial<PatternParams>): ModelDoc {
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== id || f.type !== "pattern") return f;
+      const next: PatternFeature = { ...f, ...change };
+      const was = f.kind === "mirror" ? "Mirror" : "Pattern";
+      const now = next.kind === "mirror" ? "Mirror" : "Pattern";
+      if (was !== now && new RegExp(`^${was} \\d+$`).test(f.name)) next.name = nextNamed(doc, now);
+      return next;
+    }),
+  };
 }
