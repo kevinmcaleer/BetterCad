@@ -113,6 +113,7 @@ test("a sketch size uses a parameter, offered by name, and follows it", async ({
   await input.press("Enter");
   await expect(input).toHaveValue("width");
   await input.pressSequentially(" * 2");
+  await expect(input).toHaveValue("width * 2");
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "40 mm", exact: true })).toBeVisible();
 

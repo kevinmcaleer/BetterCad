@@ -137,6 +137,20 @@ describe("NumberField", () => {
     await userEvent.type(f, " * 2{Enter}");
     expect(onCommit).toHaveBeenCalledWith(40, "width * 2");
   });
+  it("keeps keys typed straight after a name is put in, in order", async () => {
+    const onCommit = vi.fn();
+    render(<NumberField label="Depth" value={5} onCommit={onCommit} scope={{ width: 20 }} />);
+    const f = screen.getByRole("textbox", { name: "Depth (mm)" });
+    await userEvent.clear(f);
+    // No delay between keys: " *" arrives before the caret is placed after the name, and the rest after.
+    const fast = userEvent.setup({ delay: null });
+    await fast.type(f, "wi{Enter} *");
+    await new Promise((r) => setTimeout(r, 10));
+    await fast.keyboard(" 2");
+    expect(f).toHaveValue("width * 2");
+    await fast.keyboard("{Enter}");
+    expect(onCommit).toHaveBeenCalledWith(40, "width * 2");
+  });
   it("closes the names with Esc and keeps what was typed", async () => {
     render(<NumberField label="Depth" value={5} scope={{ height: 10 }} />);
     const f = screen.getByRole("textbox", { name: "Depth (mm)" });

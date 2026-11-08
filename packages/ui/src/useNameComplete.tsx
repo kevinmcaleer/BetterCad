@@ -46,8 +46,12 @@ export function useNameComplete(scope: Scope | undefined, input: RefObject<HTMLI
     last.current = out.text;
     setText(out.text);
     setComp(null);
-    // After React has put the new text in.
-    setTimeout(() => input.current?.setSelectionRange(out.caret, out.caret), 0);
+    // After React has put the new text in. Not once more has been typed: the caret is already past it, and moving it
+    // back would put the next keys in the middle (typing "width * 2" quickly gave "width2 * ").
+    setTimeout(() => {
+      const el = input.current;
+      if (el && el.value === out.text) el.setSelectionRange(out.caret, out.caret);
+    }, 0);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): boolean => {
