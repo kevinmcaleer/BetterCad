@@ -24,10 +24,12 @@ export interface CombineBarProps {
   tuned?: FitGaps;
   onApply: () => void;
   onCancel: () => void;
+  /** Why the preview of this combine does not build, if it does not. */
+  error?: string | null;
 }
 
 /** Combine's strip (#66): the body to keep is the first one picked; Shift-click adds the bodies to join, cut or intersect. */
-export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, fit, onFit, tuned, onApply, onCancel }: CombineBarProps) {
+export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, fit, onFit, tuned, onApply, onCancel, error }: CombineBarProps) {
   const [target, ...tools] = picked;
   const note = !target
     ? "Click the body to keep."
@@ -44,6 +46,11 @@ export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, fit, onFi
       {op === "cut" && <FitMenu value={fit} onChange={onFit} tuned={tuned} />}
       <Button label="Keep tools" title="Leave the other bodies in the model" on={keepTools} onClick={() => onKeepTools(!keepTools)} />
       <span className="bc-armed-note">{note}</span>
+      {error && (
+        <span role="alert" className="bc-armed-note bc-armed-error">
+          {error}
+        </span>
+      )}
       <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
       <Button kind="done" label="Combine" title="Combine the bodies" shortcut="Enter" disabled={!tools.length} onClick={onApply} />
     </ArmedBar>

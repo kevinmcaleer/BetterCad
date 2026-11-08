@@ -1285,3 +1285,33 @@ kbd {
   margin: 0;
   color: var(--bc-color-muted);
 }
+/* Fillet and Shell's picked edges or faces: a card over the bar, one row each with a button to take it out. */
+.bc-pick-list {
+  flex-direction: column;
+  align-items: stretch;
+  align-self: center;
+  min-width: 220px;
+  max-height: 40vh;
+  padding: var(--bc-space-2) var(--bc-space-3);
+  gap: var(--bc-space-2);
+}
+.bc-pick-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.bc-pick-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-3);
+  padding-left: var(--bc-space-2);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-pick-list li:hover {
+  background: var(--bc-color-accent-soft);
+}
+.bc-pick-list > .bc-btn {
+  align-self: flex-end;
+}
