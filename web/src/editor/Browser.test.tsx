@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { addPart, build, newDoc, type Part } from "../state/document";
+import { addLink, addPart, build, newDoc, type Part } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
 import { BrowserPanel, ROW, browserItems, browserPick, type BrowserModel, type BrowserSketch, type OriginItem } from "./Browser";
 
@@ -176,5 +176,63 @@ describe("BrowserPanel", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(row(/^Bodies/)).toHaveAttribute("draggable", "false");
     expect(row(/^Box 1/)).toHaveAttribute("draggable", "true");
+  });
+});
+
+describe("robot tree (#171)", () => {
+  const linked = () => {
+    const d = addLink(addPart(addPart(addPart(newDoc("Rover"), "box", "a"), "cylinder", "b"), "box", "c"), ["a", "b"], "L1");
+    const b = build(d);
+    return { ...model(), parts: b.parts, links: b.links };
+  };
+
+  it("hides the Robot folder until there is a link", () => {
+    expect(browserItems(model()).some((i) => i.id === ROW.robot)).toBe(false);
+  });
+
+  it("lists Base, then each link with its body count", () => {
+    const items = browserItems(linked());
+    expect(items.find((i) => i.id === ROW.robot)).toMatchObject({ name: "Robot", note: "1" });
+    expect(items.filter((i) => i.parentId === ROW.robot).map((i) => [i.name, i.note])).toEqual([
+      ["Base", "1 body"],
+      ["Link 1", "2 bodies"],
+    ]);
+  });
+
+  it("selects a link's bodies from its row, and Base's from Base", () => {
+    expect(browserPick(["L1"], linked()).parts).toEqual(["a", "b"]);
+    expect(browserPick([ROW.base], linked()).parts).toEqual(["c"]);
+  });
+
+  it("shows the tree by role and selects a link's bodies on click", async () => {
+    const onSelect = vi.fn();
+    const m = linked();
+    render(
+      <BrowserPanel
+        model={m}
+        selection={[]}
+        onSelect={onSelect}
+        onAdd={() => {}}
+        onToggle={() => {}}
+        onBodiesHidden={() => {}}
+        onSketchesHidden={() => {}}
+        onOrigin={() => {}}
+        onPicked={() => {}}
+        onSelectSketch={() => {}}
+        onRename={() => {}}
+        onRenameModel={() => {}}
+        onRenameSketch={() => {}}
+        onReorder={() => {}}
+        onSketchOn={() => {}}
+        partMenu={() => []}
+        sketchMenu={() => []}
+        renameId={null}
+        onRenameIdChange={() => {}}
+      />,
+    );
+    expect(row(/^Robot/)).toBeInTheDocument();
+    expect(row(/^Base/)).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Link 1"));
+    expect(onSelect).toHaveBeenLastCalledWith(["a", "b"]);
   });
 });

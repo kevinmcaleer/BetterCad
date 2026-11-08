@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Banner, ContextMenu, PartsTree, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
-import type { Part, PartKind } from "../state/document";
+import type { BuiltLink, Part, PartKind } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
 import { formatCombo } from "../state/commands";
 import { partIcon } from "./Timeline";
@@ -22,6 +22,8 @@ export const ROW = {
   bodies: "browser:bodies",
   sketches: "browser:sketches",
   joints: "browser:joints",
+  robot: "browser:robot",
+  base: "browser:base",
   plane: (p: WorldPlaneName) => `browser:plane:${p}`,
   point: "browser:origin-point",
 } as const;
@@ -52,7 +54,11 @@ export interface BrowserModel {
   origin: OriginItem[];
   /** A shared, view-only model: its name can't be changed. */
   readOnly?: boolean;
+  /** Links (#171): rigid groups of bodies. Bodies in none are in the base link. */
+  links?: BuiltLink[];
 }
+
+const bodies = (n: number) => (n === 1 ? "1 body" : `${n} bodies`);
 
 const count = (n: number) => (n ? `${n}` : "");
 
@@ -125,6 +131,26 @@ export function browserItems(m: BrowserModel): TreeItem[] {
       warning: s.warning,
     });
   }
+  // The robot (#171): Base, then each link. Flat until joints (#172) hang links from each other.
+  const links = m.links ?? [];
+  if (links.length) {
+    const inLink = new Set(links.flatMap((l) => l.parts));
+    items.push(folder(ROW.robot, "Robot", { icon: "link", note: count(links.length), toggles: [] }));
+    items.push({
+      id: ROW.base,
+      name: "Base",
+      icon: "link",
+      kind: "link",
+      parentId: ROW.robot,
+      drag: false,
+      rename: false,
+      toggles: [],
+      note: bodies(m.parts.filter((p) => !inLink.has(p.id)).length),
+    });
+    for (const l of links) {
+      items.push({ id: l.id, name: l.name, icon: "link", kind: "link", parentId: ROW.robot, drag: false, toggles: [], note: bodies(l.parts.length) });
+    }
+  }
   // Joints (#172) fill this in. Until then it stays, empty, so the tree has the shape it will keep.
   items.push(folder(ROW.joints, "Joints", { note: "None yet", toggles: [] }));
   return items;
@@ -137,7 +163,13 @@ export function browserItems(m: BrowserModel): TreeItem[] {
 export function browserPick(ids: string[], m: BrowserModel): { parts: string[]; other: string | null } {
   const partIds = new Set(m.parts.map((p) => p.id));
   const whole = ids.includes(ROW.root) || ids.includes(ROW.bodies);
-  const parts = whole ? m.parts.map((p) => p.id) : ids.filter((id) => partIds.has(id));
+  // A link row picks its bodies; Base picks the bodies in no link.
+  const links = m.links ?? [];
+  const inLink = new Set(links.flatMap((l) => l.parts));
+  const linked = ids.flatMap((id) =>
+    id === ROW.base ? m.parts.filter((p) => !inLink.has(p.id)).map((p) => p.id) : (links.find((l) => l.id === id)?.parts ?? []),
+  );
+  const parts = whole ? m.parts.map((p) => p.id) : [...new Set([...ids.filter((id) => partIds.has(id)), ...linked])];
   const sketchIds = new Set(m.sketches.map((s) => s.id));
   const other = [...ids].reverse().find((id) => sketchIds.has(id) || originItemOf(id) !== null) ?? null;
   return { parts, other };
@@ -217,7 +249,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
 
   const rename = (id: string, name: string) => {
     if (id === ROW.root) return p.onRenameModel(name);
-    if (model.sketches.some((s) => s.id === id)) return p.onRenameSketch(id, name);
+    if (model.sketches.some((s) => s.id === id) || model.links?.some((l) => l.id === id)) return p.onRenameSketch(id, name);
     p.onRename(id, name);
   };
 
@@ -246,6 +278,15 @@ export function BrowserPanel(p: BrowserPanelProps) {
       return {
         title: sk.name,
         entries: p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+      };
+    const link = model.links?.find((l) => l.id === id);
+    if (link)
+      return {
+        title: link.name,
+        entries: [
+          { id: "select", label: "Select its bodies", icon: "link", onSelect: () => select([id]) },
+          { id: "rename", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => p.onRenameIdChange(id) },
+        ],
       };
     if (model.parts.some((x) => x.id === id)) {
       const chosen = model.parts.filter((x) => p.selection.includes(x.id));
