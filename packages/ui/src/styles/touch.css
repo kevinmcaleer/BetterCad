@@ -23,6 +23,14 @@
   /* No hover with a finger: nothing waits for one, and a tap does not leave a hover look behind. */
   .bc-app {
     -webkit-tap-highlight-color: transparent;
+    /* Quick taps on buttons stay taps: no double-tap zoom on the page. */
+    touch-action: manipulation;
+  }
+  /* A finger held still on the view slides a point to a snap: no text selection, magnifier or callout. */
+  .bc-canvas {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
 }
 /* A phone's top bar holds a dozen buttons on one row: a little less there so they all fit. */
