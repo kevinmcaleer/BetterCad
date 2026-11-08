@@ -78,6 +78,9 @@ import { readPalette, type Palette } from "./colours";
 
 export type RenderStyle = "shaded" | "lineart";
 
+/** The palette colour of each origin axis drawn as construction geometry (`origin:X`). */
+const ORIGIN_AXIS_COLOUR: Record<string, "axis-x" | "axis-y" | "axis-z"> = { "origin:X": "axis-x", "origin:Y": "axis-y", "origin:Z": "axis-z" };
+
 /** Construction geometry to draw (#265): a plane's frame, an axis's line, or a point. */
 export interface ConstructShape {
   id: string;
@@ -1023,9 +1026,11 @@ export class Engine {
         this.construct.add(edge);
       } else if (it.what === "axis") {
         const d = new Vector3(...it.dir!).normalize().multiplyScalar(r * 1.5);
+        // The origin's axes take the view cube's colours, as Fusion's do.
+        const world = ORIGIN_AXIS_COLOUR[it.id];
         const line = new LineSegments(
           new BufferGeometry().setFromPoints([o.clone().sub(d), o.clone().add(d)]),
-          new LineBasicMaterial({ color: colour, depthTest: false, transparent: true, opacity: on ? 1 : 0.7 }),
+          new LineBasicMaterial({ color: world ? this.palette[world] : colour, depthTest: false, transparent: true, opacity: on ? 1 : 0.7 }),
         );
         line.renderOrder = 6;
         this.construct.add(line);

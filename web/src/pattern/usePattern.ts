@@ -62,6 +62,11 @@ const label = (k: PatternKind) => (k === "mirror" ? "Mirror" : "Pattern");
 
 const PLANES_ONLY = new Set(["plane"] as const);
 const AXES_ONLY = new Set(["axis"] as const);
+/** The world axis an origin axis in the view names (`origin:X` is "x"), if it is one. */
+export function originAxis(id: string): "x" | "y" | "z" | null {
+  const m = /^origin:([XYZ])$/.exec(id);
+  return m ? (m[1]!.toLowerCase() as "x" | "y" | "z") : null;
+}
 
 export function usePattern(d: PatternDeps) {
   const deps = useRef(d);
@@ -242,10 +247,12 @@ export function usePattern(d: PatternDeps) {
       down: (p) => {
         const step = eng.constructAt(p.x, p.y, AXES_ONLY);
         if (!step) {
-          deps.current.say("Click a construction axis, or make one with Construct.", true);
+          deps.current.say("Click the X, Y or Z axis, or a construction axis.", true);
           return true;
         }
-        change({ axisStep: step });
+        // An origin axis is the world axis of the same name.
+        const o = originAxis(step);
+        change(o ? { axis: o, axisStep: undefined } : { axisStep: step });
         setPickingAxis(false);
         return true;
       },

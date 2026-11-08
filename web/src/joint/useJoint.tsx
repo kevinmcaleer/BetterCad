@@ -45,6 +45,7 @@ export interface JointDeps {
 }
 
 export const KEY = (id: string) => `joint:${id}`;
+const AXES: ReadonlySet<"axis"> = new Set(["axis"]);
 
 /** Where the tool is: picking the moving link, the link it hangs from, the axis, or editing a made joint. */
 export type JointStage = "child" | "parent" | "axis" | "edit";
@@ -121,6 +122,17 @@ export function useJoint(d: JointDeps) {
     );
   }, []);
 
+  /** Makes the joint round an axis given as a point and a direction: an origin or construction axis. */
+  const axisFrom = useCallback((origin: [number, number, number], axis: [number, number, number]) => {
+    const c = live.current.child;
+    const p = live.current.parent;
+    if (c === null || p === undefined) return;
+    const id = newId("f");
+    const params: JointParams = { kind: "revolute", child: c, parent: p, origin, axis, ...JOINT_LIMITS.revolute };
+    deps.current.record((dd, at) => addJoint(dd, params, id, at), "Joint", KEY(id));
+    setSession({ id, isNew: true });
+  }, []);
+
   useEffect(() => {
     const eng = engineOf();
     if (!d.active || !eng) return;
@@ -128,12 +140,20 @@ export function useJoint(d: JointDeps) {
       move: (p, _m, pressed) => {
         const st = live.current.stage;
         if (pressed || st === "edit") return;
+        if (st === "axis" && eng.constructAt(p.x, p.y, AXES)) return eng.showHover(null);
         eng.showHover(st === "axis" ? (eng.pick(p.x, p.y, "edge") ?? eng.pick(p.x, p.y, "face")) : eng.pick(p.x, p.y, "body"));
       },
       down: (p) => {
         const st = live.current.stage;
         if (st === "edit") return false;
         if (st === "axis") {
+          // An origin or construction axis in the view gives the axis as it is.
+          const shape = eng.constructAt(p.x, p.y, AXES);
+          const ax = shape ? eng.constructShape(shape) : null;
+          if (ax?.dir) {
+            axisFrom(ax.origin, ax.dir);
+            return true;
+          }
           const hit = eng.pick(p.x, p.y, "edge") ?? eng.pick(p.x, p.y, "face");
           if (!hit) return false;
           pickAxis({ body: hit.body, kind: hit.kind as TopoRef["kind"], index: hit.index });
@@ -151,7 +171,7 @@ export function useJoint(d: JointDeps) {
       eng.setInput(null);
       eng.showHover(null);
     };
-  }, [d.active, engineOf, pickChild, pickParent, pickAxis]);
+  }, [d.active, engineOf, pickChild, pickParent, pickAxis, axisFrom]);
 
   const change = useCallback(
     (c: Partial<JointParams> & { name?: string }) => {
@@ -227,7 +247,7 @@ export function useJoint(d: JointDeps) {
       : stage === "parent"
         ? `Click a body in the link ${nameOf(child)} hangs from, or press Enter for Base.`
         : stage === "axis"
-          ? "Click a round edge, a round face or a flat face for the axis."
+          ? "Click an axis, a round edge, a round face or a flat face to turn round."
           : "Set the kind and limits. Enter keeps it, Esc takes it back.";
 
   return { stage, child, parent, feature, session, change, setFieldExpr, done, cancel, back, edit, help, pickParent, nameOf };
