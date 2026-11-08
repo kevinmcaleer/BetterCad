@@ -1050,7 +1050,7 @@ export function useSketch(d: SketchDeps) {
           // Fusion (or the gap, if they are parallel).
           const [first, more] = L.placing.dim.refs;
           const other = !more && L.stool === "dimension" && pickAt(hit.xy, L.sketch, reach * hit.px, L.origin);
-          const isLine = (id?: Id | false) => L.placing!.sketch.entities.some((e) => e.id === id && e.kind === "line");
+          const isLine = (id?: Id | false | null) => L.placing!.sketch.entities.some((e) => e.id === id && e.kind === "line");
           if (other !== first && isLine(first) && isLine(other) && L.dimensionFor([first!, other as Id])) {
             setPlacing((pl) => pl && { ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy) });
             return true;
