@@ -43,16 +43,19 @@ interface Choices {
   keepPosition: boolean;
   /** As the joints are posed (#173), not at home. */
   posed: boolean;
+  /** URDF (#175): mesh paths for a ROS package. */
+  rosPackage: boolean;
 }
 
 const KEY = "bettercad.export";
-const DEFAULTS: Choices = { format: "stl", what: "all", res: "normal", custom: 0.05, keepPosition: false, posed: false };
+const DEFAULTS: Choices = { format: "stl", what: "all", res: "normal", custom: 0.05, keepPosition: false, posed: false, rosPackage: false };
 const MIME: Record<string, string> = {
   ".stl": "model/stl",
   ".3mf": "model/3mf",
   ".step": "model/step",
   ".glb": "model/gltf-binary",
   ".gltf": "model/gltf+json",
+  ".zip": "application/zip",
 };
 const mimeOf = (name: string) => MIME[name.slice(name.lastIndexOf(".")).toLowerCase()] ?? "application/octet-stream";
 const FORMATS: { id: ExportFormat; label: string; title: string }[] = [
@@ -61,6 +64,7 @@ const FORMATS: { id: ExportFormat; label: string; title: string }[] = [
   { id: "step", label: "STEP", title: "Exact solids, for Fusion, FreeCAD and CNC" },
   { id: "glb", label: "GLB", title: "One file with looks, in metres, for Blender and web viewers" },
   { id: "gltf", label: "glTF", title: "glTF with a .bin beside it, in metres, for Blender and web viewers" },
+  { id: "urdf", label: "URDF", title: "The robot's links and joints, with a mesh per link, for Snakie, ROS, MuJoCo and Gazebo" },
 ];
 const RESOLUTIONS: { id: Res; label: string }[] = [
   { id: "draft", label: "Draft" },
@@ -107,8 +111,9 @@ export function ExportDialog(p: ExportDialogProps) {
       separate: what === "each",
       keepPosition: c.keepPosition,
       posed: hasPose && c.posed,
+      rosPackage: c.rosPackage,
     }),
-    [p.doc, p.upTo, p.selection, what, c.format, deflection, c.keepPosition, hasPose, c.posed],
+    [p.doc, p.upTo, p.selection, what, c.format, deflection, c.keepPosition, hasPose, c.posed, c.rosPackage],
   );
 
   // The estimate follows the choices; its triangles are kept for the export.
@@ -157,6 +162,7 @@ export function ExportDialog(p: ExportDialogProps) {
   if (!p.open) return null;
   const est = estimate && !("error" in estimate) ? estimate : null;
   const step = c.format === "step";
+  const urdf = c.format === "urdf";
   return (
     <Dialog
       open
@@ -183,20 +189,32 @@ export function ExportDialog(p: ExportDialogProps) {
             <Button key={f.id} label={f.label} title={f.title} on={c.format === f.id} onClick={() => set({ format: f.id })} />
           ))}
         </span>
-        <span className="bc-field-label" id="bc-ex-what">
-          What
-        </span>
-        <span role="group" aria-labelledby="bc-ex-what" className="bc-segmented">
-          <Button label="All bodies" on={what === "all"} onClick={() => set({ what: "all" })} />
-          <Button
-            label="Selected"
-            title={p.selection.length ? "Only the selected bodies" : "Select bodies first"}
-            disabled={!p.selection.length}
-            on={what === "selected"}
-            onClick={() => set({ what: "selected" })}
-          />
-          <Button label="Each on its own" title="One file per body" on={what === "each"} onClick={() => set({ what: "each" })} />
-        </span>
+        {urdf ? (
+          <>
+            <p className="bc-note">Every body goes in, at home, one link per link step, as a .zip.</p>
+            <label className="bc-check">
+              <input type="checkbox" checked={c.rosPackage} onChange={(e) => set({ rosPackage: e.target.checked })} />
+              <span>Paths for a ROS package (package://)</span>
+            </label>
+          </>
+        ) : (
+          <>
+            <span className="bc-field-label" id="bc-ex-what">
+              What
+            </span>
+            <span role="group" aria-labelledby="bc-ex-what" className="bc-segmented">
+              <Button label="All bodies" on={what === "all"} onClick={() => set({ what: "all" })} />
+              <Button
+                label="Selected"
+                title={p.selection.length ? "Only the selected bodies" : "Select bodies first"}
+                disabled={!p.selection.length}
+                on={what === "selected"}
+                onClick={() => set({ what: "selected" })}
+              />
+              <Button label="Each on its own" title="One file per body" on={what === "each"} onClick={() => set({ what: "each" })} />
+            </span>
+          </>
+        )}
         {!step && (
           <>
             <span className="bc-field-label" id="bc-ex-res">
@@ -214,13 +232,15 @@ export function ExportDialog(p: ExportDialogProps) {
                 <span className="bc-note bc-micro">Within {deflection} mm of the true surface</span>
               )}
             </span>
-            <label className="bc-check">
-              <input type="checkbox" checked={!c.keepPosition} onChange={(e) => set({ keepPosition: !e.target.checked })} />
-              <span>Place on the bed (lowest point at Z = 0)</span>
-            </label>
+            {!urdf && (
+              <label className="bc-check">
+                <input type="checkbox" checked={!c.keepPosition} onChange={(e) => set({ keepPosition: !e.target.checked })} />
+                <span>Place on the bed (lowest point at Z = 0)</span>
+              </label>
+            )}
           </>
         )}
-        {hasPose && (
+        {hasPose && !urdf && (
           <label className="bc-check">
             <input type="checkbox" checked={c.posed} onChange={(e) => set({ posed: e.target.checked })} />
             <span>Export as posed (otherwise every joint is at home)</span>
@@ -233,7 +253,9 @@ export function ExportDialog(p: ExportDialogProps) {
               ? estimate.error
               : step
                 ? `${estimate.solids} ${estimate.solids === 1 ? "solid" : "solids"}, exact`
-                : `≈ ${estimate.triangles.toLocaleString("en-GB")} triangles · ${formatBytes(estimate.bytes)}`}
+                : urdf
+                  ? `${estimate.solids} ${estimate.solids === 1 ? "mesh" : "meshes"} · ≈ ${estimate.triangles.toLocaleString("en-GB")} triangles · ${formatBytes(estimate.bytes)}`
+                  : `≈ ${estimate.triangles.toLocaleString("en-GB")} triangles · ${formatBytes(estimate.bytes)}`}
         </p>
         {est && est.triangles > BIG && <Banner tone="warn">Large files can slow your slicer. Try Normal or Draft.</Banner>}
         {est && est.skipped > 0 && (
