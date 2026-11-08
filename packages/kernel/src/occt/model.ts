@@ -32,6 +32,9 @@ import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
 import { readImport, type ImportedBody } from "./imports";
 import { findMates, type Mate } from "./mates";
+import { findClashes, type Clash } from "./clashes";
+import { linkTransforms } from "../pose";
+import { resolvePose } from "../drivelinks";
 import { catalogueShape } from "./catalogue";
 import { baseName, fromBase64, type ImportFormat } from "../imports";
 
@@ -254,6 +257,33 @@ export class ModelBuilder {
       }
     }
     return findMates(this.oc, bodies, limit);
+  }
+
+  /**
+   * Bodies that overlap or touch at the document's pose (#178), as built up to `upTo`. Holes never clash; reference
+   * bodies only when asked; bodies in one link only when asked.
+   */
+  clashes(
+    doc: ModelDoc,
+    upTo = doc.features.length,
+    opts: { sameLink?: boolean; references?: boolean; cancelled?: () => boolean; progress?: (f: number) => void } = {},
+  ): Clash[] {
+    const { parts, joints, links, drives } = build(doc, upTo);
+    this.useBlobs(doc);
+    const byLink = doc.pose ? linkTransforms(joints, resolvePose(drives, doc.pose)) : new Map();
+    const linkOf = new Map<string, string>();
+    for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
+    const bodies = [];
+    for (const p of parts) {
+      if (p.hole || (p.reference && !opts.references)) continue;
+      try {
+        const link = linkOf.get(p.id);
+        bodies.push({ id: p.id, shape: this.solid(p).shape, link, move: link ? byLink.get(link) : undefined });
+      } catch {
+        // A body that can't build has nothing to clash with; the timeline already says why.
+      }
+    }
+    return findClashes(this.oc, bodies, opts);
   }
 
   /**
