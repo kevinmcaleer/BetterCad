@@ -333,7 +333,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [inactive, setInactive] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const { theme, setTheme, resolved } = useTheme();
-  const [status, say] = useStatus();
+  const [status, say, toast] = useStatus();
 
   const activeRef = useRef(active);
   activeRef.current = active;
@@ -2759,6 +2759,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             {status.text}
           </span>
         }
+        toast={
+          <div className="bc-toast-slot" role="status" aria-live="polite">
+            {toast && (
+              <div key={toast.id} className="bc-toast">
+                {toast.text}
+              </div>
+            )}
+          </div>
+        }
         leftLabel={panel ? PANEL_TITLES[panel] : undefined}
         leftPanel={
           panel && (
@@ -2981,6 +2990,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 <RenderPicture
                   session={render}
                   bodies={renderBodies}
+                  section={vp.section}
                   camera={renderCam.current ?? DEFAULT_CAMERA}
                   onCamera={onRenderCamera}
                   onSave={saveRender}

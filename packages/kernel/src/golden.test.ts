@@ -24,7 +24,7 @@ import {
   wedge,
   type TopoDS_Shape,
 } from "./occt/shapes";
-import { extent, type PrismSpec, type ProfileSeg } from "./extrude";
+import { extent, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
@@ -235,6 +235,14 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
         ...extent("one", -1, 0, true),
       }),
     ]),
+  // To object: a 3 mm circle pushed down from the top until it meets a flat face 6 mm up from the bottom.
+  "extrude-cut-to-face": (oc) => {
+    const frame = { origin: [0, 0, 20] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
+    const to = upToDistance(frame, [0, 0], { point: [10, 10, 6], normal: [0, 0, 1] }) as number;
+    return boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
+      prismOf(oc, { frame, profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }], ...extent("one", to) }),
+    ]);
+  },
 };
 
 const round = (v: unknown): unknown =>

@@ -5,10 +5,11 @@ import { planeFrame } from "@bettercad/sketch";
 import { addPart, newDoc, build, type ExtrudeFeature, type Part } from "../state/document";
 import { ExtrudeBar } from "./ExtrudeUI";
 import { touchedBodies, type Box, type ExtrudeSession } from "./useExtrude";
+import { arrowOf, dragTo, flipOf } from "./arrow";
 
 const parts: Part[] = build(addPart(addPart(newDoc(), "box", "a"), "box", "b")).parts;
 
-function session(f: Partial<ExtrudeFeature>, targets: string[] = []) {
+function session(f: Partial<ExtrudeFeature>, targets: string[] = [], wantTo = false) {
   const feature: ExtrudeFeature = {
     id: "e1",
     type: "extrude",
@@ -31,6 +32,10 @@ function session(f: Partial<ExtrudeFeature>, targets: string[] = []) {
     targeting: feature.operation !== "new",
     help: "",
     change: vi.fn(),
+    setExtent: vi.fn(),
+    flip: vi.fn(),
+    wantTo,
+    pickingTo: wantTo || feature.extent === "to",
     setTargets: vi.fn(),
     toggleTarget: vi.fn(),
     setOperation: vi.fn(),
@@ -47,10 +52,28 @@ describe("ExtrudeBar", () => {
     render(<ExtrudeBar x={x} parts={parts} />);
     expect(screen.queryByLabelText("Distance")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /Flip/ }));
-    expect(x.change).toHaveBeenCalledWith({ distance: 10 });
+    expect(x.flip).toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: /Through all/ }));
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Distance" }));
-    expect(x.change).toHaveBeenCalledWith({ extent: "distance" });
+    expect(x.setExtent).toHaveBeenCalledWith("distance");
+  });
+
+  it("goes up to an object: asks for a click, then says what it reaches", async () => {
+    const x = session({}, ["a"]);
+    const { unmount } = render(<ExtrudeBar x={x} parts={parts} />);
+    await userEvent.click(screen.getByRole("button", { name: /^Distance/ }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "To object" }));
+    expect(x.setExtent).toHaveBeenCalledWith("to");
+    unmount();
+    const { unmount: un2 } = render(<ExtrudeBar x={session({}, ["a"], true)} parts={parts} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Click a face, edge or point");
+    expect(screen.queryByLabelText("Distance")).toBeNull();
+    expect(screen.queryByRole("button", { name: /One side/ })).toBeNull();
+    un2();
+    render(
+      <ExtrudeBar x={session({ extent: "to", distance: -12.5, to: { body: "a", kind: "face", point: [0, 0, 0], normal: [0, 0, 1] } }, ["a"])} parts={parts} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Up to a face, 12.5 mm");
   });
 
   it("keeps through all off for a join", async () => {
@@ -91,5 +114,51 @@ describe("touchedBodies", () => {
     expect(touchedBodies(frame, square, -10, 0, bounds)).toEqual(["under"]);
     expect(touchedBodies(frame, square, -10_000, 0, bounds)).toEqual(["under", "deep"]);
     expect(touchedBodies(frame, square, 0, 10, bounds, "under")).toEqual([]);
+  });
+});
+
+describe("the extrude arrow", () => {
+  const frame = planeFrame({ kind: "world", plane: "XY", offset: 5 });
+  const square = {
+    points: [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [0, 10],
+    ] as [number, number][],
+    holes: [],
+  } as unknown as Parameters<typeof arrowOf>[2][number];
+  const f = (p: Partial<ExtrudeFeature>): ExtrudeFeature => ({
+    id: "e1",
+    type: "extrude",
+    name: "Extrude 1",
+    sketch: "s1",
+    seeds: [[5, 5]],
+    distance: 10,
+    direction: "one",
+    operation: "new",
+    body: { id: "b", name: "Body 1" },
+    ...p,
+  });
+
+  it("runs from the middle of the shapes to the end, pointing the way it goes", () => {
+    expect(arrowOf(f({}), frame, [square], 30)).toEqual({ base: [5, 5, 5], end: [5, 5, 15], dir: [0, 0, 1], length: 10 });
+    expect(arrowOf(f({ distance: -4 }), frame, [square], 30)).toMatchObject({ end: [5, 5, 1], dir: [-0, -0, -1], length: -4 });
+    expect(arrowOf(f({ direction: "symmetric" }), frame, [square], 30).length).toBe(5);
+    // Through all has no end: the arrow is a fixed length on its side.
+    expect(arrowOf(f({ extent: "all", operation: "cut", distance: -1 }), frame, [square], 30).length).toBe(-30);
+  });
+
+  it("drags to a distance, and flips to the other side", () => {
+    expect(dragTo(f({}), 12.34)).toEqual({ distance: 12.3 });
+    expect(dragTo(f({}), -3)).toEqual({ distance: -3 });
+    expect(dragTo(f({}), 0.01)).toBeNull();
+    expect(dragTo(f({ direction: "symmetric" }), 6)).toEqual({ distance: 12 });
+    expect(dragTo(f({ extent: "all", operation: "cut" }), 8)).toEqual({ extent: "distance", distance: 8 });
+    expect(dragTo(f({ extent: "to" }), 8)).toEqual({ extent: "distance", direction: "one", distance: 8 });
+    expect(flipOf(f({}))).toEqual({ distance: -10 });
+    expect(flipOf(f({ direction: "two", distance2: 3 }))).toEqual({ distance: 3, distance2: 10 });
+    expect(flipOf(f({ direction: "symmetric" }))).toBeNull();
+    expect(flipOf(f({ extent: "to" }))).toBeNull();
   });
 });

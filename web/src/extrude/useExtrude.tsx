@@ -29,6 +29,9 @@ import {
 import type { Command } from "../state/commands";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, ScreenPoint } from "../viewport/engine";
+import type { Pick } from "../viewport/ids";
+import type { ExtrudeArrow } from "./arrow";
+type ArrowModule = typeof import("./arrow");
 import { SketchOverlay, type OverlayFill } from "../sketch/overlay";
 
 /**
@@ -78,6 +81,7 @@ export const OPERATIONS: { id: ExtrudeOperation; label: string; title: string }[
 export const EXTENTS: { id: ExtrudeExtent; label: string; title: string }[] = [
   { id: "distance", label: "Distance", title: "Go a set distance" },
   { id: "all", label: "Through all", title: "Go right through every body in the way" },
+  { id: "to", label: "To object", title: "Stop at a face, edge or point you click" },
 ];
 
 type V3 = [number, number, number];
@@ -130,10 +134,18 @@ export function useExtrude(d: ExtrudeDeps) {
   /** A cut's bodies follow what its shapes touch until the person picks them. */
   const [autoTargets, setAutoTargets] = useState(true);
   const [hover, setHover] = useState<{ sketch: string; profile: Profile } | null>(null);
+  /** "To object" was chosen, and the next click on a face, edge or point sets where it ends. */
+  const [wantTo, setWantTo] = useState(false);
+  const arrow = useRef<ExtrudeArrow | null>(null);
+  /** A drag of the arrow: where it started, the end's length then, and how far the pointer has gone along it. */
+  const drag = useRef<{ start: ScreenPoint; last: ScreenPoint; length: number; moved: boolean } | null>(null);
+  /** The arrow's end along the normal as last drawn (through all draws a fixed length), where a drag starts from. */
+  const arrowLength = useRef(0);
+  const mod = useRef<ArrowModule | null>(null);
 
   const feature = d.doc.features.find((f): f is ProfileFeature => f.id === session?.id && f.type === d.kind) ?? null;
-  const live = useRef({ session, feature, autoOp, autoTargets });
-  live.current = { session, feature, autoOp, autoTargets };
+  const live = useRef({ session, feature, autoOp, autoTargets, wantTo });
+  live.current = { session, feature, autoOp, autoTargets, wantTo };
 
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
 
@@ -141,6 +153,10 @@ export function useExtrude(d: ExtrudeDeps) {
   useEffect(() => {
     if (session && !feature) setSession(null);
   }, [session, feature]);
+
+  useEffect(() => {
+    if (!session) setWantTo(false);
+  }, [session]);
 
   // Putting the tool down some other way (another tool, the toolbar) keeps what was made.
   useEffect(() => {
@@ -309,37 +325,142 @@ export function useExtrude(d: ExtrudeDeps) {
     [defaults, change, regionsOf],
   );
 
-  // The pointer: hovering lights a closed shape, a click adds it to the step or takes it out.
+  /** The closed shapes an extrude has picked. */
+  const pickedOf = useCallback(
+    (f: ProfileFeature): Profile[] => {
+      const all = regionsOf.get(f.sketch) ?? [];
+      return [...new Set(f.seeds.map((s) => profileAt(all, s)).filter((p): p is Profile => !!p))];
+    },
+    [regionsOf],
+  );
+
+  /** The sketch frame an extrude's shapes are on. */
+  const frameOfFeature = useCallback((f: ProfileFeature): Frame => {
+    const s = deps.current.sketches.find((x) => x.id === f.sketch);
+    return s ? planeFrame(s.sketch.plane) : { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] };
+  }, []);
+
+  /** The face, edge or corner under the pointer that To object could end at: corners first, then edges, then faces. */
+  const objectAt = useCallback(
+    (p: ScreenPoint): Pick | null => {
+      const eng = engineOf();
+      const own = live.current.feature?.type === "extrude" ? live.current.feature.body.id : undefined;
+      if (!eng) return null;
+      for (const kind of ["vertex", "edge", "face"] as const) {
+        const hit = eng.pick(p.x, p.y, kind);
+        if (hit && hit.body !== own) return hit;
+      }
+      return null;
+    },
+    [engineOf],
+  );
+
+  /** Ends the extrude at a picked face, edge or corner. */
+  const pickTo = useCallback(
+    (hit: Pick, p: ScreenPoint) => {
+      const eng = engineOf();
+      const f = live.current.feature;
+      const L = deps.current;
+      const part = L.parts.find((x) => x.id === hit.body);
+      if (!eng || !part || f?.type !== "extrude") return;
+      const s = L.sketches.find((x) => x.id === f.sketch);
+      const m = mod.current;
+      if (!s || !m) return;
+      const r = m.upToOf(eng, hit, p, part, planeFrame(s.sketch.plane), pickedOf(f));
+      if (!r) return;
+      if (typeof r === "string") return say(r, true);
+      const { to, reach } = r;
+      setWantTo(false);
+      change({ extent: "to", to, direction: "one", distance: reach });
+    },
+    [engineOf, change, say, pickedOf],
+  );
+
+  /** Whether clicks off the shapes pick what To object ends at, rather than the bodies it changes. */
+  const pickingTo = !!feature && feature.type === "extrude" && (wantTo || feature.extent === "to");
+
+  // The pointer: the arrow first (drag to set the distance, click to flip), then the closed shapes (hovering lights
+  // one, a click adds it to the step or takes it out), then what To object ends at, or the bodies it changes.
   useEffect(() => {
     const eng = engineOf();
     if (!d.active || !eng) return;
+    const toMode = () => {
+      const f = live.current.feature;
+      return f?.type === "extrude" && (live.current.wantTo || f.extent === "to");
+    };
     eng.setInput({
       move: (p, _m, pressed) => {
+        const g = drag.current;
+        const f = live.current.feature;
+        if (g && pressed && arrow.current && f?.type === "extrude") {
+          g.length += arrow.current.along(g.last, p, frameOfFeature(f).normal);
+          g.last = p;
+          if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) < 4) return;
+          g.moved = true;
+          const c = mod.current?.dragTo(f, g.length);
+          if (c) change(c);
+          return;
+        }
         if (pressed) return;
+        const onArrow = !!arrow.current?.hit(p);
+        arrow.current?.setHot(onArrow);
+        if (onArrow) {
+          eng.showHover(null);
+          return;
+        }
         const h = hit(p);
         setHover((o) => (o?.profile === h?.profile ? o : h && { sketch: h.sketch, profile: h.profile }));
+        eng.showHover(!h && toMode() ? objectAt(p) : null);
       },
       down: (p) => {
+        const f = live.current.feature;
+        if (f?.type === "extrude" && arrow.current?.hit(p)) {
+          drag.current = { start: p, last: p, length: arrowLength.current, moved: false };
+          return true;
+        }
         const h = hit(p);
         if (h) {
           pick(h);
           return true;
         }
+        if (!f) return false;
+        if (toMode()) {
+          const o = objectAt(p);
+          if (!o) return false;
+          pickTo(o, p);
+          return true;
+        }
         // Off the shapes, a click on a body picks it as one the step changes.
-        const f = live.current.feature;
-        if (!f || f.operation === "new") return false;
+        if (f.operation === "new") return false;
         const b = eng.pick(p.x, p.y, "body");
         if (!b || b.body === f.body.id) return false;
         toggleTarget(b.body);
         return true;
       },
-      leave: () => setHover(null),
+      up: () => {
+        const g = drag.current;
+        drag.current = null;
+        const f = live.current.feature;
+        if (!g || g.moved || f?.type !== "extrude") return;
+        const c = mod.current?.flipOf(f);
+        if (c) change(c);
+        else say(f.extent === "to" ? "It goes up to what you picked. Drag the arrow to give it a distance instead." : "Symmetric goes both ways already.");
+      },
+      cancel: () => {
+        drag.current = null;
+      },
+      leave: () => {
+        setHover(null);
+        arrow.current?.setHot(false);
+        eng.showHover(null);
+      },
     });
     return () => {
       eng.setInput(null);
+      eng.showHover(null);
       setHover(null);
     };
-  }, [d.active, engineOf, hit, pick, toggleTarget]);
+  }, [d.active, engineOf, hit, pick, toggleTarget, objectAt, pickTo, pickedOf, frameOfFeature, change, say]);
 
   // The shapes in the step, shaded; the one under the pointer lit.
   const picked = useMemo(() => {
@@ -363,6 +484,43 @@ export function useExtrude(d: ExtrudeDeps) {
     });
     return () => list.forEach((o) => o.dispose());
   }, [d.active, engineOf, feature, picked, hover, d.theme]);
+
+  // The arrow and To object (extrude only), loaded with the first step so they cost the first paint nothing.
+  const [Arrow, setArrow] = useState<typeof ExtrudeArrow | null>(null);
+  const wantArrow = d.active && d.kind === "extrude" && !!feature;
+  useEffect(() => {
+    if (!wantArrow || Arrow) return;
+    let gone = false;
+    void import("./arrow").then((m) => {
+      mod.current = m;
+      if (!gone) setArrow(() => m.ExtrudeArrow);
+    });
+    return () => {
+      gone = true;
+    };
+  }, [wantArrow, Arrow]);
+  const arrowFeature = feature?.type === "extrude" && wantArrow ? feature : null;
+  useEffect(() => {
+    const eng = engineOf();
+    if (!eng || !Arrow || !arrowFeature) return;
+    const a = new Arrow(eng);
+    arrow.current = a;
+    return () => {
+      a.dispose();
+      if (arrow.current === a) arrow.current = null;
+    };
+    // A new arrow per step and theme; the effect below moves it.
+  }, [engineOf, Arrow, !!arrowFeature, d.theme]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const eng = engineOf();
+    const a = arrow.current;
+    if (!eng || !a || !arrowFeature) return;
+    const shapes = pickedOf(arrowFeature);
+    if (!shapes.length) return a.hide();
+    const g = mod.current!.arrowOf(arrowFeature, frameOfFeature(arrowFeature), shapes, (base) => eng.pixelSize(base) * 90);
+    arrowLength.current = g.length;
+    a.update(g.base, g.end, g.dir);
+  }, [engineOf, Arrow, arrowFeature, pickedOf, frameOfFeature, d.theme, d.doc]);
 
   const done = useCallback(() => {
     const L = live.current;
@@ -425,9 +583,11 @@ export function useExtrude(d: ExtrudeDeps) {
     : !sketchCount
       ? "Draw a closed shape in a sketch first. Press K to start one."
       : session
-        ? targeting && feature?.operation !== "join"
-          ? `Click shapes to add or take them out, and bodies to choose what it ${feature?.operation === "cut" ? "cuts" : "keeps"}. Enter keeps the ${d.kind}, Esc cancels it.`
-          : `Click more shapes to add them, or a picked one to take it out. Enter keeps the ${d.kind}, Esc cancels it.`
+        ? pickingTo
+          ? `Click a face, edge or point for it to go up to. Drag the arrow to give it a distance instead. Enter keeps the ${d.kind}, Esc cancels it.`
+          : targeting && feature?.operation !== "join"
+            ? `Click shapes to add or take them out, and bodies to choose what it ${feature?.operation === "cut" ? "cuts" : "keeps"}. Drag the arrow to set how far, or click it to flip. Enter keeps the ${d.kind}, Esc cancels it.`
+            : `Click more shapes to add them, or a picked one to take it out. Drag the arrow to set how far, or click it to flip. Enter keeps the ${d.kind}, Esc cancels it.`
         : `Click inside a closed sketch shape to ${d.kind} it.`;
 
   return {
@@ -447,6 +607,24 @@ export function useExtrude(d: ExtrudeDeps) {
       change({ operation: op });
     },
     change,
+    /** Picks how far it goes. To object waits for a click on a face, edge or point before it changes the step. */
+    setExtent: (e: ExtrudeExtent) => {
+      const f = live.current.feature;
+      if (e !== "to") {
+        setWantTo(false);
+        return change({ extent: e });
+      }
+      if (f?.type === "extrude" && f.to) return change({ extent: "to", direction: "one" });
+      setWantTo(true);
+    },
+    /** Whether the next click off the shapes sets what To object goes up to. */
+    pickingTo,
+    wantTo,
+    flip: () => {
+      const f = live.current.feature;
+      const c = f?.type === "extrude" ? mod.current?.flipOf(f) : null;
+      if (c) change(c);
+    },
     setFieldExpr,
     done,
     cancel,

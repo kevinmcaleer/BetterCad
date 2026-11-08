@@ -13,7 +13,7 @@ import {
   type ExtrudeParams,
   type ModelDoc,
 } from "./document";
-import { THROUGH_ALL, extent, frameToLocal, pickProfiles, targetsOf } from "./extrude";
+import { THROUGH_ALL, extent, frameToLocal, fromPartLocal, pickProfiles, profilesMiddle, targetsOf, toPartLocal, upToDistance } from "./extrude";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 
@@ -32,6 +32,33 @@ function sketched(): ModelDoc {
 const params = (p: Partial<ExtrudeParams> = {}): ExtrudeParams => ({ sketch: "s1", seeds: [[2, 2]], distance: 10, direction: "one", operation: "new", ...p });
 
 describe("extrude geometry", () => {
+  it("works out how far To object goes, to a plane or a point", () => {
+    const f = { origin: [0, 0, 10] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
+    expect(upToDistance(f, [0, 0], { point: [50, 50, 2], normal: [0, 0, -1] })).toBe(-8);
+    expect(upToDistance(f, [0, 0], { point: [3, 3, 25] })).toBe(15);
+    // A tilted plane: it ends where the plane crosses the line up from the shapes' middle.
+    expect(upToDistance(f, [10, 0], { point: [0, 0, 20], normal: [-Math.SQRT1_2, 0, Math.SQRT1_2] })).toBeCloseTo(20, 6);
+    expect(upToDistance(f, [0, 0], { point: [0, 0, 20], normal: [1, 0, 0] })).toMatch(/alongside/);
+    expect(upToDistance(f, [0, 0], { point: [5, 5, 10] })).toMatch(/own plane/);
+    expect(
+      profilesMiddle([
+        {
+          points: [
+            [0, 0],
+            [10, 4],
+          ],
+        },
+      ]),
+    ).toEqual([5, 2]);
+  });
+
+  it("takes points into a part's own coordinates and back", () => {
+    const place = { position: { x: 5, y: -2, z: 3 }, rotation: { x: 30, y: 0, z: 90 } };
+    const w: [number, number, number] = [1, 2, 3];
+    fromPartLocal(toPartLocal(w, place), place).forEach((v, i) => expect(v).toBeCloseTo(w[i]!, 9));
+    fromPartLocal(toPartLocal(w, place, true), place, true).forEach((v, i) => expect(v).toBeCloseTo(w[i]!, 9));
+  });
+
   it("works out the extent for each direction", () => {
     expect(extent("one", 10)).toEqual({ from: 0, to: 10 });
     expect(extent("one", -4)).toEqual({ from: -4, to: 0 });
@@ -165,6 +192,24 @@ describe("extrude in the kernel", () => {
     expect(volumes(twoBoxes({ distance: 1, extent: "all", target: "a" })).a).toBeCloseTo(8000, 1);
     // Symmetric reaches both ways.
     expect(volumes(twoBoxes({ distance: 1, direction: "symmetric", extent: "all", target: "a" })).a).toBeCloseTo(8000 - (Math.PI * 25 * 20) / 2, 1);
+  });
+
+  it("cuts up to a face, an edge or a point (To object)", () => {
+    const placeA = { position: { x: 5, y: 10, z: -20 } };
+    // A flat face 12 mm down: the cut stops there, whichever way the distance pointed before.
+    const face = { body: "a", kind: "face" as const, point: toPartLocal([0, 0, -12], placeA), normal: toPartLocal([0, 0, 1], placeA, true) };
+    const toFace = volumes(twoBoxes({ distance: 5, extent: "to", to: face, targets: ["a"], target: "a" }));
+    expect(toFace.a).toBeCloseTo(8000 - (Math.PI * 25 * 12) / 2, 1);
+    // A point 7 mm down.
+    const point = { body: "a", kind: "vertex" as const, point: toPartLocal([3, 4, -7], placeA) };
+    expect(volumes(twoBoxes({ distance: -1, extent: "to", to: point, targets: ["a"], target: "a" })).a).toBeCloseTo(8000 - (Math.PI * 25 * 7) / 2, 1);
+  });
+
+  it("says why it cannot go up to an object", () => {
+    const along = { body: "a", kind: "face" as const, point: [0, 0, 0] as [number, number, number], normal: [1, 0, 0] as [number, number, number] };
+    expect(build(twoBoxes({ distance: -1, extent: "to", to: along, target: "a" })).failed.get("e1")).toMatch(/runs alongside/);
+    expect(build(twoBoxes({ distance: -1, extent: "to", target: "a" })).failed.get("e1")).toMatch(/Click a face, edge or point/);
+    expect(build(twoBoxes({ distance: -1, extent: "to", to: { ...along, body: "gone" }, target: "a" })).failed.get("e1")).toMatch(/body it goes up to is gone/);
   });
 
   it("cuts every body it is given, and only those", () => {
