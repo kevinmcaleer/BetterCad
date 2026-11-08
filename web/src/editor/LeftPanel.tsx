@@ -32,14 +32,13 @@ import { BrowserPanel, type BrowserConstruct, type BrowserModel, type BrowserPan
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
-export type PanelId = "parts" | "library" | "robot" | "history" | "params" | "print" | "settings";
+export type PanelId = "parts" | "library" | "robot" | "history" | "print" | "settings";
 
 export const PANEL_TITLES: Record<PanelId, string> = {
   parts: "Browser",
   library: "Library",
   robot: "Catalogue",
   history: "History",
-  params: "Parameters",
   print: "Print",
   settings: "Settings",
 };
@@ -100,8 +99,6 @@ export interface LeftPanelProps {
   onBedShown: (on: boolean) => void;
   theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
-  /** The Parameters panel, made by the editor. */
-  paramsPanel: ReactNode;
   /** Back to the browser, from any other panel. */
   onBack: () => void;
   /** The Print panel (#100), made by the editor. */
@@ -114,7 +111,7 @@ export interface LeftPanelProps {
 }
 
 /**
- * The panel floating on the left. The browser is the home panel; the Library, Parameters, Print, History and Settings
+ * The panel floating on the left. The browser is the home panel; the Library, Print, History and Settings
  * open in its place, from the top bar and the account menu, with a way back.
  */
 export function LeftPanel(p: LeftPanelProps) {
@@ -138,8 +135,6 @@ function PanelBody(p: LeftPanelProps) {
       return <LibraryPanel {...p} />;
     case "history":
       return <HistoryPanel {...p} />;
-    case "params":
-      return <>{p.paramsPanel}</>;
     case "print":
       return <>{p.printPanel}</>;
     case "robot":

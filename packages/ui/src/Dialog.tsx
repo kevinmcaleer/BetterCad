@@ -29,12 +29,28 @@ export interface DialogProps {
   /** Render in place rather than over the page (component gallery). */
   inline?: boolean;
   width?: number;
+  /** An extra class on the dialog box, for one that needs its own size or place. */
+  className?: string;
 }
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /** A dialog with a title bar you can drag, a body and Cancel/Done. Enter is Done, Esc is Cancel. */
-export function Dialog({ open, title, icon, children, onCancel, onDone, doneLabel = "Done", footer, modal = false, busy, inline, width }: DialogProps) {
+export function Dialog({
+  open,
+  title,
+  icon,
+  children,
+  onCancel,
+  onDone,
+  doneLabel = "Done",
+  footer,
+  modal = false,
+  busy,
+  inline,
+  width,
+  className,
+}: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -101,7 +117,7 @@ export function Dialog({ open, title, icon, children, onCancel, onDone, doneLabe
       aria-modal={modal && !inline ? true : undefined}
       aria-labelledby={titleId}
       aria-busy={busy || undefined}
-      className={cx("bc-dialog", !inline && "bc-dialog-float", modal && !inline && "bc-dialog-modal")}
+      className={cx("bc-dialog", !inline && "bc-dialog-float", modal && !inline && "bc-dialog-modal", className)}
       style={{ width, transform: offset.x || offset.y ? `translate(${offset.x}px, ${offset.y}px)` : undefined }}
       onKeyDown={onKeyDown}
     >
