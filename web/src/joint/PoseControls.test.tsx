@@ -90,4 +90,15 @@ describe("PoseControls", () => {
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(onPlay).toHaveBeenLastCalledWith(null);
   });
+
+  it("locks a joint out of the arm's drag when there is a tool point", async () => {
+    const onLock = vi.fn();
+    const { rerender } = render(<PoseControls joints={[hinge]} pose={{}} onChange={vi.fn()} onCommit={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Lock" })).toBeNull();
+    rerender(<PoseControls joints={[hinge]} pose={{}} onChange={vi.fn()} onCommit={vi.fn()} locked={[]} onLock={onLock} />);
+    await userEvent.click(screen.getByRole("button", { name: "Lock" }));
+    expect(onLock).toHaveBeenCalledWith("J1", true);
+    rerender(<PoseControls joints={[hinge]} pose={{}} onChange={vi.fn()} onCommit={vi.fn()} locked={["J1"]} onLock={onLock} />);
+    expect(screen.getByRole("button", { name: "Locked", pressed: true })).toBeVisible();
+  });
 });

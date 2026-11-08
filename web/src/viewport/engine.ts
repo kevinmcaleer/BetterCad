@@ -334,6 +334,8 @@ export class Engine {
   /** Joint glyphs (#172): an arrow along each joint's axis, from its origin. */
   private jointArrows = new Group();
   private centres = new Group();
+  /** Tool points (#176): a diamond at each, to grab and drag. */
+  private tools = new Group();
   /** Construction planes, axes and points (#265), and the ones lit by the pointer or picked. */
   private construct = new Group();
   private constructItems: ConstructShape[] = [];
@@ -482,6 +484,7 @@ export class Engine {
     this.scene.add(this.arrow);
     this.scene.add(this.jointArrows);
     this.scene.add(this.centres);
+    this.scene.add(this.tools);
     this.scene.add(this.construct);
 
     this.planes = new Group();
@@ -864,20 +867,48 @@ export class Engine {
 
   /** Marks each link's centre of mass (#174) with a small three-axis cross, drawn over the bodies, or none. */
   setCentres(list: V3[] | null): void {
-    for (const c of this.centres.children as LineSegments[]) {
+    this.drawMarkers(this.centres, list, "cross");
+  }
+
+  /** Marks each tool point (#176) with a diamond, drawn over the bodies, or none. */
+  setTools(list: V3[] | null): void {
+    this.drawMarkers(this.tools, list, "diamond");
+  }
+
+  private drawMarkers(group: Group, list: V3[] | null, shape: "cross" | "diamond"): void {
+    for (const c of group.children as LineSegments[]) {
       c.geometry.dispose();
       (c.material as Material).dispose();
     }
-    this.centres.clear();
+    group.clear();
     if (list?.length) {
       const r = Math.max(4, (this.bounds()?.radius ?? 50) * 0.06);
       const pts: number[] = [];
-      for (const [x, y, z] of list) pts.push(x - r, y, z, x + r, y, z, x, y - r, z, x, y + r, z, x, y, z - r, x, y, z + r);
+      for (const [x, y, z] of list) {
+        if (shape === "cross") pts.push(x - r, y, z, x + r, y, z, x, y - r, z, x, y + r, z, x, y, z - r, x, y, z + r);
+        else {
+          // An octahedron's twelve edges.
+          const tips: V3[] = [
+            [x + r, y, z],
+            [x - r, y, z],
+            [x, y + r, z],
+            [x, y - r, z],
+          ];
+          for (const [a, b] of [
+            [0, 2],
+            [2, 1],
+            [1, 3],
+            [3, 0],
+          ] as const)
+            pts.push(...tips[a]!, ...tips[b]!);
+          for (const t of tips) pts.push(...t, x, y, z + r, ...t, x, y, z - r);
+        }
+      }
       const g = new BufferGeometry();
       g.setAttribute("position", new BufferAttribute(new Float32Array(pts), 3));
       const line = new LineSegments(g, new LineBasicMaterial({ color: this.palette.snap, depthTest: false, transparent: true }));
       line.renderOrder = 6;
-      this.centres.add(line);
+      group.add(line);
     }
     this.invalidate();
   }
@@ -1573,7 +1604,7 @@ export class Engine {
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
     this.arrow.setColor(p.snap);
     for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
-    for (const c of this.centres.children as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
+    for (const c of [...this.centres.children, ...this.tools.children] as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
     if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
