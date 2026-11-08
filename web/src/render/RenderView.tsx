@@ -170,6 +170,54 @@ const SIZES: { id: SaveSize; label: string }[] = [
   { id: "4k", label: "3840 × 2160" },
 ];
 
+/**
+ * Where `n` samples sit along the quality bar, 0 to 1: the three stops (Good, Better, Best) sit at a third, two
+ * thirds and the end, and the fill moves evenly between them, so it reaches each stop as that quality is done.
+ */
+export function barPosition(n: number): number {
+  let lo = 0;
+  for (let i = 0; i < QUALITIES.length; i++) {
+    const hi = QUALITIES[i].samples;
+    if (n <= hi) return (i + Math.max(0, n - lo) / (hi - lo)) / QUALITIES.length;
+    lo = hi;
+  }
+  return 1;
+}
+
+/**
+ * The samples taken so far as a bar that fills, with the Good, Better, Best slider on top of it: the picture stops
+ * when the fill reaches the slider's stop.
+ */
+function QualityBar({ session }: { session: RenderSession }) {
+  const s = useSession(session);
+  const q = QUALITIES.findIndex((x) => x.id === s.quality);
+  const fill = Math.min(barPosition(s.samples), barPosition(samplesFor(s.quality)));
+  return (
+    <div className="bc-render-quality" title="More samples clear the picture further but take longer">
+      <div className="bc-render-quality-stops">
+        {QUALITIES.map((x) => (
+          <button key={x.id} type="button" tabIndex={-1} aria-hidden data-on={x.id === s.quality || undefined} onClick={() => session.set({ quality: x.id })}>
+            {x.label}
+          </button>
+        ))}
+      </div>
+      <div className="bc-render-quality-track">
+        <div className="bc-render-quality-fill" style={{ width: `${fill * 100}%` }} />
+        <input
+          type="range"
+          aria-label="Quality"
+          aria-valuetext={`${QUALITIES[q].label}, ${samplesText(QUALITIES[q].samples)}`}
+          min={0}
+          max={QUALITIES.length - 1}
+          step={1}
+          value={q}
+          onChange={(e) => session.set({ quality: QUALITIES[Number(e.currentTarget.value)].id })}
+        />
+      </div>
+    </div>
+  );
+}
+
 /** The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. */
 export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
   const s = useSession(session);
@@ -181,7 +229,6 @@ export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
       : s.moving
         ? "Waiting for you to stop moving"
         : `${s.samples.toLocaleString("en-GB")} of ${samplesText(testMax() ?? samplesFor(s.quality))}`;
-  const q = QUALITIES.findIndex((x) => x.id === s.quality);
   return (
     <>
       <div role="group" aria-label="Render options" className="bc-tools bc-armed bc-render-bar">
@@ -205,19 +252,7 @@ export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
             onClick={() => session.set({ style: "paper" })}
           />
         </span>
-        <label className="bc-render-quality" title="More samples clear the picture further but take longer">
-          <span>{QUALITIES[q].label}</span>
-          <input
-            type="range"
-            aria-label="Quality"
-            aria-valuetext={`${QUALITIES[q].label}, ${samplesText(QUALITIES[q].samples)}`}
-            min={0}
-            max={QUALITIES.length - 1}
-            step={1}
-            value={q}
-            onChange={(e) => session.set({ quality: QUALITIES[Number(e.currentTarget.value)].id })}
-          />
-        </label>
+        <QualityBar session={session} />
         <span className="bc-armed-note bc-render-status" role="status">
           {status}
         </span>
