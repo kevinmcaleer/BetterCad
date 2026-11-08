@@ -3,12 +3,28 @@
  * optional: the editor works fully without a server, and every call fails with an ApiError the caller can show.
  */
 
+/** A signed-in person. Sign-in is powertools-auth (#88), shared with Kev's other apps; `name` is the username. */
 export interface Account {
   id: number;
-  email: string;
+  username: string;
   name: string;
+  email: string | null;
   theme: string | null;
   csrf: string;
+}
+
+/** What `auth/session` says about this server's sign-in. */
+export interface AuthInfo {
+  registration_open: boolean;
+  /** True when the server can email a reset link. */
+  password_reset: boolean;
+}
+
+interface Session {
+  user: { id: number; username: string; email: string | null } | null;
+  csrf_token: string;
+  registration_open?: boolean;
+  password_reset?: boolean;
 }
 
 export interface ModelSummary {
@@ -112,13 +128,30 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     csrf = a.csrf;
     return a;
   };
+  let info: AuthInfo = { registration_open: true, password_reset: false };
+  /** The sign-in forms need a CSRF token before anyone is signed in; the session call hands one out. */
+  const session = async () => {
+    const s = await call<Session>("GET", "auth/session");
+    csrf = s.csrf_token;
+    info = { registration_open: s.registration_open ?? true, password_reset: s.password_reset ?? false };
+    return s;
+  };
+  const ensureCsrf = async () => {
+    if (!csrf) await session();
+  };
+  /** After signing in, the account adds what only BetterCad keeps (the theme). */
+  const signedIn = async (s: Session) => {
+    csrf = s.csrf_token;
+    return remember(await call<Account>("GET", "account"));
+  };
   const m = (id: string) => `models/${encodeURIComponent(id)}`;
 
   return {
     /** The signed-in account, or null when signed out. Throws ApiError(0) when there is no server. */
     async me(): Promise<Account | null> {
       try {
-        return remember(await call<Account>("GET", "auth/me"));
+        const s = await session();
+        return s.user ? await signedIn(s) : null;
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) return null;
         // A static host (GitHub Pages) answers with HTML or a 404: no accounts there.
@@ -126,12 +159,44 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
         throw e;
       }
     },
-    signIn: async (email: string, password: string) => remember(await call<Account>("POST", "auth/signin", { email, password })),
-    signUp: async (email: string, name: string, password: string) => remember(await call<Account>("POST", "auth/signup", { email, name, password })),
-    signOut: () => call<{ ok: true }>("POST", "auth/signout"),
-    updateMe: async (change: { name?: string; theme?: string; password?: string; current_password?: string }) =>
-      remember(await call<Account>("PATCH", "auth/me", change)),
-    deleteMe: () => call<{ ok: true }>("DELETE", "auth/me"),
+    /** Whether sign-up is open and email resets work, as of the last `me()`. */
+    info: () => info,
+    /** `login` is a username or an email address. */
+    async signIn(login: string, password: string, remember = true) {
+      await ensureCsrf();
+      return signedIn(await call<Session>("POST", "auth/login", { username: login, password, remember }));
+    },
+    async signUp(username: string, email: string, password: string) {
+      await ensureCsrf();
+      return signedIn(await call<Session>("POST", "auth/register", { username, email, password }));
+    },
+    async signOut() {
+      const s = await call<Session>("POST", "auth/logout");
+      csrf = s.csrf_token;
+      return { ok: true as const };
+    },
+    updateMe: async (change: { theme?: string }) => remember(await call<Account>("PATCH", "account", change)),
+    async changePassword(current_password: string, new_password: string) {
+      return signedIn(await call<Session>("POST", "auth/password", { current_password, new_password }));
+    },
+    async changeEmail(email: string, current_password: string) {
+      await call<Session>("POST", "auth/email", { email, current_password });
+      return remember(await call<Account>("GET", "account"));
+    },
+    async forgotPassword(login: string) {
+      await ensureCsrf();
+      return call<{ ok: true }>("POST", "auth/forgot-password", { login });
+    },
+    async resetPassword(token: string, password: string) {
+      await ensureCsrf();
+      return signedIn(await call<Session>("POST", "auth/reset-password", { token, password }));
+    },
+    /** Deletes your models and settings here; with the shared login, the account stays for Kev's other apps. */
+    async deleteMe(confirm_username: string) {
+      const r = await call<{ ok: true; csrf_token: string }>("DELETE", "account", { confirm_username });
+      csrf = r.csrf_token;
+      return r;
+    },
 
     list: (o: { q?: string; sort?: "modified" | "name"; bin?: boolean; limit?: number; offset?: number } = {}) => {
       const p = new URLSearchParams();

@@ -432,6 +432,11 @@ export class Engine {
     return this.cam;
   }
 
+  /** Where the camera is heading: the end of a glide, or where it is when still. Saved views take this. */
+  get goal(): CameraState {
+    return this.tween?.to ?? this.cam;
+  }
+
   private get activeCamera(): PerspectiveCamera | OrthographicCamera {
     return this.cam.ortho ? this.ortho : this.persp;
   }
@@ -505,6 +510,16 @@ export class Engine {
   /** Turns the view by a drag on the view cube, in pixels; stops any glide. */
   orbitBy(dxPx: number, dyPx: number): void {
     this.setCamera(orbit(this.cam, -dxPx * 0.5, dyPx * 0.5));
+  }
+
+  /** Goes home: to `camera` when one is set, else the corner view with the model fitted. Keeps the projection. */
+  home(camera?: CameraState | null): void {
+    if (camera) {
+      this.setCamera({ ...camera, ortho: this.cam.ortho }, true);
+      return;
+    }
+    this.preset("iso");
+    this.fit();
   }
 
   setOrtho(on: boolean): void {
@@ -1407,6 +1422,11 @@ export class Engine {
     this.ortho.up.set(...up);
     this.ortho.lookAt(...c.target);
     this.ortho.updateProjectionMatrix();
+    // The cameras live in the main scene, but the ID, pick and room passes render other scenes first, and three.js only
+    // refreshes a camera's world matrix when it renders the camera's own scene. Bring them up to date here, or those
+    // passes draw from last frame's view and the line-art outline trails the model while it turns.
+    this.persp.updateMatrixWorld();
+    this.ortho.updateMatrixWorld();
     this.gizmo.camera = this.activeCamera;
 
     // The grid: steps adapt to the zoom, and fade before the horizon.
@@ -1508,8 +1528,6 @@ export class Engine {
     const t = this.dofTargets;
     const auto = r.autoClear;
     // The sharp room, with each pixel's blur in alpha. The room surrounds the camera, so it covers every pixel.
-    // The camera lives in the main scene, which has not drawn yet this frame, so bring its matrices up to date.
-    cam.updateMatrixWorld();
     r.setRenderTarget(t.sharp);
     r.render(this.dofScene, cam);
     // Blur it across, then down, at half size.

@@ -49,7 +49,7 @@ def forget_orphan_blobs(db: sqlite3.Connection, blobs: Path) -> int:
     """Removes blob files whose user has gone."""
     if not blobs.is_dir():
         return 0
-    users = {str(row[0]) for row in db.execute("SELECT id FROM users")}
+    users = {str(row[0]) for row in db.execute("SELECT id FROM accounts")}
     gone = [d for d in blobs.iterdir() if d.is_dir() and d.name not in users]
     for d in gone:
         shutil.rmtree(d, ignore_errors=True)

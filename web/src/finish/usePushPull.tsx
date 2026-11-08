@@ -152,7 +152,18 @@ export function usePushPull(d: PushPullDeps) {
       ? `Drag again or type how far. Out adds to ${partName}, in cuts it away. Enter keeps it, Esc takes it back.`
       : "Press on a flat face and drag it out or in. Shift drags in 1 mm steps.";
 
-  return { session, partName, distance, setDistance, done, cancel, help };
+  /** Opens an existing push/pull to change its distance (a double-click on its timeline tile). */
+  const edit = useCallback(
+    (id: string) => {
+      const f = store.get().features.find((x) => x.id === id);
+      if (f?.type !== "pushpull") return;
+      store.seal();
+      setSession({ id, part: f.part });
+    },
+    [store],
+  );
+
+  return { session, partName, distance, setDistance, done, cancel, edit, help };
 }
 
 export type PushPullSession = ReturnType<typeof usePushPull>;

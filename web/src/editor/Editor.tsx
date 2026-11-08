@@ -3,7 +3,6 @@ import {
   Banner,
   Button,
   ContextMenu,
-  Dialog,
   ESC,
   cx,
   TooltipLayer,
@@ -14,6 +13,7 @@ import {
   type RowToggle,
 } from "@bettercad/ui";
 import { createStore } from "../state/store";
+import { DeleteStepDialog, earlierWarning, laterText } from "./DeleteStepDialog";
 import {
   addCombine,
   addPart,
@@ -40,16 +40,18 @@ import {
   newId,
   removeFeature,
   removeParts,
+  fixSketchLinks,
+  sketchBrokenLinks,
   reorderFeature,
   addParam,
   paramScope,
+  relinkSketches,
   removeParam,
   setExpr,
   updateParam,
   dependents,
   moveProblem,
   removeWithDependents,
-  usedByText,
   reorderPart,
   setLook,
   updateFeature,
@@ -79,6 +81,7 @@ import {
   type Feature,
   type ModelDoc,
   type PartKind,
+  type PatternKind,
   type Vec3,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
@@ -103,6 +106,8 @@ import { useDrop } from "../files/useDrop";
 import { ExportDialog } from "../export/ExportDialog";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
+import { loadSolver } from "../sketch/solver";
+import type { Solver } from "@bettercad/sketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
@@ -120,6 +125,10 @@ import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { MountBar } from "../mount/MountBar";
+import { usePattern } from "../pattern/usePattern";
+import { PatternBar } from "../pattern/PatternBar";
+import { install, useInstallable, useLaunchFiles } from "../pwa/install";
+import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
@@ -442,6 +451,27 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
+  const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
+  const pattern = usePattern({
+    store,
+    record,
+    doc,
+    selection,
+    setSelection,
+    active: tool === "pattern" && !sketch.editing,
+    startKind: patternStart,
+    onClose: () => setTool("select"),
+    say,
+  });
+  /** Mirror (#69): the Pattern tool, starting as a mirror. */
+  const mirror = useCallback(() => {
+    setPatternStart("mirror");
+    setTool((t) => (t === "pattern" ? t : "pattern"));
+  }, []);
+  useEffect(() => {
+    if (tool !== "pattern") setPatternStart(null);
+  }, [tool]);
+
   const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
   live.current.placing = !!place.part;
 
@@ -714,6 +744,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (files.cloud) files.confirmThen(run);
     else void run();
   }, [api, setAccount, say, files]);
+  // Installing the app, and .bcad files it is asked to open (#95).
+  const installable = useInstallable();
+  const installApp = useCallback(() => {
+    void install().then((done) => done && say("Installed BetterCad. Open it from your apps."));
+  }, [say]);
+  const openLaunched = useCallback(
+    (handle: FileHandle) =>
+      void handle.getFile().then(
+        (file) => filesRef.current.show({ name: handle.name, file, handle }),
+        () => say("That file didn't open.", true),
+      ),
+    [say],
+  );
+  useLaunchFiles(openLaunched);
   // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
   const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
@@ -722,8 +766,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const selectFeature = useCallback((f: Feature) => {
     setActiveFeature(f.id);
     const here = new Set(live.current.parts.map((p) => p.id));
-    setSelection(featureParts(f).filter((id) => here.has(id)));
+    const sel = featureParts(f).filter((id) => here.has(id));
+    setSelection(sel);
+    return sel;
   }, []);
+  /**
+   * The step picked on the timeline, with the selection it made. It stays picked until anything else changes the
+   * selection, so Delete then deletes the step itself instead of recording a new "delete" step for its parts.
+   */
+  const [picked, setPicked] = useState<{ id: string; sel: string[] } | null>(null);
+  const pickStep = useCallback(
+    (f: Feature) => {
+      setPicked({ id: f.id, sel: selectFeature(f) });
+    },
+    [selectFeature],
+  );
+  const pickedStep = picked && picked.sel === selection && doc.features.some((f) => f.id === picked.id) ? picked.id : null;
+  /** A step being changed: its tool is open for it. Sketches use sketch.editingId instead. */
+  const [editingStep, setEditingStep] = useState<string | null>(null);
   const renameFeature = useCallback(
     (id: string, name: string) => {
       const f = store.get().features.find((x) => x.id === id);
@@ -759,9 +819,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [store, say],
   );
+  /** Deleting the last step just deletes it. Anything earlier asks first, since the steps after it rebuild. */
   const deleteFeature = useCallback(
     (id: string) => {
-      if (dependents(store.get(), id).length) setPendingDelete(id);
+      const d = store.get();
+      const i = d.features.findIndex((f) => f.id === id);
+      if (i < 0) return;
+      if (i < d.features.length - 1) setPendingDelete(id);
       else deleteNow(id, false);
     },
     [store, deleteNow],
@@ -784,9 +848,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // On a wide screen the Library, Parameters, Print, History and Settings give way to the browser again.
   useEscape(!narrow && panel !== null && panel !== "parts", () => setPanel("parts"), ESC.panel);
   useEscape(
-    selection.length > 0 || vp.elements.length > 0,
+    selection.length > 0 || vp.elements.length > 0 || pickedStep !== null,
     () => {
       setSelection([]);
+      setPicked(null);
       vp.clearElements();
     },
     ESC.selection,
@@ -807,6 +872,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    mirror: () => {},
     add,
     showPanel,
     setTheme,
@@ -824,6 +890,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     confirm: () => {},
     suppressActive: () => {},
     activeFeature: (): string | null => null,
+    pickedStep: (): string | null => null,
+    deleteStep: (_id: string) => {},
   });
   handlers.current = {
     openExport: () => setExportOpen(true),
@@ -843,6 +911,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    mirror,
     add,
     showPanel,
     setTheme,
@@ -868,15 +937,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               ? hole.done()
               : mount.session
                 ? mount.done()
-                : tool === "combine"
-                  ? combine(selection, combineOp, keepTools, combineFit)
-                  : finish.tool
-                    ? finish.done()
-                    : undefined,
+                : pattern.session
+                  ? pattern.done()
+                  : tool === "combine"
+                    ? combine(selection, combineOp, keepTools, combineFit)
+                    : finish.tool
+                      ? finish.done()
+                      : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
     activeFeature: () => activeFeatureId,
+    pickedStep: () => pickedStep,
+    deleteStep: deleteFeature,
   };
 
   useEffect(() => {
@@ -974,8 +1047,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         group: "Edit",
         icon: "trash",
         keys: ["delete", "backspace"],
-        run: () => h().remove(sel()),
-        when: hasSel,
+        // A step picked on the timeline is deleted from it; parts picked anywhere else get a delete step.
+        run: () => {
+          const step = h().pickedStep();
+          if (step) h().deleteStep(step);
+          else h().remove(sel());
+        },
+        when: (c) => c.hasSelection || !!h().pickedStep(),
       },
       ...TOOLS.map<Command>((t) => ({
         id: `tool.${t.id}`,
@@ -987,6 +1065,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().armTool(t.id),
         keywords: t.title,
       })),
+      {
+        id: "tool.mirror",
+        scope: "model",
+        label: "Mirror",
+        group: "Tools",
+        icon: "flipH",
+        run: () => h().mirror(),
+        keywords: "mirror image flip symmetric copy across a plane",
+      },
       {
         id: "timeline.suppress",
         scope: "model",
@@ -1068,7 +1155,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1185,6 +1272,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, [selection, activeFeature, doc.features, at]);
 
   const summary = useCallback((f: Feature) => featureSummary(doc, f), [doc]);
+  // A step's tool closing ends the change to it.
+  useEffect(() => {
+    if (tool === "select" && editingStep) setEditingStep(null);
+  }, [tool, editingStep]);
+  const timelineWarning = earlierWarning(doc, at, sketch.editingId ?? editingStep);
   const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
   const sizes = useMemo(
     () =>
@@ -1509,6 +1601,38 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (!f) return [];
     return [
       ...(f.type === "sketch" ? [{ id: "edit", label: "Edit sketch", icon: "sketch" as const, onSelect: () => sketch.edit(id) }] : []),
+      ...(f.type === "sketch"
+        ? [
+            {
+              id: "replane",
+              label: "Redefine sketch plane",
+              icon: "move" as const,
+              onSelect: () => {
+                // Pick against the model as it was before the sketch, so a face from a later step can't be chosen.
+                const back = live.current.marker;
+                setTool("select");
+                moveMarker(i);
+                sketch.redefine(id, () => setMarker(back));
+              },
+            },
+          ]
+        : []),
+      ...(f.type === "sketch" && sketchBrokenLinks(doc, id).length
+        ? [
+            {
+              id: "unlink",
+              label: "Keep lost projections as lines",
+              icon: "unlink" as const,
+              onSelect: () => store.edit((d) => fixSketchLinks(d, id, "keep"), `Fix ${f.name}'s links`),
+            },
+            {
+              id: "droplinks",
+              label: "Delete lost projections",
+              icon: "trash" as const,
+              onSelect: () => store.edit((d) => fixSketchLinks(d, id, "delete"), `Fix ${f.name}'s links`),
+            },
+          ]
+        : []),
       ...(f.type === "extrude"
         ? [
             {
@@ -1517,6 +1641,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "extrude" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("extrude");
                 extrude.edit(id);
               },
@@ -1531,8 +1656,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "hole" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("hole");
                 hole.edit(id);
+              },
+            },
+          ]
+        : []),
+      ...(f.type === "pattern"
+        ? [
+            {
+              id: "edit",
+              label: `Edit ${f.kind === "mirror" ? "mirror" : "pattern"}`,
+              icon: "distributeH" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("pattern");
+                pattern.edit(id);
               },
             },
           ]
@@ -1545,6 +1686,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "screw" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("mount");
                 mount.edit(id);
               },
@@ -1559,6 +1701,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               icon: "revolve" as const,
               disabled: i >= at,
               onSelect: () => {
+                setEditingStep(id);
                 setTool("revolve");
                 revolve.edit(id);
               },
@@ -1587,6 +1730,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     return [
       { id: "rename", label: "Rename", icon: "pencil", keys: "F2", disabled: ids.length !== 1, onSelect: () => setRenameId(ids[0] ?? null) },
       { id: "duplicate", label: "Duplicate", icon: "copy", keys: formatCombo("mod+d"), onSelect: () => duplicate(ids) },
+      {
+        id: "mirror",
+        label: "Mirror…",
+        icon: "flipH",
+        onSelect: () => {
+          setSelection(ids);
+          mirror();
+        },
+      },
+      {
+        id: "pattern",
+        label: "Pattern…",
+        icon: "distributeH",
+        onSelect: () => {
+          setSelection(ids);
+          setTool("pattern");
+        },
+      },
       ...(ids.length > 1
         ? [
             { id: "group", label: "Group", icon: "combine" as const, keys: formatCombo("mod+g"), onSelect: () => group(ids) },
@@ -1686,6 +1847,43 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       `Pick the ${f.type === "shell" ? "faces to leave open" : "edges"} again on ${parts.find((p) => p.id === f.part)?.name ?? "the body"}, then press Enter`,
     );
   };
+  /**
+   * A double-click or double-tap on a timeline tile (#73): a sketch opens in sketch mode, a step with settings opens
+   * its tool on the step, fillet, chamfer and shell open to pick again, and the rest select their parts for Properties.
+   * A step past the marker is rolled forward to first, so it is built while you change it.
+   */
+  const editStep = (f: Feature) => {
+    const i = store.get().features.findIndex((x) => x.id === f.id);
+    if (i < 0) return;
+    if (f.type === "fillet" || f.type === "chamfer" || f.type === "shell") return repick(f.id);
+    if (i >= at) moveMarker(i + 1);
+    switch (f.type) {
+      case "sketch":
+        return sketch.edit(f.id);
+      case "extrude":
+      case "hole":
+      case "mount":
+      case "revolve":
+      case "pushpull": {
+        setEditingStep(f.id);
+        setTool(f.type);
+        ({ extrude, hole, mount, revolve, pushpull })[f.type].edit(f.id);
+        return;
+      }
+      case "add":
+      case "move":
+      case "resize": {
+        pickStep(f);
+        const later = store.get().features.length - i - 1;
+        return say(
+          later ? `Change ${f.name} in Properties. ${laterText(later, ["rebuilds", "rebuild"])} after it and may break.` : `Change ${f.name} in Properties.`,
+        );
+      }
+      default:
+        pickStep(f);
+        return say(`${f.name} has no settings to change. Right-click it for more.`);
+    }
+  };
   const editEntry = problem ? featureMenu(problem.id).find((e) => e.id === "edit") : undefined;
   const problemBanner = problem && (
     <div className="bc-problem">
@@ -1728,8 +1926,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ? sketch.help
     : place.help
       ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
         : finish.help
           ? finish.help
           : vp.elementText
@@ -1763,11 +1961,32 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     store.seal();
   };
   const scope = useMemo(() => paramScope(doc), [doc]);
+  // Sketch sizes that use parameters re-solve when a parameter changes (#75), so the solver loads once there are any.
+  const solverRef = useRef<Solver | null>(null);
+  const hasParams = (doc.params?.length ?? 0) > 0;
+  useEffect(() => {
+    if (hasParams && !solverRef.current) void loadSolver().then((s) => (solverRef.current = s));
+  }, [hasParams]);
+  const relink = (d: ModelDoc, solver: Solver) =>
+    relinkSketches(d, (sk) => {
+      const r = solver.solve(sk);
+      return r.status === "ok" || r.status === "redundant" ? r.sketch : null;
+    });
+  const changeParams = (fn: (d: ModelDoc) => ModelDoc, label: string) => {
+    const solver = solverRef.current;
+    if (solver) return store.edit((d) => relink(fn(d), solver), label);
+    store.edit(fn, label);
+    void loadSolver().then((sv) => {
+      solverRef.current = sv;
+      const d = store.get();
+      if (relink(d, sv) !== d) store.edit((x) => relink(x, sv), label);
+    });
+  };
   const paramsPanel = (
     <ParamsPanel
       doc={doc}
       onAdd={() => store.edit((d) => addParam(d), "Add a parameter")}
-      onChange={(id, change) => store.edit((d) => updateParam(d, id, change), "Change a parameter")}
+      onChange={(id, change) => changeParams((d) => updateParam(d, id, change), "Change a parameter")}
       onRemove={(id) => store.edit((d) => removeParam(d, id), "Delete a parameter")}
       onShowUses={(fids) => {
         if (fids[0]) setActiveFeature(fids[0]);
@@ -1829,6 +2048,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onDownloadBcad={files.saveToDisk}
             onExport={() => setExportOpen(true)}
             onSignOut={signOut}
+            onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}
             theme={theme}
             onTheme={setTheme}
@@ -1921,6 +2141,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
               {tool === "mount" && <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />}
+              {tool === "pattern" && (
+                <PatternBar x={pattern} error={pattern.session ? failed.get(pattern.session.id) : undefined} onCancel={() => setTool("select")} />
+              )}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
                 <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
@@ -1962,6 +2185,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onCamera={composedCamera}
+            onHome={vp.goHome}
+            cubeMenu={vp.cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
             warn={offBed}
             check={checkResult?.values ?? null}
@@ -1990,10 +2215,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               at={at}
               onMarker={moveMarker}
               failed={failed}
-              activeId={activeFeatureId}
+              activeId={pickedStep ?? activeFeatureId}
               summary={summary}
-              onSelect={selectFeature}
+              onSelect={pickStep}
+              warning={timelineWarning}
               onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
+              onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
               historyOpen={panel === "history"}
             />
@@ -2041,22 +2268,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         {selectionText} {tool === "select" ? "" : `${activeTool.label} tool armed.`}
       </span>
       {pendingDelete && (
-        <Dialog
-          open
-          title={`Delete ${doc.features.find((f) => f.id === pendingDelete)?.name ?? "this step"}`}
-          icon="trash"
-          onCancel={() => setPendingDelete(null)}
-          footer={
-            <>
-              <Button kind="cancel" label="Cancel" onClick={() => setPendingDelete(null)} />
-              <Button label="Delete just this one" onClick={() => deleteNow(pendingDelete, false)} />
-              <Button variant="danger" label={`Delete all ${dependents(doc, pendingDelete).length + 1}`} onClick={() => deleteNow(pendingDelete, true)} />
-            </>
-          }
-        >
-          <p>{usedByText(doc, pendingDelete)}.</p>
-          <p className="bc-note">Delete them too, or keep them and fix them afterwards. {formatCombo("mod+z")} undoes either.</p>
-        </Dialog>
+        <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
       <ContextMenu

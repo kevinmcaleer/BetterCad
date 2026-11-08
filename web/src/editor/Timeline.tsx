@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { Icon, IconButton, cx, longPress, type ContextMenuState, type IconName } from "@bettercad/ui";
 import type { Feature, PartKind } from "../state/document";
 import { formatCombo } from "../state/commands";
@@ -6,6 +6,7 @@ import { formatCombo } from "../state/commands";
 export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   add: "cube",
   duplicate: "copy",
+  pattern: "distributeH",
   move: "move",
   resize: "resize",
   delete: "trash",
@@ -45,19 +46,31 @@ export interface TimelineProps {
   summary: (f: Feature) => string;
   onSelect: (f: Feature) => void;
   onMenu: (f: Feature, at: ContextMenuState) => void;
+  /** Opens a step to change it: a double-click or double-tap on its tile. */
+  onEdit?: (f: Feature) => void;
   /** The same steps as a list, in the left panel. */
   onHistory?: () => void;
   historyOpen?: boolean;
+  /** Shown above the steps while a change lands before later steps: changing an earlier one, or adding while rolled back. */
+  warning?: string | null;
 }
+
+/** Two clicks or taps on the same tile within this many milliseconds open it to edit. */
+export const DOUBLE_TAP_MS = 400;
 
 /**
  * The Fusion-style timeline along the bottom of the stage: one tile per feature in order, a marker you drag to roll
  * the model back, and play controls. Features after the marker are greyed and not built.
+ *
+ * The marker is one element that never moves in the DOM; CSS `order` places it between the tiles. Moving it between
+ * tile wrappers would remount it at every step, which drops its pointer capture and focus, so a drag stopped after
+ * one step.
  */
-export function Timeline({ features, at, onMarker, failed, activeId, summary, onSelect, onMenu, onHistory, historyOpen }: TimelineProps) {
+export function Timeline({ features, at, onMarker, failed, activeId, summary, onSelect, onMenu, onEdit, onHistory, historyOpen, warning }: TimelineProps) {
   const strip = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  const lastTap = useRef<{ id: string; t: number } | null>(null);
   const n = features.length;
   const rolledBack = at < n;
 
@@ -88,10 +101,12 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
   const startDrag = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
+    e.stopPropagation();
     dragging.current = true;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     e.currentTarget.focus();
   };
+  /** Follows the pointer across as many steps as it passes in one drag. */
   const drag = (e: PointerEvent) => {
     if (!dragging.current) return;
     const to = gapAt(e.clientX);
@@ -99,6 +114,22 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
   };
   const endDrag = () => {
     dragging.current = false;
+  };
+
+  /** A click on a tile selects it; a second click or tap on the same tile soon after opens it to edit. */
+  const tileClick = (f: Feature, e: MouseEvent) => {
+    onSelect(f);
+    if (!onEdit) return;
+    // A keyboard click (Enter, Space) has no detail; only pointer clicks make a double.
+    if (e.detail === 0) return;
+    const now = e.timeStamp || performance.now();
+    const last = lastTap.current;
+    if (e.detail >= 2 || (last && last.id === f.id && now - last.t < DOUBLE_TAP_MS)) {
+      lastTap.current = null;
+      onEdit(f);
+      return;
+    }
+    lastTap.current = { id: f.id, t: now };
   };
 
   const after = (i: number) => (i === 0 ? "the start" : features[i - 1]!.name);
@@ -115,16 +146,24 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
       aria-valuenow={at}
       aria-valuetext={at === n ? "At the end, every step is built" : `Rolled back to after ${after(at)}`}
       data-tip={`Drag to roll back (${formatCombo("alt+arrowleft")} ${formatCombo("alt+arrowright")})`}
+      style={{ order: 2 * at }}
       onKeyDown={onMarkerKey}
       onPointerDown={startDrag}
       onPointerMove={drag}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
+      onLostPointerCapture={endDrag}
     />
   );
 
   return (
-    <section className={cx("bc-timeline", rolledBack && "bc-rolled-back")} aria-label="Timeline">
+    <section className={cx("bc-timeline", rolledBack && "bc-rolled-back", warning && "bc-tl-warned")} aria-label="Timeline">
+      {warning && (
+        <p className="bc-tl-warn" role="status">
+          <Icon name="warning" size={14} />
+          <span>{warning}</span>
+        </p>
+      )}
       <div className="bc-tl-play" role="group" aria-label="Play controls">
         <IconButton icon="skipStart" title="Roll back to the start" disabled={at === 0} onClick={() => onMarker(0)} />
         <IconButton icon="stepBack" title={`Step back (${formatCombo("alt+arrowleft")})`} disabled={at === 0} onClick={() => onMarker(at - 1)} />
@@ -143,40 +182,39 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
         }}
       >
         {n === 0 && <span className="bc-tl-empty">Each step you take shows here, in order.</span>}
+        {n > 0 && markerEl}
         {features.map((f, i) => {
           const why = failed.get(f.id);
           const state = [i >= at && "not built", f.suppressed && "suppressed", why && `problem: ${why}`].filter(Boolean).join(", ");
           const press = longPress((p) => onMenu(f, p));
           return (
-            <span key={f.id} className="bc-tl-slot">
-              {i === at && markerEl}
-              <button
-                type="button"
-                className={cx("bc-tl-tile", f.id === activeId && "bc-on", i >= at && "bc-after", f.suppressed && "bc-suppressed", why && "bc-failed")}
-                aria-pressed={f.id === activeId}
-                aria-label={`${f.name}, ${summary(f)}${state ? `, ${state}` : ""}`}
-                data-tip={`${f.name} · ${summary(f)}${why ? `. ${why}` : ""}`}
-                onClick={() => onSelect(f)}
-                onContextMenu={(e) => {
+            <button
+              key={f.id}
+              type="button"
+              className={cx("bc-tl-tile", f.id === activeId && "bc-on", i >= at && "bc-after", f.suppressed && "bc-suppressed", why && "bc-failed")}
+              aria-pressed={f.id === activeId}
+              aria-label={`${f.name}, ${summary(f)}${state ? `, ${state}` : ""}`}
+              data-tip={`${f.name} · ${summary(f)}${why ? `. ${why}` : ""}${onEdit ? ". Double-click to edit" : ""}`}
+              style={{ order: 2 * i + 1 }}
+              onClick={(e) => tileClick(f, e)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                onSelect(f);
+                onMenu(f, { x: e.clientX, y: e.clientY });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
                   e.preventDefault();
-                  onSelect(f);
-                  onMenu(f, { x: e.clientX, y: e.clientY });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) {
-                    e.preventDefault();
-                    const r = e.currentTarget.getBoundingClientRect();
-                    onMenu(f, { x: r.left, y: r.top });
-                  }
-                }}
-                {...press}
-              >
-                <Icon name={featureIcon(f)} size={16} />
-              </button>
-            </span>
+                  const r = e.currentTarget.getBoundingClientRect();
+                  onMenu(f, { x: r.left, y: r.top });
+                }
+              }}
+              {...press}
+            >
+              <Icon name={featureIcon(f)} size={16} />
+            </button>
           );
         })}
-        {n > 0 && at === n && markerEl}
       </div>
       <span className="bc-tl-summary" aria-hidden="true">
         {n === 0 ? "No steps yet" : rolledBack ? `Step ${at} of ${n}` : `${n} ${n === 1 ? "step" : "steps"}`}

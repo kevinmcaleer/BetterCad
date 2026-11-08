@@ -53,6 +53,25 @@ test("deleting a sketch that an extrude uses asks first, and suppress names what
   await expect(page.getByText("Extruded one shape 10 mm")).toBeVisible();
 
   const timeline = page.getByRole("region", { name: "Timeline" });
+  // A double-click opens a step: the extrude's distance, then the sketch in sketch mode.
+  await timeline.getByRole("button", { name: /^Extrude 1/ }).dblclick();
+  await expect(distance).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(distance).toHaveCount(0);
+  await timeline.getByRole("button", { name: /^Sketch 1/ }).dblclick();
+  await expect(page.getByText("Editing Sketch 1. Enter finishes.").first()).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toHaveCount(0);
+
+  // Redefine sketch plane rolls back to before the sketch to pick; Esc keeps it where it was and rolls forward again.
+  const marker = timeline.getByRole("slider", { name: "Timeline marker" });
+  await timeline.getByRole("button", { name: /^Sketch 1/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Redefine sketch plane" }).click();
+  await expect(page.getByText("Pick a plane or a flat face for Sketch 1. Esc keeps it where it is.").first()).toBeVisible();
+  await expect(marker).toHaveAttribute("aria-valuenow", "0");
+  await page.keyboard.press("Escape");
+  await expect(marker).toHaveAttribute("aria-valuenow", "2");
+
   // Suppress the sketch: the extrude says what it needs.
   await timeline.getByRole("button", { name: /^Sketch 1/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: "Suppress" }).click();
@@ -74,4 +93,29 @@ test("deleting a sketch that an extrude uses asks first, and suppress names what
   await expect(timeline.getByRole("button", { name: /^Sketch 1/ })).toHaveCount(0);
   await expect(timeline.getByRole("button", { name: /^Extrude 1/ })).toHaveCount(0);
   await expect(page.getByText("Deleted Sketch 1 and 1 more.", { exact: false })).toBeVisible();
+});
+
+test("the marker scrubs across several steps in one drag, and a double-click opens a step", async ({ page }) => {
+  await page.goto("/");
+  for (let k = 0; k < 4; k++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  const marker = timeline.getByRole("slider", { name: "Timeline marker" });
+  await expect(marker).toHaveAttribute("aria-valuenow", "4");
+
+  // One drag, from the end to before the first tile, rolls all the way back.
+  const from = (await marker.boundingBox())!;
+  const first = (await timeline.getByRole("button", { name: /^Box 1/ }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(first.x - 4, from.y + from.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect(marker).toHaveAttribute("aria-valuenow", "0");
+
+  // A double-click on a step past the marker rolls forward to it and opens it.
+  await timeline.getByRole("button", { name: /^Box 3/ }).dblclick();
+  await expect(marker).toHaveAttribute("aria-valuenow", "3");
+  await expect(page.getByText("Change Box 3 in Properties.").first()).toBeVisible();
 });

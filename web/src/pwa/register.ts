@@ -25,7 +25,9 @@ export function registerServiceWorker(enabled = import.meta.env.PROD) {
   });
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").then(
-      (reg) => {
+      (reg: ServiceWorkerRegistration | undefined) => {
+        // A blocked registration (Playwright's WebKit) resolves with nothing.
+        if (!reg) return;
         const watch = (w: ServiceWorker | null) => {
           if (!w) return;
           const check = () => w.state === "installed" && navigator.serviceWorker.controller && announce(w);

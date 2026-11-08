@@ -307,7 +307,18 @@ function Column({ theme }: { theme: ThemeId }) {
 
       <Block id="view" title="View cube and grid">
         <div className="bc-frame bc-gallery-view">
-          <ViewCube />
+          <ViewCube
+            onHome={() => {}}
+            menu={[
+              { id: "home", label: "Go home", icon: "home", keys: "Home", onSelect: () => {} },
+              { kind: "separator", id: "s1" },
+              { id: "persp", label: "Perspective", checked: true, onSelect: () => {} },
+              { id: "ortho", label: "Orthographic", checked: false, onSelect: () => {} },
+              { kind: "separator", id: "s2" },
+              { id: "set-home", label: "Set this view as home", onSelect: () => {} },
+              { id: "reset-home", label: "Reset home", disabled: true, onSelect: () => {} },
+            ]}
+          />
         </div>
       </Block>
 

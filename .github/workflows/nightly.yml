@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      grep:
+        description: Only the journeys whose title matches (a run on a branch, to check a fix)
+        required: false
+        default: ""
 
 concurrency:
   group: nightly
@@ -56,10 +61,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-nightly-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
       - run: npx playwright install --with-deps chromium webkit
-      - run: npm run e2e -- --project=chromium --project=webkit
+      - run: npm run e2e -- --project=chromium --project=webkit ${GREP:+--grep "$GREP"}
         env:
           CI: "1"
           PW_WEBKIT: "1"
+          GREP: ${{ inputs.grep }}
+      # The page as the failing test last saw it, in the log, so a WebKit-only failure can be read without the artifact.
+      - if: failure()
+        run: for f in web/test-results/*/error-context.md; do echo "::group::$f"; cat "$f"; echo "::endgroup::"; done
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -67,9 +76,10 @@ jobs:
           path: web/test-results
           retention-days: 14
 
+  # Only the scheduled run on main opens or closes the issue; a run on a branch is a check of a fix.
   report:
     needs: [models, journeys]
-    if: always()
+    if: always() && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
