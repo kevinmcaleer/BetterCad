@@ -35,6 +35,43 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(bar).toHaveCount(0);
 });
 
+/** The middle of the render canvas, averaged: is the box there coloured or paper white? */
+async function middleColour(page: import("@playwright/test").Page): Promise<[number, number, number]> {
+  return page.locator(".bc-render-canvas").evaluate((el: HTMLCanvasElement) => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 8;
+    const g = c.getContext("2d")!;
+    g.drawImage(el, el.width * 0.45, el.height * 0.45, el.width * 0.1, el.height * 0.1, 0, 0, 8, 8);
+    const d = g.getImageData(0, 0, 8, 8).data;
+    const sum = [0, 0, 0];
+    for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) sum[k] += d[i + k];
+    return sum.map((v) => v / 64) as [number, number, number];
+  });
+}
+
+test("switching an open render to Paper drops the colours", async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.addInitScript(() => ((window as unknown as { __bcRenderMax: number }).__bcRenderMax = 2));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.getByRole("group", { name: "Colour" }).getByRole("button", { name: "Orange" }).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+R");
+  const bar = page.getByRole("group", { name: "Render options" });
+  const status = bar.getByRole("status");
+  await expect(status).toHaveText("2 of 2 samples", { timeout: 200_000 });
+  const [r, , b] = await middleColour(page);
+  expect(r - b).toBeGreaterThan(60);
+
+  await bar.getByRole("button", { name: "Paper" }).click({ force: true });
+  await expect(status).not.toHaveText("2 of 2 samples", { timeout: 30_000 });
+  await expect(status).toHaveText("2 of 2 samples", { timeout: 200_000 });
+  const [pr, , pb] = await middleColour(page);
+  expect(pr - pb).toBeLessThan(30);
+});
+
 test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 900, height: 600 });
