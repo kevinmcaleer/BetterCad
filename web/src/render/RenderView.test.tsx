@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { barPosition, RenderBar, SLOW_TEXT } from "./RenderView";
+import { barPosition, RenderBar, SLOW_TEXT, SLUGGISH_TEXT } from "./RenderView";
 import { renderSession } from "./session";
 
 describe("the Render view's options (#197)", () => {
@@ -56,6 +56,17 @@ describe("the Render view's options (#197)", () => {
     expect(await screen.findByText(SLOW_TEXT)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Export glTF" }));
     expect(onExportGltf).toHaveBeenCalled();
+  });
+
+  it("notes a slow render in a toast, without the warning banner", async () => {
+    const s = renderSession();
+    const onNote = vi.fn();
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} onNote={onNote} />);
+    s.set({ loading: false, sluggish: true });
+    await waitFor(() => expect(onNote).toHaveBeenCalledWith(SLUGGISH_TEXT));
+    expect(screen.queryByText(SLOW_TEXT)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Save image" }));
+    expect(screen.getByRole("menuitem", { name: "View size" })).toBeEnabled();
   });
 
   it("saves at view size, twice the size or 4K, and Done goes back", async () => {

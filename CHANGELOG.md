@@ -38,6 +38,9 @@ The first public release: free CAD for 3D printing in your browser.
 - GLB and glTF export for Blender and web viewers: metres, Y up, a named node and a material per body (#195).
 - A colour and a finish (Matte PLA, Glossy PETG, Silk, Metal, Rubber) per body, shown in the view and carried into glTF (#196).
 - A Render button (Shift+R): a path-traced picture that clears over a few seconds, with Studio, Daylight and Workbench lighting, a Paper (clay) style, and Save image at view size, twice the size or 3840 × 2160 (#197).
+  Save image at view size saves the picture already rendered, and the save picker opens straight away at every
+  size. A slow render (a tablet, say) gets a short note in the top-right toast instead of a warning banner over the
+  picture, and you can still save it.
 - Optional accounts: save to your account with version history, share a view-only link, and a library of your
   models (#9).
 - Works offline as an installable app; the first-run tour and samples, including the phone stand (#10).

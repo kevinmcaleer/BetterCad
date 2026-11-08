@@ -3122,6 +3122,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <RenderBar
                     session={render}
                     onClose={closeRender}
+                    onNote={(text) => say(text, false, true)}
                     onExportGltf={() => {
                       closeRender();
                       setExportFormat("glb");

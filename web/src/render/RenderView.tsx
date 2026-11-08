@@ -14,6 +14,8 @@ const SLOW_SAMPLES = 2;
 const SAVE_SAMPLES = 64;
 
 export const SLOW_TEXT = "Your browser can't render this well. Export glTF to render in Blender.";
+/** A passing note, in a toast, when the picture is coming but slowly (a tablet, say). */
+export const SLUGGISH_TEXT = "Rendering is slow on this device. The picture still clears, just give it longer.";
 
 /** The section as a plane through its pushed origin. */
 function cutPlane(s: Section | null): CutPlane | null {
@@ -73,7 +75,7 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     pr.setCamera(cam.current);
     session.set({ loading: false, samples: 0 });
     pr.start();
-    const slow = window.setTimeout(() => pr.samples < SLOW_SAMPLES && session.set({ slow: true }), SLOW_MS);
+    const slow = window.setTimeout(() => pr.samples < SLOW_SAMPLES && session.set({ sluggish: true }), SLOW_MS);
     session.save = async (size) => {
       const w = el.clientWidth,
         h = el.clientHeight;
@@ -168,6 +170,8 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
 
 export interface RenderBarProps {
   session: RenderSession;
+  /** Shows a passing note in the top-right toast. */
+  onNote?: (text: string) => void;
   onClose: () => void;
   onExportGltf: () => void;
 }
@@ -227,8 +231,13 @@ function QualityBar({ session }: { session: RenderSession }) {
 }
 
 /** The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. */
-export function RenderBar({ session, onClose, onExportGltf }: RenderBarProps) {
+export function RenderBar({ session, onClose, onExportGltf, onNote }: RenderBarProps) {
   const s = useSession(session);
+  // A slow render still works, so it gets a toast that fades rather than a banner over the picture.
+  useEffect(() => {
+    if (s.sluggish && !s.slow) onNote?.(SLUGGISH_TEXT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.sluggish]);
   const save: MenuEntry[] = SIZES.map((z) => ({ id: z.id, label: z.label, disabled: s.saving !== null || s.slow, onSelect: () => void session.save?.(z.id) }));
   const status = s.loading
     ? "Loading the renderer…"
