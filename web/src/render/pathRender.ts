@@ -82,8 +82,15 @@ export class PathRender {
   private paper = new MeshPhysicalMaterial({ color: 0xf3efe6, roughness: 0.95, metalness: 0, sheen: 0.5, sheenRoughness: 0.9, sheenColor: 0xffffff });
   private paused = false;
   private stopped = false;
-  /** Stop adding samples here: the picture has stopped changing. */
-  maxSamples = 2000;
+  private max = 512;
+  /** Stop adding samples here. Raising it past the count so far starts the picture clearing again. */
+  get maxSamples(): number {
+    return this.max;
+  }
+  set maxSamples(n: number) {
+    this.max = n;
+    this.stopped = this.samples >= n;
+  }
   private size = { width: 1, height: 1 };
 
   /** Throws when the browser has no WebGL2. */
@@ -240,7 +247,7 @@ export class PathRender {
       this.tracer.renderSample();
       const n = this.samples;
       this.opts.onSample?.(n);
-      if (!this.paused && n >= this.maxSamples) this.stopped = true;
+      if (!this.paused && n >= this.max) this.stopped = true;
     };
     const frame = () => {
       this.frame = requestAnimationFrame(frame);
