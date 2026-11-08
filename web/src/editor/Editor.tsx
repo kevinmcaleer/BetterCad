@@ -206,9 +206,6 @@ const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ 
 const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
 const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
 /** The Print panel loads when it first opens. */
-/** Parameters and the parts catalogue load when their panel first opens. */
-const ParamsPanel = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsPanel })));
-const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
