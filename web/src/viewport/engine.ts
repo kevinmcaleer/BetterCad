@@ -148,6 +148,12 @@ export interface Mods {
   touch?: boolean;
 }
 export type WorldPlaneName = "XY" | "XZ" | "YZ";
+/** A drag of the point gizmo (#176): told where the point goes, then that the drag ended. */
+export interface PointDrag {
+  start(): void;
+  move(p: V3): void;
+  end(): void;
+}
 
 export interface Section {
   origin: V3;
@@ -323,6 +329,10 @@ export class Engine {
   // Gizmo
   private gizmo: TransformControls;
   private proxy = new Object3D();
+  /** The move gizmo on a point instead of a body (#176): its arrows drag the point along an axis. */
+  private pointGizmo: { at: V3; drag: PointDrag } | null = null;
+  /** The point drag under way: the one the gizmo was pressed with, though the point moves on (and is set anew). */
+  private pointDragging: PointDrag | null = null;
   private gizmoBody: string | null = null;
 
   // Section
@@ -462,6 +472,11 @@ export class Engine {
     this.scene.add(helper);
     this.gizmo.enabled = false;
     this.gizmo.addEventListener("change", () => this.invalidate());
+    this.gizmo.addEventListener("mouseDown", () => {
+      if (this.gizmoBody || !this.pointGizmo) return;
+      this.pointDragging = this.pointGizmo.drag;
+      this.pointDragging.start();
+    });
     this.gizmo.addEventListener("objectChange", () => this.onGizmoMove(false));
     this.gizmo.addEventListener("mouseUp", () => this.onGizmoMove(true));
 
@@ -826,6 +841,16 @@ export class Engine {
     this.gizmoBody = id;
     this.gizmo.setMode(mode);
     this.syncGizmo();
+    this.invalidate();
+  }
+
+  /**
+   * Puts the move gizmo on a point (#176), when no body has it: dragging an arrow moves the point along that axis, a
+   * square in that plane. Null takes it off.
+   */
+  setPointGizmo(at: V3 | null, drag?: PointDrag): void {
+    this.pointGizmo = at && drag ? { at: [...at], drag } : null;
+    if (!this.pointDragging) this.syncGizmo();
     this.invalidate();
   }
 
@@ -1728,8 +1753,15 @@ export class Engine {
   private syncGizmo(): void {
     const o = this.gizmoBody ? this.bodies.get(this.gizmoBody) : undefined;
     const helper = this.gizmo.getHelper();
-    this.gizmo.enabled = !!o;
-    helper.visible = !!o;
+    const point = !o && this.pointGizmo ? this.pointGizmo.at : null;
+    this.gizmo.enabled = !!o || !!point;
+    helper.visible = !!o || !!point;
+    if (point && !this.pointDragging) {
+      this.gizmo.setMode("translate");
+      this.proxy.position.set(...point);
+      this.proxy.rotation.set(0, 0, 0);
+      this.proxy.updateMatrixWorld();
+    }
     if (!o) return;
     const r = o.body.rotation ?? { x: 0, y: 0, z: 0 };
     this.proxy.position.set(o.body.position.x, o.body.position.y, o.body.position.z);
@@ -1738,6 +1770,17 @@ export class Engine {
   }
 
   private onGizmoMove(done: boolean): void {
+    if (this.pointDragging) {
+      const drag = this.pointDragging;
+      const p = this.proxy.position;
+      if (done) {
+        this.pointDragging = null;
+        drag.end();
+        this.syncGizmo();
+      } else drag.move([p.x, p.y, p.z]);
+      this.invalidate();
+      return;
+    }
     const id = this.gizmoBody;
     const o = id ? this.bodies.get(id) : undefined;
     if (!o || !id) return;
