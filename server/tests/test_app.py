@@ -19,7 +19,7 @@ def test_unknown_api_path_is_json_404(make_client):
     with make_client() as client:
         r = client.get("/api/nope")
     assert r.status_code == 404
-    assert r.json() == {"detail": "Not found"}
+    assert r.json() == {"detail": "BetterCad has been updated. Reload the page to get the new version."}
 
 
 def test_serves_web_app_with_fallback(make_client, tmp_path):
