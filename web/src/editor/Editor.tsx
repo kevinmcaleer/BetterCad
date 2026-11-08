@@ -95,6 +95,12 @@ import {
   type Vec3,
   homePose,
   patternCopyIds,
+  addDrive,
+  updateDrive,
+  driveTo,
+  resolvePose,
+  type DriveFeature,
+  type DriveParams,
   linkTransforms,
   posedFrames,
   setPose,
@@ -191,6 +197,7 @@ const ParamsPanel = lazy(() => import("./ParamsPanel").then((m) => ({ default: m
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
+const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Browser" },
@@ -603,8 +610,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const livePoseRef = useRef(livePose);
   livePoseRef.current = livePose;
   const posing = tool === "select" && !sketch.editing;
-  const linkMoves = useMemo(() => linkTransforms(built.joints, pose), [built.joints, pose]);
-  const changePose = useCallback((id: string, value: number) => setLivePose((p) => ({ ...(p ?? live.current.doc.pose), [id]: value })), []);
+  // Drive links (#194): the pose keeps the driving joints' values; the driven ones follow.
+  const shownPose = useMemo(() => resolvePose(built.drives, pose), [built.drives, pose]);
+  const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose), [built.joints, shownPose]);
+  const drivesRef = useRef({ joints: built.joints, drives: built.drives });
+  drivesRef.current = { joints: built.joints, drives: built.drives };
+  const changePose = useCallback(
+    (id: string, value: number) =>
+      setLivePose((p) => {
+        const now = { ...(p ?? live.current.doc.pose) };
+        const { joints, drives } = drivesRef.current;
+        const to = driveTo(joints, drives, now, id, value);
+        if (to.id !== id) delete now[id];
+        return { ...now, [to.id]: to.value };
+      }),
+    [],
+  );
   const commitPose = useCallback(
     (id: string, value: number) => {
       // A shared or old version can still be posed; the pose just isn't kept.
@@ -631,8 +652,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (hasJoints && !dragMaths.current) void import("../joint/poseDrag").then((m) => (dragMaths.current = m));
   }, [hasJoints]);
   useEscape(poseDrag !== null, () => poseDrag?.cancel(), ESC.drag);
-  const poseState = useRef({ joints: built.joints, parts, moves: linkMoves, pose, livePose });
-  poseState.current = { joints: built.joints, parts, moves: linkMoves, pose, livePose };
+  const poseState = useRef({ joints: built.joints, parts, moves: linkMoves, pose: shownPose, livePose });
+  poseState.current = { joints: built.joints, parts, moves: linkMoves, pose: shownPose, livePose };
   const bodyDrag = useCallback(
     (pick: { body: string }, at: { x: number; y: number }): BodyDrag | null => {
       const { joints, parts: all, moves, pose: now, livePose: before } = poseState.current;
@@ -696,6 +717,60 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     const frames = posing ? posedFrames(built.joints, linkMoves) : null;
     vp.ref.current?.engine()?.setJoints(built.joints.map((j) => frames?.get(j.id) ?? j));
   }, [built.joints, jointsShown, vp.ref, posing, linkMoves]);
+
+  // Play (#194): turn a driving joint through its range, out and back (a wheel a whole turn), to watch the drive. It
+  // poses live only, and Esc or Stop puts the pose back.
+  const [playing, setPlaying] = useState<string | null>(null);
+  useEscape(playing !== null, () => setPlaying(null), ESC.drag);
+  useEffect(() => {
+    if (!playing) return;
+    const j = drivesRef.current.joints.find((x) => x.id === playing);
+    if (!j) return setPlaying(null);
+    const before = livePoseRef.current;
+    const lo = Math.min(j.lower, j.upper);
+    const hi = Math.max(j.lower, j.upper);
+    const wheel = j.kind === "continuous";
+    const ms = 4000;
+    const t0 = performance.now();
+    let frame = 0;
+    const tick = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms);
+      // Home, out to one end, across to the other, and home again; a wheel turns once.
+      const s = Math.sin(k * 2 * Math.PI);
+      const v = wheel ? k * 360 : s >= 0 ? s * hi : -s * lo;
+      changePose(j.id, k >= 1 ? 0 : v);
+      if (k < 1) frame = requestAnimationFrame(tick);
+      else setPlaying(null);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+      setLivePose(before);
+    };
+  }, [playing, changePose]);
+  const play = useCallback(
+    (id: string | null) => {
+      setPlaying(id);
+      if (id) say(`Playing ${drivesRef.current.joints.find((j) => j.id === id)?.name ?? "the joint"}. Esc stops.`);
+    },
+    [say],
+  );
+  const [driveDialog, setDriveDialog] = useState<{ editing?: DriveFeature } | null>(null);
+  const saveDrive = useCallback(
+    (p: DriveParams) => {
+      const editing = driveDialog?.editing;
+      setDriveDialog(null);
+      if (editing) {
+        store.edit((d) => updateDrive(d, editing.id, p), `Change ${editing.name}`);
+        return say(`Changed ${editing.name}`);
+      }
+      const id = newId("f");
+      const name = addDrive(live.current.doc, p, id).features.find((f) => f.id === id)!.name;
+      record((d, at) => addDrive(d, p, id, at), `Add ${name}`);
+      say(`Added ${name}. Move either joint and the other follows.`);
+    },
+    [driveDialog, store, record, say],
+  );
 
   const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
   const pattern = usePattern({
@@ -1587,6 +1662,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "mass weight balance com links robot",
       },
       {
+        id: "drive.add",
+        scope: "model",
+        label: "Drive link",
+        group: "Edit",
+        icon: "gear",
+        run: () => setDriveDialog({}),
+        when: () => build(live.current.doc).joints.filter(movable).length >= 2,
+        keywords: "drive gear belt rack ratio mimic joint robot link",
+      },
+      {
         id: "view.joints",
         scope: "model",
         label: "Show or hide joints",
@@ -2269,6 +2354,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "drive"
+        ? [
+            {
+              id: "edit",
+              label: "Edit drive",
+              icon: "gear" as const,
+              disabled: i >= at,
+              onSelect: () => setDriveDialog({ editing: f }),
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -2476,6 +2572,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         ({ extrude, hole, mount, revolve, pushpull })[f.type].edit(f.id);
         return;
       }
+      case "drive":
+        return setDriveDialog({ editing: f });
       case "add":
       case "move":
       case "resize": {
@@ -2984,10 +3082,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                     ? {
                         joints: built.joints,
                         selected: built.joints.filter((j) => selectedParts.some((p) => p.link === j.child)),
-                        pose,
+                        pose: shownPose,
                         onChange: changePose,
                         onCommit: commitPose,
                         onHome: homeJoints,
+                        drives: built.drives,
+                        playing,
+                        onPlay: play,
+                        nameOf: (id: string) => built.joints.find((j) => j.id === id)?.name ?? "another joint",
                       }
                     : undefined
                 }
@@ -3000,6 +3102,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       <span className="bc-sr-only" role="status" aria-live="polite">
         {selectionText} {tool === "select" ? "" : `${activeTool.label} tool armed.`}
       </span>
+      {driveDialog && (
+        <Suspense fallback={null}>
+          <DriveDialog doc={doc} editing={driveDialog.editing} onDone={saveDrive} onCancel={() => setDriveDialog(null)} />
+        </Suspense>
+      )}
       {pendingDelete && (
         <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
       )}
