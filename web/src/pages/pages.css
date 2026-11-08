@@ -148,11 +148,17 @@
   background: var(--bc-color-thumb-bg);
   color: var(--bc-color-thumb-ink);
 }
+.bc-thumb > * {
+  grid-area: 1 / 1;
+}
 .bc-thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.bc-thumb img.bc-thumb-pending {
+  opacity: 0;
 }
 .bc-thumb.bc-loading .bc-icon {
   animation: bc-pulse 1.4s ease-in-out infinite;

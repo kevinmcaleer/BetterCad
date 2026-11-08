@@ -28,6 +28,8 @@ export interface ExportDialogProps {
   say: (text: string, bad?: boolean) => void;
   /** Group the chosen bodies, so hole shapes cut the solids they overlap. */
   onGroup: (ids: string[]) => void;
+  /** Open on this format instead of the last one chosen (Render offers glTF). */
+  format?: ExportFormat;
 }
 
 type What = "all" | "selected" | "each";
@@ -75,7 +77,7 @@ function load(): Choices {
 }
 
 export function ExportDialog(p: ExportDialogProps) {
-  const [c, setC] = useState<Choices>(load);
+  const [c, setC] = useState<Choices>(() => (p.format ? { ...load(), format: p.format } : load()));
   const set = (change: Partial<Choices>) =>
     setC((o) => {
       const n = { ...o, ...change };

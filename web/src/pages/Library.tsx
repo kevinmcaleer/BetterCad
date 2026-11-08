@@ -31,7 +31,8 @@ function Thumb({ src }: { src: string | null }) {
           loading="lazy"
           onLoad={() => setState("done")}
           onError={() => setState("none")}
-          hidden={state === "loading"}
+          // Not `hidden`: a lazy image with no box never loads, so the card would keep the cube for good.
+          className={cx(state === "loading" && "bc-thumb-pending")}
         />
       ) : null}
       {state !== "done" && <Icon name="cube" size={40} />}

@@ -62,6 +62,11 @@ test("save a box to the account, open it again from the library after a reload",
 
   await page.goto("/#/library");
   await page.reload();
+  // The card shows the picture saved with the model, not the placeholder cube.
+  const thumb = page.getByRole("button", { name: "Open Bracket" }).locator("img");
+  await expect(thumb).toBeVisible();
+  await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(320);
+  await expect(thumb).not.toHaveClass(/bc-thumb-pending/);
   await page.getByRole("button", { name: "Open Bracket" }).click();
   await expect(modelRow(page)).toContainText("Bracket");
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();

@@ -1,0 +1,23 @@
+/* The Render view (#197): the path-traced picture covers the whole 3D view, under the floating cards. */
+.bc-render-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--bc-color-viewport);
+  touch-action: none;
+  cursor: grab;
+}
+.bc-render-canvas:active {
+  cursor: grabbing;
+}
+/* The view cube turns the modelling camera, which the picture hides: put it away while rendering. */
+.bc-viewport:has(.bc-render-canvas) .bc-viewcube {
+  display: none;
+}
+.bc-render-status {
+  min-width: 10ch;
+  font-variant-numeric: tabular-nums;
+}

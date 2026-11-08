@@ -3,16 +3,24 @@ import { addFinish, newId, updateFinish, type FinishFeature, type ModelDoc, type
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
+import type { BodyMesh } from "@bettercad/kernel";
+import { PREVIEW_ID, type PreviewRequest } from "../kernel/usePreview";
 
 /**
  * Fillet, Chamfer (#67) and Shell (#68): click edges (or the faces to leave open) on one body, set the size, Enter.
- * Picks are made on the body as it is, so the step goes on the timeline only when it is done.
+ * Picks are made on the body as it is, so the step goes on the timeline only when it is done; until then `preview`
+ * asks the kernel for the result, which the view draws over the body while the picks stay on the body as it is.
  */
 export interface FinishDeps {
   record: (fn: (d: ModelDoc, at: number | undefined) => ModelDoc, label: string) => void;
   /** Changes the document in place, as one undo step (re-picking a step's edges or faces). */
   update: (fn: (d: ModelDoc) => ModelDoc, label: string) => void;
   parts: Part[];
+  /** The kernel's meshes of the bodies, for the length of each picked edge. */
+  meshes?: Map<string, { mesh: BodyMesh }>;
+  /** The document and the timeline marker, for the preview. */
+  doc: ModelDoc;
+  at: number;
   view: RefObject<View3DHandle>;
   /** The armed tool: fillet (round or bevel edges) or shell (faces left open). */
   tool: "fillet" | "shell" | null;
@@ -30,7 +38,9 @@ export function useFinish(d: FinishDeps) {
   const [wall, setWall] = useState(1.2);
   const [outside, setOutside] = useState(false);
   /** A step whose picks are being made again (#77), and how to put the timeline marker back after. */
-  const editing = useRef<{ id: string; name: string; part: string; restore: () => void } | null>(null);
+  const editing = useRef<{ id: string; name: string; part: string; refs: number[]; restore: () => void } | null>(null);
+  /** The step being changed, as state, so the preview follows it. */
+  const [editId, setEditId] = useState<string | null>(null);
   const live = useRef({ part, refs, bevel, radius, wall, outside });
   live.current = { part, refs, bevel, radius, wall, outside };
 
@@ -42,10 +52,12 @@ export function useFinish(d: FinishDeps) {
     const e = editing.current;
     if (e && !d.tool) {
       editing.current = null;
+      setEditId(null);
       e.restore();
     }
+    // A step opened to change keeps its picks: the tool comes up after them.
     setPart(editing.current?.part ?? null);
-    setRefs([]);
+    setRefs(editing.current?.refs ?? []);
   }, [d.tool]);
 
   // The body goes away (undo, delete): start again.
@@ -101,6 +113,7 @@ export function useFinish(d: FinishDeps) {
     const e = editing.current;
     if (e) {
       editing.current = null;
+      setEditId(null);
       D.update((doc) => updateFinish(doc, e.id, { type, refs: r, size, outside: type === "shell" ? outside : undefined }), `Re-pick ${e.name}`);
       e.restore();
     } else D.record((doc, at) => addFinish(doc, { type, part: p, refs: r, size, outside: type === "shell" ? outside : undefined }, newId("f"), at), label);
@@ -116,11 +129,16 @@ export function useFinish(d: FinishDeps) {
     D.onClose();
   }, []);
 
-  /** Makes a failed step's picks again on the part as it was just before it (#77). */
-  const repick = useCallback((f: FinishFeature, restore: () => void) => {
-    editing.current = { id: f.id, name: f.name, part: f.part, restore };
+  /**
+   * Opens a step to change on the part as it was just before it: its picks come back when they still fit (`keep`),
+   * and a failed step's are made again (#77).
+   */
+  const repick = useCallback((f: FinishFeature, restore: () => void, keep = false) => {
+    const refs = keep ? f.refs : [];
+    editing.current = { id: f.id, name: f.name, part: f.part, refs, restore };
+    setEditId(f.id);
     setPart(f.part);
-    setRefs([]);
+    setRefs(refs);
     setBevel(f.type === "chamfer");
     if (f.type === "shell") {
       setWall(f.size);
@@ -128,10 +146,48 @@ export function useFinish(d: FinishDeps) {
     } else setRadius(f.size);
   }, []);
 
+  /** Takes every pick out. A step being changed stays on its body. */
   const clear = useCallback(() => {
-    setPart(null);
+    if (!editing.current) setPart(null);
     setRefs([]);
-  }, []);
+    engineOf()?.showHover(null);
+  }, [engineOf]);
+
+  /** Takes one pick out of the list; the last one out frees the body. */
+  const drop = useCallback(
+    (index: number) => {
+      setRefs((r) => r.filter((i) => i !== index));
+      engineOf()?.showHover(null);
+    },
+    [engineOf],
+  );
+
+  /** Lights up a picked edge or face in the view while its row in the list is pointed at. */
+  const point = useCallback(
+    (index: number | null) => {
+      const p = live.current.part;
+      engineOf()?.showHover(p && index !== null ? { body: p, kind, index } : null);
+    },
+    [engineOf, kind],
+  );
+
+  /** The body's mesh, for the length of each picked edge in the list. */
+  const mesh = part ? d.meshes?.get(part)?.mesh : undefined;
+
+  /** The step as it would be with these picks and settings, for the kernel to build and the view to show. */
+  const preview = useMemo<PreviewRequest | null>(() => {
+    if (!d.tool || !part || (d.tool === "fillet" && !refs.length)) return null;
+    const type = d.tool === "shell" ? "shell" : bevel ? "chamfer" : "fillet";
+    const size = type === "shell" ? wall : radius;
+    if (!(size > 0)) return null;
+    const params = { type, part, refs, size, outside: type === "shell" ? outside : undefined } as const;
+    if (editId) {
+      const i = d.doc.features.findIndex((f) => f.id === editId);
+      if (i < 0) return null;
+      return { doc: updateFinish(d.doc, editId, params), upTo: i + 1, step: editId, show: [part] };
+    }
+    return { doc: addFinish(d.doc, params, PREVIEW_ID, d.at), upTo: d.at + 1, step: PREVIEW_ID, show: [part] };
+  }, [d.tool, d.doc, d.at, part, refs, bevel, radius, wall, outside, editId]);
 
   const partName = part ? (d.parts.find((p) => p.id === part)?.name ?? null) : null;
   const help = !d.tool
@@ -162,6 +218,11 @@ export function useFinish(d: FinishDeps) {
     clear,
     repick,
     repicking: editing.current?.name ?? null,
+    preview,
+    mesh,
+    kind,
+    drop,
+    point,
     help,
   };
 }

@@ -85,6 +85,7 @@ import {
   DEFAULT_INFILL,
   type Box3,
   type PrintSettings,
+  type CombineParams,
   type Feature,
   type ModelDoc,
   type PartKind,
@@ -103,9 +104,9 @@ import { useViewport } from "./useViewport";
 import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
 import { ParamsPanel } from "./ParamsPanel";
-import { CommandPalette } from "./CommandPalette";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
+import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
 import { useFiles } from "../files/useFiles";
 import { importFiles } from "../files/importFiles";
 import { useDrop } from "../files/useDrop";
@@ -123,7 +124,6 @@ import { usePushPull } from "../finish/usePushPull";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
-import { PlaceBar } from "../catalogue/PlaceBar";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
 import { useJoint } from "../joint/useJoint";
@@ -133,19 +133,19 @@ import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
-import { Versions } from "../cloud/Versions";
-import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
-import { AboutDialog } from "../help/AboutDialog";
 import { COURSE_URL } from "../help/about";
-import { ReportDialog } from "../report/ReportDialog";
 import { actionLog, editSummary } from "../report/actionLog";
 import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
-import type { Mate } from "@bettercad/kernel";
+import type { ExportFormat, Mate } from "@bettercad/kernel";
+import { Matrix4 } from "three";
+import { renderSession, type RenderSession, type SaveSize } from "../render/session";
+import type { RenderBody } from "../render/pathRender";
+import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
@@ -154,15 +154,24 @@ import type { WorldPlaneName } from "../viewport/engine";
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+// The Extrude bar loads after first paint (the shell's budget), and is fetched as soon as the editor is up, so it is
+// there before the first E and the distance field can take focus.
+const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
+const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
+const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
+// The command palette loads the first time it opens, to keep it out of first paint.
+const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ default: m.CommandPalette })));
+const CombineBar = lazy(() => import("./CombineBar").then((m) => ({ default: m.CombineBar })));
+const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
 // The sketch palette only shows while a sketch is open, so it loads then.
 const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
 const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
-const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
-const ExtrudeBar = lazy(() => import("../extrude/ExtrudeUI").then((m) => ({ default: m.ExtrudeBar })));
-const CombineBar = lazy(() => import("./CombineBar").then((m) => ({ default: m.CombineBar })));
-const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
+const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: m.Versions })));
+const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
+const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
+const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
 const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
@@ -186,6 +195,11 @@ const ORIENT_KEY = "bettercad.orientWeights";
 
 /** The Export and Keyboard shortcuts dialogs load on first use, keeping the first-paint bundle in budget. */
 const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+/** The Render view and its path tracer load on first Render (#197). */
+const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
+const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
+/** The Print panel loads when it first opens. */
+const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
@@ -205,6 +219,12 @@ function readTimelineShown() {
   } catch {
     return true;
   }
+}
+
+/** A combine step: the first body keeps, the rest join, cut (grown by the fit's gap) or intersect it. */
+function combineParams(target: string, tools: string[], op: CombineOp, keep: boolean, fit: FitChoice, print?: PrintSettings): CombineParams {
+  const list = tools.map((t) => (op === "cut" ? cutTool(t, fit.fit, fit.gap, print) : { id: t, op }));
+  return { mode: "combine", target, tools: list, keepTools: keep };
 }
 
 function useMedia(query: string) {
@@ -247,6 +267,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
+  /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
+  const [viewMenuAt, setViewMenuAt] = useState<{ ids: string[]; at: ContextMenuState } | null>(null);
   const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
   const [timelineShown, setTimelineShownState] = useState(readTimelineShown);
   const setTimelineShown = useCallback((on: boolean) => {
@@ -273,6 +295,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  /** The format the Export dialog opens on, when something other than your last choice asks (Render's glTF offer). */
+  const [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
+  // Render (#197): the session while the Render view is open, and where its camera got to.
+  const [render, setRender] = useState<RenderSession | null>(null);
+  const renderCam = useRef<CameraState | null>(null);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
   const [crash, setCrash] = useState<Caught | null>(null);
@@ -382,6 +409,38 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
   live.current.dialogOpen ||= vp.namingOpen;
+
+  // Render (#197): a path-traced picture over the view. It starts from the modelling camera, and the modelling view
+  // follows wherever you orbited it when you come back.
+  const openRender = () => {
+    renderCam.current = vp.ref.current?.camera() ?? null;
+    setRender(renderSession());
+  };
+  const closeRender = () => {
+    const c = renderCam.current;
+    setRender(null);
+    if (c) vp.ref.current?.setCamera(c, false);
+  };
+  const onRenderCamera = useCallback((c: CameraState) => {
+    renderCam.current = c;
+  }, []);
+  const saveRender = async (png: Blob, size: SaveSize) => {
+    const name = `${live.current.doc.name}${size === "view" ? "" : size === "double" ? " 2x" : " 4K"}.png`;
+    const saved = await files.store.saveFiles([{ name, data: await png.arrayBuffer(), mime: "image/png" }]);
+    if (saved) say(`Saved ${saved.names[0]}`);
+  };
+  const renderBodies = useMemo<RenderBody[]>(
+    () =>
+      render
+        ? parts
+            .filter((p) => !p.hidden && !p.hole)
+            .flatMap((p) => {
+              const b = kernel.bodies.get(p.id);
+              return b ? [{ id: p.id, mesh: b.mesh, matrix: new Matrix4(), colour: p.colour, finish: p.finish, catalogue: p.catalogue }] : [];
+            })
+        : [],
+    [render, parts, kernel.bodies],
+  );
   useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
 
   const shownSketches = useMemo(() => built.sketches.filter((s) => !doc.looks[s.id]?.hidden), [built.sketches, doc.looks]);
@@ -403,6 +462,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   live.current.sketching = sketch.editing;
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
 
+  /** The built bodies' boxes, for the bodies an extrude cut touches. */
+  const bounds = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.bbox])), [kernel.bodies]);
   const extrude = useExtrude({
     kind: "extrude",
     store,
@@ -410,6 +471,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     sketches: built.sketches,
     parts,
+    bounds,
     selection,
     view: vp.ref,
     active: tool === "extrude" && !sketch.editing,
@@ -426,6 +488,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     sketches: built.sketches,
     parts,
+    bounds,
     selection,
     view: vp.ref,
     active: tool === "revolve" && !sketch.editing,
@@ -434,6 +497,25 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     theme: resolved,
   });
   useEffect(() => registry.register(revolve.commands), [registry, revolve.commands]);
+
+  // While an extrude or revolve changes bodies, the bodies it changes are the selection, so they light up in the view
+  // and the browser; a click on a body in the browser picks it for the step instead of selecting it.
+  const profileStep = extrude.targeting ? extrude : revolve.targeting ? revolve : null;
+  const stepTargets = profileStep?.targets.join(" ");
+  useEffect(() => {
+    if (stepTargets) setSelection(stepTargets.split(" "));
+  }, [stepTargets]);
+  useEffect(() => {
+    void loadExtrudeBar();
+  }, []);
+  const selectFromBrowser = useCallback(
+    (ids: string[]) => {
+      if (!profileStep) return setSelection(ids);
+      if (ids.length === 1) profileStep.toggleTarget(ids[0]!);
+      else if (ids.length) profileStep.setTargets(ids);
+    },
+    [profileStep],
+  );
 
   const pushpull = usePushPull({
     store,
@@ -528,11 +610,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     record,
     update: (fn, label) => store.edit(fn, label),
     parts,
+    meshes: kernel.bodies,
+    doc,
+    at,
     view: vp.ref,
     tool: sketch.editing ? null : tool === "fillet" || tool === "shell" ? tool : null,
     onClose: () => setTool("select"),
     say,
   });
+  const finishPreview = usePreview(kernel.call, finish.preview);
+  // Combine shows its result as the bodies are picked and the settings change.
+  const combineRequest = useMemo<PreviewRequest | null>(() => {
+    const [target, ...tools] = selection;
+    if (tool !== "combine" || sketch.editing || !target || !tools.length) return null;
+    const params = combineParams(target, tools, combineOp, keepTools, combineFit, doc.print);
+    return { doc: addCombine(doc, params, PREVIEW_ID, at), upTo: at + 1, step: PREVIEW_ID, show: [target], dim: keepTools ? [] : tools };
+  }, [tool, sketch.editing, selection, combineOp, keepTools, combineFit, doc, at]);
+  const combinePreview = usePreview(kernel.call, combineRequest);
+  const preview = finish.preview ? finishPreview.bodies : combineRequest ? combinePreview.bodies : null;
   // While sketching the model goes faint, so the sketch reads on top of it. Project needs the faces solid to pick them.
   const ghostParts = sketch.editing && sketch.stool !== "project";
   const viewParts = useMemo(() => parts.map((p) => (ghostParts || p.hole ? { ...p, ghost: true } : p)), [parts, ghostParts]);
@@ -689,9 +784,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     (ids: string[], op: CombineOp, keep: boolean, fit: FitChoice = NO_FIT) => {
       const [target, ...tools] = ids;
       if (!target || !tools.length) return say("Select the body to keep, then the bodies to combine with it", true);
-      const print = live.current.doc.print;
-      const list = tools.map((t) => (op === "cut" ? cutTool(t, fit.fit, fit.gap, print) : { id: t, op }));
-      record((d, at) => addCombine(d, { mode: "combine", target, tools: list, keepTools: keep }, newId("f"), at), "Combine");
+      const params = combineParams(target, tools, op, keep, fit, live.current.doc.print);
+      record((d, at) => addCombine(d, params, newId("f"), at), "Combine");
       setSelection([target]);
       setTool("select");
       say(`Combined ${tools.length === 1 ? "1 body" : `${tools.length} bodies`}`);
@@ -974,6 +1068,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
   useEscape(tool !== "select", () => setTool("select"), ESC.tool);
+  useEscape(render !== null, () => closeRender(), ESC.tool);
   useEscape(narrow && (panel !== null || propsOpen), () => (propsOpen ? setPropsOpen(false) : setPanel(null)), ESC.panel);
   // On a wide screen the Library, Parameters, Print, History and Settings give way to the browser again.
   useEscape(!narrow && panel !== null && panel !== "parts", () => setPanel("parts"), ESC.panel);
@@ -989,6 +1084,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const handlers = useRef({
     openExport: () => {},
+    openRender: () => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     saveCloud: () => {},
@@ -1031,6 +1127,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   });
   handlers.current = {
     openExport: () => setExportOpen(true),
+    openRender: () => openRender(),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -1436,6 +1533,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: t === "light" ? "sun" : t === "system" ? "settings" : "moon",
         run: () => h().setTheme(t),
       })),
+      {
+        id: "view.render",
+        label: "Render",
+        group: "View",
+        icon: "sun",
+        keys: ["shift+r"],
+        run: () => h().openRender(),
+        keywords: "photo picture image path trace blender",
+      },
       { id: "help.palette", label: "Find a command", group: "Help", icon: "search", keys: ["mod+k"], run: () => setPaletteOpen(true) },
       { id: "print.overhangs", label: "Check overhangs", group: "View", icon: "printer", run: () => h().printCheck("overhang"), keywords: "support print 45" },
       {
@@ -2102,12 +2208,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     const f = store.get().features[i];
     if (!f || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell")) return;
     const back = live.current.marker;
+    // A step that built keeps its picks: they number the edges of the body just before it, which has not changed.
+    const keep = !failed.has(f.id) && f.refs.length > 0;
     moveMarker(i);
     setTool(f.type === "shell" ? "shell" : "fillet");
-    finish.repick(f, () => setMarker(back));
-    say(
-      `Pick the ${f.type === "shell" ? "faces to leave open" : "edges"} again on ${parts.find((p) => p.id === f.part)?.name ?? "the body"}, then press Enter`,
-    );
+    finish.repick(f, () => setMarker(back), keep);
+    const name = parts.find((p) => p.id === f.part)?.name ?? "the body";
+    const what = f.type === "shell" ? "faces to leave open" : "edges";
+    say(keep ? `Change the ${what} or the size on ${name}, then press Enter` : `Pick the ${what} again on ${name}, then press Enter`);
   };
   /**
    * A double-click or double-tap on a timeline tile (#73): a sketch opens in sketch mode, a step with settings opens
@@ -2184,19 +2292,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       />
     ) : null;
 
-  const helpText = sketch.help
-    ? sketch.help
-    : place.help
-      ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
-        : finish.help
-          ? finish.help
-          : vp.elementText
-            ? `${vp.elementText} Esc clears it.`
-            : tool === "select" && selectedParts.length
-              ? `${selectionText} Esc clears the selection.`
-              : activeTool.help;
+  const helpText = render
+    ? "Drag to turn the picture, right-drag to pan, scroll to zoom. Esc goes back to modelling."
+    : sketch.help
+      ? sketch.help
+      : place.help
+        ? place.help
+        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
+          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
+          : finish.help
+            ? finish.help
+            : vp.elementText
+              ? `${vp.elementText} Esc clears it.`
+              : tool === "select" && selectedParts.length
+                ? `${selectionText} Esc clears the selection.`
+                : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -2347,7 +2457,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               doc={doc}
               parts={parts}
               selection={selection}
-              onSelect={setSelection}
+              onSelect={selectFromBrowser}
               onAdd={add}
               onToggle={(id, what) => toggle(selection.includes(id) ? selection : [id], what)}
               onRename={rename}
@@ -2393,17 +2503,42 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           ) : (
             <>
               {files.banners}
-              <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
-              {place.part && <PlaceBar x={place} />}
-              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
-              {tool === "extrude" && (
+              {render ? (
+                <Suspense
+                  fallback={
+                    <div role="group" aria-label="Render options" className="bc-tools bc-armed">
+                      <span className="bc-armed-note" role="status">
+                        Loading the renderer…
+                      </span>
+                    </div>
+                  }
+                >
+                  <RenderBar
+                    session={render}
+                    onClose={closeRender}
+                    onExportGltf={() => {
+                      closeRender();
+                      setExportFormat("glb");
+                      setExportOpen(true);
+                    }}
+                  />
+                </Suspense>
+              ) : (
+                <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} onRender={openRender} />
+              )}
+              {place.part && (
                 <Suspense fallback={null}>
-                  <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+                  <PlaceBar x={place} />
                 </Suspense>
               )}
-              {tool === "revolve" && (
+              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
+              {(tool === "extrude" || tool === "revolve") && (
                 <Suspense fallback={null}>
-                  <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+                  {tool === "extrude" ? (
+                    <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+                  ) : (
+                    <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+                  )}
                 </Suspense>
               )}
               {tool === "measure" && (
@@ -2442,7 +2577,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
               {(tool === "fillet" || tool === "shell") && (
                 <Suspense fallback={null}>
-                  <FinishBar f={finish} onCancel={() => setTool("select")} />
+                  <FinishBar f={finish} preview={finishPreview} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
               {tool === "combine" && (
@@ -2457,6 +2592,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                     onFit={setCombineFit}
                     tuned={doc.print?.fits}
                     onApply={() => combine(selection, combineOp, keepTools, combineFit)}
+                    error={combineRequest ? combinePreview.error : null}
                     onCancel={() => setTool("select")}
                   />
                 </Suspense>
@@ -2471,6 +2607,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             meshes={kernel.bodies}
             engine={kernel.state}
             picks={finish.tool ? finish.picks : tool === "measure" ? measure.picks : vp.picks}
+            preview={preview}
             filter={vp.filter}
             mode={vp.mode}
             style={vp.style}
@@ -2483,6 +2620,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onCamera={composedCamera}
+            onMenu={(pick, at) => {
+              if (sketch.editing) return;
+              const body = pick && parts.some((p) => p.id === pick.body) ? pick.body : null;
+              const ids = body ? (selection.includes(body) ? selection : [body]) : [];
+              if (body) setSelection(ids);
+              setViewMenuAt({ ids, at });
+            }}
             onHome={vp.goHome}
             cubeMenu={vp.cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
@@ -2496,6 +2640,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
             <SketchLabels s={sketch} />
+            {render && (
+              <Suspense fallback={null}>
+                <RenderPicture
+                  session={render}
+                  bodies={renderBodies}
+                  camera={renderCam.current ?? DEFAULT_CAMERA}
+                  onCamera={onRenderCamera}
+                  onSave={saveRender}
+                />
+              </Suspense>
+            )}
             {emptyState && (
               <EmptyState
                 onShape={() => setPanel("library")}
@@ -2572,13 +2727,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       {pendingDelete && (
         <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
       )}
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
+      {paletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette open onClose={() => setPaletteOpen(false)} commands={commands} isEnabled={isEnabled} run={(id) => registry.run(id)} />
+        </Suspense>
+      )}
       <ContextMenu
         at={featureMenuAt?.at ?? null}
         onClose={() => setFeatureMenuAt(null)}
         label="Step actions"
         title={doc.features.find((f) => f.id === featureMenuAt?.id)?.name}
         entries={featureMenuAt ? featureMenu(featureMenuAt.id) : []}
+      />
+      <ContextMenu
+        at={viewMenuAt?.at ?? null}
+        onClose={() => setViewMenuAt(null)}
+        label={viewMenuAt?.ids.length ? "Part actions" : "View actions"}
+        title={
+          !viewMenuAt?.ids.length ? "View" : viewMenuAt.ids.length > 1 ? `${viewMenuAt.ids.length} parts` : parts.find((p) => p.id === viewMenuAt.ids[0])?.name
+        }
+        entries={!viewMenuAt ? [] : viewMenuAt.ids.length ? partMenu(viewMenuAt.ids) : vp.cubeMenu}
       />
       {vp.namingDialog}
       {files.dialog}
@@ -2606,19 +2774,27 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           </Banner>
         </div>
       )}
-      <ReportDialog
-        open={report !== null}
-        prefill={report?.prefill}
-        onClose={() => setReport(null)}
-        model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
-        info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
-        say={say}
-      />
+      {report !== null && (
+        <Suspense fallback={null}>
+          <ReportDialog
+            open
+            prefill={report.prefill}
+            onClose={() => setReport(null)}
+            model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
+            info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
+            say={say}
+          />
+        </Suspense>
+      )}
       {exportOpen && (
         <Suspense fallback={null}>
           <ExportDialog
             open={exportOpen}
-            onClose={() => setExportOpen(false)}
+            format={exportFormat}
+            onClose={() => {
+              setExportOpen(false);
+              setExportFormat(undefined);
+            }}
             onExported={tour.onExported}
             printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
             fitProblem={fitProblem}
@@ -2634,23 +2810,33 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         </Suspense>
       )}
       {versionsOpen && files.cloud && (
-        <Versions
-          api={api}
-          modelId={files.cloud.modelId}
-          name={doc.name}
-          viewing={files.viewing?.number ?? null}
-          onPreview={(n) => void files.previewVersion(n)}
-          onClose={() => setVersionsOpen(false)}
-          say={say}
-        />
+        <Suspense fallback={null}>
+          <Versions
+            api={api}
+            modelId={files.cloud.modelId}
+            name={doc.name}
+            viewing={files.viewing?.number ?? null}
+            onPreview={(n) => void files.previewVersion(n)}
+            onClose={() => setVersionsOpen(false)}
+            say={say}
+          />
+        </Suspense>
       )}
-      {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
+      {shareOpen && files.cloud && (
+        <Suspense fallback={null}>
+          <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />
+        </Suspense>
+      )}
       {shortcutsOpen && (
         <Suspense fallback={null}>
           <ShortcutsDialog open onClose={() => setShortcutsOpen(false)} commands={commands} />
         </Suspense>
       )}
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {aboutOpen && (
+        <Suspense fallback={null}>
+          <AboutDialog open onClose={() => setAboutOpen(false)} />
+        </Suspense>
+      )}
       <TooltipLayer />
     </>
   );

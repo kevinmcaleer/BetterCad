@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ESC, useEscape } from "@bettercad/ui";
-import { planeFrame, regions, toSketch, type Profile, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { planeFrame, regions, toSketch, type Frame, type Profile, type Sketch, type Vec2 } from "@bettercad/sketch";
 import {
   addExtrude,
   addRevolve,
   axisOf,
   crossesAxis,
+  extent,
   newId,
+  targetsOf,
+  throughAllAllowed,
   setExpr,
   profileAt,
   seedOf,
@@ -16,6 +19,7 @@ import {
   type RevolveFeature,
   type RevolveParams,
   type ExtrudeDirection,
+  type ExtrudeExtent,
   type ExtrudeFeature,
   type ExtrudeOperation,
   type ExtrudeParams,
@@ -46,6 +50,8 @@ export interface ExtrudeDeps {
   /** Sketches built up to the timeline marker, in order. */
   sketches: { id: string; name: string; sketch: Sketch }[];
   parts: Part[];
+  /** The built bodies' boxes in the world, for the bodies a cut touches. */
+  bounds?: Map<string, Box>;
   selection: string[];
   view: RefObject<View3DHandle>;
   /** Whether the Extrude tool is armed. */
@@ -69,6 +75,36 @@ export const OPERATIONS: { id: ExtrudeOperation; label: string; title: string }[
   { id: "intersect", label: "Intersect", title: "Keep only where it overlaps a body" },
 ];
 
+export const EXTENTS: { id: ExtrudeExtent; label: string; title: string }[] = [
+  { id: "distance", label: "Distance", title: "Go a set distance" },
+  { id: "all", label: "Through all", title: "Go right through every body in the way" },
+];
+
+type V3 = [number, number, number];
+export type Box = { min: V3; max: V3 };
+
+/**
+ * The bodies an extrude's solid would touch: whose boxes overlap the box round its shapes, pushed out from the sketch
+ * as far as it goes. A box test, so it can name a body the shape only passes close to; that body is left as it is.
+ */
+export function touchedBodies(frame: Frame, outlines: Vec2[][], from: number, to: number, bounds: Map<string, Box>, skip?: string): string[] {
+  const n = frame.normal;
+  const x = frame.x;
+  const y: V3 = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const lo: V3 = [Infinity, Infinity, Infinity];
+  const hi: V3 = [-Infinity, -Infinity, -Infinity];
+  for (const pts of outlines)
+    for (const [u, v] of pts)
+      for (const w of [from, to])
+        for (let i = 0; i < 3; i++) {
+          const c = frame.origin[i]! + x[i]! * u + y[i]! * v + n[i]! * w;
+          lo[i] = Math.min(lo[i]!, c);
+          hi[i] = Math.max(hi[i]!, c);
+        }
+  const eps = 1e-6;
+  return [...bounds].filter(([id, b]) => id !== skip && [0, 1, 2].every((i) => b.min[i]! <= hi[i]! + eps && b.max[i]! >= lo[i]! - eps)).map(([id]) => id);
+}
+
 const KEY = (id: string) => `profile:${id}`;
 type ProfileFeature = ExtrudeFeature | RevolveFeature;
 type Params = Partial<ExtrudeParams> & Partial<RevolveParams>;
@@ -91,11 +127,13 @@ export function useExtrude(d: ExtrudeDeps) {
   const [session, setSession] = useState<{ id: string; isNew: boolean } | null>(null);
   /** The operation follows the distance's sign until the person picks one. */
   const [autoOp, setAutoOp] = useState(true);
+  /** A cut's bodies follow what its shapes touch until the person picks them. */
+  const [autoTargets, setAutoTargets] = useState(true);
   const [hover, setHover] = useState<{ sketch: string; profile: Profile } | null>(null);
 
   const feature = d.doc.features.find((f): f is ProfileFeature => f.id === session?.id && f.type === d.kind) ?? null;
-  const live = useRef({ session, feature, autoOp });
-  live.current = { session, feature, autoOp };
+  const live = useRef({ session, feature, autoOp, autoTargets });
+  live.current = { session, feature, autoOp, autoTargets };
 
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
 
@@ -147,6 +185,24 @@ export function useExtrude(d: ExtrudeDeps) {
     return { sketch: sketchId, seeds: [seed], distance: 10, direction: "one", operation, target };
   }, []);
 
+  /** The bodies an extrude's solid touches, by their boxes. Empty when nothing is built yet. */
+  const touchedOf = useCallback(
+    (f: ExtrudeFeature): string[] => {
+      const L = deps.current;
+      const s = L.sketches.find((x) => x.id === f.sketch);
+      if (!s || !L.bounds?.size) return [];
+      const all = regionsOf.get(f.sketch) ?? [];
+      const outlines = f.seeds.map((p) => profileAt(all, p)?.points).filter((p): p is Vec2[] => !!p);
+      if (!outlines.length) return [];
+      const { from, to } = extent(f.direction, f.distance, f.distance2, f.extent === "all" && throughAllAllowed(f.operation));
+      // Reference bodies are there to design round, and hidden ones out of mind: neither is cut unless picked.
+      const ids = new Set(L.parts.filter((p) => !p.reference && !p.hidden).map((p) => p.id));
+      const own = new Map([...L.bounds].filter(([id]) => ids.has(id)));
+      return touchedBodies(planeFrame(s.sketch.plane), outlines, from, to, own, f.body.id);
+    },
+    [regionsOf],
+  );
+
   const change = useCallback(
     (c: Params) => {
       const s = live.current.session;
@@ -157,6 +213,18 @@ export function useExtrude(d: ExtrudeDeps) {
         const sk = deps.current.sketches.find((x) => x.id === f.sketch)?.sketch;
         if (sk?.plane.kind === "face" && f.operation !== "new" && f.operation !== "intersect") c = { ...c, operation: c.distance < 0 ? "cut" : "join" };
       }
+      if (f) {
+        const op = c.operation ?? f.operation;
+        // Join and New body need an end: leaving Cut or Intersect brings the distance back.
+        if (!throughAllAllowed(op) && (c.extent ?? (f.type === "extrude" ? f.extent : undefined)) === "all") c = { ...c, extent: "distance" };
+        // Join changes one body: keep the first when coming from a cut of several.
+        if (op === "join" && c.targets === undefined && (f.targets?.length ?? 0) > 1) c = { ...c, targets: f.targets!.slice(0, 1) };
+        // A cut or intersect starts on every body its shapes touch, and follows them until bodies are picked.
+        if (f.type === "extrude" && (op === "cut" || op === "intersect") && live.current.autoTargets && c.targets === undefined) {
+          const touched = touchedOf({ ...f, ...c } as ExtrudeFeature);
+          if (touched.length) c = { ...c, targets: touched, target: touched[0] };
+        }
+      }
       const label = deps.current.kind === "revolve" ? "Revolve" : "Extrude";
       store.edit(
         (doc) => (deps.current.kind === "revolve" ? updateRevolve(doc, s.id, c) : updateExtrude(doc, s.id, c)),
@@ -164,7 +232,7 @@ export function useExtrude(d: ExtrudeDeps) {
         KEY(s.id),
       );
     },
-    [store],
+    [store, touchedOf],
   );
 
   /** Keeps (or drops) the expression typed into a field (#75), in the same undo step as the value. */
@@ -177,6 +245,40 @@ export function useExtrude(d: ExtrudeDeps) {
       store.edit((doc) => setExpr(doc, s.id, path, expression), s.isNew ? label : `Edit ${f?.name ?? label.toLowerCase()}`, KEY(s.id));
     },
     [store],
+  );
+
+  /** Whether clicks on bodies pick what the step changes: once there is a step that changes bodies. */
+  const targeting = !!feature && feature.operation !== "new";
+
+  /** Picks the bodies it changes. Join takes one; Cut and Intersect any number, but at least one. */
+  const setTargets = useCallback(
+    (ids: string[]) => {
+      const f = live.current.feature;
+      if (!f || f.operation === "new") return;
+      const own = f.body.id;
+      let list = [...new Set(ids.filter((id) => id !== own && deps.current.parts.some((p) => p.id === id)))];
+      if (f.operation === "join") list = list.slice(-1);
+      if (!list.length) return;
+      setAutoTargets(false);
+      change({ targets: list, target: list[0] });
+    },
+    [change],
+  );
+
+  /** A click on a body: Join moves to it; Cut and Intersect add it, or take it out. */
+  const toggleTarget = useCallback(
+    (id: string) => {
+      const f = live.current.feature;
+      if (!f || f.operation === "new") return;
+      const now = targetsOf(f);
+      if (f.operation === "join") return setTargets([id]);
+      if (now.includes(id)) {
+        if (now.length === 1) return say("It needs at least one body to change. Pick another first.");
+        return setTargets(now.filter((x) => x !== id));
+      }
+      setTargets([...now, id]);
+    },
+    [setTargets, say],
   );
 
   const pick = useCallback(
@@ -193,6 +295,7 @@ export function useExtrude(d: ExtrudeDeps) {
         );
         setSession({ id, isNew: true });
         setAutoOp(true);
+        setAutoTargets(true);
         // Digits go straight to the distance.
         setTimeout(() => document.getElementById("bc-ex-distance")?.focus(), 0);
         return;
@@ -218,8 +321,16 @@ export function useExtrude(d: ExtrudeDeps) {
       },
       down: (p) => {
         const h = hit(p);
-        if (!h) return false;
-        pick(h);
+        if (h) {
+          pick(h);
+          return true;
+        }
+        // Off the shapes, a click on a body picks it as one the step changes.
+        const f = live.current.feature;
+        if (!f || f.operation === "new") return false;
+        const b = eng.pick(p.x, p.y, "body");
+        if (!b || b.body === f.body.id) return false;
+        toggleTarget(b.body);
         return true;
       },
       leave: () => setHover(null),
@@ -228,7 +339,7 @@ export function useExtrude(d: ExtrudeDeps) {
       eng.setInput(null);
       setHover(null);
     };
-  }, [d.active, engineOf, hit, pick]);
+  }, [d.active, engineOf, hit, pick, toggleTarget]);
 
   // The shapes in the step, shaded; the one under the pointer lit.
   const picked = useMemo(() => {
@@ -262,7 +373,8 @@ export function useExtrude(d: ExtrudeDeps) {
       const n = f.seeds.length;
       // A cut reads as a cut, and its depth without a sign: "Cut one shape 10 mm deep".
       const cut = f.operation === "cut";
-      const how = f.type === "revolve" ? `${fmt(f.angle)}°` : cut ? `${fmt(Math.abs(f.distance))} mm deep` : `${fmt(f.distance)} mm`;
+      const how =
+        f.type === "revolve" ? `${fmt(f.angle)}°` : f.extent === "all" ? "through all" : cut ? `${fmt(Math.abs(f.distance))} mm deep` : `${fmt(f.distance)} mm`;
       const verb = !L.session.isNew ? "Changed" : f.type === "revolve" ? "Revolved" : cut ? "Cut" : "Extruded";
       say(`${verb} ${n === 1 ? "one shape" : `${n} shapes`} ${how}`);
     }
@@ -283,6 +395,7 @@ export function useExtrude(d: ExtrudeDeps) {
       store.seal();
       setSession({ id, isNew: false });
       setAutoOp(false);
+      setAutoTargets(false);
     },
     [store],
   );
@@ -312,7 +425,9 @@ export function useExtrude(d: ExtrudeDeps) {
     : !sketchCount
       ? "Draw a closed shape in a sketch first. Press K to start one."
       : session
-        ? `Click more shapes to add them, or a picked one to take it out. Enter keeps the ${d.kind}, Esc cancels it.`
+        ? targeting && feature?.operation !== "join"
+          ? `Click shapes to add or take them out, and bodies to choose what it ${feature?.operation === "cut" ? "cuts" : "keeps"}. Enter keeps the ${d.kind}, Esc cancels it.`
+          : `Click more shapes to add them, or a picked one to take it out. Enter keeps the ${d.kind}, Esc cancels it.`
         : `Click inside a closed sketch shape to ${d.kind} it.`;
 
   return {
@@ -323,6 +438,10 @@ export function useExtrude(d: ExtrudeDeps) {
     feature,
     picked: picked.length,
     autoOp,
+    targeting,
+    targets: feature ? targetsOf(feature) : [],
+    setTargets,
+    toggleTarget,
     setOperation: (op: ExtrudeOperation) => {
       setAutoOp(false);
       change({ operation: op });

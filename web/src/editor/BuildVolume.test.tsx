@@ -17,7 +17,7 @@ describe("Build volume toggle", () => {
     expect(localStorage.getItem("bettercad.showBed")).toBe("0");
 
     fireEvent.click(screen.getByRole("button", { name: /^Print/ }));
-    // The Print panel loads on first use.
+    // The Print panel loads when it first opens.
     const inPrint = await screen.findByRole("checkbox", { name: "Show the build volume" });
     expect(inPrint).not.toBeChecked();
     fireEvent.click(inPrint);

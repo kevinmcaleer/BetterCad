@@ -75,6 +75,18 @@ import { readPalette, type Palette } from "./colours";
 
 export type RenderStyle = "shaded" | "lineart";
 
+/**
+ * A step's result shown while its tool is open (Fillet, Shell, Combine). A body with a mesh is drawn from that mesh in
+ * place of its own; a dim one is drawn see-through (a body a combine uses up). Picks still land on the bodies as they
+ * are, so edges and faces keep their numbers while the preview changes.
+ */
+export interface PreviewBody {
+  id: string;
+  /** The result, in world space. */
+  mesh?: BodyMesh;
+  dim?: boolean;
+}
+
 export interface EngineBody {
   id: string;
   mesh: BodyMesh;
@@ -103,6 +115,8 @@ export interface EngineInput {
   move?(p: ScreenPoint, mods: Mods, pressed: boolean): void;
   up?(p: ScreenPoint, mods: Mods): void;
   leave?(): void;
+  /** The press ended without an up: a second finger landed to pinch, or the browser took the pointer. */
+  cancel?(): void;
 }
 export interface ScreenPoint {
   x: number;
@@ -137,6 +151,11 @@ export interface EngineEvents {
   camera?: (c: CameraState) => void;
   /** A click without a drag, with what was under it (null: empty space). */
   click?: (pick: Pick | null, mods: { shift: boolean; mod: boolean }, at: { x: number; y: number }) => void;
+  /**
+   * A long press with a finger, or a right click without a drag: what was under it, and where on the page
+   * (client coordinates) to open a menu.
+   */
+  menu?: (pick: Pick | null, at: { x: number; y: number }) => void;
   /** The gizmo finished a drag: the body's new place. */
   transform?: (id: string, position: V3, rotation: V3) => void;
   /** The gizmo is dragging: live values to show. */
@@ -148,6 +167,20 @@ export interface EngineEvents {
 
 const DEG = Math.PI / 180;
 const PICK_SIZE = 15;
+/** A finger covers more than a cursor: the square it picks from, in CSS pixels. */
+const TOUCH_PICK = 33;
+/** How far a press moves before it is a drag rather than a tap or click, in CSS pixels. */
+const DRAG_MOUSE = 4;
+const DRAG_TOUCH = 10;
+/** How long a finger rests still before it counts as a right click. */
+const LONG_PRESS_MS = 500;
+
+/** The pick square in device pixels: odd, so it has a centre. */
+export function pickSize(touch: boolean, dpr: number): number {
+  if (!touch) return PICK_SIZE;
+  const n = Math.min(99, Math.max(PICK_SIZE, Math.round(TOUCH_PICK * dpr)));
+  return n % 2 ? n : n + 1;
+}
 /** The Holodeck's widest depth-of-field blur, as a fraction of the view's height. */
 const DOF_BLUR = 0.016;
 
@@ -214,6 +247,9 @@ export class Engine {
   private style: RenderStyle = "shaded";
   private bodies = new Map<string, BodyObjects>();
   private order: BodyObjects[] = [];
+  /** The preview on show: what each body it changes is drawn as, and the objects drawing it. */
+  private previewOf = new Map<string, PreviewBody>();
+  private previews: BodyObjects[] = [];
   private grid: Mesh;
   private gridMat = gridMaterial(false);
   private room: Mesh;
@@ -237,6 +273,8 @@ export class Engine {
   private idTarget: WebGLRenderTarget | null = null;
   private outline = outlineMaterial();
   private pickBuffer = new Uint8Array(PICK_SIZE * PICK_SIZE * 4);
+  /** The last press came from a finger: picks look further around the point. */
+  private touchPick = false;
   private dirty = true;
   private frame = 0;
   private disposed = false;
@@ -276,7 +314,20 @@ export class Engine {
 
   // Input
   private pointers = new Map<number, { x: number; y: number }>();
-  private press: { x: number; y: number; button: number; shift: boolean; dragged: boolean; mod: boolean; input?: boolean } | null = null;
+  private press: {
+    x: number;
+    y: number;
+    button: number;
+    shift: boolean;
+    dragged: boolean;
+    mod: boolean;
+    input?: boolean;
+    touch?: boolean;
+    id?: number;
+    /** A long press opened the menu: the rest of the press does nothing. */
+    held?: boolean;
+  } | null = null;
+  private holdTimer = 0;
   private pinch: { d: number; mid: { x: number; y: number } } | null = null;
   private hoverAt: { x: number; y: number } | null = null;
   private hoverFrame = 0;
@@ -465,7 +516,7 @@ export class Engine {
     const r = new Vector2();
     this.renderer.getDrawingBufferSize(r);
     for (const m of [this.selectMat, this.hoverMat]) m.resolution.set(this.width, this.height);
-    for (const b of this.order) (b.creases.material as LineMaterial).resolution.set(this.width, this.height);
+    for (const b of [...this.order, ...this.previews]) (b.creases.material as LineMaterial).resolution.set(this.width, this.height);
     for (const m of this.lineMats) m.resolution.set(this.width, this.height);
     this.idTarget?.dispose();
     this.idTarget = null;
@@ -486,7 +537,7 @@ export class Engine {
 
   setStyle(style: RenderStyle): void {
     this.style = style;
-    for (const b of this.order) this.applyStyle(b);
+    for (const b of [...this.order, ...this.previews]) this.applyStyle(b);
     this.invalidate();
   }
 
@@ -680,6 +731,25 @@ export class Engine {
     this.invalidate();
   }
 
+  /** Shows a step's result over the bodies it changes, or takes it away (null). See PreviewBody. */
+  setPreview(list: PreviewBody[] | null): void {
+    if (!list?.length && !this.previewOf.size) return;
+    this.clearPreviews();
+    this.previewOf = new Map((list ?? []).map((p) => [p.id, p]));
+    for (const p of list ?? []) {
+      const owner = this.bodies.get(p.id);
+      if (!p.mesh || !owner) continue;
+      // Drawn like a body, but never picked: picks stay on the body as it is. The outline takes the body's ID.
+      const o = this.makeBody({ id: p.id, mesh: p.mesh, world: true, position: { x: 0, y: 0, z: 0 }, colour: owner.body.colour }, owner.index);
+      this.pickScene.remove(o.pick);
+      o.idMaterial.color.copy(owner.idMaterial.color);
+      this.previews.push(o);
+    }
+    for (const o of [...this.order, ...this.previews]) this.applyStyle(o);
+    this.recolourAll();
+    this.invalidate();
+  }
+
   setSelection(picks: Pick[]): void {
     this.selected = picks;
     this.recolourAll();
@@ -774,8 +844,13 @@ export class Engine {
     const dpr = this.renderer.getPixelRatio();
     const W = this.width * dpr;
     const H = this.height * dpr;
-    const half = (PICK_SIZE - 1) / 2;
-    cam.setViewOffset(W, H, x * dpr - half, y * dpr - half, PICK_SIZE, PICK_SIZE);
+    const size = pickSize(this.touchPick, dpr);
+    if (this.pickTarget.width !== size) {
+      this.pickTarget.setSize(size, size);
+      this.pickBuffer = new Uint8Array(size * size * 4);
+    }
+    const half = (size - 1) / 2;
+    cam.setViewOffset(W, H, x * dpr - half, y * dpr - half, size, size);
     for (const b of this.order) {
       const [faces, lines, points] = b.pick.children as [Mesh, LineSegments, Points];
       b.pick.visible = !b.body.ghost || filter === "body";
@@ -792,12 +867,12 @@ export class Engine {
     r.setClearColor(0x000000, 0);
     r.clear();
     r.render(this.pickScene, cam);
-    r.readRenderTargetPixels(this.pickTarget, 0, 0, PICK_SIZE, PICK_SIZE, this.pickBuffer);
+    r.readRenderTargetPixels(this.pickTarget, 0, 0, size, size, this.pickBuffer);
     r.setRenderTarget(prevTarget);
     r.setClearColor(clear, alpha);
     cam.clearViewOffset();
     // The ID pass is upside down relative to the cursor's square; findPick only measures distance, so it does not matter.
-    const hit = findPick(this.pickBuffer, PICK_SIZE, filter);
+    const hit = findPick(this.pickBuffer, size, filter, this.touchPick);
     if (!hit) return null;
     const b = this.order[hit.body];
     if (!b) return null;
@@ -1089,10 +1164,12 @@ export class Engine {
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.frame);
+    window.clearTimeout(this.holdTimer);
     cancelAnimationFrame(this.hoverFrame);
     this.unlisten();
     this.gizmo.dispose();
     for (const b of this.order) this.removeBody(b);
+    this.clearPreviews();
     this.idTarget?.dispose();
     this.disposeDof();
     this.pickTarget.dispose();
@@ -1236,14 +1313,24 @@ export class Engine {
     o.edges.visible = shaded;
     o.flat.visible = !shaded;
     o.creases.visible = !shaded;
-    const ghost = !!o.body.ghost;
+    const preview = this.previews.includes(o) ? undefined : this.previewOf.get(o.body.id);
+    // A body with a preview is drawn by it; its own pick geometry stays, so picks keep their numbers.
+    if (preview?.mesh) {
+      o.shaded.visible = o.edges.visible = o.flat.visible = o.creases.visible = false;
+    }
+    const ghost = !!o.body.ghost || !!preview?.dim;
     const seeThrough = ghost || !!o.body.reference;
     for (const m of [o.shadedMaterial, o.flatMaterial]) {
       m.transparent = seeThrough;
       m.opacity = ghost ? 0.3 : seeThrough ? 0.55 : 1;
       m.depthWrite = !seeThrough;
     }
-    o.idMesh.visible = !ghost;
+    o.idMesh.visible = !ghost && !preview?.mesh;
+  }
+
+  private clearPreviews(): void {
+    for (const o of this.previews) this.removeBody(o);
+    this.previews = [];
   }
 
   private applyPalette(): void {
@@ -1283,16 +1370,18 @@ export class Engine {
     for (const s of this.selected) if (s.kind === "face") (selFaces.get(s.body) ?? selFaces.set(s.body, new Set()).get(s.body)!).add(s.index);
     const c = new Color();
     const c2 = new Color();
-    for (const o of this.order) {
+    for (const o of [...this.order, ...this.previews]) {
+      // A preview's faces are numbered afresh, so picks and checks on the body do not tint it.
+      const own = !this.previews.includes(o);
       const base = o.body.highlight ? c2.copy(p["part-highlight"]) : o.body.colour ? c2.setStyle(o.body.colour) : c2.copy(p["part-fill"]);
       if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
       const attr = o.geometry.getAttribute("color") as BufferAttribute;
       const arr = attr.array as Float32Array;
-      const faces = selFaces.get(o.body.id);
+      const faces = own ? selFaces.get(o.body.id) : undefined;
       const whole = selBodies.has(o.body.id);
-      const hoverFace = this.hover?.kind === "face" && this.hover.body === o.body.id ? this.hover.index : -1;
-      const check = this.check?.get(o.body.id);
+      const hoverFace = own && this.hover?.kind === "face" && this.hover.body === o.body.id ? this.hover.index : -1;
+      const check = own ? this.check?.get(o.body.id) : undefined;
       const checked = check && check.length === o.faceOfVertex.length ? check : undefined;
       for (let v = 0; v < o.faceOfVertex.length; v++) {
         const f = o.faceOfVertex[v]!;
@@ -1621,12 +1710,26 @@ export class Engine {
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
+  /** A point on the canvas, back on the page. */
+  private client(p: ScreenPoint) {
+    const r = this.canvas.getBoundingClientRect();
+    return { x: p.x + r.left, y: p.y + r.top };
+  }
+
+  /** Calls off the press in progress without a click: a tool that had it tidies up. */
+  private cancelPress(): void {
+    window.clearTimeout(this.holdTimer);
+    if (this.press?.input) this.input?.cancel?.();
+    this.press = null;
+  }
+
   private listen(): void {
     window.addEventListener("keydown", this.onShift);
     window.addEventListener("keyup", this.onShift);
     this.on("pointerdown", (e) => {
       const p = this.local(e);
       this.pointers.set(e.pointerId, p);
+      this.touchPick = e.pointerType === "touch";
       // The gizmo has the pointer when it is over a handle.
       if (this.gizmo.enabled && (this.gizmo.dragging || this.gizmo.axis !== null)) return;
       if (this.arrow.visible && this.onArrow(p)) {
@@ -1635,18 +1738,41 @@ export class Engine {
         return;
       }
       if (this.pointers.size === 2) {
+        // A second finger pinches: whatever the first one started is called off.
         const [a, b] = [...this.pointers.values()] as [{ x: number; y: number }, { x: number; y: number }];
         this.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
-        this.press = null;
+        this.cancelPress();
         return;
       }
-      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey, touch: e.pointerType === "touch" };
+      if (this.pointers.size > 2) return;
+      const touch = e.pointerType === "touch";
+      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey, touch };
       const taken = e.button === 0 && !!this.input?.down?.(p, mods);
-      this.press = { ...p, button: e.button, shift: e.shiftKey, mod: mods.mod, dragged: false, input: taken };
+      const press: NonNullable<Engine["press"]> = {
+        ...p,
+        button: e.button,
+        shift: e.shiftKey,
+        mod: mods.mod,
+        dragged: false,
+        input: taken,
+        touch,
+        id: e.pointerId,
+      };
+      this.press = press;
       this.canvas.setPointerCapture(e.pointerId);
+      // A finger held still stands in for a right click.
+      if (touch && !taken && this.events.menu) {
+        this.holdTimer = window.setTimeout(() => {
+          if (this.press !== press || press.dragged || this.pointers.size !== 1) return;
+          press.held = true;
+          this.setHover(null);
+          this.events.menu?.(this.pick(press.x, press.y), this.client(press));
+        }, LONG_PRESS_MS);
+      }
     });
     this.on("pointermove", (e) => {
       const p = this.local(e);
+      if (e.pointerType !== "touch" && !this.press) this.touchPick = false;
       const prev = this.pointers.get(e.pointerId);
       if (prev) this.pointers.set(e.pointerId, p);
       if (this.arrowDrag && this.section) {
@@ -1664,6 +1790,7 @@ export class Engine {
         return;
       }
       const press = this.press;
+      if (press?.held) return;
       const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey, touch: e.pointerType === "touch" };
       if (press?.input) {
         this.input?.move?.(p, mods, true);
@@ -1676,7 +1803,8 @@ export class Engine {
       if (press && prev) {
         const dx = p.x - prev.x;
         const dy = p.y - prev.y;
-        if (!press.dragged && Math.hypot(p.x - press.x, p.y - press.y) < 4) return;
+        if (!press.dragged && Math.hypot(p.x - press.x, p.y - press.y) < (press.touch ? DRAG_TOUCH : DRAG_MOUSE)) return;
+        if (!press.dragged) window.clearTimeout(this.holdTimer);
         press.dragged = true;
         this.setHover(null);
         if (press.button === 2 || press.button === 1 || (press.button === 0 && press.shift && e.altKey)) this.setCamera(pan(this.cam, dx, dy, this.height));
@@ -1700,12 +1828,22 @@ export class Engine {
         return;
       }
       const press = this.press;
+      // Only the finger or button that started the press ends it (a lifted pinch finger does not).
+      if (!press || press.id !== e.pointerId) return;
       this.press = null;
-      if (press?.input) {
-        this.input?.up?.(this.local(e), { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey });
+      window.clearTimeout(this.holdTimer);
+      const mods = { shift: e.shiftKey, mod: e.metaKey || e.ctrlKey, alt: e.altKey, touch: e.pointerType === "touch" };
+      if (press.input) {
+        if (e.type === "pointercancel") this.input?.cancel?.();
+        else this.input?.up?.(this.local(e), mods);
         return;
       }
-      if (!press || press.dragged || e.type === "pointercancel" || press.button !== 0) return;
+      if (press.dragged || press.held || e.type === "pointercancel") return;
+      if (press.button === 2 && this.events.menu) {
+        this.events.menu(this.pick(press.x, press.y), this.client(press));
+        return;
+      }
+      if (press.button !== 0) return;
       if (this.gizmo.dragging) return;
       const p = this.local(e);
       this.events.click?.(this.pick(p.x, p.y), { shift: press.shift, mod: press.mod }, p);

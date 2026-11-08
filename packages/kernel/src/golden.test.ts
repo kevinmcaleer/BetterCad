@@ -24,7 +24,7 @@ import {
   wedge,
   type TopoDS_Shape,
 } from "./occt/shapes";
-import type { PrismSpec, ProfileSeg } from "./extrude";
+import { extent, type PrismSpec, type ProfileSeg } from "./extrude";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
@@ -224,6 +224,15 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
         profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }],
         from: -8,
         to: 0,
+      }),
+    ]),
+  // Through all (#61): a 3 mm circle pushed down from the top as far as THROUGH_ALL goes, leaving a hole right through.
+  "extrude-cut-through-all": (oc) =>
+    boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
+      prismOf(oc, {
+        frame: { origin: [0, 0, 20], x: [1, 0, 0], normal: [0, 0, 1] },
+        profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }],
+        ...extent("one", -1, 0, true),
       }),
     ]),
 };
