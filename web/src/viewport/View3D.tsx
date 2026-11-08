@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { ViewCube, type MenuEntry } from "@bettercad/ui";
-import { parseHex, primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
+import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
 import { Engine, canDraw3D, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
@@ -201,7 +201,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             ghost: p.ghost,
             reference: p.reference,
             highlight: p.highlight,
-            colour: parseHex(p.colour),
+            colour: p.colour && /^#[0-9a-f]{6}$/i.test(p.colour) ? p.colour : undefined,
             warn: props.warn?.has(p.id),
           };
         }),

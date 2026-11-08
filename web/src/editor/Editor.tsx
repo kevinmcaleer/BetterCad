@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Banner,
   Button,
@@ -103,7 +103,6 @@ import { useKernel } from "../kernel/useKernel";
 import { useFiles } from "../files/useFiles";
 import { importFiles } from "../files/importFiles";
 import { useDrop } from "../files/useDrop";
-import { ExportDialog } from "../export/ExportDialog";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
@@ -168,6 +167,9 @@ const NARROW = "(max-width: 899px)";
 const TIMELINE_KEY = "bettercad.timeline";
 
 const ORIENT_KEY = "bettercad.orientWeights";
+
+/** The Export dialog loads on first use, keeping the first-paint bundle in budget. */
+const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
 function readOrientWeights(): OrientWeights {
@@ -2312,21 +2314,25 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
         say={say}
       />
-      <ExportDialog
-        open={exportOpen}
-        onClose={() => setExportOpen(false)}
-        onExported={tour.onExported}
-        printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
-        fitProblem={fitProblem}
-        doc={doc}
-        upTo={at}
-        parts={parts}
-        selection={selection}
-        call={kernel.call}
-        files={files.store}
-        say={say}
-        onGroup={(ids) => group(ids)}
-      />
+      {exportOpen && (
+        <Suspense fallback={null}>
+          <ExportDialog
+            open={exportOpen}
+            onClose={() => setExportOpen(false)}
+            onExported={tour.onExported}
+            printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
+            fitProblem={fitProblem}
+            doc={doc}
+            upTo={at}
+            parts={parts}
+            selection={selection}
+            call={kernel.call}
+            files={files.store}
+            say={say}
+            onGroup={(ids) => group(ids)}
+          />
+        </Suspense>
+      )}
       {versionsOpen && files.cloud && (
         <Versions
           api={api}

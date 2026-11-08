@@ -3,6 +3,9 @@ import { Banner, Button, Dialog, NumberField } from "@bettercad/ui";
 import { DEFLECTION, type Call, type ExportEstimate, type ExportFormat, type ExportRequest, type Methods, type Resolution } from "@bettercad/kernel";
 import type { ModelDoc, Part } from "../state/document";
 import type { FileStore } from "../files/fileStore";
+import { formatBytes } from "./format";
+
+export { formatBytes };
 
 /**
  * One dialog for every export (#86): the format, which bodies, how fine, on the bed or where they are, and a live
@@ -69,12 +72,6 @@ function load(): Choices {
   } catch {
     return DEFAULTS;
   }
-}
-
-/** "9.2 MB", "840 KB". */
-export function formatBytes(n: number): string {
-  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
 export function ExportDialog(p: ExportDialogProps) {

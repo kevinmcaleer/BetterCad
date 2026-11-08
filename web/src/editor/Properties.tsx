@@ -12,7 +12,7 @@ import {
   type Vec3,
 } from "../state/document";
 import { FitMenu, type FitChoice } from "../fit/FitMenu";
-import { LookControls } from "../looks/LookControls";
+import { lazy, Suspense } from "react";
 import type { FinishId } from "@bettercad/kernel";
 
 export interface PropertiesProps {
@@ -43,6 +43,9 @@ export interface PropertiesProps {
   /** Sets the selection's finish for renders and glTF (#196). */
   onFinish?: (id: FinishId) => void;
 }
+
+/** Colour and Finish (#196) load with the first selection, keeping the first-paint bundle in budget. */
+const LookControls = lazy(() => import("../looks/LookControls").then((m) => ({ default: m.LookControls })));
 
 const AXES: (keyof Vec3)[] = ["x", "y", "z"];
 const SIZE_LABEL: Record<keyof Vec3, string> = { x: "W", y: "D", z: "H" };
@@ -202,7 +205,11 @@ export function Properties({
               />
             </PropRow>
           )}
-          {onColour && onFinish && !parts.some((p) => p.hole) && <LookControls parts={parts} onColour={onColour} onFinish={onFinish} />}
+          {onColour && onFinish && !parts.some((p) => p.hole) && (
+            <Suspense fallback={null}>
+              <LookControls parts={parts} onColour={onColour} onFinish={onFinish} />
+            </Suspense>
+          )}
           {one?.catalogue && (
             <PropRow label="Part">
               <span className="bc-note">
