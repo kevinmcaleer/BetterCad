@@ -85,15 +85,18 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
     const directions: MenuEntry[] = DIRECTIONS.map((d) => ({ id: d.id, label: d.label, onSelect: () => x.change({ direction: d.id }) }));
     const direction = DIRECTIONS.find((d) => d.id === f.direction)!;
     const canAll = throughAllAllowed(f.operation);
-    const all = f.extent === "all" && canAll;
+    const all = f.extent === "all" && canAll && !x.wantTo;
+    const to = x.wantTo || f.extent === "to";
+    const now = to ? "to" : all ? "all" : "distance";
     const extents: MenuEntry[] = EXTENTS.map((e) => ({
       id: e.id,
       label: e.label,
-      checked: (all ? "all" : "distance") === e.id,
+      checked: now === e.id,
       disabled: e.id === "all" && !canAll,
-      onSelect: () => x.change({ extent: e.id }),
+      onSelect: () => x.setExtent(e.id),
     }));
-    const extentEntry = EXTENTS.find((e) => e.id === (all ? "all" : "distance"))!;
+    const extentEntry = EXTENTS.find((e) => e.id === now)!;
+    const upTo = f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face";
     fields = (
       <>
         <MenuButton
@@ -103,8 +106,12 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
             <Button {...p} label={extentEntry.label} title={canAll ? "How far it goes" : "How far it goes. Through all works with Cut and Intersect."} />
           )}
         />
-        {all ? (
-          f.direction === "one" && <Button label="Flip" title="Go the other way from the sketch" onClick={() => x.change({ distance: -(f.distance || 1) })} />
+        {to ? (
+          <span className="bc-armed-note" role="status">
+            {x.wantTo || !f.to ? "Click a face, edge or point" : `Up to ${upTo}, ${fmtMm(Math.abs(f.distance))}`}
+          </span>
+        ) : all ? (
+          f.direction === "one" && <Button label="Flip" title="Go the other way from the sketch" onClick={x.flip} />
         ) : (
           <span className="bc-sk-fields" onKeyDown={onFieldKey}>
             <NumberField
@@ -129,11 +136,13 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
             )}
           </span>
         )}
-        <MenuButton
-          label="Direction"
-          entries={directions}
-          trigger={(p) => <Button {...p} label={direction.label} title="Which way it goes from the sketch" />}
-        />
+        {!to && (
+          <MenuButton
+            label="Direction"
+            entries={directions}
+            trigger={(p) => <Button {...p} label={direction.label} title="Which way it goes from the sketch" />}
+          />
+        )}
       </>
     );
   }
@@ -161,3 +170,5 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
     </ArmedBar>
   );
 }
+
+const fmtMm = (v: number) => `${Math.round(v * 100) / 100} mm`;

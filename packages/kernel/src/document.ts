@@ -34,13 +34,17 @@ import {
   crossesAxis,
   extent,
   frameToLocal,
+  fromPartLocal,
   pickProfiles,
+  profilesMiddle,
+  upToDistance,
   targetsOf,
   throughAllAllowed,
   type AxisRef,
   type ExtrudeDirection,
   type ExtrudeExtent,
   type ExtrudeOperation,
+  type ExtrudeUpTo,
   type PrismSpec,
   type ProfileSeg,
   type ProfileShape,
@@ -292,8 +296,13 @@ export interface ExtrudeFeature extends FeatureBase {
   direction: ExtrudeDirection;
   /** The second side's distance, for "two". */
   distance2?: number;
-  /** A distance (the default), or through all (Cut and Intersect). Through all keeps `distance` for its side. */
+  /**
+   * A distance (the default), through all (Cut and Intersect), or "to": up to the face, edge or point in `to`, one
+   * side only. Through all keeps `distance` for its side; "to" keeps the distance it last reached there.
+   */
   extent?: ExtrudeExtent;
+  /** For extent "to": what it ends at. */
+  to?: ExtrudeUpTo;
   operation: ExtrudeOperation;
   /** The part joined to, cut or intersected (not for "new"). The first of `targets` when there are several. */
   target?: string;
@@ -761,13 +770,36 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "Its sketch is gone or comes later on the timeline");
           break;
         }
-        const { shapes, lost } = pickProfiles(sk, f.seeds);
+        const { shapes, lost, picked } = pickProfiles(sk, f.seeds);
         if (!shapes.length) {
           failed.set(f.id, "The shapes it extruded are no longer closed. Close them in the sketch, or edit the extrude.");
           break;
         }
         if (lost) failed.set(f.id, `${lost === 1 ? "One shape" : `${lost} shapes`} it extruded ${lost === 1 ? "is" : "are"} no longer closed`);
-        if (!(Math.abs(f.distance) > 1e-9)) {
+        let side = f.direction;
+        let distance = f.distance;
+        if (f.extent === "to") {
+          // To object: one side, as far as the picked face, edge or point is along the normal, where its body is now.
+          const by = f.to ? parts[find(f.to.body)] : undefined;
+          if (!f.to || !by) {
+            failed.set(
+              f.id,
+              f.to ? "The body it goes up to is gone. Pick something else, or give it a distance." : "Click a face, edge or point for it to go up to",
+            );
+            break;
+          }
+          const reach = upToDistance(planeFrame(sk.plane), profilesMiddle(picked), {
+            point: fromPartLocal(f.to.point, by),
+            normal: f.to.normal && fromPartLocal(f.to.normal, by, true),
+          });
+          if (typeof reach === "string") {
+            failed.set(f.id, reach);
+            break;
+          }
+          side = "one";
+          distance = reach;
+        }
+        if (!(Math.abs(distance) > 1e-9)) {
           failed.set(f.id, "Give it a distance other than 0 mm");
           break;
         }
@@ -776,7 +808,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "Through all works with Cut and Intersect. Give it a distance to join or make a body.");
           break;
         }
-        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, ...extent(f.direction, f.distance, f.distance2, all) };
+        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, ...extent(side, distance, f.distance2, all) };
         if (f.operation === "new") {
           if (find(f.body.id) < 0)
             parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: prismSize(spec), prism: spec });
@@ -1326,6 +1358,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const all = f.extent === "all";
       const how = f.direction === "symmetric" || (all && f.direction === "two") ? ", both ways" : f.direction === "two" ? ` and ${mm(f.distance2 ?? 0)}` : "";
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
+      if (f.extent === "to") return `Up to ${f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face"}, ${op}`;
       return `${f.extent === "all" ? "Through all" : mm(f.distance)}${how}, ${op}`;
     }
     case "fillet":
@@ -1376,7 +1409,10 @@ export function addSketch(doc: ModelDoc, plane: PlaneRef, id = newId("f"), at?: 
   return insert(doc, clampAt(doc, at), { id, type: "sketch", name, sketch: newSketch(plane, name, id) });
 }
 
-export type ExtrudeParams = Pick<ExtrudeFeature, "sketch" | "seeds" | "distance" | "direction" | "distance2" | "extent" | "operation" | "target" | "targets">;
+export type ExtrudeParams = Pick<
+  ExtrudeFeature,
+  "sketch" | "seeds" | "distance" | "direction" | "distance2" | "extent" | "to" | "operation" | "target" | "targets"
+>;
 
 /** Adds an Extrude step. Its new body (when it makes one) gets the part id `bodyId`. */
 export function addExtrude(doc: ModelDoc, params: ExtrudeParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
@@ -2079,6 +2115,7 @@ function partsRead(f: Feature): string[] {
     case "link":
       return f.parts;
     case "extrude":
+      return f.extent === "to" && f.to ? [...new Set([...targetsOf(f), f.to.body])] : targetsOf(f);
     case "revolve":
       return targetsOf(f);
     case "combine":

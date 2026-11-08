@@ -1090,6 +1090,33 @@ export class Engine {
     return { flat, normal: [n0.x, n0.y, n0.z], centroid: [centroid.x, centroid.y, centroid.z], edge: [best.x, best.y, best.z], boundary };
   }
 
+  /** A picked corner, or the middle of a picked edge, in world space (Extrude's To object). */
+  pointOf(bodyId: string, kind: "edge" | "vertex", index: number): V3 | null {
+    const o = this.bodies.get(bodyId);
+    if (!o) return null;
+    const m = o.body.mesh;
+    o.group.updateMatrixWorld(true);
+    const sum = new Vector3();
+    let n = 0;
+    const add = (arr: Float32Array, i: number) => {
+      sum.add(new Vector3(arr[i]!, arr[i + 1]!, arr[i + 2]!));
+      n++;
+    };
+    if (kind === "vertex") {
+      if (index * 3 + 2 >= m.vertices.length) return null;
+      add(m.vertices, index * 3);
+    } else {
+      const [a, b] = [m.edgeSegs[index], m.edgeSegs[index + 1]];
+      if (a === undefined || b === undefined) return null;
+      for (let s = a; s < b; s++) {
+        add(m.edgePositions, s * 6);
+        add(m.edgePositions, s * 6 + 3);
+      }
+    }
+    if (!n) return null;
+    return sum.divideScalar(n).applyMatrix4(o.group.matrixWorld).toArray() as V3;
+  }
+
   /**
    * A picture of the bodies from the current camera, for a saved file's thumbnail (#79): no grid, no overlays,
    * transparent behind. A PNG data URL, or null where WebGL can't read back.
