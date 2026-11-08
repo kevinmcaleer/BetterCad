@@ -20,6 +20,8 @@ from .settings import Settings, get_settings
 log = logging.getLogger("bettercad")
 
 # The kernel (#4) needs cross-origin isolation for SharedArrayBuffer and WASM threads.
+OUT_OF_DATE = "BetterCad has been updated. Reload the page to get the new version."
+
 ISOLATION = {"Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp"}
 
 
@@ -117,7 +119,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
     def api_not_found(rest: str) -> JSONResponse:
-        return JSONResponse({"detail": "Not found"}, status_code=404)
+        # Usually a page cached by the service worker calling an API that has since changed: say how to get the new one.
+        return JSONResponse({"detail": OUT_OF_DATE}, status_code=404)
 
     # A share link (#92) is /view/<token>: a page with Open Graph tags, so a pasted link previews in Discord and
     # Slack, that sends the browser on to the viewer at /#/view/<token>. kevsrobots.com may frame it (#93).
