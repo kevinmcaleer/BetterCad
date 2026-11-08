@@ -212,6 +212,50 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
 });
 
+test("a thumbnail has the view's colours", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await addBox(page);
+  await page.keyboard.press("Escape");
+  await page.mouse.move(1, 1);
+  await page.waitForTimeout(500);
+  const canvas = page.getByTestId("view-canvas");
+  const size = (await canvas.boundingBox())!;
+  const shot = (await canvas.screenshot()).toString("base64");
+  // Drawn at the view's own size, so each body pixel sits where it does on screen.
+  const diff = await page.evaluate(
+    async ({ shot, w, h }) => {
+      const view = (window as unknown as { __bcView: { thumbnail(w: number, h: number): string | null } }).__bcView;
+      const pixels = async (src: string) => {
+        const img = new Image();
+        img.src = src;
+        await img.decode();
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, w, h);
+        return ctx.getImageData(0, 0, w, h).data;
+      };
+      const t = await pixels(view.thumbnail(w, h)!);
+      const v = await pixels(`data:image/png;base64,${shot}`);
+      let thumb = 0;
+      let screen = 0;
+      let n = 0;
+      for (let i = 0; i < t.length; i += 4) {
+        if (t[i + 3]! < 255) continue;
+        thumb += t[i]! + t[i + 1]! + t[i + 2]!;
+        screen += v[i]! + v[i + 1]! + v[i + 2]!;
+        n++;
+      }
+      return n > 500 ? Math.abs(thumb - screen) / (n * 3) : 999;
+    },
+    { shot, w: Math.round(size.width), h: Math.round(size.height) },
+  );
+  // Linear pixels read back about 35 levels darker on a pale box.
+  expect(diff).toBeLessThan(12);
+});
+
 test("after a save to the account, a rendered picture replaces the thumbnail", async ({ page, context }) => {
   // The path tracer on a software GPU (CI) takes a while to build its shader.
   test.setTimeout(270_000);
