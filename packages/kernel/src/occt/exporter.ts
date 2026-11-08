@@ -3,6 +3,7 @@ import type { OC } from "./oc";
 import { triangles, writeStep } from "./export";
 import { build, type ModelDoc, type Part } from "../document";
 import { linkTransforms, type Mat4 } from "../pose";
+import { resolvePose } from "../drivelinks";
 import { placeOnBed, stlBytes, triangleCount, write3mf, writeStl, type MeshBody } from "../export/mesh";
 import { gltfBytes, writeGlb, writeGltf } from "../export/gltf";
 import { fileName } from "../bcad";
@@ -59,11 +60,11 @@ export class Exporter {
   ) {}
 
   private pick(r: ExportRequest): { parts: Part[]; skipped: number; moves: Map<string, Mat4> } {
-    const { parts, joints, links } = build(r.doc, r.upTo);
+    const { parts, joints, links, drives } = build(r.doc, r.upTo);
     // Each body's move from home, when posed: its link's.
     const moves = new Map<string, Mat4>();
     if (r.posed && r.doc.pose) {
-      const byLink = linkTransforms(joints, r.doc.pose);
+      const byLink = linkTransforms(joints, resolvePose(drives, r.doc.pose));
       for (const l of links) {
         const m = byLink.get(l.id);
         if (m) for (const id of l.parts) moves.set(id, m);
@@ -127,7 +128,7 @@ export class Exporter {
    * bought rather than printed still has a shape and a weight.
    */
   private robot(r: ExportRequest & { name: string }, cancelled: () => boolean) {
-    const { parts, links, joints } = build(r.doc, r.upTo);
+    const { parts, links, joints, drives } = build(r.doc, r.upTo);
     if (!joints.length) throw new KernelError("failed", "Add a joint first to export a robot.");
     const linkOf = new Map<string, string>();
     for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
@@ -139,7 +140,7 @@ export class Exporter {
         return { id: p.id, name: p.name, link: linkOf.get(p.id), colour: p.colour, triangles: this.mesh(p, r.deflection).triangles, mass: masses.get(p.id) };
       });
     if (!bodies.length) throw new KernelError("failed", "There is nothing to export yet.");
-    return buildUrdf(bodies, links, joints, { name: r.name, rosPackage: r.rosPackage });
+    return buildUrdf(bodies, links, joints, { name: r.name, rosPackage: r.rosPackage, drives });
   }
 
   estimate(r: ExportRequest, cancelled: () => boolean = () => false): ExportEstimate {

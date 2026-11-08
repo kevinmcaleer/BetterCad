@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { Button, NumberField } from "@bettercad/ui";
-import { JOINT_KINDS, clampJoint, jointValue, movable, type JointFeature, type Pose } from "../state/document";
+import { JOINT_KINDS, clampJoint, jointValue, movable, type BuiltDrive, type JointFeature, type Pose } from "../state/document";
 
 export interface PoseControlsProps {
   joints: JointFeature[];
@@ -11,6 +11,13 @@ export interface PoseControlsProps {
   onCommit: (id: string, value: number) => void;
   /** Puts every joint home; left out when there is only one joint's controls to show. */
   onHome?: () => void;
+  /** Drive links (#194): a driven joint says what drives it, and a driver can play through its range. */
+  drives?: BuiltDrive[];
+  /** The joint playing now, if one is. */
+  playing?: string | null;
+  onPlay?: (id: string | null) => void;
+  /** Every joint's name, for "Driven by". */
+  nameOf?: (id: string) => string;
 }
 
 /** The range a joint's slider covers: its limits, or a whole turn for a wheel. */
@@ -20,7 +27,7 @@ const range = (j: JointFeature) => (j.kind === "continuous" ? { min: -180, max: 
  * Posing (#173): a slider and a field for each joint that moves, in degrees or mm and kept to its limits. Trying the
  * mechanism isn't a step on the timeline: the pose is saved with the view.
  */
-export function PoseControls({ joints, pose, onChange, onCommit, onHome }: PoseControlsProps) {
+export function PoseControls({ joints, pose, onChange, onCommit, onHome, drives = [], playing = null, onPlay, nameOf }: PoseControlsProps) {
   // The last value a slider moved to, so letting go keeps it even before the new pose comes back round.
   const last = useRef(new Map<string, number>());
   const moving = joints.filter(movable);
@@ -38,9 +45,12 @@ export function PoseControls({ joints, pose, onChange, onCommit, onHome }: PoseC
           last.current.delete(j.id);
           onCommit(j.id, clampJoint(j, x));
         };
+        const by = drives.find((d) => d.driven === j.id);
+        const drivesOthers = !by && drives.some((d) => d.driver === j.id);
         return (
           <fieldset key={j.id} className="bc-pose-joint">
             <legend className="bc-pose-name">{`${j.name}, ${kind.toLowerCase()}`}</legend>
+            {by && <p className="bc-pose-driven">{`Driven by ${nameOf?.(by.driver) ?? "another joint"}`}</p>}
             <input
               type="range"
               className="bc-pose-slider"
@@ -69,6 +79,15 @@ export function PoseControls({ joints, pose, onChange, onCommit, onHome }: PoseC
               onChange={(x) => onChange(j.id, clampJoint(j, x))}
               onCommit={commit}
             />
+            {drivesOthers && onPlay && (
+              <Button
+                icon="stepForward"
+                label={playing === j.id ? "Stop" : "Play"}
+                title={playing === j.id ? "Stop playing (Esc)" : `Turn ${j.name} through its range to watch the drive`}
+                size="dense"
+                onClick={() => onPlay(playing === j.id ? null : j.id)}
+              />
+            )}
           </fieldset>
         );
       })}

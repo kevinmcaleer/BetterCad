@@ -29,3 +29,26 @@
 .bc-pose-joint .bc-field {
   width: 88px;
 }
+.bc-pose-driven {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--bc-color-muted);
+}
+.bc-pose-joint > .bc-btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+/* Drive links (#194): the dialog's fields, label beside each. */
+.bc-drive {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--bc-space-3) var(--bc-space-4);
+}
+.bc-drive > .bc-check,
+.bc-drive > .bc-note,
+.bc-drive > .bc-field {
+  grid-column: 1 / -1;
+}
