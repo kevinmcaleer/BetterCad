@@ -60,9 +60,32 @@ Fixtures work the same way, with `NIGHTLY=1 UPDATE_GOLDEN=1 npm run test:nightly
 
 ## Pull requests
 
-The [pull request template](.github/pull_request_template.md) asks for What, Why, How tested, Screenshots and Budget
-impact. Screenshots for UI changes can come from the component gallery (`#/gallery` in `make dev`). CI comments with
+The [pull request template](.github/pull_request_template.md) asks for What, Why, the release note, How tested,
+Screenshots and Budget impact. Screenshots for UI changes can come from the component gallery (`#/gallery` in `make dev`). CI comments with
 the performance budgets; say in the description if a number moved on purpose.
+
+## Release notes
+
+Every pull request that changes something people see adds one release note: a Markdown file in
+[`web/src/whatsnew/notes/`](web/src/whatsnew/notes). After an update, the app shows a small card naming the new
+features, and Help → What's new lists them all.
+
+- Name the file `YYYY-MM-DD-short-name.md`, with the day you open the pull request, in lower case with hyphens:
+  `2026-11-08-mirror.md`. One file per pull request, so pull requests never conflict over it.
+- The first line is the feature name as a heading, in sentence case, 60 characters at most: `# Mirror across a face`.
+- Below it, a sentence or two (or a short `- ` list) on what you can now do, written for the person using BetterCad,
+  not for developers. `**bold**` and `` `code` `` work; nothing else does. 400 characters at most.
+- A fix to something already released can skip the note, or say what now works ("Paper renders keep their colours").
+  CI-only, test-only and docs-only changes don't need one.
+- A test (`web/src/whatsnew/notes.test.ts`) checks every file against these rules.
+
+```md
+# Mirror across a face
+
+Mirror bodies, features or a whole component across a face or an origin plane.
+```
+
+`CHANGELOG.md` stays the per-version summary for a tagged release.
 
 ## Writing UI text
 
