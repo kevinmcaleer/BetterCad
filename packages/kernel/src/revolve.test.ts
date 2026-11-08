@@ -118,7 +118,16 @@ describe("revolve", () => {
   });
 
   it("reports a pick that lands on no shape", () => {
-    const d = addRevolve(sketched(), params({ seeds: [[10, 15], [40, 40]] }), "r1");
+    const d = addRevolve(
+      sketched(),
+      params({
+        seeds: [
+          [10, 15],
+          [40, 40],
+        ],
+      }),
+      "r1",
+    );
     expect(build(d).failed.get("r1")).toBe("One shape it revolved is no longer closed");
   });
 
