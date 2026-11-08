@@ -5,7 +5,9 @@ import { planeFrame } from "@bettercad/sketch";
 import { addPart, newDoc, build, type ExtrudeFeature, type Part } from "../state/document";
 import { ExtrudeBar } from "./ExtrudeUI";
 import { touchedBodies, type Box, type ExtrudeSession } from "./useExtrude";
-import { arrowOf, dragTo, flipOf } from "./arrow";
+import { Box3, type Mesh } from "three";
+import { ExtrudeArrow, arrowOf, dragTo, flipOf, ghostSpan } from "./arrow";
+import type { Engine } from "../viewport/engine";
 
 const parts: Part[] = build(addPart(addPart(newDoc(), "box", "a"), "box", "b")).parts;
 
@@ -214,5 +216,23 @@ describe("the extrude arrow", () => {
     expect(flipOf(f({ direction: "two", distance2: 3 }))).toEqual({ distance: 3, distance2: 10 });
     expect(flipOf(f({ direction: "symmetric" }))).toBeNull();
     expect(flipOf(f({ extent: "to" }))).toBeNull();
+  });
+
+  it("sweeps a ghost of the shapes as far as the drag has gone, cut short for through all", () => {
+    expect(ghostSpan(f({ distance: -4 }), 30)).toEqual({ from: -4, to: 0 });
+    expect(ghostSpan(f({ direction: "symmetric", distance: 6 }), 30)).toEqual({ from: -3, to: 3 });
+    expect(ghostSpan(f({ extent: "all", operation: "cut", distance: -1 }), 30)).toEqual({ from: -30, to: 0 });
+
+    const overlays: Mesh[] = [];
+    const eng = { addOverlay: (o: Mesh) => overlays.push(o), removeOverlay: vi.fn(), invalidate: vi.fn(), pixelSize: () => 1 } as unknown as Engine;
+    const a = new ExtrudeArrow(eng);
+    a.setGhost({ frame, shapes: [square], from: -4, to: 0, cut: true });
+    const ghost = (overlays[0]!.children as Mesh[]).find((c) => c.isMesh && c.visible && c.geometry.attributes.position);
+    const box = new Box3().setFromBufferAttribute(ghost!.geometry.attributes.position as never);
+    expect(box.min.toArray()).toEqual([0, 0, 1]);
+    expect(box.max.toArray()).toEqual([10, 10, 5]);
+    a.setGhost(null);
+    expect(ghost!.visible).toBe(false);
+    a.dispose();
   });
 });

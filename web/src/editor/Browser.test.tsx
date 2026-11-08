@@ -244,10 +244,59 @@ describe("components (#171)", () => {
   it("shows an empty component, and the active one's radio on", () => {
     const m = nested({ links: [...nested().links!, { id: "L3", name: "Component 3", parts: [] }], active: "L3" });
     const items = browserItems(m);
-    expect(items.find((i) => i.id === "L3")).toMatchObject({ note: "Empty", active: true, toggles: ["active"] });
+    expect(items.find((i) => i.id === "L3")).toMatchObject({ note: "Empty", active: true, toggles: ["hidden", "active"], hidden: false });
     expect(items.find((i) => i.id === "L1")).toMatchObject({ active: false });
     expect(items[0]).toMatchObject({ toggles: ["active"], active: false });
-    expect(browserItems(nested({ readOnly: true })).find((i) => i.id === "L1")).toMatchObject({ toggles: [] });
+    expect(browserItems(nested({ readOnly: true })).find((i) => i.id === "L1")).toMatchObject({ toggles: ["hidden"] });
+  });
+
+  it("shuts a component's eye once everything in it, and in the components inside it, is hidden", () => {
+    const hide = (m: BrowserModel, ids: string[]) => ({
+      ...m,
+      parts: m.parts.map((p) => (ids.includes(p.id) ? { ...p, hidden: true } : p)),
+      sketches: m.sketches.map((s) => (ids.includes(s.id) ? { ...s, hidden: true } : s)),
+    });
+    const eye = (m: BrowserModel, id: string) => browserItems(m).find((i) => i.id === id)!.hidden;
+    expect(eye(hide(nested(), ["a", "b"]), "L1")).toBe(false);
+    expect(eye(hide(nested(), ["a", "b", "d"]), "L1")).toBe(false);
+    expect(eye(hide(nested(), ["d"]), "L2")).toBe(false);
+    expect(eye(hide(nested(), ["d", "s1"]), "L2")).toBe(true);
+    expect(eye(hide(nested(), ["a", "b", "d", "s1"]), "L1")).toBe(true);
+  });
+
+  it("hides everything in a component from its eye, as one step, and shows it again", async () => {
+    const onBodiesHidden = vi.fn();
+    const props = {
+      selection: [],
+      onSelect: () => {},
+      onAdd: () => {},
+      onToggle: () => {},
+      onActivate: () => {},
+      onBodiesHidden,
+      onSketchesHidden: () => {},
+      onOrigin: () => {},
+      onPicked: () => {},
+      onSelectSketch: () => {},
+      onRename: () => {},
+      onRenameModel: () => {},
+      onRenameSketch: () => {},
+      onReorder: () => {},
+      onSketchOn: () => {},
+      partMenu: () => [],
+      sketchMenu: () => [],
+      renameId: null,
+      onRenameIdChange: () => {},
+    };
+    const { rerender } = render(<BrowserPanel model={nested()} {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "Hide Component 1" }));
+    expect(onBodiesHidden).toHaveBeenLastCalledWith(["a", "b", "d", "s1"], true, "Component 1");
+    // The radio stays beside the eye.
+    expect(screen.getByRole("button", { name: "Activate Component 1" })).toBeInTheDocument();
+    const all = nested();
+    const hidden = { ...all, parts: all.parts.map((p) => ({ ...p, hidden: p.id !== "c" })), sketches: all.sketches.map((s) => ({ ...s, hidden: true })) };
+    rerender(<BrowserPanel model={hidden} {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show Component 2" }));
+    expect(onBodiesHidden).toHaveBeenLastCalledWith(["d", "s1"], false, "Component 2");
   });
 
   it("selects a component's bodies with those inside it, and a Bodies folder's own", () => {

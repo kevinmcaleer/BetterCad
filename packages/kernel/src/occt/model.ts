@@ -61,6 +61,8 @@ export interface ModelResult {
   /** Features the kernel could not build, with the reason. */
   failed: [string, string][];
   ms: number;
+  /** How many body steps (joins, cuts, fillets…) were made rather than reused, for timings and tests. */
+  made: number;
 }
 
 /** Everything a part's shape depends on, for caches. */
@@ -84,6 +86,28 @@ export const partKey = (p: Part, q: Quality) =>
     p.ops ?? null,
     q,
   ]);
+
+/** How many part-way bodies to keep: enough for a few bodies' worth of steps while one is dragged or undone. */
+export const STEPS_KEPT = 240;
+
+/**
+ * A short key for a body after one more step: a hash of the key so far and the step. Chained so a body with many
+ * steps doesn't need a key as long as all of them.
+ */
+export function chain(key: string, op: unknown): string {
+  const s = key + JSON.stringify(op);
+  // cyrb53: a fast 53-bit string hash, far from colliding at the few hundred keys kept.
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
 
 const MESH_REFUSAL: Partial<Record<string, string>> = {
   fillet: "Imported meshes can't be filleted; use a STEP file for that",
@@ -124,6 +148,8 @@ export class ModelBuilder {
   /** Box trees over each body's mesh, for the clash sweep (#179). */
   private trees = new Map<string, MeshTree>();
   private used = new Set<string>();
+  /** Bodies part way through their steps, by what made them so far (see `chain`), least recently used first. */
+  private steps = new Map<string, { shape: TopoDS_Shape; open: boolean; failures: [string, string][] }>();
 
   constructor(private oc: OC) {}
 
@@ -163,6 +189,7 @@ export class ModelBuilder {
 
   /** Steps whose join, cut or intersection could not be made on the last build (the part is built without them). */
   private opFailures: [string, string][] = [];
+  private made = 0;
 
   /** The solid for one part, made fresh or from the cache. */
   solid(p: Part, quality: Quality = "fast"): { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> } {
@@ -171,9 +198,26 @@ export class ModelBuilder {
     let hit = this.cache.get(k);
     if (!hit) {
       const oc = this.oc;
+      const ops = p.ops ?? [];
+      // The body as it stood after each of its steps, so changing one step (dragging a cut's arrow) redoes that step
+      // and the ones after it, not the whole body from scratch.
+      const keys: string[] = [];
+      let at = partKey({ ...p, ops: undefined }, quality);
+      for (const o of ops) keys.push((at = chain(at, o)));
+      let from = ops.length;
+      while (from > 0 && !this.steps.has(keys[from - 1]!)) from--;
       let local: TopoDS_Shape;
       let open = false;
-      if (p.imported) {
+      const failures: [string, string][] = [];
+      const kept = from > 0 ? this.steps.get(keys[from - 1]!)! : null;
+      if (kept) {
+        // Most recently used last, so the oldest go first when the store is full.
+        this.steps.delete(keys[from - 1]!);
+        this.steps.set(keys[from - 1]!, kept);
+        local = kept.shape;
+        open = kept.open;
+        failures.push(...kept.failures);
+      } else if (p.imported) {
         const im = this.importedShape(p);
         local = im.shape;
         open = im.open;
@@ -183,7 +227,9 @@ export class ModelBuilder {
         const src = this.solid(p.copy.body, quality).shape;
         local = unplace(oc, copyShape(oc, src, p.copy.by), { position: p.copy.at });
       } else local = primitive(oc, p);
-      for (const o of p.ops ?? []) {
+      for (let i = from; i < ops.length; i++) {
+        const o = ops[i]!;
+        this.made++;
         try {
           if (p.imported?.mesh && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
           if (open && (o.op === "join" || o.op === "cut" || o.op === "intersect"))
@@ -193,7 +239,7 @@ export class ModelBuilder {
           // the way in and made last on the way out.
           const flips = opMoves(o);
           let s = local;
-          for (let i = flips.length - 1; i >= 0; i--) s = copyShape(oc, s, undoMove(flips[i]!));
+          for (let j = flips.length - 1; j >= 0; j--) s = copyShape(oc, s, undoMove(flips[j]!));
           if (o.op === "fillet" || o.op === "chamfer") s = (o.op === "fillet" ? fillet : chamfer)(oc, s, o.refs ?? [], o.size ?? 0);
           else if (o.op === "shell") s = shell(oc, s, o.refs ?? [], o.size ?? 0, o.outside);
           else if (o.op === "pushpull") s = pushPull(oc, s, o.refs?.[0] ?? -1, o.size ?? 0);
@@ -210,9 +256,12 @@ export class ModelBuilder {
           for (const m of flips) s = copyShape(oc, s, m);
           local = s;
         } catch (e) {
-          this.opFailures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
+          failures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
         }
+        this.steps.set(keys[i]!, { shape: local, open, failures: [...failures] });
       }
+      while (this.steps.size > STEPS_KEPT) this.steps.delete(this.steps.keys().next().value!);
+      this.opFailures.push(...failures);
       const shape = place(oc, local, { position: p.position, rotation: p.rotation });
       hit = { shape, body: { mesh: tessellate(oc, shape, quality), measure: measure(oc, shape) } };
       this.cache.set(k, hit);
@@ -234,6 +283,7 @@ export class ModelBuilder {
     const out: [string, string][] = [...failed];
     this.used.clear();
     this.opFailures = [];
+    this.made = 0;
     for (const p of parts) {
       if (cancelled()) throw new KernelError("cancelled", "Stopped.");
       try {
@@ -247,7 +297,7 @@ export class ModelBuilder {
     out.push(...this.opFailures);
     // Keep the cache to what the last few builds used, so memory stays flat across many edits.
     if (this.cache.size > 400) for (const k of this.cache.keys()) if (!this.used.has(k)) this.cache.delete(k);
-    return { bodies, failed: out, ms: performance.now() - t0 };
+    return { bodies, failed: out, ms: performance.now() - t0, made: this.made };
   }
 
   /** Mating faces (#184) between the bodies that print, as built up to `upTo`. */
