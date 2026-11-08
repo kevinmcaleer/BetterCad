@@ -12,7 +12,17 @@ import {
   type RowToggle,
   type TreeItem,
 } from "@bettercad/ui";
-import { KIND_LABEL, ORIENT_WEIGHTS, PRIMITIVES, type OrientWeights, type Feature, type ModelDoc, type Part, type PartKind } from "../state/document";
+import {
+  KIND_LABEL,
+  ORIENT_WEIGHTS,
+  PRIMITIVES,
+  type OrientWeights,
+  type BuiltLink,
+  type Feature,
+  type ModelDoc,
+  type Part,
+  type PartKind,
+} from "../state/document";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
@@ -53,6 +63,8 @@ export interface LeftPanelProps {
   onRenameIdChange: (id: string | null) => void;
   /** The browser's sketches, origin planes and their eyes. */
   sketches: BrowserSketch[];
+  /** Links (#171) as built. */
+  links?: BuiltLink[];
   origin: OriginItem[];
   onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
@@ -129,7 +141,7 @@ function PanelBody(p: LeftPanelProps) {
 function PartsPanel(p: LeftPanelProps) {
   return (
     <BrowserPanel
-      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin, readOnly: p.readOnly }}
+      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin, readOnly: p.readOnly, links: p.links }}
       selection={p.selection}
       onSelect={p.onSelect}
       onAdd={p.onAdd}

@@ -96,6 +96,11 @@ export function freedom(sketch: Sketch): Freedom {
       case "horizontal":
       case "vertical": {
         const k = c.type === "horizontal" ? 1 : 0;
+        if (c.b) {
+          const [a, b] = [c.e, c.b];
+          add([...px(a), ...px(b)], (v) => pt(v, a)[k] - pt(v, b)[k]);
+          return;
+        }
         const [a, b] = ends(c.e);
         add(lineParams(c.e), (v) => pt(v, a)[k] - pt(v, b)[k]);
         return;

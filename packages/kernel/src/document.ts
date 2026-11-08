@@ -130,6 +130,8 @@ export interface Part {
   catalogue?: CataloguePart;
   /** Its colour (#196), sRGB "#rrggbb"; none means the theme's part colour. From its look. */
   colour?: string;
+  /** The link step (#171) it belongs to; none means the base link. Copies keep their original's link. */
+  link?: string;
   /** Its finish in renders and glTF (#196). From its look. */
   finish?: FinishId;
   /** A mirrored or turned copy of another body (#69), made from it as it stood. */
@@ -239,6 +241,15 @@ export interface ResizeFeature extends FeatureBase {
   type: "resize";
   parts: string[];
   size: Partial<Vec3>;
+}
+/**
+ * A link (#171): bodies named as one rigid part of a robot, without joining them. Each keeps its own look and still
+ * prints and exports on its own. A body is in at most one link: a later link takes it from an earlier one. Bodies in no
+ * link are in the base link.
+ */
+export interface LinkFeature extends FeatureBase {
+  type: "link";
+  parts: string[];
 }
 export interface DeleteFeature extends FeatureBase {
   type: "delete";
@@ -425,6 +436,7 @@ export interface GearFeature extends FeatureBase {
 }
 
 export type Feature =
+  | LinkFeature
   | GearFeature
   | MountFeature
   | ImportFeature
@@ -513,6 +525,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   insert: "Insert part",
   mount: "Mount",
   gear: "Gear",
+  link: "Link",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -534,9 +547,19 @@ export interface Build {
   sketches: { id: string; name: string; sketch: Sketch }[];
   /** Features that could not apply, with the reason: the part they change is gone. */
   failed: Map<string, string>;
+  /** Links (#171) up to the marker, in timeline order, with the bodies in each now. Empty links are left out. */
+  links: BuiltLink[];
+}
+
+/** A link as built: its step's id and name, and its bodies. */
+export interface BuiltLink {
+  id: string;
+  name: string;
+  parts: string[];
 }
 
 const BUILT = new Set<string>([
+  "link",
   "gear",
   "mount",
   "import",
@@ -566,6 +589,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const failed = new Map<string, string>();
   /** Gear steps as built, for gears that mesh with them (#192). */
   const gearSteps = new Map<string, GearFeature>();
+  /** Link steps as built (#171), in order. */
+  const linkSteps: LinkFeature[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -664,6 +689,16 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           p[key] = { ...p[key], ...change };
           if (f.type === "move" && f.rotation) p.rotation = { ...ZERO, ...p.rotation, ...f.rotation };
         }
+        break;
+      }
+      case "link": {
+        const here = f.parts.filter((id) => find(id) >= 0);
+        if (!here.length) failed.set(f.id, "The bodies it links are gone");
+        for (const id of here) {
+          const i = find(id);
+          parts[i] = { ...parts[i]!, link: f.id };
+        }
+        linkSteps.push(f);
         break;
       }
       case "delete":
@@ -908,7 +943,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       if (why) failed.set(id, why);
     }
   }
-  return { parts: looked, sketches, failed };
+  const links = linkSteps.map((l) => ({ id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id) })).filter((l) => l.parts.length);
+  return { parts: looked, sketches, failed, links };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
@@ -1175,6 +1211,8 @@ export function featureParts(f: Feature): string[] {
       return [f.part.id];
     case "gear":
       return [f.body.id];
+    case "link":
+      return [];
     default:
       return f.parts;
   }
@@ -1198,6 +1236,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "link":
+      return `${who(f.parts)}, one rigid link`;
     case "gear": {
       const a = f.mesh && doc.features.find((g): g is GearFeature => g.id === f.mesh!.gear && g.type === "gear");
       if (a) return `${f.gear.teeth} teeth, meshes with ${a.name}, ${ratioText(a.gear.teeth, f.gear.teeth).split(",")[0]}`;
@@ -1988,6 +2028,7 @@ function partsRead(f: Feature): string[] {
     case "resize":
     case "delete":
     case "pattern":
+    case "link":
       return f.parts;
     case "extrude":
     case "revolve":
@@ -2245,4 +2286,9 @@ export function updatePattern(doc: ModelDoc, id: string, change: Partial<Pattern
       return next;
     }),
   };
+}
+
+/** Makes a link (#171) of bodies: "Link 1". The bodies leave any link they were in. */
+export function addLink(doc: ModelDoc, parts: string[], id = newId("f"), at?: number): ModelDoc {
+  return insert(doc, clampAt(doc, at), { id, type: "link", name: nextNamed(doc, "Link"), parts: [...parts] });
 }

@@ -38,6 +38,7 @@ import {
   applyProfile,
   profileFromSettings,
   PRIMITIVES,
+  addLink,
   changeParts,
   duplicateParts,
   featureParts,
@@ -103,7 +104,6 @@ import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
 import { ParamsPanel } from "./ParamsPanel";
 import { CommandPalette } from "./CommandPalette";
-import { ShortcutsDialog } from "./ShortcutsDialog";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { useFiles } from "../files/useFiles";
@@ -113,19 +113,16 @@ import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
-import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
+import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
-import { FinishBar } from "../finish/FinishBar";
 import { usePushPull } from "../finish/usePushPull";
-import { PushPullBar } from "../finish/PushPullBar";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
-import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
 import { usePattern } from "../pattern/usePattern";
@@ -161,6 +158,11 @@ const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
+// The sketch palette only shows while a sketch is open, so it loads then.
+const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
+const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
+const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
+const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -181,8 +183,9 @@ const TIMELINE_KEY = "bettercad.timeline";
 
 const ORIENT_KEY = "bettercad.orientWeights";
 
-/** The Export dialog loads on first use, keeping the first-paint bundle in budget. */
+/** The Export and Keyboard shortcuts dialogs load on first use, keeping the first-paint bundle in budget. */
 const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
 function readOrientWeights(): OrientWeights {
@@ -594,6 +597,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [record, say],
   );
 
+  // Links (#171): bodies named as one rigid part of a robot, kept as separate bodies.
+  const makeLink = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
+      const id = newId("f");
+      const name = addLink(live.current.doc, ids, id).features.find((f) => f.id === id)!.name;
+      record((d, at) => addLink(d, ids, id, at), `Make ${name}`);
+      say(`Made ${name} of ${ids.length === 1 ? "1 body" : `${ids.length} bodies`}. They stay separate bodies.`);
+    },
+    [record, say],
+  );
+  const selectLink = useCallback(
+    (ids: string[]) => {
+      const part = live.current.parts.find((p) => ids.includes(p.id) && p.link);
+      if (!part) return say("That body isn't in a link", true);
+      setSelection(live.current.parts.filter((p) => p.link === part.link).map((p) => p.id));
+    },
+    [say],
+  );
+
   const duplicate = useCallback(
     (ids: string[]) => {
       if (!ids.length) return;
@@ -999,6 +1022,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     addRack: (_id: string) => {},
     fitBelt: (_ids: string[]) => {},
     meshGears: (_ids: string[]) => {},
+    makeLink: (_ids: string[]) => {},
+    selectLink: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
     suppressActive: () => {},
@@ -1041,6 +1066,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     addRack: addRackTo,
     fitBelt: beltPicked,
     meshGears: meshPicked,
+    makeLink,
+    selectLink,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
@@ -1294,6 +1321,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().meshGears(sel()),
         when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.body.id === id)),
         keywords: "gear pair centre distance drive ratio",
+      },
+      {
+        id: "link.make",
+        scope: "model",
+        label: "Make link",
+        group: "Edit",
+        icon: "link",
+        run: () => h().makeLink(sel()),
+        when: hasSel,
+        keywords: "robot rigid link body group joint urdf",
+      },
+      {
+        id: "link.select",
+        scope: "model",
+        label: "Select link",
+        group: "Edit",
+        icon: "link",
+        run: () => h().selectLink(sel()),
+        when: () => live.current.parts.some((p) => sel().includes(p.id) && !!p.link),
+        keywords: "robot rigid link bodies",
       },
       {
         id: "place.turn",
@@ -1959,6 +2006,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
         ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
+      { id: "make-link", label: "Make link", icon: "link", onSelect: () => makeLink(ids) },
+      ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select link", icon: "link" as const, onSelect: () => selectLink(ids) }] : []),
       {
         id: "reference",
         label: chosen.length && chosen.every((p) => p.reference) ? "Make printable" : "Make a reference",
@@ -2282,6 +2331,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               renameId={renameId}
               onRenameIdChange={setRenameId}
               sketches={browserSketches}
+              links={built.links}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
@@ -2349,11 +2399,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   )}
                 </Suspense>
               )}
-              {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
-              {tool === "pushpull" && (
-                <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
+              {tool === "hole" && (
+                <Suspense fallback={null}>
+                  <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
               )}
-              {(tool === "fillet" || tool === "shell") && <FinishBar f={finish} onCancel={() => setTool("select")} />}
+              {tool === "pushpull" && (
+                <Suspense fallback={null}>
+                  <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
+              {(tool === "fillet" || tool === "shell") && (
+                <Suspense fallback={null}>
+                  <FinishBar f={finish} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {tool === "combine" && (
                 <CombineBar
                   picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
@@ -2443,7 +2503,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         }
         rightPanel={
           sketch.editing ? (
-            <SketchPanel s={sketch} />
+            <Suspense fallback={null}>
+              <SketchPanel s={sketch} />
+            </Suspense>
           ) : (
             <>
               {problemBanner}
@@ -2550,7 +2612,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         />
       )}
       {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
-      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} commands={commands} />
+      {shortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsDialog open onClose={() => setShortcutsOpen(false)} commands={commands} />
+        </Suspense>
+      )}
       <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
       <TooltipLayer />
     </>
