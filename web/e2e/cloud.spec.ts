@@ -211,3 +211,51 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   // The view keeps its own style.
   await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
 });
+
+test("after a save to the account, a rendered picture replaces the thumbnail", async ({ page, context }) => {
+  // The path tracer on a software GPU (CI) takes a while to build its shader.
+  test.setTimeout(180_000);
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.addInitScript(() => ((window as unknown as { __bcRenderThumbs: boolean }).__bcRenderThumbs = true));
+  await page.goto("/");
+  await addBox(page);
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Save to your account…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Bracket");
+  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  // The save doesn't wait for the render: it lands with the shaded PNG first.
+  await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
+  const [model] = [...server.models.values()];
+  expect(JSON.parse(model!.versions[0]!.bcad).thumbnail).toMatch(/^data:image\/png;base64,/);
+  await expect.poll(() => model!.versions[0]!.thumbnail ?? "", { timeout: 150_000 }).toMatch(/^data:image\/jpeg;base64,/);
+  // A lit box on a pale floor: mostly light, and not one flat colour.
+  const stats = await page.evaluate(async (src) => {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let sum = 0;
+    let min = 255;
+    let max = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const l = (d[i]! + d[i + 1]! + d[i + 2]!) / 3;
+      sum += l;
+      min = Math.min(min, l);
+      max = Math.max(max, l);
+    }
+    return { w: c.width, h: c.height, mean: sum / (d.length / 4), range: max - min };
+  }, model!.versions[0]!.thumbnail!);
+  expect(stats).toMatchObject({ w: 320, h: 200 });
+  expect(stats.mean).toBeGreaterThan(100);
+  expect(stats.range).toBeGreaterThan(60);
+  // The library shows the rendered picture.
+  await page.goto("/#/library");
+  const thumb = page.getByRole("button", { name: "Open Bracket" }).locator("img");
+  await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(320);
+});

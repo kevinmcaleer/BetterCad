@@ -179,6 +179,8 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     /** Saves a new version. `ifMatch` is the version this save follows; a 409 means another tab saved first. */
     save: (id: string, bcad: string, o: { note?: string; name?: string; ifMatch?: number } = {}) =>
       call<{ version: number }>("PUT", m(id), { bcad, note: o.note, name: o.name }, o.ifMatch ? { "If-Match": String(o.ifMatch) } : {}),
+    /** Replaces a version's picture with a rendered one (a PNG, JPEG or WebP data URL). */
+    setThumbnail: (id: string, version: number, thumbnail: string) => call<ModelSummary>("PUT", `${m(id)}/versions/${version}/thumbnail`, { thumbnail }),
     rename: (id: string, name: string) => call<ModelSummary>("PATCH", m(id), { name }),
     duplicate: (id: string) => call<ModelSummary>("POST", `${m(id)}/duplicate`),
     remove: (id: string, forever = false) => call<{ ok: true }>("DELETE", `${m(id)}${forever ? "?forever=true" : ""}`),

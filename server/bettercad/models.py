@@ -26,6 +26,12 @@ HASH = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 THUMB = re.compile(r"^data:(image/(?:png|jpeg|webp));base64,(.+)$", re.S)
 WRITES_PER_MINUTE = 60
 NOT_FOUND = "That model isn't here. It may have been deleted."
+THUMB_BYTES = 256 * 1024
+
+
+def tag(thumb: str) -> str:
+    """A short tag for a thumbnail, so its URL changes when a rendered picture replaces it and caches miss."""
+    return format(zlib.crc32(thumb.encode()), "08x")
 
 
 class Limiter:
@@ -79,6 +85,10 @@ class Save(BaseModel):
 
 class Rename(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+
+
+class Thumbnail(BaseModel):
+    thumbnail: str = Field(max_length=THUMB_BYTES)
 
 
 class Note(BaseModel):
@@ -155,7 +165,9 @@ def router(settings) -> APIRouter:
             "created": row["created"],
             "modified": row["modified"],
             "deleted_at": row["deleted_at"],
-            "thumbnail": f"/api/models/{row['id']}/thumbnail?v={row['version']}" if row["thumbnail"] else None,
+            "thumbnail": f"/api/models/{row['id']}/thumbnail?v={row['version']}.{tag(row['thumbnail'])}"
+            if row["thumbnail"]
+            else None,
         }
 
     def version_row(db: sqlite3.Connection, model_id: str, n: int) -> sqlite3.Row:
@@ -170,7 +182,9 @@ def router(settings) -> APIRouter:
             "size": v["size"],
             "created": v["created"],
             "note": v["note"],
-            "thumbnail": f"/api/models/{model_id}/versions/{v['number']}/thumbnail" if v["thumbnail"] else None,
+            "thumbnail": f"/api/models/{model_id}/versions/{v['number']}/thumbnail?h={tag(v['thumbnail'])}"
+            if v["thumbnail"]
+            else None,
         }
 
     def full(model: sqlite3.Row, v: sqlite3.Row) -> dict:
@@ -335,6 +349,21 @@ def router(settings) -> APIRouter:
         with db:
             add_version(db, model_id, latest, zlib.decompress(v["bcad_json"]).decode(), f"Restored version {n}")
         return {"version": latest}
+
+    @r.put("/models/{model_id}/versions/{n}/thumbnail")
+    def set_thumbnail(model_id: str, n: int, body: Thumbnail, request: Request, user: Writer) -> dict:
+        """Replaces a version's picture: the editor saves at once, then sends a rendered one when it is ready."""
+        if not THUMB.match(body.thumbnail):
+            raise HTTPException(422, "That isn't a picture.")
+        db = conn(request)
+        m = own(db, user, model_id)
+        version_row(db, model_id, n)
+        limiter.check(user.id)
+        with db:
+            db.execute("UPDATE versions SET thumbnail = ? WHERE model_id = ? AND number = ?", (body.thumbnail, model_id, n))
+            if n == m["version"]:
+                db.execute("UPDATE models SET thumbnail = ? WHERE id = ?", (body.thumbnail, model_id))
+        return summary(own(db, user, model_id))
 
     @r.get("/models/{model_id}/versions/{n}/thumbnail")
     def version_thumbnail(model_id: str, n: int, request: Request, user: CurrentUser) -> Response:
