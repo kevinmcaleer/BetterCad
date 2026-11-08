@@ -123,6 +123,8 @@ import { useMount } from "../mount/useMount";
 import { MountBar } from "../mount/MountBar";
 import { usePattern } from "../pattern/usePattern";
 import { PatternBar } from "../pattern/PatternBar";
+import { install, useInstallable, useLaunchFiles } from "../pwa/install";
+import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
@@ -738,6 +740,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (files.cloud) files.confirmThen(run);
     else void run();
   }, [api, setAccount, say, files]);
+  // Installing the app, and .bcad files it is asked to open (#95).
+  const installable = useInstallable();
+  const installApp = useCallback(() => {
+    void install().then((done) => done && say("Installed BetterCad. Open it from your apps."));
+  }, [say]);
+  const openLaunched = useCallback(
+    (handle: FileHandle) =>
+      void handle.getFile().then(
+        (file) => filesRef.current.show({ name: handle.name, file, handle }),
+        () => say("That file didn't open.", true),
+      ),
+    [say],
+  );
+  useLaunchFiles(openLaunched);
   // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
   const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
@@ -1898,6 +1914,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onDownloadBcad={files.saveToDisk}
             onExport={() => setExportOpen(true)}
             onSignOut={signOut}
+            onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}
             theme={theme}
             onTheme={setTheme}
