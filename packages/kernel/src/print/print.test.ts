@@ -5,9 +5,9 @@ import { estimateWeight, formatWeight, materialOf } from "./materials";
 const bar = (x: number, y = 10, z = 10): Box3 => ({ min: [-x / 2, -y / 2, 0], max: [x / 2, y / 2, z] });
 
 describe("printers", () => {
-  it("a 300 mm bar fits no preset, but fits a big enough custom printer", () => {
-    for (const p of PRINTERS) expect(fitCheck(bar(300), p)).toEqual([{ axis: "x", over: 300 - p.x }]);
-    expect(fitCheck(bar(300), printerOf({ printer: "custom", custom: { x: 350, y: 350, z: 350 } }))).toEqual([]);
+  it("a 310 mm bar fits no preset, but fits a big enough custom printer", () => {
+    for (const p of PRINTERS) expect(fitCheck(bar(310), p)).toEqual([{ axis: "x", over: 310 - p.x }]);
+    expect(fitCheck(bar(310), printerOf({ printer: "custom", custom: { x: 350, y: 350, z: 350 } }))).toEqual([]);
   });
 
   it("names the axis and the overshoot", () => {
@@ -34,8 +34,10 @@ describe("printers", () => {
   });
 
   it("falls back to the default printer", () => {
-    expect(printerOf(undefined).id).toBe("bambu-a1");
-    expect(printerOf({ printer: "gone" }).id).toBe("bambu-a1");
+    expect(printerOf(undefined).id).toBe("prusa-core-one");
+    expect(printerOf({ printer: "gone" }).id).toBe("prusa-core-one");
+    expect(printerOf({ printer: "bambu-a1" }).id).toBe("bambu-a1");
+    expect(printerOf({ printer: "prusa-core-one-l" })).toMatchObject({ name: "Prusa Core One L", x: 300, y: 300, z: 330 });
     expect(printerOf({ printer: "ender-3" }).origin).toBe("corner");
   });
 });

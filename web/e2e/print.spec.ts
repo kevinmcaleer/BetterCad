@@ -16,7 +16,7 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
 
   await openPrint(page);
-  await expect(page.getByText("The model fits a Bambu A1, P1 or X1.")).toBeVisible();
+  await expect(page.getByText("The model fits a Prusa Core One.")).toBeVisible();
   await page.getByLabel("Printer", { exact: true }).selectOption("bambu-a1-mini");
 
   // 192 mm wide: 12 mm more than an A1 Mini's bed.
