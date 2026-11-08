@@ -320,13 +320,15 @@ test("drag an arm by its tool point", async ({ page }) => {
   };
   const angle = page.getByRole("complementary", { name: "Properties" }).getByRole("textbox", { name: /^Angle/ });
   await expect(angle).toHaveValue("0");
-  // Drag the tool point a quarter turn round the hinge.
-  const from = await at([33, 0, 20]);
+  // Drag the link a quarter turn round the hinge, by a point clear of the gizmo on the tool point: the tool point
+  // keeps its offset from the pointer.
+  const tool = await at([33, 0, 20]);
+  const from = await at([29, -5, 20]);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   for (const d of [20, 45, 70, 90]) {
     const q = await at([25 + 8 * Math.cos((d * Math.PI) / 180), 8 * Math.sin((d * Math.PI) / 180), 20]);
-    await page.mouse.move(q.x, q.y, { steps: 3 });
+    await page.mouse.move(q.x + from.x - tool.x, q.y + from.y - tool.y, { steps: 3 });
   }
   await page.mouse.up();
   await expect.poll(async () => Number(await angle.inputValue())).toBeGreaterThan(60);
@@ -343,4 +345,17 @@ test("drag an arm by its tool point", async ({ page }) => {
   await page.mouse.up();
   await expect(page.getByText("Put the arm back")).toBeVisible();
   await expect(angle).toHaveValue(kept);
+
+  // The gizmo on the tool point: its X arrow holds the drag to X, so the arm swings back towards the X axis.
+  const tip = await at([25, 8, 20]);
+  const ahead = await at([26, 8, 20]);
+  const len = Math.hypot(ahead.x - tip.x, ahead.y - tip.y);
+  const dir = { x: (ahead.x - tip.x) / len, y: (ahead.y - tip.y) / len };
+  const grab = { x: tip.x + dir.x * 45, y: tip.y + dir.y * 45 };
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + dir.x * 40, grab.y + dir.y * 40, { steps: 4 });
+  await page.mouse.move(grab.x + dir.x * 120, grab.y + dir.y * 120, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => Number(await angle.inputValue())).toBeLessThan(Number(kept) - 10);
 });

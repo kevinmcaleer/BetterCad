@@ -130,4 +130,4 @@ Set tool point (command palette) and click a point on a link that hangs on a joi
 - Out of reach, the arm stretches as near as it can and the status says "Out of reach by 12 mm".
 - With a tool point set, each joint in Properties has Lock, which keeps it still when you drag the arm. A joint driven by another (#194) follows its driver and isn't solved itself.
 - Esc during a drag puts the arm back. Each drag is one undo step, "Move the arm".
-- Not yet: constraining the drag to an axis with the move gizmo's arrows.
+- The move gizmo sits on the tool point (of the selected link, or the only one). Drag an arrow to move the tool point along that axis only, a square to keep it in that plane, or the centre to move it freely. The arm follows as above.

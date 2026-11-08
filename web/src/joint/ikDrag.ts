@@ -50,9 +50,7 @@ export function ikDrag(problem: IkProblem, start: Pose, view: IkView, at: { x: n
       if (done) return;
       done = true;
       if (!moved) return hooks.revert(false);
-      const kept: Pose = {};
-      for (const [id, v] of Object.entries(now)) if (Math.abs(v) > 1e-9) kept[id] = Math.round(v * 1000) / 1000;
-      hooks.commit(kept, miss);
+      hooks.commit(roundPose(now), miss);
     },
     cancel() {
       if (done) return;
@@ -60,4 +58,39 @@ export function ikDrag(problem: IkProblem, start: Pose, view: IkView, at: { x: n
       hooks.revert(true);
     },
   };
+}
+
+/** A drag of the gizmo on the tool point (#176): the target is where the gizmo is, held to its arrow or square. */
+export function ikGizmoDrag(problem: IkProblem, start: Pose, hooks: IkDragHooks) {
+  let now: Pose = { ...start };
+  let miss = 0;
+  let moved = false;
+  let done = false;
+  return {
+    move(target: V3) {
+      if (done) return;
+      const step = solveIk(problem, now, target, 30);
+      now = step.pose;
+      miss = step.miss;
+      moved = true;
+      hooks.show(now);
+    },
+    end() {
+      if (done) return;
+      done = true;
+      if (!moved) return hooks.revert(false);
+      hooks.commit(roundPose(now), miss);
+    },
+    cancel() {
+      if (done) return;
+      done = true;
+      hooks.revert(true);
+    },
+  };
+}
+
+function roundPose(p: Pose): Pose {
+  const kept: Pose = {};
+  for (const [id, v] of Object.entries(p)) if (Math.abs(v) > 1e-9) kept[id] = Math.round(v * 1000) / 1000;
+  return kept;
 }
