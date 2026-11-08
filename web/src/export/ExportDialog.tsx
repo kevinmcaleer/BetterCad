@@ -40,11 +40,20 @@ interface Choices {
 
 const KEY = "bettercad.export";
 const DEFAULTS: Choices = { format: "stl", what: "all", res: "normal", custom: 0.05, keepPosition: false };
-const MIME: Record<ExportFormat, string> = { stl: "model/stl", "3mf": "model/3mf", step: "model/step" };
+const MIME: Record<string, string> = {
+  ".stl": "model/stl",
+  ".3mf": "model/3mf",
+  ".step": "model/step",
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+};
+const mimeOf = (name: string) => MIME[name.slice(name.lastIndexOf(".")).toLowerCase()] ?? "application/octet-stream";
 const FORMATS: { id: ExportFormat; label: string; title: string }[] = [
   { id: "stl", label: "STL", title: "Triangles, for any slicer" },
   { id: "3mf", label: "3MF", title: "Triangles in millimetres, one object per body, for modern slicers" },
   { id: "step", label: "STEP", title: "Exact solids, for Fusion, FreeCAD and CNC" },
+  { id: "glb", label: "GLB", title: "One file with looks, in metres, for Blender and web viewers" },
+  { id: "gltf", label: "glTF", title: "glTF with a .bin beside it, in metres, for Blender and web viewers" },
 ];
 const RESOLUTIONS: { id: Res; label: string }[] = [
   { id: "draft", label: "Draft" },
@@ -123,7 +132,7 @@ export function ExportDialog(p: ExportDialogProps) {
     setBusy(true);
     try {
       const r = await k;
-      const saved = await p.files.saveFiles(r.files.map((f) => ({ ...f, mime: MIME[c.format] })));
+      const saved = await p.files.saveFiles(r.files.map((f) => ({ ...f, mime: mimeOf(f.name) })));
       if (!saved) return;
       p.say(`Exported ${saved.names.length === 1 ? saved.names[0] : `${saved.names.length} files`}`);
       p.onExported?.();

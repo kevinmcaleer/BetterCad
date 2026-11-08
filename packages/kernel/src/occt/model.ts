@@ -5,6 +5,7 @@ import {
   box,
   chamfer,
   cone,
+  copyShape,
   cylinder,
   fillet,
   grow,
@@ -52,7 +53,8 @@ export interface ModelResult {
   ms: number;
 }
 
-const key = (p: Part, q: Quality) =>
+/** Everything a part's shape depends on, for caches. */
+export const partKey = (p: Part, q: Quality) =>
   JSON.stringify([
     p.kind,
     p.kind === "solid" ? null : p.size,
@@ -62,6 +64,7 @@ const key = (p: Part, q: Quality) =>
     p.revolve ?? null,
     p.imported ?? null,
     p.catalogue ? [p.catalogue.id, p.catalogue.version, p.catalogue.model] : null,
+    p.copy ?? null,
     p.ops ?? null,
     q,
   ]);
@@ -145,7 +148,7 @@ export class ModelBuilder {
 
   /** The solid for one part, made fresh or from the cache. */
   solid(p: Part, quality: Quality = "fast"): { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> } {
-    const k = key(p, quality);
+    const k = partKey(p, quality);
     this.used.add(k);
     let hit = this.cache.get(k);
     if (!hit) {
@@ -156,6 +159,11 @@ export class ModelBuilder {
         const im = this.importedShape(p);
         local = im.shape;
         open = im.open;
+      } else if (p.copy) {
+        // A mirrored or turned copy (#69): the original built where it stood, moved in the world, then taken into the
+        // copy's own coordinates, so later steps on the copy work as on any body.
+        const src = this.solid(p.copy.body, quality).shape;
+        local = unplace(oc, copyShape(oc, src, p.copy.by), { position: p.copy.at });
       } else local = primitive(oc, p);
       for (const o of p.ops ?? []) {
         try {

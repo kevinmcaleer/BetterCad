@@ -43,6 +43,7 @@ import {
   reorderFeature,
   addParam,
   paramScope,
+  relinkSketches,
   removeParam,
   setExpr,
   updateParam,
@@ -79,6 +80,7 @@ import {
   type Feature,
   type ModelDoc,
   type PartKind,
+  type PatternKind,
   type Vec3,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
@@ -103,6 +105,8 @@ import { useDrop } from "../files/useDrop";
 import { ExportDialog } from "../export/ExportDialog";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
+import { loadSolver } from "../sketch/solver";
+import type { Solver } from "@bettercad/sketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
@@ -120,6 +124,10 @@ import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { MountBar } from "../mount/MountBar";
+import { usePattern } from "../pattern/usePattern";
+import { PatternBar } from "../pattern/PatternBar";
+import { install, useInstallable, useLaunchFiles } from "../pwa/install";
+import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
@@ -442,6 +450,27 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
+  const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
+  const pattern = usePattern({
+    store,
+    record,
+    doc,
+    selection,
+    setSelection,
+    active: tool === "pattern" && !sketch.editing,
+    startKind: patternStart,
+    onClose: () => setTool("select"),
+    say,
+  });
+  /** Mirror (#69): the Pattern tool, starting as a mirror. */
+  const mirror = useCallback(() => {
+    setPatternStart("mirror");
+    setTool((t) => (t === "pattern" ? t : "pattern"));
+  }, []);
+  useEffect(() => {
+    if (tool !== "pattern") setPatternStart(null);
+  }, [tool]);
+
   const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
   live.current.placing = !!place.part;
 
@@ -714,6 +743,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (files.cloud) files.confirmThen(run);
     else void run();
   }, [api, setAccount, say, files]);
+  // Installing the app, and .bcad files it is asked to open (#95).
+  const installable = useInstallable();
+  const installApp = useCallback(() => {
+    void install().then((done) => done && say("Installed BetterCad. Open it from your apps."));
+  }, [say]);
+  const openLaunched = useCallback(
+    (handle: FileHandle) =>
+      void handle.getFile().then(
+        (file) => filesRef.current.show({ name: handle.name, file, handle }),
+        () => say("That file didn't open.", true),
+      ),
+    [say],
+  );
+  useLaunchFiles(openLaunched);
   // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
   const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
@@ -807,6 +850,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    mirror: () => {},
     add,
     showPanel,
     setTheme,
@@ -843,6 +887,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggle,
     remove,
     armTool,
+    mirror,
     add,
     showPanel,
     setTheme,
@@ -868,11 +913,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               ? hole.done()
               : mount.session
                 ? mount.done()
-                : tool === "combine"
-                  ? combine(selection, combineOp, keepTools, combineFit)
-                  : finish.tool
-                    ? finish.done()
-                    : undefined,
+                : pattern.session
+                  ? pattern.done()
+                  : tool === "combine"
+                    ? combine(selection, combineOp, keepTools, combineFit)
+                    : finish.tool
+                      ? finish.done()
+                      : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -988,6 +1035,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: t.title,
       })),
       {
+        id: "tool.mirror",
+        scope: "model",
+        label: "Mirror",
+        group: "Tools",
+        icon: "flipH",
+        run: () => h().mirror(),
+        keywords: "mirror image flip symmetric copy across a plane",
+      },
+      {
         id: "timeline.suppress",
         scope: "model",
         label: "Suppress or unsuppress the step",
@@ -1068,7 +1124,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1537,6 +1593,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "pattern"
+        ? [
+            {
+              id: "edit",
+              label: `Edit ${f.kind === "mirror" ? "mirror" : "pattern"}`,
+              icon: "distributeH" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("pattern");
+                pattern.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "mount"
         ? [
             {
@@ -1587,6 +1657,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     return [
       { id: "rename", label: "Rename", icon: "pencil", keys: "F2", disabled: ids.length !== 1, onSelect: () => setRenameId(ids[0] ?? null) },
       { id: "duplicate", label: "Duplicate", icon: "copy", keys: formatCombo("mod+d"), onSelect: () => duplicate(ids) },
+      {
+        id: "mirror",
+        label: "Mirror…",
+        icon: "flipH",
+        onSelect: () => {
+          setSelection(ids);
+          mirror();
+        },
+      },
+      {
+        id: "pattern",
+        label: "Pattern…",
+        icon: "distributeH",
+        onSelect: () => {
+          setSelection(ids);
+          setTool("pattern");
+        },
+      },
       ...(ids.length > 1
         ? [
             { id: "group", label: "Group", icon: "combine" as const, keys: formatCombo("mod+g"), onSelect: () => group(ids) },
@@ -1686,6 +1774,38 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       `Pick the ${f.type === "shell" ? "faces to leave open" : "edges"} again on ${parts.find((p) => p.id === f.part)?.name ?? "the body"}, then press Enter`,
     );
   };
+  /**
+   * A double-click or double-tap on a timeline tile (#73): a sketch opens in sketch mode, a step with settings opens
+   * its tool on the step, fillet, chamfer and shell open to pick again, and the rest select their parts for Properties.
+   * A step past the marker is rolled forward to first, so it is built while you change it.
+   */
+  const editStep = (f: Feature) => {
+    const i = store.get().features.findIndex((x) => x.id === f.id);
+    if (i < 0) return;
+    if (f.type === "fillet" || f.type === "chamfer" || f.type === "shell") return repick(f.id);
+    if (i >= at) moveMarker(i + 1);
+    switch (f.type) {
+      case "sketch":
+        return sketch.edit(f.id);
+      case "extrude":
+      case "hole":
+      case "mount":
+      case "revolve":
+      case "pushpull": {
+        setTool(f.type);
+        ({ extrude, hole, mount, revolve, pushpull })[f.type].edit(f.id);
+        return;
+      }
+      case "add":
+      case "move":
+      case "resize":
+        selectFeature(f);
+        return say(`Change ${f.name} in Properties.`);
+      default:
+        selectFeature(f);
+        return say(`${f.name} has no settings to change. Right-click it for more.`);
+    }
+  };
   const editEntry = problem ? featureMenu(problem.id).find((e) => e.id === "edit") : undefined;
   const problemBanner = problem && (
     <div className="bc-problem">
@@ -1728,8 +1848,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ? sketch.help
     : place.help
       ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || measure.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
         : finish.help
           ? finish.help
           : vp.elementText
@@ -1763,11 +1883,32 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     store.seal();
   };
   const scope = useMemo(() => paramScope(doc), [doc]);
+  // Sketch sizes that use parameters re-solve when a parameter changes (#75), so the solver loads once there are any.
+  const solverRef = useRef<Solver | null>(null);
+  const hasParams = (doc.params?.length ?? 0) > 0;
+  useEffect(() => {
+    if (hasParams && !solverRef.current) void loadSolver().then((s) => (solverRef.current = s));
+  }, [hasParams]);
+  const relink = (d: ModelDoc, solver: Solver) =>
+    relinkSketches(d, (sk) => {
+      const r = solver.solve(sk);
+      return r.status === "ok" || r.status === "redundant" ? r.sketch : null;
+    });
+  const changeParams = (fn: (d: ModelDoc) => ModelDoc, label: string) => {
+    const solver = solverRef.current;
+    if (solver) return store.edit((d) => relink(fn(d), solver), label);
+    store.edit(fn, label);
+    void loadSolver().then((sv) => {
+      solverRef.current = sv;
+      const d = store.get();
+      if (relink(d, sv) !== d) store.edit((x) => relink(x, sv), label);
+    });
+  };
   const paramsPanel = (
     <ParamsPanel
       doc={doc}
       onAdd={() => store.edit((d) => addParam(d), "Add a parameter")}
-      onChange={(id, change) => store.edit((d) => updateParam(d, id, change), "Change a parameter")}
+      onChange={(id, change) => changeParams((d) => updateParam(d, id, change), "Change a parameter")}
       onRemove={(id) => store.edit((d) => removeParam(d, id), "Delete a parameter")}
       onShowUses={(fids) => {
         if (fids[0]) setActiveFeature(fids[0]);
@@ -1829,6 +1970,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onDownloadBcad={files.saveToDisk}
             onExport={() => setExportOpen(true)}
             onSignOut={signOut}
+            onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}
             theme={theme}
             onTheme={setTheme}
@@ -1919,6 +2061,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
               {tool === "mount" && <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />}
+              {tool === "pattern" && (
+                <PatternBar x={pattern} error={pattern.session ? failed.get(pattern.session.id) : undefined} onCancel={() => setTool("select")} />
+              )}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (
                 <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
@@ -1992,6 +2137,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               summary={summary}
               onSelect={selectFeature}
               onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
+              onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
               historyOpen={panel === "history"}
             />

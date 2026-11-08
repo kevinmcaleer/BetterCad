@@ -32,6 +32,7 @@ export interface FakeServer {
   signIn(context: BrowserContext, name?: string): Promise<void>;
 }
 
+const BASE = "http://127.0.0.1:4173";
 const now = () => new Date().toISOString().replace("T", " ").replace("Z", "");
 
 export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
@@ -46,10 +47,12 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
   const fail = (route: Route, status: number, detail: unknown) => json(route, status, { detail });
   const me = (u: (typeof users)[number], csrf: string) => ({ id: u.id, username: u.username, name: u.username, email: u.email, theme: u.theme, csrf });
   const pub = (u: (typeof users)[number]) => ({ id: u.id, username: u.username, email: u.email, created_at: now() });
-  const start = (route: Route, u: (typeof users)[number]) => {
+  const start = async (route: Route, u: (typeof users)[number]) => {
     const token = `s${++ids}`;
     const csrf = `c${ids}`;
     sessions.set(token, { user: u.id, csrf });
+    // WebKit ignores Set-Cookie on a fulfilled route, so the cookie also goes on the context directly.
+    await context.addCookies([{ name: "bc_session", value: token, url: BASE, httpOnly: true, sameSite: "Lax" }]);
     return json(route, 200, { user: pub(u), csrf_token: csrf }, { "Set-Cookie": `bc_session=${token}; Path=/; HttpOnly; SameSite=Lax` });
   };
   const summary = (m: Model) => ({
@@ -73,7 +76,10 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     const url = new URL(req.url());
     const path = url.pathname.replace(/^.*\/api\//, "");
     const method = req.method();
-    const cookie = /bc_session=([^;]+)/.exec((await req.allHeaders())["cookie"] ?? "")?.[1];
+    // WebKit intercepts before it adds cookies, so the request may carry none: read the context's jar instead.
+    const cookie =
+      /bc_session=([^;]+)/.exec((await req.allHeaders())["cookie"] ?? "")?.[1] ??
+      (await context.cookies(BASE)).find((c) => c.name === "bc_session" && c.value)?.value;
     const session = cookie ? sessions.get(cookie) : undefined;
     const user = session ? users.find((u) => u.id === session.user) : undefined;
     const body = () => (req.postData() ? JSON.parse(req.postData()!) : {});
@@ -120,6 +126,7 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     }
     if (path === "auth/logout" && method === "POST") {
       sessions.delete(cookie!);
+      await context.clearCookies({ name: "bc_session" });
       return json(route, 200, { user: null, csrf_token: "anon" }, { "Set-Cookie": "bc_session=; Path=/; Max-Age=0" });
     }
     if (path === "me/usage") {
@@ -218,7 +225,7 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       users.push(u);
       const token = `s${++ids}`;
       sessions.set(token, { user: u.id, csrf: `c${ids}` });
-      await ctx.addCookies([{ name: "bc_session", value: token, url: "http://127.0.0.1:4173" }]);
+      await ctx.addCookies([{ name: "bc_session", value: token, url: BASE, httpOnly: true, sameSite: "Lax" }]);
     },
   });
 }

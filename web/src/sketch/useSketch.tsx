@@ -31,7 +31,8 @@ import {
   type Sketch,
   type Vec2,
 } from "@bettercad/sketch";
-import { addSketch, newId, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
+import { addSketch, newId, paramScope, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
+import { loadSolver } from "./solver";
 import type { Command } from "../state/commands";
 import { caught } from "../report/errors";
 import type { View3DHandle } from "../viewport/View3D";
@@ -80,12 +81,6 @@ export interface SketchDeps {
   theme: string;
 }
 
-let solverLoad: Promise<Solver> | null = null;
-function loadSolver(): Promise<Solver> {
-  solverLoad ??= import("@salusoft89/planegcs/dist/planegcs_dist/planegcs.wasm?url").then((m) => Solver.load(m.default));
-  return solverLoad;
-}
-
 const DIM_NAME: Record<DimensionKind, string> = {
   length: "Length",
   distance: "Distance",
@@ -129,6 +124,8 @@ export function useSketch(d: SketchDeps) {
   const [finishWarn, setFinishWarn] = useState(false);
   const [camTick, setCamTick] = useState(0);
   const [solver, setSolver] = useState<Solver | null>(null);
+  /** Parameter values (#75), for the sketch's size fields. */
+  const scope = useMemo(() => paramScope(d.doc), [d.doc]);
   const [filletR, setFilletR] = useState(2);
   const [offsetD, setOffsetD] = useState(2);
   const [projectGuide, setProjectGuide] = useState(true);
@@ -299,7 +296,7 @@ export function useSketch(d: SketchDeps) {
       if (!s || !dm) return;
       let v: number;
       try {
-        v = evaluate(text);
+        v = evaluate(text, paramScope(deps.current.doc));
       } catch (e) {
         say((e as Error).message, true);
         return;
@@ -1050,6 +1047,7 @@ export function useSketch(d: SketchDeps) {
     dimEdit,
     setDimEdit,
     setDimension,
+    scope,
     finishWarn,
     setFinishWarn,
     finish,

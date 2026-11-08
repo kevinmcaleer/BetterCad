@@ -1,0 +1,54 @@
+/* Parameter names offered while typing an expression (#75). Colours come only from tokens.css. */
+.bc-complete {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 7;
+  min-width: 160px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: var(--bc-space-2);
+  list-style: none;
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  box-shadow: var(--bc-shadow-pop);
+  color: var(--bc-color-ink);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  pointer-events: auto;
+}
+.bc-complete li {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  min-height: 28px;
+  padding: 0 var(--bc-space-3);
+  border-radius: var(--bc-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bc-complete li > span {
+  flex: 1;
+  font-family: var(--bc-font-mono);
+}
+.bc-complete li > em {
+  font-style: normal;
+  color: var(--bc-color-muted);
+  font-variant-numeric: tabular-nums;
+}
+.bc-complete li.bc-on {
+  background: var(--bc-color-hover);
+}
+/* The dimension pill being typed into, with the list under it. */
+.bc-dim-edit {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+.bc-dim-edit > .bc-dim {
+  position: static;
+  transform: none;
+}

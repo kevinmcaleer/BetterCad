@@ -29,7 +29,19 @@ import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
 import { cataloguePart, placeOnFace } from "./catalogue";
-import { MOUNT_DEFAULTS, addMount, addPart, build, changeParts, cutPocket, insertCatalogue, newDoc, type MountParams } from "./document";
+import {
+  MOUNT_DEFAULTS,
+  addMount,
+  addPattern,
+  addPart,
+  type PatternParams,
+  build,
+  changeParts,
+  cutPocket,
+  insertCatalogue,
+  newDoc,
+  type MountParams,
+} from "./document";
 import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
 
@@ -39,6 +51,20 @@ function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
   const frame = { origin: [0, 0, 5] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
   doc = addMount(doc, { ...MOUNT_DEFAULTS, kind: "standoffs", part: "plate", frame, points: [[0, 0]], ...params });
   return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "plate")!).shape;
+}
+
+/** A part copied by a joined Mirror or Pattern step (#69), built as the one body it becomes. */
+function patterned(
+  oc: OC,
+  kind: "wedge" | "cylinder" | "box",
+  size: { x: number; y: number; z: number },
+  x: number,
+  p: Partial<PatternParams> & { kind: PatternParams["kind"] },
+): TopoDS_Shape {
+  let doc = changeParts(addPart(newDoc(), kind, "a"), ["a"], "size", size);
+  doc = changeParts(doc, ["a"], "position", { x, y: 0, z: 0 });
+  doc = addPattern(doc, { parts: ["a"], join: true, ...p });
+  return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
 }
 
 /** A 60 × 40 × 5 mm plate with a catalogue part's pocket and holes cut in it (#188). */
@@ -162,6 +188,11 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   "standoffs-pi-through": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6 }),
   "standoffs-pi-insert": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6, hole: "insert" }),
   "horn-cross": (oc) => mountOn(oc, { kind: "horn", horn: "cross", size: "M2" }),
+  // Mirror and patterns (#69), joined into one body: a wedge and its mirror image meet at the YZ plane; a 3 × 2 grid of
+  // 6 mm pegs; six arms round Z.
+  "mirror-wedge": (oc) => patterned(oc, "wedge", { x: 20, y: 10, z: 10 }, 10, { kind: "mirror", plane: "YZ" }),
+  "pattern-rect-pegs": (oc) => patterned(oc, "cylinder", { x: 6, y: 6, z: 10 }, 0, { kind: "rect", count1: 3, spacing1: 10, count2: 2, spacing2: 10 }),
+  "pattern-circle-arms": (oc) => patterned(oc, "box", { x: 20, y: 4, z: 3 }, 12, { kind: "circle", count: 6, angle: 360 }),
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

@@ -14,9 +14,11 @@ test("draw a box with a hole, fillet it, export STL, and the volume is right", {
   await ed.view.preset("top");
 
   // K, click the ground, R, 40 Tab 30 Enter, then Esc and Enter to finish.
+  // WebKit can take the click before the Sketch tool is listening for it (#215), so wait for its help line, and click
+  // again if the first click still lands too early.
   await page.keyboard.press("k");
-  await ed.view.click(30, 30);
-  await expect(ed.sketchTools).toBeVisible();
+  await expect(ed.said("Click a face or a plane to sketch on it.").first()).toBeVisible();
+  await ed.view.clickUntil(30, 30, 0, ed.sketchTools);
   await page.waitForTimeout(800);
   await page.keyboard.press("r");
   await ed.view.click(-20, -15);
