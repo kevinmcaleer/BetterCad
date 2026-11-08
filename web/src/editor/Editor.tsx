@@ -1282,9 +1282,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   /** The browser's folder eyes and sketch eyes: hide or show many at once, as one undo step. */
   const setHidden = useCallback(
-    (ids: string[], hidden: boolean, what: "parts" | "sketches") => {
+    (ids: string[], hidden: boolean, what: "parts" | "sketches", name?: string) => {
       if (!ids.length) return;
-      const one = ids.length === 1 ? (live.current.parts.find((p) => p.id === ids[0])?.name ?? store.get().features.find((f) => f.id === ids[0])?.name) : null;
+      const one =
+        name ?? (ids.length === 1 ? (live.current.parts.find((p) => p.id === ids[0])?.name ?? store.get().features.find((f) => f.id === ids[0])?.name) : null);
       store.edit((d) => setLook(d, ids, () => ({ hidden })), `${hidden ? "Hide" : "Show"} ${one ?? `${ids.length} ${what}`}`);
     },
     [store],
@@ -3416,7 +3417,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               poses={posesProps}
               origin={originShown}
               onOrigin={setOriginShown}
-              onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
+              onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}
               onSketchesHidden={(ids, hidden) => setHidden(ids, hidden, "sketches")}
               onBrowserPicked={setBrowserPicked}
               onSketchOn={sketch.startOnPlane}

@@ -75,7 +75,7 @@ export interface LeftPanelProps {
     Required<Pick<BrowserPanelProps, "onPose" | "onSavePose" | "onUpdatePose" | "onRenamePose" | "onDeletePose">>;
   origin: OriginItem[];
   onOrigin: (shown: OriginItem[]) => void;
-  onBodiesHidden: (ids: string[], hidden: boolean) => void;
+  onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   onSketchesHidden: (ids: string[], hidden: boolean) => void;
   onBrowserPicked: (id: string | null) => void;
   onSketchOn: (plane: WorldPlaneName) => void;
