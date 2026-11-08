@@ -148,9 +148,3 @@ export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
 ];
 
 export type ViewId = "iso" | "front" | "side" | "top";
-export const VIEWS: { id: ViewId; label: string; key: string }[] = [
-  { id: "iso", label: "Iso", key: "1" },
-  { id: "front", label: "Front", key: "2" },
-  { id: "side", label: "Side", key: "3" },
-  { id: "top", label: "Top", key: "4" },
-];

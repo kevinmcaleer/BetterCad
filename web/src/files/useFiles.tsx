@@ -35,7 +35,7 @@ export interface FilesDeps {
   store: Store<ModelDoc>;
   doc: ModelDoc;
   view: RefObject<View3DHandle>;
-  say: (text: string, bad?: boolean, toast?: boolean) => void;
+  say: (text: string, bad?: boolean, toast?: boolean | "minor") => void;
   /** A different model is open: reset the marker and the selection. */
   onSwitched: () => void;
   /** STL, STEP and 3MF files go into the open model (#82), standing at `at` (the origin if left out). */
@@ -61,7 +61,7 @@ export function useFiles(d: FilesDeps) {
   deps.current = d;
   const { store, doc } = d;
   const [files] = useState(() => d.fileStore ?? createFileStore());
-  const [auto] = useState(() => d.autosave ?? createAutosave({ onWrite: () => deps.current.say("Autosaved", false, true) }));
+  const [auto] = useState(() => d.autosave ?? createAutosave({ onWrite: () => deps.current.say("Autosaved", false, "minor") }));
 
   // Which model this is: kept in the file's header so autosave and Recent files recognise it.
   const meta = useRef<{

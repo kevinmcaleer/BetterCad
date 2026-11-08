@@ -1,4 +1,6 @@
 import type { Part, PatternFeature, Vec3 } from "./document";
+import { frameToLocal } from "./extrude";
+import { partFrame } from "./catalogue";
 
 /**
  * Mirror and patterns (#69): copies that follow the original. A rectangular copy is the part moved, so a box stays a
@@ -9,6 +11,23 @@ import type { Part, PatternFeature, Vec3 } from "./document";
 export type WorldAxis = "x" | "y" | "z";
 export type MirrorPlane = "XY" | "XZ" | "YZ";
 export type PatternKind = "mirror" | "rect" | "circle";
+/** What a Mirror copies: whole bodies, the cuts, joins and holes of chosen features, or every body of a component. */
+export type MirrorOf = "bodies" | "features" | "component";
+
+/** A plane in the world (or in a part's own coordinates): a point on it and its unit normal. */
+export interface Plane {
+  origin: Vec3;
+  normal: Vec3;
+}
+
+/**
+ * A flat face picked as the mirror plane: the face, and its plane in its body's own coordinates, so the plane follows
+ * the body when an earlier step moves or turns it.
+ */
+export interface MirrorFace extends Plane {
+  body: string;
+  face: number;
+}
 
 /** How one copy is made from the original: moved, mirrored across a plane, or turned round an axis, in the world. */
 export type CopyMove = { move: Vec3 } | { mirror: { origin: Vec3; normal: Vec3 } } | { turn: { origin: Vec3; axis: Vec3; deg: number } };
@@ -54,7 +73,11 @@ const tidyN = (n: number) => Math.round(n * 1e9) / 1e9 + 0;
 /** Why the step can't be made as set, or null. */
 export function patternProblem(f: PatternFeature): string | null {
   const whole = (n: number) => Number.isInteger(n) && n >= 1;
-  if (!f.parts.length) return "Pick the bodies to copy";
+  if (f.kind === "mirror" && f.of === "features") {
+    if (!f.features?.length) return "Pick the features to mirror";
+  } else if (f.kind === "mirror" && f.of === "component") {
+    if (!f.link) return "Pick the component to mirror";
+  } else if (!f.parts.length) return "Pick the bodies to copy";
   if (f.kind === "rect") {
     if (!whole(f.count1) || !whole(f.count2)) return "Counts are whole numbers, 1 or more";
     if (f.count1 * f.count2 < 2) return "Give it 2 or more copies in a direction";
@@ -77,9 +100,10 @@ export function copiesPer(f: PatternFeature): number {
   return Math.max(0, Math.floor(f.count) - 1);
 }
 
-/** Each copy's move from the original, in order; the original itself is left out. */
-export function patternMoves(f: PatternFeature): CopyMove[] {
+/** Each copy's move from the original, in order; the original itself is left out. A mirror uses `plane` when given. */
+export function patternMoves(f: PatternFeature, plane?: Plane): CopyMove[] {
   if (f.kind === "mirror") {
+    if (plane) return [{ mirror: plane }];
     const normal = AXIS[NORMAL[f.plane]];
     return [{ mirror: { origin: scale(normal, f.offset), normal } }];
   }
@@ -96,6 +120,54 @@ export function patternMoves(f: PatternFeature): CopyMove[] {
   const step = f.angle >= 360 ? 360 / n : f.angle / (n - 1);
   return Array.from({ length: n - 1 }, (_, k) => ({ turn: { origin: { x: 0, y: 0, z: 0 }, axis: AXIS[f.axis], deg: (k + 1) * step } }));
 }
+
+const unit = (v: Vec3): Vec3 => scale(v, 1 / (Math.hypot(v.x, v.y, v.z) || 1));
+const v3 = (a: readonly number[]): Vec3 => ({ x: a[0]!, y: a[1]!, z: a[2]! });
+const arr = (v: Vec3): [number, number, number] => [v.x, v.y, v.z];
+type Placed = Pick<Part, "position" | "rotation">;
+
+/** A direction in a part's own coordinates, turned into the world by the part's turn. */
+function turnToWorld(v: Vec3, p: Placed): Vec3 {
+  const fr = partFrame(p.position, p.rotation);
+  const x = v3(fr.x);
+  const z = v3(fr.normal);
+  const y = cross(z, x);
+  return add(add(scale(x, v.x), scale(y, v.y)), scale(z, v.z));
+}
+
+/** A world plane in a part's own coordinates, as the part stands now. */
+export function planeToLocal(pl: Plane, p: Placed): Plane {
+  const fr = frameToLocal({ origin: arr(pl.origin), x: [1, 0, 0], normal: arr(pl.normal) }, p);
+  return { origin: tidy(v3(fr.origin)), normal: tidy(unit(v3(fr.normal))) };
+}
+
+/** A plane in a part's own coordinates, in the world as the part stands now. */
+export function planeToWorld(pl: Plane, p: Placed): Plane {
+  return { origin: tidy(add(turnToWorld(pl.origin, p), p.position)), normal: tidy(unit(turnToWorld(pl.normal, p))) };
+}
+
+/** A flat face of `part`, picked in the world (its centre and outward normal), as a mirror plane that follows it. */
+export function mirrorFace(part: Pick<Part, "id" | "position" | "rotation">, face: number, origin: Vec3, normal: Vec3): MirrorFace {
+  return { body: part.id, face, ...planeToLocal({ origin, normal: unit(normal) }, part) };
+}
+
+/**
+ * The world plane a Mirror step mirrors across, with its offset: an origin plane, or its picked face where that face's
+ * body stands now. A message when the face's body is gone.
+ */
+export function mirrorPlane(f: PatternFeature, parts: readonly Part[]): Plane | string {
+  if (!f.face) {
+    const normal = AXIS[NORMAL[f.plane]];
+    return { origin: scale(normal, f.offset), normal };
+  }
+  const body = parts.find((p) => p.id === f.face!.body);
+  if (!body) return "The face it mirrors across is gone";
+  const w = planeToWorld(f.face, body);
+  return { origin: tidy(add(w.origin, scale(w.normal, f.offset))), normal: w.normal };
+}
+
+/** Body steps a Mirror of features can copy: joins, cuts, intersections and holes (fillets and shells pick by number). */
+export const MIRRORED_OPS = new Set(["join", "cut", "intersect", "hole"]);
 
 /** Where a point goes under a copy's move. */
 export function movePoint(p: Vec3, m: CopyMove): Vec3 {
@@ -122,6 +194,12 @@ export function patternCopyIds(f: PatternFeature): string[] {
   return f.parts.flatMap((from) => Array.from({ length: n }, (_, k) => copyId(f, from, k)));
 }
 
+/** A Mirror's plane on its tile: "YZ", "YZ at 5 mm", "a face of Box 2". */
+export function mirrorPlaneText(f: PatternFeature, faceOwner?: string): string {
+  const at = f.offset ? ` at ${f.offset} mm` : "";
+  return f.face ? `a face of ${faceOwner ?? "a body"}${at}` : `${f.plane}${at}`;
+}
+
 /** A copy's name: "Box 1 mirrored", "Box 1 copy 2". */
 export const copyName = (f: PatternFeature, src: string, k: number) => (f.kind === "mirror" ? `${src} mirrored` : `${src} copy ${k + 1}`);
 
@@ -146,9 +224,9 @@ export function copyPart(src: Part, m: CopyMove, id: string, name: string): Part
 }
 
 /** The step's summary on its tile: "Box 1, 3 × 2 at 20 mm". */
-export function patternSummary(f: PatternFeature, who: string): string {
+export function patternSummary(f: PatternFeature, who: string, faceOwner?: string): string {
   const joined = f.join ? ", joined" : "";
-  if (f.kind === "mirror") return `${who} across ${f.plane}${f.offset ? ` at ${f.offset} mm` : ""}${joined}`;
+  if (f.kind === "mirror") return `${who} across ${mirrorPlaneText(f, faceOwner)}${joined}`;
   if (f.kind === "rect") {
     const two = f.count2 > 1 ? ` × ${f.count2} along ${f.dir2.toUpperCase()} at ${f.spacing2} mm` : "";
     return `${who}, ${f.count1} along ${f.dir1.toUpperCase()} at ${f.spacing1} mm${two}${joined}`;
