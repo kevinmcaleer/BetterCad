@@ -1036,6 +1036,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
 
   const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
+  /** The step picked on the timeline (set below, once it is worked out): Pattern and Mirror start on that feature. */
+  const pickedStepRef = useRef<string | null>(null);
   const pattern = usePattern({
     store,
     record,
@@ -1044,7 +1046,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     setSelection,
     parts,
     links: built.links,
+    construct: built.construct,
     upTo: at,
+    pickedStep: () => pickedStepRef.current,
     view: vp.ref,
     active: tool === "pattern" && !sketch.editing,
     startKind: patternStart,
@@ -1522,6 +1526,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [selectFeature],
   );
   const pickedStep = picked && picked.sel === selection && doc.features.some((f) => f.id === picked.id) ? picked.id : null;
+  pickedStepRef.current = pickedStep;
   /** A step being changed: its tool is open for it. Sketches use sketch.editingId instead. */
   const [editingStep, setEditingStep] = useState<string | null>(null);
   const renameFeature = useCallback(
@@ -3067,6 +3072,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         setEditingStep(f.id);
         setTool("construct");
         return construct.edit(f.id);
+      case "pattern":
+        // Opens with its saved kind, counts, angle, axis and picks, to change them.
+        setEditingStep(f.id);
+        setTool("pattern");
+        return pattern.edit(f.id);
       case "drive":
         return setDriveDialog({ editing: f });
       case "add":
@@ -3588,7 +3598,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
               historyOpen={panel === "history"}
               picking={
-                tool === "pattern" && pattern.kind === "mirror" && pattern.of === "features" && !pattern.pickingPlane
+                tool === "pattern" && pattern.of === "features" && !pattern.pickingPlane && !pattern.pickingAxis
                   ? {
                       can: (id) => pattern.mirrorable.some((m) => m.id === id),
                       picked: pattern.feature?.features ?? [],

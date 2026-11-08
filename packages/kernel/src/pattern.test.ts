@@ -17,7 +17,8 @@ import {
   type PatternFeature,
   type Vec3,
 } from "./document";
-import { copiesPer, mirrorFace, mirrorPlane, movePoint, patternMoves, patternProblem, type CopyMove } from "./pattern";
+import { copiesPer, mirrorFace, mirrorPlane, movePoint, moveToLocal, patternMoves, patternProblem, undoMove, type CopyMove } from "./pattern";
+import { addConstruct } from "./document";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 
@@ -241,5 +242,83 @@ describe("Mirror across a face, of features and of a component", () => {
     expect(b.parts.find((p) => p.id === "m.c.0")!.position).toEqual({ x: -15, y: 30, z: 0 });
     doc = addJoint(doc, { kind: "revolute", child: "m", parent: "L1", origin: [0, 0, 0], axis: [0, 0, 1], lower: -90, upper: 90 }, "j");
     expect(build(doc).failed.get("j")).toBeUndefined();
+  });
+});
+
+describe("Pattern of features, and round a construction axis", () => {
+  /** A 40 × 20 × 20 box at the origin with an M3 hole 10 mm right of centre, made by step "h1". */
+  function holedBox(): ModelDoc {
+    const doc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 20, z: 20 });
+    return addHole(
+      doc,
+      {
+        part: "b",
+        frame: { origin: [0, 0, 20], x: [1, 0, 0], normal: [0, 0, 1] },
+        points: [[10, 0]],
+        size: "M3",
+        fit: "printed",
+        offset: 0,
+        head: "none",
+        depth: null,
+      },
+      "h1",
+    );
+  }
+
+  it("takes a world move into a turned part's own coordinates, and undoes it", () => {
+    const part = { position: { x: 5, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 90 } };
+    expect(moveToLocal({ move: { x: 10, y: 0, z: 0 } }, part)).toEqual({ move: { x: 0, y: -10, z: 0 } });
+    const turn = moveToLocal({ turn: { origin: { x: 5, y: 3, z: 0 }, axis: { x: 0, y: 0, z: 1 }, deg: 90 } }, part) as Extract<CopyMove, { turn: unknown }>;
+    expect(turn.turn).toEqual({ origin: { x: 3, y: 0, z: 0 }, axis: { x: 0, y: 0, z: 1 }, deg: 90 });
+    expect(undoMove(turn)).toEqual({ turn: { ...turn.turn, deg: -90 } });
+    expect(undoMove({ move: { x: 1, y: 2, z: 3 } })).toEqual({ move: { x: -1, y: -2, z: -3 } });
+  });
+
+  it("copies a hole along a row on the same body, not the whole body", () => {
+    const kb = new ModelBuilder(oc);
+    let doc = holedBox();
+    const one = 16000 - bbox(kb, doc, "b").volume;
+    doc = addPattern(doc, { parts: [], kind: "rect", of: "features", features: ["h1"], count1: 3, spacing1: -10 }, "p");
+    const f = doc.features.at(-1)!;
+    expect(featureSummary(doc, f)).toBe("Hole 1, 3 along X at -10 mm");
+    expect(featureParts(f)).toEqual([]);
+    expect(dependsOn(doc, "p")).toContain("h1");
+    const b = build(doc);
+    expect(b.failed.size).toBe(0);
+    expect(b.parts).toHaveLength(1);
+    expect(16000 - bbox(kb, doc, "b").volume).toBeCloseTo(3 * one, 1);
+  });
+
+  it("turns a hole round Z, or round a construction axis, and says when the axis is gone", () => {
+    const kb = new ModelBuilder(oc);
+    let doc = holedBox();
+    const one = 16000 - bbox(kb, doc, "b").volume;
+    // A vertical axis 20 mm along X, on the box's end: where the planes x = 20 and XZ meet.
+    doc = addConstruct(doc, { kind: "offset", refs: [{ origin: "YZ" }], value: 20 }, "pl");
+    doc = addConstruct(doc, { kind: "twoPlanes", refs: [{ step: "pl" }, { origin: "XZ" }], value: 0 }, "ax");
+    doc = addPattern(doc, { parts: [], kind: "circle", of: "features", features: ["h1"], count: 2, angle: 360 }, "p");
+    // Round Z through the origin: the copy lands at x = -10, inside the box.
+    expect(build(doc).failed.size).toBe(0);
+    expect(16000 - bbox(kb, doc, "b").volume).toBeCloseTo(2 * one, 1);
+    // Round the axis at x = 20: the copy lands at x = 30, off the box, so nothing more is cut.
+    doc = updatePattern(doc, "p", { axisStep: "ax" });
+    const axisName = doc.features.find((g) => g.id === "ax")!.name;
+    expect(featureSummary(doc, doc.features.at(-1)!)).toBe(`Hole 1, 2 round ${axisName}`);
+    expect(dependsOn(doc, "p")).toContain("ax");
+    expect(build(doc).failed.size).toBe(0);
+    expect(16000 - bbox(kb, doc, "b").volume).toBeCloseTo(one, 1);
+    // A body pattern round the same axis turns the box half way round it.
+    const bodies = addPattern(holedBox(), { parts: ["b"], kind: "circle", count: 2 }, "q");
+    expect(build(bodies).parts).toHaveLength(2);
+    doc = { ...doc, features: doc.features.filter((g) => g.id !== "ax") };
+    expect(build(doc).failed.get("p")).toBe("The axis it turns round is gone");
+  });
+
+  it("asks for features when none are picked, and keeps its settings for when it is opened again", () => {
+    let doc = addPattern(holedBox(), { parts: [], kind: "circle", of: "features", features: [], count: 4, angle: 90 }, "p");
+    expect(build(doc).failed.get("p")).toBe("Pick the features to copy");
+    doc = updatePattern(doc, "p", { features: ["h1"] });
+    const f = doc.features.at(-1) as PatternFeature;
+    expect(f).toMatchObject({ kind: "circle", of: "features", features: ["h1"], count: 4, angle: 90 });
   });
 });

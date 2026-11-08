@@ -30,13 +30,16 @@ import {
   copyPart,
   copyId,
   mirrorPlane,
+  copiesWhat,
+  moveToLocal,
+  opMoves,
+  patternAxis,
   patternCopyIds,
   patternMoves,
   patternProblem,
   patternSummary,
-  planeToLocal,
 } from "./pattern";
-import type { CopySpec, MirrorFace, MirrorOf, MirrorPlane, PatternKind, Plane, WorldAxis } from "./pattern";
+import type { CopyMove, CopySpec, MirrorFace, MirrorOf, MirrorPlane, PatternKind, Plane, WorldAxis } from "./pattern";
 import {
   CONSTRUCT_BASE,
   bodyGeo,
@@ -210,6 +213,11 @@ export interface BodyOp {
    * in the part's own coordinates, the first one first.
    */
   mirror?: Plane[];
+  /**
+   * A copy of another step's op (Mirror or Pattern of features): the op made with its tool moved by these, in the part's
+   * own coordinates, after any `mirror`, the first one first.
+   */
+  by?: CopyMove[];
   feature: string;
 }
 
@@ -267,11 +275,11 @@ export interface PatternFeature extends FeatureBase {
   face?: MirrorFace;
   /** Mirror: a construction plane step (#265) to mirror across instead of `plane`, where it is now. */
   step?: string;
-  /** Mirror: what it copies. Bodies when not set. */
+  /** What it copies: bodies when not set. Only a Mirror copies a component. */
   of?: MirrorOf;
   /**
-   * Mirror of features: the steps whose joins, cuts and holes are made again, mirrored, on the same bodies. Bodies they
-   * made are mirrored whole, and are kept in `parts`.
+   * Mirror or Pattern of features: the steps whose joins, cuts and holes are made again, mirrored, moved or turned, on
+   * the same bodies. Bodies they made are copied whole, and are kept in `parts`.
    */
   features?: string[];
   /** Mirror of a component: the link step (#171) whose bodies are mirrored, into a new component. */
@@ -285,6 +293,8 @@ export interface PatternFeature extends FeatureBase {
   spacing2: number;
   /** Circle: `count` round the world `axis` through the origin, over `angle` degrees (360 for all the way round). */
   axis: WorldAxis;
+  /** Circle: a construction axis step (#265) to turn round instead of `axis`, where it is now. */
+  axisStep?: string;
   count: number;
   angle: number;
   /** Join each copy to its original, for one printable body, instead of keeping separate bodies. */
@@ -854,7 +864,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         break;
       case "pattern": {
-        const of = f.kind === "mirror" ? (f.of ?? "bodies") : "bodies";
+        const of = copiesWhat(f);
         const problem = patternProblem(f);
         if (problem) {
           failed.set(f.id, problem);
@@ -865,14 +875,20 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, plane);
           break;
         }
+        const axis = patternAxis(f, built);
+        if (typeof axis === "string") {
+          failed.set(f.id, axis);
+          break;
+        }
+        const moves = patternMoves(f, plane, axis);
         // The bodies it copies: those picked, those the picked features made, or the component's bodies now.
         let from = f.parts;
         if (of === "component") {
           from = parts.filter((p) => p.link === f.link).map((p) => p.id);
           if (!from.length) failed.set(f.id, "The component it mirrors is gone");
         } else if (of === "bodies") missing(f, f.parts);
-        if (of === "features" && plane) {
-          // Each picked feature's joins, cuts and holes, made again across the plane on the bodies they changed.
+        if (of === "features") {
+          // Each picked feature's joins, cuts and holes, made again (mirrored, moved or turned) on the bodies they changed.
           const wanted = new Set(f.features);
           let made = 0;
           let skipped = 0;
@@ -884,16 +900,24 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
                 skipped += 1;
                 continue;
               }
-              extra.push({ ...o, mirror: [...(o.mirror ?? []), planeToLocal(plane, p)], feature: f.id });
+              const was = opMoves(o);
+              const rest = { ...o };
+              delete rest.mirror;
+              for (const m of moves) extra.push({ ...rest, by: [...was, moveToLocal(m, p)], feature: f.id });
             }
             if (extra.length) p.ops = [...p.ops!, ...extra];
             made += extra.length;
           }
           const bodies = f.parts.filter((id) => find(id) >= 0).length;
+          const verb = f.kind === "mirror" ? "mirrored" : "copied";
           if (!made && !bodies)
-            failed.set(f.id, skipped ? "Fillets, chamfers and shells can't be mirrored. Mirror the body instead." : "The features it mirrors are gone");
+            failed.set(
+              f.id,
+              skipped
+                ? `Fillets, chamfers and shells can't be ${verb}. ${f.kind === "mirror" ? "Mirror" : "Pattern"} the body instead.`
+                : `The features it ${f.kind === "mirror" ? "mirrors" : "copies"} are gone`,
+            );
         }
-        const moves = patternMoves(f, plane);
         const component: string[] = [];
         for (const from1 of from) {
           const i = find(from1);
@@ -1651,7 +1675,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       return `Copies ${who(f.copies.map((c) => c.from))}`;
     case "pattern": {
       const step = (id: string) => doc.features.find((g) => g.id === id)?.name;
-      const of = f.kind === "mirror" ? (f.of ?? "bodies") : "bodies";
+      const of = copiesWhat(f);
       const what =
         of === "features"
           ? (f.features ?? []).map((id) => step(id) ?? "a gone step").join(", ") || "no features"
@@ -1662,6 +1686,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
         f,
         what,
         f.step ? (doc.features.find((g) => g.id === f.step)?.name ?? "a gone plane") : f.face && (names.get(f.face.body) ?? "a body"),
+        f.axisStep ? (doc.features.find((g) => g.id === f.axisStep)?.name ?? "a gone axis") : undefined,
       );
     }
     case "move": {
@@ -2503,7 +2528,7 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   // A Mirror of features needs those features; a Mirror of a component needs its link; one across a construction plane,
   // that plane.
   if (f.type === "pattern") {
-    if (f.step && before.some((x) => x.id === f.step)) out.add(f.step);
+    for (const c of [f.step, f.kind === "circle" ? f.axisStep : undefined]) if (c && before.some((x) => x.id === c)) out.add(c);
     for (const g of [...(f.features ?? []), ...(f.link ? [f.link] : [])]) if (before.some((x) => x.id === g)) out.add(g);
   }
   // A joint needs the links it joins, and the joint its parent link hangs from.
@@ -2755,9 +2780,9 @@ export function addPattern(doc: ModelDoc, params: Partial<PatternParams> & { par
 function syncMirrorParts(doc: ModelDoc, id: string): ModelDoc {
   const i = doc.features.findIndex((f) => f.id === id);
   const f = doc.features[i];
-  if (f?.type !== "pattern" || f.kind !== "mirror" || !f.of || f.of === "bodies") return doc;
+  if (f?.type !== "pattern" || copiesWhat(f) === "bodies") return doc;
   let parts: string[];
-  if (f.of === "features") {
+  if (copiesWhat(f) === "features") {
     const made = new Set(
       doc.features
         .slice(0, i)
@@ -2772,7 +2797,7 @@ function syncMirrorParts(doc: ModelDoc, id: string): ModelDoc {
   return { ...doc, features: doc.features.map((g) => (g.id === id ? { ...f, parts } : g)) };
 }
 
-/** The steps before `id` (or before the end) a Mirror of features can mirror: those that cut, joined, made holes or made a body. */
+/** The steps before `id` (or before the end) a Mirror or Pattern of features can copy: those that cut, joined, made holes or made a body. */
 export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length): Feature[] {
   const { parts } = build(doc, before);
   const ops = new Set(parts.flatMap((p) => (p.ops ?? []).filter((o) => MIRRORED_OPS.has(o.op)).map((o) => o.feature)));

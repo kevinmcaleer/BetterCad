@@ -1,6 +1,6 @@
 import type { KeyboardEvent } from "react";
 import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry } from "@bettercad/ui";
-import type { MirrorOf, MirrorPlane, PatternKind, WorldAxis } from "../state/document";
+import { copiesWhat, type MirrorOf, type MirrorPlane, type PatternKind, type WorldAxis } from "../state/document";
 import type { PatternSession } from "./usePattern";
 
 const KINDS: { id: PatternKind; label: string; title: string }[] = [
@@ -14,14 +14,19 @@ const OFS: { id: MirrorOf; label: string; title: string }[] = [
   { id: "features", label: "Features", title: "Mirror the cuts, joins and holes of steps on the timeline onto the same bodies" },
   { id: "component", label: "Component", title: "Mirror every body in a component, as a new component" },
 ];
+const PATTERN_OFS: { id: MirrorOf; label: string; title: string }[] = [
+  { id: "bodies", label: "Bodies", title: "Copy whole bodies" },
+  { id: "features", label: "Features", title: "Copy the cuts, joins and holes of steps on the timeline onto the same bodies" },
+];
 
-/** What a Mirror copies, and the picks for features or a component: on the bar before the step starts, and after. */
-function MirrorObjects({ x }: { x: PatternSession }) {
+/** What a Mirror or Pattern copies, and the picks for features or a component: on the bar before the step starts, and after. */
+function CopyWhat({ x }: { x: PatternSession }) {
+  const mirror = x.kind === "mirror";
   const f = x.feature;
   const ticked = f?.features ?? [];
   const featureEntries: MenuEntry[] = x.mirrorable.length
     ? x.mirrorable.map((m) => ({ id: m.id, label: m.name, checked: ticked.includes(m.id), multiple: true, onSelect: () => x.toggleFeature(m.id) }))
-    : [{ id: "none", label: "No cuts, joins or holes to mirror yet", disabled: true, onSelect: () => {} }];
+    : [{ id: "none", label: `No cuts, joins or holes to ${mirror ? "mirror" : "copy"} yet`, disabled: true, onSelect: () => {} }];
   const linkEntries: MenuEntry[] = x.links.length
     ? x.links.map((l) => ({ id: l.id, label: l.name, checked: f?.link === l.id, onSelect: () => x.pick({ link: l.id }) }))
     : [{ id: "none", label: "No components yet. Make one with Link.", disabled: true, onSelect: () => {} }];
@@ -30,19 +35,19 @@ function MirrorObjects({ x }: { x: PatternSession }) {
   const linkLabel = f?.link ? (x.links.find((l) => l.id === f.link)?.name ?? "A gone component") : "Choose component";
   return (
     <>
-      <span role="group" aria-label="Mirror what" className="bc-segmented">
-        {OFS.map((o) => (
+      <span role="group" aria-label={mirror ? "Mirror what" : "Copy what"} className="bc-segmented">
+        {(mirror ? OFS : PATTERN_OFS).map((o) => (
           <Button key={o.id} label={o.label} title={o.title} on={x.of === o.id} onClick={() => x.setOf(o.id)} />
         ))}
       </span>
       {x.of === "features" && (
         <MenuButton
-          label="Features to mirror"
+          label={mirror ? "Features to mirror" : "Features to copy"}
           entries={featureEntries}
-          trigger={(p) => <Button {...p} label={featureLabel} title="The steps whose cuts, joins and holes are mirrored" />}
+          trigger={(p) => <Button {...p} label={featureLabel} title={`The steps whose cuts, joins and holes are ${mirror ? "mirrored" : "copied"}`} />}
         />
       )}
-      {x.of === "component" && (
+      {mirror && x.of === "component" && (
         <MenuButton label="Component to mirror" entries={linkEntries} trigger={(p) => <Button {...p} label={linkLabel} title="The component to mirror" />} />
       )}
     </>
@@ -60,13 +65,57 @@ function Axes({ label, value, onChange }: { label: string; value: WorldAxis; onC
   );
 }
 
+/** X, Y, Z or a construction axis, for a circular pattern to turn round. */
+function TurnAxis({ x }: { x: PatternSession }) {
+  const f = x.feature!;
+  const axes = x.construct.filter((c) => c.geo.what === "axis").map((c) => ({ id: c.id, name: x.nameOf(c.id) ?? "Axis" }));
+  const entries: MenuEntry[] = axes.length
+    ? axes.map((a) => ({
+        id: a.id,
+        label: a.name,
+        checked: f.axisStep === a.id,
+        onSelect: () => {
+          x.setPickingAxis(false);
+          x.change({ axisStep: a.id });
+        },
+      }))
+    : [{ id: "none", label: "No construction axes yet. Make one with Construct.", disabled: true, onSelect: () => {} }];
+  return (
+    <span role="group" aria-label="Axis" className="bc-segmented">
+      {AXES.map((a) => (
+        <Button
+          key={a}
+          label={a.toUpperCase()}
+          title={`Axis: round ${a.toUpperCase()}`}
+          on={!f.axisStep && !x.pickingAxis && f.axis === a}
+          onClick={() => {
+            x.setPickingAxis(false);
+            x.change({ axis: a, axisStep: undefined });
+          }}
+        />
+      ))}
+      <Button
+        label={f.axisStep ? (x.nameOf(f.axisStep) ?? "Axis") : "Pick axis"}
+        title="Click a construction axis in the view to turn round, such as Axis 1"
+        on={!!f.axisStep || x.pickingAxis}
+        onClick={() => x.setPickingAxis(!x.pickingAxis)}
+      />
+      <MenuButton
+        label="Construction axes"
+        entries={entries}
+        trigger={(p) => <Button {...p} icon="chevronDown" title="Choose a construction axis to turn round" />}
+      />
+    </span>
+  );
+}
+
 /** The strip for Mirror and Pattern (#69): the kind, its settings, Join, Cancel and Done. */
 export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: string; onCancel: () => void }) {
   const f = x.feature;
   if (!f) {
     return (
       <ArmedBar title={x.kind === "mirror" ? "Mirror" : "Pattern"} icon={x.kind === "mirror" ? "flipH" : "distributeH"}>
-        {x.kind === "mirror" && <MirrorObjects x={x} />}
+        <CopyWhat x={x} />
         <span className="bc-armed-note">{x.help}</span>
         <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
       </ArmedBar>
@@ -77,12 +126,13 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
   };
   const n = f.parts.length;
   const k = f.features?.length ?? 0;
+  const of = copiesWhat(f);
   const what =
-    f.kind === "mirror" && f.of === "features"
+    of === "features"
       ? k === 1
         ? "1 feature"
         : `${k} features`
-      : f.kind === "mirror" && f.of === "component"
+      : of === "component"
         ? (x.links.find((l) => l.id === f.link)?.name ?? "the component")
         : n === 1
           ? "1 body"
@@ -94,7 +144,7 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
           <Button key={k.id} label={k.label} title={k.title} on={f.kind === k.id} onClick={() => x.change({ kind: k.id })} />
         ))}
       </span>
-      {f.kind === "mirror" && <MirrorObjects x={x} />}
+      <CopyWhat x={x} />
       {f.kind === "mirror" && (
         <span role="group" aria-label="Mirror plane" className="bc-segmented">
           {PLANES.map((p) => (
@@ -117,7 +167,7 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
           />
         </span>
       )}
-      {f.kind === "circle" && <Axes label="Axis" value={f.axis} onChange={(axis) => x.change({ axis })} />}
+      {f.kind === "circle" && <TurnAxis x={x} />}
       {f.kind === "rect" && <Axes label="Direction" value={f.dir1} onChange={(dir1) => x.change({ dir1 })} />}
       <span className="bc-sk-fields" onKeyDown={onFieldKey}>
         {f.kind === "mirror" && <NumberField label="Offset" unit="mm" value={f.offset} onCommit={(v) => x.change({ offset: v })} />}
@@ -137,7 +187,10 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
         )}
       </span>
       {f.kind === "rect" && f.count2 > 1 && <Axes label="Rows along" value={f.dir2} onChange={(dir2) => x.change({ dir2 })} />}
-      <Button label="Join" title="Join each copy to its original, for one printable body" on={f.join} onClick={() => x.change({ join: !f.join })} />
+      {/* Copied features land on the same body; only bodies a feature made have copies to join. */}
+      {(of !== "features" || f.parts.length > 0) && (
+        <Button label="Join" title="Join each copy to its original, for one printable body" on={f.join} onClick={() => x.change({ join: !f.join })} />
+      )}
       <span className="bc-armed-note">
         {f.kind === "mirror"
           ? x.pickingPlane
@@ -145,7 +198,9 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
             : `Mirroring ${what} across ${f.step ? (x.stepName ?? "a construction plane") : f.face ? "a face" : f.plane}.`
           : f.kind === "rect"
             ? `Copying ${what} in rows.`
-            : `Copying ${what} round the ${f.axis.toUpperCase()} axis.`}
+            : x.pickingAxis
+              ? "Click a construction axis."
+              : `Copying ${what} round ${f.axisStep ? (x.nameOf(f.axisStep) ?? "an axis") : `the ${f.axis.toUpperCase()} axis`}.`}
       </span>
       {error && (
         <span className="bc-armed-note bc-armed-error" role="alert">
