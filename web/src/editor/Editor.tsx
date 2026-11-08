@@ -121,21 +121,17 @@ import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
 import { useFinish } from "../finish/useFinish";
-import { FinishBar } from "../finish/FinishBar";
 import { usePushPull } from "../finish/usePushPull";
-import { PushPullBar } from "../finish/PushPullBar";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { PlaceBar } from "../catalogue/PlaceBar";
-import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
 import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
-import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { Versions } from "../cloud/Versions";
@@ -159,6 +155,10 @@ import type { WorldPlaneName } from "../viewport/engine";
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
+const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
+const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
+const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -2345,7 +2345,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               {tool === "revolve" && (
                 <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
               )}
-              {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
+              {tool === "measure" && (
+                <Suspense fallback={null}>
+                  <MeasureBar m={measure} onDone={() => setTool("select")} />
+                </Suspense>
+              )}
               {tool === "gear" && (
                 <Suspense fallback={null}>
                   <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
@@ -2360,11 +2364,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   )}
                 </Suspense>
               )}
-              {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
-              {tool === "pushpull" && (
-                <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
+              {tool === "hole" && (
+                <Suspense fallback={null}>
+                  <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
               )}
-              {(tool === "fillet" || tool === "shell") && <FinishBar f={finish} onCancel={() => setTool("select")} />}
+              {tool === "pushpull" && (
+                <Suspense fallback={null}>
+                  <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
+              {(tool === "fillet" || tool === "shell") && (
+                <Suspense fallback={null}>
+                  <FinishBar f={finish} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {tool === "combine" && (
                 <CombineBar
                   picked={selection.map((id) => parts.find((p) => p.id === id)).filter((p): p is (typeof parts)[number] => !!p)}
