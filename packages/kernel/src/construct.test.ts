@@ -112,6 +112,9 @@ describe("construction geometry maths (#265)", () => {
   it("makes axes", () => {
     const cyl: Geo = { t: "circle", centre: [3, 4, 0], axis: [0, 0, 1], radius: 5, round: true };
     expect(axisOf(construct("cylinder", [cyl]))).toEqual({ what: "axis", origin: [3, 4, 0], dir: [0, 0, 1] });
+    // Clicked 40 mm up a bore whose surface starts far below: the axis is centred at the click, in the hole.
+    const bore: Geo = { t: "circle", centre: [3, 4, -500], axis: [0, 0, 1], radius: 5, round: true, start: [8, 4, 40] };
+    expect(axisOf(construct("cylinder", [bore]))).toEqual({ what: "axis", origin: [3, 4, 40], dir: [0, 0, 1] });
     const n = axisOf(construct("normal", [{ ...right, origin: [10, 2, 3] } as Geo]));
     close(n.origin, [10, 2, 3]);
     close(n.dir, [1, 0, 0]);
