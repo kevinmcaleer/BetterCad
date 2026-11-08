@@ -1,5 +1,21 @@
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
-import { ArmedBar, Banner, Button, MenuButton, cx, NumberField, evaluate, PropRow, PropsPanel, ToolButton, Toolbar, type PropsSection } from "@bettercad/ui";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  ArmedBar,
+  Banner,
+  Button,
+  MenuButton,
+  cx,
+  NumberField,
+  evaluate,
+  isExpression,
+  PropRow,
+  PropsPanel,
+  ToolButton,
+  Toolbar,
+  useNameComplete,
+  type PropsSection,
+  type Scope,
+} from "@bettercad/ui";
 import {
   CONSTRAINT_LABEL,
   SketchIndex,
@@ -34,7 +50,7 @@ export function SketchBars({ s }: { s: SketchSession }) {
     const i = Number(el.closest("[data-field]")?.getAttribute("data-field"));
     let v: number | undefined;
     try {
-      v = el.value.trim() ? evaluate(el.value) : undefined;
+      v = el.value.trim() ? evaluate(el.value, s.scope) : undefined;
     } catch {
       return;
     }
@@ -78,14 +94,15 @@ export function SketchBars({ s }: { s: SketchSession }) {
                   label={f}
                   value={s.typed[i] ?? (s.clicks.length ? round(s.previewValues[i]) : null)}
                   min={0.001}
+                  scope={s.scope}
                   onCommit={(v) => s.setTyped((t) => Object.assign([...t], { [i]: v }))}
                 />
               </span>
             ))}
           </span>
         )}
-        {s.stool === "fillet" && <NumberField label="Radius" value={s.filletR} min={0.01} onCommit={(v) => s.setFilletR(v)} />}
-        {s.stool === "offset" && <NumberField label="Distance" value={s.offsetD} min={0.01} onCommit={(v) => s.setOffsetD(v)} />}
+        {s.stool === "fillet" && <NumberField label="Radius" value={s.filletR} min={0.01} scope={s.scope} onCommit={(v) => s.setFilletR(v)} />}
+        {s.stool === "offset" && <NumberField label="Distance" value={s.offsetD} min={0.01} scope={s.scope} onCommit={(v) => s.setOffsetD(v)} />}
         {s.stool === "project" && (
           <Button
             label="As construction"
@@ -150,10 +167,30 @@ function arrowHead(tip: { x: number; y: number }, back: { x: number; y: number }
   return `${tip.x},${tip.y} ${bx - dy * 3},${by + dx * 3} ${bx + dy * 3},${by - dx * 3}`;
 }
 
-/** Typing a size into a dimension's pill. Enter or leaving the field sets it; Esc (through the Esc stack) cancels. */
-function DimInput({ x, y, label, value, onDone }: { x: number; y: number; label: string; value: string; onDone: (text: string | null) => void }) {
+/**
+ * Typing a size into a dimension's pill: a number, a sum ("width * 2", "(depth + 3) / 2") or a parameter, offered by
+ * name as it is typed. Enter or leaving the field sets it; Esc closes the names first, then (through the Esc stack)
+ * cancels.
+ */
+export function DimInput({
+  x,
+  y,
+  label,
+  value,
+  scope,
+  onDone,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  value: string;
+  scope?: Scope;
+  onDone: (text: string | null) => void;
+}) {
   const ref = useRef<HTMLInputElement>(null);
   const done = useRef(false);
+  const [text, setText] = useState(value);
+  const names = useNameComplete(scope, ref, setText);
   useEffect(() => {
     // After the click that opened it has finished moving focus to the view.
     const t = setTimeout(() => {
@@ -168,17 +205,28 @@ function DimInput({ x, y, label, value, onDone }: { x: number; y: number; label:
     onDone(text);
   };
   return (
-    <input
-      ref={ref}
-      className="bc-dim bc-dim-input"
-      style={{ left: x, top: y }}
-      aria-label={label}
-      defaultValue={value}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") finish(e.currentTarget.value);
-      }}
-      onBlur={(e) => finish(e.currentTarget.value)}
-    />
+    <span className="bc-dim-edit" style={{ left: x, top: y }}>
+      <input
+        ref={ref}
+        className="bc-dim bc-dim-input"
+        style={{ width: `${Math.max(9, text.length + 3)}ch` }}
+        aria-label={label}
+        autoComplete="off"
+        spellCheck={false}
+        value={text}
+        {...names.inputProps}
+        onChange={(e) => {
+          setText(e.currentTarget.value);
+          names.update(e.currentTarget.value, e.currentTarget.selectionStart);
+        }}
+        onKeyDown={(e) => {
+          if (names.onKeyDown(e)) return;
+          if (e.key === "Enter") finish(e.currentTarget.value);
+        }}
+        onBlur={(e) => finish(e.currentTarget.value)}
+      />
+      {names.list}
+    </span>
   );
 }
 
@@ -255,6 +303,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
               y={p.y}
               label={d.kind === "angle" ? "Angle in degrees" : "Size in mm"}
               value={d.expression}
+              scope={s.scope}
               onDone={(text) => {
                 if (text !== null) s.setDimension(d.id, text);
                 s.setDimEdit(null);
@@ -268,7 +317,13 @@ export function SketchLabels({ s }: { s: SketchSession }) {
             type="button"
             className={`bc-dim bc-dim-pill${on ? " bc-on" : ""}${d.driving ? "" : " bc-driven"}`}
             style={{ left: p.x, top: p.y }}
-            title={d.driving ? "Double-click to type a size" : "A reference size: it follows the geometry"}
+            title={
+              !d.driving
+                ? "A reference size: it follows the geometry"
+                : isExpression(d.expression)
+                  ? `= ${d.expression}. Double-click to change it`
+                  : "Double-click to type a size"
+            }
             onClick={(e) => pick(d.id, e)}
             onDoubleClick={() => s.setDimEdit(d.id)}
           >
@@ -389,6 +444,7 @@ export function SketchPanel({ s }: { s: SketchSession }) {
               value={Math.round(d.value * 1000) / 1000}
               unit={d.kind === "angle" ? "°" : "mm"}
               locked={!d.driving}
+              scope={s.scope}
               onCommit={(v, expr) => s.setDimension(d.id, expr ?? String(v))}
             />
           ))}

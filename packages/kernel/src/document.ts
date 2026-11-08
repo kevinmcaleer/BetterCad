@@ -23,6 +23,7 @@ export {
   type CatalogueCategory,
 } from "./catalogue";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
+import { evaluate } from "@bettercad/ui/expr";
 import {
   axisOf,
   crossesAxis,
@@ -1631,10 +1632,17 @@ export function suppressedNeed(doc: ModelDoc, id: string): string | null {
 
 // ---- parameters (#75)
 
+/** Every expression a step holds: its fields' and, for a sketch, its dimensions'. */
+function featureExprs(f: Feature): string[] {
+  const out = Object.values(f.exprs ?? {});
+  if (f.type === "sketch") for (const d of f.sketch.dimensions) out.push(d.expression);
+  return out;
+}
+
 /** Steps and parameters whose expressions use a name. */
 export function paramUses(doc: ModelDoc, name: string): { features: Feature[]; params: Parameter[] } {
   return {
-    features: doc.features.filter((f) => Object.values(f.exprs ?? {}).some((e) => namesIn(e).includes(name))),
+    features: doc.features.filter((f) => featureExprs(f).some((e) => namesIn(e).includes(name))),
     params: (doc.params ?? []).filter((p) => p.name !== name && namesIn(p.expression).includes(name)),
   };
 }
@@ -1664,11 +1672,14 @@ export function updateParam(doc: ModelDoc, id: string, change: Partial<Omit<Para
   const to = change.name;
   if (to && to !== old.name) {
     params = params.map((p) => ({ ...p, expression: renameIn(p.expression, old.name, to) }));
-    features = features.map((f) =>
-      f.exprs && Object.values(f.exprs).some((e) => namesIn(e).includes(old.name))
-        ? { ...f, exprs: Object.fromEntries(Object.entries(f.exprs).map(([k, e]) => [k, renameIn(e, old.name, to)])) }
-        : f,
-    );
+    features = features.map((f) => {
+      if (!featureExprs(f).some((e) => namesIn(e).includes(old.name))) return f;
+      const exprs = f.exprs && Object.fromEntries(Object.entries(f.exprs).map(([k, e]) => [k, renameIn(e, old.name, to)]));
+      const g = { ...f, exprs } as Feature;
+      if (g.type !== "sketch") return g;
+      const dimensions = g.sketch.dimensions.map((d) => ({ ...d, expression: renameIn(d.expression, old.name, to) }));
+      return { ...g, sketch: { ...g.sketch, dimensions } };
+    });
   }
   return { ...doc, params, features };
 }
@@ -1700,6 +1711,38 @@ export function setExpr(doc: ModelDoc, featureId: string, path: string, expressi
       return { ...f, exprs: Object.keys(exprs).length ? exprs : undefined };
     }),
   };
+}
+
+/**
+ * Sketch sizes that use parameters, worked out again after the parameters change, and each sketch that moved solved
+ * by `solve` (the planegcs solver, which the app loads). A size whose expression no longer works, or a sketch the
+ * solver can't meet, keeps what it had.
+ */
+export function relinkSketches(doc: ModelDoc, solve: (sketch: Sketch) => Sketch | null): ModelDoc {
+  const scope = paramScope(doc);
+  let changed = false;
+  const features = doc.features.map((f) => {
+    if (f.type !== "sketch") return f;
+    let moved = false;
+    const dimensions = f.sketch.dimensions.map((d) => {
+      if (!d.driving || !namesIn(d.expression).length) return d;
+      let v: number;
+      try {
+        v = evaluate(d.expression, scope);
+      } catch {
+        return d;
+      }
+      if (!(v > 0) || (d.kind === "angle" && v >= 180) || Math.abs(v - d.value) < 1e-9) return d;
+      moved = true;
+      return { ...d, value: v };
+    });
+    if (!moved) return f;
+    const solved = solve({ ...f.sketch, dimensions });
+    if (!solved) return f;
+    changed = true;
+    return { ...f, sketch: solved };
+  });
+  return changed ? { ...doc, features } : doc;
 }
 
 /** The values of every parameter, for number fields to use. */

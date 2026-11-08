@@ -10,7 +10,8 @@ The first public release: free CAD for 3D printing in your browser.
 ### Modelling
 
 - Sketches with constraints and dimensions, solved by planegcs: lines, arcs, circles, rectangles and polygons, with
-  expressions such as `20 / 2` in any dimension (#5).
+  expressions such as `20 / 2` or `width * 2` in any dimension (#5). Parameter names are offered as you type, and a
+  sketch re-solves when a parameter it uses changes (#75).
 - Extrude, push and pull, revolve, fillet, chamfer and shell, on OpenCascade running in a Web Worker (#4, #6).
 - Shapes (box, cylinder, sphere, cone, torus, wedge), moving and turning parts, and join, cut and intersect (#6).
 - Holes sized for printing: screw sizes, clearance, tap and heat-set insert fits, a printer hole offset and a
@@ -29,6 +30,7 @@ The first public release: free CAD for 3D printing in your browser.
 ### Files and accounts
 
 - The `.bcad` format, STL, 3MF and STEP export, and STL, 3MF and STEP import (#8).
+- GLB and glTF export for Blender and web viewers: metres, Y up, a named node and a material per body (#195).
 - Optional accounts: save to your account with version history, share a view-only link, and a library of your
   models (#9).
 - Works offline as an installable app; the first-run tour and samples, including the phone stand (#10).
