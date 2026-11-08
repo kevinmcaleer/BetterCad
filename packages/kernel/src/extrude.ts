@@ -4,7 +4,9 @@ import {
   insidePolygon,
   polar,
   regions,
+  solidLoops,
   sub,
+  textsOf,
   sweep,
   type Frame,
   type Loop,
@@ -127,6 +129,8 @@ export function seedOf(pr: Profile): Vec2 {
 }
 
 function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
+  // A text outline is its own polygon.
+  if (loop.edges[0]?.loop !== undefined) return loop.points.map((a, i): ProfileSeg => ({ kind: "line", a, b: loop.points[(i + 1) % loop.points.length]! }));
   const idx = new SketchIndex(sketch);
   return loop.edges.map(({ id, reversed }) => {
     const e = idx.get(id)!;
@@ -147,21 +151,40 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
   });
 }
 
-/** The picked profiles as lines and arcs. Seeds that no longer land in a profile are reported. */
-export function pickProfiles(sketch: Sketch, seeds: Vec2[]): { shapes: ProfileShape[]; lost: number; picked: Profile[] } {
+/**
+ * The solid letters of a text, as regions: those whose outline is one of the text's own and is not the hole in a
+ * letter. Picked by the text's id, so they follow the text when its words change.
+ */
+export function textProfiles(sketch: Sketch, textId: string, all: Profile[] = regions(sketch)): Profile[] {
+  const placed = textsOf(sketch).find((t) => t.text.id === textId);
+  if (!placed) return [];
+  const solid = solidLoops(placed.loops);
+  return all.filter((pr) => pr.edges.length === 1 && pr.edges[0]!.id === textId && solid.has(pr.edges[0]!.loop ?? -1));
+}
+
+/**
+ * The picked profiles as lines and arcs: those under the seeds, and every letter of the picked texts. Seeds that no
+ * longer land in a profile, and texts that are gone, are reported.
+ */
+export function pickProfiles(sketch: Sketch, seeds: Vec2[], texts: string[] = []): { shapes: ProfileShape[]; lost: number; picked: Profile[] } {
   const all = regions(sketch);
   const shapes: ProfileShape[] = [];
   const seen = new Set<Profile>();
   let lost = 0;
-  for (const s of seeds) {
-    const pr = profileAt(all, s);
-    if (!pr) {
-      lost++;
-      continue;
-    }
-    if (seen.has(pr)) continue;
+  const take = (pr: Profile) => {
+    if (seen.has(pr)) return;
     seen.add(pr);
     shapes.push({ outer: segsOf(sketch, pr), holes: pr.holes.map((h) => segsOf(sketch, h)), area: pr.area - pr.holes.reduce((a, h) => a + h.area, 0) });
+  };
+  for (const s of seeds) {
+    const pr = profileAt(all, s);
+    if (pr) take(pr);
+    else lost++;
+  }
+  for (const id of texts) {
+    const list = textProfiles(sketch, id, all);
+    if (list.length) list.forEach(take);
+    else lost++;
   }
   return { shapes, lost, picked: [...seen] };
 }

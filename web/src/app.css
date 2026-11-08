@@ -830,6 +830,20 @@ kbd {
   color: var(--bc-color-muted);
   font-size: 12px;
 }
+/* The Text card's words: as many lines as they need, and the font list full width. */
+.bc-text-words {
+  height: auto;
+  min-height: calc(var(--bc-control) * 2);
+  padding: var(--bc-space-2) var(--bc-space-4);
+  resize: vertical;
+}
+.bc-text-font {
+  width: 100%;
+}
+.bc-text-quote {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .bc-export-res {
   display: flex;
   flex-direction: column;

@@ -19,7 +19,8 @@ import { ORIGIN, isAtOrigin, middleLine, type Snap } from "./snap";
  * The drawing tools (#53) as data: how many clicks each needs, what to preview while the pointer moves, which sizes
  * can be typed, and what one finished shape adds to the sketch. The sketch session routes pointer events here.
  */
-export type SketchToolId = "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "point" | "dimension" | "fillet" | "trim" | "offset" | "project";
+export type SketchToolId =
+  "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "point" | "text" | "dimension" | "fillet" | "trim" | "offset" | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
 export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "polygon" | "point";
@@ -62,6 +63,14 @@ export const SKETCH_TOOLS: SketchTool[] = [
     icon: "point",
     key: "p",
     help: "Click to place a point. Constrain or dimension it like any other point.",
+    fields: [],
+  },
+  {
+    id: "text",
+    label: "Text",
+    icon: "text",
+    key: "w",
+    help: "Click where the text starts, then type it and set the font and size in the Text card. Click a text to change it.",
     fields: [],
   },
   {
