@@ -40,7 +40,7 @@ import {
   Box3,
   EdgesGeometry,
   ArrowHelper,
-  type Camera,
+  Camera,
   type Material,
   type Texture,
 } from "three";
@@ -1073,14 +1073,44 @@ export class Engine {
 
   /**
    * A picture of the bodies from the current camera, for a saved file's thumbnail (#79): no grid, no overlays,
-   * transparent behind. A PNG data URL, or null where WebGL can't read back.
+   * transparent behind. A PNG data URL, or null where WebGL can't read back. Always Shaded in the Light theme's part
+   * colours, with no selection, hover or check tints, so a thumbnail looks the same whatever the view was set to.
    */
   thumbnail(width = 320, height = 200): string | null {
+    const look = { style: this.style, palette: this.palette, selected: this.selected, hover: this.hover, check: this.check };
+    const probe = document.createElement("span");
+    probe.dataset.theme = "light";
+    probe.hidden = true;
+    document.body.append(probe);
+    try {
+      const light = readPalette(probe);
+      // Body colours and lighting from Light; the rest (background, grid) are hidden or cleared anyway.
+      this.palette = { ...this.palette, "part-fill": light["part-fill"], "part-line": light["part-line"], "part-highlight": light["part-highlight"] };
+    } finally {
+      probe.remove();
+    }
+    this.selected = [];
+    this.hover = null;
+    this.check = null;
+    this.style = "shaded";
+    for (const b of this.order) this.applyStyle(b);
+    this.recolourAll();
+    try {
+      return this.snapshot(width, height);
+    } finally {
+      Object.assign(this, look);
+      for (const b of this.order) this.applyStyle(b);
+      this.recolourAll();
+    }
+  }
+
+  private snapshot(width: number, height: number): string | null {
     const r = this.renderer;
     const bodies = new Set<Object3D>(this.order.map((b) => b.group));
     const hidden: Object3D[] = [];
     for (const c of this.scene.children) {
-      if (c.visible && !bodies.has(c) && !(c instanceof HemisphereLight) && !(c instanceof DirectionalLight)) {
+      // The cameras carry the key light, so they stay.
+      if (c.visible && !bodies.has(c) && !(c instanceof HemisphereLight) && !(c instanceof DirectionalLight) && !(c instanceof Camera)) {
         c.visible = false;
         hidden.push(c);
       }
