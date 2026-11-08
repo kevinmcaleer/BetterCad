@@ -165,6 +165,7 @@ import { browserName } from "../report/browser";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { useWhatsNew } from "../whatsnew/useWhatsNew";
+import { useTips } from "../tips/useTips";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import type { BodyMass, Clash, ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
@@ -208,6 +209,8 @@ const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ defa
 // Release notes (What's new) load in their own chunk, after first paint.
 const WhatsNewDialog = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewDialog })));
 const WhatsNewCard = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewCard })));
+// The tips card (Help → Tips) loads only when it shows.
+const TipsCard = lazy(() => import("../tips/Tips").then((m) => ({ default: m.TipsCard })));
 const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
 const ParamsDialog = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsDialog })));
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
@@ -1473,6 +1476,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     openSample: (id) => filesRef.current.openSample(id),
   });
   tourCamera.current = tour.onCamera;
+  // Tips wait for the tour and the What's new card.
+  const tips = useTips(active && !share && tour.card === null && !whatsNew.card);
+  const showTips = tips.show;
   // "#/sample/<id>": the library's and the tour's sample links.
   useEffect(() => {
     if (sample) filesRef.current.openSample(sample);
@@ -2259,6 +2265,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => window.open(COURSE_URL, "_blank", "noopener"),
         keywords: "course lessons tutorial kevsrobots",
       },
+      { id: "help.tips", label: "Tips", group: "Help", icon: "bulb", run: showTips, keywords: "hints help getting started" },
       { id: "help.whatsNew", label: "What's new", group: "Help", icon: "star", run: showWhatsNew, keywords: "release notes changes update changelog" },
       { id: "help.about", label: "About BetterCad", group: "Help", icon: "info", run: () => setAboutOpen(true), keywords: "version licence licenses" },
     ];
@@ -2266,7 +2273,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       list.push({ id: "help.gallery", label: "Component gallery", group: "Help", icon: "template", run: () => (window.location.hash = "#/gallery") });
     }
     return registry.register(list);
-  }, [registry, showWhatsNew]);
+  }, [registry, showWhatsNew, showTips]);
 
   // One keyboard handler for the whole editor. Escape goes through the layered stack instead.
   useEffect(() => {
@@ -2995,6 +3002,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const helpEntries: MenuEntry[] = [
     { id: "shortcuts", label: "Keyboard shortcuts", icon: "keyboard", keys: "?", onSelect: () => registry.run("help.shortcuts") },
     { id: "tour", label: "Take the tour", icon: "info", onSelect: () => registry.run("help.tour") },
+    { id: "tips", label: "Tips", icon: "bulb", onSelect: () => registry.run("help.tips") },
     { id: "learn", label: "Learn BetterCad", icon: "link", onSelect: () => registry.run("help.learn") },
     { kind: "separator", id: "s1" },
     { id: "report", label: "Report a problem…", icon: "warning", onSelect: () => registry.run("help.report") },
@@ -3299,6 +3307,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             {whatsNew.card && (
               <Suspense fallback={null}>
                 <WhatsNewCard fresh={whatsNew.fresh} onOpen={whatsNew.show} onDismiss={whatsNew.dismiss} />
+              </Suspense>
+            )}
+            {tips.open && (
+              <Suspense fallback={null}>
+                <TipsCard from={tips.from} onDismiss={tips.dismiss} />
               </Suspense>
             )}
           </>

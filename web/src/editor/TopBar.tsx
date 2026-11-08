@@ -228,7 +228,9 @@ export function TopBar(p: TopBarProps) {
           <SaveSplit {...p} />
         </>
       )}
-      {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="help" title="Help" />} />}
+      {p.helpEntries && (
+        <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="help" title="Help" data-help-button="" />} />
+      )}
       <MenuButton
         label="Account and settings"
         align="end"

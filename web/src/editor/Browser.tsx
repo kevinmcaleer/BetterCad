@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Banner, ContextMenu, PartsTree, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
+import { ContextMenu, PartsTree, type ContextMenuState, type MenuEntry, type RowToggle, type TreeItem } from "@bettercad/ui";
 import { JOINT_KINDS, type BuiltLink, type ConstructWhat, type JointFeature, type Part, type PartKind } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
-import { formatCombo } from "../state/commands";
 import { constructIcon, partIcon } from "./Timeline";
 
 /**
@@ -527,14 +526,8 @@ export function BrowserPanel(p: BrowserPanelProps) {
         onRenameIdChange={p.onRenameIdChange}
         onContextMenu={(id, at) => setMenu({ id, at })}
       />
-      <p className="bc-note">
-        {model.parts.length > 0
-          ? `Shift-click selects a range, ${formatCombo("mod")}-click adds one. Drag bodies to reorder, F2 to rename. Right-click a plane to sketch on it.`
-          : "Double-click the name to rename your model. Add a shape from the Library, or start a sketch (K)."}
-      </p>
-      <p className="bc-note">Make a component to work in, or one from bodies, then use the Joint tool to hang each from another.</p>
-      <div className="bc-section-gap" />
-      <Banner tone="info">Press K to sketch on a plane or a flat face, then E to extrude a closed shape into a solid.</Banner>
+      {/* The how-to tips live in the tips card (Help → Tips); only the empty model keeps a first step here. */}
+      {model.parts.length === 0 && <p className="bc-note">Double-click the name to rename your model. Add a shape from the Library, or start a sketch (K).</p>}
       <ContextMenu
         at={open && open.entries.length ? menu!.at : null}
         onClose={() => setMenu(null)}
