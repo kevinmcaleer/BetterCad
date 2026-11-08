@@ -13,7 +13,7 @@ import {
   type RowToggle,
 } from "@bettercad/ui";
 import { createStore } from "../state/store";
-import { DeleteStepDialog, earlierWarning, laterText } from "./DeleteStepDialog";
+import { DeleteStepDialog, earlierWarning, laterText, moveText, type MoveNote } from "./DeleteStepDialog";
 import {
   addCombine,
   addPart,
@@ -58,6 +58,8 @@ import {
   updateParam,
   dependents,
   moveProblem,
+  moveWarning,
+  lostText,
   removeWithDependents,
   reorderPart,
   setLook,
@@ -95,6 +97,8 @@ import {
   linkTransforms,
   posedFrames,
   setPose,
+  jointValue,
+  movable,
   type Pose,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
@@ -118,7 +122,6 @@ import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
-import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
@@ -152,7 +155,7 @@ import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
-import type { WorldPlaneName } from "../viewport/engine";
+import type { BodyDrag, WorldPlaneName } from "../viewport/engine";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
@@ -160,6 +163,11 @@ const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: 
 // The Extrude bar loads after first paint (the shell's budget), and is fetched as soon as the editor is up, so it is
 // there before the first E and the distance field can take focus.
 const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
+/** The sketch toolbars and size labels: fetched just after first paint, so sketching never waits on them. */
+const loadSketchUI = () => import("../sketch/SketchUI");
+const SketchBars = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchBars })));
+const SketchLabels = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchLabels })));
+const SketchPickBar = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchPickBar })));
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 // The command palette loads the first time it opens, to keep it out of first paint.
@@ -270,6 +278,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const parts = built.parts;
   const kernel = useKernel(doc, at, parts);
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
+  const failedRef = useRef(failed);
+  failedRef.current = failed;
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
   /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
@@ -512,6 +522,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, [stepTargets]);
   useEffect(() => {
     void loadExtrudeBar();
+    void loadSketchUI();
   }, []);
   const selectFromBrowser = useCallback(
     (ids: string[]) => {
@@ -606,6 +617,64 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (!store.isLocked() && live.current.doc.pose) store.edit(homePose, "Move the joints home");
     say("The joints are home");
   }, [store, say]);
+  // Dragging a link in the view (#173): a body in a link that hangs on a joint that moves turns or slides it. Esc puts
+  // it back where the drag started.
+  const [poseDrag, setPoseDrag] = useState<{ cancel: () => void } | null>(null);
+  // The drag maths loads once the model has a joint, keeping it out of the first paint.
+  const dragMaths = useRef<typeof import("../joint/poseDrag") | null>(null);
+  const hasJoints = built.joints.length > 0;
+  useEffect(() => {
+    if (hasJoints && !dragMaths.current) void import("../joint/poseDrag").then((m) => (dragMaths.current = m));
+  }, [hasJoints]);
+  useEscape(poseDrag !== null, () => poseDrag?.cancel(), ESC.drag);
+  const poseState = useRef({ joints: built.joints, parts, moves: linkMoves, pose, livePose });
+  poseState.current = { joints: built.joints, parts, moves: linkMoves, pose, livePose };
+  const bodyDrag = useCallback(
+    (pick: { body: string }, at: { x: number; y: number }): BodyDrag | null => {
+      const { joints, parts: all, moves, pose: now, livePose: before } = poseState.current;
+      const link = all.find((p) => p.id === pick.body)?.link;
+      const j = link ? joints.find((x) => x.child === link && movable(x)) : undefined;
+      const engine = vp.ref.current?.engine();
+      const maths = dragMaths.current;
+      if (!j || !engine || !maths) return null;
+      const frame = posedFrames([j], moves).get(j.id) ?? j;
+      const start = jointValue(j, now);
+      const drag = maths.startDrag(
+        { ...j, ...frame },
+        { project: (p) => engine.project(p), towards: engine.towards(), ray: (p) => engine.ray(p.x, p.y) },
+        at,
+        start,
+      );
+      let value = start;
+      let done = false;
+      const finish = () => {
+        done = true;
+        setPoseDrag(null);
+      };
+      const cancel = () => {
+        if (done) return;
+        finish();
+        setLivePose(before);
+        say(`Put ${j.name} back`);
+      };
+      setPoseDrag({ cancel });
+      return {
+        move: (p, mods) => {
+          if (done) return;
+          value = drag.at(p, mods.alt);
+          changePose(j.id, value);
+        },
+        end: () => {
+          if (done) return;
+          finish();
+          if (value !== start) commitPose(j.id, value);
+          else setLivePose(before);
+        },
+        cancel,
+      };
+    },
+    [vp.ref, changePose, commitPose, say],
+  );
   useEffect(() => {
     const moves = new Map<string, Matrix4>();
     if (posing)
@@ -1096,6 +1165,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [store, deleteNow],
   );
+  /** After a reorder that may break later steps: what to say on the timeline, until the model changes again. */
+  const [moveNote, setMoveNote] = useState<MoveNote | null>(null);
+  const kernelReorder = kernel.call;
+  /**
+   * Moves a step on the timeline (or in History). The kernel finds moved fillets' and shells' edges and faces again on
+   * the shape now in front of them, by place; only steps whose picks it can't find get a warning.
+   */
   const moveFeature = useCallback(
     (id: string, beforeId: string | null) => {
       const d = store.get();
@@ -1103,9 +1179,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       if (!f) return;
       const why = moveProblem(d, id, beforeId);
       if (why) return say(`${why}, so it can't go there`, true);
-      store.edit((x) => reorderFeature(x, id, beforeId), `Move ${f.name} on the timeline`);
+      const apply = (next: ModelDoc, warn: string | null) => {
+        if (store.get() !== d) return say(`The model changed before ${f.name} could move. Try again.`, true);
+        if (next === d) return;
+        store.edit(() => next, `Move ${f.name} on the timeline`);
+        setMoveNote({ doc: store.get(), text: warn ?? "", failedBefore: new Set(failedRef.current.keys()) });
+        say(`Moved ${f.name}. ${formatCombo("mod+z")} puts it back.`);
+      };
+      const plain = () => apply(reorderFeature(d, id, beforeId), moveWarning(d, id, beforeId));
+      const call = kernelReorder("reorder", { doc: d, id, beforeId });
+      if (!call) return plain();
+      call.then((r) => apply(r.doc, lostText(r.lost)), plain);
     },
-    [store, say],
+    [store, say, kernelReorder],
   );
 
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
@@ -1654,7 +1740,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (tool === "select" && editingStep) setEditingStep(null);
   }, [tool, editingStep]);
-  const timelineWarning = earlierWarning(doc, at, sketch.editingId ?? editingStep);
+  const timelineWarning = earlierWarning(doc, at, sketch.editingId ?? editingStep) ?? moveText(doc, moveNote, failed);
   const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
   const sizes = useMemo(
     () =>
@@ -2116,6 +2202,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      {
+        id: "earlier",
+        label: "Move earlier",
+        icon: "stepBack",
+        disabled: i === 0 || !!moveProblem(doc, id, doc.features[i - 1]!.id),
+        onSelect: () => moveFeature(id, doc.features[i - 1]!.id),
+      },
+      {
+        id: "later",
+        label: "Move later",
+        icon: "stepForward",
+        disabled: i === doc.features.length - 1 || !!moveProblem(doc, id, doc.features[i + 2]?.id ?? null),
+        onSelect: () => moveFeature(id, doc.features[i + 2]?.id ?? null),
+      },
       { id: "roll", label: "Roll to here", icon: "history", disabled: i + 1 === at, onSelect: () => moveMarker(i + 1) },
       {
         id: "rename",
@@ -2557,7 +2657,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         }
         stageToolbar={
           sketch.editing ? (
-            <SketchBars s={sketch} />
+            <Suspense fallback={null}>
+              <SketchBars s={sketch} />
+            </Suspense>
           ) : (
             <>
               {files.banners}
@@ -2589,7 +2691,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <PlaceBar x={place} />
                 </Suspense>
               )}
-              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
+              {tool === "sketch" && (
+                <Suspense fallback={null}>
+                  <SketchPickBar onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {(tool === "extrude" || tool === "revolve") && (
                 <Suspense fallback={null}>
                   {tool === "extrude" ? (
@@ -2677,6 +2783,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransform={vp.onTransform}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
+            onBodyDrag={posing ? bodyDrag : undefined}
             onCamera={composedCamera}
             onMenu={(pick, at) => {
               if (sketch.editing) return;
@@ -2697,7 +2804,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             }}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
-            <SketchLabels s={sketch} />
+            {sketch.sketch && (
+              <Suspense fallback={null}>
+                <SketchLabels s={sketch} />
+              </Suspense>
+            )}
             {render && (
               <Suspense fallback={null}>
                 <RenderPicture
@@ -2730,6 +2841,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               summary={summary}
               onSelect={pickStep}
               warning={timelineWarning}
+              onReorder={moveFeature}
+              moveProblem={(id, beforeId) => moveProblem(doc, id, beforeId)}
               onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
               onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}

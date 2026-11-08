@@ -2147,9 +2147,10 @@ const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pus
 
 /**
  * The features one feature needs before it on the timeline: the steps that made the parts it reads, its sketch, and
- * for edge and face picks, every earlier step that changed that part (the numbering depends on them).
+ * for edge and face picks, every earlier step that changed that part (the numbering depends on them). `strict` leaves
+ * those out: only what the step can't build without (the part's maker, its sketch), the way a reorder is checked.
  */
-export function dependsOn(doc: ModelDoc, id: string): string[] {
+export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   const i = doc.features.findIndex((f) => f.id === id);
   const f = doc.features[i];
   if (!f) return [];
@@ -2158,7 +2159,7 @@ export function dependsOn(doc: ModelDoc, id: string): string[] {
   for (const pid of partsRead(f)) {
     for (const g of before) {
       if (partsMade(g).includes(pid)) out.add(g.id);
-      else if (PICKS_BY_NUMBER.has(f.type) && featureParts(g).includes(pid) && g.type !== "move") out.add(g.id);
+      else if (!strict && PICKS_BY_NUMBER.has(f.type) && featureParts(g).includes(pid) && g.type !== "move") out.add(g.id);
     }
   }
   if (f.type === "extrude" || f.type === "revolve") {
@@ -2187,18 +2188,52 @@ export function dependents(doc: ModelDoc, id: string): Feature[] {
   return out;
 }
 
-/** Why a feature can't move before `beforeId` (null for the end), or null when it can. */
+/**
+ * Why a feature can't move before `beforeId` (null for the end), or null when it can. Only what a step can't build
+ * without blocks a move: the step that made its part, and its sketch. Edge and face picks only warn (`moveWarning`).
+ */
 export function moveProblem(doc: ModelDoc, id: string, beforeId: string | null): string | null {
   const next = reorderFeature(doc, id, beforeId);
   if (next === doc) return null;
   const pos = new Map(next.features.map((f, i) => [f.id, i]));
   const name = (fid: string) => doc.features.find((f) => f.id === fid)?.name ?? "a step";
   for (const f of next.features) {
-    for (const d of dependsOn(doc, f.id)) {
+    for (const d of dependsOn(doc, f.id, true)) {
       if (pos.get(d)! > pos.get(f.id)!) return `${f.name} needs ${name(d)} before it`;
     }
   }
   return null;
+}
+
+/** The earlier steps that change a picking step's part, which its edge and face numbers depend on. */
+function pickBasis(features: Feature[], i: number): string {
+  const f = features[i]!;
+  const read = partsRead(f);
+  return features
+    .slice(0, i)
+    .filter((g) => !g.suppressed && g.type !== "move" && featureParts(g).some((p) => read.includes(p)))
+    .map((g) => g.id)
+    .join(" ");
+}
+
+/** The steps a move leaves picking edges or faces on a part that different steps now shape, in timeline order. */
+export function movedPicks(doc: ModelDoc, id: string, beforeId: string | null): Feature[] {
+  const next = reorderFeature(doc, id, beforeId);
+  if (next === doc) return [];
+  const was = new Map(doc.features.map((f, i) => [f.id, i]));
+  return next.features.filter((f, i) => PICKS_BY_NUMBER.has(f.type) && pickBasis(next.features, i) !== pickBasis(doc.features, was.get(f.id)!));
+}
+
+/** "Shell 1 and Fillet 1 may now pick the wrong edges or faces", for the steps named. Null when none. */
+export function lostText(names: string[]): string | null {
+  if (!names.length) return null;
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `${list} may now pick the wrong edges or faces`;
+}
+
+/** What to say after a move made without the kernel, which can't find picks again: every step whose picks moved. */
+export function moveWarning(doc: ModelDoc, id: string, beforeId: string | null): string | null {
+  return lostText(movedPicks(doc, id, beforeId).map((f) => f.name));
 }
 
 /** "Sketch 1 is used by Extrude 1 and Extrude 2". */

@@ -118,6 +118,12 @@ export interface EngineInput {
   /** The press ended without an up: a second finger landed to pinch, or the browser took the pointer. */
   cancel?(): void;
 }
+/** A drag that took a body (#173): told where the pointer goes, then that it ended or was called off. */
+export interface BodyDrag {
+  move(p: ScreenPoint, mods: Mods): void;
+  end(): void;
+  cancel(): void;
+}
 export interface ScreenPoint {
   x: number;
   y: number;
@@ -162,6 +168,11 @@ export interface EngineEvents {
   transforming?: (id: string, position: V3, rotation: V3) => void;
   /** The section arrow was dragged. */
   section?: (offset: number) => void;
+  /**
+   * A left press on a body has started to drag (#173): return a handler to move it (posing a joint), or null to orbit
+   * as usual.
+   */
+  bodyDrag?: (pick: Pick, at: ScreenPoint) => BodyDrag | null;
   stats?: (s: Stats) => void;
 }
 
@@ -326,6 +337,8 @@ export class Engine {
     id?: number;
     /** A long press opened the menu: the rest of the press does nothing. */
     held?: boolean;
+    /** The press took a body to drag (#173). */
+    body?: BodyDrag;
   } | null = null;
   private holdTimer = 0;
   private pinch: { d: number; mid: { x: number; y: number } } | null = null;
@@ -1766,6 +1779,7 @@ export class Engine {
   private cancelPress(): void {
     window.clearTimeout(this.holdTimer);
     if (this.press?.input) this.input?.cancel?.();
+    this.press?.body?.cancel();
     this.press = null;
   }
 
@@ -1849,8 +1863,26 @@ export class Engine {
       if (press && prev) {
         const dx = p.x - prev.x;
         const dy = p.y - prev.y;
+        if (press.body) {
+          press.body.move(p, mods);
+          return;
+        }
         if (!press.dragged && Math.hypot(p.x - press.x, p.y - press.y) < (press.touch ? DRAG_TOUCH : DRAG_MOUSE)) return;
-        if (!press.dragged) window.clearTimeout(this.holdTimer);
+        if (!press.dragged) {
+          window.clearTimeout(this.holdTimer);
+          // A left drag that starts on a body can move it about its joint (#173) instead of orbiting.
+          if (press.button === 0 && !press.shift && !press.mod && this.events.bodyDrag) {
+            const hit = this.pick(press.x, press.y, "body");
+            const drag = hit ? this.events.bodyDrag(hit, { x: press.x, y: press.y }) : null;
+            if (drag) {
+              press.dragged = true;
+              press.body = drag;
+              this.setHover(null);
+              drag.move(p, mods);
+              return;
+            }
+          }
+        }
         press.dragged = true;
         this.setHover(null);
         if (press.button === 2 || press.button === 1 || (press.button === 0 && press.shift && e.altKey)) this.setCamera(pan(this.cam, dx, dy, this.height));
@@ -1882,6 +1914,11 @@ export class Engine {
       if (press.input) {
         if (e.type === "pointercancel") this.input?.cancel?.();
         else this.input?.up?.(this.local(e), mods);
+        return;
+      }
+      if (press.body) {
+        if (e.type === "pointercancel") press.body.cancel();
+        else press.body.end();
         return;
       }
       if (press.dragged || press.held || e.type === "pointercancel") return;
@@ -1975,6 +2012,21 @@ export class Engine {
   }
 
   /** A world point's place on the canvas, CSS px from its top left (for tests and overlays). */
+  /** The ray from the camera through a point on the canvas (CSS px). */
+  ray(x: number, y: number): { origin: V3; dir: V3 } {
+    const r = new Raycaster();
+    r.setFromCamera(new Vector2((x / this.width) * 2 - 1, -(y / this.height) * 2 + 1), this.activeCamera);
+    const o = r.ray.origin;
+    const d = r.ray.direction;
+    return { origin: [o.x, o.y, o.z], dir: [d.x, d.y, d.z] };
+  }
+
+  /** Which way is towards the viewer, as a unit vector. */
+  towards(): V3 {
+    const d = this.activeCamera.getWorldDirection(new Vector3()).negate();
+    return [d.x, d.y, d.z];
+  }
+
   project(p: V3): { x: number; y: number } {
     const v = new Vector3(...p).project(this.activeCamera);
     return { x: ((v.x + 1) / 2) * this.width, y: ((1 - v.y) / 2) * this.height };

@@ -92,3 +92,56 @@ test("pose a hinge with its slider and send it home", async ({ page }) => {
   await expect(joint.getByRole("textbox", { name: /^Angle/ })).toHaveValue("0");
   await expect(page.getByText("The joints are home")).toBeVisible();
 });
+
+/** Posing (#173): drag a link round its hinge in the view, snapping to 5°; Esc mid-drag puts it back. */
+test("drag a link round its hinge in the view, and Esc puts it back", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  await click(page, 25, 0, 20);
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  // The top face: a hinge about Z through (25, 0, 20).
+  await click(page, 25, 0, 20);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  const box = (await page.getByTestId("view-canvas").boundingBox())!;
+  const at = async (p: number[]) => {
+    const q = await page.evaluate((v) => (window as unknown as View).__bcView.project(v), p);
+    return { x: box.x + q.x, y: box.y + q.y };
+  };
+  const angle = page.getByRole("complementary", { name: "Properties" }).getByRole("textbox", { name: /^Angle/ });
+  // Round the hinge from +X to 45° anticlockwise, seen from above.
+  const r = 8;
+  const path = [0, 15, 30, 45].map((d) => [25 + r * Math.cos((d * Math.PI) / 180), r * Math.sin((d * Math.PI) / 180), 20]);
+  const from = await at(path[0]!);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (const p of path.slice(1)) {
+    const q = await at(p);
+    await page.mouse.move(q.x, q.y, { steps: 4 });
+  }
+  await page.mouse.up();
+  await expect(angle).toHaveValue("45");
+
+  // Another drag, called off with Esc.
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  const q = await at([25, -r, 20]);
+  await page.mouse.move(q.x, q.y, { steps: 6 });
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(page.getByText("Put Joint 1 back")).toBeVisible();
+  await expect(angle).toHaveValue("45");
+});
