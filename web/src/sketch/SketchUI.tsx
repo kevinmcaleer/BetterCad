@@ -279,6 +279,8 @@ export function SketchLabels({ s }: { s: SketchSession }) {
         const g = GLYPH[c.type];
         const e = idx.get(constraintRefs(c)[c.type === "midpoint" ? 1 : 0]!);
         if (!g || !e) return [];
+        // Projected geometry is held where the model puts it; a Fix mark on every point of it is only clutter.
+        if (c.type === "fix" && e.projectedFrom) return [];
         const key = e.id;
         const n = placed.get(key) ?? 0;
         placed.set(key, n + 1);

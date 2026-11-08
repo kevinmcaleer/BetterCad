@@ -29,8 +29,10 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
 
   // The export dialog says so too.
   await page.keyboard.press("ControlOrMeta+e");
-  await expect(page.getByRole("dialog", { name: "Export" }).getByText(/12 mm too wide/)).toBeVisible();
-  await page.keyboard.press("Escape");
+  const exp = page.getByRole("dialog", { name: "Export" });
+  await expect(exp.getByText(/12 mm too wide/)).toBeVisible();
+  // Closed by its Cancel button: this test is about the warning, and Escape was lost here once under CI load (#349).
+  await exp.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("dialog", { name: "Export" })).toBeHidden();
 
   // Back to 20 mm, moved off centre, then centred.
