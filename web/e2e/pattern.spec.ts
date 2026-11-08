@@ -8,15 +8,16 @@ test("mirror a box, switch to a row of four, then join them into one body", asyn
   await page.getByRole("button", { name: "Box", exact: true }).click();
   await expect(page.getByText("Added a box")).toBeVisible();
 
-  await page
-    .getByRole("toolbar", { name: "Model tools" })
-    .getByRole("button", { name: /^Pattern/ })
-    .click();
-  await expect(page.getByRole("button", { name: "Mirror", pressed: true })).toBeVisible();
+  // Mirror has its own button on the top bar, before Pattern.
+  const tools = page.getByRole("toolbar", { name: "Model tools" });
+  await tools.getByRole("button", { name: "Mirror", exact: true }).click();
+  await expect(tools.getByRole("button", { name: "Mirror", pressed: true })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Kind" }).getByRole("button", { name: "Mirror", pressed: true })).toBeVisible();
   await expect(bodyRows(page)).toHaveCount(2);
   await expect(page.getByRole("treeitem", { name: /Box 1 mirrored/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+  await expect(tools.getByRole("button", { name: "Pattern", pressed: true })).toBeVisible();
   const count = page.getByRole("textbox", { name: "Count" });
   await count.fill("4");
   await count.press("Tab");
@@ -53,11 +54,7 @@ async function addBox(page: Page) {
   await page.waitForTimeout(800);
 }
 
-const mirrorTool = (page: Page) =>
-  page
-    .getByRole("toolbar", { name: "Model tools" })
-    .getByRole("button", { name: /^Pattern/ })
-    .click();
+const mirrorTool = (page: Page) => page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Mirror", exact: true }).click();
 
 test("mirror a box across its own top face", async ({ page }) => {
   await addBox(page);

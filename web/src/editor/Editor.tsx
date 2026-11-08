@@ -964,6 +964,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (tool !== "pattern") setPatternStart(null);
   }, [tool]);
+  const mirrorOn = tool === "pattern" && pattern.kind === "mirror";
+  /** The top bar's Mirror and Pattern: each switches an open one to its kind, and closes its own. */
+  const toolbarPattern = (mirroring: boolean) => {
+    if (tool === "pattern" && mirrorOn === mirroring) return setTool("select");
+    if (tool === "pattern" && pattern.feature) return pattern.change({ kind: mirroring ? "mirror" : "rect" });
+    setPatternStart(mirroring ? "mirror" : null);
+    setTool("pattern");
+  };
 
   const place = usePlacePart({ record, view: vp.ref, select: setSelection, say });
   live.current.placing = !!place.part;
@@ -3043,8 +3051,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         topBar={
           <TopBar
             tool={tool}
-            onArmTool={armTool}
+            onArmTool={(id) => (id === "pattern" ? toolbarPattern(false) : armTool(id))}
             onConstruct={startConstruct}
+            mirrorOn={mirrorOn}
+            onMirror={() => toolbarPattern(true)}
             panel={panel}
             onPanel={showPanel}
             canUndo={store.canUndo()}
