@@ -59,6 +59,7 @@ import {
   dependents,
   moveProblem,
   moveWarning,
+  lostText,
   removeWithDependents,
   reorderPart,
   setLook,
@@ -1038,6 +1039,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
   /** After a reorder that may break later steps: what to say on the timeline, until the model changes again. */
   const [moveNote, setMoveNote] = useState<MoveNote | null>(null);
+  const kernelReorder = kernel.call;
+  /**
+   * Moves a step on the timeline (or in History). The kernel finds moved fillets' and shells' edges and faces again on
+   * the shape now in front of them, by place; only steps whose picks it can't find get a warning.
+   */
   const moveFeature = useCallback(
     (id: string, beforeId: string | null) => {
       const d = store.get();
@@ -1045,14 +1051,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       if (!f) return;
       const why = moveProblem(d, id, beforeId);
       if (why) return say(`${why}, so it can't go there`, true);
-      const warn = moveWarning(d, id, beforeId);
-      store.edit((x) => reorderFeature(x, id, beforeId), `Move ${f.name} on the timeline`);
-      const next = store.get();
-      if (next === d) return;
-      setMoveNote({ doc: next, text: warn ?? "", failedBefore: new Set(failedRef.current.keys()) });
-      say(`Moved ${f.name}. ${formatCombo("mod+z")} puts it back.`);
+      const apply = (next: ModelDoc, warn: string | null) => {
+        if (store.get() !== d) return say(`The model changed before ${f.name} could move. Try again.`, true);
+        if (next === d) return;
+        store.edit(() => next, `Move ${f.name} on the timeline`);
+        setMoveNote({ doc: store.get(), text: warn ?? "", failedBefore: new Set(failedRef.current.keys()) });
+        say(`Moved ${f.name}. ${formatCombo("mod+z")} puts it back.`);
+      };
+      const plain = () => apply(reorderFeature(d, id, beforeId), moveWarning(d, id, beforeId));
+      const call = kernelReorder("reorder", { doc: d, id, beforeId });
+      if (!call) return plain();
+      call.then((r) => apply(r.doc, lostText(r.lost)), plain);
     },
-    [store, say],
+    [store, say, kernelReorder],
   );
 
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.

@@ -2132,12 +2132,16 @@ export function movedPicks(doc: ModelDoc, id: string, beforeId: string | null): 
   return next.features.filter((f, i) => PICKS_BY_NUMBER.has(f.type) && pickBasis(next.features, i) !== pickBasis(doc.features, was.get(f.id)!));
 }
 
-/** What to say after a move that may break later steps: "Shell 1 and Fillet 1 may now pick the wrong…". Null when none. */
-export function moveWarning(doc: ModelDoc, id: string, beforeId: string | null): string | null {
-  const hit = movedPicks(doc, id, beforeId).map((f) => f.name);
-  if (!hit.length) return null;
-  const list = hit.length === 1 ? hit[0] : `${hit.slice(0, -1).join(", ")} and ${hit.at(-1)}`;
+/** "Shell 1 and Fillet 1 may now pick the wrong edges or faces", for the steps named. Null when none. */
+export function lostText(names: string[]): string | null {
+  if (!names.length) return null;
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
   return `${list} may now pick the wrong edges or faces`;
+}
+
+/** What to say after a move made without the kernel, which can't find picks again: every step whose picks moved. */
+export function moveWarning(doc: ModelDoc, id: string, beforeId: string | null): string | null {
+  return lostText(movedPicks(doc, id, beforeId).map((f) => f.name));
 }
 
 /** "Sketch 1 is used by Extrude 1 and Extrude 2". */

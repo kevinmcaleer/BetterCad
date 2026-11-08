@@ -1,6 +1,7 @@
 import type { ModelDoc } from "./document";
 import type { KernelErrorData } from "./errors";
 import type { ImportInfo, ModelResult } from "./occt/model";
+import type { Reordered } from "./occt/repick";
 import type { ImportFormat } from "./imports";
 import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
@@ -36,6 +37,8 @@ export interface Methods {
   };
   /** Mating faces between printed bodies (#184): pins in holes and facing flat faces, with their gaps. */
   mates: { params: { doc: ModelDoc; upTo?: number; limit?: number }; result: Mate[] };
+  /** Moves a timeline step (#286), finding moved fillets' and shells' edges and faces again by place. */
+  reorder: { params: { doc: ModelDoc; id: string; beforeId: string | null }; result: Reordered };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };
 }

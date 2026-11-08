@@ -140,3 +140,40 @@ test("drags a step to a new place on the timeline, and undo puts it back", async
   await page.keyboard.press("ControlOrMeta+z");
   await expect.poll(order).toEqual(["Box 1", "Cylinder 1"]);
 });
+
+test("Shell moves before Fillet and keeps its open top, with no warning", async ({ page }) => {
+  // A 70 × 58 × 32 mm box, its four upright edges rounded, then hollowed open at the top (face 1 once filleted).
+  const doc = {
+    format: "bettercad",
+    version: 2,
+    name: "Tray",
+    looks: {},
+    features: [
+      { id: "a", name: "Box 1", type: "add", part: { id: "t", name: "Box 1", kind: "box", position: { x: 0, y: 0, z: 0 }, size: { x: 70, y: 58, z: 32 } } },
+      { id: "f", name: "Fillet 1", type: "fillet", part: "t", refs: [0, 2, 4, 6], size: 5 },
+      { id: "s", name: "Shell 1", type: "shell", part: "t", refs: [1], size: 2 },
+    ],
+  };
+  await page.addInitScript((text) => {
+    const file = { kind: "file", name: "Tray.bcad", getFile: async () => new File([text], "Tray.bcad"), queryPermission: async () => "granted" };
+    (window as unknown as Record<string, unknown>).showOpenFilePicker = async () => [file];
+  }, JSON.stringify(doc));
+  await page.goto("/");
+  await expect(page).toHaveTitle("Untitled model · BetterCad");
+  await page.keyboard.press("ControlOrMeta+o");
+  await expect(page.getByText("Opened Tray.bcad")).toBeVisible();
+  const bar = page.getByRole("region", { name: "Timeline" });
+  const order = () => bar.locator(".bc-tl-tile").evaluateAll((ts) => ts.map((t) => t.getAttribute("aria-label")!.split(",")[0]));
+  await expect.poll(order).toEqual(["Box 1", "Fillet 1", "Shell 1"]);
+
+  const from = (await bar.getByRole("button", { name: /^Shell 1/ }).boundingBox())!;
+  const to = (await bar.getByRole("button", { name: /^Fillet 1/ }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 2, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByText("Moved Shell 1.", { exact: false })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(order).toEqual(["Box 1", "Shell 1", "Fillet 1"]);
+  await expect(bar.getByRole("status")).toHaveCount(0);
+  await expect(bar.getByRole("button", { name: /problem/ })).toHaveCount(0);
+});
