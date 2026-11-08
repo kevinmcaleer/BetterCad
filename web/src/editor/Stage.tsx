@@ -1,8 +1,12 @@
+import { lazy, Suspense } from "react";
 import { ArmedBar, Button, MenuButton, NumberField, Toolbar, type MenuEntry } from "@bettercad/ui";
 import { formatCombo } from "../state/commands";
 import type { Tool, ToolId } from "./tools";
 import { FILTERS, type Viewport } from "./useViewport";
 import type { RenderStyle } from "../render/session";
+import type { Say } from "./fullscreen";
+
+const FullscreenButton = lazy(() => import("./fullscreen"));
 
 export interface StageBarsProps {
   tool: Tool;
@@ -12,10 +16,12 @@ export interface StageBarsProps {
   onePart: boolean;
   /** Opens the Render view (#197) in its colours or in paper white. */
   onRender?: (style: RenderStyle) => void;
+  /** Shows the Full screen button (phones and tablets), with where it says why there is none. */
+  say?: Say;
 }
 
 /** The view bar floating over the viewport (the tools live on the top bar), and the armed tool's options strip. */
-export function StageBars({ tool, onArmTool, vp, onePart, onRender }: StageBarsProps) {
+export function StageBars({ tool, onArmTool, vp, onePart, onRender, say }: StageBarsProps) {
   const filter = FILTERS.find((f) => f.id === vp.filter)!;
   return (
     <>
@@ -45,6 +51,11 @@ export function StageBars({ tool, onArmTool, vp, onePart, onRender }: StageBarsP
             <Button {...p} icon="paint" label={vp.style === "lineart" ? "Line art" : "Shaded"} title="How the view draws the model, or a rendered picture" />
           )}
         />
+        {say && (
+          <Suspense fallback={null}>
+            <FullscreenButton say={say} />
+          </Suspense>
+        )}
       </Toolbar>
       {tool.id === "section" && (
         <ArmedBar title={tool.label} icon={tool.icon}>
