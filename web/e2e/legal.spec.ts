@@ -28,6 +28,8 @@ test("the app counts a page once per session, and sends nothing about you", asyn
   await page.goto("/#/privacy");
   await expect(page.getByRole("heading", { level: 1, name: "Privacy" })).toBeVisible();
   await page.goto("/#/terms");
+  // A hash change is in-page: wait for Terms to show, or going straight on can skip its ping.
+  await expect(page.getByRole("heading", { level: 1, name: "Terms" })).toBeVisible();
   await page.goto("/#/privacy");
   await expect(page.getByRole("heading", { level: 1, name: "Privacy" })).toBeVisible();
   await expect.poll(() => pings).toEqual(["privacy", "terms"]);
