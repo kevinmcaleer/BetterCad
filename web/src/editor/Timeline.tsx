@@ -1,5 +1,5 @@
-import { useEffect, useRef, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
-import { Icon, IconButton, cx, longPress, type ContextMenuState, type IconName } from "@bettercad/ui";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { ESC, Icon, IconButton, cx, longPress, useEscape, type ContextMenuState, type IconName } from "@bettercad/ui";
 import type { Feature, PartKind } from "../state/document";
 import { formatCombo } from "../state/commands";
 
@@ -56,7 +56,14 @@ export interface TimelineProps {
   historyOpen?: boolean;
   /** Shown above the steps while a change lands before later steps: changing an earlier one, or adding while rolled back. */
   warning?: string | null;
+  /** Drag a tile to move its step before another (null for the end). */
+  onReorder?: (id: string, beforeId: string | null) => void;
+  /** Why a step can't go before another, shown while it is dragged there, or null when it can. */
+  moveProblem?: (id: string, beforeId: string | null) => string | null;
 }
+
+/** How far, in pixels, a tile must be dragged before it starts to move rather than being clicked. */
+export const DRAG_START_PX = 6;
 
 /** Two clicks or taps on the same tile within this many milliseconds open it to edit. */
 export const DOUBLE_TAP_MS = 400;
@@ -69,13 +76,40 @@ export const DOUBLE_TAP_MS = 400;
  * tile wrappers would remount it at every step, which drops its pointer capture and focus, so a drag stopped after
  * one step.
  */
-export function Timeline({ features, at, onMarker, failed, activeId, summary, onSelect, onMenu, onEdit, onHistory, historyOpen, warning }: TimelineProps) {
+export function Timeline({
+  features,
+  at,
+  onMarker,
+  failed,
+  activeId,
+  summary,
+  onSelect,
+  onMenu,
+  onEdit,
+  onHistory,
+  historyOpen,
+  warning,
+  onReorder,
+  moveProblem,
+}: TimelineProps) {
   const strip = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const lastTap = useRef<{ id: string; t: number } | null>(null);
+  /** A tile pressed with the mouse or a pen, which becomes a reorder once it moves far enough. */
+  const press = useRef<{ id: string; x: number } | null>(null);
+  /** A reorder drag ended on this tile, so the click that follows is not a click. */
+  const swallowClick = useRef(false);
+  /** The step being dragged and the gap it would drop into (0 is before the first step). */
+  const [moving, setMoving] = useState<{ id: string; gap: number } | null>(null);
   const n = features.length;
   const rolledBack = at < n;
+
+  const stopMoving = () => {
+    press.current = null;
+    setMoving(null);
+  };
+  useEscape(moving !== null, stopMoving, ESC.drag);
 
   // Keep the marker in view as it moves.
   useEffect(() => {
@@ -119,8 +153,50 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
     dragging.current = false;
   };
 
+  /** Where a drop into `gap` puts the step: before the step now there, or the end. Null when it would not move. */
+  const dropTarget = (id: string, gap: number): { beforeId: string | null } | null => {
+    const from = features.findIndex((f) => f.id === id);
+    if (from < 0 || gap === from || gap === from + 1) return null;
+    return { beforeId: features[gap]?.id ?? null };
+  };
+  const target = moving ? dropTarget(moving.id, moving.gap) : null;
+  const blocked = moving && target ? (moveProblem?.(moving.id, target.beforeId) ?? null) : null;
+  const shown = moving && blocked ? `${blocked}, so it can't go there` : warning;
+
+  const tileDown = (f: Feature, e: PointerEvent<HTMLButtonElement>) => {
+    if (onReorder && e.button === 0 && e.pointerType !== "touch") press.current = { id: f.id, x: e.clientX };
+  };
+  const tileMove = (e: PointerEvent<HTMLButtonElement>) => {
+    const p = press.current;
+    if (!p) return;
+    if (!moving) {
+      if (Math.abs(e.clientX - p.x) < DRAG_START_PX) return;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+    // Near either end of the strip, scroll it so a step can travel past what's in view.
+    const s = strip.current;
+    if (s) {
+      const r = s.getBoundingClientRect();
+      if (e.clientX < r.left + 24) s.scrollLeft -= 8;
+      else if (e.clientX > r.right - 24) s.scrollLeft += 8;
+    }
+    const gap = gapAt(e.clientX);
+    if (!moving || moving.gap !== gap) setMoving({ id: p.id, gap });
+  };
+  const tileUp = () => {
+    if (moving) {
+      swallowClick.current = true;
+      if (target && !blocked) onReorder?.(moving.id, target.beforeId);
+    }
+    stopMoving();
+  };
+
   /** A click on a tile selects it; a second click or tap on the same tile soon after opens it to edit. */
   const tileClick = (f: Feature, e: MouseEvent) => {
+    if (swallowClick.current) {
+      swallowClick.current = false;
+      return;
+    }
     onSelect(f);
     if (!onEdit) return;
     // A keyboard click (Enter, Space) has no detail; only pointer clicks make a double.
@@ -135,6 +211,9 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
     lastTap.current = { id: f.id, t: now };
   };
 
+  /** ". Double-click to edit, drag to reorder", for each that applies. */
+  const how = [onEdit && "double-click to edit", onReorder && "drag to reorder"].filter(Boolean).join(", ");
+  const tipHow = how ? `. ${how[0]!.toUpperCase()}${how.slice(1)}` : "";
   const after = (i: number) => (i === 0 ? "the start" : features[i - 1]!.name);
   const markerEl = (
     <div
@@ -160,11 +239,11 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
   );
 
   return (
-    <section className={cx("bc-timeline", rolledBack && "bc-rolled-back", warning && "bc-tl-warned")} aria-label="Timeline">
-      {warning && (
+    <section className={cx("bc-timeline", rolledBack && "bc-rolled-back", shown && "bc-tl-warned")} aria-label="Timeline">
+      {shown && (
         <p className="bc-tl-warn" role="status">
           <Icon name="warning" size={14} />
-          <span>{warning}</span>
+          <span>{shown}</span>
         </p>
       )}
       <div className="bc-tl-play" role="group" aria-label="Play controls">
@@ -186,18 +265,26 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
       >
         {n === 0 && <span className="bc-tl-empty">Each step you take shows here, in order.</span>}
         {n > 0 && markerEl}
+        {moving && target && <div className={cx("bc-tl-drop", blocked && "bc-blocked")} style={{ order: 2 * moving.gap }} aria-hidden="true" />}
         {features.map((f, i) => {
           const why = failed.get(f.id);
           const state = [i >= at && "not built", f.suppressed && "suppressed", why && `problem: ${why}`].filter(Boolean).join(", ");
-          const press = longPress((p) => onMenu(f, p));
+          const hold = longPress((p) => onMenu(f, p));
           return (
             <button
               key={f.id}
               type="button"
-              className={cx("bc-tl-tile", f.id === activeId && "bc-on", i >= at && "bc-after", f.suppressed && "bc-suppressed", why && "bc-failed")}
+              className={cx(
+                "bc-tl-tile",
+                f.id === activeId && "bc-on",
+                i >= at && "bc-after",
+                f.suppressed && "bc-suppressed",
+                why && "bc-failed",
+                moving?.id === f.id && "bc-moving",
+              )}
               aria-pressed={f.id === activeId}
               aria-label={`${f.name}, ${summary(f)}${state ? `, ${state}` : ""}`}
-              data-tip={`${f.name} · ${summary(f)}${why ? `. ${why}` : ""}${onEdit ? ". Double-click to edit" : ""}`}
+              data-tip={`${f.name} · ${summary(f)}${why ? `. ${why}` : ""}${tipHow}`}
               style={{ order: 2 * i + 1 }}
               onClick={(e) => tileClick(f, e)}
               onContextMenu={(e) => {
@@ -212,7 +299,22 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
                   onMenu(f, { x: r.left, y: r.top });
                 }
               }}
-              {...press}
+              onPointerDown={(e) => {
+                hold.onPointerDown(e);
+                tileDown(f, e);
+              }}
+              onPointerMove={(e) => {
+                hold.onPointerMove(e);
+                tileMove(e);
+              }}
+              onPointerUp={() => {
+                hold.onPointerUp();
+                tileUp();
+              }}
+              onPointerCancel={() => {
+                hold.onPointerCancel();
+                stopMoving();
+              }}
             >
               <Icon name={featureIcon(f)} size={16} />
             </button>

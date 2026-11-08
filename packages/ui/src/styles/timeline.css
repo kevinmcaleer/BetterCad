@@ -163,3 +163,20 @@
   flex: none;
   margin-top: 2px;
 }
+/* Reordering: the dragged tile fades, and a bar shows where it lands (warn coloured where it can't go). */
+.bc-tl-tile.bc-moving {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+.bc-tl-drop {
+  flex: none;
+  width: 3px;
+  height: 28px;
+  margin: 0 calc(-1 * var(--bc-space-1));
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-accent);
+  pointer-events: none;
+}
+.bc-tl-drop.bc-blocked {
+  background: var(--bc-color-warn);
+}

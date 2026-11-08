@@ -17,11 +17,19 @@ test("the second visit comes from the cache, and the editor and kernel work offl
   });
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
 
+  // Only requests made by the second visit count: the first visit's kernel may still be downloading its WASM (23 MB)
+  // from the network when the listener starts, and that response would land here.
   const network: string[] = [];
+  const second = new Set<object>();
+  let counting = false;
+  page.on("request", (r) => {
+    if (counting) second.add(r);
+  });
   page.on("response", (r) => {
     const u = new URL(r.url());
-    if (u.origin === "http://127.0.0.1:4173" && !u.pathname.startsWith("/api/") && !r.fromServiceWorker()) network.push(u.pathname);
+    if (second.has(r.request()) && u.origin === "http://127.0.0.1:4173" && !u.pathname.startsWith("/api/") && !r.fromServiceWorker()) network.push(u.pathname);
   });
+  counting = true;
   await page.reload();
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();

@@ -12,6 +12,8 @@ import {
   dependents,
   dependsOn,
   moveProblem,
+  moveWarning,
+  movedPicks,
   newDoc,
   removeWithDependents,
   updateFeature,
@@ -71,7 +73,28 @@ describe("dependencies", () => {
     expect(moveProblem(d, "s1", null)).toBe("Extrude 1 needs Sketch 1 before it");
     expect(moveProblem(d, "s2", ids(d)[0]!)).toBeNull();
     expect(moveProblem(d, "f1", "x2")).toBeNull();
-    expect(moveProblem(d, "h1", "x2")).toBe("Hole 1 needs Extrude 2 before it");
+    // Picks by number only warn: the hole can go before the cut, and the fillet after it.
+    expect(moveProblem(d, "h1", "x2")).toBeNull();
+    expect(moveProblem(d, "f1", "h1")).toBeNull();
+    expect(moveProblem(d, "c1", "x1")).toBe("Combine 1 needs Extrude 1 before it");
+  });
+
+  it("warns when a move changes the shape a step picks edges or faces on", () => {
+    // Sketch, extrude, fillet, shell: the shell moves before the fillet.
+    let d = addSketch(newDoc(), { kind: "world", plane: "XY", offset: 0 }, "s");
+    d = updateSketch(d, "s", (s) => drawRectangle(s, [0, 0], [70, 58]).sketch);
+    d = addExtrude(d, { sketch: "s", seeds: [[1, 1]], distance: 32, direction: "one", operation: "new" }, "x", "body");
+    d = addFinish(d, { type: "fillet", part: "body", refs: [0, 1], size: 2 }, "f");
+    d = addFinish(d, { type: "shell", part: "body", refs: [5], size: 2 }, "sh");
+    expect(moveProblem(d, "sh", "f")).toBeNull();
+    expect(movedPicks(d, "sh", "f").map((f) => f.id)).toEqual(["sh", "f"]);
+    expect(moveWarning(d, "sh", "f")).toBe("Shell 1 and Fillet 1 may now pick the wrong edges or faces");
+    // Before the extrude it can't go: that's where the body comes from.
+    expect(moveProblem(d, "sh", "x")).toBe("Shell 1 needs Extrude 1 before it");
+    // A move that leaves every pick's shape alone says nothing.
+    const s2 = addSketch(d, { kind: "world", plane: "XZ", offset: 0 }, "s2");
+    expect(moveWarning(s2, "s2", "s")).toBeNull();
+    expect(moveWarning(d, "f", "f")).toBeNull();
   });
 
   it("deletes a step with its dependents, or says the suppressed step a failure needs", () => {
