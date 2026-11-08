@@ -6,6 +6,7 @@ export const VIEW_COLOURS = [
   "viewport",
   "part-fill",
   "part-line",
+  "part-line-dark",
   "part-highlight",
   "part-ghost",
   "snap",

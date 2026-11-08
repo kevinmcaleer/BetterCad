@@ -15,6 +15,11 @@ export interface SketchOptions {
   constraints: boolean;
   projected: boolean;
   construction: boolean;
+  /**
+   * Auto project geometry, as in Fusion: a sketch on a face brings in the face's edges, and sizing or constraining to
+   * any model edge or corner brings that in too.
+   */
+  autoProject: boolean;
 }
 
 export type SketchOption = keyof SketchOptions;
@@ -28,6 +33,7 @@ export const DEFAULT_OPTIONS: SketchOptions = {
   constraints: true,
   projected: true,
   construction: true,
+  autoProject: true,
 };
 
 /** The palette's rows, in order, with what each one does. */
@@ -40,6 +46,11 @@ export const OPTION_ROWS: { id: SketchOption; label: string; title: string }[] =
   { id: "constraints", label: "Constraints", title: "Show the constraint marks" },
   { id: "projected", label: "Projected geometry", title: "Show edges projected from the model" },
   { id: "construction", label: "Construction geometry", title: "Show dashed construction lines" },
+  {
+    id: "autoProject",
+    label: "Auto project geometry",
+    title: "Bring in the edges of the face you sketch on, and any model edge or corner you size or constrain to",
+  },
 ];
 
 const KEY = "bettercad.sketchOptions";

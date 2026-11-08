@@ -9,7 +9,7 @@ export const THEME_NAMES: Record<ThemeId, string> = {
   "holodeck": "Holodeck"
 };
 
-export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room";
+export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room";
 
 /** Every colour token's value in every theme. */
 export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
@@ -27,6 +27,7 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "viewport": "#ffffff",
     "part-fill": "#ffffff",
     "part-line": "#111111",
+    "part-line-dark": "#111111",
     "part-highlight": "#9db8f5",
     "part-ghost": "#a6a6a6",
     "snap": "#1f6fe0",
@@ -67,6 +68,7 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "viewport": "#1c1f25",
     "part-fill": "#3a3f48",
     "part-line": "#f1f3f5",
+    "part-line-dark": "#111111",
     "part-highlight": "#5b86d6",
     "part-ghost": "#6b6f78",
     "snap": "#5b9cf6",
@@ -107,6 +109,7 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "viewport": "#000000",
     "part-fill": "#17181c",
     "part-line": "#f3f3f1",
+    "part-line-dark": "#111111",
     "part-highlight": "#3b6fd6",
     "part-ghost": "#6b6f78",
     "snap": "#5b9cf6",

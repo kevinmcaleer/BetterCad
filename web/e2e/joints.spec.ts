@@ -61,13 +61,17 @@ test("pose a hinge with its slider and send it home", async ({ page }) => {
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
   await click(page, 25, 0, 20);
+  await expect(page.getByText("Moves: Link 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
+  await expect(page.getByText("Hangs from: Base")).toBeVisible();
   await click(page, 25, 0, 20);
+  await expect(page.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
 
@@ -103,14 +107,18 @@ test("drag a link round its hinge in the view, and Esc puts it back", async ({ p
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
   await click(page, 25, 0, 20);
+  await expect(page.getByText("Moves: Link 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
+  await expect(page.getByText("Hangs from: Base")).toBeVisible();
   // The top face: a hinge about Z through (25, 0, 20).
   await click(page, 25, 0, 20);
+  await expect(page.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
   await page.keyboard.press("Escape");

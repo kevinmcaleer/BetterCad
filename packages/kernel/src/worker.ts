@@ -44,6 +44,7 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
   build: ({ doc, upTo, quality }, id) => builder!.build(doc, upTo, quality, () => cancelled.has(id)),
   measure: ({ doc, upTo, refs }) => builder!.measure(doc, refs, upTo),
   mates: ({ doc, upTo, limit }) => builder!.mates(doc, upTo, limit),
+  mass: ({ doc, upTo }) => builder!.mass(doc, upTo),
   reorder: ({ doc, id, beforeId }) => reorderWithPicks(occt!, builder!, doc, id, beforeId),
   inspect: (params) => builder!.inspect(params),
   estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),

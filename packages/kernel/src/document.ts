@@ -80,6 +80,7 @@ import {
 export * from "./gears";
 export * from "./joints";
 export * from "./pose";
+export * from "./mass";
 export * from "./params";
 export * from "./print";
 import { fitGap, holeOffsetOf, type FitId, type PrintSettings } from "./print";
@@ -138,6 +139,8 @@ export interface Part {
   link?: string;
   /** Its finish in renders and glTF (#196). From its look. */
   finish?: FinishId;
+  /** Grams from its datasheet (#174), in place of the printed estimate. From its look. */
+  mass?: number;
   /** A mirrored or turned copy of another body (#69), made from it as it stood. */
   copy?: CopySpec;
 }
@@ -492,6 +495,8 @@ export interface Look {
   colour?: string;
   /** Its finish (#196): roughness and metalness in renders and glTF. */
   finish?: FinishId;
+  /** Grams from its datasheet (#174), in place of the printed estimate. */
+  mass?: number;
 }
 
 export interface ModelDoc {

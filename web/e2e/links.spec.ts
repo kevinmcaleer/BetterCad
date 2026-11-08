@@ -30,3 +30,23 @@ test("make a link of two boxes and select it from the robot tree", async ({ page
   await expect(page.getByRole("treeitem", { name: /^Box 2/ })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("treeitem", { name: /^Cylinder 1/ })).toHaveAttribute("aria-selected", "false");
 });
+
+/** Mass (#174): a link's mass and centre of mass in Properties, and a body's datasheet mass in place of the estimate. */
+test("see a link's mass, and give a body its datasheet mass", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
+  await page.getByRole("treeitem", { name: /^Box 1/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page.getByRole("treeitem", { name: /^Box 1/ }).click();
+
+  const props = page.getByRole("complementary", { name: "Properties" });
+  await expect(props.getByText(/Printed: solid walls/)).toBeVisible({ timeout: 20_000 });
+  await expect(props.getByText("Centre of mass")).toBeVisible();
+  const field = props.getByRole("textbox", { name: /^Datasheet mass/ });
+  await field.fill("55");
+  await page.keyboard.press("Enter");
+  await expect(props.getByText("From its datasheet, spread evenly.")).toBeVisible({ timeout: 20_000 });
+  await expect(props.getByText("about 55 g")).toHaveCount(2);
+});
