@@ -24,6 +24,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   mount: "hole",
   gear: "gear",
   link: "link",
+  joint: "joint",
 };
 
 /** The icon for a kind of part. */

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { addLink, addPart, build, newDoc, type Part } from "../state/document";
+import { addJoint, addLink, addPart, build, newDoc, type Part } from "../state/document";
 import type { WorldPlaneName } from "../viewport/engine";
 import { BrowserPanel, ROW, browserItems, browserPick, type BrowserModel, type BrowserSketch, type OriginItem } from "./Browser";
 
@@ -234,5 +234,27 @@ describe("robot tree (#171)", () => {
     expect(row(/^Base/)).toBeInTheDocument();
     await userEvent.click(screen.getByText("Link 1"));
     expect(onSelect).toHaveBeenLastCalledWith(["a", "b"]);
+  });
+});
+
+describe("joints in the browser (#172)", () => {
+  it("lists joints, and hangs each link under the link its joint hangs from", () => {
+    let d = addPart(addPart(addPart(newDoc("Arm"), "box", "a"), "box", "b"), "box", "c");
+    d = addLink(addLink(d, ["b"], "L1"), ["c"], "L2");
+    const axis = { origin: [0, 0, 0] as [number, number, number], axis: [0, 0, 1] as [number, number, number] };
+    d = addJoint(d, { kind: "revolute", child: "L1", parent: null, ...axis, lower: -90, upper: 90 }, "J1");
+    d = addJoint(d, { kind: "continuous", child: "L2", parent: "L1", ...axis, lower: 0, upper: 0 }, "J2");
+    const b = build(d);
+    const items = browserItems({ ...model(), parts: b.parts, links: b.links, joints: b.joints });
+    expect(items.find((i) => i.id === ROW.joints)).toMatchObject({ note: "2" });
+    expect(items.filter((i) => i.parentId === ROW.joints).map((i) => [i.name, i.note])).toEqual([
+      ["Joint 1", "Hinge"],
+      ["Joint 2", "Wheel"],
+    ]);
+    expect(items.find((i) => i.id === "L1")).toMatchObject({ parentId: ROW.base, note: "1 body, hinge on Joint 1" });
+    expect(items.find((i) => i.id === "L2")).toMatchObject({ parentId: "L1", note: "1 body, wheel on Joint 2" });
+    // Children come after their parent.
+    const order = items.map((i) => i.id);
+    expect(order.indexOf("L2")).toBeGreaterThan(order.indexOf("L1"));
   });
 });

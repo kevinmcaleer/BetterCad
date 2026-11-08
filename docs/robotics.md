@@ -58,3 +58,19 @@ A link is a rigid part of a robot: bodies that move together. Select bodies, the
 - The browser's Robot folder lists Base, then each link with its body count. Click a link to select its bodies, then move them together. **Select link** on a body's menu does the same from the view.
 - Until joints (#172) arrive, links are listed flat. Joints will nest each link under the joint it hangs from.
 - Files: `.bcad` schema 2 can hold link steps. A schema 1 file opens with every body in Base.
+
+## Joints (#172)
+
+A joint hangs a child link from a parent link, as URDF does. Pick the **Joint** tool (in the Change group), then:
+
+1. Click a body in the link that moves. A body in Base can't move on its own, so make it a link first.
+2. Click a body in the link it hangs from, or press Enter (or Base on the bar) to hang it from Base.
+3. Click a round edge, a round face or a flat face for the axis. A round edge or face gives its axis through its centre. A flat face gives its normal through its middle. A straight edge gives its own line.
+
+Esc backs out one pick at a time. The joint starts as a hinge from −90° to 90°. The bar names each kind in plain words with URDF's name beside it: Hinge (revolute), Wheel (continuous), Slider (prismatic) and Fixed (fixed). Limits are degrees for a hinge and mm for a slider, and they take expressions from Parameters.
+
+- A link hangs from at most one joint, and loops are refused: "A link can only hang from one joint. Closed loops can't go in URDF."
+- The origin and axis are stored in world space when the joint is made, as a hole's frame is, so editing the picked geometry later doesn't move the joint.
+- The browser's Joints folder lists each joint. In the Robot folder each link sits under the link it hangs from, with its joint named.
+- An arrow along each joint's axis shows in the view. Show or hide joints is in the command palette's View group.
+- Still to come: posing joints and a ghost of the motion (#173), mass and inertia (#174), and URDF export (#175).

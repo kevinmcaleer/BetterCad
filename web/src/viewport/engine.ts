@@ -308,6 +308,8 @@ export class Engine {
   private cap: Mesh;
   private capMat = capMaterial();
   private arrow: ArrowHelper;
+  /** Joint glyphs (#172): an arrow along each joint's axis, from its origin. */
+  private jointArrows = new Group();
   private arrowDrag: { startOffset: number; x: number; y: number } | null = null;
 
   // Input
@@ -448,6 +450,7 @@ export class Engine {
     this.arrow = new ArrowHelper(new Vector3(0, 0, 1), new Vector3(), 30);
     this.arrow.visible = false;
     this.scene.add(this.arrow);
+    this.scene.add(this.jointArrows);
 
     this.planes = new Group();
     this.planes.visible = false;
@@ -805,6 +808,26 @@ export class Engine {
       }
     }
     for (const m of [this.selectMat, this.hoverMat]) m.clippingPlanes = planes;
+    this.invalidate();
+  }
+
+  /** Shows an arrow along each joint's axis (#172), or none. Drawn over the bodies so it shows inside them. */
+  setJoints(list: { origin: V3; axis: V3 }[] | null): void {
+    for (const a of this.jointArrows.children as ArrowHelper[]) a.dispose();
+    this.jointArrows.clear();
+    const len = Math.max(15, (this.bounds()?.radius ?? 50) * 0.3);
+    for (const j of list ?? []) {
+      const a = new ArrowHelper(new Vector3(...j.axis).normalize(), new Vector3(...j.origin), len, this.palette.snap, len * 0.25, len * 0.12);
+      a.renderOrder = 6;
+      a.traverse((o) => {
+        const m = (o as Mesh).material as Material | undefined;
+        if (m) {
+          m.depthTest = false;
+          m.transparent = true;
+        }
+      });
+      this.jointArrows.add(a);
+    }
     this.invalidate();
   }
 
@@ -1333,6 +1356,7 @@ export class Engine {
     this.capMat.uniforms.fill!.value.copy(p["part-fill"]);
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
     this.arrow.setColor(p.snap);
+    for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
     this.paintPlanes?.();

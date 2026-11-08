@@ -128,13 +128,13 @@ import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
+import { useJoint } from "../joint/useJoint";
 import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
-import { Versions } from "../cloud/Versions";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
 import { COURSE_URL } from "../help/about";
@@ -145,7 +145,7 @@ import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import type { ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
-import { renderSession, type RenderSession, type SaveSize } from "../render/session";
+import { renderSession, type RenderSession, type RenderStyle, type SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
@@ -170,6 +170,11 @@ const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ de
 const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
+const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: m.Versions })));
+const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
+const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
+const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
+const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -192,10 +197,6 @@ const ORIENT_KEY = "bettercad.orientWeights";
 
 /** The Export and Keyboard shortcuts dialogs load on first use, keeping the first-paint bundle in budget. */
 const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
-// Rarely opened dialogs load when first opened, to keep the first paint under its budget.
-const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
-const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
-const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 /** The Render view and its path tracer load on first Render (#197). */
 const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
 const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
@@ -415,9 +416,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   // Render (#197): a path-traced picture over the view. It starts from the modelling camera, and the modelling view
   // follows wherever you orbited it when you come back.
-  const openRender = () => {
+  const openRender = (style?: RenderStyle) => {
     renderCam.current = vp.ref.current?.camera() ?? null;
-    setRender(renderSession());
+    setRender(renderSession(style));
   };
   const closeRender = () => {
     const c = renderCam.current;
@@ -564,6 +565,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onClose: () => setTool("select"),
     say,
   });
+
+  const joint = useJoint({
+    store,
+    record,
+    doc,
+    parts,
+    links: built.links,
+    joints: built.joints,
+    view: vp.ref,
+    active: tool === "joint" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+    measure: kernel.measure,
+  });
+
+  // Joint glyphs in the view (#172), on unless turned off from the View menu.
+  const [jointsShown, setJointsShown] = useState(true);
+  useEffect(() => {
+    vp.ref.current?.engine()?.setJoints(jointsShown ? built.joints : null);
+  }, [built.joints, jointsShown, vp.ref]);
 
   const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
   const pattern = usePattern({
@@ -1178,13 +1199,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 ? mount.done()
                 : gear.session
                   ? gear.done()
-                  : pattern.session
-                    ? pattern.done()
-                    : tool === "combine"
-                      ? combine(selection, combineOp, keepTools, combineFit)
-                      : finish.tool
-                        ? finish.done()
-                        : undefined,
+                  : tool === "joint"
+                    ? joint.stage === "parent"
+                      ? joint.pickParent(null)
+                      : joint.done()
+                    : pattern.session
+                      ? pattern.done()
+                      : tool === "combine"
+                        ? combine(selection, combineOp, keepTools, combineFit)
+                        : finish.tool
+                          ? finish.done()
+                          : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -1418,6 +1443,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "gear pair centre distance drive ratio",
       },
       {
+        id: "view.joints",
+        scope: "model",
+        label: "Show or hide joints",
+        group: "View",
+        icon: "joint",
+        run: () => setJointsShown((on) => !on),
+        when: () => live.current.doc.features.some((f) => f.type === "joint"),
+        keywords: "robot joint axis arrow glyph",
+      },
+      {
         id: "link.make",
         scope: "model",
         label: "Make link",
@@ -1456,7 +1491,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -2019,6 +2054,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "joint"
+        ? [
+            {
+              id: "edit",
+              label: "Edit joint",
+              icon: "joint" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("joint");
+                joint.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -2284,8 +2333,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? sketch.help
       : place.help
         ? place.help
-        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
-          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
+        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
+          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
           : finish.help
             ? finish.help
             : vp.elementText
@@ -2456,6 +2505,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onRenameIdChange={setRenameId}
               sketches={browserSketches}
               links={built.links}
+              joints={built.joints}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
@@ -2529,6 +2579,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               {tool === "measure" && (
                 <Suspense fallback={null}>
                   <MeasureBar m={measure} onDone={() => setTool("select")} />
+                </Suspense>
+              )}
+              {tool === "joint" && (
+                <Suspense fallback={null}>
+                  <JointBar x={joint} scope={scope} error={joint.session ? failed.get(joint.session.id) : undefined} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
               {tool === "gear" && (
@@ -2792,15 +2847,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         </Suspense>
       )}
       {versionsOpen && files.cloud && (
-        <Versions
-          api={api}
-          modelId={files.cloud.modelId}
-          name={doc.name}
-          viewing={files.viewing?.number ?? null}
-          onPreview={(n) => void files.previewVersion(n)}
-          onClose={() => setVersionsOpen(false)}
-          say={say}
-        />
+        <Suspense fallback={null}>
+          <Versions
+            api={api}
+            modelId={files.cloud.modelId}
+            name={doc.name}
+            viewing={files.viewing?.number ?? null}
+            onPreview={(n) => void files.previewVersion(n)}
+            onClose={() => setVersionsOpen(false)}
+            say={say}
+          />
+        </Suspense>
       )}
       {shareOpen && files.cloud && (
         <Suspense fallback={null}>

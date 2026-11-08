@@ -19,6 +19,7 @@ import {
   type OrientWeights,
   type BuiltLink,
   type Feature,
+  type JointFeature,
   type ModelDoc,
   type Part,
   type PartKind,
@@ -65,6 +66,8 @@ export interface LeftPanelProps {
   sketches: BrowserSketch[];
   /** Links (#171) as built. */
   links?: BuiltLink[];
+  /** Joints (#172) as built. */
+  joints?: JointFeature[];
   origin: OriginItem[];
   onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean) => void;
@@ -141,7 +144,7 @@ function PanelBody(p: LeftPanelProps) {
 function PartsPanel(p: LeftPanelProps) {
   return (
     <BrowserPanel
-      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin, readOnly: p.readOnly, links: p.links }}
+      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin, readOnly: p.readOnly, links: p.links, joints: p.joints }}
       selection={p.selection}
       onSelect={p.onSelect}
       onAdd={p.onAdd}
