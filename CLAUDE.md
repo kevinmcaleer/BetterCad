@@ -37,6 +37,7 @@ A free, browser-based CAD tool for 3D printing: Fusion-style constrained sketche
 - UI text follows the brand book: short, second person, sentence case, units shown ("5 mm", "15°"), no exclamation marks, no emoji.
 - Text pairs hold 4.5:1 in Light, Dark and Holodeck (`packages/ui/src/tokens.test.ts`). Fix failing pairs in the design system.
 - Test by role and label with Testing Library, not DOM snapshots.
+- Every PR people would notice adds a release note: `web/src/whatsnew/notes/YYYY-MM-DD-short-name.md`, `# Feature name` then a sentence or two (CONTRIBUTING.md, "Release notes"). It shows in the What's new card and Help → What's new.
 
 ## Decisions (ask Kev before changing)
 
