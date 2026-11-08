@@ -7,7 +7,7 @@ import pytest
 from conftest import BCAD, sign_up
 from fastapi.testclient import TestClient
 
-from bettercad import auth
+from bettercad import accounts, auth
 from bettercad.main import create_app
 from bettercad.settings import Settings
 
@@ -74,15 +74,43 @@ def test_leaving_deletes_bettercad_data_only(user):
     assert user.get("/api/models").json()["total"] == 0
 
 
-def test_accounts_from_another_sign_in_are_refused(tmp_path):
-    with TestClient(create_app(Settings(data_dir=tmp_path, version="test", jobs=False))) as client:
+def test_accounts_from_the_old_sign_in_are_set_aside_then_claimed(tmp_path, kevsrobots, capsys, monkeypatch):
+    settings = Settings(data_dir=tmp_path, version="test", jobs=False)
+    with TestClient(create_app(settings)) as client:
         db = client.app.state.db
         with db:
-            db.execute("INSERT INTO accounts (id, name) VALUES (1, 'old')")
+            db.execute("INSERT INTO accounts (id, name) VALUES (100, 'Kevin')")
+            db.execute("INSERT INTO models (id, user_id, name) VALUES ('m1', 100, 'Old box')")
+            db.execute("INSERT INTO shares (token, model_id) VALUES ('t1', 'm1')")
             db.execute("UPDATE meta SET value = 'local' WHERE key = 'auth_source'")
-    with pytest.raises(RuntimeError, match="empty database"):
-        with TestClient(create_app(Settings(data_dir=tmp_path, version="test", jobs=False))):
-            pass
+        (settings.blob_dir / "100").mkdir(parents=True)
+        (settings.blob_dir / "100" / "abc").write_bytes(b"stl")
+
+    # The server starts, and the old account is out of reach of kevsrobots.com user 100.
+    app = create_app(settings)
+    app.state.identify = kevsrobots.identify
+    with TestClient(app) as client:
+        client.kevsrobots = kevsrobots
+        assert [tuple(r) for r in client.app.state.db.execute("SELECT id, name FROM accounts")] == [(-100, "Kevin")]
+        assert (settings.blob_dir / "-100" / "abc").is_file() and not (settings.blob_dir / "100").exists()
+        assert "Old box by Kevin" in client.get("/view/t1").text
+        sign_up(client)  # kevsrobots.com id 100, a stranger to the old account
+        assert client.get("/api/models").json()["total"] == 0
+
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("bettercad.settings.get_settings", lambda: settings)
+    assert accounts.main([]) == 0
+    assert "Kevin  (id -100, 1 models" in capsys.readouterr().out
+    assert accounts.main(["claim", "kevin", "nobody"]) == 1
+    assert accounts.main(["claim", "Kevin", "Kev"]) == 0
+    assert "Moved 1 models to Kev." in capsys.readouterr().out
+
+    app = create_app(settings)
+    app.state.identify = kevsrobots.identify
+    with TestClient(app) as client:
+        client.cookies.set("access_token", f"Bearer {next(iter(kevsrobots.users))}")
+        assert [m["name"] for m in client.get("/api/models").json()["models"]] == ["Old box"]
+        assert (settings.blob_dir / "100" / "abc").is_file() and not (settings.blob_dir / "-100").exists()
 
 
 class Chatter(BaseHTTPRequestHandler):
