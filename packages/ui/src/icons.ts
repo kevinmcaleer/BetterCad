@@ -117,6 +117,7 @@ export const moon = "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z";
 export const grid = "M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18";
 export const body = "M4 8l8-5 8 5v8l-8 5-8-5zM4 8l8 5 8-5M12 13v8";
 export const info = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8h.01";
+export const help = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.4-2.5 2.4M12 16.5h.01";
 export const chevron = "m9 6 6 6-6 6";
 // Timeline play controls.
 export const skipStart = "M18 19 9 12l9-7zM6 5v14";
@@ -252,6 +253,7 @@ export const ICONS = {
   grid,
   body,
   info,
+  help,
   chevron,
   skipStart,
   stepBack,

@@ -144,7 +144,7 @@ export function TopBar(p: TopBarProps) {
       )}
       <span className="bc-grow" />
       <IconButton className="bc-find" icon="search" title={`Find a command (${formatCombo("mod+k")})`} onClick={p.onPalette} />
-      <IconButton className="bc-props-toggle" icon="list" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
+      <IconButton className="bc-props-toggle" icon="info" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
       {!p.shared && (
         <>
           <IconButton icon="sliders" title="Parameters" on={p.panel === "params"} onClick={panelToggle(p, "params")} />
@@ -184,7 +184,7 @@ export function TopBar(p: TopBarProps) {
           />
         </>
       )}
-      {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="info" title="Help" />} />}
+      {p.helpEntries && <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="help" title="Help" />} />}
       <MenuButton
         label="Account and settings"
         align="end"

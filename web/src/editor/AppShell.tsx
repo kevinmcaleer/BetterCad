@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { cx } from "@bettercad/ui";
+import { cx, PropsHide } from "@bettercad/ui";
 import { trackKeyboard } from "./keyboardInset";
 
 export interface AppShellProps {
@@ -20,6 +20,10 @@ export interface AppShellProps {
   rightPanel: ReactNode;
   /** Under 900px the props panel is a sheet over the stage, open only when asked for. */
   rightOpen?: boolean;
+  /** From 900px up the props panel can be put away: it folds up into the top bar's properties button. */
+  rightHidden?: boolean;
+  /** Puts the props panel away (wide) or closes its sheet (narrow); the panel shows a hide button when given. */
+  onHideRight?: () => void;
 }
 
 /**
@@ -28,9 +32,24 @@ export interface AppShellProps {
  * The tools sit on the top bar; the left panel is the browser, or the panel a top-bar button opened in its place.
  * Under 900px the tools float along the bottom and the panels become sheets over the view.
  */
-export function AppShell({ topBar, status, toast, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
+export function AppShell({
+  topBar,
+  status,
+  toast,
+  leftPanel,
+  leftLabel,
+  stageToolbar,
+  stage,
+  timeline,
+  helpLine,
+  rightPanel,
+  rightOpen,
+  rightHidden,
+  onHideRight,
+}: AppShellProps) {
   const appRef = useRef<HTMLDivElement>(null);
   const footRef = useRef<HTMLDivElement>(null);
+  const rightRef = useRef<HTMLDivElement>(null);
   // The bottom stack (status, help line, rolled-back warning, timeline) changes height as its parts come and go or
   // wrap. Publish its real height so --bc-view-bottom, and every tool dialog and overlay above it, clears it exactly.
   useLayoutEffect(() => {
@@ -42,10 +61,24 @@ export function AppShell({ topBar, status, toast, leftPanel, leftLabel, stageToo
     ro.observe(foot);
     return () => ro.disconnect();
   }, []);
+  // The props panel folds into, and grows back out of, the top bar's properties button: scaling about the button's
+  // centre carries the card there, so you can see where it went.
+  useLayoutEffect(() => {
+    const right = rightRef.current!;
+    const btn = appRef.current!.querySelector(".bc-props-toggle")?.getBoundingClientRect();
+    const box = (right.offsetParent ?? document.body).getBoundingClientRect();
+    if (!btn || !btn.width) return;
+    const x = btn.left + btn.width / 2 - box.left - right.offsetLeft;
+    const y = btn.top + btn.height / 2 - box.top - right.offsetTop;
+    right.style.transformOrigin = `${Math.round(x)}px ${Math.round(y)}px`;
+  }, [rightHidden]);
   // An on-screen keyboard (iPad, phones) covers the bottom of the window: the tool bars rise above it.
   useLayoutEffect(() => trackKeyboard(appRef.current!), []);
   return (
-    <div ref={appRef} className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", !timeline && "bc-no-timeline")}>
+    <div
+      ref={appRef}
+      className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", rightHidden && "bc-right-hidden", !timeline && "bc-no-timeline")}
+    >
       <a className="bc-skip" href="#bc-view">
         Skip to the 3D view
       </a>
@@ -68,7 +101,9 @@ export function AppShell({ topBar, status, toast, leftPanel, leftLabel, stageToo
             {timeline}
           </div>
         </main>
-        <div className="bc-right">{rightPanel}</div>
+        <div className="bc-right" ref={rightRef}>
+          <PropsHide.Provider value={onHideRight ?? null}>{rightPanel}</PropsHide.Provider>
+        </div>
       </div>
     </div>
   );
