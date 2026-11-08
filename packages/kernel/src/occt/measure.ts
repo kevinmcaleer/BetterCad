@@ -87,7 +87,12 @@ export function describe(oc: OC, shape: TopoDS_Shape, ref: TopoRef): Single {
     } else if (type === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
       const cyl = surf.Cylinder();
       const ax = cyl.Axis();
-      out.circle = { radius: cyl.Radius(), centre: pnt(ax.Location()), axis: pnt(ax.Direction()) };
+      // The surface's own location can be anywhere along the axis (where the cut or extrude started, which may be far
+      // outside the body), so the centre given is the point on the axis level with the middle of the face.
+      const loc = pnt(ax.Location());
+      const dir = pnt(ax.Direction());
+      const h = dot(sub(out.centre, loc), dir);
+      out.circle = { radius: cyl.Radius(), centre: [loc[0] + dir[0] * h, loc[1] + dir[1] * h, loc[2] + dir[2] * h], axis: dir };
     }
     area.delete();
     edges.delete();

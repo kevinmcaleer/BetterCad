@@ -695,12 +695,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           : { id: c.id, what: c.geo.what, origin: c.geo.at },
     );
     const lit = [constructHover, browserPicked, construct.session?.id, revolve.axisShape].filter((x): x is string => !!x);
-    // Revolve shows the origin's axes while it wants an axis, and keeps the one it turns round.
-    const origin = construct.active
-      ? originShapes(construct.slot)
-      : revolve.pickingAxis
-        ? originShapes("line")
-        : originShapes("line").filter((o) => o.id === revolve.axisShape);
+    // The sketch's Dimension tool can measure from an axis too; Revolve shows them while it wants an axis, and keeps
+    // the one it turns round.
+    const want = construct.active ? construct.slot : (sketch.editing && sketch.stool === "dimension") || revolve.pickingAxis ? "line" : null;
+    const origin = want ? originShapes(want) : originShapes("line").filter((o) => o.id === revolve.axisShape);
     eng.setConstruct([...shapes, ...origin], lit);
   }, [
     shownConstruct,
@@ -713,6 +711,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     revolve.axisShape,
     vp.ref,
     kernel.bodies,
+    sketch.editing,
+    sketch.stool,
   ]);
 
   // Posing (#173): a live pose while a slider moves, kept in the model when it stops. Shown with the Select tool only, so
