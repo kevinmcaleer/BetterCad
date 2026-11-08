@@ -38,7 +38,7 @@ export const TOOLS: Tool[] = [
     icon: "arrow",
     key: "v",
     title: "Pick parts and faces",
-    help: "Click a part to select it, right-click or press and hold for its menu. Drag to look around, right-drag or drag two fingers to pan, scroll or pinch to zoom.",
+    help: "Click a part to select it. Drag to look around, right-drag to pan, scroll to zoom.",
   },
   {
     id: "move",
