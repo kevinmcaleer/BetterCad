@@ -36,7 +36,7 @@ import { formatCombo } from "../state/commands";
 import { ORIGIN, SNAP_LABEL } from "./snap";
 import { OPTION_ROWS } from "./options";
 import { anchorOf, dimensionArt } from "./dimensions";
-import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, levelOrUpright, toolById } from "./tools";
+import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, isPointPick, levelOrUpright, levelOrUprightPoints, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
 
 /** The sketch tool bar and the armed tool's strip, in place of the model bars while a sketch is open. */
@@ -363,11 +363,16 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   );
 }
 
-/** The armed constraint's tag by the pointer. Over a line, Horizontal/Vertical says which one that line would get. */
+/**
+ * The armed constraint's tag by the pointer. Over a line, Horizontal/Vertical says which one that line would get;
+ * over a second point, which way the two points would line up.
+ */
 function toolTag(s: SketchSession): string {
   const t = constraintToolById(s.ctool!);
   if (t.id === "horizontalVertical" && s.hover && s.sketch) {
-    const k = levelOrUpright(s.sketch, s.hover);
+    const first = s.sel.length === 1 && s.sel[0] !== s.hover && isPointPick(s.sketch, s.sel[0]!) ? s.sel[0]! : null;
+    const k =
+      first && isPointPick(s.sketch, s.hover) ? levelOrUprightPoints(s.sketch, first, s.hover, s.origin ?? undefined) : levelOrUpright(s.sketch, s.hover);
     if (k) return CONSTRAINT_LABEL[k];
   }
   return t.tag;

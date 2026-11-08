@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Draft, Solver, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
-import { addConstraints, commit, constraintsFor, levelOrUpright, newlyRedundant, preview, resolveOrigin } from "./tools";
+import { addConstraints, commit, constraintsFor, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
 import { ORIGIN, middleOf, pickAt, pointPickAt, type Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
@@ -148,7 +148,47 @@ describe("sketch tools", () => {
     const lines = s.entities.filter((e) => e.kind === "line").map((e) => e.id);
     expect(constraintsFor("horizontalVertical", s, [lines[0]!])).toBe("That line is already horizontal or vertical");
     const pts = s.entities.filter((e) => e.kind === "point").map((e) => e.id);
-    expect(constraintsFor("horizontalVertical", s, [pts[0]!])).toBe("Pick lines");
+    expect(constraintsFor("horizontalVertical", s, [pts[0]!])).toBe("Pick lines, or two points to line them up");
+  });
+
+  it("lines up two points across or up, whichever they are nearer to", () => {
+    const d = new Draft(newSketch());
+    const a = d.point([0, 0]);
+    const b = d.point([30, 4]);
+    const c = d.point([3, 25]);
+    const s = d.done().sketch;
+    expect(constraintsFor("horizontalVertical", s, [a, b])).toEqual([{ type: "horizontal", e: a, b }]);
+    expect(constraintsFor("horizontalVertical", s, [a, c])).toEqual([{ type: "vertical", e: a, b: c }]);
+    const done = addConstraints("horizontalVertical", s, [a, b]) as Sketch;
+    expect(constraintsFor("horizontalVertical", done, [b, a])).toBe("Those points are already lined up");
+  });
+
+  it("takes two ends of one line as the line, and waits on a lone point for a second", () => {
+    const s = drawPolyline(newSketch(), [
+      [0, 0],
+      [20, 30],
+    ]).sketch;
+    const line = s.entities.find((e) => e.kind === "line")!;
+    if (line.kind !== "line") throw new Error("no line");
+    expect(constraintsFor("horizontalVertical", s, [line.a, line.b])).toEqual([{ type: "vertical", e: line.id }]);
+    expect(picksReady("horizontalVertical", s, [line.a])).toBe(false);
+    expect(picksReady("horizontalVertical", s, [ORIGIN])).toBe(false);
+    expect(picksReady("horizontalVertical", s, [line.id])).toBe(true);
+    expect(picksReady("horizontalVertical", s, [line.a, ORIGIN])).toBe(true);
+  });
+
+  it("lines a circle's centre up with the origin, and the solver holds it", async () => {
+    const d = new Draft(newSketch());
+    const ring = d.circle([12, 3], 5);
+    const s = d.done().sketch;
+    const c = s.entities.find((e) => e.id === ring)!;
+    if (c.kind !== "circle") throw new Error("no circle");
+    const out = addConstraints("horizontalVertical", s, [c.c, ORIGIN]) as Sketch;
+    expect(out.constraints.at(-1)).toMatchObject({ type: "horizontal", e: c.c });
+    const solved = (await Solver.load()).solve(out);
+    expect(solved.status).toBe("ok");
+    const centre = solved.sketch.entities.find((e) => e.id === c.c)!;
+    expect(centre.kind === "point" && Math.abs(centre.y)).toBeLessThan(1e-6);
   });
 
   it("places a point, on a line when it lands on one, and never doubles one", () => {

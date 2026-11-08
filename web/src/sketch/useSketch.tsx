@@ -50,6 +50,7 @@ import {
   constraintToolById,
   newlyRedundant,
   isDrawTool,
+  picksReady,
   preview,
   resolveOrigin,
   toolById,
@@ -707,6 +708,11 @@ export function useSketch(d: SketchDeps) {
         const snapped = pointPickAt(xy, L.sketch, 8 * px, L.origin);
         if (snapped) return snapped;
       }
+      // Horizontal/Vertical snaps to points and the origin too (not midpoints, which stand for their line).
+      if (tool === "horizontalVertical") {
+        const snapped = pointPickAt(xy, L.sketch, 8 * px, L.origin);
+        if (snapped && snapped.kind !== "middle") return snapped;
+      }
       const id = pickAt(xy, L.sketch, 8 * px, L.origin);
       return id ? { id } : null;
     };
@@ -722,11 +728,13 @@ export function useSketch(d: SketchDeps) {
           if (!id) return true;
           // Only geometry carries over from the selection: a constraint or size picked by its mark is not a pick.
           const picked = [...L.sel.filter((x) => x !== id && isPickable(L.sketch!, x)), id];
-          if (picked.length < constraintToolById(L.ctool).picks) {
+          if (!picksReady(L.ctool, L.sketch, picked)) {
             setSel(picked);
             return true;
           }
           if (L.applyConstraint(L.ctool, picked)) setSel([]);
+          // A pick that fits on its own (a line after a lone point, for Horizontal/Vertical) goes on by itself.
+          else if (picked.length > 1 && picksReady(L.ctool, L.sketch, [id]) && L.applyConstraint(L.ctool, [id], true)) setSel([]);
           else setSel(picked.length > 1 ? [id] : []);
           return true;
         }
