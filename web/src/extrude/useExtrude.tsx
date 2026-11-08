@@ -145,6 +145,8 @@ export function useExtrude(d: ExtrudeDeps) {
   const drag = useRef<{ start: ScreenPoint; last: ScreenPoint; length: number; moved: boolean } | null>(null);
   /** The arrow's end along the normal as last drawn (through all draws a fixed length), where a drag starts from. */
   const arrowLength = useRef(0);
+  /** Whether the arrow is being dragged (it has moved since the press), so the ghost shows. */
+  const [dragging, setDragging] = useState(false);
   const mod = useRef<ArrowModule | null>(null);
   /** Revolve's axis picking, loaded with the Revolve tool so it costs the first paint nothing. */
   const axisMod = useRef<typeof import("./axisPick") | null>(null);
@@ -449,6 +451,7 @@ export function useExtrude(d: ExtrudeDeps) {
           g.length += arrow.current.along(g.last, p, frameOfFeature(f).normal);
           g.last = p;
           if (!g.moved && Math.hypot(p.x - g.start.x, p.y - g.start.y) < 4) return;
+          if (!g.moved) setDragging(true);
           g.moved = true;
           const c = mod.current?.dragTo(f, g.length);
           if (c) change(c);
@@ -519,6 +522,7 @@ export function useExtrude(d: ExtrudeDeps) {
       up: () => {
         const g = drag.current;
         drag.current = null;
+        setDragging(false);
         const f = live.current.feature;
         if (!g || g.moved || f?.type !== "extrude") return;
         const c = mod.current?.flipOf(f);
@@ -527,6 +531,7 @@ export function useExtrude(d: ExtrudeDeps) {
       },
       cancel: () => {
         drag.current = null;
+        setDragging(false);
       },
       leave: () => {
         setHover(null);
@@ -618,10 +623,15 @@ export function useExtrude(d: ExtrudeDeps) {
     if (!eng || !a || !arrowFeature) return;
     const shapes = pickedOf(arrowFeature);
     if (!shapes.length) return a.hide();
-    const g = mod.current!.arrowOf(arrowFeature, frameOfFeature(arrowFeature), shapes, (base) => eng.pixelSize(base) * 90);
+    const frame = frameOfFeature(arrowFeature);
+    let reach = 0;
+    const g = mod.current!.arrowOf(arrowFeature, frame, shapes, (base) => (reach = eng.pixelSize(base) * 90));
     arrowLength.current = g.length;
     a.update(g.base, g.end, g.dir);
-  }, [engineOf, Arrow, arrowFeature, pickedOf, frameOfFeature, d.theme, d.doc]);
+    // While the arrow is dragged, a ghost of the shapes follows it at once; the body catches up when the kernel has
+    // rebuilt it, and the ghost goes when the drag ends.
+    a.setGhost(dragging ? { frame, shapes, ...mod.current!.ghostSpan(arrowFeature, reach), cut: arrowFeature.operation === "cut" } : null);
+  }, [engineOf, Arrow, arrowFeature, pickedOf, frameOfFeature, d.theme, d.doc, dragging]);
 
   const done = useCallback(() => {
     const L = live.current;
