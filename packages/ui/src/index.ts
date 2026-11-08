@@ -16,7 +16,8 @@ export {
 export { Toolbar, ArmedBar, Separator, type ToolbarProps, type ArmedBarProps } from "./Toolbar";
 export { TooltipLayer, TooltipSample } from "./Tooltip";
 export { NumberField, Fields, stepFor, clamp, roundTo, scrubValue, type NumberFieldProps, type Unit } from "./NumberField";
-export { evaluate, isExpression, ExprError, type Scope } from "./expr";
+export { evaluate, isExpression, ExprError, completeAt, applyCompletion, type Scope, type Completion } from "./expr";
+export { useNameComplete, type NameComplete } from "./useNameComplete";
 export { Menu, ContextMenu, MenuButton, longPress, type MenuEntry, type MenuProps, type ContextMenuState, type MenuButtonProps } from "./Menu";
 export { Dialog, type DialogProps } from "./Dialog";
 export { Banner, type BannerProps, type BannerTone } from "./Banner";

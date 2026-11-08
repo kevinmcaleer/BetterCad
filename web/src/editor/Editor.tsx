@@ -43,6 +43,7 @@ import {
   reorderFeature,
   addParam,
   paramScope,
+  relinkSketches,
   removeParam,
   setExpr,
   updateParam,
@@ -103,6 +104,8 @@ import { useDrop } from "../files/useDrop";
 import { ExportDialog } from "../export/ExportDialog";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
+import { loadSolver } from "../sketch/solver";
+import type { Solver } from "@bettercad/sketch";
 import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
@@ -1795,11 +1798,32 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     store.seal();
   };
   const scope = useMemo(() => paramScope(doc), [doc]);
+  // Sketch sizes that use parameters re-solve when a parameter changes (#75), so the solver loads once there are any.
+  const solverRef = useRef<Solver | null>(null);
+  const hasParams = (doc.params?.length ?? 0) > 0;
+  useEffect(() => {
+    if (hasParams && !solverRef.current) void loadSolver().then((s) => (solverRef.current = s));
+  }, [hasParams]);
+  const relink = (d: ModelDoc, solver: Solver) =>
+    relinkSketches(d, (sk) => {
+      const r = solver.solve(sk);
+      return r.status === "ok" || r.status === "redundant" ? r.sketch : null;
+    });
+  const changeParams = (fn: (d: ModelDoc) => ModelDoc, label: string) => {
+    const solver = solverRef.current;
+    if (solver) return store.edit((d) => relink(fn(d), solver), label);
+    store.edit(fn, label);
+    void loadSolver().then((sv) => {
+      solverRef.current = sv;
+      const d = store.get();
+      if (relink(d, sv) !== d) store.edit((x) => relink(x, sv), label);
+    });
+  };
   const paramsPanel = (
     <ParamsPanel
       doc={doc}
       onAdd={() => store.edit((d) => addParam(d), "Add a parameter")}
-      onChange={(id, change) => store.edit((d) => updateParam(d, id, change), "Change a parameter")}
+      onChange={(id, change) => changeParams((d) => updateParam(d, id, change), "Change a parameter")}
       onRemove={(id) => store.edit((d) => removeParam(d, id), "Delete a parameter")}
       onShowUses={(fids) => {
         if (fids[0]) setActiveFeature(fids[0]);
