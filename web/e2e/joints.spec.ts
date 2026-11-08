@@ -153,3 +153,60 @@ test("drag a link round its hinge in the view, and Esc puts it back", async ({ p
   await expect(page.getByText("Put Joint 1 back")).toBeVisible();
   await expect(angle).toHaveValue("45");
 });
+
+/** URDF (#175): a box hung from Base on a hinge, exported as a .zip with the .urdf and a mesh per link. */
+test("export the robot as URDF", async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as Record<string, unknown>;
+    w.showOpenFilePicker = async () => [];
+    w.showSaveFilePicker = async (o: { suggestedName: string }) => ({
+      kind: "file",
+      name: o.suggestedName,
+      createWritable: async () => ({
+        write: async (d: Blob) => {
+          w.__export = { name: o.suggestedName, text: new TextDecoder("latin1").decode(await d.arrayBuffer()) };
+        },
+        close: async () => {},
+      }),
+    });
+  });
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  await click(page, 25, 0, 20);
+  await expect(page.getByText("Moves: Link 1")).toBeVisible();
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  await expect(page.getByText("Hangs from: Base")).toBeVisible();
+  await click(page, 25, 0, 20);
+  await expect(page.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await page.keyboard.press("ControlOrMeta+e");
+  const dialog = page.getByRole("dialog", { name: "Export" });
+  await dialog.getByRole("button", { name: "URDF" }).click();
+  await expect(dialog.getByRole("group", { name: "What" })).toHaveCount(0);
+  await expect(dialog.getByRole("status")).toHaveText(/^2 meshes · ≈ 24 triangles/, { timeout: 60_000 });
+  await dialog.getByRole("checkbox", { name: /ROS package/ }).check();
+  await dialog.getByRole("button", { name: "Export", exact: true }).click();
+  await expect(page.getByText(/^Exported .*\.zip$/)).toBeVisible({ timeout: 30_000 });
+  const out = await page.evaluate(() => (window as unknown as { __export: { name: string; text: string } }).__export);
+  expect(out.name).toMatch(/\.zip$/);
+  // Stored, not compressed, so the .urdf reads straight out of the .zip.
+  expect(out.text).toContain('<joint name="Joint_1" type="revolute">');
+  expect(out.text).toContain('<child link="Link_1"/>');
+  expect(out.text).toMatch(/<mesh filename="package:\/\/\w+\/meshes\/Link_1\.stl"\/>/);
+  expect(out.text).toContain("/meshes/base_link.stl");
+});

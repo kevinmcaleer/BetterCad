@@ -114,5 +114,6 @@ describe("orientation suggestions", () => {
     }
     // The budget is 1 s for 100k triangles; shared CI runners are slower, so this only catches a step change.
     expect(ms / tris).toBeLessThan(0.03);
-  });
+    // Meshing the sphere and three runs can pass 5 s on a busy runner; the speed check is the line above.
+  }, 30_000);
 });

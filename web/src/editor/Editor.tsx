@@ -2845,7 +2845,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             mode={vp.mode}
             style={vp.style}
             ortho={vp.ortho}
-            section={vp.section}
+            section={sketch.slice ?? vp.section}
             stats={vp.stats}
             description={`${parts.length} parts. ${vp.elementText || selectionText}`}
             onPick={sketch.editing ? NO_PICK : vp.onPick}

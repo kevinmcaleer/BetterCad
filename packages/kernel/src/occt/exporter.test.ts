@@ -4,7 +4,8 @@ import { loadOCCT, type OC } from "./oc";
 import { ModelBuilder } from "./model";
 import { Exporter } from "./exporter";
 import { DEFLECTION, readStep } from "./export";
-import { addExtrude, addJoint, addLink, addPart, addSketch, newDoc, setLook, setPose, updateSketch, type ModelDoc } from "../document";
+import { addExtrude, addJoint, addLink, addPart, addSketch, changeParts, newDoc, setLook, setPose, updateSketch, type ModelDoc } from "../document";
+import { unzip } from "../export/zip";
 import { meshVolume, read3mf, readStl } from "../export/mesh";
 import { measure } from "./shapes";
 import { readGlb } from "../export/gltf";
@@ -166,5 +167,52 @@ describe("exporting as posed (#173)", () => {
     const moved = at(true);
     expect(moved.bbox.min[2] - home.bbox.min[2]).toBeCloseTo(30, 3);
     expect(moved.volume).toBeCloseTo(home.volume, 1);
+  });
+});
+
+describe("exporting a robot as URDF (#175)", () => {
+  // A 30 mm base cube, and a 20 mm cube 40 mm up made a link on a hinge at (0, 0, 40).
+  function arm(): ModelDoc {
+    let d = addPart({ ...newDoc("Arm bot"), print: { material: "pla", infill: 20 } }, "box", "b");
+    d = changeParts(d, ["b"], "size", { x: 30, y: 30, z: 30 });
+    d = addPart(d, "box", "a");
+    d = changeParts(d, ["a"], "position", { x: 0, y: 0, z: 40 });
+    d = addLink(d, ["a"], "l1");
+    return addJoint(d, { kind: "revolute", child: "l1", parent: null, origin: [0, 0, 40], axis: [1, 0, 0], lower: -90, upper: 90 }, "j1");
+  }
+
+  it("zips the .urdf and one STL per link, in metres and in each link's frame", () => {
+    const r = x.export({ doc: setPose(arm(), "j1", 45), bodies: null, format: "urdf", deflection: DEFLECTION.draft, name: "Arm bot" });
+    expect(r.files.map((f) => f.name)).toEqual(["Arm bot.zip"]);
+    const files = unzip(new Uint8Array(r.files[0]!.data));
+    expect([...files.keys()]).toEqual(["Arm_bot/Arm_bot.urdf", "Arm_bot/meshes/base_link.stl", "Arm_bot/meshes/Link_1.stl"]);
+    const urdf = new TextDecoder().decode(files.get("Arm_bot/Arm_bot.urdf"));
+    expect(urdf).toContain('<origin xyz="0 0 0.04" rpy="0 0 0"/>');
+    expect(urdf).toContain('<axis xyz="1 0 0"/>');
+    // The link's cube sits at its joint's origin, so its mesh starts there, at home whatever the pose.
+    const link = readStl(files.get("Arm_bot/meshes/Link_1.stl")!.slice().buffer);
+    const zs = [...link].filter((_, i) => i % 3 === 2);
+    expect(Math.min(...zs)).toBeCloseTo(0, 6);
+    expect(Math.max(...zs)).toBeCloseTo(0.02, 6);
+    const base = readStl(files.get("Arm_bot/meshes/base_link.stl")!.slice().buffer);
+    expect(Math.max(...base)).toBeCloseTo(0.03, 6);
+  });
+
+  it("weighs each link as printed", () => {
+    const r = x.export({ doc: arm(), bodies: null, format: "urdf", deflection: DEFLECTION.draft, name: "Arm bot" });
+    const urdf = new TextDecoder().decode(unzip(new Uint8Array(r.files[0]!.data)).get("Arm_bot/Arm_bot.urdf"));
+    const masses = [...urdf.matchAll(/<mass value="([^"]+)"/g)].map((m) => Number(m[1]));
+    const [base] = m.mass(arm()).filter((b) => b.id === "b");
+    expect(masses[0]! / (base!.mass / 1000)).toBeCloseTo(1, 5);
+    expect(masses).toHaveLength(2);
+  });
+
+  it("estimates the meshes, and needs a joint", () => {
+    const est = x.estimate({ doc: arm(), bodies: null, format: "urdf", deflection: DEFLECTION.draft });
+    expect(est.solids).toBe(2);
+    expect(est.triangles).toBe(24);
+    expect(() => x.estimate({ doc: addPart(newDoc("Box"), "box", "b"), bodies: null, format: "urdf", deflection: DEFLECTION.draft })).toThrow(
+      "Add a joint first to export a robot.",
+    );
   });
 });
