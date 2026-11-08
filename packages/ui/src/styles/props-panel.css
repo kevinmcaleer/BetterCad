@@ -206,3 +206,30 @@
   border-top: 1px solid var(--bc-color-line);
   background: var(--bc-color-rail);
 }
+/* Puts the panel away: it folds up into the top bar's properties button, which brings it back. */
+.bc-side.bc-props {
+  position: relative;
+}
+.bc-props-hide {
+  position: absolute;
+  top: var(--bc-space-4);
+  right: var(--bc-space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-muted);
+  cursor: pointer;
+}
+.bc-props-hide:hover {
+  background: var(--bc-color-hover);
+  color: var(--bc-color-ink);
+}
+.bc-props-hide .bc-icon {
+  transform: rotate(-90deg);
+}

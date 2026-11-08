@@ -98,6 +98,23 @@ test("a narrow window gets the tools along the bottom, and sheets", async ({ pag
   await expect(page.getByRole("complementary", { name: "Properties" })).toBeHidden();
 });
 
+test("the properties panel folds up into its top-bar button and comes back", async ({ page }) => {
+  await page.goto("/");
+  const props = page.getByRole("complementary", { name: "Properties" });
+  const toggle = page.getByRole("banner").getByRole("button", { name: "Hide properties" });
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await props.getByRole("button", { name: "Hide properties" }).click();
+  await expect(props).toBeHidden();
+  await expect(page.getByRole("banner").getByRole("button", { name: "Show properties" })).toHaveAttribute("aria-pressed", "false");
+  // The choice lasts between visits.
+  await page.reload();
+  await expect(page.getByRole("application", { name: /3D view/ })).toBeVisible();
+  await expect(props).toBeHidden();
+  await page.getByRole("banner").getByRole("button", { name: "Show properties" }).click();
+  await expect(props).toBeVisible();
+  await expect(props.getByRole("button", { name: "Hide properties" })).toBeVisible();
+});
+
 test("timeline: each step shows, and the marker rolls the model back", async ({ page }) => {
   await page.goto("/");
   const timeline = page.getByRole("region", { name: "Timeline" });

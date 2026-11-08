@@ -23,7 +23,7 @@ export { Dialog, type DialogProps } from "./Dialog";
 export { Banner, type BannerProps, type BannerTone } from "./Banner";
 export { Rail, type RailItem, type RailProps } from "./Rail";
 export { PartsTree, depths, type TreeItem, type PartsTreeProps, type RowToggle } from "./PartsTree";
-export { PropsPanel, PropRow, type PropsSection, type PropsPanelProps } from "./PropsPanel";
+export { PropsPanel, PropsHide, PropRow, type PropsSection, type PropsPanelProps } from "./PropsPanel";
 export { clickSelect, type Modifiers } from "./selection";
 export { ViewCube, classifyCubePoint, cubePlaceName, type ViewName } from "./ViewCube";
 export { useDismiss } from "./useDismiss";

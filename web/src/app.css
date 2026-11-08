@@ -104,6 +104,29 @@ body {
 .bc-app .bc-right > * {
   pointer-events: auto;
 }
+/* Put away, the props column folds up into the top bar's properties button (AppShell sets the transform origin on
+   it), and the view's clear area takes its room back. */
+.bc-app .bc-right {
+  transition:
+    transform 0.28s cubic-bezier(0.3, 0, 0.2, 1),
+    opacity 0.28s ease,
+    visibility 0s;
+}
+.bc-app.bc-right-hidden {
+  --bc-view-right: var(--bc-float-gap);
+}
+.bc-app.bc-right-hidden .bc-right {
+  transform: scale(0.04);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform 0.28s cubic-bezier(0.4, 0, 0.8, 0.6),
+    opacity 0.2s ease 0.08s,
+    visibility 0s linear 0.28s;
+}
+.bc-app.bc-right-hidden .bc-right > * {
+  pointer-events: none;
+}
 .bc-app .bc-props {
   flex: 0 1 auto;
   width: auto;
@@ -128,9 +151,6 @@ body {
 }
 .bc-skip:focus {
   top: var(--bc-space-4);
-}
-.bc-props-toggle {
-  display: none;
 }
 .bc-menu-extra {
   padding: var(--bc-space-2) var(--bc-space-3) var(--bc-space-3);
@@ -762,9 +782,6 @@ kbd {
   }
   .bc-app.bc-right-open .bc-props {
     display: block;
-  }
-  .bc-props-toggle {
-    display: inline-flex;
   }
   /* The tools leave the top bar and float along the bottom, where a thumb reaches them. */
   .bc-app .bc-top > .bc-top-tools {
