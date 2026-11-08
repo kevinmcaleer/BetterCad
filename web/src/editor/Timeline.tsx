@@ -51,6 +51,8 @@ export interface TimelineProps {
   /** The same steps as a list, in the left panel. */
   onHistory?: () => void;
   historyOpen?: boolean;
+  /** Shown above the steps while a change lands before later steps: changing an earlier one, or adding while rolled back. */
+  warning?: string | null;
 }
 
 /** Two clicks or taps on the same tile within this many milliseconds open it to edit. */
@@ -64,7 +66,7 @@ export const DOUBLE_TAP_MS = 400;
  * tile wrappers would remount it at every step, which drops its pointer capture and focus, so a drag stopped after
  * one step.
  */
-export function Timeline({ features, at, onMarker, failed, activeId, summary, onSelect, onMenu, onEdit, onHistory, historyOpen }: TimelineProps) {
+export function Timeline({ features, at, onMarker, failed, activeId, summary, onSelect, onMenu, onEdit, onHistory, historyOpen, warning }: TimelineProps) {
   const strip = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -155,7 +157,13 @@ export function Timeline({ features, at, onMarker, failed, activeId, summary, on
   );
 
   return (
-    <section className={cx("bc-timeline", rolledBack && "bc-rolled-back")} aria-label="Timeline">
+    <section className={cx("bc-timeline", rolledBack && "bc-rolled-back", warning && "bc-tl-warned")} aria-label="Timeline">
+      {warning && (
+        <p className="bc-tl-warn" role="status">
+          <Icon name="warning" size={14} />
+          <span>{warning}</span>
+        </p>
+      )}
       <div className="bc-tl-play" role="group" aria-label="Play controls">
         <IconButton icon="skipStart" title="Roll back to the start" disabled={at === 0} onClick={() => onMarker(0)} />
         <IconButton icon="stepBack" title={`Step back (${formatCombo("alt+arrowleft")})`} disabled={at === 0} onClick={() => onMarker(at - 1)} />
