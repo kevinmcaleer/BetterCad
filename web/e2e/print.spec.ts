@@ -32,6 +32,7 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
   await page.keyboard.press("ControlOrMeta+e");
   await expect(page.getByRole("dialog", { name: "Export" }).getByText(/12 mm too wide/)).toBeVisible();
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Export" })).toBeHidden();
 
   // Back to 20 mm, moved off centre, then centred.
   await w.fill("20");
@@ -39,6 +40,8 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
   const x = page.getByRole("textbox", { name: "X (mm)", exact: true });
   await x.fill("50");
   await x.press("Enter");
+  // The Esc above can land on the Print panel too when the runner is slow; Print opens it again if so.
+  await openPrint(page);
   await page.getByRole("button", { name: "Centre on bed" }).click();
   await expect(page.getByText("Centred the model on the bed")).toBeVisible();
   await expect(x).toHaveValue("0");
