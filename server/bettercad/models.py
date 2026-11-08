@@ -366,7 +366,7 @@ def router(settings) -> APIRouter:
 
     def shared_model(db: sqlite3.Connection, token: str) -> sqlite3.Row:
         row = db.execute(
-            "SELECT m.*, u.name AS owner FROM shares s JOIN models m ON m.id = s.model_id JOIN users u ON u.id = m.user_id "
+            "SELECT m.*, u.name AS owner FROM shares s JOIN models m ON m.id = s.model_id JOIN accounts u ON u.id = m.user_id "
             "WHERE s.token = ? AND m.deleted_at IS NULL "
             "AND (s.expires IS NULL OR s.expires > strftime('%Y-%m-%d %H:%M:%f', 'now'))",
             (token,),

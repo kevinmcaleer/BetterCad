@@ -18,6 +18,8 @@ const pages = () => import("./pages/lazy");
 const SignInPage = lazy(() => pages().then((m) => ({ default: m.SignInPage })));
 const SignUpPage = lazy(() => pages().then((m) => ({ default: m.SignUpPage })));
 const AccountPage = lazy(() => pages().then((m) => ({ default: m.AccountPage })));
+const ForgotPage = lazy(() => pages().then((m) => ({ default: m.ForgotPage })));
+const ResetPage = lazy(() => pages().then((m) => ({ default: m.ResetPage })));
 const Library = lazy(() => pages().then((m) => ({ default: m.Library })));
 const PrivacyPage = lazy(() => pages().then((m) => ({ default: m.PrivacyPage })));
 const TermsPage = lazy(() => pages().then((m) => ({ default: m.TermsPage })));
@@ -57,6 +59,10 @@ function page(route: Route) {
       return <SignUpPage next={route.next} />;
     case "account":
       return <AccountPage />;
+    case "forgot":
+      return <ForgotPage />;
+    case "reset":
+      return <ResetPage token={route.token} />;
     case "library":
       return <Library bin={route.bin} />;
     case "privacy":

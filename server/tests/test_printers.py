@@ -31,8 +31,8 @@ def test_save_list_update_and_delete(user):
 
 def test_people_only_see_their_own_printers(make_client):
     with make_client() as a, make_client() as b:
-        sign_up(a, "a@example.com", "A")
-        sign_up(b, "b@example.com", "B")
+        sign_up(a, "a@example.com", "alice")
+        sign_up(b, "b@example.com", "bob")
         a.put("/api/printers/p1", json=PRINTER)
         assert b.get("/api/printers").json() == {"printers": []}
         assert b.delete("/api/printers/p1").status_code == 404

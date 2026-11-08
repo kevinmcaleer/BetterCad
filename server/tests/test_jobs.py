@@ -8,7 +8,7 @@ from bettercad.settings import Settings
 def setup(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     db.migrate(conn)
-    conn.execute("INSERT INTO users (id, email, name, password) VALUES (1, 'a@b.co', 'A', 'x')")
+    conn.execute("INSERT INTO accounts (id, name) VALUES (1, 'A')")
     conn.execute("INSERT INTO models (id, user_id, name, version) VALUES ('m', 1, 'Box', 30)")
     for n in range(1, 31):
         # Versions 1 to 25 are 60 days old, 26 to 30 are recent.

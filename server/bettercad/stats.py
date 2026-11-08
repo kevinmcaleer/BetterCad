@@ -42,7 +42,7 @@ def router(settings: Settings) -> APIRouter:
 
     @r.get("/stats")
     def stats(request: Request, user: CurrentUser, days: int = 30) -> dict:
-        if user.email.lower() not in allowed:
+        if (user.email or "").lower() not in allowed:
             raise HTTPException(403, "Only the accounts in STATS_EMAILS can see the stats.")
         days = max(1, min(days, 366))
         since = (datetime.now(UTC) - timedelta(days=days - 1)).strftime("%Y-%m-%d")
