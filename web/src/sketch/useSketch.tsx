@@ -37,18 +37,20 @@ import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { loadOptions, saveOptions, sketchGrid, type SketchOption, type SketchOptions } from "./options";
-import { entityAt, snap, snapStep, type Snap } from "./snap";
+import { ORIGIN, entityAt, pickAt, snap, snapStep, type Snap } from "./snap";
 import {
   CLICKS,
   CONSTRAINT_TOOLS,
   SKETCH_TOOLS,
   addConstraints,
   commit,
+  constraintToolById,
   newlyRedundant,
   isDrawTool,
   preview,
+  resolveOrigin,
   toolById,
-  type ConstraintTool,
+  type ConstraintToolId,
   type SketchToolId,
 } from "./tools";
 
@@ -101,6 +103,10 @@ export function useSketch(d: SketchDeps) {
   deps.current = d;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [stool, setStoolState] = useState<SketchToolId>("select");
+  /** The armed constraint tool: it stays on the pointer, picking line after line, until Esc. */
+  const [ctool, setCtool] = useState<ConstraintToolId | null>(null);
+  /** Where the pointer is on the view while a constraint tool is armed, for the tag that follows it. */
+  const [pointer, setPointer] = useState<ScreenPoint | null>(null);
   const [clicks, setClicks] = useState<Snap[]>([]);
   const [cursor, setCursor] = useState<Snap | null>(null);
   const [typed, setTyped] = useState<(number | undefined)[]>([]);
@@ -131,6 +137,8 @@ export function useSketch(d: SketchDeps) {
   const sketch = feature?.sketch ?? null;
   const frame = useMemo<Frame | null>(() => (sketch ? planeFrame(sketch.plane) : null), [sketch]);
   const result = useMemo<SolveResult | null>(() => (sketch && solver ? solver.solve(sketch) : null), [sketch, solver]);
+  /** The model's origin in sketch mm, which Select, Dimension and the constraint tools can pick. */
+  const origin = useMemo<Vec2 | null>(() => (frame ? toSketch(frame, [0, 0, 0]) : null), [frame]);
 
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
 
@@ -154,6 +162,8 @@ export function useSketch(d: SketchDeps) {
 
   const setStool = useCallback((t: SketchToolId) => {
     setStoolState(t);
+    setCtool(null);
+    setPointer(null);
     setEditPreview(null);
     setClicks([]);
     setTyped([]);
@@ -206,9 +216,9 @@ export function useSketch(d: SketchDeps) {
     [solver, store, say, describe, current],
   );
 
-  const addDimension = useCallback(
-    (kind: DimensionKind, refs: Id[]) => {
-      const s = current();
+  const addSize = useCallback(
+    (kind: DimensionKind, refs: Id[], base?: Sketch) => {
+      const s = base ?? current();
       if (!s) return;
       const dr = new Draft(s);
       const id = dr.dimension(kind, refs);
@@ -227,9 +237,13 @@ export function useSketch(d: SketchDeps) {
 
   /** The dimension tool on a selection: one line, circle or arc, two points, a point and a line, or two lines. */
   const dimensionFor = useCallback(
-    (picked: Id[]): boolean => {
-      const s = current();
-      if (!s) return false;
+    (chosen: Id[]): boolean => {
+      const now = current();
+      if (!now) return false;
+      // The origin sizes like a point; it becomes a fixed point on the origin only when a size uses it.
+      if (chosen.length < 2 && chosen.includes(ORIGIN)) return false;
+      const { sketch: s, picked } = resolveOrigin(now, chosen, live.current.origin ?? undefined);
+      const addDimension = (kind: DimensionKind, refs: Id[]) => addSize(kind, refs, s);
       const idx = new SketchIndex(s);
       const es = picked.map((id) => idx.get(id)).filter((e) => !!e);
       if (es.length === 1) {
@@ -256,7 +270,7 @@ export function useSketch(d: SketchDeps) {
       }
       return false;
     },
-    [current, addDimension],
+    [current, addSize],
   );
 
   const setDimension = useCallback(
@@ -286,24 +300,43 @@ export function useSketch(d: SketchDeps) {
     [current, apply, say],
   );
 
-  const constrain = useCallback(
-    (type: ConstraintTool["id"]) => {
+  /** Adds a constraint tool's output for some picks. Returns whether they fitted (true even if the solver said no). */
+  const applyConstraint = useCallback(
+    (type: ConstraintToolId, picked: Id[], quietHint = false): boolean => {
       const s = current();
-      if (!s) return;
-      const picked = live.current.sel.filter((id) => s.entities.some((e) => e.id === id));
-      const out = addConstraints(type, s, picked);
+      if (!s) return false;
+      const out = addConstraints(type, s, picked, live.current.origin ?? undefined);
       if (typeof out === "string") {
-        say(`${out} (Shift-click to pick more than one), then choose ${CONSTRAINT_TOOLS.find((t) => t.id === type)!.label} again.`);
-        return;
+        if (!quietHint) say(out);
+        return false;
       }
-      if (apply(out, `Add ${CONSTRAINT_LABEL[type].toLowerCase()} constraint`, { strict: true })) setSel([]);
+      apply(out, `Add ${constraintToolById(type).label.toLowerCase()} constraint`, { strict: true });
+      return true;
     },
     [current, apply, say],
   );
 
+  /**
+   * Arms a constraint tool. Geometry picked beforehand gets it at once; either way the tool stays on the pointer for
+   * more picks until Esc.
+   */
+  const constrain = useCallback(
+    (type: ConstraintToolId) => {
+      const s = current();
+      if (!s) return;
+      const picked = live.current.sel.filter((id) => id === ORIGIN || s.entities.some((e) => e.id === id));
+      if (picked.length) applyConstraint(type, picked, true);
+      setStool("select");
+      setSel([]);
+      setCtool(type);
+      say(`${constraintToolById(type).hint}. Esc puts the tool down.`);
+    },
+    [current, applyConstraint, setStool, say],
+  );
+
   const removeSelected = useCallback(() => {
     const s = current();
-    const ids = live.current.sel;
+    const ids = live.current.sel.filter((id) => id !== ORIGIN);
     if (!s || !ids.length) return;
     const gone = new Set(ids);
     const next = removeEntities(
@@ -431,6 +464,9 @@ export function useSketch(d: SketchDeps) {
     filletR,
     offsetD,
     projectGuide,
+    ctool,
+    applyConstraint,
+    origin,
   });
   live.current = {
     editingId,
@@ -450,6 +486,9 @@ export function useSketch(d: SketchDeps) {
     filletR,
     offsetD,
     projectGuide,
+    ctool,
+    applyConstraint,
+    origin,
   };
 
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
@@ -525,7 +564,7 @@ export function useSketch(d: SketchDeps) {
         off: mods.shift,
         gridOnly: mods.mod,
         radius: mods.touch ? 16 : 8,
-        origin: L.frame ? toSketch(L.frame, [0, 0, 0]) : null,
+        origin: L.origin,
       });
     };
     const done = (r: Sketch | string, label: string) => {
@@ -609,16 +648,29 @@ export function useSketch(d: SketchDeps) {
         const L = live.current;
         const hit = at(p);
         if (!hit || !L.sketch) return false;
+        if (L.ctool) {
+          // Each pick adds to the tool's picks; once there are enough, the constraint goes on and the tool stays armed.
+          const id = pickAt(hit.xy, L.sketch, 8 * hit.px, L.origin);
+          if (!id) return true;
+          const picked = [...L.sel.filter((x) => x !== id), id];
+          if (picked.length < constraintToolById(L.ctool).picks) {
+            setSel(picked);
+            return true;
+          }
+          if (L.applyConstraint(L.ctool, picked)) setSel([]);
+          else setSel(picked.length > 1 ? [id] : []);
+          return true;
+        }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
         if (L.stool === "select" || L.stool === "dimension") {
-          const id = entityAt(hit.xy, L.sketch, 8 * hit.px);
+          const id = pickAt(hit.xy, L.sketch, 8 * hit.px, L.origin);
           if (L.stool === "dimension") {
             if (!id) return false;
             const picked = [...L.sel.filter((x) => x !== id), id];
             const e = L.sketch.entities.find((x) => x.id === id);
             // A line, circle or arc sizes at once unless a point waits for it; a point waits for a second pick.
-            const waiting = L.sel.some((x) => L.sketch!.entities.find((y) => y.id === x)?.kind === "point");
-            if (e?.kind !== "point" && !waiting && L.dimensionFor([id])) return true;
+            const waiting = L.sel.some((x) => x === ORIGIN || L.sketch!.entities.find((y) => y.id === x)?.kind === "point");
+            if (e && e.kind !== "point" && !waiting && L.dimensionFor([id])) return true;
             if (picked.length >= 2 && L.dimensionFor(picked.slice(-2))) return true;
             setSel([id]);
             return true;
@@ -654,8 +706,9 @@ export function useSketch(d: SketchDeps) {
           return;
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
+        if (L.ctool) setPointer({ x: p.x, y: p.y });
         if (L.stool === "select" || L.stool === "dimension") {
-          setHover(entityAt(hit.xy, L.sketch, 8 * hit.px));
+          setHover(pickAt(hit.xy, L.sketch, 8 * hit.px, L.origin));
           setCursor(null);
           return;
         }
@@ -668,6 +721,7 @@ export function useSketch(d: SketchDeps) {
       },
       leave: () => {
         setHover(null);
+        setPointer(null);
         setCursor(null);
         setEditPreview(null);
         eng.showHover(null);
@@ -717,8 +771,9 @@ export function useSketch(d: SketchDeps) {
       const w = eng.rayPlane(width / 2, height / 2, frame.origin, frame.normal);
       if (w) grid = sketchGrid(toSketch(frame, w), px * Math.hypot(width, height) * 0.6, px);
     }
-    o.update(px ? { ...withOrigin(view, toSketch(frame, [0, 0, 0]), px), grid } : view);
-  }, [sketch, frame, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options]);
+    const mark: Shade = sel.includes(ORIGIN) ? "picked" : hover === ORIGIN ? "hover" : "fixed";
+    o.update(px && origin ? { ...withOrigin(view, origin, px, mark), grid } : view);
+  }, [sketch, frame, origin, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options]);
 
   // The sketch's own grid takes the floor grid's place while it is on.
   useEffect(() => {
@@ -766,7 +821,14 @@ export function useSketch(d: SketchDeps) {
     },
     ESC.tool + 3,
   );
-  useEscape(editing && stool !== "select", () => setStool("select"), ESC.tool + 2);
+  useEscape(
+    editing && (stool !== "select" || ctool !== null),
+    () => {
+      setStool("select");
+      setSel([]);
+    },
+    ESC.tool + 2,
+  );
   useEscape(editing && sel.length > 0, () => setSel([]), ESC.tool + 1);
   // Esc never drops the sketch by accident: the last layer only says how to finish.
   useEscape(editing, () => say("Enter or the Finish button finishes the sketch."), ESC.tool);
@@ -878,8 +940,8 @@ export function useSketch(d: SketchDeps) {
           ? "Fully constrained"
           : `${dof} degree${dof === 1 ? "" : "s"} of freedom`;
 
-  const help =
-    d.picking && !editing ? "Click a face or a plane to sketch on it." : editing ? `${toolById(stool).help} ${status ?? ""}.`.replace(/\.\.$/, ".") : null;
+  const toolHelp = ctool ? `${constraintToolById(ctool).hint}. Esc puts the tool down.` : toolById(stool).help;
+  const help = d.picking && !editing ? "Click a face or a plane to sketch on it." : editing ? `${toolHelp} ${status ?? ""}.`.replace(/\.\.$/, ".") : null;
 
   return {
     editing,
@@ -890,6 +952,9 @@ export function useSketch(d: SketchDeps) {
     result,
     status,
     stool,
+    ctool,
+    pointer,
+    origin,
     pickTool,
     clicks,
     cursor,
@@ -989,8 +1054,8 @@ export function sketchView(
 /** What the overlay leaves out or adds, from the palette's options. */
 type ShowOptions = { [K in "points" | "profile" | "projected" | "construction"]: SketchOptions[K] };
 
-/** The model's origin drawn under the sketch: a fixed point with a small cross, 8 px each way, to snap to. */
-export function withOrigin(view: OverlayView, origin: Vec2, px: number): OverlayView {
+/** The model's origin drawn under the sketch: a fixed point with a small cross, 8 px each way, to snap to and pick. */
+export function withOrigin(view: OverlayView, origin: Vec2, px: number, shade: Shade = "fixed"): OverlayView {
   const r = 8 * px;
   const [x, y] = origin;
   return {
@@ -1001,18 +1066,18 @@ export function withOrigin(view: OverlayView, origin: Vec2, px: number): Overlay
           [x - r, y],
           [x + r, y],
         ],
-        shade: "fixed",
+        shade,
       },
       {
         pts: [
           [x, y - r],
           [x, y + r],
         ],
-        shade: "fixed",
+        shade,
       },
       ...view.curves,
     ],
-    points: [{ xy: origin, shade: "fixed" }, ...view.points],
+    points: [{ xy: origin, shade, big: shade !== "fixed" }, ...view.points],
   };
 }
 
