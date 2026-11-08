@@ -3,6 +3,8 @@ import { Banner, Button, MenuButton, type MenuEntry } from "@bettercad/ui";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
 import { orbit, pan, zoom, type CameraState } from "../viewport/camera";
+import type { Section } from "../viewport/engine";
+import type { CutPlane } from "./cut";
 
 /** Under this many samples after SLOW_MS, the browser can't render this well. */
 const SLOW_MS = 8000;
@@ -12,6 +14,14 @@ const SAVE_SAMPLES = 64;
 
 export const SLOW_TEXT = "Your browser can't render this well. Export glTF to render in Blender.";
 
+/** The section as a plane through its pushed origin. */
+function cutPlane(s: Section | null): CutPlane | null {
+  if (!s) return null;
+  const l = Math.hypot(...s.normal) || 1;
+  const n: [number, number, number] = [s.normal[0] / l, s.normal[1] / l, s.normal[2] / l];
+  return { normal: n, point: [s.origin[0] + n[0] * s.offset, s.origin[1] + n[1] * s.offset, s.origin[2] + n[2] * s.offset] };
+}
+
 /** Tests cap the samples so a software GPU finishes. */
 const testMax = () => (window as unknown as { __bcRenderMax?: number }).__bcRenderMax;
 
@@ -20,6 +30,8 @@ const useSession = (s: RenderSession) => useSyncExternalStore(s.subscribe, s.get
 export interface RenderPictureProps {
   session: RenderSession;
   bodies: RenderBody[];
+  /** The section tool's cut, if one is on: the picture shows the model cut there too. */
+  section?: Section | null;
   /** Where the modelling view's camera is; the picture starts from it. */
   camera: CameraState;
   /** The camera moved in the render view, so the modelling view can follow when you go back. */
@@ -32,7 +44,7 @@ export interface RenderPictureProps {
  * The Render view's picture (#197): a path-traced image of the model that clears over a few seconds. Drag to orbit
  * (right drag pans, the wheel zooms); the picture waits while you move and starts again when you stop.
  */
-export function RenderPicture({ session, bodies, camera, onCamera, onSave }: RenderPictureProps) {
+export function RenderPicture({ session, bodies, section = null, camera, onCamera, onSave }: RenderPictureProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const r = useRef<PathRender | null>(null);
   const cam = useRef(camera);
@@ -82,7 +94,7 @@ export function RenderPicture({ session, bodies, camera, onCamera, onSave }: Ren
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => r.current?.setBodies(bodies), [bodies]);
+  useEffect(() => r.current?.setBodies(bodies, cutPlane(section)), [bodies, section]);
   useEffect(() => r.current?.setPreset(state.preset), [state.preset]);
   useEffect(() => r.current?.setStyle(state.style), [state.style]);
   useEffect(() => {

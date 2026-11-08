@@ -14,6 +14,7 @@ describe("the Render view's options (#197)", () => {
     s.set({ moving: true });
     expect(await screen.findByText("Waiting for you to stop moving")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Studio" }));
+    expect(screen.getByRole("menuitemradio", { name: "Lightbox" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Daylight" }));
     expect(s.get().preset).toBe("daylight");
     expect(screen.getByRole("button", { name: "Daylight" })).toBeInTheDocument();

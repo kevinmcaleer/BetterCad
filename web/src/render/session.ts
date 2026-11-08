@@ -2,7 +2,7 @@
  * The Render view's state (#197), shared by the picture and its options bar, which load together on first use.
  * Framework-free and tiny, so the shell can hold it without the path tracer.
  */
-export type LightPresetId = "studio" | "daylight" | "workbench";
+export type LightPresetId = "studio" | "daylight" | "workbench" | "lightbox";
 export type SaveSize = "view" | "double" | "4k";
 /** How long the picture keeps clearing: each step adds samples and takes longer. */
 export type RenderQuality = "good" | "better" | "best";
