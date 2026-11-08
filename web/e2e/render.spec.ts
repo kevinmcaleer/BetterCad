@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+// Close the page ourselves: SwiftShader can leave the context's own close waiting long enough to stall the next test.
+test.afterEach(async ({ page }) => page.close());
+
 /** Render (#197): a path-traced picture over the view. Esc goes back to modelling. */
 test("Render switches the view to a path-traced picture, and Esc goes back", async ({ page }) => {
   test.setTimeout(300_000);
