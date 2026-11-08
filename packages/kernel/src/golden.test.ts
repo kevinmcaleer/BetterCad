@@ -30,7 +30,9 @@ import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
 import { cataloguePart, placeOnFace } from "./catalogue";
 import {
+  GEAR_DEFAULTS,
   MOUNT_DEFAULTS,
+  addGear,
   addMount,
   addPattern,
   addPart,
@@ -40,6 +42,7 @@ import {
   cutPocket,
   insertCatalogue,
   newDoc,
+  type GearParamsStep,
   type MountParams,
 } from "./document";
 import { rectPattern } from "./catalogue";
@@ -51,6 +54,17 @@ function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
   const frame = { origin: [0, 0, 5] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
   doc = addMount(doc, { ...MOUNT_DEFAULTS, kind: "standoffs", part: "plate", frame, points: [[0, 0]], ...params });
   return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "plate")!).shape;
+}
+
+/** A spur gear step (#191), built as the editor builds it. */
+function gearOf(oc: OC, change: Partial<GearParamsStep> = {}): TopoDS_Shape {
+  const doc = addGear(
+    newDoc(),
+    { gear: GEAR_DEFAULTS, width: 5, bore: { kind: "round", diameter: 5 }, frame: { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] }, ...change },
+    "g",
+    "gear",
+  );
+  return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "gear")!).shape;
 }
 
 /** A part copied by a joined Mirror or Pattern step (#69), built as the one body it becomes. */
@@ -188,6 +202,16 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   "standoffs-pi-through": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6 }),
   "standoffs-pi-insert": (oc) => mountOn(oc, { points: rectPattern(58, 49), size: "M2.5", height: 6, outer: 6, hole: "insert" }),
   "horn-cross": (oc) => mountOn(oc, { kind: "horn", horn: "cross", size: "M2" }),
+  "gear-20t-m1": (oc) => gearOf(oc),
+  "gear-12t-shifted-dflat-hub": (oc) =>
+    gearOf(oc, {
+      gear: { ...GEAR_DEFAULTS, teeth: 12, module: 1.5, shift: 0.3 },
+      bore: { kind: "dflat", diameter: 5, flat: 2 },
+      hub: { diameter: 10, length: 4 },
+    }),
+  "rack-m1-60": (oc) => gearOf(oc, { form: "rack", rack: { length: 60, height: 5 }, bore: { kind: "none", diameter: 0 } }),
+  "gt2-20t-flanged": (oc) => gearOf(oc, { form: "gt2", gear: { ...GEAR_DEFAULTS, teeth: 20 }, width: 7, flanges: true }),
+  "gear-40t-horn": (oc) => gearOf(oc, { gear: { ...GEAR_DEFAULTS, teeth: 40 }, bore: { kind: "horn", diameter: 7, arm: 9 } }),
   // Mirror and patterns (#69), joined into one body: a wedge and its mirror image meet at the YZ plane; a 3 × 2 grid of
   // 6 mm pegs; six arms round Z.
   "mirror-wedge": (oc) => patterned(oc, "wedge", { x: 20, y: 10, z: 10 }, 10, { kind: "mirror", plane: "YZ" }),
@@ -215,36 +239,41 @@ const round = (v: unknown): unknown =>
 
 describe("golden geometry", () => {
   for (const [name, make] of Object.entries(cases)) {
-    it(name, () => {
-      const shape = make(oc);
-      expect(valid(oc, shape)).toBe(true);
-      const m = measure(oc, shape);
-      const mesh = tessellate(oc, shape, "fine");
-      // The fine mesh is what export writes: it must hold the solid's volume to within 0.5 %.
-      expect(Math.abs(meshVolume(mesh) - m.volume) / m.volume).toBeLessThan(0.005);
-      const got = round({ ...m, triangles: triangleCount(mesh) > 0 }) as Record<string, unknown>;
-      const file = join(DIR, `${name}.json`);
-      if (UPDATE || !existsSync(file)) {
-        if (!UPDATE && process.env.CI) throw new Error(`No golden file for ${name}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);
-        mkdirSync(DIR, { recursive: true });
-        writeFileSync(file, JSON.stringify(got, null, 2) + "\n");
-        return;
-      }
-      const want = JSON.parse(readFileSync(file, "utf8")) as typeof got;
-      // Every number that moved, before and after, for the CI job summary (GOLDEN_SUMMARY names the file).
-      const moved: [string, unknown, unknown][] = [];
-      const diff = (a: unknown, b: unknown, path: string): void => {
-        if (typeof b === "number") {
-          if (typeof a !== "number" || Math.abs(a - b) >= 5e-4) moved.push([path, b, a]);
-        } else if (b && typeof b === "object") for (const [k, x] of Object.entries(b)) diff((a as Record<string, unknown>)?.[k], x, `${path}.${k}`);
-        else if (JSON.stringify(a) !== JSON.stringify(b)) moved.push([path, b, a]);
-      };
-      diff(got, want, name);
-      if (moved.length && process.env.GOLDEN_SUMMARY) {
-        const rows = moved.map(([p, b, a]) => `| \`${p}\` | ${JSON.stringify(b)} | ${JSON.stringify(a)} |`).join("\n");
-        appendFileSync(process.env.GOLDEN_SUMMARY, `\n#### ${name}\n\n| Measure | Golden | Now |\n| --- | --- | --- |\n${rows}\n`);
-      }
-      expect(moved.map(([p, b, a]) => `${p}: ${JSON.stringify(b)} → ${JSON.stringify(a)}`)).toEqual([]);
-    });
+    // Gears and other many-faced bodies take a few seconds on a busy runner.
+    it(
+      name,
+      () => {
+        const shape = make(oc);
+        expect(valid(oc, shape)).toBe(true);
+        const m = measure(oc, shape);
+        const mesh = tessellate(oc, shape, "fine");
+        // The fine mesh is what export writes: it must hold the solid's volume to within 0.5 %.
+        expect(Math.abs(meshVolume(mesh) - m.volume) / m.volume).toBeLessThan(0.005);
+        const got = round({ ...m, triangles: triangleCount(mesh) > 0 }) as Record<string, unknown>;
+        const file = join(DIR, `${name}.json`);
+        if (UPDATE || !existsSync(file)) {
+          if (!UPDATE && process.env.CI) throw new Error(`No golden file for ${name}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);
+          mkdirSync(DIR, { recursive: true });
+          writeFileSync(file, JSON.stringify(got, null, 2) + "\n");
+          return;
+        }
+        const want = JSON.parse(readFileSync(file, "utf8")) as typeof got;
+        // Every number that moved, before and after, for the CI job summary (GOLDEN_SUMMARY names the file).
+        const moved: [string, unknown, unknown][] = [];
+        const diff = (a: unknown, b: unknown, path: string): void => {
+          if (typeof b === "number") {
+            if (typeof a !== "number" || Math.abs(a - b) >= 5e-4) moved.push([path, b, a]);
+          } else if (b && typeof b === "object") for (const [k, x] of Object.entries(b)) diff((a as Record<string, unknown>)?.[k], x, `${path}.${k}`);
+          else if (JSON.stringify(a) !== JSON.stringify(b)) moved.push([path, b, a]);
+        };
+        diff(got, want, name);
+        if (moved.length && process.env.GOLDEN_SUMMARY) {
+          const rows = moved.map(([p, b, a]) => `| \`${p}\` | ${JSON.stringify(b)} | ${JSON.stringify(a)} |`).join("\n");
+          appendFileSync(process.env.GOLDEN_SUMMARY, `\n#### ${name}\n\n| Measure | Golden | Now |\n| --- | --- | --- |\n${rows}\n`);
+        }
+        expect(moved.map(([p, b, a]) => `${p}: ${JSON.stringify(b)} → ${JSON.stringify(a)}`)).toEqual([]);
+      },
+      20_000,
+    );
   }
 });

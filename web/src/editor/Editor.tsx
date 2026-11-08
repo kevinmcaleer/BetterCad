@@ -22,6 +22,12 @@ import {
   groupParams,
   cutTool,
   cutPocket,
+  addMatingGear,
+  addRack,
+  fitBelt,
+  meshGears,
+  ratioText,
+  type GearFeature,
   partFrame,
   staleFits,
   updateFits,
@@ -123,9 +129,8 @@ import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
-import { MountBar } from "../mount/MountBar";
+import { KEY as gearKey, useGear } from "../gear/useGear";
 import { usePattern } from "../pattern/usePattern";
-import { PatternBar } from "../pattern/PatternBar";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
@@ -149,6 +154,11 @@ import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPane
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
+
+/** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
+const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
+const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
   { id: "parts", icon: "layers", label: "Browser" },
@@ -453,6 +463,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
+  const gear = useGear({
+    store,
+    record,
+    doc,
+    view: vp.ref,
+    active: tool === "gear" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+  });
+
   const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
   const pattern = usePattern({
     store,
@@ -657,6 +677,67 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [store, say],
   );
 
+  /** The Gear step that made a body, if one did. */
+  const gearOf = (id: string) => live.current.doc.features.find((f): f is GearFeature => f.type === "gear" && f.body.id === id);
+
+  const isSpur = (id: string) => (gearOf(id)?.form ?? "spur") === "spur" && !!gearOf(id);
+
+  /** Add mating gear (#192): a gear beside the picked one, meshed, with the bar open to set its teeth. */
+  const mateGear = useCallback(
+    (id: string) => {
+      const a = gearOf(id);
+      if (!a || (a.form ?? "spur") !== "spur") return say("Pick a spur gear", true);
+      const fid = newId("f");
+      record((d, at) => addMatingGear(d, a.id, a.gear.teeth, 0, fid, newId(), at), "Add mating gear", gearKey(fid));
+      setTool("gear");
+      gear.edit(fid, true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [record, say, gear.edit],
+  );
+
+  /** Add rack (#193): a rack meshed under the picked gear, with the bar open on it. */
+  const addRackTo = useCallback(
+    (id: string) => {
+      const a = gearOf(id);
+      if (!a || (a.form ?? "spur") !== "spur") return say("Pick a spur gear", true);
+      const fid = newId("f");
+      record((d, at) => addRack(d, a.id, -90, fid, newId(), at), "Add rack", gearKey(fid));
+      setTool("gear");
+      gear.edit(fid, true);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [record, say, gear.edit],
+  );
+
+  /** Fit a belt (#193): the nearest stock GT2 belt round two picked pulleys, the later one moved to suit. */
+  const beltPicked = useCallback(
+    (ids: string[]) => {
+      const [a, b] = ids.map(gearOf);
+      if (a?.form !== "gt2" || b?.form !== "gt2") return say("Pick two GT2 pulleys", true);
+      const r = fitBelt(live.current.doc, a.id, b.id);
+      if (r.error) return say(r.error, true);
+      record((d) => fitBelt(d, a.id, b.id).doc, "Fit a belt");
+      const need = r.needed ? ` (they needed ${Math.round(r.needed * 10) / 10} mm where they were)` : "";
+      say(`Fitted a ${r.length} mm GT2 belt, ${r.length! / 2} teeth${need}. Edit the pulley to pick another.`);
+    },
+    [record, say],
+  );
+
+  /** Mesh gears (#192): the later of two picked gears moves beside the earlier one. */
+  const meshPicked = useCallback(
+    (ids: string[]) => {
+      const [a, b] = ids.map(gearOf);
+      if (!a || !b) return say("Pick two gears", true);
+      const r = meshGears(live.current.doc, a.id, b.id);
+      if (r.error) return say(r.error, true);
+      record((d) => meshGears(d, a.id, b.id).doc, "Mesh gears");
+      const [small, big] = a.gear.teeth <= b.gear.teeth ? [a, b] : [b, a];
+      say(`Meshed ${small.name} with ${big.name}: ${ratioText(big.gear.teeth, small.gear.teeth)}`);
+    },
+    [record, say],
+  );
+
   /** Cut pocket (#188): the catalogue part's pocket and holes, cut into the body just under it. */
   const pocket = useCallback(
     (id: string) => {
@@ -761,7 +842,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
   useLaunchFiles(openLaunched);
   // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
-  const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && !sketch.editing;
+  const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && tool !== "gear" && !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
 
   // ---- timeline
@@ -888,6 +969,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggleReference,
     importReference: () => {},
     pocket: (_id: string) => {},
+    mateGear: (_id: string) => {},
+    addRack: (_id: string) => {},
+    fitBelt: (_ids: string[]) => {},
+    meshGears: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
     suppressActive: () => {},
@@ -926,6 +1011,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     toggleHole,
     toggleReference,
     pocket,
+    mateGear,
+    addRack: addRackTo,
+    fitBelt: beltPicked,
+    meshGears: meshPicked,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
@@ -939,13 +1028,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               ? hole.done()
               : mount.session
                 ? mount.done()
-                : pattern.session
-                  ? pattern.done()
-                  : tool === "combine"
-                    ? combine(selection, combineOp, keepTools, combineFit)
-                    : finish.tool
-                      ? finish.done()
-                      : undefined,
+                : gear.session
+                  ? gear.done()
+                  : pattern.session
+                    ? pattern.done()
+                    : tool === "combine"
+                      ? combine(selection, combineOp, keepTools, combineFit)
+                      : finish.tool
+                        ? finish.done()
+                        : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -1139,6 +1230,46 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "robot part catalogue cutout mount servo screw holes",
       },
       {
+        id: "gear.mate",
+        scope: "model",
+        label: "Add mating gear",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().mateGear(sel()[0]!),
+        when: () => sel().length === 1 && live.current.doc.features.some((f) => f.type === "gear" && (f.form ?? "spur") === "spur" && f.body.id === sel()[0]),
+        keywords: "gear mesh pair drive ratio",
+      },
+      {
+        id: "gear.rack",
+        scope: "model",
+        label: "Add rack",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().addRack(sel()[0]!),
+        when: () => sel().length === 1 && live.current.doc.features.some((f) => f.type === "gear" && (f.form ?? "spur") === "spur" && f.body.id === sel()[0]),
+        keywords: "gear rack linear drive",
+      },
+      {
+        id: "gear.belt",
+        scope: "model",
+        label: "Fit a belt",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().fitBelt(sel()),
+        when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.form === "gt2" && f.body.id === id)),
+        keywords: "gt2 timing belt pulley length centre distance",
+      },
+      {
+        id: "gear.mesh",
+        scope: "model",
+        label: "Mesh gears",
+        group: "Edit",
+        icon: "gear",
+        run: () => h().meshGears(sel()),
+        when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.body.id === id)),
+        keywords: "gear pair centre distance drive ratio",
+      },
+      {
         id: "place.turn",
         scope: "model",
         label: "Turn the part 90°",
@@ -1157,7 +1288,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1695,6 +1826,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "gear"
+        ? [
+            {
+              id: "edit",
+              label: "Edit gear",
+              icon: "gear" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("gear");
+                gear.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -1775,6 +1920,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       },
       ...(chosen.length === 1 && chosen[0]!.catalogue
         ? [{ id: "pocket", label: "Cut pocket", icon: "extrude" as const, onSelect: () => pocket(chosen[0]!.id) }]
+        : []),
+      ...(chosen.length === 1 && isSpur(chosen[0]!.id)
+        ? [
+            { id: "mate-gear", label: "Add mating gear", icon: "gear" as const, onSelect: () => mateGear(chosen[0]!.id) },
+            { id: "add-rack", label: "Add rack", icon: "gear" as const, onSelect: () => addRackTo(chosen[0]!.id) },
+          ]
+        : []),
+      ...(chosen.length === 2 && chosen.every((p) => gearOf(p.id)?.form === "gt2")
+        ? [{ id: "fit-belt", label: "Fit a belt", icon: "gear" as const, onSelect: () => beltPicked(chosen.map((p) => p.id)) }]
+        : []),
+      ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
+        ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
       {
         id: "reference",
@@ -1928,8 +2085,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ? sketch.help
     : place.help
       ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
+      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
+        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
         : finish.help
           ? finish.help
           : vp.elementText
@@ -2141,9 +2298,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
               )}
               {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
-              {tool === "mount" && <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />}
-              {tool === "pattern" && (
-                <PatternBar x={pattern} error={pattern.session ? failed.get(pattern.session.id) : undefined} onCancel={() => setTool("select")} />
+              {tool === "gear" && (
+                <Suspense fallback={null}>
+                  <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
+              {(tool === "mount" || tool === "pattern") && (
+                <Suspense fallback={null}>
+                  {tool === "mount" ? (
+                    <MountBar x={mount} error={mount.session ? failed.get(mount.session.id) : undefined} onCancel={() => setTool("select")} />
+                  ) : (
+                    <PatternBar x={pattern} error={pattern.session ? failed.get(pattern.session.id) : undefined} onCancel={() => setTool("select")} />
+                  )}
+                </Suspense>
               )}
               {tool === "hole" && <HoleBar x={hole} error={hole.session ? failed.get(hole.session.id) : undefined} onCancel={() => setTool("select")} />}
               {tool === "pushpull" && (

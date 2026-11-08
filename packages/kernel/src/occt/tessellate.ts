@@ -63,7 +63,18 @@ export function tessellate(oc: OC, shape: TopoDS_Shape, quality: Quality = "fast
   }
 
   // Seams (where a cylinder's surface closes on itself) are edges of the B-rep but not lines you would draw.
-  const seams = (e: TopoDS_Shape) => faces.some((f) => oc.BRep_Tool.IsClosed(oc.TopoDS.Edge(e), oc.TopoDS.Face(f)));
+  // Found face by face (only the edges each face owns), so a body with many faces doesn't check every pair.
+  const seamEdges: TopoDS_Shape[] = [];
+  for (const f of faces) {
+    const face = oc.TopoDS.Face(f);
+    const ex = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    for (; ex.More(); ex.Next()) {
+      const e = ex.Current();
+      if (oc.BRep_Tool.IsClosed(oc.TopoDS.Edge(e), face) && !seamEdges.some((s) => s.IsSame(e))) seamEdges.push(e);
+    }
+    ex.delete();
+  }
+  const seams = (e: TopoDS_Shape) => seamEdges.some((s) => s.IsSame(e));
   for (const e of elements(oc, shape, "edge")) {
     const edge = oc.TopoDS.Edge(e);
     if (oc.BRep_Tool.Degenerated(edge) || seams(e)) {

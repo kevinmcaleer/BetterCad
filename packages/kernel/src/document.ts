@@ -37,6 +37,8 @@ import {
   type ExtrudeDirection,
   type ExtrudeOperation,
   type PrismSpec,
+  type ProfileSeg,
+  type ProfileShape,
   type RevolveSpec,
 } from "./extrude";
 
@@ -45,6 +47,32 @@ export * from "./pattern";
 export * from "./holes";
 export * from "./screws";
 import { screw } from "./screws";
+import {
+  centreDistance,
+  dFlat,
+  dFlatSegs,
+  gearArea,
+  gearCircles,
+  gearProblem,
+  gearSegs,
+  meshProblem,
+  meshTurn,
+  polyArea,
+  polySegs,
+  pulleyProblem,
+  rackOutline,
+  rackProblem,
+  ratioText,
+  beltLength,
+  centreForBelt,
+  nearestBelt,
+  GT2,
+  gt2Outside,
+  gt2Segs,
+  type GearParams,
+  type RackSize,
+} from "./gears";
+export * from "./gears";
 export * from "./params";
 export * from "./print";
 import { fitGap, holeOffsetOf, type FitId, type PrintSettings } from "./print";
@@ -345,7 +373,50 @@ export interface InsertFeature extends FeatureBase {
   position: Vec3;
   rotation?: Vec3;
 }
+/** A shaft hole through a gear: round, D-flat for a motor shaft, or a servo horn's hub and four arm holes. */
+export interface GearBore {
+  kind: "none" | "round" | "dflat" | "horn";
+  /** The hole's diameter, or the horn's hub, mm. */
+  diameter: number;
+  /** D-flat: the flat's distance from the centre, mm. */
+  flat?: number;
+  /** Horn: the arm holes' distance from the centre, mm. */
+  arm?: number;
+}
+
+/** Spur gear (#191): an involute gear made from its settings, standing `width` tall on its frame (its axis the normal). */
+export interface GearFeature extends FeatureBase {
+  type: "gear";
+  body: { id: string; name: string };
+  gear: GearParams;
+  width: number;
+  bore: GearBore;
+  /** A boss on top, round the bore. */
+  hub?: { diameter: number; length: number };
+  frame: Frame;
+  /**
+   * Meshes with an earlier gear (#192): this one then stands beside it at the centre distance, `angle` degrees round
+   * from its x, on its plane, turned so the teeth interleave. Its own frame and turn are ignored, and it takes the
+   * other gear's module and pressure angle.
+   */
+  mesh?: { gear: string; angle: number };
+  /** Spur (the default), a rack (#193) along the frame's x with teeth toward +y, or a GT2 timing pulley (#193). */
+  form?: "spur" | "rack" | "gt2";
+  /** A rack's length and the solid under its roots, mm. */
+  rack?: RackSize;
+  /** A pulley's flanges: 1 mm discs either side of the teeth, 1.5 mm proud of them. */
+  flanges?: boolean;
+  /**
+   * A pulley on a belt from an earlier pulley (#193): it stands `angle` degrees round from that one, at the centre
+   * distance that makes a `length` mm belt fit.
+   */
+  belt?: { pulley: string; angle: number; length: number };
+  /** Degrees about the gear's axis, so a mating gear's teeth fall between this one's. */
+  turn?: number;
+}
+
 export type Feature =
+  | GearFeature
   | MountFeature
   | ImportFeature
   | InsertFeature
@@ -432,6 +503,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   import: "Import",
   insert: "Insert part",
   mount: "Mount",
+  gear: "Gear",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -456,6 +528,7 @@ export interface Build {
 }
 
 const BUILT = new Set<string>([
+  "gear",
   "mount",
   "import",
   "insert",
@@ -482,6 +555,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const sketches: Build["sketches"] = [];
   const sketchById = new Map<string, Sketch>();
   const failed = new Map<string, string>();
+  /** Gear steps as built, for gears that mesh with them (#192). */
+  const gearSteps = new Map<string, GearFeature>();
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -714,6 +789,51 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           head: r.head,
         };
         t.ops = [...(t.ops ?? []), { op: "hole", holes, feature: f.id }];
+        break;
+      }
+      case "gear": {
+        let g: GearFeature = f;
+        if (f.mesh) {
+          const a = gearSteps.get(f.mesh.gear);
+          if (!a) {
+            failed.set(f.id, "The gear this one meshes with is gone or broken");
+            break;
+          }
+          if ((a.form ?? "spur") !== "spur") {
+            failed.set(f.id, "Gears and racks mesh with a spur gear");
+            break;
+          }
+          g = meshedWith(a, f);
+        } else if (f.belt) {
+          const a = gearSteps.get(f.belt.pulley);
+          if (!a || a.form !== "gt2") {
+            failed.set(f.id, "The pulley this one's belt goes round is gone or broken");
+            break;
+          }
+          const placed = beltedTo(a, f);
+          if (!placed) {
+            failed.set(f.id, `A ${f.belt.length} mm belt is too short for these pulleys`);
+            break;
+          }
+          g = placed;
+        }
+        const r = gearSpec(g);
+        if (typeof r === "string") {
+          failed.set(f.id, r);
+          break;
+        }
+        if (find(f.body.id) < 0)
+          parts.push({
+            id: f.body.id,
+            name: f.body.name,
+            kind: "solid",
+            hidden: false,
+            position: { ...ZERO },
+            size: prismSize(r.prism),
+            prism: r.prism,
+            ops: r.ops,
+          });
+        gearSteps.set(f.id, g);
         break;
       }
       case "mount": {
@@ -1027,6 +1147,8 @@ export function featureParts(f: Feature): string[] {
       return f.bodies.map((b) => b.id);
     case "insert":
       return [f.part.id];
+    case "gear":
+      return [f.body.id];
     default:
       return f.parts;
   }
@@ -1050,6 +1172,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "gear": {
+      const a = f.mesh && doc.features.find((g): g is GearFeature => g.id === f.mesh!.gear && g.type === "gear");
+      if (a) return `${f.gear.teeth} teeth, meshes with ${a.name}, ${ratioText(a.gear.teeth, f.gear.teeth).split(",")[0]}`;
+      return `${f.gear.teeth} teeth, module ${f.gear.module}, ${mm(f.width)} wide`;
+    }
     case "mount":
       return f.kind === "standoffs"
         ? `${f.points.length} × ${f.size}, ${mm(f.height)} tall${f.hole === "insert" ? ", heat-set inserts" : ""}`
@@ -1413,6 +1540,241 @@ export function insertCatalogue(
   });
 }
 
+/** A gear step's solid: the toothed prism, then its hub joined and bore cut, in world space. Or why it can't be made. */
+export function gearSpec(f: GearFeature): { prism: PrismSpec; ops: BodyOp[] } | string {
+  const form = f.form ?? "spur";
+  const what = form === "rack" ? "rack" : form === "gt2" ? "pulley" : "gear";
+  if (!(f.width > 0)) return `Give the ${what} a width above 0 mm`;
+  const turn = ((f.turn ?? 0) * Math.PI) / 180;
+  const frame = f.frame;
+  if (form === "rack") {
+    const size = f.rack ?? { length: 60, height: 5 };
+    const problem = rackProblem(f.gear, size);
+    if (problem) return problem;
+    const pts = rackOutline(f.gear, size);
+    return { prism: { frame, profiles: [{ outer: polySegs(pts), holes: [], area: polyArea(pts) }], from: 0, to: f.width }, ops: [] };
+  }
+  const problem = form === "gt2" ? pulleyProblem(f.gear.teeth) : gearProblem(f.gear);
+  if (problem) return problem;
+  const ops: BodyOp[] = [];
+  const disc = (r: number, from: number, to: number) =>
+    ops.push({
+      op: "join",
+      tool: { frame, profiles: [{ outer: [{ kind: "circle", c: [0, 0], r }], holes: [], area: Math.PI * r * r }], from, to },
+      feature: f.id,
+    });
+  let root: number;
+  let prism: PrismSpec;
+  let teethTop = f.width;
+  if (form === "gt2") {
+    const ro = gt2Outside(f.gear.teeth) / 2;
+    root = ro - GT2.depth;
+    const flange = f.flanges ? 1 : 0;
+    teethTop = f.width + flange;
+    prism = { frame, profiles: [{ outer: gt2Segs(f.gear.teeth, turn), holes: [], area: Math.PI * (ro - GT2.depth / 2) ** 2 }], from: flange, to: teethTop };
+    if (f.flanges) {
+      disc(ro + 1.5, 0, 1.01);
+      disc(ro + 1.5, teethTop - 0.01, teethTop + 1);
+      teethTop += 1;
+    }
+  } else {
+    root = gearCircles(f.gear).root;
+    prism = { frame, profiles: [{ outer: gearSegs(f.gear, turn), holes: [], area: gearArea(f.gear) }], from: 0, to: f.width };
+  }
+  const top = teethTop + (f.hub && f.hub.length > 0 ? f.hub.length : 0);
+  if (f.hub && f.hub.length > 0) {
+    if (!(f.hub.diameter / 2 < root)) return `Make the hub narrower than the ${what}'s root`;
+    if (f.bore.kind !== "none" && !(f.hub.diameter > f.bore.diameter + 1)) return "Make the hub wider than the bore";
+    disc(f.hub.diameter / 2, teethTop - 0.01, top);
+  }
+  // Every hole goes in one cut: each cut against the toothed body costs about the same, however small the hole.
+  const holes: ProfileShape[] = [];
+  const cut = (outer: ProfileSeg[], area: number) => holes.push({ outer, holes: [], area });
+  const b = f.bore;
+  if (b.kind !== "none") {
+    if (!(b.diameter > 0)) return "Give the bore a diameter above 0 mm";
+    if (!(b.diameter / 2 < root - 0.5)) return `The bore is wider than the ${what}'s root`;
+    if (b.kind === "round" || b.kind === "horn") cut([{ kind: "circle", c: [0, 0], r: b.diameter / 2 }], (Math.PI * b.diameter ** 2) / 4);
+    if (b.kind === "dflat") {
+      const flat = b.flat ?? b.diameter * 0.4;
+      cut(dFlatSegs(b.diameter, flat, turn), polyArea(dFlat(b.diameter, flat)));
+    }
+    if (b.kind === "horn") {
+      const arm = b.arm ?? 7;
+      const d = screw("M2")!.printed;
+      if (!(arm + d / 2 < root - 0.5)) return `Put the horn's arm holes inside the ${what}'s root`;
+      if (!(arm - d / 2 > b.diameter / 2)) return "Put the horn's arm holes outside its hub";
+      const spin = ([x, y]: Vec2): Vec2 => [x * Math.cos(turn) - y * Math.sin(turn), x * Math.sin(turn) + y * Math.cos(turn)];
+      for (const q of hornPoints("cross", arm).map(spin)) cut([{ kind: "circle", c: q, r: d / 2 }], (Math.PI * d * d) / 4);
+    }
+  }
+  if (holes.length) ops.push({ op: "cut", tool: { frame, profiles: holes, from: -1, to: top + 1 }, feature: f.id });
+  return { prism, ops };
+}
+
+/** Gear b as it stands meshed with gear a: on a's plane at the centre distance, turned to interleave. */
+export function meshedWith(a: GearFeature, b: GearFeature): GearFeature {
+  const gear = { ...b.gear, module: a.gear.module, pressure: a.gear.pressure };
+  const theta = ((b.mesh?.angle ?? 0) * Math.PI) / 180;
+  const { x, normal: n, origin } = a.frame;
+  const y: Vec3t = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const dir: Vec3t = [0, 1, 2].map((i) => Math.cos(theta) * x[i]! + Math.sin(theta) * y[i]!) as Vec3t;
+  const turnA = ((a.turn ?? 0) * Math.PI) / 180;
+  if (b.form === "rack") {
+    // The rack's pitch line touches the gear's pitch circle (moved out by both shifts), its teeth toward the gear,
+    // slid along so a gap sits where the gear's tooth is.
+    const r = gearCircles(a.gear).pitch + a.gear.module * (a.gear.shift + gear.shift);
+    const tangent: Vec3t = [n[1] * dir[2] - n[2] * dir[1], n[2] * dir[0] - n[0] * dir[2], n[0] * dir[1] - n[1] * dir[0]];
+    const pitch = Math.PI * a.gear.module;
+    const phi = turnA - theta;
+    const raw = gearCircles(a.gear).pitch * phi + pitch / 2;
+    const slide = raw - Math.round(raw / pitch) * pitch;
+    const o = [0, 1, 2].map((i) => origin[i]! + r * dir[i]! + slide * tangent[i]!) as Vec3t;
+    return { ...b, gear, frame: { origin: o, x: tangent, normal: n }, turn: 0 };
+  }
+  const cd = centreDistance(a.gear, gear);
+  const along = (i: number) => origin[i]! + cd * dir[i]!;
+  const turn = (meshTurn(a.gear.teeth, turnA, theta, gear.teeth) * 180) / Math.PI;
+  return { ...b, gear, frame: { origin: [along(0), along(1), along(2)], x, normal: n }, turn: ((turn % 360) + 360) % 360 };
+}
+type Vec3t = [number, number, number];
+
+/** Pulley b where its belt from pulley a puts it, or null when the belt is too short. */
+export function beltedTo(a: GearFeature, b: GearFeature): GearFeature | null {
+  if (!b.belt) return b;
+  const c = centreForBelt(b.belt.length, a.gear.teeth, b.gear.teeth);
+  if (c === null) return null;
+  const theta = (b.belt.angle * Math.PI) / 180;
+  const { x, normal: n, origin } = a.frame;
+  const y = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const o = [0, 1, 2].map((i) => origin[i]! + c * (Math.cos(theta) * x[i]! + Math.sin(theta) * y[i]!)) as Vec3t;
+  return { ...b, frame: { origin: o, x, normal: n } };
+}
+
+/** A gear step as it stands, following any gears it meshes with. Null when it, or one it follows, is missing. */
+export function resolveGear(doc: ModelDoc, id: string, seen = new Set<string>()): GearFeature | null {
+  const f = doc.features.find((g): g is GearFeature => g.id === id && g.type === "gear");
+  if (!f || seen.has(id)) return null;
+  const link = f.mesh?.gear ?? f.belt?.pulley;
+  if (!link) return f;
+  const a = resolveGear(doc, link, new Set([...seen, id]));
+  return a ? (f.mesh ? meshedWith(a, f) : beltedTo(a, f)) : null;
+}
+
+/** Adds a gear that meshes with gear step `with` (#192), `angle` degrees round from its x. Same width and bore. */
+export function addMatingGear(doc: ModelDoc, withId: string, teeth: number, angle = 0, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const a = doc.features.find((f): f is GearFeature => f.id === withId && f.type === "gear");
+  if (!a) return doc;
+  return addGear(doc, { gear: { ...a.gear, teeth, shift: 0 }, width: a.width, bore: a.bore, frame: a.frame, mesh: { gear: a.id, angle } }, id, bodyId, at);
+}
+
+/**
+ * Meshes two existing gear steps (#192): the later one moves beside the earlier, keeping the side it was on. Or why
+ * they can't mesh.
+ */
+export function meshGears(doc: ModelDoc, one: string, two: string): { doc: ModelDoc; error?: string } {
+  const gears = doc.features.filter((f): f is GearFeature => f.type === "gear");
+  const i = gears.findIndex((g) => g.id === one);
+  const j = gears.findIndex((g) => g.id === two);
+  if (i < 0 || j < 0 || i === j) return { doc, error: "Pick two gears to mesh" };
+  const [a, b] = i < j ? [gears[i]!, gears[j]!] : [gears[j]!, gears[i]!];
+  const problem = meshProblem(a.gear, b.gear);
+  if (problem) return { doc, error: problem };
+  if (b.mesh?.gear === a.id) return { doc };
+  // Keep b on the side it's on now, measured on a's plane.
+  const d = [0, 1, 2].map((k) => b.frame.origin[k]! - a.frame.origin[k]!);
+  const { x, normal: n } = a.frame;
+  const y = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const dot = (u: number[], v: readonly number[]) => u[0]! * v[0]! + u[1]! * v[1]! + u[2]! * v[2]!;
+  const angle = Math.hypot(dot(d, x), dot(d, y)) > 1e-6 ? Math.round(((Math.atan2(dot(d, y), dot(d, x)) * 180) / Math.PI) * 100) / 100 : 0;
+  return { doc: updateGear(doc, b.id, { mesh: { gear: a.id, angle } }) };
+}
+
+/** Adds a rack meshing with gear step `with` (#193), under it, as long as four of the gear's teeth either side. */
+export function addRack(doc: ModelDoc, withId: string, angle = -90, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const a = doc.features.find((f): f is GearFeature => f.id === withId && f.type === "gear");
+  if (!a) return doc;
+  const length = Math.max(40, Math.round(gearCircles(a.gear).pitch * 2 + 8 * Math.PI * a.gear.module));
+  return addGear(
+    doc,
+    {
+      gear: { ...a.gear, shift: 0 },
+      width: a.width,
+      bore: { kind: "none", diameter: 0 },
+      frame: a.frame,
+      form: "rack",
+      rack: { length, height: 5 },
+      mesh: { gear: a.id, angle },
+    },
+    id,
+    bodyId,
+    at,
+  );
+}
+
+/**
+ * Puts a belt round two pulley steps (#193): the stock GT2 belt nearest what they need where they stand, and the
+ * later pulley moved to fit it, keeping its side. `length` picks a belt instead. Or why not.
+ */
+export function fitBelt(doc: ModelDoc, one: string, two: string, length?: number): { doc: ModelDoc; error?: string; needed?: number; length?: number } {
+  const pulleys = doc.features.filter((f): f is GearFeature => f.type === "gear" && f.form === "gt2");
+  const i = pulleys.findIndex((g) => g.id === one);
+  const j = pulleys.findIndex((g) => g.id === two);
+  if (i < 0 || j < 0 || i === j) return { doc, error: "Pick two GT2 pulleys" };
+  const [a0, b] = i < j ? [pulleys[i]!, pulleys[j]!] : [pulleys[j]!, pulleys[i]!];
+  const a = resolveGear(doc, a0.id);
+  const bNow = resolveGear(doc, b.id);
+  if (!a || !bNow) return { doc, error: "Fix the pulleys' steps first" };
+  const d = [0, 1, 2].map((k) => bNow.frame.origin[k]! - a.frame.origin[k]!);
+  const { x, normal: n } = a.frame;
+  const y = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const dot = (u: number[], v: readonly number[]) => u[0]! * v[0]! + u[1]! * v[1]! + u[2]! * v[2]!;
+  const [u, v] = [dot(d, x), dot(d, y)];
+  const c = Math.hypot(u, v);
+  const angle = c > 1e-6 ? Math.round(((Math.atan2(v, u) * 180) / Math.PI) * 100) / 100 : 0;
+  const needed = c > 1e-6 ? beltLength(c, a.gear.teeth, b.gear.teeth) : undefined;
+  const belt = length ?? nearestBelt(needed ?? 200);
+  if (centreForBelt(belt, a.gear.teeth, b.gear.teeth) === null) return { doc, error: `A ${belt} mm belt is too short for these pulleys` };
+  return { doc: updateGear(doc, b.id, { belt: { pulley: a.id, angle, length: belt } }), needed, length: belt };
+}
+
+export type GearParamsStep = Omit<GearFeature, "id" | "name" | "type" | "body">;
+
+/** Adds a Gear step making a new body. */
+/** The name a gear step starts with: "Gear 20T", "Pulley 20T" or "Rack". */
+export const gearBaseName = (f: Pick<GearFeature, "form" | "gear">) =>
+  f.form === "rack" ? "Rack" : `${f.form === "gt2" ? "Pulley" : "Gear"} ${f.gear.teeth}T`;
+
+export function addGear(doc: ModelDoc, params: GearParamsStep, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const taken = usedNames(doc);
+  doc.features.forEach((f) => taken.add(f.name));
+  const base = gearBaseName(params);
+  let unique = base;
+  for (let n = 2; taken.has(unique); n += 1) unique = `${base} ${n}`;
+  return insert(doc, at, { id, type: "gear", name: unique, ...params, body: { id: bodyId, name: unique } });
+}
+
+/** Changes a Gear step (the bar edits it live, as one undo step). */
+export function updateGear(doc: ModelDoc, id: string, change: Partial<GearParamsStep>): ModelDoc {
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== id || f.type !== "gear") return f;
+      const next = { ...f, ...change };
+      // A name still saying the old form or tooth count follows the new one.
+      const was = gearBaseName(f);
+      const now = gearBaseName(next);
+      const auto = (n: string) => n === was || (/^ \d+$/.test(n.slice(was.length)) && n.startsWith(was));
+      if (was === now || !auto(f.name)) return next;
+      const taken = usedNames({ ...doc, features: doc.features.filter((g) => g.id !== id) });
+      doc.features.forEach((g) => g.id !== id && taken.add(g.name));
+      let name = now;
+      for (let n = 2; taken.has(name); n += 1) name = `${now} ${n}`;
+      return { ...next, name, body: { ...f.body, name: auto(f.body.name) ? name : f.body.name } };
+    }),
+  };
+}
+
 /** The points a horn's arm holes sit on, about its centre: along x, both ways, or both ways along x and y. */
 export function hornPoints(horn: MountFeature["horn"], arm: number): Vec2[] {
   const out: Vec2[] = [[arm, 0]];
@@ -1607,6 +1969,7 @@ function partsRead(f: Feature): string[] {
       return [f.target, ...f.tools.map((t) => t.id)];
     case "import":
     case "insert":
+    case "gear":
       return [];
     default:
       return [f.part];
@@ -1620,6 +1983,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "pattern") return patternCopyIds(f);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
+  if (f.type === "gear") return [f.body.id];
   if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
   return [];
 }
