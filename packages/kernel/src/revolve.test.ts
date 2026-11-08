@@ -110,6 +110,18 @@ describe("revolve", () => {
     expect(vols[1]).toBeCloseTo(Math.PI * (15 ** 2 - 5 ** 2) * 30, 0);
   });
 
+  it("still finds a shape picked by a point on its outline", () => {
+    // Older steps could keep a corner of the shape as its pick.
+    const d = addRevolve(sketched(), params({ seeds: [[15, 30]] }), "r1");
+    expect(build(d).failed.get("r1")).toBeUndefined();
+    expect(volume(d)[0]).toBeCloseTo(Math.PI * (15 ** 2 - 5 ** 2) * 30, 0);
+  });
+
+  it("reports a pick that lands on no shape", () => {
+    const d = addRevolve(sketched(), params({ seeds: [[10, 15], [40, 40]] }), "r1");
+    expect(build(d).failed.get("r1")).toBe("One shape it revolved is no longer closed");
+  });
+
   it("refuses a shape across the axis", () => {
     const d = addRevolve(
       sketched((s) => drawRectangle(s, [-5, 0], [15, 30]).sketch),

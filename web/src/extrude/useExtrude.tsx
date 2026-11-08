@@ -11,6 +11,7 @@ import {
   setExpr,
   profileAt,
   seedOf,
+  seedProfile,
   textProfiles,
   updateExtrude,
   updateRevolve,
@@ -224,7 +225,7 @@ export function useExtrude(d: ExtrudeDeps) {
       if (!s || !L.bounds?.size) return [];
       const all = regionsOf.get(f.sketch) ?? [];
       const letters = (f.texts ?? []).flatMap((t) => textProfiles(s.sketch, t, all).map((p) => p.points));
-      const outlines = [...f.seeds.map((p) => profileAt(all, p)?.points).filter((p): p is Vec2[] => !!p), ...letters];
+      const outlines = [...f.seeds.map((p) => seedProfile(all, p)?.points).filter((p): p is Vec2[] => !!p), ...letters];
       if (!outlines.length) return [];
       const { from, to } = extent(f.direction, f.distance, f.distance2, f.extent === "all" && throughAllAllowed(f.operation));
       // Reference bodies are there to design round, and hidden ones out of mind: neither is cut unless picked.
@@ -344,7 +345,7 @@ export function useExtrude(d: ExtrudeDeps) {
         return;
       }
       const all = regionsOf.get(f.sketch) ?? [];
-      const has = f.seeds.findIndex((s) => profileAt(all, s) === h.profile);
+      const has = f.seeds.findIndex((s) => seedProfile(all, s) === h.profile);
       change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedIn(all, h)] });
     },
     [defaults, change, regionsOf],
@@ -378,7 +379,7 @@ export function useExtrude(d: ExtrudeDeps) {
   const pickedOf = useCallback(
     (f: ProfileFeature): Profile[] => {
       const all = regionsOf.get(f.sketch) ?? [];
-      return [...new Set(f.seeds.map((s) => profileAt(all, s)).filter((p): p is Profile => !!p))];
+      return [...new Set(f.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p))];
     },
     [regionsOf],
   );
@@ -547,7 +548,7 @@ export function useExtrude(d: ExtrudeDeps) {
     const all = regionsOf.get(feature.sketch) ?? [];
     const sk = d.sketches.find((x) => x.id === feature.sketch)?.sketch;
     const letters = sk ? (feature.texts ?? []).flatMap((t) => textProfiles(sk, t, all)) : [];
-    return [...new Set([...feature.seeds.map((s) => profileAt(all, s)).filter((p): p is Profile => !!p), ...letters])];
+    return [...new Set([...feature.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p), ...letters])];
   }, [feature, regionsOf, d.sketches]);
 
   useEffect(() => {
@@ -650,8 +651,19 @@ export function useExtrude(d: ExtrudeDeps) {
       setSession({ id, isNew: false });
       setAutoOp(false);
       setAutoTargets(false);
+      // Shapes the sketch no longer has are dropped when the step is opened, so it builds again; click to pick more.
+      const f = store.get().features.find((x): x is ProfileFeature => x.id === id && (x.type === "extrude" || x.type === "revolve"));
+      const s = f && deps.current.sketches.find((x) => x.id === f.sketch);
+      if (!f || !s) return;
+      const all = regions(s.sketch);
+      const kept = f.seeds.filter((p) => seedProfile(all, p));
+      if (kept.length === f.seeds.length || (!kept.length && !f.texts?.length)) return;
+      const label = `Edit ${f.name}`;
+      store.edit((doc) => (f.type === "revolve" ? updateRevolve(doc, id, { seeds: kept }) : updateExtrude(doc, id, { seeds: kept })), label, KEY(id));
+      const n = f.seeds.length - kept.length;
+      say(`Took out ${n === 1 ? "a shape" : `${n} shapes`} the sketch no longer has. Click a shape to add it.`);
     },
-    [store],
+    [store, say],
   );
 
   // Esc backs out of the step before the tool's own Esc puts the tool down; first out of picking a new axis.
