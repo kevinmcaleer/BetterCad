@@ -1447,9 +1447,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
     case "construct":
-      return constructSummary(f.kind, f.refs, f.value, (r) =>
-        refText(r, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name),
-      );
+      return constructSummary(f.kind, f.refs, f.value, (r) => refText(r, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name));
     case "link":
       return `${who(f.parts)}, one rigid link`;
     case "joint": {

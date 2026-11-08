@@ -254,7 +254,9 @@ export function bodyRef(part: Placed & { id: string }, kind: "face" | "edge" | "
 export function bodyGeo(ref: Extract<ConstructRef, { body: string }>, part: Placed): Geo {
   const k: V3 =
     ref.size && isPrimitive(part)
-      ? [part.size.x / (ref.size.x || 1), part.size.y / (ref.size.y || 1), part.size.z / (ref.size.z || 1)].map((v) => (Number.isFinite(v) && v > EPS ? v : 1)) as V3
+      ? ([part.size.x / (ref.size.x || 1), part.size.y / (ref.size.y || 1), part.size.z / (ref.size.z || 1)].map((v) =>
+          Number.isFinite(v) && v > EPS ? v : 1,
+        ) as V3)
       : [1, 1, 1];
   const S = (v: V3): V3 => [v[0] * k[0], v[1] * k[1], v[2] * k[2]];
   const Sinv = (v: V3): V3 => [v[0] / k[0], v[1] / k[1], v[2] / k[2]];

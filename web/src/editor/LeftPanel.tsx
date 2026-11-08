@@ -28,7 +28,7 @@ import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
-import { BrowserPanel, type BrowserSketch, type OriginItem } from "./Browser";
+import { BrowserPanel, type BrowserConstruct, type BrowserSketch, type OriginItem } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
@@ -74,6 +74,9 @@ export interface LeftPanelProps {
   onSketchesHidden: (ids: string[], hidden: boolean) => void;
   onBrowserPicked: (id: string | null) => void;
   onSketchOn: (plane: WorldPlaneName) => void;
+  /** Construction geometry (#265) for the browser, and sketching on a construction plane. */
+  construct?: BrowserConstruct[];
+  onSketchOnStep?: (id: string) => void;
   features: Feature[];
   at: number;
   failed: Map<string, string>;
@@ -144,7 +147,16 @@ function PanelBody(p: LeftPanelProps) {
 function PartsPanel(p: LeftPanelProps) {
   return (
     <BrowserPanel
-      model={{ name: p.doc.name, parts: p.parts, sketches: p.sketches, origin: p.origin, readOnly: p.readOnly, links: p.links, joints: p.joints }}
+      model={{
+        name: p.doc.name,
+        parts: p.parts,
+        sketches: p.sketches,
+        origin: p.origin,
+        readOnly: p.readOnly,
+        links: p.links,
+        joints: p.joints,
+        construct: p.construct,
+      }}
       selection={p.selection}
       onSelect={p.onSelect}
       onAdd={p.onAdd}
@@ -162,6 +174,7 @@ function PartsPanel(p: LeftPanelProps) {
       onRenameSketch={p.onRenameFeature}
       onReorder={p.onReorder}
       onSketchOn={p.onSketchOn}
+      onSketchOnStep={p.onSketchOnStep}
       partMenu={p.partMenu}
       sketchMenu={p.featureMenu}
       renameId={p.renameId}

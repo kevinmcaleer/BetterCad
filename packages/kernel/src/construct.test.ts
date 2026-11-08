@@ -160,7 +160,12 @@ describe("construction steps on the timeline (#265)", () => {
     doc = changeParts(doc, ["b"], "position", { x: 5 }, 1);
     close(planeOf(build(doc).construct[0]!.geo).origin, [5, 0, 50]);
     expect(dependsOn(doc, "sk")).toContain("pl");
-    expect(featureSummary(doc, doc.features.find((f) => f.id === "pl")!)).toBe("Offset plane, 10 mm from a face of Box 1");
+    expect(
+      featureSummary(
+        doc,
+        doc.features.find((f) => f.id === "pl")!,
+      ),
+    ).toBe("Offset plane, 10 mm from a face of Box 1");
   });
 
   it("follows a turned body", () => {
@@ -187,7 +192,12 @@ describe("construction steps on the timeline (#265)", () => {
     close(pointOf(b.construct[3]!.geo), [0, 0, 25]);
     close([axisOf(b.construct[2]!.geo).origin[2]], [25]);
     expect(dependsOn(doc, "pt")).toEqual(["p2"]);
-    expect(featureSummary(doc, doc.features.find((f) => f.id === "ax")!)).toBe("Axis through two planes: Plane 2 and the YZ plane");
+    expect(
+      featureSummary(
+        doc,
+        doc.features.find((f) => f.id === "ax")!,
+      ),
+    ).toBe("Axis through two planes: Plane 2 and the YZ plane");
   });
 
   it("fails, with a reason, when what it was made from is gone", () => {
