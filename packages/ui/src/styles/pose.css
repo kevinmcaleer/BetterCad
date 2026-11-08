@@ -1,0 +1,31 @@
+/* Posing joints (#173): a slider and a field per joint, in Properties. */
+.bc-pose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-3);
+}
+.bc-pose-joint {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: var(--bc-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.bc-pose-name {
+  grid-column: 1 / -1;
+  padding: 0;
+  font-size: 12px;
+  color: var(--bc-color-muted);
+}
+.bc-pose-slider {
+  width: 100%;
+  min-width: 0;
+  height: var(--bc-control);
+  accent-color: var(--bc-color-accent);
+}
+.bc-pose-joint .bc-field {
+  width: 88px;
+}
