@@ -3,7 +3,7 @@ import { cx } from "./cx";
 import { evaluate, ExprError, isExpression, type Scope } from "./expr";
 import { useNameComplete } from "./useNameComplete";
 
-export type Unit = "mm" | "deg" | "%" | "none";
+export type Unit = "mm" | "deg" | "%" | "g" | "none";
 
 export interface NumberFieldProps {
   /** X, Y, Z, W, Depth…: shown above the field as a scrub handle. */
