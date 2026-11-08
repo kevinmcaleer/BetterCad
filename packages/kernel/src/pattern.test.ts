@@ -17,7 +17,7 @@ import {
   type PatternFeature,
   type Vec3,
 } from "./document";
-import { copiesPer, mirrorFace, mirrorPlane, movePoint, moveToLocal, patternMoves, patternProblem, undoMove, type CopyMove } from "./pattern";
+import { copiesPer, copiesWhat, mirrorFace, mirrorPlane, movePoint, moveToLocal, patternMoves, patternProblem, undoMove, type CopyMove } from "./pattern";
 import { addConstruct } from "./document";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
@@ -320,5 +320,16 @@ describe("Pattern of features, and round a construction axis", () => {
     doc = updatePattern(doc, "p", { features: ["h1"] });
     const f = doc.features.at(-1) as PatternFeature;
     expect(f).toMatchObject({ kind: "circle", of: "features", features: ["h1"], count: 4, angle: 90 });
+  });
+
+  it("keeps a Mirror's features when it is switched to a pattern, and a component falls back to bodies", () => {
+    let doc = addPattern(holedBox(), { parts: [], kind: "mirror", of: "features", features: ["h1"] }, "m");
+    doc = updatePattern(doc, "m", { kind: "rect", count1: 2, spacing1: -20 });
+    const f = doc.features.at(-1) as PatternFeature;
+    expect(f).toMatchObject({ kind: "rect", of: "features", features: ["h1"] });
+    expect(featureSummary(doc, f)).toBe("Hole 1, 2 along X at -20 mm");
+    expect(build(doc).failed.size).toBe(0);
+    expect(copiesWhat({ kind: "circle", of: "component" })).toBe("bodies");
+    expect(copiesWhat({ kind: "mirror", of: "component" })).toBe("component");
   });
 });
