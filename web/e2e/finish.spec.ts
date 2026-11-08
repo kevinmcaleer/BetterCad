@@ -83,3 +83,36 @@ for (const size of [
     }
   });
 }
+
+test("the picked edges show as a list, and reopening the step keeps them", async ({ page }) => {
+  await addBox(page);
+  await page.keyboard.press("g");
+  await click(page, 0, -10, 20);
+  await click(page, 10, 0, 20);
+  await expect(page.getByText("2 edges on Box 1.")).toBeVisible();
+  const list = page.getByRole("group", { name: "Picked edges" });
+  await expect(list.getByRole("listitem")).toHaveCount(2);
+  await expect(list).toContainText("Edge 1, 20 mm");
+  // The preview builds while the tool is open; screenshots for the PR are taken here.
+  await page.getByRole("textbox", { name: "Radius" }).fill("4");
+  await page.getByRole("textbox", { name: "Radius" }).press("Tab");
+  await page.waitForTimeout(1500);
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/fillet-preview.png` });
+  await list.getByRole("button", { name: "Take Edge 2 out" }).click();
+  await expect(page.getByText("1 edge on Box 1.")).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByText("Rounded 1 edge of Box 1, 4 mm")).toBeVisible();
+
+  await page
+    .getByRole("button", { name: /^Fillet 1/ })
+    .first()
+    .dblclick();
+  await expect(page.getByText("Change the edges or the size on Box 1, then press Enter")).toBeVisible();
+  await expect(page.getByText("1 edge on Box 1.")).toBeVisible();
+  await click(page, 0, 10, 20);
+  await expect(page.getByText("2 edges on Box 1.")).toBeVisible();
+  await page.waitForTimeout(1500);
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/fillet-reopened.png` });
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: /^Fillet 1, R 4 mm, 2 edges of Box 1/ })).toBeVisible();
+});
