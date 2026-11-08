@@ -1474,6 +1474,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
   });
   const { save, saveAs, open, newModel } = files;
+  // Build steps: a picture per step and a Markdown guide, in a .zip. Loads on first use.
+  const exportBuildSteps = () =>
+    void import("../steps/exportSteps").then((m) => m.saveSteps({ doc: live.current.doc, upTo: live.current.at, call: kernel.call, files: files.store, say }));
 
   // Accounts (#88, #90): open "#/edit/<id>" once we know who is signed in.
   const { api, account, ready: accountReady, available: accountsOn, setAccount } = useAccount();
@@ -1670,6 +1673,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     sweepJoints: () => {},
     savePose: () => {},
     openExport: () => {},
+    exportSteps: () => {},
     openRender: () => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
@@ -1745,6 +1749,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       setSweepStart((n) => n + 1);
     },
     openExport: () => setExportOpen(true),
+    exportSteps: () => exportBuildSteps(),
     openRender: () => openRender(),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
@@ -1875,6 +1880,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keys: ["mod+e"],
         run: () => h().openExport(),
         keywords: "stl 3mf step print slicer",
+      },
+      {
+        id: "file.exportSteps",
+        label: "Export build steps (.zip)…",
+        group: "File",
+        icon: "image",
+        run: () => h().exportSteps(),
+        keywords: "instructions pictures markdown",
       },
       { id: "edit.undo", label: "Undo", group: "Edit", icon: "undo", keys: ["mod+z"], run: () => h().doUndo(), when: (c) => c.canUndo },
       { id: "edit.redo", label: "Redo", group: "Edit", icon: "redo", keys: ["shift+mod+z", "mod+y"], run: () => h().doRedo(), when: (c) => c.canRedo },
@@ -3324,6 +3337,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onOpenCopy={files.openCopy}
             onDownloadBcad={files.saveToDisk}
             onExport={() => setExportOpen(true)}
+            onExportSteps={doc.features.length ? exportBuildSteps : undefined}
             onSignOut={signOut}
             onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}

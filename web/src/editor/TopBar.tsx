@@ -63,6 +63,8 @@ export interface TopBarProps {
   onOpenCopy?: () => void;
   onDownloadBcad?: () => void;
   onExport?: () => void;
+  /** Build steps: a picture per timeline step and a Markdown guide, as a .zip. */
+  onExportSteps?: () => void;
   /** Help (#110): shortcuts, the tour, the course, reports and About. */
   helpEntries?: MenuEntry[];
   /** The Construct menu (#265): arms the tool for a kind of plane, axis or point. */
@@ -86,12 +88,13 @@ export function constructEntries(on: (k: ConstructKind) => void): MenuEntry[] {
 }
 
 /** The arrow's entries: Share, Versions and Export first, then the file entries from the editor. */
-export function saveMenuEntries(p: Pick<TopBarProps, "saveEntries" | "onShare" | "onHistory" | "onExport" | "cloud">): MenuEntry[] {
+export function saveMenuEntries(p: Pick<TopBarProps, "saveEntries" | "onShare" | "onHistory" | "onExport" | "onExportSteps" | "cloud">): MenuEntry[] {
   return [
     // Share and Versions need the model in an account; they stay in the menu, greyed, so you know where they are.
     { id: "share", label: "Share…", icon: "share", disabled: !p.onShare, onSelect: () => p.onShare?.() },
     { id: "versions", label: "Versions…", icon: "history", disabled: !(p.cloud && p.onHistory), onSelect: () => p.onHistory?.() },
     { id: "export", label: "Export…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => p.onExport?.() },
+    { id: "steps", label: "Build steps (.zip)…", icon: "image", disabled: !p.onExportSteps, onSelect: () => p.onExportSteps?.() },
     { kind: "separator", id: "s-file" },
     ...p.saveEntries,
   ];
