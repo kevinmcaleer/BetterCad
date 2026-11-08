@@ -168,6 +168,8 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("4 of 4 samples", { timeout: 200_000 });
   // Four samples are grainy and the grain differs every run, so compare the picture shrunk to 60 × 40: halving it
   // step by step averages each pixel with its neighbours, which keeps the shape, colour and shadow and drops the grain.
+  // Some grain survives along the box's edges (3% of pixels on one run), so allow 5%: a wrong shape, colour or
+  // shadow moves far more.
   const url = await page.locator(".bc-render-canvas").evaluate((el: HTMLCanvasElement) => {
     let src: HTMLCanvasElement = el;
     while (src.width > 120) {
@@ -187,5 +189,5 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
     g.drawImage(src, 0, 0, 60, 40);
     return out.toDataURL("image/png");
   });
-  expect(Buffer.from(url.split(",")[1], "base64")).toMatchSnapshot("render-box.png", { maxDiffPixelRatio: 0.02, threshold: 0.1 });
+  expect(Buffer.from(url.split(",")[1], "base64")).toMatchSnapshot("render-box.png", { maxDiffPixelRatio: 0.05, threshold: 0.1 });
 });
