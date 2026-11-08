@@ -6,6 +6,8 @@ export interface AppShellProps {
   topBar: ReactNode;
   /** The latest status message ("Added a box"), floating above the help line. */
   status?: ReactNode;
+  /** Save notices: a toast at the top right of the view that fades out, so it never moves the timeline. */
+  toast?: ReactNode;
   /** The open rail panel, or null when it is folded away. */
   leftPanel: ReactNode | null;
   leftLabel?: string;
@@ -26,7 +28,7 @@ export interface AppShellProps {
  * The tools sit on the top bar; the left panel is the browser, or the panel a top-bar button opened in its place.
  * Under 900px the tools float along the bottom and the panels become sheets over the view.
  */
-export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
+export function AppShell({ topBar, status, toast, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
   const appRef = useRef<HTMLDivElement>(null);
   const footRef = useRef<HTMLDivElement>(null);
   // The bottom stack (status, help line, rolled-back warning, timeline) changes height as its parts come and go or
@@ -59,6 +61,7 @@ export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, s
             {stageToolbar}
           </div>
           {stage}
+          {toast}
           <div className="bc-stage-foot" data-floats="" ref={footRef}>
             {status && <div className="bc-status-pill">{status}</div>}
             <div className="bc-help">{helpLine}</div>
