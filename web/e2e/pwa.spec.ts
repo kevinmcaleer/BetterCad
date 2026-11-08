@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { Editor } from "./pages/editor";
 
 /** The service worker (#94) and working offline (#96). */
 test.use({ serviceWorkers: "allow" });
@@ -34,7 +35,7 @@ test("the second visit comes from the cache, and the editor and kernel work offl
   await page.getByRole("button", { name: "Box", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
   await expect.poll(() => kernelSolids(page), { timeout: 60_000 }).toBe(1);
-  await page.getByRole("button", { name: "Settings" }).click();
+  await new Editor(page).panel("Settings");
   await expect(page.getByRole("button", { name: "Clear cached app" })).toBeVisible();
   await expect(page.getByText(/opens offline, using \d+ MB/)).toBeVisible();
   await context.setOffline(false);

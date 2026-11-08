@@ -1,6 +1,6 @@
 # Print checks
 
-The Print panel (the printer icon in the rail) gets a model ready for the printer (epic #11).
+The Print panel (the printer icon on the top bar) gets a model ready for the printer (epic #11).
 
 ## The bed (#100)
 
