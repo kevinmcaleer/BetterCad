@@ -577,6 +577,37 @@ test("size the angle between two lines, on the side the pointer is, and type it"
   await page.screenshot({ path: test.info().outputPath("angle-set.png") });
 });
 
+test("measure an angle from the X axis", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // A line at 45°, off the axes.
+  await click(page, 5, 5);
+  await click(page, 25, 25);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await page.keyboard.press("d");
+  const placing = page.locator(".bc-placing");
+  await click(page, 15, 15);
+  await expect(placing).toHaveAttribute("aria-label", /^Length/);
+  // The X axis shows while the Dimension tool is on; picking it measures the angle from it.
+  await click(page, 40, 0);
+  const p = await at(page, 30, 8);
+  await page.mouse.move(p.x, p.y, { steps: 3 });
+  await expect(placing).toHaveAttribute("aria-label", /^Angle 45°/);
+  await click(page, 30, 8);
+  const input = page.getByRole("textbox", { name: "Angle in degrees" });
+  await expect(input).toBeFocused();
+  await input.fill("30");
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "30°", exact: true })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("angle-from-axis.png") });
+});
+
 test("finishing a sketch puts the view back in perspective", async ({ page }) => {
   await page.goto("/");
   const view = page.getByRole("application", { name: /3D view/ });
