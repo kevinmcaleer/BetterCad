@@ -165,19 +165,6 @@ class Forget(BaseModel):
     confirm_username: str = ""
 
 
-def check_auth_source(main: sqlite3.Connection, source: str) -> None:
-    """Account ids are user ids of the sign-in in use, so changing sign-in would hand models to strangers."""
-    row = main.execute("SELECT value FROM meta WHERE key = 'auth_source'").fetchone()
-    if row is None or row[0] == source or not main.execute("SELECT 1 FROM accounts LIMIT 1").fetchone():
-        with main:
-            main.execute("INSERT OR REPLACE INTO meta VALUES ('auth_source', ?)", (source,))
-        return
-    raise RuntimeError(
-        f"BetterCad's accounts were made with the {row[0]} sign-in, not {source}. Their ids don't carry over, so "
-        "start from an empty database (docs/deploy.md, 'Signing in with kevsrobots.com')."
-    )
-
-
 def install(app: FastAPI, settings: Settings) -> None:
     app.state.identify = chatter_identify(settings.chatter_url)
     app.state.secret = settings.secret_key or "dev-only-secret"

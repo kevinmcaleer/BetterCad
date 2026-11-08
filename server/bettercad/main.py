@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, auth, db, jobs, models, printers, reports, stats
+from . import __version__, accounts, auth, db, jobs, models, printers, reports, stats
 from .settings import Settings, get_settings
 
 log = logging.getLogger("bettercad")
@@ -74,7 +74,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if applied:
             log.info("applied migrations %s", applied)
         app.state.db = conn
-        auth.check_auth_source(conn, "kevsrobots")
+        aside = accounts.set_aside(conn, settings.blob_dir)
+        if aside:
+            log.warning("set aside %d accounts from the old sign-in: python -m bettercad.accounts", aside)
         app.state.blobs = models.BlobStore(settings.blob_dir)
         task = asyncio.create_task(jobs.run_daily(conn, settings)) if settings.jobs else None
         yield
