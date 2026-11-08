@@ -208,7 +208,7 @@ const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ defa
 const WhatsNewDialog = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewDialog })));
 const WhatsNewCard = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewCard })));
 const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
-const ParamsPanel = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsPanel })));
+const ParamsDialog = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsDialog })));
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => ({ default: m.ConstructBar })));
 const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
@@ -220,7 +220,6 @@ const PANELS: RailItem<PanelId>[] = [
   { id: "library", icon: "shapes", label: "Library" },
   { id: "robot", icon: "screw", label: "Catalogue" },
   { id: "history", icon: "history", label: "History" },
-  { id: "params", icon: "sliders", label: "Parameters" },
   { id: "print", icon: "printer", label: "Print" },
   { id: "settings", icon: "settings", label: "Settings" },
 ];
@@ -335,6 +334,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [originShown, setOriginShown] = useState<OriginItem[]>([]);
   const [browserPicked, setBrowserPicked] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelId | null>(() => (window.matchMedia?.(NARROW).matches ? null : "parts"));
+  /** The Parameters dialog floats over the view, leaving the browser where it is. */
+  const [paramsOpen, setParamsOpen] = useState(false);
   const [propsOpen, setPropsOpen] = useState(false);
   // From 900px up the props panel shows unless put away; the choice lasts between visits.
   const [propsHidden, setPropsHiddenNow] = useState(() => recall(PROPS_HIDDEN_KEY) === "1");
@@ -1618,6 +1619,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     mirror: () => {},
     add,
     showPanel,
+    setParamsOpen,
     setTheme,
     say,
     moveMarker,
@@ -1699,6 +1701,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     mirror,
     add,
     showPanel,
+    setParamsOpen,
     setTheme,
     say,
     moveMarker,
@@ -2178,6 +2181,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "steps features history",
       },
       ...PANELS.map<Command>((p) => ({ id: `panel.${p.id}`, label: `Show ${p.label}`, group: "Panels", icon: p.icon, run: () => h().showPanel(p.id) })),
+      {
+        id: "panel.params",
+        label: "Show Parameters",
+        group: "Panels",
+        icon: "sliders",
+        run: () => h().setParamsOpen(true),
+        keywords: "user model sizes expressions",
+      },
       ...(Object.keys(THEME_LABEL) as ThemeSetting[]).map<Command>((t) => ({
         id: `theme.${t}`,
         label: `Theme: ${THEME_LABEL[t]}`,
@@ -3151,9 +3162,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       if (relink(d, sv) !== d) store.edit((x) => relink(x, sv), label);
     });
   };
-  const paramsPanel = (
+  const paramsDialog = paramsOpen && (
     <Suspense fallback={null}>
-      <ParamsPanel
+      <ParamsDialog
+        onClose={() => setParamsOpen(false)}
+        onEdit={(label, fn) => store.edit(fn, label)}
         doc={doc}
         onAdd={() => store.edit((d) => addParam(d), "Add a parameter")}
         onChange={(id, change) => changeParams((d) => updateParam(d, id, change), "Change a parameter")}
@@ -3197,6 +3210,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       <AppShell
         topBar={
           <TopBar
+            paramsOpen={paramsOpen}
+            onParams={() => setParamsOpen(!paramsOpen)}
             tool={tool}
             onArmTool={(id) => (id === "pattern" ? toolbarPattern(false) : armTool(id))}
             onConstruct={startConstruct}
@@ -3247,6 +3262,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 </div>
               )}
             </div>
+            {paramsDialog}
             {whatsNew.card && (
               <Suspense fallback={null}>
                 <WhatsNewCard fresh={whatsNew.fresh} onOpen={whatsNew.show} onDismiss={whatsNew.dismiss} />
@@ -3258,7 +3274,6 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         leftPanel={
           panel && (
             <LeftPanel
-              paramsPanel={paramsPanel}
               printPanel={printPanel}
               robotPanel={
                 <Suspense fallback={null}>

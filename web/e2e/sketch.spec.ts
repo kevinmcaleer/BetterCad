@@ -83,6 +83,7 @@ test("a sketch size uses a parameter, offered by name, and follows it", async ({
   const expr = page.getByRole("textbox", { name: "Expression for width" });
   await expr.fill("20");
   await expr.press("Enter");
+  await page.getByRole("dialog", { name: "Parameters" }).getByRole("button", { name: "Close (Esc)" }).click();
 
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
   await page.waitForTimeout(1200);
@@ -117,7 +118,8 @@ test("a sketch size uses a parameter, offered by name, and follows it", async ({
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "40 mm", exact: true })).toBeVisible();
 
-  // Change the parameter (its panel is still open): the sketch follows.
+  // Change the parameter: the sketch follows.
+  await page.getByRole("banner").getByRole("button", { name: "Parameters", exact: true }).click();
   const again = page.getByRole("textbox", { name: "Expression for width" });
   await again.fill("25");
   await again.press("Enter");
