@@ -267,3 +267,32 @@
   transform: translate(14px, 10px);
   background: var(--bc-color-accent);
 }
+/* The magnifier loupe: a round zoomed view of the sketch by the pointer. The session paints its canvas from tokens. */
+.bc-loupe {
+  position: absolute;
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  border: 2px solid var(--bc-color-accent);
+  box-shadow: var(--bc-shadow-pop);
+  box-sizing: content-box;
+  margin: -2px 0 0 -2px;
+  pointer-events: none;
+}
+.bc-loupe canvas {
+  display: block;
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+}
+.bc-loupe-zoom {
+  position: absolute;
+  right: 14px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+  font-size: 11px;
+  font-weight: 600;
+}
