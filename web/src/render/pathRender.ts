@@ -215,7 +215,8 @@ export class PathRender {
   setStyle(style: RenderStyle): void {
     this.style = style;
     for (const m of this.model.children as Mesh[]) m.material = style === "paper" ? this.paper : (m.userData.finish as MeshStandardMaterial);
-    this.tracer.updateMaterials();
+    // The tracer keeps the list of materials it read in setScene, so a swapped material only shows once it re-reads the scene.
+    if (this.model.children.length) this.tracer.setScene(this.scene, this.camera);
     this.restart();
   }
 
