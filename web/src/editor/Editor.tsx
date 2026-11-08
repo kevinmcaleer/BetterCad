@@ -38,6 +38,7 @@ import {
   applyProfile,
   profileFromSettings,
   PRIMITIVES,
+  addLink,
   changeParts,
   duplicateParts,
   featureParts,
@@ -568,6 +569,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [record, say],
   );
 
+  // Links (#171): bodies named as one rigid part of a robot, kept as separate bodies.
+  const makeLink = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
+      const id = newId("f");
+      const name = addLink(live.current.doc, ids, id).features.find((f) => f.id === id)!.name;
+      record((d, at) => addLink(d, ids, id, at), `Make ${name}`);
+      say(`Made ${name} of ${ids.length === 1 ? "1 body" : `${ids.length} bodies`}. They stay separate bodies.`);
+    },
+    [record, say],
+  );
+  const selectLink = useCallback(
+    (ids: string[]) => {
+      const part = live.current.parts.find((p) => ids.includes(p.id) && p.link);
+      if (!part) return say("That body isn't in a link", true);
+      setSelection(live.current.parts.filter((p) => p.link === part.link).map((p) => p.id));
+    },
+    [say],
+  );
+
   const duplicate = useCallback(
     (ids: string[]) => {
       if (!ids.length) return;
@@ -973,6 +994,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     addRack: (_id: string) => {},
     fitBelt: (_ids: string[]) => {},
     meshGears: (_ids: string[]) => {},
+    makeLink: (_ids: string[]) => {},
+    selectLink: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
     suppressActive: () => {},
@@ -1015,6 +1038,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     addRack: addRackTo,
     fitBelt: beltPicked,
     meshGears: meshPicked,
+    makeLink,
+    selectLink,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
@@ -1268,6 +1293,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().meshGears(sel()),
         when: () => sel().length === 2 && sel().every((id) => live.current.doc.features.some((f) => f.type === "gear" && f.body.id === id)),
         keywords: "gear pair centre distance drive ratio",
+      },
+      {
+        id: "link.make",
+        scope: "model",
+        label: "Make link",
+        group: "Edit",
+        icon: "link",
+        run: () => h().makeLink(sel()),
+        when: hasSel,
+        keywords: "robot rigid link body group joint urdf",
+      },
+      {
+        id: "link.select",
+        scope: "model",
+        label: "Select link",
+        group: "Edit",
+        icon: "link",
+        run: () => h().selectLink(sel()),
+        when: () => live.current.parts.some((p) => sel().includes(p.id) && !!p.link),
+        keywords: "robot rigid link bodies",
       },
       {
         id: "place.turn",
@@ -1933,6 +1978,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
         ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
+      { id: "make-link", label: "Make link", icon: "link", onSelect: () => makeLink(ids) },
+      ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select link", icon: "link" as const, onSelect: () => selectLink(ids) }] : []),
       {
         id: "reference",
         label: chosen.length && chosen.every((p) => p.reference) ? "Make printable" : "Make a reference",
@@ -2256,6 +2303,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               renameId={renameId}
               onRenameIdChange={setRenameId}
               sketches={browserSketches}
+              links={built.links}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}

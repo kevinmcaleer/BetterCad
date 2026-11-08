@@ -47,3 +47,14 @@ Already built: constrained sketches, the timeline, section view, STL, 3MF and ST
 ## Fits
 
 Typical FDM starting points: press about 0.1 to 0.2 mm, sliding about 0.2 to 0.3 mm, loose about 0.4 mm or more. A printer profile sets the baseline, tuned with a small calibration print; named fits apply it; BetterCad finds mating faces and asks which fit to use. See [fits.md](fits.md).
+
+## Links (#171)
+
+A link is a rigid part of a robot: bodies that move together. Select bodies, then right-click and choose **Make link**, or run Make link from the command palette. A "Link 1" step goes on the timeline.
+
+- The bodies stay separate. Each keeps its own look, and each prints and exports on its own. Group (#66) is different: it joins solids into one.
+- A body is in at most one link. Making a new link takes the body out of its old one. Bodies in no link are in the base link.
+- Copies (Duplicate, Mirror, Pattern) stay in their original's link. Deleting a body takes it out of its link, and a link with no bodies left disappears from the tree.
+- The browser's Robot folder lists Base, then each link with its body count. Click a link to select its bodies, then move them together. **Select link** on a body's menu does the same from the view.
+- Until joints (#172) arrive, links are listed flat. Joints will nest each link under the joint it hangs from.
+- Files: `.bcad` schema 2 can hold link steps. A schema 1 file opens with every body in Base.
