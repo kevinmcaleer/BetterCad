@@ -42,11 +42,22 @@ function session(f: Partial<ExtrudeFeature>, targets: string[] = [], wantTo = fa
     setFieldExpr: vi.fn(),
     done: vi.fn(),
     cancel: vi.fn(),
+    pickingShapes: false,
+    repickShapes: vi.fn(),
+    stopShapes: vi.fn(),
   };
   return x as typeof x & ExtrudeSession;
 }
 
 describe("ExtrudeBar", () => {
+  it("picks the shapes again, or clears them first", async () => {
+    const x = session({}, ["a"]);
+    render(<ExtrudeBar x={x} parts={parts} />);
+    await userEvent.click(screen.getByRole("button", { name: /1 shape/ }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Clear and pick again" }));
+    expect(x.repickShapes).toHaveBeenCalledWith(true);
+  });
+
   it("offers through all for a cut, and a flip in place of the distance", async () => {
     const x = session({ extent: "all" }, ["a"]);
     render(<ExtrudeBar x={x} parts={parts} />);

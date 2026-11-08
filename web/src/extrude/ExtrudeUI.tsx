@@ -172,6 +172,22 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
   }
   return (
     <ArmedBar title={title} icon={icon}>
+      <MenuButton
+        label="Shapes"
+        entries={[
+          { id: "pick", label: "Pick in the view", checked: x.pickingShapes, onSelect: () => x.repickShapes() },
+          { id: "clear", label: "Clear and pick again", onSelect: () => x.repickShapes(true) },
+        ]}
+        trigger={(p) => (
+          <Button
+            {...p}
+            label={x.picked ? (x.picked === 1 ? "1 shape" : `${x.picked} shapes`) : "Pick shapes"}
+            on={x.pickingShapes}
+            title={`The closed shapes it ${x.kind === "revolve" ? "turns" : "pushes"}. Pick them again in the view, or clear them and start over.`}
+          />
+        )}
+      />
+      {x.pickingShapes && <Button label="Done picking" title="Stop picking shapes" shortcut="Esc" onClick={x.stopShapes} />}
       {fields}
       <span role="group" aria-label="Operation" className="bc-segmented">
         {OPERATIONS.map((o) => (
