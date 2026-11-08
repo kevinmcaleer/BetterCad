@@ -1,4 +1,4 @@
-import type { GlyphFont } from "@bettercad/sketch";
+import type { TextStyle, Vec2 } from "@bettercad/sketch";
 
 /**
  * The fonts the Text tool offers: open-licence faces bundled with the app (OFL, Roboto Slab Apache 2.0), Latin
@@ -22,7 +22,7 @@ export const DEFAULT_FONT = "inter";
 
 export const fontLabel = (id: string) => FONTS.find((f) => f.id === id)?.label ?? id;
 
-/** A bundled font, ready to lay text out in. Unknown ids get the default font. */
-export function loadFont(id: string): Promise<GlyphFont> {
-  return import("./glyphs").then((m) => m.glyphFont(id));
+/** A text's outline in its font, laid out in the lazy chunk so the layout code stays out of the first load too. */
+export function layOut(style: TextStyle): Promise<Vec2[][]> {
+  return import("./glyphs").then((m) => m.layOut(style));
 }

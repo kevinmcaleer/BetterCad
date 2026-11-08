@@ -1,5 +1,5 @@
 import { parse, type Font } from "opentype.js";
-import type { GlyphFont, PathCommand } from "@bettercad/sketch";
+import { layoutText, type GlyphFont, type PathCommand, type TextStyle, type Vec2 } from "@bettercad/sketch";
 import inter from "@fontsource/inter/files/inter-latin-400-normal.woff?url";
 import interBold from "@fontsource/inter/files/inter-latin-700-normal.woff?url";
 import archivoBlack from "@fontsource/archivo-black/files/archivo-black-latin-400-normal.woff?url";
@@ -35,6 +35,10 @@ export function glyphFont(id: string): Promise<GlyphFont> {
     cache.set(key, p);
   }
   return p;
+}
+
+export async function layOut(style: TextStyle): Promise<Vec2[][]> {
+  return layoutText(await glyphFont(style.font), style);
 }
 
 /** opentype.js's font as the sketch package's GlyphFont. */

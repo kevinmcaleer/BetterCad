@@ -23,7 +23,6 @@ import {
   slideAcross,
   sub,
   toSketch,
-  layoutText,
   placedLoops,
   textAt,
   textsOf,
@@ -41,7 +40,7 @@ import {
 } from "@bettercad/sketch";
 import { addSketch, newId, paramScope, redefineSketchPlane, updateSketch, type ModelDoc, type SketchFeature } from "../state/document";
 import { loadSolver } from "./solver";
-import { DEFAULT_FONT, loadFont } from "./text/fonts";
+import { DEFAULT_FONT, layOut } from "./text/fonts";
 import type { Command } from "../state/commands";
 import { caught } from "../report/errors";
 import type { View3DHandle } from "../viewport/View3D";
@@ -646,9 +645,9 @@ export function useSketch(d: SketchDeps) {
     if (!textEdit) return;
     const style = textEdit.style;
     let alive = true;
-    loadFont(style.font).then(
-      (font) => {
-        if (alive) setTextEdit((t) => (t && t.style === style ? { ...t, loops: layoutText(font, style), loading: false } : t));
+    layOut(style).then(
+      (loops) => {
+        if (alive) setTextEdit((t) => (t && t.style === style ? { ...t, loops, loading: false } : t));
       },
       () => {
         if (!alive) return;
@@ -675,7 +674,7 @@ export function useSketch(d: SketchDeps) {
     let loops = t.loops;
     if (t.loading) {
       try {
-        loops = layoutText(await loadFont(t.style.font), t.style);
+        loops = await layOut(t.style);
       } catch {
         say("The font did not load. Check the connection and try again.", true);
         return;
