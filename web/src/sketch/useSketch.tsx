@@ -54,7 +54,7 @@ import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, 
 import { loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide, type SketchOption, type SketchOptions } from "./options";
 import { viewDir } from "../viewport/camera";
 import { placeAt } from "./dimensions";
-import { ORIGIN, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type Snap } from "./snap";
+import { ORIGIN, dropTarget, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type PointPick, type Snap } from "./snap";
 import {
   CLICKS,
   CONSTRAINT_TOOLS,
@@ -862,8 +862,29 @@ export function useSketch(d: SketchDeps) {
   useEffect(() => {
     const eng = engineOf();
     if (!editingId || !eng) return;
-    /** A point dragged to the pointer, or a line slid square across from where it was grabbed. */
-    let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 }; offset?: Vec2 } | null = null;
+    /**
+     * A point dragged to the pointer, or a line slid square across from where it was grabbed. A point held over another
+     * point or a curve snaps to it (`onto`), and is made coincident with it where it is let go.
+     */
+    let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 }; offset?: Vec2; onto?: PointPick | null } | null = null;
+    /** Ends a drag: a point let go over a snap gets its coincident in the same undo step as the move. */
+    const endDrag = (snapIt: boolean) => {
+      const d = drag;
+      drag = null;
+      if (!d?.moved) return;
+      const L = live.current;
+      const s = L.current();
+      if (snapIt && d.onto && s && L.editingId) {
+        const out = addConstraints("coincident", s, [d.id, d.onto.id], L.origin ?? undefined);
+        if (typeof out === "string") say(out, true);
+        else L.apply(out, d.onto.kind === "on" ? "Put a point on a curve" : "Make points coincident", { key: `drag:${L.editingId}:${d.id}`, strict: true });
+      }
+      store.seal();
+      if (d.onto) {
+        setCursor(null);
+        setHover(null);
+      }
+    };
     /** How near, in screen pixels, a pick reaches: a finger needs more room than a cursor. */
     let reach = 8;
     /**
@@ -1134,7 +1155,15 @@ export function useSketch(d: SketchDeps) {
               [ln.a, a],
               [ln.b, b],
             ]);
-          } else r = L.solver.drag(L.sketch, drag.id, drag.offset ? sub(hit.xy, drag.offset) : hit.xy);
+          } else if (drag.offset) r = L.solver.drag(L.sketch, drag.id, sub(hit.xy, drag.offset));
+          else {
+            // Over another point or a curve, the point snaps to it and shows where it will go; Shift lets it go free.
+            const onto = mods.shift ? null : dropTarget(hit.xy, L.sketch, drag.id, reach * hit.px, L.origin);
+            drag.onto = onto;
+            setHover(onto?.id ?? null);
+            setCursor(onto ? { xy: onto.xy, kind: onto.kind, label: onto.label } : null);
+            r = L.solver.drag(L.sketch, drag.id, onto?.xy ?? hit.xy);
+          }
           if (r.status === "ok" || r.status === "redundant") {
             drag.moved = true;
             const id = L.editingId!;
@@ -1182,8 +1211,7 @@ export function useSketch(d: SketchDeps) {
         setCursor(snapAt(hit.xy, hit.px, mods));
       },
       up: (p: ScreenPoint, mods: Mods) => {
-        if (drag?.moved) store.seal();
-        drag = null;
+        endDrag(true);
         const L = live.current;
         if (tapPlace) {
           tapPlace = false;
@@ -1200,8 +1228,7 @@ export function useSketch(d: SketchDeps) {
       },
       cancel: () => {
         // A second finger came down to pinch or pan: nothing goes in.
-        if (drag?.moved) store.seal();
-        drag = null;
+        endDrag(false);
         if (tap?.dragged) setClicks(tap.base);
         tap = null;
         tapPlace = false;

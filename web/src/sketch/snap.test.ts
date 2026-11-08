@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { drawRectangle, drawCircle, drawLine, newSketch } from "@bettercad/sketch";
-import { entityAt, snap, snapStep } from "./snap";
+import { ORIGIN, dropTarget, entityAt, snap, snapStep } from "./snap";
 
 const rect = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
 
@@ -77,5 +77,46 @@ describe("snap", () => {
     expect(snap([5.2, 4.9], empty, { px: 0.1, grid: null, origin: [5, 5] })).toMatchObject({ kind: "origin", xy: [5, 5] });
     expect(snap([0.4, -0.3], empty, { px: 0.1, grid: null, origin: null }).kind).toBe("free");
     expect(snap([0.4, -0.3], empty, { px: 0.1, grid: 1, off: true }).kind).toBe("free");
+  });
+});
+
+describe("dropTarget", () => {
+  const corner = (s: typeof rect, x: number, y: number) => s.entities.find((e) => e.kind === "point" && e.x === x && e.y === y)!.id;
+
+  it("lands a dragged corner on a point of another shape", () => {
+    const s = drawLine(rect, [60, 0], [80, 0]).sketch;
+    const end = corner(s, 60, 0);
+    expect(dropTarget([40.4, 0.3], s, end, 0.8, null)).toMatchObject({ id: corner(s, 40, 0), kind: "end", xy: [40, 0] });
+  });
+
+  it("never folds a line onto itself, but reaches the far corner", () => {
+    const c = corner(rect, 0, 0);
+    // Its neighbours are the other ends of its own lines: only the far side's line is there to land on.
+    expect(dropTarget([40.3, 0.2], rect, c, 0.8, null)).toMatchObject({ kind: "on" });
+    expect(dropTarget([0.2, 19.8], rect, c, 0.8, null)).toMatchObject({ kind: "on" });
+    expect(dropTarget([20, 0.3], rect, c, 0.8, null)).toBeNull();
+    expect(dropTarget([39.8, 20.3], rect, c, 0.8, null)?.id).toBe(corner(rect, 40, 20));
+  });
+
+  it("lands on a line or circle at the nearest spot, then the origin", () => {
+    const s = drawCircle(drawLine(rect, [60, 0], [80, 0]).sketch, [100, 0], 10).sketch;
+    const end = corner(s, 80, 0);
+    const on = dropTarget([20, 20.5], s, end, 0.8, null);
+    expect(on).toMatchObject({ kind: "on", label: "On" });
+    expect(on!.xy).toEqual([20, 20]);
+    expect(dropTarget([100.3, 10.4], s, end, 0.8, null)).toMatchObject({ kind: "on" });
+    expect(
+      dropTarget([0.3, 0.3], drawLine(newSketch(), [5, 5], [9, 9]).sketch, corner(drawLine(newSketch(), [5, 5], [9, 9]).sketch, 9, 9), 0.8, [0, 0])?.id,
+    ).toBe(ORIGIN);
+    expect(dropTarget([50, 50], s, end, 0.8, [0, 0])).toBeNull();
+  });
+
+  it("skips a curve the point already sits on", () => {
+    const s = drawLine(rect, [60, 0], [80, 0]).sketch;
+    const end = corner(s, 80, 0);
+    const top = dropTarget([20, 20.5], s, end, 0.8, null)!;
+    expect(top.kind).toBe("on");
+    const tied = { ...s, constraints: [...s.constraints, { id: "c1", type: "pointOn" as const, p: end, e: top.id }] };
+    expect(dropTarget([20, 20.5], tied, end, 0.8, null)).toBeNull();
   });
 });
