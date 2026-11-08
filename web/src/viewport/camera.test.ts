@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CAMERA, cameraBasis, fit, fitInRect, gridStep, lerpCamera, lookFrom, orbit, pan, presetOf, snapTo, toPreset, viewDir, zoom } from "./camera";
+import {
+  DEFAULT_CAMERA,
+  cameraBasis,
+  facing,
+  fit,
+  fitInRect,
+  gridStep,
+  lerpCamera,
+  lookFrom,
+  orbit,
+  pan,
+  presetOf,
+  snapTo,
+  toPreset,
+  viewDir,
+  zoom,
+} from "./camera";
+import { frameY, squareFrame, type Vec3 } from "@bettercad/sketch";
 import { FACE_ONLY, decodeId, encodeId, findPick } from "./ids";
 
 const near = (a: number[], b: number[]) => a.forEach((v, i) => expect(v).toBeCloseTo(b[i]!, 6));
@@ -15,6 +32,25 @@ describe("camera", () => {
     const front = cameraBasis(toPreset(DEFAULT_CAMERA, "front"));
     near(front.up, [0, 0, 1]);
     near(front.right, [1, 0, 0]);
+  });
+
+  it("a sketch on any face is square to the screen when you look straight at it", () => {
+    // A round face's longest mesh edge points anywhere; the frame no longer follows it (Kev's wheel sketch came out at 45°).
+    const normals: Vec3[] = [
+      [0, 0, 1],
+      [0, 0, -1],
+      [0, -1, 0],
+      [1, 0, 0],
+      [-0.6, 0.8, 0],
+      [0.3, -0.5, 0.81],
+      [0.2, 0.1, -0.9],
+    ];
+    for (const n of normals) {
+      const f = squareFrame([5, 6, 7], n);
+      const view = cameraBasis({ ...DEFAULT_CAMERA, ...facing(n) });
+      near(view.right, f.x);
+      near(view.up, frameY(f));
+    }
   });
 
   it("knows which preset it is at, and stops being one when turned", () => {
