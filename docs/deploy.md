@@ -72,9 +72,16 @@ People sign in with their kevsrobots.com account, kept by Chatter (docs/accounts
 `COOKIE_DOMAIN=.kevsrobots.com` and `CHATTER_URL=https://chatter.kevsrobots.com`, so nothing needs adding to `.env`.
 The machine must be able to reach `chatter.kevsrobots.com` over HTTPS.
 
-Account ids are kevsrobots.com user ids. A database whose accounts were made with an earlier sign-in refuses to start,
-so nobody's models change hands; nothing had launched then, so start it empty:
-`docker compose down && docker volume rm bettercad_bettercad-data && docker compose up -d`.
+Account ids are kevsrobots.com user ids, so accounts made with an earlier sign-in can't carry over by id. On the
+first start they are set aside instead: their models, versions, share links and files stay, share links keep working,
+and nobody can sign in to them. To take yours back, sign in to BetterCad once with kevsrobots.com, then run
+
+```sh
+docker compose exec bettercad python -m bettercad.accounts                     # lists set-aside accounts
+docker compose exec bettercad python -m bettercad.accounts claim Kevin kevsrobots_username
+```
+
+which moves everything from the old account `Kevin` onto your kevsrobots.com account.
 
 ## Backups
 
