@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { addPart, changeParts, featureSummary, newDoc, updateFeature } from "../state/document";
+import { useState } from "react";
+import { addPart, changeParts, featureSummary, newDoc, updateFeature, type Feature } from "../state/document";
 import { Timeline } from "./Timeline";
 import { Editor } from "./Editor";
 
-function setup(at: number, failed = new Map<string, string>()) {
+function setup(at: number, failed = new Map<string, string>(), onEdit?: (f: Feature) => void) {
   let d = changeParts(addPart(addPart(newDoc(), "box", "a"), "sphere", "b"), ["a"], "position", { x: 9 });
   d = updateFeature(d, d.features[1]!.id, { suppressed: true });
   const onMarker = vi.fn();
@@ -19,6 +20,7 @@ function setup(at: number, failed = new Map<string, string>()) {
       summary={(f) => featureSummary(d, f)}
       onSelect={onSelect}
       onMenu={onMenu}
+      onEdit={onEdit}
     />,
   );
   return { d, onMarker, onSelect, onMenu };
@@ -83,6 +85,89 @@ function addBox() {
   fireEvent.click(screen.getByRole("button", { name: "Box" }));
 }
 
+describe("Timeline marker drag", () => {
+  /** Lays the tiles out 30 px apart, as jsdom has no layout. */
+  function layOut() {
+    screen
+      .getByRole("region", { name: "Timeline" })
+      .querySelectorAll<HTMLElement>(".bc-tl-tile")
+      .forEach((t) => {
+        const i = (Number(t.style.order) - 1) / 2;
+        t.getBoundingClientRect = () => ({ left: i * 30, width: 24, top: 0, height: 24, right: i * 30 + 24, bottom: 24, x: i * 30, y: 0, toJSON: () => ({}) });
+      });
+  }
+  it("scrubs across several steps in one drag", () => {
+    // jsdom has no PointerEvent; a MouseEvent carries the button and position the drag reads.
+    if (!("PointerEvent" in window)) vi.stubGlobal("PointerEvent", class extends MouseEvent {});
+    let d = addPart(newDoc(), "box", "a");
+    for (const k of ["b", "c", "d", "e"]) d = addPart(d, "box", k);
+    const seen: number[] = [];
+    function Host() {
+      const [at, setAt] = useState(5);
+      return (
+        <Timeline
+          features={d.features}
+          at={at}
+          onMarker={(to) => {
+            seen.push(to);
+            setAt(to);
+          }}
+          failed={new Map()}
+          activeId={null}
+          summary={() => "x"}
+          onSelect={() => {}}
+          onMenu={() => {}}
+        />
+      );
+    }
+    render(<Host />);
+    layOut();
+    const marker = screen.getByRole("slider", { name: "Timeline marker" });
+    fireEvent.pointerDown(marker, { button: 0, pointerId: 1, clientX: 150 });
+    for (const x of [120, 90, 60, 30, 0]) {
+      fireEvent.pointerMove(screen.getByRole("slider", { name: "Timeline marker" }), { pointerId: 1, clientX: x });
+      layOut();
+    }
+    // The same element all the way, so the drag carries on past the first step.
+    expect(screen.getByRole("slider", { name: "Timeline marker" })).toBe(marker);
+    expect(marker).toHaveAttribute("aria-valuenow", "0");
+    expect(seen).toEqual([4, 3, 2, 1, 0]);
+    fireEvent.pointerUp(marker, { pointerId: 1 });
+    fireEvent.pointerMove(marker, { pointerId: 1, clientX: 150 });
+    expect(seen).toHaveLength(5);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("Timeline edit", () => {
+  it("opens a step on a double-click", () => {
+    const onEdit = vi.fn();
+    const { d, onSelect } = setup(3, undefined, onEdit);
+    fireEvent.click(screen.getByRole("button", { name: /^Move 1/ }), { detail: 1 });
+    fireEvent.click(screen.getByRole("button", { name: /^Move 1/ }), { detail: 2 });
+    expect(onSelect).toHaveBeenCalledWith(d.features[2]);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onEdit).toHaveBeenCalledWith(d.features[2]);
+  });
+  it("opens a step on a double-tap, where the second tap has no click count", () => {
+    const onEdit = vi.fn();
+    const { d } = setup(3, undefined, onEdit);
+    const box = screen.getByRole("button", { name: /^Box 1/ });
+    fireEvent.click(box, { detail: 1 });
+    fireEvent.click(box, { detail: 1 });
+    expect(onEdit).toHaveBeenCalledWith(d.features[0]);
+  });
+  it("does not open a step from a single click, two different tiles or the keyboard", () => {
+    const onEdit = vi.fn();
+    setup(3, undefined, onEdit);
+    fireEvent.click(screen.getByRole("button", { name: /^Box 1/ }), { detail: 1 });
+    fireEvent.click(screen.getByRole("button", { name: /^Move 1/ }), { detail: 1 });
+    fireEvent.click(screen.getByRole("button", { name: /^Sphere 1/ }), { detail: 0 });
+    fireEvent.click(screen.getByRole("button", { name: /^Sphere 1/ }), { detail: 0 });
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+});
+
 describe("Editor timeline", () => {
   it("rolls the model back and inserts new steps at the marker", () => {
     render(<Editor />);
@@ -103,5 +188,16 @@ describe("Editor timeline", () => {
 
     fireEvent.keyDown(window, { key: "End", altKey: true });
     expect(screen.getAllByRole("treeitem", { name: /^Box/ })).toHaveLength(3);
+  });
+  it("opens a step past the marker on a double-click, rolling forward to it", () => {
+    render(<Editor />);
+    addBox();
+    addBox();
+    fireEvent.click(screen.getByRole("button", { name: /^Step back/ }));
+    const tile = screen.getByRole("button", { name: /^Box 2.*not built/ });
+    fireEvent.click(tile, { detail: 1 });
+    fireEvent.click(tile, { detail: 2 });
+    expect(screen.getByRole("slider", { name: "Timeline marker" })).toHaveAttribute("aria-valuenow", "2");
+    expect(screen.getAllByText("Change Box 2 in Properties.").length).toBeGreaterThan(0);
   });
 });
