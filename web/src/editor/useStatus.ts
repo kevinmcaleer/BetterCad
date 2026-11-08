@@ -6,9 +6,13 @@ export interface Status {
 }
 
 /**
- * Status text for the top bar. A message clears after 5 seconds; an error stays until replaced. A quiet message
+ * Status text for the top bar. A message clears after 5 seconds and an error after 12, so an old error ("No value
+ * called hole") never sits there after it has been put right. A quiet message
  * ("Autosaved") only shows when nothing else is showing, and clears sooner.
  */
+/** How long an error stays: long enough to read, not so long it outlives the problem. */
+export const ERROR_MS = 12000;
+
 export function useStatus() {
   const [status, setStatus] = useState<Status>({ text: "" });
   const timer = useRef<number | undefined>(undefined);
@@ -22,7 +26,7 @@ export function useStatus() {
     }
     window.clearTimeout(timer.current);
     setStatus({ text, bad });
-    timer.current = bad ? undefined : window.setTimeout(() => setStatus({ text: "" }), 5000);
+    timer.current = window.setTimeout(() => setStatus({ text: "" }), bad ? ERROR_MS : 5000);
   }, []);
   useEffect(
     () => () => {
