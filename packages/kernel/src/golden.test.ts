@@ -206,6 +206,9 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     boolean(oc, "cut", cylinder(oc, { x: 20, y: 20, z: 30 }), [
       revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(8, 10, 4, 4), holes: [], area: 16 }], axis: Z_AXIS, angle: 360 }),
     ]),
+  // Revolve round an axis 10 mm off the sketch's plane (a construction axis or an edge above it).
+  "revolve-offset-axis": (oc) =>
+    revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(5, 0, 10, 30), holes: [], area: 300 }], axis: { ...Z_AXIS, offset: 10 }, angle: 360 }),
   // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
   "pushpull-out": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, 5),
   "pushpull-in": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, -5),

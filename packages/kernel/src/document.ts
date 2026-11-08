@@ -57,6 +57,7 @@ import {
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import { evaluate } from "@bettercad/ui/expr";
 import {
+  axisInSketch,
   axisOf,
   crossesAxis,
   extent,
@@ -76,6 +77,7 @@ import {
   type ProfileSeg,
   type ProfileShape,
   type RevolveSpec,
+  type SketchAxis,
 } from "./extrude";
 
 export * from "./extrude";
@@ -449,7 +451,8 @@ export interface RevolveFeature extends FeatureBase {
   seeds: Vec2[];
   /** Texts picked whole, as for Extrude. */
   texts?: string[];
-  axis: AxisRef;
+  /** What it turns round. None until one is picked: the tool asks for the axis after the shapes. */
+  axis?: AxisRef;
   /** Degrees, 1 to 360. */
   angle: number;
   symmetric?: boolean;
@@ -789,6 +792,16 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     if (gone.length) failed.set(f.id, gone.length === ids.length ? "The parts it changes are gone" : "Some of the parts it changes are gone");
     return gone;
   };
+  /** A construction pick (#265) where it is now: an origin plane or axis, a built step, or a body's face or edge. */
+  const refGeo = (r: ConstructRef): Geo | string => {
+    if ("origin" in r) return originGeo(r.origin);
+    if ("step" in r) {
+      const c = built.find((x) => x.id === r.step);
+      return c ? geoOf(c.geo) : "A step it was made from is gone";
+    }
+    const p = parts[find(r.body)];
+    return p ? bodyGeo(r, p) : "The body it was made from is gone";
+  };
   const { values } = evaluateParams(doc.params);
   // Bodies a step makes while a component is active go into it, unless they already have one (a copy keeps its own).
   let owner: { component: string; had: Set<string> } | null = null;
@@ -978,16 +991,9 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         const inputs: Geo[] = [];
         let gone: string | null = null;
         for (const r of f.refs) {
-          if ("origin" in r) inputs.push(originGeo(r.origin));
-          else if ("step" in r) {
-            const c = built.find((x) => x.id === r.step);
-            if (c) inputs.push(geoOf(c.geo));
-            else gone ??= "A step it was made from is gone";
-          } else {
-            const p = parts[find(r.body)];
-            if (p) inputs.push(bodyGeo(r, p));
-            else gone ??= "The body it was made from is gone";
-          }
+          const g = refGeo(r);
+          if (typeof g === "string") gone ??= g;
+          else inputs.push(g);
         }
         const geo = gone ?? constructGeo(f.kind, inputs, f.value);
         if (typeof geo === "string") failed.set(f.id, geo);
@@ -1134,7 +1140,26 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           break;
         }
         if (lost) failed.set(f.id, `${lost === 1 ? "One shape" : `${lost} shapes`} it revolved ${lost === 1 ? "is" : "are"} no longer closed`);
-        const axis = axisOf(sk, f.axis);
+        if (!f.axis) {
+          failed.set(f.id, "Pick an axis to turn it round: an axis, a sketch line or a straight edge");
+          break;
+        }
+        let axis: SketchAxis | null;
+        if (f.axis.kind === "ref") {
+          // An origin axis, a construction axis or a straight edge, where it is now.
+          const g = refGeo(f.axis.ref);
+          const on =
+            typeof g === "string"
+              ? g.replace("it was made from", "it turns round")
+              : g.t !== "line"
+                ? "Pick a straight edge, a line or an axis to turn it round"
+                : axisInSketch(planeFrame(sk.plane), g.origin, g.dir);
+          if (typeof on === "string") {
+            failed.set(f.id, on);
+            break;
+          }
+          axis = on;
+        } else axis = axisOf(sk, f.axis);
         if (!axis) {
           failed.set(f.id, "The line it turns round is gone. Pick another axis.");
           break;
@@ -1351,8 +1376,8 @@ function revolveSize(spec: RevolveSpec): Vec3 {
   const pts = spec.profiles.flatMap((p) =>
     p.outer.flatMap((g) => (g.kind === "circle" ? [[g.c[0] + g.r, g.c[1]] as Vec2, [g.c[0] - g.r, g.c[1]] as Vec2] : [g.a, g.b])),
   );
-  const { origin: o, dir: d } = spec.axis;
-  const r = Math.max(0, ...pts.map((p) => Math.abs((p[0] - o[0]) * d[1] - (p[1] - o[1]) * d[0])));
+  const { origin: o, dir: d, offset = 0 } = spec.axis;
+  const r = Math.max(0, ...pts.map((p) => Math.hypot((p[0] - o[0]) * d[1] - (p[1] - o[1]) * d[0], offset)));
   const along = pts.map((p) => (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1]);
   const [a0, a1] = [Math.min(...along), Math.max(...along)];
   const f = spec.frame;
@@ -1725,7 +1750,14 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "revolve": {
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
-      const axis = f.axis.kind === "line" ? "a sketch line" : `the sketch's ${f.axis.kind.toUpperCase()} axis`;
+      const a = f.axis;
+      const axis = !a
+        ? "an axis still to pick"
+        : a.kind === "line"
+          ? "a sketch line"
+          : a.kind === "ref"
+            ? refText(a.ref, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name)
+            : `the sketch's ${a.kind.toUpperCase()} axis`;
       return `${f.angle >= 360 ? "Full turn" : `${Math.round(f.angle * 100) / 100}°${f.symmetric ? " both ways" : ""}`} round ${axis}, ${op}`;
     }
     case "shell": {
@@ -2468,7 +2500,7 @@ function partsRead(f: Feature): string[] {
     case "extrude":
       return f.extent === "to" && f.to ? [...new Set([...targetsOf(f), f.to.body])] : targetsOf(f);
     case "revolve":
-      return targetsOf(f);
+      return f.axis?.kind === "ref" && "body" in f.axis.ref ? [...new Set([...targetsOf(f), f.axis.ref.body])] : targetsOf(f);
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
     case "construct":
@@ -2518,6 +2550,11 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   }
   if (f.type === "extrude" || f.type === "revolve") {
     if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
+  }
+  // A revolve round a construction axis needs that axis.
+  if (f.type === "revolve" && f.axis?.kind === "ref" && "step" in f.axis.ref) {
+    const step = f.axis.ref.step;
+    if (before.some((g) => g.id === step)) out.add(step);
   }
   // Construction geometry needs the steps it was made from; a sketch, the plane it sits on.
   if (f.type === "construct") for (const r of f.refs) if ("step" in r && before.some((g) => g.id === r.step)) out.add(r.step);

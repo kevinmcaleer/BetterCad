@@ -5,8 +5,11 @@ import {
   addFinish,
   addPart,
   addRevolve,
+  addConstruct,
   addSketch,
+  bodyRef,
   build,
+  dependsOn,
   featureSummary,
   newDoc,
   updateSketch,
@@ -64,6 +67,47 @@ describe("revolve", () => {
       return l.sketch;
     });
     expect(volume(addRevolve(d0, params({ axis: { kind: "line", id: lineId } }), "r1"))[0]).toBeCloseTo(Math.PI * (15 ** 2 - 5 ** 2) * 30, 0);
+  });
+
+  it("waits for an axis to be picked", () => {
+    const d = addRevolve(sketched(), params({ axis: undefined }), "r1");
+    expect(build(d).failed.get("r1")).toBe("Pick an axis to turn it round: an axis, a sketch line or a straight edge");
+    expect(featureSummary(d, d.features[1]!)).toBe("Full turn round an axis still to pick, new body");
+  });
+
+  it("turns round an origin axis", () => {
+    const d = addRevolve(sketched(), params({ axis: { kind: "ref", ref: { origin: "Z" } } }), "r1");
+    expect(featureSummary(d, d.features[1]!)).toBe("Full turn round the Z axis, new body");
+    expect(volume(d)[0]).toBeCloseTo(Math.PI * (15 ** 2 - 5 ** 2) * 30, 0);
+  });
+
+  it("refuses an axis that runs through the sketch's plane", () => {
+    const d = addRevolve(sketched(), params({ axis: { kind: "ref", ref: { origin: "Y" } } }), "r1");
+    expect(build(d).failed.get("r1")).toBe("The axis has to run along the sketch's plane. Pick one that lies flat with the sketch.");
+  });
+
+  it("turns round a construction axis off the sketch's plane", () => {
+    // A plane 10 mm off XZ, and the axis where it meets YZ: parallel to Z, 10 mm from the sketch.
+    let d = addConstruct(sketched(), { kind: "offset", refs: [{ origin: "XZ" }], value: 10 }, "p1");
+    d = addConstruct(d, { kind: "twoPlanes", refs: [{ step: "p1" }, { origin: "YZ" }], value: 0 }, "a1");
+    d = addRevolve(d, params({ axis: { kind: "ref", ref: { step: "a1" } } }), "r1");
+    expect(featureSummary(d, d.features[3]!)).toBe("Full turn round Axis 1, new body");
+    expect(dependsOn(d, "r1")).toContain("a1");
+    // Every point of the shape is sqrt(x² + 10²) from the axis: a tube from r √125 to √325.
+    expect(volume(d)[0]).toBeCloseTo(Math.PI * (325 - 125) * 30, 0);
+  });
+
+  it("turns round a straight edge of a body", () => {
+    let d = addPart(sketched(), "box", "b");
+    const part = build(d).parts.find((p) => p.id === "b")!;
+    // A line along Z through the origin, read as one of the box's edges.
+    const ref = bodyRef(part, "edge", 0, { t: "line", origin: [0, 0, 0], dir: [0, 0, 1], length: 20 });
+    d = addRevolve(d, params({ axis: { kind: "ref", ref } }), "r1");
+    expect(build(d).failed.size).toBe(0);
+    expect(dependsOn(d, "r1")).toContain(d.features[1]!.id);
+    const vols = volume(d);
+    expect(vols).toHaveLength(2);
+    expect(vols[1]).toBeCloseTo(Math.PI * (15 ** 2 - 5 ** 2) * 30, 0);
   });
 
   it("refuses a shape across the axis", () => {

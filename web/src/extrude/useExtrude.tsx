@@ -4,8 +4,6 @@ import { planeFrame, regions, toSketch, type Frame, type Profile, type Sketch, t
 import {
   addExtrude,
   addRevolve,
-  axisOf,
-  crossesAxis,
   extent,
   newId,
   targetsOf,
@@ -17,6 +15,7 @@ import {
   updateExtrude,
   updateRevolve,
   type AxisRef,
+  type BuiltConstruct,
   type RevolveFeature,
   type RevolveParams,
   type ExtrudeDirection,
@@ -32,8 +31,9 @@ import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, ScreenPoint } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import type { ExtrudeArrow } from "./arrow";
+import type { AxisHit } from "./axisPick";
 type ArrowModule = typeof import("./arrow");
-import { SketchOverlay, type OverlayFill } from "../sketch/overlay";
+import { SketchOverlay, type OverlayCurve, type OverlayFill } from "../sketch/overlay";
 
 /**
  * The Extrude tool (#61): click inside closed sketch shapes, then set how far, which way and what it does to the
@@ -64,6 +64,10 @@ export interface ExtrudeDeps {
   onClose: () => void;
   say: (text: string, error?: boolean) => void;
   theme: string;
+  /** Construction planes, axes and points as built, for Revolve's axis (#62). */
+  construct?: BuiltConstruct[];
+  /** Lights a construction axis (or an origin axis, `origin:X`) under the pointer, or none. */
+  onConstructHover?: (id: string | null) => void;
 }
 
 export const DIRECTIONS: { id: ExtrudeDirection; label: string; title: string }[] = [
@@ -114,14 +118,6 @@ const KEY = (id: string) => `profile:${id}`;
 type ProfileFeature = ExtrudeFeature | RevolveFeature;
 type Params = Partial<ExtrudeParams> & Partial<RevolveParams>;
 
-/** A revolve's first axis: a construction line if the sketch has one, else whichever sketch axis the shapes clear. */
-export function defaultAxis(sketch: Sketch, picked: Profile[]): AxisRef {
-  const guide = sketch.entities.find((e) => e.kind === "line" && e.construction);
-  if (guide) return { kind: "line", id: guide.id };
-  for (const a of [{ kind: "y" }, { kind: "x" }] as AxisRef[]) if (!crossesAxis(picked, axisOf(sketch, a)!)) return a;
-  return { kind: "y" };
-}
-
 const outlineFill = (pr: Profile, shade: OverlayFill["shade"]): OverlayFill => ({ outer: pr.points, holes: pr.holes.map((h) => h.points), shade });
 
 export function useExtrude(d: ExtrudeDeps) {
@@ -137,16 +133,30 @@ export function useExtrude(d: ExtrudeDeps) {
   const [hover, setHover] = useState<{ sketch: string; profile: Profile } | null>(null);
   /** "To object" was chosen, and the next click on a face, edge or point sets where it ends. */
   const [wantTo, setWantTo] = useState(false);
+  /** Revolve: the next click on an axis, a sketch line or a straight edge sets what it turns round. */
+  const [wantAxis, setWantAxis] = useState(false);
+  /** Revolve: the sketch line under the pointer while it wants an axis, lit in the sketch. */
+  const [axisLine, setAxisLine] = useState<string | null>(null);
   const arrow = useRef<ExtrudeArrow | null>(null);
   /** A drag of the arrow: where it started, the end's length then, and how far the pointer has gone along it. */
   const drag = useRef<{ start: ScreenPoint; last: ScreenPoint; length: number; moved: boolean } | null>(null);
   /** The arrow's end along the normal as last drawn (through all draws a fixed length), where a drag starts from. */
   const arrowLength = useRef(0);
   const mod = useRef<ArrowModule | null>(null);
+  /** Revolve's axis picking, loaded with the Revolve tool so it costs the first paint nothing. */
+  const axisMod = useRef<typeof import("./axisPick") | null>(null);
+  useEffect(() => {
+    if (d.kind === "revolve" && d.active && !axisMod.current)
+      void import("./axisPick").then((m) => {
+        axisMod.current = m;
+      });
+  }, [d.kind, d.active]);
 
   const feature = d.doc.features.find((f): f is ProfileFeature => f.id === session?.id && f.type === d.kind) ?? null;
-  const live = useRef({ session, feature, autoOp, autoTargets, wantTo });
-  live.current = { session, feature, autoOp, autoTargets, wantTo };
+  /** Revolve asks for its axis after the shapes, and again when the axis is picked from the bar. */
+  const pickingAxis = feature?.type === "revolve" && (wantAxis || !feature.axis);
+  const live = useRef({ session, feature, autoOp, autoTargets, wantTo, pickingAxis });
+  live.current = { session, feature, autoOp, autoTargets, wantTo, pickingAxis };
 
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
 
@@ -156,7 +166,10 @@ export function useExtrude(d: ExtrudeDeps) {
   }, [session, feature]);
 
   useEffect(() => {
-    if (!session) setWantTo(false);
+    if (!session) {
+      setWantTo(false);
+      setWantAxis(false);
+    }
   }, [session]);
 
   // Putting the tool down some other way (another tool, the toolbar) keeps what was made.
@@ -191,14 +204,15 @@ export function useExtrude(d: ExtrudeDeps) {
   );
 
   /** The defaults for a first pick: on a face, Join that face's body; on an origin plane, a new body. */
-  const defaults = useCallback((sketchId: string, seed: Vec2, profile: Profile): ExtrudeParams | RevolveParams => {
+  const defaults = useCallback((sketchId: string, seed: Vec2): ExtrudeParams | RevolveParams => {
     const L = deps.current;
     const sk = L.sketches.find((s) => s.id === sketchId)!.sketch;
     const faceBody = sk.plane.kind === "face" ? sk.plane.face.body : undefined;
     const here = (id?: string) => (id && L.parts.some((p) => p.id === id) ? id : undefined);
     const target = here(faceBody) ?? here(L.selection[0]) ?? L.parts[L.parts.length - 1]?.id;
     const operation = here(faceBody) ? "join" : "new";
-    if (L.kind === "revolve") return { sketch: sketchId, seeds: [seed], axis: defaultAxis(sk, [profile]), angle: 360, operation, target };
+    // A revolve's axis is the next pick: no guess, so it never turns round a line that wasn't meant.
+    if (L.kind === "revolve") return { sketch: sketchId, seeds: [seed], angle: 360, operation, target };
     return { sketch: sketchId, seeds: [seed], distance: 10, direction: "one", operation, target };
   }, []);
 
@@ -304,7 +318,7 @@ export function useExtrude(d: ExtrudeDeps) {
       const L = live.current;
       if (!L.session) {
         const id = newId("f");
-        const base = defaults(h.sketch, seedOf(h.profile), h.profile);
+        const base = defaults(h.sketch, seedIn(regionsOf.get(h.sketch) ?? [], h));
         // A text is picked whole, by its id, so its letters follow the words when they change.
         const tid = textOf(h.profile);
         const params = tid ? { ...base, seeds: [], texts: [tid] } : base;
@@ -331,9 +345,33 @@ export function useExtrude(d: ExtrudeDeps) {
       }
       const all = regionsOf.get(f.sketch) ?? [];
       const has = f.seeds.findIndex((s) => profileAt(all, s) === h.profile);
-      change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedOf(h.profile)] });
+      change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedIn(all, h)] });
     },
     [defaults, change, regionsOf],
+  );
+
+  /**
+   * The axis under the pointer while Revolve wants one: an origin or construction axis first, then a line of the
+   * step's sketch, then a straight edge of a body.
+   */
+  const axisAt = useCallback(
+    (p: ScreenPoint): AxisHit | null => {
+      const eng = engineOf();
+      const f = live.current.feature;
+      const m = axisMod.current;
+      if (!eng || !m || f?.type !== "revolve") return null;
+      return m.axisAt(eng, p, f.body.id, deps.current.sketches.find((x) => x.id === f.sketch)?.sketch ?? null, deps.current.parts);
+    },
+    [engineOf],
+  );
+
+  /** Sets what the revolve turns round. */
+  const pickAxis = useCallback(
+    (axis: AxisRef) => {
+      setWantAxis(false);
+      change({ axis });
+    },
+    [change],
   );
 
   /** The closed shapes an extrude has picked. */
@@ -419,6 +457,16 @@ export function useExtrude(d: ExtrudeDeps) {
           eng.showHover(null);
           return;
         }
+        if (live.current.pickingAxis) {
+          const a = axisAt(p);
+          setAxisLine(a?.line ?? null);
+          deps.current.onConstructHover?.(a?.shape ?? null);
+          eng.showHover(a?.edge ?? null);
+          if (a) {
+            setHover(null);
+            return;
+          }
+        }
         const h = hit(p);
         setHover((o) => (o?.profile === h?.profile ? o : h && { sketch: h.sketch, profile: h.profile }));
         eng.showHover(!h && toMode() ? objectAt(p) : null);
@@ -429,12 +477,28 @@ export function useExtrude(d: ExtrudeDeps) {
           drag.current = { start: p, last: p, length: arrowLength.current, moved: false };
           return true;
         }
+        // While Revolve wants its axis, axes and lines come before the shapes they run beside.
+        if (live.current.pickingAxis) {
+          const a = axisAt(p);
+          if (a) {
+            pickAxis(a.axis);
+            setAxisLine(null);
+            deps.current.onConstructHover?.(null);
+            eng.showHover(null);
+            return true;
+          }
+        }
         const h = hit(p);
         if (h) {
           pick(h);
           return true;
         }
         if (!f) return false;
+        if (live.current.pickingAxis) {
+          const e = eng.pick(p.x, p.y, "edge");
+          if (e) say("That edge isn't straight. Pick a straight edge, a sketch line or an axis.", true);
+          return !!e;
+        }
         if (toMode()) {
           const o = objectAt(p);
           if (!o) return false;
@@ -462,6 +526,8 @@ export function useExtrude(d: ExtrudeDeps) {
       },
       leave: () => {
         setHover(null);
+        setAxisLine(null);
+        deps.current.onConstructHover?.(null);
         arrow.current?.setHot(false);
         eng.showHover(null);
       },
@@ -470,8 +536,10 @@ export function useExtrude(d: ExtrudeDeps) {
       eng.setInput(null);
       eng.showHover(null);
       setHover(null);
+      setAxisLine(null);
+      deps.current.onConstructHover?.(null);
     };
-  }, [d.active, engineOf, hit, pick, toggleTarget, objectAt, pickTo, pickedOf, frameOfFeature, change, say]);
+  }, [d.active, engineOf, hit, pick, toggleTarget, objectAt, pickTo, pickedOf, frameOfFeature, change, say, axisAt, pickAxis]);
 
   // The shapes in the step, shaded; the one under the pointer lit.
   const picked = useMemo(() => {
@@ -495,14 +563,22 @@ export function useExtrude(d: ExtrudeDeps) {
       const lit = sk ? textProfiles(sk, tid, regionsOf.get(hover.sketch)) : [hover.profile];
       for (const p of lit) add(hover.sketch, outlineFill(p, "hover"));
     }
+    // Revolve's axis when it is a sketch line, and the line under the pointer while it wants one.
+    const curves = new Map<string, OverlayCurve[]>();
+    const sk = feature?.type === "revolve" ? deps.current.sketches.find((x) => x.id === feature.sketch)?.sketch : null;
+    const lit = sk && axisMod.current?.lineCurves(sk, feature?.type === "revolve" && feature.axis?.kind === "line" ? feature.axis.id : null, axisLine);
+    if (feature && lit?.length) {
+      curves.set(feature.sketch, lit);
+      if (!bySketch.has(feature.sketch)) bySketch.set(feature.sketch, []);
+    }
     const list = [...bySketch].map(([id, fills]) => {
       const s = deps.current.sketches.find((x) => x.id === id);
       const o = new SketchOverlay(eng);
-      if (s) o.update({ frame: planeFrame(s.sketch.plane), curves: [], points: [], fills });
+      if (s) o.update({ frame: planeFrame(s.sketch.plane), curves: curves.get(id) ?? [], points: [], fills });
       return o;
     });
     return () => list.forEach((o) => o.dispose());
-  }, [d.active, engineOf, feature, picked, hover, d.theme, regionsOf]);
+  }, [d.active, engineOf, feature, picked, hover, d.theme, regionsOf, axisLine]);
 
   // The arrow and To object (extrude only), loaded with the first step so they cost the first paint nothing.
   const [Arrow, setArrow] = useState<typeof ExtrudeArrow | null>(null);
@@ -545,6 +621,7 @@ export function useExtrude(d: ExtrudeDeps) {
     const L = live.current;
     // The document, not the last render: Enter in the distance field commits it just before this.
     const f = L.session && store.get().features.find((x): x is ProfileFeature => x.id === L.session!.id && (x.type === "extrude" || x.type === "revolve"));
+    if (f?.type === "revolve" && !f.axis) return say("Pick an axis to turn it round first: an axis, a sketch line or a straight edge.", true);
     if (L.session && f) {
       store.seal();
       const n = f.seeds.length + (f.texts?.length ?? 0);
@@ -577,8 +654,9 @@ export function useExtrude(d: ExtrudeDeps) {
     [store],
   );
 
-  // Esc backs out of the step before the tool's own Esc puts the tool down.
+  // Esc backs out of the step before the tool's own Esc puts the tool down; first out of picking a new axis.
   useEscape(!!session, cancel, ESC.tool + 1);
+  useEscape(wantAxis && !!feature && feature.type === "revolve" && !!feature.axis, () => setWantAxis(false), ESC.tool + 2);
 
   const commands = useMemo<Command[]>(
     () => [
@@ -597,16 +675,20 @@ export function useExtrude(d: ExtrudeDeps) {
   );
 
   const sketchCount = d.sketches.filter((s) => (regionsOf.get(s.id)?.length ?? 0) > 0).length;
+  const keep = ` Enter keeps the ${d.kind}, Esc cancels it.`;
+  const dragText = d.kind === "extrude" ? " Drag the arrow to set how far, or click it to flip." : "";
   const help = !d.active
     ? null
     : !sketchCount
       ? "Draw a closed shape in a sketch first. Press K to start one."
       : session
-        ? pickingTo
-          ? `Click a face, edge or point for it to go up to. Drag the arrow to give it a distance instead. Enter keeps the ${d.kind}, Esc cancels it.`
-          : targeting && feature?.operation !== "join"
-            ? `Click shapes to add or take them out, and bodies to choose what it ${feature?.operation === "cut" ? "cuts" : "keeps"}. Drag the arrow to set how far, or click it to flip. Enter keeps the ${d.kind}, Esc cancels it.`
-            : `Click more shapes to add them, or a picked one to take it out. Drag the arrow to set how far, or click it to flip. Enter keeps the ${d.kind}, Esc cancels it.`
+        ? pickingAxis
+          ? "Click an axis, a sketch line or a straight edge to turn it round. Click shapes to add or take them out."
+          : pickingTo
+            ? `Click a face, edge or point for it to go up to. Drag the arrow to give it a distance instead.${keep}`
+            : targeting && feature?.operation !== "join"
+              ? `Click shapes to add or take them out, and bodies to choose what it ${feature?.operation === "cut" ? "cuts" : "keeps"}.${dragText}${keep}`
+              : `Click more shapes to add them, or a picked one to take it out.${dragText}${keep}`
         : `Click inside a closed sketch shape to ${d.kind} it.`;
 
   return {
@@ -638,6 +720,22 @@ export function useExtrude(d: ExtrudeDeps) {
     },
     /** Whether the next click off the shapes sets what To object goes up to. */
     pickingTo,
+    /** Revolve: whether the next click on an axis, a sketch line or a straight edge sets what it turns round. */
+    pickingAxis,
+    /** Revolve: pick the axis again in the view. */
+    repickAxis: () => setWantAxis(true),
+    pickAxis,
+    /** Construction steps as built, for the axis menu. */
+    construct: d.construct ?? [],
+    /** Revolve: the construction or origin axis it turns round (`origin:X`), lit in the view. */
+    axisShape:
+      feature?.type === "revolve" && feature.axis?.kind === "ref"
+        ? "origin" in feature.axis.ref
+          ? `origin:${feature.axis.ref.origin}`
+          : "step" in feature.axis.ref
+            ? feature.axis.ref.step
+            : null
+        : null,
     wantTo,
     flip: () => {
       const f = live.current.feature;
@@ -654,6 +752,15 @@ export function useExtrude(d: ExtrudeDeps) {
 }
 
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
+
+/**
+ * Where a picked shape is kept: its middle, so it stays inside when the sketch changes, unless the middle can't be
+ * found inside it (a thin or hooked shape), then the point clicked, which is inside it for sure.
+ */
+export function seedIn(all: Profile[], h: { profile: Profile; xy: Vec2 }): Vec2 {
+  const s = seedOf(h.profile);
+  return profileAt(all, s) === h.profile ? s : h.xy;
+}
 
 export type ExtrudeSession = ReturnType<typeof useExtrude>;
 

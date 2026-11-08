@@ -219,8 +219,11 @@ export function prismOf(oc: OC, spec: PrismSpec): TopoDS_Shape {
 export function revolveOf(oc: OC, spec: RevolveSpec): TopoDS_Shape {
   if (!(spec.angle > 0 && spec.angle <= 360)) throw new KernelError("invalid-size", "A revolve needs an angle from 1° to 360°.");
   const f = spec.frame;
-  const o = toWorld(f, spec.axis.origin);
-  const tip = toWorld(f, [spec.axis.origin[0] + spec.axis.dir[0], spec.axis.origin[1] + spec.axis.dir[1]]);
+  // An axis above or below the plane (a construction axis or an edge) sits `offset` along the normal.
+  const off = spec.axis.offset ?? 0;
+  const lift = (p: [number, number, number]): [number, number, number] => [p[0] + f.normal[0] * off, p[1] + f.normal[1] * off, p[2] + f.normal[2] * off];
+  const o = lift(toWorld(f, spec.axis.origin));
+  const tip = lift(toWorld(f, [spec.axis.origin[0] + spec.axis.dir[0], spec.axis.origin[1] + spec.axis.dir[1]]));
   const dir: [number, number, number] = [tip[0] - o[0], tip[1] - o[1], tip[2] - o[2]];
   const solidOf = (segs: ProfileSeg[]) =>
     guard(oc, "open-profile", "This shape could not be filled. Check it is closed and does not cross itself.", () => {
