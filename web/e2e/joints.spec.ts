@@ -359,3 +359,32 @@ test("drag an arm by its tool point", async ({ page }) => {
   await page.mouse.up();
   await expect.poll(async () => Number(await angle.inputValue())).toBeLessThan(Number(kept) - 10);
 });
+
+test("check for clashes: an overlap, then a touch", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  // Two 20 mm boxes 10 mm apart overlap by 10 × 20 × 20 mm.
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click();
+  const x = page.getByRole("textbox", { name: "X (mm)" });
+  await x.fill("10");
+  await x.press("Enter");
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.keyboard.type("Check for clashes");
+  await page.getByRole("option", { name: /Check for clashes/ }).click();
+  const props = page.getByRole("complementary", { name: "Properties" });
+  await expect(props.getByRole("button", { name: "Check clashes", pressed: true })).toBeVisible();
+  await expect(props.getByRole("list", { name: "Overlaps" })).toHaveText(/Box 1 and Box 2 overlap by 4 cm³/, { timeout: 30_000 });
+  await props.getByRole("button", { name: "Show" }).click();
+
+  // Side by side, they only touch; apart, nothing clashes.
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click();
+  await x.fill("20");
+  await x.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(props.getByRole("list", { name: "Touching" })).toHaveText(/Box 1 and Box 2 touch/, { timeout: 30_000 });
+  await expect(props.getByRole("list", { name: "Overlaps" })).toHaveCount(0);
+});
