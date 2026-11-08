@@ -25,9 +25,9 @@ test("sign up, see the empty library, open the account page and sign out", async
   await page.getByRole("link", { name: "Make an account" }).click();
   await page.getByRole("button", { name: "Make account" }).click();
   await expect(page.getByText("Enter an email address, like you@example.com.")).toBeVisible();
+  await page.getByLabel("Username", { exact: true }).fill("Kev");
   await page.getByLabel("Email", { exact: true }).fill("kev@example.com");
-  await page.getByLabel("Name", { exact: true }).fill("Kev");
-  await page.getByLabel("Password", { exact: true }).fill("correct horse");
+  await page.getByLabel("Password", { exact: true }).fill("correct horse battery");
   await page.getByRole("button", { name: "Make account" }).click();
   // Back where sign-in started: the editor.
   await page.getByRole("button", { name: "Kev: account and settings" }).click();
@@ -36,17 +36,17 @@ test("sign up, see the empty library, open the account page and sign out", async
   await expect(page.getByText("No models yet")).toBeVisible();
   await expect(page.getByText("0 models · 0 MB of 500 MB")).toBeVisible();
   await page.getByRole("button", { name: "Account" }).click();
-  await expect(page.getByText("Signed in as kev@example.com.")).toBeVisible();
+  await expect(page.getByText("Signed in as Kev.")).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 
   // Signing in again, with a wrong password first.
   await page.goto("/#/signin");
-  await page.getByLabel("Email", { exact: true }).fill("kev@example.com");
+  await page.getByLabel("Username or email", { exact: true }).fill("kev@example.com");
   await page.getByLabel("Password", { exact: true }).fill("wrong");
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByText("That email and password don't match.")).toBeVisible();
-  await page.getByLabel("Password", { exact: true }).fill("correct horse");
+  await expect(page.getByText("That username and password don't match.")).toBeVisible();
+  await page.getByLabel("Password", { exact: true }).fill("correct horse battery");
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "My models" })).toBeVisible();
 });

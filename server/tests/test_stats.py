@@ -29,5 +29,5 @@ def test_stats_need_a_listed_account(make_client):
         assert r.status_code == 200
         assert r.json()["totals"] == {"editor": 1}
     with make_client() as client:
-        sign_up(client, email="someone@example.com")
+        sign_up(client, email="someone@example.com", name="someone")
         assert client.get("/api/stats").status_code == 403
