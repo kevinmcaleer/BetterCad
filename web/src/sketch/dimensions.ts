@@ -237,9 +237,13 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
     if (d.kind === "distance") {
       // Square on to the line, as Fusion draws it: an extension line out from the point and one along the line, both
       // running parallel to the line out to where the label is, and the arrowed dimension line between them there.
-      const m = mid(p, q);
-      const side = dot(u, sub(centre, m)) > 0 ? -1 : 1;
-      const text = textAt(q, add(m, scale(u, side * DIM_OFFSET_PX * px)));
+      if (!isPlaced(d)) {
+        // Until placed: straight across the gap, running on past the line to the size, which sits outside so it never
+        // covers the corners a small gap sits beside.
+        const v = dist(p, q) > 1e-9 ? norm(sub(q, p)) : perp(u);
+        return along(p, q, u, 0, px, add(q, scale(v, 16 * px)));
+      }
+      const text = add(q, d.labelOffset);
       return along(p, q, u, dot(sub(text, p), u), px, text);
     }
   }
