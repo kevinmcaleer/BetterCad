@@ -14,9 +14,9 @@ import {
   trimAt,
   trimPiece,
   dist,
-  faceFrame,
   formatDimension,
   planeFrame,
+  squareFrame,
   profiles,
   removeEntities,
   sampleArc,
@@ -875,11 +875,7 @@ export function useSketch(d: SketchDeps) {
         deps.current.onConstructHover?.(null);
         if (t.kind === "plane") pickOn({ kind: "world", plane: t.plane, offset: 0 }, `the ${t.plane} plane`);
         else if (t.kind === "construct") pickOn({ kind: "construct", step: t.id, offset: 0, frame: t.frame }, t.name);
-        else
-          pickOn(
-            { kind: "face", face: { body: t.pick.body, face: t.pick.index }, offset: 0, frame: faceFrame(t.info.centroid, t.info.normal, t.info.edge) },
-            "a face",
-          );
+        else pickOn({ kind: "face", face: { body: t.pick.body, face: t.pick.index }, offset: 0, frame: squareFrame(t.info.centroid, t.info.normal) }, "a face");
         return true;
       },
       leave: () => {

@@ -66,6 +66,15 @@ export function cameraBasis(c: CameraState) {
   return { position: add(c.target, back, c.distance), right, up, back };
 }
 
+/** The turn that looks straight at a plane with this normal. Looking straight down or up keeps +Y up the screen, as the Top view does. */
+export function facing(normal: V3): { azimuth: number; elevation: number } {
+  const l = Math.hypot(...normal) || 1;
+  const [x, y, z] = [normal[0] / l, normal[1] / l, normal[2] / l];
+  const elevation = (Math.asin(Math.max(-1, Math.min(1, z))) * 180) / Math.PI;
+  const azimuth = Math.abs(Math.abs(elevation) - 90) < 1e-6 ? -90 : (Math.atan2(y, x) * 180) / Math.PI;
+  return { azimuth, elevation };
+}
+
 /** World → camera rotation, row-major 3×3 (rows: right, up, back). The view cube turns by this. */
 export function viewRotation(c: Pick<CameraState, "azimuth" | "elevation">): number[] {
   const back = viewDir(c.azimuth, c.elevation);

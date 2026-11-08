@@ -197,6 +197,18 @@ export function faceFrame(centroid: Vec3, normal: Vec3, longestEdge: Vec3): Fram
   return { origin: centroid, x: norm3(x), normal: n };
 }
 
+/**
+ * A frame for a flat face picked to sketch on: origin at its centroid, X square to the screen when you look straight at
+ * it, as the world planes are. On a wall X runs level and Y up the face; on a floor or ceiling X follows world X. So the
+ * grid lines up with the view whatever the face's edges do (a round face has no edge worth following).
+ */
+export function squareFrame(centroid: Vec3, normal: Vec3): Frame {
+  const n = norm3(normal);
+  // Straight up or down, X follows world X, which is the screen's right in both the Top and the Bottom view.
+  const x: Vec3 = Math.abs(n[2]) > 0.9999 ? [1, 0, 0] : cross3([0, 0, 1], n);
+  return faceFrame(centroid, n, x);
+}
+
 export const frameY = (f: Frame): Vec3 => cross3(f.normal, f.x);
 
 /** A sketch point in world space. */
