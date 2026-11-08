@@ -53,7 +53,7 @@ export interface Background {
   /** What the camera sees past the floor (and past the walls' tops). */
   sky: Texture;
   floor: Floor;
-  /** Holoroom: grid walls round the model, in the floor's grid. */
+  /** Holoroom: grid walls and a roof round the model, in the floor's grid. */
   walls?: boolean;
 }
 
@@ -93,7 +93,7 @@ function make(id: BackgroundId): Background {
     case "workbench":
       return { sky: gradient(0xf7e9d6, 0x5a4a3c), floor: { colour: 0xb08a63, roughness: 0.8 } };
     case "holoroom":
-      // Black beyond the room; the walls are real gridded walls round the model, open to the light above.
+      // Black beyond the room; real gridded walls and a roof round the model. The roof lets the light through.
       return { sky: gradient(0x000000, 0x000000), floor: { colour: 0xffffff, roughness: 0.6, grid: { map: holoroomTile(), cell: 100 } }, walls: true };
   }
 }

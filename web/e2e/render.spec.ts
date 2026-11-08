@@ -39,8 +39,12 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true");
   // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done.
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 120_000 });
+  // The render's cube has the house too: home is the corner view, so the top view is left behind.
+  await cube.hover({ force: true });
+  await cube.getByRole("button", { name: "Go home" }).click({ force: true });
   await bar.getByRole("button", { name: "Done" }).click();
   await expect(bar).toHaveCount(0);
+  await expect(page.getByRole("application", { name: /3D view/ })).not.toHaveAttribute("data-view", "top");
 });
 
 /** The middle of the render canvas, averaged: is the box there coloured or paper white? */

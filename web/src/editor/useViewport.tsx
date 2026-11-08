@@ -152,12 +152,15 @@ export function useViewport(d: ViewportDeps) {
   const goHome = useCallback(() => {
     view3d.current?.home(live.current.doc.home ?? null);
   }, []);
-  const setHomeHere = useCallback(() => {
-    const camera = view3d.current?.camera();
-    if (!camera) return;
+  /** Makes `camera` home: the modelling view's own camera, or the render's. */
+  const setHomeTo = useCallback((camera: CameraState) => {
     live.current.editDoc((doc) => setHome(doc, camera), "Set the home view");
     live.current.say("Home is now this view");
   }, []);
+  const setHomeHere = useCallback(() => {
+    const camera = view3d.current?.camera();
+    if (camera) setHomeTo(camera);
+  }, [setHomeTo]);
   const resetHome = useCallback(() => {
     if (!live.current.doc.home) return;
     live.current.editDoc((doc) => setHome(doc, null), "Reset the home view");
@@ -389,6 +392,8 @@ export function useViewport(d: ViewportDeps) {
     fit,
     viewEntries,
     goHome,
+    setHomeTo,
+    resetHome,
     cubeMenu,
     namingOpen: !!naming,
     namingDialog,

@@ -3452,6 +3452,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   camera={renderCam.current ?? DEFAULT_CAMERA}
                   onCamera={onRenderCamera}
                   onSave={saveRender}
+                  home={doc.home ?? null}
+                  onSetHome={vp.setHomeTo}
+                  onResetHome={vp.resetHome}
                 />
               </Suspense>
             )}
