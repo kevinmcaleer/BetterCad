@@ -278,8 +278,9 @@ test("after a save to the account, a rendered picture replaces the thumbnail", a
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  // The save doesn't wait for the render: it lands with the shaded PNG first.
-  await expect.poll(() => server.models.size).toBe(1);
+  // The save doesn't wait for the render: it lands with the shaded PNG first. A loaded runner takes more than the
+  // default 5 s to shade the thumbnail and send it.
+  await expect.poll(() => server.models.size, { timeout: 30_000 }).toBe(1);
   const [model] = [...server.models.values()];
   expect(JSON.parse(model!.versions[0]!.bcad).thumbnail).toMatch(/^data:image\/png;base64,/);
   await expect.poll(() => model!.versions[0]!.thumbnail ?? "", { timeout: 220_000 }).toMatch(/^data:image\/jpeg;base64,/);
