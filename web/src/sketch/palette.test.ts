@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { Draft, SketchIndex, WORLD_FRAMES, drawCircle, drawRectangle, newSketch } from "@bettercad/sketch";
 import { dimensionArt, DIM_OFFSET_PX } from "./dimensions";
 import { DEFAULT_OPTIONS, loadOptions, saveOptions, sketchGrid } from "./options";
-import { sketchView } from "./useSketch";
+import { FINISHED, sketchView } from "./useSketch";
 
 const ALL = { points: true, profile: true, projected: true, construction: true };
 
@@ -58,6 +58,19 @@ describe("sketch view", () => {
     expect(bare.points).toHaveLength(0);
     const picked = sketchView(s, WORLD_FRAMES.XY, null, [guide], null, [], null, undefined, undefined, null, { ...ALL, construction: false });
     expect(picked.curves).toHaveLength(5);
+  });
+
+  it("draws a finished sketch's curves only: no construction, no points", () => {
+    const d = new Draft(drawRectangle(newSketch(), [0, 0], [30, 20]).sketch);
+    d.line(d.point([0, 0]), d.point([30, 20]), { construction: true, auto: false });
+    d.point([50, 50]);
+    const s = drawCircle(d.done().sketch, [80, 0], 5).sketch;
+    const v = sketchView(s, WORLD_FRAMES.XY, null, [], null, [], null, undefined, "guide", null, FINISHED);
+    // Four sides and the circle; the diagonal is construction.
+    expect(v.curves).toHaveLength(5);
+    expect(v.curves.every((c) => !c.dashed)).toBe(true);
+    expect(v.points).toHaveLength(0);
+    expect(v.fills).toHaveLength(0);
   });
 
   it("shows line ends only while drawing, or the one under the pointer or picked", () => {
