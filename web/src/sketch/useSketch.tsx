@@ -888,14 +888,15 @@ export function useSketch(d: SketchDeps) {
     return () => eng.setFloorGrid(true);
   }, [editingId, options.grid, engineOf]);
 
-  // Finished sketches stay on show, faintly, while the timeline includes them.
+  // Finished sketches stay on show, faintly, while the timeline includes them: their curves only, as Fusion draws a
+  // sketch outside sketch mode, with no construction geometry and no points.
   useEffect(() => {
     const eng = engineOf();
     if (!eng) return;
     const shown = d.built.filter((b) => b.id !== editingId);
     const list = shown.map((b) => {
       const o = new SketchOverlay(eng);
-      o.update(sketchView(b.sketch, planeFrame(b.sketch.plane), null, [], null, [], null, undefined, "guide"));
+      o.update(sketchView(b.sketch, planeFrame(b.sketch.plane), null, [], null, [], null, undefined, "guide", null, FINISHED));
       return o;
     });
     return () => list.forEach((o) => o.dispose());
@@ -1175,6 +1176,9 @@ type ShowOptions = { [K in "points" | "profile" | "projected" | "construction"]:
   /** Whether the ends of lines and arcs show; off for the Select tool. Shown when left out. */
   ends?: boolean;
 };
+
+/** How a sketch shows when it is not being edited: profile curves and projected edges, nothing else. */
+export const FINISHED: ShowOptions = { points: false, profile: false, projected: true, construction: false };
 
 /** The model's origin drawn under the sketch: a fixed point with a small cross, 8 px each way, to snap to and pick. */
 export function withOrigin(view: OverlayView, origin: Vec2, px: number, shade: Shade = "fixed"): OverlayView {

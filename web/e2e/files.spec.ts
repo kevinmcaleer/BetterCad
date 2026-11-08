@@ -83,6 +83,8 @@ test("opens a saved file", async ({ page }) => {
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("menuitem", { name: /New model/ }).click();
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toHaveCount(0);
+  // The fresh model's baseline lands a render after its document; Open before then would ask to save it.
+  await expect(page).toHaveTitle("Untitled model · BetterCad");
   await page.keyboard.press("ControlOrMeta+o");
   await expect(page.getByText("Opened Bracket.bcad")).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
