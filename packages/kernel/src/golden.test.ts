@@ -37,6 +37,8 @@ import {
   MOUNT_DEFAULTS,
   addGear,
   addMount,
+  addHole,
+  mirrorFace,
   addPattern,
   addPart,
   type PatternParams,
@@ -242,6 +244,22 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Mirror and patterns (#69), joined into one body: a wedge and its mirror image meet at the YZ plane; a 3 × 2 grid of
   // 6 mm pegs; six arms round Z.
   "mirror-wedge": (oc) => patterned(oc, "wedge", { x: 20, y: 10, z: 10 }, 10, { kind: "mirror", plane: "YZ" }),
+  // Mirror (#69): a wedge mirrored across its own end face and joined (the same as mirror-wedge); a hole mirrored onto the same plate across YZ.
+  "mirror-face-wedge": (oc) =>
+    patterned(oc, "wedge", { x: 20, y: 10, z: 10 }, 10, {
+      kind: "mirror",
+      face: mirrorFace({ id: "a", position: { x: 10, y: 0, z: 0 } }, 0, { x: 0, y: 0, z: 5 }, { x: -1, y: 0, z: 0 }),
+    }),
+  "mirror-hole-feature": (oc) => {
+    let doc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 20, z: 10 });
+    doc = addHole(
+      doc,
+      { part: "b", frame: { origin: [0, 0, 10], x: [1, 0, 0], normal: [0, 0, 1] }, points: [[12, 0]], size: "M3", fit: "printed", head: "none", depth: null },
+      "h",
+    );
+    doc = addPattern(doc, { parts: [], kind: "mirror", of: "features", features: ["h"], plane: "YZ" });
+    return new ModelBuilder(oc).solid(build(doc).parts[0]!).shape;
+  },
   "pattern-rect-pegs": (oc) => patterned(oc, "cylinder", { x: 6, y: 6, z: 10 }, 0, { kind: "rect", count1: 3, spacing1: 10, count2: 2, spacing2: 10 }),
   "pattern-circle-arms": (oc) => patterned(oc, "box", { x: 20, y: 4, z: 3 }, 12, { kind: "circle", count: 6, angle: 360 }),
   "extrude-cut": (oc) =>

@@ -179,10 +179,15 @@ export class ModelBuilder {
           if (p.imported?.mesh && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
           if (open && (o.op === "join" || o.op === "cut" || o.op === "intersect"))
             throw new KernelError("failed", "This mesh has holes, so it can't be combined");
-          if (o.op === "fillet" || o.op === "chamfer") local = (o.op === "fillet" ? fillet : chamfer)(oc, local, o.refs ?? [], o.size ?? 0);
-          else if (o.op === "shell") local = shell(oc, local, o.refs ?? [], o.size ?? 0, o.outside);
-          else if (o.op === "pushpull") local = pushPull(oc, local, o.refs?.[0] ?? -1, o.size ?? 0);
-          else if (o.op === "hole") local = holes(oc, local, o.holes!);
+          // A mirrored op (Mirror of features): mirror the body, make the op as it was, and mirror the body back, which
+          // is the op made with its tool mirrored. The last plane goes first on the way in and last on the way out.
+          const flips = o.mirror ?? [];
+          let s = local;
+          for (let i = flips.length - 1; i >= 0; i--) s = copyShape(oc, s, { mirror: flips[i]! });
+          if (o.op === "fillet" || o.op === "chamfer") s = (o.op === "fillet" ? fillet : chamfer)(oc, s, o.refs ?? [], o.size ?? 0);
+          else if (o.op === "shell") s = shell(oc, s, o.refs ?? [], o.size ?? 0, o.outside);
+          else if (o.op === "pushpull") s = pushPull(oc, s, o.refs?.[0] ?? -1, o.size ?? 0);
+          else if (o.op === "hole") s = holes(oc, s, o.holes!);
           else {
             // A body is built where it stood, then taken into this part's coordinates as they were then.
             const tool = o.body
@@ -190,8 +195,10 @@ export class ModelBuilder {
               : o.rev
                 ? revolveOf(oc, o.rev)
                 : prismOf(oc, o.tool!);
-            local = boolean(oc, o.op, local, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool]);
+            s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool]);
           }
+          for (const m of flips) s = copyShape(oc, s, { mirror: m });
+          local = s;
         } catch (e) {
           this.opFailures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
         }

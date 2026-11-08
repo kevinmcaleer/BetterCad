@@ -27,11 +27,18 @@ export function useStatus() {
   const [toast, setToast] = useState<Toast | null>(null);
   const timer = useRef<number | undefined>(undefined);
   const toastTimer = useRef<number | undefined>(undefined);
-  const say = useCallback((text: string, bad = false, asToast = false) => {
+  const showing = useRef(false);
+  /** `asToast` "minor" (Autosaved) never covers a toast still showing, such as "Saved Bracket to your account". */
+  const say = useCallback((text: string, bad = false, asToast: boolean | "minor" = false) => {
     if (asToast && !bad) {
+      if (asToast === "minor" && showing.current) return;
+      showing.current = asToast !== "minor";
       window.clearTimeout(toastTimer.current);
       setToast((t) => ({ text, id: (t?.id ?? 0) + 1 }));
-      toastTimer.current = window.setTimeout(() => setToast(null), TOAST_MS);
+      toastTimer.current = window.setTimeout(() => {
+        showing.current = false;
+        setToast(null);
+      }, TOAST_MS);
       return;
     }
     window.clearTimeout(timer.current);

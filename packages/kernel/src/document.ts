@@ -26,8 +26,20 @@ export {
 import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
 import { clampJoint, type Pose } from "./pose";
 import { driveMultiplier, driveProblem, driveTo, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
-import { PATTERN_DEFAULTS, copyName, copyPart, copyId, patternCopyIds, patternMoves, patternProblem, patternSummary } from "./pattern";
-import type { CopySpec, MirrorPlane, PatternKind, WorldAxis } from "./pattern";
+import {
+  MIRRORED_OPS,
+  PATTERN_DEFAULTS,
+  copyName,
+  copyPart,
+  copyId,
+  mirrorPlane,
+  patternCopyIds,
+  patternMoves,
+  patternProblem,
+  patternSummary,
+  planeToLocal,
+} from "./pattern";
+import type { CopySpec, MirrorFace, MirrorOf, MirrorPlane, PatternKind, Plane, WorldAxis } from "./pattern";
 import { NAME_RE, bindExprs, evaluateParams, namesIn, renameIn, type Parameter } from "./params";
 import { evaluate } from "@bettercad/ui/expr";
 import {
@@ -181,6 +193,11 @@ export interface BodyOp {
   gap?: number;
   /** Where the part itself stood when the body was combined into it, so the body moves with the part later. */
   at?: { position: Vec3; rotation?: Vec3 };
+  /**
+   * A mirrored copy of another step's op (Mirror of features): the op made with its tool mirrored across these planes,
+   * in the part's own coordinates, the first one first.
+   */
+  mirror?: Plane[];
   feature: string;
 }
 
@@ -229,6 +246,17 @@ export interface PatternFeature extends FeatureBase {
   /** Mirror: the plane, moved along its normal by `offset` mm. */
   plane: MirrorPlane;
   offset: number;
+  /** Mirror: a flat face to mirror across instead of `plane`. */
+  face?: MirrorFace;
+  /** Mirror: what it copies. Bodies when not set. */
+  of?: MirrorOf;
+  /**
+   * Mirror of features: the steps whose joins, cuts and holes are made again, mirrored, on the same bodies. Bodies they
+   * made are mirrored whole, and are kept in `parts`.
+   */
+  features?: string[];
+  /** Mirror of a component: the link step (#171) whose bodies are mirrored, into a new component. */
+  link?: string;
   /** Rectangle: `count1` along `dir1` every `spacing1` mm, and `count2` along `dir2` (1 for a single row). */
   dir1: WorldAxis;
   count1: number;
@@ -729,18 +757,54 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         break;
       case "pattern": {
-        missing(f, f.parts);
+        const of = f.kind === "mirror" ? (f.of ?? "bodies") : "bodies";
         const problem = patternProblem(f);
         if (problem) {
           failed.set(f.id, problem);
           break;
         }
-        const moves = patternMoves(f);
-        for (const from of f.parts) {
-          const i = find(from);
+        const plane = f.kind === "mirror" ? mirrorPlane(f, parts) : undefined;
+        if (typeof plane === "string") {
+          failed.set(f.id, plane);
+          break;
+        }
+        // The bodies it copies: those picked, those the picked features made, or the component's bodies now.
+        let from = f.parts;
+        if (of === "component") {
+          from = parts.filter((p) => p.link === f.link).map((p) => p.id);
+          if (!from.length) failed.set(f.id, "The component it mirrors is gone");
+        } else if (of === "bodies") missing(f, f.parts);
+        if (of === "features" && plane) {
+          // Each picked feature's joins, cuts and holes, made again across the plane on the bodies they changed.
+          const wanted = new Set(f.features);
+          let made = 0;
+          let skipped = 0;
+          for (const p of parts) {
+            const extra: BodyOp[] = [];
+            for (const o of p.ops ?? []) {
+              if (!wanted.has(o.feature)) continue;
+              if (!MIRRORED_OPS.has(o.op)) {
+                skipped += 1;
+                continue;
+              }
+              extra.push({ ...o, mirror: [...(o.mirror ?? []), planeToLocal(plane, p)], feature: f.id });
+            }
+            if (extra.length) p.ops = [...p.ops!, ...extra];
+            made += extra.length;
+          }
+          const bodies = f.parts.filter((id) => find(id) >= 0).length;
+          if (!made && !bodies)
+            failed.set(f.id, skipped ? "Fillets, chamfers and shells can't be mirrored. Mirror the body instead." : "The features it mirrors are gone");
+        }
+        const moves = patternMoves(f, plane);
+        const component: string[] = [];
+        for (const from1 of from) {
+          const i = find(from1);
           const src = parts[i];
           if (!src) continue;
-          const copies = moves.map((m, k) => copyPart(src, m, copyId(f, from, k), copyName(f, src.name, k)));
+          const copies = moves.map((m, k) => copyPart(src, m, copyId(f, from1, k), copyName(f, src.name, k)));
+          if (of === "component" && !f.join) for (const c of copies) c.link = f.id;
+          component.push(...copies.map((c) => c.id));
           if (f.join) {
             const at = { position: { ...src.position }, rotation: src.rotation && { ...src.rotation } };
             src.ops = [
@@ -748,6 +812,11 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
               ...copies.map((c): BodyOp => ({ op: "join", body: { ...c, hole: undefined, fit: undefined, gap: undefined }, at, feature: f.id })),
             ];
           } else parts.splice(i + 1, 0, ...copies.filter((c) => find(c.id) < 0));
+        }
+        // A mirrored component is a component of its own, which joints can move.
+        if (of === "component" && !f.join && component.length) {
+          const name = linkSteps.find((l) => l.id === f.link)?.name ?? "Component";
+          linkSteps.push({ id: f.id, type: "link", name: `${name} mirrored`, parts: component });
         }
         break;
       }
@@ -1415,8 +1484,17 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "duplicate":
       return `Copies ${who(f.copies.map((c) => c.from))}`;
-    case "pattern":
-      return patternSummary(f, who(f.parts));
+    case "pattern": {
+      const step = (id: string) => doc.features.find((g) => g.id === id)?.name;
+      const of = f.kind === "mirror" ? (f.of ?? "bodies") : "bodies";
+      const what =
+        of === "features"
+          ? (f.features ?? []).map((id) => step(id) ?? "a gone step").join(", ") || "no features"
+          : of === "component"
+            ? (f.link && step(f.link)) || "a gone component"
+            : who(f.parts);
+      return patternSummary(f, what, f.face && (names.get(f.face.body) ?? "a body"));
+    }
     case "move": {
       const turn = f.rotation
         ? (["x", "y", "z"] as const)
@@ -2189,9 +2267,10 @@ function partsRead(f: Feature): string[] {
     case "move":
     case "resize":
     case "delete":
-    case "pattern":
     case "link":
       return f.parts;
+    case "pattern":
+      return f.face ? [...f.parts, f.face.body] : f.parts;
     case "extrude":
       return f.extent === "to" && f.to ? [...new Set([...targetsOf(f), f.to.body])] : targetsOf(f);
     case "revolve":
@@ -2243,6 +2322,10 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   }
   if (f.type === "extrude" || f.type === "revolve") {
     if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
+  }
+  // A Mirror of features needs those features; a Mirror of a component needs its link.
+  if (f.type === "pattern") {
+    for (const g of [...(f.features ?? []), ...(f.link ? [f.link] : [])]) if (before.some((x) => x.id === g)) out.add(g);
   }
   // A joint needs the links it joins, and the joint its parent link hangs from.
   if (f.type === "joint") {
@@ -2482,12 +2565,52 @@ export type PatternParams = Omit<PatternFeature, "id" | "name" | "type">;
 /** Adds a Mirror or Pattern step for `parts`, with the defaults for anything not given. */
 export function addPattern(doc: ModelDoc, params: Partial<PatternParams> & { parts: string[]; kind: PatternKind }, id = newId("f"), at?: number): ModelDoc {
   const name = params.kind === "mirror" ? nextNamed(doc, "Mirror") : nextFeatureName(doc, "pattern");
-  return insert(doc, clampAt(doc, at), { id, type: "pattern", name, ...PATTERN_DEFAULTS, ...params });
+  const next = insert(doc, clampAt(doc, at), { id, type: "pattern", name, ...PATTERN_DEFAULTS, ...params });
+  return syncMirrorParts(next, id);
+}
+
+/**
+ * Keeps a Mirror's `parts` to what it copies when it mirrors features (the bodies they made) or a component (its bodies
+ * at that point), so its copies' ids, and the steps that need it, follow.
+ */
+function syncMirrorParts(doc: ModelDoc, id: string): ModelDoc {
+  const i = doc.features.findIndex((f) => f.id === id);
+  const f = doc.features[i];
+  if (f?.type !== "pattern" || f.kind !== "mirror" || !f.of || f.of === "bodies") return doc;
+  let parts: string[];
+  if (f.of === "features") {
+    const made = new Set(
+      doc.features
+        .slice(0, i)
+        .filter((g) => f.features?.includes(g.id))
+        .flatMap(partsMade),
+    );
+    parts = build(doc, i)
+      .parts.filter((p) => made.has(p.id))
+      .map((p) => p.id);
+  } else parts = f.link ? (build(doc, i).links.find((l) => l.id === f.link)?.parts ?? []) : [];
+  if (parts.join(",") === f.parts.join(",")) return doc;
+  return { ...doc, features: doc.features.map((g) => (g.id === id ? { ...f, parts } : g)) };
+}
+
+/** The steps before `id` (or before the end) a Mirror of features can mirror: those that cut, joined, made holes or made a body. */
+export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length): Feature[] {
+  const { parts } = build(doc, before);
+  const ops = new Set(parts.flatMap((p) => (p.ops ?? []).filter((o) => MIRRORED_OPS.has(o.op)).map((o) => o.feature)));
+  const here = new Set(parts.map((p) => p.id));
+  return doc.features
+    .slice(0, before)
+    .filter(
+      (f) =>
+        !f.suppressed &&
+        f.type !== "pattern" &&
+        (ops.has(f.id) || ((f.type === "extrude" || f.type === "revolve" || f.type === "gear") && partsMade(f).some((p) => here.has(p)))),
+    );
 }
 
 /** Changes a Mirror or Pattern step (the tool edits it live, as one undo step). Switching kind renames a default name. */
 export function updatePattern(doc: ModelDoc, id: string, change: Partial<PatternParams>): ModelDoc {
-  return {
+  const out: ModelDoc = {
     ...doc,
     features: doc.features.map((f) => {
       if (f.id !== id || f.type !== "pattern") return f;
@@ -2498,6 +2621,7 @@ export function updatePattern(doc: ModelDoc, id: string, change: Partial<Pattern
       return next;
     }),
   };
+  return syncMirrorParts(out, id);
 }
 
 /** Makes a link (#171) of bodies: "Link 1". The bodies leave any link they were in. */

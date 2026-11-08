@@ -68,8 +68,8 @@ test("one finger turns the view, two fingers pan and pinch", async ({ page }) =>
   await addBox(page);
   await page.evaluate(() => (window as unknown as View).__bcView.preset("front"));
   await page.waitForTimeout(800);
-  const front = page.getByRole("button", { name: "Front", exact: true });
-  await expect(front).toHaveAttribute("aria-pressed", "true");
+  const view = page.getByRole("application", { name: /3D view/ });
+  await expect(view).toHaveAttribute("data-view", "front");
   const cdp = await page.context().newCDPSession(page);
   const where = () => page.evaluate(() => (window as unknown as View).__bcView.project([0, 0, 0]));
 
@@ -87,7 +87,7 @@ test("one finger turns the view, two fingers pan and pinch", async ({ page }) =>
     ]);
   }
   await fingers(cdp, "touchEnd", []);
-  await expect(front).toHaveAttribute("aria-pressed", "true");
+  await expect(view).toHaveAttribute("data-view", "front");
   const after = await where();
   // The pan moved the origin down the screen.
   expect(after.y - before.y).toBeGreaterThan(10);
@@ -97,7 +97,7 @@ test("one finger turns the view, two fingers pan and pinch", async ({ page }) =>
   await fingers(cdp, "touchStart", [m]);
   for (let i = 1; i <= 5; i++) await fingers(cdp, "touchMove", [{ x: m.x + i * 20, y: m.y }]);
   await fingers(cdp, "touchEnd", []);
-  await expect(front).toHaveAttribute("aria-pressed", "false");
+  await expect(view).not.toHaveAttribute("data-view", "front");
 });
 
 test("sketch a line with taps", async ({ page }) => {
