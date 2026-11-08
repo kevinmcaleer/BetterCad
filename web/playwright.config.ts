@@ -19,7 +19,18 @@ export default defineConfig({
     // In CI every test ends with a screenshot kept as an artifact (#107), not compared, so a failed run is easy to read.
     screenshot: process.env.CI ? "on" : "only-on-failure",
     serviceWorkers: "block",
-    storageState: { cookies: [], origins: [{ origin: "http://127.0.0.1:4173", localStorage: [{ name: "bettercad.tourDone", value: "1" }] }] },
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: "http://127.0.0.1:4173",
+          localStorage: [
+            { name: "bettercad.tourDone", value: "1" },
+            { name: "bettercad.tips.hidden", value: "1" },
+          ],
+        },
+      ],
+    },
   },
   // SwiftShader gives headless Chromium WebGL 2 without a GPU, so the 3D view draws in CI.
   projects: [

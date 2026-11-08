@@ -318,7 +318,7 @@ export function useExtrude(d: ExtrudeDeps) {
       const L = live.current;
       if (!L.session) {
         const id = newId("f");
-        const base = defaults(h.sketch, seedOf(h.profile));
+        const base = defaults(h.sketch, seedIn(regionsOf.get(h.sketch) ?? [], h));
         // A text is picked whole, by its id, so its letters follow the words when they change.
         const tid = textOf(h.profile);
         const params = tid ? { ...base, seeds: [], texts: [tid] } : base;
@@ -345,7 +345,7 @@ export function useExtrude(d: ExtrudeDeps) {
       }
       const all = regionsOf.get(f.sketch) ?? [];
       const has = f.seeds.findIndex((s) => profileAt(all, s) === h.profile);
-      change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedOf(h.profile)] });
+      change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedIn(all, h)] });
     },
     [defaults, change, regionsOf],
   );
@@ -752,6 +752,15 @@ export function useExtrude(d: ExtrudeDeps) {
 }
 
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
+
+/**
+ * Where a picked shape is kept: its middle, so it stays inside when the sketch changes, unless the middle can't be
+ * found inside it (a thin or hooked shape), then the point clicked, which is inside it for sure.
+ */
+export function seedIn(all: Profile[], h: { profile: Profile; xy: Vec2 }): Vec2 {
+  const s = seedOf(h.profile);
+  return profileAt(all, s) === h.profile ? s : h.xy;
+}
 
 export type ExtrudeSession = ReturnType<typeof useExtrude>;
 
