@@ -31,6 +31,26 @@ export function earlierWarning(doc: ModelDoc, at: number, editingId: string | nu
   return null;
 }
 
+/** What the timeline says after a step is dragged to a new place, while the model is as the move left it. */
+export interface MoveNote {
+  doc: ModelDoc;
+  /** From `moveWarning`: steps that pick edges or faces on a shape now built differently. Empty when none. */
+  text: string;
+  /** The steps that failed before the move, so only new failures are named. */
+  failedBefore: Set<string>;
+}
+
+/** The warning after a reorder: picks that may now be wrong, and steps that no longer build. Null when neither. */
+export function moveText(doc: ModelDoc, note: MoveNote | null, failed: Map<string, string>): string | null {
+  if (!note || note.doc !== doc) return null;
+  const broken = doc.features.filter((f) => failed.has(f.id) && !note.failedBefore.has(f.id)).map((f) => f.name);
+  const parts = [note.text, broken.length && `${list(broken)} can't build now`].filter(Boolean);
+  if (!parts.length) return null;
+  return `${parts.join(". ")}. Double-click a step to check it, or press ${formatCombo("mod+z")} to undo the move.`;
+}
+
+const list = (names: string[]) => (names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
 export interface DeleteStepDialogProps {
   doc: ModelDoc;
   id: string;

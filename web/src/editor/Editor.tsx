@@ -13,7 +13,7 @@ import {
   type RowToggle,
 } from "@bettercad/ui";
 import { createStore } from "../state/store";
-import { DeleteStepDialog, earlierWarning, laterText } from "./DeleteStepDialog";
+import { DeleteStepDialog, earlierWarning, laterText, moveText, type MoveNote } from "./DeleteStepDialog";
 import {
   addCombine,
   addPart,
@@ -58,6 +58,7 @@ import {
   updateParam,
   dependents,
   moveProblem,
+  moveWarning,
   removeWithDependents,
   reorderPart,
   setLook,
@@ -244,6 +245,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const parts = built.parts;
   const kernel = useKernel(doc, at, parts);
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
+  const failedRef = useRef(failed);
+  failedRef.current = failed;
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
   const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
@@ -962,6 +965,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [store, deleteNow],
   );
+  /** After a reorder that may break later steps: what to say on the timeline, until the model changes again. */
+  const [moveNote, setMoveNote] = useState<MoveNote | null>(null);
   const moveFeature = useCallback(
     (id: string, beforeId: string | null) => {
       const d = store.get();
@@ -969,7 +974,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       if (!f) return;
       const why = moveProblem(d, id, beforeId);
       if (why) return say(`${why}, so it can't go there`, true);
+      const warn = moveWarning(d, id, beforeId);
       store.edit((x) => reorderFeature(x, id, beforeId), `Move ${f.name} on the timeline`);
+      const next = store.get();
+      if (next === d) return;
+      setMoveNote({ doc: next, text: warn ?? "", failedBefore: new Set(failedRef.current.keys()) });
+      say(`Moved ${f.name}. ${formatCombo("mod+z")} puts it back.`);
     },
     [store, say],
   );
@@ -1482,7 +1492,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (tool === "select" && editingStep) setEditingStep(null);
   }, [tool, editingStep]);
-  const timelineWarning = earlierWarning(doc, at, sketch.editingId ?? editingStep);
+  const timelineWarning = earlierWarning(doc, at, sketch.editingId ?? editingStep) ?? moveText(doc, moveNote, failed);
   const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
   const sizes = useMemo(
     () =>
@@ -1928,6 +1938,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      {
+        id: "earlier",
+        label: "Move earlier",
+        icon: "stepBack",
+        disabled: i === 0 || !!moveProblem(doc, id, doc.features[i - 1]!.id),
+        onSelect: () => moveFeature(id, doc.features[i - 1]!.id),
+      },
+      {
+        id: "later",
+        label: "Move later",
+        icon: "stepForward",
+        disabled: i === doc.features.length - 1 || !!moveProblem(doc, id, doc.features[i + 2]?.id ?? null),
+        onSelect: () => moveFeature(id, doc.features[i + 2]?.id ?? null),
+      },
       { id: "roll", label: "Roll to here", icon: "history", disabled: i + 1 === at, onSelect: () => moveMarker(i + 1) },
       {
         id: "rename",
@@ -2484,6 +2508,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               summary={summary}
               onSelect={pickStep}
               warning={timelineWarning}
+              onReorder={moveFeature}
+              moveProblem={(id, beforeId) => moveProblem(doc, id, beforeId)}
               onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
               onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}

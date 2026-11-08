@@ -119,3 +119,24 @@ test("the marker scrubs across several steps in one drag, and a double-click ope
   await expect(marker).toHaveAttribute("aria-valuenow", "3");
   await expect(page.getByText("Change Box 3 in Properties.").first()).toBeVisible();
 });
+
+test("drags a step to a new place on the timeline, and undo puts it back", async ({ page }) => {
+  await page.goto("/");
+  for (const name of ["Box", "Cylinder"]) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name, exact: true }).click();
+  }
+  const bar = page.getByRole("region", { name: "Timeline" });
+  const order = () => bar.locator(".bc-tl-tile").evaluateAll((ts) => ts.map((t) => t.getAttribute("aria-label")!.split(",")[0]));
+  await expect.poll(order).toEqual(["Box 1", "Cylinder 1"]);
+  const from = (await bar.getByRole("button", { name: /^Cylinder 1/ }).boundingBox())!;
+  const to = (await bar.getByRole("button", { name: /^Box 1/ }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 2, to.y + to.height / 2, { steps: 8 });
+  await expect(bar.locator(".bc-tl-drop")).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(order).toEqual(["Cylinder 1", "Box 1"]);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect.poll(order).toEqual(["Box 1", "Cylinder 1"]);
+});
