@@ -376,6 +376,34 @@ describe("PropsPanel", () => {
 });
 
 describe("ViewCube", () => {
+  it("has a Go home button and a menu, also on a right-click", async () => {
+    const onHome = vi.fn();
+    const onOrtho = vi.fn();
+    const { container } = render(
+      <ViewCube
+        onHome={onHome}
+        menu={[
+          { id: "home", label: "Go home", onSelect: onHome },
+          { id: "ortho", label: "Orthographic", checked: false, onSelect: onOrtho },
+        ]}
+      />,
+    );
+    const cube = screen.getByRole("group", { name: "View cube" });
+    await userEvent.click(within(cube).getByRole("button", { name: "Go home" }));
+    expect(onHome).toHaveBeenCalledTimes(1);
+    await userEvent.click(within(cube).getByRole("button", { name: "View cube options" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Orthographic" }));
+    expect(onOrtho).toHaveBeenCalled();
+    fireEvent.contextMenu(container.querySelector("svg")!);
+    expect(screen.getByRole("menu", { name: "View cube" })).toBeInTheDocument();
+  });
+
+  it("leaves the buttons out when it has nowhere to send them", () => {
+    render(<ViewCube />);
+    expect(screen.queryByRole("button", { name: "Go home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View cube options" })).toBeNull();
+  });
+
   it("names its 26 places and classifies points on the cube", () => {
     expect(cubePlaceName([0, 0, 1])).toBe("the top");
     expect(cubePlaceName([0, -1, 1])).toBe("the front top edge");

@@ -7,10 +7,52 @@
   z-index: 6;
   width: 104px;
   height: 104px;
+}
+.bc-viewcube-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
   cursor: pointer;
   filter: drop-shadow(0 4px 8px var(--bc-color-scrim));
   /* Dragging the cube turns the view, so the browser must not scroll or zoom. */
   touch-action: none;
+}
+/* Go home (top left) and the cube's menu (bottom right): shown while the pointer is over the cube, as in Fusion. */
+.bc-viewcube .bc-cube-btn {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  min-width: 0;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.bc-viewcube .bc-cube-home {
+  top: -6px;
+  left: -12px;
+}
+.bc-viewcube .bc-cube-more {
+  right: -8px;
+  bottom: -6px;
+}
+.bc-viewcube:hover .bc-cube-btn,
+.bc-viewcube:focus-within .bc-cube-btn,
+.bc-viewcube .bc-cube-btn[aria-expanded="true"] {
+  opacity: 1;
+}
+.bc-viewcube .bc-cube-btn:hover,
+.bc-viewcube .bc-cube-btn[aria-expanded="true"] {
+  background: var(--bc-color-hover);
+}
+/* No hover on a touch screen, so the buttons always show. */
+@media (hover: none) {
+  .bc-viewcube .bc-cube-btn {
+    opacity: 1;
+  }
 }
 .bc-cube-face {
   fill: url(#bc-cube-grad);

@@ -430,6 +430,11 @@ export class Engine {
     return this.cam;
   }
 
+  /** Where the camera is heading: the end of a glide, or where it is when still. Saved views take this. */
+  get goal(): CameraState {
+    return this.tween?.to ?? this.cam;
+  }
+
   private get activeCamera(): PerspectiveCamera | OrthographicCamera {
     return this.cam.ortho ? this.ortho : this.persp;
   }
@@ -503,6 +508,16 @@ export class Engine {
   /** Turns the view by a drag on the view cube, in pixels; stops any glide. */
   orbitBy(dxPx: number, dyPx: number): void {
     this.setCamera(orbit(this.cam, -dxPx * 0.5, dyPx * 0.5));
+  }
+
+  /** Goes home: to `camera` when one is set, else the corner view with the model fitted. Keeps the projection. */
+  home(camera?: CameraState | null): void {
+    if (camera) {
+      this.setCamera({ ...camera, ortho: this.cam.ortho }, true);
+      return;
+    }
+    this.preset("iso");
+    this.fit();
   }
 
   setOrtho(on: boolean): void {
