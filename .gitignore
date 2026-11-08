@@ -17,3 +17,7 @@ data/
 .env
 dist-types/
 docker-compose.override.yml
+
+# docker-compose.suite.yml's host folders
+suite-data/
+studio-backups/

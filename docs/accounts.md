@@ -69,6 +69,9 @@ set; the link opens `#/reset-password#token=…`.
 
 ### One login across Kev's apps
 
+In production this is [`docker-compose.suite.yml`](../docker-compose.suite.yml): BetterCad and Markdown Studio on one
+machine under `.kevsrobots.com` (docs/deploy.md, "One login with Markdown Studio").
+
 Sharing needs three things, all set in `.env`:
 
 | Setting | Value |
