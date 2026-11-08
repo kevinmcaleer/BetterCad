@@ -31,12 +31,10 @@ export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, s
   // The bottom stack (status, help line, rolled-back warning, timeline) changes height as its parts come and go or
   // wrap. Publish its real height so --bc-view-bottom, and every tool dialog and overlay above it, clears it exactly.
   useLayoutEffect(() => {
-    const app = appRef.current;
-    const foot = footRef.current;
-    if (!app || !foot) return;
-    const publish = () => app.style.setProperty("--bc-foot-height", `${Math.ceil(foot.getBoundingClientRect().height)}px`);
+    const foot = footRef.current!;
+    const publish = () => appRef.current!.style.setProperty("--bc-foot-height", foot.offsetHeight + "px");
     publish();
-    if (typeof ResizeObserver === "undefined") return;
+    if (!window.ResizeObserver) return;
     const ro = new ResizeObserver(publish);
     ro.observe(foot);
     return () => ro.disconnect();
