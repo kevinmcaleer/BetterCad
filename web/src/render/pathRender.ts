@@ -380,26 +380,34 @@ export class PathRender {
   }
 
   /**
-   * A PNG at `width` × `height`: renders `samples` samples at that size, then puts the view back. `progress` hears
-   * how far it has got (0 to 1).
+   * A PNG at `width` × `height`, with at least `samples` samples. At the picture's own size it keeps what is already
+   * rendered and only adds any samples still missing; at another size it renders afresh, then puts the view back.
+   * `progress` hears how far it has got (0 to 1); `signal` stops it early, and the promise then rejects.
    */
-  async snapshot(width: number, height: number, samples: number, progress?: (f: number) => void): Promise<Blob> {
+  async snapshot(width: number, height: number, samples: number, progress?: (f: number) => void, signal?: AbortSignal): Promise<Blob> {
+    const same = width === this.canvas.width && height === this.canvas.height;
     this.stopLoop();
     const pr = this.renderer.getPixelRatio();
     const before = this.size;
     try {
-      this.renderer.setPixelRatio(1);
-      this.setSize(width, height);
+      if (!same) {
+        this.renderer.setPixelRatio(1);
+        this.setSize(width, height);
+      }
       this.tracer.pausePathTracing = false;
       while (this.samples < samples) {
+        if (signal?.aborted) throw new Error("Stopped");
         this.tracer.renderSample();
         progress?.(this.samples / samples);
+        if (same) this.opts.onSample?.(this.samples);
         await new Promise((r) => setTimeout(r, 0));
       }
       return await new Promise<Blob>((resolve, reject) => this.canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("No image"))), "image/png"));
     } finally {
-      this.renderer.setPixelRatio(pr);
-      this.setSize(before.width, before.height);
+      if (!same) {
+        this.renderer.setPixelRatio(pr);
+        this.setSize(before.width, before.height);
+      }
       this.start();
     }
   }

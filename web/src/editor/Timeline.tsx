@@ -66,6 +66,8 @@ export interface TimelineProps {
   onReorder?: (id: string, beforeId: string | null) => void;
   /** Why a step can't go before another, shown while it is dragged there, or null when it can. */
   moveProblem?: (id: string, beforeId: string | null) => string | null;
+  /** Another tool picks steps here (a Mirror of features): a click ticks or unticks a step it can take. */
+  picking?: { can: (id: string) => boolean; picked: string[]; onPick: (f: Feature) => void } | null;
 }
 
 /** How far, in pixels, a tile must be dragged before it starts to move rather than being clicked. */
@@ -97,6 +99,7 @@ export function Timeline({
   warning,
   onReorder,
   moveProblem,
+  picking,
 }: TimelineProps) {
   const strip = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
@@ -170,7 +173,7 @@ export function Timeline({
   const shown = moving && blocked ? `${blocked}, so it can't go there` : warning;
 
   const tileDown = (f: Feature, e: PointerEvent<HTMLButtonElement>) => {
-    if (onReorder && e.button === 0 && e.pointerType !== "touch") press.current = { id: f.id, x: e.clientX };
+    if (onReorder && !picking && e.button === 0 && e.pointerType !== "touch") press.current = { id: f.id, x: e.clientX };
   };
   const tileMove = (e: PointerEvent<HTMLButtonElement>) => {
     const p = press.current;
@@ -201,6 +204,10 @@ export function Timeline({
   const tileClick = (f: Feature, e: MouseEvent) => {
     if (swallowClick.current) {
       swallowClick.current = false;
+      return;
+    }
+    if (picking) {
+      if (picking.can(f.id)) picking.onPick(f);
       return;
     }
     onSelect(f);
@@ -276,6 +283,8 @@ export function Timeline({
           const why = failed.get(f.id);
           const state = [i >= at && "not built", f.suppressed && "suppressed", why && `problem: ${why}`].filter(Boolean).join(", ");
           const hold = longPress((p) => onMenu(f, p));
+          const pickable = picking?.can(f.id);
+          const picked = !!pickable && picking!.picked.includes(f.id);
           return (
             <button
               key={f.id}
@@ -287,10 +296,15 @@ export function Timeline({
                 f.suppressed && "bc-suppressed",
                 why && "bc-failed",
                 moving?.id === f.id && "bc-moving",
+                picking && (picked ? "bc-picked" : pickable ? "bc-pickable" : "bc-unpickable"),
               )}
-              aria-pressed={f.id === activeId}
+              aria-pressed={picking ? picked : f.id === activeId}
               aria-label={`${f.name}, ${summary(f)}${state ? `, ${state}` : ""}`}
-              data-tip={`${f.name} · ${summary(f)}${why ? `. ${why}` : ""}${tipHow}`}
+              data-tip={
+                picking
+                  ? `${f.name} · ${pickable ? (picked ? "Click to take it out" : "Click to add it") : "Can't be picked"}`
+                  : `${f.name} · ${summary(f)}${why ? `. ${why}` : ""}${tipHow}`
+              }
               style={{ order: 2 * i + 1 }}
               onClick={(e) => tileClick(f, e)}
               onContextMenu={(e) => {

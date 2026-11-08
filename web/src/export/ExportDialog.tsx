@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Banner, Button, Dialog, NumberField } from "@bettercad/ui";
 import { DEFLECTION, type Call, type ExportEstimate, type ExportFormat, type ExportRequest, type Methods, type Resolution } from "@bettercad/kernel";
-import type { ModelDoc, Part } from "../state/document";
+import { namedPoseValues, type ModelDoc, type Part } from "../state/document";
 import type { FileStore } from "../files/fileStore";
 import { formatBytes } from "./format";
 
@@ -99,11 +99,18 @@ export function ExportDialog(p: ExportDialogProps) {
   const running = useRef<Call<unknown> | null>(null);
 
   const what: What = c.what === "selected" && !p.selection.length ? "all" : c.what;
-  const hasPose = !!p.doc.pose && Object.keys(p.doc.pose).length > 0;
+  const named = p.doc.poses ?? [];
+  const hasPose = (!!p.doc.pose && Object.keys(p.doc.pose).length > 0) || named.length > 0;
+  // Which pose to export in (#177): the one now (null) or a named pose.
+  const [poseAt, setPoseAt] = useState<string | null>(null);
+  const posedDoc = useMemo(() => {
+    const v = poseAt ? namedPoseValues(p.doc, poseAt) : null;
+    return v ? { ...p.doc, pose: v.values } : p.doc;
+  }, [p.doc, poseAt]);
   const deflection = c.res === "custom" ? Math.max(0.001, c.custom) : DEFLECTION[c.res];
   const req = useMemo<ExportRequest>(
     () => ({
-      doc: p.doc,
+      doc: posedDoc,
       upTo: p.upTo,
       bodies: what === "selected" ? p.selection : null,
       format: c.format,
@@ -113,7 +120,7 @@ export function ExportDialog(p: ExportDialogProps) {
       posed: hasPose && c.posed,
       rosPackage: c.rosPackage,
     }),
-    [p.doc, p.upTo, p.selection, what, c.format, deflection, c.keepPosition, hasPose, c.posed, c.rosPackage],
+    [posedDoc, p.upTo, p.selection, what, c.format, deflection, c.keepPosition, hasPose, c.posed, c.rosPackage],
   );
 
   // The estimate follows the choices; its triangles are kept for the export.
@@ -245,6 +252,21 @@ export function ExportDialog(p: ExportDialogProps) {
             <input type="checkbox" checked={c.posed} onChange={(e) => set({ posed: e.target.checked })} />
             <span>Export as posed (otherwise every joint is at home)</span>
           </label>
+        )}
+        {hasPose && !urdf && c.posed && named.length > 0 && (
+          <>
+            <label className="bc-field-label" htmlFor="bc-export-pose">
+              Pose
+            </label>
+            <select id="bc-export-pose" className="bc-select" value={poseAt ?? ""} onChange={(e) => setPoseAt(e.target.value || null)}>
+              <option value="">The pose now</option>
+              {named.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </>
         )}
         <p className="bc-export-estimate" role="status">
           {estimate === null

@@ -24,6 +24,8 @@ export const ROW = {
   construct: "browser:construct",
   joints: "browser:joints",
   robot: "browser:robot",
+  poses: "browser:poses",
+  home: "browser:pose-home",
   base: "browser:base",
   plane: (p: WorldPlaneName) => `browser:plane:${p}`,
   point: "browser:origin-point",
@@ -66,6 +68,10 @@ export interface BrowserModel {
   joints?: Pick<JointFeature, "id" | "name" | "kind" | "child" | "parent">[];
   /** Construction planes, axes and points (#265). */
   construct?: BrowserConstruct[];
+  /** Named poses (#177), under Joints once there are joints; Home is always first. */
+  poses?: { id: string; name: string }[];
+  /** The named pose the joints are in now, or "home"; none when they've moved since. */
+  atPose?: string | null;
 }
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
@@ -197,6 +203,15 @@ export function browserItems(m: BrowserModel): TreeItem[] {
   for (const j of joints) {
     items.push({ id: j.id, name: j.name, icon: "joint", kind: "joint", parentId: ROW.joints, drag: false, toggles: [], note: kindLabel(j.kind) });
   }
+  // Named poses (#177): Home, then each saved one. Click one to go to it.
+  if (joints.length) {
+    const poses = m.poses ?? [];
+    items.push(folder(ROW.poses, "Poses", { icon: "joint", note: count(poses.length + 1), toggles: [] }));
+    const here = (id: string) => (m.atPose === id ? "Now" : undefined);
+    items.push({ id: ROW.home, name: "Home", icon: "home", kind: "pose", parentId: ROW.poses, drag: false, rename: false, toggles: [], note: here("home") });
+    for (const p of poses)
+      items.push({ id: p.id, name: p.name, icon: "joint", kind: "pose", parentId: ROW.poses, drag: false, rename: !m.readOnly, toggles: [], note: here(p.id) });
+  }
   return items;
 }
 
@@ -246,6 +261,12 @@ export interface BrowserPanelProps {
   sketchMenu: (id: string) => MenuEntry[];
   renameId: string | null;
   onRenameIdChange: (id: string | null) => void;
+  /** Named poses (#177): go to one (null: Home), save the joints as a new one, update, rename or delete one. */
+  onPose?: (id: string | null) => void;
+  onSavePose?: () => void;
+  onUpdatePose?: (id: string) => void;
+  onRenamePose?: (id: string, name: string) => void;
+  onDeletePose?: (id: string) => void;
 }
 
 export function BrowserPanel(p: BrowserPanelProps) {
@@ -268,6 +289,8 @@ export function BrowserPanel(p: BrowserPanelProps) {
     setOther(r.other);
     ours.current = true;
     const last = ids[ids.length - 1];
+    if (last === ROW.home) return p.onPose?.(null);
+    if (last && model.poses?.some((x) => x.id === last)) return p.onPose?.(last);
     if (last && (model.joints?.some((j) => j.id === last) || model.construct?.some((c) => c.id === last))) p.onSelectSketch(last);
     else if (r.other && model.sketches.some((s) => s.id === r.other) && last === r.other) p.onSelectSketch(r.other);
     else p.onSelect(r.parts);
@@ -303,6 +326,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
 
   const rename = (id: string, name: string) => {
     if (id === ROW.root) return p.onRenameModel(name);
+    if (model.poses?.some((x) => x.id === id)) return p.onRenamePose?.(id, name);
     if (
       model.sketches.some((s) => s.id === id) ||
       model.links?.some((l) => l.id === id) ||
@@ -356,6 +380,29 @@ export function BrowserPanel(p: BrowserPanelProps) {
       return {
         title: joint.name,
         entries: p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+      };
+    if (id === ROW.poses || id === ROW.home)
+      return {
+        title: id === ROW.home ? "Home" : "Poses",
+        entries: [
+          ...(id === ROW.home ? [{ id: "go", label: "Go to Home", icon: "home" as const, onSelect: () => p.onPose?.(null) }] : []),
+          ...(model.readOnly ? [] : [{ id: "save", label: "Save pose", icon: "plus" as const, onSelect: () => p.onSavePose?.() }]),
+        ],
+      };
+    const pose = model.poses?.find((x) => x.id === id);
+    if (pose)
+      return {
+        title: pose.name,
+        entries: [
+          { id: "go", label: `Go to ${pose.name}`, icon: "joint", onSelect: () => p.onPose?.(id) },
+          ...(model.readOnly
+            ? []
+            : [
+                { id: "update", label: "Update to the joints now", icon: "save" as const, onSelect: () => p.onUpdatePose?.(id) },
+                { id: "rename", label: "Rename", icon: "pencil" as const, keys: "F2", onSelect: () => p.onRenameIdChange(id) },
+                { id: "delete", label: "Delete", icon: "trash" as const, onSelect: () => p.onDeletePose?.(id) },
+              ]),
+        ],
       };
     const link = model.links?.find((l) => l.id === id);
     if (link)

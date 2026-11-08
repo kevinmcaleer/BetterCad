@@ -8,6 +8,11 @@ export interface ClashListProps {
   sameLink: boolean;
   references: boolean;
   onOptions: (change: { sameLink?: boolean; references?: boolean }) => void;
+  /** Named poses (#177) to check at instead of the pose now, Home first; left out when there are no joints. */
+  poses?: { id: string; name: string }[];
+  /** The pose checked: null for the pose now. */
+  at?: string | null;
+  onAt?: (id: string | null) => void;
   /** How far the check has got, 0 to 1, while it runs. */
   progress: number | null;
   /** The last answer, biggest overlap first; null before there is one. */
@@ -27,7 +32,21 @@ export function volumeText(mm3: number): string {
  * The clash check (#178): which bodies overlap at this pose, and by how much, and which only touch (printed parts that
  * touch fuse or bind). Show frames each one.
  */
-export function ClashList({ on, onToggle, sameLink, references, onOptions, progress, clashes, nameOf, onShow, onStop }: ClashListProps) {
+export function ClashList({
+  on,
+  onToggle,
+  sameLink,
+  references,
+  onOptions,
+  poses,
+  at = null,
+  onAt,
+  progress,
+  clashes,
+  nameOf,
+  onShow,
+  onStop,
+}: ClashListProps) {
   const overlaps = clashes?.filter((c) => c.kind === "overlap") ?? [];
   const touches = clashes?.filter((c) => c.kind === "touch") ?? [];
   const row = (c: Clash, text: string) => (
@@ -41,6 +60,19 @@ export function ClashList({ on, onToggle, sameLink, references, onOptions, progr
       <Button icon="warning" label="Check clashes" title="Find bodies that overlap or touch at this pose" on={on} onClick={() => onToggle(!on)} />
       {on && (
         <>
+          {poses && onAt && (
+            <label className="bc-clash-at">
+              <span className="bc-field-label">At</span>
+              <select className="bc-select" value={at ?? ""} onChange={(e) => onAt(e.target.value || null)}>
+                <option value="">The pose now</option>
+                {poses.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="bc-check">
             <input type="checkbox" checked={sameLink} onChange={(e) => onOptions({ sameLink: e.target.checked })} />
             <span>Bodies in the same link</span>
@@ -55,7 +87,7 @@ export function ClashList({ on, onToggle, sameLink, references, onOptions, progr
             </p>
           ) : clashes && !clashes.length ? (
             <p className="bc-note" role="status">
-              No clashes at this pose.
+              {at ? `No clashes at ${poses?.find((p) => p.id === at)?.name ?? "that pose"}.` : "No clashes at this pose."}
             </p>
           ) : null}
           {overlaps.length > 0 && (

@@ -119,3 +119,34 @@ test("mirror a component into a new component", async ({ page }) => {
   await expect(bodyRows(page)).toHaveCount(4);
   await expect(page.getByRole("treeitem", { name: /^Link 1 mirrored/ })).toBeVisible();
 });
+
+test("pick the features to mirror on the timeline", async ({ page }) => {
+  await addBox(page);
+  await page.keyboard.press("h");
+  await click(page, 5, 5, 20);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Made 1 hole in Box 1")).toBeVisible();
+
+  await mirrorTool(page);
+  await page.getByRole("button", { name: "Features", exact: true }).click();
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  const hole = timeline.getByRole("button", { name: /^Hole 1,/ });
+  await hole.click();
+  await expect(hole).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Mirroring 1 feature across YZ.")).toBeVisible();
+  // The bar's list follows the timeline.
+  await page.getByRole("button", { name: "Hole 1", exact: true }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Hole 1" })).toBeChecked();
+  await page.keyboard.press("Escape");
+
+  // A second click takes it out again; the box itself can't be picked.
+  await hole.click();
+  await expect(hole).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Choose features" })).toBeVisible();
+  await timeline.getByRole("button", { name: /^Box 1,/ }).click();
+  await expect(page.getByRole("button", { name: "Choose features" })).toBeVisible();
+
+  await hole.click();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Mirrored 1 feature")).toBeVisible();
+});

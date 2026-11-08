@@ -373,7 +373,10 @@ test("check for clashes: an overlap, then a touch", async ({ page }) => {
   await x.fill("10");
   await x.press("Enter");
   await page.keyboard.press("ControlOrMeta+k");
-  await page.keyboard.type("Check for clashes");
+  // The palette focuses its field a tick after it opens; letters typed before then would run shortcuts.
+  const command = page.getByRole("combobox", { name: "Command" });
+  await expect(command).toBeFocused();
+  await command.fill("Check for clashes");
   await page.getByRole("option", { name: /Check for clashes/ }).click();
   const props = page.getByRole("complementary", { name: "Properties" });
   await expect(props.getByRole("button", { name: "Check clashes", pressed: true })).toBeVisible();
@@ -387,4 +390,49 @@ test("check for clashes: an overlap, then a touch", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(props.getByRole("list", { name: "Touching" })).toHaveText(/Box 1 and Box 2 touch/, { timeout: 30_000 });
   await expect(props.getByRole("list", { name: "Overlaps" })).toHaveCount(0);
+});
+
+test("save a named pose and go back to it", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  await click(page, 25, 0, 20);
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  await click(page, 25, 0, 20);
+  await expect(page.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
+
+  const angle = page.getByRole("complementary", { name: "Properties" }).getByRole("textbox", { name: /^Angle/ });
+  await angle.fill("40");
+  await angle.press("Enter");
+  await expect(angle).toHaveValue("40");
+
+  // Save it from the palette and name it as it lands in the browser.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ControlOrMeta+k");
+  await page.keyboard.type("Save pose");
+  await page.getByRole("option", { name: /Save pose/ }).click();
+  await expect(page.getByText("Saved Pose 1. Type a name, or press Enter to keep it.")).toBeVisible();
+  await page.keyboard.type("Reach");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Reach/ })).toContainText("Now");
+
+  // Home, then back to Reach from the browser.
+  await page.getByRole("tree", { name: "Browser" }).getByText("Home", { exact: true }).click();
+  await expect(page.getByText("Went to Home")).toBeVisible();
+  await expect(angle).toHaveValue("0");
+  await page.getByRole("tree", { name: "Browser" }).getByText("Reach", { exact: true }).click();
+  await expect(page.getByText("Went to Reach")).toBeVisible();
+  await expect(angle).toHaveValue("40");
+  await expect(page.getByRole("button", { name: /^Undo go to reach/i })).toBeVisible();
 });
