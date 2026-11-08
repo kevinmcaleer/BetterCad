@@ -127,4 +127,40 @@ describe("placing a size", () => {
     expect(art.text[1]).toBeCloseTo(5);
     expect(art.lines[0]![0]).toEqual([0, 0]);
   });
+
+  it("draws a point-to-line size with extension lines parallel to the line and the size between them", () => {
+    const d = new Draft(newSketch());
+    const p = d.point([5, 8]);
+    const a = d.point([0, 0]);
+    const b = d.point([20, 0]);
+    const l = d.line(a, b);
+    const sketch = d.done().sketch;
+    const idx = new SketchIndex(sketch);
+    // Dragged out to the right of the point, past the end of the line.
+    const dim = { ...placeAt(sketch, "distance", [p, l], null) };
+    dim.labelOffset = offsetTo(idx, dim, [30, 4]);
+    const art = dimensionArt(idx, dim, 0.1, [10, 4]);
+    expect(art.text[0]).toBeCloseTo(30);
+    expect(art.text[1]).toBeCloseTo(4);
+    // The arrowed dimension line is upright at x 30, from the line (y 0) to the point's height (y 8).
+    expect(art.arrows.map((x) => x.tip)).toEqual([
+      [expect.closeTo(30), expect.closeTo(8)],
+      [expect.closeTo(30), expect.closeTo(0)],
+    ]);
+    // Both extension lines run level, from the point and from the line, out to it.
+    const level = art.lines.filter(([u, v]) => Math.abs(u[1] - v[1]) < 1e-9 && Math.abs(u[0] - v[0]) > 1);
+    expect(level.map(([u]) => u[1]).sort()).toEqual([expect.closeTo(0), expect.closeTo(8)]);
+  });
+
+  it("runs the dimension line on out to a label dragged past its end", () => {
+    const { sketch, p, q } = slanted();
+    const idx = new SketchIndex(sketch);
+    const placed = placeAt(sketch, "distance", [p, q], [10, 30]);
+    expect(placed.kind).toBe("distanceX");
+    const across = { ...placed, labelOffset: offsetTo(idx, placed, [40, 30]) };
+    const art = dimensionArt(idx, across, 0.1, [10, 10]);
+    // The level line from x 0 to 20 at y 30, then on out to the label at x 40.
+    const out = art.lines.find(([u, v]) => Math.abs(v[0] - 40) < 1e-6 && Math.abs(v[1] - 30) < 1e-6);
+    expect(out?.[0][0]).toBeCloseTo(20);
+  });
 });

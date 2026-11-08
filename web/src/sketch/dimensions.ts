@@ -175,6 +175,17 @@ function aligned(a: Vec2, b: Vec2, px: number, centre: Vec2, labelOffset: Vec2):
   return along(a, b, n, o, px, text);
 }
 
+/**
+ * A label dragged past either end of its dimension line: the line runs on out to it, so the size never floats loose.
+ * `text` is on the dimension line's run, so only how far along it matters.
+ */
+function leader(a2: Vec2, b2: Vec2, u: Vec2, text: Vec2, px: number, lines: [Vec2, Vec2][]): void {
+  const t = dot(sub(text, a2), u);
+  const len = dist(a2, b2);
+  if (t > len + 2 * px) lines.push([b2, add(a2, scale(u, t))]);
+  else if (t < -2 * px) lines.push([a2, add(a2, scale(u, t))]);
+}
+
 /** The extension lines and the arrowed line for a size between `a` and `b`, `o` mm out along `n`. */
 function along(a: Vec2, b: Vec2, n: Vec2, o: number, px: number, text: Vec2): DimensionArt {
   const s = o >= 0 ? 1 : -1;
@@ -187,7 +198,8 @@ function along(a: Vec2, b: Vec2, n: Vec2, o: number, px: number, text: Vec2): Di
     lines.push([add(b, scale(n, s * 3 * px)), add(b2, scale(n, s * 5 * px))]);
   }
   lines.push([a2, b2]);
-  const u = dist(a2, b2) > 1e-9 ? norm(sub(b2, a2)) : ([1, 0] as Vec2);
+  const u = dist(a2, b2) > 1e-9 ? norm(sub(b2, a2)) : perp(n);
+  leader(a2, b2, u, text, px, lines);
   return {
     text,
     lines,
@@ -223,18 +235,12 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
     const u = norm(sub(idx.xy(e1.b), idx.xy(e1.a)));
     q = footOn(idx, p, e1);
     if (d.kind === "distance") {
-      // Square on to the line: the dimension line spans the gap and runs on past the line to the size, which sits
-      // outside so it never covers the corners a small gap sits beside.
-      const v = dist(p, q) > 1e-9 ? norm(sub(q, p)) : perp(u);
-      const text = textAt(q, add(q, scale(v, 16 * px)));
-      return {
-        text,
-        lines: [[p, add(q, scale(v, 8 * px))]],
-        arrows: [
-          { tip: p, dir: scale(v, -1) },
-          { tip: q, dir: v },
-        ],
-      };
+      // Square on to the line, as Fusion draws it: an extension line out from the point and one along the line, both
+      // running parallel to the line out to where the label is, and the arrowed dimension line between them there.
+      const m = mid(p, q);
+      const side = dot(u, sub(centre, m)) > 0 ? -1 : 1;
+      const text = textAt(q, add(m, scale(u, side * DIM_OFFSET_PX * px)));
+      return along(p, q, u, dot(sub(text, p), u), px, text);
     }
   }
   if (d.kind === "distanceX" || d.kind === "distanceY") return levelled(d.kind, p, q, px, centre, textAt);
@@ -265,6 +271,7 @@ function levelled(kind: "distanceX" | "distanceY", a: Vec2, b: Vec2, px: number,
   }
   lines.push([a2, b2]);
   const u = dist(a2, b2) > 1e-9 ? norm(sub(b2, a2)) : perp(n);
+  leader(a2, b2, u, text, px, lines);
   return {
     text,
     lines,
