@@ -75,6 +75,18 @@ import { readPalette, type Palette } from "./colours";
 
 export type RenderStyle = "shaded" | "lineart";
 
+/**
+ * A step's result shown while its tool is open (Fillet, Shell, Combine). A body with a mesh is drawn from that mesh in
+ * place of its own; a dim one is drawn see-through (a body a combine uses up). Picks still land on the bodies as they
+ * are, so edges and faces keep their numbers while the preview changes.
+ */
+export interface PreviewBody {
+  id: string;
+  /** The result, in world space. */
+  mesh?: BodyMesh;
+  dim?: boolean;
+}
+
 export interface EngineBody {
   id: string;
   mesh: BodyMesh;
@@ -235,6 +247,9 @@ export class Engine {
   private style: RenderStyle = "shaded";
   private bodies = new Map<string, BodyObjects>();
   private order: BodyObjects[] = [];
+  /** The preview on show: what each body it changes is drawn as, and the objects drawing it. */
+  private previewOf = new Map<string, PreviewBody>();
+  private previews: BodyObjects[] = [];
   private grid: Mesh;
   private gridMat = gridMaterial(false);
   private room: Mesh;
@@ -498,7 +513,7 @@ export class Engine {
     const r = new Vector2();
     this.renderer.getDrawingBufferSize(r);
     for (const m of [this.selectMat, this.hoverMat]) m.resolution.set(this.width, this.height);
-    for (const b of this.order) (b.creases.material as LineMaterial).resolution.set(this.width, this.height);
+    for (const b of [...this.order, ...this.previews]) (b.creases.material as LineMaterial).resolution.set(this.width, this.height);
     for (const m of this.lineMats) m.resolution.set(this.width, this.height);
     this.idTarget?.dispose();
     this.idTarget = null;
@@ -519,7 +534,7 @@ export class Engine {
 
   setStyle(style: RenderStyle): void {
     this.style = style;
-    for (const b of this.order) this.applyStyle(b);
+    for (const b of [...this.order, ...this.previews]) this.applyStyle(b);
     this.invalidate();
   }
 
@@ -710,6 +725,25 @@ export class Engine {
     if (this.hover && !keep.has(this.hover.body)) this.hover = null;
     this.recolourAll();
     this.syncGizmo();
+    this.invalidate();
+  }
+
+  /** Shows a step's result over the bodies it changes, or takes it away (null). See PreviewBody. */
+  setPreview(list: PreviewBody[] | null): void {
+    if (!list?.length && !this.previewOf.size) return;
+    this.clearPreviews();
+    this.previewOf = new Map((list ?? []).map((p) => [p.id, p]));
+    for (const p of list ?? []) {
+      const owner = this.bodies.get(p.id);
+      if (!p.mesh || !owner) continue;
+      // Drawn like a body, but never picked: picks stay on the body as it is. The outline takes the body's ID.
+      const o = this.makeBody({ id: p.id, mesh: p.mesh, world: true, position: { x: 0, y: 0, z: 0 }, colour: owner.body.colour }, owner.index);
+      this.pickScene.remove(o.pick);
+      o.idMaterial.color.copy(owner.idMaterial.color);
+      this.previews.push(o);
+    }
+    for (const o of [...this.order, ...this.previews]) this.applyStyle(o);
+    this.recolourAll();
     this.invalidate();
   }
 
@@ -1112,6 +1146,7 @@ export class Engine {
     this.unlisten();
     this.gizmo.dispose();
     for (const b of this.order) this.removeBody(b);
+    this.clearPreviews();
     this.idTarget?.dispose();
     this.disposeDof();
     this.pickTarget.dispose();
@@ -1255,14 +1290,24 @@ export class Engine {
     o.edges.visible = shaded;
     o.flat.visible = !shaded;
     o.creases.visible = !shaded;
-    const ghost = !!o.body.ghost;
+    const preview = this.previews.includes(o) ? undefined : this.previewOf.get(o.body.id);
+    // A body with a preview is drawn by it; its own pick geometry stays, so picks keep their numbers.
+    if (preview?.mesh) {
+      o.shaded.visible = o.edges.visible = o.flat.visible = o.creases.visible = false;
+    }
+    const ghost = !!o.body.ghost || !!preview?.dim;
     const seeThrough = ghost || !!o.body.reference;
     for (const m of [o.shadedMaterial, o.flatMaterial]) {
       m.transparent = seeThrough;
       m.opacity = ghost ? 0.3 : seeThrough ? 0.55 : 1;
       m.depthWrite = !seeThrough;
     }
-    o.idMesh.visible = !ghost;
+    o.idMesh.visible = !ghost && !preview?.mesh;
+  }
+
+  private clearPreviews(): void {
+    for (const o of this.previews) this.removeBody(o);
+    this.previews = [];
   }
 
   private applyPalette(): void {
@@ -1301,16 +1346,18 @@ export class Engine {
     for (const s of this.selected) if (s.kind === "face") (selFaces.get(s.body) ?? selFaces.set(s.body, new Set()).get(s.body)!).add(s.index);
     const c = new Color();
     const c2 = new Color();
-    for (const o of this.order) {
+    for (const o of [...this.order, ...this.previews]) {
+      // A preview's faces are numbered afresh, so picks and checks on the body do not tint it.
+      const own = !this.previews.includes(o);
       const base = o.body.highlight ? c2.copy(p["part-highlight"]) : o.body.colour ? c2.setStyle(o.body.colour) : c2.copy(p["part-fill"]);
       if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
       const attr = o.geometry.getAttribute("color") as BufferAttribute;
       const arr = attr.array as Float32Array;
-      const faces = selFaces.get(o.body.id);
+      const faces = own ? selFaces.get(o.body.id) : undefined;
       const whole = selBodies.has(o.body.id);
-      const hoverFace = this.hover?.kind === "face" && this.hover.body === o.body.id ? this.hover.index : -1;
-      const check = this.check?.get(o.body.id);
+      const hoverFace = own && this.hover?.kind === "face" && this.hover.body === o.body.id ? this.hover.index : -1;
+      const check = own ? this.check?.get(o.body.id) : undefined;
       const checked = check && check.length === o.faceOfVertex.length ? check : undefined;
       for (let v = 0; v < o.faceOfVertex.length; v++) {
         const f = o.faceOfVertex[v]!;

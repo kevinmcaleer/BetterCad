@@ -3,7 +3,7 @@ import { ViewCube, type MenuEntry } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
-import { Engine, canDraw3D, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
+import { Engine, canDraw3D, type PreviewBody, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
 import { formatMilestones, milestone } from "../perf";
 import type { Pick, SelectFilter } from "./ids";
 
@@ -57,6 +57,8 @@ export interface View3DProps {
   /** The view cube's Go home button and its menu. */
   onHome?: () => void;
   cubeMenu?: MenuEntry[];
+  /** A step's result while its tool is open: drawn in place of the bodies it changes. */
+  preview?: PreviewBody[] | null;
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
   children?: ReactNode;
 }
@@ -228,6 +230,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   useEffect(() => engine.current?.setStyle(style), [style]);
   const check = props.check ?? null;
   useEffect(() => engine.current?.setCheck(check), [check, bodies]);
+  const preview = props.preview ?? null;
+  useEffect(() => engine.current?.setPreview(preview), [preview, bodies]);
   const bed = props.bed;
   const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin},${bed.label ?? ""}` : "";
   useEffect(() => {
