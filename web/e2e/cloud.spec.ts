@@ -167,3 +167,47 @@ test("offline saves wait in the browser and go when the network is back", async 
   const latest = JSON.parse([...server.models.values()][0]!.versions[1]!.bcad);
   expect(latest.document.features.map((f: { name: string }) => f.name)).toEqual(["Box 1", "Cylinder 1"]);
 });
+
+test("a thumbnail is shaded in light colours whatever the theme and view style", async ({ page, context }) => {
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/");
+  await page.evaluate(() => localStorage.setItem("bettercad.theme", "holodeck"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "holodeck");
+  await addBox(page);
+  // Holodeck may already draw line art; choose it either way.
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await page.getByRole("menuitemradio", { name: "Line art" }).click();
+  await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Save to your account…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Bracket");
+  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
+  const [model] = [...server.models.values()];
+  const thumb = JSON.parse(model!.versions[0]!.bcad).thumbnail as string;
+  // The mean brightness of the drawn pixels: Holodeck's line art fill is near black, a Light shaded box is pale.
+  const mean = await page.evaluate(async (src) => {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let sum = 0;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3]! < 200) continue;
+      sum += (d[i]! + d[i + 1]! + d[i + 2]!) / 3;
+      n++;
+    }
+    return n > 500 ? sum / n : 0;
+  }, thumb);
+  expect(mean).toBeGreaterThan(120);
+  // The view keeps its own style.
+  await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
+});
