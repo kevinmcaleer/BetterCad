@@ -16,7 +16,7 @@ export interface TopoRef {
 
 export type Single =
   | { kind: "vertex"; point: V3 }
-  | { kind: "edge"; length: number; circle?: { radius: number; centre: V3 }; ends: [V3, V3]; line?: V3 }
+  | { kind: "edge"; length: number; circle?: { radius: number; centre: V3; axis?: V3 }; ends: [V3, V3]; line?: V3 }
   | { kind: "face"; area: number; perimeter: number; normal?: V3; centre: V3; circle?: { radius: number; centre: V3; axis: V3 } }
   | { kind: "body"; volume: number; area: number; bbox: { min: V3; max: V3 } };
 
@@ -62,7 +62,7 @@ export function describe(oc: OC, shape: TopoDS_Shape, ref: TopoRef): Single {
     const type = c.GetType();
     if (type === oc.GeomAbs_CurveType.GeomAbs_Circle) {
       const circ = c.Circle();
-      out.circle = { radius: circ.Radius(), centre: pnt(circ.Location()) };
+      out.circle = { radius: circ.Radius(), centre: pnt(circ.Location()), axis: pnt(circ.Axis().Direction()) };
     } else if (type === oc.GeomAbs_CurveType.GeomAbs_Line) {
       const d = sub(ends[1], ends[0]);
       const l = len(d);

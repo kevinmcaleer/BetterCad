@@ -126,19 +126,16 @@ import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
+import { useJoint } from "../joint/useJoint";
 import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
-import { Versions } from "../cloud/Versions";
-import { ShareDialog } from "../cloud/ShareDialog";
 import { EmptyState } from "./EmptyState";
 import { useTour } from "../tour/Tour";
-import { AboutDialog } from "../help/AboutDialog";
 import { COURSE_URL } from "../help/about";
-import { ReportDialog } from "../report/ReportDialog";
 import { actionLog, editSummary } from "../report/actionLog";
 import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
@@ -171,6 +168,11 @@ const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ de
 const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
+const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: m.Versions })));
+const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
+const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
+const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
+const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -559,6 +561,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onClose: () => setTool("select"),
     say,
   });
+
+  const joint = useJoint({
+    store,
+    record,
+    doc,
+    parts,
+    links: built.links,
+    joints: built.joints,
+    view: vp.ref,
+    active: tool === "joint" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+    measure: kernel.measure,
+  });
+
+  // Joint glyphs in the view (#172), on unless turned off from the View menu.
+  const [jointsShown, setJointsShown] = useState(true);
+  useEffect(() => {
+    vp.ref.current?.engine()?.setJoints(jointsShown ? built.joints : null);
+  }, [built.joints, jointsShown, vp.ref]);
 
   const [patternStart, setPatternStart] = useState<PatternKind | null>(null);
   const pattern = usePattern({
@@ -1156,13 +1178,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 ? mount.done()
                 : gear.session
                   ? gear.done()
-                  : pattern.session
-                    ? pattern.done()
-                    : tool === "combine"
-                      ? combine(selection, combineOp, keepTools, combineFit)
-                      : finish.tool
-                        ? finish.done()
-                        : undefined,
+                  : tool === "joint"
+                    ? joint.stage === "parent"
+                      ? joint.pickParent(null)
+                      : joint.done()
+                    : pattern.session
+                      ? pattern.done()
+                      : tool === "combine"
+                        ? combine(selection, combineOp, keepTools, combineFit)
+                        : finish.tool
+                          ? finish.done()
+                          : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -1396,6 +1422,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "gear pair centre distance drive ratio",
       },
       {
+        id: "view.joints",
+        scope: "model",
+        label: "Show or hide joints",
+        group: "View",
+        icon: "joint",
+        run: () => setJointsShown((on) => !on),
+        when: () => live.current.doc.features.some((f) => f.type === "joint"),
+        keywords: "robot joint axis arrow glyph",
+      },
+      {
         id: "link.make",
         scope: "model",
         label: "Make link",
@@ -1434,7 +1470,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "check",
         keys: ["enter"],
         run: () => h().confirm(),
-        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
+        when: () => ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell"].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -1997,6 +2033,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "joint"
+        ? [
+            {
+              id: "edit",
+              label: "Edit joint",
+              icon: "joint" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("joint");
+                joint.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -2248,8 +2298,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? sketch.help
       : place.help
         ? place.help
-        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
-          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || pattern.help || measure.help
+        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
+          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help
           : finish.help
             ? finish.help
             : vp.elementText
@@ -2420,6 +2470,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onRenameIdChange={setRenameId}
               sketches={browserSketches}
               links={built.links}
+              joints={built.joints}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden) => setHidden(ids, hidden, "parts")}
@@ -2493,6 +2544,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               {tool === "measure" && (
                 <Suspense fallback={null}>
                   <MeasureBar m={measure} onDone={() => setTool("select")} />
+                </Suspense>
+              )}
+              {tool === "joint" && (
+                <Suspense fallback={null}>
+                  <JointBar x={joint} scope={scope} error={joint.session ? failed.get(joint.session.id) : undefined} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
               {tool === "gear" && (
@@ -2718,14 +2774,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           </Banner>
         </div>
       )}
-      <ReportDialog
-        open={report !== null}
-        prefill={report?.prefill}
-        onClose={() => setReport(null)}
-        model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
-        info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
-        say={say}
-      />
+      {report !== null && (
+        <Suspense fallback={null}>
+          <ReportDialog
+            open
+            prefill={report.prefill}
+            onClose={() => setReport(null)}
+            model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
+            info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
+            say={say}
+          />
+        </Suspense>
+      )}
       {exportOpen && (
         <Suspense fallback={null}>
           <ExportDialog
@@ -2750,23 +2810,33 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         </Suspense>
       )}
       {versionsOpen && files.cloud && (
-        <Versions
-          api={api}
-          modelId={files.cloud.modelId}
-          name={doc.name}
-          viewing={files.viewing?.number ?? null}
-          onPreview={(n) => void files.previewVersion(n)}
-          onClose={() => setVersionsOpen(false)}
-          say={say}
-        />
+        <Suspense fallback={null}>
+          <Versions
+            api={api}
+            modelId={files.cloud.modelId}
+            name={doc.name}
+            viewing={files.viewing?.number ?? null}
+            onPreview={(n) => void files.previewVersion(n)}
+            onClose={() => setVersionsOpen(false)}
+            say={say}
+          />
+        </Suspense>
       )}
-      {shareOpen && files.cloud && <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />}
+      {shareOpen && files.cloud && (
+        <Suspense fallback={null}>
+          <ShareDialog api={api} modelId={files.cloud.modelId} name={doc.name} onClose={() => setShareOpen(false)} say={say} />
+        </Suspense>
+      )}
       {shortcutsOpen && (
         <Suspense fallback={null}>
           <ShortcutsDialog open onClose={() => setShortcutsOpen(false)} commands={commands} />
         </Suspense>
       )}
-      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+      {aboutOpen && (
+        <Suspense fallback={null}>
+          <AboutDialog open onClose={() => setAboutOpen(false)} />
+        </Suspense>
+      )}
       <TooltipLayer />
     </>
   );
