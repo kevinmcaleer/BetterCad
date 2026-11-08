@@ -125,7 +125,6 @@ import { PushPullBar } from "../finish/PushPullBar";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
-import { PlaceBar } from "../catalogue/PlaceBar";
 import { HoleBar } from "../hole/HoleBar";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
@@ -133,7 +132,6 @@ import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
 import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
-import { MeasureBar } from "../measure/MeasureBar";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { Versions } from "../cloud/Versions";
@@ -161,6 +159,8 @@ const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: 
 // there before the first E and the distance field can take focus.
 const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
+const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
+const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -2315,7 +2315,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             <>
               {files.banners}
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
-              {place.part && <PlaceBar x={place} />}
+              {place.part && (
+                <Suspense fallback={null}>
+                  <PlaceBar x={place} />
+                </Suspense>
+              )}
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {(tool === "extrude" || tool === "revolve") && (
                 <Suspense fallback={null}>
@@ -2326,7 +2330,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   )}
                 </Suspense>
               )}
-              {tool === "measure" && <MeasureBar m={measure} onDone={() => setTool("select")} />}
+              {tool === "measure" && (
+                <Suspense fallback={null}>
+                  <MeasureBar m={measure} onDone={() => setTool("select")} />
+                </Suspense>
+              )}
               {tool === "gear" && (
                 <Suspense fallback={null}>
                   <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
