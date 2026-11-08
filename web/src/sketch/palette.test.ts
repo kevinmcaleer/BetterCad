@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { Draft, SketchIndex, WORLD_FRAMES, drawCircle, drawRectangle, newSketch } from "@bettercad/sketch";
 import { dimensionArt, DIM_OFFSET_PX } from "./dimensions";
-import { DEFAULT_OPTIONS, loadOptions, saveOptions, sketchGrid } from "./options";
+import { DEFAULT_OPTIONS, SLICE_GAP, loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide } from "./options";
 import { FINISHED, sketchView } from "./useSketch";
 
 const ALL = { points: true, profile: true, projected: true, construction: true };
@@ -14,6 +14,22 @@ describe("sketch palette options", () => {
     expect(loadOptions()).toEqual(DEFAULT_OPTIONS);
     saveOptions({ ...DEFAULT_OPTIONS, grid: false, points: false });
     expect(loadOptions()).toMatchObject({ grid: false, points: false, snap: true });
+  });
+
+  it("starts every sketch with Slice off, and never remembers it", () => {
+    expect(DEFAULT_OPTIONS.slice).toBe(false);
+    saveOptions({ ...DEFAULT_OPTIONS, slice: true, grid: false });
+    expect(loadOptions()).toMatchObject({ slice: false, grid: false });
+    expect(localStorage.getItem("bettercad.sketchOptions")).not.toContain("slice");
+  });
+
+  it("slices away the side of the sketch's plane the camera is on", () => {
+    const frame = { origin: [0, 0, 5] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
+    expect(sliceSide(frame, [0.2, 0.1, 0.9])).toBe(1);
+    expect(sliceSide(frame, [0, 0.3, -0.9])).toBe(-1);
+    // The viewport keeps the side behind the section's normal, so the normal points at the camera.
+    expect(sliceSection(frame, 1)).toEqual({ origin: [0, 0, 5], normal: [0, 0, 1], offset: SLICE_GAP });
+    expect(sliceSection(frame, -1).normal).toEqual([-0, -0, -1]);
   });
 
   it("ignores rubbish in storage", () => {
