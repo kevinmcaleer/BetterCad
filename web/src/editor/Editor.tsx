@@ -143,7 +143,7 @@ import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import type { ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
-import { renderSession, type RenderSession, type SaveSize } from "../render/session";
+import { renderSession, type RenderSession, type RenderStyle, type SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
@@ -412,9 +412,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   // Render (#197): a path-traced picture over the view. It starts from the modelling camera, and the modelling view
   // follows wherever you orbited it when you come back.
-  const openRender = () => {
+  const openRender = (style?: RenderStyle) => {
     renderCam.current = vp.ref.current?.camera() ?? null;
-    setRender(renderSession());
+    setRender(renderSession(style));
   };
   const closeRender = () => {
     const c = renderCam.current;

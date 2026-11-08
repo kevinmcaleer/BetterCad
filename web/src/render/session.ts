@@ -29,8 +29,8 @@ export interface RenderSession {
   save: ((size: SaveSize) => Promise<void>) | null;
 }
 
-export function renderSession(): RenderSession {
-  let state: RenderState = { loading: true, preset: "studio", style: "finishes", samples: 0, moving: false, slow: false, saving: null };
+export function renderSession(style: RenderStyle = "finishes"): RenderSession {
+  let state: RenderState = { loading: true, preset: "studio", style, samples: 0, moving: false, slow: false, saving: null };
   const subs = new Set<() => void>();
   return {
     get: () => state,
