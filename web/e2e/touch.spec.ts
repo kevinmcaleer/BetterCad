@@ -134,3 +134,15 @@ test("sketch a line with taps", async ({ page }) => {
   // A horizontal line: its ends, less one for Horizontal.
   await expect(page.locator(".bc-help")).toContainText("3 degrees of freedom");
 });
+
+test("the view bar's Full screen button hides the browser's bars and brings them back", async ({ page }) => {
+  await page.goto("/");
+  const full = page.getByRole("toolbar", { name: "View tools" }).getByRole("button", { name: "Full screen" });
+  await expect(full).toHaveAttribute("aria-pressed", "false");
+  await full.click();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
+  await expect(full).toHaveAttribute("aria-pressed", "true");
+  await full.click();
+  await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+  await expect(full).toHaveAttribute("aria-pressed", "false");
+});
