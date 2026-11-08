@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { modelRow } from "./pages/editor";
 
+/** A save draws a thumbnail and uploads it, which a busy CI runner can take well over the default 5 s to do. */
+const SAVE = { timeout: 15_000 };
+
 /** Stands in for Chrome's file pickers: files live in `window.__files`, and every write is recorded. */
 async function mockPickers(page: Page, saveAs = "Bracket.bcad") {
   await page.addInitScript((name) => {
@@ -53,16 +56,30 @@ test("shows a save as a toast at the top right of the view, leaving the timeline
   const timeline = page.getByRole("region", { name: "Timeline" });
   // Let the add's own status message clear, so only the save could move anything.
   await expect(page.locator(".bc-status-pill")).toBeHidden({ timeout: 8000 });
+  // A busy machine can let a 3 s toast come and go between two looks, so note each one, and where things stood,
+  // the moment it appears.
+  await page.evaluate(() => {
+    const w = window as unknown as { __toasts: { text: string; toast: DOMRect; timeline: DOMRect }[] };
+    w.__toasts = [];
+    const timeline = document.querySelector('[aria-label="Timeline"]')!;
+    new MutationObserver(() => {
+      for (const t of document.querySelectorAll(".bc-toast"))
+        if (!w.__toasts.some((s) => s.text === t.textContent))
+          w.__toasts.push({ text: t.textContent ?? "", toast: t.getBoundingClientRect().toJSON(), timeline: timeline.getBoundingClientRect().toJSON() });
+    }).observe(document.body, { childList: true, subtree: true });
+  });
   const before = await timeline.boundingBox();
   await page.keyboard.press("ControlOrMeta+s");
-  const toast = page.getByText("Saved to Bracket.bcad");
-  await expect(toast).toBeVisible();
-  expect(await timeline.boundingBox()).toEqual(before);
-  const box = (await toast.boundingBox())!;
+  type Seen = { text: string; toast: { x: number; y: number; width: number }; timeline: { x: number; y: number; width: number; height: number } };
+  const seen = () => page.evaluate(() => (window as unknown as { __toasts: Seen[] }).__toasts.find((t) => t.text === "Saved to Bracket.bcad"));
+  await expect.poll(seen, SAVE).toBeTruthy();
+  const { toast: box, timeline: then } = (await seen())!;
+  expect({ x: then.x, y: then.y, width: then.width, height: then.height }).toEqual(before);
   const props = (await page.locator(".bc-right").boundingBox())!;
   const view = page.viewportSize()!;
   expect(box.y).toBeLessThan(view.height / 2);
   expect(box.x + box.width).toBeLessThanOrEqual(props.x);
+  const toast = page.locator(".bc-toast");
   // It fades out on its own.
   await expect(toast).toBeHidden({ timeout: 5000 });
 });
@@ -73,9 +90,8 @@ test("saves a .bcad in place, names the model after the file, and saves again wi
   await addBox(page);
   await expect(page).toHaveTitle(/^• Untitled model/);
   await page.keyboard.press("ControlOrMeta+s");
-  await expect(page.getByText("Saved to Bracket.bcad")).toBeVisible();
   await expect(modelRow(page)).toContainText("Bracket");
-  await expect(page).toHaveTitle("Bracket · BetterCad");
+  await expect(page).toHaveTitle("Bracket · BetterCad", SAVE);
   const last = await page.evaluate(() => (window as unknown as { __writes: { text: string }[] }).__writes.at(-1)!.text);
   const file = JSON.parse(last);
   expect(file).toMatchObject({ schema: 2, app: "bettercad", name: "Bracket" });
@@ -89,7 +105,7 @@ test("saves a .bcad in place, names the model after the file, and saves again wi
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();
   await expect(page).toHaveTitle(/^• Bracket/);
   await page.keyboard.press("ControlOrMeta+s");
-  await expect(page).toHaveTitle("Bracket · BetterCad");
+  await expect(page).toHaveTitle("Bracket · BetterCad", SAVE);
   const calls = await page.evaluate(() => (window as unknown as { __calls: { save: number } }).__calls.save);
   expect(calls).toBe(1);
 });
@@ -99,7 +115,8 @@ test("opens a saved file", async ({ page }) => {
   await page.goto("/");
   await addBox(page);
   await page.keyboard.press("ControlOrMeta+s");
-  await expect(page.getByText("Saved to Bracket.bcad")).toBeVisible();
+  // The save's toast is brief; the title says it's saved until the next change.
+  await expect(page).toHaveTitle("Bracket · BetterCad", SAVE);
   // Start again, then open it back.
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("menuitem", { name: /New model/ }).click();
