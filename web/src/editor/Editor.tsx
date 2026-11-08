@@ -2175,6 +2175,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().openRender(),
         keywords: "photo picture image path trace blender",
       },
+      {
+        id: "view.fullscreen",
+        label: "Full screen",
+        group: "View",
+        icon: "expand",
+        run: () => void import("./fullscreen").then((m) => m.switchFullscreen(h().say)),
+        keywords: "fullscreen phone tablet",
+      },
       { id: "help.palette", label: "Find a command", group: "Help", icon: "search", keys: ["mod+k"], run: () => setPaletteOpen(true) },
       { id: "print.overhangs", label: "Check overhangs", group: "View", icon: "printer", run: () => h().printCheck("overhang"), keywords: "support print 45" },
       {
@@ -3330,7 +3338,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   />
                 </Suspense>
               ) : (
-                <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} onRender={openRender} />
+                <StageBars
+                  tool={activeTool}
+                  onArmTool={armTool}
+                  vp={vp}
+                  onePart={selection.length === 1}
+                  onRender={openRender}
+                  say={window.matchMedia?.("(pointer: coarse)").matches ? say : undefined}
+                />
               )}
               {place.part && (
                 <Suspense fallback={null}>
