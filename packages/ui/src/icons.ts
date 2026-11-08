@@ -126,6 +126,7 @@ export const rect = "M4 6h16v12H4z";
 export const circle = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z";
 export const arc = "M4 18a8 8 0 0 1 16 0";
 export const polygon = "M7.5 4h9l4.5 8-4.5 8h-9L3 12z";
+export const point = "M12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM12 3v4M12 17v4M3 12h4M17 12h4";
 export const finish = "M20 6 9 17l-5-5";
 export const cloud = "M17.5 19H8a6 6 0 1 1 5.7-7.9h.3a4.5 4.5 0 0 1 3.5 7.9z";
 export const cloudOff = "M2 2l20 20M5.8 8.2A6 6 0 0 0 8 19h9M21 15.5a4.5 4.5 0 0 0-7-4.4M10 5.2A6 6 0 0 1 13.7 11";
@@ -250,6 +251,7 @@ export const ICONS = {
   circle,
   arc,
   polygon,
+  point,
   finish,
   cloud,
   cloudOff,

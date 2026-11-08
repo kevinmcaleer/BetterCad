@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { bodyRows } from "./pages/editor";
+import { bodyRows, modelRow } from "./pages/editor";
 
 test("the editor shell loads with its slots", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle("Untitled model · BetterCad");
-  await expect(page.getByRole("navigation", { name: "Panels" })).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("toolbar", { name: "Model tools" })).toBeVisible();
   await expect(page.getByRole("toolbar", { name: "View tools" })).toBeVisible();
+  await expect(modelRow(page)).toContainText("Untitled model");
   await expect(page.getByRole("application", { name: /3D view/ })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Properties" })).toBeVisible();
 });
@@ -84,10 +85,12 @@ test("parts: multi-select, edit size for both, rename inline", async ({ page }) 
   await expect(page.getByRole("treeitem", { name: /Base plate/ })).toBeVisible();
 });
 
-test("a narrow window gets a bottom rail and sheets", async ({ page }) => {
+test("a narrow window gets the tools along the bottom, and sheets", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.getByRole("navigation", { name: "Panels" })).toBeVisible();
+  const tools = page.getByRole("toolbar", { name: "Model tools" });
+  await expect(tools).toBeVisible();
+  expect((await tools.boundingBox())!.y).toBeGreaterThan(700);
   await expect(page.getByRole("complementary", { name: "Properties" })).toBeHidden();
   await page.getByRole("button", { name: "Show properties" }).click();
   await expect(page.getByRole("complementary", { name: "Properties" })).toBeVisible();
@@ -98,8 +101,10 @@ test("a narrow window gets a bottom rail and sheets", async ({ page }) => {
 test("timeline: each step shows, and the marker rolls the model back", async ({ page }) => {
   await page.goto("/");
   const timeline = page.getByRole("region", { name: "Timeline" });
-  await page.getByRole("button", { name: "Add a box" }).click();
-  await page.getByRole("button", { name: "Add a box" }).click();
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
   await expect(timeline.getByRole("button", { name: /^Box \d/ })).toHaveCount(2);
   await expect(bodyRows(page)).toHaveCount(2);
 
@@ -119,7 +124,8 @@ test("timeline: each step shows, and the marker rolls the model back", async ({ 
 
 test("browser: the model's folders, eyes, and a sketch on an origin plane", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Add a box" }).click();
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
   const tree = page.getByRole("tree", { name: "Browser" });
   await expect(tree.getByRole("treeitem", { name: /Untitled model/ })).toBeVisible();
   await expect(tree.getByRole("treeitem", { name: /Joints/ })).toContainText("None yet");

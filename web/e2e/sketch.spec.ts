@@ -83,7 +83,7 @@ test("an open shape asks before finishing", async ({ page }) => {
   await click(page, 0, 0);
   await click(page, 20, 0);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Finish sketch" }).click();
+  await page.getByRole("toolbar", { name: "Sketch tools" }).getByRole("button", { name: "Finish sketch" }).click();
   await expect(page.getByText("This sketch has no closed shape yet, so it can't be extruded.")).toBeVisible();
   await page.getByRole("button", { name: "Finish anyway" }).click();
   await expect(page.getByRole("toolbar", { name: "Model tools" })).toBeVisible();
@@ -162,4 +162,150 @@ test("the origin is a snap point: a rectangle sized from it is fully constrained
   // Four from the rectangle, and the corner fixed on the origin.
   await expect(page.getByRole("list", { name: "Constraints" }).getByRole("listitem")).toHaveCount(5);
   await expect(page.locator(".bc-help")).toContainText(/fully constrained/i);
+});
+
+test("the sketch palette shows the state, hides sizes and looks at the sketch", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await click(page, -10, -10);
+  const far = await at(page, 10, 5);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width" }).fill("30");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height" }).fill("20");
+  await page.keyboard.press("Enter");
+
+  const palette = page.getByRole("complementary", { name: "Sketch palette" });
+  await expect(palette.getByRole("status")).toHaveText("2 degrees of freedom");
+  const sizes = palette.getByRole("checkbox", { name: "Dimensions" });
+  await expect(sizes).toBeChecked();
+  await sizes.uncheck();
+  await expect(page.getByRole("button", { name: "30 mm", exact: true })).toBeHidden();
+  await sizes.check();
+  await expect(page.getByRole("button", { name: "30 mm", exact: true })).toBeVisible();
+
+  // Turned to the side, Look at brings the view square on to the sketch again.
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("iso"));
+  await page.waitForTimeout(1200);
+  await palette.getByRole("button", { name: "Look straight at the sketch" }).click();
+  await page.waitForTimeout(1200);
+  const a = await at(page, 0, 0);
+  const b = await at(page, 10, 0);
+  expect(Math.abs(a.y - b.y)).toBeLessThan(1);
+
+  await palette.getByRole("button", { name: "Finish sketch" }).click();
+  await expect(page.getByText("Finished Sketch 1")).toBeVisible();
+});
+
+test("drag a line to slide it square across, and line ends show only while drawing", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // An unsized 20 × 10 rectangle.
+  await page.keyboard.press("r");
+  await click(page, -10, -5);
+  await click(page, 10, 5);
+  await page.keyboard.press("v");
+  await page.screenshot({ path: test.info().outputPath("select.png") });
+
+  // Grab the top edge and pull it up 7 mm, and sideways too: only the upward part counts.
+  const from = await at(page, 0, 5);
+  const to = await at(page, 4, 12);
+  await page.mouse.move(from.x, from.y, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  await page.screenshot({ path: test.info().outputPath("dragged.png") });
+
+  // The right edge is now 17 mm long.
+  await click(page, 30, 30);
+  await page.keyboard.press("d");
+  await click(page, 10, 0);
+  await expect(page.getByLabel("Length 1")).toHaveValue(/^17(\.0+)?$/);
+});
+
+test("Horizontal/Vertical stays on the pointer and picks the nearer one per line", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // A shallow line (about 27°) and a steep one (about 73°).
+  await click(page, 0, 0);
+  await click(page, 20, 10);
+  await page.keyboard.press("Escape");
+  await click(page, 40, 0);
+  await click(page, 46, 20);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+  // The first line started on the origin, so its start is fixed there.
+  await expect(constraints).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Constrain", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Horizontal/Vertical" }).click();
+  await expect(page.getByRole("group", { name: "Horizontal/Vertical options" })).toBeVisible();
+  await click(page, 10, 5);
+  await expect(constraints.filter({ hasText: "Horizontal" })).toHaveCount(1);
+  // Still armed: the next line needs only a click.
+  await click(page, 43, 10);
+  await expect(constraints.filter({ hasText: "Vertical" })).toHaveCount(1);
+  await expect(constraints).toHaveCount(3);
+  const over = await at(page, 10, 0);
+  await page.mouse.move(over.x, over.y, { steps: 3 });
+  await expect(page.locator(".bc-tool-tag")).toHaveText("Horizontal");
+  await page.screenshot({ path: test.info().outputPath("pinned.png") });
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("group", { name: "Horizontal/Vertical options" })).toBeHidden();
+  await expect(page.getByRole("group", { name: "Select options" })).toBeVisible();
+});
+
+test("place a point, size it from the origin, and put a line through the origin", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+
+  // Point: one click, and the tool stays on for the next.
+  await page.keyboard.press("p");
+  await expect(page.getByRole("button", { name: /^Point/, pressed: true })).toBeVisible();
+  await click(page, 15, 10);
+  await expect(page.locator(".bc-help")).toContainText("2 degrees of freedom");
+
+  // Dimension from the origin to the point.
+  await page.keyboard.press("d");
+  await click(page, 0, 0);
+  await click(page, 15, 10);
+  await expect(page.getByRole("textbox", { name: "Size in mm" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(constraints.filter({ hasText: "Fix" })).toHaveCount(1);
+  await expect(page.locator(".bc-help")).toContainText("1 degree of freedom");
+
+  // A line off the origin, then Coincident on the line and the origin.
+  await page.keyboard.press("l");
+  await click(page, -20, 10);
+  await click(page, -5, 30);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Constrain", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Coincident" }).click();
+  await click(page, -12.5, 20);
+  await click(page, 0, 0);
+  await expect(constraints.filter({ hasText: "On" })).toHaveCount(1);
+  await page.screenshot({ path: test.info().outputPath("origin.png") });
+  // The line now runs through the origin.
+  await page.keyboard.press("Escape");
 });

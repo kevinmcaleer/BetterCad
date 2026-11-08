@@ -17,9 +17,9 @@ The source of truth is the design system artifact: https://claude.ai/artifact/Mf
 
 ## Layout
 
-The 3D workspace fills the whole window. Everything else floats over it: the top bar, the rail, the side panels, the tool bars, the timeline, the help line and any overlay are cards (`--bc-color-bar`, a 1px `--bc-color-line` border, `--bc-radius-lg`, `--bc-shadow-float`) set `--bc-space-4` in from the window edge and from each other. Nothing docks beside the view or frames it. Panels are as tall as their content, so more of the model shows.
+The 3D workspace fills the whole window. Everything else floats over it: the top bar (with the tools beside the logo), the side panels, the tool bars, the timeline, the help line and any overlay are cards (`--bc-color-bar`, a 1px `--bc-color-line` border, `--bc-radius-lg`, `--bc-shadow-float`) set `--bc-space-4` in from the window edge and from each other. Nothing docks beside the view or frames it. Panels are as tall as their content, so more of the model shows.
 
-In the editor, `.bc-app` sets `--bc-view-top`, `--bc-view-left`, `--bc-view-right` and `--bc-view-bottom`: the part of the view no card covers. Anything drawn inside the view (the view cube, hints, the empty state, stats) uses them to stay clear. Under 900px the rail floats along the bottom and the panels are sheets just above it.
+In the editor, `.bc-app` sets `--bc-view-top`, `--bc-view-left`, `--bc-view-right` and `--bc-view-bottom`: the part of the view no card covers. Anything drawn inside the view (the view cube, hints, the empty state, stats) uses them to stay clear. Under 900px the tools float along the bottom and the panels are sheets just above them.
 
 ## Variables
 

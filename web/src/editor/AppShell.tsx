@@ -3,7 +3,8 @@ import { cx } from "@bettercad/ui";
 
 export interface AppShellProps {
   topBar: ReactNode;
-  rail: ReactNode;
+  /** The latest status message ("Added a box"), floating above the timeline. */
+  status?: ReactNode;
   /** The open rail panel, or null when it is folded away. */
   leftPanel: ReactNode | null;
   leftLabel?: string;
@@ -21,9 +22,10 @@ export interface AppShellProps {
 /**
  * The editor frame. The 3D view fills the whole window; the top bar, rail, panels, tool bars and timeline float
  * over it and never box it in. Later epics only fill the slots.
- * Under 900px the rail floats along the bottom and the panels become sheets over the view.
+ * The tools sit on the top bar; the left panel is the browser, or the panel a top-bar button opened in its place.
+ * Under 900px the tools float along the bottom and the panels become sheets over the view.
  */
-export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
+export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, stage, timeline, helpLine, rightPanel, rightOpen }: AppShellProps) {
   return (
     <div className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", !timeline && "bc-no-timeline")}>
       <a className="bc-skip" href="#bc-view">
@@ -31,7 +33,6 @@ export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, sta
       </a>
       {topBar}
       <div className="bc-body">
-        {rail}
         {leftPanel && (
           <aside className="bc-side bc-left" id="bc-left-panel" aria-label={leftLabel}>
             {leftPanel}
@@ -43,6 +44,7 @@ export function AppShell({ topBar, rail, leftPanel, leftLabel, stageToolbar, sta
           </div>
           {stage}
           <div className="bc-stage-foot" data-floats="">
+            {status && <div className="bc-status-pill">{status}</div>}
             {timeline}
             <div className="bc-help">{helpLine}</div>
           </div>

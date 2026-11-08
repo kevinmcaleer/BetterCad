@@ -14,6 +14,8 @@ export interface PropsPanelProps {
   sections: PropsSection[];
   /** Shown when there are no sections: "Select something to see its properties." */
   empty?: ReactNode;
+  /** Stays at the foot of the panel below the sections, such as the sketch palette's Finish sketch button. */
+  footer?: ReactNode;
 }
 
 const KEY = "bettercad.props.folded";
@@ -27,7 +29,7 @@ function loadFolded(): Set<string> {
 }
 
 /** The right-hand panel: titled sections that fold, each a grid of label and field rows. */
-export function PropsPanel({ label = "Properties", sections, empty }: PropsPanelProps) {
+export function PropsPanel({ label = "Properties", sections, empty, footer }: PropsPanelProps) {
   const [folded, setFolded] = useState(loadFolded);
   const toggle = (id: string) =>
     setFolded((f) => {
@@ -65,6 +67,7 @@ export function PropsPanel({ label = "Properties", sections, empty }: PropsPanel
               </section>
             );
           })}
+      {footer && <div className="bc-props-footer">{footer}</div>}
     </aside>
   );
 }

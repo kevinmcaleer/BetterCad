@@ -1,15 +1,28 @@
-import { Draft, arcFrom3, dist, polygonPoints, sub, angleOf, sampleArc, type Id, type Sketch, type Vec2, type NewConstraint } from "@bettercad/sketch";
+import {
+  Draft,
+  arcFrom3,
+  type SolveResult,
+  dist,
+  polygonPoints,
+  sub,
+  angleOf,
+  sampleArc,
+  type Id,
+  type Sketch,
+  type Vec2,
+  type NewConstraint,
+} from "@bettercad/sketch";
 import type { IconName } from "@bettercad/ui";
-import type { Snap } from "./snap";
+import { ORIGIN, isAtOrigin, type Snap } from "./snap";
 
 /**
  * The drawing tools (#53) as data: how many clicks each needs, what to preview while the pointer moves, which sizes
  * can be typed, and what one finished shape adds to the sketch. The sketch session routes pointer events here.
  */
-export type SketchToolId = "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "dimension" | "fillet" | "trim" | "offset" | "project";
+export type SketchToolId = "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "point" | "dimension" | "fillet" | "trim" | "offset" | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
-export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "polygon";
+export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "polygon" | "point";
 export const isDrawTool = (t: SketchToolId): t is DrawToolId => t in CLICKS;
 
 export interface SketchTool {
@@ -23,7 +36,7 @@ export interface SketchTool {
 }
 
 export const SKETCH_TOOLS: SketchTool[] = [
-  { id: "select", label: "Select", icon: "arrow", key: "v", help: "Click to pick, drag a point to move it. Enter finishes the sketch.", fields: [] },
+  { id: "select", label: "Select", icon: "arrow", key: "v", help: "Click to pick. Drag a point or line to move it. Enter finishes the sketch.", fields: [] },
   {
     id: "line",
     label: "Line",
@@ -44,11 +57,19 @@ export const SKETCH_TOOLS: SketchTool[] = [
   { id: "arc", label: "Arc", icon: "arc", key: "a", help: "Click where the arc starts and ends, then a point it passes through.", fields: [] },
   { id: "polygon", label: "Polygon", icon: "polygon", key: "n", help: "Click the centre, then a corner. Set the sides in the bar.", fields: ["Radius"] },
   {
+    id: "point",
+    label: "Point",
+    icon: "point",
+    key: "p",
+    help: "Click to place a point. Constrain or dimension it like any other point.",
+    fields: [],
+  },
+  {
     id: "dimension",
     label: "Dimension",
     icon: "dimension",
     key: "d",
-    help: "Click a line, circle or arc, or two points or two lines, to size them.",
+    help: "Click a line, circle or arc, or two points or two lines, to size them. The origin counts as a point.",
     fields: [],
   },
   {
@@ -74,7 +95,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
 export const toolById = (id: SketchToolId) => SKETCH_TOOLS.find((t) => t.id === id)!;
 
 /** How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. */
-export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, polygon: 2 };
+export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, polygon: 2, point: 1 };
 
 export interface Preview {
   /** Polylines in sketch mm. */
@@ -154,6 +175,13 @@ export interface Commit {
 export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed: (number | undefined)[] = [], sides = 6): Commit | null {
   const d = new Draft(sketch);
   switch (tool) {
+    case "point": {
+      const [s0] = clicks as [Snap];
+      // A point already there (a corner, a centre, the origin's point) is not doubled.
+      if (s0.ref && (s0.kind === "end" || s0.kind === "centre" || s0.kind === "origin")) return null;
+      const p = place(d, s0);
+      return { sketch: d.done().sketch, label: "Add a point", end: p };
+    }
     case "line": {
       const [s0, s1] = clicks as [Snap, Snap];
       let end = s1;
@@ -234,42 +262,117 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
   }
 }
 
-/** The constraints in the constraints group: what each needs picked, and the hint until it has it. */
+/**
+ * The constraint tools: what each needs picked, and the hint until it has it. A tool stays armed after it applies, so
+ * line after line can be clicked until Esc. Horizontal/Vertical is one tool: each line takes whichever it is nearer.
+ * The sketch origin can be picked wherever a point can.
+ */
+export type ConstraintToolId = Exclude<NewConstraint["type"], "horizontal" | "vertical"> | "horizontalVertical";
+
 export interface ConstraintTool {
-  id: NewConstraint["type"];
+  id: ConstraintToolId;
   label: string;
   hint: string;
+  /** How many picks make one constraint. */
+  picks: number;
+  /** A short mark for the tag that follows the pointer. */
+  tag: string;
 }
 
 export const CONSTRAINT_TOOLS: ConstraintTool[] = [
-  { id: "coincident", label: "Coincident", hint: "Pick two points, or a point and a line or curve" },
-  { id: "horizontal", label: "Horizontal", hint: "Pick lines" },
-  { id: "vertical", label: "Vertical", hint: "Pick lines" },
-  { id: "parallel", label: "Parallel", hint: "Pick two lines" },
-  { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines" },
-  { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves" },
-  { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs" },
-  { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs" },
-  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line" },
-  { id: "fix", label: "Fix", hint: "Pick points, lines or curves" },
-  { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line" },
+  { id: "coincident", label: "Coincident", hint: "Pick two points, or a point and a line or curve", picks: 2, tag: "Coincident" },
+  { id: "horizontalVertical", label: "Horizontal/Vertical", hint: "Pick lines", picks: 1, tag: "H/V" },
+  { id: "parallel", label: "Parallel", hint: "Pick two lines", picks: 2, tag: "Parallel" },
+  { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines", picks: 2, tag: "Perpendicular" },
+  { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves", picks: 2, tag: "Tangent" },
+  { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs", picks: 2, tag: "Equal" },
+  { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs", picks: 2, tag: "Concentric" },
+  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line, or two lines to line up their midpoints", picks: 2, tag: "Midpoint" },
+  { id: "fix", label: "Fix", hint: "Pick points, lines or curves", picks: 1, tag: "Fix" },
+  { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line", picks: 3, tag: "Symmetric" },
 ];
+
+export const constraintToolById = (id: ConstraintToolId) => CONSTRAINT_TOOLS.find((t) => t.id === id)!;
+
+/**
+ * Horizontal or vertical for a line, by its angle from the horizon: up to 45° is horizontal, past it vertical.
+ * Null when the id is not a line.
+ */
+export function levelOrUpright(sketch: Sketch, id: Id): "horizontal" | "vertical" | null {
+  const line = sketch.entities.find((e) => e.id === id);
+  if (line?.kind !== "line") return null;
+  const at = (p: Id) => sketch.entities.find((e) => e.id === p);
+  const a = at(line.a);
+  const b = at(line.b);
+  if (a?.kind !== "point" || b?.kind !== "point") return null;
+  return Math.abs(b.y - a.y) > Math.abs(b.x - a.x) ? "vertical" : "horizontal";
+}
+
+/**
+ * Swaps a picked origin for a real point fixed on it, as Fusion ties geometry to the sketch's origin point: the one
+ * already there if the sketch has it, otherwise a new one. Picks without the origin come back unchanged.
+ */
+export function resolveOrigin(sketch: Sketch, picked: Id[], origin: Vec2 = [0, 0]): { sketch: Sketch; picked: Id[] } {
+  if (!picked.includes(ORIGIN)) return { sketch, picked };
+  const fixed = new Set(sketch.constraints.flatMap((c) => (c.type === "fix" && !c.suppressed ? [c.p] : [])));
+  let id = sketch.entities.find((e) => e.kind === "point" && fixed.has(e.id) && isAtOrigin([e.x, e.y], origin))?.id;
+  let next = sketch;
+  if (!id) {
+    const d = new Draft(sketch);
+    id = d.point(origin);
+    d.constrain({ type: "fix", p: id });
+    next = d.done().sketch;
+  }
+  return { sketch: next, picked: picked.map((p) => (p === ORIGIN ? id! : p)) };
+}
+
+/** Stands in for a new construction point at the first picked line's midpoint; `addConstraints` makes it. */
+export const MIDPOINT_OF_FIRST = "@midpoint";
+
+/**
+ * A constraint tool on a selection: the sketch with its constraints added, or the hint when the selection does not
+ * fit. Midpoint on two lines adds a construction point at the first line's midpoint and ties both lines to it.
+ */
+export function addConstraints(type: ConstraintToolId, base: Sketch, chosen: Id[], origin?: Vec2): Sketch | string {
+  const { sketch, picked } = resolveOrigin(base, chosen, origin);
+  const out = constraintsFor(type, sketch, picked);
+  if (typeof out === "string") return out;
+  const dr = new Draft(sketch);
+  let mid: Id | undefined;
+  for (const c of out) {
+    if (c.type === "midpoint" && c.p === MIDPOINT_OF_FIRST) {
+      if (!mid) {
+        const l = sketch.entities.find((e) => e.id === c.line);
+        if (l?.kind !== "line") return constraintToolById(type).hint;
+        const [ax, ay] = dr.xy(l.a);
+        const [bx, by] = dr.xy(l.b);
+        mid = dr.point([(ax + bx) / 2, (ay + by) / 2], true);
+      }
+      dr.constrain({ ...c, p: mid });
+    } else dr.constrain(c);
+  }
+  return dr.done().sketch;
+}
 
 /**
  * The constraints a constraint tool adds for a selection, or the hint when the selection does not fit. Lines and
  * curves may be picked where points are wanted for Fix (their points are fixed).
  */
-export function constraintsFor(type: ConstraintTool["id"], sketch: Sketch, picked: Id[]): NewConstraint[] | string {
+export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: Id[]): NewConstraint[] | string {
   const kinds = picked.map((id) => sketch.entities.find((e) => e.id === id)?.kind);
   const only = (k: string[]) => kinds.length > 0 && kinds.every((x) => x && k.includes(x));
-  const hint = CONSTRAINT_TOOLS.find((t) => t.id === type)!.hint;
+  const hint = constraintToolById(type).hint;
   const two = picked.length === 2;
   const [a, b] = picked as [Id, Id];
   const curve = (k?: string) => k === "circle" || k === "arc";
   switch (type) {
-    case "horizontal":
-    case "vertical":
-      return only(["line"]) ? picked.map((e) => ({ type, e })) : hint;
+    case "horizontalVertical": {
+      if (!only(["line"])) return hint;
+      const set = new Set(sketch.constraints.flatMap((c) => (c.type === "horizontal" || c.type === "vertical" ? [c.e] : [])));
+      const fresh = picked.filter((e) => !set.has(e));
+      if (!fresh.length) return picked.length === 1 ? "That line is already horizontal or vertical" : "Those lines are already horizontal or vertical";
+      return fresh.map((e) => ({ type: levelOrUpright(sketch, e)!, e }));
+    }
     case "parallel":
     case "perpendicular":
       return two && only(["line"]) ? [{ type, a, b }] : hint;
@@ -288,7 +391,18 @@ export function constraintsFor(type: ConstraintTool["id"], sketch: Sketch, picke
     case "midpoint": {
       const p = picked[kinds.indexOf("point")];
       const line = picked[kinds.indexOf("line")];
-      return two && p && line ? [{ type, p, line }] : hint;
+      if (two && p && line) return [{ type, p, line }];
+      // Two lines: their midpoints meet, through one line's midpoint (a new construction point if it has none).
+      if (two && only(["line"])) {
+        const mid = sketch.constraints.find((c) => c.type === "midpoint" && !c.suppressed && c.line === a);
+        return mid?.type === "midpoint"
+          ? [{ type, p: mid.p, line: b }]
+          : [
+              { type, p: MIDPOINT_OF_FIRST, line: a },
+              { type, p: MIDPOINT_OF_FIRST, line: b },
+            ];
+      }
+      return hint;
     }
     case "fix": {
       const pts = new Set<Id>();
@@ -309,4 +423,16 @@ export function constraintsFor(type: ConstraintTool["id"], sketch: Sketch, picke
     default:
       return hint;
   }
+}
+
+/**
+ * The redundant constraints a strict change adds: none when the sketch was already this redundant before it (a fixed
+ * line that is also horizontal, say), so old redundancy never blocks a new constraint.
+ */
+export function newlyRedundant(before: Pick<SolveResult, "status" | "redundant"> | null, after: Pick<SolveResult, "status" | "redundant">): Id[] {
+  if (after.status !== "redundant") return [];
+  const old = new Set(before?.status === "redundant" ? before.redundant : []);
+  if (after.redundant.length <= old.size) return [];
+  const fresh = after.redundant.filter((id) => !old.has(id));
+  return fresh.length ? fresh : after.redundant;
 }

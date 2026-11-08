@@ -9,7 +9,7 @@ export const THEME_NAMES: Record<ThemeId, string> = {
   "holodeck": "Holodeck"
 };
 
-export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-highlight" | "part-ghost" | "snap" | "picked" | "picked-edge" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room";
+export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room";
 
 /** Every colour token's value in every theme. */
 export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
@@ -30,6 +30,7 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "part-highlight": "#9db8f5",
     "part-ghost": "#a6a6a6",
     "snap": "#1f6fe0",
+    "dimension": "#237a2e",
     "picked": "#ff922b",
     "picked-edge": "#d9480f",
     "danger": "#c92a2a",
@@ -69,6 +70,7 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "part-highlight": "#5b86d6",
     "part-ghost": "#6b6f78",
     "snap": "#5b9cf6",
+    "dimension": "#6fd47a",
     "picked": "#ffa94d",
     "picked-edge": "#ff922b",
     "danger": "#ff6b6b",
@@ -108,6 +110,7 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "part-highlight": "#3b6fd6",
     "part-ghost": "#6b6f78",
     "snap": "#5b9cf6",
+    "dimension": "#6fd47a",
     "picked": "#ffa94d",
     "picked-edge": "#ff922b",
     "danger": "#ff6b6b",

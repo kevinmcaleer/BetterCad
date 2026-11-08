@@ -56,7 +56,7 @@ test("the printer's hole offset sizes printed holes, and Update brings old ones 
   await expect(page.getByText("Made 1 hole in Box 1")).toBeVisible();
 
   // A tighter printer: the hole made at 0.4 mm is offered an update.
-  await page.getByRole("navigation").getByRole("button", { name: "Print" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
   const offset = page.getByRole("textbox", { name: "Hole offset (mm)" });
   await expect(offset).toHaveValue("0.4");
   await offset.fill("0.2");
@@ -66,14 +66,14 @@ test("the printer's hole offset sizes printed holes, and Update brings old ones 
   await expect(page.getByRole("button", { name: "Update 1 hole", exact: true })).toHaveCount(0);
 
   // 20³ less one 3.2 mm bore.
-  await page.getByRole("navigation").getByRole("button", { name: "Browser" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Browser", exact: true }).click();
   await page.getByRole("treeitem", { name: /Box 1/ }).click();
   await expect(page.getByText("7,839.2 mm³")).toBeVisible({ timeout: 20_000 });
 });
 
 test("Calibrate opens the hole calibration coupon", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("navigation").getByRole("button", { name: "Print" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Print", exact: true }).click();
   await page.getByRole("button", { name: "Calibrate holes" }).click();
   await expect(page.getByText(/Opened the hole calibration sample/)).toBeVisible({ timeout: 20_000 });
 });
