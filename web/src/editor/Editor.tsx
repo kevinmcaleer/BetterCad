@@ -39,6 +39,7 @@ import {
   profileFromSettings,
   PRIMITIVES,
   addLink,
+  stampComponent,
   changeParts,
   duplicateParts,
   featureParts,
@@ -507,13 +508,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         .slice(0, at)
         .flatMap((f) =>
           f.type === "construct" && !f.suppressed
-            ? [{ id: f.id, name: f.name, what: kindInfo(f.kind).what, hidden: !!doc.looks[f.id]?.hidden, warning: failed.get(f.id) }]
+            ? [{ id: f.id, name: f.name, what: kindInfo(f.kind).what, hidden: !!doc.looks[f.id]?.hidden, warning: failed.get(f.id), component: f.component }]
             : [],
         ),
     [doc.features, doc.looks, at, failed],
   );
   const browserSketches = useMemo(
-    () => built.sketches.map((s) => ({ id: s.id, name: s.name, hidden: !!doc.looks[s.id]?.hidden, warning: failed.get(s.id) })),
+    () => built.sketches.map((s) => ({ id: s.id, name: s.name, hidden: !!doc.looks[s.id]?.hidden, warning: failed.get(s.id), component: s.component })),
     [built.sketches, doc.looks, failed],
   );
   const sketch = useSketch({
@@ -694,7 +695,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const posing = tool === "select" && !sketch.editing;
   // Drive links (#194): the pose keeps the driving joints' values; the driven ones follow.
   const shownPose = useMemo(() => resolvePose(built.drives, pose), [built.drives, pose]);
-  const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose), [built.joints, shownPose]);
+  const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose, built.components), [built.joints, shownPose, built.components]);
   const drivesRef = useRef({ joints: built.joints, drives: built.drives });
   drivesRef.current = { joints: built.joints, drives: built.drives };
   const changePose = useCallback(
@@ -1153,21 +1154,39 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [record, say],
   );
 
-  // Links (#171): bodies named as one rigid part of a robot, kept as separate bodies.
+  // Components (#171, Fusion's): the active one gets the bodies, sketches and construction made while it's active.
+  // It's view state, as the marker is; a component that's gone or rolled past leaves the model active.
+  const [activeComp, setActiveComp] = useState<string | null>(null);
+  const workIn = activeComp && built.components.some((c) => c.id === activeComp) ? activeComp : null;
+  useEffect(() => {
+    store.setStamp(workIn ? (before, after) => stampComponent(before, after, workIn) : null);
+    return () => store.setStamp(null);
+  }, [store, workIn]);
+  const activate = useCallback(
+    (id: string | null) => {
+      setActiveComp(id);
+      const c = live.current.doc.features.find((f) => f.id === id);
+      say(c ? `${c.name} is active. What you make now goes into it.` : "The model is active.");
+    },
+    [say],
+  );
+  // New component: of the selected bodies, kept as separate bodies, or an empty one to work in, which becomes active.
+  // Either sits inside the active component.
   const makeLink = useCallback(
     (ids: string[]) => {
-      if (!ids.length) return;
       const id = newId("f");
-      const name = addLink(live.current.doc, ids, id).features.find((f) => f.id === id)!.name;
-      record((d, at) => addLink(d, ids, id, at), `Make ${name}`);
+      const parent = workIn ?? undefined;
+      const name = addLink(live.current.doc, ids, id, undefined, parent).features.find((f) => f.id === id)!.name;
+      record((d, at) => addLink(d, ids, id, at, parent), `Make ${name}`);
+      if (!ids.length) return activate(id);
       say(`Made ${name} of ${ids.length === 1 ? "1 body" : `${ids.length} bodies`}. They stay separate bodies.`);
     },
-    [record, say],
+    [record, say, workIn, activate],
   );
   const selectLink = useCallback(
     (ids: string[]) => {
       const part = live.current.parts.find((p) => ids.includes(p.id) && p.link);
-      if (!part) return say("That body isn't in a link", true);
+      if (!part) return say("That body isn't in a component", true);
       setSelection(live.current.parts.filter((p) => p.link === part.link).map((p) => p.id));
     },
     [say],
@@ -1184,7 +1203,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
 
   const toggle = useCallback(
-    (ids: string[], what: RowToggle) => {
+    (ids: string[], what: Exclude<RowToggle, "active">) => {
       const chosen = live.current.parts.filter((p) => ids.includes(p.id));
       if (!chosen.length) return;
       const on = !chosen.every((p) => !!p[what]);
@@ -2065,19 +2084,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       {
         id: "link.make",
         scope: "model",
-        label: "Make link",
+        label: "New component",
         group: "Edit",
-        icon: "link",
+        icon: "component",
         run: () => h().makeLink(sel()),
-        when: hasSel,
-        keywords: "robot rigid link body group joint urdf",
+        keywords: "robot rigid link body group joint urdf assembly part",
       },
       {
         id: "link.select",
         scope: "model",
-        label: "Select link",
+        label: "Select component",
         group: "Edit",
-        icon: "link",
+        icon: "component",
         run: () => h().selectLink(sel()),
         when: () => live.current.parts.some((p) => sel().includes(p.id) && !!p.link),
         keywords: "robot rigid link bodies",
@@ -2909,8 +2927,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
         ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
-      { id: "make-link", label: "Make link", icon: "link", onSelect: () => makeLink(ids) },
-      ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select link", icon: "link" as const, onSelect: () => selectLink(ids) }] : []),
+      { id: "make-link", label: "New component", icon: "component", onSelect: () => makeLink(ids) },
+      ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select component", icon: "component" as const, onSelect: () => selectLink(ids) }] : []),
       {
         id: "reference",
         label: chosen.length && chosen.every((p) => p.reference) ? "Make printable" : "Make a reference",
@@ -3184,6 +3202,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onConstruct={startConstruct}
             mirrorOn={mirrorOn}
             onMirror={() => toolbarPattern(true)}
+            onNewComponent={() => makeLink([])}
             panel={panel}
             onPanel={showPanel}
             canUndo={store.canUndo()}
@@ -3270,7 +3289,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               renameId={renameId}
               onRenameIdChange={setRenameId}
               sketches={browserSketches}
-              links={built.links}
+              links={built.components}
+              activeComponent={workIn}
+              onActivate={activate}
               joints={built.joints}
               poses={posesProps}
               origin={originShown}

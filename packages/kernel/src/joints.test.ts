@@ -110,13 +110,13 @@ describe("joint steps", () => {
         d,
         d.features.find((f) => f.id === "J1")!,
       ),
-    ).toBe("Hinge (revolute): Link 1 on Base, -90° to 90°");
+    ).toBe("Hinge (revolute): Component 1 on Base, -90° to 90°");
     expect(
       featureSummary(
         d,
         d.features.find((f) => f.id === "J2")!,
       ),
-    ).toBe("Slider (prismatic): Link 2 on Link 1, 0 mm to 40 mm");
+    ).toBe("Slider (prismatic): Component 2 on Component 1, 0 mm to 40 mm");
     expect(dependsOn(d, "J2").sort()).toEqual(["A", "B", "J1"].sort());
   });
 

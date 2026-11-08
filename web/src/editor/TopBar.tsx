@@ -67,6 +67,8 @@ export interface TopBarProps {
   /** Mirror (#69): its own button before Pattern, though both arm the Pattern tool. */
   mirrorOn?: boolean;
   onMirror?: () => void;
+  /** New component (#171): an empty one to work in, inside the active one. From bodies is on their menu. */
+  onNewComponent?: () => void;
 }
 
 /** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
@@ -166,6 +168,7 @@ export function TopBar(p: TopBarProps) {
                 {i > 0 && <Toolbar.Separator />}
                 {g.id === "make" && (
                   <>
+                    <ToolButton icon="component" label="New component" onPress={p.onNewComponent} />
                     <ToolButton icon="shapes" label="Library" pressed={p.panel === "library"} onPress={panelToggle(p, "library")} />
                     <ToolButton icon="screw" label="Catalogue" pressed={p.panel === "robot"} onPress={panelToggle(p, "robot")} />
                   </>
@@ -202,12 +205,7 @@ export function TopBar(p: TopBarProps) {
       <span className="bc-grow" />
       <IconButton className="bc-find" icon="search" title={`Find a command (${formatCombo("mod+k")})`} onClick={p.onPalette} />
       <IconButton className="bc-props-toggle" icon="info" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
-      {!p.shared && (
-        <>
-          <IconButton icon="sliders" title="Parameters" on={p.panel === "params"} onClick={panelToggle(p, "params")} />
-          <IconButton icon="printer" title="Print" on={p.panel === "print"} onClick={panelToggle(p, "print")} />
-        </>
-      )}
+      {!p.shared && <IconButton icon="sliders" title="Parameters" on={p.panel === "params"} onClick={panelToggle(p, "params")} />}
       {p.shared ? (
         <>
           <span className="bc-owner">by {p.shared.owner}</span>
@@ -243,6 +241,7 @@ export function TopBar(p: TopBarProps) {
               ? [{ id: "signin", label: "Sign in", icon: "user" as const, onSelect: () => go("#/signin?next=%23%2F") }]
               : [{ id: "signin", label: "Accounts can't be reached here", icon: "cloudOff" as const, disabled: true, onSelect: () => {} }]),
           { kind: "separator", id: "s1" },
+          ...(p.shared ? [] : [{ id: "print", label: "Print settings", icon: "printer" as const, onSelect: () => p.onPanel("print") }]),
           { id: "settings", label: "Settings", icon: "settings" as const, onSelect: () => p.onPanel("settings") },
           ...(p.onInstall ? [{ id: "install", label: "Install BetterCad", icon: "download" as const, onSelect: p.onInstall }] : []),
           { kind: "title", id: "t", label: "Theme" },

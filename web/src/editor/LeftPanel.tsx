@@ -52,7 +52,7 @@ export interface LeftPanelProps {
   selection: string[];
   onSelect: (ids: string[]) => void;
   onAdd: (kind: PartKind) => void;
-  onToggle: (id: string, what: RowToggle) => void;
+  onToggle: (id: string, what: Exclude<RowToggle, "active">) => void;
   onRename: (id: string, name: string) => void;
   /** The model's name, renamed from the top of the browser. */
   onRenameModel: (name: string) => void;
@@ -64,8 +64,10 @@ export interface LeftPanelProps {
   onRenameIdChange: (id: string | null) => void;
   /** The browser's sketches, origin planes and their eyes. */
   sketches: BrowserSketch[];
-  /** Links (#171) as built. */
+  /** Components (#171) as built, empty ones too, and the one you're working in. */
   links?: BuiltLink[];
+  activeComponent?: string | null;
+  onActivate?: (id: string | null) => void;
   /** Joints (#172) as built. */
   joints?: JointFeature[];
   /** Named poses (#177) and what to do with them, under Joints in the browser. */
@@ -157,6 +159,7 @@ function PartsPanel(p: LeftPanelProps) {
         origin: p.origin,
         readOnly: p.readOnly,
         links: p.links,
+        active: p.activeComponent,
         joints: p.joints,
         construct: p.construct,
         poses: p.poses?.poses,
@@ -166,6 +169,7 @@ function PartsPanel(p: LeftPanelProps) {
       onSelect={p.onSelect}
       onAdd={p.onAdd}
       onToggle={p.onToggle}
+      onActivate={p.onActivate}
       onBodiesHidden={p.onBodiesHidden}
       onSketchesHidden={p.onSketchesHidden}
       onOrigin={p.onOrigin}

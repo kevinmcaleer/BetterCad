@@ -180,41 +180,67 @@ describe("BrowserPanel", () => {
   });
 });
 
-describe("robot tree (#171)", () => {
-  const linked = () => {
-    const d = addLink(addPart(addPart(addPart(newDoc("Rover"), "box", "a"), "cylinder", "b"), "box", "c"), ["a", "b"], "L1");
+describe("components (#171)", () => {
+  // Bodies a and b in Component 1, c in the model; Component 2 inside Component 1 holds d, with a sketch.
+  const nested = (over: Partial<BrowserModel> = {}): BrowserModel => {
+    let d = addPart(addPart(addPart(addPart(newDoc("Rover"), "box", "a"), "cylinder", "b"), "box", "c"), "box", "d");
+    d = addLink(d, ["a", "b"], "L1");
+    d = addLink(d, ["d"], "L2", undefined, "L1");
     const b = build(d);
-    return { ...model(), parts: b.parts, links: b.links };
+    return { ...model(), parts: b.parts, links: b.components, sketches: [{ id: "s1", name: "Sketch 1", hidden: false, component: "L2" }], ...over };
   };
+  const tree = (m: BrowserModel) => browserItems(m).map((i) => `${i.parentId ?? "-"} > ${i.name}${i.note ? ` (${i.note})` : ""}`);
 
-  it("hides the Robot folder until there is a link", () => {
-    expect(browserItems(model()).some((i) => i.id === ROW.robot)).toBe(false);
-  });
-
-  it("lists Base, then each link with its body count", () => {
-    const items = browserItems(linked());
-    expect(items.find((i) => i.id === ROW.robot)).toMatchObject({ name: "Robot", note: "1" });
-    expect(items.filter((i) => i.parentId === ROW.robot).map((i) => [i.name, i.note])).toEqual([
-      ["Base", "1 body"],
-      ["Link 1", "2 bodies"],
+  it("lists each component's bodies and sketches inside it, nested, after the model's own", () => {
+    expect(tree(nested())).toEqual([
+      "- > Rover",
+      `${ROW.root} > Origin`,
+      `${ROW.origin} > Origin point`,
+      `${ROW.origin} > XY plane`,
+      `${ROW.origin} > XZ plane`,
+      `${ROW.origin} > YZ plane`,
+      `${ROW.root} > Bodies (1)`,
+      `${ROW.bodies} > Box 2`,
+      `${ROW.root} > Component 1 (2 bodies)`,
+      `L1 > Bodies (2)`,
+      `${ROW.bodies}:L1 > Box 1`,
+      `${ROW.bodies}:L1 > Cylinder 1`,
+      `L1 > Component 2 (1 body)`,
+      `L2 > Bodies (1)`,
+      `${ROW.bodies}:L2 > Box 3`,
+      `L2 > Sketches (1)`,
+      `${ROW.sketches}:L2 > Sketch 1`,
+      `${ROW.root} > Joints (None yet)`,
     ]);
   });
 
-  it("selects a link's bodies from its row, and Base's from Base", () => {
-    expect(browserPick(["L1"], linked()).parts).toEqual(["a", "b"]);
-    expect(browserPick([ROW.base], linked()).parts).toEqual(["c"]);
+  it("shows an empty component, and the active one's radio on", () => {
+    const m = nested({ links: [...nested().links!, { id: "L3", name: "Component 3", parts: [] }], active: "L3" });
+    const items = browserItems(m);
+    expect(items.find((i) => i.id === "L3")).toMatchObject({ note: "Empty", active: true, toggles: ["active"] });
+    expect(items.find((i) => i.id === "L1")).toMatchObject({ active: false });
+    expect(items[0]).toMatchObject({ toggles: ["active"], active: false });
+    expect(browserItems(nested({ readOnly: true })).find((i) => i.id === "L1")).toMatchObject({ toggles: [] });
   });
 
-  it("shows the tree by role and selects a link's bodies on click", async () => {
+  it("selects a component's bodies with those inside it, and a Bodies folder's own", () => {
+    expect(browserPick(["L1"], nested()).parts).toEqual(["a", "b", "d"]);
+    expect(browserPick(["L2"], nested()).parts).toEqual(["d"]);
+    expect(browserPick([ROW.bodies], nested()).parts).toEqual(["c"]);
+    expect(browserPick([`${ROW.bodies}:L1`], nested()).parts).toEqual(["a", "b"]);
+  });
+
+  it("activates a component from its radio, and the model from its own", async () => {
+    const onActivate = vi.fn();
     const onSelect = vi.fn();
-    const m = linked();
     render(
       <BrowserPanel
-        model={m}
+        model={nested({ active: "L1" })}
         selection={[]}
         onSelect={onSelect}
         onAdd={() => {}}
         onToggle={() => {}}
+        onActivate={onActivate}
         onBodiesHidden={() => {}}
         onSketchesHidden={() => {}}
         onOrigin={() => {}}
@@ -231,15 +257,18 @@ describe("robot tree (#171)", () => {
         onRenameIdChange={() => {}}
       />,
     );
-    expect(row(/^Robot/)).toBeInTheDocument();
-    expect(row(/^Base/)).toBeInTheDocument();
-    await userEvent.click(screen.getByText("Link 1"));
-    expect(onSelect).toHaveBeenLastCalledWith(["a", "b"]);
+    await userEvent.click(screen.getByRole("button", { name: "Activate Component 2" }));
+    expect(onActivate).toHaveBeenLastCalledWith("L2");
+    await userEvent.click(screen.getByRole("button", { name: "Activate Rover" }));
+    expect(onActivate).toHaveBeenLastCalledWith(null);
+    expect(screen.getByRole("button", { name: "Working in Component 1" })).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Component 2"));
+    expect(onSelect).toHaveBeenLastCalledWith(["d"]);
   });
 });
 
 describe("joints in the browser (#172)", () => {
-  it("lists joints, and hangs each link under the link its joint hangs from", () => {
+  it("lists joints, and names each component's joint on its row", () => {
     let d = addPart(addPart(addPart(newDoc("Arm"), "box", "a"), "box", "b"), "box", "c");
     d = addLink(addLink(d, ["b"], "L1"), ["c"], "L2");
     const axis = { origin: [0, 0, 0] as [number, number, number], axis: [0, 0, 1] as [number, number, number] };
@@ -252,11 +281,9 @@ describe("joints in the browser (#172)", () => {
       ["Joint 1", "Hinge"],
       ["Joint 2", "Wheel"],
     ]);
-    expect(items.find((i) => i.id === "L1")).toMatchObject({ parentId: ROW.base, note: "1 body, hinge on Joint 1" });
-    expect(items.find((i) => i.id === "L2")).toMatchObject({ parentId: "L1", note: "1 body, wheel on Joint 2" });
-    // Children come after their parent.
-    const order = items.map((i) => i.id);
-    expect(order.indexOf("L2")).toBeGreaterThan(order.indexOf("L1"));
+    // Joints don't nest components: where each sits is up to you, as in Fusion.
+    expect(items.find((i) => i.id === "L1")).toMatchObject({ parentId: ROW.root, note: "1 body, hinge on Joint 1" });
+    expect(items.find((i) => i.id === "L2")).toMatchObject({ parentId: ROW.root, note: "1 body, wheel on Joint 2" });
   });
 });
 

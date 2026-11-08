@@ -120,26 +120,26 @@ export function jointMotion(j: Pick<PoseJoint, "kind" | "origin" | "axis">, valu
 
 /**
  * Forward kinematics: where each jointed link sits in the pose, as a transform from home, by link id. A child moves
- * with its parent and then about its own joint, in the parent's moved frame. Links that hang from nothing, and joints
- * whose parent isn't reached (a loop, which the build already refuses), stay at home and are left out.
+ * with its parent and then about its own joint, in the parent's moved frame. A component inside another (`nested`, its
+ * parent by id) with no joint of its own rides on its parent (#171). Links that hang from nothing, and joints in a loop
+ * (which the build already refuses), stay at home and are left out.
  */
-export function linkTransforms(joints: PoseJoint[], pose: Pose | undefined): Map<string, Mat4> {
-  const out = new Map<string, Mat4>();
-  const byParent = new Map<string | null, PoseJoint[]>();
-  for (const j of joints) byParent.set(j.parent, [...(byParent.get(j.parent) ?? []), j]);
-  // Roots are joints on Base or on a link that has no joint of its own.
-  const children = new Set(joints.map((j) => j.child));
-  const queue: { j: PoseJoint; parent: Mat4 }[] = joints.filter((j) => j.parent === null || !children.has(j.parent)).map((j) => ({ j, parent: IDENTITY }));
-  const seen = new Set<string>();
-  while (queue.length) {
-    const { j, parent } = queue.shift()!;
-    if (seen.has(j.child)) continue;
-    seen.add(j.child);
-    const m = mat4Mul(parent, jointMotion(j, jointValue(j, pose)));
-    out.set(j.child, m);
-    for (const c of byParent.get(j.child) ?? []) queue.push({ j: c, parent: m });
-  }
-  return out;
+export function linkTransforms(joints: PoseJoint[], pose: Pose | undefined, nested?: { id: string; parent?: string }[]): Map<string, Mat4> {
+  const out = new Map<string, Mat4 | null>();
+  const jointOf = new Map(joints.map((j) => [j.child, j]));
+  const parentOf = new Map((nested ?? []).flatMap((l) => (l.parent ? [[l.id, l.parent] as const] : [])));
+  const at = (id: string | null | undefined, path: Set<string>): Mat4 | null => {
+    if (!id || path.has(id)) return null;
+    if (out.has(id)) return out.get(id)!;
+    path.add(id);
+    const j = jointOf.get(id);
+    const m = j ? mat4Mul(at(j.parent, path) ?? IDENTITY, jointMotion(j, jointValue(j, pose))) : at(parentOf.get(id), path);
+    path.delete(id);
+    out.set(id, m);
+    return m;
+  };
+  for (const id of new Set([...jointOf.keys(), ...parentOf.keys()])) at(id, new Set());
+  return new Map([...out].filter((e): e is [string, Mat4] => e[1] !== null));
 }
 
 /** Each joint's origin and axis in the pose, by joint id: they ride on the parent link. */

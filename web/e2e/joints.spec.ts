@@ -20,8 +20,8 @@ test("hang a link from Base on a hinge, back out a pick with Esc, then make it a
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click();
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
-  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
 
   await page
     .getByRole("toolbar", { name: "Model tools" })
@@ -31,10 +31,10 @@ test("hang a link from Base on a hinge, back out a pick with Esc, then make it a
   await click(page, 0, 0, 20);
   await expect(page.getByText(/That body is in Base/)).toBeVisible();
   await click(page, 25, 0, 20);
-  await expect(page.getByText("Moves: Link 1")).toBeVisible();
+  await expect(page.getByText("Moves: Component 1")).toBeVisible();
   // Esc backs out the pick, then pick it again.
   await page.keyboard.press("Escape");
-  await expect(page.getByText("Moves: Link 1")).toHaveCount(0);
+  await expect(page.getByText("Moves: Component 1")).toHaveCount(0);
   await click(page, 25, 0, 20);
   await page.getByRole("button", { name: "Base", exact: true }).click();
   await expect(page.getByText("Hangs from: Base")).toBeVisible();
@@ -45,10 +45,10 @@ test("hang a link from Base on a hinge, back out a pick with Esc, then make it a
   await page.getByRole("button", { name: "Slider (prismatic)" }).click();
   await expect(page.getByRole("textbox", { name: "Upper" })).toHaveValue("50");
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Made Joint 1: slider, Link 1 on Base")).toBeVisible();
+  await expect(page.getByText("Made Joint 1: slider, Component 1 on Base")).toBeVisible();
 
   await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
-  await expect(page.getByRole("treeitem", { name: /^Link 1.*slider on Joint 1/ })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Component 1 1 body, slider on Joint 1/ })).toBeVisible();
 });
 
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */
@@ -60,14 +60,14 @@ test("pose a hinge with its slider and send it home", async ({ page }) => {
     await page.getByRole("button", { name: "Box", exact: true }).click();
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
-  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
   await click(page, 25, 0, 20);
-  await expect(page.getByText("Moves: Link 1")).toBeVisible();
+  await expect(page.getByText("Moves: Component 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
   await expect(page.getByText("Hangs from: Base")).toBeVisible();
   await click(page, 25, 0, 20);
@@ -106,14 +106,14 @@ test("drag a link round its hinge in the view, and Esc puts it back", async ({ p
     await page.getByRole("button", { name: "Box", exact: true }).click();
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
-  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
   await click(page, 25, 0, 20);
-  await expect(page.getByText("Moves: Link 1")).toBeVisible();
+  await expect(page.getByText("Moves: Component 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
   await expect(page.getByText("Hangs from: Base")).toBeVisible();
   // The top face: a hinge about Z through (25, 0, 20).
@@ -177,14 +177,14 @@ test("export the robot as URDF", async ({ page }) => {
     await page.getByRole("button", { name: "Box", exact: true }).click();
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
-  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
   await click(page, 25, 0, 20);
-  await expect(page.getByText("Moves: Link 1")).toBeVisible();
+  await expect(page.getByText("Moves: Component 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
   await expect(page.getByText("Hangs from: Base")).toBeVisible();
   await click(page, 25, 0, 20);
@@ -206,8 +206,8 @@ test("export the robot as URDF", async ({ page }) => {
   expect(out.name).toMatch(/\.zip$/);
   // Stored, not compressed, so the .urdf reads straight out of the .zip.
   expect(out.text).toContain('<joint name="Joint_1" type="revolute">');
-  expect(out.text).toContain('<child link="Link_1"/>');
-  expect(out.text).toMatch(/<mesh filename="package:\/\/\w+\/meshes\/Link_1\.stl"\/>/);
+  expect(out.text).toContain('<child link="Component_1"/>');
+  expect(out.text).toMatch(/<mesh filename="package:\/\/\w+\/meshes\/Component_1\.stl"\/>/);
   expect(out.text).toContain("/meshes/base_link.stl");
 });
 
@@ -220,16 +220,16 @@ test("drive one hinge from another, and play it", async ({ page }) => {
     await page.getByRole("button", { name: "Box", exact: true }).click();
   }
   for (const [box, link] of [
-    ["Box 2", "Link 1"],
-    ["Box 1", "Link 2"],
+    ["Box 2", "Component 1"],
+    ["Box 1", "Component 2"],
   ] as const) {
     await page.getByRole("treeitem", { name: new RegExp(`^${box}`) }).click({ button: "right" });
-    await page.getByRole("menuitem", { name: /Make link/ }).click();
+    await page.getByRole("menuitem", { name: /New component/ }).click();
     await expect(page.getByText(`Made ${link} of 1 body`)).toBeVisible();
   }
   for (const [x, link, joint] of [
-    [25, "Link 1", "Joint 1"],
-    [0, "Link 2", "Joint 2"],
+    [25, "Component 1", "Joint 1"],
+    [0, "Component 2", "Joint 2"],
   ] as const) {
     await page
       .getByRole("toolbar", { name: "Model tools" })
@@ -288,14 +288,14 @@ test("drag an arm by its tool point", async ({ page }) => {
     await page.getByRole("button", { name: "Box", exact: true }).click();
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
-  await expect(page.getByText("Made Link 1 of 1 body")).toBeVisible();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
   await click(page, 25, 0, 20);
-  await expect(page.getByText("Moves: Link 1")).toBeVisible();
+  await expect(page.getByText("Moves: Component 1")).toBeVisible();
   await page.getByRole("button", { name: "Base", exact: true }).click();
   await expect(page.getByText("Hangs from: Base")).toBeVisible();
   await click(page, 25, 0, 20);
@@ -311,7 +311,7 @@ test("drag an arm by its tool point", async ({ page }) => {
   await page.getByRole("option", { name: /Set tool point/ }).click();
   await expect(page.getByText("Click a point on a link to drag the arm by. Esc cancels.")).toBeVisible();
   await click(page, 33, 0, 20);
-  await expect(page.getByText("Set the tool point on Link 1. Drag Link 1 to move the arm.")).toBeVisible();
+  await expect(page.getByText("Set the tool point on Component 1. Drag Component 1 to move the arm.")).toBeVisible();
 
   const box = (await page.getByTestId("view-canvas").boundingBox())!;
   const at = async (p: number[]) => {
@@ -400,7 +400,7 @@ test("save a named pose and go back to it", async ({ page }) => {
     await page.getByRole("button", { name: "Box", exact: true }).click();
   }
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
@@ -450,7 +450,7 @@ test("sweep a joint for clashes and set the limit it suggests", async ({ page })
   await x.fill("22");
   await x.press("Enter");
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
   await page
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })

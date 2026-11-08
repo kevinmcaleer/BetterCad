@@ -103,21 +103,21 @@ test("mirror a component into a new component", async ({ page }) => {
   await page.getByRole("treeitem", { name: /^Box 1/ }).click();
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ modifiers: ["ControlOrMeta"] });
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
-  await page.getByRole("menuitem", { name: /Make link/ }).click();
-  await expect(page.getByText("Made Link 1 of 2 bodies")).toBeVisible();
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 2 bodies")).toBeVisible();
   await page.keyboard.press("Escape");
 
   await mirrorTool(page);
   await page.getByRole("button", { name: "Component", exact: true }).click();
   await page.getByRole("button", { name: "Choose component" }).click();
-  await page.getByRole("menuitemradio", { name: "Link 1" }).click();
-  await expect(page.getByText("Mirroring Link 1 across YZ.")).toBeVisible();
+  await page.getByRole("menuitemradio", { name: "Component 1" }).click();
+  await expect(page.getByText("Mirroring Component 1 across YZ.")).toBeVisible();
   await page.getByRole("button", { name: "XZ", exact: true }).click();
-  await expect(page.getByText("Mirroring Link 1 across XZ.")).toBeVisible();
+  await expect(page.getByText("Mirroring Component 1 across XZ.")).toBeVisible();
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Mirrored Link 1")).toBeVisible();
+  await expect(page.getByText("Mirrored Component 1")).toBeVisible();
   await expect(bodyRows(page)).toHaveCount(4);
-  await expect(page.getByRole("treeitem", { name: /^Link 1 mirrored/ })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Component 1 mirrored/ })).toBeVisible();
 });
 
 test("pick the features to mirror on the timeline", async ({ page }) => {

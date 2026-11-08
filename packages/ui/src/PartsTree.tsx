@@ -6,7 +6,7 @@ import { cx } from "./cx";
 import { clickSelect } from "./selection";
 import { longPress } from "./Menu";
 
-export type RowToggle = "hidden" | "ghost" | "highlight";
+export type RowToggle = "hidden" | "ghost" | "highlight" | "active";
 
 export interface TreeItem {
   id: string;
@@ -17,6 +17,8 @@ export interface TreeItem {
   hidden?: boolean;
   ghost?: boolean;
   highlight?: boolean;
+  /** The active component (#171): its radio is on. */
+  active?: boolean;
   /** States inherited from the parent show at 55%. */
   inherited?: Partial<Record<RowToggle, boolean>>;
   /** A problem with this item (a failed feature): a mark after the name, the message in its tooltip. */
@@ -58,6 +60,7 @@ const TOGGLE: Record<RowToggle, { on: IconName; off: IconName; onTitle: string; 
   hidden: { on: "eyeOff", off: "eye", onTitle: "Show", offTitle: "Hide" },
   ghost: { on: "ghost", off: "ghost", onTitle: "Stop showing as a reference", offTitle: "Show as a reference" },
   highlight: { on: "highlight", off: "highlight", onTitle: "Remove the highlight", offTitle: "Highlight" },
+  active: { on: "radioOn", off: "radioOff", onTitle: "Working in", offTitle: "Activate" },
 };
 
 /** Depth of each item from its parent chain. */
