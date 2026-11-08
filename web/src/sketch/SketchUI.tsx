@@ -6,19 +6,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import {
-  ArmedBar,
-  Button,
-  MenuButton,
-  cx,
-  NumberField,
-  evaluate,
-  isExpression,
-  ToolButton,
-  Toolbar,
-  useNameComplete,
-  type Scope,
-} from "@bettercad/ui";
+import { ArmedBar, Button, MenuButton, cx, NumberField, evaluate, isExpression, ToolButton, Toolbar, useNameComplete, type Scope } from "@bettercad/ui";
 import {
   CONSTRAINT_LABEL,
   SketchIndex,
