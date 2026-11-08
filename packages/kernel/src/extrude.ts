@@ -74,9 +74,27 @@ export function crossesAxis(list: Profile[], axis: { origin: Vec2; dir: Vec2 }):
 
 export type ExtrudeDirection = "one" | "symmetric" | "two";
 export type ExtrudeOperation = "new" | "join" | "cut" | "intersect";
+/** How far an extrude goes: a set distance, or through everything in its way (Cut and Intersect only). */
+export type ExtrudeExtent = "distance" | "all";
+
+/** How far "through all" reaches each way, mm: well past any printer's bed, so every body in its way is cut. */
+export const THROUGH_ALL = 10_000;
+
+/** Whether an operation can go through all. Join and New body need an end, so they keep a distance. */
+export const throughAllAllowed = (op: ExtrudeOperation) => op === "cut" || op === "intersect";
+
+/** The bodies a profile step changes: its `targets`, or its single `target` in older files. */
+export function targetsOf(f: { operation: ExtrudeOperation; target?: string; targets?: string[] }): string[] {
+  if (f.operation === "new") return [];
+  if (f.targets?.length) return f.operation === "join" ? f.targets.slice(0, 1) : [...new Set(f.targets)];
+  return f.target ? [f.target] : [];
+}
 
 /** The extent along the normal for a distance and direction. */
-export function extent(direction: ExtrudeDirection, distance: number, distance2 = 0): { from: number; to: number } {
+export function extent(direction: ExtrudeDirection, distance: number, distance2 = 0, all = false): { from: number; to: number } {
+  // Through all: the distance's sign still picks the side for one side; symmetric and two sides go both ways.
+  if (all)
+    return direction === "one" ? (distance >= 0 ? { from: 0, to: THROUGH_ALL } : { from: -THROUGH_ALL, to: 0 }) : { from: -THROUGH_ALL, to: THROUGH_ALL };
   if (direction === "symmetric") return { from: -Math.abs(distance) / 2, to: Math.abs(distance) / 2 };
   if (direction === "two") return { from: -Math.abs(distance2), to: Math.abs(distance) };
   return distance >= 0 ? { from: 0, to: distance } : { from: distance, to: 0 };

@@ -115,7 +115,6 @@ import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
 import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
-import { ExtrudeBar } from "../extrude/ExtrudeUI";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
 import { CombineBar, type CombineOp } from "./CombineBar";
@@ -124,7 +123,6 @@ import { usePushPull } from "../finish/usePushPull";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { CataloguePanel } from "../catalogue/CataloguePanel";
-import { PlaceBar } from "../catalogue/PlaceBar";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
 import { usePattern } from "../pattern/usePattern";
@@ -154,10 +152,15 @@ import type { WorldPlaneName } from "../viewport/engine";
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+// The Extrude bar loads after first paint (the shell's budget), and is fetched as soon as the editor is up, so it is
+// there before the first E and the distance field can take focus.
+const loadExtrudeBar = () => import("../extrude/ExtrudeUI");
+const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
+const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
+const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
 // The sketch palette only shows while a sketch is open, so it loads then.
 const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
 const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
-const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
@@ -399,6 +402,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   live.current.sketching = sketch.editing;
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
 
+  /** The built bodies' boxes, for the bodies an extrude cut touches. */
+  const bounds = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.bbox])), [kernel.bodies]);
   const extrude = useExtrude({
     kind: "extrude",
     store,
@@ -406,6 +411,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     sketches: built.sketches,
     parts,
+    bounds,
     selection,
     view: vp.ref,
     active: tool === "extrude" && !sketch.editing,
@@ -422,6 +428,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     sketches: built.sketches,
     parts,
+    bounds,
     selection,
     view: vp.ref,
     active: tool === "revolve" && !sketch.editing,
@@ -430,6 +437,25 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     theme: resolved,
   });
   useEffect(() => registry.register(revolve.commands), [registry, revolve.commands]);
+
+  // While an extrude or revolve changes bodies, the bodies it changes are the selection, so they light up in the view
+  // and the browser; a click on a body in the browser picks it for the step instead of selecting it.
+  const profileStep = extrude.targeting ? extrude : revolve.targeting ? revolve : null;
+  const stepTargets = profileStep?.targets.join(" ");
+  useEffect(() => {
+    if (stepTargets) setSelection(stepTargets.split(" "));
+  }, [stepTargets]);
+  useEffect(() => {
+    void loadExtrudeBar();
+  }, []);
+  const selectFromBrowser = useCallback(
+    (ids: string[]) => {
+      if (!profileStep) return setSelection(ids);
+      if (ids.length === 1) profileStep.toggleTarget(ids[0]!);
+      else if (ids.length) profileStep.setTargets(ids);
+    },
+    [profileStep],
+  );
 
   const pushpull = usePushPull({
     store,
@@ -2293,7 +2319,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               doc={doc}
               parts={parts}
               selection={selection}
-              onSelect={setSelection}
+              onSelect={selectFromBrowser}
               onAdd={add}
               onToggle={(id, what) => toggle(selection.includes(id) ? selection : [id], what)}
               onRename={rename}
@@ -2339,13 +2365,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             <>
               {files.banners}
               <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
-              {place.part && <PlaceBar x={place} />}
-              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
-              {tool === "extrude" && (
-                <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+              {place.part && (
+                <Suspense fallback={null}>
+                  <PlaceBar x={place} />
+                </Suspense>
               )}
-              {tool === "revolve" && (
-                <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+              {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
+              {(tool === "extrude" || tool === "revolve") && (
+                <Suspense fallback={null}>
+                  {tool === "extrude" ? (
+                    <ExtrudeBar x={extrude} parts={parts} scope={scope} error={extrude.feature ? failed.get(extrude.feature.id) : undefined} />
+                  ) : (
+                    <ExtrudeBar x={revolve} parts={parts} scope={scope} error={revolve.feature ? failed.get(revolve.feature.id) : undefined} />
+                  )}
+                </Suspense>
               )}
               {tool === "measure" && (
                 <Suspense fallback={null}>
