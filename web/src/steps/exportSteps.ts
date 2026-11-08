@@ -10,7 +10,8 @@ import { build, type ModelDoc } from "../state/document";
 import type { FileStore } from "../files/fileStore";
 import { liveFrame } from "../sketch/useSketch";
 import { buildSteps, imageName, stepsMarkdown } from "./instructions";
-import { Bounds, StepPictures, sketchSegments, type PictureBody, type PictureSketch } from "./picture";
+import { sketchDiagram } from "./sketchDiagram";
+import { Bounds, StepPictures, sketchLines, type PictureBody, type PictureSketch } from "./picture";
 
 export interface StepsExport {
   doc: ModelDoc;
@@ -44,6 +45,7 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
   if (!steps.length) throw new Error("There are no steps to show yet.");
   const enc = new TextEncoder();
   const images = new Map<number, string>();
+  const diagrams = new Map<number, string>();
   const files: { name: string; data: Uint8Array }[] = [];
 
   // First every step's bodies, so one camera frames the whole build.
@@ -73,7 +75,7 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
     let sketch: PictureSketch | undefined;
     if (s.feature.type === "sketch") {
       sketch = { sketch: s.feature.sketch, frame: liveFrame(s.feature.sketch.plane, built.construct) };
-      bounds.add(sketchSegments(sketch));
+      for (const l of sketchLines(sketch)) for (const q of l) bounds.add(q);
     }
     frames.push({ bodies, sketch });
   }
@@ -88,6 +90,14 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
       const name = `images/${imageName(s.n, steps.length)}`;
       files.push({ name, data: new Uint8Array(await png.arrayBuffer()) });
       images.set(s.n, name);
+      if (s.feature.type === "sketch") {
+        const diagram = await sketchDiagram(s.feature.sketch);
+        if (diagram) {
+          const dn = `images/${imageName(s.n, steps.length, "-sketch")}`;
+          files.push({ name: dn, data: new Uint8Array(await diagram.arrayBuffer()) });
+          diagrams.set(s.n, dn);
+        }
+      }
     }
     const last = frames[frames.length - 1]!;
     const done = await pictures.draw(last.bodies.map((b) => ({ ...b, changed: false })));
@@ -98,7 +108,7 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
 
   const base = fileSafe(doc.name);
   const modelFile = `${base}.bcad`;
-  const md = stepsMarkdown(doc, steps, { modelFile, failed, images, finished: "images/finished.png" });
+  const md = stepsMarkdown(doc, steps, { modelFile, failed, images, diagrams, finished: "images/finished.png" });
   files.unshift({ name: "README.md", data: enc.encode(md) }, { name: modelFile, data: enc.encode(saveBcad(doc)) });
   o.onProgress?.(1, "Packing the steps");
   return { name: `${base} build steps.zip`, bytes: zip(files), steps: steps.length };

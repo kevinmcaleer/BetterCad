@@ -120,9 +120,9 @@ export function buildSteps(doc: ModelDoc, upTo = doc.features.length): BuildStep
   return out;
 }
 
-/** "step-01.png": zero-padded so the files sort in order. */
-export function imageName(n: number, total: number): string {
-  return `step-${String(n).padStart(Math.max(2, String(total).length), "0")}.png`;
+/** "step-01.png", or "step-01-sketch.png" for a sketch's diagram: zero-padded so the files sort in order. */
+export function imageName(n: number, total: number, suffix = ""): string {
+  return `step-${String(n).padStart(Math.max(2, String(total).length), "0")}${suffix}.png`;
 }
 
 export interface MarkdownOptions {
@@ -132,6 +132,8 @@ export interface MarkdownOptions {
   failed?: Map<string, string>;
   /** Image paths by step number; a step without one has no picture. */
   images?: Map<number, string>;
+  /** Sketch steps' face-on diagrams, by step number. */
+  diagrams?: Map<number, string>;
   /** The finished model's picture. */
   finished?: string;
 }
@@ -175,6 +177,8 @@ export function stepsMarkdown(doc: ModelDoc, steps: BuildStep[], o: MarkdownOpti
     lines.push(`## Step ${s.n}: ${escapeMd(s.title)}`, "");
     const img = o.images?.get(s.n);
     if (img) lines.push(`![Step ${s.n}: ${escapeMd(s.title)}](${img})`, "");
+    const diagram = o.diagrams?.get(s.n);
+    if (diagram) lines.push(`![Step ${s.n}: ${escapeMd(s.title)}, face on with its sizes](${diagram})`, "");
     lines.push(s.text, "");
     if (s.details.length) {
       for (const d of s.details) lines.push(`- ${d}`);
