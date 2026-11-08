@@ -151,3 +151,13 @@ Save pose (command palette, or right-click Poses in the browser) keeps every joi
 - Right-click a pose to update it to the joints now, rename it (or press F2) or delete it.
 - Poses are saved in the `.bcad` file (`poses`, beside `pose`). A pose whose joint was deleted drops that joint, and the status says how many were left out. Values are kept to each joint's limits as they are now.
 - The clash check (At) and Export as posed (Pose) can use a named pose. A shared, view-only model lists its poses and can go to them, but can't change them.
+
+## Clash sweep (#179)
+
+Sweep the joints (command palette, or Sweep under Clashes in Properties with nothing selected) moves each joint from one limit to the other, the rest held where they are now, and lists where bodies hit, an arm hitting itself included.
+
+- Move picks what to sweep: each joint in turn, one joint, or all joints together. Step sets the gap between samples, 5° for hinges and wheels and 1 mm for sliders. Together tries Poses poses (200 to start), spread evenly over every joint's range.
+- Each hit reads as a range, "Upper arm hits Base from 72° to 90° on Shoulder", or for a sweep together, "Gripper hits Base in 12 of 200 poses". Show poses the arm at the first clash (the end of the range nearest the pose now), as one undo step, and turns the clash check on there.
+- When a joint is clear now, a button offers the limits that keep it clear, such as "Set the upper limit to 70°". It edits the joint step as one undo step.
+- Only pairs the joint moves against each other are checked, and never two bodies in the same link. Reference bodies are in when Reference bodies is ticked. Progress shows while it runs, and Esc or Stop ends it.
+- How: each body is meshed once (0.05 mm) into a box tree (`packages/kernel/src/collide.ts`), and every sample is a triangle test on the moved meshes. Faces that only touch or lie flush don't count. Each range's ends are found to 0.1° or 0.1 mm by halving, then the exact kernel check (`overlapsAt`, the common solid) confirms the range near one of its ends. A range the kernel doesn't confirm is dropped. The ends stay where the mesh test put them, and suggested limits are whole degrees or mm inside them.
