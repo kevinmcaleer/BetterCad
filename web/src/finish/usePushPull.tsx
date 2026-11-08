@@ -106,6 +106,9 @@ export function usePushPull(d: PushPullDeps) {
         drag.current = null;
         setTimeout(() => document.getElementById("bc-pp-distance")?.focus(), 0);
       },
+      cancel: () => {
+        drag.current = null;
+      },
       leave: () => eng.showHover(null),
     });
     return () => {

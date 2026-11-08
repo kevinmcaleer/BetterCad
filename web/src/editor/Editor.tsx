@@ -246,6 +246,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
+  /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
+  const [viewMenuAt, setViewMenuAt] = useState<{ ids: string[]; at: ContextMenuState } | null>(null);
   const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
   const [timelineShown, setTimelineShownState] = useState(readTimelineShown);
   const setTimelineShown = useCallback((on: boolean) => {
@@ -2450,6 +2452,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onCamera={composedCamera}
+            onMenu={(pick, at) => {
+              if (sketch.editing) return;
+              const body = pick && parts.some((p) => p.id === pick.body) ? pick.body : null;
+              const ids = body ? (selection.includes(body) ? selection : [body]) : [];
+              if (body) setSelection(ids);
+              setViewMenuAt({ ids, at });
+            }}
             onHome={vp.goHome}
             cubeMenu={vp.cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
@@ -2546,6 +2555,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         label="Step actions"
         title={doc.features.find((f) => f.id === featureMenuAt?.id)?.name}
         entries={featureMenuAt ? featureMenu(featureMenuAt.id) : []}
+      />
+      <ContextMenu
+        at={viewMenuAt?.at ?? null}
+        onClose={() => setViewMenuAt(null)}
+        label={viewMenuAt?.ids.length ? "Part actions" : "View actions"}
+        title={
+          !viewMenuAt?.ids.length ? "View" : viewMenuAt.ids.length > 1 ? `${viewMenuAt.ids.length} parts` : parts.find((p) => p.id === viewMenuAt.ids[0])?.name
+        }
+        entries={!viewMenuAt ? [] : viewMenuAt.ids.length ? partMenu(viewMenuAt.ids) : vp.cubeMenu}
       />
       {vp.namingDialog}
       {files.dialog}

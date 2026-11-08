@@ -35,7 +35,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
   {
     id: "look",
     title: "Look around",
-    body: "Drag to look around, right-drag to pan, scroll to zoom.",
+    body: "Drag to look around. Right-drag or drag two fingers to pan, scroll or pinch to zoom.",
     anchor: { kind: "view" },
     done: (s) => s.looked,
   },
