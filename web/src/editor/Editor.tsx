@@ -161,7 +161,7 @@ import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
-import type { BodyMass, ExportFormat, Mate } from "@bettercad/kernel";
+import type { BodyMass, Clash, ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
 import { renderSession, type RenderSession, type RenderStyle, type SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
@@ -1484,6 +1484,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     homeJoints: () => {},
     armToolPoint: () => {},
     clearToolPoints: () => {},
+    checkClashes: () => {},
     openExport: () => {},
     openRender: () => {},
     startTour: () => {},
@@ -1537,6 +1538,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     clearToolPoints: () => {
       store.edit((d) => ({ ...d, tools: undefined }), "Remove the tool points");
       say("Removed the tool points");
+    },
+    checkClashes: () => {
+      setSelection([]);
+      setPropsOpen(true);
+      setClashOn(true);
     },
     openExport: () => setExportOpen(true),
     openRender: () => openRender(),
@@ -1873,6 +1879,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().armToolPoint(),
         when: () => build(live.current.doc).joints.some(movable),
         keywords: "ik inverse kinematics gripper tip end effector arm drag robot",
+      },
+      {
+        id: "check.clashes",
+        scope: "model",
+        label: "Check for clashes",
+        group: "Edit",
+        icon: "warning",
+        run: () => h().checkClashes(),
+        when: () => live.current.parts.length > 1,
+        keywords: "collision interference overlap touch intersect robot pose",
       },
       {
         id: "pose.tool.clear",
@@ -2382,6 +2398,45 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           : undefined,
     };
   }, [hasLinks, selectedParts, masses, linkMass, store]);
+
+  // Clash check (#178): worked out in the kernel at the saved pose while it's on, again after each change.
+  const [clashOn, setClashOn] = useState(false);
+  const [clashOpts, setClashOpts] = useState<{ sameLink?: boolean; references?: boolean }>({});
+  const [clashes, setClashes] = useState<Clash[] | null>(null);
+  const [clashProgress, setClashProgress] = useState<number | null>(null);
+  const clashCall = useRef<{ cancel(): void } | null>(null);
+  useEffect(() => {
+    setClashes(null);
+    setClashProgress(null);
+    if (!clashOn) return;
+    let gone = false;
+    const t = setTimeout(() => {
+      setClashProgress(0);
+      const call = kernelCall("clashes", { doc, upTo: at, ...clashOpts }, (f) => !gone && setClashProgress(f));
+      clashCall.current = call;
+      call?.then(
+        (r) => !gone && setClashes(r),
+        () => undefined,
+      );
+      void call?.finally(() => !gone && setClashProgress(null));
+    }, 300);
+    return () => {
+      gone = true;
+      clearTimeout(t);
+      clashCall.current?.cancel();
+      clashCall.current = null;
+    };
+  }, [clashOn, clashOpts, doc, at, kernelCall]);
+  const stopClashes = useCallback(() => {
+    clashCall.current?.cancel();
+    setClashOn(false);
+    say("Stopped checking for clashes");
+  }, [say]);
+  useEscape(clashProgress !== null, stopClashes, ESC.tool);
+  const clashBodies = useMemo(() => (clashes?.length ? new Set(clashes.filter((c) => c.kind === "overlap").flatMap((c) => [c.a, c.b])) : null), [clashes]);
+  const viewWarn = useMemo(() => (clashBodies ? new Set([...(offBed ?? []), ...clashBodies]) : offBed), [clashBodies, offBed]);
+  useEffect(() => vp.ref.current?.engine()?.setClashBoxes(clashes?.length ? clashes.map((c) => c.box) : null), [clashes, vp.ref]);
+  const showClash = useCallback((c: Clash) => vp.ref.current?.engine()?.fitBox(c.box.min, c.box.max), [vp.ref]);
 
   // Mating faces (#184): worked out in the kernel while the fits check is on, again after each change.
   const [fitsCheck, setFitsCheck] = useState(false);
@@ -3254,7 +3309,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onHome={vp.goHome}
             cubeMenu={vp.cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
-            warn={offBed}
+            warn={viewWarn}
             check={checkResult?.values ?? null}
             originPlanes={{
               shown: sketch.editing ? [] : originShown.filter((x): x is WorldPlaneName => x !== "point"),
@@ -3347,6 +3402,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
                 }
                 mass={massInfo}
+                clashes={
+                  parts.length > 1
+                    ? {
+                        on: clashOn,
+                        onToggle: setClashOn,
+                        sameLink: !!clashOpts.sameLink,
+                        references: !!clashOpts.references,
+                        onOptions: (change) => setClashOpts((o) => ({ ...o, ...change })),
+                        progress: clashProgress,
+                        clashes,
+                        nameOf: (id: string) => parts.find((p) => p.id === id)?.name ?? "A body",
+                        onShow: showClash,
+                        onStop: stopClashes,
+                      }
+                    : undefined
+                }
                 pose={
                   built.joints.length
                     ? {

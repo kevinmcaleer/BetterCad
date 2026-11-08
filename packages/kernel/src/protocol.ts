@@ -6,6 +6,7 @@ import type { ImportFormat } from "./imports";
 import type { Quality } from "./occt/tessellate";
 import type { MeasureResult, TopoRef } from "./occt/measure";
 import type { Mate } from "./occt/mates";
+import type { Clash } from "./occt/clashes";
 import type { CheckArea } from "./print/checks";
 import type { Orientation, OrientWeights } from "./print/orient";
 import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
@@ -37,6 +38,8 @@ export interface Methods {
   };
   /** Mating faces between printed bodies (#184): pins in holes and facing flat faces, with their gaps. */
   mates: { params: { doc: ModelDoc; upTo?: number; limit?: number }; result: Mate[] };
+  /** Bodies that overlap or touch at the document's pose (#178), biggest overlap first. Posts progress. */
+  clashes: { params: { doc: ModelDoc; upTo?: number; sameLink?: boolean; references?: boolean }; result: Clash[] };
   /** Mass, centre of mass and inertia of each body that has mass (#174), from the document's material and infill. */
   mass: { params: { doc: ModelDoc; upTo?: number }; result: BodyMass[] };
   /** Moves a timeline step (#286), finding moved fillets' and shells' edges and faces again by place. */

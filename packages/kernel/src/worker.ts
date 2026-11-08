@@ -45,6 +45,13 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
   measure: ({ doc, upTo, refs }) => builder!.measure(doc, refs, upTo),
   mates: ({ doc, upTo, limit }) => builder!.mates(doc, upTo, limit),
   mass: ({ doc, upTo }) => builder!.mass(doc, upTo),
+  clashes: ({ doc, upTo, sameLink, references }, id) =>
+    builder!.clashes(doc, upTo, {
+      sameLink,
+      references,
+      cancelled: () => cancelled.has(id),
+      progress: (fraction) => post({ kind: "progress", id, fraction }),
+    }),
   reorder: ({ doc, id, beforeId }) => reorderWithPicks(occt!, builder!, doc, id, beforeId),
   inspect: (params) => builder!.inspect(params),
   estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),

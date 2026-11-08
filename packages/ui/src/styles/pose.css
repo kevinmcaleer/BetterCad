@@ -52,3 +52,31 @@
 .bc-drive > .bc-field {
   grid-column: 1 / -1;
 }
+
+/* Clash check (#178): the toggle, its options, and a row per pair with Show. */
+.bc-clashes {
+  display: grid;
+  gap: var(--bc-space-3);
+  justify-items: start;
+}
+.bc-clash-list {
+  display: grid;
+  gap: var(--bc-space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bc-clash {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-3);
+  font-size: 13px;
+}
+.bc-clash-head {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bc-color-muted);
+}
