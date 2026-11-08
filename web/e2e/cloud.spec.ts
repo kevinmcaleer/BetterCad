@@ -141,7 +141,8 @@ test("offline saves wait in the browser and go when the network is back", async 
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  await expect(page.getByText("Saved Bracket to your account")).toBeVisible();
+  // The save's toast is brief and an Autosaved toast can replace it, so check the server got it.
+  await expect.poll(() => [...server.models.values()].map((m) => m.versions.length)).toEqual([1]);
   // One look at the library while online, so it has a list to show later.
   await page.goto(page.url().replace(/#.*/, "#/library"));
   await expect(page.getByRole("button", { name: "Open Bracket" })).toBeVisible();
