@@ -1,11 +1,16 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Editor } from "./Editor";
 
+function openSettings() {
+  fireEvent.click(screen.getByRole("button", { name: /account and settings/i }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+}
+
 describe("Build volume toggle", () => {
   beforeEach(() => localStorage.clear());
   it("hides the build volume from Settings and Print alike", () => {
     render(<Editor />);
-    fireEvent.click(screen.getByRole("button", { name: /^Settings/ }));
+    openSettings();
     const inSettings = screen.getByRole("checkbox", { name: "Show the build volume" });
     expect(inSettings).toBeChecked();
     fireEvent.click(inSettings);
@@ -15,7 +20,7 @@ describe("Build volume toggle", () => {
     const inPrint = screen.getByRole("checkbox", { name: "Show the build volume" });
     expect(inPrint).not.toBeChecked();
     fireEvent.click(inPrint);
-    fireEvent.click(screen.getByRole("button", { name: /^Settings/ }));
+    openSettings();
     expect(screen.getByRole("checkbox", { name: "Show the build volume" })).toBeChecked();
   });
 });
