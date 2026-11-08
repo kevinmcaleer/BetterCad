@@ -50,3 +50,45 @@ test("hang a link from Base on a hinge, back out a pick with Esc, then make it a
   await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /^Link 1.*slider on Joint 1/ })).toBeVisible();
 });
+
+/** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */
+test("pose a hinge with its slider and send it home", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Make link/ }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  await click(page, 25, 0, 20);
+  await page.getByRole("button", { name: "Base", exact: true }).click();
+  await click(page, 25, 0, 20);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
+
+  // With the link's body selected, Properties shows its joint.
+  const props = page.getByRole("complementary", { name: "Properties" });
+  const joint = props.getByRole("group", { name: "Joint 1, hinge" });
+  await expect(joint).toBeVisible();
+  const slider = joint.getByRole("slider", { name: "Angle" });
+  await slider.focus();
+  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");
+  await expect(joint.getByRole("textbox", { name: /^Angle/ })).toHaveValue("5");
+  await expect(page.getByRole("button", { name: /^Undo move joint 1/i })).toBeVisible();
+  // Typed past the limit, it stops at the limit.
+  await joint.getByRole("textbox", { name: /^Angle/ }).fill("120");
+  await page.keyboard.press("Enter");
+  await expect(joint.getByRole("textbox", { name: /^Angle/ })).toHaveValue("90");
+
+  // With nothing selected, the model's summary poses every joint and sends them home.
+  await page.keyboard.press("Escape");
+  await expect(props.getByRole("heading", { name: "Pose" })).toBeVisible();
+  await props.getByRole("button", { name: "Home" }).click();
+  await expect(joint.getByRole("textbox", { name: /^Angle/ })).toHaveValue("0");
+  await expect(page.getByText("The joints are home")).toBeVisible();
+});

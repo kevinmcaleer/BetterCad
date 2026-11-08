@@ -11,6 +11,7 @@ import {
   type PrintSettings,
   type Vec3,
 } from "../state/document";
+import type { PoseControlsProps } from "../joint/PoseControls";
 import { FitMenu, type FitChoice } from "../fit/FitMenu";
 import { lazy, Suspense } from "react";
 import type { FinishId } from "@bettercad/kernel";
@@ -42,9 +43,13 @@ export interface PropertiesProps {
   onColour?: (hex: string | undefined) => void;
   /** Sets the selection's finish for renders and glTF (#196). */
   onFinish?: (id: FinishId) => void;
+  /** Posing (#173): every joint (on the model's summary) and the joints that move the selection (on its own). */
+  pose?: Omit<PoseControlsProps, "joints" | "onHome"> & { joints: PoseControlsProps["joints"]; selected: PoseControlsProps["joints"]; onHome: () => void };
 }
 
 /** Colour and Finish (#196) load with the first selection, keeping the first-paint bundle in budget. */
+/** The pose sliders (#173) load once a model has joints. */
+const PoseControls = lazy(() => import("../joint/PoseControls").then((m) => ({ default: m.PoseControls })));
 const LookControls = lazy(() => import("../looks/LookControls").then((m) => ({ default: m.LookControls })));
 
 const AXES: (keyof Vec3)[] = ["x", "y", "z"];
@@ -114,6 +119,7 @@ export function Properties({
   allParts,
   onColour,
   onFinish,
+  pose,
 }: PropertiesProps & { allParts?: Part[] }) {
   if (parts.length === 0) {
     return (
@@ -150,6 +156,14 @@ export function Properties({
                 </>
               ) : null;
             })()}
+            {!!pose?.joints.length && (
+              <>
+                <h2 className="bc-panel-title">Pose</h2>
+                <Suspense fallback={null}>
+                  <PoseControls joints={pose.joints} pose={pose.pose} onChange={pose.onChange} onCommit={pose.onCommit} onHome={pose.onHome} />
+                </Suspense>
+              </>
+            )}
           </>
         }
       />
@@ -254,6 +268,16 @@ export function Properties({
     },
     { id: "rotation", title: "Rotation", content: fields("rotation") },
   ];
+  if (pose?.selected.length)
+    sections.splice(1, 0, {
+      id: "pose",
+      title: pose.selected.length === 1 ? "Joint" : "Joints",
+      content: (
+        <Suspense fallback={null}>
+          <PoseControls joints={pose.selected} pose={pose.pose} onChange={pose.onChange} onCommit={pose.onCommit} />
+        </Suspense>
+      ),
+    });
   const facts = printFacts(parts, volumes, measures, print);
   if (facts) sections.push({ id: "print", title: "Print", content: <PrintRows f={facts} /> });
   else if (parts.every((p) => p.reference))
