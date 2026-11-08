@@ -1,7 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clickSelect, Dialog, type MenuEntry } from "@bettercad/ui";
-import type { Command } from "../state/commands";
-import { changeParts, newId, nextViewName, placePart, removeView, saveView, type ModelDoc, type NamedView, type Part, type Vec3 } from "../state/document";
+import { formatCombo, type Command } from "../state/commands";
+import {
+  changeParts,
+  newId,
+  nextViewName,
+  placePart,
+  removeView,
+  saveView,
+  setHome,
+  type ModelDoc,
+  type NamedView,
+  type Part,
+  type Vec3,
+} from "../state/document";
 import { presetOf, type CameraState, type Preset } from "../viewport/camera";
 import type { RenderStyle, Section } from "../viewport/engine";
 import type { Pick, SelectFilter } from "../viewport/ids";
@@ -134,6 +146,36 @@ export function useViewport(d: ViewportDeps) {
     view3d.current?.fit(sel.length ? sel : undefined);
   }, []);
 
+  // ---- home (the view cube's house and menu)
+  const goHome = useCallback(() => {
+    view3d.current?.home(live.current.doc.home ?? null);
+  }, []);
+  const setHomeHere = useCallback(() => {
+    const camera = view3d.current?.camera();
+    if (!camera) return;
+    live.current.editDoc((doc) => setHome(doc, camera), "Set the home view");
+    live.current.say("Home is now this view");
+  }, []);
+  const resetHome = useCallback(() => {
+    if (!live.current.doc.home) return;
+    live.current.editDoc((doc) => setHome(doc, null), "Reset the home view");
+    live.current.say("Home is the corner view again");
+  }, []);
+  const switchOrtho = useCallback((on: boolean) => {
+    setOrtho(on);
+    live.current.say(on ? "Orthographic: parallel lines stay parallel" : "Perspective: far things look smaller");
+  }, []);
+
+  const cubeMenu: MenuEntry[] = [
+    { id: "home", label: "Go home", icon: "home", keys: formatCombo("home"), onSelect: goHome },
+    { kind: "separator", id: "s1" },
+    { id: "persp", label: "Perspective", checked: !ortho, onSelect: () => switchOrtho(false) },
+    { id: "ortho", label: "Orthographic", checked: ortho, onSelect: () => switchOrtho(true) },
+    { kind: "separator", id: "s2" },
+    { id: "set-home", label: "Set this view as home", onSelect: setHomeHere },
+    { id: "reset-home", label: "Reset home", disabled: !d.doc.home, onSelect: resetHome },
+  ];
+
   // ---- named views
   const lookFrom = useCallback((v: NamedView) => {
     view3d.current?.setCamera(v.camera, true);
@@ -218,6 +260,7 @@ export function useViewport(d: ViewportDeps) {
       { id: "top", label: "Top", key: "4" },
     ];
     const list: Command[] = [
+      { id: "view.home", label: "Go home", group: "View", icon: "home", keys: ["home"], run: goHome, keywords: "view cube reset camera" },
       ...presets.map<Command>((v) => ({ id: `view.${v.id}`, label: `${v.label} view`, group: "View", icon: "camera", keys: [v.key], run: () => preset(v.id) })),
       { id: "view.fit", scope: "model", label: "Fit the parts in the view", group: "View", icon: "frame", keys: ["f"], run: fit },
       {
@@ -239,6 +282,16 @@ export function useViewport(d: ViewportDeps) {
         keys: ["l"],
         run: toggleStyle,
         keywords: "render style outline",
+      },
+      { id: "view.setHome", label: "Set this view as home", group: "View", icon: "home", run: setHomeHere, keywords: "view cube camera" },
+      {
+        id: "view.resetHome",
+        label: "Reset home",
+        group: "View",
+        icon: "home",
+        run: resetHome,
+        when: () => !!live.current.doc.home,
+        keywords: "view cube camera corner",
       },
       { id: "view.save", label: "Save this view…", group: "View", icon: "camera", run: startSaveView, keywords: "named view camera" },
       {
@@ -331,6 +384,8 @@ export function useViewport(d: ViewportDeps) {
     preset,
     fit,
     viewEntries,
+    goHome,
+    cubeMenu,
     namingOpen: !!naming,
     namingDialog,
     commands,

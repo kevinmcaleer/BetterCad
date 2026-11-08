@@ -23,11 +23,11 @@ export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
           trigger={(p) => <Button {...p} label={`Pick: ${filter.label}`} title="What a click picks" shortcut={formatCombo(filter.key)} />}
         />
         <Toolbar.Separator />
-        {VIEWS.map((v) => (
+        {VIEWS.filter((v) => v.id !== "iso").map((v) => (
           <Button
             key={v.id}
             label={v.label}
-            title={`Look from the ${v.id === "iso" ? "corner" : v.label.toLowerCase()}`}
+            title={`Look from the ${v.label.toLowerCase()}`}
             shortcut={v.key}
             on={vp.view === v.id}
             onClick={() => vp.preset(v.id)}
@@ -35,14 +35,6 @@ export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
         ))}
         <Button icon="frame" label="Fit" title="Fit the parts in the view" shortcut="F" onClick={vp.fit} />
         <MenuButton label="Named views" entries={vp.viewEntries} trigger={(p) => <Button {...p} icon="camera" label="Views" title="Save and use views" />} />
-        <Toolbar.Separator />
-        <Button
-          label={vp.ortho ? "Ortho" : "Persp"}
-          title={vp.ortho ? "Orthographic: parallel lines stay parallel" : "Perspective: far things look smaller"}
-          shortcut="O"
-          on={vp.ortho}
-          onClick={() => vp.setOrtho(!vp.ortho)}
-        />
         <Button
           icon="paint"
           label={vp.style === "lineart" ? "Line art" : "Shaded"}

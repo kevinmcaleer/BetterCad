@@ -2139,6 +2139,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onTransforming={vp.onTransforming}
             onSection={vp.onSection}
             onCamera={composedCamera}
+            onHome={vp.goHome}
+            cubeMenu={vp.cubeMenu}
             bed={showBed && !share ? printer : null}
             warn={offBed}
             check={checkResult?.values ?? null}

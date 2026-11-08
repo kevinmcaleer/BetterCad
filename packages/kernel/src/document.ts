@@ -383,6 +383,8 @@ export interface ModelDoc {
   order?: string[];
   /** Named views: saved cameras. */
   views?: NamedView[];
+  /** The view cube's home view, when set from the cube's menu. Without it, home is the corner view, fitted. */
+  home?: ViewCamera;
   /** Parameters (#75): named values that feature fields can use. */
   params?: Parameter[];
   /** Imported files' bytes, base64, by content hash (#82), so the model rebuilds without the original file. */
@@ -922,6 +924,14 @@ export function saveView(doc: ModelDoc, view: NamedView): ModelDoc {
 
 export function removeView(doc: ModelDoc, id: string): ModelDoc {
   return { ...doc, views: (doc.views ?? []).filter((v) => v.id !== id) };
+}
+
+/** Sets the home view, or clears it back to the corner view with null. */
+export function setHome(doc: ModelDoc, camera: ViewCamera | null): ModelDoc {
+  if (camera) return { ...doc, home: { ...camera, target: [...camera.target] } };
+  const rest = { ...doc };
+  delete rest.home;
+  return rest;
 }
 
 /** The next free view name: "View 1", "View 2"… */
