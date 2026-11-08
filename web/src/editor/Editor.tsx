@@ -1104,12 +1104,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const armTool = useCallback((id: ToolId) => setTool((t) => (t === id && id !== "select" ? "select" : id)), []);
 
+  // What a rendered thumbnail draws: the shown bodies, read when a save finishes.
+  const thumbBodies = useRef<() => RenderBody[]>(() => []);
+  thumbBodies.current = () =>
+    parts
+      .filter((p) => !p.hidden && !p.hole)
+      .flatMap((p) => {
+        const b = kernel.bodies.get(p.id);
+        return b ? [{ id: p.id, mesh: b.mesh, matrix: new Matrix4(), colour: p.colour, finish: p.finish, catalogue: p.catalogue }] : [];
+      });
   const files = useFiles({
     store,
     doc,
     view: vp.ref,
     say,
     onImport: (list, at) => importFiles(list, at, { call: kernel.call, record, say, select: setSelection }),
+    renderBodies: () => thumbBodies.current(),
     onSwitched: () => {
       setMarker(null);
       setSelection([]);

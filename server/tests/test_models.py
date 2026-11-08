@@ -41,7 +41,7 @@ def test_writes_need_the_csrf_token(user):
 
 def test_create_get_and_list(user):
     m = create(user)
-    assert m["version"] == 1 and m["thumbnail"] == f"/api/models/{m['id']}/thumbnail?v=1"
+    assert m["version"] == 1 and m["thumbnail"].startswith(f"/api/models/{m['id']}/thumbnail?v=1.")
     got = user.get(f"/api/models/{m['id']}").json()
     assert json.loads(got["bcad"])["name"] == "Box"
     create(user, "Alpha")
@@ -54,6 +54,29 @@ def test_create_get_and_list(user):
     assert page["total"] == 2 and len(page["models"]) == 1
     thumb = user.get(m["thumbnail"])
     assert thumb.headers["content-type"] == "image/png" and thumb.content.startswith(b"\x89PNG")
+
+
+def test_a_rendered_thumbnail_replaces_the_saved_one(user):
+    m = create(user)
+    url = f"/api/models/{m['id']}"
+    assert user.put(url, json={"bcad": bcad(n=1)}).json() == {"version": 2}
+    before = user.get(url).json()["thumbnail"]
+    jpeg = "data:image/jpeg;base64,/9j/4AAQ"
+    after = user.put(f"{url}/versions/2/thumbnail", json={"thumbnail": jpeg}).json()["thumbnail"]
+    # A new address, so a cached picture isn't shown again.
+    assert after != before and after.startswith(f"{url}/thumbnail?v=2.")
+    got = user.get(after)
+    assert got.headers["content-type"] == "image/jpeg" and got.content.startswith(b"\xff\xd8")
+    assert user.get(f"{url}/versions/2/thumbnail").headers["content-type"] == "image/jpeg"
+    # An older version's picture changes only that version.
+    user.put(f"{url}/versions/1/thumbnail", json={"thumbnail": "data:image/webp;base64,UklGRg=="})
+    assert user.get(url).json()["thumbnail"] == after
+    assert user.get(f"{url}/versions/1/thumbnail").headers["content-type"] == "image/webp"
+    assert user.put(f"{url}/versions/2/thumbnail", json={"thumbnail": "javascript:alert(1)"}).status_code == 422
+    big = "data:image/jpeg;base64," + "A" * 300_000
+    assert user.put(f"{url}/versions/2/thumbnail", json={"thumbnail": big}).status_code == 422
+    assert user.put(f"{url}/versions/9/thumbnail", json={"thumbnail": jpeg}).status_code == 404
+    assert user.put("/api/models/nope/versions/1/thumbnail", json={"thumbnail": jpeg}).status_code == 404
 
 
 def test_refuses_text_that_is_not_a_model(user):

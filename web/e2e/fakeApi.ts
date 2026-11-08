@@ -12,6 +12,8 @@ interface Version {
   bcad: string;
   note: string | null;
   created: string;
+  /** A rendered picture sent after the save, in place of the one in the .bcad. */
+  thumbnail?: string;
 }
 interface Model {
   id: string;
@@ -193,7 +195,7 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       return json(route, 200, summary(m));
     }
     if (sub === "thumbnail") {
-      const thumb = /^data:(image\/\w+);base64,(.+)$/.exec(JSON.parse(latest.bcad).thumbnail ?? "");
+      const thumb = /^data:(image\/\w+);base64,(.+)$/.exec(latest.thumbnail ?? JSON.parse(latest.bcad).thumbnail ?? "");
       if (!thumb) return fail(route, 404, "There's no picture for that model.");
       return route.fulfill({ status: 200, contentType: thumb[1], body: Buffer.from(thumb[2]!, "base64") });
     }
@@ -210,6 +212,10 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       if (action === "restore") {
         addVersion(m, v.bcad, `Restored version ${v.number}`);
         return json(route, 200, { version: m.versions.at(-1)!.number });
+      }
+      if (action === "thumbnail" && method === "PUT") {
+        v.thumbnail = body().thumbnail;
+        return json(route, 200, summary(m));
       }
       if (method === "PATCH") {
         v.note = body().note || null;
