@@ -36,7 +36,7 @@ export interface SketchTool {
 }
 
 export const SKETCH_TOOLS: SketchTool[] = [
-  { id: "select", label: "Select", icon: "arrow", key: "v", help: "Click to pick, drag a point to move it. Enter finishes the sketch.", fields: [] },
+  { id: "select", label: "Select", icon: "arrow", key: "v", help: "Click to pick. Drag a point or line to move it. Enter finishes the sketch.", fields: [] },
   {
     id: "line",
     label: "Line",

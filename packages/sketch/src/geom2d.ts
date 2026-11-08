@@ -149,3 +149,18 @@ export function filletCorner(corner: Vec2, towardA: Vec2, towardB: Vec2, r: numb
   const tb = add(corner, scale(ub, t));
   return { c, ta, tb, ccw: cross(sub(ta, c), sub(tb, c)) > 0 };
 }
+
+/**
+ * Where a line's ends go when it is dragged by the pointer: square across the line, by how far the pointer has moved
+ * across it since `grab`. Moving along the line does nothing, so a line slides sideways as Fusion's does.
+ */
+export function slideAcross(a: Vec2, b: Vec2, grab: Vec2, to: Vec2): [Vec2, Vec2] {
+  const d = sub(b, a);
+  if (len(d) < EPS) {
+    const m = sub(to, grab);
+    return [add(a, m), add(b, m)];
+  }
+  const n = perp(norm(d));
+  const m = scale(n, dot(sub(to, grab), n));
+  return [add(a, m), add(b, m)];
+}
