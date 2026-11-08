@@ -259,8 +259,8 @@ export function usePattern(d: PatternDeps) {
       ? "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
       : of === "features"
         ? session
-          ? "Tick more features on the bar, or click Face to mirror across a face. Enter keeps the mirror, Esc takes it back."
-          : "Choose the features to mirror on the bar."
+          ? "Click more steps on the timeline, or click Face to mirror across a face. Enter keeps the mirror, Esc takes it back."
+          : "Click the steps to mirror on the timeline, or choose them on the bar."
         : of === "component"
           ? session
             ? "Click a body in another component to mirror that one instead. Enter keeps the mirror, Esc takes it back."
