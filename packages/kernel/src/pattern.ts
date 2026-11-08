@@ -155,7 +155,17 @@ export function mirrorFace(part: Pick<Part, "id" | "position" | "rotation">, fac
  * The world plane a Mirror step mirrors across, with its offset: an origin plane, or its picked face where that face's
  * body stands now. A message when the face's body is gone.
  */
-export function mirrorPlane(f: PatternFeature, parts: readonly Part[]): Plane | string {
+export function mirrorPlane(
+  f: PatternFeature,
+  parts: readonly Part[],
+  construct: readonly { id: string; geo: { what: string; frame?: { origin: number[]; normal: number[] } } }[] = [],
+): Plane | string {
+  if (f.step) {
+    const c = construct.find((x) => x.id === f.step);
+    if (c?.geo.what !== "plane" || !c.geo.frame) return "The construction plane it mirrors across is gone";
+    const n = v3(c.geo.frame.normal);
+    return { origin: tidy(add(v3(c.geo.frame.origin), scale(n, f.offset))), normal: tidy(n) };
+  }
   if (!f.face) {
     const normal = AXIS[NORMAL[f.plane]];
     return { origin: scale(normal, f.offset), normal };
@@ -194,10 +204,11 @@ export function patternCopyIds(f: PatternFeature): string[] {
   return f.parts.flatMap((from) => Array.from({ length: n }, (_, k) => copyId(f, from, k)));
 }
 
-/** A Mirror's plane on its tile: "YZ", "YZ at 5 mm", "a face of Box 2". */
-export function mirrorPlaneText(f: PatternFeature, faceOwner?: string): string {
+/** A Mirror's plane on its tile: "YZ", "YZ at 5 mm", "a face of Box 2", "Plane 1". `owner` names the face's body or the plane. */
+export function mirrorPlaneText(f: PatternFeature, owner?: string): string {
   const at = f.offset ? ` at ${f.offset} mm` : "";
-  return f.face ? `a face of ${faceOwner ?? "a body"}${at}` : `${f.plane}${at}`;
+  if (f.step) return `${owner ?? "a construction plane"}${at}`;
+  return f.face ? `a face of ${owner ?? "a body"}${at}` : `${f.plane}${at}`;
 }
 
 /** A copy's name: "Box 1 mirrored", "Box 1 copy 2". */

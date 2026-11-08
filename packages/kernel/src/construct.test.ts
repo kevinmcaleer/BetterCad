@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  addPattern,
+  mirrorPlane,
+  type PatternFeature,
   addConstruct,
   addPart,
   addSketch,
@@ -218,6 +221,22 @@ describe("construction steps on the timeline (#265)", () => {
     const ref = bodyRef(part, "face", 0, top);
     expect("size" in ref).toBe(false);
     expect(bodyGeo(ref as Extract<typeof ref, { body: string }>, { ...part, size: { x: 10, y: 10, z: 99 } })).toEqual(top);
+  });
+
+  it("Mirror goes across a construction plane, where it is now", () => {
+    let doc = addConstruct(boxDoc(), { kind: "offset", refs: [{ origin: "YZ" }], value: 20 }, "pl");
+    doc = addPattern(doc, { parts: ["b"], kind: "mirror", step: "pl" }, "m");
+    let b = build(doc);
+    expect(b.failed.size).toBe(0);
+    expect(b.parts).toHaveLength(2);
+    const f = doc.features.find((x) => x.id === "m") as PatternFeature;
+    expect(mirrorPlane(f, b.parts, b.construct)).toEqual({ origin: { x: 20, y: 0, z: 0 }, normal: { x: 1, y: 0, z: 0 } });
+    expect(featureSummary(doc, f)).toBe("Box 1 across Plane 1");
+    expect(dependsOn(doc, "m")).toContain("pl");
+    doc = updateConstruct(doc, "pl", { value: 30 });
+    b = build(doc);
+    expect(mirrorPlane(f, b.parts, b.construct)).toMatchObject({ origin: { x: 30 } });
+    expect(mirrorPlane(f, b.parts, [])).toBe("The construction plane it mirrors across is gone");
   });
 
   it("survives a .bcad round trip", () => {

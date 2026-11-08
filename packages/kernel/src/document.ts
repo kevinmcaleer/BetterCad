@@ -263,6 +263,8 @@ export interface PatternFeature extends FeatureBase {
   offset: number;
   /** Mirror: a flat face to mirror across instead of `plane`. */
   face?: MirrorFace;
+  /** Mirror: a construction plane step (#265) to mirror across instead of `plane`, where it is now. */
+  step?: string;
   /** Mirror: what it copies. Bodies when not set. */
   of?: MirrorOf;
   /**
@@ -798,7 +800,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, problem);
           break;
         }
-        const plane = f.kind === "mirror" ? mirrorPlane(f, parts) : undefined;
+        const plane = f.kind === "mirror" ? mirrorPlane(f, parts, built) : undefined;
         if (typeof plane === "string") {
           failed.set(f.id, plane);
           break;
@@ -1559,7 +1561,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
           : of === "component"
             ? (f.link && step(f.link)) || "a gone component"
             : who(f.parts);
-      return patternSummary(f, what, f.face && (names.get(f.face.body) ?? "a body"));
+      return patternSummary(
+        f,
+        what,
+        f.step ? (doc.features.find((g) => g.id === f.step)?.name ?? "a gone plane") : f.face && (names.get(f.face.body) ?? "a body"),
+      );
     }
     case "move": {
       const turn = f.rotation
@@ -2397,8 +2403,10 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
     const step = f.sketch.plane.step;
     if (before.some((g) => g.id === step)) out.add(step);
   }
-  // A Mirror of features needs those features; a Mirror of a component needs its link.
+  // A Mirror of features needs those features; a Mirror of a component needs its link; one across a construction plane,
+  // that plane.
   if (f.type === "pattern") {
+    if (f.step && before.some((x) => x.id === f.step)) out.add(f.step);
     for (const g of [...(f.features ?? []), ...(f.link ? [f.link] : [])]) if (before.some((x) => x.id === g)) out.add(g);
   }
   // A joint needs the links it joins, and the joint its parent link hangs from.

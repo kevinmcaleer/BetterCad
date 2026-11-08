@@ -52,6 +52,8 @@ export interface PatternDeps {
 const KEY = (id: string) => `pattern:${id}`;
 const label = (k: PatternKind) => (k === "mirror" ? "Mirror" : "Pattern");
 
+const PLANES_ONLY = new Set(["plane"] as const);
+
 export function usePattern(d: PatternDeps) {
   const deps = useRef(d);
   deps.current = d;
@@ -160,6 +162,9 @@ export function usePattern(d: PatternDeps) {
       const hit = eng.pick(x, y, "face");
       const info = hit && eng.faceInfo(hit.body, hit.index);
       if (hit && info?.flat) return { hit, info };
+      // A construction plane (#265), where no face is.
+      const step = eng.constructAt(x, y, PLANES_ONLY);
+      if (step) return { step };
       const plane = eng.planeAt(x, y);
       return plane ? { plane } : null;
     };
@@ -173,13 +178,14 @@ export function usePattern(d: PatternDeps) {
       down: (p) => {
         const t = target(p.x, p.y);
         if (!t) return false;
-        if ("plane" in t) change({ plane: t.plane, face: undefined });
+        if ("plane" in t) change({ plane: t.plane, face: undefined, step: undefined });
+        else if ("step" in t) change({ step: t.step, face: undefined });
         else {
           const part = deps.current.parts.find((q) => q.id === t.hit.body);
           if (!part) return true;
           const [x, y, z] = t.info.centroid;
           const [nx, ny, nz] = t.info.normal;
-          change({ face: mirrorFace(part, t.hit.index, { x, y, z }, { x: nx, y: ny, z: nz }) });
+          change({ face: mirrorFace(part, t.hit.index, { x, y, z }, { x: nx, y: ny, z: nz }), step: undefined });
         }
         setPickingPlane(false);
         return true;
@@ -273,6 +279,8 @@ export function usePattern(d: PatternDeps) {
     toggleFeature,
     pickingPlane,
     setPickingPlane,
+    /** The construction plane a Mirror goes across (#265), by name. */
+    stepName: feature?.step ? d.doc.features.find((f) => f.id === feature.step)?.name : undefined,
     change,
     /** Sets what a Mirror copies before it starts, or switches an open one. */
     setOf: (o: MirrorOf) => (live.current.session ? change({ of: o }) : (setLast((l) => ({ ...l, of: o })), deps.current.setSelection([]))),
