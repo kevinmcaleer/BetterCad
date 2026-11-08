@@ -1576,6 +1576,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     armToolPoint: () => {},
     clearToolPoints: () => {},
     checkClashes: () => {},
+    sweepJoints: () => {},
     savePose: () => {},
     openExport: () => {},
     openRender: () => {},
@@ -1645,6 +1646,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       setSelection([]);
       setPropsOpen(true);
       setClashOn(true);
+    },
+    sweepJoints: () => {
+      setSelection([]);
+      setPropsOpen(true);
+      setSweepStart((n) => n + 1);
     },
     openExport: () => setExportOpen(true),
     openRender: () => openRender(),
@@ -2006,6 +2012,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().checkClashes(),
         when: () => live.current.parts.length > 1,
         keywords: "collision interference overlap touch intersect robot pose",
+      },
+      {
+        id: "check.sweep",
+        scope: "model",
+        label: "Sweep the joints for clashes",
+        group: "Edit",
+        icon: "joint",
+        run: () => h().sweepJoints(),
+        when: () => live.current.parts.length > 1 && build(live.current.doc).joints.some(movable),
+        keywords: "collision range limits robot arm joints self hit",
       },
       {
         id: "pose.tool.clear",
@@ -2553,6 +2569,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const viewWarn = useMemo(() => (clashBodies ? new Set([...(offBed ?? []), ...clashBodies]) : offBed), [clashBodies, offBed]);
   useEffect(() => vp.ref.current?.engine()?.setClashBoxes(clashes?.length ? clashes.map((c) => c.box) : null), [clashes, vp.ref]);
   const showClash = useCallback((c: Clash) => vp.ref.current?.engine()?.fitBox(c.box.min, c.box.max), [vp.ref]);
+
+  // Clash sweep (#179): the panel keeps its own state; the palette's command bumps `sweepStart` to run it.
+  const [sweepStart, setSweepStart] = useState(0);
 
   // Mating faces (#184): worked out in the kernel while the fits check is on, again after each change.
   const [fitsCheck, setFitsCheck] = useState(false);
@@ -3549,6 +3568,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                         nameOf: (id: string) => parts.find((p) => p.id === id)?.name ?? "A body",
                         onShow: showClash,
                         onStop: stopClashes,
+                        sweep: built.joints.some(movable)
+                          ? {
+                              joints: built.joints
+                                .filter((j) => movable(j) && !built.drives.some((d) => d.driven === j.id))
+                                .map((j) => ({ id: j.id, name: j.name, kind: j.kind })),
+                              run: (ask, progress) =>
+                                kernelCall("sweep", { doc: live.current.doc, upTo: at, references: clashOpts.references, ...ask }, progress),
+                              model: doc.features,
+                              start: sweepStart,
+                              store,
+                              onShow: (pose) => {
+                                setClashAt(null);
+                                setClashOn(true);
+                                setLivePose(store.isLocked() ? pose : null);
+                              },
+                              say,
+                            }
+                          : undefined,
                       }
                     : undefined
                 }
