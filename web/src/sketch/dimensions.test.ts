@@ -88,4 +88,43 @@ describe("placing a size", () => {
     const auto = placeAt(sketch, "length", [l], null);
     expect(dimensionArt(idx, auto, 0.1, [0, 0]).text).not.toEqual(dimensionArt(idx, auto, 1, [0, 0]).text);
   });
+
+  it("runs a diameter's line through the centre to its label, which follows the circle", () => {
+    const d = new Draft(newSketch());
+    const c = d.circle([0, 0], 5);
+    const sketch = d.done().sketch;
+    const idx = new SketchIndex(sketch);
+    // Placed up and to the left, 3 mm past the rim.
+    const dia = placeAt(sketch, "diameter", [c], [-8, 0]);
+    const art = dimensionArt(idx, dia, 0.1, [0, 0]);
+    expect(art.text[0]).toBeCloseTo(-8);
+    expect(art.text[1]).toBeCloseTo(0);
+    // Across the circle through the centre, then a leader out to the label.
+    expect(art.lines[0]![0]).toEqual([expect.closeTo(5), expect.closeTo(0)]);
+    expect(art.lines[0]![1]).toEqual([expect.closeTo(-5), expect.closeTo(0)]);
+    expect(art.lines[1]![1]).toEqual([expect.closeTo(-8), expect.closeTo(0)]);
+    expect(art.arrows.map((a) => a.tip[0])).toEqual([expect.closeTo(-5), expect.closeTo(5)]);
+
+    // The circle moves and shrinks: the label stays 3 mm past its rim, the same way out.
+    const moved = {
+      ...sketch,
+      entities: sketch.entities.map((e) => (e.kind === "circle" ? { ...e, r: 2 } : e.kind === "point" ? { ...e, x: e.x + 20, y: e.y + 10 } : e)),
+    };
+    const a2 = dimensionArt(new SketchIndex(moved), dia, 0.1, [0, 0]);
+    expect(a2.text[0]).toBeCloseTo(15);
+    expect(a2.text[1]).toBeCloseTo(10);
+  });
+
+  it("keeps a radius label outside its arc's rim even when dropped inside", () => {
+    const d = new Draft(newSketch());
+    const c = d.circle([0, 0], 5);
+    const sketch = d.done().sketch;
+    const idx = new SketchIndex(sketch);
+    const r = { ...placeAt(sketch, "diameter", [c], null), kind: "radius" as const };
+    const inside = { ...r, labelOffset: offsetTo(idx, r, [0, 2]) };
+    const art = dimensionArt(idx, inside, 0.1, [0, 0]);
+    expect(art.text[0]).toBeCloseTo(0);
+    expect(art.text[1]).toBeCloseTo(5);
+    expect(art.lines[0]![0]).toEqual([0, 0]);
+  });
 });

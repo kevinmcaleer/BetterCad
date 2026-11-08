@@ -40,6 +40,14 @@ export const isPlaced = (d: Pick<Dimension, "labelOffset">): boolean => d.labelO
 
 /** The label offset that puts a size's label at `xy`, never exactly zero so it counts as placed. */
 export function offsetTo(idx: SketchIndex, d: Dimension, xy: Vec2): Vec2 {
+  const round = roundOf(idx, d);
+  if (round) {
+    // Round sizes keep their label out past the rim, along the leader from the centre: the gap past the rim.
+    const v = sub(xy, round.c);
+    const len = Math.hypot(v[0], v[1]);
+    const u: Vec2 = len > 1e-9 ? scale(v, 1 / len) : [Math.cos(round.ang), Math.sin(round.ang)];
+    return scale(u, Math.max(len - round.r, 1e-6));
+  }
   const o = sub(xy, dimensionAnchor(idx, d));
   return o[0] === 0 && o[1] === 0 ? [1e-6, 0] : o;
 }
@@ -102,6 +110,33 @@ export function dimensionAnchor(idx: SketchIndex, d: Pick<Dimension, "kind" | "r
     return d.kind === "distance" ? q : mid(p, q);
   }
   return mid(p, anchorOf(idx, e1));
+}
+
+/** The circle or arc a radius or diameter measures: its centre, radius and the leader's default angle. */
+function roundOf(idx: SketchIndex, d: Pick<Dimension, "kind" | "refs">): { c: Vec2; r: number; ang: number } | null {
+  if (d.kind !== "radius" && d.kind !== "diameter") return null;
+  const e = d.refs[0] ? idx.get(d.refs[0]) : undefined;
+  if (!e || (e.kind !== "circle" && e.kind !== "arc")) return null;
+  return { c: idx.xy(e.c), r: e.r, ang: rimAngle(idx, e) };
+}
+
+/**
+ * A radius or diameter, as Fusion draws it: the dimension line runs from the circle through its centre and out along a
+ * leader to the label, which sits `labelOffset` past the rim. So the label follows the circle when it moves or changes
+ * size, and the line always reaches the label wherever it is dragged. Until placed, it sits a little out at 45°.
+ */
+function roundArt(kind: "radius" | "diameter", c: Vec2, r: number, ang: number, labelOffset: Vec2, px: number): DimensionArt {
+  const placed = isPlaced({ labelOffset });
+  const gap = Math.hypot(labelOffset[0], labelOffset[1]);
+  const u: Vec2 = placed ? scale(labelOffset, 1 / gap) : [Math.cos(ang), Math.sin(ang)];
+  const rim = add(c, scale(u, r));
+  const text = placed ? add(rim, labelOffset) : add(rim, scale(u, 18 * px));
+  const lines: [Vec2, Vec2][] = [[kind === "radius" ? c : add(c, scale(u, -r)), rim]];
+  // The leader out to the label, ending under it.
+  if (dist(rim, text) > 4 * px) lines.push([rim, text]);
+  const arrows = [{ tip: rim, dir: u }];
+  if (kind === "diameter") arrows.push({ tip: add(c, scale(u, -r)), dir: scale(u, -1) });
+  return { text, lines, arrows };
 }
 
 function rimAngle(idx: SketchIndex, e: Entity & { kind: "circle" | "arc" }): number {
@@ -176,21 +211,7 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
 
   if (d.kind === "radius" || d.kind === "diameter") {
     if (e0.kind !== "circle" && e0.kind !== "arc") return textOnly(anchorOf(idx, e0));
-    const c = idx.xy(e0.c);
-    const ang = rimAngle(idx, e0);
-    const u: Vec2 = [Math.cos(ang), Math.sin(ang)];
-    const rim = polar(c, e0.r, ang);
-    const text = textAt(rim, add(rim, scale(u, 18 * px)));
-    if (d.kind === "radius") return { text, lines: [[c, rim]], arrows: [{ tip: rim, dir: u }] };
-    const far = polar(c, e0.r, ang + Math.PI);
-    return {
-      text,
-      lines: [[far, rim]],
-      arrows: [
-        { tip: rim, dir: u },
-        { tip: far, dir: scale(u, -1) },
-      ],
-    };
+    return roundArt(d.kind, idx.xy(e0.c), e0.r, rimAngle(idx, e0), d.labelOffset, px);
   }
 
   if (d.kind === "angle" || !e1) return textOnly(e1 ? mid(anchorOf(idx, e0), anchorOf(idx, e1)) : anchorOf(idx, e0));
