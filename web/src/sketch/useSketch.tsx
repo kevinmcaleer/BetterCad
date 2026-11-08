@@ -60,6 +60,7 @@ import {
   CONSTRAINT_TOOLS,
   SKETCH_TOOLS,
   addConstraints,
+  axisLine,
   commit,
   constraintToolById,
   newlyRedundant,
@@ -133,6 +134,7 @@ export interface Placing {
 }
 
 const PLANES_ONLY = new Set(["plane"] as const);
+const AXES = new Set(["axis"] as const);
 
 /**
  * A text being set with the Text tool: where it goes, how it is set, and its outline laid out from the font for the
@@ -318,11 +320,11 @@ export function useSketch(d: SketchDeps) {
   );
 
   const addSize = useCallback(
-    (kind: DimensionKind, refs: Id[], base?: Sketch, labelOffset?: Vec2) => {
+    (kind: DimensionKind, refs: Id[], base?: Sketch, extra: Partial<Dimension> = {}) => {
       const s = base ?? current();
       if (!s) return;
       const dr = new Draft(s);
-      const id = dr.dimension(kind, refs, undefined, labelOffset ? { labelOffset } : {});
+      const id = dr.dimension(kind, refs, undefined, extra);
       const withDim = dr.done().sketch;
       if (apply(withDim, "Add a dimension", { strict: true, quiet: true })) {
         setDimEdit(id);
@@ -383,7 +385,7 @@ export function useSketch(d: SketchDeps) {
     const pl = live.current.placing;
     if (!pl) return;
     setPlacing(null);
-    addSize(pl.dim.kind, pl.dim.refs, pl.sketch, pl.dim.labelOffset);
+    addSize(pl.dim.kind, pl.dim.refs, pl.sketch, { labelOffset: pl.dim.labelOffset, ...(pl.dim.arms && { arms: pl.dim.arms }) });
   }, [addSize]);
 
   /** Moves a size's label (dragged by its pill), live; `last` ends the drag as one undo step. */
@@ -655,6 +657,30 @@ export function useSketch(d: SketchDeps) {
     [engineOf, current, apply],
   );
 
+  /**
+   * The Dimension tool on an axis (a construction axis, or the origin's while the tool is on): brought into the sketch
+   * as a fixed construction line, so sizes and angles can measure from it. Null when none is under the pointer, or it
+   * runs square through the sketch.
+   */
+  const projectAxis = useCallback(
+    (p: ScreenPoint, near: Vec2): Id | null => {
+      const eng = engineOf();
+      const s = current();
+      const f = live.current.frame;
+      const hit = eng?.constructAt(p.x, p.y, AXES);
+      const ax = hit ? eng!.constructShape(hit) : null;
+      if (!s || !f || !ax?.dir) return null;
+      const a = toSketch(f, ax.origin);
+      const b = toSketch(f, [ax.origin[0] + ax.dir[0], ax.origin[1] + ax.dir[1], ax.origin[2] + ax.dir[2]]);
+      if (dist(a, b) < 1e-3) return null;
+      const { sketch: next, id } = axisLine(s, a, b, near);
+      if (next !== s && !apply(next, "Project an axis")) return null;
+      keepPlacing.current = current();
+      return id;
+    },
+    [engineOf, current, apply],
+  );
+
   // ---------------------------------------------------------------- text
 
   /** Starts a new text at a point, set as the last one was; the Text card opens for its words. */
@@ -744,6 +770,7 @@ export function useSketch(d: SketchDeps) {
   const live = useRef({
     autoProject: options.autoProject,
     projectModel,
+    projectAxis,
     current,
     editingId,
     feature,
@@ -775,6 +802,7 @@ export function useSketch(d: SketchDeps) {
   live.current = {
     autoProject: options.autoProject,
     projectModel,
+    projectAxis,
     current,
     redefining,
     editingId,
@@ -1046,6 +1074,15 @@ export function useSketch(d: SketchDeps) {
         const hit = at(p);
         if (!hit || !L.sketch) return false;
         if (L.placing) {
+          // A line's size is following the pointer and another line is clicked: size the angle between them, as in
+          // Fusion (or the gap, if they are parallel).
+          const [first, more] = L.placing.dim.refs;
+          const isLine = (id?: Id | false | null) => !!L.current()?.entities.some((e) => e.id === id && e.kind === "line");
+          const other = !more && isLine(first) && L.stool === "dimension" && (pickAt(hit.xy, L.sketch, reach * hit.px, L.origin) ?? L.projectAxis(p, hit.xy));
+          if (other !== first && isLine(other) && L.dimensionFor([first!, other as Id])) {
+            setPlacing((pl) => pl && { ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy) });
+            return true;
+          }
           if (mods.touch) {
             // The size jumps to the finger, follows it, and goes down where it lifts.
             const pl = L.placing;
@@ -1103,8 +1140,10 @@ export function useSketch(d: SketchDeps) {
               id = L.projectModel(mp);
               eng.showHover(null);
             }
+            const axis = !id && L.projectAxis(p, hit.xy);
+            if (axis) id = axis;
             if (!id) return false;
-            const sk = (mp && L.current()) || L.sketch;
+            const sk = ((mp || axis) && L.current()) || L.sketch;
             const picked = [...L.sel.filter((x) => x !== id), id];
             const e = sk.entities.find((x) => x.id === id);
             // A line, circle or arc sizes at once unless a point waits for it; a point waits for a second pick.

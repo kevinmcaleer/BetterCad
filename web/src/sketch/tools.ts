@@ -7,6 +7,12 @@ import {
   sub,
   angleOf,
   sampleArc,
+  SketchIndex,
+  add,
+  cross,
+  dot,
+  norm,
+  scale,
   type Id,
   type Sketch,
   type Vec2,
@@ -85,7 +91,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
     label: "Dimension",
     icon: "dimension",
     key: "d",
-    help: "Click a line, circle or arc, or two points or two lines, then click to place the size. Move off past the ends for a level or upright size. The origin counts as a point.",
+    help: "Click a line, circle or arc, or two points or two lines, then click to place the size. Move off past the ends for a level or upright size. For an angle, click a second line. Axes count as lines, the origin as a point.",
     fields: [],
   },
   {
@@ -514,4 +520,27 @@ export function newlyRedundant(before: Pick<SolveResult, "status" | "redundant">
   if (after.redundant.length <= old.size) return [];
   const fresh = after.redundant.filter((id) => !old.has(id));
   return fresh.length ? fresh : after.redundant;
+}
+
+/**
+ * An axis as a sketch line a size can measure from: a fixed construction line along a to b, running past `near` (where
+ * it was picked) and through a. The one already there is reused.
+ */
+export function axisLine(s: Sketch, a: Vec2, b: Vec2, near: Vec2): { sketch: Sketch; id: Id } {
+  const u = norm(sub(b, a));
+  const idx = new SketchIndex(s);
+  const fixed = new Set(s.constraints.flatMap((c) => (c.type === "fix" ? [c.p] : [])));
+  const on = (id: Id) => fixed.has(id) && Math.abs(cross(u, sub(idx.xy(id), a))) < 1e-6;
+  const had = s.entities.find((e) => e.kind === "line" && e.construction && on(e.a) && on(e.b));
+  if (had) return { sketch: s, id: had.id };
+  const t = dot(sub(near, a), u);
+  const half = Math.max(10, Math.abs(t) + 5);
+  const d = new Draft(s);
+  const ends = [t - half, t + half].map((k) => {
+    const id = d.point(add(a, scale(u, k)), true);
+    d.constrain({ type: "fix", p: id });
+    return id;
+  });
+  const id = d.line(ends[0]!, ends[1]!, { construction: true, auto: false });
+  return { sketch: d.done().sketch, id };
 }

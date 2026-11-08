@@ -1045,6 +1045,11 @@ export class Engine {
    * The construction geometry under a point, if any: a point within 8 px first, then an axis within 6 px, then the
    * nearest plane. `what` limits it to the kinds a tool can take.
    */
+  /** A construction shape in the view, by id. */
+  constructShape(id: string): ConstructShape | null {
+    return this.constructItems.find((c) => c.id === id) ?? null;
+  }
+
   constructAt(x: number, y: number, what?: ReadonlySet<ConstructShape["what"]>): string | null {
     const take = (it: ConstructShape) => !what || what.has(it.what);
     const near = (it: ConstructShape, px: number) => {

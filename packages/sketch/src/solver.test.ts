@@ -136,6 +136,22 @@ describe("planegcs solver", () => {
     expect(pr.dof).toBe(4);
   });
 
+  it("an angle measures the quadrant its arms name", () => {
+    const d = new Draft(newSketch());
+    const h = d.line([0, 0], [10, 0]);
+    const l = d.line([0, 0], [10, 4], { auto: false });
+    // The obtuse side: back along the first line, out along the second.
+    d.dimension("angle", [h, l], 120, { arms: [-1, 1] });
+    const r = solver.solve(d.done().sketch);
+    expect(r.status).toBe("ok");
+    expect(measureDimension(r.sketch, { kind: "angle", refs: [h, l], arms: [-1, 1] })).toBeCloseTo(120, 6);
+    expect(measureDimension(r.sketch, { kind: "angle", refs: [h, l] })).toBeCloseTo(60, 6);
+    // The second line keeps turning the same way (anticlockwise, up from the first).
+    const idx = new SketchIndex(r.sketch);
+    const e = idx.get(l);
+    expect(e?.kind === "line" && idx.xy(e.b)[1] - idx.xy(e.a)[1]).toBeGreaterThan(0);
+  });
+
   it("dragging a point moves what the constraints allow", () => {
     const { sketch, corner } = rect();
     const free = { ...sketch, constraints: sketch.constraints.filter((c) => c.type !== "fix") };
