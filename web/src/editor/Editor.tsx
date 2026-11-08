@@ -113,7 +113,7 @@ import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
 import type { Solver } from "@bettercad/sketch";
-import { SketchBars, SketchLabels, SketchPanel, SketchPickBar } from "../sketch/SketchUI";
+import { SketchBars, SketchLabels, SketchPickBar } from "../sketch/SketchUI";
 import { useExtrude } from "../extrude/useExtrude";
 import { ExtrudeBar } from "../extrude/ExtrudeUI";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
@@ -158,6 +158,8 @@ import type { WorldPlaneName } from "../viewport/engine";
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
+// The sketch palette only shows while a sketch is open, so it loads then.
+const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -2406,7 +2408,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         }
         rightPanel={
           sketch.editing ? (
-            <SketchPanel s={sketch} />
+            <Suspense fallback={null}>
+              <SketchPanel s={sketch} />
+            </Suspense>
           ) : (
             <>
               {problemBanner}
