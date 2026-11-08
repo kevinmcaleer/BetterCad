@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { drawRectangle, drawCircle, drawLine, newSketch } from "@bettercad/sketch";
-import { ORIGIN, dropTarget, entityAt, snap, snapStep } from "./snap";
+import { ORIGIN, entityAt, snap, snapStep } from "./snap";
+import { dropTarget } from "./drop";
 
 const rect = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
 

@@ -54,7 +54,7 @@ import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, 
 import { loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide, type SketchOption, type SketchOptions } from "./options";
 import { viewDir } from "../viewport/camera";
 import { placeAt } from "./dimensions";
-import { ORIGIN, dropTarget, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type PointPick, type Snap } from "./snap";
+import { ORIGIN, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type PointPick, type Snap } from "./snap";
 import {
   CLICKS,
   CONSTRAINT_TOOLS,
@@ -867,6 +867,8 @@ export function useSketch(d: SketchDeps) {
      * point or a curve snaps to it (`onto`), and is made coincident with it where it is let go.
      */
     let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 }; offset?: Vec2; onto?: PointPick | null } | null = null;
+    let dropTarget: typeof import("./drop").dropTarget | null = null;
+    void import("./drop").then((m) => (dropTarget = m.dropTarget));
     /** Ends a drag: a point let go over a snap gets its coincident in the same undo step as the move. */
     const endDrag = (snapIt: boolean) => {
       const d = drag;
@@ -1158,7 +1160,7 @@ export function useSketch(d: SketchDeps) {
           } else if (drag.offset) r = L.solver.drag(L.sketch, drag.id, sub(hit.xy, drag.offset));
           else {
             // Over another point or a curve, the point snaps to it and shows where it will go; Shift lets it go free.
-            const onto = mods.shift ? null : dropTarget(hit.xy, L.sketch, drag.id, reach * hit.px, L.origin);
+            const onto = mods.shift || !dropTarget ? null : dropTarget(hit.xy, L.sketch, drag.id, reach * hit.px, L.origin);
             drag.onto = onto;
             setHover(onto?.id ?? null);
             setCursor(onto ? { xy: onto.xy, kind: onto.kind, label: onto.label } : null);
