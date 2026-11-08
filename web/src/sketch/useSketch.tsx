@@ -35,7 +35,8 @@ import type { Command } from "../state/commands";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
-import { SketchOverlay, type OverlayCurve, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
+import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
+import { loadOptions, saveOptions, sketchGrid, type SketchOption, type SketchOptions } from "./options";
 import { entityAt, snap, snapStep, type Snap } from "./snap";
 import {
   CLICKS,
@@ -106,8 +107,16 @@ export function useSketch(d: SketchDeps) {
   const [sel, setSel] = useState<Id[]>([]);
   const [hover, setHover] = useState<Id | null>(null);
   const [sides, setSides] = useState(6);
-  const [gridSnap, setGridSnap] = useState(true);
-  const [showConstraints, setShowConstraints] = useState(true);
+  const [options, setOptions] = useState<SketchOptions>(loadOptions);
+  const setOption = useCallback((k: SketchOption, v: boolean) => {
+    setOptions((o) => {
+      const n = { ...o, [k]: v };
+      saveOptions(n);
+      return n;
+    });
+  }, []);
+  const gridSnap = options.snap;
+  const showConstraints = options.constraints;
   const [dimEdit, setDimEdit] = useState<Id | null>(null);
   const [finishWarn, setFinishWarn] = useState(false);
   const [camTick, setCamTick] = useState(0);
@@ -333,6 +342,12 @@ export function useSketch(d: SketchDeps) {
     },
     [current, store, engineOf],
   );
+
+  /** Turns the view to look straight at the sketch's plane, as Fusion's Look At does. */
+  const lookAtSketch = useCallback(() => {
+    const f = live.current.frame;
+    if (f) engineOf()?.lookAt(f.origin, f.normal);
+  }, [engineOf]);
 
   // ---------------------------------------------------------------- start and finish
 
@@ -692,10 +707,26 @@ export function useSketch(d: SketchDeps) {
     const o = overlay.current;
     if (!o || !sketch || !frame) return;
     o.refreshPalette();
-    const view = sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview);
-    const px = engineOf()?.pixelSize(frame.origin);
-    o.update(px ? withOrigin(view, toSketch(frame, [0, 0, 0]), px) : view);
-  }, [sketch, frame, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf]);
+    const eng = engineOf();
+    const view = sketchView(sketch, frame, result, sel, hover, previewNow?.lines ?? [], cursor, clicks[clicks.length - 1]?.xy, undefined, editPreview, options);
+    const px = eng?.pixelSize(frame.origin);
+    let grid: OverlayView["grid"] = null;
+    if (eng && px && options.grid) {
+      // Around the point of the plane in the middle of the view, far enough to reach every corner.
+      const { width, height } = eng.size;
+      const w = eng.rayPlane(width / 2, height / 2, frame.origin, frame.normal);
+      if (w) grid = sketchGrid(toSketch(frame, w), px * Math.hypot(width, height) * 0.6, px);
+    }
+    o.update(px ? { ...withOrigin(view, toSketch(frame, [0, 0, 0]), px), grid } : view);
+  }, [sketch, frame, result, sel, hover, previewNow, cursor, clicks, camTick, d.theme, editPreview, engineOf, options]);
+
+  // The sketch's own grid takes the floor grid's place while it is on.
+  useEffect(() => {
+    const eng = engineOf();
+    if (!eng || !editingId || !options.grid) return;
+    eng.setFloorGrid(false);
+    return () => eng.setFloorGrid(true);
+  }, [editingId, options.grid, engineOf]);
 
   // Finished sketches stay on show, faintly, while the timeline includes them.
   useEffect(() => {
@@ -768,8 +799,8 @@ export function useSketch(d: SketchDeps) {
 
   // ---------------------------------------------------------------- commands
 
-  const h = useRef({ pickTool, removeSelected, toggleConstruction, finish, constrain });
-  h.current = { pickTool, removeSelected, toggleConstruction, finish, constrain };
+  const h = useRef({ pickTool, removeSelected, toggleConstruction, finish, constrain, lookAtSketch });
+  h.current = { pickTool, removeSelected, toggleConstruction, finish, constrain, lookAtSketch };
   const commands = useMemo<Command[]>(() => {
     const has = () => live.current.sel.length > 0;
     return [
@@ -821,6 +852,15 @@ export function useSketch(d: SketchDeps) {
         when: has,
         keywords: "reference guide dashed",
       },
+      {
+        id: "sketch.lookAt",
+        scope: "sketch",
+        label: "Look at the sketch",
+        group: "Sketch",
+        icon: "eye",
+        run: () => h.current.lookAtSketch(),
+        keywords: "view plane face on straight",
+      },
       { id: "sketch.finish", scope: "sketch", label: "Finish sketch", group: "Sketch", icon: "finish", keys: ["enter"], run: () => h.current.finish() },
     ];
   }, []);
@@ -869,9 +909,10 @@ export function useSketch(d: SketchDeps) {
     projectGuide,
     setProjectGuide,
     gridSnap,
-    setGridSnap,
     showConstraints,
-    setShowConstraints,
+    options,
+    setOption,
+    lookAtSketch,
     dimEdit,
     setDimEdit,
     setDimension,
@@ -903,6 +944,7 @@ export function sketchView(
   from: Vec2 | undefined,
   base?: Shade,
   extra?: { lines: Vec2[][]; danger: boolean } | null,
+  show?: ShowOptions,
 ): OverlayView {
   const idx = new SketchIndex(s);
   const bad = new Set<Id>();
@@ -914,7 +956,11 @@ export function sketchView(
   const shade = (id: Id): Shade =>
     base ?? (bad.has(id) ? "conflict" : sel.includes(id) ? "picked" : hover === id ? "hover" : result?.fixed.has(id) ? "fixed" : "free");
   const curves: OverlayCurve[] = [];
+  // Hidden kinds still count for the solver and profiles; only the drawing leaves them out. Picked ones stay.
+  const hidden = (e: Sketch["entities"][number]) =>
+    !!show && !sel.includes(e.id) && ((e.projectedFrom ? !show.projected : false) || (e.construction && !e.projectedFrom ? !show.construction : false));
   for (const e of s.entities) {
+    if (hidden(e)) continue;
     if (e.kind === "line") curves.push({ pts: [idx.xy(e.a), idx.xy(e.b)], shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "circle") curves.push({ pts: sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72), shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "arc") {
@@ -923,7 +969,9 @@ export function sketchView(
     }
   }
   const points: OverlayPoint[] = s.entities.flatMap((e) =>
-    e.kind === "point" ? [{ xy: [e.x, e.y] as Vec2, shade: shade(e.id), big: sel.includes(e.id) || hover === e.id }] : [],
+    e.kind === "point" && (!show || show.points || sel.includes(e.id) || hover === e.id)
+      ? [{ xy: [e.x, e.y] as Vec2, shade: shade(e.id), big: sel.includes(e.id) || hover === e.id }]
+      : [],
   );
   for (const l of previewLines) curves.push({ pts: l, shade: "preview" });
   for (const l of extra?.lines ?? []) curves.push({ pts: l, shade: extra!.danger ? "conflict" : "preview" });
@@ -931,8 +979,15 @@ export function sketchView(
     curves.push({ pts: [from, cursor.xy], shade: "guide", dashed: true });
   }
   if (cursor) points.push({ xy: cursor.xy, shade: cursor.kind === "free" ? "preview" : "hover", big: cursor.kind !== "free" });
-  return { frame, curves, points };
+  // The closed shapes Extrude can use, shaded faintly, as Fusion's profiles are.
+  const fills: OverlayFill[] = show?.profile
+    ? profiles(s).profiles.map((p) => ({ outer: p.points, holes: p.holes.map((h) => h.points), shade: "free" as const }))
+    : [];
+  return { frame, curves, points, fills, fillOpacity: 0.14 };
 }
+
+/** What the overlay leaves out or adds, from the palette's options. */
+type ShowOptions = { [K in "points" | "profile" | "projected" | "construction"]: SketchOptions[K] };
 
 /** The model's origin drawn under the sketch: a fixed point with a small cross, 8 px each way, to snap to. */
 export function withOrigin(view: OverlayView, origin: Vec2, px: number): OverlayView {

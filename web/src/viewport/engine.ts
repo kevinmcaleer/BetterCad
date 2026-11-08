@@ -216,6 +216,8 @@ export class Engine {
   private room: Mesh;
   private roomMat = gridMaterial(true);
   private roomOn = false;
+  /** Off while a sketch draws its own grid on its plane. */
+  private floorGrid = true;
   // Depth of field: the room drawn on its own, blurred where it is far from the model, then laid down as the background.
   private dofScene = new Scene();
   private dofRoomMat = gridMaterial(true);
@@ -430,6 +432,19 @@ export class Engine {
 
   private get activeCamera(): PerspectiveCamera | OrthographicCamera {
     return this.cam.ortho ? this.ortho : this.persp;
+  }
+
+  /** The canvas size in CSS pixels. */
+  get size(): { width: number; height: number } {
+    return { width: this.width, height: this.height };
+  }
+
+  /** Shows or hides the floor grid (the Holodeck room stays). A sketch hides it while it draws its own. */
+  setFloorGrid(on: boolean): void {
+    if (this.floorGrid === on) return;
+    this.floorGrid = on;
+    this.grid.visible = !this.roomOn && on;
+    this.invalidate();
   }
 
   setSize(width: number, height: number): void {
@@ -1200,7 +1215,7 @@ export class Engine {
     this.capMat.uniforms.fill!.value.copy(p["part-fill"]);
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
     this.arrow.setColor(p.snap);
-    this.grid.visible = !this.roomOn;
+    this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
     this.paintPlanes?.();
   }

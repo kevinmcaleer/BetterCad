@@ -22,6 +22,7 @@ const PAIRS: [ColourName, ColourName][] = [
   ["warn-ink", "warn-soft"],
   ["danger", "bar"],
   ["danger", "rail"],
+  ["dimension", "viewport"],
 ];
 
 describe("contrast", () => {
