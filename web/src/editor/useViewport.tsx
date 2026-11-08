@@ -138,6 +138,8 @@ export function useViewport(d: ViewportDeps) {
     const p = presetOf(c);
     const v: ViewId | null = p === "iso" || p === "front" || p === "side" || p === "top" ? p : null;
     setView((old) => (old === v ? old : v));
+    // The menu and the O key follow the camera, which a sketch's Look at turns orthographic.
+    setOrtho(c.ortho);
   }, []);
 
   const preset = useCallback((p: Preset) => view3d.current?.preset(p), []);

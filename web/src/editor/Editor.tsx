@@ -2933,20 +2933,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     { id: "whatsNew", label: "What's new", icon: "star", onSelect: () => registry.run("help.whatsNew") },
     { id: "about", label: "About BetterCad", icon: "info", onSelect: () => registry.run("help.about") },
   ];
+  const saveTip = files.cloud && account ? "Save to your account" : files.inPlace ? "Save" : "Save (downloads a file)";
   const saveEntries: MenuEntry[] = [
-    {
-      id: "save",
-      label: files.cloud && account ? "Save to your account" : files.inPlace ? "Save" : "Save (downloads a file)",
-      icon: files.cloud && account ? "cloud" : "save",
-      keys: formatCombo("mod+s"),
-      onSelect: () => void save(),
-    },
     { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
     { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
-    { id: "export", label: "Export STL, 3MF, STEP or glTF…", icon: "download", keys: formatCombo("mod+e"), onSelect: () => setExportOpen(true) },
     ...files.recentEntries,
     { kind: "separator", id: "s1" },
     account
@@ -3194,6 +3187,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onUndo={doUndo}
             onRedo={doRedo}
             saveEntries={saveEntries}
+            saveTip={saveTip}
+            onSave={() => void save()}
             helpEntries={helpEntries}
             account={account ? { name: account.name } : null}
             accountsOn={accountReady && accountsOn}

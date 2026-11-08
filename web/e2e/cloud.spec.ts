@@ -47,12 +47,12 @@ test("save a box to the account, open it again from the library after a reload",
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Kev: account and settings" })).toBeVisible();
   await addBox(page);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
   await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
-  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
+  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
   const [model] = [...server.models.values()];
   expect(JSON.parse(model!.versions[0]!.bcad).document.features[0]).toMatchObject({ type: "add" });
 
@@ -110,7 +110,7 @@ test("a save from a second tab warns about the first", async ({ page, context })
   await server.signIn(context);
   await page.goto("/");
   await addBox(page);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
   await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
@@ -122,16 +122,16 @@ test("a save from a second tab warns about the first", async ({ page, context })
   await other.getByRole("button", { name: "Library" }).click();
   await other.getByRole("button", { name: "Sphere", exact: true }).click();
   await other.keyboard.press("ControlOrMeta+s");
-  await expect(other.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
+  await expect(other.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
 
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Cone", exact: true }).click();
   await page.keyboard.press("ControlOrMeta+s");
   await expect(page.getByRole("dialog", { name: "This model changed in another tab" })).toBeVisible();
   await page.getByRole("button", { name: "Save anyway" }).click();
-  // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the cloud button
-  // says "Saved to your account" until the next change.
-  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
+  // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the Save button
+  // is described as "Saved to your account" until the next change.
+  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
   const [model] = [...server.models.values()];
   expect(model!.versions.length).toBe(3);
 });
@@ -141,7 +141,7 @@ test("offline saves wait in the browser and go when the network is back", async 
   await server.signIn(context);
   await page.goto("/");
   await addBox(page);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
@@ -160,7 +160,7 @@ test("offline saves wait in the browser and go when the network is back", async 
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();
   await page.keyboard.press("ControlOrMeta+s");
   await expect(page.getByText("You're offline. This save waits and goes when you're back.")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Offline: saves when you're back/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveAccessibleDescription("Offline: saves when you're back");
 
   // The library shows the last list it saw.
   await page.goto("/#/library");
@@ -187,13 +187,13 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
   await page.getByRole("menuitemradio", { name: "Line art" }).click();
   await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
-  // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the cloud button
-  // says "Saved to your account" until the next change.
-  await expect(page.getByRole("button", { name: "Saved to your account" })).toBeVisible(SAVE);
+  // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the Save button
+  // is described as "Saved to your account" until the next change.
+  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
   const [model] = [...server.models.values()];
   const thumb = JSON.parse(model!.versions[0]!.bcad).thumbnail as string;
   // The mean brightness of the drawn pixels: Holodeck's line art fill is near black, a Light shaded box is pale.
@@ -274,7 +274,7 @@ test("after a save to the account, a rendered picture replaces the thumbnail", a
   await page.addInitScript(() => ((window as unknown as { __bcRenderThumbs: object }).__bcRenderThumbs = { samples: 1, timeout: 200_000 }));
   await page.goto("/");
   await addBox(page);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
