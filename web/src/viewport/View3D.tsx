@@ -41,6 +41,8 @@ export interface View3DProps {
   onTransforming?: (id: string, position: V3, rotation: V3) => void;
   onSection: (s: Section) => void;
   onCamera?: (c: CameraState) => void;
+  /** A long press with a finger, or a right click without a drag: what was under it and where to open a menu. */
+  onMenu?: (pick: Pick | null, at: { x: number; y: number }) => void;
   /** The printer's bed to draw (#100), or null for none. */
   bed?: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null;
   /** Bodies off the bed, tinted warn. */
@@ -140,6 +142,10 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
           return;
         }
         p.onPick(pick, mods);
+      },
+      menu: (pick, at) => {
+        const p = events.current;
+        if (p.mode !== "section") p.onMenu?.(pick, at);
       },
       transform: (id, pos, rot) => events.current.onTransform(id, pos, rot),
       transforming: (id, pos, rot) => events.current.onTransforming?.(id, pos, rot),

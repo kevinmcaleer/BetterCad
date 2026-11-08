@@ -30,9 +30,10 @@ export function decodeId(r: number, g: number, b: number, a: number): { body: nu
  * centre. Faces and bodies take the pixel under the cursor (or the nearest within 3 px); edges and vertices take the
  * nearest one drawn, so thin lines are easy to hit.
  */
-export function findPick(pixels: Uint8Array, size: number, kind: SelectFilter): { body: number; element: number } | null {
+export function findPick(pixels: Uint8Array, size: number, kind: SelectFilter, wide = false): { body: number; element: number } | null {
   const c = (size - 1) / 2;
-  const reach = kind === "body" || kind === "face" ? Math.min(3, c) : c;
+  // A body or face is found under the point; a finger (wide) may land a little off it.
+  const reach = !wide && (kind === "body" || kind === "face") ? Math.min(3, c) : c;
   let best: { body: number; element: number } | null = null;
   let bestD = Infinity;
   for (let y = 0; y < size; y++) {

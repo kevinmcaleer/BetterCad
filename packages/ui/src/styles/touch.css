@@ -1,0 +1,50 @@
+/*
+ * Touch screens: a fingertip covers far more than a cursor, so on a coarse pointer every target grows to at least
+ * 40px (close to the 44px Apple and 48px Google ask for, without pushing the floating bars off a phone).
+ * Sizes only; colours come from tokens.css.
+ */
+@media (pointer: coarse) {
+  :root {
+    --bc-control: 40px;
+  }
+  .bc-icon-btn {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+  .bc-dense {
+    height: 36px;
+    min-width: 36px;
+  }
+  .bc-viewcube .bc-cube-btn {
+    width: 32px;
+    height: 32px;
+  }
+  /* No hover with a finger: nothing waits for one, and a tap does not leave a hover look behind. */
+  .bc-app {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+/* A phone's top bar holds a dozen buttons on one row: a little less there so they all fit. */
+@media (pointer: coarse) and (max-width: 520px) {
+  :root {
+    --bc-control: 36px;
+  }
+  .bc-icon-btn {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+  }
+  /* Save keeps its icon; its word stays for screen readers. */
+  .bc-top .bc-btn.bc-done {
+    padding: 0;
+  }
+  .bc-top .bc-btn.bc-done > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
