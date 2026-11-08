@@ -265,6 +265,46 @@ describe("components (#171)", () => {
     await userEvent.click(screen.getByText("Component 2"));
     expect(onSelect).toHaveBeenLastCalledWith(["d"]);
   });
+
+  it("makes a component active when you pick its row, and keeps it while you pick bodies", async () => {
+    const onActivate = vi.fn();
+    const onSelect = vi.fn();
+    const props = {
+      selection: [],
+      onSelect,
+      onAdd: () => {},
+      onToggle: () => {},
+      onActivate,
+      onBodiesHidden: () => {},
+      onSketchesHidden: () => {},
+      onOrigin: () => {},
+      onPicked: () => {},
+      onSelectSketch: () => {},
+      onRename: () => {},
+      onRenameModel: () => {},
+      onRenameSketch: () => {},
+      onReorder: () => {},
+      onSketchOn: () => {},
+      partMenu: () => [],
+      sketchMenu: () => [],
+      renameId: null,
+      onRenameIdChange: () => {},
+    };
+    const { rerender } = render(<BrowserPanel model={nested()} {...props} />);
+    await userEvent.click(screen.getByText("Component 2"));
+    expect(onActivate).toHaveBeenLastCalledWith("L2");
+    expect(onSelect).toHaveBeenLastCalledWith(["d"]);
+
+    rerender(<BrowserPanel model={nested({ active: "L2" })} {...props} />);
+    expect(screen.getByRole("treeitem", { name: /^Component 2/ })).toHaveClass("bc-row-active");
+    onActivate.mockClear();
+    // A body, or the active component again, leaves it be; the model's row makes the model active.
+    await userEvent.click(screen.getByText("Component 2"));
+    await userEvent.click(screen.getByText("Box 2"));
+    expect(onActivate).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByText("Rover"));
+    expect(onActivate).toHaveBeenLastCalledWith(null);
+  });
 });
 
 describe("moving into components (#334)", () => {

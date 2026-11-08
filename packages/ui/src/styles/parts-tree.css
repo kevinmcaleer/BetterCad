@@ -34,6 +34,14 @@
 .bc-row.bc-on {
   background: var(--bc-color-accent-soft);
 }
+/* The component you're working in (#171): an accent bar and name, so it's plain where new things go. */
+.bc-row.bc-row-active {
+  box-shadow: inset 3px 0 0 var(--bc-color-accent);
+}
+.bc-row.bc-row-active .bc-row-name {
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
 .bc-row.bc-off .bc-row-name {
   color: var(--bc-color-muted);
   font-style: italic;

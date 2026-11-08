@@ -337,6 +337,12 @@ export function BrowserPanel(p: BrowserPanelProps) {
     setOther(r.other);
     ours.current = true;
     const last = ids[ids.length - 1];
+    // Picking a component makes it the one you work in, as its radio does; picking the model, the model. It stays
+    // active until you pick another, so new planes, sketches and bodies go into it.
+    if (!model.readOnly && p.onActivate) {
+      if (last === ROW.root && model.active) p.onActivate(null);
+      else if (last && last !== model.active && (model.links ?? []).some((c) => c.id === last)) p.onActivate(last);
+    }
     if (last === ROW.home) return p.onPose?.(null);
     if (last && model.poses?.some((x) => x.id === last)) return p.onPose?.(last);
     if (last && (model.joints?.some((j) => j.id === last) || model.construct?.some((c) => c.id === last))) p.onSelectSketch(last);
