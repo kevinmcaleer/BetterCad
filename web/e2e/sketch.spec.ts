@@ -113,6 +113,7 @@ test("a sketch size uses a parameter, offered by name, and follows it", async ({
   await input.press("Enter");
   await expect(input).toHaveValue("width");
   await input.pressSequentially(" * 2");
+  await expect(input).toHaveValue("width * 2");
   await input.press("Enter");
   await expect(page.getByRole("button", { name: "40 mm", exact: true })).toBeVisible();
 
@@ -279,6 +280,8 @@ test("drag a line to slide it square across, and line ends show only while drawi
   await click(page, 30, 30);
   await page.keyboard.press("d");
   await click(page, 10, 0);
+  // The size follows the pointer until a click places it.
+  await click(page, 14, 3);
   await expect(page.getByLabel("Length 1")).toHaveValue(/^17(\.0+)?$/);
 });
 
@@ -320,6 +323,33 @@ test("Horizontal/Vertical stays on the pointer and picks the nearer one per line
   await expect(page.getByRole("group", { name: "Select options" })).toBeVisible();
 });
 
+test("Horizontal/Vertical lines up two points: a point and the origin", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
+  await page.keyboard.press("p");
+  await click(page, 25, 4);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".bc-help")).toContainText("2 degrees of freedom");
+
+  await page.getByRole("button", { name: "Constrain", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Horizontal/Vertical" }).click();
+  await expect(page.locator(".bc-help")).toContainText("Pick lines, or two points to line them up");
+  // The first point waits for a second; the pair sits nearer level, so it goes horizontal.
+  await click(page, 25, 4);
+  await expect(constraints).toHaveCount(0);
+  const origin = await at(page, 0, 0);
+  await page.mouse.move(origin.x, origin.y, { steps: 3 });
+  await expect(page.locator(".bc-tool-tag")).toHaveText("Horizontal");
+  await click(page, 0, 0);
+  await expect(constraints.filter({ hasText: "Horizontal" })).toHaveCount(1);
+  await expect(page.locator(".bc-help")).toContainText("1 degree of freedom");
+});
+
 test("place a point, size it from the origin, and put a line through the origin", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
@@ -339,6 +369,8 @@ test("place a point, size it from the origin, and put a line through the origin"
   await page.keyboard.press("d");
   await click(page, 0, 0);
   await click(page, 15, 10);
+  // Inside the box the two points span, the size runs along the line between them.
+  await click(page, 9, 3);
   await expect(page.getByRole("textbox", { name: "Size in mm" })).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(constraints.filter({ hasText: "Fix" })).toHaveCount(1);
@@ -400,4 +432,62 @@ test("Coincident snaps to the origin and a midpoint, and a constraint mark doesn
   await page.keyboard.press("Escape");
   await expect(mark).toHaveCSS("pointer-events", "auto");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("place a size across, up or along a slanted line by where the pointer is, then drag it", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // A line at 45°, 20 mm across and 20 mm up (a new sketch starts with the Line tool on).
+  await click(page, 0, 0);
+  await click(page, 20, 20);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await page.keyboard.press("d");
+  await click(page, 10, 10);
+  const placing = page.locator(".bc-placing");
+  const hover = async (x: number, y: number) => {
+    const p = await at(page, x, y);
+    await page.mouse.move(p.x, p.y, { steps: 3 });
+  };
+  // Off to the side of the line: along it.
+  await hover(16, 4);
+  await expect(placing).toHaveAttribute("aria-label", /^Length 28\.28 mm/);
+  // Above: level, across.
+  await hover(10, 30);
+  await expect(placing).toHaveAttribute("aria-label", /^Across 20 mm/);
+  // To the right: upright.
+  await hover(32, 10);
+  await expect(placing).toHaveAttribute("aria-label", /^Up 20 mm/);
+  await page.screenshot({ path: test.info().outputPath("placing-up.png") });
+
+  // Back above, and a click puts it down there, ready to type.
+  await click(page, 10, 30);
+  await expect(placing).toHaveCount(0);
+  const input = page.getByRole("textbox", { name: "Size in mm" });
+  await expect(input).toBeFocused();
+  await input.press("Escape");
+  await expect(page.getByLabel("Across 1")).toHaveValue(/^20(\.0+)?$/);
+
+  // Drag its label further up: it stays where it is let go.
+  const pill = page.getByRole("button", { name: "20 mm", exact: true });
+  const box = (await pill.boundingBox())!;
+  const to = await at(page, 10, 40);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  const after = (await pill.boundingBox())!;
+  expect(Math.abs(after.x + after.width / 2 - to.x)).toBeLessThan(3);
+  expect(Math.abs(after.y + after.height / 2 - to.y)).toBeLessThan(3);
+  await page.screenshot({ path: test.info().outputPath("dragged-size.png") });
+
+  // One undo puts it back.
+  await page.keyboard.press("Control+z");
+  const back = (await pill.boundingBox())!;
+  expect(Math.abs(back.y - box.y)).toBeLessThan(3);
 });

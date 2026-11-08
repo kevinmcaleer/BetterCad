@@ -16,39 +16,26 @@ test("without a server the editor works and the account menu says so", async ({ 
   await expect(page.getByRole("menuitem", { name: "Accounts can't be reached here" })).toBeVisible();
 });
 
-test("sign up, see the empty library, open the account page and sign out", async ({ page, context }) => {
+test("sign in with kevsrobots.com, see the empty library, open the account page and sign out", async ({ page, context }) => {
   await fakeApi(context);
   await page.goto("/");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByRole("menuitem", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.getByRole("link", { name: "Make an account" }).click();
-  await page.getByRole("button", { name: "Make account" }).click();
-  await expect(page.getByText("Enter an email address, like you@example.com.")).toBeVisible();
-  await page.getByLabel("Username", { exact: true }).fill("Kev");
-  await page.getByLabel("Email", { exact: true }).fill("kev@example.com");
-  await page.getByLabel("Password", { exact: true }).fill("correct horse battery");
-  await page.getByRole("button", { name: "Make account" }).click();
-  // Back where sign-in started: the editor.
+  await expect(page.getByRole("heading", { name: "Make an account" })).toBeVisible();
+  await page.getByRole("link", { name: "I have an account" }).click();
+  // kevsrobots.com signs Kev in and sends the browser back to where sign-in started: the editor.
+  await page.getByRole("button", { name: "Sign in with kevsrobots.com" }).click();
   await page.getByRole("button", { name: "Kev: account and settings" }).click();
   await page.getByRole("menuitem", { name: "My models" }).click();
   await expect(page.getByRole("heading", { name: "My models" })).toBeVisible();
   await expect(page.getByText("No models yet")).toBeVisible();
   await expect(page.getByText("0 models · 0 MB of 500 MB")).toBeVisible();
   await page.getByRole("button", { name: "Account" }).click();
-  await expect(page.getByText("Signed in as Kev.")).toBeVisible();
+  await expect(page.getByText("Signed in to kevsrobots.com as Kev")).toBeVisible();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
-
-  // Signing in again, with a wrong password first.
-  await page.goto("/#/signin");
-  await page.getByLabel("Username or email", { exact: true }).fill("kev@example.com");
-  await page.getByLabel("Password", { exact: true }).fill("wrong");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByText("That username and password don't match.")).toBeVisible();
-  await page.getByLabel("Password", { exact: true }).fill("correct horse battery");
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByRole("heading", { name: "My models" })).toBeVisible();
 });
 
 test("save a box to the account, open it again from the library after a reload", { tag: "@journey" }, async ({ page, context }) => {
@@ -75,6 +62,11 @@ test("save a box to the account, open it again from the library after a reload",
 
   await page.goto("/#/library");
   await page.reload();
+  // The card shows the picture saved with the model, not the placeholder cube.
+  const thumb = page.getByRole("button", { name: "Open Bracket" }).locator("img");
+  await expect(thumb).toBeVisible();
+  await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(320);
+  await expect(thumb).not.toHaveClass(/bc-thumb-pending/);
   await page.getByRole("button", { name: "Open Bracket" }).click();
   await expect(modelRow(page)).toContainText("Bracket");
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();

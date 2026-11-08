@@ -14,12 +14,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, auth, db, jobs, models, printers, reports, stats
+from . import __version__, accounts, auth, db, jobs, models, printers, reports, stats
 from .settings import Settings, get_settings
 
 log = logging.getLogger("bettercad")
 
 # The kernel (#4) needs cross-origin isolation for SharedArrayBuffer and WASM threads.
+OUT_OF_DATE = "BetterCad has been updated. Reload the page to get the new version."
+
 ISOLATION = {"Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp"}
 
 
@@ -74,16 +76,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if applied:
             log.info("applied migrations %s", applied)
         app.state.db = conn
-        auth_db = auth.open_auth_db(settings.auth_db_path)
-        try:
-            for name in auth.migrate_auth(auth_db):
-                log.info("applied migration %s", name)
-            moved = auth.adopt_legacy_logins(conn, auth_db, settings.shared_login)
-            if moved:
-                log.info("moved %d accounts to the new sign-in", moved)
-        finally:
-            auth_db.close()
-        auth.check_auth_source(conn, "shared" if settings.shared_login else "local")
+        aside = accounts.set_aside(conn, settings.blob_dir)
+        if aside:
+            log.warning("set aside %d accounts from the old sign-in: python -m bettercad.accounts", aside)
         app.state.blobs = models.BlobStore(settings.blob_dir)
         task = asyncio.create_task(jobs.run_daily(conn, settings)) if settings.jobs else None
         yield
@@ -116,10 +111,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"ok": True, "version": version}
 
-    app.state.auth = auth.make_auth(settings)
-    app.state.auth_path = settings.auth_db_path
-    app.state.shared_login = settings.shared_login
-    auth.install(app, app.state.auth)
+    auth.install(app, settings)
     app.include_router(models.router(settings))
     app.include_router(printers.router())
     app.include_router(reports.router(settings))
@@ -127,7 +119,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
     def api_not_found(rest: str) -> JSONResponse:
-        return JSONResponse({"detail": "Not found"}, status_code=404)
+        # Usually a page cached by the service worker calling an API that has since changed: say how to get the new one.
+        return JSONResponse({"detail": OUT_OF_DATE}, status_code=404)
 
     # A share link (#92) is /view/<token>: a page with Open Graph tags, so a pasted link previews in Discord and
     # Slack, that sends the browser on to the viewer at /#/view/<token>. kevsrobots.com may frame it (#93).

@@ -14,6 +14,7 @@ export type ToolId =
   | "shell"
   | "hole"
   | "mount"
+  | "gear"
   | "pattern"
   | "measure";
 
@@ -114,6 +115,7 @@ export const TOOLS: Tool[] = [
     help: "Click the bodies to copy. Shift-click picks more than one.",
   },
   { id: "mount", label: "Mount", icon: "screw", title: "Standoffs or a servo horn mount", help: "Click a flat face where the mount goes." },
+  { id: "gear", label: "Gear", icon: "gear", title: "Spur gears, racks and GT2 pulleys", help: "Click the ground or a flat face where the gear goes." },
 ];
 
 const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!);
@@ -124,7 +126,7 @@ const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!)
  */
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
   { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
-  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve"]) },
+  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "gear"]) },
   { id: "change", label: "Change", tools: byId(["combine", "hole", "fillet", "shell", "pattern", "mount"]) },
   { id: "check", label: "Check", tools: byId(["measure", "section"]) },
 ];

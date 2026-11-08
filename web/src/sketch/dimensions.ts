@@ -1,4 +1,22 @@
-import { SketchIndex, add, angleOf, dist, mid, norm, perp, polar, scale, sub, type Dimension, type Entity, type Vec2 } from "@bettercad/sketch";
+import {
+  SketchIndex,
+  add,
+  measureDimension,
+  angleOf,
+  dist,
+  mid,
+  norm,
+  perp,
+  polar,
+  scale,
+  sub,
+  type Dimension,
+  type DimensionKind,
+  type Entity,
+  type Id,
+  type Sketch,
+  type Vec2,
+} from "@bettercad/sketch";
 
 /**
  * How a dimension is drawn on the sketch, in sketch mm, as a drawing office would and as Fusion does: extension lines
@@ -11,8 +29,92 @@ export interface DimensionArt {
   arrows: { tip: Vec2; dir: Vec2 }[];
 }
 
-/** How far out from the geometry a size sits until it is dragged, in screen pixels. */
+/** How far out from the geometry a size sits until it is placed or dragged, in screen pixels. */
 export const DIM_OFFSET_PX = 26;
+
+/**
+ * Whether a size has been placed (with the Dimension tool) or dragged. A placed size keeps its label where it was put,
+ * in sketch mm from its anchor; one never placed sits a fixed number of pixels out, on the side away from the middle.
+ */
+export const isPlaced = (d: Pick<Dimension, "labelOffset">): boolean => d.labelOffset[0] !== 0 || d.labelOffset[1] !== 0;
+
+/** The label offset that puts a size's label at `xy`, never exactly zero so it counts as placed. */
+export function offsetTo(idx: SketchIndex, d: Dimension, xy: Vec2): Vec2 {
+  const o = sub(xy, dimensionAnchor(idx, d));
+  return o[0] === 0 && o[1] === 0 ? [1e-6, 0] : o;
+}
+
+/**
+ * Which way a size between two points runs, from where the pointer is while placing it, as in Fusion: off the end of
+ * the box the two points span, above or below it, the size is level (across); off its left or right side it is upright
+ * (up); anywhere else, inside the box or past a corner, it runs along the line between them (aligned). Points already
+ * level or upright only size aligned.
+ */
+export type DimDirection = "aligned" | "x" | "y";
+export function directionAt(p: Vec2, q: Vec2, at: Vec2): DimDirection {
+  const span = Math.max(dist(p, q), 1e-9);
+  const [x0, x1] = [Math.min(p[0], q[0]), Math.max(p[0], q[0])];
+  const [y0, y1] = [Math.min(p[1], q[1]), Math.max(p[1], q[1])];
+  if (x1 - x0 < 1e-6 * span || y1 - y0 < 1e-6 * span) return "aligned";
+  const inX = at[0] >= x0 && at[0] <= x1;
+  const inY = at[1] >= y0 && at[1] <= y1;
+  if (inX && !inY) return "x";
+  if (inY && !inX) return "y";
+  return "aligned";
+}
+
+/** The two ends a size's direction is chosen between: a line's ends, or two points. Null for any other size. */
+export function dimensionEnds(idx: SketchIndex, kind: Dimension["kind"], refs: string[]): [Vec2, Vec2] | null {
+  const e0 = refs[0] ? idx.get(refs[0]) : undefined;
+  const e1 = refs[1] ? idx.get(refs[1]) : undefined;
+  if (!e0) return null;
+  if (refs.length === 1 && e0.kind === "line" && (kind === "length" || kind === "distanceX" || kind === "distanceY")) return [idx.xy(e0.a), idx.xy(e0.b)];
+  if (refs.length === 2 && e0.kind === "point" && e1?.kind === "point" && (kind === "distance" || kind === "distanceX" || kind === "distanceY"))
+    return [
+      [e0.x, e0.y],
+      [e1.x, e1.y],
+    ];
+  return null;
+}
+
+/** The kind a size takes for a direction: aligned keeps a line's length or a plain distance. */
+export function kindFor(refs: string[], idx: SketchIndex, dir: DimDirection): Dimension["kind"] {
+  if (dir === "x") return "distanceX";
+  if (dir === "y") return "distanceY";
+  return idx.get(refs[0]!)?.kind === "line" && refs.length === 1 ? "length" : "distance";
+}
+
+/** The point a size's label offset is measured from: the middle of what it measures, a rim point, or the foot on a line. */
+export function dimensionAnchor(idx: SketchIndex, d: Pick<Dimension, "kind" | "refs">): Vec2 {
+  const e0 = d.refs[0] ? idx.get(d.refs[0]) : undefined;
+  const e1 = d.refs[1] ? idx.get(d.refs[1]) : undefined;
+  if (!e0) return [0, 0];
+  if (e0.kind === "line" && !e1) return mid(idx.xy(e0.a), idx.xy(e0.b));
+  if (d.kind === "radius" || d.kind === "diameter") {
+    if (e0.kind !== "circle" && e0.kind !== "arc") return anchorOf(idx, e0);
+    return polar(idx.xy(e0.c), e0.r, rimAngle(idx, e0));
+  }
+  if (!e1) return anchorOf(idx, e0);
+  if (d.kind === "angle") return mid(anchorOf(idx, e0), anchorOf(idx, e1));
+  const p = anchorOf(idx, e0);
+  if (e1.kind === "line" && e0.kind === "point") {
+    const q = footOn(idx, p, e1);
+    return d.kind === "distance" ? q : mid(p, q);
+  }
+  return mid(p, anchorOf(idx, e1));
+}
+
+function rimAngle(idx: SketchIndex, e: Entity & { kind: "circle" | "arc" }): number {
+  if (e.kind === "circle") return Math.PI / 4;
+  const c = idx.xy(e.c);
+  return (angleOf(sub(idx.xy(e.a), c)) + angleOf(sub(idx.xy(e.b), c))) / 2;
+}
+
+function footOn(idx: SketchIndex, p: Vec2, l: Entity & { kind: "line" }): Vec2 {
+  const a = idx.xy(l.a);
+  const u = norm(sub(idx.xy(l.b), a));
+  return add(a, scale(u, dot(sub(p, a), u)));
+}
 
 const dot = (a: Vec2, b: Vec2) => a[0] * b[0] + a[1] * b[1];
 
@@ -33,7 +135,7 @@ function aligned(a: Vec2, b: Vec2, px: number, centre: Vec2, labelOffset: Vec2):
   const n = perp(u);
   const m = mid(a, b);
   const side = dot(n, sub(centre, m)) > 0 ? -1 : 1;
-  const text = add(add(m, scale(n, side * DIM_OFFSET_PX * px)), labelOffset);
+  const text = isPlaced({ labelOffset }) ? add(m, labelOffset) : add(m, scale(n, side * DIM_OFFSET_PX * px));
   const o = dot(sub(text, a), n);
   return along(a, b, n, o, px, text);
 }
@@ -65,17 +167,20 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
   const e0 = d.refs[0] ? idx.get(d.refs[0]) : undefined;
   const e1 = d.refs[1] ? idx.get(d.refs[1]) : undefined;
   const textOnly = (at: Vec2): DimensionArt => ({ text: add(at, d.labelOffset), lines: [], arrows: [] });
+  /** Where the label sits: where it was placed, or `auto` until then. */
+  const textAt = (anchor: Vec2, auto: Vec2): Vec2 => (isPlaced(d) ? add(anchor, d.labelOffset) : auto);
   if (!e0) return textOnly([0, 0]);
 
   if (d.kind === "length" && e0.kind === "line") return aligned(idx.xy(e0.a), idx.xy(e0.b), px, centre, d.labelOffset);
+  if ((d.kind === "distanceX" || d.kind === "distanceY") && e0.kind === "line" && !e1) return levelled(d.kind, idx.xy(e0.a), idx.xy(e0.b), px, centre, textAt);
 
   if (d.kind === "radius" || d.kind === "diameter") {
     if (e0.kind !== "circle" && e0.kind !== "arc") return textOnly(anchorOf(idx, e0));
     const c = idx.xy(e0.c);
-    const ang = e0.kind === "arc" ? (angleOf(sub(idx.xy(e0.a), c)) + angleOf(sub(idx.xy(e0.b), c))) / 2 : Math.PI / 4;
+    const ang = rimAngle(idx, e0);
     const u: Vec2 = [Math.cos(ang), Math.sin(ang)];
     const rim = polar(c, e0.r, ang);
-    const text = add(add(rim, scale(u, 18 * px)), d.labelOffset);
+    const text = textAt(rim, add(rim, scale(u, 18 * px)));
     if (d.kind === "radius") return { text, lines: [[c, rim]], arrows: [{ tip: rim, dir: u }] };
     const far = polar(c, e0.r, ang + Math.PI);
     return {
@@ -94,14 +199,13 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
   const p = anchorOf(idx, e0);
   let q = anchorOf(idx, e1);
   if (e1.kind === "line" && e0.kind === "point") {
-    const a = idx.xy(e1.a);
-    const u = norm(sub(idx.xy(e1.b), a));
-    q = add(a, scale(u, dot(sub(p, a), u)));
+    const u = norm(sub(idx.xy(e1.b), idx.xy(e1.a)));
+    q = footOn(idx, p, e1);
     if (d.kind === "distance") {
       // Square on to the line: the dimension line spans the gap and runs on past the line to the size, which sits
       // outside so it never covers the corners a small gap sits beside.
       const v = dist(p, q) > 1e-9 ? norm(sub(q, p)) : perp(u);
-      const text = add(add(q, scale(v, 16 * px)), d.labelOffset);
+      const text = textAt(q, add(q, scale(v, 16 * px)));
       return {
         text,
         lines: [[p, add(q, scale(v, 8 * px))]],
@@ -112,39 +216,52 @@ export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre:
       };
     }
   }
-  if (d.kind === "distanceX" || d.kind === "distanceY") {
-    // Across: a level dimension line above or below; Up: an upright one to the left or right.
-    const axis = d.kind === "distanceX" ? 1 : 0;
-    const n: Vec2 = axis === 1 ? [0, 1] : [1, 0];
-    const m = mid(p, q);
-    const side = m[axis]! < centre[axis]! ? -1 : 1;
-    const text = add(add(m, scale(n, side * DIM_OFFSET_PX * px)), d.labelOffset);
-    const [a, b] = [p, q];
-    // Each extension line runs from its own point to the shared dimension line.
-    const level = text[axis]!;
-    const a2: Vec2 = axis === 1 ? [a[0], level] : [level, a[1]];
-    const b2: Vec2 = axis === 1 ? [b[0], level] : [level, b[1]];
-    const lines: [Vec2, Vec2][] = [];
-    for (const [g, t] of [
-      [a, a2],
-      [b, b2],
-    ] as const) {
-      const len = dist(g, t);
-      if (len > 4 * px) {
-        const s = norm(sub(t, g));
-        lines.push([add(g, scale(s, 3 * px)), add(t, scale(s, 5 * px))]);
-      }
-    }
-    lines.push([a2, b2]);
-    const u = dist(a2, b2) > 1e-9 ? norm(sub(b2, a2)) : perp(n);
-    return {
-      text,
-      lines,
-      arrows: [
-        { tip: a2, dir: scale(u, -1) },
-        { tip: b2, dir: u },
-      ],
-    };
-  }
+  if (d.kind === "distanceX" || d.kind === "distanceY") return levelled(d.kind, p, q, px, centre, textAt);
   return aligned(p, q, px, centre, d.labelOffset);
+}
+
+/** Across: a level dimension line above or below; Up: an upright one to the left or right. */
+function levelled(kind: "distanceX" | "distanceY", a: Vec2, b: Vec2, px: number, centre: Vec2, textAt: (anchor: Vec2, auto: Vec2) => Vec2): DimensionArt {
+  const axis = kind === "distanceX" ? 1 : 0;
+  const n: Vec2 = axis === 1 ? [0, 1] : [1, 0];
+  const m = mid(a, b);
+  const side = m[axis]! < centre[axis]! ? -1 : 1;
+  const text = textAt(m, add(m, scale(n, side * DIM_OFFSET_PX * px)));
+  // Each extension line runs from its own point to the shared dimension line.
+  const level = text[axis]!;
+  const a2: Vec2 = axis === 1 ? [a[0], level] : [level, a[1]];
+  const b2: Vec2 = axis === 1 ? [b[0], level] : [level, b[1]];
+  const lines: [Vec2, Vec2][] = [];
+  for (const [g, t] of [
+    [a, a2],
+    [b, b2],
+  ] as const) {
+    const len = dist(g, t);
+    if (len > 4 * px) {
+      const s = norm(sub(t, g));
+      lines.push([add(g, scale(s, 3 * px)), add(t, scale(s, 5 * px))]);
+    }
+  }
+  lines.push([a2, b2]);
+  const u = dist(a2, b2) > 1e-9 ? norm(sub(b2, a2)) : perp(n);
+  return {
+    text,
+    lines,
+    arrows: [
+      { tip: a2, dir: scale(u, -1) },
+      { tip: b2, dir: u },
+    ],
+  };
+}
+
+/** A placing size's preview with its label at `xy` (left where it was when null), its direction picked from there. */
+export function placeAt(sketch: Sketch, kind: DimensionKind, refs: Id[], xy: Vec2 | null): Dimension {
+  const idx = new SketchIndex(sketch);
+  const ends = dimensionEnds(idx, kind, refs);
+  const k = ends && xy ? kindFor(refs, idx, directionAt(ends[0], ends[1], xy)) : kind;
+  // A level or upright size on two points names the points; on a line it names the line.
+  const dim: Dimension = { id: "placing", kind: k, refs, expression: "", value: 0, driving: true, labelOffset: [0, 0] };
+  dim.value = measureDimension(sketch, dim);
+  if (xy) dim.labelOffset = offsetTo(idx, dim, xy);
+  return dim;
 }

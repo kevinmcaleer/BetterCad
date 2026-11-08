@@ -1,21 +1,12 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {
-  ArmedBar,
-  Banner,
-  Button,
-  MenuButton,
-  cx,
-  NumberField,
-  evaluate,
-  isExpression,
-  PropRow,
-  PropsPanel,
-  ToolButton,
-  Toolbar,
-  useNameComplete,
-  type PropsSection,
-  type Scope,
-} from "@bettercad/ui";
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { ArmedBar, Button, MenuButton, cx, NumberField, evaluate, isExpression, ToolButton, Toolbar, useNameComplete, type Scope } from "@bettercad/ui";
 import {
   CONSTRAINT_LABEL,
   SketchIndex,
@@ -26,17 +17,16 @@ import {
   perp,
   scale,
   sub,
+  toSketch,
   toWorld,
   type Constraint,
   type Dimension,
   type Id,
   type Vec2,
 } from "@bettercad/sketch";
-import { formatCombo } from "../state/commands";
 import { ORIGIN, SNAP_LABEL } from "./snap";
-import { OPTION_ROWS } from "./options";
-import { anchorOf, dimensionArt } from "./dimensions";
-import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, levelOrUpright, toolById } from "./tools";
+import { anchorOf, dimensionArt, offsetTo } from "./dimensions";
+import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, isPointPick, levelOrUpright, levelOrUprightPoints, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
 
 /** The sketch tool bar and the armed tool's strip, in place of the model bars while a sketch is open. */
@@ -130,7 +120,7 @@ export function SketchPickBar({ onCancel }: { onCancel: () => void }) {
   );
 }
 
-const DIM_LABEL: Record<Dimension["kind"], string> = {
+export const DIM_LABEL: Record<Dimension["kind"], string> = {
   length: "Length",
   distance: "Distance",
   distanceX: "Across",
@@ -233,6 +223,10 @@ export function DimInput({
 /** The labels over the sketch: dimension pills (double-click to type a size), constraint marks and the snap label. */
 export function SketchLabels({ s }: { s: SketchSession }) {
   const eng = s.engineOf();
+  /** A size pill held down: where it was grabbed, and whether it has moved far enough to count as a drag. */
+  const grab = useRef<{ id: Id; cx: number; cy: number; x: number; y: number; moved: boolean; offset?: Vec2 } | null>(null);
+  /** The click that ends a drag does not pick the size. */
+  const dragged = useRef(false);
   if (!s.sketch || !s.frame || !eng) return null;
   const frame = s.frame;
   const px = eng.pixelSize(frame.origin);
@@ -247,6 +241,34 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   const dims = s.sketch.dimensions
     .filter((d) => s.options.dimensions || s.dimEdit === d.id || s.sel.includes(d.id))
     .map((d) => ({ d, art: dimensionArt(idx, d, px, centre), on: s.sel.includes(d.id) || conflicting.has(d.id) }));
+  // A size being placed follows the pointer until a click puts it down.
+  const placing = s.placing ? { d: s.placing.dim, art: dimensionArt(new SketchIndex(s.placing.sketch), s.placing.dim, px, centre) } : null;
+
+  // Dragging a size's pill moves its label, and with it the dimension line, as in Fusion.
+  const onGrab = (d: Dimension, e: ReactPointerEvent<HTMLElement>, x: number, y: number) => {
+    if (e.button !== 0) return;
+    grab.current = { id: d.id, cx: e.clientX, cy: e.clientY, x, y, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onDrag = (d: Dimension, e: ReactPointerEvent<HTMLElement>) => {
+    const g = grab.current;
+    if (!g || g.id !== d.id) return;
+    const dx = e.clientX - g.cx;
+    const dy = e.clientY - g.cy;
+    if (!g.moved && Math.hypot(dx, dy) < 4) return;
+    const w = eng.rayPlane(g.x + dx, g.y + dy, frame.origin, frame.normal);
+    if (!w) return;
+    g.moved = true;
+    g.offset = offsetTo(idx, d, toSketch(frame, w));
+    s.moveLabel(d.id, g.offset);
+  };
+  const onLetGo = (d: Dimension) => {
+    const g = grab.current;
+    grab.current = null;
+    if (!g || g.id !== d.id || !g.moved || !g.offset) return;
+    dragged.current = true;
+    s.moveLabel(d.id, g.offset, true);
+  };
 
   // While a constraint or the dimension tool is armed, marks let clicks through to the geometry under them.
   const armed = !!s.ctool || s.stool === "dimension";
@@ -275,9 +297,9 @@ export function SketchLabels({ s }: { s: SketchSession }) {
 
   return (
     <div className="bc-snaps" data-tick={s.camTick}>
-      {dims.length > 0 && (
+      {(dims.length > 0 || placing) && (
         <svg className="bc-dim-art" aria-hidden="true">
-          {dims.map(({ d, art, on }) => (
+          {[...dims, ...(placing ? [{ ...placing, on: true }] : [])].map(({ d, art, on }) => (
             <g key={d.id} className={cx("bc-dim-mark", on && "bc-on", !d.driving && "bc-driven")}>
               {art.lines.map(([a, b], i) => {
                 const p = at(a);
@@ -319,18 +341,41 @@ export function SketchLabels({ s }: { s: SketchSession }) {
             style={{ left: p.x, top: p.y }}
             title={
               !d.driving
-                ? "A reference size: it follows the geometry"
+                ? "A reference size: it follows the geometry. Drag to move it"
                 : isExpression(d.expression)
-                  ? `= ${d.expression}. Double-click to change it`
-                  : "Double-click to type a size"
+                  ? `= ${d.expression}. Double-click to change it, drag to move it`
+                  : "Double-click to type a size, drag to move it"
             }
-            onClick={(e) => pick(d.id, e)}
+            onPointerDown={(e) => onGrab(d, e, p.x, p.y)}
+            onPointerMove={(e) => onDrag(d, e)}
+            onPointerUp={() => onLetGo(d)}
+            onPointerCancel={() => onLetGo(d)}
+            onClick={(e) => {
+              if (dragged.current) {
+                dragged.current = false;
+                return;
+              }
+              pick(d.id, e);
+            }}
             onDoubleClick={() => s.setDimEdit(d.id)}
           >
             {d.driving ? formatDimension(d) : `(${formatDimension(d)})`}
           </button>
         );
       })}
+      {placing &&
+        (() => {
+          const p = at(placing.art.text);
+          return (
+            <div
+              className="bc-dim bc-dim-pill bc-on bc-placing"
+              style={{ left: p.x, top: p.y }}
+              aria-label={`${DIM_LABEL[placing.d.kind]} ${formatDimension(placing.d)}. Click to place it`}
+            >
+              {formatDimension(placing.d)}
+            </div>
+          );
+        })()}
       {glyphs.map(({ c, g, x, y }) => (
         <button
           key={c.id}
@@ -363,129 +408,17 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   );
 }
 
-/** The armed constraint's tag by the pointer. Over a line, Horizontal/Vertical says which one that line would get. */
+/**
+ * The armed constraint's tag by the pointer. Over a line, Horizontal/Vertical says which one that line would get;
+ * over a second point, which way the two points would line up.
+ */
 function toolTag(s: SketchSession): string {
   const t = constraintToolById(s.ctool!);
   if (t.id === "horizontalVertical" && s.hover && s.sketch) {
-    const k = levelOrUpright(s.sketch, s.hover);
+    const first = s.sel.length === 1 && s.sel[0] !== s.hover && isPointPick(s.sketch, s.sel[0]!) ? s.sel[0]! : null;
+    const k =
+      first && isPointPick(s.sketch, s.hover) ? levelOrUprightPoints(s.sketch, first, s.hover, s.origin ?? undefined) : levelOrUpright(s.sketch, s.hover);
     if (k) return CONSTRAINT_LABEL[k];
   }
   return t.tag;
-}
-
-/**
- * The sketch palette, floating on the right while a sketch is open, after Fusion's: how constrained the sketch is,
- * its plane, what the view shows (the grid, snapping, profiles, points, sizes, constraint marks, projected and
- * construction geometry), Look at, the sizes and constraints, and Finish sketch at the foot.
- */
-export function SketchPanel({ s }: { s: SketchSession }) {
-  if (!s.sketch || !s.feature) return null;
-  const sk = s.sketch;
-  const conflicting = new Set(s.result?.conflicting ?? []);
-  const redundant = new Set(s.result?.redundant ?? []);
-  const plane = sk.plane.kind === "world" ? `${sk.plane.plane} plane` : "A face";
-  const state = conflicting.size > 0 ? "bad" : s.result?.dof === 0 ? "done" : "free";
-  const sections: PropsSection[] = [
-    {
-      id: "sketch",
-      title: s.feature.name,
-      content: (
-        <>
-          <p className={`bc-sk-status bc-sk-${state}`} role="status">
-            <span className="bc-sk-dot" aria-hidden="true" />
-            {s.status}
-          </p>
-          <PropRow label="On">{plane}</PropRow>
-          <NumberField label="Offset" value={sk.plane.offset} step={1} onCommit={(v) => s.setOffset(v)} />
-          {conflicting.size > 0 && <Banner tone="danger">Some constraints fight each other. Delete one of the ones in red.</Banner>}
-          {s.finishWarn && (
-            <Banner
-              tone="warn"
-              action={
-                <span className="bc-row-actions">
-                  <Button label="Finish anyway" variant="secondary" onClick={() => s.finish(true)} />
-                  <Button label="Keep drawing" onClick={() => s.setFinishWarn(false)} />
-                </span>
-              }
-            >
-              This sketch has no closed shape yet, so it can't be extruded.
-            </Banner>
-          )}
-        </>
-      ),
-    },
-    {
-      id: "sketch-options",
-      title: "Options",
-      content: (
-        <>
-          <div className="bc-check-row">
-            <span>Look at</span>
-            <Button icon="camera" size="dense" title="Look straight at the sketch" onClick={s.lookAtSketch} />
-          </div>
-          {OPTION_ROWS.map((o) => (
-            <label key={o.id} className="bc-check-row" title={o.title}>
-              <span>{o.label}</span>
-              <input type="checkbox" checked={s.options[o.id]} onChange={(e) => s.setOption(o.id, e.currentTarget.checked)} />
-            </label>
-          ))}
-        </>
-      ),
-    },
-    {
-      id: "sketch-sizes",
-      title: "Sizes",
-      content: sk.dimensions.length ? (
-        <>
-          {sk.dimensions.map((d, i) => (
-            <NumberField
-              key={d.id}
-              label={`${DIM_LABEL[d.kind]} ${i + 1}`}
-              value={Math.round(d.value * 1000) / 1000}
-              unit={d.kind === "angle" ? "°" : "mm"}
-              locked={!d.driving}
-              scope={s.scope}
-              onCommit={(v, expr) => s.setDimension(d.id, expr ?? String(v))}
-            />
-          ))}
-        </>
-      ) : (
-        <p className="bc-note">Press {formatCombo("d")} and click a line or circle to give it a size.</p>
-      ),
-    },
-    {
-      id: "sketch-constraints",
-      title: `Constraints (${sk.constraints.length})`,
-      content: sk.constraints.length ? (
-        <ul className="bc-sk-list" aria-label="Constraints">
-          {sk.constraints.map((c) => (
-            <li key={c.id} className={conflicting.has(c.id) ? "bc-bad" : undefined}>
-              <button type="button" className="bc-sk-item" aria-pressed={s.sel.includes(c.id)} onClick={() => s.setSel([c.id])}>
-                {CONSTRAINT_LABEL[c.type]}
-                {conflicting.has(c.id) ? " (fights)" : redundant.has(c.id) ? " (repeats)" : ""}
-              </button>
-              <Button
-                icon="trash"
-                size="dense"
-                title={`Delete the ${CONSTRAINT_LABEL[c.type].toLowerCase()} constraint`}
-                onClick={() => {
-                  s.setSel([c.id]);
-                  setTimeout(s.removeSelected, 0);
-                }}
-              />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="bc-note">Pick lines or points, then choose Constrain.</p>
-      ),
-    },
-  ];
-  return (
-    <PropsPanel
-      label="Sketch palette"
-      sections={sections}
-      footer={<Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />}
-    />
-  );
 }

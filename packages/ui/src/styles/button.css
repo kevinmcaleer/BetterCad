@@ -96,6 +96,11 @@
   background: var(--bc-color-accent);
   color: var(--bc-color-on-accent);
 }
+/* A waiting primary button keeps its fill, so it stays visible on dark themes. */
+.bc-btn.bc-primary:disabled {
+  background: var(--bc-color-accent);
+  opacity: 0.5;
+}
 .bc-primary:hover {
   background: var(--bc-color-accent);
   filter: brightness(0.88);

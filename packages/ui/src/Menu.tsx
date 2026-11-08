@@ -19,6 +19,8 @@ export type MenuEntry =
       disabled?: boolean;
       /** For a choice among several (theme): renders as menuitemradio. */
       checked?: boolean;
+      /** One of several that can all be ticked (the bodies a cut goes through): renders as menuitemcheckbox. */
+      multiple?: boolean;
       onSelect: () => void;
     }
   | { kind: "separator"; id: string }
@@ -91,7 +93,7 @@ export function Menu({ open, onClose, entries, label, title, style, className, a
           <button
             key={en.id}
             type="button"
-            role={en.checked === undefined ? "menuitem" : "menuitemradio"}
+            role={en.checked === undefined ? "menuitem" : en.multiple ? "menuitemcheckbox" : "menuitemradio"}
             aria-checked={en.checked}
             data-label={en.label}
             className={cx("bc-menu-item", en.danger && "bc-danger")}

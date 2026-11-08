@@ -4,7 +4,8 @@ import type { BrowserContext, Route } from "@playwright/test";
  * A stand-in for BetterCad's server (#87, #88) inside Playwright: the preview build has no API, so the account and
  * model routes are answered here from memory. It follows server/bettercad/models.py closely enough for the pages:
  * sessions by cookie, CSRF on writes, versions with If-Match, the bin, blobs and share links. Sign-in follows
- * powertools-auth's routes (server/bettercad/auth.py): auth/session, register, login, logout, password, and account.
+ * server/bettercad/auth.py: the kevsrobots.com cookie (`access_token`), auth/session with kevsrobots.com's links,
+ * logout and account. A fake chatter.kevsrobots.com signs "Kev" in and sends the browser back.
  */
 interface Version {
   number: number;
@@ -36,7 +37,7 @@ const BASE = "http://127.0.0.1:4173";
 const now = () => new Date().toISOString().replace("T", " ").replace("Z", "");
 
 export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
-  const users: { id: number; email: string; username: string; password: string; theme: string | null }[] = [];
+  const users: { id: number; email: string; username: string; theme: string | null }[] = [];
   const sessions = new Map<string, { user: number; csrf: string }>();
   const models = new Map<string, Model>();
   const blobs = new Map<string, Buffer>();
@@ -46,15 +47,28 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body), headers });
   const fail = (route: Route, status: number, detail: unknown) => json(route, status, { detail });
   const me = (u: (typeof users)[number], csrf: string) => ({ id: u.id, username: u.username, name: u.username, email: u.email, theme: u.theme, csrf });
-  const pub = (u: (typeof users)[number]) => ({ id: u.id, username: u.username, email: u.email, created_at: now() });
-  const start = async (route: Route, u: (typeof users)[number]) => {
-    const token = `s${++ids}`;
-    const csrf = `c${ids}`;
-    sessions.set(token, { user: u.id, csrf });
-    // WebKit ignores Set-Cookie on a fulfilled route, so the cookie also goes on the context directly.
-    await context.addCookies([{ name: "bc_session", value: token, url: BASE, httpOnly: true, sameSite: "Lax" }]);
-    return json(route, 200, { user: pub(u), csrf_token: csrf }, { "Set-Cookie": `bc_session=${token}; Path=/; HttpOnly; SameSite=Lax` });
+  const pub = (u: (typeof users)[number]) => ({ id: u.id, username: u.username, email: u.email });
+  const CHATTER = "https://chatter.kevsrobots.com";
+  const links = (next: string) => {
+    const back = encodeURIComponent(`${BASE}/${next}`);
+    return { signin_url: `${CHATTER}/login?return_to=${back}`, signup_url: `${CHATTER}/register?return_to=${back}`, account_url: `${CHATTER}/account` };
   };
+  const signInAs = async (ctx: BrowserContext, name: string) => {
+    let u = users.find((x) => x.username === name);
+    if (!u) {
+      u = { id: users.length + 1, email: `${name.toLowerCase()}${users.length}@example.com`, username: name, theme: null };
+      users.push(u);
+    }
+    const token = `s${++ids}`;
+    sessions.set(token, { user: u.id, csrf: `c${ids}` });
+    await ctx.addCookies([{ name: "access_token", value: token, url: BASE, httpOnly: true, sameSite: "Lax" }]);
+  };
+  // kevsrobots.com's sign-in: signs Kev in and goes back to return_to.
+  await context.route(`${CHATTER}/**`, async (route) => {
+    const back = new URL(route.request().url()).searchParams.get("return_to") ?? `${BASE}/`;
+    await signInAs(context, "Kev");
+    return route.fulfill({ status: 302, headers: { Location: back } });
+  });
   const summary = (m: Model) => ({
     id: m.id,
     name: m.name,
@@ -78,30 +92,15 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     const method = req.method();
     // WebKit intercepts before it adds cookies, so the request may carry none: read the context's jar instead.
     const cookie =
-      /bc_session=([^;]+)/.exec((await req.allHeaders())["cookie"] ?? "")?.[1] ??
-      (await context.cookies(BASE)).find((c) => c.name === "bc_session" && c.value)?.value;
+      /access_token=([^;]+)/.exec((await req.allHeaders())["cookie"] ?? "")?.[1] ??
+      (await context.cookies(BASE)).find((c) => c.name === "access_token" && c.value)?.value;
     const session = cookie ? sessions.get(cookie) : undefined;
     const user = session ? users.find((u) => u.id === session.user) : undefined;
     const body = () => (req.postData() ? JSON.parse(req.postData()!) : {});
 
     if (path === "auth/session" && method === "GET") {
-      return json(route, 200, { user: user ? pub(user) : null, csrf_token: session?.csrf ?? "anon", registration_open: true, password_reset: false });
-    }
-    if (path === "auth/register" && method === "POST") {
-      const b = body();
-      if (!/^[A-Za-z0-9_.-]{3,32}$/.test(b.username)) return fail(route, 400, "Username must be 3-32 characters: letters, numbers, '.', '_' or '-'.");
-      if (users.some((u) => u.username.toLowerCase() === b.username.toLowerCase())) return fail(route, 400, "That username is already taken.");
-      if (users.some((u) => u.email.toLowerCase() === b.email.toLowerCase())) return fail(route, 400, "That email address is already registered.");
-      if (b.password.length < 12) return fail(route, 400, "Password must be at least 12 characters.");
-      const u = { id: users.length + 1, email: b.email, username: b.username, password: b.password, theme: null };
-      users.push(u);
-      return start(route, u);
-    }
-    if (path === "auth/login" && method === "POST") {
-      const b = body();
-      const login = String(b.username).toLowerCase();
-      const u = users.find((x) => (x.username.toLowerCase() === login || x.email.toLowerCase() === login) && x.password === b.password);
-      return u ? start(route, u) : fail(route, 401, "That username and password don't match.");
+      const next = url.searchParams.get("next") ?? "#/library";
+      return json(route, 200, { user: user ? pub(user) : null, csrf_token: session?.csrf ?? "", ...links(next) });
     }
     if (path.startsWith("shared/") && method === "GET") {
       const [, token, what, hash] = path.split("/");
@@ -126,8 +125,8 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     }
     if (path === "auth/logout" && method === "POST") {
       sessions.delete(cookie!);
-      await context.clearCookies({ name: "bc_session" });
-      return json(route, 200, { user: null, csrf_token: "anon" }, { "Set-Cookie": "bc_session=; Path=/; Max-Age=0" });
+      await context.clearCookies({ name: "access_token" });
+      return json(route, 200, { user: null, csrf_token: "" }, { "Set-Cookie": "access_token=; Path=/; Max-Age=0" });
     }
     if (path === "me/usage") {
       const mine = [...models.values()].filter((m) => m.user === user.id);
@@ -193,7 +192,11 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       m.deleted_at = null;
       return json(route, 200, summary(m));
     }
-    if (sub === "thumbnail") return fail(route, 404, "There's no picture for that model.");
+    if (sub === "thumbnail") {
+      const thumb = /^data:(image\/\w+);base64,(.+)$/.exec(JSON.parse(latest.bcad).thumbnail ?? "");
+      if (!thumb) return fail(route, 404, "There's no picture for that model.");
+      return route.fulfill({ status: 200, contentType: thumb[1], body: Buffer.from(thumb[2]!, "base64") });
+    }
     if (sub === "share") {
       if (method === "DELETE") delete m.share;
       else m.share ??= `t${String(++ids).padStart(21, "0")}`;
@@ -221,11 +224,7 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     models,
     blobs,
     async signIn(ctx: BrowserContext, name = "Kev") {
-      const u = { id: users.length + 1, email: `${name.toLowerCase()}${users.length}@example.com`, username: name, password: "password1234", theme: null };
-      users.push(u);
-      const token = `s${++ids}`;
-      sessions.set(token, { user: u.id, csrf: `c${ids}` });
-      await ctx.addCookies([{ name: "bc_session", value: token, url: BASE, httpOnly: true, sameSite: "Lax" }]);
+      await signInAs(ctx, name);
     },
   });
 }

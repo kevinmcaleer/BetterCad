@@ -54,7 +54,7 @@ describe(".bcad files (#79)", () => {
     expect(build(r.doc).parts).toHaveLength(1);
     // Small and readable.
     expect(text.length).toBeLessThan(50_000);
-    expect(text.split("\n")[1]).toBe('  "schema": 1,');
+    expect(text.split("\n")[1]).toBe('  "schema": 2,');
   });
 
   it("writes the same bytes for the same model, whatever order its keys were made in", () => {

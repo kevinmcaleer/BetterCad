@@ -69,7 +69,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
     label: "Dimension",
     icon: "dimension",
     key: "d",
-    help: "Click a line, circle or arc, or two points or two lines, to size them. The origin counts as a point.",
+    help: "Click a line, circle or arc, or two points or two lines, then click to place the size. Move off past the ends for a level or upright size. The origin counts as a point.",
     fields: [],
   },
   {
@@ -264,7 +264,8 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
 
 /**
  * The constraint tools: what each needs picked, and the hint until it has it. A tool stays armed after it applies, so
- * line after line can be clicked until Esc. Horizontal/Vertical is one tool: each line takes whichever it is nearer.
+ * line after line can be clicked until Esc. Horizontal/Vertical is one tool: each line takes whichever it is nearer,
+ * and two points line up across or up, whichever they are nearer to already.
  * The sketch origin can be picked wherever a point can.
  */
 export type ConstraintToolId = Exclude<NewConstraint["type"], "horizontal" | "vertical"> | "horizontalVertical";
@@ -281,7 +282,7 @@ export interface ConstraintTool {
 
 export const CONSTRAINT_TOOLS: ConstraintTool[] = [
   { id: "coincident", label: "Coincident", hint: "Pick two points, or a point and a line or curve", picks: 2, tag: "Coincident" },
-  { id: "horizontalVertical", label: "Horizontal/Vertical", hint: "Pick lines", picks: 1, tag: "H/V" },
+  { id: "horizontalVertical", label: "Horizontal/Vertical", hint: "Pick lines, or two points to line them up", picks: 1, tag: "H/V" },
   { id: "parallel", label: "Parallel", hint: "Pick two lines", picks: 2, tag: "Parallel" },
   { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines", picks: 2, tag: "Perpendicular" },
   { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves", picks: 2, tag: "Tangent" },
@@ -306,6 +307,34 @@ export function levelOrUpright(sketch: Sketch, id: Id): "horizontal" | "vertical
   const b = at(line.b);
   if (a?.kind !== "point" || b?.kind !== "point") return null;
   return Math.abs(b.y - a.y) > Math.abs(b.x - a.x) ? "vertical" : "horizontal";
+}
+
+/**
+ * Horizontal (same y) or vertical (same x) for two points, whichever they are nearer to now: up to 45° apart from
+ * the horizon lines them up across, past it up. Null unless both ids are points.
+ */
+export function levelOrUprightPoints(sketch: Sketch, a: Id, b: Id, origin: Vec2 = [0, 0]): "horizontal" | "vertical" | null {
+  const xy = (id: Id): Vec2 | null => {
+    if (id === ORIGIN) return origin;
+    const p = sketch.entities.find((e) => e.id === id);
+    return p?.kind === "point" ? [p.x, p.y] : null;
+  };
+  const p = xy(a);
+  const q = xy(b);
+  if (!p || !q) return null;
+  return Math.abs(q[1] - p[1]) > Math.abs(q[0] - p[0]) ? "vertical" : "horizontal";
+}
+
+/** Whether a pick is a point: a sketch point (an end, a centre, a lone or projected point) or the origin. */
+export const isPointPick = (sketch: Sketch, id: Id) => id === ORIGIN || sketch.entities.find((e) => e.id === id)?.kind === "point";
+
+/**
+ * Whether a constraint tool has picks enough to apply. Most count picks; Horizontal/Vertical takes a line at once
+ * but waits on a point for a second one.
+ */
+export function picksReady(type: ConstraintToolId, sketch: Sketch, picked: Id[]): boolean {
+  if (type === "horizontalVertical" && picked.length === 1 && isPointPick(sketch, picked[0]!)) return false;
+  return picked.length >= constraintToolById(type).picks;
 }
 
 /**
@@ -392,8 +421,17 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
   const curve = (k?: string) => k === "circle" || k === "arc";
   switch (type) {
     case "horizontalVertical": {
+      if (two && only(["point"])) {
+        // Two ends of one line: the line itself goes level or upright.
+        const line = sketch.entities.find((e) => e.kind === "line" && ((e.a === a && e.b === b) || (e.a === b && e.b === a)));
+        if (line) return constraintsFor(type, sketch, [line.id]);
+        const pair = (c: (typeof sketch.constraints)[number]) =>
+          (c.type === "horizontal" || c.type === "vertical") && !!c.b && ((c.e === a && c.b === b) || (c.e === b && c.b === a));
+        if (sketch.constraints.some(pair)) return "Those points are already lined up";
+        return [{ type: levelOrUprightPoints(sketch, a, b)!, e: a, b }];
+      }
       if (!only(["line"])) return hint;
-      const set = new Set(sketch.constraints.flatMap((c) => (c.type === "horizontal" || c.type === "vertical" ? [c.e] : [])));
+      const set = new Set(sketch.constraints.flatMap((c) => ((c.type === "horizontal" || c.type === "vertical") && !c.b ? [c.e] : [])));
       const fresh = picked.filter((e) => !set.has(e));
       if (!fresh.length) return picked.length === 1 ? "That line is already horizontal or vertical" : "Those lines are already horizontal or vertical";
       return fresh.map((e) => ({ type: levelOrUpright(sketch, e)!, e }));

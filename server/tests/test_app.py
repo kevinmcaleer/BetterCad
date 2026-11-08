@@ -19,7 +19,7 @@ def test_unknown_api_path_is_json_404(make_client):
     with make_client() as client:
         r = client.get("/api/nope")
     assert r.status_code == 404
-    assert r.json() == {"detail": "Not found"}
+    assert r.json() == {"detail": "BetterCad has been updated. Reload the page to get the new version."}
 
 
 def test_serves_web_app_with_fallback(make_client, tmp_path):
@@ -47,7 +47,7 @@ def test_database_is_wal_and_migrated_once(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
-    assert db.migrate(conn) == [1, 2, 3, 4, 5]
+    assert db.migrate(conn) == [1, 2, 3, 4, 5, 6]
     assert db.migrate(conn) == []
     assert conn.execute("SELECT name FROM sqlite_master WHERE name='meta'").fetchone()
     conn.close()

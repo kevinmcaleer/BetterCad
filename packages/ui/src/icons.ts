@@ -105,6 +105,8 @@ export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
 export const wedge = "M3 20h12L3 8zM8 4v12h12M3 8l5-4M15 20l5-4M3 20l5-4";
 export const settings = "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1";
+export const gear =
+  "M19.4 10.2 21.9 10.3 21.9 13.7 19.4 13.8 18.5 15.9 20.2 17.8 17.8 20.2 15.9 18.5 13.8 19.4 13.7 21.9 10.3 21.9 10.2 19.4 8.1 18.5 6.2 20.2 3.8 17.8 5.5 15.9 4.6 13.8 2.1 13.7 2.1 10.3 4.6 10.2 5.5 8.1 3.8 6.2 6.2 3.8 8.1 5.5 10.2 4.6 10.3 2.1 13.7 2.1 13.8 4.6 15.9 5.5 17.8 3.8 20.2 6.2 18.5 8.1zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
 export const history = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3";
 export const search = "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-4.3-4.3";
 export const keyboard = "M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10";
@@ -234,6 +236,7 @@ export const ICONS = {
   ruler,
   sliders,
   settings,
+  gear,
   history,
   search,
   keyboard,

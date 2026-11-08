@@ -6,7 +6,7 @@ import schemaJson from "./bcad.schema.json";
 import { MIGRATIONS } from "./migrations";
 import { upgradeDoc, type FeatureType, type ModelDoc } from "./document";
 
-export const BCAD_SCHEMA = 1;
+export const BCAD_SCHEMA = 2;
 export const BCAD_MIME = "application/vnd.bettercad+json";
 export const BCAD_EXT = ".bcad";
 export const APP_VERSION = "0.1.0";
@@ -44,6 +44,8 @@ export interface SaveOptions {
 }
 
 const KNOWN: ReadonlySet<FeatureType> = new Set<FeatureType>([
+  "link",
+  "gear",
   "mount",
   "insert",
   "import",

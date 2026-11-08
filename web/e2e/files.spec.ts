@@ -57,7 +57,7 @@ test("saves a .bcad in place, names the model after the file, and saves again wi
   await expect(page).toHaveTitle("Bracket · BetterCad");
   const last = await page.evaluate(() => (window as unknown as { __writes: { text: string }[] }).__writes.at(-1)!.text);
   const file = JSON.parse(last);
-  expect(file).toMatchObject({ schema: 1, app: "bettercad", name: "Bracket" });
+  expect(file).toMatchObject({ schema: 2, app: "bettercad", name: "Bracket" });
   expect(file.document.features[0]).toMatchObject({ type: "add", name: "Box 1" });
   // A 320 × 200 thumbnail under 40 KB.
   expect(file.thumbnail).toMatch(/^data:image\/png;base64,/);
@@ -83,6 +83,8 @@ test("opens a saved file", async ({ page }) => {
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("menuitem", { name: /New model/ }).click();
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toHaveCount(0);
+  // The fresh model's baseline lands a render after its document; Open before then would ask to save it.
+  await expect(page).toHaveTitle("Untitled model · BetterCad");
   await page.keyboard.press("ControlOrMeta+o");
   await expect(page.getByText("Opened Bracket.bcad")).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();

@@ -181,6 +181,22 @@ describe("planegcs solver", () => {
     expect(new SketchIndex(held.sketch).xy(topS.a)[1]).toBeCloseTo(20, 6);
   });
 
+  it("lines two points up across or up, each taking one degree of freedom", () => {
+    const d = new Draft(newSketch());
+    const a = d.point([0, 0]);
+    const b = d.point([30, 4]);
+    const c = d.point([3, 25]);
+    d.constrain({ type: "fix", p: a });
+    d.constrain({ type: "horizontal", e: a, b });
+    d.constrain({ type: "vertical", e: a, b: c });
+    const r = solver.solve(d.done().sketch);
+    expect(r.status).toBe("ok");
+    expect(r.dof).toBe(2);
+    const idx = new SketchIndex(r.sketch);
+    expect(idx.xy(b)[1]).toBeCloseTo(0, 6);
+    expect(idx.xy(c)[0]).toBeCloseTo(0, 6);
+  });
+
   it("solves a 200-circle sketch quickly", () => {
     let s = newSketch();
     for (let i = 0; i < 200; i++) s = drawCircle(s, [(i % 20) * 10, Math.floor(i / 20) * 10], 3, 4).sketch;

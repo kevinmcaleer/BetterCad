@@ -3,10 +3,12 @@
  * Schema 0 is the bare document JSON that the editor downloaded before .bcad existed (`*.bettercad.json`).
  */
 import { v0to1 } from "./v0to1";
+import { v1to2 } from "./v1to2";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Migration = (file: any) => any;
 
 export const MIGRATIONS: Record<number, Migration> = {
   0: v0to1,
+  1: v1to2,
 };
