@@ -33,8 +33,11 @@ import {
   extent,
   frameToLocal,
   pickProfiles,
+  targetsOf,
+  throughAllAllowed,
   type AxisRef,
   type ExtrudeDirection,
+  type ExtrudeExtent,
   type ExtrudeOperation,
   type PrismSpec,
   type ProfileSeg,
@@ -259,9 +262,13 @@ export interface ExtrudeFeature extends FeatureBase {
   direction: ExtrudeDirection;
   /** The second side's distance, for "two". */
   distance2?: number;
+  /** A distance (the default), or through all (Cut and Intersect). Through all keeps `distance` for its side. */
+  extent?: ExtrudeExtent;
   operation: ExtrudeOperation;
-  /** The part joined to, cut or intersected (not for "new"). */
+  /** The part joined to, cut or intersected (not for "new"). The first of `targets` when there are several. */
   target?: string;
+  /** Every body it cuts or intersects (Join takes the first). Missing in older files: `target` alone. */
+  targets?: string[];
   /** The new body's part, for "new". */
   body: { id: string; name: string };
   /** Cuts only (#188): the named fit it was made with, and the gap on each side then, mm. */
@@ -315,6 +322,8 @@ export interface RevolveFeature extends FeatureBase {
   symmetric?: boolean;
   operation: ExtrudeOperation;
   target?: string;
+  /** Every body it cuts or intersects (Join takes the first), as for Extrude. */
+  targets?: string[];
   body: { id: string; name: string };
 }
 /** Hole (#70): screw holes on one flat face of a part, sized from the screw table. */
@@ -687,19 +696,22 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "Give it a distance other than 0 mm");
           break;
         }
-        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, ...extent(f.direction, f.distance, f.distance2) };
+        const all = f.extent === "all";
+        if (all && !throughAllAllowed(f.operation)) {
+          failed.set(f.id, "Through all works with Cut and Intersect. Give it a distance to join or make a body.");
+          break;
+        }
+        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, ...extent(f.direction, f.distance, f.distance2, all) };
         if (f.operation === "new") {
           if (find(f.body.id) < 0)
             parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: prismSize(spec), prism: spec });
           break;
         }
-        const t = f.target ? parts[find(f.target)] : undefined;
-        if (!t) {
-          failed.set(f.id, f.target ? "The body it changes is gone" : "Pick the body to change");
-          break;
+        const ts = profileTargets(f, parts, find, failed);
+        for (const t of ts) {
+          const tool: PrismSpec = { ...spec, frame: frameToLocal(spec.frame, t) };
+          t.ops = [...(t.ops ?? []), { op: f.operation, tool, ...(f.operation === "cut" && f.gap ? { gap: f.gap } : {}), feature: f.id }];
         }
-        const tool: PrismSpec = { ...spec, frame: frameToLocal(spec.frame, t) };
-        t.ops = [...(t.ops ?? []), { op: f.operation, tool, ...(f.operation === "cut" && f.gap ? { gap: f.gap } : {}), feature: f.id }];
         break;
       }
       case "revolve": {
@@ -734,12 +746,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: revolveSize(spec), revolve: spec });
           break;
         }
-        const t = f.target ? parts[find(f.target)] : undefined;
-        if (!t) {
-          failed.set(f.id, f.target ? "The body it changes is gone" : "Pick the body to change");
-          break;
-        }
-        t.ops = [...(t.ops ?? []), { op: f.operation, rev: { ...spec, frame: frameToLocal(spec.frame, t) }, feature: f.id }];
+        for (const t of profileTargets(f, parts, find, failed))
+          t.ops = [...(t.ops ?? []), { op: f.operation, rev: { ...spec, frame: frameToLocal(spec.frame, t) }, feature: f.id }];
         break;
       }
       case "fillet":
@@ -918,6 +926,24 @@ function revolveSize(spec: RevolveSpec): Vec3 {
   // Along the axis: its length; across: the radius both ways.
   const span = (i: number) => Math.round((Math.abs(axisW[i]!) * (a1 - a0) + 2 * r * Math.sqrt(Math.max(0, 1 - axisW[i]! ** 2))) * 1000) / 1000;
   return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
+}
+
+/** The parts an extrude or revolve changes, as they stand now; notes on the step any that are gone. */
+function profileTargets(f: ExtrudeFeature | RevolveFeature, parts: Part[], find: (id: string) => number, failed: Map<string, string>): Part[] {
+  const ids = targetsOf(f);
+  if (!ids.length) {
+    failed.set(f.id, f.operation === "join" ? "Pick the body to change" : "Pick the bodies to change");
+    return [];
+  }
+  const found = ids.map((id) => parts[find(id)]).filter((p): p is Part => !!p);
+  if (found.length < ids.length) {
+    const gone = ids.length - found.length;
+    failed.set(
+      f.id,
+      ids.length === 1 ? "The body it changes is gone" : `${gone === 1 ? "One body" : `${gone} bodies`} it changes ${gone === 1 ? "is" : "are"} gone`,
+    );
+  }
+  return found;
 }
 
 /** A prism's rough size along X, Y and Z, for the props panel and the gizmo. */
@@ -1131,7 +1157,7 @@ export function featureParts(f: Feature): string[] {
     case "sketch":
       return [];
     case "extrude":
-      return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
+      return f.operation === "new" ? [f.body.id] : targetsOf(f);
     case "combine":
       return [f.target];
     case "fillet":
@@ -1142,7 +1168,7 @@ export function featureParts(f: Feature): string[] {
     case "mount":
       return [f.part];
     case "revolve":
-      return f.operation === "new" ? [f.body.id] : f.target ? [f.target] : [];
+      return f.operation === "new" ? [f.body.id] : targetsOf(f);
     case "import":
       return f.bodies.map((b) => b.id);
     case "insert":
@@ -1209,9 +1235,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     case "sketch":
       return sketchSummary(f.sketch);
     case "extrude": {
-      const how = f.direction === "symmetric" ? ", both ways" : f.direction === "two" ? ` and ${mm(f.distance2 ?? 0)}` : "";
-      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(f.target ? [f.target] : [])}`;
-      return `${mm(f.distance)}${how}, ${op}`;
+      const all = f.extent === "all";
+      const how = f.direction === "symmetric" || (all && f.direction === "two") ? ", both ways" : f.direction === "two" ? ` and ${mm(f.distance2 ?? 0)}` : "";
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
+      return `${f.extent === "all" ? "Through all" : mm(f.distance)}${how}, ${op}`;
     }
     case "fillet":
     case "chamfer": {
@@ -1226,7 +1253,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       return `${n === 1 ? "1 hole" : `${n} holes`}, ${holeLabel(f)}${head}, ${f.depth === null ? "through" : `${mm(f.depth)} deep`}, ${who([f.part])}`;
     }
     case "revolve": {
-      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(f.target ? [f.target] : [])}`;
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
       const axis = f.axis.kind === "line" ? "a sketch line" : `the sketch's ${f.axis.kind.toUpperCase()} axis`;
       return `${f.angle >= 360 ? "Full turn" : `${Math.round(f.angle * 100) / 100}°${f.symmetric ? " both ways" : ""}`} round ${axis}, ${op}`;
     }
@@ -1261,7 +1288,7 @@ export function addSketch(doc: ModelDoc, plane: PlaneRef, id = newId("f"), at?: 
   return insert(doc, clampAt(doc, at), { id, type: "sketch", name, sketch: newSketch(plane, name, id) });
 }
 
-export type ExtrudeParams = Pick<ExtrudeFeature, "sketch" | "seeds" | "distance" | "direction" | "distance2" | "operation" | "target">;
+export type ExtrudeParams = Pick<ExtrudeFeature, "sketch" | "seeds" | "distance" | "direction" | "distance2" | "extent" | "operation" | "target" | "targets">;
 
 /** Adds an Extrude step. Its new body (when it makes one) gets the part id `bodyId`. */
 export function addExtrude(doc: ModelDoc, params: ExtrudeParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
@@ -1295,7 +1322,7 @@ export function updateFinish(doc: ModelDoc, id: string, change: Partial<FinishPa
   };
 }
 
-export type RevolveParams = Pick<RevolveFeature, "sketch" | "seeds" | "axis" | "angle" | "symmetric" | "operation" | "target">;
+export type RevolveParams = Pick<RevolveFeature, "sketch" | "seeds" | "axis" | "angle" | "symmetric" | "operation" | "target" | "targets">;
 
 /** Adds a Revolve step. Its new body (when it makes one) gets the part id `bodyId`. */
 export function addRevolve(doc: ModelDoc, params: RevolveParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
@@ -1964,7 +1991,7 @@ function partsRead(f: Feature): string[] {
       return f.parts;
     case "extrude":
     case "revolve":
-      return f.operation !== "new" && f.target ? [f.target] : [];
+      return targetsOf(f);
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
     case "import":

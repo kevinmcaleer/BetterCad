@@ -1,7 +1,8 @@
 import type { KeyboardEvent } from "react";
 import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry, type Scope } from "@bettercad/ui";
 import type { Part } from "../state/document";
-import { DIRECTIONS, OPERATIONS, type ExtrudeSession } from "./useExtrude";
+import { throughAllAllowed } from "../state/document";
+import { DIRECTIONS, EXTENTS, OPERATIONS, type ExtrudeSession } from "./useExtrude";
 
 /**
  * The strip for Extrude (distance and direction) and Revolve (angle and axis): what it does to the model, why it
@@ -24,8 +25,25 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
     if (e.key === "Enter") x.done();
   };
   const others = parts.filter((p) => p.id !== f.body.id);
-  const target = others.find((p) => p.id === f.target);
-  const targets: MenuEntry[] = others.map((p) => ({ id: p.id, label: p.name, onSelect: () => x.change({ target: p.id }) }));
+  const chosen = others.filter((p) => x.targets.includes(p.id));
+  // Join changes one body; Cut and Intersect tick as many as you like.
+  const many = f.operation !== "join";
+  const targets: MenuEntry[] = others.map((p) => ({
+    id: p.id,
+    label: p.name,
+    checked: x.targets.includes(p.id),
+    multiple: many,
+    onSelect: () => (many ? x.toggleTarget(p.id) : x.setTargets([p.id])),
+  }));
+  if (many && others.length > 1)
+    targets.push(
+      { kind: "separator", id: "sep" },
+      { id: "all-bodies", label: "Every body", onSelect: () => x.setTargets(others.filter((p) => !p.reference).map((p) => p.id)) },
+    );
+  const bodiesLabel = chosen.length === 0 ? (many ? "Pick bodies" : "Pick a body") : chosen.length === 1 ? chosen[0]!.name : `${chosen.length} bodies`;
+  const bodiesTitle = many
+    ? `The bodies it ${f.operation === "cut" ? "cuts" : "intersects"}. Click bodies in the view or the browser to add or take them out.`
+    : "The body it changes. Click a body in the view or the browser to pick it.";
 
   let fields;
   if (f.type === "revolve") {
@@ -66,30 +84,51 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
   } else {
     const directions: MenuEntry[] = DIRECTIONS.map((d) => ({ id: d.id, label: d.label, onSelect: () => x.change({ direction: d.id }) }));
     const direction = DIRECTIONS.find((d) => d.id === f.direction)!;
+    const canAll = throughAllAllowed(f.operation);
+    const all = f.extent === "all" && canAll;
+    const extents: MenuEntry[] = EXTENTS.map((e) => ({
+      id: e.id,
+      label: e.label,
+      checked: (all ? "all" : "distance") === e.id,
+      disabled: e.id === "all" && !canAll,
+      onSelect: () => x.change({ extent: e.id }),
+    }));
+    const extentEntry = EXTENTS.find((e) => e.id === (all ? "all" : "distance"))!;
     fields = (
       <>
-        <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-          <NumberField
-            id="bc-ex-distance"
-            label={f.direction === "symmetric" ? "Total" : "Distance"}
-            value={f.distance}
-            scope={scope}
-            onChange={(v) => x.change({ distance: v })}
-            onCommit={(v, expr) => {
-              x.change({ distance: v });
-              x.setFieldExpr("distance", expr);
-            }}
-          />
-          {f.direction === "two" && (
-            <NumberField
-              label="Other side"
-              value={f.distance2 ?? 0}
-              min={0}
-              onChange={(v) => x.change({ distance2: v })}
-              onCommit={(v) => x.change({ distance2: v })}
-            />
+        <MenuButton
+          label="Extent"
+          entries={extents}
+          trigger={(p) => (
+            <Button {...p} label={extentEntry.label} title={canAll ? "How far it goes" : "How far it goes. Through all works with Cut and Intersect."} />
           )}
-        </span>
+        />
+        {all ? (
+          f.direction === "one" && <Button label="Flip" title="Go the other way from the sketch" onClick={() => x.change({ distance: -(f.distance || 1) })} />
+        ) : (
+          <span className="bc-sk-fields" onKeyDown={onFieldKey}>
+            <NumberField
+              id="bc-ex-distance"
+              label={f.direction === "symmetric" ? "Total" : "Distance"}
+              value={f.distance}
+              scope={scope}
+              onChange={(v) => x.change({ distance: v })}
+              onCommit={(v, expr) => {
+                x.change({ distance: v });
+                x.setFieldExpr("distance", expr);
+              }}
+            />
+            {f.direction === "two" && (
+              <NumberField
+                label="Other side"
+                value={f.distance2 ?? 0}
+                min={0}
+                onChange={(v) => x.change({ distance2: v })}
+                onCommit={(v) => x.change({ distance2: v })}
+              />
+            )}
+          </span>
+        )}
         <MenuButton
           label="Direction"
           entries={directions}
@@ -108,11 +147,7 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
       </span>
       {f.operation !== "new" &&
         (others.length ? (
-          <MenuButton
-            label="Body"
-            entries={targets}
-            trigger={(p) => <Button {...p} label={target ? target.name : "Pick a body"} title="The body it changes" />}
-          />
+          <MenuButton label={many ? "Bodies" : "Body"} entries={targets} trigger={(p) => <Button {...p} label={bodiesLabel} title={bodiesTitle} />} />
         ) : (
           <span className="bc-armed-note">There is no body to change yet.</span>
         ))}

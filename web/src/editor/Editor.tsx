@@ -396,6 +396,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   live.current.sketching = sketch.editing;
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
 
+  /** The built bodies' boxes, for the bodies an extrude cut touches. */
+  const bounds = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.bbox])), [kernel.bodies]);
   const extrude = useExtrude({
     kind: "extrude",
     store,
@@ -403,6 +405,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     sketches: built.sketches,
     parts,
+    bounds,
     selection,
     view: vp.ref,
     active: tool === "extrude" && !sketch.editing,
@@ -419,6 +422,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     sketches: built.sketches,
     parts,
+    bounds,
     selection,
     view: vp.ref,
     active: tool === "revolve" && !sketch.editing,
@@ -427,6 +431,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     theme: resolved,
   });
   useEffect(() => registry.register(revolve.commands), [registry, revolve.commands]);
+
+  // While an extrude or revolve changes bodies, the bodies it changes are the selection, so they light up in the view
+  // and the browser; a click on a body in the browser picks it for the step instead of selecting it.
+  const profileStep = extrude.targeting ? extrude : revolve.targeting ? revolve : null;
+  const stepTargets = profileStep?.targets.join(" ");
+  useEffect(() => {
+    if (stepTargets) setSelection(stepTargets.split(" "));
+  }, [stepTargets]);
+  const selectFromBrowser = useCallback(
+    (ids: string[]) => {
+      if (!profileStep) return setSelection(ids);
+      if (ids.length === 1) profileStep.toggleTarget(ids[0]!);
+      else if (ids.length) profileStep.setTargets(ids);
+    },
+    [profileStep],
+  );
 
   const pushpull = usePushPull({
     store,
@@ -2244,7 +2264,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               doc={doc}
               parts={parts}
               selection={selection}
-              onSelect={setSelection}
+              onSelect={selectFromBrowser}
               onAdd={add}
               onToggle={(id, what) => toggle(selection.includes(id) ? selection : [id], what)}
               onRename={rename}

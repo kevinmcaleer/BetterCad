@@ -13,7 +13,7 @@ import {
   type ExtrudeParams,
   type ModelDoc,
 } from "./document";
-import { extent, frameToLocal, pickProfiles } from "./extrude";
+import { THROUGH_ALL, extent, frameToLocal, pickProfiles, targetsOf } from "./extrude";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 
@@ -37,6 +37,20 @@ describe("extrude geometry", () => {
     expect(extent("one", -4)).toEqual({ from: -4, to: 0 });
     expect(extent("symmetric", 10)).toEqual({ from: -5, to: 5 });
     expect(extent("two", 10, 3)).toEqual({ from: -3, to: 10 });
+  });
+
+  it("goes through all on the distance's side, or both ways", () => {
+    expect(extent("one", 10, 0, true)).toEqual({ from: 0, to: THROUGH_ALL });
+    expect(extent("one", -4, 0, true)).toEqual({ from: -THROUGH_ALL, to: 0 });
+    expect(extent("symmetric", 10, 0, true)).toEqual({ from: -THROUGH_ALL, to: THROUGH_ALL });
+    expect(extent("two", 10, 3, true)).toEqual({ from: -THROUGH_ALL, to: THROUGH_ALL });
+  });
+
+  it("reads its bodies from targets, or the single target in older files", () => {
+    expect(targetsOf({ operation: "cut", target: "a" })).toEqual(["a"]);
+    expect(targetsOf({ operation: "cut", target: "a", targets: ["a", "b", "a"] })).toEqual(["a", "b"]);
+    expect(targetsOf({ operation: "join", target: "a", targets: ["a", "b"] })).toEqual(["a"]);
+    expect(targetsOf({ operation: "new", target: "a", targets: ["a"] })).toEqual([]);
   });
 
   it("picks the profile under a point, with its holes", () => {
@@ -93,7 +107,9 @@ describe("extrude on the timeline", () => {
     expect(build(addExtrude(sketched(), params({ distance: 0 }), "e1")).failed.get("e1")).toMatch(/distance/);
     expect(build(addExtrude(sketched(), params({ seeds: [[99, 99]] }), "e1")).failed.get("e1")).toMatch(/closed/);
     expect(build(addExtrude(sketched(), params({ sketch: "nope" }), "e1")).failed.get("e1")).toMatch(/sketch is gone/);
-    expect(build(addExtrude(sketched(), params({ operation: "cut" }), "e1")).failed.get("e1")).toMatch(/Pick the body/);
+    expect(build(addExtrude(sketched(), params({ operation: "cut" }), "e1")).failed.get("e1")).toMatch(/Pick the bodies/);
+    expect(build(addExtrude(sketched(), params({ extent: "all" }), "e1")).failed.get("e1")).toMatch(/Through all works with Cut and Intersect/);
+    expect(build(addExtrude(sketched(), params({ operation: "cut", targets: ["gone", "also"] }), "e1")).failed.get("e1")).toBe("2 bodies it changes are gone");
   });
 
   it("cuts into a body in its own coordinates, so the cut moves with it", () => {
@@ -122,6 +138,42 @@ describe("extrude in the kernel", () => {
     const r = new ModelBuilder(oc).build(d);
     expect(r.failed).toEqual([]);
     expect(r.bodies[0]!.measure.volume).toBeCloseTo(30 * 20 * 20 - Math.PI * 25 * 5, 1);
+  });
+
+  /** Two 20 mm cubes side by side under the sketch, the circle over the gap between them, cut 5 mm or through all. */
+  function twoBoxes(p: Partial<ExtrudeParams>): ModelDoc {
+    let d = addPart(sketched(), "box", "a");
+    d = changeParts(d, ["a"], "size", { x: 20, y: 20, z: 20 });
+    d = changeParts(d, ["a"], "position", { x: 5, y: 10, z: -20 });
+    d = addPart(d, "box", "b");
+    d = changeParts(d, ["b"], "size", { x: 20, y: 20, z: 20 });
+    d = changeParts(d, ["b"], "position", { x: 25, y: 10, z: -20 });
+    return addExtrude(d, params({ seeds: [[15, 10]], operation: "cut", ...p }), "e1");
+  }
+  const volumes = (d: ModelDoc) => {
+    const r = new ModelBuilder(oc).build(d);
+    expect(r.failed).toEqual([]);
+    return Object.fromEntries(r.bodies.map((b) => [b.id, b.measure.volume]));
+  };
+
+  it("cuts right through a body with through all, whichever side the sketch is on", () => {
+    // The sketch is on the boxes' top face, so the cut goes down: a negative distance picks that side.
+    const down = volumes(twoBoxes({ distance: -1, extent: "all", target: "a" }));
+    expect(down.a).toBeCloseTo(8000 - (Math.PI * 25 * 20) / 2, 1);
+    expect(down.b).toBeCloseTo(8000, 1);
+    // Flipped, it goes up, away from the box, and leaves it whole.
+    expect(volumes(twoBoxes({ distance: 1, extent: "all", target: "a" })).a).toBeCloseTo(8000, 1);
+    // Symmetric reaches both ways.
+    expect(volumes(twoBoxes({ distance: 1, direction: "symmetric", extent: "all", target: "a" })).a).toBeCloseTo(8000 - (Math.PI * 25 * 20) / 2, 1);
+  });
+
+  it("cuts every body it is given, and only those", () => {
+    const both = volumes(twoBoxes({ distance: -5, targets: ["a", "b"], target: "a" }));
+    expect(both.a).toBeCloseTo(8000 - (Math.PI * 25 * 5) / 2, 1);
+    expect(both.b).toBeCloseTo(8000 - (Math.PI * 25 * 5) / 2, 1);
+    const one = volumes(twoBoxes({ distance: -5, extent: "all", targets: ["b"], target: "b" }));
+    expect(one.a).toBeCloseTo(8000, 1);
+    expect(one.b).toBeCloseTo(8000 - (Math.PI * 25 * 20) / 2, 1);
   });
 
   it("joins two profiles into one body", () => {
