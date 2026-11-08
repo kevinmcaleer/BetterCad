@@ -3,7 +3,7 @@ import { cx } from "@bettercad/ui";
 
 export interface AppShellProps {
   topBar: ReactNode;
-  /** The latest status message ("Added a box"), floating above the timeline. */
+  /** The latest status message ("Added a box"), floating above the help line. */
   status?: ReactNode;
   /** The open rail panel, or null when it is folded away. */
   leftPanel: ReactNode | null;
@@ -11,7 +11,7 @@ export interface AppShellProps {
   stageToolbar: ReactNode;
   /** The viewport. Epic #3 mounts the canvas here. */
   stage: ReactNode;
-  /** The feature timeline along the bottom of the stage (epic #7). Left out when hidden from Settings. */
+  /** The feature timeline, flush along the bottom edge (epic #7). Left out when hidden from Settings. */
   timeline?: ReactNode;
   helpLine: ReactNode;
   rightPanel: ReactNode;
@@ -45,8 +45,8 @@ export function AppShell({ topBar, status, leftPanel, leftLabel, stageToolbar, s
           {stage}
           <div className="bc-stage-foot" data-floats="">
             {status && <div className="bc-status-pill">{status}</div>}
-            {timeline}
             <div className="bc-help">{helpLine}</div>
+            {timeline}
           </div>
         </main>
         <div className="bc-right">{rightPanel}</div>

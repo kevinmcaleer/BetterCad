@@ -33,7 +33,8 @@ body {
   --bc-view-top: calc(var(--bc-top-height) + 2 * var(--bc-float-gap));
   --bc-view-left: calc(var(--bc-side-width) + 2 * var(--bc-float-gap));
   --bc-view-right: calc(var(--bc-props-width) + 2 * var(--bc-float-gap));
-  --bc-view-bottom: 96px;
+  /* The timeline (flush on the bottom edge) and the help line just above it. */
+  --bc-view-bottom: 80px;
   --bc-viewcube-room: 112px;
   /* Room the view bar takes at the top of the view, so the empty state starts below it. */
   --bc-bars-room: 56px;
@@ -168,18 +169,27 @@ body {
 .bc-app .bc-stage-bars .bc-armed-note {
   white-space: normal;
 }
-/* The timeline and the help line float along the bottom. */
+/* The help line floats just above the timeline, and the timeline sits flush on the bottom edge, so the model gets
+   every pixel above it. */
 .bc-stage-foot {
   position: absolute;
   z-index: 8;
   left: var(--bc-view-left);
   right: var(--bc-view-right);
-  bottom: var(--bc-float-gap);
+  bottom: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--bc-space-3);
   pointer-events: none;
+}
+/* With the timeline hidden from Settings, the help line keeps its gap from the edge. */
+.bc-app.bc-no-timeline .bc-stage-foot {
+  bottom: var(--bc-float-gap);
+}
+.bc-app .bc-stage-foot > .bc-timeline {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 .bc-app .bc-help {
   max-width: 100%;
@@ -209,7 +219,7 @@ body {
   gap: var(--bc-space-1);
   flex: none;
 }
-/* The latest status message floats over the timeline, and only while there is one. */
+/* The latest status message floats over the help line, and only while there is one. */
 .bc-status-pill {
   max-width: 100%;
   padding: var(--bc-space-1) var(--bc-space-5);
@@ -737,8 +747,13 @@ kbd {
   .bc-app .bc-top > .bc-top-tools + .bc-grow {
     flex: 1;
   }
-  .bc-stage-foot {
+  /* On a narrow screen the tools take the bottom edge, where a thumb reaches them; the timeline sits just above. */
+  .bc-app .bc-stage-foot,
+  .bc-app.bc-no-timeline .bc-stage-foot {
     bottom: calc(var(--bc-rail-bar) + 2 * var(--bc-float-gap));
+  }
+  .bc-app .bc-stage-foot > .bc-timeline {
+    border-radius: var(--bc-radius-md);
   }
   .bc-app .bc-stage-bars {
     right: var(--bc-view-right);
