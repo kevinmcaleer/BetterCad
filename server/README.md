@@ -27,14 +27,14 @@ Migrations are numbered `.sql` files in `bettercad/migrations/`, applied on star
 
 ## API
 
-Interactive docs are at `/api/docs` in development. Everything under `/api/models`, `/api/blobs` and `/api/me` needs a
-session cookie, and every change needs the `X-CSRF-Token` header that sign-in returns. Another account's ids answer
+Interactive docs are at `/api/docs` in development. Everything under `/api/models`, `/api/blobs`, `/api/me` and `/api/account`
+needs the kevsrobots.com `access_token` cookie, and every change needs the `X-CSRF-Token` header from `/api/auth/session`. Another account's ids answer
 404.
 
 | Route | Does |
 | --- | --- |
-| `POST /api/auth/signup`, `/signin`, `/signout` | Accounts and sessions (`auth.py`, a stand-in for powertools-auth, #88) |
-| `GET`, `PATCH`, `DELETE /api/auth/me` | The signed-in account: name, theme, password, delete |
+| `GET /api/auth/session?next=`, `POST /api/auth/logout` | Who is signed in (kevsrobots.com, via Chatter), the CSRF token and kevsrobots.com's sign-in links; sign out (`auth.py`, #88) |
+| `GET`, `PATCH`, `DELETE /api/account` | The signed-in account: theme; delete your BetterCad data |
 | `GET /api/models?q=&sort=modified\|name&bin=&limit=&offset=` | My models, newest first |
 | `POST /api/models` | A new model with its first version: `{name, bcad, note?}` |
 | `GET`, `PUT`, `PATCH`, `DELETE /api/models/{id}` | Latest version; save a new one (`If-Match: <version>`, 409 if it moved on); rename; to the bin (`?forever=true` deletes) |

@@ -6,21 +6,19 @@ const res = (status: number, body: unknown, type = "application/json") =>
   new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers: { "content-type": type } });
 
 describe("api", () => {
-  it("gets a CSRF token before signing in, then sends the session's on every change", async () => {
+  it("takes the CSRF token from the session and sends it on every change", async () => {
     const seen: { url: string; init?: RequestInit }[] = [];
+    const links = { signin_url: "https://chatter.kevsrobots.com/login", signup_url: "s", account_url: "a" };
     const api = createApi("api/", async (url, init) => {
       seen.push({ url, init });
-      if (url.endsWith("auth/session")) return res(200, { user: null, csrf_token: "anon", registration_open: true, password_reset: true });
-      if (url.endsWith("auth/login")) return res(200, { user: { id: 1, username: "kev", email: null }, csrf_token: "tok" });
+      if (url.includes("auth/session")) return res(200, { user: { id: 1, username: "kev", email: null }, csrf_token: "tok", ...links });
       if (url.endsWith("account")) return res(200, { id: 1, username: "kev", name: "kev", email: null, theme: null, csrf: "tok" });
       return res(200, { version: 2 });
     });
-    const me = await api.signIn("kev@example.com", "pw");
-    expect(me.name).toBe("kev");
-    const login = seen.find((s) => s.url.endsWith("auth/login"))!;
-    expect((login.init?.headers as Record<string, string>)["X-CSRF-Token"]).toBe("anon");
-    expect(JSON.parse(login.init?.body as string)).toEqual({ username: "kev@example.com", password: "pw", remember: true });
-    expect(api.info()).toEqual({ registration_open: true, password_reset: true });
+    const me = await api.me();
+    expect(me?.name).toBe("kev");
+    expect((await api.links("#/account")).signin_url).toBe(links.signin_url);
+    expect(seen.at(-1)!.url).toBe("api/auth/session?next=%23%2Faccount");
     await api.save("m1", "{}", { ifMatch: 1, note: "x" });
     const put = seen.at(-1)!;
     expect(put.url).toBe("api/models/m1");
@@ -66,9 +64,6 @@ describe("routes", () => {
     expect(parseRoute("#/edit/m%201")).toEqual({ page: "editor", model: "m 1" });
     expect(parseRoute("#/sample/bracket")).toEqual({ page: "editor", sample: "bracket" });
     expect(parseRoute("#/signin?next=%23%2Flibrary")).toEqual({ page: "signin", next: "#/library" });
-    expect(parseRoute("#/forgot")).toEqual({ page: "forgot" });
-    expect(parseRoute("#/reset-password#token=abc-123")).toEqual({ page: "reset", token: "abc-123" });
-    expect(parseRoute("#/reset-password")).toEqual({ page: "forgot" });
     expect(parseRoute("#/library/bin")).toEqual({ page: "library", bin: true });
     expect(parseRoute("#/view/abc")).toEqual({ page: "view", token: "abc" });
     expect(parseRoute("#/view")).toEqual({ page: "editor" });
