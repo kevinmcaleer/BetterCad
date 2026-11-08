@@ -1,9 +1,9 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
-import { Banner, Button, MenuButton, type MenuEntry } from "@bettercad/ui";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Banner, Button, MenuButton, ViewCube, type MenuEntry } from "@bettercad/ui";
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
-import { orbit, pan, zoom, type CameraState } from "../viewport/camera";
+import { lookFrom, orbit, pan, viewRotation, zoom, type CameraState } from "../viewport/camera";
 import type { Section } from "../viewport/engine";
 import type { CutPlane } from "./cut";
 
@@ -113,20 +113,33 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     if (r.current) r.current.maxSamples = testMax() ?? samplesFor(state.quality);
   }, [state.quality]);
 
+  const [rotation, setRotation] = useState(() => viewRotation(cam.current));
+  const move = useCallback(
+    (c: CameraState) => {
+      cam.current = c;
+      r.current?.setCamera(c);
+      setRotation(viewRotation(c));
+      onCamera(c);
+    },
+    [onCamera],
+  );
+  /** Dragging the picture or the view cube: the picture waits until you stop. */
+  const hold = useCallback(
+    (on: boolean) => {
+      r.current?.pause(on);
+      session.set({ moving: on });
+    },
+    [session],
+  );
+
   // Orbit, pan and zoom with the modelling view's own camera moves.
   useEffect(() => {
     const el = canvas.current!;
     let last: { x: number; y: number; button: number } | null = null;
-    const move = (c: CameraState) => {
-      cam.current = c;
-      r.current?.setCamera(c);
-      onCamera(c);
-    };
     const down = (e: PointerEvent) => {
       last = { x: e.clientX, y: e.clientY, button: e.button };
       el.setPointerCapture(e.pointerId);
-      r.current?.pause(true);
-      session.set({ moving: true });
+      hold(true);
     };
     const drag = (e: PointerEvent) => {
       if (!last) return;
@@ -138,8 +151,7 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     const up = () => {
       if (!last) return;
       last = null;
-      r.current?.pause(false);
-      session.set({ moving: false });
+      hold(false);
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -163,9 +175,29 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
       el.removeEventListener("wheel", wheel);
       el.removeEventListener("contextmenu", menu);
     };
-  }, [onCamera, session]);
+  }, [move, hold]);
 
-  return <canvas ref={canvas} className="bc-render-canvas" role="img" aria-label={`Rendered picture of the model, ${samplesText(state.samples)}`} />;
+  const orbiting = useRef(false);
+  return (
+    <>
+      <canvas ref={canvas} className="bc-render-canvas" role="img" aria-label={`Rendered picture of the model, ${samplesText(state.samples)}`} />
+      {/* The render's own view cube: it turns the picture's camera, as the modelling view's turns that one. */}
+      <div className="bc-render-cube">
+        <ViewCube
+          rotation={rotation}
+          onPick={(d) => move(lookFrom(cam.current, d))}
+          onOrbit={(dx, dy) => {
+            if (!orbiting.current) hold((orbiting.current = true));
+            move(orbit(cam.current, -dx * 0.5, dy * 0.5));
+          }}
+          onOrbitEnd={() => {
+            orbiting.current = false;
+            hold(false);
+          }}
+        />
+      </div>
+    </>
+  );
 }
 
 export interface RenderBarProps {

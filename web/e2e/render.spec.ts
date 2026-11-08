@@ -21,9 +21,16 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(page.getByRole("button", { name: "Pick: Bodies" })).toHaveCount(0);
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 120_000 });
 
+  // The render has its own view cube, turning the picture; the modelling view comes back looking the same way.
+  const cube = page.getByRole("group", { name: "View cube" });
+  await expect(cube).toHaveCount(1);
+  await cube.getByRole("button", { name: "Look from the top" }).click({ force: true });
+  await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 120_000 });
+
   await page.keyboard.press("Escape");
   await expect(bar).toHaveCount(0);
   await expect(page.getByRole("img", { name: /Rendered picture/ })).toHaveCount(0);
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "top");
   await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeVisible();
 
   // The view style menu opens it too, in paper white.
