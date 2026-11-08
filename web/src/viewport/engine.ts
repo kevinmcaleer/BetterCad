@@ -715,12 +715,7 @@ export class Engine {
           .slice(0, 3)
           .map((v) => v / 255) as [number, number, number]),
       );
-      const m = b.world ? new Matrix4() : bodyMatrix(b);
-      for (const g of [o.group, o.pick, o.idMesh]) {
-        g.matrixAutoUpdate = false;
-        g.matrix.copy(m);
-        g.matrixWorldNeedsUpdate = true;
-      }
+      this.place(o);
       this.applyStyle(o);
       return o;
     });
@@ -730,6 +725,30 @@ export class Engine {
     this.syncGizmo();
     this.invalidate();
   }
+
+  /** Puts a body where it is drawn: its own placement, then the pose (#173) when its link has moved. */
+  private place(o: BodyObjects): void {
+    const m = o.body.world ? new Matrix4() : bodyMatrix(o.body);
+    const posed = this.poseOf.get(o.body.id);
+    if (posed) m.premultiply(posed);
+    for (const g of [o.group, o.pick, o.idMesh]) {
+      g.matrixAutoUpdate = false;
+      g.matrix.copy(m);
+      g.matrixWorldNeedsUpdate = true;
+    }
+  }
+
+  /**
+   * Poses bodies (#173): each body's move from home, by body id, or none. Moves the drawn meshes only, so posing never
+   * waits on the kernel.
+   */
+  setPose(moves: Map<string, Matrix4> | null): void {
+    if (!moves?.size && !this.poseOf.size) return;
+    this.poseOf = moves ?? new Map();
+    for (const o of this.order) this.place(o);
+    this.invalidate();
+  }
+  private poseOf = new Map<string, Matrix4>();
 
   /** Shows a step's result over the bodies it changes, or takes it away (null). See PreviewBody. */
   setPreview(list: PreviewBody[] | null): void {
