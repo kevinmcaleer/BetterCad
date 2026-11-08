@@ -23,6 +23,7 @@ import {
   slideAcross,
   sub,
   toSketch,
+  type Dimension,
   type DimensionKind,
   type Frame,
   type Id,
@@ -40,6 +41,7 @@ import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { loadOptions, saveOptions, sketchGrid, type SketchOption, type SketchOptions } from "./options";
+import { placeAt } from "./dimensions";
 import { ORIGIN, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type Snap } from "./snap";
 import {
   CLICKS,
@@ -93,6 +95,17 @@ const DIM_NAME: Record<DimensionKind, string> = {
 
 export type SketchSession = ReturnType<typeof useSketch>;
 
+/**
+ * A size being placed with the Dimension tool, as in Fusion: its label follows the pointer until a click puts it down.
+ * Between two points, or on a line, where the pointer is also picks which way it measures (see `directionAt`).
+ */
+export interface Placing {
+  /** The sketch it goes on, with the origin made a real point if the size uses it. */
+  sketch: Sketch;
+  /** The size as it would go down now, measured from the geometry, with its label where the pointer is. */
+  dim: Dimension;
+}
+
 export function useSketch(d: SketchDeps) {
   const { store, say } = d;
   // Callbacks read the latest deps through a ref, so the pointer handlers are not rebuilt on every render.
@@ -123,6 +136,7 @@ export function useSketch(d: SketchDeps) {
   const gridSnap = options.snap;
   const showConstraints = options.constraints;
   const [dimEdit, setDimEdit] = useState<Id | null>(null);
+  const [placing, setPlacing] = useState<Placing | null>(null);
   const [finishWarn, setFinishWarn] = useState(false);
   const [camTick, setCamTick] = useState(0);
   const [solver, setSolver] = useState<Solver | null>(null);
@@ -146,6 +160,8 @@ export function useSketch(d: SketchDeps) {
       return null;
     }
   }, [sketch, solver]);
+  // Any change to the sketch (an undo, say) drops a size being placed, which was measured on the sketch before it.
+  useEffect(() => setPlacing(null), [sketch]);
   /** The model's origin in sketch mm, which Select, Dimension and the constraint tools can pick. */
   const origin = useMemo<Vec2 | null>(() => (frame ? toSketch(frame, [0, 0, 0]) : null), [frame]);
 
@@ -177,6 +193,7 @@ export function useSketch(d: SketchDeps) {
     setEditPreview(null);
     setClicks([]);
     setTyped([]);
+    setPlacing(null);
   }, []);
 
   // ---------------------------------------------------------------- changes
@@ -235,11 +252,11 @@ export function useSketch(d: SketchDeps) {
   );
 
   const addSize = useCallback(
-    (kind: DimensionKind, refs: Id[], base?: Sketch) => {
+    (kind: DimensionKind, refs: Id[], base?: Sketch, labelOffset?: Vec2) => {
       const s = base ?? current();
       if (!s) return;
       const dr = new Draft(s);
-      const id = dr.dimension(kind, refs);
+      const id = dr.dimension(kind, refs, undefined, labelOffset ? { labelOffset } : {});
       const withDim = dr.done().sketch;
       if (apply(withDim, "Add a dimension", { strict: true, quiet: true })) {
         setDimEdit(id);
@@ -261,7 +278,11 @@ export function useSketch(d: SketchDeps) {
       // The origin sizes like a point; it becomes a fixed point on the origin only when a size uses it.
       if (chosen.length < 2 && chosen.includes(ORIGIN)) return false;
       const { sketch: s, picked } = resolveOrigin(now, chosen, live.current.origin ?? undefined);
-      const addDimension = (kind: DimensionKind, refs: Id[]) => addSize(kind, refs, s);
+      // The size follows the pointer until a click places it.
+      const addDimension = (kind: DimensionKind, refs: Id[]) => {
+        setPlacing({ sketch: s, dim: placeAt(s, kind, refs, null) });
+        setSel(refs.filter((r) => s.entities.some((e) => e.id === r)));
+      };
       const idx = new SketchIndex(s);
       const es = picked.map((id) => idx.get(id)).filter((e) => !!e);
       if (es.length === 1) {
@@ -288,7 +309,30 @@ export function useSketch(d: SketchDeps) {
       }
       return false;
     },
-    [current, addSize],
+    [current],
+  );
+
+  /** Puts down the size being placed, where its label is now, and opens it for typing. */
+  const place = useCallback(() => {
+    const pl = live.current.placing;
+    if (!pl) return;
+    setPlacing(null);
+    addSize(pl.dim.kind, pl.dim.refs, pl.sketch, pl.dim.labelOffset);
+  }, [addSize]);
+
+  /** Moves a size's label (dragged by its pill), live; `last` ends the drag as one undo step. */
+  const moveLabel = useCallback(
+    (id: Id, labelOffset: Vec2, last = false) => {
+      const sk = live.current.editingId;
+      if (!sk) return;
+      store.edit(
+        (doc) => updateSketch(doc, sk, (s) => ({ ...s, dimensions: s.dimensions.map((x) => (x.id === id ? { ...x, labelOffset } : x)) })),
+        "Move a size",
+        `dimlabel:${sk}:${id}`,
+      );
+      if (last) store.seal();
+    },
+    [store],
   );
 
   const setDimension = useCallback(
@@ -520,6 +564,8 @@ export function useSketch(d: SketchDeps) {
     applyConstraint,
     origin,
     redefining,
+    placing,
+    place,
   });
   live.current = {
     redefining,
@@ -543,6 +589,8 @@ export function useSketch(d: SketchDeps) {
     ctool,
     applyConstraint,
     origin,
+    placing,
+    place,
   };
 
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
@@ -716,6 +764,10 @@ export function useSketch(d: SketchDeps) {
         const L = live.current;
         const hit = at(p);
         if (!hit || !L.sketch) return false;
+        if (L.placing) {
+          L.place();
+          return true;
+        }
         if (L.ctool) {
           // Each pick adds to the tool's picks; once there are enough, the constraint goes on and the tool stays armed.
           const id = constraintPick(L.ctool, hit.xy, hit.px)?.id ?? null;
@@ -768,6 +820,13 @@ export function useSketch(d: SketchDeps) {
         const L = live.current;
         const hit = at(p);
         if (!hit || !L.sketch) return;
+        if (L.placing) {
+          const pl = L.placing;
+          const dim = placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy);
+          setPlacing({ ...pl, dim });
+          setHover(null);
+          return;
+        }
         if (pressed && drag) {
           if (!L.solver) return;
           const ln = drag.line;
@@ -919,6 +978,7 @@ export function useSketch(d: SketchDeps) {
 
   const editing = !!editingId;
   useEscape(editing && (dimEdit !== null || finishWarn), () => (dimEdit ? setDimEdit(null) : setFinishWarn(false)), ESC.tool + 4);
+  useEscape(editing && placing !== null, () => setPlacing(null), ESC.tool + 3);
   useEscape(
     editing && clicks.length > 0,
     () => {
@@ -1093,6 +1153,8 @@ export function useSketch(d: SketchDeps) {
     dimEdit,
     setDimEdit,
     setDimension,
+    placing,
+    moveLabel,
     scope,
     finishWarn,
     setFinishWarn,
