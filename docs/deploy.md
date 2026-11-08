@@ -66,35 +66,15 @@ Whichever route you use:
 Check from outside the network: `curl https://bettercad.kevsrobots.com/api/health` returns `{"ok":true,...}`, and
 `curl -sI https://bettercad.kevsrobots.com/ | grep -i cross-origin` shows both COOP and COEP.
 
-## One login with Markdown Studio
+## Signing in with kevsrobots.com
 
-Kev chose (8 November 2026) to move the suite under kevsrobots.com, so one account works in BetterCad and Markdown
-Studio (#88). [`docker-compose.suite.yml`](../docker-compose.suite.yml) runs both on this machine with one tunnel:
+People sign in with their kevsrobots.com account, kept by Chatter (docs/accounts.md). docker-compose sets
+`COOKIE_DOMAIN=.kevsrobots.com` and `CHATTER_URL=https://chatter.kevsrobots.com`, so nothing needs adding to `.env`.
+The machine must be able to reach `chatter.kevsrobots.com` over HTTPS.
 
-- `studio` keeps its database in `./suite-data/studio.db` (a local folder: never NFS or SMB) and owns the users table.
-- `bettercad` keeps its own `bettercad.db` in its volume, and opens `studio.db` only for users and sessions
-  (`AUTH_DATABASE_PATH`).
-- Both set the sign-in cookie on `.kevsrobots.com` with Studio's `ms` prefix, so signing in to one signs you in to the
-  other. Both run as user 10001, because SQLite's journal files must be writable by both.
-
-Once:
-
-1. Stop Studio on the Pi cluster (`docker stack rm studio`) so its database stops changing, and copy it here:
-   `mkdir -p suite-data && scp <pi>:/srv/markdown-studio/data/studio.db suite-data/` (take `studio.db-wal` too if it
-   exists). Studio's backups folder can come across the same way.
-2. In `.env`, add `STUDIO_SECRET_KEY` (`openssl rand -hex 32`) beside `SECRET_KEY`. `SMTP_*` are shared by both apps
-   for password reset emails.
-3. In Zero Trust, on the tunnel's Public Hostname tab, add `studio.kevsrobots.com` → `HTTP` → `studio:8000` beside
-   `bettercad.kevsrobots.com` → `bettercad:8000`. Make `studio.kevspowertools.com` a redirect to the new address
-   (Cloudflare → Rules → Redirect Rules), and update Studio's entry in `https://kevspowertools.com/apps.json`.
-4. If BetterCad has already been running with its own accounts, it refuses to start against the shared users (so
-   nobody's models change hands). Before people rely on it, remove its volume to start clean:
-   `docker compose down && docker volume rm bettercad_bettercad-data`.
-5. `docker compose down` (the single-app stack), then `docker compose -f docker-compose.suite.yml up -d --build`.
-
-Studio's users sign in again once, because the cookie's domain changed; their accounts, notes and passwords are as
-they were. Check by signing in at `https://studio.kevsrobots.com`, then opening `https://bettercad.kevsrobots.com`:
-the account menu shows your initial without a second sign-in.
+Account ids are kevsrobots.com user ids. A database whose accounts were made with an earlier sign-in refuses to start,
+so nobody's models change hands; nothing had launched then, so start it empty:
+`docker compose down && docker volume rm bettercad_bettercad-data && docker compose up -d`.
 
 ## Backups
 

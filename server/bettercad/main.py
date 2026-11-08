@@ -74,16 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if applied:
             log.info("applied migrations %s", applied)
         app.state.db = conn
-        auth_db = auth.open_auth_db(settings.auth_db_path)
-        try:
-            for name in auth.migrate_auth(auth_db):
-                log.info("applied migration %s", name)
-            moved = auth.adopt_legacy_logins(conn, auth_db, settings.shared_login)
-            if moved:
-                log.info("moved %d accounts to the new sign-in", moved)
-        finally:
-            auth_db.close()
-        auth.check_auth_source(conn, "shared" if settings.shared_login else "local")
+        auth.check_auth_source(conn, "kevsrobots")
         app.state.blobs = models.BlobStore(settings.blob_dir)
         task = asyncio.create_task(jobs.run_daily(conn, settings)) if settings.jobs else None
         yield
@@ -116,10 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"ok": True, "version": version}
 
-    app.state.auth = auth.make_auth(settings)
-    app.state.auth_path = settings.auth_db_path
-    app.state.shared_login = settings.shared_login
-    auth.install(app, app.state.auth)
+    auth.install(app, settings)
     app.include_router(models.router(settings))
     app.include_router(printers.router())
     app.include_router(reports.router(settings))

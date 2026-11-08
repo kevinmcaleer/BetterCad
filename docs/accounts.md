@@ -11,9 +11,8 @@ Hash routes, so the same build runs on any static host:
 | --- | --- |
 | `#/` | The editor |
 | `#/edit/<id>` | The editor with a model from your account |
-| `#/signin`, `#/signup` | Sign in, make an account (`?next=` says where to go after) |
-| `#/forgot`, `#/reset-password` | Ask for a reset email, and the page its link opens |
-| `#/account` | Theme, email, password, sign out, delete the account |
+| `#/signin`, `#/signup` | Sign in or make an account on kevsrobots.com (`?next=` says where to come back to) |
+| `#/account` | Theme, a link to your kevsrobots.com account, sign out, delete your BetterCad models |
 | `#/library`, `#/library/bin` | My models, and the 30-day bin |
 
 The editor stays mounted under a page, so going to the library and back keeps the open model and its undo history.
@@ -52,39 +51,22 @@ the link isn't active. `frame-ancestors` lets kevsrobots.com frame the viewer (#
 
 ## Sign-in
 
-Sign-in is [powertools-auth](https://github.com/kevinmcaleer/markdown-studio/tree/main/packages/powertools-auth), the
-login Kev's other apps use (#88), pinned to a commit in `server/pyproject.toml`. It owns the `users`, `sessions` and
-`password_resets` tables and serves `/api/auth/*`: argon2id passwords (12 characters or more), server-side sessions
-stored hashed, an HttpOnly SameSite=Lax cookie (Secure in production), a CSRF token on every change, and 10 sign-in
-tries per 15 minutes from one address. Forgot password emails a one-time link when `SMTP_HOST` and `PUBLIC_URL` are
-set; the link opens `#/reset-password#token=…`.
+You sign in with your kevsrobots.com account (#88). Those accounts live in
+[Chatter](https://github.com/kevinmcaleer/Chatter) at `chatter.kevsrobots.com`; BetterCad never sees a password.
 
-`server/bettercad/auth.py` adds what only BetterCad needs:
+- **Sign in** and **Make an account** send you to Chatter's login and register pages with `return_to` set to the page
+  you came from on `bettercad.kevsrobots.com`. Password resets and profile changes happen there too.
+- Signing in there sets an HttpOnly `access_token` cookie on `.kevsrobots.com`, so the browser sends it to BetterCad.
+  `server/bettercad/auth.py` asks Chatter who it belongs to (`GET /accounts/me`, remembered for a minute). If Chatter
+  can't be reached, the API answers 503 rather than signing you out.
+- BetterCad keeps `accounts`, one row per person, keyed by their kevsrobots.com user id: the theme and the name shown
+  on share links. Models, files and printer profiles hang off it.
+- Changes carry a CSRF token, an HMAC of the cookie with BetterCad's `SECRET_KEY`, from `/api/auth/session`.
+- **Sign out** clears the cookie, which signs you out of every kevsrobots.com app. **Delete my BetterCad models**
+  deletes only BetterCad's data; the kevsrobots.com account stays.
 
-- `accounts`, one row per person who has used BetterCad, keyed by their user id. It holds the theme and the name shown
-  on share links; models, files and printer profiles hang off it.
-- Sign-in with a username or an email address. Accounts from the old stand-in login were moved over with the same ids
-  and a username from their email; their scrypt password turns into argon2id the first time they sign in.
-- `/api/account`: read it, change the theme, or delete your BetterCad data (type your username to confirm).
-
-### One login across Kev's apps
-
-In production this is [`docker-compose.suite.yml`](../docker-compose.suite.yml): BetterCad and Markdown Studio on one
-machine under `.kevsrobots.com` (docs/deploy.md, "One login with Markdown Studio").
-
-Sharing needs three things, all set in `.env`:
-
-| Setting | Value |
-| --- | --- |
-| `AUTH_DATABASE_PATH` | The SQLite file that holds the suite's users, the same file the other apps open. It must be on a local disk of the machine BetterCad runs on (never NFS or SMB). |
-| `COOKIE_DOMAIN` | The parent domain all the apps sit under, such as `.kevsrobots.com`. A cookie can't cross from one domain to another, so every app must be a subdomain of it. |
-| `COOKIE_PREFIX` | The other apps' cookie prefix (Markdown Studio uses `ms`), so a session started in one app is a session here. |
-
-With them set, BetterCad's own tables stay in `bettercad.db` and only the auth tables live in the shared file.
-Deleting your account here then deletes only your BetterCad data; the login stays for the other apps. Whichever app
-opens the shared file first creates the auth tables; they are recorded in `schema_migrations` as markdown-studio does.
-The server refuses to start if its accounts were made against a different users database, so models can't change
-hands.
+Settings: `CHATTER_URL` (default `https://chatter.kevsrobots.com`), `COOKIE_DOMAIN` (`.kevsrobots.com` in
+docker-compose) and `PUBLIC_URL`. The cookie only reaches BetterCad when it is served under kevsrobots.com.
 
 Your theme is saved to your account and applied when you sign in.
 
