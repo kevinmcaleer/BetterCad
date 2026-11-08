@@ -46,6 +46,27 @@ const addBox = async (page: Page) => {
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
 };
 
+test("shows a save as a toast at the top right of the view, leaving the timeline where it is", async ({ page }) => {
+  await mockPickers(page);
+  await page.goto("/");
+  await addBox(page);
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  // Let the add's own status message clear, so only the save could move anything.
+  await expect(page.locator(".bc-status-pill")).toBeHidden({ timeout: 8000 });
+  const before = await timeline.boundingBox();
+  await page.keyboard.press("ControlOrMeta+s");
+  const toast = page.getByText("Saved to Bracket.bcad");
+  await expect(toast).toBeVisible();
+  expect(await timeline.boundingBox()).toEqual(before);
+  const box = (await toast.boundingBox())!;
+  const props = (await page.locator(".bc-right").boundingBox())!;
+  const view = page.viewportSize()!;
+  expect(box.y).toBeLessThan(view.height / 2);
+  expect(box.x + box.width).toBeLessThanOrEqual(props.x);
+  // It fades out on its own.
+  await expect(toast).toBeHidden({ timeout: 5000 });
+});
+
 test("saves a .bcad in place, names the model after the file, and saves again without asking", { tag: "@journey" }, async ({ page }) => {
   await mockPickers(page);
   await page.goto("/");
