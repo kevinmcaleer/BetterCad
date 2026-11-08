@@ -64,7 +64,7 @@ test("mirror a box across its own top face", async ({ page }) => {
   await mirrorTool(page);
   await expect(page.getByText("Mirroring 1 body across YZ.")).toBeVisible();
   await page.getByRole("button", { name: "Face", exact: true }).click();
-  await expect(page.getByText("Click a flat face or an origin plane.")).toBeVisible();
+  await expect(page.getByText("Click a flat face, a construction plane or an origin plane.")).toBeVisible();
   await click(page, 0, 0, 20);
   await expect(page.getByText("Mirroring 1 body across a face.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Face", pressed: true })).toBeVisible();

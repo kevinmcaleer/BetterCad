@@ -13,6 +13,7 @@ import { offline } from "../cloud/offline";
 import type { Store } from "../state/store";
 import { sampleUrl } from "../samples/samples";
 import type { History } from "../state/history";
+import type { RenderBody } from "../render/pathRender";
 
 /** Where a model saved to an account stands (#90): shown by the cloud icon in the title. */
 export type CloudState = "saved" | "saving" | "dirty" | "offline" | "error";
@@ -40,6 +41,8 @@ export interface FilesDeps {
   onSwitched: () => void;
   /** STL, STEP and 3MF files go into the open model (#82), standing at `at` (the origin if left out). */
   onImport: (files: File[], at?: Vec3) => Promise<void>;
+  /** The bodies as the path tracer draws them, for a rendered thumbnail after a save to the account. */
+  renderBodies?: () => RenderBody[];
   /** For tests. */
   fileStore?: FileStore;
   autosave?: Autosave;
@@ -52,6 +55,13 @@ const IDENTITY = [
   [0, 1, 0],
   [0, 0, 1],
 ];
+
+/**
+ * Playwright's browsers render on a software GPU, so tests turn rendered thumbnails on only where they check them,
+ * with their own sample count and time limit. Null: no rendered thumbnail.
+ */
+const thumbOptions = (): { samples?: number; timeout?: number } | null =>
+  navigator.webdriver ? ((window as unknown as { __bcRenderThumbs?: { samples?: number; timeout?: number } }).__bcRenderThumbs ?? null) : {};
 
 /** The next frame, so the thumbnail is rendered after the click has painted. */
 const nextFrame = () => new Promise<void>((r) => (typeof requestAnimationFrame === "undefined" ? setTimeout(r, 0) : requestAnimationFrame(() => r())));
@@ -174,6 +184,37 @@ export function useFiles(d: FilesDeps) {
     return (engine?.posed(IDENTITY, 320, 200) ?? engine?.thumbnail()) || undefined;
   }, []);
 
+  // After a save to the account, a path-traced thumbnail replaces the quick shaded one. One renders at a time; saves
+  // made meanwhile collapse into one more render of the newest version.
+  const rendering = useRef<{ busy: boolean; next: { id: string; version: number } | null }>({ busy: false, next: null });
+  const renderCloudThumb = useCallback(
+    (id: string, version: number) => {
+      const q = rendering.current;
+      if (q.busy) {
+        q.next = { id, version };
+        return;
+      }
+      const bodies = deps.current.renderBodies?.() ?? [];
+      const o = thumbOptions();
+      if (!bodies.length || !o) return;
+      q.busy = true;
+      // Wait for a quiet moment: building the path tracer's shader can hold the page for a second or two, and the
+      // "Saved" message should show first.
+      void new Promise((r) => (typeof requestIdleCallback === "undefined" ? setTimeout(r, 500) : requestIdleCallback(r, { timeout: 3000 })))
+        .then(() => import("../render/thumbnail"))
+        .then((t) => t.renderThumbnail(bodies, o))
+        .then((url) => (url ? api.setThumbnail(id, version, url) : null))
+        .catch(() => undefined)
+        .finally(() => {
+          q.busy = false;
+          const next = q.next;
+          q.next = null;
+          if (next) renderCloudThumb(next.id, next.version);
+        });
+    },
+    [api],
+  );
+
   const write = useCallback(
     async (as: boolean) => {
       const m = meta.current;
@@ -245,6 +286,7 @@ export function useFiles(d: FilesDeps) {
         setBaseline(current);
         await auto.markSaved(m.id, m.savedAt);
         setCloud({ modelId: m.cloud.modelId, state: "saved" });
+        renderCloudThumb(m.cloud.modelId, m.cloud.version);
         if (o.note !== "autosave") deps.current.say(`Saved ${current.name} to your account`, false, true);
         return true;
       } catch (e) {
@@ -267,7 +309,7 @@ export function useFiles(d: FilesDeps) {
         return false;
       }
     },
-    [account, api, auto, store, thumbnail],
+    [account, api, auto, store, thumbnail, renderCloudThumb],
   );
 
   /** Ctrl+S: to the account when the model lives there and you're signed in, otherwise to disk. */

@@ -13,6 +13,7 @@ import {
   setExpr,
   profileAt,
   seedOf,
+  textProfiles,
   updateExtrude,
   updateRevolve,
   type AxisRef,
@@ -208,7 +209,8 @@ export function useExtrude(d: ExtrudeDeps) {
       const s = L.sketches.find((x) => x.id === f.sketch);
       if (!s || !L.bounds?.size) return [];
       const all = regionsOf.get(f.sketch) ?? [];
-      const outlines = f.seeds.map((p) => profileAt(all, p)?.points).filter((p): p is Vec2[] => !!p);
+      const letters = (f.texts ?? []).flatMap((t) => textProfiles(s.sketch, t, all).map((p) => p.points));
+      const outlines = [...f.seeds.map((p) => profileAt(all, p)?.points).filter((p): p is Vec2[] => !!p), ...letters];
       if (!outlines.length) return [];
       const { from, to } = extent(f.direction, f.distance, f.distance2, f.extent === "all" && throughAllAllowed(f.operation));
       // Reference bodies are there to design round, and hidden ones out of mind: neither is cut unless picked.
@@ -302,7 +304,10 @@ export function useExtrude(d: ExtrudeDeps) {
       const L = live.current;
       if (!L.session) {
         const id = newId("f");
-        const params = defaults(h.sketch, seedOf(h.profile), h.profile);
+        const base = defaults(h.sketch, seedOf(h.profile), h.profile);
+        // A text is picked whole, by its id, so its letters follow the words when they change.
+        const tid = textOf(h.profile);
+        const params = tid ? { ...base, seeds: [], texts: [tid] } : base;
         const revolve = deps.current.kind === "revolve";
         deps.current.record(
           (doc, at) => (revolve ? addRevolve(doc, params as RevolveParams, id, newId(), at) : addExtrude(doc, params as ExtrudeParams, id, newId(), at)),
@@ -318,6 +323,12 @@ export function useExtrude(d: ExtrudeDeps) {
       }
       const f = L.feature;
       if (!f) return;
+      const tid = textOf(h.profile);
+      if (tid) {
+        const texts = f.texts ?? [];
+        change({ texts: texts.includes(tid) ? texts.filter((x) => x !== tid) : [...texts, tid] });
+        return;
+      }
       const all = regionsOf.get(f.sketch) ?? [];
       const has = f.seeds.findIndex((s) => profileAt(all, s) === h.profile);
       change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedOf(h.profile)] });
@@ -466,8 +477,10 @@ export function useExtrude(d: ExtrudeDeps) {
   const picked = useMemo(() => {
     if (!feature) return [];
     const all = regionsOf.get(feature.sketch) ?? [];
-    return [...new Set(feature.seeds.map((s) => profileAt(all, s)).filter((p): p is Profile => !!p))];
-  }, [feature, regionsOf]);
+    const sk = d.sketches.find((x) => x.id === feature.sketch)?.sketch;
+    const letters = sk ? (feature.texts ?? []).flatMap((t) => textProfiles(sk, t, all)) : [];
+    return [...new Set([...feature.seeds.map((s) => profileAt(all, s)).filter((p): p is Profile => !!p), ...letters])];
+  }, [feature, regionsOf, d.sketches]);
 
   useEffect(() => {
     const eng = engineOf();
@@ -475,7 +488,13 @@ export function useExtrude(d: ExtrudeDeps) {
     const bySketch = new Map<string, OverlayFill[]>();
     const add = (id: string, f: OverlayFill) => bySketch.set(id, [...(bySketch.get(id) ?? []), f]);
     if (feature) picked.forEach((p) => add(feature.sketch, outlineFill(p, "picked")));
-    if (hover && !picked.includes(hover.profile)) add(hover.sketch, outlineFill(hover.profile, "hover"));
+    if (hover && !picked.includes(hover.profile)) {
+      // A text lights up whole, as it is picked whole.
+      const tid = textOf(hover.profile);
+      const sk = tid && deps.current.sketches.find((x) => x.id === hover.sketch)?.sketch;
+      const lit = sk ? textProfiles(sk, tid, regionsOf.get(hover.sketch)) : [hover.profile];
+      for (const p of lit) add(hover.sketch, outlineFill(p, "hover"));
+    }
     const list = [...bySketch].map(([id, fills]) => {
       const s = deps.current.sketches.find((x) => x.id === id);
       const o = new SketchOverlay(eng);
@@ -483,7 +502,7 @@ export function useExtrude(d: ExtrudeDeps) {
       return o;
     });
     return () => list.forEach((o) => o.dispose());
-  }, [d.active, engineOf, feature, picked, hover, d.theme]);
+  }, [d.active, engineOf, feature, picked, hover, d.theme, regionsOf]);
 
   // The arrow and To object (extrude only), loaded with the first step so they cost the first paint nothing.
   const [Arrow, setArrow] = useState<typeof ExtrudeArrow | null>(null);
@@ -528,7 +547,7 @@ export function useExtrude(d: ExtrudeDeps) {
     const f = L.session && store.get().features.find((x): x is ProfileFeature => x.id === L.session!.id && (x.type === "extrude" || x.type === "revolve"));
     if (L.session && f) {
       store.seal();
-      const n = f.seeds.length;
+      const n = f.seeds.length + (f.texts?.length ?? 0);
       // A cut reads as a cut, and its depth without a sign: "Cut one shape 10 mm deep".
       const cut = f.operation === "cut";
       const how =
@@ -637,3 +656,9 @@ export function useExtrude(d: ExtrudeDeps) {
 const fmt = (v: number) => String(Math.round(v * 100) / 100);
 
 export type ExtrudeSession = ReturnType<typeof useExtrude>;
+
+/** The text a region belongs to, when it is one of a text's letters (or the hole in one). */
+export function textOf(p: Profile): string | null {
+  const e = p.edges.length === 1 ? p.edges[0]! : null;
+  return e && e.loop !== undefined ? e.id : null;
+}

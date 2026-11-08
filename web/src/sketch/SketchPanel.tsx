@@ -1,8 +1,10 @@
+import { useEffect, useRef } from "react";
 import { Banner, Button, NumberField, PropRow, PropsPanel, type PropsSection } from "@bettercad/ui";
 import { CONSTRAINT_LABEL } from "@bettercad/sketch";
 import { formatCombo } from "../state/commands";
 import { OPTION_ROWS } from "./options";
 import { DIM_LABEL } from "./SketchUI";
+import { FONTS } from "./text/fonts";
 import type { SketchSession } from "./useSketch";
 
 /**
@@ -12,7 +14,9 @@ import type { SketchSession } from "./useSketch";
  */
 export function SketchPanel({ s }: { s: SketchSession }) {
   if (!s.sketch || !s.feature) return null;
+  if (s.textEdit) return <TextPanel s={s} />;
   const sk = s.sketch;
+  const pickedText = sk.texts?.find((t) => s.sel.length === 1 && s.sel[0] === t.id);
   const conflicting = new Set(s.result?.conflicting ?? []);
   const redundant = new Set(s.result?.redundant ?? []);
   const plane = sk.plane.kind === "world" ? `${sk.plane.plane} plane` : sk.plane.kind === "construct" ? "A construction plane" : "A face";
@@ -46,6 +50,22 @@ export function SketchPanel({ s }: { s: SketchSession }) {
         </>
       ),
     },
+    ...(pickedText
+      ? [
+          {
+            id: "sketch-text",
+            title: "Text",
+            content: (
+              <>
+                <p className="bc-note bc-text-quote">{pickedText.text}</p>
+                <div className="bc-row-actions">
+                  <Button icon="text" label="Edit text" variant="secondary" title="Change the words, font and size" onClick={() => s.editText(pickedText.id)} />
+                </div>
+              </>
+            ),
+          },
+        ]
+      : []),
     {
       id: "sketch-options",
       title: "Options",
@@ -118,6 +138,118 @@ export function SketchPanel({ s }: { s: SketchSession }) {
       label="Sketch palette"
       sections={sections}
       footer={<Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />}
+    />
+  );
+}
+
+/**
+ * The Text card, in the palette's place while a text is being set: its words, font, height, turn, and the space
+ * between letters and lines. The view shows the text as it will go in; Add text (or Done) puts it in the sketch.
+ */
+function TextPanel({ s }: { s: SketchSession }) {
+  const t = s.textEdit!;
+  const st = t.style;
+  const isNew = !t.id;
+  const words = useRef<HTMLTextAreaElement>(null);
+  // Ready to type over: after the click that placed the text has finished moving focus to the view.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      words.current?.focus();
+      words.current?.select();
+    }, 0);
+    return () => clearTimeout(id);
+  }, [t.id]);
+  const sections: PropsSection[] = [
+    {
+      id: "text",
+      title: isNew ? "Text" : "Edit text",
+      content: (
+        <>
+          <label className="bc-field-label" htmlFor="bc-text-words">
+            Text
+          </label>
+          <textarea
+            id="bc-text-words"
+            className="bc-text bc-text-words"
+            rows={2}
+            ref={words}
+            value={st.text}
+            spellCheck={false}
+            onChange={(e) => s.setTextStyle({ text: e.currentTarget.value })}
+            onKeyDown={(e) => {
+              // Enter starts a new line; Ctrl or Cmd with Enter puts the text in.
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                void s.commitText();
+              }
+            }}
+          />
+          <label className="bc-field-label" htmlFor="bc-text-font">
+            Font
+          </label>
+          <select id="bc-text-font" className="bc-select bc-text-font" value={st.font} onChange={(e) => s.setTextStyle({ font: e.currentTarget.value })}>
+            {FONTS.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <NumberField label="Height" value={st.height} min={0.5} max={1000} step={1} scope={s.scope} onCommit={(v) => s.setTextStyle({ height: v })} />
+          <NumberField
+            label="Rotation"
+            unit="°"
+            value={st.angle}
+            min={-360}
+            max={360}
+            step={15}
+            scope={s.scope}
+            onCommit={(v) => s.setTextStyle({ angle: v })}
+          />
+          <NumberField
+            label="Letter spacing"
+            value={st.letterSpacing}
+            min={-100}
+            max={100}
+            step={0.5}
+            scope={s.scope}
+            onCommit={(v) => s.setTextStyle({ letterSpacing: v })}
+          />
+          <NumberField
+            label="Line spacing"
+            unit="%"
+            value={Math.round(st.lineSpacing * 100)}
+            min={50}
+            max={400}
+            step={10}
+            precision={0}
+            scope={s.scope}
+            onCommit={(v) => s.setTextStyle({ lineSpacing: v / 100 })}
+          />
+          <p className="bc-note" role="status">
+            {t.loading ? "Loading the font" : isNew ? "Click in the view to move where the text starts." : "Drag the text with Select to move it."}
+          </p>
+        </>
+      ),
+    },
+  ];
+  return (
+    <PropsPanel
+      label="Text"
+      sections={sections}
+      footer={
+        <span className="bc-row-actions">
+          <Button kind="cancel" label="Cancel" title="Leave the text as it was" shortcut="Esc" onClick={s.cancelText} />
+          <Button
+            kind="done"
+            icon="check"
+            label={isNew ? "Add text" : "Done"}
+            title={isNew ? "Put the text in the sketch" : "Keep the changes"}
+            shortcut="Ctrl+Enter"
+            disabled={!st.text.trim()}
+            onClick={() => void s.commitText()}
+          />
+        </span>
+      }
     />
   );
 }

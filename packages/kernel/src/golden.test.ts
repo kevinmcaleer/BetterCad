@@ -24,7 +24,10 @@ import {
   wedge,
   type TopoDS_Shape,
 } from "./occt/shapes";
-import { extent, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
+import { extent, pickProfiles, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
+import { createRequire } from "node:module";
+import { parse } from "opentype.js";
+import { layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { catalogueShape } from "./occt/catalogue";
@@ -122,6 +125,30 @@ const holeOn = (top: number, p: HoleParams): HoleSpec => {
   const r = resolveHole(p) as { diameter: number; head?: HoleSpec["head"] };
   return { frame: { origin: [0, 0, top], x: [1, 0, 0], normal: [0, 0, 1] }, points: [[0, 0]], depth: p.depth, ...r };
 };
+
+/** Text in Inter (the app's default font), 10 mm capitals, picked whole: letters with holes and a gap between lines. */
+function textSketch(text: string): Sketch {
+  const b = readFileSync(createRequire(import.meta.url).resolve("@fontsource/inter/files/inter-latin-400-normal.woff"));
+  const f = parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+  const font: GlyphFont = {
+    unitsPerEm: f.unitsPerEm,
+    capHeight: (f.tables.os2 as unknown as { sCapHeight: number }).sCapHeight,
+    ascender: f.ascender,
+    descender: f.descender,
+    lineGap: (f.tables.hhea as unknown as { lineGap: number }).lineGap,
+    glyph: (ch) => {
+      const g = f.charToGlyph(ch);
+      return { advance: g.advanceWidth ?? 0, commands: g.path.commands as PathCommand[] };
+    },
+    kerning: (l, r) => f.getKerningValue(f.charToGlyph(l), f.charToGlyph(r)),
+  };
+  const style = { text, font: "inter", height: 10, angle: 15, letterSpacing: 0.5, lineSpacing: 1.2 };
+  return {
+    ...newSketch(),
+    entities: [{ id: "p", kind: "point", x: -10, y: 0 }],
+    texts: [{ id: "t", p: "p", ...style, loops: layoutText(font, style) }],
+  };
+}
 
 const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   box: (oc) => box(oc, { x: 20, y: 10, z: 5 }),
@@ -245,6 +272,8 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
       }),
     ]),
   // Through all (#61): a 3 mm circle pushed down from the top as far as THROUGH_ALL goes, leaving a hole right through.
+  // Text (sketch Text tool): "B8o" over "Hi", extruded 2 mm; B, 8 and o keep their holes.
+  "extrude-text": (oc) => prismOf(oc, { frame: XY, profiles: pickProfiles(textSketch("B8o\nHi"), [], ["t"]).shapes, from: 0, to: 2 }),
   "extrude-cut-through-all": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

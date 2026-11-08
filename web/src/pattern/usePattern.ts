@@ -255,7 +255,7 @@ export function usePattern(d: PatternDeps) {
   const help = !d.active
     ? null
     : pickingPlane
-      ? "Click a flat face or an origin plane to mirror across. Esc stops picking."
+      ? "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
       : of === "features"
         ? session
           ? "Tick more features on the bar, or click Face to mirror across a face. Enter keeps the mirror, Esc takes it back."
