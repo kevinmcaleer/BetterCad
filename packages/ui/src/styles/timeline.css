@@ -65,6 +65,19 @@
   border-color: var(--bc-color-accent);
   color: var(--bc-color-accent);
 }
+/* Another tool is picking steps (a Mirror of features): picked ones are filled, the rest fade. */
+.bc-tl-tile.bc-pickable {
+  border-color: var(--bc-color-accent);
+}
+.bc-tl-tile.bc-picked {
+  background: var(--bc-color-accent);
+  border-color: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+}
+.bc-tl-tile.bc-unpickable {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 /* Features after the marker are not built. */
 .bc-tl-tile.bc-after {
   border-style: dashed;

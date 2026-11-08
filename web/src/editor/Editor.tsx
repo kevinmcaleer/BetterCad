@@ -3399,6 +3399,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
               historyOpen={panel === "history"}
+              picking={
+                tool === "pattern" && pattern.kind === "mirror" && pattern.of === "features" && !pattern.pickingPlane
+                  ? {
+                      can: (id) => pattern.mirrorable.some((m) => m.id === id),
+                      picked: pattern.feature?.features ?? [],
+                      onPick: (f) => pattern.toggleFeature(f.id),
+                    }
+                  : null
+              }
             />
           )
         }
