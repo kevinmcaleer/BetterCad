@@ -73,7 +73,7 @@ Esc backs out one pick at a time. The joint starts as a hinge from −90° to 90
 - The origin and axis are stored in world space when the joint is made, as a hole's frame is, so editing the picked geometry later doesn't move the joint.
 - The browser's Joints folder lists each joint. In the Robot folder each link sits under the link it hangs from, with its joint named.
 - An arrow along each joint's axis shows in the view. Show or hide joints is in the command palette's View group.
-- Still to come: mass and inertia (#174) and URDF export (#175).
+- Still to come: URDF export (#175).
 
 ## Posing (#173)
 
@@ -86,3 +86,13 @@ Try the mechanism without adding a step. With the Select tool, Properties shows 
 - Each move is one undo step. **Home** (or "Move the joints home" in the command palette) puts every joint back where it was made.
 - Other tools show the model at home, so picks and moves land on the bodies where they really are.
 
+## Mass (#174)
+
+URDF needs each link's mass, centre of mass and inertia. Once the model has links, the kernel works them out for every body (`mass` in the worker):
+
+- A printed body is a solid shell and a core at the infill percentage, in the material from the Print panel: the full solid at its density, less the core (the body offset inward by the shell, about 2.3 mm) at the part left empty. A body thinner than two shells is solid all through. Where the offset can't be made, the body is weighed evenly at the slicer-style estimate, and Properties says so.
+- A body with a datasheet mass (typed in Properties, or a catalogue part's) is spread evenly at that mass. Type 0 to go back to the estimate.
+- Holes weigh nothing. A reference body weighs nothing unless it has a datasheet mass, so a motor kept as a reference body still counts once you give it one.
+- Link totals combine their bodies with the parallel axis theorem. Bodies in no link make up Base.
+- Properties shows the selected body's mass and how it was found, and its link's mass and centre of mass. "Show or hide centres of mass" in the command palette marks each link's centre in the view; the marks follow the pose.
+- Inertia is about the centre of mass in g·mm², as tensor entries [ixx, iyy, izz, ixy, ixz, iyz], so the products carry URDF's sign. `measure` now reports each body's inertia at unit density, and the kernel goldens include it.

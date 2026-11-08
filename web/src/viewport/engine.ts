@@ -322,6 +322,7 @@ export class Engine {
   private arrow: ArrowHelper;
   /** Joint glyphs (#172): an arrow along each joint's axis, from its origin. */
   private jointArrows = new Group();
+  private centres = new Group();
   private arrowDrag: { startOffset: number; x: number; y: number } | null = null;
 
   // Input
@@ -465,6 +466,7 @@ export class Engine {
     this.arrow.visible = false;
     this.scene.add(this.arrow);
     this.scene.add(this.jointArrows);
+    this.scene.add(this.centres);
 
     this.planes = new Group();
     this.planes.visible = false;
@@ -841,6 +843,26 @@ export class Engine {
       }
     }
     for (const m of [this.selectMat, this.hoverMat]) m.clippingPlanes = planes;
+    this.invalidate();
+  }
+
+  /** Marks each link's centre of mass (#174) with a small three-axis cross, drawn over the bodies, or none. */
+  setCentres(list: V3[] | null): void {
+    for (const c of this.centres.children as LineSegments[]) {
+      c.geometry.dispose();
+      (c.material as Material).dispose();
+    }
+    this.centres.clear();
+    if (list?.length) {
+      const r = Math.max(4, (this.bounds()?.radius ?? 50) * 0.06);
+      const pts: number[] = [];
+      for (const [x, y, z] of list) pts.push(x - r, y, z, x + r, y, z, x, y - r, z, x, y + r, z, x, y, z - r, x, y, z + r);
+      const g = new BufferGeometry();
+      g.setAttribute("position", new BufferAttribute(new Float32Array(pts), 3));
+      const line = new LineSegments(g, new LineBasicMaterial({ color: this.palette.snap, depthTest: false, transparent: true }));
+      line.renderOrder = 6;
+      this.centres.add(line);
+    }
     this.invalidate();
   }
 
@@ -1451,6 +1473,7 @@ export class Engine {
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
     this.arrow.setColor(p.snap);
     for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
+    for (const c of this.centres.children as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
     this.paintPlanes?.();

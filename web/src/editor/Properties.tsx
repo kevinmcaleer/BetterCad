@@ -12,6 +12,7 @@ import {
   type Vec3,
 } from "../state/document";
 import type { PoseControlsProps } from "../joint/PoseControls";
+import type { MassInfo } from "../joint/MassRows";
 import { FitMenu, type FitChoice } from "../fit/FitMenu";
 import { lazy, Suspense } from "react";
 import type { FinishId } from "@bettercad/kernel";
@@ -44,11 +45,14 @@ export interface PropertiesProps {
   /** Sets the selection's finish for renders and glTF (#196). */
   onFinish?: (id: FinishId) => void;
   /** Posing (#173): every joint (on the model's summary) and the joints that move the selection (on its own). */
+  /** Mass and centre of mass (#174) of the selected body and its link. */
+  mass?: MassInfo;
   pose?: Omit<PoseControlsProps, "joints" | "onHome"> & { joints: PoseControlsProps["joints"]; selected: PoseControlsProps["joints"]; onHome: () => void };
 }
 
 /** Colour and Finish (#196) load with the first selection, keeping the first-paint bundle in budget. */
 /** The pose sliders (#173) load once a model has joints. */
+const MassRows = lazy(() => import("../joint/MassRows").then((m) => ({ default: m.MassRows })));
 const PoseControls = lazy(() => import("../joint/PoseControls").then((m) => ({ default: m.PoseControls })));
 const LookControls = lazy(() => import("../looks/LookControls").then((m) => ({ default: m.LookControls })));
 
@@ -120,6 +124,7 @@ export function Properties({
   onColour,
   onFinish,
   pose,
+  mass,
 }: PropertiesProps & { allParts?: Part[] }) {
   if (parts.length === 0) {
     return (
@@ -275,6 +280,16 @@ export function Properties({
       content: (
         <Suspense fallback={null}>
           <PoseControls joints={pose.selected} pose={pose.pose} onChange={pose.onChange} onCommit={pose.onCommit} />
+        </Suspense>
+      ),
+    });
+  if (mass && (mass.link || mass.body || mass.onDatasheet))
+    sections.push({
+      id: "mass",
+      title: "Mass",
+      content: (
+        <Suspense fallback={null}>
+          <MassRows {...mass} />
         </Suspense>
       ),
     });

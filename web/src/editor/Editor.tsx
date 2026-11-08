@@ -99,6 +99,9 @@ import {
   setPose,
   jointValue,
   movable,
+  combine as combineMass,
+  mat4Apply,
+  type MassProps,
   type Pose,
 } from "../state/document";
 import type { ThemeSetting } from "../state/theme";
@@ -147,7 +150,7 @@ import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
-import type { ExportFormat, Mate } from "@bettercad/kernel";
+import type { BodyMass, ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
 import { renderSession, type RenderSession, type RenderStyle, type SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
@@ -1562,6 +1565,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "pose reset joints zero",
       },
       {
+        id: "view.centres",
+        scope: "model",
+        label: "Show or hide centres of mass",
+        group: "View",
+        icon: "joint",
+        run: () => setCentresShown((on) => !on),
+        keywords: "mass weight balance com links robot",
+      },
+      {
         id: "view.joints",
         scope: "model",
         label: "Show or hide joints",
@@ -1989,6 +2001,63 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     store.edit((d) => updateFits(d, d.print), n === 1 ? "Update 1 fitted cut" : `Update ${n} fitted cuts`);
     say(n === 1 ? "1 fitted cut now uses the gaps set now" : `${n} fitted cuts now use the gaps set now`);
   }, [fitsStale, store, say]);
+
+  // Mass (#174): worked out in the kernel once the model has links, again after each change to its bodies or print
+  // settings. The pose doesn't change it, so it isn't part of the key.
+  const [masses, setMasses] = useState<Map<string, BodyMass>>(new Map());
+  const hasLinks = built.links.length > 0;
+  const massDoc = useMemo(() => ({ ...doc, pose: undefined }), [doc.features, doc.looks, doc.print, doc.blobs, doc.name]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!hasLinks) return setMasses(new Map());
+    let pending: { cancel(): void } | null = null;
+    const t = setTimeout(() => {
+      const call = kernelCall("mass", { doc: massDoc, upTo: at });
+      call?.then(
+        (list) => setMasses(new Map(list.map((b) => [b.id, b]))),
+        () => setMasses(new Map()),
+      );
+      pending = call;
+    }, 400);
+    return () => {
+      clearTimeout(t);
+      pending?.cancel();
+    };
+  }, [hasLinks, massDoc, at, kernelCall]);
+  /** Each link's total, and Base's (bodies in no link), by link id ("" for Base). */
+  const linkMass = useMemo(() => {
+    const out = new Map<string, { name: string; props: MassProps }>();
+    if (!hasLinks) return out;
+    const of = (ids: string[]) => combineMass(ids.flatMap((id) => (masses.has(id) ? [masses.get(id)!] : [])));
+    for (const l of built.links) out.set(l.id, { name: l.name, props: of(l.parts) });
+    out.set("", { name: "Base", props: of(parts.filter((p) => !p.link).map((p) => p.id)) });
+    return out;
+  }, [hasLinks, masses, built.links, parts]);
+  const [centresShown, setCentresShown] = useState(false);
+  useEffect(() => {
+    const list: [number, number, number][] = [];
+    if (centresShown)
+      for (const [id, l] of linkMass) {
+        if (!(l.props.mass > 0)) continue;
+        const m = posing && id ? linkMoves.get(id) : undefined;
+        list.push(m ? mat4Apply(m, l.props.com) : l.props.com);
+      }
+    vp.ref.current?.engine()?.setCentres(list.length ? list : null);
+  }, [centresShown, linkMass, posing, linkMoves, vp.ref]);
+  const massInfo = useMemo(() => {
+    if (!hasLinks || !selectedParts.length) return undefined;
+    const linkIds = new Set(selectedParts.map((p) => p.link ?? ""));
+    const one = selectedParts.length === 1 ? selectedParts[0]! : null;
+    const body = one ? masses.get(one.id) : undefined;
+    return {
+      link: linkIds.size === 1 ? linkMass.get([...linkIds][0]!) : undefined,
+      body,
+      datasheet: one?.mass,
+      onDatasheet:
+        one && !one.hole
+          ? (g: number | undefined) => store.edit((d) => setLook(d, [one.id], () => ({ mass: g })), g ? `Set ${one.name}'s mass` : `Clear ${one.name}'s mass`)
+          : undefined,
+    };
+  }, [hasLinks, selectedParts, masses, linkMass, store]);
 
   // Mating faces (#184): worked out in the kernel while the fits check is on, again after each change.
   const [fitsCheck, setFitsCheck] = useState(false);
@@ -2886,6 +2955,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 onFit={(c) =>
                   store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
                 }
+                mass={massInfo}
                 pose={
                   built.joints.length
                     ? {

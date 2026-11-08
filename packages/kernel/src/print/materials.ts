@@ -21,7 +21,7 @@ export const DEFAULT_INFILL = 15;
 export const materialOf = (id: string | undefined) => MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]!;
 
 /** The slicer defaults the estimate assumes: 3 walls of a 0.42 mm line, about 1 mm of solid top and bottom. */
-const SHELL_MM = 3 * 0.42 + 1.0;
+export const SHELL_MM = 3 * 0.42 + 1.0;
 
 /**
  * Grams of plastic, as a slicer would roughly count it: a solid shell over the surface (capped at the volume, for thin
