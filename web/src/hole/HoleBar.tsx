@@ -1,5 +1,4 @@
-import type { KeyboardEvent } from "react";
-import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry } from "@bettercad/ui";
+import { Button, FeatureCheck, FeaturePanel, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry } from "@bettercad/ui";
 import { DEFAULT_HOLE_OFFSET, FITS, SCREWS, fitLabel, fitNote, resolveHole, screw } from "../state/document";
 import type { HoleSession } from "./useHole";
 
@@ -9,21 +8,16 @@ const HEADS = [
   { id: "counterbore", label: "Counterbore", title: "A wider step for a socket head to sit flush" },
 ] as const;
 
-/** The strip for Hole: size, fit, head, depth, where the last hole sits, Cancel and Done. */
+/** The panel for Hole: size, fit, head, depth, where the last hole sits, Cancel and OK. */
 export function HoleBar({ x, error, onCancel }: { x: HoleSession; error?: string; onCancel: () => void }) {
   const f = x.feature;
   if (!f) {
     return (
-      <ArmedBar title="Hole" icon="hole">
-        <span className="bc-armed-note">{x.help}</span>
-        <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
-      </ArmedBar>
+      <FeaturePanel title="Hole" icon="hole" cancel={{ title: "Put the tool down", onClick: onCancel }}>
+        <PanelNote>{x.help}</PanelNote>
+      </FeaturePanel>
     );
   }
-  // Enter in a field: its own commit has gone into the document, so finish now.
-  const onFieldKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") x.done();
-  };
   const sizes: MenuEntry[] = [
     { kind: "title", id: "metric", label: "Metric" },
     ...SCREWS.filter((s) => s.system === "metric").map((s) => ({
@@ -67,45 +61,52 @@ export function HoleBar({ x, error, onCancel }: { x: HoleSession; error?: string
     x.change({ points: f.points.map((p, i) => (i === n - 1 ? ((axis ? [p[0], v] : [v, p[1]]) as [number, number]) : p)) });
   const custom = f.size === "custom";
   return (
-    <ArmedBar title="Hole" icon="hole">
-      <MenuButton label="Size" entries={sizes} trigger={(p) => <Button {...p} label={custom ? "Custom" : f.size} title="The screw size" />} />
+    <FeaturePanel
+      title="Hole"
+      icon="hole"
+      // Enter in a field: its own commit has gone into the document, so finish now.
+      onFieldEnter={() => x.done()}
+      cancel={{ title: "Take the holes back", onClick: x.cancel }}
+      ok={{ title: "Keep the holes", onClick: x.done }}
+    >
+      <FeatureRow label="Size">
+        <MenuButton label="Size" entries={sizes} trigger={(p) => <Button {...p} label={custom ? "Custom" : f.size} title="The screw size" />} />
+      </FeatureRow>
       {custom ? (
-        <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-          <NumberField label="Diameter" value={f.diameter ?? 5} min={0.1} onCommit={(v) => x.change({ diameter: v })} />
-        </span>
+        <NumberField label="Diameter" value={f.diameter ?? 5} min={0.1} onCommit={(v) => x.change({ diameter: v })} />
       ) : (
         <>
-          <MenuButton label="Fit" entries={fits} trigger={(p) => <Button {...p} label={s ? fitLabel(s, f.fit, offset) : fit.label} title={fit.title} />} />
-          <span role="group" aria-label="Head" className="bc-segmented">
-            {HEADS.map((h) => (
-              <Button key={h.id} label={h.label} title={h.title} on={f.head === h.id} onClick={() => x.change({ head: h.id })} />
-            ))}
-          </span>
+          <FeatureRow label="Fit">
+            <MenuButton label="Fit" entries={fits} trigger={(p) => <Button {...p} label={s ? fitLabel(s, f.fit, offset) : fit.label} title={fit.title} />} />
+          </FeatureRow>
+          {note && <PanelNote>{note}</PanelNote>}
+          <FeatureRow label="Head">
+            <span role="group" aria-label="Head" className="bc-segmented">
+              {HEADS.map((h) => (
+                <Button key={h.id} label={h.label} title={h.title} on={f.head === h.id} onClick={() => x.change({ head: h.id })} />
+              ))}
+            </span>
+          </FeatureRow>
         </>
       )}
-      <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-        {f.depth !== null && <NumberField id="bc-hole-depth" label="Depth" value={f.depth} min={0.1} onCommit={(v) => x.change({ depth: v })} />}
-        {lastPoint && (
-          <>
-            <NumberField label={n > 1 ? `Hole ${n} X` : "Hole X"} value={lastPoint[0]} onCommit={(v) => move(0, v)} />
-            <NumberField label={n > 1 ? `Hole ${n} Y` : "Hole Y"} value={lastPoint[1]} onCommit={(v) => move(1, v)} />
-          </>
-        )}
-      </span>
-      <Button label="Through all" title="Go right through the body" on={f.depth === null} onClick={() => x.change({ depth: f.depth === null ? 5 : null })} />
-      <span className="bc-armed-note">
+      <FeatureCheck label="Through all" title="Go right through the body" on={f.depth === null} onChange={(on) => x.change({ depth: on ? null : 5 })} />
+      {f.depth !== null && <NumberField id="bc-hole-depth" label="Depth" value={f.depth} min={0.1} onCommit={(v) => x.change({ depth: v })} />}
+      {lastPoint && (
+        <>
+          <NumberField label={n > 1 ? `Hole ${n} X` : "Hole X"} value={lastPoint[0]} onCommit={(v) => move(0, v)} />
+          <NumberField label={n > 1 ? `Hole ${n} Y` : "Hole Y"} value={lastPoint[1]} onCommit={(v) => move(1, v)} />
+        </>
+      )}
+      <PanelNote>
         {n === 1 ? "1 hole" : `${n} holes`}
         {dia && `, ${dia}`}. X and Y are from the face's centre.
-      </span>
-      {!custom && note && <span className="bc-armed-note bc-hole-fit-note">{note}</span>}
-      {n > 1 && <Button label="Remove last" title="Take the last hole out" onClick={() => x.change({ points: f.points.slice(0, -1) })} />}
-      {error && (
-        <span className="bc-armed-note bc-armed-error" role="alert">
-          {error}
-        </span>
+      </PanelNote>
+      {n > 1 && (
+        <FeatureRow label="Holes">
+          <Button label="Remove last" title="Take the last hole out" onClick={() => x.change({ points: f.points.slice(0, -1) })} />
+        </FeatureRow>
       )}
-      <Button kind="cancel" label="Cancel" title="Take the holes back" shortcut="Esc" onClick={x.cancel} />
-      <Button kind="done" label="Done" title="Keep the holes" shortcut="Enter" onClick={x.done} />
-    </ArmedBar>
+      {error && <PanelNote tone="error">{error}</PanelNote>}
+    </FeaturePanel>
   );
 }

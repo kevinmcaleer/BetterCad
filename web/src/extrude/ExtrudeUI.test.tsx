@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { planeFrame } from "@bettercad/sketch";
@@ -53,9 +53,52 @@ describe("ExtrudeBar", () => {
   it("picks the shapes again, or clears them first", async () => {
     const x = session({}, ["a"]);
     render(<ExtrudeBar x={x} parts={parts} />);
-    await userEvent.click(screen.getByRole("button", { name: /1 shape/ }));
+    const profile = within(screen.getByRole("group", { name: "Profile" }));
+    await userEvent.click(profile.getByRole("button", { name: "1 selected" }));
     await userEvent.click(screen.getByRole("menuitem", { name: "Clear and pick again" }));
     expect(x.repickShapes).toHaveBeenCalledWith(true);
+    await userEvent.click(profile.getByRole("button", { name: "Clear the shapes and pick again" }));
+    expect(x.repickShapes).toHaveBeenCalledTimes(2);
+  });
+
+  it("is a tall panel: a row per setting, then Cancel and OK", async () => {
+    const x = session({}, ["a"]);
+    render(<ExtrudeBar x={x} parts={parts} />);
+    const panel = screen.getByRole("group", { name: "Extrude options" });
+    expect(within(panel).getByText("Operation")).toBeInTheDocument();
+    expect(within(panel).getByRole("textbox", { name: "Distance (mm)" })).toBeInTheDocument();
+    await userEvent.click(within(panel).getByRole("button", { name: "OK" }));
+    expect(x.done).toHaveBeenCalled();
+    // The title folds the rows away, to see more of the model; Cancel and OK stay.
+    await userEvent.click(within(panel).getByRole("button", { name: "Fold the settings away" }));
+    expect(within(panel).queryByText("Operation")).toBeNull();
+    expect(within(panel).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
+  it("revolve: picks the axis by name, shows it picked, and clears it with the ×", async () => {
+    const x = session({}, ["a"]) as ReturnType<typeof session> & Record<string, unknown>;
+    const rev = {
+      ...x,
+      kind: "revolve",
+      feature: { ...x.feature, type: "revolve", angle: 360 },
+      construct: [],
+      pickAxis: vi.fn(),
+      repickAxis: vi.fn(),
+      pickingAxis: true,
+    };
+    const { rerender } = render(<ExtrudeBar x={rev as unknown as ExtrudeSession} parts={parts} />);
+    const axis = within(screen.getByRole("group", { name: "Axis" }));
+    expect(screen.getByRole("button", { name: "OK" })).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(axis.getByRole("button", { name: "Pick an axis" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "The Y axis" }));
+    expect(rev.pickAxis).toHaveBeenCalledWith({ kind: "ref", ref: { origin: "Y" } });
+    const picked = { ...rev, pickingAxis: false, feature: { ...rev.feature, axis: { kind: "ref", ref: { origin: "Y" } } } };
+    rerender(<ExtrudeBar x={picked as unknown as ExtrudeSession} parts={parts} />);
+    expect(axis.getByRole("button", { name: "1 selected" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Symmetric" })).not.toBeChecked();
+    await userEvent.click(axis.getByRole("button", { name: "Clear the axis and pick again" }));
+    expect(x.change).toHaveBeenCalledWith({ axis: undefined });
+    expect(rev.repickAxis).toHaveBeenCalled();
   });
 
   it("offers through all for a cut, and a flip in place of the distance", async () => {

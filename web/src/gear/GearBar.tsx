@@ -1,5 +1,5 @@
-import { useState, type KeyboardEvent } from "react";
-import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry } from "@bettercad/ui";
+import { useState } from "react";
+import { Button, FeatureCheck, FeaturePanel, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry } from "@bettercad/ui";
 import {
   GT2_BELTS,
   beltedTo,
@@ -38,7 +38,7 @@ const FORM_START: Record<Form, Partial<GearFeature>> = {
 const round = (v: number) => Math.round(v * 100) / 100;
 
 /**
- * The strip for the Gear tool: a spur gear (#191), a rack or a GT2 pulley (#193). Teeth, size and bore up front, the
+ * The panel for the Gear tool: a spur gear (#191), a rack or a GT2 pulley (#193). Teeth, size and bore up front, the
  * finer settings under More, and the partner it meshes with or the belt it's on (#192, #193).
  */
 export function GearBar({ x, error, onCancel }: { x: GearSession; error?: string; onCancel: () => void }) {
@@ -46,15 +46,11 @@ export function GearBar({ x, error, onCancel }: { x: GearSession; error?: string
   const f = x.feature;
   if (!f) {
     return (
-      <ArmedBar title="Gear" icon="gear">
-        <span className="bc-armed-note">{x.help}</span>
-        <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
-      </ArmedBar>
+      <FeaturePanel title="Gear" icon="gear" cancel={{ title: "Put the tool down", onClick: onCancel }}>
+        <PanelNote>{x.help}</PanelNote>
+      </FeaturePanel>
     );
   }
-  const onFieldKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") x.done();
-  };
   const form: Form = f.form ?? "spur";
   const g = f.gear;
   const set = (c: Partial<GearParams>) => x.change({ gear: { ...g, ...c } });
@@ -81,119 +77,135 @@ export function GearBar({ x, error, onCancel }: { x: GearSession; error?: string
     : [];
 
   return (
-    <ArmedBar title={title} icon="gear">
+    <FeaturePanel
+      title={title}
+      icon="gear"
+      onFieldEnter={() => x.done()}
+      cancel={{ title: `Take the ${what} back`, onClick: x.cancel }}
+      ok={{ title: `Keep the ${what}`, onClick: x.done }}
+    >
       {!mate && !belt && (
-        <span role="group" aria-label="Form" className="bc-segmented">
-          {FORMS.map((o) => (
-            <Button
-              key={o.id}
-              label={o.label}
-              title={o.title}
-              on={form === o.id}
-              onClick={() => form !== o.id && x.change({ form: o.id, ...FORM_START[o.id] })}
-            />
-          ))}
-        </span>
-      )}
-      <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-        {form !== "rack" && (
-          <NumberField
-            label="Teeth"
-            value={g.teeth}
-            min={form === "gt2" ? 10 : 6}
-            max={400}
-            step={1}
-            precision={0}
-            onCommit={(v) => set({ teeth: Math.round(v) })}
-          />
-        )}
-        {mate || belt ? (
-          <NumberField
-            label="Angle"
-            unit="°"
-            value={(f.mesh ?? f.belt)!.angle}
-            onCommit={(v) => x.change(f.mesh ? { mesh: { ...f.mesh, angle: v } } : { belt: { ...f.belt!, angle: v } })}
-          />
-        ) : (
-          form !== "gt2" && <NumberField label="Module" unit="mm" value={g.module} min={0.1} step={0.1} onCommit={(v) => set({ module: v })} />
-        )}
-        {form === "rack" && f.rack && (
-          <>
-            <NumberField label="Length" unit="mm" value={f.rack.length} min={1} onCommit={(v) => x.change({ rack: { ...f.rack!, length: v } })} />
-            <NumberField label="Height" unit="mm" value={f.rack.height} min={0.1} onCommit={(v) => x.change({ rack: { ...f.rack!, height: v } })} />
-          </>
-        )}
-        {form !== "gt2" && <NumberField label="Width" unit="mm" value={f.width} min={0.1} onCommit={(v) => x.change({ width: v })} />}
-      </span>
-      {form === "gt2" && (
-        <>
-          <span role="group" aria-label="Belt width" className="bc-segmented">
-            {[6, 9].map((w) => (
-              <Button
-                key={w}
-                label={`${w} mm belt`}
-                title={`Teeth ${w + 1} mm wide, for ${w} mm belt`}
-                on={f.width === w + 1}
-                onClick={() => x.change({ width: w + 1 })}
-              />
-            ))}
-          </span>
-          <Button label="Flanges" title="Discs either side to keep the belt on" on={!!f.flanges} onClick={() => x.change({ flanges: !f.flanges })} />
-        </>
-      )}
-      <span className="bc-armed-note">{pitchNote}</span>
-      {mate && (
-        <>
-          <span className="bc-armed-note">
-            {form === "rack"
-              ? `Runs against ${mate.name}, module ${mate.gear.module}. ${round(Math.PI * mate.gear.module * mate.gear.teeth)} mm a turn.`
-              : `Meshes with ${mate.name}, module ${mate.gear.module}. ${ratioText(mate.gear.teeth, g.teeth)}.`}
-          </span>
-          <Button
-            label="Unmesh"
-            title="Leave it where it is, free of the other gear"
-            onClick={() => {
-              const at = meshedWith(mate, f);
-              x.change({ mesh: undefined, frame: at.frame, turn: at.turn, gear: at.gear });
-            }}
-          />
-        </>
-      )}
-      {belt && (
-        <>
-          <MenuButton
-            label="Belt"
-            entries={belts}
-            trigger={(p) => <Button {...p} label={`${belt.on.length} mm belt`} title="Pick a stock GT2 belt: the pulley moves to fit it" />}
-          />
-          <span className="bc-armed-note">{`Round ${belt.from.name}, ${belt.on.length / 2} teeth. ${ratioText(belt.from.gear.teeth, g.teeth, "pulley")}.`}</span>
-          <Button
-            label="Take off belt"
-            title="Leave the pulley where it is, free of the belt"
-            onClick={() => {
-              const at = beltedTo(belt.from, f);
-              x.change({ belt: undefined, ...(at ? { frame: at.frame } : {}) });
-            }}
-          />
-        </>
-      )}
-      {form !== "rack" && (
-        <>
-          <span role="group" aria-label="Bore" className="bc-segmented">
-            {BORES.map((o) => (
+        <FeatureRow label="Form">
+          <span role="group" aria-label="Form" className="bc-segmented">
+            {FORMS.map((o) => (
               <Button
                 key={o.id}
                 label={o.label}
                 title={o.title}
-                on={b.kind === o.id}
-                onClick={() =>
-                  x.change({ bore: { kind: o.id, diameter: o.diameter, ...(o.id === "dflat" ? { flat: 1.2 } : o.id === "horn" ? { arm: 7 } : {}) } })
-                }
+                on={form === o.id}
+                onClick={() => form !== o.id && x.change({ form: o.id, ...FORM_START[o.id] })}
               />
             ))}
           </span>
+        </FeatureRow>
+      )}
+      {form !== "rack" && (
+        <NumberField
+          label="Teeth"
+          value={g.teeth}
+          min={form === "gt2" ? 10 : 6}
+          max={400}
+          step={1}
+          precision={0}
+          onCommit={(v) => set({ teeth: Math.round(v) })}
+        />
+      )}
+      {mate || belt ? (
+        <NumberField
+          label="Angle"
+          unit="°"
+          value={(f.mesh ?? f.belt)!.angle}
+          onCommit={(v) => x.change(f.mesh ? { mesh: { ...f.mesh, angle: v } } : { belt: { ...f.belt!, angle: v } })}
+        />
+      ) : (
+        form !== "gt2" && <NumberField label="Module" unit="mm" value={g.module} min={0.1} step={0.1} onCommit={(v) => set({ module: v })} />
+      )}
+      {form === "rack" && f.rack && (
+        <>
+          <NumberField label="Length" unit="mm" value={f.rack.length} min={1} onCommit={(v) => x.change({ rack: { ...f.rack!, length: v } })} />
+          <NumberField label="Height" unit="mm" value={f.rack.height} min={0.1} onCommit={(v) => x.change({ rack: { ...f.rack!, height: v } })} />
+        </>
+      )}
+      {form !== "gt2" && <NumberField label="Width" unit="mm" value={f.width} min={0.1} onCommit={(v) => x.change({ width: v })} />}
+      {form === "gt2" && (
+        <>
+          <FeatureRow label="Belt width">
+            <span role="group" aria-label="Belt width" className="bc-segmented">
+              {[6, 9].map((w) => (
+                <Button
+                  key={w}
+                  label={`${w} mm belt`}
+                  title={`Teeth ${w + 1} mm wide, for ${w} mm belt`}
+                  on={f.width === w + 1}
+                  onClick={() => x.change({ width: w + 1 })}
+                />
+              ))}
+            </span>
+          </FeatureRow>
+          <FeatureCheck label="Flanges" title="Discs either side to keep the belt on" on={!!f.flanges} onChange={(flanges) => x.change({ flanges })} />
+        </>
+      )}
+      <PanelNote>{pitchNote}</PanelNote>
+      {mate && (
+        <>
+          <PanelNote>
+            {form === "rack"
+              ? `Runs against ${mate.name}, module ${mate.gear.module}. ${round(Math.PI * mate.gear.module * mate.gear.teeth)} mm a turn.`
+              : `Meshes with ${mate.name}, module ${mate.gear.module}. ${ratioText(mate.gear.teeth, g.teeth)}.`}
+          </PanelNote>
+          <FeatureRow label="Meshed">
+            <Button
+              label="Unmesh"
+              title="Leave it where it is, free of the other gear"
+              onClick={() => {
+                const at = meshedWith(mate, f);
+                x.change({ mesh: undefined, frame: at.frame, turn: at.turn, gear: at.gear });
+              }}
+            />
+          </FeatureRow>
+        </>
+      )}
+      {belt && (
+        <>
+          <FeatureRow label="Belt">
+            <MenuButton
+              label="Belt"
+              entries={belts}
+              trigger={(p) => <Button {...p} label={`${belt.on.length} mm belt`} title="Pick a stock GT2 belt: the pulley moves to fit it" />}
+            />
+          </FeatureRow>
+          <PanelNote>{`Round ${belt.from.name}, ${belt.on.length / 2} teeth. ${ratioText(belt.from.gear.teeth, g.teeth, "pulley")}.`}</PanelNote>
+          <FeatureRow label="On a belt">
+            <Button
+              label="Take off belt"
+              title="Leave the pulley where it is, free of the belt"
+              onClick={() => {
+                const at = beltedTo(belt.from, f);
+                x.change({ belt: undefined, ...(at ? { frame: at.frame } : {}) });
+              }}
+            />
+          </FeatureRow>
+        </>
+      )}
+      {form !== "rack" && (
+        <>
+          <FeatureRow label="Bore">
+            <span role="group" aria-label="Bore" className="bc-segmented">
+              {BORES.map((o) => (
+                <Button
+                  key={o.id}
+                  label={o.label}
+                  title={o.title}
+                  on={b.kind === o.id}
+                  onClick={() =>
+                    x.change({ bore: { kind: o.id, diameter: o.diameter, ...(o.id === "dflat" ? { flat: 1.2 } : o.id === "horn" ? { arm: 7 } : {}) } })
+                  }
+                />
+              ))}
+            </span>
+          </FeatureRow>
           {b.kind !== "none" && (
-            <span className="bc-sk-fields" onKeyDown={onFieldKey}>
+            <>
               <NumberField
                 label={b.kind === "horn" ? "Horn hub" : "Bore"}
                 unit="mm"
@@ -213,18 +225,20 @@ export function GearBar({ x, error, onCancel }: { x: GearSession; error?: string
               {b.kind === "horn" && (
                 <NumberField label="Arm holes" unit="mm" value={b.arm ?? 7} min={0.1} onCommit={(v) => x.change({ bore: { ...b, arm: v } })} />
               )}
-            </span>
+            </>
           )}
         </>
       )}
       <Button
-        label="More"
+        className="bc-fpanel-more"
+        icon="chevronDown"
+        label="More settings"
         title={form === "gt2" ? "A hub on the pulley" : "Pressure angle, backlash, clearance, profile shift and hub"}
-        on={more}
+        aria-expanded={more}
         onClick={() => setMore((m) => !m)}
       />
       {more && (
-        <span className="bc-sk-fields" onKeyDown={onFieldKey}>
+        <>
           {form !== "gt2" && (
             <>
               {!mate && <NumberField label="Pressure angle" unit="°" value={g.pressure} min={10} max={35} onCommit={(v) => set({ pressure: v })} />}
@@ -245,22 +259,12 @@ export function GearBar({ x, error, onCancel }: { x: GearSession; error?: string
               {f.hub && <NumberField label="Hub length" unit="mm" value={f.hub.length} min={0} onCommit={(v) => x.change({ hub: { ...f.hub!, length: v } })} />}
             </>
           )}
-        </span>
+        </>
       )}
-      {form === "spur" && !error && undercutWarning(g) && <span className="bc-armed-note">{undercutWarning(g)}</span>}
-      {more && form !== "gt2" && (
-        <span className="bc-armed-note">Backlash starts at your printer's press fit. Clearance and shift are shares of the module.</span>
-      )}
-      {belt && !error && (
-        <span className="bc-armed-note">{`Centres ${round(centreForBelt(belt.on.length, belt.from.gear.teeth, g.teeth) ?? 0)} mm apart.`}</span>
-      )}
-      {error && (
-        <span className="bc-armed-note bc-armed-error" role="alert">
-          {error}
-        </span>
-      )}
-      <Button kind="cancel" label="Cancel" title={`Take the ${what} back`} shortcut="Esc" onClick={x.cancel} />
-      <Button kind="done" label="Done" title={`Keep the ${what}`} shortcut="Enter" onClick={x.done} />
-    </ArmedBar>
+      {form === "spur" && !error && undercutWarning(g) && <PanelNote>{undercutWarning(g)}</PanelNote>}
+      {more && form !== "gt2" && <PanelNote>Backlash starts at your printer's press fit. Clearance and shift are shares of the module.</PanelNote>}
+      {belt && !error && <PanelNote>{`Centres ${round(centreForBelt(belt.on.length, belt.from.gear.teeth, g.teeth) ?? 0)} mm apart.`}</PanelNote>}
+      {error && <PanelNote tone="error">{error}</PanelNote>}
+    </FeaturePanel>
   );
 }

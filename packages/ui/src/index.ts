@@ -13,6 +13,16 @@ export {
   type IconButtonProps,
   type WideButtonProps,
 } from "./Button";
+export {
+  FeaturePanel,
+  FeatureRow,
+  FeaturePicker,
+  FeatureCheck,
+  PanelNote,
+  type FeaturePanelProps,
+  type FeaturePickerProps,
+  type PanelAction,
+} from "./FeaturePanel";
 export { Toolbar, ArmedBar, Separator, type ToolbarProps, type ArmedBarProps } from "./Toolbar";
 export { TooltipLayer, TooltipSample } from "./Tooltip";
 export { NumberField, Fields, stepFor, clamp, roundTo, scrubValue, type NumberFieldProps, type Unit } from "./NumberField";

@@ -1,4 +1,4 @@
-import { ArmedBar, Button } from "@bettercad/ui";
+import { Button, FeatureCheck, FeaturePanel, FeatureRow, PanelNote } from "@bettercad/ui";
 import type { FitGaps, Part } from "../state/document";
 import { FitMenu, type FitChoice } from "../fit/FitMenu";
 
@@ -28,7 +28,7 @@ export interface CombineBarProps {
   error?: string | null;
 }
 
-/** Combine's strip (#66): the body to keep is the first one picked; Shift-click adds the bodies to join, cut or intersect. */
+/** Combine's panel (#66): the body to keep is the first one picked; Shift-click adds the bodies to join, cut or intersect. */
 export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, fit, onFit, tuned, onApply, onCancel, error }: CombineBarProps) {
   const [target, ...tools] = picked;
   const note = !target
@@ -37,22 +37,27 @@ export function CombineBar({ picked, op, onOp, keepTools, onKeepTools, fit, onFi
       ? `Keeping ${target.name}. Shift-click the bodies to ${op === "join" ? "join to it" : op === "cut" ? "cut from it" : "intersect with it"}.`
       : `${tools.length === 1 ? tools[0]!.name : `${tools.length} bodies`} ${op === "join" ? "into" : op === "cut" ? "out of" : "with"} ${target.name}.`;
   return (
-    <ArmedBar title="Combine" icon="combine">
-      <span role="group" aria-label="Operation" className="bc-segmented">
-        {OPS.map((o) => (
-          <Button key={o.id} label={o.label} title={o.title} on={op === o.id} onClick={() => onOp(o.id)} />
-        ))}
-      </span>
-      {op === "cut" && <FitMenu value={fit} onChange={onFit} tuned={tuned} />}
-      <Button label="Keep tools" title="Leave the other bodies in the model" on={keepTools} onClick={() => onKeepTools(!keepTools)} />
-      <span className="bc-armed-note">{note}</span>
-      {error && (
-        <span role="alert" className="bc-armed-note bc-armed-error">
-          {error}
+    <FeaturePanel
+      title="Combine"
+      icon="combine"
+      cancel={{ title: "Put the tool down", onClick: onCancel }}
+      ok={{ label: "Combine", title: "Combine the bodies", disabled: !tools.length, onClick: onApply }}
+    >
+      <FeatureRow label="Operation">
+        <span role="group" aria-label="Operation" className="bc-segmented">
+          {OPS.map((o) => (
+            <Button key={o.id} label={o.label} title={o.title} on={op === o.id} onClick={() => onOp(o.id)} />
+          ))}
         </span>
+      </FeatureRow>
+      {op === "cut" && (
+        <FeatureRow label="Fit">
+          <FitMenu value={fit} onChange={onFit} tuned={tuned} />
+        </FeatureRow>
       )}
-      <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
-      <Button kind="done" label="Combine" title="Combine the bodies" shortcut="Enter" disabled={!tools.length} onClick={onApply} />
-    </ArmedBar>
+      <FeatureCheck label="Keep tools" title="Leave the other bodies in the model" on={keepTools} onChange={onKeepTools} />
+      <PanelNote>{note}</PanelNote>
+      {error && <PanelNote tone="error">{error}</PanelNote>}
+    </FeaturePanel>
   );
 }

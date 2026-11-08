@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
-import { ArmedBar, Button, NumberField, evaluate } from "@bettercad/ui";
+import { Button, FeaturePanel, FeaturePicker, FeatureRow, NumberField, PanelNote, evaluate } from "@bettercad/ui";
 import type { PreviewView } from "../kernel/usePreview";
 import type { BodyMesh } from "@bettercad/kernel";
 import type { FinishSession } from "./useFinish";
@@ -15,7 +15,7 @@ function PickList({ f, noun }: { f: FinishSession; noun: "edges" | "faces" }) {
     return { index, label: length !== null ? `${name}, ${formatMm(length)}` : name };
   });
   return (
-    <div role="group" aria-label={`Picked ${noun}`} className="bc-tools bc-armed bc-pick-list">
+    <div role="group" aria-label={`Picked ${noun}`} className="bc-pick-list">
       <ul>
         {items.map((it) => (
           <li key={it.index} onPointerEnter={() => f.point(it.index)} onPointerLeave={() => f.point(null)}>
@@ -31,18 +31,16 @@ function PickList({ f, noun }: { f: FinishSession; noun: "edges" | "faces" }) {
           </li>
         ))}
       </ul>
-      <span className="bc-armed-note">Click {noun} in the view to add them.</span>
-      <Button size="dense" label="Clear" title={`Take every ${noun === "edges" ? "edge" : "face"} out`} onClick={() => f.clear()} />
     </div>
   );
 }
 
-/** The strip for Fillet (round or bevel) and Shell: size, options, what is picked, Cancel and Done. */
+/** The panel for Fillet (round or bevel) and Shell: what is picked, the size and options, Cancel and OK. */
 export function FinishBar({ f, preview, onCancel }: { f: FinishSession; preview?: PreviewView; onCancel: () => void }) {
   const [listOpen, setListOpen] = useState(true);
   // Enter in the size field keeps the value, then makes the step.
-  const onFieldKey = (e: KeyboardEvent) => {
-    if (e.key !== "Enter" || !f.part) return;
+  const onFieldEnter = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (!f.part) return;
     // Use what the field holds now: its own commit has not rendered yet, and an Esc could follow at once.
     let v: number | undefined;
     try {
@@ -55,65 +53,70 @@ export function FinishBar({ f, preview, onCancel }: { f: FinishSession; preview?
   const n = f.refs.length;
   const shell = f.tool === "shell";
   const noun = shell ? "faces" : "edges";
-  const count = n === 1 ? `1 ${noun.slice(0, -1)}` : `${n} ${noun}`;
-  const list = n > 0 && listOpen ? <PickList f={f} noun={noun} /> : null;
-  const listButton =
-    n > 0 ? (
-      <Button
-        size="dense"
-        icon="list"
-        title={listOpen ? `Hide the list of picked ${noun}` : `Show the picked ${noun} as a list`}
-        on={listOpen}
-        aria-expanded={listOpen}
-        onClick={() => setListOpen((o) => !o)}
+  const picks = (
+    <>
+      <FeaturePicker
+        label={shell ? "Open faces" : "Edges"}
+        count={n}
+        empty={shell ? "Click faces" : "Click edges"}
+        picking
+        title={n ? (listOpen ? `Hide the list of picked ${noun}` : `Show the picked ${noun} as a list`) : `Click ${noun} in the view to add them`}
+        onPick={() => setListOpen((o) => !o)}
+        onClear={() => f.clear()}
+        clearTitle={`Take every ${noun === "edges" ? "edge" : "face"} out`}
       />
-    ) : null;
-  const error = preview?.error ? (
-    <span role="alert" className="bc-armed-note bc-armed-error">
-      {preview.error}
-    </span>
-  ) : null;
+      {n > 0 && listOpen && <PickList f={f} noun={noun} />}
+    </>
+  );
+  const error = preview?.error ? <PanelNote tone="error">{preview.error}</PanelNote> : null;
+  const cancel = { title: "Put the tool down", onClick: onCancel };
   if (shell) {
     return (
-      <>
-        {list}
-        <ArmedBar title="Shell" icon="shell">
-          <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-            <NumberField id="bc-finish-size" label="Wall" value={f.wall} min={0.2} onCommit={(v) => f.setWall(v)} />
-          </span>
+      <FeaturePanel
+        title="Shell"
+        icon="shell"
+        onFieldEnter={onFieldEnter}
+        cancel={cancel}
+        ok={{ title: "Hollow the body", disabled: !f.part, onClick: () => f.done() }}
+      >
+        {picks}
+        <NumberField id="bc-finish-size" label="Wall" value={f.wall} min={0.2} onCommit={(v) => f.setWall(v)} />
+        <FeatureRow label="Direction">
           <span role="group" aria-label="Direction" className="bc-segmented">
             <Button label="Inside" title="Keep the outer size" on={!f.outside} onClick={() => f.setOutside(false)} />
             <Button label="Outside" title="Grow the body by the wall" on={f.outside} onClick={() => f.setOutside(true)} />
           </span>
-          {listButton}
-          <span className="bc-armed-note">
-            {!f.part ? "Click a face to leave open." : n ? `${count} open on ${f.partName}.` : "Sealed: a sealed hollow traps material when printed."}
-          </span>
-          {error}
-          <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
-          <Button kind="done" label="Done" title="Hollow the body" shortcut="Enter" disabled={!f.part} onClick={() => f.done()} />
-        </ArmedBar>
-      </>
+        </FeatureRow>
+        <PanelNote>
+          {!f.part
+            ? "Click a face to leave open."
+            : n
+              ? `${n === 1 ? "1 face" : `${n} faces`} open on ${f.partName}.`
+              : "Sealed: a sealed hollow traps material when printed."}
+        </PanelNote>
+        {error}
+      </FeaturePanel>
     );
   }
   return (
-    <>
-      {list}
-      <ArmedBar title={f.bevel ? "Chamfer" : "Fillet"} icon={f.bevel ? "chamfer" : "fillet"}>
+    <FeaturePanel
+      title={f.bevel ? "Chamfer" : "Fillet"}
+      icon={f.bevel ? "chamfer" : "fillet"}
+      onFieldEnter={onFieldEnter}
+      cancel={cancel}
+      ok={{ title: f.bevel ? "Bevel the edges" : "Round the edges", disabled: !n, onClick: () => f.done() }}
+    >
+      {picks}
+      <FeatureRow label="Shape">
         <span role="group" aria-label="Edge shape" className="bc-segmented">
           <Button label="Round" title="Fillet: round the edges" on={!f.bevel} onClick={() => f.setBevel(false)} />
           <Button label="Bevel" title="Chamfer: cut the edges flat" on={f.bevel} onClick={() => f.setBevel(true)} />
         </span>
-        <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-          <NumberField id="bc-finish-size" label={f.bevel ? "Distance" : "Radius"} value={f.radius} min={0.05} onCommit={(v) => f.setRadius(v)} />
-        </span>
-        {listButton}
-        <span className="bc-armed-note">{f.part ? `${count} on ${f.partName}.` : "Click the edges to change."}</span>
-        {error}
-        <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={onCancel} />
-        <Button kind="done" label="Done" title={f.bevel ? "Bevel the edges" : "Round the edges"} shortcut="Enter" disabled={!n} onClick={() => f.done()} />
-      </ArmedBar>
-    </>
+      </FeatureRow>
+      <NumberField id="bc-finish-size" label={f.bevel ? "Distance" : "Radius"} value={f.radius} min={0.05} onCommit={(v) => f.setRadius(v)} />
+      <PanelNote>{f.part ? `${n === 1 ? "1 edge" : `${n} edges`} on ${f.partName}.` : "Click the edges to change."}</PanelNote>
+      {error}
+    </FeaturePanel>
   );
 }
 

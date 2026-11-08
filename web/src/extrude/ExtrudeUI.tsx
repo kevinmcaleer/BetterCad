@@ -1,12 +1,11 @@
-import type { KeyboardEvent } from "react";
-import { ArmedBar, Button, MenuButton, NumberField, type MenuEntry, type Scope } from "@bettercad/ui";
+import { Button, FeatureCheck, FeaturePanel, FeaturePicker, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry, type Scope } from "@bettercad/ui";
 import type { Part } from "../state/document";
 import { refText, throughAllAllowed, type AxisRef } from "../state/document";
 import { DIRECTIONS, EXTENTS, OPERATIONS, type ExtrudeSession } from "./useExtrude";
 
 /**
- * The strip for Extrude (distance and direction) and Revolve (angle and axis): what it does to the model, why it
- * cannot be made when it can't, and Done or Cancel.
+ * The settings panel for Extrude (distance and direction) and Revolve (angle and axis): one row per setting, like
+ * Fusion's feature dialog, why it cannot be made when it can't, then Cancel and OK.
  */
 export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; parts: Part[]; error?: string; scope?: Scope }) {
   const f = x.feature;
@@ -14,16 +13,11 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
   const icon = x.kind === "revolve" ? "revolve" : "extrude";
   if (!f) {
     return (
-      <ArmedBar title={title} icon={icon}>
-        <span className="bc-armed-note">{x.help}</span>
-        <Button kind="cancel" label="Cancel" title="Put the tool down" shortcut="Esc" onClick={x.cancel} />
-      </ArmedBar>
+      <FeaturePanel title={title} icon={icon} cancel={{ title: "Put the tool down", onClick: x.cancel }}>
+        <PanelNote>{x.help}</PanelNote>
+      </FeaturePanel>
     );
   }
-  // The field's own commit has already gone into the document; finish now, before an Esc could follow.
-  const onFieldKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter") x.done();
-  };
   const others = parts.filter((p) => p.id !== f.body.id);
   const chosen = others.filter((p) => x.targets.includes(p.id));
   // Join changes one body; Cut and Intersect tick as many as you like.
@@ -44,6 +38,30 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
   const bodiesTitle = many
     ? `The bodies it ${f.operation === "cut" ? "cuts" : "intersects"}. Click bodies in the view or the browser to add or take them out.`
     : "The body it changes. Click a body in the view or the browser to pick it.";
+
+  const profile = (
+    <>
+      <FeaturePicker
+        label="Profile"
+        count={x.picked}
+        empty="Pick shapes"
+        picking={x.pickingShapes}
+        title={`The closed shapes it ${x.kind === "revolve" ? "turns" : "pushes"}. Pick them again in the view, or clear them and start over.`}
+        entries={[
+          { id: "pick", label: "Pick in the view", checked: x.pickingShapes, onSelect: () => x.repickShapes() },
+          { id: "clear", label: "Clear and pick again", onSelect: () => x.repickShapes(true) },
+        ]}
+        onClear={() => x.repickShapes(true)}
+        clearTitle="Clear the shapes and pick again"
+      />
+      {x.pickingShapes && (
+        <div className="bc-fpanel-pick">
+          <PanelNote live>Click shapes to add them or take them out.</PanelNote>
+          <Button size="dense" label="Done picking" title="Stop picking shapes" shortcut="Esc" onClick={x.stopShapes} />
+        </div>
+      )}
+    </>
+  );
 
   let fields;
   if (f.type === "revolve") {
@@ -67,42 +85,48 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
     ];
     const names = new Map<string, string>([...parts.map((p) => [p.id, p.name] as const), ...x.construct.map((c) => [c.id, c.name] as const)]);
     const axis = f.axis;
-    const axisLabel = !axis
-      ? "Pick an axis"
+    const axisName = !axis
+      ? ""
       : axis.kind === "line"
-        ? `Round Line ${lines.findIndex((l) => l.id === axis.id) + 1}`
+        ? `Line ${lines.findIndex((l) => l.id === axis.id) + 1}`
         : axis.kind === "ref"
-          ? `Round ${refText(axis.ref, (id) => names.get(id))}`
-          : `Round the sketch's ${axis.kind.toUpperCase()} axis`;
+          ? refText(axis.ref, (id) => names.get(id))
+          : `The sketch's ${axis.kind.toUpperCase()} axis`;
     fields = (
       <>
-        <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-          <NumberField
-            id="bc-ex-distance"
-            label="Angle"
-            unit="°"
-            value={f.angle}
-            min={1}
-            max={360}
-            scope={scope}
-            onChange={(v) => x.change({ angle: v })}
-            onCommit={(v, expr) => {
-              x.change({ angle: v });
-              x.setFieldExpr("angle", expr);
-            }}
-          />
-        </span>
-        <MenuButton
+        <FeaturePicker
           label="Axis"
+          count={axis ? 1 : 0}
+          empty="Pick an axis"
+          picking={x.pickingAxis}
+          title={
+            axis
+              ? `Turns round ${axisName}. Pick another axis, a sketch line or a straight edge.`
+              : "What it turns round: an axis, a sketch line or a straight edge"
+          }
           entries={axes}
-          trigger={(p) => <Button {...p} label={axisLabel} on={x.pickingAxis} title="What it turns round: an axis, a sketch line or a straight edge" />}
+          onClear={() => {
+            x.change({ axis: undefined });
+            x.repickAxis();
+          }}
+          clearTitle="Clear the axis and pick again"
         />
-        {x.pickingAxis && (
-          <span className="bc-armed-note" role="status">
-            Click an axis, a sketch line or a straight edge
-          </span>
-        )}
-        <Button label="Symmetric" title="Turn half the angle each way" on={!!f.symmetric} onClick={() => x.change({ symmetric: !f.symmetric })} />
+        {x.pickingAxis && <PanelNote live>Click an axis, a sketch line or a straight edge</PanelNote>}
+        <NumberField
+          id="bc-ex-distance"
+          label="Angle"
+          unit="°"
+          value={f.angle}
+          min={1}
+          max={360}
+          scope={scope}
+          onChange={(v) => x.change({ angle: v })}
+          onCommit={(v, expr) => {
+            x.change({ angle: v });
+            x.setFieldExpr("angle", expr);
+          }}
+        />
+        <FeatureCheck label="Symmetric" title="Turn half the angle each way" on={!!f.symmetric} onChange={(on) => x.change({ symmetric: on })} />
       </>
     );
   } else {
@@ -123,21 +147,34 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
     const upTo = f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face";
     fields = (
       <>
-        <MenuButton
-          label="Extent"
-          entries={extents}
-          trigger={(p) => (
-            <Button {...p} label={extentEntry.label} title={canAll ? "How far it goes" : "How far it goes. Through all works with Cut and Intersect."} />
-          )}
-        />
+        {!to && (
+          <FeatureRow label="Direction">
+            <MenuButton
+              label="Direction"
+              entries={directions}
+              trigger={(p) => <Button {...p} label={direction.label} title="Which way it goes from the sketch" />}
+            />
+          </FeatureRow>
+        )}
+        <FeatureRow label="Extent">
+          <MenuButton
+            label="Extent"
+            entries={extents}
+            trigger={(p) => (
+              <Button {...p} label={extentEntry.label} title={canAll ? "How far it goes" : "How far it goes. Through all works with Cut and Intersect."} />
+            )}
+          />
+        </FeatureRow>
         {to ? (
-          <span className="bc-armed-note" role="status">
-            {x.wantTo || !f.to ? "Click a face, edge or point" : `Up to ${upTo}, ${fmtMm(Math.abs(f.distance))}`}
-          </span>
+          <PanelNote live>{x.wantTo || !f.to ? "Click a face, edge or point" : `Up to ${upTo}, ${fmtMm(Math.abs(f.distance))}`}</PanelNote>
         ) : all ? (
-          f.direction === "one" && <Button label="Flip" title="Go the other way from the sketch" onClick={x.flip} />
+          f.direction === "one" && (
+            <FeatureRow label="Side">
+              <Button label="Flip" title="Go the other way from the sketch" onClick={x.flip} />
+            </FeatureRow>
+          )
         ) : (
-          <span className="bc-sk-fields" onKeyDown={onFieldKey}>
+          <>
             <NumberField
               id="bc-ex-distance"
               label={f.direction === "symmetric" ? "Total" : "Distance"}
@@ -158,63 +195,39 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
                 onCommit={(v) => x.change({ distance2: v })}
               />
             )}
-          </span>
-        )}
-        {!to && (
-          <MenuButton
-            label="Direction"
-            entries={directions}
-            trigger={(p) => <Button {...p} label={direction.label} title="Which way it goes from the sketch" />}
-          />
+          </>
         )}
       </>
     );
   }
   return (
-    <ArmedBar title={title} icon={icon}>
-      <MenuButton
-        label="Shapes"
-        entries={[
-          { id: "pick", label: "Pick in the view", checked: x.pickingShapes, onSelect: () => x.repickShapes() },
-          { id: "clear", label: "Clear and pick again", onSelect: () => x.repickShapes(true) },
-        ]}
-        trigger={(p) => (
-          <Button
-            {...p}
-            label={x.picked ? (x.picked === 1 ? "1 shape" : `${x.picked} shapes`) : "Pick shapes"}
-            on={x.pickingShapes}
-            title={`The closed shapes it ${x.kind === "revolve" ? "turns" : "pushes"}. Pick them again in the view, or clear them and start over.`}
-          />
-        )}
-      />
-      {x.pickingShapes && <Button label="Done picking" title="Stop picking shapes" shortcut="Esc" onClick={x.stopShapes} />}
+    <FeaturePanel
+      title={title}
+      icon={icon}
+      // The field's own commit has already gone into the document; finish now, before an Esc could follow.
+      onFieldEnter={() => x.done()}
+      cancel={{ title: `Take the ${x.kind} back`, onClick: x.cancel }}
+      ok={{ title: `Keep the ${x.kind}`, disabled: !x.picked || (f.type === "revolve" && !f.axis), onClick: x.done }}
+    >
+      {profile}
       {fields}
-      <span role="group" aria-label="Operation" className="bc-segmented">
-        {OPERATIONS.map((o) => (
-          <Button key={o.id} label={o.label} title={o.title} on={f.operation === o.id} onClick={() => x.setOperation(o.id)} />
-        ))}
-      </span>
+      <FeatureRow label="Operation">
+        <span role="group" aria-label="Operation" className="bc-segmented">
+          {OPERATIONS.map((o) => (
+            <Button key={o.id} label={o.label} title={o.title} on={f.operation === o.id} onClick={() => x.setOperation(o.id)} />
+          ))}
+        </span>
+      </FeatureRow>
       {f.operation !== "new" &&
         (others.length ? (
-          <MenuButton label={many ? "Bodies" : "Body"} entries={targets} trigger={(p) => <Button {...p} label={bodiesLabel} title={bodiesTitle} />} />
+          <FeatureRow label={many ? "Bodies" : "Body"}>
+            <MenuButton label={many ? "Bodies" : "Body"} entries={targets} trigger={(p) => <Button {...p} label={bodiesLabel} title={bodiesTitle} />} />
+          </FeatureRow>
         ) : (
-          <span className="bc-armed-note">There is no body to change yet.</span>
+          <PanelNote>There is no body to change yet.</PanelNote>
         ))}
-      {error && !(f.type === "revolve" && !f.axis) && (
-        <span className="bc-armed-note bc-armed-error" role="alert">
-          {error}
-        </span>
-      )}
-      <Button kind="cancel" label="Cancel" title={`Take the ${x.kind} back`} shortcut="Esc" onClick={x.cancel} />
-      <Button
-        kind="done"
-        label="Done"
-        title={`Keep the ${x.kind}`}
-        shortcut="Enter"
-        disabled={!x.picked || (f.type === "revolve" && !f.axis)}
-        onClick={x.done}
-      />
-    </ArmedBar>
+      {error && !(f.type === "revolve" && !f.axis) && <PanelNote tone="error">{error}</PanelNote>}
+    </FeaturePanel>
   );
 }
 
