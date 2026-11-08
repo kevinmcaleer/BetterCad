@@ -105,7 +105,6 @@ import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
 import { View3D } from "../viewport/View3D";
 import { Properties } from "./Properties";
-import { ParamsPanel } from "./ParamsPanel";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
@@ -125,7 +124,6 @@ import { useFinish } from "../finish/useFinish";
 import { usePushPull } from "../finish/usePushPull";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
-import { CataloguePanel } from "../catalogue/CataloguePanel";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
 import { useJoint } from "../joint/useJoint";
@@ -201,6 +199,9 @@ const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ 
 const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
 const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
 /** The Print panel loads when it first opens. */
+/** Parameters and the parts catalogue load when their panel first opens. */
+const ParamsPanel = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsPanel })));
+const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 const ShortcutsDialog = lazy(() => import("./ShortcutsDialog").then((m) => ({ default: m.ShortcutsDialog })));
 
@@ -2390,18 +2391,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     });
   };
   const paramsPanel = (
-    <ParamsPanel
-      doc={doc}
-      onAdd={() => store.edit((d) => addParam(d), "Add a parameter")}
-      onChange={(id, change) => changeParams((d) => updateParam(d, id, change), "Change a parameter")}
-      onRemove={(id) => store.edit((d) => removeParam(d, id), "Delete a parameter")}
-      onShowUses={(fids) => {
-        if (fids[0]) setActiveFeature(fids[0]);
-        const names = doc.features.filter((f) => fids.includes(f.id)).map((f) => f.name);
-        if (names.length) say(`Used by ${names.join(", ")}`);
-      }}
-      say={say}
-    />
+    <Suspense fallback={null}>
+      <ParamsPanel
+        doc={doc}
+        onAdd={() => store.edit((d) => addParam(d), "Add a parameter")}
+        onChange={(id, change) => changeParams((d) => updateParam(d, id, change), "Change a parameter")}
+        onRemove={(id) => store.edit((d) => removeParam(d, id), "Delete a parameter")}
+        onShowUses={(fids) => {
+          if (fids[0]) setActiveFeature(fids[0]);
+          const names = doc.features.filter((f) => fids.includes(f.id)).map((f) => f.name);
+          if (names.length) say(`Used by ${names.join(", ")}`);
+        }}
+        say={say}
+      />
+    </Suspense>
   );
 
   if (share && inactive) {
@@ -2478,13 +2481,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               paramsPanel={paramsPanel}
               printPanel={printPanel}
               robotPanel={
-                <CataloguePanel
-                  placing={place.part?.id ?? null}
-                  onPick={(p) => {
-                    setTool("select");
-                    place.start(p);
-                  }}
-                />
+                <Suspense fallback={null}>
+                  <CataloguePanel
+                    placing={place.part?.id ?? null}
+                    onPick={(p) => {
+                      setTool("select");
+                      place.start(p);
+                    }}
+                  />
+                </Suspense>
               }
               orientWeights={orientWeights}
               onOrientWeights={setOrientWeights}
