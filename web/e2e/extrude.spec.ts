@@ -110,8 +110,8 @@ test("cut a hole right through a body with Through all", async ({ page }) => {
 
   // A 30 × 20 mm block, 20 mm tall.
   await page.keyboard.press("k");
-  await click(page, 20, 20);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  // The click can land before the Sketch tool is listening when the runner is busy, so it clicks again until a sketch opens.
+  await pickShape(page, 20, 20, page.getByRole("toolbar", { name: "Sketch tools" }));
   await page.waitForTimeout(800);
   await page.keyboard.press("r");
   await click(page, -10, -10);
@@ -133,8 +133,8 @@ test("cut a hole right through a body with Through all", async ({ page }) => {
 
   // A 6 mm circle on the ground plane under it.
   await page.keyboard.press("k");
-  await click(page, 25, 25);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  // The click can land before the Sketch tool is listening when the runner is busy, so it clicks again until a sketch opens.
+  await pickShape(page, 25, 25, page.getByRole("toolbar", { name: "Sketch tools" }));
   await page.waitForTimeout(800);
   await page.keyboard.press("c");
   await click(page, 0, 0);
