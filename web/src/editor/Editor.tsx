@@ -144,7 +144,11 @@ import { browserName } from "../report/report";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { saveBcad } from "@bettercad/kernel/bcad";
-import type { Mate } from "@bettercad/kernel";
+import type { ExportFormat, Mate } from "@bettercad/kernel";
+import { Matrix4 } from "three";
+import { renderSession, type RenderSession, type SaveSize } from "../render/session";
+import type { RenderBody } from "../render/pathRender";
+import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import { PrintPanel, type PrintCheck, type Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
 import { ROW, planeOf, type OriginItem } from "./Browser";
@@ -170,6 +174,9 @@ const ORIENT_KEY = "bettercad.orientWeights";
 
 /** The Export dialog loads on first use, keeping the first-paint bundle in budget. */
 const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ default: m.ExportDialog })));
+/** The Render view and its path tracer load on first Render (#197). */
+const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
+const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
 
 /** The orientation score's weights (#103), kept per browser from Settings, Advanced. */
 function readOrientWeights(): OrientWeights {
@@ -256,6 +263,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  /** The format the Export dialog opens on, when something other than your last choice asks (Render's glTF offer). */
+  const [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
+  // Render (#197): the session while the Render view is open, and where its camera got to.
+  const [render, setRender] = useState<RenderSession | null>(null);
+  const renderCam = useRef<CameraState | null>(null);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
   const [crash, setCrash] = useState<Caught | null>(null);
@@ -365,6 +377,38 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
   live.current.dialogOpen ||= vp.namingOpen;
+
+  // Render (#197): a path-traced picture over the view. It starts from the modelling camera, and the modelling view
+  // follows wherever you orbited it when you come back.
+  const openRender = () => {
+    renderCam.current = vp.ref.current?.camera() ?? null;
+    setRender(renderSession());
+  };
+  const closeRender = () => {
+    const c = renderCam.current;
+    setRender(null);
+    if (c) vp.ref.current?.setCamera(c, false);
+  };
+  const onRenderCamera = useCallback((c: CameraState) => {
+    renderCam.current = c;
+  }, []);
+  const saveRender = async (png: Blob, size: SaveSize) => {
+    const name = `${live.current.doc.name}${size === "view" ? "" : size === "double" ? " 2x" : " 4K"}.png`;
+    const saved = await files.store.saveFiles([{ name, data: await png.arrayBuffer(), mime: "image/png" }]);
+    if (saved) say(`Saved ${saved.names[0]}`);
+  };
+  const renderBodies = useMemo<RenderBody[]>(
+    () =>
+      render
+        ? parts
+            .filter((p) => !p.hidden && !p.hole)
+            .flatMap((p) => {
+              const b = kernel.bodies.get(p.id);
+              return b ? [{ id: p.id, mesh: b.mesh, matrix: new Matrix4(), colour: p.colour, finish: p.finish, catalogue: p.catalogue }] : [];
+            })
+        : [],
+    [render, parts, kernel.bodies],
+  );
   useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
 
   const shownSketches = useMemo(() => built.sketches.filter((s) => !doc.looks[s.id]?.hidden), [built.sketches, doc.looks]);
@@ -846,6 +890,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
   useEscape(tool !== "select", () => setTool("select"), ESC.tool);
+  useEscape(render !== null, () => closeRender(), ESC.tool);
   useEscape(narrow && (panel !== null || propsOpen), () => (propsOpen ? setPropsOpen(false) : setPanel(null)), ESC.panel);
   // On a wide screen the Library, Parameters, Print, History and Settings give way to the browser again.
   useEscape(!narrow && panel !== null && panel !== "parts", () => setPanel("parts"), ESC.panel);
@@ -861,6 +906,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const handlers = useRef({
     openExport: () => {},
+    openRender: () => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     saveCloud: () => {},
@@ -897,6 +943,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   });
   handlers.current = {
     openExport: () => setExportOpen(true),
+    openRender: () => openRender(),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -1220,6 +1267,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: t === "light" ? "sun" : t === "system" ? "settings" : "moon",
         run: () => h().setTheme(t),
       })),
+      {
+        id: "view.render",
+        label: "Render",
+        group: "View",
+        icon: "sun",
+        keys: ["shift+r"],
+        run: () => h().openRender(),
+        keywords: "photo picture image path trace blender",
+      },
       { id: "help.palette", label: "Find a command", group: "Help", icon: "search", keys: ["mod+k"], run: () => setPaletteOpen(true) },
       { id: "print.overhangs", label: "Check overhangs", group: "View", icon: "printer", run: () => h().printCheck("overhang"), keywords: "support print 45" },
       {
@@ -1924,19 +1980,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       />
     ) : null;
 
-  const helpText = sketch.help
-    ? sketch.help
-    : place.help
-      ? place.help
-      : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
-        ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
-        : finish.help
-          ? finish.help
-          : vp.elementText
-            ? `${vp.elementText} Esc clears it.`
-            : tool === "select" && selectedParts.length
-              ? `${selectionText} Esc clears the selection.`
-              : activeTool.help;
+  const helpText = render
+    ? "Drag to turn the picture, right-drag to pan, scroll to zoom. Esc goes back to modelling."
+    : sketch.help
+      ? sketch.help
+      : place.help
+        ? place.help
+        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
+          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || pattern.help || measure.help
+          : finish.help
+            ? finish.help
+            : vp.elementText
+              ? `${vp.elementText} Esc clears it.`
+              : tool === "select" && selectedParts.length
+                ? `${selectionText} Esc clears the selection.`
+                : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -2132,7 +2190,29 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           ) : (
             <>
               {files.banners}
-              <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
+              {render ? (
+                <Suspense
+                  fallback={
+                    <div role="group" aria-label="Render options" className="bc-tools bc-armed">
+                      <span className="bc-armed-note" role="status">
+                        Loading the renderer…
+                      </span>
+                    </div>
+                  }
+                >
+                  <RenderBar
+                    session={render}
+                    onClose={closeRender}
+                    onExportGltf={() => {
+                      closeRender();
+                      setExportFormat("glb");
+                      setExportOpen(true);
+                    }}
+                  />
+                </Suspense>
+              ) : (
+                <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} onRender={openRender} />
+              )}
               {place.part && <PlaceBar x={place} />}
               {tool === "sketch" && <SketchPickBar onCancel={() => setTool("select")} />}
               {tool === "extrude" && (
@@ -2200,6 +2280,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             emptyHint={!emptyState && !sketch.editing && tool !== "sketch" && built.sketches.length === 0}
           >
             <SketchLabels s={sketch} />
+            {render && (
+              <Suspense fallback={null}>
+                <RenderPicture
+                  session={render}
+                  bodies={renderBodies}
+                  camera={renderCam.current ?? DEFAULT_CAMERA}
+                  onCamera={onRenderCamera}
+                  onSave={saveRender}
+                />
+              </Suspense>
+            )}
             {emptyState && (
               <EmptyState
                 onShape={() => setPanel("library")}
@@ -2320,7 +2411,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         <Suspense fallback={null}>
           <ExportDialog
             open={exportOpen}
-            onClose={() => setExportOpen(false)}
+            format={exportFormat}
+            onClose={() => {
+              setExportOpen(false);
+              setExportFormat(undefined);
+            }}
             onExported={tour.onExported}
             printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
             fitProblem={fitProblem}

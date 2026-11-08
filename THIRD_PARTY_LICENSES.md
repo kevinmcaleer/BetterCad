@@ -26,6 +26,9 @@ The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VER
 | replicad-opencascadejs | 1.2.1 | LGPL-2.1-only | npm |
 | scheduler | 0.23.2 | MIT | npm |
 | three | 0.180.0 | MIT | npm |
+| three-gpu-pathtracer | 0.0.24 | MIT | npm |
+| three-mesh-bvh | 0.9.18 | MIT | npm |
+| xatlas-web | 0.1.0 | MIT | npm |
 | annotated-doc | 0.0.5 | MIT | PyPI |
 | annotated-types | 0.8.0 | MIT | PyPI |
 | anyio | 4.16.0 | MIT | PyPI |
