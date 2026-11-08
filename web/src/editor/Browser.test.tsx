@@ -228,11 +228,11 @@ describe("components (#171)", () => {
       `${ROW.origin} > YZ plane`,
       `${ROW.root} > Bodies (1)`,
       `${ROW.bodies} > Box 2`,
-      `${ROW.root} > Component 1 (2 bodies)`,
+      `${ROW.root} > Component 1`,
       `L1 > Bodies (2)`,
       `${ROW.bodies}:L1 > Box 1`,
       `${ROW.bodies}:L1 > Cylinder 1`,
-      `L1 > Component 2 (1 body)`,
+      `L1 > Component 2`,
       `L2 > Bodies (1)`,
       `${ROW.bodies}:L2 > Box 3`,
       `L2 > Sketches (1)`,
@@ -244,7 +244,7 @@ describe("components (#171)", () => {
   it("shows an empty component, and the active one's radio on", () => {
     const m = nested({ links: [...nested().links!, { id: "L3", name: "Component 3", parts: [] }], active: "L3" });
     const items = browserItems(m);
-    expect(items.find((i) => i.id === "L3")).toMatchObject({ note: "Empty", active: true, toggles: ["hidden", "active"], hidden: false });
+    expect(items.find((i) => i.id === "L3")).toMatchObject({ active: true, toggles: ["hidden", "active"], hidden: false });
     expect(items.find((i) => i.id === "L1")).toMatchObject({ active: false });
     expect(items[0]).toMatchObject({ toggles: ["active"], active: false });
     expect(browserItems(nested({ readOnly: true })).find((i) => i.id === "L1")).toMatchObject({ toggles: ["hidden"] });
@@ -433,25 +433,25 @@ describe("moving into components (#334)", () => {
   it("drops a sketch onto a component, a body back onto the model, and a component into another", () => {
     const onMoveInto = vi.fn();
     render(panel(onMoveInto));
-    drag(row(/^Sketch 1/), row(/Component 1 Empty/));
+    drag(row(/^Sketch 1/), row(/Component 1$/));
     expect(onMoveInto).toHaveBeenLastCalledWith(["s1"], "L1");
     drag(row(/^Box 2/), row(/Rover/));
     expect(onMoveInto).toHaveBeenLastCalledWith(["b"], null);
-    drag(row(/Component 2 1 body/), row(/Component 1 Empty/));
+    drag(row(/Component 2$/), row(/Component 1$/));
     expect(onMoveInto).toHaveBeenLastCalledWith(["L2"], "L1");
   });
 
   it("drags the selected bodies together", () => {
     const onMoveInto = vi.fn();
     render(panel(onMoveInto, ["a", "b"]));
-    drag(row(/^Box 1/), row(/Component 1 Empty/));
+    drag(row(/^Box 1/), row(/Component 1$/));
     expect(onMoveInto).toHaveBeenLastCalledWith(["a", "b"], "L1");
   });
 
   it("offers Move into from the menu, but not into where it is or into itself", async () => {
     const onMoveInto = vi.fn();
     render(panel(onMoveInto));
-    fireEvent.contextMenu(row(/Component 2 1 body/));
+    fireEvent.contextMenu(row(/Component 2$/));
     expect(screen.queryByRole("menuitem", { name: "Move into Component 2" })).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Move to Rover" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "Move into Component 1" }));
@@ -460,7 +460,7 @@ describe("moving into components (#334)", () => {
 });
 
 describe("joints in the browser (#172)", () => {
-  it("lists joints, and names each component's joint on its row", () => {
+  it("lists joints, and shows only the name on each component's row", () => {
     let d = addPart(addPart(addPart(newDoc("Arm"), "box", "a"), "box", "b"), "box", "c");
     d = addLink(addLink(d, ["b"], "L1"), ["c"], "L2");
     const axis = { origin: [0, 0, 0] as [number, number, number], axis: [0, 0, 1] as [number, number, number] };
@@ -474,8 +474,10 @@ describe("joints in the browser (#172)", () => {
       ["Joint 2", "Wheel"],
     ]);
     // Joints don't nest components: where each sits is up to you, as in Fusion.
-    expect(items.find((i) => i.id === "L1")).toMatchObject({ parentId: ROW.root, note: "1 body, hinge on Joint 1" });
-    expect(items.find((i) => i.id === "L2")).toMatchObject({ parentId: ROW.root, note: "1 body, wheel on Joint 2" });
+    expect(items.find((i) => i.id === "L1")).toMatchObject({ parentId: ROW.root });
+    expect(items.find((i) => i.id === "L1")?.note).toBeUndefined();
+    expect(items.find((i) => i.id === "L2")).toMatchObject({ parentId: ROW.root });
+    expect(items.find((i) => i.id === "L2")?.note).toBeUndefined();
   });
 });
 

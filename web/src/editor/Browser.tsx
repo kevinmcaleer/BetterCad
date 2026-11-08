@@ -88,8 +88,6 @@ export interface BrowserModel {
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
 
-const bodies = (n: number) => (n === 1 ? "1 body" : n ? `${n} bodies` : "Empty");
-
 /** A folder's row id in a component (#171); the model's own folders keep the plain ids. */
 const inComp = (folder: string, c?: string) => (c ? `${folder}:${c}` : folder);
 /** The folder kind and component a folder row id names, if it is one. */
@@ -188,7 +186,6 @@ export function browserItems(m: BrowserModel): TreeItem[] {
   // Then the model's own folders and components, and each component's, inside out (#171).
   const o = owners(m);
   const joints = m.joints ?? [];
-  const jointOf = new Map(joints.map((j) => [j.child, j]));
   const contents = (c: string | undefined, row: string) => {
     // Construction geometry (#265), as in Fusion; Bodies and Sketches show once they have something in them.
     const cons = o.construct(c);
@@ -249,13 +246,11 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         warning: x.warning,
       });
     }
-    // Its components, each with its joint (#172) named.
+    // Its components, by name only: the summary crowded the name out.
     for (const k of o.comps.filter((x) => o.parentOf(x) === c)) {
-      const j = jointOf.get(k.id);
       // Its eye is shut once everything in it is hidden, as a folder's is.
       const h = o.held(k.id);
       const all = [...h.parts, ...h.rest];
-      const note = j ? `${bodies(k.parts.length)}, ${kindLabel(j.kind).toLowerCase()} on ${j.name}` : bodies(k.parts.length);
       items.push({
         id: k.id,
         name: k.name,
@@ -268,7 +263,6 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         toggles: m.readOnly ? ["hidden"] : ["hidden", "active"],
         hidden: all.length > 0 && all.every((x) => x.hidden),
         active: m.active === k.id,
-        note,
       });
       contents(k.id, k.id);
     }

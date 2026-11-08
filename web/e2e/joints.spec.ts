@@ -48,7 +48,7 @@ test("hang a link from Base on a hinge, back out a pick with Esc, then make it a
   await expect(page.getByText("Made Joint 1: slider, Component 1 on Base")).toBeVisible();
 
   await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
-  await expect(page.getByRole("treeitem", { name: /Component 1 1 body, slider on Joint 1/ })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Component 1$/ })).toBeVisible();
 });
 
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */
