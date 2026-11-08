@@ -39,7 +39,7 @@ function useLinks(next: string) {
       live = false;
     };
   }, [api, next, available]);
-  return { links, error };
+  return { links, error: error ?? links?.problem ?? null };
 }
 
 function KevsrobotsSignIn({ next, signUp }: { next?: string; signUp?: boolean }) {

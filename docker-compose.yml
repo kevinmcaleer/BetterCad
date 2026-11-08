@@ -24,6 +24,8 @@ services:
       # Sign-in is your kevsrobots.com account (docs/accounts.md): its cookie is set on .kevsrobots.com, and
       # BetterCad asks Chatter who it belongs to.
       CHATTER_URL: ${CHATTER_URL:-https://chatter.kevsrobots.com}
+      # Optional: Chatter's address from inside Docker, so sign-in checks skip Cloudflare (docs/deploy.md).
+      CHATTER_API_URL: ${CHATTER_API_URL:-}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-.kevsrobots.com}
       # kevsrobots.com sends people back here after signing in. Problem reports email through the SMTP server below.
       PUBLIC_URL: ${PUBLIC_URL:-https://bettercad.kevsrobots.com}

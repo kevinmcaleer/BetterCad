@@ -166,7 +166,7 @@ class Forget(BaseModel):
 
 
 def install(app: FastAPI, settings: Settings) -> None:
-    app.state.identify = chatter_identify(settings.chatter_url)
+    app.state.identify = chatter_identify(settings.chatter_api_url or settings.chatter_url)
     app.state.secret = settings.secret_key or "dev-only-secret"
     here = settings.public_url.rstrip("/")
 
@@ -181,12 +181,17 @@ def install(app: FastAPI, settings: Settings) -> None:
     @r.get("/session")
     def session(request: Request, next: str = "#/library") -> dict:
         """Who is signed in, the CSRF token for their changes, and where to sign in on kevsrobots.com."""
-        who = _who(request)
         token = bearer(request)
         safe_next = next if next.startswith("#/") and len(next) < 200 else "#/library"
+        try:
+            who = _who(request)
+        except HTTPException as e:
+            # kevsrobots.com can't be asked just now: still hand out the links, so the page can offer to sign in.
+            return {"user": None, "csrf_token": "", "problem": e.detail, **links(safe_next)}
         return {
             "user": who,
             "csrf_token": csrf_for(request, token) if who and token else "",
+            "problem": None,
             **links(safe_next),
         }
 
