@@ -157,6 +157,9 @@ const nextFrame = (page: Page) => page.evaluate(() => new Promise((r) => request
 test("the line-art outline turns with the model, not a frame behind", async ({ page }) => {
   await page.goto("/");
   await addShape(page, "Box");
+  // Wait for the engine's solid: if it lands between the two shots, they differ for a reason this test isn't about.
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await expect.poll(() => kernelBodies(page)).toEqual([{ world: true, x: 0 }]);
   await page.evaluate(() => (window as unknown as Orbit).__bcView.setStyle("lineart"));
   await page.waitForTimeout(500);
   // One orbit step draws one frame. Drawing it again with the camera still should change nothing: a stale outline would.
