@@ -41,7 +41,8 @@ import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
-import { loadOptions, saveOptions, sketchGrid, type SketchOption, type SketchOptions } from "./options";
+import { loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide, type SketchOption, type SketchOptions } from "./options";
+import { viewDir } from "../viewport/camera";
 import { placeAt } from "./dimensions";
 import { ORIGIN, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type Snap } from "./snap";
 import {
@@ -153,6 +154,8 @@ export function useSketch(d: SketchDeps) {
   const feature = d.doc.features.find((f): f is SketchFeature => f.id === editingId && f.type === "sketch") ?? null;
   const sketch = feature?.sketch ?? null;
   const frame = useMemo<Frame | null>(() => (sketch ? planeFrame(sketch.plane) : null), [sketch]);
+  // Slice lasts for one sketch: each sketch starts with the whole model on show.
+  useEffect(() => setOptions((o) => (o.slice ? { ...o, slice: false } : o)), [editingId]);
   const result = useMemo<SolveResult | null>(() => {
     if (!sketch || !solver) return null;
     try {
@@ -1252,9 +1255,17 @@ export function useSketch(d: SketchDeps) {
         ? `${toolHelp} ${status ?? ""}.`.replace(/\.\.$/, ".")
         : null;
 
+  // Slice: a section at the sketch's plane that cuts away the camera's side. It recuts only when the camera crosses to
+  // the plane's other side, not on every orbit step, and the section analysis comes back when the sketch finishes.
+  void camTick;
+  const cam = editing && options.slice && frame ? engineOf()?.camera : null;
+  const side = cam && frame ? sliceSide(frame, viewDir(cam.azimuth, cam.elevation)) : 0;
+  const slice = useMemo(() => (side && frame ? sliceSection(frame, side) : null), [side, frame]);
+
   return {
     editing,
     editingId,
+    slice,
     feature,
     sketch,
     frame,
