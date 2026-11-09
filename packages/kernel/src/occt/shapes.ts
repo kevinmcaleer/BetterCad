@@ -1,4 +1,4 @@
-import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face } from "replicad-opencascadejs";
+import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
@@ -26,6 +26,24 @@ export interface Placement {
 }
 
 const DEG = Math.PI / 180;
+
+/** What an OpenCascade maker says about where each input element went (#47). */
+export interface History {
+  Modified(s: TopoDS_Shape): NCollection_List_TopoDS_Shape;
+  Generated(s: TopoDS_Shape): NCollection_List_TopoDS_Shape;
+  IsDeleted(s: TopoDS_Shape): boolean;
+}
+
+/**
+ * Watches the makers inside each operation so face names can follow them (#47, occt/naming.ts). Every function that
+ * takes one calls it once per maker, after the maker has built.
+ */
+export interface Tracker {
+  /** `out` was made from `inputs`. `made` names the faces a fillet, chamfer or shell makes from edges or walls. */
+  step(mk: History, inputs: TopoDS_Shape[], out: TopoDS_Shape, made?: { word: string; offset?: boolean }): void;
+  /** A sweep made `out` from a face whose edges are named. */
+  sweep(mk: History & { FirstShape(): TopoDS_Shape; LastShape(): TopoDS_Shape }, out: TopoDS_Shape, edges: [TopoDS_Shape, string][]): void;
+}
 
 function positive(size: Size3, what: string): void {
   for (const a of ["x", "y", "z"] as const) {
@@ -169,22 +187,26 @@ export function prism(oc: OC, profile: TopoDS_Shape, vector: [number, number, nu
 }
 
 /** A closed outline of lines and arcs on a sketch frame, as a wire in world space. */
-function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: number): TopoDS_Shape {
+function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: number, named?: [TopoDS_Shape, string][], tag = ""): TopoDS_Shape {
   const f = spec.frame;
   const P = (p: Vec2) => {
     const w = toWorld(f, p);
     return new oc.gp_Pnt(w[0] + f.normal[0] * lift, w[1] + f.normal[1] * lift, w[2] + f.normal[2] * lift);
   };
   const mk = new oc.BRepBuilderAPI_MakeWire();
-  for (const g of segs) {
-    if (g.kind === "line") mk.Add(new oc.BRepBuilderAPI_MakeEdge(P(g.a), P(g.b)).Edge());
-    else if (g.kind === "arc") mk.Add(new oc.BRepBuilderAPI_MakeEdge(new oc.GC_MakeArcOfCircle(P(g.a), P(g.m), P(g.b)).Value()).Edge());
+  segs.forEach((g, i) => {
+    let e: TopoDS_Edge;
+    if (g.kind === "line") e = new oc.BRepBuilderAPI_MakeEdge(P(g.a), P(g.b)).Edge();
+    else if (g.kind === "arc") e = new oc.BRepBuilderAPI_MakeEdge(new oc.GC_MakeArcOfCircle(P(g.a), P(g.m), P(g.b)).Value()).Edge();
     else {
       const c = P(g.c);
       const circ = new oc.gp_Circ(new oc.gp_Ax2(c, new oc.gp_Dir(f.normal[0], f.normal[1], f.normal[2]), new oc.gp_Dir(f.x[0], f.x[1], f.x[2])), g.r);
-      mk.Add(new oc.BRepBuilderAPI_MakeEdge(circ).Edge());
+      e = new oc.BRepBuilderAPI_MakeEdge(circ).Edge();
     }
-  }
+    mk.Add(e);
+    // The wire may join the ends with new vertices, which makes a new edge: name the one it kept.
+    if (named) named.push([mk.Edge(), g.id ?? `${tag}${i}`]);
+  });
   if (!mk.IsDone()) throw new KernelError("open-profile", "This shape's outline does not join up, so it cannot be extruded.");
   return mk.Wire();
 }
@@ -193,30 +215,45 @@ function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: n
  * Extrude (#61): each profile's outline pushed from \`from\` to \`to\` along the frame's normal, its holes cut out, and
  * the profiles joined into one body.
  */
-export function prismOf(oc: OC, spec: PrismSpec): TopoDS_Shape {
+export function prismOf(oc: OC, spec: PrismSpec, t?: Tracker): TopoDS_Shape {
   const depth = spec.to - spec.from;
   if (!(Math.abs(depth) > 1e-9)) throw new KernelError("invalid-size", "An extrude needs a distance other than 0 mm.");
   const n = spec.frame.normal;
   const v: [number, number, number] = [n[0] * depth, n[1] * depth, n[2] * depth];
-  const solidOf = (segs: ProfileSeg[]) =>
+  const solidOf = (segs: ProfileSeg[], tag: string) =>
     guard(oc, "open-profile", "This shape could not be filled. Check it is closed and does not cross itself.", () => {
-      const mk = new oc.BRepBuilderAPI_MakeFace(oc.TopoDS.Wire(outlineWire(oc, spec, segs, spec.from)), true);
+      const named: [TopoDS_Shape, string][] | undefined = t ? [] : undefined;
+      const mk = new oc.BRepBuilderAPI_MakeFace(oc.TopoDS.Wire(outlineWire(oc, spec, segs, spec.from, named, tag)), true);
       if (!mk.IsDone()) throw new KernelError("open-profile", "This shape could not be filled. Check it is closed and does not cross itself.");
-      return prism(oc, mk.Face(), v);
+      if (!t) return prism(oc, mk.Face(), v);
+      return guard(oc, "failed", "That profile could not be extruded.", () => {
+        const pm = new oc.BRepPrimAPI_MakePrism(mk.Face(), new oc.gp_Vec(...v), false, true);
+        const out = pm.Shape();
+        t.sweep(pm, out, named!);
+        return out;
+      });
     });
-  const bodies = spec.profiles.map((p) => {
-    const outer = solidOf(p.outer);
-    return p.holes.length ? boolean(oc, "cut", outer, p.holes.map(solidOf)) : outer;
+  const bodies = spec.profiles.map((p, k) => {
+    const outer = solidOf(p.outer, `p${k}.`);
+    return p.holes.length
+      ? boolean(
+          oc,
+          "cut",
+          outer,
+          p.holes.map((h, j) => solidOf(h, `p${k}h${j}.`)),
+          t,
+        )
+      : outer;
   });
   if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to extrude.");
-  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1));
+  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1), t);
 }
 
 /**
  * Revolve (#62): each profile turned round an axis in its sketch plane, holes cut, profiles joined. A symmetric
  * revolve starts half its angle back.
  */
-export function revolveOf(oc: OC, spec: RevolveSpec): TopoDS_Shape {
+export function revolveOf(oc: OC, spec: RevolveSpec, t?: Tracker): TopoDS_Shape {
   if (!(spec.angle > 0 && spec.angle <= 360)) throw new KernelError("invalid-size", "A revolve needs an angle from 1° to 360°.");
   const f = spec.frame;
   // An axis above or below the plane (a construction axis or an edge) sits `offset` along the normal.
@@ -225,32 +262,50 @@ export function revolveOf(oc: OC, spec: RevolveSpec): TopoDS_Shape {
   const o = lift(toWorld(f, spec.axis.origin));
   const tip = lift(toWorld(f, [spec.axis.origin[0] + spec.axis.dir[0], spec.axis.origin[1] + spec.axis.dir[1]]));
   const dir: [number, number, number] = [tip[0] - o[0], tip[1] - o[1], tip[2] - o[2]];
-  const solidOf = (segs: ProfileSeg[]) =>
+  const solidOf = (segs: ProfileSeg[], tag: string) =>
     guard(oc, "open-profile", "This shape could not be filled. Check it is closed and does not cross itself.", () => {
-      const mk = new oc.BRepBuilderAPI_MakeFace(oc.TopoDS.Wire(outlineWire(oc, spec, segs, 0)), true);
+      let named: [TopoDS_Shape, string][] | undefined = t ? [] : undefined;
+      const mk = new oc.BRepBuilderAPI_MakeFace(oc.TopoDS.Wire(outlineWire(oc, spec, segs, 0, named, tag)), true);
       if (!mk.IsDone()) throw new KernelError("open-profile", "This shape could not be filled. Check it is closed and does not cross itself.");
       let face: TopoDS_Shape = mk.Face();
       if (spec.start) {
-        const t = new oc.gp_Trsf();
-        t.SetRotation(new oc.gp_Ax1(new oc.gp_Pnt(...o), new oc.gp_Dir(...dir)), spec.start * DEG);
-        face = new oc.BRepBuilderAPI_Transform(face, t, true, false).Shape();
+        const tr = new oc.gp_Trsf();
+        tr.SetRotation(new oc.gp_Ax1(new oc.gp_Pnt(...o), new oc.gp_Dir(...dir)), spec.start * DEG);
+        const mt = new oc.BRepBuilderAPI_Transform(face, tr, true, false);
+        face = mt.Shape();
+        // The turned copy's edges are new: follow each to it.
+        named = named?.flatMap(([e, n]) => shapesOfList(oc, mt.Modified(e)).map((m): [TopoDS_Shape, string] => [m, n]));
       }
-      const out = revolve(oc, face, o, dir, spec.angle);
-      return out;
+      if (!t) return revolve(oc, face, o, dir, spec.angle);
+      return guard(oc, "failed", "That profile could not be revolved.", () => {
+        const ax = new oc.gp_Ax1(new oc.gp_Pnt(...o), new oc.gp_Dir(...dir));
+        const rm = new oc.BRepPrimAPI_MakeRevol(face, ax, spec.angle * DEG, true);
+        const out = rm.Shape();
+        t.sweep(rm, out, named!);
+        return out;
+      });
     });
-  const bodies = spec.profiles.map((p) => {
-    const outer = solidOf(p.outer);
-    return p.holes.length ? boolean(oc, "cut", outer, p.holes.map(solidOf)) : outer;
+  const bodies = spec.profiles.map((p, k) => {
+    const outer = solidOf(p.outer, `p${k}.`);
+    return p.holes.length
+      ? boolean(
+          oc,
+          "cut",
+          outer,
+          p.holes.map((h, j) => solidOf(h, `p${k}h${j}.`)),
+          t,
+        )
+      : outer;
   });
   if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to revolve.");
-  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1));
+  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1), t);
 }
 
 /**
  * Push/pull (#65): a flat face pushed along its outward normal by `distance`. Out joins the slab to the body; in
  * cuts it away, so a box grows or shrinks and a pocket fills or deepens.
  */
-export function pushPull(oc: OC, shape: TopoDS_Shape, faceIndex: number, distance: number): TopoDS_Shape {
+export function pushPull(oc: OC, shape: TopoDS_Shape, faceIndex: number, distance: number, t?: Tracker): TopoDS_Shape {
   if (!(Math.abs(distance) > 1e-9)) return shape;
   const f = elements(oc, shape, "face")[faceIndex];
   if (!f) throw new KernelError("reference-missing", "The face it pulls is not there any more. Pick it again.");
@@ -261,11 +316,11 @@ export function pushPull(oc: OC, shape: TopoDS_Shape, faceIndex: number, distanc
   const flip = face.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1;
   const n: [number, number, number] = [d.X() * flip, d.Y() * flip, d.Z() * flip];
   const slab = prism(oc, face, [n[0] * distance, n[1] * distance, n[2] * distance]);
-  return boolean(oc, distance > 0 ? "join" : "cut", shape, [slab]);
+  return boolean(oc, distance > 0 ? "join" : "cut", shape, [slab], t);
 }
 
 /** Cuts screw holes (#70) into a shape: each a revolved section along the face's inward normal. */
-export function holes(oc: OC, shape: TopoDS_Shape, spec: HoleSpec): TopoDS_Shape {
+export function holes(oc: OC, shape: TopoDS_Shape, spec: HoleSpec, t?: Tracker): TopoDS_Shape {
   const n = spec.frame.normal;
   const a: [number, number, number] = [-n[0], -n[1], -n[2]];
   const u = spec.frame.x;
@@ -282,7 +337,7 @@ export function holes(oc: OC, shape: TopoDS_Shape, spec: HoleSpec): TopoDS_Shape
     );
     return revolve(oc, polygonFace(oc, pts), p as [number, number, number], a, 360);
   });
-  return boolean(oc, "cut", shape, tools);
+  return boolean(oc, "cut", shape, tools, t);
 }
 
 /** Turns a face round an axis through `origin` along `dir`, by `degrees`. */
@@ -344,7 +399,7 @@ function placement(oc: OC, p: Placement) {
 export type BooleanOp = "join" | "cut" | "intersect";
 
 /** Join, cut or intersect: `tools` from `target`. Fails loudly when nothing is left. */
-export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: TopoDS_Shape[]): TopoDS_Shape {
+export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: TopoDS_Shape[], t?: Tracker): TopoDS_Shape {
   let out = target;
   for (const tool of tools) {
     out = guard(
@@ -361,7 +416,9 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
         mk.Build(progress(oc));
         if (!mk.IsDone()) throw new KernelError("boolean-failed", "That operation could not be worked out. Try moving the bodies slightly.");
         if (op === "join") mk.SimplifyResult(true, true, 1e-6);
-        return mk.Shape();
+        const res = mk.Shape();
+        t?.step(mk, [out, tool], res);
+        return res;
       },
     );
   }
@@ -422,6 +479,19 @@ function spot(oc: OC, s: TopoDS_Shape, kind: "edge" | "vertex"): string {
   return key;
 }
 
+/** Every shape in an OpenCascade list (this build can only walk one by taking the first off a copy). */
+export function shapesOfList(oc: OC, list: NCollection_List_TopoDS_Shape): TopoDS_Shape[] {
+  const l = new oc.NCollection_List_TopoDS_Shape();
+  l.Assign(list);
+  const out: TopoDS_Shape[] = [];
+  while (l.Size() > 0) {
+    out.push(l.First());
+    l.RemoveFirst();
+  }
+  l.delete();
+  return out;
+}
+
 export function count(oc: OC, shape: TopoDS_Shape, kind: ShapeKind): number {
   return elements(oc, shape, kind).length;
 }
@@ -440,28 +510,30 @@ function abs(oc: OC, kind: ShapeKind) {
 }
 
 /** Rounds edges. A radius that does not fit fails with the largest that does, found by halving (#48). */
-export function fillet(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], radius: number): TopoDS_Shape {
-  return blend(oc, shape, edgeIndices, radius, "fillet");
+export function fillet(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], radius: number, t?: Tracker): TopoDS_Shape {
+  return blend(oc, shape, edgeIndices, radius, "fillet", t);
 }
 
-export function chamfer(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], distance: number): TopoDS_Shape {
-  return blend(oc, shape, edgeIndices, distance, "chamfer");
+export function chamfer(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], distance: number, t?: Tracker): TopoDS_Shape {
+  return blend(oc, shape, edgeIndices, distance, "chamfer", t);
 }
 
-function tryBlend(oc: OC, shape: TopoDS_Shape, edges: TopoDS_Edge[], r: number, kind: "fillet" | "chamfer"): TopoDS_Shape | null {
+function tryBlend(oc: OC, shape: TopoDS_Shape, edges: TopoDS_Edge[], r: number, kind: "fillet" | "chamfer", t?: Tracker): TopoDS_Shape | null {
   try {
     const mk = kind === "fillet" ? new oc.BRepFilletAPI_MakeFillet(shape, oc.ChFi3d_FilletShape.ChFi3d_Rational) : new oc.BRepFilletAPI_MakeChamfer(shape);
     for (const e of edges) mk.Add(r, e);
     mk.Build(progress(oc));
     if (!mk.IsDone()) return null;
     const out = mk.Shape();
-    return valid(oc, out) ? out : null;
+    if (!valid(oc, out)) return null;
+    t?.step(mk, [shape], out, { word: kind });
+    return out;
   } catch {
     return null;
   }
 }
 
-function blend(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], r: number, kind: "fillet" | "chamfer"): TopoDS_Shape {
+function blend(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], r: number, kind: "fillet" | "chamfer", t?: Tracker): TopoDS_Shape {
   const word = kind === "fillet" ? "fillet" : "chamfer";
   if (!(r > 0)) throw new KernelError("invalid-size", `A ${word} needs a size above 0 mm.`);
   const all = elements(oc, shape, "edge");
@@ -471,7 +543,7 @@ function blend(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], r: number, ki
     return oc.TopoDS.Edge(e);
   });
   if (!edges.length) throw new KernelError("reference-missing", `Pick at least one edge for the ${word}.`);
-  const out = tryBlend(oc, shape, edges, r, kind);
+  const out = tryBlend(oc, shape, edges, r, kind, t);
   if (out) return out;
   // Find the largest size that works, halving then bisecting (6 tries at most).
   let lo = 0;
@@ -492,7 +564,7 @@ function blend(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], r: number, ki
 }
 
 /** Hollows a solid to a wall `thickness`, leaving the faces given open. */
-export function shell(oc: OC, shape: TopoDS_Shape, openFaces: number[], thickness: number, outside = false): TopoDS_Shape {
+export function shell(oc: OC, shape: TopoDS_Shape, openFaces: number[], thickness: number, outside = false, t?: Tracker): TopoDS_Shape {
   if (!(thickness > 0)) throw new KernelError("invalid-size", "A shell needs a wall above 0 mm.");
   const faces = elements(oc, shape, "face");
   const list = new oc.NCollection_List_TopoDS_Shape();
@@ -511,8 +583,8 @@ export function shell(oc: OC, shape: TopoDS_Shape, openFaces: number[], thicknes
     // With nothing left open, OCCT gives the offset solid alone: the sealed hollow is the space between the two.
     if (!openFaces.length) {
       const offset = count(oc, out, "solid") ? out : solidOfShell(oc, out);
-      out = outside ? boolean(oc, "cut", offset, [shape]) : boolean(oc, "cut", shape, [offset]);
-    }
+      out = outside ? boolean(oc, "cut", offset, [shape], t) : boolean(oc, "cut", shape, [offset], t);
+    } else t?.step(mk, [shape], out, { word: "shell", offset: true });
     if (!valid(oc, out)) throw new KernelError("non-manifold", `A ${mm(thickness)} wall does not fit inside this body. Try a thinner wall.`);
     return out;
   });

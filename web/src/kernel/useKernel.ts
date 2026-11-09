@@ -11,6 +11,8 @@ import type { ModelDoc, Part } from "@bettercad/kernel/document";
 export interface KernelBody {
   mesh: BodyMesh;
   measure: Measure;
+  /** Each face's and edge's name (#47), in the mesh's numbering: steps store these with their picks. */
+  names?: { faces: string[]; edges: string[] };
 }
 
 export interface KernelView {
@@ -19,6 +21,8 @@ export interface KernelView {
   bodies: Map<string, KernelBody>;
   /** Features the kernel could not build, with the reason. */
   failed: Map<string, string>;
+  /** Steps whose picked edges or faces were found again only by place (#47), with a warning. */
+  recovered: Map<string, string>;
   /** Measures picks on the model as it is now; null when the engine is off. */
   measure(refs: TopoRef[]): Promise<MeasureResult | null>;
   /** Any other kernel call (export, estimate); null when the engine is off. */
@@ -38,9 +42,14 @@ async function client(): Promise<KernelClient | null> {
 
 export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelView {
   const [state, setState] = useState<KernelState>({ status: "loading", fraction: 0 });
-  const [built, setBuilt] = useState<{ bodies: Map<string, KernelBody & { key: string }>; failed: Map<string, string> }>(() => ({
+  const [built, setBuilt] = useState<{
+    bodies: Map<string, KernelBody & { key: string }>;
+    failed: Map<string, string>;
+    recovered: Map<string, string>;
+  }>(() => ({
     bodies: new Map(),
     failed: new Map(),
+    recovered: new Map(),
   }));
   const kc = useRef<KernelClient | null>(null);
   const [haveClient, setHaveClient] = useState(false);
@@ -76,8 +85,8 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
     call.then(
       (r) => {
         const bodies = new Map<string, KernelBody & { key: string }>();
-        for (const b of r.bodies) bodies.set(b.id, { mesh: b.mesh, measure: b.measure, key: sent.get(b.id) ?? "" });
-        setBuilt({ bodies, failed: new Map(r.failed) });
+        for (const b of r.bodies) bodies.set(b.id, { mesh: b.mesh, measure: b.measure, names: b.names, key: sent.get(b.id) ?? "" });
+        setBuilt({ bodies, failed: new Map(r.failed), recovered: new Map(r.recovered ?? []) });
         // A step that failed is kept for a problem report (#109); its banner already says so.
         const first = r.failed[0];
         if (first) caught(`A step didn't build: ${first[1]}`);
@@ -115,5 +124,5 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
     [],
   );
 
-  return { state, bodies, failed: built.failed, measure, call };
+  return { state, bodies, failed: built.failed, recovered: built.recovered, measure, call };
 }
