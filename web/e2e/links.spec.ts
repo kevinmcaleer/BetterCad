@@ -18,7 +18,7 @@ test("make a component of two boxes and select it from the browser", async ({ pa
 
   // Still three bodies; the boxes sit inside the component.
   await expect(bodyRows(page)).toHaveCount(3);
-  await expect(page.getByRole("treeitem", { name: /Component 1 2 bodies/ })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Component 1$/ })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /^Box 1/ })).toHaveAttribute("aria-level", "4");
   await expect(page.getByRole("treeitem", { name: /^Cylinder 1/ })).toHaveAttribute("aria-level", "3");
 
@@ -40,11 +40,11 @@ test("work in a new component, nest another inside it, then go back to the model
 
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
-  await expect(page.getByRole("treeitem", { name: /Component 1 1 body/ })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Component 1$/ })).toBeVisible();
 
   // A component made now sits inside the active one, and becomes active.
   await tools.getByRole("button", { name: "New component" }).click();
-  await expect(page.getByRole("treeitem", { name: /Component 2 Empty/ })).toHaveAttribute("aria-level", "3");
+  await expect(page.getByRole("treeitem", { name: /Component 2$/ })).toHaveAttribute("aria-level", "3");
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: /^Cylinder 1/ })).toHaveAttribute("aria-level", "5");
@@ -87,8 +87,8 @@ test("drag a body into a component, and move it back to the model", async ({ pag
 
   const box = page.getByRole("treeitem", { name: /^Box 1/ });
   await expect(box).toHaveAttribute("aria-level", "3");
-  await box.dragTo(page.getByRole("treeitem", { name: /Component 1 Empty/ }));
-  await expect(page.getByRole("treeitem", { name: /Component 1 1 body/ })).toBeVisible();
+  await box.dragTo(page.getByRole("treeitem", { name: /Component 1$/ }));
+  await expect(page.getByRole("treeitem", { name: /Component 1$/ })).toBeVisible();
   await expect(box).toHaveAttribute("aria-level", "4");
 
   await box.click({ button: "right" });
@@ -124,7 +124,7 @@ test("pick a component in the browser, then sketch and extrude inside it", async
   await expect(page.getByRole("button", { name: "Working in Untitled model" })).toBeVisible();
 
   // Picking the row is enough; it stays active after you pick something else.
-  await page.getByRole("treeitem", { name: /Component 1 Empty/ }).click();
+  await page.getByRole("treeitem", { name: /Component 1$/ }).click();
   await expect(page.getByRole("button", { name: "Working in Component 1" })).toBeVisible();
 
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
@@ -147,6 +147,29 @@ test("pick a component in the browser, then sketch and extrude inside it", async
     await expect(page.getByRole("textbox", { name: "Distance" })).toBeVisible({ timeout: 1500 });
   }).toPass({ timeout: 15_000 });
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("treeitem", { name: /Component 1 1 body/ })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Component 1$/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Working in Component 1" })).toBeVisible();
+});
+
+/** Components (#335): a component's eye hides everything inside it, as one step you can undo. */
+test("hide a whole component from its eye, then show it again", async ({ page }) => {
+  await page.goto("/");
+  for (const shape of ["Box", "Box"]) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: shape, exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 1/ }).click();
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ modifiers: ["ControlOrMeta"] });
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+
+  await page.getByRole("button", { name: "Hide Component 1" }).click();
+  await expect(page.getByRole("button", { name: "Show Box 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show Box 2" })).toBeVisible();
+  // Its radio stays beside the eye.
+  await expect(page.getByRole("button", { name: "Activate Component 1" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Show Component 1" }).click();
+  await expect(page.getByRole("button", { name: "Hide Box 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hide Box 2" })).toBeVisible();
 });

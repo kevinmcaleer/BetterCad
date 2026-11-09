@@ -1,6 +1,22 @@
-import { BufferGeometry, ConeGeometry, Float32BufferAttribute, Group, Line, LineBasicMaterial, Mesh, MeshBasicMaterial, Quaternion, Vector3 } from "three";
-import { toWorld, type Frame, type Profile } from "@bettercad/sketch";
 import {
+  BufferGeometry,
+  ConeGeometry,
+  DoubleSide,
+  Float32BufferAttribute,
+  Group,
+  Line,
+  LineBasicMaterial,
+  LineSegments,
+  Mesh,
+  MeshBasicMaterial,
+  Quaternion,
+  ShapeUtils,
+  Vector2,
+  Vector3,
+} from "three";
+import { frameY, toWorld, type Frame, type Profile } from "@bettercad/sketch";
+import {
+  extent,
   profilesMiddle,
   throughAllAllowed,
   toPartLocal,
@@ -35,12 +51,21 @@ export class ExtrudeArrow {
   private end: V3 = [0, 0, 0];
   private dir: V3 = [0, 0, 1];
   private hot = false;
+  /** The shapes swept out to where the drag has reached, drawn at once while the body itself is rebuilt. */
+  private ghostMat = new MeshBasicMaterial({ transparent: true, opacity: 0.22, depthWrite: false, depthTest: false, side: DoubleSide });
+  private ghostLineMat = new LineBasicMaterial({ transparent: true, opacity: 0.8, depthTest: false });
+  private ghost = new Mesh(new BufferGeometry(), this.ghostMat);
+  private ghostLines = new LineSegments(new BufferGeometry(), this.ghostLineMat);
+  private cut = false;
 
   constructor(private eng: Engine) {
     this.line.renderOrder = 21;
     this.head.renderOrder = 21;
     this.line.frustumCulled = false;
-    this.group.add(this.line, this.head);
+    this.ghost.renderOrder = 20;
+    this.ghostLines.renderOrder = 20;
+    this.ghost.visible = this.ghostLines.visible = false;
+    this.group.add(this.ghost, this.ghostLines, this.line, this.head);
     this.paint();
     eng.addOverlay(this.group);
   }
@@ -64,6 +89,31 @@ export class ExtrudeArrow {
 
   hide(): void {
     this.group.visible = false;
+    this.eng.invalidate();
+  }
+
+  /**
+   * Shows the shapes swept from `from` to `to` mm along the frame's normal, or hides it (null). Cheap enough for every
+   * pointer move, so a drag follows the pointer while the kernel catches up with the real body. `cut` draws it in the
+   * danger colour, as it takes material away.
+   */
+  setGhost(g: { frame: Frame; shapes: Profile[]; from: number; to: number; cut: boolean } | null): void {
+    if (!g || !g.shapes.length || Math.abs(g.to - g.from) < 1e-6) {
+      if (!this.ghost.visible) return;
+      this.ghost.visible = this.ghostLines.visible = false;
+      this.eng.invalidate();
+      return;
+    }
+    const geo = ghostGeometry(g.frame, g.shapes, g.from, g.to);
+    this.ghost.geometry.dispose();
+    this.ghost.geometry = geo.faces;
+    this.ghostLines.geometry.dispose();
+    this.ghostLines.geometry = geo.lines;
+    this.ghost.visible = this.ghostLines.visible = true;
+    if (g.cut !== this.cut) {
+      this.cut = g.cut;
+      this.paint();
+    }
     this.eng.invalidate();
   }
 
@@ -103,6 +153,9 @@ export class ExtrudeArrow {
     const c = this.hot ? p.accent : p.snap;
     this.lineMat.color.copy(c);
     this.headMat.color.copy(c);
+    const g = this.cut ? p.danger : p.snap;
+    this.ghostMat.color.copy(g);
+    this.ghostLineMat.color.copy(g);
   }
 
   dispose(): void {
@@ -111,7 +164,56 @@ export class ExtrudeArrow {
     this.head.geometry.dispose();
     this.lineMat.dispose();
     this.headMat.dispose();
+    this.ghost.geometry.dispose();
+    this.ghostLines.geometry.dispose();
+    this.ghostMat.dispose();
+    this.ghostLineMat.dispose();
   }
+}
+
+/**
+ * The shapes swept from `from` to `to` mm along the frame's normal: both ends and the walls between, and the outlines
+ * at each end. Made by hand rather than with three's ExtrudeGeometry, which would add to the first-paint bundle.
+ */
+export function ghostGeometry(frame: Frame, shapes: Profile[], from: number, to: number): { faces: BufferGeometry; lines: BufferGeometry } {
+  const { origin: o, x, normal: n } = frame;
+  const y = frameY(frame);
+  const at = (p: readonly number[], d: number) => [0, 1, 2].map((i) => o[i]! + x[i]! * p[0]! + y[i]! * p[1]! + n[i]! * d);
+  const pos: number[] = [];
+  const line: number[] = [];
+  for (const pr of shapes) {
+    const loops = [pr.points, ...pr.holes.map((h) => h.points)];
+    // The end caps: triangulateShape numbers the outline's points, then each hole's, in one run.
+    const all = loops.flat();
+    const v2 = (l: readonly (readonly number[])[]) => l.map((p) => new Vector2(p[0], p[1]));
+    for (const tri of ShapeUtils.triangulateShape(
+      v2(pr.points),
+      pr.holes.map((h) => v2(h.points)),
+    ))
+      for (const d of [from, to]) for (const i of tri) pos.push(...at(all[i]!, d));
+    for (const l of loops)
+      for (let i = 0; i < l.length; i++) {
+        const p = l[i]!;
+        const q = l[(i + 1) % l.length]!;
+        pos.push(...at(p, from), ...at(q, from), ...at(q, to), ...at(p, from), ...at(q, to), ...at(p, to));
+        line.push(...at(p, from), ...at(q, from), ...at(p, to), ...at(q, to));
+      }
+  }
+  const faces = new BufferGeometry();
+  faces.setAttribute("position", new Float32BufferAttribute(pos, 3));
+  const lines = new BufferGeometry();
+  lines.setAttribute("position", new Float32BufferAttribute(line, 3));
+  return { faces, lines };
+}
+
+/**
+ * How far along the sketch's normal the ghost of a drag goes: the step's own extent, with through all cut down to
+ * `reach` (the arrow's length) so it doesn't fill the view.
+ */
+export function ghostSpan(f: ExtrudeFeature, reach: number): { from: number; to: number } {
+  const all = f.extent === "all" && throughAllAllowed(f.operation);
+  const e = extent(f.direction, f.distance, f.distance2, all);
+  return all ? { from: Math.max(-reach, e.from), to: Math.min(reach, e.to) } : e;
 }
 
 /** Distance from a point to a segment, in screen pixels. */

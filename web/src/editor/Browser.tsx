@@ -88,8 +88,6 @@ export interface BrowserModel {
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
 
-const bodies = (n: number) => (n === 1 ? "1 body" : n ? `${n} bodies` : "Empty");
-
 /** A folder's row id in a component (#171); the model's own folders keep the plain ids. */
 const inComp = (folder: string, c?: string) => (c ? `${folder}:${c}` : folder);
 /** The folder kind and component a folder row id names, if it is one. */
@@ -117,6 +115,14 @@ function owners(m: BrowserModel) {
     parts: (c?: string) => m.parts.filter((p) => own(p.link) === c),
     sketches: (c?: string) => m.sketches.filter((s) => own(s.component) === c),
     construct: (c?: string) => (m.construct ?? []).filter((s) => own(s.component) === c),
+    /** Everything a component holds, in it and in the components inside it: bodies, sketches and construction. */
+    held: (c: string) => {
+      const cs = [c, ...inside(c)];
+      return {
+        parts: m.parts.filter((p) => cs.includes(own(p.link)!)),
+        rest: [...m.sketches, ...(m.construct ?? [])].filter((s) => cs.includes(own(s.component)!)),
+      };
+    },
   };
 }
 
@@ -180,7 +186,6 @@ export function browserItems(m: BrowserModel): TreeItem[] {
   // Then the model's own folders and components, and each component's, inside out (#171).
   const o = owners(m);
   const joints = m.joints ?? [];
-  const jointOf = new Map(joints.map((j) => [j.child, j]));
   const contents = (c: string | undefined, row: string) => {
     // Construction geometry (#265), as in Fusion; Bodies and Sketches show once they have something in them.
     const cons = o.construct(c);
@@ -241,10 +246,11 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         warning: x.warning,
       });
     }
-    // Its components, each with its joint (#172) named.
+    // Its components, by name only: the summary crowded the name out.
     for (const k of o.comps.filter((x) => o.parentOf(x) === c)) {
-      const j = jointOf.get(k.id);
-      const note = j ? `${bodies(k.parts.length)}, ${kindLabel(j.kind).toLowerCase()} on ${j.name}` : bodies(k.parts.length);
+      // Its eye is shut once everything in it is hidden, as a folder's is.
+      const h = o.held(k.id);
+      const all = [...h.parts, ...h.rest];
       items.push({
         id: k.id,
         name: k.name,
@@ -254,9 +260,9 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         drag: false,
         move,
         into: move,
-        toggles: m.readOnly ? [] : ["active"],
+        toggles: m.readOnly ? ["hidden"] : ["hidden", "active"],
+        hidden: all.length > 0 && all.every((x) => x.hidden),
         active: m.active === k.id,
-        note,
       });
       contents(k.id, k.id);
     }
@@ -311,8 +317,8 @@ export interface BrowserPanelProps {
   onActivate?: (id: string | null) => void;
   /** Moves bodies, sketches, construction or components into a component, or the model (null) (#334). */
   onMoveInto?: (ids: string[], to: string | null) => void;
-  /** Hide (true) or show bodies, all at once. */
-  onBodiesHidden: (ids: string[], hidden: boolean) => void;
+  /** Hide (true) or show bodies, all at once; `name` names the step when they're a component's. */
+  onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   /** Hide (true) or show sketches. */
   onSketchesHidden: (ids: string[], hidden: boolean) => void;
   onOrigin: (shown: OriginItem[]) => void;
@@ -377,6 +383,17 @@ export function BrowserPanel(p: BrowserPanelProps) {
     const item = originItemOf(id);
     if (item) return p.onOrigin(model.origin.includes(item) ? model.origin.filter((x) => x !== item) : [...model.origin, item]);
     if (id === ROW.origin) return p.onOrigin(model.origin.length ? [] : ORIGIN);
+    // A component's eye: everything in it, and in the components inside it, as one step.
+    const comp = model.links?.find((l) => l.id === id);
+    if (comp) {
+      const h = owners(model).held(id);
+      const all = [...h.parts, ...h.rest];
+      return p.onBodiesHidden(
+        all.map((x) => x.id),
+        all.some((x) => !x.hidden),
+        comp.name,
+      );
+    }
     // A folder's eye: everything in it, in the model or in one component.
     const f = folderOf(id);
     if (f) {
@@ -413,6 +430,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
     p.onRename(id, name);
   };
 
+  const componentShown = (id: string) => !items.find((i) => i.id === id)?.hidden;
   const menuFor = (id: string): { title?: string; entries: MenuEntry[] } => {
     const plane = planeOf(id);
     if (plane) {
@@ -497,6 +515,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
             ? []
             : [{ id: "activate", label: "Activate", icon: "radioOn" as const, onSelect: () => p.onActivate?.(id) }]),
           { id: "select", label: "Select its bodies", icon: "component", onSelect: () => select([id]) },
+          { id: "show", label: componentShown(id) ? "Hide" : "Show", icon: componentShown(id) ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") },
           { id: "rename", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => p.onRenameIdChange(id) },
         ],
       };
