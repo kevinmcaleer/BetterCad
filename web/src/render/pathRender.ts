@@ -254,7 +254,7 @@ export class PathRender {
     m.map = b.floor.grid?.map ?? null;
     m.emissiveMap = b.floor.grid?.map ?? null;
     m.emissive.set(b.floor.grid ? 0xffffff : 0x000000);
-    m.emissiveIntensity = b.floor.grid ? 0.6 : 0;
+    m.emissiveIntensity = b.floor.grid ? (b.floor.glow ?? 0.6) : 0;
     m.needsUpdate = true;
     this.fitGrid();
   }
