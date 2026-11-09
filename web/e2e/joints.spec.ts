@@ -70,9 +70,9 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
   await panel.getByRole("textbox", { name: "Angle" }).fill("15");
   await panel.getByRole("textbox", { name: "Angle" }).press("Tab");
   await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("15");
-  await expect(panel.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "Kind" })).toHaveValue("revolute");
   await expect(panel.getByRole("textbox", { name: "Lower" })).toHaveValue("-90");
-  await panel.getByRole("button", { name: "Slider (prismatic)" }).click();
+  await panel.getByRole("combobox", { name: "Kind" }).selectOption({ label: "Slider (prismatic)" });
   await expect(panel.getByRole("textbox", { name: "Upper" })).toHaveValue("50");
   await page.keyboard.press("Enter");
   await expect(page.getByText("Made Joint 1: slider, Component 1 on Base")).toBeVisible();
@@ -83,7 +83,7 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
   await expect(editing.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^25, 0, 20 mm/ })).toBeVisible();
   await expect(editing.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^0, 0, 20 mm/ })).toBeVisible();
   await expect(editing.getByRole("textbox", { name: "Angle" })).toHaveValue("15");
-  await expect(editing.getByRole("button", { name: "Slider (prismatic)", pressed: true })).toBeVisible();
+  await expect(editing.getByRole("combobox", { name: "Kind" })).toHaveValue("prismatic");
   await editing.getByRole("button", { name: "Cancel" }).click();
   await expect(editing).toHaveCount(0);
 

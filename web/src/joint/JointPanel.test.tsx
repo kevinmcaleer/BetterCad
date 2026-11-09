@@ -87,15 +87,16 @@ describe("JointPanel (#172)", () => {
     expect(x.change).toHaveBeenCalledWith({ flip: true });
   });
 
-  it("names each kind with URDF's name beside it, and shows a hinge's limits in degrees", async () => {
+  it("offers each kind in a list with URDF's name beside it, and shows a hinge's limits in degrees", async () => {
     const x = session();
     render(<JointPanel x={x} onCancel={() => {}} />);
+    const kind = screen.getByRole("combobox", { name: "Kind" });
     for (const name of ["Hinge (revolute)", "Wheel (continuous)", "Slider (prismatic)", "Fixed (fixed)"]) {
-      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+      expect(within(kind).getByRole("option", { name })).toBeInTheDocument();
     }
-    expect(screen.getByRole("button", { name: "Hinge (revolute)" })).toHaveAttribute("aria-pressed", "true");
+    expect(kind).toHaveValue("revolute");
     expect(screen.getByRole("textbox", { name: /^Lower/ })).toHaveValue("-90");
-    await userEvent.click(screen.getByRole("button", { name: "Wheel (continuous)" }));
+    await userEvent.selectOptions(kind, "Wheel (continuous)");
     expect(x.change).toHaveBeenCalledWith({ kind: "continuous" });
   });
 

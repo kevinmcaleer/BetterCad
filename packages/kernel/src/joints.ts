@@ -43,7 +43,8 @@ const tidy = (a: V3): V3 => a.map((v) => (Math.abs(v) < 1e-9 ? 0 : Math.round(v 
 export function jointFrame(s: Single): { origin: V3; axis: V3 } | null {
   if (s.kind === "edge") {
     if (s.circle?.axis) {
-      const axis = unit(s.circle.axis);
+      // The way the rim faces, when the kernel could tell, so the snap faces out of the part as a face's does.
+      const axis = unit(s.circle.facing ?? s.circle.axis);
       return axis && { origin: tidy(s.circle.centre), axis: tidy(axis) };
     }
     if (s.line) {

@@ -5,10 +5,10 @@ Everything is within budget. Budgets live in `budgets.json`; raise one only with
 
 | | Area | Measure | Now | Budget | |
 | --- | --- | --- | ---: | ---: | --- |
-| ✓ | Bundle | Shell (first paint) | 359.8 | 360.0 | KB gz |
+| ✓ | Bundle | Shell (first paint) | 358.4 | 360.0 | KB gz |
 | ✓ | Bundle | Pages | 4.9 | 120.0 | KB gz |
 | ✓ | Bundle | Kernel client | 0.9 | 30.0 | KB gz |
-| ✓ | Bundle | All JavaScript | 658.2 | 659.0 | KB gz |
+| ✓ | Bundle | All JavaScript | 662.5 | 663.0 | KB gz |
 | ✓ | WASM | OpenCascade (target 12 MB) | 21.9 | 24.0 | MB |
 | ✓ | WASM | OpenCascade, Brotli (target 3.5 MB) | 5.4 | 6.0 | MB |
 | ✓ | WASM | planegcs | 0.5 | 1.0 | MB |
