@@ -163,6 +163,16 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 900, height: 600 });
   await page.addInitScript(() => ((window as unknown as { __bcRenderMax: number }).__bcRenderMax = 4));
+  // The path tracer draws its sample pattern from Math.random: seed it, so the grain is the same on every run.
+  await page.addInitScript(() => {
+    let a = 0x9e3779b9;
+    Math.random = () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
@@ -171,7 +181,7 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   await page.keyboard.press("Escape");
   await page.keyboard.press("Shift+R");
   await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("4 of 4 samples", { timeout: 200_000 });
-  // Four samples are grainy and the grain differs every run, so compare the picture shrunk to 60 × 40: halving it
+  // Four samples are grainy, so compare the picture shrunk to 60 × 40: halving it
   // step by step averages each pixel with its neighbours, which keeps the shape, colour and shadow and drops the grain.
   // Some grain survives along the box's edges (3% of pixels on one run), so allow 5%: a wrong shape, colour or
   // shadow moves far more.
