@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 import wasmUrl from "replicad-opencascadejs/wasm?url";
-import { loadOCCT, type OC } from "./occt/oc";
+import { loadOCCT, loadTimes, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 import { reorderWithPicks } from "./occt/repick";
 import { Exporter } from "./occt/exporter";
@@ -30,7 +30,7 @@ ready.then(
     occt = oc;
     builder = new ModelBuilder(oc);
     exporter = new Exporter(oc, builder);
-    post({ kind: "ready", ms: performance.now() - t0 });
+    post({ kind: "ready", ms: performance.now() - t0, load: { ...loadTimes } });
   },
   (e) =>
     post({

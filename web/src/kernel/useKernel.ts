@@ -1,7 +1,7 @@
 import { caught } from "../report/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BodyMesh, Call, KernelClient, KernelState, Measure, MeasureResult, Methods, ModelResult, TopoRef } from "@bettercad/kernel";
-import { milestone } from "../perf";
+import { milestone, recordKernelLoad } from "../perf";
 import type { ModelDoc, Part } from "@bettercad/kernel/document";
 
 /**
@@ -69,7 +69,7 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
         if (!c) return setState(OFF);
         kc.current = c;
         off = c.subscribe((s) => {
-          if (s.status === "ready") milestone("kernel");
+          if (s.status === "ready") recordKernelLoad(s.load, milestone("kernel"));
           setState(s);
         });
         setHaveClient(true);

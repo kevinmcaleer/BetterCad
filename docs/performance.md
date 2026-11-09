@@ -53,6 +53,36 @@ performance.getEntriesByType("mark").filter((m) => m.name.startsWith("bc:")).map
 
 For a fresh visit, clear site data first (DevTools > Application > Clear site data). For a cached visit, reload.
 
+## Kernel benchmarks (#50)
+
+`npm run bench:kernel` times the operations a person waits on, in Node with the worker's WASM, and prints the median
+and 95th percentile of 10 runs. `-- --json out.json` also writes the WASM heap, the load time and the machine;
+results worth keeping go in `packages/kernel/bench/results/`, one file per machine and date. The bodies are made by
+the script (a plate with a grid of holes, a box with a square hole), so no fixtures are committed.
+
+The worker reports how its load split, fetching the WASM and then compiling and starting it. The overlay shows
+both, and the console logs them once a session ("Geometry engine ready in 3.1 s: download 1.9 s, compile and start
+1.2 s").
+
+First results, 2026-11-09, a 4-core 2.3 GHz Xeon (a cloud container, about a 2020 laptop):
+
+| Operation | Median | p95 |
+| --- | ---: | ---: |
+| Make a 10 mm box | 0.0 ms | 0.1 ms |
+| Extrude a 20-line sketch | 0.9 ms | 3.6 ms |
+| Fillet 24 edges | 18.5 ms | 27.8 ms |
+| Shell a box, top open | 4.7 ms | 5.1 ms |
+| Join two plates of 150 faces each (overlapping hole grids) | 1594 ms | 1696 ms |
+| Mesh the plate, fast / fine | 657 / 4073 ms | 733 / 4206 ms |
+| Measure the plate | 59 ms | 75 ms |
+| Load the WASM (Node, from disk) | 174 ms | |
+
+Against #50's targets:
+
+- **Boolean:** the 200 ms target for two 10k-face bodies isn't met. Two 150-face plates whose hole grids overlap take 1.6 s.
+- **Meshing:** meshing the holed plate is the slowest step, so it is the place to look first.
+- **Memory:** the WASM heap ends the set at 743 MB, over the 512 MB target. It doesn't grow over 100 edit-and-undo cycles. WebAssembly memory never shrinks, so the peak is what the fine mesh of the plate needed.
+
 ## The performance overlay (#42)
 
 Add `?perf` to the address (`https://bettercad.kevsrobots.com/?perf#/edit/<id>`), or pick Show frame times from the command palette. The overlay sits bottom-left of the view and shows:

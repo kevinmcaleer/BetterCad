@@ -15,16 +15,23 @@ export interface LoadOptions {
 
 let loading: Promise<OC> | null = null;
 
+/** How long the last load took (#50, #97): fetching the WASM, then compiling and starting it, in ms. */
+export const loadTimes: { download?: number; start?: number } = {};
+
 export function loadOCCT(opts: LoadOptions = {}): Promise<OC> {
   if (!loading) {
     loading = (async () => {
       const { default: init } = await import("replicad-opencascadejs");
       const options: Record<string, unknown> = {};
+      let t = performance.now();
       if (opts.wasmUrl) {
         const bytes = await download(opts.wasmUrl, opts.onProgress);
         options.wasmBinary = bytes;
+        loadTimes.download = performance.now() - t;
+        t = performance.now();
       }
       const oc = await init(options);
+      loadTimes.start = performance.now() - t;
       opts.onProgress?.(1);
       return oc;
     })();

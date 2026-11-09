@@ -1,0 +1,45 @@
+{
+  "Build the phone stand sample": 31,
+  "Build the hole calibration coupon (40 cuts)": 1042.9,
+  "Fillet all 12 edges of a box": 8.6,
+  "Mesh a hollow sphere, fine": 786.3,
+  "Thin-wall check, hollow sphere": 315.5,
+  "Orientation suggestions, hollow sphere": 235.6,
+  "Make a 10 mm box": 0,
+  "Extrude a 20-line sketch": 0.9,
+  "Join two plates of 150 faces each": 1593.5,
+  "Fillet 24 edges": 18.5,
+  "Shell a box, top open": 4.7,
+  "Mesh the plate, fast": 656.9,
+  "Mesh the plate, fine": 4072.9,
+  "Measure the plate": 59,
+  "$p95": {
+    "Build the phone stand sample": 34.4,
+    "Build the hole calibration coupon (40 cuts)": 1069.9,
+    "Fillet all 12 edges of a box": 9.8,
+    "Mesh a hollow sphere, fine": 851.7,
+    "Thin-wall check, hollow sphere": 369.7,
+    "Orientation suggestions, hollow sphere": 262.3,
+    "Make a 10 mm box": 0.1,
+    "Extrude a 20-line sketch": 3.6,
+    "Join two plates of 150 faces each": 1695.5,
+    "Fillet 24 edges": 27.8,
+    "Shell a box, top open": 5.1,
+    "Mesh the plate, fast": 733.3,
+    "Mesh the plate, fine": 4206.3,
+    "Measure the plate": 74.9
+  },
+  "$heapMB": {
+    "afterSet": 743.4,
+    "afterCycles": 743.4
+  },
+  "$loadMs": 173.6,
+  "$machine": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+    "cores": 4,
+    "memoryGB": 16,
+    "node": "v22.23.4"
+  }
+}

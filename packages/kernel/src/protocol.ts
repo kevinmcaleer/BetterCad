@@ -65,5 +65,5 @@ export type Response<M extends Method = Method> =
   | { kind: "error"; id: number; error: KernelErrorData }
   | { kind: "progress"; id: number; fraction: number; steps?: [number, number] }
   | { kind: "load"; fraction: number }
-  | { kind: "ready"; ms: number }
+  | { kind: "ready"; ms: number; load?: { download?: number; start?: number } }
   | { kind: "load-error"; error: KernelErrorData };

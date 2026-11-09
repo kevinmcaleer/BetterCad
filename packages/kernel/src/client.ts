@@ -13,7 +13,11 @@ export interface WorkerLike {
   onerror: ((ev: ErrorEvent) => void) | null;
 }
 
-export type KernelState = { status: "loading"; fraction: number } | { status: "ready"; ms: number } | { status: "failed"; error: KernelErrorData };
+export type KernelState =
+  | { status: "loading"; fraction: number }
+  /** `load`: fetching the WASM, then compiling and starting it, in ms (#50). */
+  | { status: "ready"; ms: number; load?: { download?: number; start?: number } }
+  | { status: "failed"; error: KernelErrorData };
 
 export interface Call<R> extends Promise<R> {
   cancel(): void;
@@ -102,7 +106,7 @@ export class KernelClient {
         this.set({ status: "loading", fraction: msg.fraction });
         return;
       case "ready":
-        this.set({ status: "ready", ms: msg.ms });
+        this.set({ status: "ready", ms: msg.ms, load: msg.load });
         return;
       case "load-error":
         this.set({ status: "failed", error: msg.error });
