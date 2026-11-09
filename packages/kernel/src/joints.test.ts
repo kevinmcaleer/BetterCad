@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { planeFrame } from "@bettercad/sketch";
 import { loadOCCT, type OC } from "./occt/oc";
 import { box, cylinder, elements } from "./occt/shapes";
 import { describe as describeRef, type Single } from "./occt/measure";
@@ -6,8 +7,11 @@ import {
   LOOP_MESSAGE,
   addJoint,
   addLink,
+  addConstruct,
   addParam,
   addPart,
+  addSketch,
+  moveInto,
   build,
   dependsOn,
   featureSummary,
@@ -179,5 +183,25 @@ describe("joint steps", () => {
     expect(a.rotation!.z).toBeCloseTo(90, 6);
     const flipped = at(updateJoint(d, "J1", { angle: undefined, flip: true }));
     expect(flipped.position.z).toBeCloseTo(20 - before.position.z, 6);
+  });
+
+  it("takes a component's sketches and construction along with it, but not ones made after the joint (#335)", () => {
+    // A sketch and a plane in the arm's component, then the joint turns it 90° about Z, then another sketch in it.
+    let d = addSketch(robot(), { kind: "world", plane: "XZ", offset: 0 }, "S1");
+    d = addConstruct(d, { kind: "offset", refs: [{ origin: "YZ" }], value: 5 }, "P1");
+    d = addJoint(d, hinge({ angle: 90 }), "J1");
+    d = addSketch(d, { kind: "world", plane: "XZ", offset: 0 }, "S2");
+    d = moveInto(d, ["S1", "P1", "S2"], "A");
+    const b = build(d);
+    const frame = (id: string) => planeFrame(b.sketches.find((s) => s.id === id)!.sketch.plane);
+    const round = (v: number[]) => v.map((x) => Math.round(x * 1e6) / 1e6 + 0);
+    // XZ looks down -Y; turned 90° about Z it looks down +X.
+    expect(round(frame("S1").normal)).toEqual([1, 0, 0]);
+    expect(round(frame("S2").normal)).toEqual([0, -1, 0]);
+    const p = b.construct.find((c) => c.id === "P1")!.geo;
+    expect(p.what === "plane" && round(p.frame.origin)).toEqual([0, 5, 0]);
+    // The saved sketch keeps its plane as drawn.
+    const saved = d.features.find((f) => f.id === "S1");
+    expect(saved?.type === "sketch" && "frame" in saved.sketch.plane).toBe(false);
   });
 });

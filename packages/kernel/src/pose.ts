@@ -211,6 +211,11 @@ export function jointMove(j: JointLineUp): Mat4 | null {
   return m;
 }
 
+/** A frame (origin, X and normal) carried by a move: a sketch plane riding on its component. */
+export function moveFrame<F extends { origin: V3; x: V3; normal: V3 }>(m: Mat4, f: F): F {
+  return { ...f, origin: mat4Apply(m, f.origin), x: norm(mat4ApplyDir(m, f.x)), normal: norm(mat4ApplyDir(m, f.normal)) };
+}
+
 /** The inverse of a move made of turns and slides. */
 export function mat4InvertRigid(m: Mat4): Mat4 {
   const t: V3 = [m[12]!, m[13]!, m[14]!];

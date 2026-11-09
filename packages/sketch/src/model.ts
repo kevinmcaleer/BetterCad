@@ -117,7 +117,13 @@ export interface Frame {
  * frame as last built: the model's build keeps it up to date).
  */
 export type PlaneRef =
-  | { kind: "world"; plane: WorldPlane; offset: number }
+  | {
+      kind: "world";
+      plane: WorldPlane;
+      offset: number;
+      /** Where the plane sits once a joint has moved the sketch's component: set by the model's build, never saved. */
+      frame?: Frame;
+    }
   | { kind: "face"; face: TopoRef; offset: number; frame: Frame }
   | { kind: "construct"; step: string; offset: number; frame: Frame };
 
@@ -179,7 +185,7 @@ const norm3 = (a: Vec3): Vec3 => {
 
 /** The plane's frame, with any offset applied along the normal. */
 export function planeFrame(p: PlaneRef): Frame {
-  const f = p.kind === "world" ? WORLD_FRAMES[p.plane] : p.frame;
+  const f = p.frame ?? WORLD_FRAMES[(p as { plane: WorldPlane }).plane];
   const n = norm3(f.normal);
   return { origin: [f.origin[0] + n[0] * p.offset, f.origin[1] + n[1] * p.offset, f.origin[2] + n[2] * p.offset], x: norm3(f.x), normal: n };
 }
