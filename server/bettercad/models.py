@@ -95,6 +95,18 @@ class Note(BaseModel):
     note: str = Field(max_length=200)
 
 
+def image(data_url: str | None, cache: str) -> Response:
+    """A stored data-URL picture as an image response, or 404."""
+    m = THUMB.match(data_url or "")
+    if not m:
+        raise HTTPException(404, "There's no picture for that model.")
+    try:
+        body = base64.b64decode(m.group(2), validate=False)
+    except binascii.Error:
+        raise HTTPException(404, "There's no picture for that model.") from None
+    return Response(body, media_type=m.group(1), headers={"Cache-Control": cache})
+
+
 def thumbnail_of(bcad: str) -> str | None:
     """The .bcad's thumbnail data URL, or None. Refuses text that isn't a BetterCad model."""
     try:
@@ -189,16 +201,6 @@ def router(settings) -> APIRouter:
 
     def full(model: sqlite3.Row, v: sqlite3.Row) -> dict:
         return {**summary(model), "bcad": zlib.decompress(v["bcad_json"]).decode(), "note": v["note"]}
-
-    def image(data_url: str | None, cache: str) -> Response:
-        m = THUMB.match(data_url or "")
-        if not m:
-            raise HTTPException(404, "There's no picture for that model.")
-        try:
-            body = base64.b64decode(m.group(2), validate=False)
-        except binascii.Error:
-            raise HTTPException(404, "There's no picture for that model.") from None
-        return Response(body, media_type=m.group(1), headers={"Cache-Control": cache})
 
     # --- Models -----------------------------------------------------------------------------------------------
 

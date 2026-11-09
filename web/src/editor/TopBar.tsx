@@ -46,7 +46,7 @@ export interface TopBarProps {
   onProps: () => void;
   propsOpen: boolean;
   /** Signed in (#88): who. Null when signed out. */
-  account?: { name: string } | null;
+  account?: { name: string; admin?: boolean } | null;
   /** False when there is no server to sign in to. */
   accountsOn?: boolean;
   /** The model is saved to the account (#90): how that stands. */
@@ -243,6 +243,7 @@ export function TopBar(p: TopBarProps) {
                 { kind: "title" as const, id: "who", label: p.account.name },
                 { id: "library", label: "My models", icon: "folder" as const, onSelect: () => go("#/library") },
                 { id: "account", label: "Account", icon: "user" as const, onSelect: () => go("#/account") },
+                ...(p.account.admin ? [{ id: "admin", label: "Admin", icon: "lock" as const, onSelect: () => go("#/admin") }] : []),
                 { id: "signout", label: "Sign out", icon: "close" as const, onSelect: () => p.onSignOut?.() },
               ]
             : p.accountsOn

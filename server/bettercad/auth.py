@@ -119,11 +119,13 @@ def current_user(request: Request) -> User:
     if who is None:
         raise HTTPException(401, "Sign in to do that.")
     db = conn(request)
-    acct = db.execute("SELECT name, theme FROM accounts WHERE id = ?", (who["id"],)).fetchone()
-    if acct is None or acct["name"] != who["username"]:
+    acct = db.execute("SELECT name, theme, last_seen = date('now') AS seen FROM accounts WHERE id = ?", (who["id"],)).fetchone()
+    if acct is None or acct["name"] != who["username"] or not acct["seen"]:
+        # New, renamed on kevsrobots.com, or the first visit today (the admin console's "last seen"): one write a day.
         with db:
             db.execute(
-                "INSERT INTO accounts (id, name) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET name = excluded.name",
+                "INSERT INTO accounts (id, name, last_seen) VALUES (?, ?, date('now'))"
+                " ON CONFLICT (id) DO UPDATE SET name = excluded.name, last_seen = excluded.last_seen",
                 (who["id"], who["username"]),
             )
     return User(who["id"], who["username"], who.get("email"), acct["theme"] if acct else None, bearer(request) or "")
@@ -154,6 +156,8 @@ def account_json(request: Request, user: User) -> dict:
         "email": user.email,
         "theme": user.theme,
         "csrf": csrf_for(request, user.token),
+        # Shows the admin console in the account menu; the server checks again on every admin call.
+        "admin": (user.email or "").lower() in request.app.state.admins,
     }
 
 

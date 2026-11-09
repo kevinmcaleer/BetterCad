@@ -210,3 +210,57 @@
 .bc-lib-foot {
   margin-top: var(--bc-space-8);
 }
+
+/* The admin console: users, each opening to their models */
+.bc-admin-users,
+.bc-admin-models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bc-admin-user {
+  border-top: 1px solid var(--bc-color-line);
+}
+.bc-admin-user summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--bc-space-2) var(--bc-space-6);
+  padding: var(--bc-space-4) 0;
+  cursor: pointer;
+}
+.bc-admin-name {
+  font-weight: 600;
+}
+.bc-admin-models {
+  display: grid;
+  gap: var(--bc-space-3);
+  padding: 0 0 var(--bc-space-6) var(--bc-space-8);
+}
+.bc-admin-model {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  min-width: 0;
+}
+.bc-admin-thumb {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 64px;
+  height: 40px;
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-muted);
+  overflow: hidden;
+}
+.bc-admin-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.bc-admin-model-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}

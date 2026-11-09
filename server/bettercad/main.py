@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, accounts, auth, db, jobs, models, printers, reports, stats
+from . import __version__, accounts, admin, auth, db, jobs, models, printers, reports, stats
 from .settings import Settings, get_settings
 
 log = logging.getLogger("bettercad")
@@ -111,11 +111,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict:
         return {"ok": True, "version": version}
 
+    app.state.admins = admin.admin_emails(settings)
     auth.install(app, settings)
     app.include_router(models.router(settings))
     app.include_router(printers.router())
     app.include_router(reports.router(settings))
     app.include_router(stats.router(settings))
+    app.include_router(admin.router(settings))
 
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
     def api_not_found(rest: str) -> JSONResponse:
