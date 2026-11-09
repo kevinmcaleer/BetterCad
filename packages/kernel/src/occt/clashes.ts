@@ -2,6 +2,7 @@ import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import { KernelError } from "../errors";
 import type { Mat4 } from "../pose";
+import { triangles } from "./export";
 
 type V3 = [number, number, number];
 interface Box {
@@ -25,6 +26,8 @@ export interface Clash {
   volume: number;
   centre: V3;
   box: Box;
+  /** An overlap's shared solid as triangles, 9 numbers each, in world space, for the view to draw in red. */
+  mesh?: Float32Array;
 }
 
 export interface ClashOptions {
@@ -80,6 +83,17 @@ export function overlapsAt(oc: OC, a: TopoDS_Shape, ma: Mat4 | undefined, b: Top
   return volume > MIN_VOLUME;
 }
 
+/** The overlap's triangles, fine enough to read at its own size; none when it can't be meshed. */
+function overlapMesh(oc: OC, shape: TopoDS_Shape, box: Box): Float32Array | undefined {
+  const size = Math.hypot(...box.max.map((v, i) => v - box.min[i]!));
+  try {
+    const t = triangles(oc, shape, Math.min(0.1, Math.max(size / 200, 0.005)));
+    return t.length ? t : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Pairs of bodies that overlap or touch (#178). Boxes first, then the exact common volume of each pair whose boxes
  * meet; a pair with none is touching when its gap is under a micron. Pairs in one link are skipped unless asked for.
@@ -109,7 +123,8 @@ export function findClashes(oc: OC, bodies: ClashBody[], opts: ClashOptions = {}
       oc.BRepGProp.VolumeProperties(shape, props, false, false, false);
       const volume = props.Mass();
       if (volume > MIN_VOLUME) {
-        out.push({ a: a.id, b: b.id, kind: "overlap", volume, centre: pnt(props.CentreOfMass()), box: boxOf(oc, shape) });
+        const box = boxOf(oc, shape);
+        out.push({ a: a.id, b: b.id, kind: "overlap", volume, centre: pnt(props.CentreOfMass()), box, mesh: overlapMesh(oc, shape, box) });
         props.delete();
         return;
       }

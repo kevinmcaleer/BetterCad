@@ -1736,6 +1736,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     checkClashes: () => {
       setSelection([]);
       setPropsOpen(true);
+      if (!narrow) setPropsHidden(false);
       setClashOn(true);
     },
     sweepJoints: () => {
@@ -2687,9 +2688,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say("Stopped checking for clashes");
   }, [say]);
   useEscape(clashProgress !== null, stopClashes, ESC.tool);
-  const clashBodies = useMemo(() => (clashes?.length ? new Set(clashes.filter((c) => c.kind === "overlap").flatMap((c) => [c.a, c.b])) : null), [clashes]);
-  const viewWarn = useMemo(() => (clashBodies ? new Set([...(offBed ?? []), ...clashBodies]) : offBed), [clashBodies, offBed]);
-  useEffect(() => vp.ref.current?.engine()?.setClashBoxes(clashes?.length ? clashes.map((c) => c.box) : null), [clashes, vp.ref]);
+  // While clashes show, the bodies in them stand out (overlaps red, touches warn) and the rest go faint; Esc puts it back.
+  // Only while the list is in front of you: a selection or a closed panel puts the view back.
+  const clashListShown = selection.length === 0 && (narrow ? propsOpen : !propsHidden);
+  const clashView = useMemo(() => {
+    if (!clashOn || !clashListShown || !clashes?.length) return null;
+    const ids = (kind: Clash["kind"]) => new Set(clashes.filter((c) => c.kind === kind).flatMap((c) => [c.a, c.b]));
+    return { overlap: ids("overlap"), touch: ids("touch") };
+  }, [clashOn, clashListShown, clashes]);
+  useEscape(!!clashView && clashProgress === null, stopClashes, ESC.tool);
+  useEffect(() => vp.ref.current?.engine()?.setClashBoxes(clashView ? clashes : null), [clashView, clashes, vp.ref]);
   const showClash = useCallback((c: Clash) => vp.ref.current?.engine()?.fitBox(c.box.min, c.box.max), [vp.ref]);
 
   // Clash sweep (#179): the panel keeps its own state; the palette's command bumps `sweepStart` to run it.
@@ -3614,7 +3622,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onHome={vp.goHome}
             cubeMenu={cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
-            warn={viewWarn}
+            warn={offBed}
+            clash={clashView}
             check={checkResult?.values ?? null}
             originPlanes={{
               shown: sketch.editing ? [] : originShown.filter((x): x is WorldPlaneName => x.length === 2),

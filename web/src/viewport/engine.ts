@@ -113,6 +113,8 @@ export interface EngineBody {
   highlight?: boolean;
   /** Off the printer's bed (#100): tinted warn. */
   warn?: boolean;
+  /** In a clash (#178): tinted danger and drawn see-through, so the overlap shows inside it. */
+  clash?: boolean;
   /** A reference body (#185): there to design around, never printed. Drawn see-through in the accent colour. */
   reference?: boolean;
   /** The mesh is already in place (the kernel built it there); position and rotation only place the gizmo. */
@@ -908,19 +910,32 @@ export class Engine {
     this.drawMarkers(this.tools, list, "diamond");
   }
 
-  /** Outlines each clash's box (#178) in the warning colour over the bodies, or none. */
-  setClashBoxes(list: { min: V3; max: V3 }[] | null): void {
-    for (const c of this.clashBoxes.children as LineSegments[]) {
+  /**
+   * Draws each clash (#178): an overlap's shared solid filled in the danger colour, over the bodies so it shows through
+   * them; a touch, or an overlap that couldn't be meshed, outlined by its box in the warning colour. Null clears them.
+   */
+  setClashBoxes(list: { box: { min: V3; max: V3 }; mesh?: Float32Array }[] | null): void {
+    for (const c of this.clashBoxes.children as (LineSegments | Mesh)[]) {
       c.geometry.dispose();
       (c.material as Material).dispose();
     }
     this.clashBoxes.clear();
-    if (list?.length) {
-      const pts: number[] = [];
-      for (const { min: a, max: b } of list) {
-        const c = (i: number): V3 => [i & 1 ? b[0] : a[0], i & 2 ? b[1] : a[1], i & 4 ? b[2] : a[2]];
-        for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) if (!(i & bit)) pts.push(...c(i), ...c(i | bit));
+    const pts: number[] = [];
+    for (const { box, mesh } of list ?? []) {
+      if (mesh?.length) {
+        const g = new BufferGeometry();
+        g.setAttribute("position", new BufferAttribute(mesh, 3));
+        const solid = new Mesh(g, new MeshBasicMaterial({ color: this.palette.danger, transparent: true, opacity: 0.85, depthTest: false, side: 2 }));
+        solid.renderOrder = 6;
+        solid.name = "clash";
+        this.clashBoxes.add(solid);
+        continue;
       }
+      const { min: a, max: b } = box;
+      const c = (i: number): V3 => [i & 1 ? b[0] : a[0], i & 2 ? b[1] : a[1], i & 4 ? b[2] : a[2]];
+      for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) if (!(i & bit)) pts.push(...c(i), ...c(i | bit));
+    }
+    if (pts.length) {
       const g = new BufferGeometry();
       g.setAttribute("position", new BufferAttribute(new Float32Array(pts), 3));
       const line = new LineSegments(g, new LineBasicMaterial({ color: this.palette.warn, depthTest: false, transparent: true }));
@@ -1631,7 +1646,7 @@ export class Engine {
       o.shaded.visible = o.edges.visible = o.flat.visible = o.creases.visible = false;
     }
     const ghost = !!o.body.ghost || !!preview?.dim;
-    const seeThrough = ghost || !!o.body.reference;
+    const seeThrough = ghost || !!o.body.reference || !!o.body.clash;
     for (const m of [o.shadedMaterial, o.flatMaterial]) {
       m.transparent = seeThrough;
       m.opacity = ghost ? 0.3 : seeThrough ? 0.55 : 1;
@@ -1670,7 +1685,7 @@ export class Engine {
     this.arrow.setColor(p.snap);
     for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
     for (const c of [...this.centres.children, ...this.tools.children] as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
-    for (const c of this.clashBoxes.children as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.warn);
+    for (const c of this.clashBoxes.children as (LineSegments | Mesh)[]) (c.material as LineBasicMaterial).color.set(c.name === "clash" ? p.danger : p.warn);
     if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
     this.grid.visible = !this.roomOn && this.floorGrid;
     this.room.visible = this.roomOn;
@@ -1691,6 +1706,7 @@ export class Engine {
       const base = o.body.highlight ? c2.copy(p["part-highlight"]) : o.body.colour ? c2.setStyle(o.body.colour) : c2.copy(p["part-fill"]);
       if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
+      if (o.body.clash) base.lerp(p.danger, 0.75);
       const attr = o.geometry.getAttribute("color") as BufferAttribute;
       const arr = attr.array as Float32Array;
       const faces = own ? selFaces.get(o.body.id) : undefined;

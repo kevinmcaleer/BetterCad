@@ -355,16 +355,34 @@ test("drag an arm by its tool point", async ({ page }) => {
   await expect.poll(async () => Number(await angle.inputValue())).toBeLessThan(Number(kept) - 10);
 });
 
+type ClashView = {
+  __bcView: { bodies: Map<string, { body: { clash?: boolean; ghost?: boolean } }>; clashBoxes: { children: { name: string }[] } };
+};
+/** How many bodies the view draws red and ghosted, and how many overlaps it fills in. */
+const clashLook = (page: Page) =>
+  page.evaluate(() => {
+    const v = (window as unknown as ClashView).__bcView;
+    const bodies = [...v.bodies.values()].map((o) => o.body);
+    return {
+      clash: bodies.filter((b) => b.clash).length,
+      ghost: bodies.filter((b) => b.ghost).length,
+      overlaps: v.clashBoxes.children.filter((c) => c.name === "clash").length,
+    };
+  });
+
 test("check for clashes: an overlap, then a touch", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 3; i++) {
     await page.getByRole("button", { name: "Library" }).click();
     await page.getByRole("button", { name: "Box", exact: true }).click();
   }
-  // Two 20 mm boxes 10 mm apart overlap by 10 × 20 × 20 mm.
-  await page.getByRole("treeitem", { name: /^Box 2/ }).click();
+  // Two 20 mm boxes 10 mm apart overlap by 10 × 20 × 20 mm; Box 3 sits well clear.
   const x = page.getByRole("textbox", { name: "X (mm)" });
+  await page.getByRole("treeitem", { name: /^Box 3/ }).click();
+  await x.fill("60");
+  await x.press("Enter");
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click();
   await x.fill("10");
   await x.press("Enter");
   await page.keyboard.press("ControlOrMeta+k");
@@ -377,6 +395,13 @@ test("check for clashes: an overlap, then a touch", async ({ page }) => {
   await expect(props.getByRole("button", { name: "Check clashes", pressed: true })).toBeVisible();
   await expect(props.getByRole("list", { name: "Overlaps" })).toHaveText(/Box 1 and Box 2 overlap by 4 cm³/, { timeout: 30_000 });
   await props.getByRole("button", { name: "Show" }).click();
+  // The two that clash are drawn red, the overlap itself is filled in and Box 3 is ghosted; Esc puts the view back.
+  await expect.poll(() => clashLook(page)).toEqual({ clash: 2, ghost: 1, overlaps: 1 });
+  await page.keyboard.press("Escape");
+  await expect(props.getByRole("button", { name: "Check clashes", pressed: false })).toBeVisible();
+  await expect.poll(() => clashLook(page)).toEqual({ clash: 0, ghost: 0, overlaps: 0 });
+  await props.getByRole("button", { name: "Check clashes" }).click();
+  await expect(props.getByRole("list", { name: "Overlaps" })).toBeVisible({ timeout: 30_000 });
 
   // Side by side, they only touch; apart, nothing clashes.
   await page.getByRole("treeitem", { name: /^Box 2/ }).click();

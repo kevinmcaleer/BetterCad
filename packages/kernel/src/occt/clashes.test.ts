@@ -29,6 +29,21 @@ describe("clash check (#178)", () => {
     expect(r[0]!.box.max[0]).toBeCloseTo(5, 6);
   });
 
+  it("meshes each overlap for the view to draw in red, inside its box", () => {
+    const [c] = findClashes(oc, [
+      { id: "a", shape: cube(0) },
+      { id: "b", shape: cube(6) },
+    ]);
+    const mesh = c!.mesh!;
+    // A 4 × 10 × 10 block: 6 faces, 2 triangles each at least.
+    expect(mesh.length).toBeGreaterThanOrEqual(12 * 9);
+    expect(mesh.length % 9).toBe(0);
+    for (let i = 0; i < mesh.length; i += 3) {
+      expect(mesh[i]!).toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(mesh[i]!).toBeLessThanOrEqual(5 + 1e-6);
+    }
+  });
+
   it("calls boxes that share a face Touching, and leaves apart ones out", () => {
     const r = findClashes(oc, [
       { id: "a", shape: cube(0) },

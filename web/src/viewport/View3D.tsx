@@ -53,6 +53,8 @@ export interface View3DProps {
   bed?: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null;
   /** Bodies off the bed, tinted warn. */
   warn?: Set<string>;
+  /** While clash results show (#178): bodies that overlap, in red; bodies that only touch, tinted warn; the rest ghosted. */
+  clash?: { overlap: Set<string>; touch: Set<string> } | null;
   /** A print check's per-vertex tint by body (#101, #102). */
   check?: Map<string, Float32Array> | null;
   /** Origin planes on show from the browser, and the one chosen there. */
@@ -216,14 +218,15 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             world: !!built,
             position: p.position,
             rotation: p.rotation,
-            ghost: p.ghost,
+            ghost: p.ghost || (props.clash ? !props.clash.overlap.has(p.id) && !props.clash.touch.has(p.id) : undefined),
             reference: p.reference,
             highlight: p.highlight,
             colour: p.colour && /^#[0-9a-f]{6}$/i.test(p.colour) ? p.colour : undefined,
-            warn: props.warn?.has(p.id),
+            warn: props.warn?.has(p.id) || (props.clash?.touch.has(p.id) && !props.clash.overlap.has(p.id)),
+            clash: props.clash?.overlap.has(p.id),
           };
         }),
-    [parts, meshes, props.warn],
+    [parts, meshes, props.warn, props.clash],
   );
 
   // Frame the model when the first part arrives (a new model, an opened file).
