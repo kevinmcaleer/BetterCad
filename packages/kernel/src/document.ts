@@ -3,7 +3,19 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
-import { drawCentreRectangle, drawCircle, newSketch, planeFrame, removeEntities, type Frame, type PlaneRef, type Sketch, type Vec2 } from "@bettercad/sketch";
+import {
+  drawCentreRectangle,
+  drawCircle,
+  newSketch,
+  planeFrame,
+  removeEntities,
+  WORLD_FRAMES,
+  type Frame,
+  type PlaneRef,
+  type Sketch,
+  type Vec2,
+  type WorldPlane,
+} from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
 import { partBounds, partFrame, type CataloguePart } from "./catalogue";
@@ -21,7 +33,7 @@ export {
   type CatalogueCategory,
 } from "./catalogue";
 import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
-import { clampJoint, jointMove, mat4Mul, placeMatrix, placeOf, type Pose } from "./pose";
+import { clampJoint, jointMove, mat4Apply, mat4ApplyDir, mat4Mul, moveFrame, placeMatrix, placeOf, type Mat4, type Pose } from "./pose";
 import { driveMultiplier, driveProblem, driveTo, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
 import {
   MIRRORED_OPS,
@@ -790,6 +802,17 @@ const BUILT = new Set<string>([
   "hole",
 ]);
 
+/** Construction geometry carried by a move: a plane, axis or point riding on its component. */
+export function moveGeo(m: Mat4, g: ConstructGeo): ConstructGeo {
+  if (g.what === "plane") return { what: "plane", frame: moveFrame(m, g.frame) };
+  if (g.what === "axis") {
+    const d = mat4ApplyDir(m, g.dir);
+    const l = Math.hypot(...d) || 1;
+    return { what: "axis", origin: mat4Apply(m, g.origin), dir: [d[0] / l, d[1] / l, d[2] / l] };
+  }
+  return { what: "point", at: mat4Apply(m, g.at) };
+}
+
 /** Replays the first `upTo` features (all of them by default) into parts. */
 export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const parts: Part[] = [];
@@ -1052,6 +1075,19 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
                 position: { x: at.position[0], y: at.position[1], z: at.position[2] },
                 ...(x || y || z || p.rotation ? { rotation: { x, y, z } } : {}),
               };
+            });
+            // Its sketches and construction so far go with it, as Fusion's do, so they stay on its bodies and a later
+            // extrude from one of them lands on the moved part. Ones made after the joint were drawn where it is now.
+            sketches.forEach((s, i) => {
+              if (!s.component || !moved.has(s.component)) return;
+              const plane = s.sketch.plane;
+              const frame = moveFrame(m, plane.frame ?? WORLD_FRAMES[(plane as { plane: WorldPlane }).plane]);
+              const sk = { ...s.sketch, plane: { ...plane, frame } };
+              sketches[i] = { ...s, sketch: sk };
+              sketchById.set(s.id, sk);
+            });
+            built.forEach((c, i) => {
+              if (c.component && moved.has(c.component)) built[i] = { ...c, geo: moveGeo(m, c.geo) };
             });
           }
           joints.push(alignedJoint(f));

@@ -1095,12 +1095,17 @@ kbd {
 .bc-empty-state-host {
   position: absolute;
   inset: calc(var(--bc-view-top, 0px) + var(--bc-bars-room, 0px)) var(--bc-view-right, 0px) var(--bc-view-bottom, 0px) var(--bc-view-left, 0px);
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bc-space-3);
   padding: var(--bc-space-6);
   pointer-events: none;
 }
 .bc-empty-state {
+  flex: 0 1 auto;
+  min-height: 0;
   pointer-events: auto;
   width: min(560px, 100%);
   max-height: 100%;
@@ -1439,6 +1444,49 @@ kbd {
 }
 .bc-pick-list > .bc-btn {
   align-self: flex-end;
+}
+
+/* ---- Stage notice: "BetterCad is in alpha", once, at the bottom right of the view (where What's new shows, after it). */
+.bc-stage-notice {
+  position: absolute;
+  z-index: 9;
+  right: var(--bc-view-right);
+  bottom: var(--bc-view-bottom);
+  width: min(300px, calc(100% - var(--bc-view-right) - var(--bc-view-left)));
+  padding: var(--bc-space-3) var(--bc-space-4) var(--bc-space-4);
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+  animation: bc-stage-in 200ms ease-out;
+}
+/* Above the start card on an empty model, as wide as the card, so the two never overlap. */
+.bc-stage-notice.bc-stage-inline {
+  position: static;
+  flex: none;
+  width: min(560px, 100%);
+  pointer-events: auto;
+}
+.bc-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-2);
+}
+.bc-stage-notice p {
+  margin: var(--bc-space-2) 0 var(--bc-space-3);
+}
+@keyframes bc-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bc-stage-notice {
+    animation: none;
+  }
 }
 
 /* ---- What's new: the note after an update, at the bottom right of the view, and the full list (Help menu) */
