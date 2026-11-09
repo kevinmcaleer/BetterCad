@@ -79,9 +79,8 @@ test("shows a save as a toast at the top right of the view, leaving the timeline
   const view = page.viewportSize()!;
   expect(box.y).toBeLessThan(view.height / 2);
   expect(box.x + box.width).toBeLessThanOrEqual(props.x);
-  const toast = page.locator(".bc-toast");
-  // It fades out on its own.
-  await expect(toast).toBeHidden({ timeout: 5000 });
+  // It fades out on its own. An autosave may land just after and show its own toast, so look for this one.
+  await expect(page.locator(".bc-toast", { hasText: "Saved to Bracket.bcad" })).toBeHidden({ timeout: 5000 });
 });
 
 test("saves a .bcad in place, names the model after the file, and saves again without asking", { tag: "@journey" }, async ({ page }) => {
