@@ -957,13 +957,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     vp.ref.current?.engine()?.setPose(moves);
   }, [posing, linkMoves, built.links, vp.ref]);
 
-  // Joint glyphs in the view (#172), on unless turned off from the View menu. They ride on the pose.
-  const [jointsShown, setJointsShown] = useState(true);
+  // Joint glyphs in the view (#172), each with its own eye in the browser (saved in looks, as a sketch's is). They ride on
+  // the pose; hiding one hides its arrow, not the parts it moves.
+  const browserJoints = useMemo(() => built.joints.map((j) => ({ ...j, hidden: !!doc.looks[j.id]?.hidden })), [built.joints, doc.looks]);
   useEffect(() => {
-    if (!jointsShown) return vp.ref.current?.engine()?.setJoints(null);
     const frames = posing ? posedFrames(built.joints, linkMoves) : null;
-    vp.ref.current?.engine()?.setJoints(built.joints.map((j) => frames?.get(j.id) ?? j));
-  }, [built.joints, jointsShown, vp.ref, posing, linkMoves]);
+    vp.ref.current?.engine()?.setJoints(browserJoints.filter((j) => !j.hidden).map((j) => frames?.get(j.id) ?? j));
+  }, [built.joints, browserJoints, vp.ref, posing, linkMoves]);
 
   // Play (#194): turn a driving joint through its range, out and back (a wheel a whole turn), to watch the drive. It
   // poses live only, and Esc or Stop puts the pose back.
@@ -2158,7 +2158,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         label: "Show or hide joints",
         group: "View",
         icon: "joint",
-        run: () => setJointsShown((on) => !on),
+        run: () => {
+          const ids = live.current.doc.features.filter((f) => f.type === "joint").map((f) => f.id);
+          setHidden(
+            ids,
+            ids.some((id) => !live.current.doc.looks[id]?.hidden),
+            "sketches",
+            "joints",
+          );
+        },
         when: () => live.current.doc.features.some((f) => f.type === "joint"),
         keywords: "robot joint axis arrow glyph",
       },
@@ -2320,7 +2328,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       list.push({ id: "help.gallery", label: "Component gallery", group: "Help", icon: "template", run: () => (window.location.hash = "#/gallery") });
     }
     return registry.register(list);
-  }, [registry, showWhatsNew, showTips]);
+  }, [registry, showWhatsNew, showTips, setHidden]);
 
   // One keyboard handler for the whole editor. Escape goes through the layered stack instead.
   useEffect(() => {
@@ -3403,12 +3411,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               activeComponent={workIn}
               onActivate={activate}
               onMoveInto={moveIn}
-              joints={built.joints}
+              joints={browserJoints}
               poses={posesProps}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}
-              onSketchesHidden={(ids, hidden) => setHidden(ids, hidden, "sketches")}
+              onSketchesHidden={(ids, hidden, name) => setHidden(ids, hidden, "sketches", name)}
               onBrowserPicked={setBrowserPicked}
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}

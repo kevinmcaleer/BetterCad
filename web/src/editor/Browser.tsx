@@ -64,6 +64,9 @@ export interface BrowserConstruct extends BrowserSketch {
   what: ConstructWhat;
 }
 
+/** A joint (#172) in the browser: its eye hides its arrow in the view, not the parts it moves. */
+export type BrowserJoint = Pick<JointFeature, "id" | "name" | "kind" | "child" | "parent"> & { hidden?: boolean };
+
 export interface BrowserModel {
   name: string;
   parts: Part[];
@@ -77,7 +80,7 @@ export interface BrowserModel {
   /** The component you're working in; none for the model. */
   active?: string | null;
   /** Joints (#172): each hangs a child link from a parent link, or from Base. */
-  joints?: Pick<JointFeature, "id" | "name" | "kind" | "child" | "parent">[];
+  joints?: BrowserJoint[];
   /** Construction planes, axes and points (#265). */
   construct?: BrowserConstruct[];
   /** Named poses (#177), under Joints once there are joints; Home is always first. */
@@ -270,9 +273,25 @@ export function browserItems(m: BrowserModel): TreeItem[] {
   if (o.comps.length && !m.readOnly) Object.assign(items[0]!, { toggles: ["active"], active: !m.active });
   contents(undefined, ROW.root);
   // Joints (#172): each hangs a component from another.
-  items.push(folder(ROW.joints, "Joints", { note: joints.length ? count(joints.length) : "None yet", toggles: [] }));
+  items.push(
+    folder(ROW.joints, "Joints", {
+      note: joints.length ? count(joints.length) : "None yet",
+      toggles: joints.length ? ["hidden"] : [],
+      hidden: joints.length > 0 && joints.every((j) => j.hidden),
+    }),
+  );
   for (const j of joints) {
-    items.push({ id: j.id, name: j.name, icon: "joint", kind: "joint", parentId: ROW.joints, drag: false, toggles: [], note: kindLabel(j.kind) });
+    items.push({
+      id: j.id,
+      name: j.name,
+      icon: "joint",
+      kind: "joint",
+      parentId: ROW.joints,
+      drag: false,
+      toggles: ["hidden"],
+      hidden: !!j.hidden,
+      note: kindLabel(j.kind),
+    });
   }
   // Named poses (#177): Home, then each saved one. Click one to go to it.
   if (joints.length) {
@@ -320,7 +339,7 @@ export interface BrowserPanelProps {
   /** Hide (true) or show bodies, all at once; `name` names the step when they're a component's. */
   onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   /** Hide (true) or show sketches. */
-  onSketchesHidden: (ids: string[], hidden: boolean) => void;
+  onSketchesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   onOrigin: (shown: OriginItem[]) => void;
   /** The sketch, plane, axis or origin point picked in the browser, for the view to mark. */
   onPicked: (id: string | null) => void;
@@ -411,8 +430,16 @@ export function BrowserPanel(p: BrowserPanelProps) {
         xs.some((x) => !x.hidden),
       );
     }
+    // Joints (#172): the eye hides the arrow in the view, not the parts it moves.
+    const js = model.joints ?? [];
+    if (id === ROW.joints)
+      return p.onSketchesHidden(
+        js.map((j) => j.id),
+        js.some((j) => !j.hidden),
+        "joints",
+      );
     const cons = model.construct ?? [];
-    const sk = model.sketches.find((s) => s.id === id) ?? cons.find((c) => c.id === id);
+    const sk = model.sketches.find((s) => s.id === id) ?? cons.find((c) => c.id === id) ?? js.find((j) => j.id === id);
     if (sk) return p.onSketchesHidden([id], !sk.hidden);
     p.onToggle(id, what);
   };
@@ -481,7 +508,15 @@ export function BrowserPanel(p: BrowserPanelProps) {
     if (joint)
       return {
         title: joint.name,
-        entries: p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+        entries: [
+          {
+            id: "show",
+            label: joint.hidden ? "Show" : "Hide",
+            icon: joint.hidden ? ("eye" as const) : ("eyeOff" as const),
+            onSelect: () => toggle(id, "hidden"),
+          },
+          ...p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+        ],
       };
     if (id === ROW.poses || id === ROW.home)
       return {

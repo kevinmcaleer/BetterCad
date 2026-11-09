@@ -19,7 +19,6 @@ import {
   type OrientWeights,
   type BuiltLink,
   type Feature,
-  type JointFeature,
   type ModelDoc,
   type Part,
   type PartKind,
@@ -28,7 +27,15 @@ import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
 import { ThemePicker } from "./ThemePicker";
 import { featureIcon, partIcon } from "./Timeline";
-import { BrowserPanel, type BrowserConstruct, type BrowserModel, type BrowserPanelProps, type BrowserSketch, type OriginItem } from "./Browser";
+import {
+  BrowserPanel,
+  type BrowserConstruct,
+  type BrowserJoint,
+  type BrowserModel,
+  type BrowserPanelProps,
+  type BrowserSketch,
+  type OriginItem,
+} from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 
@@ -69,14 +76,14 @@ export interface LeftPanelProps {
   onActivate?: (id: string | null) => void;
   onMoveInto?: (ids: string[], to: string | null) => void;
   /** Joints (#172) as built. */
-  joints?: JointFeature[];
+  joints?: BrowserJoint[];
   /** Named poses (#177) and what to do with them, under Joints in the browser. */
   poses?: Pick<BrowserModel, "poses" | "atPose"> &
     Required<Pick<BrowserPanelProps, "onPose" | "onSavePose" | "onUpdatePose" | "onRenamePose" | "onDeletePose">>;
   origin: OriginItem[];
   onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
-  onSketchesHidden: (ids: string[], hidden: boolean) => void;
+  onSketchesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   onBrowserPicked: (id: string | null) => void;
   onSketchOn: (plane: WorldPlaneName) => void;
   /** Construction geometry (#265) for the browser, and sketching on a construction plane. */

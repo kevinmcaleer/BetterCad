@@ -89,6 +89,13 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
 
   await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /Component 1$/ })).toBeVisible();
+  // A joint's eye hides its arrow, not the component it moves, and the Joints folder's eye follows.
+  await page.getByRole("button", { name: "Hide Joint 1" }).click();
+  await expect(page.getByRole("button", { name: "Show Joint 1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show Joints" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hide Component 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Show Joints" }).click();
+  await expect(page.getByRole("button", { name: "Hide Joint 1" })).toBeVisible();
 });
 
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */

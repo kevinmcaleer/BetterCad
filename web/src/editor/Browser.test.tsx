@@ -481,6 +481,62 @@ describe("joints in the browser (#172)", () => {
   });
 });
 
+describe("hiding joints", () => {
+  function robot(hidden: string[] = []): BrowserModel {
+    let d = addPart(addPart(newDoc("Arm"), "box", "a"), "box", "b");
+    d = addLink(d, ["a"], "L1");
+    d = addLink(d, ["b"], "L2");
+    const axis = { origin: [0, 0, 0] as [number, number, number], axis: [0, 0, 1] as [number, number, number] };
+    d = addJoint(d, { kind: "revolute", child: "L1", parent: null, ...axis, lower: -90, upper: 90 }, "J1");
+    d = addJoint(d, { kind: "continuous", child: "L2", parent: "L1", ...axis, lower: 0, upper: 0 }, "J2");
+    const b = build(d);
+    return { ...model(), parts: b.parts, links: b.links, joints: b.joints.map((j) => ({ ...j, hidden: hidden.includes(j.id) })) };
+  }
+
+  it("gives each joint and the Joints folder an eye, shut once every joint is hidden", () => {
+    const eye = (m: BrowserModel, id: string) => browserItems(m).find((i) => i.id === id)?.hidden;
+    expect(browserItems(robot()).find((i) => i.id === "J1")?.toggles).toEqual(["hidden"]);
+    expect(eye(robot(["J1"]), "J1")).toBe(true);
+    expect(eye(robot(["J1"]), ROW.joints)).toBe(false);
+    expect(eye(robot(["J1", "J2"]), ROW.joints)).toBe(true);
+  });
+
+  it("hides a joint's arrow, or all of them from the folder, without touching the parts", async () => {
+    const onSketchesHidden = vi.fn();
+    const onBodiesHidden = vi.fn();
+    render(
+      <BrowserPanel
+        model={robot(["J2"])}
+        selection={[]}
+        onSelect={() => {}}
+        onAdd={() => {}}
+        onToggle={() => {}}
+        onBodiesHidden={onBodiesHidden}
+        onSketchesHidden={onSketchesHidden}
+        onOrigin={() => {}}
+        onPicked={() => {}}
+        onSelectSketch={() => {}}
+        onRename={() => {}}
+        onRenameModel={() => {}}
+        onRenameSketch={() => {}}
+        onReorder={() => {}}
+        onSketchOn={() => {}}
+        partMenu={() => []}
+        sketchMenu={() => []}
+        renameId={null}
+        onRenameIdChange={() => {}}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Hide Joint 1" }));
+    expect(onSketchesHidden).toHaveBeenLastCalledWith(["J1"], true);
+    await userEvent.click(screen.getByRole("button", { name: "Show Joint 2" }));
+    expect(onSketchesHidden).toHaveBeenLastCalledWith(["J2"], false);
+    await userEvent.click(screen.getByRole("button", { name: "Hide Joints" }));
+    expect(onSketchesHidden).toHaveBeenLastCalledWith(["J1", "J2"], true, "joints");
+    expect(onBodiesHidden).not.toHaveBeenCalled();
+  });
+});
+
 describe("named poses in the browser (#177)", () => {
   function robot(over: Partial<BrowserModel> = {}): BrowserModel {
     let d = addPart(addPart(newDoc("Arm"), "box", "a"), "box", "b");
