@@ -1441,6 +1441,42 @@ kbd {
   align-self: flex-end;
 }
 
+/* ---- Stage notice: "BetterCad is in alpha", once, at the bottom right of the view (where What's new shows, after it). */
+.bc-stage-notice {
+  position: absolute;
+  z-index: 9;
+  right: var(--bc-view-right);
+  bottom: var(--bc-view-bottom);
+  width: min(300px, calc(100% - var(--bc-view-right) - var(--bc-view-left)));
+  padding: var(--bc-space-3) var(--bc-space-4) var(--bc-space-4);
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+  animation: bc-stage-in 200ms ease-out;
+}
+.bc-stage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-2);
+}
+.bc-stage-notice p {
+  margin: var(--bc-space-2) 0 var(--bc-space-3);
+}
+@keyframes bc-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bc-stage-notice {
+    animation: none;
+  }
+}
+
 /* ---- What's new: the note after an update, at the bottom right of the view, and the full list (Help menu) */
 .bc-whatsnew-card {
   position: absolute;

@@ -166,6 +166,7 @@ import { lastError, onCaught, watchWindow, type Caught } from "../report/errors"
 import { APP_VERSION } from "../version";
 import { useWhatsNew } from "../whatsnew/useWhatsNew";
 import { useTips } from "../tips/useTips";
+import { useStageNotice } from "../stage/useStageNotice";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import type { BodyMass, Clash, ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
@@ -213,6 +214,8 @@ const WhatsNewDialog = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ 
 const WhatsNewCard = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewCard })));
 // The tips card (Help → Tips) loads only when it shows.
 const TipsCard = lazy(() => import("../tips/Tips").then((m) => ({ default: m.TipsCard })));
+// "BetterCad is in alpha": once, on your first visit.
+const StageNotice = lazy(() => import("../stage/StageNotice").then((m) => ({ default: m.StageNotice })));
 const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ default: m.ReportDialog })));
 const ParamsDialog = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsDialog })));
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
@@ -1517,6 +1520,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // Tips wait for the tour and the What's new card.
   const tips = useTips(active && !share && tour.card === null && !whatsNew.card);
   const showTips = tips.show;
+  // The alpha notice waits for the What's new card, which sits in the same corner.
+  const stage = useStageNotice(!whatsNew.card);
   // "#/sample/<id>": the library's and the tour's sample links.
   useEffect(() => {
     if (sample) filesRef.current.openSample(sample);
@@ -3375,6 +3380,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             {whatsNew.card && (
               <Suspense fallback={null}>
                 <WhatsNewCard fresh={whatsNew.fresh} onOpen={whatsNew.show} onDismiss={whatsNew.dismiss} />
+              </Suspense>
+            )}
+            {stage.open && (
+              <Suspense fallback={null}>
+                <StageNotice onDismiss={stage.dismiss} />
               </Suspense>
             )}
             {tips.open && (

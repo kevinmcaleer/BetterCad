@@ -27,6 +27,7 @@ export default defineConfig({
           localStorage: [
             { name: "bettercad.tourDone", value: "1" },
             { name: "bettercad.tips.hidden", value: "1" },
+            { name: "bettercad.stage.seen", value: "alpha" },
           ],
         },
       ],
