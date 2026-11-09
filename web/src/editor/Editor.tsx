@@ -3367,7 +3367,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             saveTip={saveTip}
             onSave={() => void save()}
             helpEntries={helpEntries}
-            account={account ? { name: account.name } : null}
+            account={account ? { name: account.name, admin: account.admin } : null}
             accountsOn={accountReady && accountsOn}
             cloud={files.cloud?.state ?? null}
             onHistory={() => setVersionsOpen(true)}

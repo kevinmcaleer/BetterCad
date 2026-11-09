@@ -16,9 +16,9 @@ export function PrivacyPage() {
 
       <h2>With an account</h2>
       <p>
-        We keep your email address, your name, your password (hashed, never readable), your theme, and the models you save to your account with their versions,
-        thumbnails and share links. A cookie keeps you signed in; it is the only cookie BetterCad sets. Delete your account on the Account page and all of it
-        goes straight away.
+        We keep your email address, your name, your password (hashed, never readable), your theme, the day you last used BetterCad, and the models you save to
+        your account with their versions, thumbnails and share links. A cookie keeps you signed in; it is the only cookie BetterCad sets. Delete your account on
+        the Account page and all of it goes straight away.
       </p>
 
       <h2>Problem reports</h2>

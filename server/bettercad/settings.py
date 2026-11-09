@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     github_report_repo: str = ""
     # Analytics (#111): the accounts (comma-separated emails) that can read /api/stats.
     stats_emails: str = ""
+    # Admin console: the accounts (comma-separated emails) that can see every user and their models at #/admin.
+    # Blank falls back to STATS_EMAILS.
+    admin_emails: str = ""
 
     @field_validator("database_path", "backup_dir", mode="before")
     @classmethod

@@ -13,7 +13,8 @@ export type Route =
   | { page: "view"; token: string }
   | { page: "gallery" }
   | { page: "privacy" }
-  | { page: "terms" };
+  | { page: "terms" }
+  | { page: "admin" };
 
 export function parseRoute(hash: string): Route {
   const [path = "", query = ""] = hash.replace(/^#\/?/, "").split("?");
@@ -41,6 +42,8 @@ export function parseRoute(hash: string): Route {
       return { page: "privacy" };
     case "terms":
       return { page: "terms" };
+    case "admin":
+      return { page: "admin" };
     default:
       return { page: "editor" };
   }

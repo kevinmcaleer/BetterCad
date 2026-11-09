@@ -122,6 +122,13 @@ day (`page_counts` in SQLite). No cookie, IP address, user agent or account is s
 so. To read the counts, list your account's email in `STATS_EMAILS` in `.env`, sign in, and open
 `/api/stats?days=30`.
 
+## Admin console
+
+List your account's email in `ADMIN_EMAILS` (blank uses `STATS_EMAILS`), sign in, and choose Admin in the account
+menu, or open `#/admin`. It lists everyone who has signed in to BetterCad, when they joined and were last seen, and
+the models each has saved (names, dates, sizes and pictures, not the models themselves). The server checks the email on
+every admin call.
+
 ## Live preview
 
 `.github/workflows/pages.yml` publishes the web app (no server) to GitHub Pages on every push to `main`. Turn it on once in Settings → Pages → Source: GitHub Actions.
