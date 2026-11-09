@@ -14,7 +14,7 @@ from .auth import CurrentUser, conn
 from .settings import Settings
 
 # The pages there are. Anything else counts as "other", so the table can't grow without bound.
-ROUTES = {"editor", "sample", "view", "library", "account", "signin", "signup", "privacy", "terms"}
+ROUTES = {"editor", "sample", "view", "library", "account", "signin", "signup", "privacy", "terms", "admin"}
 
 
 class Ping(BaseModel):

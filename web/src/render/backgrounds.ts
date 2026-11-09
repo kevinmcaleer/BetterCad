@@ -12,6 +12,7 @@ export const BACKGROUNDS: { id: BackgroundId; label: string; title: string }[] =
   { id: "grey", label: "Grey table", title: "A mid grey table that shows a reflection" },
   { id: "workbench", label: "Workbench", title: "A wooden bench in a warm room" },
   { id: "holoroom", label: "Holoroom", title: "A black room with a yellow grid" },
+  { id: "replicator", label: "Replicator", title: "A bright floor lit from below, with a grey grid" },
 ];
 
 /** The floor's look: colour, roughness, and the grid it carries, if any. Picture values, not interface colours. */
@@ -20,6 +21,8 @@ export interface Floor {
   roughness: number;
   /** A grid texture, repeated every `cell` millimetres. */
   grid?: { map: Texture; cell: number };
+  /** How brightly the grid texture glows, so the floor lights the model from below. 0.6 when left out. */
+  glow?: number;
 }
 
 const HOLO = COLOURS.holoroom;
@@ -42,6 +45,38 @@ function holoroomTile(): CanvasTexture {
   g.fillRect(px - 3, 0, 3, px);
   g.fillRect(0, 0, px, 3);
   g.fillRect(0, px - 3, px, 3);
+  const t = new CanvasTexture(c);
+  t.wrapS = t.wrapT = RepeatWrapping;
+  t.colorSpace = SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/**
+ * One floor tile of the Replicator pad: 50 mm of near-white panel with a soft grey line every 10 mm and a darker
+ * seam round the edge. The panel glows, so the floor reads as lit from underneath.
+ */
+function replicatorTile(): CanvasTexture {
+  const px = 512;
+  const c = document.createElement("canvas");
+  c.width = c.height = px;
+  const g = c.getContext("2d")!;
+  // A faint radial falloff inside each panel, brightest in the middle, like light diffusing through frosted glass.
+  const glow = g.createRadialGradient(px / 2, px / 2, px * 0.05, px / 2, px / 2, px * 0.75);
+  glow.addColorStop(0, "#ffffff");
+  glow.addColorStop(1, "#e6eaee");
+  g.fillStyle = glow;
+  g.fillRect(0, 0, px, px);
+  g.fillStyle = "#a9afb5";
+  for (let i = 1; i < 5; i++) {
+    g.fillRect((i * px) / 5 - 2, 0, 4, px);
+    g.fillRect(0, (i * px) / 5 - 2, px, 4);
+  }
+  g.fillStyle = "#7d838a";
+  g.fillRect(0, 0, 4, px);
+  g.fillRect(px - 4, 0, 4, px);
+  g.fillRect(0, 0, px, 4);
+  g.fillRect(0, px - 4, px, 4);
   const t = new CanvasTexture(c);
   t.wrapS = t.wrapT = RepeatWrapping;
   t.colorSpace = SRGBColorSpace;
@@ -95,5 +130,8 @@ function make(id: BackgroundId): Background {
     case "holoroom":
       // Black beyond the room; real gridded walls and a roof round the model. The roof lets the light through.
       return { sky: gradient(0x000000, 0x000000), floor: { colour: 0xffffff, roughness: 0.6, grid: { map: holoroomTile(), cell: 100 } }, walls: true };
+    case "replicator":
+      // A pale haze beyond a glowing, gridded pad; the pad's light comes up under the model.
+      return { sky: gradient(0xf2f4f6, 0xc9ced3), floor: { colour: 0xffffff, roughness: 0.35, grid: { map: replicatorTile(), cell: 50 }, glow: 1.1 } };
   }
 }

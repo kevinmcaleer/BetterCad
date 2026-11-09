@@ -68,5 +68,6 @@ describe("routes", () => {
     expect(parseRoute("#/view/abc")).toEqual({ page: "view", token: "abc" });
     expect(parseRoute("#/view")).toEqual({ page: "editor" });
     expect(parseRoute("#/gallery")).toEqual({ page: "gallery" });
+    expect(parseRoute("#/admin")).toEqual({ page: "admin" });
   });
 });

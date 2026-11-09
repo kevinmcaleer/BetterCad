@@ -21,6 +21,7 @@ const AccountPage = lazy(() => pages().then((m) => ({ default: m.AccountPage }))
 const Library = lazy(() => pages().then((m) => ({ default: m.Library })));
 const PrivacyPage = lazy(() => pages().then((m) => ({ default: m.PrivacyPage })));
 const TermsPage = lazy(() => pages().then((m) => ({ default: m.TermsPage })));
+const AdminPage = lazy(() => pages().then((m) => ({ default: m.AdminPage })));
 
 // Proves the workspace packages resolve; the kernel and solver arrive in epics #4 and #5.
 export const ENGINES = [kernelStatus(), solverStatus()];
@@ -64,6 +65,8 @@ function page(route: Route) {
       return <PrivacyPage />;
     case "terms":
       return <TermsPage />;
+    case "admin":
+      return <AdminPage />;
     default:
       return null;
   }

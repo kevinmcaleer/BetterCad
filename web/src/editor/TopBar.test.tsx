@@ -54,3 +54,18 @@ describe("Save split button", () => {
     expect(screen.getByRole("menuitem", { name: /Export/ })).toBeTruthy();
   });
 });
+
+describe("Account menu", () => {
+  it("offers Admin only to admins", () => {
+    setup({ account: { name: "kev", admin: true } });
+    fireEvent.click(screen.getByRole("button", { name: /kev: account and settings/ }));
+    expect(screen.getByRole("menuitem", { name: /Admin/ })).toBeTruthy();
+  });
+
+  it("leaves Admin out for everyone else", () => {
+    setup({ account: { name: "ada" } });
+    fireEvent.click(screen.getByRole("button", { name: /ada: account and settings/ }));
+    expect(screen.getByRole("menuitem", { name: /My models/ })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: /Admin/ })).toBeNull();
+  });
+});

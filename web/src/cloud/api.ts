@@ -11,6 +11,8 @@ export interface Account {
   email: string | null;
   theme: string | null;
   csrf: string;
+  /** Can open the admin console (#/admin). The server checks again on every admin call. */
+  admin?: boolean;
 }
 
 /** Where to sign in, make an account or manage it: pages on kevsrobots.com that send you back here. */
@@ -68,6 +70,34 @@ export interface Usage {
   models: number;
   bytes: number;
   quota: number;
+}
+
+/** A saved model as the admin console lists it: names, dates and sizes, never the model itself. */
+export interface AdminModel {
+  id: string;
+  name: string;
+  version: number;
+  versions: number;
+  size: number;
+  created: string;
+  modified: string;
+  deleted_at: string | null;
+  shared: boolean;
+  thumbnail: string | null;
+}
+
+/** Someone who has signed in to BetterCad, with the models they have saved. */
+export interface AdminUser {
+  id: number;
+  username: string;
+  joined: string;
+  /** The day they last used BetterCad ("2026-11-09"), or null before it was recorded. */
+  last_seen: string | null;
+  /** An account from before kevsrobots.com sign-in that nobody has claimed yet. */
+  set_aside: boolean;
+  last_saved: string | null;
+  size: number;
+  models: AdminModel[];
 }
 
 export class ApiError extends Error {
@@ -215,6 +245,8 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     savePrinter: (id: string, name: string, data: Record<string, unknown>) =>
       call<Record<string, unknown> & { id: string; modified: string }>("PUT", `printers/${encodeURIComponent(id)}`, { name, data }),
     deletePrinter: (id: string) => call<{ ok: true }>("DELETE", `printers/${encodeURIComponent(id)}`),
+    /** The admin console: every user and their models. 403 unless the account is an admin. */
+    adminUsers: () => call<{ users: AdminUser[]; totals: { users: number; models: number; size: number } }>("GET", "admin/users"),
     /** An API path (thumbnails) as a URL the page can load. */
     url: (path: string) => base + path.replace(/^\/?api\//, ""),
   };
