@@ -177,3 +177,36 @@ test("Shell moves before Fillet and keeps its open top, with no warning", async 
   await expect(bar.getByRole("status")).toHaveCount(0);
   await expect(bar.getByRole("button", { name: /problem/ })).toHaveCount(0);
 });
+
+test("rolled back with many steps, the timeline stays on one row and the strip scrolls", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await page.goto("/");
+  for (let k = 0; k < 24; k++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  const marker = timeline.getByRole("slider", { name: "Timeline marker" });
+  await expect(marker).toHaveAttribute("aria-valuenow", "24");
+  await timeline.getByRole("button", { name: /^Step back/ }).click();
+  await expect(timeline.getByText("Step 23 of 24")).toBeVisible();
+  await expect(timeline.getByRole("status")).toBeVisible();
+
+  // Every control sits on the one row under the warning.
+  const middle = async (name: RegExp) => {
+    const b = (await timeline.getByRole("button", { name }).boundingBox())!;
+    return b.y + b.height / 2;
+  };
+  const row = await middle(/^Roll back to the start/);
+  expect(Math.abs((await middle(/^History/)) - row)).toBeLessThan(4);
+  expect(Math.abs((await middle(/^Box 1,/)) - row)).toBeLessThan(4);
+  const summary = (await timeline.getByText("Step 23 of 24").boundingBox())!;
+  expect(Math.abs(summary.y + summary.height / 2 - row)).toBeLessThan(4);
+  const strip = timeline.locator(".bc-tl-strip");
+  expect(await strip.evaluate((s) => s.scrollWidth > s.clientWidth)).toBe(true);
+
+  // On a phone the strip folds away and the rest still fits on one row.
+  await page.setViewportSize({ width: 360, height: 700 });
+  const phoneRow = await middle(/^Roll back to the start/);
+  expect(Math.abs((await middle(/^History/)) - phoneRow)).toBeLessThan(4);
+});

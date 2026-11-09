@@ -22,7 +22,8 @@
   cursor: default;
 }
 .bc-tl-strip {
-  flex: 1 1 auto;
+  /* A zero basis: the strip takes what is left and scrolls, so the controls beside it never wrap. */
+  flex: 1 1 0;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -153,7 +154,7 @@
     justify-content: space-between;
   }
 }
-/* A change before later steps: a warning row across the top of the card. */
+/* A change before later steps: a warning row across the top of the card, the controls on one row below it. */
 .bc-timeline.bc-tl-warned {
   flex-wrap: wrap;
   row-gap: var(--bc-space-2);
