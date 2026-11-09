@@ -5,6 +5,7 @@ import type { Engine } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import type { BodyMesh } from "@bettercad/kernel";
 import { PREVIEW_ID, type PreviewRequest } from "../kernel/usePreview";
+import { pickNames } from "./names";
 
 /**
  * Fillet, Chamfer (#67) and Shell (#68): click edges (or the faces to leave open) on one body, set the size, Enter.
@@ -16,8 +17,8 @@ export interface FinishDeps {
   /** Changes the document in place, as one undo step (re-picking a step's edges or faces). */
   update: (fn: (d: ModelDoc) => ModelDoc, label: string) => void;
   parts: Part[];
-  /** The kernel's meshes of the bodies, for the length of each picked edge. */
-  meshes?: Map<string, { mesh: BodyMesh }>;
+  /** The kernel's meshes of the bodies, for the length of each picked edge, and their edge and face names (#47). */
+  meshes?: Map<string, { mesh: BodyMesh; names?: { faces: string[]; edges: string[] } }>;
   /** The document and the timeline marker, for the preview. */
   doc: ModelDoc;
   at: number;
@@ -111,12 +112,15 @@ export function useFinish(d: FinishDeps) {
     if (sizeNow !== undefined) (type === "shell" ? setWall : setRadius)(sizeNow);
     const label = type === "shell" ? "Shell" : type === "fillet" ? "Fillet" : "Chamfer";
     const e = editing.current;
+    // The picks by name too (#47), so they hold when an earlier step changes the body.
+    const names = pickNames(D.meshes?.get(p)?.names, type === "shell" ? "faces" : "edges", r);
     if (e) {
       editing.current = null;
       setEditId(null);
-      D.update((doc) => updateFinish(doc, e.id, { type, refs: r, size, outside: type === "shell" ? outside : undefined }), `Re-pick ${e.name}`);
+      D.update((doc) => updateFinish(doc, e.id, { type, refs: r, names, size, outside: type === "shell" ? outside : undefined }), `Re-pick ${e.name}`);
       e.restore();
-    } else D.record((doc, at) => addFinish(doc, { type, part: p, refs: r, size, outside: type === "shell" ? outside : undefined }, newId("f"), at), label);
+    } else
+      D.record((doc, at) => addFinish(doc, { type, part: p, refs: r, names, size, outside: type === "shell" ? outside : undefined }, newId("f"), at), label);
     const name = D.parts.find((x) => x.id === p)?.name ?? "the body";
     const n = r.length;
     D.say(

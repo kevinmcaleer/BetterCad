@@ -13,7 +13,7 @@ import {
   type RowToggle,
 } from "@bettercad/ui";
 import { createStore } from "../state/store";
-import { earlierWarning, laterText, moveText, type MoveNote } from "./DeleteStepDialog";
+import { earlierWarning, laterText, moveText, recoveredText, type MoveNote } from "./DeleteStepDialog";
 import {
   addCombine,
   addPart,
@@ -130,7 +130,6 @@ import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
 import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
 import { View3D } from "../viewport/View3D";
-import { Properties } from "./Properties";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
@@ -201,6 +200,8 @@ const CombineBar = lazy(() => import("./CombineBar").then((m) => ({ default: m.C
 const PlaceBar = lazy(() => import("../catalogue/PlaceBar").then((m) => ({ default: m.PlaceBar })));
 // The sketch palette only shows while a sketch is open, so it loads then.
 const SketchPanel = lazy(() => import("../sketch/SketchPanel").then((m) => ({ default: m.SketchPanel })));
+// Folded into the top bar's i button until opened, so it loads after first paint.
+const Properties = lazy(() => import("./Properties").then((m) => ({ default: m.Properties })));
 const HoleBar = lazy(() => import("../hole/HoleBar").then((m) => ({ default: m.HoleBar })));
 const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ default: m.FinishBar })));
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
@@ -610,6 +611,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     record,
     doc,
     parts,
+    meshes: kernel.bodies,
     view: vp.ref,
     active: tool === "pushpull" && !sketch.editing,
     onClose: () => setTool("select"),
@@ -2360,7 +2362,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (tool === "select" && editingStep) setEditingStep(null);
   }, [tool, editingStep]);
-  const timelineWarning = earlierWarning(doc, at, sketch.editingId ?? editingStep) ?? moveText(doc, moveNote, failed);
+  const timelineWarning =
+    earlierWarning(doc, at, sketch.editingId ?? editingStep) ?? moveText(doc, moveNote, failed) ?? recoveredText(doc, kernel.recovered, at);
   const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
   const sizes = useMemo(
     () =>
@@ -3719,86 +3722,90 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           ) : (
             <>
               {problemBanner}
-              <Properties
-                parts={selectedParts}
-                totalParts={parts.length}
-                onChange={onPropChange}
-                onCommit={onPropCommit}
-                scope={scope}
-                volumes={volumes}
-                sizes={sizes}
-                measures={measures}
-                print={doc.print}
-                allParts={parts}
-                onHole={() => toggleHole(selection)}
-                onReference={() => toggleReference(selection)}
-                onColour={(colour) => store.edit((d) => setLook(d, selection, () => ({ colour })), colour ? "Set the colour" : "Clear the colour")}
-                onFinish={(finish) => store.edit((d) => setLook(d, selection, () => ({ finish })), "Set the finish")}
-                onFit={(c) =>
-                  store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
-                }
-                mass={massInfo}
-                clashes={
-                  parts.length > 1
-                    ? {
-                        on: clashOn,
-                        onToggle: setClashOn,
-                        sameLink: !!clashOpts.sameLink,
-                        references: !!clashOpts.references,
-                        onOptions: (change) => setClashOpts((o) => ({ ...o, ...change })),
-                        poses: built.joints.length ? [{ id: "home", name: "Home" }, ...(doc.poses ?? []).map((x) => ({ id: x.id, name: x.name }))] : undefined,
-                        at: doc.poses?.some((x) => x.id === clashAt) || clashAt === "home" ? clashAt : null,
-                        onAt: setClashAt,
-                        progress: clashProgress,
-                        clashes,
-                        nameOf: (id: string) => parts.find((p) => p.id === id)?.name ?? "A body",
-                        onShow: showClash,
-                        onStop: stopClashes,
-                        sweep: built.joints.some(movable)
-                          ? {
-                              joints: built.joints
-                                .filter((j) => movable(j) && !built.drives.some((d) => d.driven === j.id))
-                                .map((j) => ({ id: j.id, name: j.name, kind: j.kind })),
-                              run: (ask, progress) =>
-                                kernelCall("sweep", { doc: live.current.doc, upTo: at, references: clashOpts.references, ...ask }, progress),
-                              model: doc.features,
-                              start: sweepStart,
-                              store,
-                              onShow: (pose) => {
-                                setClashAt(null);
-                                setClashOn(true);
-                                setLivePose(store.isLocked() ? pose : null);
-                              },
-                              say,
-                            }
-                          : undefined,
-                      }
-                    : undefined
-                }
-                pose={
-                  built.joints.length
-                    ? {
-                        joints: built.joints,
-                        selected: built.joints.filter((j) => selectedParts.some((p) => p.link === j.child)),
-                        pose: shownPose,
-                        onChange: changePose,
-                        onCommit: commitPose,
-                        onHome: homeJoints,
-                        drives: built.drives,
-                        playing,
-                        onPlay: play,
-                        nameOf: (id: string) => built.joints.find((j) => j.id === id)?.name ?? "another joint",
-                        locked: doc.tools?.length ? [...new Set(doc.tools.flatMap((t) => t.locked ?? []))] : undefined,
-                        onLock: doc.tools?.length
-                          ? (id: string, on: boolean) => {
-                              const ik = ikMaths.current;
-                              if (ik) store.edit((d) => ik.lockJoint(d, id, on), on ? "Lock the joint" : "Unlock the joint");
-                            }
-                          : undefined,
-                      }
-                    : undefined
-                }
-              />
+              <Suspense fallback={null}>
+                <Properties
+                  parts={selectedParts}
+                  totalParts={parts.length}
+                  onChange={onPropChange}
+                  onCommit={onPropCommit}
+                  scope={scope}
+                  volumes={volumes}
+                  sizes={sizes}
+                  measures={measures}
+                  print={doc.print}
+                  allParts={parts}
+                  onHole={() => toggleHole(selection)}
+                  onReference={() => toggleReference(selection)}
+                  onColour={(colour) => store.edit((d) => setLook(d, selection, () => ({ colour })), colour ? "Set the colour" : "Clear the colour")}
+                  onFinish={(finish) => store.edit((d) => setLook(d, selection, () => ({ finish })), "Set the finish")}
+                  onFit={(c) =>
+                    store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
+                  }
+                  mass={massInfo}
+                  clashes={
+                    parts.length > 1
+                      ? {
+                          on: clashOn,
+                          onToggle: setClashOn,
+                          sameLink: !!clashOpts.sameLink,
+                          references: !!clashOpts.references,
+                          onOptions: (change) => setClashOpts((o) => ({ ...o, ...change })),
+                          poses: built.joints.length
+                            ? [{ id: "home", name: "Home" }, ...(doc.poses ?? []).map((x) => ({ id: x.id, name: x.name }))]
+                            : undefined,
+                          at: doc.poses?.some((x) => x.id === clashAt) || clashAt === "home" ? clashAt : null,
+                          onAt: setClashAt,
+                          progress: clashProgress,
+                          clashes,
+                          nameOf: (id: string) => parts.find((p) => p.id === id)?.name ?? "A body",
+                          onShow: showClash,
+                          onStop: stopClashes,
+                          sweep: built.joints.some(movable)
+                            ? {
+                                joints: built.joints
+                                  .filter((j) => movable(j) && !built.drives.some((d) => d.driven === j.id))
+                                  .map((j) => ({ id: j.id, name: j.name, kind: j.kind })),
+                                run: (ask, progress) =>
+                                  kernelCall("sweep", { doc: live.current.doc, upTo: at, references: clashOpts.references, ...ask }, progress),
+                                model: doc.features,
+                                start: sweepStart,
+                                store,
+                                onShow: (pose) => {
+                                  setClashAt(null);
+                                  setClashOn(true);
+                                  setLivePose(store.isLocked() ? pose : null);
+                                },
+                                say,
+                              }
+                            : undefined,
+                        }
+                      : undefined
+                  }
+                  pose={
+                    built.joints.length
+                      ? {
+                          joints: built.joints,
+                          selected: built.joints.filter((j) => selectedParts.some((p) => p.link === j.child)),
+                          pose: shownPose,
+                          onChange: changePose,
+                          onCommit: commitPose,
+                          onHome: homeJoints,
+                          drives: built.drives,
+                          playing,
+                          onPlay: play,
+                          nameOf: (id: string) => built.joints.find((j) => j.id === id)?.name ?? "another joint",
+                          locked: doc.tools?.length ? [...new Set(doc.tools.flatMap((t) => t.locked ?? []))] : undefined,
+                          onLock: doc.tools?.length
+                            ? (id: string, on: boolean) => {
+                                const ik = ikMaths.current;
+                                if (ik) store.edit((d) => ik.lockJoint(d, id, on), on ? "Lock the joint" : "Unlock the joint");
+                              }
+                            : undefined,
+                        }
+                      : undefined
+                  }
+                />
+              </Suspense>
             </>
           )
         }

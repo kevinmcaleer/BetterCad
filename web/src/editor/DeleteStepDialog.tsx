@@ -48,4 +48,15 @@ export function moveText(doc: ModelDoc, note: MoveNote | null, failed: Map<strin
   return `${parts.join(". ")}. Double-click a step to check it, or press ${formatCombo("mod+z")} to undo the move.`;
 }
 
+/**
+ * Steps whose picked edges or faces were found again only by place after an earlier step changed (#47): they may now be
+ * on the wrong ones.
+ */
+export function recoveredText(doc: ModelDoc, recovered: Map<string, string>, at = doc.features.length): string | null {
+  const names = doc.features.slice(0, at).flatMap((f) => (recovered.has(f.id) ? [f.name] : []));
+  if (!names.length) return null;
+  const one = names.length === 1;
+  return `${list(names)} ${one ? "picks" : "pick"} edges or faces that an earlier step changed. Double-click ${one ? "it" : "each"} to check ${one ? "it's" : "they're"} on the right ones.`;
+}
+
 const list = (names: string[]) => (names.length === 1 ? names[0]! : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);

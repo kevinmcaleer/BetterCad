@@ -22,7 +22,10 @@ import type { ConstructRef } from "./construct";
  * arcs, and how far along the sketch's normal they go. The document resolves an Extrude step into a PrismSpec each
  * time the timeline is built, so editing the sketch reshapes the body.
  */
-export type ProfileSeg = { kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; a: Vec2; m: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number };
+/** One curve of a profile's outline; `id` is the sketch curve it came from, which names the face it sweeps (#47). */
+export type ProfileSeg = ({ kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; a: Vec2; m: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number }) & {
+  id?: string;
+};
 
 export interface ProfileShape {
   outer: ProfileSeg[];
@@ -202,20 +205,20 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
   const idx = new SketchIndex(sketch);
   return loop.edges.map(({ id, reversed }) => {
     const e = idx.get(id)!;
-    if (e.kind === "circle") return { kind: "circle", c: idx.xy(e.c), r: e.r };
+    if (e.kind === "circle") return { kind: "circle", c: idx.xy(e.c), r: e.r, id };
     if (e.kind === "line") {
       const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
-      return reversed ? { kind: "line", a: b, b: a } : { kind: "line", a, b };
+      return reversed ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id };
     }
     if (e.kind !== "arc") throw new Error(`${id} is not a curve`);
     const c = idx.xy(e.c);
     const s = angleOf(sub(idx.xy(e.a), c));
     const en = angleOf(sub(idx.xy(e.b), c));
     // An arc whose ends meet is a whole circle.
-    if (e.a === e.b || Math.hypot(...sub(idx.xy(e.a), idx.xy(e.b))) < 1e-9) return { kind: "circle", c, r: e.r };
+    if (e.a === e.b || Math.hypot(...sub(idx.xy(e.a), idx.xy(e.b))) < 1e-9) return { kind: "circle", c, r: e.r, id };
     const m = polar(c, e.r, s + sweep(s, en) / 2);
     const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
-    return reversed ? { kind: "arc", a: b, m, b: a } : { kind: "arc", a, m, b };
+    return reversed ? { kind: "arc", a: b, m, b: a, id } : { kind: "arc", a, m, b, id };
   });
 }
 

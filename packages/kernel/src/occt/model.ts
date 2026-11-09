@@ -24,6 +24,7 @@ import {
   type Measure,
 } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
+import { Namer, edgeNames, resolveNames } from "./naming";
 import { build, printed, type ModelDoc, type Part } from "../document";
 import { opMoves, undoMove } from "../pattern";
 import { DEFAULT_INFILL, SHELL_MM, estimateWeight, materialOf } from "../print/materials";
@@ -50,6 +51,11 @@ export interface BuiltBody {
   id: string;
   mesh: BodyMesh;
   measure: Measure;
+  /**
+   * Each face's and edge's name (#47), in the mesh's numbering, for steps to store with their picks. Missing on bodies
+   * too big to follow (large imports).
+   */
+  names?: { faces: string[]; edges: string[] };
 }
 
 export interface ImportInfo {
@@ -63,6 +69,8 @@ export interface ModelResult {
   ms: number;
   /** How many body steps (joins, cuts, fillets…) were made rather than reused, for timings and tests. */
   made: number;
+  /** Steps whose named edges or faces were not all found as they were (#47), so may now be on the wrong ones. */
+  recovered: [string, string][];
 }
 
 /** Everything a part's shape depends on, for caches. */
@@ -143,13 +151,26 @@ function primitive(oc: OC, p: Part): TopoDS_Shape {
   }
 }
 
+/** A part's solid as built, with what its steps left to report. */
+interface Solid {
+  shape: TopoDS_Shape;
+  body: Omit<BuiltBody, "id">;
+  /** Face names (#47), or null when the body is too big to follow. */
+  faces: string[] | null;
+  failures: [string, string][];
+  recovered: [string, string][];
+}
+
 export class ModelBuilder {
-  private cache = new Map<string, { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> }>();
+  private cache = new Map<string, Solid>();
   /** Box trees over each body's mesh, for the clash sweep (#179). */
   private trees = new Map<string, MeshTree>();
   private used = new Set<string>();
   /** Bodies part way through their steps, by what made them so far (see `chain`), least recently used first. */
-  private steps = new Map<string, { shape: TopoDS_Shape; open: boolean; failures: [string, string][] }>();
+  private steps = new Map<
+    string,
+    { shape: TopoDS_Shape; open: boolean; failures: [string, string][]; faces: string[] | null; recovered: [string, string][] }
+  >();
 
   constructor(private oc: OC) {}
 
@@ -189,10 +210,11 @@ export class ModelBuilder {
 
   /** Steps whose join, cut or intersection could not be made on the last build (the part is built without them). */
   private opFailures: [string, string][] = [];
+  private opRecovered: [string, string][] = [];
   private made = 0;
 
   /** The solid for one part, made fresh or from the cache. */
-  solid(p: Part, quality: Quality = "fast"): { shape: TopoDS_Shape; body: Omit<BuiltBody, "id"> } {
+  solid(p: Part, quality: Quality = "fast"): Solid {
     const k = partKey(p, quality);
     this.used.add(k);
     let hit = this.cache.get(k);
@@ -209,6 +231,9 @@ export class ModelBuilder {
       let local: TopoDS_Shape;
       let open = false;
       const failures: [string, string][] = [];
+      const recovered: [string, string][] = [];
+      // Face names (#47) follow the body through its steps.
+      const namer = new Namer(oc);
       const kept = from > 0 ? this.steps.get(keys[from - 1]!)! : null;
       if (kept) {
         // Most recently used last, so the oldest go first when the store is full.
@@ -217,19 +242,28 @@ export class ModelBuilder {
         local = kept.shape;
         open = kept.open;
         failures.push(...kept.failures);
+        recovered.push(...kept.recovered);
+        if (kept.faces) namer.add(local, kept.faces);
+        else namer.off = true;
       } else if (p.imported) {
         const im = this.importedShape(p);
         local = im.shape;
         open = im.open;
+        // A mesh has a face per triangle: too many to name, and it can't be filleted anyway.
+        if (p.imported.mesh) namer.off = true;
       } else if (p.copy) {
         // A mirrored or turned copy (#69): the original built where it stood, moved in the world, then taken into the
         // copy's own coordinates, so later steps on the copy work as on any body.
-        const src = this.solid(p.copy.body, quality).shape;
-        local = unplace(oc, copyShape(oc, src, p.copy.by), { position: p.copy.at });
-      } else local = primitive(oc, p);
+        const src = this.solid(p.copy.body, quality);
+        local = unplace(oc, copyShape(oc, src.shape, p.copy.by), { position: p.copy.at });
+        if (src.faces) namer.add(local, src.faces);
+      } else local = p.kind === "solid" && !p.catalogue ? (p.revolve ? revolveOf(oc, p.revolve, namer) : prismOf(oc, p.prism!, namer)) : primitive(oc, p);
+      let faces = namer.off ? null : namer.namesOf(local);
       for (let i = from; i < ops.length; i++) {
         const o = ops[i]!;
         this.made++;
+        // Shapes this step makes fresh (its tool, a slab) are named under its id.
+        namer.prefix = `${o.feature}:`;
         try {
           if (p.imported?.mesh && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
           if (open && (o.op === "join" || o.op === "cut" || o.op === "intersect"))
@@ -239,33 +273,56 @@ export class ModelBuilder {
           // the way in and made last on the way out.
           const flips = opMoves(o);
           let s = local;
-          for (let j = flips.length - 1; j >= 0; j--) s = copyShape(oc, s, undoMove(flips[j]!));
-          if (o.op === "fillet" || o.op === "chamfer") s = (o.op === "fillet" ? fillet : chamfer)(oc, s, o.refs ?? [], o.size ?? 0);
-          else if (o.op === "shell") s = shell(oc, s, o.refs ?? [], o.size ?? 0, o.outside);
-          else if (o.op === "pushpull") s = pushPull(oc, s, o.refs?.[0] ?? -1, o.size ?? 0);
-          else if (o.op === "hole") s = holes(oc, s, o.holes!);
+          const move = (m: Parameters<typeof copyShape>[2]) => {
+            const next = copyShape(oc, s, m);
+            namer.moved(next, s);
+            s = next;
+          };
+          for (let j = flips.length - 1; j >= 0; j--) move(undoMove(flips[j]!));
+          // Picks stored by name are found again by name; picks without, or on a body too big to name, by number.
+          let refs = o.refs ?? [];
+          if (o.names?.length && !namer.off) {
+            const fs = namer.namesOf(s);
+            const r = resolveNames(o.names, o.op === "fillet" || o.op === "chamfer" ? edgeNames(oc, s, fs) : fs, refs);
+            refs = r.refs;
+            if (r.recovered) recovered.push([o.feature, "Its edges or faces changed in an earlier step. Check it's on the right ones."]);
+          }
+          if (o.op === "fillet" || o.op === "chamfer") s = (o.op === "fillet" ? fillet : chamfer)(oc, s, refs, o.size ?? 0, namer);
+          else if (o.op === "shell") s = shell(oc, s, refs, o.size ?? 0, o.outside, namer);
+          else if (o.op === "pushpull") s = pushPull(oc, s, refs[0] ?? -1, o.size ?? 0, namer);
+          else if (o.op === "hole") s = holes(oc, s, o.holes!, namer);
           else {
             // A body is built where it stood, then taken into this part's coordinates as they were then.
-            const tool = o.body
-              ? unplace(oc, this.solid(o.body, quality).shape, o.at ?? { position: p.position, rotation: p.rotation })
-              : o.rev
-                ? revolveOf(oc, o.rev)
-                : prismOf(oc, o.tool!);
-            s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool]);
+            let tool: TopoDS_Shape;
+            if (o.body) {
+              const b = this.solid(o.body, quality);
+              tool = unplace(oc, b.shape, o.at ?? { position: p.position, rotation: p.rotation });
+              if (b.faces)
+                namer.add(
+                  tool,
+                  b.faces.map((n) => namer.prefix + n),
+                );
+            } else tool = o.rev ? revolveOf(oc, o.rev, namer) : prismOf(oc, o.tool!, namer);
+            s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool], namer);
           }
-          for (const m of flips) s = copyShape(oc, s, m);
+          for (const m of flips) move(m);
           local = s;
         } catch (e) {
           failures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
         }
-        this.steps.set(keys[i]!, { shape: local, open, failures: [...failures] });
+        faces = namer.off ? null : namer.namesOf(local);
+        this.steps.set(keys[i]!, { shape: local, open, failures: [...failures], faces, recovered: [...recovered] });
       }
       while (this.steps.size > STEPS_KEPT) this.steps.delete(this.steps.keys().next().value!);
-      this.opFailures.push(...failures);
       const shape = place(oc, local, { position: p.position, rotation: p.rotation });
-      hit = { shape, body: { mesh: tessellate(oc, shape, quality), measure: measure(oc, shape) } };
+      // Placing keeps the faces' order, so the names hold; edges are named from them on the placed shape.
+      const names = faces ? { faces, edges: edgeNames(oc, shape, faces) } : undefined;
+      hit = { shape, body: { mesh: tessellate(oc, shape, quality), measure: measure(oc, shape), names }, faces, failures, recovered };
       this.cache.set(k, hit);
     }
+    // A body from the cache still reports the steps it couldn't make or found again by name.
+    this.opFailures.push(...hit.failures);
+    this.opRecovered.push(...hit.recovered);
     return hit;
   }
 
@@ -283,6 +340,7 @@ export class ModelBuilder {
     const out: [string, string][] = [...failed];
     this.used.clear();
     this.opFailures = [];
+    this.opRecovered = [];
     this.made = 0;
     for (const p of parts) {
       if (cancelled()) throw new KernelError("cancelled", "Stopped.");
@@ -294,10 +352,14 @@ export class ModelBuilder {
         if (f) out.push([f.id, why]);
       }
     }
-    out.push(...this.opFailures);
+    // A body used as a tool reports its steps again: once each.
+    for (const f of this.opFailures) if (!out.some(([id, why]) => id === f[0] && why === f[1])) out.push(f);
     // Keep the cache to what the last few builds used, so memory stays flat across many edits.
     if (this.cache.size > 400) for (const k of this.cache.keys()) if (!this.used.has(k)) this.cache.delete(k);
-    return { bodies, failed: out, ms: performance.now() - t0, made: this.made };
+    // A step that failed doesn't also need a warning that its picks moved.
+    const failedIds = new Set(out.map(([id]) => id));
+    const recovered = this.opRecovered.filter(([id], i, all) => !failedIds.has(id) && all.findIndex(([x]) => x === id) === i);
+    return { bodies, failed: out, ms: performance.now() - t0, made: this.made, recovered };
   }
 
   /** Mating faces (#184) between the bodies that print, as built up to `upTo`. */

@@ -194,6 +194,8 @@ export interface BodyOp {
   op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "hole";
   /** Edges (fillet, chamfer) or faces left open (shell), numbered on the part as it was before this op. */
   refs?: number[];
+  /** The same edges or faces by name (#47), found again when earlier steps change; `refs` is the fallback. */
+  names?: string[];
   /** The fillet radius, chamfer distance or shell wall, mm. */
   size?: number;
   /** A shell that grows outward instead of keeping the outer size. */
@@ -450,6 +452,11 @@ export interface FinishFeature extends FeatureBase {
   part: string;
   /** Edges for fillet and chamfer; faces to leave open for shell. */
   refs: number[];
+  /**
+   * The same edges or faces by their names (#47), so they are found again when an earlier step changes the body.
+   * Older models have only `refs`.
+   */
+  names?: string[];
   /** Radius, distance or wall thickness, mm. */
   size: number;
   /** Shell only: grow outward. */
@@ -1236,7 +1243,10 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, f.type === "pushpull" ? "Pick the face to pull" : "Give it a size above 0 mm");
           break;
         }
-        t.ops = [...(t.ops ?? []), { op: f.type, refs: [...f.refs], size: f.size, outside: f.outside, feature: f.id }];
+        t.ops = [
+          ...(t.ops ?? []),
+          { op: f.type, refs: [...f.refs], ...(f.names ? { names: [...f.names] } : {}), size: f.size, outside: f.outside, feature: f.id },
+        ];
         break;
       }
       case "hole": {
@@ -1843,11 +1853,12 @@ export function updateExtrude(doc: ModelDoc, id: string, change: Partial<Extrude
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "extrude" ? { ...f, ...change } : f)) };
 }
 
-export type FinishParams = Pick<FinishFeature, "type" | "part" | "refs" | "size" | "outside">;
+export type FinishParams = Pick<FinishFeature, "type" | "part" | "refs" | "size" | "outside"> & { names?: string[] };
 
 /** Adds a Fillet, Chamfer or Shell step at `at` (the marker), or at the end. */
 export function addFinish(doc: ModelDoc, params: FinishParams, id = newId("f"), at?: number): ModelDoc {
-  return insert(doc, at, { id, name: nextFeatureName(doc, params.type), ...params });
+  const { names, ...rest } = params;
+  return insert(doc, at, { id, name: nextFeatureName(doc, params.type), ...rest, ...(names?.length ? { names } : {}) });
 }
 
 /** Changes a Fillet, Chamfer or Shell step (the tool edits it live, as one undo step). */
@@ -1857,6 +1868,8 @@ export function updateFinish(doc: ModelDoc, id: string, change: Partial<FinishPa
     features: doc.features.map((f) => {
       if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "pushpull")) return f;
       const next = { ...f, ...change } as FinishFeature;
+      // New picks without names drop the old names, which would otherwise win over them.
+      if (change.refs && !change.names?.length) delete next.names;
       // Switching between round and bevel renames a step that still has its default name.
       if (change.type && change.type !== f.type && f.name.startsWith(FEATURE_LABEL[f.type])) next.name = nextFeatureName(doc, change.type);
       return next;

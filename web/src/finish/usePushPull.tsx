@@ -3,6 +3,7 @@ import { ESC, useEscape } from "@bettercad/ui";
 import { addFinish, newId, updateFinish, type ModelDoc, type Part } from "../state/document";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, ScreenPoint } from "../viewport/engine";
+import { pickNames } from "./names";
 
 /**
  * Push/pull (#65): press on a flat face and drag it out (adds material) or in (cuts it away), or type the distance.
@@ -18,6 +19,8 @@ export interface PushPullDeps {
   record: (fn: (d: ModelDoc, at: number | undefined) => ModelDoc, label: string, coalesceKey?: string) => void;
   doc: ModelDoc;
   parts: Part[];
+  /** The kernel's bodies, for the picked face's name (#47). */
+  meshes?: Map<string, { names?: { faces: string[]; edges: string[] } }>;
   view: RefObject<View3DHandle>;
   active: boolean;
   onClose: () => void;
@@ -95,7 +98,8 @@ export function usePushPull(d: PushPullDeps) {
         // A new face is a new step: keep the last one as it is.
         store.seal();
         const id = newId("f");
-        deps.current.record((doc, at) => addFinish(doc, { type: "pushpull", part: hit.body, refs: [hit.index], size: 0 }, id, at), "Push/pull", KEY(id));
+        const names = pickNames(deps.current.meshes?.get(hit.body)?.names, "faces", [hit.index]);
+        deps.current.record((doc, at) => addFinish(doc, { type: "pushpull", part: hit.body, refs: [hit.index], names, size: 0 }, id, at), "Push/pull", KEY(id));
         setSession({ id, part: hit.body });
         const tip = info.centroid.map((c, i) => c + info.normal[i]!) as typeof info.centroid;
         drag.current = { id, from: p, base: eng.project(info.centroid), tip: eng.project(tip) };
