@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFileStore, type FileHandle, type PickerWindow, type Recent } from "./fileStore";
 import { memoryKV } from "./idb";
+import { unzip } from "@bettercad/kernel/zip";
+
+const readBytes = (b: Blob) =>
+  new Promise<ArrayBuffer>((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as ArrayBuffer);
+    r.readAsArrayBuffer(b);
+  });
 
 /** jsdom's Blob has no text(). */
 const read = (b: Blob) =>
@@ -14,7 +22,8 @@ const read = (b: Blob) =>
 function handle(name: string, text = "") {
   let body = text;
   let gone = false;
-  const h: FileHandle & { body(): string; remove(): void } = {
+  let blob: Blob | undefined;
+  const h: FileHandle & { body(): string; blob(): Blob | undefined; remove(): void } = {
     kind: "file",
     name,
     getFile: async () => {
@@ -25,6 +34,7 @@ function handle(name: string, text = "") {
       let next = "";
       return {
         write: async (d: BlobPart) => {
+          if (d instanceof Blob) blob = d;
           next += typeof d === "string" ? d : await read(d as Blob);
         },
         close: async () => {
@@ -35,6 +45,7 @@ function handle(name: string, text = "") {
     isSameEntry: async (o) => o === h,
     queryPermission: async () => "granted",
     body: () => body,
+    blob: () => blob,
     remove: () => {
       gone = true;
     },
@@ -128,18 +139,25 @@ describe("exported files (#86)", () => {
     expect(h.body()).toBe("png");
   });
 
-  it("writes several files into a folder you pick", async () => {
-    const made = new Map<string, ReturnType<typeof handle>>();
-    const dir = { getFileHandle: vi.fn(async (n: string) => made.set(n, handle(n)).get(n)!) };
-    const fs = createFileStore(picker({ showDirectoryPicker: vi.fn(async () => dir) }), memoryKV<Recent>());
-    const data = new TextEncoder().encode("x").buffer as ArrayBuffer;
-    const r = await fs.saveFiles([
-      { name: "a.stl", data, mime: "model/stl" },
-      { name: "b.stl", data, mime: "model/stl" },
-    ]);
-    expect(r).toEqual({ names: ["a.stl", "b.stl"], inPlace: true });
-    expect([...made.keys()]).toEqual(["a.stl", "b.stl"]);
-    expect(made.get("b.stl")!.body()).toBe("x");
+  it("saves several files as one zip with an ordinary save dialog, never a folder picker", async () => {
+    const h = handle("Bot STEP.zip");
+    const showDirectoryPicker = vi.fn();
+    const win = picker({ showSaveFilePicker: vi.fn(async () => h), showDirectoryPicker } as Partial<PickerWindow>);
+    const fs = createFileStore(win, memoryKV<Recent>());
+    const enc = (t: string) => new TextEncoder().encode(t).buffer as ArrayBuffer;
+    const r = await fs.saveFiles(
+      [
+        { name: "a.step", data: enc("aa"), mime: "model/step" },
+        { name: "b.step", data: Promise.resolve(enc("bbb")), mime: "model/step" },
+      ],
+      "Bot STEP.zip",
+    );
+    expect(r).toEqual({ names: ["Bot STEP.zip"], inPlace: true });
+    expect(showDirectoryPicker).not.toHaveBeenCalled();
+    expect(win.showSaveFilePicker).toHaveBeenCalledWith(expect.objectContaining({ suggestedName: "Bot STEP.zip" }));
+    const files = unzip(new Uint8Array(await readBytes(h.blob()!)));
+    expect([...files.keys()]).toEqual(["a.step", "b.step"]);
+    expect(new TextDecoder().decode(files.get("b.step"))).toBe("bbb");
   });
 });
 
