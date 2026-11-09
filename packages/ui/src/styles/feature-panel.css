@@ -181,3 +181,39 @@
 .bc-fpanel-more[aria-expanded="true"] .bc-icon {
   transform: rotate(180deg);
 }
+/* A titled group of rows (Joint's Moves, Hangs from, How it moves, Line-up). */
+.bc-fsection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-4);
+}
+.bc-fsection-head {
+  margin: var(--bc-space-2) 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bc-color-ink);
+}
+/* NumberFields inside a section line up as rows, as they do straight in the panel body. */
+.bc-fsection > .bc-field {
+  display: grid;
+  grid-template-columns: var(--bc-frow-label) minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--bc-space-4);
+  min-height: var(--bc-control);
+}
+.bc-fsection > .bc-field > .bc-scrub {
+  color: var(--bc-color-muted);
+  overflow-wrap: anywhere;
+}
+.bc-fsection > .bc-field > .bc-field-error {
+  grid-column: 2;
+}
+.bc-fsection + .bc-fsection {
+  padding-top: var(--bc-space-4);
+  border-top: 1px solid var(--bc-color-line);
+}
+/* A list to choose from in a row (Joint's components). */
+.bc-frow-ctl > .bc-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}

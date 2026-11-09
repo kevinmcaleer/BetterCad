@@ -150,7 +150,8 @@ import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
-import { useJoint } from "../joint/useJoint";
+import type { JointSession } from "../joint/useJoint";
+import type { JointUi } from "../joint/JointPanel";
 import { originShapes, useConstruct } from "../construct/useConstruct";
 import { usePattern } from "../pattern/usePattern";
 import { install, useInstallable, useLaunchFiles } from "../pwa/install";
@@ -215,7 +216,7 @@ const ReportDialog = lazy(() => import("../report/ReportDialog").then((m) => ({ 
 const ParamsDialog = lazy(() => import("./ParamsPanel").then((m) => ({ default: m.ParamsDialog })));
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => ({ default: m.ConstructBar })));
-const JointBar = lazy(() => import("../joint/JointBar").then((m) => ({ default: m.JointBar })));
+const JointTool = lazy(() => import("../joint/JointPanel").then((m) => ({ default: m.JointTool })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
 
@@ -649,19 +650,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
-  const joint = useJoint({
-    store,
-    record,
-    doc,
-    parts,
-    links: built.links,
-    joints: built.joints,
-    view: vp.ref,
-    active: tool === "joint" && !sketch.editing,
-    onClose: () => setTool("select"),
-    say,
-    measure: kernel.measure,
-  });
+  // The Joint tool (#172) loads with its panel; the editor keeps what Enter, the help line and the timeline need.
+  const jointApi = useRef<JointSession | null>(null);
+  const [jointUi, setJointUi] = useState<JointUi | null>(null);
+  const [jointEdit, setJointEdit] = useState<string | null>(null);
+  const jointEdited = useCallback(() => setJointEdit(null), []);
+  const jointHelp = tool === "joint" ? (jointUi?.help ?? null) : null;
 
   // Construction geometry (#265): the Construct menu arms the tool for one kind.
   const [constructKind, setConstructKind] = useState<ConstructKind | null>(null);
@@ -1059,7 +1053,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const shownConstruct = useMemo(() => built.construct.filter((c) => !doc.looks[c.id]?.hidden), [built.construct, doc.looks]);
   const patternAxis =
     tool === "pattern" && pattern.feature?.kind === "circle" && !pattern.feature.axisStep ? `origin:${pattern.feature.axis.toUpperCase()}` : null;
-  const jointAxis = tool === "joint" && joint.stage === "axis";
+  const jointAxis = tool === "joint" && jointUi?.stage === "parent";
   useEffect(() => {
     const eng = vp.ref.current?.engine();
     if (!eng) return;
@@ -1812,9 +1806,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   : construct.session
                     ? construct.done()
                     : tool === "joint"
-                      ? joint.stage === "parent"
-                        ? joint.pickParent(null)
-                        : joint.done()
+                      ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                        ? jointApi.current.pickParent(null)
+                        : jointApi.current?.done()
                       : pattern.session
                         ? pattern.done()
                         : tool === "combine"
@@ -2908,7 +2902,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               disabled: i >= at,
               onSelect: () => {
                 setTool("joint");
-                joint.edit(id);
+                setJointEdit(id);
               },
             },
           ]
@@ -3137,6 +3131,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         return pattern.edit(f.id);
       case "drive":
         return setDriveDialog({ editing: f });
+      case "joint":
+        // Opens the joint's panel with every field: both components and their snaps, how it moves and lines up.
+        setEditingStep(f.id);
+        setTool("joint");
+        return setJointEdit(f.id);
       case "add":
       case "move":
       case "resize": {
@@ -3196,17 +3195,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? sketch.help
       : place.help
         ? place.help
-        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || joint.help || pattern.help || measure.help || construct.help
-          ? extrude.help ||
-            revolve.help ||
-            pushpull.help ||
-            hole.help ||
-            mount.help ||
-            gear.help ||
-            joint.help ||
-            pattern.help ||
-            measure.help ||
-            construct.help
+        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || jointHelp || pattern.help || measure.help || construct.help
+          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || jointHelp || pattern.help || measure.help || construct.help
           : finish.help
             ? finish.help
             : vp.elementText
@@ -3518,7 +3508,28 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
               {tool === "joint" && (
                 <Suspense fallback={null}>
-                  <JointBar x={joint} scope={scope} error={joint.session ? failed.get(joint.session.id) : undefined} onCancel={() => setTool("select")} />
+                  <JointTool
+                    deps={{
+                      store,
+                      record,
+                      doc,
+                      parts,
+                      links: built.links,
+                      joints: built.joints,
+                      view: vp.ref,
+                      active: !sketch.editing,
+                      onClose: () => setTool("select"),
+                      say,
+                      measure: kernel.measure,
+                    }}
+                    edit={jointEdit}
+                    onEdited={jointEdited}
+                    onState={setJointUi}
+                    api={jointApi}
+                    failed={failed}
+                    scope={scope}
+                    onCancel={() => setTool("select")}
+                  />
                 </Suspense>
               )}
               {tool === "gear" && (
