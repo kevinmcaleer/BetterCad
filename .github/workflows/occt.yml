@@ -1,9 +1,15 @@
 name: OpenCascade build
 
 # A trimmed OpenCascade WASM (#43), built from the classes the kernel uses (packages/kernel/occt/config.mjs), then
-# checked by the kernel's tests and goldens against that build. Run it by hand from the Actions tab; the build is an
-# artifact to download and compare, and nothing is committed or shipped by this workflow.
+# checked by the kernel's tests and goldens against that build. Run it by hand from the Actions tab, or change the
+# config in a pull request; the build is an artifact to download and compare, and nothing is committed or shipped.
 on:
+  # Also on pull requests that change the build config or its scripts. Not a required check: a slow or failing build
+  # never blocks a merge.
+  pull_request:
+    paths:
+      - "packages/kernel/occt/**"
+      - ".github/workflows/occt.yml"
   workflow_dispatch:
     inputs:
       depth:
@@ -25,7 +31,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Write the build config
-        run: node packages/kernel/occt/config.mjs --depth "${{ inputs.depth }}"
+        run: node packages/kernel/occt/config.mjs --depth "${{ inputs.depth || 2 }}"
       - name: Link the WASM
         # opencascade.js 3.1.0, single-threaded, pinned by digest: the toolchain replicad-opencascadejs 1.2.1 uses.
         run: |

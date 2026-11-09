@@ -20,9 +20,9 @@ const out = arg("--out", join(here, "build", "bettercad.yml"));
 const require = createRequire(import.meta.url);
 const dts = readFileSync(join(dirname(require.resolve("replicad-opencascadejs/package.json")), "dist", "replicad_single.d.ts"), "utf8");
 
-/** Every class and enum the stock build declares, with the names its body mentions. */
+/** Every class and enum the stock build declares (an enum is a `declare const`), with the names its body mentions. */
 const decls = new Map();
-for (const m of dts.matchAll(/^(?:export )?declare (?:class|enum|type|interface) ([A-Za-z0-9_]+)([^\n]*)\n([\s\S]*?)^}/gm)) {
+for (const m of dts.matchAll(/^(?:export )?declare (?:class|enum|type|interface|const) ([A-Za-z0-9_]+)([^\n]*)\n([\s\S]*?)^}/gm)) {
   decls.set(
     m[1],
     new Set([...(m[2] + m[3]).matchAll(/\b([A-Z][A-Za-z0-9]*_[A-Za-z0-9_]+|TopoDS|BRepGProp|BRepBndLib|BRepTools|Precision)\b/g)].map((x) => x[1])),
@@ -52,7 +52,7 @@ for (let d = 0; d < DEPTH; d++) {
       }
   edge = next;
 }
-// Enums and runtime helpers are not bindings.
+// Classes and enums are bound by name; the runtime helpers are not.
 const bindings = [...keep].filter((n) => /_|^TopoDS$|^BRepGProp$|^BRepBndLib$|^BRepTools$|^Precision$/.test(n)).sort();
 
 const flags = [
