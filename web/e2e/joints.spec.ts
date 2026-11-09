@@ -2,6 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 type View = { __bcView: { project(p: number[]): { x: number; y: number } } };
 
+const nextFrame = (page: Page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
 async function click(page: Page, x: number, y: number, z: number) {
   const box = (await page.getByTestId("view-canvas").boundingBox())!;
   const q = await page.evaluate((p) => (window as unknown as View).__bcView.project(p), [x, y, z]);
@@ -328,9 +330,12 @@ test("drag an arm by its tool point", async ({ page }) => {
   const from = await at([29, -5, 20]);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
+  // On a busy runner the drag can miss moves sent before a frame has drawn: let each one land.
+  await nextFrame(page);
   for (const d of [20, 45, 70, 90]) {
     const q = await at([25 + 8 * Math.cos((d * Math.PI) / 180), 8 * Math.sin((d * Math.PI) / 180), 20]);
     await page.mouse.move(q.x + from.x - tool.x, q.y + from.y - tool.y, { steps: 3 });
+    await nextFrame(page);
   }
   await page.mouse.up();
   await expect.poll(async () => Number(await angle.inputValue())).toBeGreaterThan(60);
