@@ -26,6 +26,8 @@ export interface View3DProps {
   meshes?: Map<string, { mesh: BodyMesh }>;
   /** The geometry engine's state, for the loading note. */
   engine?: KernelState;
+  /** Steps done and to do while a long rebuild runs (#76). */
+  rebuilding?: [number, number] | null;
   /** Whole parts picked (body filter), and faces, edges and vertices picked (the other filters). */
   picks: Pick[];
   filter: SelectFilter;
@@ -312,10 +314,16 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
           Add a shape from the Library to start.
         </div>
       )}
-      {kernelState?.status === "loading" && parts.length > 0 && (
+      {kernelState?.status === "loading" && parts.length > 0 ? (
         <div className="bc-view-engine" role="status">
           Loading the geometry engine ({Math.round(kernelState.fraction * 100)}%)
         </div>
+      ) : (
+        props.rebuilding && (
+          <div className="bc-view-engine" role="status">
+            Rebuilding {props.rebuilding[0]} of {props.rebuilding[1]} steps
+          </div>
+        )
       )}
       {frame && (
         <div className="bc-frame-stats" aria-hidden="true">

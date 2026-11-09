@@ -1,6 +1,6 @@
 import { caught } from "../report/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { BodyMesh, Call, KernelClient, KernelState, Measure, MeasureResult, Methods, TopoRef } from "@bettercad/kernel";
+import type { BodyMesh, Call, KernelClient, KernelState, Measure, MeasureResult, Methods, ModelResult, TopoRef } from "@bettercad/kernel";
 import { milestone } from "../perf";
 import type { ModelDoc, Part } from "@bettercad/kernel/document";
 
@@ -23,6 +23,10 @@ export interface KernelView {
   failed: Map<string, string>;
   /** Steps whose picked edges or faces were found again only by place (#47), with a warning. */
   recovered: Map<string, string>;
+  /** Steps done and to do while a long build runs (#76), else null. */
+  rebuilding: [number, number] | null;
+  /** The last build's time, step timings and cache size, for the performance overlay. */
+  stats: Pick<ModelResult, "ms" | "made" | "timings" | "cache"> | null;
   /** Measures picks on the model as it is now; null when the engine is off. */
   measure(refs: TopoRef[]): Promise<MeasureResult | null>;
   /** Any other kernel call (export, estimate); null when the engine is off. */
@@ -52,6 +56,8 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
     recovered: new Map(),
   }));
   const kc = useRef<KernelClient | null>(null);
+  const [rebuilding, setRebuilding] = useState<[number, number] | null>(null);
+  const [stats, setStats] = useState<KernelView["stats"]>(null);
   const [haveClient, setHaveClient] = useState(false);
 
   useEffect(() => {
@@ -81,9 +87,11 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
     if (!c) return;
     // The keys of what this build is for, so a late reply is matched to the parts it was made from.
     const sent = new Map(parts.map((p) => [p.id, partKey(p)]));
-    const call = c.call("build", { doc, upTo });
+    const call = c.call("build", { doc, upTo }, (_f, steps) => steps && setRebuilding(steps));
     call.then(
       (r) => {
+        setRebuilding(null);
+        setStats({ ms: r.ms, made: r.made, timings: r.timings, cache: r.cache });
         const bodies = new Map<string, KernelBody & { key: string }>();
         for (const b of r.bodies) bodies.set(b.id, { mesh: b.mesh, measure: b.measure, names: b.names, key: sent.get(b.id) ?? "" });
         setBuilt({ bodies, failed: new Map(r.failed), recovered: new Map(r.recovered ?? []) });
@@ -92,6 +100,8 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
         if (first) caught(`A step didn't build: ${first[1]}`);
       },
       (e: { code?: string; message?: string; detail?: unknown }) => {
+        // A cancelled build leaves the last bodies up, and a newer build takes over.
+        if (e?.code !== "cancelled") setRebuilding(null);
         // The worker died: offer a report. A cancelled build is just a newer one taking over.
         if (e?.code === "kernel-crashed") caught(`${e.message ?? "The geometry engine stopped."} (${String(e.detail ?? "no detail")})`, { show: true });
       },
@@ -124,5 +134,5 @@ export function useKernel(doc: ModelDoc, upTo: number, parts: Part[]): KernelVie
     [],
   );
 
-  return { state, bodies, failed: built.failed, recovered: built.recovered, measure, call };
+  return { state, bodies, failed: built.failed, recovered: built.recovered, rebuilding, stats, measure, call };
 }

@@ -7,7 +7,7 @@ export * from "./primitives";
 export * from "./errors";
 export * from "./client";
 export type { Methods, Method, Request, Response } from "./protocol";
-export type { ModelResult, BuiltBody, ImportInfo, BodyMass } from "./occt/model";
+export type { ModelResult, BuiltBody, ImportInfo, BodyMass, StepTiming } from "./occt/model";
 export * from "./imports";
 export * from "./catalogue";
 export * from "./looks";

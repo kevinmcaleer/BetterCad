@@ -3606,6 +3606,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             parts={viewParts}
             meshes={kernel.bodies}
             engine={kernel.state}
+            rebuilding={kernel.rebuilding}
             picks={finish.tool ? finish.picks : tool === "measure" ? measure.picks : vp.picks}
             preview={preview}
             filter={vp.filter}

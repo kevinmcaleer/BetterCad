@@ -71,6 +71,10 @@ export interface ModelResult {
   made: number;
   /** Steps whose named edges or faces were not all found as they were (#47), so may now be on the wrong ones. */
   recovered: [string, string][];
+  /** Each step's time on this build, in timeline order (#76). */
+  timings: StepTiming[];
+  /** What the cache holds after this build. */
+  cache: { bodies: number; bytes: number; steps: number };
 }
 
 /** Everything a part's shape depends on, for caches. */
@@ -80,8 +84,27 @@ export interface BodyMass extends MassProps {
   method: MassMethod;
 }
 
+/**
+ * A value as JSON with its keys sorted and its numbers rounded to 1e-9 mm (#76), so the same settings always give the
+ * same key whatever order they were written in, and float noise from the UI doesn't throw a body out of the cache.
+ */
+export function canonical(v: unknown): string {
+  if (typeof v === "number") return Number.isFinite(v) ? String(Math.round(v * 1e9) / 1e9 || 0) : "null";
+  if (v === null || v === undefined || typeof v === "function") return "null";
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
 export const partKey = (p: Part, q: Quality) =>
-  JSON.stringify([
+  canonical([
     p.kind,
     p.kind === "solid" ? null : p.size,
     p.position,
@@ -99,11 +122,34 @@ export const partKey = (p: Part, q: Quality) =>
 export const STEPS_KEPT = 240;
 
 /**
+ * How many finished bodies to keep for undo, redo and scrubbing the timeline (#76), and roughly how much memory they
+ * may take. Bodies the last build used are always kept.
+ */
+export const CACHE_LIMIT = { bodies: 200, bytes: 256 * 1024 * 1024 };
+
+/** A rough size for a cached body: its mesh, and as much again three times over for the B-rep behind it. */
+export function bodyBytes(b: { mesh: BodyMesh }): number {
+  const m = b.mesh;
+  const mesh = [m.positions, m.normals, m.indices, m.faceTris, m.faceVerts, m.edgePositions, m.edgeSegs, m.vertices].reduce(
+    (n, a) => n + (a?.byteLength ?? 0),
+    0,
+  );
+  return mesh * 4;
+}
+
+/** One step's last build (#76): how long it took and whether it came from the cache. */
+export interface StepTiming {
+  feature: string;
+  ms: number;
+  cached: boolean;
+}
+
+/**
  * A short key for a body after one more step: a hash of the key so far and the step. Chained so a body with many
  * steps doesn't need a key as long as all of them.
  */
 export function chain(key: string, op: unknown): string {
-  const s = key + JSON.stringify(op);
+  const s = key + canonical(op);
   // cyrb53: a fast 53-bit string hash, far from colliding at the few hundred keys kept.
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
@@ -154,6 +200,7 @@ function primitive(oc: OC, p: Part): TopoDS_Shape {
 /** A part's solid as built, with what its steps left to report. */
 interface Solid {
   shape: TopoDS_Shape;
+  bytes: number;
   body: Omit<BuiltBody, "id">;
   /** Face names (#47), or null when the body is too big to follow. */
   faces: string[] | null;
@@ -172,7 +219,11 @@ export class ModelBuilder {
     { shape: TopoDS_Shape; open: boolean; failures: [string, string][]; faces: string[] | null; recovered: [string, string][] }
   >();
 
-  constructor(private oc: OC) {}
+  constructor(
+    private oc: OC,
+    /** How much to keep (#76); smaller in tests. */
+    private limit: { bodies: number; bytes: number } = CACHE_LIMIT,
+  ) {}
 
   /** The document's imported files (base64 by hash), and the bodies read from them. */
   private blobs: Record<string, string> = {};
@@ -212,13 +263,28 @@ export class ModelBuilder {
   private opFailures: [string, string][] = [];
   private opRecovered: [string, string][] = [];
   private made = 0;
+  /** Each step's time on this build (#76), and the step that made each part. */
+  private times: StepTiming[] = [];
+  private makerOf = new Map<string, string>();
 
   /** The solid for one part, made fresh or from the cache. */
   solid(p: Part, quality: Quality = "fast"): Solid {
     const k = partKey(p, quality);
     this.used.add(k);
     let hit = this.cache.get(k);
-    if (!hit) {
+    const base = this.makerOf.get(p.id) ?? p.id;
+    if (hit) {
+      // Most recently used last, so the oldest go first when the cache is full.
+      this.cache.delete(k);
+      this.cache.set(k, hit);
+      this.times.push({ feature: base, ms: 0, cached: true }, ...(p.ops ?? []).map((o) => ({ feature: o.feature, ms: 0, cached: true })));
+    } else {
+      let t = performance.now();
+      const lap = (feature: string, cached = false) => {
+        const now = performance.now();
+        this.times.push({ feature, ms: now - t, cached });
+        t = now;
+      };
       const oc = this.oc;
       const ops = p.ops ?? [];
       // The body as it stood after each of its steps, so changing one step (dragging a cut's arrow) redoes that step
@@ -258,6 +324,8 @@ export class ModelBuilder {
         local = unplace(oc, copyShape(oc, src.shape, p.copy.by), { position: p.copy.at });
         if (src.faces) namer.add(local, src.faces);
       } else local = p.kind === "solid" && !p.catalogue ? (p.revolve ? revolveOf(oc, p.revolve, namer) : prismOf(oc, p.prism!, namer)) : primitive(oc, p);
+      lap(base, !!kept);
+      for (let i = 0; i < from; i++) lap(ops[i]!.feature, true);
       let faces = namer.off ? null : namer.namesOf(local);
       for (let i = from; i < ops.length; i++) {
         const o = ops[i]!;
@@ -312,13 +380,17 @@ export class ModelBuilder {
         }
         faces = namer.off ? null : namer.namesOf(local);
         this.steps.set(keys[i]!, { shape: local, open, failures: [...failures], faces, recovered: [...recovered] });
+        lap(o.feature);
       }
       while (this.steps.size > STEPS_KEPT) this.steps.delete(this.steps.keys().next().value!);
       const shape = place(oc, local, { position: p.position, rotation: p.rotation });
       // Placing keeps the faces' order, so the names hold; edges are named from them on the placed shape.
       const names = faces ? { faces, edges: edgeNames(oc, shape, faces) } : undefined;
-      hit = { shape, body: { mesh: tessellate(oc, shape, quality), measure: measure(oc, shape), names }, faces, failures, recovered };
+      const body = { mesh: tessellate(oc, shape, quality), measure: measure(oc, shape), names };
+      hit = { shape, body, bytes: bodyBytes(body), faces, failures, recovered };
       this.cache.set(k, hit);
+      // Meshing counts towards the last step's time, and doesn't make a reused step new.
+      lap(ops.at(-1)?.feature ?? base, from === ops.length && !!kept);
     }
     // A body from the cache still reports the steps it couldn't make or found again by name.
     this.opFailures.push(...hit.failures);
@@ -331,8 +403,17 @@ export class ModelBuilder {
     for (const k of this.files.keys()) if (!(k in this.blobs)) this.files.delete(k);
   }
 
-  /** Builds the first `upTo` features. `cancelled` is checked between parts. */
-  build(doc: ModelDoc, upTo = doc.features.length, quality: Quality = "fast", cancelled: () => boolean = () => false): ModelResult {
+  /**
+   * Builds the first `upTo` features. `cancelled` is checked between parts; `progress` hears how many of the steps are
+   * done after each part (#76).
+   */
+  build(
+    doc: ModelDoc,
+    upTo = doc.features.length,
+    quality: Quality = "fast",
+    cancelled: () => boolean = () => false,
+    progress?: (done: number, total: number) => void,
+  ): ModelResult {
     const t0 = performance.now();
     const { parts, failed } = build(doc, upTo);
     this.useBlobs(doc);
@@ -342,6 +423,10 @@ export class ModelBuilder {
     this.opFailures = [];
     this.opRecovered = [];
     this.made = 0;
+    this.times = [];
+    this.makerOf = new Map(parts.flatMap((p) => (makers(doc, p.id) ? [[p.id, makers(doc, p.id)!.id]] : [])));
+    const total = parts.reduce((n, p) => n + 1 + (p.ops?.length ?? 0), 0);
+    let done = 0;
     for (const p of parts) {
       if (cancelled()) throw new KernelError("cancelled", "Stopped.");
       try {
@@ -351,15 +436,49 @@ export class ModelBuilder {
         const f = makers(doc, p.id);
         if (f) out.push([f.id, why]);
       }
+      done += 1 + (p.ops?.length ?? 0);
+      progress?.(done, total);
     }
     // A body used as a tool reports its steps again: once each.
     for (const f of this.opFailures) if (!out.some(([id, why]) => id === f[0] && why === f[1])) out.push(f);
-    // Keep the cache to what the last few builds used, so memory stays flat across many edits.
-    if (this.cache.size > 400) for (const k of this.cache.keys()) if (!this.used.has(k)) this.cache.delete(k);
+    const cache = this.trim();
     // A step that failed doesn't also need a warning that its picks moved.
     const failedIds = new Set(out.map(([id]) => id));
     const recovered = this.opRecovered.filter(([id], i, all) => !failedIds.has(id) && all.findIndex(([x]) => x === id) === i);
-    return { bodies, failed: out, ms: performance.now() - t0, made: this.made, recovered };
+    return { bodies, failed: out, ms: performance.now() - t0, made: this.made, recovered, timings: this.timings(doc), cache };
+  }
+
+  /**
+   * Drops the least recently used bodies until the cache is within CACHE_LIMIT, keeping those the last build used, so
+   * memory stays flat across many edits while undo and scrubbing stay quick.
+   */
+  private trim(limit = this.limit): ModelResult["cache"] {
+    let bytes = 0;
+    for (const h of this.cache.values()) bytes += h.bytes;
+    for (const [k, h] of this.cache) {
+      if (this.cache.size <= limit.bodies && bytes <= limit.bytes) break;
+      if (this.used.has(k)) continue;
+      this.cache.delete(k);
+      bytes -= h.bytes;
+    }
+    return { bodies: this.cache.size, bytes, steps: this.steps.size };
+  }
+
+  /** The cache's keys, oldest first, for tests. */
+  cachedKeys(): string[] {
+    return [...this.cache.keys()];
+  }
+
+  /** Each step's time on the last build, summed over the bodies it made, in timeline order. */
+  private timings(doc: ModelDoc): StepTiming[] {
+    const by = new Map<string, StepTiming>();
+    for (const t of this.times) {
+      const x = by.get(t.feature);
+      if (x) by.set(t.feature, { feature: t.feature, ms: x.ms + t.ms, cached: x.cached && t.cached });
+      else by.set(t.feature, { ...t });
+    }
+    const order = new Map(doc.features.map((f, i) => [f.id, i]));
+    return [...by.values()].sort((a, b) => (order.get(a.feature) ?? 1e9) - (order.get(b.feature) ?? 1e9));
   }
 
   /** Mating faces (#184) between the bodies that print, as built up to `upTo`. */
