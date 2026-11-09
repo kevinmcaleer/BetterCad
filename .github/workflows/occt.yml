@@ -1,0 +1,49 @@
+name: OpenCascade build
+
+# A trimmed OpenCascade WASM (#43), built from the classes the kernel uses (packages/kernel/occt/config.mjs), then
+# checked by the kernel's tests and goldens against that build. Run it by hand from the Actions tab; the build is an
+# artifact to download and compare, and nothing is committed or shipped by this workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      depth:
+        description: How many steps of argument and return types to bind beyond the classes the code names
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Write the build config
+        run: node packages/kernel/occt/config.mjs --depth "${{ inputs.depth }}"
+      - name: Link the WASM
+        # opencascade.js 3.1.0, single-threaded, pinned by digest: the toolchain replicad-opencascadejs 1.2.1 uses.
+        run: |
+          cd packages/kernel/occt/build
+          docker run --rm -v "$PWD:/src" -u "$(id -u):$(id -g)" \
+            ghcr.io/taucad/opencascade.js@sha256:d7bf97ada840afb0f0e0f6bba04b1b55dd0d276e1679a3e40c1431a2cf44900b \
+            link bettercad.yml
+          ls -l
+      - name: Measure it
+        run: node packages/kernel/occt/sizes.mjs packages/kernel/occt/build/bettercad_occt.wasm >> "$GITHUB_STEP_SUMMARY"
+      - name: Test the kernel on it
+        run: |
+          dist=node_modules/replicad-opencascadejs/dist
+          for ext in js wasm d.ts; do cp "packages/kernel/occt/build/bettercad_occt.$ext" "$dist/replicad_single.$ext"; done
+          npm run typecheck
+          npx vitest run packages/kernel
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: bettercad-occt
+          path: packages/kernel/occt/build/

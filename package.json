@@ -22,6 +22,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test:golden": "vitest run packages/kernel/src/golden.test.ts packages/sketch/src/golden.test.ts packages/kernel/src/timeline.test.ts",
+    "build:occt": "node packages/kernel/occt/config.mjs && cd packages/kernel/occt/build && docker run --rm -v \"$PWD:/src\" -u \"$(id -u):$(id -g)\" ghcr.io/taucad/opencascade.js@sha256:d7bf97ada840afb0f0e0f6bba04b1b55dd0d276e1679a3e40c1431a2cf44900b link bettercad.yml && node ../sizes.mjs bettercad_occt.wasm",
     "bench:kernel": "vite-node packages/kernel/bench/kernel.bench.ts --",
     "bench:viewport": "node scripts/bench-viewport.mjs",
     "budgets": "node scripts/budgets.mjs",
