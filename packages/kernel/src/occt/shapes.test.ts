@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { loadOCCT, type OC } from "./oc";
-import { boolean, box, chamfer, cone, cylinder, fillet, measure, place, shell, sphere, torus, wedge } from "./shapes";
+import { boolean, box, chamfer, cone, cylinder, elements, fillet, measure, place, polygonFace, prism, shell, sphere, torus, valid, wedge } from "./shapes";
 import { KernelError } from "../errors";
 
 let oc: OC;
@@ -88,6 +88,31 @@ describe("OCCT operations", () => {
       expect((e as KernelError).code).toBe("fillet-too-large");
       expect((e as KernelError).message).toMatch(/^A 3 mm fillet does not fit here\. Try [\d.]+ mm or less\.$/);
     }
+  });
+  it("rounds a rim whose corners OpenCascade cannot close, running the round right round", () => {
+    // A 1 mm disc of radius 10 on an octagon whose corners touch the rim: the plane under the disc is pinched to
+    // nothing at each corner, so the plain fillet fails at those vertices. The round comes from the disc on its own.
+    const pts: [number, number, number][] = [...Array(8).keys()].map((i) => [10 * Math.cos((i * Math.PI) / 4), 10 * Math.sin((i * Math.PI) / 4), 0]);
+    const octagon = prism(oc, polygonFace(oc, pts), [0, 0, 19]);
+    const disc = place(oc, cylinder(oc, { x: 20, y: 20, z: 1 }), { position: { x: 0, y: 0, z: 19 } });
+    const body = boolean(oc, "join", octagon, [disc]);
+    const before = measure(oc, body);
+    const edges = elements(oc, body, "edge");
+    // One arc under the disc's rim (at z = 19, 7.85 mm long).
+    const arc = edges.findIndex((e) => {
+      const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+      const p = c.EvalD0((c.FirstParameter() + c.LastParameter()) / 2);
+      return Math.abs(p.Z() - 19) < 1e-9 && Math.abs(Math.hypot(p.X(), p.Y()) - 10) < 1e-9;
+    });
+    expect(arc).toBeGreaterThanOrEqual(0);
+    const rounded = fillet(oc, body, [arc], 0.5);
+    expect(valid(oc, rounded)).toBe(true);
+    const m = measure(oc, rounded);
+    // A 0.5 mm round all the way round a 10 mm rim takes r²(1 − π/4) · 2πR, less a little where it runs out over the corners.
+    const ring = 0.25 * (1 - Math.PI / 4) * 2 * Math.PI * 10;
+    expect(before.volume - m.volume).toBeGreaterThan(ring * 0.9);
+    expect(before.volume - m.volume).toBeLessThan(ring);
+    expect(m.solids).toBe(1);
   });
   it("chamfers one edge", () => {
     const m = measure(oc, chamfer(oc, box(oc, { x: 10, y: 10, z: 10 }), [0], 1));

@@ -14,6 +14,8 @@ import {
   holes,
   measure,
   place,
+  polygonFace,
+  prism,
   prismOf,
   pushPull,
   revolveOf,
@@ -54,6 +56,14 @@ import {
 } from "./document";
 import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
+
+/** A 19 mm octagonal prism of circumradius 10 with a 1 mm, 20 mm wide disc on top: the disc's rim touches the corners. */
+function discOnOctagon(oc: OC): TopoDS_Shape {
+  const pts: [number, number, number][] = [...Array(8).keys()].map((i) => [10 * Math.cos((i * Math.PI) / 4), 10 * Math.sin((i * Math.PI) / 4), 0]);
+  const octagon = prism(oc, polygonFace(oc, pts), [0, 0, 19]);
+  const disc = place(oc, cylinder(oc, { x: 20, y: 20, z: 1 }), { position: { x: 0, y: 0, z: 19 } });
+  return boolean(oc, "join", octagon, [disc]);
+}
 
 /** A 100 × 80 × 5 mm plate with a mounting feature on its top (#189). */
 function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
@@ -195,6 +205,10 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     }),
   // Finishes (#67, #68): every edge of a cube rounded; a tray with a 1.2 mm wall; a shell grown outward.
   "fillet-all": (oc) => fillet(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 2),
+  // A rim whose corners OpenCascade cannot close on its own: a 1 mm disc on an octagon whose corners touch the rim.
+  // Edge 15 is one of the eight arcs under the disc; the round runs right round and out over the corners.
+  "fillet-rim-on-octagon": (oc) => fillet(oc, discOnOctagon(oc), [15], 0.5),
+  "chamfer-rim-on-octagon": (oc) => chamfer(oc, discOnOctagon(oc), [15], 0.5),
   "chamfer-all": (oc) => chamfer(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 1),
   tray: (oc) => shell(oc, fillet(oc, box(oc, { x: 40, y: 30, z: 15 }), [...Array(12).keys()], 3), [], 1.2),
   "hollow-sphere": (oc) => shell(oc, sphere(oc, { x: 20, y: 20, z: 20 }), [], 1),

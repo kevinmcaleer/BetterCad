@@ -543,7 +543,7 @@ function blend(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], r: number, ki
     return oc.TopoDS.Edge(e);
   });
   if (!edges.length) throw new KernelError("reference-missing", `Pick at least one edge for the ${word}.`);
-  const out = tryBlend(oc, shape, edges, r, kind, t);
+  const out = tryBlend(oc, shape, edges, r, kind, t) ?? localBlend(oc, shape, edges, r, kind, t);
   if (out) return out;
   // Find the largest size that works, halving then bisecting (6 tries at most).
   let lo = 0;
@@ -561,6 +561,153 @@ function blend(oc: OC, shape: TopoDS_Shape, edgeIndices: number[], r: number, ki
       ? `${a} ${mm(r)} ${word} does not fit here. Try ${mm(suggest)} or less.`
       : `${a} ${word} does not fit on ${edges.length === 1 ? "this edge" : "these edges"}.`,
   );
+}
+
+type V3 = [number, number, number];
+const v3 = (p: { X(): number; Y(): number; Z(): number }): V3 => [p.X(), p.Y(), p.Z()];
+const dot3 = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const sub3 = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const scale3 = (a: V3, k: number): V3 => [a[0] * k, a[1] * k, a[2] * k];
+const add3 = (a: V3, b: V3): V3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const cross3 = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const len3 = (a: V3) => Math.hypot(a[0], a[1], a[2]);
+
+/** A face's surface, with which side of it the body is on. Only planes and cylinders, the faces extrudes make. */
+type Side = { kind: "plane"; point: V3; out: V3 } | { kind: "cylinder"; point: V3; axis: V3; radius: number; inside: boolean };
+
+function sideOf(oc: OC, face: TopoDS_Face): Side | null {
+  const surf = new oc.BRepAdaptor_Surface(face, true);
+  const reversed = face.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED;
+  const type = surf.GetType();
+  let side: Side | null = null;
+  if (type === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
+    const pl = surf.Plane();
+    side = { kind: "plane", point: v3(pl.Location()), out: scale3(v3(pl.Axis().Direction()), reversed ? -1 : 1) };
+  } else if (type === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder) {
+    const cyl = surf.Cylinder();
+    const ax = cyl.Axis();
+    // The surface's own normal points away from the axis on a right-handed cylinder; a reversed face, or a left-handed
+    // one, faces the axis instead, so the body is outside it: a hole.
+    const inside = reversed === !cyl.Position().Direct();
+    side = { kind: "cylinder", point: v3(ax.Location()), axis: v3(ax.Direction()), radius: cyl.Radius(), inside };
+  }
+  surf.delete();
+  return side;
+}
+
+/** How far a point is off a surface. */
+function offSurface(s: Side, p: V3): number {
+  const d = sub3(p, s.point);
+  if (s.kind === "plane") return Math.abs(dot3(d, s.out));
+  const along = dot3(d, s.axis);
+  return Math.abs(len3(sub3(d, scale3(s.axis, along))) - s.radius);
+}
+
+const sameSide = (a: Side, b: Side) =>
+  a.kind === b.kind &&
+  offSurface(a, b.point) < 1e-7 &&
+  (a.kind === "plane"
+    ? Math.abs(dot3(a.out, (b as typeof a).out) - 1) < 1e-9
+    : Math.abs(Math.abs(dot3(a.axis, (b as typeof a).axis)) - 1) < 1e-9 && Math.abs(a.radius - (b as typeof a).radius) < 1e-7);
+
+/** A solid covering everything on the body's side of a surface, `reach` wide about `centre`. */
+function halfSpace(oc: OC, s: Side, centre: V3, reach: number): TopoDS_Shape {
+  if (s.kind === "plane") {
+    const n = s.out;
+    const seed: V3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const u = cross3(n, seed);
+    const un = scale3(u, 1 / len3(u));
+    const vn = cross3(n, un);
+    const c = sub3(centre, scale3(n, dot3(sub3(centre, s.point), n)));
+    const corner = (a: number, b: number) => add3(add3(c, scale3(un, a * reach)), scale3(vn, b * reach));
+    return prism(oc, polygonFace(oc, [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]), scale3(n, -reach));
+  }
+  const d = sub3(centre, s.point);
+  const base = add3(add3(s.point, scale3(s.axis, dot3(d, s.axis))), scale3(s.axis, -reach));
+  const ax = new oc.gp_Ax2(new oc.gp_Pnt(...base), new oc.gp_Dir(...s.axis));
+  const mk = new oc.BRepPrimAPI_MakeCylinder(ax, s.radius, 2 * reach);
+  const cyl = mk.Shape();
+  mk.delete();
+  if (s.inside) return cyl;
+  const big = new oc.BRepPrimAPI_MakeBox(new oc.gp_Pnt(centre[0] - reach, centre[1] - reach, centre[2] - reach), 2 * reach, 2 * reach, 2 * reach).Shape();
+  return boolean(oc, "cut", big, [cyl]);
+}
+
+/**
+ * Rounds or bevels edges OpenCascade's fillet cannot: it gives up where an edge ends at a corner it cannot close,
+ * as at the end of a face pinched between other faces. Each picked edge lies between two faces; the part of the body
+ * on both of their sides is carved off, rounded on its own (where the edge runs on, uninterrupted, as far as the two
+ * surfaces meet: a whole circle on a rim), and put back. That is the round a ball rolling along the two faces would
+ * leave, trimmed by the rest of the body, which is what other CAD tools draw. Null when the edges are not between
+ * planes and cylinders or the round still fails.
+ */
+function localBlend(oc: OC, shape: TopoDS_Shape, edges: TopoDS_Edge[], r: number, kind: "fillet" | "chamfer", t?: Tracker): TopoDS_Shape | null {
+  try {
+    const faces = elements(oc, shape, "face");
+    const sides = faces.map((f) => sideOf(oc, oc.TopoDS.Face(f)));
+    // Group the picked edges by the pair of surfaces they lie between.
+    const groups: [Side, Side][] = [];
+    for (const e of edges) {
+      const pair: Side[] = [];
+      faces.forEach((f, i) => {
+        const ex = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+        for (; ex.More(); ex.Next()) {
+          if (ex.Current().IsSame(e)) {
+            const s = sides[i];
+            if (s && !pair.some((p) => sameSide(p, s))) pair.push(s);
+            break;
+          }
+        }
+        ex.delete();
+      });
+      if (pair.length !== 2) return null;
+      if (!groups.some(([a, b]) => (sameSide(a, pair[0]!) && sameSide(b, pair[1]!)) || (sameSide(a, pair[1]!) && sameSide(b, pair[0]!))))
+        groups.push([pair[0]!, pair[1]!]);
+    }
+    const { bbox } = measure(oc, shape);
+    const centre: V3 = [0, 1, 2].map((i) => (bbox.min[i]! + bbox.max[i]!) / 2) as V3;
+    const reach = 2 * len3(sub3(bbox.max, bbox.min)) + 1;
+    const tol = 1e-6 * reach;
+    let out = shape;
+    for (const [a, b] of groups) {
+      const piece = boolean(oc, "intersect", out, [halfSpace(oc, a, centre, reach), halfSpace(oc, b, centre, reach)], t);
+      // The edges of the piece along both surfaces: the picked edge, run on as far as it goes.
+      const along = elements(oc, piece, "edge").filter((e) => {
+        const edge = oc.TopoDS.Edge(e);
+        if (oc.BRep_Tool.Degenerated(edge)) return false;
+        const c = new oc.BRepAdaptor_Curve(edge);
+        const p0 = c.FirstParameter();
+        const p1 = c.LastParameter();
+        const on = [p0, (p0 + p1) / 2, p1].every((u) => {
+          const p = v3(c.EvalD0(u));
+          return offSurface(a, p) < tol && offSurface(b, p) < tol;
+        });
+        c.delete();
+        return on;
+      });
+      if (!along.length) return null;
+      const rounded = tryBlend(
+        oc,
+        piece,
+        along.map((e) => oc.TopoDS.Edge(e)),
+        r,
+        kind,
+        t,
+      );
+      if (!rounded) return null;
+      let rest: TopoDS_Shape | null;
+      try {
+        rest = boolean(oc, "cut", out, [piece], t);
+      } catch (e) {
+        if (!(e instanceof KernelError && e.code === "empty-result")) throw e;
+        rest = null;
+      }
+      out = rest ? boolean(oc, "join", rest, [rounded], t) : rounded;
+    }
+    return valid(oc, out) ? out : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Hollows a solid to a wall `thickness`, leaving the faces given open. */
