@@ -3646,6 +3646,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             filter={vp.filter}
             mode={vp.mode}
             style={vp.style}
+            grid={vp.grid}
             ortho={vp.ortho}
             view={vp.view}
             section={sketch.slice ?? vp.section}
