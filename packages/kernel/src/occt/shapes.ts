@@ -69,6 +69,12 @@ export function guard<T>(oc: OC, code: KernelError["code"], message: string, fn:
 }
 
 const progress = (oc: OC) => new oc.Message_ProgressRange();
+/**
+ * How far apart two surfaces can be and still count as one in a boolean (#379). Without it, a cut whose outline lies
+ * on a body's curved face leaves a sliver face of no area between the two, which later steps fold into a face whose
+ * mesh covers far more than the face, so an STL of the body comes out wrong.
+ */
+const FUZZY = 1e-6;
 
 export function box(oc: OC, size: Size3): TopoDS_Shape {
   positive(size, "box");
@@ -407,12 +413,14 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
       "boolean-failed",
       op === "join" ? "These bodies could not be joined." : op === "cut" ? "That cut could not be made." : "These bodies could not be intersected.",
       () => {
-        const mk =
-          op === "join"
-            ? new oc.BRepAlgoAPI_Fuse(out, tool, progress(oc))
-            : op === "cut"
-              ? new oc.BRepAlgoAPI_Cut(out, tool, progress(oc))
-              : new oc.BRepAlgoAPI_Common(out, tool, progress(oc));
+        const mk = op === "join" ? new oc.BRepAlgoAPI_Fuse() : op === "cut" ? new oc.BRepAlgoAPI_Cut() : new oc.BRepAlgoAPI_Common();
+        const args = new oc.NCollection_List_TopoDS_Shape();
+        args.Append(out);
+        const tools = new oc.NCollection_List_TopoDS_Shape();
+        tools.Append(tool);
+        mk.SetArguments(args);
+        mk.SetTools(tools);
+        mk.SetFuzzyValue(FUZZY);
         mk.Build(progress(oc));
         if (!mk.IsDone()) throw new KernelError("boolean-failed", "That operation could not be worked out. Try moving the bodies slightly.");
         if (op === "join") mk.SimplifyResult(true, true, 1e-6);
