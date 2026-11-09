@@ -24,7 +24,10 @@ const dts = readFileSync(join(dirname(require.resolve("replicad-opencascadejs/pa
 const decls = new Map();
 /** Each class's base class: its inherited methods are part of it, so a base is kept whenever the class is. */
 const base = new Map();
-for (const m of dts.matchAll(/^(?:export )?declare (?:class|enum|type|interface|const) ([A-Za-z0-9_]+)([^\n]*)\n([\s\S]*?)^}/gm)) {
+const classes = new Set();
+for (const m of dts.matchAll(/^(?:export )?declare (class|enum|type|interface|const) ([A-Za-z0-9_]+)([^\n]*)\n([\s\S]*?)^}/gm)) {
+  m.shift();
+  if (m[0] === "class") classes.add(m[1]);
   // gp_ types start lower case.
   decls.set(
     m[1],
@@ -64,8 +67,11 @@ for (let d = 0; d < DEPTH; d++) {
         }
   edge = next;
 }
-// Classes and enums are bound by name; the runtime helpers are not.
-const bindings = [...keep].filter((n) => /_|^TopoDS$|^BRepGProp$|^BRepBndLib$|^BRepTools$|^Precision$/.test(n)).sort();
+// Classes and enums are bound by name; the runtime helpers are not. An enum declared inside a class (gp_Dir_D is
+// gp_Dir::D) comes with its class and can't be bound alone.
+const nested = (n) => !classes.has(n) && classes.has(n.slice(0, n.lastIndexOf("_")));
+const bindings = [...keep].filter((n) => /_|^TopoDS$|^BRepGProp$|^BRepBndLib$|^BRepTools$|^Precision$/.test(n) && !nested(n)).sort();
+const skipped = [...keep].filter(nested);
 
 const flags = [
   "-fwasm-exceptions",
@@ -96,3 +102,4 @@ const yaml = [
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, yaml);
 console.log(`${used.size} named, ${bindings.length} bound of ${decls.size} in the stock build -> ${out}`);
+if (skipped.length) console.log(`Left to their classes: ${skipped.join(", ")}`);
