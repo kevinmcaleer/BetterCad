@@ -46,6 +46,16 @@ function readStyle(): StyleSetting {
   }
 }
 
+const GRID_KEY = "bettercad.floorGrid";
+
+function readGrid(): boolean {
+  try {
+    return localStorage.getItem(GRID_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
 export interface ViewportDeps {
   doc: ModelDoc;
   parts: Part[];
@@ -71,6 +81,7 @@ export function useViewport(d: ViewportDeps) {
   const [filter, setFilterState] = useState<SelectFilter>("body");
   const [elements, setElements] = useState<Pick[]>([]);
   const [styleSetting, setStyleSetting] = useState<StyleSetting>(readStyle);
+  const [grid, setGrid] = useState(readGrid);
   const [ortho, setOrtho] = useState(false);
   // Section analyses live in the model; on a model you can't change they change here, for this look only.
   const [scratch, setScratch] = useState<{ sections?: ModelDoc["sections"]; section?: string } | null>(null);
@@ -275,6 +286,19 @@ export function useViewport(d: ViewportDeps) {
   }, []);
   const toggleStyle = useCallback(() => setStyle(), [setStyle]);
 
+  /** Shows or hides the floor grid, remembered on this browser. */
+  const toggleGrid = useCallback(() => {
+    setGrid((g) => {
+      try {
+        localStorage.setItem(GRID_KEY, g ? "off" : "on");
+      } catch {
+        // The choice lasts for this visit.
+      }
+      live.current.say(g ? "Floor grid hidden" : "Floor grid shown");
+      return !g;
+    });
+  }, []);
+
   const sectionRef = useRef(section);
   sectionRef.current = section;
   const sdocRef = useRef(sdoc);
@@ -339,6 +363,7 @@ export function useViewport(d: ViewportDeps) {
         run: toggleStyle,
         keywords: "render style outline",
       },
+      { id: "view.grid", scope: "model", label: "Show or hide the floor grid", group: "View", icon: "grid", run: toggleGrid, keywords: "floor grid lines" },
       { id: "view.setHome", label: "Set this view as home", group: "View", icon: "home", run: setHomeHere, keywords: "view cube camera" },
       {
         id: "view.resetHome",
@@ -445,6 +470,8 @@ export function useViewport(d: ViewportDeps) {
     picks,
     mode,
     style,
+    grid,
+    toggleGrid,
     ortho,
     setOrtho,
     section,

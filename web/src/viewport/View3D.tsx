@@ -51,6 +51,8 @@ export interface View3DProps {
   filter: SelectFilter;
   mode: ViewMode;
   style: RenderStyle;
+  /** Whether the floor grid shows (the view style menu); on when left out. */
+  grid?: boolean;
   ortho: boolean;
   /** The standard view the camera is in ("front", "top"…), or null once you turn away. Shown as data-view for tests. */
   view?: string | null;
@@ -261,6 +263,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   useEffect(() => engine.current?.setHoverEnabled(mode === "select" || mode === "section" || mode === "move" || mode === "turn"), [mode]);
   useEffect(() => engine.current?.setTheme(theme === "holoroom"), [theme]);
   useEffect(() => engine.current?.setStyle(style), [style]);
+  const grid = props.grid ?? true;
+  useEffect(() => engine.current?.setGridShown(grid), [grid]);
   const check = props.check ?? null;
   useEffect(() => engine.current?.setCheck(check), [check, bodies]);
   const preview = props.preview ?? null;
@@ -305,6 +309,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       aria-roledescription="3D view"
       aria-describedby="bc-view-keys"
       data-view={view ?? "free"}
+      data-grid={grid ? "on" : "off"}
       onKeyDown={onKeyDown}
     >
       <div ref={safe} className="bc-view-safe" aria-hidden="true" />
