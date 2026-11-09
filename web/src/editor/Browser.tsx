@@ -23,6 +23,7 @@ export const ORIGIN: OriginItem[] = ["point", ...AXES, ...PLANES];
 export const ROW = {
   root: "browser:model",
   origin: "browser:origin",
+  analysis: "browser:analysis",
   bodies: "browser:bodies",
   sketches: "browser:sketches",
   construct: "browser:construct",
@@ -87,6 +88,9 @@ export interface BrowserModel {
   poses?: { id: string; name: string }[];
   /** The named pose the joints are in now, or "home"; none when they've moved since. */
   atPose?: string | null;
+  /** Section analyses, under Analysis; only `section`, the one applied, cuts the view. */
+  sections?: { id: string; name: string }[];
+  section?: string | null;
 }
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
@@ -185,6 +189,23 @@ export function browserItems(m: BrowserModel): TreeItem[] {
       toggles: ["hidden"],
       hidden: !m.origin.includes(p),
     });
+  }
+  // Section analyses, as Fusion's Analysis folder: one eye open at most, since one cut shows at a time.
+  const secs = m.sections ?? [];
+  if (secs.length) {
+    items.push(folder(ROW.analysis, "Analysis", { icon: "section", note: count(secs.length), hidden: !m.section }));
+    for (const x of secs)
+      items.push({
+        id: x.id,
+        name: x.name,
+        icon: "section",
+        kind: "section",
+        parentId: ROW.analysis,
+        drag: false,
+        rename: !m.readOnly,
+        toggles: ["hidden"],
+        hidden: x.id !== m.section,
+      });
   }
   // Then the model's own folders and components, and each component's, inside out (#171).
   const o = owners(m);
@@ -356,6 +377,11 @@ export interface BrowserPanelProps {
   sketchMenu: (id: string) => MenuEntry[];
   renameId: string | null;
   onRenameIdChange: (id: string | null) => void;
+  /** Section analyses: apply one (null: none), edit one with the Section tool, rename or delete one. */
+  onApplySection?: (id: string | null) => void;
+  onEditSection?: (id: string) => void;
+  onRenameSection?: (id: string, name: string) => void;
+  onDeleteSection?: (id: string) => void;
   /** Named poses (#177): go to one (null: Home), save the joints as a new one, update, rename or delete one. */
   onPose?: (id: string | null) => void;
   onSavePose?: () => void;
@@ -402,6 +428,10 @@ export function BrowserPanel(p: BrowserPanelProps) {
     const item = originItemOf(id);
     if (item) return p.onOrigin(model.origin.includes(item) ? model.origin.filter((x) => x !== item) : [...model.origin, item]);
     if (id === ROW.origin) return p.onOrigin(model.origin.length ? [] : ORIGIN);
+    // Analysis: opening one eye shuts the other; the folder's eye turns the cut off, or back on the last one.
+    const secs = model.sections ?? [];
+    if (id === ROW.analysis) return p.onApplySection?.(model.section ? null : (secs[secs.length - 1]?.id ?? null));
+    if (secs.some((x) => x.id === id)) return p.onApplySection?.(model.section === id ? null : id);
     // A component's eye: everything in it, and in the components inside it, as one step.
     const comp = model.links?.find((l) => l.id === id);
     if (comp) {
@@ -447,6 +477,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
   const rename = (id: string, name: string) => {
     if (id === ROW.root) return p.onRenameModel(name);
     if (model.poses?.some((x) => x.id === id)) return p.onRenamePose?.(id, name);
+    if (model.sections?.some((x) => x.id === id)) return p.onRenameSection?.(id, name);
     if (
       model.sketches.some((s) => s.id === id) ||
       model.links?.some((l) => l.id === id) ||
@@ -541,6 +572,23 @@ export function BrowserPanel(p: BrowserPanelProps) {
               ]),
         ],
       };
+    const sec = model.sections?.find((x) => x.id === id);
+    if (sec) {
+      const on = model.section === id;
+      return {
+        title: sec.name,
+        entries: [
+          { id: "show", label: on ? "Turn off" : "Show", icon: on ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") },
+          ...(model.readOnly
+            ? []
+            : [
+                { id: "edit", label: "Edit", icon: "section" as const, onSelect: () => p.onEditSection?.(id) },
+                { id: "rename", label: "Rename", icon: "pencil" as const, keys: "F2", onSelect: () => p.onRenameIdChange(id) },
+                { id: "delete", label: "Delete", icon: "trash" as const, onSelect: () => p.onDeleteSection?.(id) },
+              ]),
+        ],
+      };
+    }
     const link = model.links?.find((l) => l.id === id);
     if (link)
       return {
@@ -615,6 +663,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
         renameId={p.renameId}
         onRenameIdChange={p.onRenameIdChange}
         onContextMenu={(id, at) => setMenu({ id, at })}
+        onOpen={(id) => !model.readOnly && !!model.sections?.some((x) => x.id === id) && (p.onEditSection?.(id), true)}
       />
       {/* The how-to tips live in the tips card (Help → Tips); only the empty model keeps a first step here. */}
       {model.parts.length === 0 && <p className="bc-note">Double-click the name to rename your model. Add a shape from the Library, or start a sketch (K).</p>}

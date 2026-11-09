@@ -60,28 +60,28 @@ export function StageBars({ tool, onArmTool, vp, onePart, onRender, say }: Stage
         )}
       </Toolbar>
       {tool.id === "section" && (
-        <ArmedBar title={tool.label} icon={tool.icon}>
-          {vp.section ? (
+        <ArmedBar title={vp.editingSection ? `${tool.label}: ${vp.editingSection.name}` : tool.label} icon={tool.icon}>
+          {vp.editingSection ? (
             <>
               <NumberField
                 label="Offset"
-                value={vp.section.offset}
+                value={vp.editingSection.offset}
                 step={1}
-                onChange={(v) => vp.setSection({ ...vp.section!, offset: v })}
-                onCommit={(v) => vp.setSection({ ...vp.section!, offset: v })}
+                onChange={(v) => vp.sections.save({ ...vp.editingSection!, offset: v })}
+                onCommit={(v) => vp.sections.save({ ...vp.editingSection!, offset: v })}
               />
               <Button
                 label="Flip"
                 title="Keep the other side"
                 onClick={() => {
-                  const s = vp.section!;
-                  vp.setSection({ ...s, normal: [-s.normal[0], -s.normal[1], -s.normal[2]], offset: -s.offset });
+                  const s = vp.editingSection!;
+                  vp.sections.save({ ...s, normal: [-s.normal[0], -s.normal[1], -s.normal[2]], offset: -s.offset });
                 }}
               />
-              <Button label="Clear" title="Remove the cut" onClick={() => vp.setSection(null)} />
+              <Button label="Delete" title="Delete this section analysis" onClick={() => vp.sections.remove(vp.editingSection!.id)} />
             </>
           ) : (
-            <span className="bc-armed-note">Click a face to cut through it.</span>
+            <span className="bc-armed-note">Click a face to add a section.</span>
           )}
           <Button kind="done" label="Done" title="Keep the cut and put the tool down" shortcut="Esc" onClick={() => onArmTool("select")} />
         </ArmedBar>

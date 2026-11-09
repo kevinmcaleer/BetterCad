@@ -2,8 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clickSelect, Dialog, type MenuEntry } from "@bettercad/ui";
 import { formatCombo, type Command } from "../state/commands";
 import {
+  appliedSection,
+  applySection,
   changeParts,
   newId,
+  nextSectionName,
+  removeSection,
+  renameSection,
+  saveSection,
+  type SectionAnalysis,
   nextViewName,
   placePart,
   removeView,
@@ -57,7 +64,9 @@ export interface ViewportDeps {
   tool: ToolId;
   theme: string;
   record: (fn: (d: ModelDoc, at: number | undefined) => ModelDoc, label: string, coalesceKey?: string) => void;
-  editDoc: (fn: (d: ModelDoc) => ModelDoc, label: string) => void;
+  editDoc: (fn: (d: ModelDoc) => ModelDoc, label: string, coalesceKey?: string) => void;
+  /** A view-only model or an old version: section analyses then change for this look only. */
+  locked: () => boolean;
   say: (text: string, error?: boolean) => void;
 }
 
@@ -74,7 +83,16 @@ export function useViewport(d: ViewportDeps) {
   const [styleSetting, setStyleSetting] = useState<StyleSetting>(readStyle);
   const [grid, setGrid] = useState(readGrid);
   const [ortho, setOrtho] = useState(false);
-  const [section, setSection] = useState<Section | null>(null);
+  // Section analyses live in the model; on a model you can't change they change here, for this look only.
+  const [scratch, setScratch] = useState<{ sections?: ModelDoc["sections"]; section?: string } | null>(null);
+  useEffect(() => setScratch(null), [d.doc]);
+  const sdoc = scratch ? { ...d.doc, ...scratch } : d.doc;
+  const section: Section | null = appliedSection(sdoc);
+  /** The analysis the Section tool is placing; none makes a new one on the next face clicked. */
+  const [editing, setEditing] = useState<string | null>(null);
+  useEffect(() => {
+    if (d.tool !== "section") setEditing(null);
+  }, [d.tool]);
   // `?perf` in the address turns the performance overlay on from the start (#42).
   const [stats, setStats] = useState(() => typeof location !== "undefined" && new URLSearchParams(location.search).has("perf"));
   const [view, setView] = useState<ViewId | null>("iso");
@@ -283,6 +301,36 @@ export function useViewport(d: ViewportDeps) {
 
   const sectionRef = useRef(section);
   sectionRef.current = section;
+  const sdocRef = useRef(sdoc);
+  sdocRef.current = sdoc;
+  const editSections = useCallback((fn: (d: ModelDoc) => ModelDoc, label: string, key?: string) => {
+    if (!live.current.locked()) return live.current.editDoc(fn, label, key);
+    setScratch(() => {
+      const n = fn(sdocRef.current);
+      return { sections: n.sections, section: n.section };
+    });
+  }, []);
+  const sections = useMemo(
+    () => ({
+      apply: (id: string | null) => {
+        const x = sdocRef.current.sections?.find((s) => s.id === id);
+        editSections((doc) => applySection(doc, id), x ? `Show ${x.name}` : "Turn off the section");
+      },
+      rename: (id: string, name: string) => editSections((doc) => renameSection(doc, id, name), "Rename section"),
+      remove: (id: string) => {
+        const x = sdocRef.current.sections?.find((s) => s.id === id);
+        if (x) editSections((doc) => removeSection(doc, id), `Delete ${x.name}`);
+      },
+      /** Applies one and puts the Section tool on it; the editor arms the tool. */
+      edit: (id: string) => {
+        editSections((doc) => applySection(doc, id), "Edit section");
+        setEditing(id);
+      },
+      save: (x: SectionAnalysis) => editSections((doc) => saveSection(doc, x), `Change ${x.name}`, `section:${x.id}`),
+    }),
+    [editSections],
+  );
+  const editingSection = (editing && sdoc.sections?.find((s) => s.id === editing)) || null;
 
   const commands = useMemo<Command[]>(() => {
     const presets: { id: ViewId; label: string; key: string }[] = [
@@ -329,10 +377,10 @@ export function useViewport(d: ViewportDeps) {
       { id: "view.save", label: "Save this view…", group: "View", icon: "camera", run: startSaveView, keywords: "named view camera" },
       {
         id: "view.clearSection",
-        label: "Clear the section",
+        label: "Turn off the section",
         group: "View",
         icon: "section",
-        run: () => setSection(null),
+        run: () => sections.apply(null),
         when: () => sectionRef.current !== null,
       },
       ...FILTERS.map<Command>((f) => ({
@@ -351,12 +399,26 @@ export function useViewport(d: ViewportDeps) {
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const onSection = useCallback((s: Section) => {
-    setSection((old) => {
-      if (!old || old.origin !== s.origin) live.current.say("Cut through the face. Drag the arrow or type how far.");
-      return s;
-    });
-  }, []);
+  // A face clicked makes a new section analysis, or moves the one being edited; the arrow pushes the one on show.
+  const editingRef = useRef(editingSection);
+  editingRef.current = editingSection;
+  const onSection = useCallback(
+    (s: Section) => {
+      const shown = appliedSection(sdocRef.current);
+      const cur = editingRef.current ?? (shown && shown.origin === s.origin ? shown : null);
+      if (cur) {
+        setEditing(cur.id);
+        if (cur.origin !== s.origin) live.current.say(`${cur.name} cuts through the face. Drag the arrow or type how far.`);
+        return sections.save({ ...cur, origin: s.origin, normal: s.normal, offset: s.offset });
+      }
+      const id = newId("sec");
+      const name = nextSectionName(sdocRef.current);
+      editSections((doc) => saveSection(doc, { id, name, origin: s.origin, normal: s.normal, offset: s.offset }), `Add ${name}`, `section:${id}`);
+      setEditing(id);
+      live.current.say(`${name} cuts through the face. Find it under Analysis in the browser.`);
+    },
+    [sections, editSections],
+  );
 
   const elementText = elements.length
     ? elements.length === 1
@@ -413,7 +475,11 @@ export function useViewport(d: ViewportDeps) {
     ortho,
     setOrtho,
     section,
-    setSection,
+    /** Section analyses: the saved ones, the one on show, and the one the Section tool is editing. */
+    sectionList: sdoc.sections ?? [],
+    appliedSection: sdoc.section ?? null,
+    editingSection,
+    sections,
     stats,
     view,
     preset,

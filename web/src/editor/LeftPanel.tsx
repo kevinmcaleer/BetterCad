@@ -80,6 +80,9 @@ export interface LeftPanelProps {
   /** Named poses (#177) and what to do with them, under Joints in the browser. */
   poses?: Pick<BrowserModel, "poses" | "atPose"> &
     Required<Pick<BrowserPanelProps, "onPose" | "onSavePose" | "onUpdatePose" | "onRenamePose" | "onDeletePose">>;
+  /** Section analyses, under Analysis in the browser, and what to do with them. */
+  sections?: Pick<BrowserModel, "sections" | "section"> &
+    Required<Pick<BrowserPanelProps, "onApplySection" | "onEditSection" | "onRenameSection" | "onDeleteSection">>;
   origin: OriginItem[];
   onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
@@ -167,6 +170,8 @@ function PartsPanel(p: LeftPanelProps) {
         construct: p.construct,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
+        sections: p.sections?.sections,
+        section: p.sections?.section,
       }}
       selection={p.selection}
       onSelect={p.onSelect}
@@ -197,6 +202,10 @@ function PartsPanel(p: LeftPanelProps) {
       onUpdatePose={p.poses?.onUpdatePose}
       onRenamePose={p.poses?.onRenamePose}
       onDeletePose={p.poses?.onDeletePose}
+      onApplySection={p.sections?.onApplySection}
+      onEditSection={p.sections?.onEditSection}
+      onRenameSection={p.sections?.onRenameSection}
+      onDeleteSection={p.sections?.onDeleteSection}
     />
   );
 }
