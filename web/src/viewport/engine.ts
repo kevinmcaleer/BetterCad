@@ -296,6 +296,8 @@ export class Engine {
   private roomOn = false;
   /** Off while a sketch draws its own grid on its plane. */
   private floorGrid = true;
+  /** The person's choice from the view style menu: off hides the floor grid everywhere. */
+  private gridWanted = true;
   // Depth of field: the room drawn on its own, blurred where it is far from the model, then laid down as the background.
   private dofScene = new Scene();
   private dofRoomMat = gridMaterial(true);
@@ -560,7 +562,15 @@ export class Engine {
   setFloorGrid(on: boolean): void {
     if (this.floorGrid === on) return;
     this.floorGrid = on;
-    this.grid.visible = !this.roomOn && on;
+    this.grid.visible = !this.roomOn && on && this.gridWanted;
+    this.invalidate();
+  }
+
+  /** The person's floor grid setting (the Holoroom room stays either way). */
+  setGridShown(on: boolean): void {
+    if (this.gridWanted === on) return;
+    this.gridWanted = on;
+    this.grid.visible = !this.roomOn && this.floorGrid && on;
     this.invalidate();
   }
 
@@ -1696,7 +1706,7 @@ export class Engine {
     for (const c of [...this.centres.children, ...this.tools.children] as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
     for (const c of this.clashBoxes.children as (LineSegments | Mesh)[]) (c.material as LineBasicMaterial).color.set(c.name === "clash" ? p.danger : p.warn);
     if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
-    this.grid.visible = !this.roomOn && this.floorGrid;
+    this.grid.visible = !this.roomOn && this.floorGrid && this.gridWanted;
     this.room.visible = this.roomOn;
     this.paintPlanes?.();
   }

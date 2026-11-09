@@ -178,3 +178,15 @@ test("the line-art outline turns with the model, not a frame behind", async ({ p
   const again = await canvas(page).screenshot(shot);
   expect(turned.equals(again)).toBe(true);
 });
+
+test("the view style menu turns the floor grid off, and it stays off", async ({ page }) => {
+  await page.goto("/");
+  const view = page.getByRole("application", { name: /3D view/ });
+  await expect(view).toHaveAttribute("data-grid", "on");
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Floor grid" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("menuitemcheckbox", { name: "Floor grid" }).click();
+  await expect(view).toHaveAttribute("data-grid", "off");
+  await page.reload();
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-grid", "off");
+});
