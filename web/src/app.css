@@ -1572,3 +1572,12 @@ kbd {
   justify-content: flex-end;
   gap: var(--bc-space-2);
 }
+.bc-frame-graph {
+  display: block;
+  margin-block: var(--bc-space-2);
+  fill: none;
+  stroke: var(--bc-color-accent);
+}
+.bc-frame-graph-60 {
+  stroke: var(--bc-color-line);
+}

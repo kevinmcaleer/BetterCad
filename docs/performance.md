@@ -45,13 +45,23 @@ The app marks two milestones with `performance.mark`, each measured from the sta
 - `bc:shell`, when the 3D view can first be orbited;
 - `bc:kernel`, when the geometry engine reports ready.
 
-They show in the dev overlay beside the frame time (`npm run dev`, then Show frame times from the command palette). In any build you can read them in DevTools' Performance panel, or in the console:
+They show in the performance overlay beside the frame time. In any build you can read them in DevTools' Performance panel, or in the console:
 
 ```js
 performance.getEntriesByType("mark").filter((m) => m.name.startsWith("bc:")).map((m) => [m.name, Math.round(m.startTime)])
 ```
 
 For a fresh visit, clear site data first (DevTools > Application > Clear site data). For a cached visit, reload.
+
+## The performance overlay (#42)
+
+Add `?perf` to the address (`https://bettercad.kevsrobots.com/?perf#/edit/<id>`), or pick Show frame times from the command palette. The overlay sits bottom-left of the view and shows:
+
+- the last frame's draw time, frames per second, triangles, draw calls, ID passes (pointer picks drawn since the last frame) and bodies, then the milestones above;
+- a graph of the last 120 frames' draw times, with a line at 16.7 ms (60 fps);
+- the last kernel build (#76): its time, how many steps it made rather than reused, what the cache holds (bodies, part-way steps, roughly how much memory), and its five slowest steps, each marked cached or not.
+
+The view draws only when something changes, so at rest the overlay stops updating: no frames, no draw calls.
 
 ## Results
 

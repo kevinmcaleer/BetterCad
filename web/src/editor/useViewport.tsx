@@ -64,7 +64,8 @@ export function useViewport(d: ViewportDeps) {
   const [styleSetting, setStyleSetting] = useState<StyleSetting>(readStyle);
   const [ortho, setOrtho] = useState(false);
   const [section, setSection] = useState<Section | null>(null);
-  const [stats, setStats] = useState(false);
+  // `?perf` in the address turns the performance overlay on from the start (#42).
+  const [stats, setStats] = useState(() => typeof location !== "undefined" && new URLSearchParams(location.search).has("perf"));
   const [view, setView] = useState<ViewId | null>("iso");
   const [naming, setNaming] = useState<{ id: string | null; name: string } | null>(null);
   const [lastView, setLastView] = useState<string | null>(null);
