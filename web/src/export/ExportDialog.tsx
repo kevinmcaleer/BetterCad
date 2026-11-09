@@ -147,7 +147,13 @@ export function ExportDialog(p: ExportDialogProps) {
     setBusy(true);
     try {
       const r = await k;
-      const saved = await p.files.saveFiles(r.files.map((f) => ({ ...f, mime: mimeOf(f.name) })));
+      // Several files save as one .zip: Chrome won't let a page pick Downloads or Documents as a folder.
+      const base = name.replace(/[\\/:*?"<>|]+/g, " ").trim() || "Untitled model";
+      const label = FORMATS.find((f) => f.id === req.format)?.label ?? req.format;
+      const saved = await p.files.saveFiles(
+        r.files.map((f) => ({ ...f, mime: mimeOf(f.name) })),
+        `${base} ${label}.zip`,
+      );
       if (!saved) return;
       p.say(`Exported ${saved.names.length === 1 ? saved.names[0] : `${saved.names.length} files`}`);
       p.onExported?.();

@@ -22,12 +22,7 @@ interface PickerType {
   accept: Record<string, string[]>;
 }
 
-export interface DirHandle {
-  getFileHandle(name: string, o: { create: boolean }): Promise<FileHandle>;
-}
-
 export interface PickerWindow {
-  showDirectoryPicker?(o?: { mode?: "readwrite" }): Promise<DirHandle>;
   showOpenFilePicker?(o: { types?: PickerType[]; multiple?: boolean; excludeAcceptAllOption?: boolean }): Promise<FileHandle[]>;
   showSaveFilePicker?(o: { suggestedName?: string; types?: PickerType[] }): Promise<FileHandle>;
 }
@@ -72,8 +67,12 @@ export interface FileStore {
   saveAs(text: string, name: string): Promise<Saved | undefined>;
   recent(): Promise<Recent[]>;
   openRecent(id: string): Promise<Opened>;
-  /** Writes exported files (#86): asks where where it can, otherwise downloads them. Undefined if the person cancels. */
-  saveFiles(files: OutFile[]): Promise<{ names: string[]; inPlace: boolean } | undefined>;
+  /**
+   * Writes exported files (#86): asks where where it can, otherwise downloads them. Several files go into one .zip
+   * named `zipName`, because Chrome won't let a page pick Downloads or Documents as a folder. Undefined if the person
+   * cancels.
+   */
+  saveFiles(files: OutFile[], zipName?: string): Promise<{ names: string[]; inPlace: boolean } | undefined>;
   /** Puts a file at the top of Recent files. */
   remember(handle: FileHandle, info: { name: string; thumbnail?: string }): Promise<void>;
 }
@@ -96,6 +95,19 @@ export function createFileStore(win: PickerWindow & Window = window, recentKV: K
 }
 
 const extOf = (name: string) => name.slice(name.lastIndexOf("."));
+
+/**
+ * Several files become one .zip, so they save with one ordinary save dialog (any folder, Downloads included) or one
+ * download. The zip writer loads on first use.
+ */
+function bundle(files: OutFile[], zipName = "Export.zip"): OutFile[] {
+  if (files.length < 2) return files;
+  const data = Promise.all([import("@bettercad/kernel/zip"), ...files.map((f) => f.data)]).then(([{ zip }, ...bytes]) => {
+    const out = zip(files.map((f, i) => ({ name: f.name, data: new Uint8Array(bytes[i] as ArrayBuffer) })));
+    return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer;
+  });
+  return [{ name: zipName.endsWith(".zip") ? zipName : `${zipName}.zip`, data, mime: "application/zip" }];
+}
 
 function download(win: Window, data: BlobPart, name: string, mime: string) {
   const doc = win.document;
@@ -165,25 +177,18 @@ function diskStore(win: PickerWindow & Window, kv: KV<Recent>): FileStore {
         throw new Error(`${h.name} has moved or been deleted.`);
       }
     },
-    async saveFiles(files) {
+    async saveFiles(files, zipName) {
+      const f = bundle(files, zipName)[0];
+      if (!f) return { names: [], inPlace: false };
+      let handle: FileHandle;
       try {
-        if (files.length === 1) {
-          const f = files[0]!;
-          const handle = await win.showSaveFilePicker!({ suggestedName: f.name, types: [{ description: f.name, accept: { [f.mime]: [extOf(f.name)] } }] });
-          await write(handle, await f.data, f.mime);
-          return { names: [handle.name], inPlace: true };
-        }
-        if (win.showDirectoryPicker) {
-          const dir = await win.showDirectoryPicker({ mode: "readwrite" });
-          for (const f of files) await write(await dir.getFileHandle(f.name, { create: true }), await f.data, f.mime);
-          return { names: files.map((f) => f.name), inPlace: true };
-        }
+        handle = await win.showSaveFilePicker!({ suggestedName: f.name, types: [{ description: f.name, accept: { [f.mime]: [extOf(f.name)] } }] });
       } catch (e) {
         if (isAbort(e)) return undefined;
         throw e;
       }
-      for (const f of files) download(win, await f.data, f.name, f.mime);
-      return { names: files.map((f) => f.name), inPlace: false };
+      await write(handle, await f.data, f.mime);
+      return { names: [handle.name], inPlace: true };
     },
     async remember(handle, info) {
       const all = await store.recent();
@@ -224,9 +229,10 @@ function downloadStore(win: Window): FileStore {
       download(win, text, name, BCAD_MIME);
       return { name, inPlace: false };
     },
-    async saveFiles(files) {
-      for (const f of files) download(win, await f.data, f.name, f.mime);
-      return { names: files.map((f) => f.name), inPlace: false };
+    async saveFiles(files, zipName) {
+      const out = bundle(files, zipName);
+      for (const f of out) download(win, await f.data, f.name, f.mime);
+      return { names: out.map((f) => f.name), inPlace: false };
     },
     recent: async () => [],
     openRecent: async () => {
