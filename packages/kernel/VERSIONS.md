@@ -18,5 +18,11 @@ build. Run `npm run test:golden` afterwards: a different OCCT can move numbers s
 
 ## A custom build (#43)
 
-`occt.build.yml` lists the classes BetterCad uses. A custom opencascade.js build from that list should come in well
-under 23 MB. It needs Docker and about an hour of CPU, so it is not part of CI yet.
+`packages/kernel/occt/config.mjs` writes the build config from the classes the kernel uses: every `oc.X` and every
+type imported from `replicad-opencascadejs`, plus the classes their methods take and return (two steps out by
+default). The **OpenCascade build** workflow (Actions tab, run by hand) links it with the same opencascade.js 3.1.0
+toolchain replicad uses (pinned by digest), prints its size against the 12 MB / 3.5 MB Brotli targets, runs the
+kernel's tests and goldens on it, and keeps the result as an artifact. Locally: `npm run build:occt` (needs Docker).
+
+Nothing ships from it yet: when a run passes and is smaller, its files replace `replicad_single.*` in a pull request
+that records the sizes here.

@@ -2362,6 +2362,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   useEffect(() => {
     if (tool === "select" && editingStep) setEditingStep(null);
   }, [tool, editingStep]);
+  const kernelPerf = useMemo(
+    () => (vp.stats && kernel.stats ? { ...kernel.stats, nameOf: (id: string) => doc.features.find((f) => f.id === id)?.name ?? id } : null),
+    [vp.stats, kernel.stats, doc.features],
+  );
   const timelineWarning =
     earlierWarning(doc, at, sketch.editingId ?? editingStep) ?? moveText(doc, moveNote, failed) ?? recoveredText(doc, kernel.recovered, at);
   const volumes = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.volume])), [kernel.bodies]);
@@ -3607,6 +3611,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             meshes={kernel.bodies}
             engine={kernel.state}
             rebuilding={kernel.rebuilding}
+            kernelPerf={kernelPerf}
             picks={finish.tool ? finish.picks : tool === "measure" ? measure.picks : vp.picks}
             preview={preview}
             filter={vp.filter}
