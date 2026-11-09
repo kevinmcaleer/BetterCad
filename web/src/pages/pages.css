@@ -189,7 +189,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bc-card-time {
+.bc-card-time,
+.bc-card-size {
   color: var(--bc-color-muted);
   font-size: 13px;
 }

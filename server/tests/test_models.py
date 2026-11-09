@@ -50,6 +50,8 @@ def test_create_get_and_list(user):
     assert [x["name"] for x in user.get("/api/models?sort=name").json()["models"]] == ["Alpha", "Box"]
     assert [x["name"] for x in user.get("/api/models?q=alp").json()["models"]] == ["Alpha"]
     assert user.get("/api/models?q=%25").json()["total"] == 0
+    box = next(x for x in listed["models"] if x["name"] == "Box")
+    assert box["versions"] == 1 and box["size"] == len(bcad().encode())
     page = user.get("/api/models?limit=1&offset=1").json()
     assert page["total"] == 2 and len(page["models"]) == 1
     thumb = user.get(m["thumbnail"])
@@ -96,6 +98,8 @@ def test_save_makes_versions_and_detects_other_tabs(user):
     assert user.get(url).json()["name"] == "Bracket"
     versions = user.get(f"{url}/versions").json()["versions"]
     assert [v["number"] for v in versions] == [3, 2, 1]
+    listed = user.get("/api/models").json()["models"][0]
+    assert listed["versions"] == 3 and listed["size"] == sum(v["size"] for v in versions)
     assert versions[1]["note"] == "Added a hole"
     v2 = user.get(f"{url}/versions/2").json()
     assert len(json.loads(v2["bcad"])["document"]["features"]) == 1

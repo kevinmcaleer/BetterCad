@@ -158,7 +158,8 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       const list = [...models.values()]
         .filter((m) => m.user === user.id && !!m.deleted_at === bin && m.name.toLowerCase().includes(q))
         .sort((a, b) => (url.searchParams.get("sort") === "name" ? a.name.localeCompare(b.name) : b.modified.localeCompare(a.modified)));
-      return json(route, 200, { models: list.map(summary), total: list.length });
+      const sized = (m: Model) => ({ ...summary(m), size: m.versions.reduce((n, v) => n + v.bcad.length, 0), versions: m.versions.length });
+      return json(route, 200, { models: list.map(sized), total: list.length });
     }
     const [, id, sub, n, action] = path.split("/");
     const m = id ? models.get(id) : undefined;

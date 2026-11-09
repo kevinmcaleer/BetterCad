@@ -7,6 +7,7 @@ import { offline } from "../cloud/offline";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { ago } from "../files/autosave";
+import { formatBytes } from "../export/format";
 import { Page } from "./Page";
 import { SampleCards } from "../samples/SampleCards";
 
@@ -225,6 +226,11 @@ export function Library({ bin = false }: { bin?: boolean }) {
                     </div>
                   )}
                   <div className="bc-card-time">{ago(Date.now() - serverTime(bin && m.deleted_at ? m.deleted_at : m.modified))}</div>
+                  {m.size != null && (
+                    <div className="bc-card-size" title={m.versions && m.versions > 1 ? `${formatBytes(m.size)} across ${m.versions} versions` : undefined}>
+                      {formatBytes(m.size)}
+                    </div>
+                  )}
                 </div>
                 <MenuButton
                   label={`${m.name} menu`}
