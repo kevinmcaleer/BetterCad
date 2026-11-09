@@ -1806,8 +1806,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   : construct.session
                     ? construct.done()
                     : tool === "joint"
-                      ? jointUi?.stage === "parent"
-                        ? jointApi.current?.pickParent(null)
+                      ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                        ? jointApi.current.pickParent(null)
                         : jointApi.current?.done()
                       : pattern.session
                         ? pattern.done()
