@@ -1,6 +1,4 @@
-import type { Vec2 } from "@bettercad/sketch";
 import type { ScreenPoint } from "../viewport/engine";
-import type { OverlayView, Shade } from "./overlay";
 
 /**
  * The magnifier loupe: a round, zoomed-in view of the sketch near the pointer, for telling apart points that sit too
@@ -70,72 +68,4 @@ export function loupeBox(
   const top = below ? Math.min(at.y + gap, view.height - size - 8) : above;
   const left = Math.min(Math.max(at.x - size / 2, 8), Math.max(8, view.width - size - 8));
   return { left, top, below };
-}
-
-/** Colours for each shade, read from the tokens at draw time. */
-export type LoupeColours = Record<"snap" | "ink" | "accent" | "danger" | "muted" | "viewport", string>;
-
-const colourOf = (c: LoupeColours, s: Shade) =>
-  s === "fixed" ? c.ink : s === "picked" || s === "hover" ? c.accent : s === "conflict" ? c.danger : s === "guide" ? c.muted : c.snap;
-
-/**
- * Draws the sketch near the anchor into the loupe's canvas, `zoom` times bigger. `toScreen` takes a sketch point to view
- * pixels, so the loupe matches the view at any camera angle. The pointer shows as a cross at its 1:1 place.
- */
-export function drawLoupe(
-  ctx: CanvasRenderingContext2D,
-  view: OverlayView,
-  l: Loupe,
-  toScreen: (xy: Vec2) => ScreenPoint,
-  colours: LoupeColours,
-  size = LOUPE_SIZE,
-) {
-  const c = size / 2;
-  const reach = (size / 2 / l.zoom) * 1.5;
-  const map = (s: ScreenPoint) => ({ x: c + (s.x - l.anchor.x) * l.zoom, y: c + (s.y - l.anchor.y) * l.zoom });
-  const near = (s: ScreenPoint) => Math.abs(s.x - l.anchor.x) < reach * 4 && Math.abs(s.y - l.anchor.y) < reach * 4;
-  ctx.clearRect(0, 0, size, size);
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(c, c, c, 0, 2 * Math.PI);
-  ctx.clip();
-  ctx.fillStyle = colours.viewport;
-  ctx.fillRect(0, 0, size, size);
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  for (const curve of view.curves) {
-    const pts = curve.pts.map(toScreen);
-    // Skip curves nowhere near; a long line crossing the loupe still draws, since one of its ends may be far away.
-    if (pts.length > 2 && !pts.some(near)) continue;
-    ctx.strokeStyle = colourOf(colours, curve.shade);
-    ctx.lineWidth = curve.shade === "picked" || curve.shade === "conflict" ? 2.5 : 1.5;
-    ctx.setLineDash(curve.dashed ? [6, 4] : []);
-    ctx.beginPath();
-    pts.map(map).forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-  for (const p of view.points) {
-    const s = toScreen(p.xy);
-    if (!near(s)) continue;
-    const q = map(s);
-    const r = p.big ? 5 : 3.5;
-    ctx.fillStyle = colourOf(colours, p.shade);
-    ctx.fillRect(q.x - r, q.y - r, 2 * r, 2 * r);
-  }
-  // The pointer: a thin cross where it is inside the loupe.
-  const m = l.why === "touch" ? { x: c, y: c } : { x: c + (l.pointer.x - l.anchor.x), y: c + (l.pointer.y - l.anchor.y) };
-  ctx.strokeStyle = colours.ink;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(m.x - 9, m.y);
-  ctx.lineTo(m.x - 3, m.y);
-  ctx.moveTo(m.x + 3, m.y);
-  ctx.lineTo(m.x + 9, m.y);
-  ctx.moveTo(m.x, m.y - 9);
-  ctx.lineTo(m.x, m.y - 3);
-  ctx.moveTo(m.x, m.y + 3);
-  ctx.lineTo(m.x, m.y + 9);
-  ctx.stroke();
-  ctx.restore();
 }

@@ -59,12 +59,13 @@ import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, Mods, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import { readPalette } from "../viewport/colours";
 import { isTyping } from "../state/commands";
-import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, drawLoupe, lensed, loupeZoom, type Loupe } from "./loupe";
+import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "./loupe";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide, type SketchOption, type SketchOptions } from "./options";
 import { viewDir } from "../viewport/camera";
 import { placeAt } from "./dimensions";
+import type { ModelTarget } from "./modelSnap";
 import { ORIGIN, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type PointPick, type Snap } from "./snap";
 import {
   CLICKS,
@@ -170,6 +171,9 @@ export interface TextEdit {
   loops: Vec2[][];
   loading: boolean;
 }
+
+/** Code the sketch loads on first use, to keep it out of first paint: drawing the loupe, and snapping to the model. */
+const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap") } = {};
 
 export function useSketch(d: SketchDeps) {
   const { store, say } = d;
@@ -964,10 +968,25 @@ export function useSketch(d: SketchDeps) {
       // With the loupe open, picks reach only as far as its zoom allows.
       return w ? { xy: toSketch(f, w), px: eng.pixelSize(f.origin) / zoomNow() } : null;
     };
+    /** The model's corners, centres and edge middles on the sketch plane, worked out again when the plane or model changes. */
+    let targets: { key: string; frame: Frame; list: ModelTarget[] } | null = null;
+    const modelSnaps = (): ModelTarget[] | undefined => {
+      const L = live.current;
+      const ms = lazy.modelSnap;
+      if (!L.autoProject || !L.frame) return undefined;
+      if (!ms) {
+        void import("./modelSnap").then((m) => (lazy.modelSnap = m));
+        return undefined;
+      }
+      const key = JSON.stringify(eng.bodyCounts());
+      if (targets?.key !== key || targets.frame !== L.frame) targets = { key, frame: L.frame, list: ms.modelTargets(eng, L.frame) };
+      return targets.list;
+    };
     const snapAt = (xy: Vec2, px: number, mods: { shift: boolean; mod: boolean; touch?: boolean }, exclude?: Set<Id>): Snap => {
       const L = live.current;
       const from = L.clicks[L.clicks.length - 1]?.xy;
       return snap(xy, L.sketch!, {
+        model: modelSnaps(),
         px,
         grid: L.gridSnap || mods.mod ? snapStep(px * zoomNow()) : null,
         from,
@@ -1038,17 +1057,21 @@ export function useSketch(d: SketchDeps) {
     };
     const finishShape = (all: Snap[]) => {
       const L = live.current;
-      const s = L.sketch;
-      if (!s) return;
-      const c = commit(L.stool, s, all, L.typed, L.sides);
+      if (!L.sketch || !L.frame) return;
+      // Model edges and corners the clicks snapped to come in first, in the same undo step as the shape.
+      // (A click can only carry a model snap once the snapping code has loaded.)
+      const { sketch: s, clicks } = lazy.modelSnap?.resolveModelSnaps(L.sketch, L.frame, all) ?? { sketch: L.sketch, clicks: all };
+      const c = commit(L.stool, s, clicks, L.typed, L.sides);
       if (!c) {
+        if (s !== L.sketch) L.apply(s, "Project a point");
         setClicks([]);
         return;
       }
       L.apply(c.sketch, c.label);
       setTyped([]);
+      eng.showHover(null);
       // The line tool chains from its last point, until it meets a point already there.
-      const last = all[all.length - 1]!;
+      const last = clicks[clicks.length - 1]!;
       if (L.stool === "line" && c.end && !(last.ref && (last.kind === "end" || last.kind === "centre" || last.kind === "origin"))) {
         const p = c.sketch.entities.find((e) => e.id === c.end);
         setClicks(p?.kind === "point" ? [{ xy: [p.x, p.y], kind: "end", ref: p.id, label: "" }] : []);
@@ -1279,7 +1302,11 @@ export function useSketch(d: SketchDeps) {
             setClicks([...tap.base, tap.start]);
           }
         }
-        setCursor(snapAt(hit.xy, hit.px, mods));
+        const sn = snapAt(hit.xy, hit.px, mods);
+        setCursor(sn);
+        // A model edge or corner snapped to lights up, as it will come into the sketch.
+        const from = sn.model?.from;
+        eng.showHover(from ? { body: from.body, kind: from.vertex !== undefined ? "vertex" : "edge", index: from.vertex ?? from.edge ?? 0 } : null);
       },
       up: (p: ScreenPoint, mods: Mods) => {
         endDrag(true);
@@ -1437,20 +1464,38 @@ export function useSketch(d: SketchDeps) {
     const eng = engineOf();
     const ctx = cv?.getContext("2d");
     if (!cv || !ctx || !l || !v || !eng) return;
+    const draw = lazy.loupe;
+    if (!draw) {
+      void import("./loupeDraw").then((m) => {
+        lazy.loupe = m;
+        paintLoupe();
+      });
+      return;
+    }
     const dpr = window.devicePixelRatio || 1;
     const side = Math.round(LOUPE_SIZE * dpr);
     if (cv.width !== side) cv.width = cv.height = side;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const pal = readPalette();
     const css = (k: keyof typeof pal) => `#${pal[k].getHexString()}`;
-    drawLoupe(ctx, v, l, (xy) => eng.project(toWorld(v.frame, xy)), {
-      snap: css("snap"),
-      ink: css("ink"),
-      accent: css("accent"),
-      danger: css("danger"),
-      muted: css("muted"),
-      viewport: css("viewport"),
-    });
+    // The view itself, magnified; the sketch alone redrawn bigger where WebGL can't read back.
+    const picture = draw.magnify(eng, l.anchor.x, l.anchor.y, l.zoom);
+    draw.drawLoupe(
+      ctx,
+      v,
+      l,
+      (xy) => eng.project(toWorld(v.frame, xy)),
+      {
+        snap: css("snap"),
+        ink: css("ink"),
+        accent: css("accent"),
+        danger: css("danger"),
+        muted: css("muted"),
+        viewport: css("viewport"),
+      },
+      LOUPE_SIZE,
+      picture,
+    );
   }, [engineOf]);
 
   const previewNow = useMemo(

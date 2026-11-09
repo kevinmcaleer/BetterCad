@@ -1374,6 +1374,16 @@ export class Engine {
     return new Vector3(v[vertex * 3]!, v[vertex * 3 + 1]!, v[vertex * 3 + 2]!).applyMatrix4(o.group.matrixWorld).toArray() as V3;
   }
 
+  /** Each body on show with its edge and corner counts, for snapping a sketch to the model. */
+  bodyCounts(): { id: string; edges: number; vertices: number }[] {
+    return this.order.map((o) => ({ id: o.body.id, edges: o.body.mesh.edgeSegs.length - 1, vertices: (o.body.mesh.vertices?.length ?? 0) / 3 }));
+  }
+
+  /** The scene and the camera drawing it, for drawing the view again elsewhere (the sketch loupe). */
+  get stage(): { scene: Scene; camera: PerspectiveCamera | OrthographicCamera } {
+    return { scene: this.scene, camera: this.activeCamera };
+  }
+
   /**
    * The edges round a face, each as its points in world space, for projecting the face into a sketch as whole lines,
    * arcs and circles. Any piece of the outline no edge covers comes back as a two-point edge of its own (edge −1).

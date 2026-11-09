@@ -1,9 +1,25 @@
-import { SketchIndex, allCrossings, closestOnSegment, dist, mid, sub, angleOf, onArc, polar, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
+import {
+  SketchIndex,
+  allCrossings,
+  closestOnSegment,
+  dist,
+  mid,
+  sub,
+  angleOf,
+  onArc,
+  polar,
+  type Id,
+  type ModelCurve,
+  type Sketch,
+  type Vec2,
+} from "@bettercad/sketch";
+import type { ModelTarget } from "./modelSnap";
 
 /**
  * Snaps while drawing (#55): the cursor jumps to the meaningful point nearest it, within a tolerance in screen pixels
- * (8 px, 16 px for touch). Priority: the model's origin, end points and centres (whichever is nearest), then midpoints,
- * then crossings, then a point on a line or curve, then level or upright with the point the tool started from, then
+ * (8 px, 16 px for touch). Priority: the model's origin, end points and centres (whichever is nearest), the model's own
+ * corners and the centres of its holes and round edges (auto project), then midpoints (the model's straight edges
+ * too), then crossings, then a point on a line or curve, then level or upright with the point the tool started from, then
  * the grid. Ctrl snaps to the grid only.
  */
 export type SnapKind = "origin" | "end" | "centre" | "middle" | "crossing" | "on" | "horizontal" | "vertical" | "grid" | "free";
@@ -16,6 +32,8 @@ export interface Snap {
   /** The second curve of a crossing. */
   ref2?: Id;
   label: string;
+  /** A model edge or corner not yet in the sketch: a click on it projects it and joins it (`resolveModelSnaps`). */
+  model?: ModelCurve;
 }
 
 export interface SnapOptions {
@@ -38,6 +56,8 @@ export interface SnapOptions {
    * Null leaves it out.
    */
   origin?: Vec2 | null;
+  /** The model's corners, centres and edge middles on the sketch plane, with auto project on (`modelTargets`). */
+  model?: ModelTarget[];
 }
 
 /** Points closer than this to the origin are on it. */
@@ -149,6 +169,10 @@ export function snap(cursor: Vec2, sketch: Sketch, o: SnapOptions): Snap {
   // The origin, end points and centres. A point already on the origin is the origin, so it is reused.
   const origin = o.origin === undefined ? ([0, 0] as Vec2) : o.origin;
   if (origin) consider({ xy: origin, kind: "origin", label: SNAP_LABEL.origin });
+  // The model's corners and centres, before the sketch's points so a point already projected there wins a tie.
+  const model = o.model ?? [];
+  for (const t of model)
+    if (t.kind !== "middle" && !(origin && isAtOrigin(t.xy, origin))) consider({ xy: t.xy, kind: t.kind, model: t.curve, label: SNAP_LABEL[t.kind] });
   for (const e of sketch.entities) {
     if (e.kind !== "point" || skip.has(e.id)) continue;
     const kind = origin && isAtOrigin([e.x, e.y], origin) ? "origin" : centres.has(e.id) ? "centre" : "end";
@@ -157,6 +181,7 @@ export function snap(cursor: Vec2, sketch: Sketch, o: SnapOptions): Snap {
   if (best) return best;
 
   // Midpoints.
+  for (const t of model) if (t.kind === "middle") consider({ xy: t.xy, kind: "middle", model: t.curve, label: SNAP_LABEL.middle });
   for (const e of sketch.entities) {
     if (e.kind !== "line" || skip.has(e.id) || skip.has(e.a) || skip.has(e.b)) continue;
     consider({ xy: mid(idx.xy(e.a), idx.xy(e.b)), kind: "middle", ref: e.id, label: SNAP_LABEL.middle });
