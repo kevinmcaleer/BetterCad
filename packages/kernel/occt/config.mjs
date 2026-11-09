@@ -22,12 +22,26 @@ const dts = readFileSync(join(dirname(require.resolve("replicad-opencascadejs/pa
 
 /** Every class and enum the stock build declares (an enum is a `declare const`), with the names its body mentions. */
 const decls = new Map();
-for (const m of dts.matchAll(/^(?:export )?declare (?:class|enum|type|interface|const) ([A-Za-z0-9_]+)([^\n]*)\n([\s\S]*?)^}/gm)) {
+/** Each class's base class: its inherited methods are part of it, so a base is kept whenever the class is. */
+const base = new Map();
+const classes = new Set();
+for (const m of dts.matchAll(/^(?:export )?declare (class|enum|type|interface|const) ([A-Za-z0-9_]+)([^\n]*)\n([\s\S]*?)^}/gm)) {
+  m.shift();
+  if (m[0] === "class") classes.add(m[1]);
+  // gp_ types start lower case.
   decls.set(
     m[1],
-    new Set([...(m[2] + m[3]).matchAll(/\b([A-Z][A-Za-z0-9]*_[A-Za-z0-9_]+|TopoDS|BRepGProp|BRepBndLib|BRepTools|Precision)\b/g)].map((x) => x[1])),
+    new Set([...(m[2] + m[3]).matchAll(/\b([A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+|TopoDS|BRepGProp|BRepBndLib|BRepTools|Precision)\b/g)].map((x) => x[1])),
   );
+  const ext = /extends ([A-Za-z0-9_]+)/.exec(m[2]);
+  if (ext) base.set(m[1], ext[1]);
 }
+/** A class with all its bases. */
+const lineage = (c) => {
+  const out = [];
+  for (let x = c; x && !out.includes(x); x = base.get(x)) out.push(x);
+  return out;
+};
 
 const src = join(here, "..", "src");
 const files = (dir) =>
@@ -40,20 +54,24 @@ for (const f of files(src)) {
     for (const n of m[1].split(",").map((s) => s.trim())) if (decls.has(n)) used.add(n);
 }
 
-const keep = new Set(used);
-let edge = [...used];
+const keep = new Set([...used].flatMap(lineage));
+let edge = [...keep];
 for (let d = 0; d < DEPTH; d++) {
   const next = [];
   for (const c of edge)
     for (const n of decls.get(c) ?? [])
-      if (decls.has(n) && !keep.has(n)) {
-        keep.add(n);
-        next.push(n);
-      }
+      for (const l of decls.has(n) ? lineage(n) : [])
+        if (!keep.has(l)) {
+          keep.add(l);
+          next.push(l);
+        }
   edge = next;
 }
-// Classes and enums are bound by name; the runtime helpers are not.
-const bindings = [...keep].filter((n) => /_|^TopoDS$|^BRepGProp$|^BRepBndLib$|^BRepTools$|^Precision$/.test(n)).sort();
+// Classes and enums are bound by name; the runtime helpers are not. An enum declared inside a class (gp_Dir_D is
+// gp_Dir::D) comes with its class and can't be bound alone.
+const nested = (n) => !classes.has(n) && classes.has(n.slice(0, n.lastIndexOf("_")));
+const bindings = [...keep].filter((n) => /_|^TopoDS$|^BRepGProp$|^BRepBndLib$|^BRepTools$|^Precision$/.test(n) && !nested(n)).sort();
+const skipped = [...keep].filter(nested);
 
 const flags = [
   "-fwasm-exceptions",
@@ -84,3 +102,4 @@ const yaml = [
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, yaml);
 console.log(`${used.size} named, ${bindings.length} bound of ${decls.size} in the stock build -> ${out}`);
+if (skipped.length) console.log(`Left to their classes: ${skipped.join(", ")}`);
