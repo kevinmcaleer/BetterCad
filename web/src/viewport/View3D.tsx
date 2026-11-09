@@ -1,10 +1,26 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  Suspense,
+  forwardRef,
+  lazy,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { ViewCube, type MenuEntry } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
 import { Engine, canDraw3D, type BodyDrag, type PreviewBody, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
-import { formatMilestones, milestone } from "../perf";
+import { milestone } from "../perf";
+import type { KernelPerf } from "./PerfOverlay";
+
+// The performance overlay (#42) is for developers: it loads only when it's turned on.
+const PerfOverlay = lazy(() => import("./PerfOverlay").then((m) => ({ default: m.PerfOverlay })));
 import type { Pick, SelectFilter } from "./ids";
 
 export type ViewMode = "select" | "move" | "turn" | "section" | "none";
@@ -28,6 +44,8 @@ export interface View3DProps {
   engine?: KernelState;
   /** Steps done and to do while a long rebuild runs (#76). */
   rebuilding?: [number, number] | null;
+  /** The last build's timings, for the performance overlay (#42). */
+  kernelPerf?: KernelPerf | null;
   /** Whole parts picked (body filter), and faces, edges and vertices picked (the other filters). */
   picks: Pick[];
   filter: SelectFilter;
@@ -326,10 +344,9 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
         )
       )}
       {frame && (
-        <div className="bc-frame-stats" aria-hidden="true">
-          {frame.ms.toFixed(1)} ms · {Math.round(frame.fps)} fps · {frame.triangles.toLocaleString()} triangles · {frame.calls} draws · {frame.bodies} bodies
-          {formatMilestones() && ` · ${formatMilestones()}`}
-        </div>
+        <Suspense fallback={null}>
+          <PerfOverlay frame={frame} kernel={props.kernelPerf} />
+        </Suspense>
       )}
     </div>
   );

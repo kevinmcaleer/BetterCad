@@ -174,6 +174,10 @@ export interface Stats {
   triangles: number;
   calls: number;
   bodies: number;
+  /** The last 120 frames' draw times, oldest first, for the overlay's graph (#42). */
+  history: number[];
+  /** ID passes (pointer picks) drawn since the last frame. */
+  idPasses: number;
 }
 
 export interface EngineEvents {
@@ -401,7 +405,9 @@ export class Engine {
   // Stats
   private statsOn = false;
   private frameTimes: number[] = [];
+  private drawTimes: number[] = [];
   private lastFrame = 0;
+  private idPasses = 0;
 
   constructor(
     readonly canvas: HTMLCanvasElement,
@@ -1095,6 +1101,8 @@ export class Engine {
   showStats(on: boolean): void {
     this.statsOn = on;
     this.frameTimes = [];
+    this.drawTimes = [];
+    this.idPasses = 0;
     this.invalidate();
   }
 
@@ -1131,6 +1139,7 @@ export class Engine {
     r.setClearColor(0x000000, 0);
     r.clear();
     r.render(this.pickScene, cam);
+    this.idPasses++;
     r.readRenderTargetPixels(this.pickTarget, 0, 0, size, size, this.pickBuffer);
     r.setRenderTarget(prevTarget);
     r.setClearColor(clear, alpha);
@@ -1978,8 +1987,19 @@ export class Engine {
       if (since < 500) this.frameTimes.push(since);
       if (this.frameTimes.length > 30) this.frameTimes.shift();
       const avg = this.frameTimes.length ? this.frameTimes.reduce((a, b) => a + b, 0) / this.frameTimes.length : 0;
+      this.drawTimes.push(ms);
+      if (this.drawTimes.length > 120) this.drawTimes.shift();
       const info = this.renderer.info.render;
-      this.events.stats?.({ ms, fps: avg ? 1000 / avg : 0, triangles: info.triangles, calls: info.calls, bodies: this.order.length });
+      this.events.stats?.({
+        ms,
+        fps: avg ? 1000 / avg : 0,
+        triangles: info.triangles,
+        calls: info.calls,
+        bodies: this.order.length,
+        history: [...this.drawTimes],
+        idPasses: this.idPasses,
+      });
+      this.idPasses = 0;
     }
     if (this.tween) this.invalidate();
   }
