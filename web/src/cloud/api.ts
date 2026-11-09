@@ -36,6 +36,10 @@ export interface ModelSummary {
   deleted_at: string | null;
   /** A path under the API, or null when the model has no picture. */
   thumbnail: string | null;
+  /** Bytes the model takes from your quota, every saved version together. Only in the models list. */
+  size?: number;
+  /** How many versions are saved. Only in the models list. */
+  versions?: number;
 }
 
 export interface ModelFull extends ModelSummary {

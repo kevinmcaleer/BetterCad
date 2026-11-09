@@ -220,8 +220,14 @@ def router(settings) -> APIRouter:
             args.append("%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
         order = "name COLLATE NOCASE ASC" if sort == "name" else "modified DESC"
         total = db.execute(f"SELECT COUNT(*) FROM models WHERE {where}", args).fetchone()[0]
-        rows = db.execute(f"SELECT * FROM models WHERE {where} ORDER BY {order}, id LIMIT ? OFFSET ?", [*args, limit_, offset])
-        return {"models": [summary(x) for x in rows], "total": total}
+        rows = db.execute(
+            f"SELECT m.*, (SELECT COALESCE(SUM(v.size), 0) FROM versions v WHERE v.model_id = m.id) AS bytes,"
+            f" (SELECT COUNT(*) FROM versions v WHERE v.model_id = m.id) AS versions"
+            f" FROM models m WHERE {where} ORDER BY {order}, id LIMIT ? OFFSET ?",
+            [*args, limit_, offset],
+        )
+        # Size is what the model takes from the quota: every saved version, as /api/me/usage counts it.
+        return {"models": [{**summary(x), "size": x["bytes"], "versions": x["versions"]} for x in rows], "total": total}
 
     @r.post("/models", status_code=201)
     def create(body: NewModel, request: Request, user: Writer) -> dict:

@@ -69,6 +69,10 @@ test("save a box to the account, open it again from the library after a reload",
   await expect(thumb).toBeVisible();
   await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(320);
   await expect(thumb).not.toHaveClass(/bc-thumb-pending/);
+  // Under the name: the space both versions take.
+  const size = model!.versions.reduce((n, v) => n + v.bcad.length, 0);
+  const card = page.getByRole("listitem").filter({ has: page.getByRole("button", { name: "Open Bracket" }) });
+  await expect(card.getByTitle("across 2 versions")).toHaveText(size >= 1024 * 1024 ? /MB$/ : `${Math.max(1, Math.round(size / 1024))} KB`);
   await page.getByRole("button", { name: "Open Bracket" }).click();
   await expect(modelRow(page)).toContainText("Bracket");
   await expect(page.getByRole("treeitem", { name: /Box 1/ })).toBeVisible();
