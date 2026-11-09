@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon, cx, overlayRoot, useEscape } from "@bettercad/ui";
 import { formatCombo, search, type Command } from "../state/commands";
@@ -34,12 +34,14 @@ export function CommandPalette({ open, onClose, commands, isEnabled, run }: Comm
   };
   useEscape(open, close);
 
-  useEffect(() => {
+  // The field takes focus before the next key arrives: typed quickly after Ctrl+K, a letter landing on the page would
+  // run its shortcut instead (T, A, K, E… arm tools), as the nightly's tour journey caught.
+  useLayoutEffect(() => {
     if (open) {
       before.current = document.activeElement as HTMLElement;
       setQuery("");
       setIndex(0);
-      setTimeout(() => input.current?.focus(), 0);
+      input.current?.focus();
     }
   }, [open]);
 
