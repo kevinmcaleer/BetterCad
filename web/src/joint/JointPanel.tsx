@@ -1,5 +1,5 @@
 import { useEffect, type MutableRefObject } from "react";
-import { Button, FeatureCheck, FeaturePanel, FeaturePicker, FeatureRow, NumberField, PanelNote } from "@bettercad/ui";
+import { Button, FeaturePanel, FeaturePicker, FeatureRow, NumberField, PanelNote } from "@bettercad/ui";
 import { JOINT_KINDS, limitUnit, type JointKind } from "../state/document";
 import { useJoint, type JointDeps, type JointPick, type JointSession, type JointStage } from "./useJoint";
 
@@ -80,57 +80,56 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
       <section aria-label="How it moves" className="bc-fsection">
         <h3 className="bc-fsection-head">How it moves</h3>
         <FeatureRow label="Kind">
-          <span role="group" aria-label="Kind" className="bc-segmented bc-stack">
+          <select className="bc-select" aria-label="Kind" value={s.kind} onChange={(e) => x.change({ kind: e.target.value as JointKind })}>
             {JOINT_KINDS.map((k) => (
-              <Button
-                key={k.id}
-                label={`${k.label} (${k.urdf})`}
-                title={k.title}
-                on={s.kind === k.id}
-                onClick={() => s.kind !== k.id && x.change({ kind: k.id as JointKind })}
+              <option key={k.id} value={k.id} title={k.title}>
+                {`${k.label} (${k.urdf})`}
+              </option>
+            ))}
+          </select>
+        </FeatureRow>
+        {unit && (
+          <div className="bc-fgrid">
+            {(["lower", "upper"] as const).map((which) => (
+              <NumberField
+                key={which}
+                label={which === "lower" ? "Lower" : "Upper"}
+                unit={unit}
+                value={s[which]}
+                scope={scope}
+                step={unit === "°" ? 5 : 1}
+                onCommit={(v, expr) => {
+                  x.change({ [which]: v });
+                  x.setFieldExpr(which, expr);
+                }}
               />
             ))}
-          </span>
-        </FeatureRow>
-        {unit &&
-          (["lower", "upper"] as const).map((which) => (
-            <NumberField
-              key={which}
-              label={which === "lower" ? "Lower" : "Upper"}
-              unit={unit}
-              value={s[which]}
-              scope={scope}
-              step={unit === "°" ? 5 : 1}
-              onCommit={(v, expr) => {
-                x.change({ [which]: v });
-                x.setFieldExpr(which, expr);
-              }}
-            />
-          ))}
+          </div>
+        )}
       </section>
       <section aria-label="Line-up" className="bc-fsection">
         <h3 className="bc-fsection-head">Line-up</h3>
-        <NumberField label="Angle" unit="°" value={s.angle ?? 0} scope={scope} step={15} onCommit={(v) => x.change({ angle: v || undefined })} />
-        <NumberField label="Gap" value={s.gap ?? 0} scope={scope} onCommit={(v) => x.change({ gap: v || undefined })} />
-        {XYZ.map((a, i) => (
-          <NumberField
-            key={a}
-            label={`${a} offset`}
-            value={offset[i]!}
-            scope={scope}
-            onCommit={(v) => {
-              const o: [number, number, number] = [...offset];
-              o[i] = v;
-              x.change({ offset: o.some((n) => n) ? o : undefined });
-            }}
-          />
-        ))}
-        <FeatureCheck
-          label="Flip"
-          title="Turn the part over, onto the other side of the face"
-          on={!!s.flip}
-          onChange={(on) => x.change({ flip: on || undefined })}
-        />
+        <div className="bc-fgrid">
+          <NumberField label="Angle" unit="°" value={s.angle ?? 0} scope={scope} step={15} onCommit={(v) => x.change({ angle: v || undefined })} />
+          <NumberField label="Gap" value={s.gap ?? 0} scope={scope} onCommit={(v) => x.change({ gap: v || undefined })} />
+          {XYZ.map((a, i) => (
+            <NumberField
+              key={a}
+              label={`${a} offset`}
+              value={offset[i]!}
+              scope={scope}
+              onCommit={(v) => {
+                const o: [number, number, number] = [...offset];
+                o[i] = v;
+                x.change({ offset: o.some((n) => n) ? o : undefined });
+              }}
+            />
+          ))}
+          <label className="bc-field bc-fgrid-check" data-tip="Turn the part over, onto the other side of the snap">
+            <span className="bc-frow-label">Flip</span>
+            <input type="checkbox" checked={!!s.flip} onChange={(e) => x.change({ flip: e.currentTarget.checked || undefined })} />
+          </label>
+        </div>
       </section>
       {error && <PanelNote tone="error">{error}</PanelNote>}
     </FeaturePanel>

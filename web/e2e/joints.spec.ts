@@ -2,6 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 
 type View = { __bcView: { project(p: number[]): { x: number; y: number } } };
 
+const nextFrame = (page: Page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
 async function click(page: Page, x: number, y: number, z: number) {
   const box = (await page.getByTestId("view-canvas").boundingBox())!;
   const q = await page.evaluate((p) => (window as unknown as View).__bcView.project(p), [x, y, z]);
@@ -70,9 +72,9 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
   await panel.getByRole("textbox", { name: "Angle" }).fill("15");
   await panel.getByRole("textbox", { name: "Angle" }).press("Tab");
   await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("15");
-  await expect(panel.getByRole("button", { name: "Hinge (revolute)", pressed: true })).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "Kind" })).toHaveValue("revolute");
   await expect(panel.getByRole("textbox", { name: "Lower" })).toHaveValue("-90");
-  await panel.getByRole("button", { name: "Slider (prismatic)" }).click();
+  await panel.getByRole("combobox", { name: "Kind" }).selectOption({ label: "Slider (prismatic)" });
   await expect(panel.getByRole("textbox", { name: "Upper" })).toHaveValue("50");
   await page.keyboard.press("Enter");
   await expect(page.getByText("Made Joint 1: slider, Component 1 on Base")).toBeVisible();
@@ -83,7 +85,7 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
   await expect(editing.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^25, 0, 20 mm/ })).toBeVisible();
   await expect(editing.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^0, 0, 20 mm/ })).toBeVisible();
   await expect(editing.getByRole("textbox", { name: "Angle" })).toHaveValue("15");
-  await expect(editing.getByRole("button", { name: "Slider (prismatic)", pressed: true })).toBeVisible();
+  await expect(editing.getByRole("combobox", { name: "Kind" })).toHaveValue("prismatic");
   await editing.getByRole("button", { name: "Cancel" }).click();
   await expect(editing).toHaveCount(0);
 
@@ -328,9 +330,12 @@ test("drag an arm by its tool point", async ({ page }) => {
   const from = await at([29, -5, 20]);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
+  // On a busy runner the drag can miss moves sent before a frame has drawn: let each one land.
+  await nextFrame(page);
   for (const d of [20, 45, 70, 90]) {
     const q = await at([25 + 8 * Math.cos((d * Math.PI) / 180), 8 * Math.sin((d * Math.PI) / 180), 20]);
     await page.mouse.move(q.x + from.x - tool.x, q.y + from.y - tool.y, { steps: 3 });
+    await nextFrame(page);
   }
   await page.mouse.up();
   await expect.poll(async () => Number(await angle.inputValue())).toBeGreaterThan(60);

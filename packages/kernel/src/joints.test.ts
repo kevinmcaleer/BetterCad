@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { planeFrame } from "@bettercad/sketch";
 import { loadOCCT, type OC } from "./occt/oc";
-import { box, cylinder, elements } from "./occt/shapes";
+import { boolean, box, cylinder, elements } from "./occt/shapes";
 import { describe as describeRef, type Single } from "./occt/measure";
 import {
   LOOP_MESSAGE,
@@ -41,6 +41,20 @@ describe("joint frames (#172)", () => {
     const f = jointFrame(top)!;
     expect(f.origin).toEqual([0, 0, 10]);
     expect(Math.abs(f.axis[2])).toBe(1);
+  });
+
+  it("faces a round edge out of the part, the way the flat face beside it faces", () => {
+    const edges = all(cylinder(oc, { x: 16, y: 16, z: 10 }), "edge");
+    const rim = (up: boolean) => jointFrame(edges.find((d) => d.kind === "edge" && d.circle && d.circle.centre[2] > 5 === up)!)!;
+    expect(rim(true).axis).toEqual([0, 0, 1]);
+    expect(rim(false).axis).toEqual([0, 0, -1]);
+    // A hole's rim faces out of the hole: the top of a box with a hole cut down through it.
+    const plate = boolean(oc, "cut", box(oc, { x: 40, y: 40, z: 10 }), [cylinder(oc, { x: 8, y: 8, z: 30 })]);
+    const holeRims = all(plate, "edge").filter((d) => d.kind === "edge" && d.circle);
+    for (const r of holeRims) {
+      const f = jointFrame(r)!;
+      expect(f.axis[2]).toBe(f.origin[2] > 5 ? 1 : -1);
+    }
   });
 
   it("takes a cylinder face's axis, level with the middle of the face", () => {

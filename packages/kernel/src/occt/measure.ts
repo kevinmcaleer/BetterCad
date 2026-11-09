@@ -16,7 +16,14 @@ export interface TopoRef {
 
 export type Single =
   | { kind: "vertex"; point: V3 }
-  | { kind: "edge"; length: number; circle?: { radius: number; centre: V3; axis?: V3 }; ends: [V3, V3]; line?: V3 }
+  | {
+      kind: "edge";
+      length: number;
+      /** `facing`: the way the rim faces, as the Projects editor's snaps have it (see `rimFacing`). */
+      circle?: { radius: number; centre: V3; axis?: V3; facing?: V3 };
+      ends: [V3, V3];
+      line?: V3;
+    }
   | { kind: "face"; area: number; perimeter: number; normal?: V3; centre: V3; circle?: { radius: number; centre: V3; axis: V3 } }
   | { kind: "body"; volume: number; area: number; bbox: { min: V3; max: V3 } };
 
@@ -50,6 +57,35 @@ export function subShape(oc: OC, shape: TopoDS_Shape, ref: TopoRef): TopoDS_Shap
   return s;
 }
 
+/**
+ * Which way a round edge faces, as the Projects editor's rim snaps do: the way the flat face beyond it faces (a screw
+ * head's underside faces down the shank, the rim round a hole faces out of it); with no flat face beside it, away from
+ * the surface it bounds (a peg's end faces off the peg). Its axis, one way or the other; null when nothing says.
+ */
+function rimFacing(oc: OC, shape: TopoDS_Shape, edge: TopoDS_Shape, centre: V3, axis: V3): V3 | null {
+  let away = 0;
+  for (const f of elements(oc, shape, "face")) {
+    const ex = new oc.TopExp_Explorer(f, oc.TopAbs_ShapeEnum.TopAbs_EDGE, oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    let has = false;
+    for (; ex.More() && !has; ex.Next()) has = ex.Current().IsSame(edge);
+    ex.delete();
+    if (!has) continue;
+    const face = oc.TopoDS.Face(f);
+    const surf = new oc.BRepAdaptor_Surface(face, true);
+    if (surf.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
+      const d = pnt(surf.Plane().Axis().Direction());
+      const s = dot(d, axis) * (face.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1);
+      if (Math.abs(s) > 0.2) return s > 0 ? axis : [-axis[0], -axis[1], -axis[2]];
+    } else {
+      const g = new oc.GProp_GProps();
+      oc.BRepGProp.SurfaceProperties(f, g, false, false);
+      away -= dot(sub(pnt(g.CentreOfMass()), centre), axis);
+      g.delete();
+    }
+  }
+  return Math.abs(away) > 1e-9 ? (away > 0 ? axis : [-axis[0], -axis[1], -axis[2]]) : null;
+}
+
 export function describe(oc: OC, shape: TopoDS_Shape, ref: TopoRef): Single {
   const s = subShape(oc, shape, ref);
   if (ref.kind === "vertex") return { kind: "vertex", point: pnt(oc.BRep_Tool.Pnt(oc.TopoDS.Vertex(s))) };
@@ -63,6 +99,8 @@ export function describe(oc: OC, shape: TopoDS_Shape, ref: TopoRef): Single {
     if (type === oc.GeomAbs_CurveType.GeomAbs_Circle) {
       const circ = c.Circle();
       out.circle = { radius: circ.Radius(), centre: pnt(circ.Location()), axis: pnt(circ.Axis().Direction()) };
+      const facing = rimFacing(oc, shape, s, out.circle.centre, out.circle.axis!);
+      if (facing) out.circle.facing = facing;
     } else if (type === oc.GeomAbs_CurveType.GeomAbs_Line) {
       const d = sub(ends[1], ends[0]);
       const l = len(d);
