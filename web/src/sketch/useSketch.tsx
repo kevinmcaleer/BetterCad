@@ -39,7 +39,18 @@ import {
   type Sketch,
   type Vec2,
 } from "@bettercad/sketch";
-import { addSketch, newId, paramScope, redefineSketchPlane, updateSketch, type BuiltConstruct, type ModelDoc, type SketchFeature } from "../state/document";
+import {
+  addSketch,
+  moveFrame,
+  newId,
+  paramScope,
+  redefineSketchPlane,
+  updateSketch,
+  type BuiltConstruct,
+  type Mat4,
+  type ModelDoc,
+  type SketchFeature,
+} from "../state/document";
 import { loadSolver } from "./solver";
 import { DEFAULT_FONT, layOut } from "./text/fonts";
 import type { Command } from "../state/commands";
@@ -88,6 +99,10 @@ export interface SketchDeps {
   doc: ModelDoc;
   /** The sketches built up to the timeline marker, drawn faintly when not being edited. */
   built: { id: string; sketch: Sketch }[];
+  /** Every sketch as built, hidden ones too: a joint may have moved its plane with its component. */
+  placed?: { id: string; sketch: Sketch }[];
+  /** Moves from home by sketch id while the model is posed, so finished sketches ride on their components. */
+  posed?: Map<string, Mat4>;
   view: RefObject<View3DHandle>;
   /** Whether the Sketch tool is armed (pick a plane). */
   picking: boolean;
@@ -108,6 +123,12 @@ export function liveFrame(plane: PlaneRef, construct: BuiltConstruct[] = []): Fr
     if (c?.geo.what === "plane") return planeFrame({ ...plane, frame: c.geo.frame });
   }
   return planeFrame(plane);
+}
+
+/** A sketch's frame where the model has put it: on its component once a joint has moved that, else `liveFrame`. */
+export function placedFrame(id: string, plane: PlaneRef, construct: BuiltConstruct[] = [], placed: { id: string; sketch: Sketch }[] = []): Frame {
+  const at = placed.find((b) => b.id === id)?.sketch.plane.frame;
+  return at ? planeFrame({ ...plane, frame: at } as PlaneRef) : liveFrame(plane, construct);
 }
 
 const DIM_NAME: Record<DimensionKind, string> = {
@@ -203,7 +224,10 @@ export function useSketch(d: SketchDeps) {
 
   const feature = d.doc.features.find((f): f is SketchFeature => f.id === editingId && f.type === "sketch") ?? null;
   const sketch = feature?.sketch ?? null;
-  const frame = useMemo<Frame | null>(() => (sketch ? liveFrame(sketch.plane, d.construct) : null), [sketch, d.construct]);
+  const frame = useMemo<Frame | null>(
+    () => (sketch && editingId ? placedFrame(editingId, sketch.plane, d.construct, d.placed) : null),
+    [sketch, editingId, d.construct, d.placed],
+  );
   // Slice lasts for one sketch: each sketch starts with the whole model on show.
   useEffect(() => setOptions((o) => (o.slice ? { ...o, slice: false } : o)), [editingId]);
   const result = useMemo<SolveResult | null>(() => {
@@ -505,7 +529,7 @@ export function useSketch(d: SketchDeps) {
       if (!id || !s) return;
       const plane = { ...s.plane, offset: v } as PlaneRef;
       store.edit((doc) => updateSketch(doc, id, (x) => ({ ...x, plane })), "Move the sketch plane", `offset:${id}`);
-      const f = liveFrame(plane, deps.current.construct);
+      const f = placedFrame(id, plane, deps.current.construct, deps.current.placed);
       engineOf()?.lookAt(f.origin, f.normal);
     },
     [current, store, engineOf],
@@ -595,7 +619,7 @@ export function useSketch(d: SketchDeps) {
       setEditingId(id);
       setStool("select");
       setSel([]);
-      const fr = liveFrame(f.sketch.plane, deps.current.construct);
+      const fr = placedFrame(id, f.sketch.plane, deps.current.construct, deps.current.placed);
       const eng = engineOf();
       keptOrtho.current ??= eng?.camera.ortho ?? null;
       eng?.lookAt(fr.origin, fr.normal);
@@ -1503,11 +1527,14 @@ export function useSketch(d: SketchDeps) {
     const shown = d.built.filter((b) => b.id !== editingId);
     const list = shown.map((b) => {
       const o = new SketchOverlay(eng);
-      o.update(sketchView(b.sketch, planeFrame(b.sketch.plane), null, [], null, [], null, undefined, "guide", null, FINISHED));
+      // Posed, a sketch rides on its component as its bodies do.
+      const m = editingId ? undefined : d.posed?.get(b.id);
+      const f = planeFrame(b.sketch.plane);
+      o.update(sketchView(b.sketch, m ? moveFrame(m, f) : f, null, [], null, [], null, undefined, "guide", null, FINISHED));
       return o;
     });
     return () => list.forEach((o) => o.dispose());
-  }, [d.built, editingId, engineOf, d.theme]);
+  }, [d.built, d.posed, editingId, engineOf, d.theme]);
 
   // ---------------------------------------------------------------- keys and Esc
 
