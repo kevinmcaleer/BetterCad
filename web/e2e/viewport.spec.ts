@@ -103,8 +103,29 @@ test("section: click a face, then type how far", async ({ page }) => {
   await offset.fill("-5");
   await offset.press("Enter");
   await expect(offset).toHaveValue("-5");
-  await page.getByRole("button", { name: "Clear" }).click();
-  await expect(page.getByText("Click a face to cut through it.")).toBeVisible();
+  // It is saved under Analysis in the browser, applied.
+  await expect(page.getByRole("button", { name: "Hide Section 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+  // Turn it off and cut again for a second one; showing one turns the other off, as one cut shows at a time.
+  await page.getByRole("button", { name: "Hide Section 1" }).click();
+  await page.getByRole("application", { name: /3D view/ }).focus();
+  await page.keyboard.press("x");
+  await expect(page.getByText("Click a face to add a section.")).toBeVisible();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await expect(page.getByRole("button", { name: "Hide Section 2" })).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Show Section 1" }).click();
+  await expect(page.getByRole("button", { name: "Show Section 2" })).toBeVisible();
+  // Double-click one to edit it.
+  await page
+    .getByRole("treeitem", { name: /^Section 1/ })
+    .getByRole("button", { name: "Section 1", exact: true })
+    .dblclick();
+  await expect(offset).toHaveValue("-5");
+  await expect(page.getByRole("button", { name: "Hide Section 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("Click a face to add a section.")).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /^Section 1/ })).toHaveCount(0);
 });
 
 test("named views: save one and find it in the menu", async ({ page }) => {

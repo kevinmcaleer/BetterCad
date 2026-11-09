@@ -60,6 +60,8 @@ export interface PartsTreeProps {
   /** Controls which row is being renamed inline (F2 from a menu or the palette). Leave out to let the tree own it. */
   renameId?: string | null;
   onRenameIdChange?: (id: string | null) => void;
+  /** Double-click: opens the row to edit it (a section analysis), returning true, in place of renaming it. */
+  onOpen?: (id: string) => boolean;
 }
 
 const TOGGLE: Record<RowToggle, { on: IconName; off: IconName; onTitle: string; offTitle: string }> = {
@@ -103,6 +105,7 @@ export function PartsTree({
   empty,
   renameId,
   onRenameIdChange,
+  onOpen,
 }: PartsTreeProps) {
   // Folds the person chose, by id; rows they haven't touched follow their `folded`.
   const [folds, setFolds] = useState<Map<string, boolean>>(new Map());
@@ -299,7 +302,7 @@ export function PartsTree({
                 className="bc-row-name"
                 tabIndex={item.id === current ? 0 : -1}
                 onClick={(e) => click(item.id, e)}
-                onDoubleClick={() => renamable(item) && setRenaming(item.id)}
+                onDoubleClick={() => !onOpen?.(item.id) && renamable(item) && setRenaming(item.id)}
                 onKeyDown={(e) => onKeyDown(e, item)}
                 onFocus={() => setFocusId(item.id)}
               >

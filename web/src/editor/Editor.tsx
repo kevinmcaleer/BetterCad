@@ -475,6 +475,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     theme: resolved,
     record,
     editDoc: store.edit,
+    locked: store.isLocked,
     say,
   });
   live.current.dialogOpen ||= vp.namingOpen;
@@ -3457,6 +3458,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onMoveInto={moveIn}
               joints={browserJoints}
               poses={posesProps}
+              sections={{
+                sections: vp.sectionList,
+                section: vp.appliedSection,
+                onApplySection: vp.sections.apply,
+                onEditSection: (id) => {
+                  vp.sections.edit(id);
+                  setTool("section");
+                },
+                onRenameSection: vp.sections.rename,
+                onDeleteSection: vp.sections.remove,
+              }}
               origin={originShown}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}

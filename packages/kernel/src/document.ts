@@ -663,6 +663,19 @@ export interface ModelDoc {
   tools?: ToolPoint[];
   /** Named poses (#177): joint values saved under a name, to go back to. Home (all zeros) is always there besides. */
   poses?: NamedPose[];
+  /** Section analyses: saved cuts through the model, under Analysis in the browser. Not steps, as looks aren't. */
+  sections?: SectionAnalysis[];
+  /** The section analysis applied to the view now, by id; none shows the whole model. Only one at a time. */
+  section?: string;
+}
+
+/** A section analysis: a plane through `origin` facing `normal`, pushed `offset` mm along it. The view keeps the back. */
+export interface SectionAnalysis {
+  id: string;
+  name: string;
+  origin: [number, number, number];
+  normal: [number, number, number];
+  offset: number;
 }
 
 /** A named pose (#177): each moving joint's value, by joint id, as in `pose`. */
@@ -3075,6 +3088,53 @@ export function homePose(doc: ModelDoc): ModelDoc {
   const next = { ...doc };
   delete next.pose;
   return next;
+}
+
+// ---- section analyses
+
+/** Adds or updates a section analysis and applies it, so it is the one the view shows. */
+export function saveSection(doc: ModelDoc, section: SectionAnalysis): ModelDoc {
+  const sections = doc.sections ?? [];
+  const next: SectionAnalysis = { ...section, origin: [...section.origin], normal: [...section.normal] };
+  const i = sections.findIndex((x) => x.id === section.id);
+  return { ...doc, sections: i < 0 ? [...sections, next] : sections.map((x) => (x.id === section.id ? next : x)), section: section.id };
+}
+
+/** Applies one section analysis, turning off the one before; null shows the whole model again. */
+export function applySection(doc: ModelDoc, id: string | null): ModelDoc {
+  if (id && !doc.sections?.some((x) => x.id === id)) return doc;
+  if ((doc.section ?? null) === id) return doc;
+  const next: ModelDoc = { ...doc };
+  if (id) next.section = id;
+  else delete next.section;
+  return next;
+}
+
+export function removeSection(doc: ModelDoc, id: string): ModelDoc {
+  const sections = (doc.sections ?? []).filter((x) => x.id !== id);
+  const next: ModelDoc = { ...doc, sections };
+  if (!sections.length) delete next.sections;
+  if (next.section === id) delete next.section;
+  return next;
+}
+
+export function renameSection(doc: ModelDoc, id: string, name: string): ModelDoc {
+  const n = name.trim();
+  if (!n) return doc;
+  return { ...doc, sections: (doc.sections ?? []).map((x) => (x.id === id ? { ...x, name: n } : x)) };
+}
+
+/** The section analysis the view shows now, if any. */
+export function appliedSection(doc: ModelDoc): SectionAnalysis | null {
+  return (doc.section && doc.sections?.find((x) => x.id === doc.section)) || null;
+}
+
+/** The next free section name: "Section 1", "Section 2"… */
+export function nextSectionName(doc: ModelDoc): string {
+  const names = new Set((doc.sections ?? []).map((x) => x.name));
+  let n = 1;
+  while (names.has(`Section ${n}`)) n += 1;
+  return `Section ${n}`;
 }
 
 // ---- named poses (#177)

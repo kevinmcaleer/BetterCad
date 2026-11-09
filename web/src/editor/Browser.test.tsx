@@ -602,3 +602,84 @@ describe("named poses in the browser (#177)", () => {
     expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Go to Reach"]);
   });
 });
+
+describe("section analyses", () => {
+  const secs = {
+    sections: [
+      { id: "x1", name: "Section 1" },
+      { id: "x2", name: "Section 2" },
+    ],
+    section: "x2",
+  };
+  const props = () => ({
+    selection: [],
+    onSelect: () => {},
+    onAdd: () => {},
+    onToggle: () => {},
+    onBodiesHidden: () => {},
+    onSketchesHidden: () => {},
+    onOrigin: () => {},
+    onPicked: () => {},
+    onSelectSketch: () => {},
+    onRename: () => {},
+    onRenameModel: () => {},
+    onRenameSketch: () => {},
+    onReorder: () => {},
+    onSketchOn: () => {},
+    partMenu: () => [],
+    sketchMenu: () => [],
+    renameId: null,
+    onRenameIdChange: () => {},
+    onApplySection: vi.fn(),
+    onEditSection: vi.fn(),
+    onRenameSection: vi.fn(),
+    onDeleteSection: vi.fn(),
+  });
+
+  it("lists them under Analysis, after Origin, with only the applied one's eye open", () => {
+    const items = browserItems(model(secs));
+    expect(items.filter((i) => i.kind === "folder").map((i) => i.name)).toEqual(["Origin", "Analysis", "Bodies", "Sketches", "Joints"]);
+    expect(items.filter((i) => i.parentId === ROW.analysis).map((i) => [i.name, i.hidden])).toEqual([
+      ["Section 1", true],
+      ["Section 2", false],
+    ]);
+    expect(browserItems(model()).some((i) => i.id === ROW.analysis)).toBe(false);
+  });
+
+  it("opening one eye applies it; the applied one's eye turns the cut off", async () => {
+    const p = props();
+    render(<BrowserPanel model={model(secs)} {...p} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show Section 1" }));
+    expect(p.onApplySection).toHaveBeenLastCalledWith("x1");
+    await userEvent.click(screen.getByRole("button", { name: "Hide Section 2" }));
+    expect(p.onApplySection).toHaveBeenLastCalledWith(null);
+    await userEvent.click(screen.getByRole("button", { name: "Hide Analysis" }));
+    expect(p.onApplySection).toHaveBeenLastCalledWith(null);
+  });
+
+  it("the folder's eye brings the last one back when none is on", async () => {
+    const p = props();
+    render(<BrowserPanel model={model({ ...secs, section: null })} {...p} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show Analysis" }));
+    expect(p.onApplySection).toHaveBeenLastCalledWith("x2");
+  });
+
+  it("double-click edits one, and the menu edits, renames and deletes", async () => {
+    const p = props();
+    render(<BrowserPanel model={model(secs)} {...p} />);
+    await userEvent.dblClick(screen.getByRole("button", { name: "Section 1" }));
+    expect(p.onEditSection).toHaveBeenLastCalledWith("x1");
+    expect(screen.queryByRole("textbox", { name: /Rename/ })).toBeNull();
+    fireEvent.contextMenu(row(/^Section 2/));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Turn off", "Edit", "RenameF2", "Delete"]);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(p.onDeleteSection).toHaveBeenLastCalledWith("x2");
+  });
+
+  it("a view-only model can switch them but not change them", () => {
+    const p = props();
+    render(<BrowserPanel model={model({ ...secs, readOnly: true })} {...p} />);
+    fireEvent.contextMenu(row(/^Section 1/));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Show"]);
+  });
+});
