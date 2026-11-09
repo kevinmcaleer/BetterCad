@@ -46,6 +46,8 @@ jobs:
         run: |
           dist=node_modules/replicad-opencascadejs/dist
           for ext in js wasm d.ts; do cp "packages/kernel/occt/build/bettercad_occt.$ext" "$dist/replicad_single.$ext"; done
+          # The built JS loads the WASM by its own name.
+          cp packages/kernel/occt/build/bettercad_occt.wasm "$dist/"
           npm run typecheck
           npx vitest run packages/kernel
       - uses: actions/upload-artifact@v4
