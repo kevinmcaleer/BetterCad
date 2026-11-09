@@ -63,7 +63,7 @@ export type Request<M extends Method = Method> = { kind: "call"; id: number; met
 export type Response<M extends Method = Method> =
   | { kind: "result"; id: number; result: Methods[M]["result"] }
   | { kind: "error"; id: number; error: KernelErrorData }
-  | { kind: "progress"; id: number; fraction: number }
+  | { kind: "progress"; id: number; fraction: number; steps?: [number, number] }
   | { kind: "load"; fraction: number }
   | { kind: "ready"; ms: number }
   | { kind: "load-error"; error: KernelErrorData };

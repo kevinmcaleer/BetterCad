@@ -33,7 +33,7 @@ export class KernelCallError extends Error implements KernelErrorData {
 interface Pending {
   resolve: (v: unknown) => void;
   reject: (e: unknown) => void;
-  onProgress?: (f: number) => void;
+  onProgress?: (f: number, steps?: [number, number]) => void;
 }
 
 export class KernelClient {
@@ -59,7 +59,7 @@ export class KernelClient {
     return () => this.listeners.delete(fn);
   }
 
-  call<M extends Method>(method: M, params: Methods[M]["params"], onProgress?: (f: number) => void): Call<Methods[M]["result"]> {
+  call<M extends Method>(method: M, params: Methods[M]["params"], onProgress?: (f: number, steps?: [number, number]) => void): Call<Methods[M]["result"]> {
     const id = this.nextId++;
     const w = this.ensure();
     const p = new Promise<Methods[M]["result"]>((resolve, reject) => {
@@ -109,7 +109,7 @@ export class KernelClient {
         this.fail(msg.error);
         return;
       case "progress":
-        this.pending.get(msg.id)?.onProgress?.(msg.fraction);
+        this.pending.get(msg.id)?.onProgress?.(msg.fraction, msg.steps);
         return;
       case "result": {
         const p = this.pending.get(msg.id);
