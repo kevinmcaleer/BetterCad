@@ -21,7 +21,7 @@ export {
   type CatalogueCategory,
 } from "./catalogue";
 import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
-import { clampJoint, type Pose } from "./pose";
+import { clampJoint, jointMove, mat4Mul, placeMatrix, placeOf, type Pose } from "./pose";
 import { driveMultiplier, driveProblem, driveTo, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
 import {
   MIRRORED_OPS,
@@ -341,6 +341,17 @@ export interface JointFeature extends FeatureBase {
   axis: [number, number, number];
   lower: number;
   upper: number;
+  /**
+   * The line-up (as the Projects scene editor joins parts): the moving component's own snap, where it stood before the
+   * joint, which lands on the parent's snap (`origin`, `axis`) face to face; then a turn of `angle`° about the axis, a
+   * `gap` off the face and an `offset` (mm, world X, Y and Z). `flip` turns it over. Left out, it stays where it was
+   * modelled, and they're 0 and off. See `jointMove`.
+   */
+  from?: { point: [number, number, number]; normal: [number, number, number] };
+  angle?: number;
+  gap?: number;
+  offset?: [number, number, number];
+  flip?: boolean;
 }
 /**
  * A drive link (#194): turning the driver joint turns (or slides) the driven one by a ratio. For gears, a belt or a
@@ -1015,7 +1026,29 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             : (jointLinkProblem(joints, f.child, f.parent) ??
               (Math.hypot(...f.axis) < 1e-9 ? "Pick an axis" : limitUnit(f.kind) && f.lower > f.upper ? "The lower limit is above the upper one" : null));
         if (why) failed.set(f.id, why);
-        else joints.push(f);
+        else {
+          // The moving component, and the ones inside it, go where the joint lines them up.
+          const m = jointMove(f);
+          if (m) {
+            const moved = new Set([f.child]);
+            for (let grew = true; grew;) {
+              grew = false;
+              for (const l of linkSteps) if (l.parent && moved.has(l.parent) && !moved.has(l.id)) grew = !!moved.add(l.id);
+            }
+            parts.forEach((p, i) => {
+              if (!p.link || !moved.has(p.link)) return;
+              const r = p.rotation ?? ZERO;
+              const at = placeOf(mat4Mul(m, placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z])));
+              const [x, y, z] = at.rotation;
+              parts[i] = {
+                ...p,
+                position: { x: at.position[0], y: at.position[1], z: at.position[2] },
+                ...(x || y || z || p.rotation ? { rotation: { x, y, z } } : {}),
+              };
+            });
+          }
+          joints.push(alignedJoint(f));
+        }
         break;
       }
       case "drive": {
@@ -2912,8 +2945,17 @@ export function stampComponent(before: ModelDoc, after: ModelDoc, component: str
   return changed ? { ...after, features } : after;
 }
 
-export type JointParams = Pick<JointFeature, "kind" | "child" | "parent" | "origin" | "axis" | "lower" | "upper">;
+export type JointParams = Pick<JointFeature, "kind" | "child" | "parent" | "origin" | "axis" | "lower" | "upper"> &
+  Partial<Pick<JointFeature, "from" | "angle" | "gap" | "offset" | "flip">>;
 
+/** A joint as built: where its axis sits once the moving part is lined up (the gap and offset carry it). */
+export function alignedJoint(f: JointFeature): JointFeature {
+  const g = f.gap ?? 0;
+  const o = f.offset ?? [0, 0, 0];
+  if (!g && !o[0] && !o[1] && !o[2]) return f;
+  const l = Math.hypot(...f.axis) || 1;
+  return { ...f, origin: [0, 1, 2].map((i) => f.origin[i]! + (f.axis[i]! / l) * g + o[i]!) as [number, number, number] };
+}
 /** Adds a joint (#172): "Joint 1". */
 export function addJoint(doc: ModelDoc, params: JointParams, id = newId("f"), at?: number): ModelDoc {
   return insert(doc, clampAt(doc, at), { id, type: "joint", name: nextNamed(doc, "Joint"), ...params });

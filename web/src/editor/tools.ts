@@ -128,8 +128,8 @@ export const TOOLS: Tool[] = [
     id: "joint",
     label: "Joint",
     icon: "joint",
-    title: "Hinge, wheel, slider or fixed joint between two links",
-    help: "Click a body in the link that moves.",
+    title: "Hinge, wheel, slider or fixed joint between two components",
+    help: "Click a face or a round edge on the component that moves, where it joins.",
   },
   { id: "gear", label: "Gear", icon: "gear", title: "Spur gears, racks and GT2 pulleys", help: "Click the ground or a flat face where the gear goes." },
 ];

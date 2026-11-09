@@ -147,4 +147,37 @@ describe("joint steps", () => {
     d = updateJoint(d, "J1", { kind: "prismatic" });
     expect(build(d).joints[0]).toMatchObject({ kind: "prismatic", lower: 0, upper: 50 });
   });
+
+  it("lines the moving component up on the joint: snap onto snap, face to face, then angle, gap and offset", () => {
+    const at = (d: ModelDoc, id: string) => build(d).parts.find((p) => p.id === id)!;
+    const before = at(robot(), "arm");
+    // The arm's snap: its top face's middle, looking up (a box stands on its position). The parent's: (0, 0, 10) looking
+    // up. The arm turns over so its top face sits on the parent's snap, face down, and the rest of it above.
+    const top: [number, number, number] = [before.position.x, before.position.y, before.position.z + before.size.z];
+    let d = addJoint(robot(), hinge({ from: { point: top, normal: [0, 0, 1] } }), "J1");
+    const a = at(d, "arm");
+    expect(Math.abs(a.rotation!.x) + Math.abs(a.rotation!.y)).toBeCloseTo(180, 6);
+    expect([a.position.x, a.position.y, a.position.z].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0, 0, 10 + before.size.z]);
+    // A gap stands it off along the axis, and the joint's origin with it; an offset moves both.
+    d = updateJoint(d, "J1", { gap: 3, offset: [1, 2, 0] });
+    expect(at(d, "arm").position.z).toBeCloseTo(13 + before.size.z, 6);
+    expect(build(d).joints[0]!.origin).toEqual([1, 2, 13]);
+    // With no snap of its own, it stays where it was modelled.
+    d = updateJoint(d, "J1", { from: undefined, gap: undefined, offset: undefined });
+    expect(at(d, "arm").position).toEqual(before.position);
+    expect(build(d).joints[0]!.origin).toEqual([0, 0, 10]);
+  });
+
+  it("turns a component about the axis by the joint's angle, and turns it over when flipped", () => {
+    const at = (d: ModelDoc) => build(d).parts.find((p) => p.id === "arm")!;
+    const before = at(robot());
+    const d = addJoint(robot(), hinge({ angle: 90 }), "J1");
+    const a = at(d);
+    // About Z through the origin: (x, y) goes to (-y, x).
+    expect(a.position.x).toBeCloseTo(-before.position.y, 6);
+    expect(a.position.y).toBeCloseTo(before.position.x, 6);
+    expect(a.rotation!.z).toBeCloseTo(90, 6);
+    const flipped = at(updateJoint(d, "J1", { angle: undefined, flip: true }));
+    expect(flipped.position.z).toBeCloseTo(20 - before.position.z, 6);
+  });
 });
