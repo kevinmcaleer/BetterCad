@@ -13,11 +13,14 @@ export const STAGE_TEXT = {
   },
 } as const;
 
-/** The stage notice: a toast at the bottom right of the view that stays until you put it away. */
-export function StageNotice({ onDismiss }: { onDismiss: () => void }) {
+/**
+ * The stage notice: a toast at the bottom right of the view that stays until you put it away. While the start card
+ * is up it sits `inline` just above it instead, so the two never overlap.
+ */
+export function StageNotice({ onDismiss, inline }: { onDismiss: () => void; inline?: boolean }) {
   const { title, text } = STAGE_TEXT[STAGE];
   return (
-    <aside className="bc-stage-notice" aria-label={title}>
+    <aside className={inline ? "bc-stage-notice bc-stage-inline" : "bc-stage-notice"} aria-label={title}>
       <div className="bc-stage-head">
         <strong>{title}</strong>
         <IconButton icon="close" title="Dismiss" quiet onClick={onDismiss} />

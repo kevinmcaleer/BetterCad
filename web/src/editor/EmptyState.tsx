@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Icon, type IconName } from "@bettercad/ui";
 import { SampleCards } from "../samples/SampleCards";
 
@@ -10,9 +11,11 @@ export interface EmptyStateProps {
   onSketch: () => void;
   onOpen: () => void;
   onSample: (id: string) => void;
+  /** A notice to show above the card (the alpha notice), so the two never overlap. */
+  notice?: ReactNode;
 }
 
-const ACTIONS: { id: keyof Omit<EmptyStateProps, "onSample">; icon: IconName; label: string }[] = [
+const ACTIONS: { id: keyof Omit<EmptyStateProps, "onSample" | "notice">; icon: IconName; label: string }[] = [
   { id: "onShape", icon: "shapes", label: "Add a shape" },
   { id: "onSketch", icon: "sketch", label: "Sketch" },
   { id: "onOpen", icon: "folder", label: "Open" },
@@ -21,6 +24,7 @@ const ACTIONS: { id: keyof Omit<EmptyStateProps, "onSample">; icon: IconName; la
 export function EmptyState(p: EmptyStateProps) {
   return (
     <div className="bc-empty-state-host">
+      {p.notice}
       <section className="bc-empty-state" aria-labelledby="bc-empty-title">
         <h2 id="bc-empty-title" className="bc-empty-title">
           Start with a shape, a sketch, or open a file

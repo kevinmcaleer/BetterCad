@@ -3386,7 +3386,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 <WhatsNewCard fresh={whatsNew.fresh} onOpen={whatsNew.show} onDismiss={whatsNew.dismiss} />
               </Suspense>
             )}
-            {stage.open && (
+            {stage.open && !emptyState && (
               <Suspense fallback={null}>
                 <StageNotice onDismiss={stage.dismiss} />
               </Suspense>
@@ -3686,6 +3686,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   onSketch={() => armTool("sketch")}
                   onOpen={() => void open()}
                   onSample={(id) => files.openSample(id)}
+                  notice={
+                    stage.open && (
+                      <Suspense fallback={null}>
+                        <StageNotice inline onDismiss={stage.dismiss} />
+                      </Suspense>
+                    )
+                  }
                 />
               </Suspense>
             )}

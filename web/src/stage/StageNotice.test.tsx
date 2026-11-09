@@ -22,6 +22,15 @@ describe("StageNotice", () => {
     expect(onDismiss).toHaveBeenCalledTimes(2);
   });
 
+  it("sits above the start card on an empty model", async () => {
+    const { EmptyState } = await import("../editor/EmptyState");
+    const none = () => undefined;
+    render(<EmptyState onShape={none} onSketch={none} onOpen={none} onSample={none} notice={<StageNotice inline onDismiss={none} />} />);
+    const notice = screen.getByRole("complementary", { name: STAGE_TEXT[STAGE].title });
+    const card = screen.getByRole("region", { name: /start with a shape/i });
+    expect(notice.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("keeps to the brand book: no exclamation marks", () => {
     for (const t of Object.values(STAGE_TEXT)) expect(`${t.title} ${t.text}`).not.toMatch(/!/);
   });
