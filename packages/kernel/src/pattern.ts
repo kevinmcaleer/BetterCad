@@ -2,6 +2,8 @@ import type { Part, PatternFeature, Vec3 } from "./document";
 import type { Geo } from "./construct";
 import { frameToLocal } from "./extrude";
 import { partFrame } from "./catalogue";
+import type { Mat4 } from "./pose";
+import { MAX_TRACK_PIECES, trackProblem } from "./track";
 
 /**
  * Mirror and patterns (#69): copies that follow the original. A rectangular copy is the part moved, so a box stays a
@@ -11,7 +13,8 @@ import { partFrame } from "./catalogue";
 
 export type WorldAxis = "x" | "y" | "z";
 export type MirrorPlane = "XY" | "XZ" | "YZ";
-export type PatternKind = "mirror" | "rect" | "circle";
+/** Track: one piece repeated round two or more wheels, joined end to end (a tank tread, a chain). */
+export type PatternKind = "mirror" | "rect" | "circle" | "track";
 /**
  * What a Mirror or Pattern copies: whole bodies, the cuts, joins and holes of chosen features (onto the same bodies), or
  * every body of a component (Mirror only).
@@ -34,7 +37,12 @@ export interface MirrorFace extends Plane {
 }
 
 /** How one copy is made from the original: moved, mirrored across a plane, or turned round an axis, in the world. */
-export type CopyMove = { move: Vec3 } | { mirror: { origin: Vec3; normal: Vec3 } } | { turn: { origin: Vec3; axis: Vec3; deg: number } };
+export type CopyMove =
+  | { move: Vec3 }
+  | { mirror: { origin: Vec3; normal: Vec3 } }
+  | { turn: { origin: Vec3; axis: Vec3; deg: number } }
+  /** Moved and turned at once (a track's piece): a column-major 4 × 4 with no scale. */
+  | { place: Mat4 };
 
 /** A body made from another (Mirror and circular patterns): `body` as it stood, transformed, then held at `at`. */
 export interface CopySpec {
@@ -100,6 +108,10 @@ export function patternProblem(f: PatternFeature): string | null {
     if (!whole(f.count) || f.count < 2) return "Give it a count of 2 or more";
     if (!(f.angle > 0 && f.angle <= 360)) return "Give it an angle from 1° to 360°";
   }
+  if (f.kind === "track") {
+    if (of !== "bodies") return "A track copies one body: the track piece";
+    return trackProblem(f.track, f.parts.length);
+  }
   if (copiesPer(f) * Math.max(f.parts.length, of === "features" ? (f.features?.length ?? 0) : 0) > PATTERN_LIMIT)
     return `That's more than ${PATTERN_LIMIT} copies. Use fewer.`;
   return null;
@@ -109,6 +121,7 @@ export function patternProblem(f: PatternFeature): string | null {
 export function copiesPer(f: PatternFeature): number {
   if (f.kind === "mirror") return 1;
   if (f.kind === "rect") return Math.max(0, Math.floor(f.count1) * Math.floor(f.count2) - 1);
+  if (f.kind === "track") return Math.max(0, Math.min(MAX_TRACK_PIECES, Math.floor(f.track?.count ?? 0)) - 1);
   return Math.max(0, Math.floor(f.count) - 1);
 }
 
@@ -123,6 +136,8 @@ export interface Axis {
  * circle `axis` (a construction axis) in place of its world axis.
  */
 export function patternMoves(f: PatternFeature, plane?: Plane, axis?: Axis): CopyMove[] {
+  // A track's moves come from its wheels where they are now (track.ts layTrack), worked out in build.
+  if (f.kind === "track") return [];
   if (f.kind === "mirror") {
     if (plane) return [{ mirror: plane }];
     const normal = AXIS[NORMAL[f.plane]];
@@ -184,6 +199,14 @@ function turnToWorld(v: Vec3, p: Placed): Vec3 {
  * same body (Mirror and Pattern of features).
  */
 export function moveToLocal(m: CopyMove, p: Placed): CopyMove {
+  if ("place" in m) {
+    // Seen from the part: where its own origin and axes go, brought back into its own coordinates.
+    const back = (w: Vec3) => planeToLocal({ origin: w, normal: AXIS.z }, p).origin;
+    const at = (v: Vec3) => back(movePoint(add(turnToWorld(v, p), p.position), m));
+    const o = at({ x: 0, y: 0, z: 0 });
+    const c = [AXIS.x, AXIS.y, AXIS.z].map((e) => sub(at(e), o));
+    return { place: [c[0]!.x, c[0]!.y, c[0]!.z, 0, c[1]!.x, c[1]!.y, c[1]!.z, 0, c[2]!.x, c[2]!.y, c[2]!.z, 0, o.x, o.y, o.z, 1] };
+  }
   if ("mirror" in m) return { mirror: planeToLocal(m.mirror, p) };
   if ("turn" in m) {
     const l = planeToLocal({ origin: m.turn.origin, normal: m.turn.axis }, p);
@@ -204,6 +227,14 @@ export function opMoves(o: { mirror?: Plane[]; by?: CopyMove[] }): CopyMove[] {
 /** The move that undoes a copy's move. */
 export function undoMove(m: CopyMove): CopyMove {
   if ("mirror" in m) return m;
+  if ("place" in m) {
+    // Rᵀ, and −Rᵀ t.
+    const e = m.place;
+    const t = { x: e[12]!, y: e[13]!, z: e[14]! };
+    const r = [0, 1, 2].map((i) => ({ x: e[i * 4]!, y: e[i * 4 + 1]!, z: e[i * 4 + 2]! }));
+    const tt = r.map((c) => -dot(c, t));
+    return { place: [r[0]!.x, r[1]!.x, r[2]!.x, 0, r[0]!.y, r[1]!.y, r[2]!.y, 0, r[0]!.z, r[1]!.z, r[2]!.z, 0, tt[0]!, tt[1]!, tt[2]!, 1] };
+  }
   if ("turn" in m) return { turn: { ...m.turn, deg: -m.turn.deg } };
   return { move: scale(m.move, -1) };
 }
@@ -255,6 +286,14 @@ export const MIRRORED_OPS = new Set(["join", "cut", "intersect", "hole"]);
 /** Where a point goes under a copy's move. */
 export function movePoint(p: Vec3, m: CopyMove): Vec3 {
   if ("move" in m) return tidy(add(p, m.move));
+  if ("place" in m) {
+    const e = m.place;
+    return tidy({
+      x: e[0]! * p.x + e[4]! * p.y + e[8]! * p.z + e[12]!,
+      y: e[1]! * p.x + e[5]! * p.y + e[9]! * p.z + e[13]!,
+      z: e[2]! * p.x + e[6]! * p.y + e[10]! * p.z + e[14]!,
+    });
+  }
   if ("mirror" in m) {
     const { origin, normal } = m.mirror;
     return tidy(sub(p, scale(normal, 2 * dot(sub(p, origin), normal))));
@@ -272,7 +311,7 @@ export const copyId = (f: { id: string }, from: string, k: number) => `${f.id}.$
 
 /** The ids of the parts the step makes (none when the copies are joined to their originals). */
 export function patternCopyIds(f: PatternFeature): string[] {
-  if (f.join) return [];
+  if (f.join && f.kind !== "track") return [];
   const n = copiesPer(f);
   return f.parts.flatMap((from) => Array.from({ length: n }, (_, k) => copyId(f, from, k)));
 }
@@ -285,7 +324,8 @@ export function mirrorPlaneText(f: PatternFeature, owner?: string): string {
 }
 
 /** A copy's name: "Box 1 mirrored", "Box 1 copy 2". */
-export const copyName = (f: PatternFeature, src: string, k: number) => (f.kind === "mirror" ? `${src} mirrored` : `${src} copy ${k + 1}`);
+export const copyName = (f: PatternFeature, src: string, k: number) =>
+  f.kind === "mirror" ? `${src} mirrored` : f.kind === "track" ? `${src} ${k + 2}` : `${src} copy ${k + 1}`;
 
 /** One copy of a part as it stands. */
 export function copyPart(src: Part, m: CopyMove, id: string, name: string): Part {
@@ -311,6 +351,10 @@ export function copyPart(src: Part, m: CopyMove, id: string, name: string): Part
 export function patternSummary(f: PatternFeature, who: string, faceOwner?: string, axisName?: string): string {
   const joined = f.join ? ", joined" : "";
   if (f.kind === "mirror") return `${who} across ${mirrorPlaneText(f, faceOwner)}${joined}`;
+  if (f.kind === "track") {
+    const n = f.track?.wheels.length ?? 0;
+    return `${who}, ${f.track?.count ?? 0} pieces round ${n === 1 ? "1 wheel" : `${n} wheels`}`;
+  }
   if (f.kind === "rect") {
     const two = f.count2 > 1 ? ` × ${f.count2} along ${f.dir2.toUpperCase()} at ${f.spacing2} mm` : "";
     return `${who}, ${f.count1} along ${f.dir1.toUpperCase()} at ${f.spacing1} mm${two}${joined}`;

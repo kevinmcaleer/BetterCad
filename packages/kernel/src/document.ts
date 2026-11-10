@@ -51,6 +51,7 @@ import {
   patternProblem,
   patternSummary,
 } from "./pattern";
+import { trackLayoutOf, type TrackSpec } from "./track";
 import type { CopyMove, CopySpec, MirrorFace, MirrorOf, MirrorPlane, PatternKind, Plane, WorldAxis } from "./pattern";
 import {
   CONSTRUCT_BASE,
@@ -95,6 +96,7 @@ import {
 export * from "./extrude";
 export * from "./construct";
 export * from "./pattern";
+export * from "./track";
 export * from "./holes";
 export * from "./screws";
 import { screw } from "./screws";
@@ -318,6 +320,8 @@ export interface PatternFeature extends FeatureBase {
   axisRef?: ConstructRef;
   count: number;
   angle: number;
+  /** Track: the piece's pins and the wheels it goes round. The piece (the one body in `parts`) becomes its first link. */
+  track?: TrackSpec;
   /** Join each copy to its original, for one printable body, instead of keeping separate bodies. */
   join: boolean;
 }
@@ -956,6 +960,22 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         const plane = f.kind === "mirror" ? mirrorPlane(f, parts, built) : undefined;
         if (typeof plane === "string") {
           failed.set(f.id, plane);
+          break;
+        }
+        if (f.kind === "track") {
+          // The piece becomes the track's first link; the rest are copies of it, each moved and turned into place.
+          if (missing(f, f.parts).length) break;
+          const i = find(f.parts[0]!);
+          const lay = trackLayoutOf(f.track!, refGeo);
+          if (typeof lay === "string") {
+            failed.set(f.id, lay);
+            break;
+          }
+          const src = parts[i]!;
+          const moves: CopyMove[] = lay.pieces.map((m) => ({ place: m }));
+          const copies = moves.slice(1).map((m, k) => copyPart(src, m, copyId(f, src.id, k), copyName(f, src.name, k)));
+          parts[i] = { ...copyPart(src, moves[0]!, src.id, src.name), hidden: src.hidden };
+          parts.splice(i + 1, 0, ...copies.filter((c) => find(c.id) < 0));
           break;
         }
         const axis = patternAxis(f, built, f.kind === "circle" && f.axisRef ? refGeo(f.axisRef) : undefined);
@@ -1748,7 +1768,7 @@ export function featureParts(f: Feature): string[] {
     case "duplicate":
       return f.copies.map((c) => c.id);
     case "pattern":
-      return f.join ? [...f.parts] : patternCopyIds(f);
+      return f.kind === "track" ? [...f.parts, ...patternCopyIds(f)] : f.join ? [...f.parts] : patternCopyIds(f);
     case "sketch":
       return [];
     case "extrude":
@@ -2642,7 +2662,12 @@ function partsRead(f: Feature): string[] {
     case "link":
       return f.parts;
     case "pattern": {
-      const extra = [f.face?.body, f.kind === "circle" && f.axisRef && "body" in f.axisRef ? f.axisRef.body : undefined];
+      const track = f.kind === "track" && f.track ? [f.track.start, f.track.end, ...f.track.wheels] : [];
+      const extra = [
+        f.face?.body,
+        f.kind === "circle" && f.axisRef && "body" in f.axisRef ? f.axisRef.body : undefined,
+        ...track.map((r) => (r && "body" in r ? r.body : undefined)),
+      ];
       return [...new Set([...f.parts, ...extra.filter((x): x is string => !!x)])];
     }
     case "extrude":

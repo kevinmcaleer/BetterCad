@@ -17,4 +17,5 @@ export const SAMPLE_CARDS: readonly SampleCard[] = [
   { id: "phone-stand", name: "Phone stand", blurb: "Prints flat with no supports" },
   { id: "hole-calibration", name: "Hole calibration", blurb: "Find the hole offset your printer needs", card: false },
   { id: "fit-calibration", name: "Fit calibration", blurb: "Find the gaps your printer needs for parts that fit", card: false },
+  { id: "track-wheels", name: "Track and wheels", blurb: "A track piece with two pins and two wheels to wrap it round", card: false },
 ];

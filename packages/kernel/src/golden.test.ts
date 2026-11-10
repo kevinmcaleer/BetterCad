@@ -317,6 +317,41 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     doc = addPattern(doc, { parts: ["a"], kind: "circle", count: 6, angle: 360, join: true, axisRef });
     return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
   },
+  // Track (Pattern's Track kind): a 10 × 4 × 2 mm piece with pins 8 mm apart wrapped round two 40 mm wheels, 2 mm out.
+  // 42 go round; the fifth piece is on the first wheel's round end, turned to follow it.
+  "pattern-track-two-wheels": (oc) => {
+    let doc = changeParts(addPart(newDoc(), "cylinder", "w1"), ["w1"], "size", { x: 40, y: 40, z: 10 });
+    doc = changeParts(addPart(doc, "cylinder", "w2"), ["w2"], "size", { x: 40, y: 40, z: 10 });
+    doc = changeParts(doc, ["w2"], "position", { x: 100, y: 0, z: 0 });
+    doc = changeParts(addPart(doc, "box", "link"), ["link"], "size", { x: 10, y: 4, z: 2 });
+    doc = changeParts(doc, ["link"], "position", { x: 50, y: 60, z: 4 });
+    const parts = build(doc).parts;
+    const p = (id: string) => parts.find((q) => q.id === id)!;
+    const circle = (centre: [number, number, number], radius: number) => ({
+      t: "circle" as const,
+      centre,
+      axis: [0, 0, 1] as [number, number, number],
+      radius,
+    });
+    doc = addPattern(
+      doc,
+      {
+        kind: "track",
+        parts: ["link"],
+        track: {
+          count: 42,
+          start: bodyRef(p("link"), "edge", 0, circle([46, 60, 5], 1)),
+          end: bodyRef(p("link"), "edge", 1, circle([54, 60, 5], 1)),
+          wheels: [bodyRef(p("w1"), "edge", 0, circle([0, 0, 5], 20)), bodyRef(p("w2"), "edge", 0, circle([100, 0, 5], 20))],
+          offset: 0,
+          lift: 2,
+          side: 0,
+        },
+      },
+      "t",
+    );
+    return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "t.link.3")!).shape;
+  },
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

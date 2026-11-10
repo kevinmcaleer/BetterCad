@@ -1,0 +1,324 @@
+{
+  "schema": 2,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "sample-track-wheels",
+  "created": "2026-11-07T00:00:00.000Z",
+  "modified": "2026-11-07T00:00:00.000Z",
+  "name": "Track and wheels",
+  "document": {
+    "features": [
+      {
+        "id": "f1",
+        "name": "Add Front wheel",
+        "part": {
+          "id": "w1",
+          "kind": "cylinder",
+          "name": "Front wheel",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "wheel",
+          "size.y": "wheel",
+          "size.z": "10"
+        },
+        "id": "f2",
+        "name": "Size Front wheel",
+        "parts": [
+          "w1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f3",
+        "name": "Add Back wheel",
+        "part": {
+          "id": "w2",
+          "kind": "cylinder",
+          "name": "Back wheel",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "wheel",
+          "size.y": "wheel",
+          "size.z": "10"
+        },
+        "id": "f4",
+        "name": "Size Back wheel",
+        "parts": [
+          "w2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "apart"
+        },
+        "id": "f5",
+        "name": "Place Back wheel",
+        "parts": [
+          "w2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f6",
+        "name": "Add Track piece",
+        "part": {
+          "id": "link",
+          "kind": "box",
+          "name": "Track piece",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "pitch + 4",
+          "size.y": "6",
+          "size.z": "10"
+        },
+        "id": "f7",
+        "name": "Size Track piece",
+        "parts": [
+          "link"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "apart / 2",
+          "position.y": "wheel"
+        },
+        "id": "f8",
+        "name": "Place Track piece",
+        "parts": [
+          "link"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f9",
+        "name": "Add Front pin hole",
+        "part": {
+          "id": "pin1",
+          "kind": "cylinder",
+          "name": "Front pin hole",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "2",
+          "size.y": "2",
+          "size.z": "12"
+        },
+        "id": "f10",
+        "name": "Size Front pin hole",
+        "parts": [
+          "pin1"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "apart / 2 - pitch / 2",
+          "position.y": "wheel",
+          "position.z": "-1"
+        },
+        "id": "f11",
+        "name": "Place Front pin hole",
+        "parts": [
+          "pin1"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f12",
+        "name": "Add Back pin hole",
+        "part": {
+          "id": "pin2",
+          "kind": "cylinder",
+          "name": "Back pin hole",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "2",
+          "size.y": "2",
+          "size.z": "12"
+        },
+        "id": "f13",
+        "name": "Size Back pin hole",
+        "parts": [
+          "pin2"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "apart / 2 + pitch / 2",
+          "position.y": "wheel",
+          "position.z": "-1"
+        },
+        "id": "f14",
+        "name": "Place Back pin hole",
+        "parts": [
+          "pin2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f15",
+        "mode": "group",
+        "name": "Track piece",
+        "target": "link",
+        "tools": [
+          {
+            "id": "pin1",
+            "op": "cut"
+          },
+          {
+            "id": "pin2",
+            "op": "cut"
+          }
+        ],
+        "type": "combine"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {
+      "pin1": {
+        "hole": true
+      },
+      "pin2": {
+        "hole": true
+      }
+    },
+    "name": "Track and wheels",
+    "params": [
+      {
+        "comment": "Wheel diameter",
+        "expression": "40",
+        "id": "p_wheel",
+        "name": "wheel",
+        "unit": "mm"
+      },
+      {
+        "comment": "Between the wheels' centres",
+        "expression": "100",
+        "id": "p_apart",
+        "name": "apart",
+        "unit": "mm"
+      },
+      {
+        "comment": "Between the piece's pins",
+        "expression": "8",
+        "id": "p_pitch",
+        "name": "pitch",
+        "unit": "mm"
+      }
+    ],
+    "version": 2
+  },
+  "thumbnail": "data:image/png;base64,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"
+}

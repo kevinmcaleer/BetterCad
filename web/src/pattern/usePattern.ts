@@ -21,6 +21,7 @@ import {
 import type { MeasureResult, TopoRef } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Pick as ViewPick } from "../viewport/ids";
+import type { TrackSlot } from "./trackPick";
 
 /**
  * Mirror and Pattern (#69). Pick the bodies (or have them picked when the tool comes up), and the step goes on the
@@ -84,6 +85,8 @@ export function usePattern(d: PatternDeps) {
   const [pickingPlane, setPickingPlane] = useState(false);
   /** Picking a construction axis in the view, for a circular pattern to turn round. */
   const [pickingAxis, setPickingAxis] = useState(false);
+  /** Picking for a track: a pin on its piece, or the wheels' round edges. */
+  const [pickingTrack, setPickingTrack] = useState<TrackSlot | null>(null);
   const feature = (d.doc.features.find((f) => f.id === session?.id && f.type === "pattern") as PatternFeature | undefined) ?? null;
   // Mirror has its own button (it always says so), so Pattern starts as the last row or circle used.
   const kind = feature?.kind ?? d.startKind ?? (last.kind === "mirror" ? "rect" : last.kind);
@@ -164,6 +167,7 @@ export function usePattern(d: PatternDeps) {
       delete kept.face;
       delete kept.axisStep;
       delete kept.axisRef;
+      delete kept.track;
       setLast((l) => ({ ...l, ...kept }));
       const s = live.current.session;
       const f = live.current.feature;
@@ -297,7 +301,32 @@ export function usePattern(d: PatternDeps) {
   }, [d.active, d.view, pickingAxis, session, change]);
   useEffect(() => {
     if (!session || !d.active || kind !== "circle") setPickingAxis(false);
+    if (!session || !d.active || kind !== "track") setPickingTrack(null);
   }, [session, d.active, kind]);
+
+  // Picking for a track: the pins on its piece, then each wheel's round edge. Each pick lays the track again. The
+  // picking loads with the first pick.
+  useEffect(() => {
+    const eng = d.view.current?.engine();
+    if (!d.active || !pickingTrack || !session || !eng) return;
+    let stop: (() => void) | null = null;
+    let gone = false;
+    void import("./trackPick").then((m) => {
+      if (gone) return;
+      stop = m.trackInput(eng, pickingTrack, {
+        feature: () => live.current.feature,
+        doc: store.get,
+        measure: deps.current.measure,
+        say: deps.current.say,
+        change: (track) => change({ track }),
+        next: setPickingTrack,
+      });
+    });
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, [d.active, d.view, pickingTrack, session, change, store]);
 
   const done = useCallback(() => {
     const s = live.current.session;
@@ -346,6 +375,7 @@ export function usePattern(d: PatternDeps) {
   // Esc while picking the plane stops picking, and keeps the step.
   useEscape(pickingPlane, () => setPickingPlane(false), ESC.tool + 2);
   useEscape(pickingAxis, () => setPickingAxis(false), ESC.tool + 2);
+  useEscape(!!pickingTrack, () => setPickingTrack(null), ESC.tool + 2);
 
   const help = !d.active
     ? null
@@ -353,17 +383,19 @@ export function usePattern(d: PatternDeps) {
       ? "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
       : pickingAxis
         ? "Click a round edge or face to turn round its centre, or an axis. Esc stops picking."
-        : of === "features"
-          ? session
-            ? `Click more steps on the timeline to ${kind === "mirror" ? "mirror" : "copy"} them too. Enter keeps it, Esc takes it back.`
-            : `Click the steps to ${kind === "mirror" ? "mirror" : "copy"} on the timeline, or choose them on the bar.`
-          : of === "component"
+        : pickingTrack
+          ? "Click a round edge on the piece or a wheel. Esc stops picking."
+          : of === "features"
             ? session
-              ? "Click a body in another component to mirror that one instead. Enter keeps the mirror, Esc takes it back."
-              : "Click a body in the component to mirror, or choose it on the bar."
-            : session
-              ? "Shift-click to add a body or take one out. Enter keeps the copies, Esc takes them back."
-              : "Click the bodies to copy. Shift-click picks more than one.";
+              ? `Click more steps on the timeline to ${kind === "mirror" ? "mirror" : "copy"} them too. Enter keeps it, Esc takes it back.`
+              : `Click the steps to ${kind === "mirror" ? "mirror" : "copy"} on the timeline, or choose them on the bar.`
+            : of === "component"
+              ? session
+                ? "Click a body in another component to mirror that one instead. Enter keeps the mirror, Esc takes it back."
+                : "Click a body in the component to mirror, or choose it on the bar."
+              : session
+                ? "Shift-click to add a body or take one out. Enter keeps the copies, Esc takes them back."
+                : "Click the bodies to copy. Shift-click picks more than one.";
 
   return {
     session,
@@ -382,8 +414,18 @@ export function usePattern(d: PatternDeps) {
     pickingAxis,
     setPickingAxis: (on: boolean) => {
       setPickingPlane(false);
+      setPickingTrack(null);
       setPickingAxis(on);
     },
+    pickingTrack,
+    setPickingTrack: (slot: TrackSlot | null) => {
+      setPickingPlane(false);
+      setPickingAxis(false);
+      setPickingTrack(slot);
+    },
+    /** For a track: the model, the view, and the steps before it. */
+    doc: d.doc,
+    engine: () => d.view.current?.engine() ?? null,
     /** Construction geometry up to the marker: a circle turns round one of its axes. */
     construct: d.construct,
     /** A step's name, by id. */

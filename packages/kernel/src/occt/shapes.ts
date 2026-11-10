@@ -365,7 +365,10 @@ export function unplace(oc: OC, shape: TopoDS_Shape, p: Placement): TopoDS_Shape
 export function copyShape(oc: OC, shape: TopoDS_Shape, by: CopyMove): TopoDS_Shape {
   const t = new oc.gp_Trsf();
   if ("move" in by) t.SetTranslation(new oc.gp_Vec(by.move.x, by.move.y, by.move.z));
-  else if ("mirror" in by) {
+  else if ("place" in by) {
+    const m = by.place;
+    t.SetValues(m[0]!, m[4]!, m[8]!, m[12]!, m[1]!, m[5]!, m[9]!, m[13]!, m[2]!, m[6]!, m[10]!, m[14]!);
+  } else if ("mirror" in by) {
     const { origin: o, normal: n } = by.mirror;
     t.SetMirror(new oc.gp_Ax2(new oc.gp_Pnt(o.x, o.y, o.z), new oc.gp_Dir(n.x, n.y, n.z)));
   } else {
