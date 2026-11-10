@@ -287,6 +287,20 @@
   height: 168px;
   border-radius: 50%;
 }
+/* How to close the loupe, in a pill just above it. */
+.bc-loupe-hint {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translate(-50%, -6px);
+  padding: 2px 8px;
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  box-shadow: var(--bc-shadow-float);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .bc-loupe-zoom {
   position: absolute;
   right: 14px;

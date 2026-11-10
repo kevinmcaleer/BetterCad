@@ -124,6 +124,123 @@ test("snap a joint to a box corner from its snap points", async ({ page }) => {
   await expect(panel.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^0, -10, 20 mm/ })).toBeVisible();
 });
 
+/** The joint loupe (#385, #386): crowded snap points open it, the pointer is slower inside it, and Esc closes it. */
+test("pick a crowded joint snap through the loupe", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
+  await page.getByRole("treeitem", { name: /^Box 1/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  // Zoom well out, so the box top's snap points crowd together.
+  const canvas = (await page.getByTestId("view-canvas").boundingBox())!;
+  const proj = (p: number[]) => page.evaluate((q) => (window as unknown as View).__bcView.project(q), p);
+  await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2);
+  for (let i = 0; i < 12; i++) {
+    const a = await proj([0, 0, 20]);
+    const c = await proj([10, 10, 20]);
+    if (Math.hypot(c.x - a.x, c.y - a.y) < 9) break;
+    await page.mouse.wheel(0, 400);
+    await nextFrame(page);
+  }
+  const mid = await proj([0, 0, 20]);
+  const corner = await proj([10, 10, 20]);
+  const loupe = page.getByTestId("joint-loupe");
+  await page.mouse.move(canvas.x + mid.x, canvas.y + mid.y, { steps: 3 });
+  await expect(loupe).toBeVisible();
+  await expect(loupe.getByText("Esc closes the loupe")).toBeVisible();
+  // Esc closes it; away from the crowd and back, it opens again.
+  await page.keyboard.press("Escape");
+  await expect(loupe).toHaveCount(0);
+  await page.mouse.move(canvas.x + mid.x + 40, canvas.y + mid.y + 40, { steps: 2 });
+  await page.mouse.move(canvas.x + mid.x, canvas.y + mid.y, { steps: 3 });
+  await expect(loupe).toBeVisible();
+  const zoom = Number((await loupe.locator(".bc-loupe-zoom").textContent())!.replace("×", ""));
+  // Inside the loupe the pointer moves `zoom` times slower: going to where the corner shows in it picks the corner.
+  await page.mouse.move(canvas.x + mid.x + (corner.x - mid.x) * zoom, canvas.y + mid.y + (corner.y - mid.y) * zoom, { steps: 4 });
+  await page.mouse.down();
+  await page.mouse.up();
+  const panel = page.getByRole("group", { name: "Joint options" });
+  await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^10, 10, 20 mm/ })).toBeVisible();
+  await expect(loupe).toHaveCount(0);
+});
+
+/** Cut-away corners (#389) and the middle between two picks (#388). */
+test("snap to the sharp corner behind a round, and between two snaps", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.waitForTimeout(800);
+  // Round Box 1's four top edges.
+  await page.keyboard.press("g");
+  for (const [x, y] of [
+    [0, -10],
+    [10, 0],
+    [0, 10],
+    [-10, 0],
+  ]) {
+    await click(page, x!, y!, 20);
+  }
+  const r = page.getByRole("textbox", { name: "Radius" });
+  await r.fill("2");
+  await r.press("Enter");
+  await expect(page.getByText("Rounded 4 edges of Box 1, 2 mm")).toBeVisible();
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  const panel = page.getByRole("group", { name: "Joint options" });
+  // Shift-click a corner and an edge middle of Box 2's top: the snap goes halfway between them.
+  await page.keyboard.down("Shift");
+  await click(page, 15.4, -9.6, 20);
+  await click(page, 34.6, 0, 20);
+  await page.keyboard.up("Shift");
+  await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^25, -5, 20 mm/ })).toBeVisible();
+  // On Box 1's rounded top, the corner the round cut away is a snap of its own, past the round (on the corner clear
+  // of the Z axis, which would give the axis itself).
+  const box = (await page.getByTestId("view-canvas").boundingBox())!;
+  const top = await page.evaluate((p) => (window as unknown as View).__bcView.project(p), [-4, -4, 20]);
+  await page.mouse.move(box.x + top.x, box.y + top.y, { steps: 3 });
+  await click(page, -9.7, -9.7, 20);
+  await expect(panel.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^-10, -10, 20 mm/ })).toBeVisible();
+});
+
+/** Line-up keys (#392) and showing how a joint moves (#394). */
+test("turn and flip a joint from the keyboard, and show how it moves", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
+  await hingeOnBase(page, "Component 1", 25);
+  const panel = page.getByRole("group", { name: "Joint options" });
+  await page.keyboard.press("q");
+  await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("90");
+  await page.keyboard.press("Shift+Q");
+  await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("0");
+  await panel.getByRole("button", { name: "Turn 90°" }).click();
+  await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("90");
+  await page.keyboard.press("w");
+  await expect(panel.getByRole("checkbox", { name: "Flip" })).toBeChecked();
+  await panel.getByRole("button", { name: "Show how it moves" }).click();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Made Joint 1: hinge, Component 1 on Base")).toBeVisible();
+});
+
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */
 test("pose a hinge with its slider and send it home", async ({ page }) => {
   await page.goto("/");

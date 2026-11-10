@@ -25,7 +25,7 @@ import {
   type Vec2,
 } from "@bettercad/sketch";
 import { ORIGIN, SNAP_LABEL } from "./snap";
-import { loupeBox } from "./loupe";
+import { loupeBox, loupeHint } from "./loupe";
 import { anchorOf, dimensionArt, offsetTo } from "./dimensions";
 import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, isPointPick, levelOrUpright, levelOrUprightPoints, toolById } from "./tools";
 import type { SketchSession } from "./useSketch";
@@ -442,6 +442,7 @@ function SketchLoupe({ s, view }: { s: SketchSession; view: { width: number; hei
     <div className={cx("bc-loupe", box.below && "bc-below")} style={{ left: box.left, top: box.top }} aria-hidden="true">
       <canvas ref={s.loupeCanvas} />
       <span className="bc-loupe-zoom">{l.zoom}×</span>
+      {loupeHint(l.why) && <span className="bc-loupe-hint">{loupeHint(l.why)}</span>}
     </div>
   );
 }

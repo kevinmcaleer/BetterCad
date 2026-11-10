@@ -1,5 +1,7 @@
 import { useEffect, type MutableRefObject } from "react";
-import { Button, FeaturePanel, FeaturePicker, FeatureRow, NumberField, PanelNote } from "@bettercad/ui";
+import { createPortal } from "react-dom";
+import { Button, FeaturePanel, FeaturePicker, FeatureRow, NumberField, PanelNote, cx } from "@bettercad/ui";
+import { loupeBox, loupeHint } from "../sketch/loupe";
 import { JOINT_KINDS, limitUnit, type JointKind } from "../state/document";
 import { useJoint, type JointDeps, type JointPick, type JointSession, type JointStage } from "./useJoint";
 
@@ -106,11 +108,22 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
             ))}
           </div>
         )}
+        {x.session && s.kind !== "fixed" && (
+          <FeatureRow label="">
+            <Button label="Show how it moves" title="Swing the part through its range and back" onClick={x.play} />
+          </FeatureRow>
+        )}
       </section>
       <section aria-label="Line-up" className="bc-fsection">
         <h3 className="bc-fsection-head">Line-up</h3>
         <div className="bc-fgrid">
           <NumberField label="Angle" unit="°" value={s.angle ?? 0} scope={scope} step={15} onCommit={(v) => x.change({ angle: v || undefined })} />
+          <Button
+            label="Turn 90°"
+            title="Turn the part a quarter turn about the joint; Shift+Q turns it back"
+            shortcut="Q"
+            onClick={() => x.change({ angle: (((((s.angle ?? 0) + 270) % 360) + 360) % 360) - 180 || undefined })}
+          />
           <NumberField label="Gap" value={s.gap ?? 0} scope={scope} onCommit={(v) => x.change({ gap: v || undefined })} />
           {XYZ.map((a, i) => (
             <NumberField
@@ -125,7 +138,7 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
               }}
             />
           ))}
-          <label className="bc-field bc-fgrid-check" data-tip="Turn the part over, onto the other side of the snap">
+          <label className="bc-field bc-fgrid-check" data-tip="Turn the part over, onto the other side of the snap (W)">
             <span className="bc-frow-label">Flip</span>
             <input type="checkbox" checked={!!s.flip} onChange={(e) => x.change({ flip: e.currentTarget.checked || undefined })} />
           </label>
@@ -180,5 +193,30 @@ export function JointTool({
     },
     [onState, api],
   );
-  return <JointPanel x={x} scope={scope} error={x.session ? failed.get(x.session.id) : undefined} onCancel={onCancel} />;
+  return (
+    <>
+      <JointPanel x={x} scope={scope} error={x.session ? failed.get(x.session.id) : undefined} onCancel={onCancel} />
+      <JointLoupe x={x} />
+    </>
+  );
+}
+
+/** About where the top bar ends, in view pixels: the loupe opens below the pointer above this. */
+const TOP_BAR_BOTTOM = 72;
+
+/** The loupe over crowded snap points (#385), drawn in the 3D view, with how to close it above it (#386). */
+function JointLoupe({ x }: { x: JointSession }) {
+  const l = x.loupe;
+  const host = document.getElementById("bc-view");
+  if (!l || !host) return null;
+  const box = loupeBox(l.anchor, { width: host.clientWidth, height: host.clientHeight, top: TOP_BAR_BOTTOM });
+  const hint = loupeHint(l.why);
+  return createPortal(
+    <div className={cx("bc-loupe", box.below && "bc-below")} style={{ left: box.left, top: box.top }} aria-hidden="true" data-testid="joint-loupe">
+      <canvas ref={x.loupeCanvas} />
+      <span className="bc-loupe-zoom">{l.zoom}×</span>
+      {hint && <span className="bc-loupe-hint">{hint}</span>}
+    </div>,
+    host,
+  );
 }

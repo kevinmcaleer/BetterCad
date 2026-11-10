@@ -14,6 +14,8 @@ export interface SnapPoint {
   /** Across the face, square to `normal`, for the X of the drawn axes. */
   x: V3;
   kind: SnapKind;
+  /** Where a bevel or round cut the corner away (#389): drawn as a hollow ring. */
+  sharp?: boolean;
 }
 
 /** What the view says about a face (`Engine.faceInfo` and `Engine.faceEdges`). */
@@ -141,4 +143,52 @@ export function nearestSnap(screen: { x: number; y: number }[], p: { x: number; 
     }
   });
   return best;
+}
+
+/** `n` turned to face `towards`. */
+export function facing(n: V3, towards: V3): V3 {
+  return dot(n, towards) < 0 ? tidy(mul(n, -1)) : tidy(n);
+}
+
+/** A Shift-click for a snap between two (#388): a snap point, or a flat face standing for its plane. */
+export interface Half {
+  point: V3;
+  normal: V3;
+  plane: boolean;
+}
+
+/**
+ * The point halfway between two picks: two snap points give their middle; a face gives the plane halfway between it
+ * and the other pick, with the first pick's point carried onto it. Two faces must be parallel. Null when they aren't.
+ */
+export function between(a: Half, b: Half): V3 | null {
+  if (!a.plane && !b.plane) return tidy(mul(add(a.point, b.point), 0.5));
+  if (a.plane && b.plane && Math.abs(dot(unit(a.normal) ?? a.normal, unit(b.normal) ?? b.normal)) < 0.999) return null;
+  const f = b.plane ? b : a;
+  const n = unit(f.normal);
+  if (!n) return null;
+  // Halfway along the plane's normal from the first pick to the other's plane.
+  const h = dot(sub(b.point, a.point), n) / 2;
+  return tidy(add(a.point, mul(n, h)));
+}
+
+/** The snaps within `reach` px of `p` on screen, nearest first, by index: Tab steps through them (#391). */
+export function nearSnaps(screen: { x: number; y: number }[], p: { x: number; y: number }, reach: number): number[] {
+  return screen
+    .map((s, i) => ({ i, d: Math.hypot(s.x - p.x, s.y - p.y) }))
+    .filter((s) => s.d <= reach)
+    .sort((a, b) => a.d - b.d)
+    .map((s) => s.i);
+}
+
+/**
+ * The joint's value `t` of the way (0…1) through a wiggle (#394): a hinge swings out to its upper limit, over to its
+ * lower and back; a wheel ±45°; a slider out to its far limit and back. Null for a joint that doesn't move.
+ */
+export function wiggle(kind: string, lower: number, upper: number, t: number): number | null {
+  const s = Math.sin(2 * Math.PI * t);
+  if (kind === "revolute") return s >= 0 ? s * upper : -s * lower;
+  if (kind === "continuous") return s * 45;
+  if (kind === "prismatic") return Math.sin(Math.PI * t) * (Math.abs(upper) >= Math.abs(lower) ? upper : lower);
+  return null;
 }
