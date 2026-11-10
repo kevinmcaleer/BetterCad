@@ -88,6 +88,7 @@ export interface LeftPanelProps {
   onOrigin: (shown: OriginItem[]) => void;
   onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   onSketchesHidden: (ids: string[], hidden: boolean, name?: string) => void;
+  isolateMenu?: BrowserPanelProps["isolateMenu"];
   onBrowserPicked: (id: string | null) => void;
   onSketchOn: (plane: WorldPlaneName) => void;
   /** Construction geometry (#265) for the browser, and sketching on a construction plane. */
@@ -182,6 +183,7 @@ function PartsPanel(p: LeftPanelProps) {
       onMoveInto={p.onMoveInto}
       onBodiesHidden={p.onBodiesHidden}
       onSketchesHidden={p.onSketchesHidden}
+      isolateMenu={p.isolateMenu}
       onOrigin={p.onOrigin}
       onPicked={p.onBrowserPicked}
       onSelectSketch={(id) => {

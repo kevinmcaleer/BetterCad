@@ -361,6 +361,8 @@ export interface BrowserPanelProps {
   onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   /** Hide (true) or show sketches. */
   onSketchesHidden: (ids: string[], hidden: boolean, name?: string) => void;
+  /** Hide others and Unhide all for a component (#335): `keep` stays shown, `name` names the step. */
+  isolateMenu?: (keep: string[], name?: string) => MenuEntry[];
   onOrigin: (shown: OriginItem[]) => void;
   /** The sketch, plane, axis or origin point picked in the browser, for the view to mark. */
   onPicked: (id: string | null) => void;
@@ -590,6 +592,10 @@ export function BrowserPanel(p: BrowserPanelProps) {
       };
     }
     const link = model.links?.find((l) => l.id === id);
+    const heldIds = (c: string) => {
+      const h = owners(model).held(c);
+      return [...h.parts, ...h.rest].map((x) => x.id);
+    };
     if (link)
       return {
         title: link.name,
@@ -599,6 +605,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
             : [{ id: "activate", label: "Activate", icon: "radioOn" as const, onSelect: () => p.onActivate?.(id) }]),
           { id: "select", label: "Select its bodies", icon: "component", onSelect: () => select([id]) },
           { id: "show", label: componentShown(id) ? "Hide" : "Show", icon: componentShown(id) ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") },
+          ...(p.isolateMenu?.(heldIds(id), link.name) ?? []),
           { id: "rename", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => p.onRenameIdChange(id) },
         ],
       };
