@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   addLink,
+  makeComponent,
   addSketch,
   stampComponent,
   addConstruct,
@@ -34,6 +35,16 @@ describe("links (#171)", () => {
     expect(linkOf(doc, "c")).toBeUndefined();
     // The bodies stay separate: still three parts.
     expect(build(doc).parts).toHaveLength(3);
+  });
+
+  it("makes a component named after its body when the name is free, taking it from where it was dragged", () => {
+    const moved = moveInto(three(), ["a"], null);
+    const doc = makeComponent(moved, ["a"], "L1", undefined, undefined, "Wheel");
+    expect(doc.features.at(-1)).toMatchObject({ type: "link", name: "Wheel", parts: ["a"] });
+    expect(doc.owners).toEqual({});
+    expect(linkOf(doc, "a")).toBe("L1");
+    // A name another component has falls back to the next Component number.
+    expect(makeComponent(doc, ["b"], "L2", undefined, undefined, "Wheel").features.at(-1)).toMatchObject({ name: "Component 1" });
   });
 
   it("numbers new links and moves a body from an earlier link to a later one", () => {

@@ -38,7 +38,7 @@ import {
   applyProfile,
   profileFromSettings,
   PRIMITIVES,
-  addLink,
+  makeComponent,
   stampComponent,
   moveInto,
   changeParts,
@@ -1262,11 +1262,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     (ids: string[]) => {
       const id = newId("f");
       const parent = workIn ?? undefined;
-      const name = addLink(live.current.doc, ids, id, undefined, parent).features.find((f) => f.id === id)!.name;
-      // The bodies leave wherever they were dragged to (#334): the new component takes them.
-      const unmove = (d: ModelDoc) =>
-        d.owners && ids.some((x) => x in d.owners!) ? { ...d, owners: Object.fromEntries(Object.entries(d.owners).filter(([k]) => !ids.includes(k))) } : d;
-      record((d, at) => addLink(unmove(d), ids, id, at, parent), `Make ${name}`);
+      const name = makeComponent(live.current.doc, ids, id, undefined, parent).features.find((f) => f.id === id)!.name;
+      record((d, at) => makeComponent(d, ids, id, at, parent), `Make ${name}`);
       if (!ids.length) return activate(id);
       say(`Made ${name} of ${ids.length === 1 ? "1 body" : `${ids.length} bodies`}. They stay separate bodies.`);
     },

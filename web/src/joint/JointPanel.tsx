@@ -33,15 +33,26 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
       clearTitle={`Clear ${what}`}
     />
   );
-  const choose = (label: string, value: string, options: { id: string; name: string }[], onPick: (id: string) => void) => (
+  type Choice = { id: string; name: string };
+  const list = (options: Choice[]) =>
+    options.map((o) => (
+      <option key={o.id} value={o.id}>
+        {o.name}
+      </option>
+    ));
+  // Bodies in Base are offered too, below the components: picking one makes it a component.
+  const choose = (label: string, value: string, options: Choice[], onPick: (id: string) => void, bodies: Choice[] = []) => (
     <FeatureRow label="Component">
       <select className="bc-select" aria-label={label} value={value} onChange={(e) => e.target.value && onPick(e.target.value)}>
-        {value === "" && <option value="">Pick a component</option>}
-        {options.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.name}
-          </option>
-        ))}
+        {value === "" && <option value="">{bodies.length ? "Pick a component or body" : "Pick a component"}</option>}
+        {bodies.length ? (
+          <>
+            {options.length > 0 && <optgroup label="Components">{list(options)}</optgroup>}
+            <optgroup label="Bodies (made a component)">{list(bodies)}</optgroup>
+          </>
+        ) : (
+          list(options)
+        )}
       </select>
     </FeatureRow>
   );
@@ -61,7 +72,7 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
       {x.help && <PanelNote live>{x.help}</PanelNote>}
       <section aria-label="Moves" className="bc-fsection">
         <h3 className="bc-fsection-head">{x.child === null ? "Moves" : `Moves: ${x.nameOf(x.child)}`}</h3>
-        {choose("The component that moves", x.child ?? "", comps, x.pickChild)}
+        {choose("The component that moves", x.child ?? "", comps, x.pickChild, x.loose)}
         {snap("child", x.from?.point ?? null, "a snap on the component that moves")}
       </section>
       <section aria-label="Hangs from" className="bc-fsection">

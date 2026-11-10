@@ -45,6 +45,7 @@ function session(over: Partial<JointSession> = {}): JointSession {
       { id: "L1", name: "Wheel", parts: [] },
       { id: "L2", name: "Chassis", parts: [] },
     ],
+    loose: [],
     ...over,
   } as unknown as JointSession;
 }
@@ -66,6 +67,16 @@ describe("JointPanel (#172)", () => {
     expect(x.pickParent).toHaveBeenCalledWith("L2");
     await userEvent.click(within(from).getByRole("button", { name: /^0, 0, 0 mm/ }));
     expect(x.setTarget).toHaveBeenCalledWith("parent");
+  });
+
+  it("offers bodies in Base below the components, to be made a component when picked", async () => {
+    const x = session({ child: null, from: null, loose: [{ id: "b9", name: "Wheel copy" }] });
+    render(<JointPanel x={x} onCancel={() => {}} />);
+    const moving = screen.getByRole("combobox", { name: "The component that moves" });
+    expect(within(moving).getByRole("option", { name: "Pick a component or body" })).toBeInTheDocument();
+    expect(within(moving).getByRole("group", { name: "Bodies (made a component)" })).toBeInTheDocument();
+    await userEvent.selectOptions(moving, "Wheel copy");
+    expect(x.pickChild).toHaveBeenCalledWith("b9");
   });
 
   it("sets the angle, the gap, the offsets and flip", async () => {
