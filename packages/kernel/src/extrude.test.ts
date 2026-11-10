@@ -212,6 +212,35 @@ describe("extrude in the kernel", () => {
     expect(build(twoBoxes({ distance: -1, extent: "to", to: { ...along, body: "gone" }, target: "a" })).failed.get("e1")).toMatch(/body it goes up to is gone/);
   });
 
+  it("starts off the sketch: an offset, or level with an object", () => {
+    const placeA = { position: { x: 5, y: 10, z: -20 } };
+    const cut = (depth: number) => 8000 - (Math.PI * 25 * depth) / 2;
+    // 5 mm down, then 5 mm on: the top 5 mm stays whole, so the pocket is a 5 mm slot inside.
+    expect(volumes(twoBoxes({ start: "offset", startOffset: -5, distance: -5, targets: ["a"], target: "a" })).a).toBeCloseTo(cut(5), 1);
+    // Starting 8 mm down at a face and cutting 4 mm.
+    const face = { body: "a", kind: "face" as const, point: toPartLocal([0, 0, -8], placeA), normal: toPartLocal([0, 0, 1], placeA, true) };
+    expect(volumes(twoBoxes({ start: "object", from: face, distance: -4, targets: ["a"], target: "a" })).a).toBeCloseTo(cut(4), 1);
+    // From a point 3 mm down up to a face 12 mm down: 9 mm.
+    const point = { body: "a", kind: "vertex" as const, point: toPartLocal([3, 4, -3], placeA) };
+    const end = { ...face, point: toPartLocal([0, 0, -12], placeA) };
+    expect(volumes(twoBoxes({ start: "object", from: point, extent: "to", to: end, distance: -1, targets: ["a"], target: "a" })).a).toBeCloseTo(cut(9), 1);
+    // A profile start, or none (every older step), builds as it always did.
+    expect(volumes(twoBoxes({ start: "profile", startOffset: -5, distance: -5, targets: ["a"], target: "a" })).a).toBeCloseTo(cut(5), 1);
+  });
+
+  it("says why it cannot start at an object", () => {
+    const placeA = { position: { x: 5, y: 10, z: -20 } };
+    const face = { body: "a", kind: "face" as const, point: toPartLocal([0, 0, -8], placeA), normal: toPartLocal([0, 0, 1], placeA, true) };
+    expect(build(twoBoxes({ start: "object", distance: -1, target: "a" })).failed.get("e1")).toMatch(/start from/);
+    expect(build(twoBoxes({ start: "object", from: { ...face, body: "gone" }, distance: -1, target: "a" })).failed.get("e1")).toMatch(/starts from is gone/);
+    expect(build(twoBoxes({ start: "object", from: face, extent: "to", to: face, distance: -1, target: "a" })).failed.get("e1")).toMatch(
+      /starts where it would end/,
+    );
+    // Its timeline line says where it starts.
+    const d = twoBoxes({ start: "offset", startOffset: 3, distance: 5, target: "a" });
+    expect(featureSummary(d, d.features.at(-1)!)).toMatch(/from 3 mm off/);
+  });
+
   it("cuts every body it is given, and only those", () => {
     const both = volumes(twoBoxes({ distance: -5, targets: ["a", "b"], target: "a" }));
     expect(both.a).toBeCloseTo(8000 - (Math.PI * 25 * 5) / 2, 1);

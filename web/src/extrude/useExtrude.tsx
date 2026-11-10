@@ -147,6 +147,8 @@ export function useExtrude(d: ExtrudeDeps) {
   const [hover, setHover] = useState<{ sketch: string; profile: Profile } | null>(null);
   /** "To object" was chosen, and the next click on a face, edge or point sets where it ends. */
   const [wantTo, setWantTo] = useState(false);
+  /** Start "Object" was chosen, and the next click on a face, edge or point sets where it starts. */
+  const [wantFrom, setWantFrom] = useState(false);
   /** Revolve: the next click on an axis, a sketch line or a straight edge sets what it turns round. */
   const [wantAxis, setWantAxis] = useState(false);
   /** Picking the shapes again from the bar: every shape of the step's sketch shows, so hidden sketches can be picked. */
@@ -173,8 +175,8 @@ export function useExtrude(d: ExtrudeDeps) {
   const feature = d.doc.features.find((f): f is ProfileFeature => f.id === session?.id && f.type === d.kind) ?? null;
   /** Revolve asks for its axis after the shapes, and again when the axis is picked from the bar. */
   const pickingAxis = feature?.type === "revolve" && !wantShapes && (wantAxis || !feature.axis);
-  const live = useRef({ session, feature, autoOp, autoTargets, wantTo, pickingAxis });
-  live.current = { session, feature, autoOp, autoTargets, wantTo, pickingAxis };
+  const live = useRef({ session, feature, autoOp, autoTargets, wantTo, wantFrom, pickingAxis });
+  live.current = { session, feature, autoOp, autoTargets, wantTo, wantFrom, pickingAxis };
 
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
 
@@ -186,6 +188,7 @@ export function useExtrude(d: ExtrudeDeps) {
   useEffect(() => {
     if (!session) {
       setWantTo(false);
+      setWantFrom(false);
       setWantAxis(false);
       setWantShapes(false);
     }
@@ -253,6 +256,15 @@ export function useExtrude(d: ExtrudeDeps) {
     return { sketch: sketchId, seeds: [seed], split: true, distance: 10, direction: "one", operation, target };
   }, []);
 
+  /** The closed shapes an extrude has picked. */
+  const pickedOf = useCallback(
+    (f: ProfileFeature): Profile[] => {
+      const all = regionsOf(f.sketch, !!f.split);
+      return [...new Set(f.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p))];
+    },
+    [regionsOf],
+  );
+
   /** The bodies an extrude's solid touches, by their boxes. Empty when nothing is built yet. */
   const touchedOf = useCallback(
     (f: ExtrudeFeature): string[] => {
@@ -263,13 +275,16 @@ export function useExtrude(d: ExtrudeDeps) {
       const letters = (f.texts ?? []).flatMap((t) => textProfiles(s.sketch, t, all).map((p) => p.points));
       const outlines = [...f.seeds.map((p) => seedProfile(all, p)?.points).filter((p): p is Vec2[] => !!p), ...letters];
       if (!outlines.length) return [];
-      const { from, to } = extent(f.direction, f.distance, f.distance2, f.extent === "all" && throughAllAllowed(f.operation));
+      const span = extent(f.direction, f.distance, f.distance2, f.extent === "all" && throughAllAllowed(f.operation));
+      const frame = planeFrame(s.sketch.plane);
+      const start = mod.current?.startOf(f, frame, pickedOf(f), L.parts) ?? 0;
+      const [from, to] = [span.from + start, span.to + start];
       // Reference bodies are there to design round, and hidden ones out of mind: neither is cut unless picked.
       const ids = new Set(L.parts.filter((p) => !p.reference && !p.hidden).map((p) => p.id));
       const own = new Map([...L.bounds].filter(([id]) => ids.has(id)));
-      return touchedBodies(planeFrame(s.sketch.plane), outlines, from, to, own, f.body.id);
+      return touchedBodies(frame, outlines, from, to, own, f.body.id);
     },
-    [regionsOf],
+    [regionsOf, pickedOf],
   );
 
   const change = useCallback(
@@ -413,15 +428,6 @@ export function useExtrude(d: ExtrudeDeps) {
     [change],
   );
 
-  /** The closed shapes an extrude has picked. */
-  const pickedOf = useCallback(
-    (f: ProfileFeature): Profile[] => {
-      const all = regionsOf(f.sketch, !!f.split);
-      return [...new Set(f.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p))];
-    },
-    [regionsOf],
-  );
-
   /** The sketch frame an extrude's shapes are on. */
   const frameOfFeature = useCallback((f: ProfileFeature): Frame => {
     const s = deps.current.sketches.find((x) => x.id === f.sketch);
@@ -455,18 +461,26 @@ export function useExtrude(d: ExtrudeDeps) {
       const m = mod.current;
       if (!s || !m) return;
       // Both where they are shown, so the point it ends at is kept in the body's own terms.
-      const r = m.upToOf(eng, hit, p, part, shownFrame(s, L.posed), pickedOf(f), L.bodyMoves);
+      const frame = shownFrame(s, L.posed);
+      const shapes = pickedOf(f);
+      // Picking where it starts: anything on the sketch's plane is fine, as that is where it would start anyway.
+      const starting = live.current.wantFrom;
+      const r = m.upToOf(eng, hit, p, part, frame, shapes, L.bodyMoves, starting);
       if (!r) return;
       if (typeof r === "string") return say(r, true);
       const { to, reach } = r;
+      const start = m.startOf(f, frame, shapes, L.parts, L.bodyMoves);
       setWantTo(false);
-      change({ extent: "to", to, direction: "one", distance: reach });
+      setWantFrom(false);
+      // Up to an object keeps ending there: its distance is measured from the new start.
+      if (starting) return change({ start: "object", from: to, ...(f.extent === "to" ? { distance: f.distance + start - reach } : {}) });
+      change({ extent: "to", to, direction: "one", distance: reach - start });
     },
     [engineOf, change, say, pickedOf],
   );
 
   /** Whether clicks off the shapes pick what To object ends at, rather than the bodies it changes. */
-  const pickingTo = !!feature && feature.type === "extrude" && (wantTo || feature.extent === "to");
+  const pickingTo = !!feature && feature.type === "extrude" && (wantTo || wantFrom || feature.extent === "to");
 
   // The pointer: the arrow first (drag to set the distance, click to flip), then the closed shapes (hovering lights
   // one, a click adds it to the step or takes it out), then what To object ends at, or the bodies it changes.
@@ -475,7 +489,7 @@ export function useExtrude(d: ExtrudeDeps) {
     if (!d.active || !eng) return;
     const toMode = () => {
       const f = live.current.feature;
-      return f?.type === "extrude" && (live.current.wantTo || f.extent === "to");
+      return f?.type === "extrude" && (live.current.wantTo || live.current.wantFrom || f.extent === "to");
     };
     eng.setInput({
       move: (p, _m, pressed) => {
@@ -660,13 +674,14 @@ export function useExtrude(d: ExtrudeDeps) {
     if (!shapes.length) return a.hide();
     const frame = frameOfFeature(arrowFeature);
     let reach = 0;
-    const g = mod.current!.arrowOf(arrowFeature, frame, shapes, (base) => (reach = eng.pixelSize(base) * 90));
+    const start = mod.current!.startOf(arrowFeature, frame, shapes, d.parts, d.bodyMoves);
+    const g = mod.current!.arrowOf(arrowFeature, frame, shapes, (base) => (reach = eng.pixelSize(base) * 90), start);
     arrowLength.current = g.length;
     a.update(g.base, g.end, g.dir);
     // While the arrow is dragged, a ghost of the shapes follows it at once; the body catches up when the kernel has
     // rebuilt it, and the ghost goes when the drag ends.
-    a.setGhost(dragging ? { frame, shapes, ...mod.current!.ghostSpan(arrowFeature, reach), cut: arrowFeature.operation === "cut" } : null);
-  }, [engineOf, Arrow, arrowFeature, pickedOf, frameOfFeature, d.theme, d.doc, dragging]);
+    a.setGhost(dragging ? { frame, shapes, ...mod.current!.ghostSpan(arrowFeature, reach, start), cut: arrowFeature.operation === "cut" } : null);
+  }, [engineOf, Arrow, arrowFeature, pickedOf, frameOfFeature, d.theme, d.doc, d.parts, d.bodyMoves, dragging]);
 
   const done = useCallback(() => {
     const L = live.current;
@@ -720,6 +735,7 @@ export function useExtrude(d: ExtrudeDeps) {
   useEscape(!!session, cancel, ESC.tool + 1);
   useEscape(wantAxis && !!feature && feature.type === "revolve" && !!feature.axis, () => setWantAxis(false), ESC.tool + 2);
   useEscape(wantShapes && !!feature, () => setWantShapes(false), ESC.tool + 2);
+  useEscape(wantFrom && !!feature, () => setWantFrom(false), ESC.tool + 2);
 
   const commands = useMemo<Command[]>(
     () => [
@@ -776,6 +792,7 @@ export function useExtrude(d: ExtrudeDeps) {
     /** Picks how far it goes. To object waits for a click on a face, edge or point before it changes the step. */
     setExtent: (e: ExtrudeExtent) => {
       const f = live.current.feature;
+      setWantFrom(false);
       if (e !== "to") {
         setWantTo(false);
         return change({ extent: e });
@@ -783,6 +800,13 @@ export function useExtrude(d: ExtrudeDeps) {
       if (f?.type === "extrude" && f.to) return change({ extent: "to", direction: "one" });
       setWantTo(true);
     },
+    /** Whether the next click on a face, edge or point sets where it starts (Start: Object). */
+    pickFrom: (on: boolean) => {
+      setWantTo(false);
+      setWantFrom(on);
+    },
+    /** Whether the next click on a face, edge or point sets where it starts. */
+    wantFrom,
     /** Whether the next click off the shapes sets what To object goes up to. */
     pickingTo,
     /** Revolve: whether the next click on an axis, a sketch line or a straight edge sets what it turns round. */

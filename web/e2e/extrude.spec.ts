@@ -236,3 +236,66 @@ test("cut up to a face, then drag the arrow to set how deep", async ({ page }) =
   await bar.getByRole("button", { name: /^OK/ }).click();
   await expect(page.getByText(/Cut one shape (9\.\d|10(\.\d)?) mm deep/)).toBeVisible();
 });
+
+test("start an extrude level with a face, so one sketch cuts a pocket in the top", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+
+  // A 30 × 20 mm block, 20 mm tall.
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await click(page, -10, -10);
+  const far = await at(page, 10, 5);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width" }).fill("30");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height" }).fill("20");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Finished Sketch 1")).toBeVisible();
+  await page.keyboard.press("e");
+  const distance = page.getByRole("textbox", { name: "Distance" });
+  await pickShape(page, 0, 0, distance);
+  await distance.fill("20");
+  await distance.press("Enter");
+  await expect(page.getByText("Extruded one shape 20 mm")).toBeVisible();
+
+  // A 6 mm circle on the ground plane, under the block.
+  await page.keyboard.press("k");
+  await click(page, 25, 25);
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.keyboard.press("c");
+  await click(page, 0, 0);
+  const edge = await at(page, 3, 0);
+  await page.mouse.move(edge.x, edge.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Diameter" }).fill("6");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Finished Sketch 2")).toBeVisible();
+
+  // Cut, starting at the block's top face, 5 mm down from there.
+  await page.keyboard.press("e");
+  const ops = page.getByRole("group", { name: "Operation" });
+  await pickShape(page, 0, 0, ops.getByRole("button", { name: "New body", pressed: true }));
+  await ops.getByRole("button", { name: "Cut" }).click();
+  const bar = page.getByRole("group", { name: "Extrude options" });
+  await bar.getByRole("button", { name: /^Profile plane/ }).click();
+  await page.getByRole("menuitemradio", { name: "Object" }).click();
+  await expect(bar.getByRole("status")).toHaveText("Click a face, edge or point to start from");
+  await click(page, 12, 7);
+  await expect(bar.getByRole("group", { name: "Object" }).getByRole("button", { name: /^1 face/ })).toBeVisible();
+  await distance.fill("-5");
+  await distance.press("Enter");
+  await expect(page.getByText("Cut one shape 5 mm deep")).toBeVisible();
+
+  // 30 × 20 × 20 less a 6 mm pocket 5 mm deep.
+  await page.getByRole("treeitem", { name: /Body 1/ }).click();
+  await expect(page.getByText("11,858.6 mm³")).toBeVisible({ timeout: 20_000 });
+});
