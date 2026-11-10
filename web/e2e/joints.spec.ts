@@ -243,7 +243,7 @@ test("snap to the sharp corner behind a round, and between two snaps", async ({ 
   const r = page.getByRole("textbox", { name: "Radius" });
   await r.fill("2");
   await r.press("Enter");
-  await expect(page.getByText("Rounded 4 edges of Box 1, 2 mm")).toBeVisible();
+  await expect(page.getByText("Filleted 4 edges of Box 1, 2 mm")).toBeVisible();
   await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
   await page.getByRole("menuitem", { name: /New component/ }).click();
   await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();

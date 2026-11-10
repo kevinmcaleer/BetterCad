@@ -35,7 +35,7 @@ function PickList({ f, noun }: { f: FinishSession; noun: "edges" | "faces" }) {
   );
 }
 
-/** The panel for Fillet (round or bevel) and Shell: what is picked, the size and options, Cancel and OK. */
+/** The panel for Fillet (fillet or chamfer) and Shell: what is picked, the size and options, Cancel and OK. */
 export function FinishBar({ f, preview, onCancel }: { f: FinishSession; preview?: PreviewView; onCancel: () => void }) {
   const [listOpen, setListOpen] = useState(true);
   // Enter in the size field keeps the value, then makes the step.
@@ -104,13 +104,13 @@ export function FinishBar({ f, preview, onCancel }: { f: FinishSession; preview?
       icon={f.bevel ? "chamfer" : "fillet"}
       onFieldEnter={onFieldEnter}
       cancel={cancel}
-      ok={{ title: f.bevel ? "Bevel the edges" : "Round the edges", disabled: !n, onClick: () => f.done() }}
+      ok={{ title: f.bevel ? "Chamfer the edges" : "Fillet the edges", disabled: !n, onClick: () => f.done() }}
     >
       {picks}
       <FeatureRow label="Shape">
         <span role="group" aria-label="Edge shape" className="bc-segmented">
-          <Button label="Round" title="Fillet: round the edges" on={!f.bevel} onClick={() => f.setBevel(false)} />
-          <Button label="Bevel" title="Chamfer: cut the edges flat" on={f.bevel} onClick={() => f.setBevel(true)} />
+          <Button label="Fillet" title="Round the edges" on={!f.bevel} onClick={() => f.setBevel(false)} />
+          <Button label="Chamfer" title="Cut the edges off flat" on={f.bevel} onClick={() => f.setBevel(true)} />
         </span>
       </FeatureRow>
       <NumberField id="bc-finish-size" label={f.bevel ? "Distance" : "Radius"} value={f.radius} min={0.05} onCommit={(v) => f.setRadius(v)} />
