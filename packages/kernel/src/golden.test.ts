@@ -28,7 +28,7 @@ import {
   type TopoDS_Shape,
 } from "./occt/shapes";
 import { bodyRef } from "./construct";
-import { extent, pickProfiles, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
+import { extent, pickProfiles, startDistance, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
 import { createRequire } from "node:module";
 import { parse } from "opentype.js";
 import { Draft, drawCircle, layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
@@ -446,6 +446,17 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     const to = upToDistance(frame, [0, 0], { point: [10, 10, 6], normal: [0, 0, 1] }) as number;
     return boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, { frame, profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }], ...extent("one", to) }),
+    ]);
+  },
+  // Start Object: the same circle starting level with a face 14 mm up and cut 4 mm on from there, a pocket below the top.
+  "extrude-cut-start-object": (oc) => {
+    const frame = { origin: [0, 0, 20] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
+    const start = startDistance({ start: "object", from: { body: "b", kind: "face", point: [10, 10, 14], normal: [0, 0, 1] } }, frame, [0, 0], () => ({
+      position: { x: 0, y: 0, z: 0 },
+    })) as number;
+    const span = extent("one", -4);
+    return boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
+      prismOf(oc, { frame, profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }], from: span.from + start, to: span.to + start }),
     ]);
   },
 };

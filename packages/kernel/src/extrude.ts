@@ -118,6 +118,12 @@ export type ExtrudeOperation = "new" | "join" | "cut" | "intersect";
  * edge or point picked in the view ("To object").
  */
 export type ExtrudeExtent = "distance" | "all" | "to";
+/**
+ * Where an extrude starts, as in Fusion: on the sketch's own plane (the default), a set distance off it along its
+ * normal, or level with a face, edge or point picked in the view, so one sketch can feed several extrudes that each
+ * start somewhere else on the model.
+ */
+export type ExtrudeStart = "profile" | "offset" | "object";
 
 /**
  * Where a "To object" extrude ends, kept in the picked body's own coordinates so it follows the body when the body is
@@ -342,7 +348,7 @@ export function profilesMiddle(picked: { points: Vec2[] }[]): Vec2 {
  * to a point or plane in the world. A string says why it can't: the plane runs along the extrude, or the object sits
  * on the sketch's own plane.
  */
-export function upToDistance(frame: Frame, middle: Vec2, at: { point: Vec3; normal?: Vec3 }): number | string {
+export function upToDistance(frame: Frame, middle: Vec2, at: { point: Vec3; normal?: Vec3 }, onPlane = false): number | string {
   const n = frame.normal;
   const y: Vec3 = [n[1] * frame.x[2] - n[2] * frame.x[1], n[2] * frame.x[0] - n[0] * frame.x[2], n[0] * frame.x[1] - n[1] * frame.x[0]];
   const c: Vec3 = [0, 1, 2].map((i) => frame.origin[i]! + frame.x[i]! * middle[0] + y[i]! * middle[1]) as Vec3;
@@ -353,8 +359,26 @@ export function upToDistance(frame: Frame, middle: Vec2, at: { point: Vec3; norm
     if (Math.abs(along) < 1e-6) return "That face runs alongside the extrude, so it never reaches it. Pick another.";
     t = dot3(d, at.normal) / along;
   } else t = dot3(d, n);
-  if (Math.abs(t) < 1e-6) return "That is on the sketch's own plane. Pick something in front of or behind it.";
+  if (Math.abs(t) < 1e-6) return onPlane ? 0 : "That is on the sketch's own plane. Pick something in front of or behind it.";
   return Math.round(t * 1e6) / 1e6;
+}
+
+/**
+ * Where an extrude starts along its sketch's normal, mm from the sketch's plane: 0 on the plane, its offset, or where
+ * the picked object is (`place` finds the picked body as it is now). A string says why it can't start there.
+ */
+export function startDistance(
+  f: { start?: ExtrudeStart; startOffset?: number; from?: ExtrudeUpTo },
+  frame: Frame,
+  middle: Vec2,
+  place: (body: string) => Place | undefined,
+): number | string {
+  if (f.start === "offset") return f.startOffset ?? 0;
+  if (f.start !== "object") return 0;
+  const by = f.from && place(f.from.body);
+  if (!f.from) return "Click a face, edge or point for it to start from";
+  if (!by) return "The body it starts from is gone. Pick another.";
+  return upToDistance(frame, middle, { point: fromPartLocal(f.from.point, by), normal: f.from.normal && fromPartLocal(f.from.normal, by, true) }, true);
 }
 
 /**
