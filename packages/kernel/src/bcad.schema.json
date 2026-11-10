@@ -51,6 +51,11 @@
           }
         },
         "order": { "type": "array", "items": { "type": "string" } },
+        "kevsrobots": {
+          "type": "object",
+          "required": ["project", "title", "sent"],
+          "properties": { "project": { "type": "integer" }, "title": { "type": "string" }, "sent": { "type": "string" } }
+        },
         "views": {
           "type": "array",
           "items": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } } }

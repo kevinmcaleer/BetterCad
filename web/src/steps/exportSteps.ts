@@ -3,7 +3,7 @@
  * the pictures, a Markdown guide (README.md) and the model itself into a .zip. Loads on first use, apart from the
  * shell.
  */
-import type { BodyMesh, Call, Methods } from "@bettercad/kernel";
+import { DEFLECTION, type BodyMesh, type Call, type Methods } from "@bettercad/kernel";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import { zip } from "@bettercad/kernel/zip";
 import { build, type ModelDoc } from "../state/document";
@@ -19,6 +19,8 @@ export interface StepsExport {
   call: <M extends keyof Methods>(method: M, params: Methods[M]["params"]) => Call<Methods[M]["result"]> | null;
   /** How far along, 0 to 1, with what it is doing. */
   onProgress?: (fraction: number, text: string) => void;
+  /** Also pack an STL of each part under models/, to print from (Send to kevsrobots). */
+  parts?: boolean;
 }
 
 export interface StepsZip {
@@ -104,6 +106,23 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
     files.push({ name: "images/finished.png", data: new Uint8Array(await done.arrayBuffer()) });
   } finally {
     pictures.dispose();
+  }
+
+  if (o.parts) {
+    o.onProgress?.(1, "Making the parts to print");
+    const k = o.call("export", {
+      doc,
+      upTo,
+      bodies: null,
+      format: "stl",
+      deflection: DEFLECTION.normal,
+      separate: true,
+      keepPosition: false,
+      posed: false,
+      rosPackage: false,
+      name: doc.name,
+    });
+    if (k) for (const f of (await k).files) files.push({ name: `models/${fileSafe(f.name)}`, data: new Uint8Array(f.data) });
   }
 
   const base = fileSafe(doc.name);

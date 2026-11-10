@@ -210,6 +210,7 @@ const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ defaul
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
 const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: m.Versions })));
 const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
+const SendDialog = lazy(() => import("../steps/SendDialog").then((m) => ({ default: m.SendDialog })));
 const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 // Release notes (What's new) load in their own chunk, after first paint.
 const WhatsNewDialog = lazy(() => import("../whatsnew/WhatsNew").then((m) => ({ default: m.WhatsNewDialog })));
@@ -374,6 +375,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [crash, setCrash] = useState<Caught | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  // Send to kevsrobots: the build steps to a kevsrobots project.
+  const [sendOpen, setSendOpen] = useState(false);
   const [inactive, setInactive] = useState(false);
   const [renameId, setRenameId] = useState<string | null>(null);
   const { theme, setTheme, resolved } = useTheme();
@@ -1696,6 +1699,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     savePose: () => {},
     openExport: () => {},
     exportSteps: () => {},
+    sendSteps: () => {},
     openRender: () => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
@@ -1773,6 +1777,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     openExport: () => setExportOpen(true),
     exportSteps: () => exportBuildSteps(),
+    sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
@@ -1903,6 +1908,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keys: ["mod+e"],
         run: () => h().openExport(),
         keywords: "stl 3mf step print slicer",
+      },
+      {
+        id: "file.sendSteps",
+        label: "Send to kevsrobots…",
+        group: "File",
+        icon: "upload",
+        run: () => h().sendSteps(),
+        keywords: "projects publish build steps instructions upload",
       },
       {
         id: "file.exportSteps",
@@ -3377,6 +3390,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onDownloadBcad={files.saveToDisk}
             onExport={() => setExportOpen(true)}
             onExportSteps={doc.features.length ? exportBuildSteps : undefined}
+            onSendSteps={doc.features.length && !files.viewing ? () => setSendOpen(true) : undefined}
+            sentTo={doc.kevsrobots?.title}
             onSignOut={signOut}
             onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}
@@ -3972,6 +3987,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             viewing={files.viewing?.number ?? null}
             onPreview={(n) => void files.previewVersion(n)}
             onClose={() => setVersionsOpen(false)}
+            say={say}
+          />
+        </Suspense>
+      )}
+      {sendOpen && (
+        <Suspense fallback={null}>
+          <SendDialog
+            doc={doc}
+            upTo={at}
+            call={kernel.call}
+            signedIn={!!account}
+            signinUrl={accountsOn ? `#/signin?next=${encodeURIComponent(window.location.hash || "#/")}` : undefined}
+            modelUrl={files.cloud ? `${window.location.origin}/#/edit/${files.cloud.modelId}` : undefined}
+            onLinked={(link) => store.edit((d) => ({ ...d, kevsrobots: link }), "Link to kevsrobots project")}
+            onClose={() => setSendOpen(false)}
             say={say}
           />
         </Suspense>

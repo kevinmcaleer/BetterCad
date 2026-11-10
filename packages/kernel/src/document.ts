@@ -667,6 +667,11 @@ export interface ModelDoc {
   sections?: SectionAnalysis[];
   /** The section analysis applied to the view now, by id; none shows the whole model. Only one at a time. */
   section?: string;
+  /**
+   * The kevsrobots project the build steps were last sent to (Send to kevsrobots), so the next send updates it. Not a
+   * step. `sent` is an ISO time.
+   */
+  kevsrobots?: { project: number; title: string; sent: string };
 }
 
 /** A section analysis: a plane through `origin` facing `normal`, pushed `offset` mm along it. The view keeps the back. */
