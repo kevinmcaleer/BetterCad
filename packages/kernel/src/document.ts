@@ -879,6 +879,8 @@ export function moveGeo(m: Mat4, g: ConstructGeo): ConstructGeo {
 /** Replays the first `upTo` features (all of them by default) into parts. */
 export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const parts: Part[] = [];
+  /** Each copy a Mirror, Pattern or Track made, and the body it copies: a copy wears its colour and finish. */
+  const copied = new Map<string, string>();
   const sketches: Build["sketches"] = [];
   const sketchById = new Map<string, Sketch>();
   const failed = new Map<string, string>();
@@ -1005,6 +1007,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           const src = parts[i]!;
           const moves: CopyMove[] = lay.pieces.map((m) => ({ place: m }));
           const copies = moves.slice(1).map((m, k) => copyPart(src, m, copyId(f, src.id, k), copyName(f, src.name, k)));
+          for (const c of copies) copied.set(c.id, src.id);
           parts[i] = { ...copyPart(src, moves[0]!, src.id, src.name), hidden: src.hidden };
           parts.splice(i + 1, 0, ...copies.filter((c) => find(c.id) < 0));
           tracks.push({ id: f.id, parts: [src.id, ...copies.map((c) => c.id)], track: f.track!, piece: lay.piece, wheels: lay.wheels });
@@ -1063,6 +1066,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           if (!src) continue;
           const copies = moves.map((m, k) => copyPart(src, m, copyId(f, from1, k), copyName(f, src.name, k)));
           if (of === "component" && !f.join) for (const c of copies) c.link = f.id;
+          if (!f.join) for (const c of copies) copied.set(c.id, src.id);
           component.push(...copies.map((c) => c.id));
           if (f.join) {
             const at = { position: { ...src.position }, rotation: src.rotation && { ...src.rotation } };
@@ -1532,17 +1536,17 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       delete parts[i]!.link;
     }
   }
-  // A track's pieces wear the piece's colour and finish unless one was given its own (an older model, or a new copy).
-  const wears = new Map<string, Look>();
-  for (const f of doc.features) {
-    if (f.type !== "pattern" || f.kind !== "track" || f.suppressed || !f.parts[0]) continue;
-    const l = doc.looks[f.parts[0]];
-    if (l?.colour || l?.finish) for (const id of patternCopyIds(f)) wears.set(id, { colour: l.colour, finish: l.finish });
-  }
+  // A copy (mirrored, patterned or a track's piece) wears its body's colour and finish unless it was given its own.
+  const lookOf = (id: string, depth = 0): Look | undefined => {
+    const own = doc.looks[id];
+    const from = copied.get(id);
+    if (!from || depth > 64 || (own?.colour && own?.finish)) return own;
+    const worn = lookOf(from, depth + 1);
+    if (!worn?.colour && !worn?.finish) return own;
+    return { ...own, colour: own?.colour ?? worn.colour, finish: own?.finish ?? worn.finish };
+  };
   const looked = parts.map((p) => {
-    const worn = wears.get(p.id);
-    const own = doc.looks[p.id];
-    const look = worn ? { ...own, colour: own?.colour ?? worn.colour, finish: own?.finish ?? worn.finish } : own;
+    const look = lookOf(p.id);
     return look ? { ...p, ...look, name: look.name ?? p.name, hidden: !!look.hidden } : p;
   });
   if (doc.order?.length) {
