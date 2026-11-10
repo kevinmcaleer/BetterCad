@@ -217,9 +217,12 @@ test("wrap a track piece round two wheels", async ({ page }) => {
   await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Pattern", exact: true }).click();
   await page.getByRole("button", { name: "Track", exact: true }).click();
   await expect(page.getByText("Click the pin or hole where the piece joins the one before it.", { exact: false })).toBeVisible();
-  // The piece's pin holes' top edges, then each wheel's top rim.
-  await click(page, 46, 41, 10);
-  await expect(page.getByText("Now the pin or hole at its other end", { exact: false })).toBeVisible();
+  // The piece's pin holes' top edges, then each wheel's top rim. The first pick waits for the view to settle: on a
+  // loaded runner the camera can still be framing the sample, so a click lands short; try again until it takes.
+  await expect(async () => {
+    await click(page, 46, 41, 10);
+    await expect(page.getByText("Now the pin or hole at its other end", { exact: false })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
   await click(page, 54, 41, 10);
   await click(page, 20, 0, 10);
   await click(page, 120, 0, 10);
