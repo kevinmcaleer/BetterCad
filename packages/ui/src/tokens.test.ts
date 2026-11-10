@@ -62,4 +62,13 @@ describe("tokens.css", () => {
       expect(unknown).toEqual([]);
     });
   }
+  it("web/index.html splash style uses tokens, never literal colours", () => {
+    const html = readFileSync(join(__dirname, "..", "..", "..", "web", "index.html"), "utf8");
+    const style = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]!).join("\n");
+    expect(style).toContain(".bc-splash");
+    const body = style.replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(body).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i);
+    const unknown = [...body.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]!).filter((v) => !v.startsWith("--bc-"));
+    expect(unknown).toEqual([]);
+  });
 });
