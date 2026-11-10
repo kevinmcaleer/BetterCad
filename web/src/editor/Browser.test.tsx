@@ -250,7 +250,7 @@ describe("components (#171)", () => {
     expect(browserItems(nested({ readOnly: true })).find((i) => i.id === "L1")).toMatchObject({ toggles: ["hidden"] });
   });
 
-  it("shuts a component's eye once everything in it, and in the components inside it, is hidden", () => {
+  it("shuts a component's eye once its bodies, and those in the components inside it, are hidden, whatever its sketches show", () => {
     const hide = (m: BrowserModel, ids: string[]) => ({
       ...m,
       parts: m.parts.map((p) => (ids.includes(p.id) ? { ...p, hidden: true } : p)),
@@ -258,13 +258,18 @@ describe("components (#171)", () => {
     });
     const eye = (m: BrowserModel, id: string) => browserItems(m).find((i) => i.id === id)!.hidden;
     expect(eye(hide(nested(), ["a", "b"]), "L1")).toBe(false);
-    expect(eye(hide(nested(), ["a", "b", "d"]), "L1")).toBe(false);
-    expect(eye(hide(nested(), ["d"]), "L2")).toBe(false);
-    expect(eye(hide(nested(), ["d", "s1"]), "L2")).toBe(true);
-    expect(eye(hide(nested(), ["a", "b", "d", "s1"]), "L1")).toBe(true);
+    expect(eye(hide(nested(), ["s1"]), "L2")).toBe(false);
+    expect(eye(hide(nested(), ["d"]), "L2")).toBe(true);
+    expect(eye(hide(nested(), ["a", "b", "d"]), "L1")).toBe(true);
+    // A component holding only sketches follows them.
+    const sketchOnly = nested({
+      links: [...nested().links!, { id: "L3", name: "Component 3", parts: [] }],
+      sketches: [{ id: "s2", name: "Sketch 2", hidden: true, component: "L3" }],
+    });
+    expect(eye(sketchOnly, "L3")).toBe(true);
   });
 
-  it("hides everything in a component from its eye, as one step, and shows it again", async () => {
+  it("hides a component's bodies from its eye, as one step, and shows them again, leaving its sketches as they were", async () => {
     const onBodiesHidden = vi.fn();
     const props = {
       selection: [],
@@ -289,14 +294,14 @@ describe("components (#171)", () => {
     };
     const { rerender } = render(<BrowserPanel model={nested()} {...props} />);
     await userEvent.click(screen.getByRole("button", { name: "Hide Component 1" }));
-    expect(onBodiesHidden).toHaveBeenLastCalledWith(["a", "b", "d", "s1"], true, "Component 1");
+    expect(onBodiesHidden).toHaveBeenLastCalledWith(["a", "b", "d"], true, "Component 1");
     // The radio stays beside the eye.
     expect(screen.getByRole("button", { name: "Activate Component 1" })).toBeInTheDocument();
     const all = nested();
     const hidden = { ...all, parts: all.parts.map((p) => ({ ...p, hidden: p.id !== "c" })), sketches: all.sketches.map((s) => ({ ...s, hidden: true })) };
     rerender(<BrowserPanel model={hidden} {...props} />);
     await userEvent.click(screen.getByRole("button", { name: "Show Component 2" }));
-    expect(onBodiesHidden).toHaveBeenLastCalledWith(["d", "s1"], false, "Component 2");
+    expect(onBodiesHidden).toHaveBeenLastCalledWith(["d"], false, "Component 2");
   });
 
   it("offers Hide others and Unhide all on a component, keeping what it holds", async () => {
