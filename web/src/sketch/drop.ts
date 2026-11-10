@@ -1,11 +1,12 @@
-import { SketchIndex, angleOf, closestOnSegment, dist, onArc, polar, sub, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
-import { ORIGIN, SNAP_LABEL, type PointPick, type SnapKind } from "./snap";
+import { SketchIndex, angleOf, closestOnSegment, dist, mid, onArc, polar, sub, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { ORIGIN, SNAP_LABEL, middleOf, type PointPick, type SnapKind } from "./snap";
 
 /* Loaded once a sketch is open (not with the shell): a point dragged before it arrives just moves. */
 /**
- * Where a dragged point would land as a coincident, Fusion-style: the nearest other point, then the origin, then a
- * line, circle or arc, within `tol` mm. Skips what can't take it: points already tied to it, the curves it is part of
- * (and a line's other end), and curves it already sits on. Null lets it go free.
+ * Where a dragged point would land as a coincident, Fusion-style: the nearest other point, then the origin, then the
+ * middle of a line (a midpoint constraint, so two centres can meet), then a line, circle or arc, within `tol` mm. Skips
+ * what can't take it: points already tied to it, the curves it is part of (and a line's other end), and curves it
+ * already sits on or is the middle of. Null lets it go free.
  */
 export function dropTarget(p: Vec2, sketch: Sketch, dragged: Id, tol: number, origin: Vec2 | null): PointPick | null {
   const idx = new SketchIndex(sketch);
@@ -24,7 +25,13 @@ export function dropTarget(p: Vec2, sketch: Sketch, dragged: Id, tol: number, or
     (e.kind === "line" && (tied.has(e.a) || tied.has(e.b))) ||
     (e.kind === "arc" && (tied.has(e.a) || tied.has(e.b) || tied.has(e.c))) ||
     (e.kind === "circle" && tied.has(e.c));
-  const on = new Set(sketch.constraints.flatMap((c) => (c.type === "pointOn" && !c.suppressed && tied.has(c.p) ? [c.e] : [])));
+  // Curves it already sits on, and lines it is already the middle of: landing on them again only repeats a constraint.
+  const on = new Set(
+    sketch.constraints.flatMap((c) =>
+      c.suppressed ? [] : c.type === "pointOn" && tied.has(c.p) ? [c.e] : c.type === "midpoint" && tied.has(c.p) ? [c.line] : [],
+    ),
+  );
+  const middleOfAlready = new Set(sketch.constraints.flatMap((c) => (c.type === "midpoint" && !c.suppressed && tied.has(c.p) ? [c.line] : [])));
   // A curve's own points: a line can't fold onto itself, nor an arc's end onto its centre.
   for (const e of sketch.entities) {
     if (!own(e)) continue;
@@ -43,6 +50,16 @@ export function dropTarget(p: Vec2, sketch: Sketch, dragged: Id, tol: number, or
   }
   if (best) return best;
   if (origin && dist(p, origin) <= tol) return { id: ORIGIN, xy: origin, kind: "origin", label: SNAP_LABEL.origin };
+  // The middle of a line, even one it sits on: a centre dropped there gets a midpoint constraint.
+  for (const e of sketch.entities) {
+    if (e.kind !== "line" || own(e) || middleOfAlready.has(e.id)) continue;
+    const xy = mid(idx.xy(e.a), idx.xy(e.b));
+    if (dist(xy, p) <= bestD) {
+      best = { id: middleOf(e.id), xy, kind: "middle", label: SNAP_LABEL.middle };
+      bestD = dist(xy, p);
+    }
+  }
+  if (best) return best;
   for (const e of sketch.entities) {
     if (own(e) || on.has(e.id)) continue;
     let xy: Vec2 | null = null;
