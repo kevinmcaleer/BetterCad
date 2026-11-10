@@ -531,17 +531,23 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
    * or revolve, as in Fusion, so what you draw lands where you see it; other tools work on it at home.
    */
   const poseOn = POSED_TOOLS.has(tool);
-  const posedSketches = useMemo(() => {
-    const m = new Map<string, Mat4>();
-    if (poseOn) for (const s of built.sketches) if (s.component && linkMoves.has(s.component)) m.set(s.id, linkMoves.get(s.component)!);
-    return m;
-  }, [poseOn, built.sketches, linkMoves]);
   /** Each posed body's move from home, so a face or point picked on it can be taken back home. */
   const bodyMoves = useMemo(() => {
     const m = new Map<string, Mat4>();
     if (poseOn) for (const l of built.links) for (const id of l.parts) if (linkMoves.has(l.id)) m.set(id, linkMoves.get(l.id)!);
     return m;
   }, [poseOn, built.links, linkMoves]);
+  // A sketch on a face rides on the body it sits on, whichever component it is filed under (older models filed it
+  // under the active one); any other sketch rides on its own component.
+  const posedSketches = useMemo(() => {
+    const m = new Map<string, Mat4>();
+    for (const s of built.sketches) {
+      const p = s.sketch.plane;
+      const move = p.kind === "face" ? bodyMoves.get(p.face.body) : poseOn && s.component ? linkMoves.get(s.component) : undefined;
+      if (move) m.set(s.id, move);
+    }
+    return m;
+  }, [poseOn, built.sketches, linkMoves, bodyMoves]);
   const shownSketches = useMemo(() => built.sketches.filter((s) => !doc.looks[s.id]?.hidden), [built.sketches, doc.looks]);
   const browserConstruct = useMemo(
     () =>
