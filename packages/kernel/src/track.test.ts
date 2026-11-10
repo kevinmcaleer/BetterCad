@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { addPart, addPattern, build, changeParts, dependsOn, featureParts, featureSummary, newDoc, updatePattern, type ModelDoc } from "./document";
+import {
+  addPart,
+  addPattern,
+  build,
+  changeParts,
+  dependsOn,
+  featureParts,
+  featureSummary,
+  newDoc,
+  setLook,
+  updatePattern,
+  withTrackMates,
+  type ModelDoc,
+} from "./document";
 import { bodyRef } from "./construct";
 import { movePoint, moveToLocal, patternCopyIds, patternProblem, undoMove, type CopyMove } from "./pattern";
 import { layChain, layTrack, loopLength, trackLayoutOf, trackPitch, wrapLoop, type WorldCircle } from "./track";
@@ -143,6 +156,25 @@ describe("Track (Pattern's Track kind)", () => {
     }
     expect(featureParts(f)).toEqual(["link", ...patternCopyIds(f as never)]);
     expect(featureSummary(doc, f)).toBe("Box 1, 20 pieces round 2 wheels");
+  });
+
+  it("colours every piece when one is coloured", () => {
+    const doc = trackDoc();
+    const copy = "t.link.4";
+    const all = withTrackMates(doc, [copy]);
+    expect(all).toHaveLength(20);
+    expect(all).toContain("link");
+    expect(withTrackMates(doc, ["w1"])).toEqual(["w1"]);
+    const red = setLook(doc, all, () => ({ colour: "#c0392b", finish: "silk" }));
+    const pieces = build(red).parts.filter((p) => p.id === "link" || p.id.startsWith("t."));
+    expect(pieces.every((p) => p.colour === "#c0392b" && p.finish === "silk")).toBe(true);
+    // Coloured before this (only the piece itself), the copies still wear it; one given its own keeps that.
+    let old = setLook(doc, ["link"], () => ({ colour: "#2e86de" }));
+    old = setLook(old, [copy], () => ({ colour: "#27ae60" }));
+    const b = build(old).parts;
+    expect(b.find((p) => p.id === "t.link.0")!.colour).toBe("#2e86de");
+    expect(b.find((p) => p.id === copy)!.colour).toBe("#27ae60");
+    expect(b.find((p) => p.id === "w1")!.colour).toBeUndefined();
   });
 
   it("follows the wheels when they move, and needs the steps that made them", () => {

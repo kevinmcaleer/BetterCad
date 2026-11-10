@@ -65,6 +65,7 @@ import {
   removeWithDependents,
   reorderPart,
   setLook,
+  withTrackMates,
   updateFeature,
   KIND_LABEL,
   overhangs,
@@ -3875,8 +3876,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   allParts={parts}
                   onHole={() => toggleHole(selection)}
                   onReference={() => toggleReference(selection)}
-                  onColour={(colour) => store.edit((d) => setLook(d, selection, () => ({ colour })), colour ? "Set the colour" : "Clear the colour")}
-                  onFinish={(finish) => store.edit((d) => setLook(d, selection, () => ({ finish })), "Set the finish")}
+                  onColour={(colour) =>
+                    store.edit((d) => setLook(d, withTrackMates(d, selection), () => ({ colour })), colour ? "Set the colour" : "Clear the colour")
+                  }
+                  onFinish={(finish) => store.edit((d) => setLook(d, withTrackMates(d, selection), () => ({ finish })), "Set the finish")}
                   onFit={(c) =>
                     store.edit((d) => setLook(d, selection, () => ({ fit: c.fit ?? undefined, gap: c.fit ? undefined : c.gap || undefined })), "Set the fit")
                   }
