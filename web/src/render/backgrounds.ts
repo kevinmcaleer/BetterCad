@@ -2,7 +2,7 @@
  * The Render view's backgrounds: what is behind the model and what it stands on, separate from the lighting. The
  * Holoroom takes its black room and yellow grid from the Holoroom theme's own colours.
  */
-import { CanvasTexture, RepeatWrapping, SRGBColorSpace, type Texture } from "three";
+import { CanvasTexture, RepeatWrapping, SRGBColorSpace, type MeshStandardMaterial, type Texture } from "three";
 import { GradientEquirectTexture } from "three-gpu-pathtracer";
 import { COLOURS } from "@bettercad/ui";
 import type { BackgroundId } from "./session";
@@ -82,6 +82,24 @@ function replicatorTile(): CanvasTexture {
   t.colorSpace = SRGBColorSpace;
   t.anisotropy = 8;
   return t;
+}
+
+/**
+ * Gives a wall or roof its own copy of `grid`, so it repeats on its own, and returns that copy. The copy is made
+ * again when the grid changes: the walls must carry the Holoroom grid even when another gridded floor (Replicator's
+ * white panels) was shown first.
+ */
+export function wallGrid(material: MeshStandardMaterial, grid: Texture): Texture {
+  let copy = material.map;
+  if (!copy || copy.userData.from !== grid) {
+    copy?.dispose();
+    copy = grid.clone();
+    copy.userData = { from: grid };
+    material.map = copy;
+  }
+  material.emissiveMap = copy;
+  material.needsUpdate = true;
+  return copy;
 }
 
 export interface Background {
