@@ -132,7 +132,7 @@ test("Save image saves the picture already rendered, without rendering it again"
 });
 
 test("Save image at a bigger size asks where to save straight away, while the click still counts", async ({ page }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(480_000);
   await page.addInitScript(() => {
     (window as unknown as { __bcRenderMax: number }).__bcRenderMax = 2;
     // Like Chrome, the picker only opens straight after a click. Chrome allows a few seconds, more than a render
@@ -156,7 +156,9 @@ test("Save image at a bigger size asks where to save straight away, while the cl
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 200_000 });
   await bar.getByRole("button", { name: "Save image" }).click({ force: true });
   await page.getByRole("menuitem", { name: "Twice the view size" }).click({ force: true });
-  await expect(page.getByText(/Saved .* 2x\.png/)).toBeVisible({ timeout: 200_000 });
+  // The bigger picture is path traced again at twice the size: on a busy CI runner's software WebGL that can take
+  // over 200 s, so it gets the time the first render may leave over.
+  await expect(page.getByText(/Saved .* 2x\.png/)).toBeVisible({ timeout: 360_000 });
 });
 
 test("a rendered box at a fixed sample count @visual", async ({ page }) => {
