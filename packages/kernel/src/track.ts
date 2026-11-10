@@ -277,6 +277,12 @@ export function layTrack(t: Pick<TrackSpec, "count" | "offset" | "lift" | "side"
   return { pieces, pivots: chain.pivots, length: chain.length, fits: chain.fits, pitch };
 }
 
+/** What a track was laid from: the piece's pivots and the wheels' circles, where they were. */
+export interface TrackHome {
+  piece: Pivots;
+  wheels: WorldCircle[];
+}
+
 /** Why a track can't be laid as set, or null. */
 export function trackProblem(t: TrackSpec | undefined, parts: number): string | null {
   if (parts !== 1) return "Pick one body: the track piece";
@@ -291,7 +297,7 @@ export function trackProblem(t: TrackSpec | undefined, parts: number): string | 
  * A track laid round its wheels where they are now: `resolve` finds a pick where it stands. A message when a pick is
  * gone or the track can't be laid.
  */
-export function trackLayoutOf(t: TrackSpec, resolve: (r: ConstructRef) => Geo | string): TrackLayout | string {
+export function trackLayoutOf(t: TrackSpec, resolve: (r: ConstructRef) => Geo | string): (TrackLayout & TrackHome) | string {
   const s = t.start && circleOf(resolve(t.start));
   const e = t.end && circleOf(resolve(t.end));
   if (!s || !e) return "The pins it joins at are gone";
@@ -304,5 +310,5 @@ export function trackLayoutOf(t: TrackSpec, resolve: (r: ConstructRef) => Geo | 
   const piece = { start: s.centre, end: e.centre, axis: s.normal };
   if (!(trackPitch(piece) > 0.5)) return "Its two pins are on the same line. Pick the pin at the piece's other end.";
   const lay = layTrack(t, piece, wheels);
-  return lay.pieces.length ? lay : "It can't go round those wheels";
+  return lay.pieces.length ? { ...lay, piece, wheels } : "It can't go round those wheels";
 }

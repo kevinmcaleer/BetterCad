@@ -64,6 +64,14 @@ describe("PoseControls", () => {
     expect(screen.getByText("A fixed joint doesn't move.")).toBeVisible();
   });
 
+  it("plays a wheel that runs a track round", async () => {
+    const onPlay = vi.fn();
+    const wheel: JointFeature = { ...hinge, kind: "continuous" };
+    render(<PoseControls joints={[wheel]} pose={{}} onChange={vi.fn()} onCommit={vi.fn()} onPlay={onPlay} plays={["J1"]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(onPlay).toHaveBeenCalledWith("J1");
+  });
+
   it("says what drives a driven joint, and plays a driver", async () => {
     const onPlay = vi.fn();
     const drives = [{ id: "D1", name: "Drive 1", kind: "gear" as const, driver: "J1", driven: "J2", multiplier: 0.5, offset: 0, fromTeeth: true }];

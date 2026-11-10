@@ -16,6 +16,8 @@ export interface PoseControlsProps {
   /** The joint playing now, if one is. */
   playing?: string | null;
   onPlay?: (id: string | null) => void;
+  /** Joints that run a track round its wheels: they can play too. */
+  plays?: string[];
   /** Every joint's name, for "Driven by". */
   nameOf?: (id: string) => string;
   /** Tool points (#176): joints kept out of the arm's drag, and the toggle; left out when there is no tool point. */
@@ -41,6 +43,7 @@ export function PoseControls({
   drives = [],
   playing = null,
   onPlay,
+  plays = [],
   nameOf,
   locked = [],
   onLock,
@@ -64,7 +67,7 @@ export function PoseControls({
           onCommit(j.id, clampJoint(j, x));
         };
         const by = drives.find((d) => d.driven === j.id);
-        const drivesOthers = !by && drives.some((d) => d.driver === j.id);
+        const drivesOthers = !by && (drives.some((d) => d.driver === j.id) || plays.includes(j.id));
         return (
           <fieldset key={j.id} className="bc-pose-joint" aria-label={bare ? `${j.name}, ${kind.toLowerCase()}` : undefined}>
             {!bare && <legend className="bc-pose-name">{`${j.name}, ${kind.toLowerCase()}`}</legend>}
