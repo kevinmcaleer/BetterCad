@@ -25,7 +25,7 @@ import {
 import { GradientEquirectTexture, PhysicalCamera, WebGLPathTracer } from "three-gpu-pathtracer";
 import { DEFAULT_COLOUR, finishById, finishOf, type FinishId } from "@bettercad/kernel";
 import { cameraBasis, FOV, type CameraState } from "../viewport/camera";
-import { Backgrounds } from "./backgrounds";
+import { Backgrounds, wallGrid } from "./backgrounds";
 import { cutMesh, type CutPlane, type Triangles } from "./cut";
 
 export type { LightPresetId as LightPreset } from "./session";
@@ -281,16 +281,12 @@ export class PathRender {
     if (!g) return;
     g.map.repeat.setScalar((this.reach * 40) / g.cell);
     // The walls carry the same grid at the same cell size, from a copy so they repeat on their own.
-    const wall = (this.wallMaterial.map ??= g.map.clone());
+    const wall = wallGrid(this.wallMaterial, g.map);
     wall.repeat.set((this.reach * 12) / g.cell, (this.reach * 3) / g.cell);
     wall.needsUpdate = true;
-    this.wallMaterial.emissiveMap = wall;
-    this.wallMaterial.needsUpdate = true;
-    const roof = (this.roofMaterial.map ??= g.map.clone());
+    const roof = wallGrid(this.roofMaterial, g.map);
     roof.repeat.setScalar((this.reach * 12) / g.cell);
     roof.needsUpdate = true;
-    this.roofMaterial.emissiveMap = roof;
-    this.roofMaterial.needsUpdate = true;
   }
 
   setPreset(p: LightPreset): void {
