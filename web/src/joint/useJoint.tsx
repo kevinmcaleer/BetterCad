@@ -21,7 +21,11 @@ import {
 } from "../state/document";
 import type { MeasureResult, TopoRef } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
-import type { Engine, ScreenPoint } from "../viewport/engine";
+import type { Engine, Mods, ScreenPoint } from "../viewport/engine";
+import { readPalette } from "../viewport/colours";
+import { isTyping } from "../state/commands";
+import { loupeAuto } from "../state/loupePref";
+import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "../sketch/loupe";
 import { SnapMarks } from "./snapMarks";
 import { faceSnaps, nearestSnap, type SnapPoint, type V3 } from "./snapPoints";
 
@@ -228,6 +232,11 @@ export function useJoint(d: JointDeps) {
     [put],
   );
 
+  /** The magnifier loupe over crowded snap points (#385), while it is open, and the canvas it draws into. */
+  const [loupe, setLoupe] = useState<Loupe | null>(null);
+  const closeLoupe = useRef<() => void>(() => {});
+  const loupeCanvas = useRef<HTMLCanvasElement | null>(null);
+
   useEffect(() => {
     const eng = engineOf();
     if (!d.active || !eng) return;
@@ -236,6 +245,56 @@ export function useJoint(d: JointDeps) {
     eng.setHoverFill("snap-face");
     let face: { body: string; index: number; snaps: SnapPoint[] } | null = null;
     let hot = -1;
+    // The loupe: while it is open the pointer moves at its own speed inside it, so in the view it moves `zoom` times
+    // slower, and picks reach only as far as the zoom allows.
+    let lens: Loupe | null = null;
+    let dwell: number | undefined;
+    let last: { p: ScreenPoint; mods: Mods } | null = null;
+    /** Esc closed the loupe: it stays shut until the pointer leaves the crowd. */
+    let quiet = false;
+    const show = (l: Loupe | null) => {
+      lens = l;
+      setLoupe(l);
+    };
+    closeLoupe.current = () => {
+      if (lens?.why === "crowd") quiet = true;
+      show(null);
+    };
+    const onScreen = () => (face ? face.snaps.map((s) => eng.project(s.point)) : []);
+    const openAt = (p: ScreenPoint, why: Loupe["why"], gap?: number | null) =>
+      show({ anchor: p, pointer: p, zoom: loupeZoom(gap === undefined ? (crowding(onScreen(), p)?.gap ?? null) : gap), why });
+    /** Opens, follows or closes the loupe as the pointer moves. */
+    const watch = (p: ScreenPoint, mods: Mods) => {
+      window.clearTimeout(dwell);
+      if (lens) {
+        if (lens.why === "alt" && !mods.alt) return show(null);
+        // Moving off the loupe's edge closes it, or with Alt held, moves it to the pointer.
+        if (Math.hypot(p.x - lens.anchor.x, p.y - lens.anchor.y) > LOUPE_REACH) return lens.why === "alt" ? openAt(p, "alt") : show(null);
+        return show({ ...lens, pointer: p });
+      }
+      if (mods.touch) return;
+      if (mods.alt && !mods.shift) return openAt(p, "alt");
+      const crowd = loupeAuto() ? crowding(onScreen(), p) : null;
+      if (!crowd) quiet = false;
+      if (!crowd || quiet) return;
+      dwell = window.setTimeout(() => {
+        if (lens || !last || last.mods.alt) return;
+        const now = crowding(onScreen(), last.p);
+        if (now) openAt(last.p, "crowd", now.gap);
+      }, CROWD_DWELL);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Alt" || isTyping(e.target)) return;
+      if (e.type === "keydown") {
+        // Alt alone would focus the browser's menu bar on Windows.
+        e.preventDefault();
+        if (!lens && last && !last.mods.touch && live.current.target) openAt(last.p, "alt");
+      } else if (lens?.why === "alt") show(null);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+
+    /** The face and snap under a point (already lensed), and the edge there when no snap is in reach. */
     const look = (p: ScreenPoint) => {
       const f = eng.pick(p.x, p.y, "face");
       if (f && (f.body !== face?.body || f.index !== face.index)) {
@@ -244,13 +303,8 @@ export function useJoint(d: JointDeps) {
         const toward = eng.ray(p.x, p.y).dir.map((v) => -v) as V3;
         face = { body: f.body, index: f.index, snaps: info ? faceSnaps(info, edges, toward) : [] };
       }
-      hot = face
-        ? nearestSnap(
-            face.snaps.map((s) => eng.project(s.point)),
-            p,
-            SNAP_REACH,
-          )
-        : -1;
+      const reach = lens ? Math.max(2, SNAP_REACH / lens.zoom) : SNAP_REACH;
+      hot = face ? nearestSnap(onScreen(), p, reach) : -1;
       // Off the face (on its rim, or past a corner), it stays while a snap is in reach.
       if (!f && hot < 0) face = null;
       const edge = hot < 0 ? eng.pick(p.x, p.y, "edge") : null;
@@ -261,21 +315,26 @@ export function useJoint(d: JointDeps) {
       hot = -1;
       marks.hide();
       eng.showHover(null);
+      if (lens) show(null);
     };
     eng.setInput({
-      move: (p, _m, pressed) => {
+      move: (p, mods, pressed) => {
         const t = live.current.target;
+        last = { p, mods };
         if (pressed) return;
         if (!t) return clearMarks();
-        if (t === "parent" && eng.constructAt(p.x, p.y, AXES)) return clearMarks();
-        const at = look(p);
+        const q = lensed(lens, p);
+        if (t === "parent" && eng.constructAt(q.x, q.y, AXES)) return clearMarks();
+        const at = look(q);
         eng.showHover(at.edge ?? at.face);
         if (face) marks.show(face.snaps, hot);
         else marks.hide();
+        watch(p, mods);
       },
-      down: (p) => {
+      down: (p0) => {
         const t = live.current.target;
         if (!t) return false;
+        const p = lensed(lens, p0);
         if (t === "parent") {
           // An origin or construction axis in the view gives the axis as it is.
           const shape = eng.constructAt(p.x, p.y, AXES);
@@ -287,6 +346,7 @@ export function useJoint(d: JointDeps) {
         }
         const at = look(p);
         const s = face && hot >= 0 ? face.snaps[hot] : null;
+        if (lens) show(null);
         if (face && s) {
           takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal });
           return true;
@@ -296,15 +356,49 @@ export function useJoint(d: JointDeps) {
         pickSnap(t, { body: hit.body, kind: hit.kind as TopoRef["kind"], index: hit.index });
         return true;
       },
-      leave: clearMarks,
+      leave: () => {
+        window.clearTimeout(dwell);
+        last = null;
+        clearMarks();
+      },
     });
     return () => {
+      window.clearTimeout(dwell);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+      closeLoupe.current = () => {};
+      setLoupe(null);
       eng.setInput(null);
       eng.showHover(null);
       eng.setHoverFill(null);
       marks.dispose();
     };
   }, [d.active, engineOf, pickSnap, takeFrame, put]);
+
+  // The loupe redraws as the pointer moves in it: the view itself, magnified round where it opened.
+  useEffect(() => {
+    const cv = loupeCanvas.current;
+    const eng = engineOf();
+    if (!loupe || !cv || !eng) return;
+    let gone = false;
+    void import("../sketch/loupeDraw").then((m) => {
+      const ctx = cv.getContext("2d");
+      if (gone || !ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      const side = Math.round(LOUPE_SIZE * dpr);
+      if (cv.width !== side) cv.width = cv.height = side;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const pal = readPalette();
+      const css = (k: keyof typeof pal) => `#${pal[k].getHexString()}`;
+      const colours = { snap: css("snap"), ink: css("ink"), accent: css("accent"), danger: css("danger"), muted: css("muted"), viewport: css("viewport") };
+      const empty = { frame: null, curves: [], points: [] } as unknown as Parameters<typeof m.drawLoupe>[1];
+      m.drawLoupe(ctx, empty, loupe, (xy) => ({ x: xy[0], y: xy[1] }), colours, LOUPE_SIZE, m.magnify(eng, loupe.anchor.x, loupe.anchor.y, loupe.zoom));
+    });
+    return () => {
+      gone = true;
+    };
+  }, [loupe, engineOf]);
+  useEscape(d.active && loupe !== null, () => closeLoupe.current(), ESC.tool + 5);
 
   /** Keeps (or drops) a limit's expression (#75), in the same undo step as its value. */
   const setFieldExpr = useCallback(
@@ -405,6 +499,8 @@ export function useJoint(d: JointDeps) {
     pickParent,
     nameOf,
     links: d.links,
+    loupe,
+    loupeCanvas,
   };
 }
 

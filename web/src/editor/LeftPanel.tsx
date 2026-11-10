@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import {
   Banner,
   Button,
@@ -38,6 +38,9 @@ import {
 } from "./Browser";
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
+
+/** The loupe switch (#387), loaded with Settings so first paint stays small. */
+const LoupeSetting = lazy(() => import("./LoupeSetting"));
 
 export type PanelId = "parts" | "library" | "robot" | "history" | "print" | "settings";
 
@@ -291,6 +294,9 @@ function SettingsPanel(p: LeftPanelProps) {
         <span>Show the build volume</span>
       </label>
       <p className="bc-note">The space your printer can print in. Choose your printer in Print.</p>
+      <Suspense fallback={null}>
+        <LoupeSetting />
+      </Suspense>
       <OfflineSettings />
       <h2 className="bc-panel-title">Units</h2>
       <p className="bc-note">Millimetres. Z points up.</p>
