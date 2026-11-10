@@ -113,6 +113,8 @@ const hinge = (over: Partial<JointParams> = {}): JointParams => ({
   ...over,
 });
 
+type V3 = [number, number, number];
+
 describe("joint steps", () => {
   it("hangs an arm from Base and a hand from the arm", () => {
     let d = addJoint(robot(), hinge(), "J1");
@@ -197,6 +199,21 @@ describe("joint steps", () => {
     expect(a.rotation!.z).toBeCloseTo(90, 6);
     const flipped = at(updateJoint(d, "J1", { angle: undefined, flip: true }));
     expect(flipped.position.z).toBeCloseTo(20 - before.position.z, 6);
+  });
+
+  it("takes a sketch on a face along with the body it sits on, whichever component it is filed under", () => {
+    const face = {
+      kind: "face" as const,
+      face: { body: "arm", face: 1 },
+      offset: 0,
+      frame: { origin: [0, 0, 10] as V3, x: [1, 0, 0] as V3, normal: [1, 0, 0] as V3 },
+    };
+    let d = addSketch(robot(), face, "S1");
+    d = moveInto(d, ["S1"], "B");
+    d = addJoint(d, hinge({ angle: 90 }), "J1");
+    const f = planeFrame(build(d).sketches.find((s) => s.id === "S1")!.sketch.plane);
+    // Turned 90° about Z with the arm: +X becomes +Y.
+    expect(f.normal.map((x) => Math.round(x * 1e6) / 1e6 + 0)).toEqual([0, 1, 0]);
   });
 
   it("takes a component's sketches and construction along with it, but not ones made after the joint (#335)", () => {

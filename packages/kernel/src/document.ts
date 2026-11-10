@@ -1097,8 +1097,10 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             // Its sketches and construction so far go with it, as Fusion's do, so they stay on its bodies and a later
             // extrude from one of them lands on the moved part. Ones made after the joint were drawn where it is now.
             sketches.forEach((s, i) => {
-              if (!s.component || !moved.has(s.component)) return;
               const plane = s.sketch.plane;
+              // A sketch on a face goes with the body it sits on, whichever component it is filed under.
+              const on = plane.kind === "face" ? parts[find(plane.face.body)]?.link : s.component;
+              if (!on || !moved.has(on)) return;
               const frame = moveFrame(m, plane.frame ?? WORLD_FRAMES[(plane as { plane: WorldPlane }).plane]);
               const sk = { ...s.sketch, plane: { ...plane, frame } };
               sketches[i] = { ...s, sketch: sk };
