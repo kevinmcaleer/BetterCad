@@ -130,6 +130,13 @@ function owners(m: BrowserModel) {
         rest: [...m.sketches, ...(m.construct ?? [])].filter((s) => cs.includes(own(s.component)!)),
       };
     },
+    /** What a component's eye hides and shows: its bodies, leaving its sketches and construction planes as you set
+     *  them. A component holding no bodies hides its sketches and planes instead. */
+    eyed: (c: string) => {
+      const cs = [c, ...inside(c)];
+      const bodies = m.parts.filter((p) => cs.includes(own(p.link)!));
+      return bodies.length ? bodies : [...m.sketches, ...(m.construct ?? [])].filter((s) => cs.includes(own(s.component)!));
+    },
   };
 }
 
@@ -272,9 +279,8 @@ export function browserItems(m: BrowserModel): TreeItem[] {
     }
     // Its components, by name only: the summary crowded the name out.
     for (const k of o.comps.filter((x) => o.parentOf(x) === c)) {
-      // Its eye is shut once everything in it is hidden, as a folder's is.
-      const h = o.held(k.id);
-      const all = [...h.parts, ...h.rest];
+      // Its eye is shut once its bodies are hidden; sketches and construction planes keep their own eyes.
+      const all = o.eyed(k.id);
       items.push({
         id: k.id,
         name: k.name,
@@ -434,11 +440,11 @@ export function BrowserPanel(p: BrowserPanelProps) {
     const secs = model.sections ?? [];
     if (id === ROW.analysis) return p.onApplySection?.(model.section ? null : (secs[secs.length - 1]?.id ?? null));
     if (secs.some((x) => x.id === id)) return p.onApplySection?.(model.section === id ? null : id);
-    // A component's eye: everything in it, and in the components inside it, as one step.
+    // A component's eye: its bodies, and those in the components inside it, as one step. Its sketches and
+    // construction planes stay as you left them, so one you hid stays hidden when you show the component again.
     const comp = model.links?.find((l) => l.id === id);
     if (comp) {
-      const h = owners(model).held(id);
-      const all = [...h.parts, ...h.rest];
+      const all = owners(model).eyed(id);
       return p.onBodiesHidden(
         all.map((x) => x.id),
         all.some((x) => !x.hidden),
