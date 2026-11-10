@@ -3012,15 +3012,28 @@ export function moveInto(doc: ModelDoc, ids: string[], to: string | null): Model
   return { ...doc, owners };
 }
 
-/** Marks the steps `after` has that `before` didn't as made in `component` (#171), so their bodies go into it. */
-export function stampComponent(before: ModelDoc, after: ModelDoc, component: string | null): ModelDoc {
-  if (!component || after.features === before.features) return after;
+/**
+ * Marks the steps `after` has that `before` didn't as made in `component` (#171), so their bodies go into it. A sketch
+ * on a face goes into the component of the body it sits on instead (`bodyComponent`, null for the model), so it rides
+ * with that body when a joint moves it.
+ */
+export function stampComponent(
+  before: ModelDoc,
+  after: ModelDoc,
+  component: string | null,
+  bodyComponent?: (body: string) => string | null | undefined,
+): ModelDoc {
+  if ((!component && !bodyComponent) || after.features === before.features) return after;
   const had = new Set(before.features.map((f) => f.id));
   let changed = false;
   const features = after.features.map((f) => {
     if (had.has(f.id) || f.component || f.type === "link" || f.type === "joint" || f.type === "drive") return f;
+    const plane = f.type === "sketch" ? f.sketch.plane : null;
+    const on = plane?.kind === "face" && bodyComponent ? bodyComponent(plane.face.body) : undefined;
+    const to = on === undefined ? component : on;
+    if (!to) return f;
     changed = true;
-    return { ...f, component };
+    return { ...f, component: to };
   });
   return changed ? { ...after, features } : after;
 }
