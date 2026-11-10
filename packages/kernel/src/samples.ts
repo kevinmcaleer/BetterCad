@@ -219,7 +219,28 @@ function fitCalibration(): ModelDoc {
   return s.doc;
 }
 
+/** Two wheels and one track piece with a pin hole at each end, ready for Pattern's Track kind. */
+function trackWheels(): ModelDoc {
+  const s = new Sample("Track and wheels");
+  s.param("wheel", "40", "Wheel diameter");
+  s.param("apart", "100", "Between the wheels' centres");
+  s.param("pitch", "8", "Between the piece's pins");
+  s.part("w1", "Front wheel", "cylinder", { x: "wheel", y: "wheel", z: "10" });
+  s.part("w2", "Back wheel", "cylinder", { x: "wheel", y: "wheel", z: "10" }, { x: "apart" });
+  s.part("link", "Track piece", "box", { x: "pitch + 4", y: "6", z: "10" }, { x: "apart / 2", y: "wheel" });
+  s.part("pin1", "Front pin hole", "cylinder", { x: "2", y: "2", z: "12" }, { x: "apart / 2 - pitch / 2", y: "wheel", z: "-1" });
+  s.part("pin2", "Back pin hole", "cylinder", { x: "2", y: "2", z: "12" }, { x: "apart / 2 + pitch / 2", y: "wheel", z: "-1" });
+  s.hole("pin1");
+  s.hole("pin2");
+  s.group("Track piece", "link", [
+    { id: "pin1", op: "cut" },
+    { id: "pin2", op: "cut" },
+  ]);
+  return s.doc;
+}
+
 const BUILDS: Record<string, () => ModelDoc> = {
+  "track-wheels": trackWheels,
   "box-with-lid": boxWithLid,
   bracket,
   "phone-stand": phoneStand,

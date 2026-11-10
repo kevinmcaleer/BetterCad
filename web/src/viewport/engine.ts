@@ -1405,6 +1405,17 @@ export class Engine {
     return at ? Array.from({ length: at.length - 1 }, (_, f) => [...m.faceEdgeList!.subarray(at[f], at[f + 1])]) : null;
   }
 
+  /** A body's mesh corners in world space, xyz after xyz (a track piece's reach towards the wheels). */
+  bodyPositions(bodyId: string): Float32Array | null {
+    const o = this.bodies.get(bodyId);
+    const a = o?.geometry.getAttribute("position");
+    if (!o || !a) return null;
+    o.group.updateMatrixWorld(true);
+    const out = new Float32Array(a.array);
+    new BufferAttribute(out, 3).applyMatrix4(o.group.matrixWorld);
+    return out;
+  }
+
   /** A body's box in world space, where it is drawn. */
   bodyBox(bodyId: string): { min: V3; max: V3 } | null {
     const o = this.bodies.get(bodyId);

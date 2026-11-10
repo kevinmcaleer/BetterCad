@@ -207,3 +207,30 @@ test("turn a circle pattern round an edge picked on the model", async ({ page })
   await expect(page.getByText("Patterned 1 feature")).toBeVisible();
   await expect(page.getByRole("region", { name: "Timeline" }).getByRole("button", { name: /^Pattern 1, Hole 1, \d+ round an edge of Box 1/ })).toBeVisible();
 });
+
+test("wrap a track piece round two wheels", async ({ page }) => {
+  await page.goto("/#/sample/track-wheels");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await expect(bodyRows(page)).toHaveCount(3, { timeout: 20_000 });
+  await page.waitForTimeout(800);
+  await page.getByRole("treeitem", { name: /^Track piece/ }).click();
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Pattern", exact: true }).click();
+  await page.getByRole("button", { name: "Track", exact: true }).click();
+  await expect(page.getByText("Click the pin or hole where the piece joins the one before it.", { exact: false })).toBeVisible();
+  // The piece's pin holes' top edges, then each wheel's top rim.
+  await click(page, 46, 41, 10);
+  await expect(page.getByText("Now the pin or hole at its other end", { exact: false })).toBeVisible();
+  await click(page, 54, 41, 10);
+  await click(page, 20, 0, 10);
+  await click(page, 120, 0, 10);
+  await expect(page.getByRole("textbox", { name: "Lift" })).toHaveValue("3");
+  await expect(page.getByText(/pieces go round/)).toBeVisible();
+  const count = Number(await page.getByRole("textbox", { name: "Pieces" }).inputValue());
+  expect(count).toBeGreaterThan(30);
+  await expect(bodyRows(page)).toHaveCount(2 + count);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("region", { name: "Timeline" }).getByRole("button", { name: new RegExp(`^Pattern 1, Track piece, ${count} pieces round 2 wheels`) }),
+  ).toBeVisible();
+});
