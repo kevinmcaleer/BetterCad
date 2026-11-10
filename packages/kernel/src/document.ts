@@ -51,7 +51,7 @@ import {
   patternProblem,
   patternSummary,
 } from "./pattern";
-import { trackLayoutOf, type TrackSpec } from "./track";
+import { trackLayoutOf, type TrackHome, type TrackSpec } from "./track";
 import type { CopyMove, CopySpec, MirrorFace, MirrorOf, MirrorPlane, PatternKind, Plane, WorldAxis } from "./pattern";
 import {
   CONSTRUCT_BASE,
@@ -802,6 +802,15 @@ export interface Build {
   drives: BuiltDrive[];
   /** Construction planes, axes and points (#265) up to the marker that built, in timeline order. */
   construct: BuiltConstruct[];
+  /** Tracks that built: their pieces in order round the loop, so they can run round as the wheels turn. */
+  tracks?: BuiltTrack[];
+}
+
+/** A track as built: its pieces, link 1 first, and what they were laid from. */
+export interface BuiltTrack extends TrackHome {
+  id: string;
+  parts: string[];
+  track: TrackSpec;
 }
 
 /** A construction step as built: its geometry in the world now. */
@@ -880,6 +889,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   /** Joints as built (#172). */
   const joints: JointFeature[] = [];
   const drives: BuiltDrive[] = [];
+  const tracks: BuiltTrack[] = [];
   const built: BuiltConstruct[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
@@ -997,6 +1007,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           const copies = moves.slice(1).map((m, k) => copyPart(src, m, copyId(f, src.id, k), copyName(f, src.name, k)));
           parts[i] = { ...copyPart(src, moves[0]!, src.id, src.name), hidden: src.hidden };
           parts.splice(i + 1, 0, ...copies.filter((c) => find(c.id) < 0));
+          tracks.push({ id: f.id, parts: [src.id, ...copies.map((c) => c.id)], track: f.track!, piece: lay.piece, wheels: lay.wheels });
           break;
         }
         const axis = patternAxis(f, built, f.kind === "circle" && f.axisRef ? refGeo(f.axisRef) : undefined);
@@ -1564,7 +1575,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       }
       return { id: l.id, name: l.name, parts: l.parts };
     });
-  return { parts: looked, sketches, failed, links, components, joints, drives, construct: built };
+  return { parts: looked, sketches, failed, links, components, joints, drives, construct: built, tracks };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */

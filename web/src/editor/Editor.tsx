@@ -533,12 +533,32 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
    * or revolve, as in Fusion, so what you draw lands where you see it; other tools work on it at home.
    */
   const poseOn = POSED_TOOLS.has(tool);
+  // Tracks run round their wheels as the wheels turn; the maths loads only for a model with a track.
+  const [trackMotion, setTrackMotion] = useState<typeof import("@bettercad/kernel/track-motion") | null>(null);
+  const hasTracks = !!built.tracks?.length;
+  useEffect(() => {
+    if (hasTracks && !trackMotion) void import("@bettercad/kernel/track-motion").then(setTrackMotion);
+  }, [hasTracks, trackMotion]);
+  const wheelTurns = useMemo(() => trackMotion && new trackMotion.WheelTurns(), [trackMotion]);
+  const trackMoves = useMemo(
+    () =>
+      poseOn && trackMotion && wheelTurns && built.tracks?.length
+        ? trackMotion.trackMoves(built.tracks, built.joints, built.links, shownPose, linkMoves, wheelTurns)
+        : null,
+    [poseOn, trackMotion, wheelTurns, built.tracks, built.joints, built.links, shownPose, linkMoves],
+  );
+  // The wheels that drive a track can play, to watch it run round.
+  const trackDrivers = useMemo(
+    () => (trackMotion && built.tracks?.length ? built.tracks.flatMap((t) => trackMotion.trackDrive(t, built.joints, built.links)?.joint.id ?? []) : undefined),
+    [trackMotion, built.tracks, built.joints, built.links],
+  );
   /** Each posed body's move from home, so a face or point picked on it can be taken back home. */
   const bodyMoves = useMemo(() => {
     const m = new Map<string, Mat4>();
     if (poseOn) for (const l of built.links) for (const id of l.parts) if (linkMoves.has(l.id)) m.set(id, linkMoves.get(l.id)!);
+    if (trackMoves) for (const [id, t] of trackMoves) m.set(id, t);
     return m;
-  }, [poseOn, built.links, linkMoves]);
+  }, [poseOn, built.links, linkMoves, trackMoves]);
   // A sketch on a face rides on the body it sits on, whichever component it is filed under (older models filed it
   // under the active one); any other sketch rides on its own component.
   const posedSketches = useMemo(() => {
@@ -993,13 +1013,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, [gizmoTool, linkMoves, posing, hasIk, ikDrag, vp.ref]);
   useEffect(() => {
     const moves = new Map<string, Matrix4>();
-    if (poseOn)
-      for (const l of built.links) {
-        const m = linkMoves.get(l.id);
-        if (m) for (const id of l.parts) moves.set(id, new Matrix4().fromArray(m));
-      }
+    for (const [id, m] of bodyMoves) moves.set(id, new Matrix4().fromArray(m));
     vp.ref.current?.engine()?.setPose(moves);
-  }, [poseOn, linkMoves, built.links, vp.ref]);
+  }, [bodyMoves, vp.ref]);
 
   // Joint glyphs in the view (#172), each with its own eye in the browser (saved in looks, as a sketch's is). They ride on
   // the pose; hiding one hides its arrow, not the parts it moves.
@@ -3984,6 +4000,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                           drives: built.drives,
                           playing,
                           onPlay: play,
+                          plays: trackDrivers,
                           nameOf: (id: string) => built.joints.find((j) => j.id === id)?.name ?? "another joint",
                           locked: doc.tools?.length ? [...new Set(doc.tools.flatMap((t) => t.locked ?? []))] : undefined,
                           onLock: doc.tools?.length
