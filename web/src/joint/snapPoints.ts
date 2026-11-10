@@ -233,3 +233,17 @@ export function wiggle(kind: string, lower: number, upper: number, t: number): n
   if (kind === "prismatic") return Math.sin(Math.PI * t) * (Math.abs(upper) >= Math.abs(lower) ? upper : lower);
   return null;
 }
+
+/**
+ * The bodies to ghost while one side's snap is picked: the other side's part, once it has a snap of its own, goes
+ * see-through and is passed over, so a face it covers can be picked. Picking the moving part's snap ghosts the part it
+ * hangs from; picking that one's ghosts the moving part. Base is never ghosted, and nor is a part with no snap yet
+ * (clicking the moving part itself then sets the axis where it stands).
+ */
+export function otherSide(
+  s: { target: "child" | "parent" | null; child: string | null; from: boolean; parent: string | null | undefined; frame: boolean },
+  links: { id: string; parts: string[] }[],
+): string[] {
+  const l = s.target === "parent" ? (s.from ? s.child : null) : s.target === "child" && s.frame ? (s.parent ?? null) : null;
+  return (l && links.find((k) => k.id === l)?.parts) || [];
+}

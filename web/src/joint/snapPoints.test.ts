@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { across, between, boxSnaps, edgeCircle, faceSnaps, nearSnaps, nearestSnap, wiggle, type V3 } from "./snapPoints";
+import { across, between, boxSnaps, edgeCircle, faceSnaps, nearSnaps, nearestSnap, otherSide, wiggle, type V3 } from "./snapPoints";
 
 const ring = (c: V3, r: number, n = 24): V3[] =>
   Array.from({ length: n + 1 }, (_, i) => {
@@ -158,5 +158,21 @@ describe("boxSnaps", () => {
     expect(snaps.every((s) => s.normal[1] === -1)).toBe(true);
     expect(snaps.filter((s) => s.kind === "corner").map((s) => s.point)).toContainEqual([10, 0, 30]);
     expect(ghosts).toHaveLength(12);
+  });
+});
+
+describe("otherSide", () => {
+  const links = [
+    { id: "W", parts: ["wheel"] },
+    { id: "C", parts: ["chassis", "bracket"] },
+  ];
+  it("ghosts the moving part while the other snap is picked, once it has a snap", () => {
+    expect(otherSide({ target: "parent", child: "W", from: true, parent: undefined, frame: false }, links)).toEqual(["wheel"]);
+    expect(otherSide({ target: "parent", child: "W", from: false, parent: undefined, frame: false }, links)).toEqual([]);
+  });
+  it("ghosts the part it hangs from while the moving snap is picked again", () => {
+    expect(otherSide({ target: "child", child: "W", from: false, parent: "C", frame: true }, links)).toEqual(["chassis", "bracket"]);
+    expect(otherSide({ target: "child", child: "W", from: false, parent: null, frame: true }, links)).toEqual([]);
+    expect(otherSide({ target: null, child: "W", from: true, parent: "C", frame: true }, links)).toEqual([]);
   });
 });

@@ -164,6 +164,8 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
 export interface JointUi {
   stage: JointStage;
   help: string | null;
+  /** The other side's bodies, see-through and passed over while a snap is picked. */
+  ghost: string[];
 }
 
 /**
@@ -196,7 +198,7 @@ export function JointTool({
     x.edit(edit);
     onEdited();
   }, [edit, x, onEdited]);
-  useEffect(() => onState({ stage: x.stage, help: x.help }), [x.stage, x.help, onState]);
+  useEffect(() => onState({ stage: x.stage, help: x.help, ghost: x.ghost }), [x.stage, x.help, x.ghost, onState]);
   useEffect(
     () => () => {
       onState(null);

@@ -1197,9 +1197,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     () => new Set(pattern.pickingPlane && pattern.feature ? patternCopyIds(pattern.feature) : []),
     [pattern.pickingPlane, pattern.feature],
   );
+  // Picking one side of a joint passes over the other side's part (it shows see-through).
+  const jointGhosts = tool === "joint" ? jointUi?.ghost : undefined;
   const viewParts = useMemo(
-    () => parts.map((p) => (ghostParts || p.hole || planeGhosts.has(p.id) ? { ...p, ghost: true } : p)),
-    [parts, ghostParts, planeGhosts],
+    () => parts.map((p) => (ghostParts || p.hole || planeGhosts.has(p.id) || jointGhosts?.includes(p.id) ? { ...p, ghost: true } : p)),
+    [parts, ghostParts, planeGhosts, jointGhosts],
   );
   const onCamera = vp.onCamera;
   const sketchCamera = sketch.onCamera;
