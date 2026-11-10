@@ -41,6 +41,7 @@ import {
 } from "@bettercad/sketch";
 import {
   addSketch,
+  mat4InvertRigid,
   moveFrame,
   newId,
   paramScope,
@@ -105,6 +106,8 @@ export interface SketchDeps {
   placed?: { id: string; sketch: Sketch }[];
   /** Moves from home by sketch id while the model is posed, so finished sketches ride on their components. */
   posed?: Map<string, Mat4>;
+  /** Moves from home by body id while the model is posed: a face picked on a posed body is taken home to keep. */
+  bodyMoves?: Map<string, Mat4>;
   view: RefObject<View3DHandle>;
   /** Whether the Sketch tool is armed (pick a plane). */
   picking: boolean;
@@ -116,6 +119,25 @@ export interface SketchDeps {
   construct?: BuiltConstruct[];
   /** The construction plane under the pointer while picking, to draw it lit. */
   onConstructHover?: (id: string | null) => void;
+}
+
+/** A sketch's frame where it is shown: `placedFrame`, carried by its component's pose while the model is posed. */
+export function posedFrame(
+  id: string,
+  plane: PlaneRef,
+  construct: BuiltConstruct[] = [],
+  placed: { id: string; sketch: Sketch }[] = [],
+  posed?: Map<string, Mat4>,
+): Frame {
+  const f = placedFrame(id, plane, construct, placed);
+  const m = posed?.get(id);
+  return m ? moveFrame(m, f) : f;
+}
+
+/** A face plane picked on a posed body, taken back to where the body is at home (`m` is the body's move from home). */
+export function homePlane(plane: PlaneRef, m: Mat4 | undefined): PlaneRef {
+  if (!m || plane.kind !== "face") return plane;
+  return { ...plane, frame: moveFrame(mat4InvertRigid(m), plane.frame) };
 }
 
 /** A sketch plane where it is now: a construction plane's frame comes from the step as built. */
@@ -230,8 +252,8 @@ export function useSketch(d: SketchDeps) {
   const feature = d.doc.features.find((f): f is SketchFeature => f.id === editingId && f.type === "sketch") ?? null;
   const sketch = feature?.sketch ?? null;
   const frame = useMemo<Frame | null>(
-    () => (sketch && editingId ? placedFrame(editingId, sketch.plane, d.construct, d.placed) : null),
-    [sketch, editingId, d.construct, d.placed],
+    () => (sketch && editingId ? posedFrame(editingId, sketch.plane, d.construct, d.placed, d.posed) : null),
+    [sketch, editingId, d.construct, d.placed, d.posed],
   );
   // Slice lasts for one sketch: each sketch starts with the whole model on show.
   useEffect(() => setOptions((o) => (o.slice ? { ...o, slice: false } : o)), [editingId]);
@@ -536,7 +558,7 @@ export function useSketch(d: SketchDeps) {
       if (!id || !s) return;
       const plane = { ...s.plane, offset: v } as PlaneRef;
       store.edit((doc) => updateSketch(doc, id, (x) => ({ ...x, plane })), "Move the sketch plane", `offset:${id}`);
-      const f = placedFrame(id, plane, deps.current.construct, deps.current.placed);
+      const f = posedFrame(id, plane, deps.current.construct, deps.current.placed, deps.current.posed);
       engineOf()?.lookAt(f.origin, f.normal);
     },
     [current, store, engineOf],
@@ -556,8 +578,10 @@ export function useSketch(d: SketchDeps) {
       // Auto project, as in Fusion: a sketch on a face starts with the face's edges in it, held in place.
       const eng = engineOf();
       const curves = plane.kind === "face" && options.autoProject && eng ? faceCurves(eng, plane.face.body, plane.face.face) : [];
+      // Picked on a posed body, the face is where the body is shown; the sketch keeps it where the body is at home.
+      const kept = homePlane(plane, plane.kind === "face" ? deps.current.bodyMoves?.get(plane.face.body) : undefined);
       deps.current.record((doc, at) => {
-        const next = addSketch(doc, plane, id, at);
+        const next = addSketch(doc, kept, id, at);
         return curves.length ? updateSketch(next, id, (s) => projectCurves(s, planeFrame(plane), curves).sketch) : next;
       }, "Start a sketch");
       store.seal();
@@ -609,7 +633,8 @@ export function useSketch(d: SketchDeps) {
     (plane: PlaneRef, what: string) => {
       const r = live.current.redefining;
       if (!r) return;
-      store.edit((doc) => redefineSketchPlane(doc, r.id, plane), `Redefine ${r.name}'s plane`);
+      const kept = homePlane(plane, deps.current.posed?.get(r.id));
+      store.edit((doc) => redefineSketchPlane(doc, r.id, kept), `Redefine ${r.name}'s plane`);
       store.seal();
       setRedefining(null);
       r.end();
@@ -626,7 +651,7 @@ export function useSketch(d: SketchDeps) {
       setEditingId(id);
       setStool("select");
       setSel([]);
-      const fr = placedFrame(id, f.sketch.plane, deps.current.construct, deps.current.placed);
+      const fr = posedFrame(id, f.sketch.plane, deps.current.construct, deps.current.placed, deps.current.posed);
       const eng = engineOf();
       keptOrtho.current ??= eng?.camera.ortho ?? null;
       eng?.lookAt(fr.origin, fr.normal);
@@ -1601,7 +1626,7 @@ export function useSketch(d: SketchDeps) {
     const list = shown.map((b) => {
       const o = new SketchOverlay(eng);
       // Posed, a sketch rides on its component as its bodies do.
-      const m = editingId ? undefined : d.posed?.get(b.id);
+      const m = d.posed?.get(b.id);
       const f = planeFrame(b.sketch.plane);
       o.update(sketchView(b.sketch, m ? moveFrame(m, f) : f, null, [], null, [], null, undefined, "guide", null, FINISHED));
       return o;
