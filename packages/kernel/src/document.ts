@@ -1499,8 +1499,17 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       delete parts[i]!.link;
     }
   }
+  // A track's pieces wear the piece's colour and finish unless one was given its own (an older model, or a new copy).
+  const wears = new Map<string, Look>();
+  for (const f of doc.features) {
+    if (f.type !== "pattern" || f.kind !== "track" || f.suppressed || !f.parts[0]) continue;
+    const l = doc.looks[f.parts[0]];
+    if (l?.colour || l?.finish) for (const id of patternCopyIds(f)) wears.set(id, { colour: l.colour, finish: l.finish });
+  }
   const looked = parts.map((p) => {
-    const look = doc.looks[p.id];
+    const worn = wears.get(p.id);
+    const own = doc.looks[p.id];
+    const look = worn ? { ...own, colour: own?.colour ?? worn.colour, finish: own?.finish ?? worn.finish } : own;
     return look ? { ...p, ...look, name: look.name ?? p.name, hidden: !!look.hidden } : p;
   });
   if (doc.order?.length) {
@@ -1729,6 +1738,17 @@ export function removeParts(doc: ModelDoc, ids: string[], at?: number): ModelDoc
 
 export function removePart(doc: ModelDoc, id: string, at?: number): ModelDoc {
   return removeParts(doc, [id], at);
+}
+
+/** The parts with every other piece of any track they belong to: a colour or finish set on one piece goes on them all. */
+export function withTrackMates(doc: ModelDoc, ids: string[]): string[] {
+  const out = new Set(ids);
+  for (const f of doc.features) {
+    if (f.type !== "pattern" || f.kind !== "track") continue;
+    const all = featureParts(f);
+    if (all.some((id) => out.has(id))) all.forEach((id) => out.add(id));
+  }
+  return [...out];
 }
 
 /** Changes how parts look (name, visibility). Not a timeline feature. */
