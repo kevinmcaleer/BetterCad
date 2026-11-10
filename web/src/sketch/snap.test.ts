@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { drawRectangle, drawCircle, drawLine, newSketch } from "@bettercad/sketch";
 import { ORIGIN, entityAt, snap, snapStep } from "./snap";
-import { dropTarget } from "./drop";
+import { dropTarget, unsnap } from "./drop";
 
 const rect = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
 
@@ -119,5 +119,40 @@ describe("dropTarget", () => {
     expect(top.kind).toBe("on");
     const tied = { ...s, constraints: [...s.constraints, { id: "c1", type: "pointOn" as const, p: end, e: top.id }] };
     expect(dropTarget([20, 20.5], tied, end, 0.8, null)).toBeNull();
+  });
+});
+
+describe("unsnap", () => {
+  const at = (s: typeof rect, x: number, y: number) => s.entities.filter((e) => e.kind === "point" && e.x === x && e.y === y).map((e) => e.id);
+  const uses = (s: typeof rect, p: string) => s.entities.filter((e) => e.kind === "line" && (e.a === p || e.b === p)).map((e) => e.id);
+
+  it("splits a corner two lines share, so the newer line lets go", () => {
+    const [corner] = at(rect, 40, 20);
+    const drawn = drawLine(rect, corner!, [60, 40]);
+    expect(uses(drawn.sketch, corner!)).toHaveLength(3);
+    const u = unsnap(drawn.sketch, corner!)!;
+    expect(u.point).not.toBe(corner);
+    expect(uses(u.sketch, u.point)).toEqual([drawn.ids[0]]);
+    expect(uses(u.sketch, corner!)).toHaveLength(2);
+    expect(at(u.sketch, 40, 20)).toHaveLength(2);
+  });
+
+  it("drops the coincident and on ties, keeping the point", () => {
+    const s = drawLine(rect, [60, 0], [80, 0]).sketch;
+    const [end] = at(s, 60, 0);
+    const [other] = at(s, 40, 0);
+    const line = s.entities.find((e) => e.kind === "line")!.id;
+    const tied = {
+      ...s,
+      constraints: [...s.constraints, { id: "k1", type: "coincident" as const, a: other!, b: end! }, { id: "k2", type: "pointOn" as const, p: end!, e: line }],
+    };
+    const u = unsnap(tied, end!)!;
+    expect(u.point).toBe(end);
+    expect(u.sketch.constraints.map((c) => c.id)).toEqual(s.constraints.map((c) => c.id));
+  });
+
+  it("leaves a point that is joined to nothing", () => {
+    const s = drawLine(newSketch(), [0, 0], [10, 0]).sketch;
+    expect(unsnap(s, at(s, 10, 0)[0]!)).toBeNull();
   });
 });

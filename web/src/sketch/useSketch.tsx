@@ -929,9 +929,21 @@ export function useSketch(d: SketchDeps) {
      * A point dragged to the pointer, or a line slid square across from where it was grabbed. A point held over another
      * point or a curve snaps to it (`onto`), and is made coincident with it where it is let go.
      */
-    let drag: { id: Id; moved: boolean; line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 }; offset?: Vec2; onto?: PointPick | null } | null = null;
-    let dropTarget: typeof import("./drop").dropTarget | null = null;
-    void import("./drop").then((m) => (dropTarget = m.dropTarget));
+    let drag: {
+      id: Id;
+      /** The undo step the whole drag goes into, kept when an unsnap gives the point a new id. */
+      key: string;
+      moved: boolean;
+      line?: { a: Id; b: Id; from: [Vec2, Vec2]; grab: Vec2 };
+      offset?: Vec2;
+      onto?: PointPick | null;
+      /** Shift was down when the point was grabbed: it lets go of what it snapped to as it moves. */
+      free?: boolean;
+      /** The sketch with the point let go, solved from until the document catches up with it. */
+      loose?: { from: Sketch; to: Sketch };
+    } | null = null;
+    let drop: typeof import("./drop") | null = null;
+    void import("./drop").then((m) => (drop = m));
     /** Ends a drag: a point let go over a snap gets its coincident in the same undo step as the move. */
     const endDrag = (snapIt: boolean) => {
       const d = drag;
@@ -942,7 +954,7 @@ export function useSketch(d: SketchDeps) {
       if (snapIt && d.onto && s && L.editingId) {
         const out = addConstraints("coincident", s, [d.id, d.onto.id], L.origin ?? undefined);
         if (typeof out === "string") say(out, true);
-        else L.apply(out, d.onto.kind === "on" ? "Put a point on a curve" : "Make points coincident", { key: `drag:${L.editingId}:${d.id}`, strict: true });
+        else L.apply(out, d.onto.kind === "on" ? "Put a point on a curve" : "Make points coincident", { key: d.key, strict: true });
       }
       store.seal();
       if (d.onto) {
@@ -1203,7 +1215,7 @@ export function useSketch(d: SketchDeps) {
             const a = t && L.sketch.entities.find((e) => e.id === t.p);
             if (t && a?.kind === "point") {
               setSel((s) => (mods.shift || mods.mod ? (s.includes(t.id) ? s.filter((x) => x !== t.id) : [...s, t.id]) : [t.id]));
-              drag = { id: t.p, moved: false, offset: sub(hit.xy, [a.x, a.y]) };
+              drag = { id: t.p, key: `drag:${L.editingId}:${t.p}`, moved: false, offset: sub(hit.xy, [a.x, a.y]) };
               return true;
             }
             if (!mods.shift) setSel([]);
@@ -1211,10 +1223,10 @@ export function useSketch(d: SketchDeps) {
           }
           setSel((s) => (mods.shift || mods.mod ? (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]) : s.includes(id) ? s : [id]));
           const e = L.sketch.entities.find((x) => x.id === id);
-          if (e?.kind === "point") drag = { id, moved: false };
+          if (e?.kind === "point") drag = { id, key: `drag:${L.editingId}:${id}`, moved: false, free: mods.shift };
           else if (e?.kind === "line") {
             const idx = new SketchIndex(L.sketch);
-            drag = { id, moved: false, line: { a: e.a, b: e.b, from: [idx.xy(e.a), idx.xy(e.b)], grab: hit.xy } };
+            drag = { id, key: `drag:${L.editingId}:${id}`, moved: false, line: { a: e.a, b: e.b, from: [idx.xy(e.a), idx.xy(e.b)], grab: hit.xy } };
           }
           return true;
         }
@@ -1252,20 +1264,29 @@ export function useSketch(d: SketchDeps) {
             ]);
           } else if (drag.offset) r = L.solver.drag(L.sketch, drag.id, sub(hit.xy, drag.offset));
           else {
+            // Grabbed with Shift: the point first lets go of what it snapped to (a split corner gets a new point).
+            if (drag.free && !drag.moved && !drag.loose && drop) {
+              const u = drop.unsnap(L.sketch, drag.id);
+              if (u) {
+                drag.loose = { from: L.sketch, to: u.sketch };
+                drag.id = u.point;
+              }
+            }
+            const base = drag.loose && L.sketch === drag.loose.from ? drag.loose.to : L.sketch;
             // Over another point or a curve, the point snaps to it and shows where it will go; Shift lets it go free.
-            const onto = mods.shift || !dropTarget ? null : dropTarget(hit.xy, L.sketch, drag.id, reach * hit.px, L.origin);
+            const onto = mods.shift || !drop ? null : drop.dropTarget(hit.xy, base, drag.id, reach * hit.px, L.origin);
             drag.onto = onto;
             setHover(onto?.id ?? null);
             setCursor(onto ? { xy: onto.xy, kind: onto.kind, label: onto.label } : null);
-            r = L.solver.drag(L.sketch, drag.id, onto?.xy ?? hit.xy);
+            r = L.solver.drag(base, drag.id, onto?.xy ?? hit.xy);
           }
           if (r.status === "ok" || r.status === "redundant") {
             drag.moved = true;
             const id = L.editingId!;
             store.edit(
               (doc) => updateSketch(doc, id, () => r.sketch),
-              ln ? "Move a line" : drag.offset ? "Move text" : "Move a point",
-              `drag:${id}:${drag!.id}`,
+              ln ? "Move a line" : drag.offset ? "Move text" : drag.loose ? "Unsnap a point" : "Move a point",
+              drag.key,
             );
           }
           return;

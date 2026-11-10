@@ -1,4 +1,4 @@
-import { SketchIndex, angleOf, closestOnSegment, dist, onArc, polar, sub, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { SketchIndex, angleOf, closestOnSegment, dist, newId, onArc, polar, sub, type Curve, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { ORIGIN, SNAP_LABEL, type PointPick, type SnapKind } from "./snap";
 
 /* Loaded once a sketch is open (not with the shell): a point dragged before it arrives just moves. */
@@ -58,4 +58,40 @@ export function dropTarget(p: Vec2, sketch: Sketch, dragged: Id, tol: number, or
     }
   }
   return best;
+}
+
+/**
+ * Lets a point go of whatever it snapped to, for a Shift-drag: its Coincident, On and Midpoint ties go, and a corner two
+ * curves share splits so the newest curve takes a point of its own. `point` is the one to drag on; null when the point
+ * was not joined to anything.
+ */
+export function unsnap(sketch: Sketch, p: Id): { sketch: Sketch; point: Id } | null {
+  const ties = (c: Sketch["constraints"][number]) =>
+    (c.type === "coincident" && (c.a === p || c.b === p)) || ((c.type === "pointOn" || c.type === "midpoint") && c.p === p);
+  const uses = (e: Sketch["entities"][number]) =>
+    (e.kind === "line" && (e.a === p || e.b === p)) || (e.kind === "arc" && (e.a === p || e.b === p || e.c === p)) || (e.kind === "circle" && e.c === p);
+  const curves = sketch.entities.filter((e): e is Curve => e.kind !== "point" && uses(e));
+  const constraints = sketch.constraints.filter((c) => !ties(c));
+  // Model edges stay where the model puts them: the newest drawn curve is the one that lets go.
+  const mine = curves.filter((e) => !e.projectedFrom);
+  const split = curves.length > 1 ? mine[mine.length - 1] : undefined;
+  if (!split && constraints.length === sketch.constraints.length) return null;
+  if (!split) return { sketch: { ...sketch, constraints }, point: p };
+  const at = sketch.entities.find((e) => e.id === p);
+  if (at?.kind !== "point") return null;
+  const q = newId("p");
+  const swap = (x: Id) => (x === p ? q : x);
+  const moved = {
+    ...split,
+    ...(split.kind === "circle"
+      ? { c: q }
+      : split.kind === "line"
+        ? { a: swap(split.a), b: swap(split.b) }
+        : { a: swap(split.a), b: swap(split.b), c: swap(split.c) }),
+  };
+  const entities = [
+    ...sketch.entities.map((e) => (e.id === split.id ? moved : e)),
+    { id: q, kind: "point" as const, x: at.x, y: at.y, ...(at.construction && { construction: true }) },
+  ];
+  return { sketch: { ...sketch, entities, constraints }, point: q };
 }
