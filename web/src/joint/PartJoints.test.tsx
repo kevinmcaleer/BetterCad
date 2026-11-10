@@ -57,4 +57,12 @@ describe("PartJoints", () => {
     render(<PartJoints joints={joints} lit={null} onLight={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /^Edit/ })).toBeNull();
   });
+
+  it("links a joint that moves to others, but not a fixed one", async () => {
+    const onLink = vi.fn();
+    render(<PartJoints joints={joints} lit={null} onLight={vi.fn()} onLink={onLink} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Link Joint 1 to other joints" }));
+    expect(onLink).toHaveBeenCalledWith("J1");
+    expect(screen.queryByRole("button", { name: "Link Joint 2 to other joints" })).toBeNull();
+  });
 });

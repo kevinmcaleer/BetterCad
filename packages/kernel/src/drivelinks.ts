@@ -6,7 +6,8 @@
 import { clampJoint, type Pose, type PoseJoint } from "./pose";
 import type { JointKind } from "./joints";
 
-export type DriveKind = "gear" | "belt" | "rack" | "custom";
+/** `together` is a motion link: several joints move with a lead joint at the same speed (one step, many mimics). */
+export type DriveKind = "gear" | "belt" | "rack" | "custom" | "together";
 
 export const DRIVE_KINDS: { id: DriveKind; label: string; title: string }[] = [
   { id: "gear", label: "Gears", title: "Meshed gears: the driven one turns the other way, by the tooth ratio" },
@@ -40,7 +41,7 @@ export interface DriveGear {
  * when the kind doesn't fit the joints or the gears to work it out aren't there.
  */
 export function driveMultiplier(
-  kind: Exclude<DriveKind, "custom">,
+  kind: Exclude<DriveKind, "custom" | "together">,
   a: { kind: JointKind; gear?: DriveGear },
   b: { kind: JointKind; gear?: DriveGear },
   axes: number,
@@ -140,6 +141,22 @@ export function driveTo(joints: PoseJoint[], drives: PoseDrive[], pose: Pose | u
   r = Math.min(hi, Math.max(lo, r));
   if (!Number.isFinite(r)) r = 0;
   return { id: c.root, value: r };
+}
+
+/**
+ * A motion link's multiplier for one joint (1 or −1): joints whose axes point the same way turn the same way, and
+ * joints whose axes point opposite ways (wheels on the two sides of a rover) turn so they still go the same way round in
+ * the model. `against` turns it the other way.
+ */
+export function togetherMultiplier(lead: { axis: readonly number[] }, joint: { axis: readonly number[] }, against = false): number {
+  const dot = lead.axis[0]! * joint.axis[0]! + lead.axis[1]! * joint.axis[1]! + lead.axis[2]! * joint.axis[2]!;
+  const m = dot < -1e-9 ? -1 : 1;
+  return against ? -m : m;
+}
+
+/** Why a joint can't move with the lead in a motion link, on top of {@link driveProblem}: one turns, the other slides. */
+export function togetherProblem(lead: { kind: JointKind }, joint: { kind: JointKind }): string | null {
+  return rotary(lead.kind) === rotary(joint.kind) ? null : "A joint that turns can't move with one that slides";
 }
 
 /** "Turns −1/3 the other way", "Slides 0.17 mm a degree": a drive's ratio in words. */

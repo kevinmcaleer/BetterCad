@@ -94,7 +94,11 @@ export function kevsrobots(fetcher: typeof fetch = fetch) {
       form.append("file", new Blob([bytes.slice().buffer], { type: "application/zip" }), name);
       form.append("source", "bettercad");
       if (modelUrl) form.append("model_url", modelUrl);
-      return call<KrImport>(`/api/projects/${project}/imports`, { method: "POST", body: form }, fetcher);
+      return call<KrImport>(`/api/projects/${project}/imports`, { method: "POST", body: form }, fetcher).catch((e: KrError) => {
+        // FastAPI's own 404 for a route it doesn't have: the Projects server is older than the imports API.
+        if (e.status === 404 && e.message === "Not Found") throw new KrError("kevsrobots Projects can't take build steps yet: its server needs updating.", 404);
+        throw e;
+      });
     },
   };
 }

@@ -113,8 +113,25 @@
 }
 .bc-drive > .bc-check,
 .bc-drive > .bc-note,
-.bc-drive > .bc-field {
+.bc-drive > .bc-field,
+.bc-drive > .bc-link-joints {
   grid-column: 1 / -1;
+}
+/* Motion links: a row per joint that can move with the lead, ticked in, with Other way beside it. */
+.bc-link-joints {
+  display: grid;
+  gap: var(--bc-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.bc-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-4);
 }
 
 /* Clash check (#178): the toggle, its options, and a row per pair with Show. */

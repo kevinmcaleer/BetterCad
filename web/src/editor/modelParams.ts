@@ -109,7 +109,7 @@ function fields(f: Feature): Field[] {
           ]
         : [];
     case "drive":
-      return [["ratio", "Ratio", "none"]];
+      return f.kind === "together" ? [] : [["ratio", "Ratio", "none"]];
     case "gear":
       return [
         ["gear.teeth", "Teeth", "none"],

@@ -72,6 +72,10 @@ export function SendDialog(p: SendDialogProps) {
       if (isNew) {
         setBusy("Making the project…");
         project = await client.create(title);
+        // Picked from now on, so trying again sends to it rather than making another.
+        const made = project;
+        setProjects((list) => [made, ...(list ?? [])]);
+        setPick(String(made.id));
       } else project = projects?.find((x) => String(x.id) === pick);
       if (!project) throw new Error("Pick a project to send to.");
       setBusy("Sending…");
@@ -90,9 +94,7 @@ export function SendDialog(p: SendDialogProps) {
     <>
       <span className="bc-grow" />
       <Button kind="cancel" label="Close" onClick={p.onClose} />
-      <a className="bc-btn bc-done" href={editorUrl(sent.project)} target="_blank" rel="noopener noreferrer">
-        Open the project
-      </a>
+      <Button variant="primary" label="Open the project" onClick={() => window.open(editorUrl(sent.project), "_blank", "noopener")} />
     </>
   ) : (
     <>
@@ -111,7 +113,7 @@ export function SendDialog(p: SendDialogProps) {
     <Dialog
       open
       modal
-      title={update ? "Update on kevsrobots" : "Send to kevsrobots"}
+      title={(sent ? sent.update : update) ? "Update on kevsrobots" : "Send to kevsrobots"}
       icon="upload"
       onCancel={p.onClose}
       width={460}

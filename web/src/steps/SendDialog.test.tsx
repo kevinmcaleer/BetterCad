@@ -47,11 +47,14 @@ describe("SendDialog", () => {
     expect(screen.getByRole("button", { name: "Send" }).getAttribute("aria-disabled")).toBe("true");
     fireEvent.change(name, { target: { value: "Bracket build" } });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(screen.getByRole("link", { name: "Open the project" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open the project" })).toBeTruthy());
     expect(client.create).toHaveBeenCalledWith("Bracket build");
     expect(client.send).toHaveBeenCalledWith(8, "Bracket build steps.zip", expect.any(Uint8Array), undefined);
     expect(p.onLinked).toHaveBeenCalledWith(expect.objectContaining({ project: 8, title: "Bracket build" }));
-    expect(screen.getByRole("link", { name: "Open the project" }).getAttribute("href")).toBe("https://www.kevsrobots.com/projects/editor.html?id=8");
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    fireEvent.click(screen.getByRole("button", { name: "Open the project" }));
+    expect(open).toHaveBeenCalledWith("https://www.kevsrobots.com/projects/editor.html?id=8", "_blank", "noopener");
+    expect(screen.getByRole("dialog", { name: "Send to kevsrobots" })).toBeTruthy();
   });
 
   it("offers an update to the project it was sent to before", async () => {
@@ -61,5 +64,19 @@ describe("SendDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Update" }));
     await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/update is waiting in Rover build/));
     expect(client.create).not.toHaveBeenCalled();
+  });
+
+  it("sends to the project it just made when you try again", async () => {
+    const { client } = setup();
+    vi.mocked(client.send).mockRejectedValueOnce(new Error("kevsrobots Projects can't take build steps yet: its server needs updating."));
+    await waitFor(() => expect(screen.getByRole("option", { name: "Rover build" })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("Project name"), { target: { value: "Bracket build" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/needs updating/));
+    expect((screen.getByLabelText("Project") as HTMLSelectElement).value).toBe("8");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open the project" })).toBeTruthy());
+    expect(client.create).toHaveBeenCalledTimes(1);
+    expect(client.send).toHaveBeenLastCalledWith(8, "Bracket build steps.zip", expect.any(Uint8Array), undefined);
   });
 });

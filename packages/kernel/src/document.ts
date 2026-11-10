@@ -34,7 +34,7 @@ export {
 } from "./catalogue";
 import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
 import { clampJoint, jointMove, mat4Apply, mat4ApplyDir, mat4Mul, moveFrame, placeMatrix, placeOf, type Mat4, type Pose } from "./pose";
-import { driveMultiplier, driveProblem, driveTo, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
+import { driveMultiplier, driveProblem, driveTo, togetherMultiplier, togetherProblem, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
 import {
   MIRRORED_OPS,
   PATTERN_DEFAULTS,
@@ -389,6 +389,12 @@ export interface DriveFeature extends FeatureBase {
   driven: string;
   ratio: number;
   reverse?: boolean;
+  /**
+   * A motion link (`kind: "together"`): more joints that move with the driver, besides `driven`, all at the same speed.
+   * `against` lists the ones that turn the other way. Built as one mimic per joint.
+   */
+  more?: string[];
+  against?: string[];
 }
 export interface DeleteFeature extends FeatureBase {
   type: "delete";
@@ -1140,6 +1146,27 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         break;
       }
       case "drive": {
+        if (f.kind === "together") {
+          const lead = joints.find((j) => j.id === f.driver);
+          // A joint deleted since is left out; the link fails only when the lead or every other joint has gone.
+          const followers = [...new Set([f.driven, ...(f.more ?? [])])].filter((id) => id !== f.driver && joints.some((j) => j.id === id));
+          if (!lead || !followers.length) {
+            failed.set(f.id, "A joint it links is gone");
+            break;
+          }
+          const made: BuiltDrive[] = [];
+          let why: string | null = null;
+          for (const id of followers) {
+            const j = joints.find((x) => x.id === id)!;
+            why = driveProblem(joints, [...drives, ...made], f.driver, id) ?? togetherProblem(lead, j);
+            if (why) break;
+            const multiplier = togetherMultiplier(lead, j, f.against?.includes(id));
+            made.push({ id: f.id, name: f.name, kind: f.kind, driver: f.driver, driven: id, multiplier, offset: 0, fromTeeth: false });
+          }
+          if (why) failed.set(f.id, why);
+          else drives.push(...made);
+          break;
+        }
         const why = driveProblem(joints, drives, f.driver, f.driven);
         if (why) {
           failed.set(f.id, why);
@@ -1149,6 +1176,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         const b = joints.find((j) => j.id === f.driven)!;
         let m: number | null = null;
         if (f.kind !== "custom") {
+          const k = f.kind;
           const gears = (l: string) =>
             [...gearSteps.values()].filter((g) => parts.find((p) => p.id === g.body.id)?.link === l).map((g) => ({ step: g, gear: driveGear(g) }));
           const ga = gears(a.child);
@@ -1159,7 +1187,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           // Gears that mesh or share a belt first, then any pair that fits.
           const pairs = ga.flatMap((x) => gb.map((y) => ({ x, y, linked: linked(x.step, y.step) }))).sort((p, q) => Number(q.linked) - Number(p.linked));
           for (const { x, y } of pairs) {
-            m = driveMultiplier(f.kind, { kind: a.kind, gear: x.gear }, { kind: b.kind, gear: y.gear }, dot);
+            m = driveMultiplier(k, { kind: a.kind, gear: x.gear }, { kind: b.kind, gear: y.gear }, dot);
             if (m !== null) break;
           }
         }
@@ -1803,6 +1831,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "drive": {
       const name = (id: string) => doc.features.find((g) => g.id === id)?.name ?? "a gone joint";
+      if (f.kind === "together") {
+        const rest = [f.driven, ...(f.more ?? [])].map(name);
+        return `${name(f.driver)} moves ${rest.length === 1 ? rest[0] : `${rest.slice(0, -1).join(", ")} and ${rest.at(-1)}`} with it`;
+      }
       const k = DRIVE_KIND_LABEL[f.kind];
       return `${k}: ${name(f.driver)} drives ${name(f.driven)}`;
     }
@@ -2717,8 +2749,8 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   }
   // A drive needs its two joints, and the drive that drives its driver.
   if (f.type === "drive") {
-    for (const j of [f.driver, f.driven]) if (before.some((g) => g.id === j)) out.add(j);
-    const up = before.find((g) => g.type === "drive" && g.driven === f.driver);
+    for (const j of [f.driver, f.driven, ...(f.more ?? [])]) if (before.some((g) => g.id === j)) out.add(j);
+    const up = before.find((g) => g.type === "drive" && (g.driven === f.driver || g.more?.includes(f.driver)));
     if (up) out.add(up.id);
   }
   return [...out];
@@ -3249,14 +3281,18 @@ export function namedPoseValues(doc: ModelDoc, id: string): { values: Pose; drop
   return { values, dropped };
 }
 
-export type DriveParams = Pick<DriveFeature, "kind" | "driver" | "driven" | "ratio" | "reverse">;
+export type DriveParams = Pick<DriveFeature, "kind" | "driver" | "driven" | "ratio" | "reverse" | "more" | "against">;
 
-/** Adds a drive link (#194): "Drive 1". The driven joint leaves the pose, since its driver sets it now. */
+/**
+ * Adds a drive link (#194): "Drive 1", or a motion link "Motion link 1" for joints that move together. The driven joints
+ * leave the pose, since their driver sets them now.
+ */
 export function addDrive(doc: ModelDoc, params: DriveParams, id = newId("f"), at?: number): ModelDoc {
-  const next = insert(doc, clampAt(doc, at), { id, type: "drive", name: nextNamed(doc, "Drive"), ...params });
-  if (!next.pose?.[params.driven]) return next;
+  const next = insert(doc, clampAt(doc, at), { id, type: "drive", name: nextNamed(doc, params.kind === "together" ? "Motion link" : "Drive"), ...params });
+  const driven = [params.driven, ...(params.more ?? [])].filter((j) => next.pose?.[j] !== undefined);
+  if (!driven.length) return next;
   const pose: Pose = { ...next.pose };
-  delete pose[params.driven];
+  for (const j of driven) delete pose[j];
   return { ...next, pose: Object.keys(pose).length ? pose : undefined };
 }
 
@@ -3270,7 +3306,7 @@ function driveGear(g: GearFeature): DriveGear {
   return { teeth: g.gear.teeth, module: g.gear.module, form: g.form ?? "spur" };
 }
 
-const DRIVE_KIND_LABEL: Record<DriveKind, string> = { gear: "Gears", belt: "Belt", rack: "Rack", custom: "Custom" };
+const DRIVE_KIND_LABEL: Record<DriveKind, string> = { gear: "Gears", belt: "Belt", rack: "Rack", custom: "Custom", together: "Motion link" };
 
 /** Changes a joint (its bar edits it live). Switching kind brings that kind's starting limits. */
 export function updateJoint(doc: ModelDoc, id: string, change: Partial<JointParams>): ModelDoc {
