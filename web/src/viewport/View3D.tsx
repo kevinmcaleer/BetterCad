@@ -77,6 +77,8 @@ export interface View3DProps {
   warn?: Set<string>;
   /** While clash results show (#178): bodies that overlap, in red; bodies that only touch, tinted warn; the rest ghosted. */
   clash?: { overlap: Set<string>; touch: Set<string> } | null;
+  /** Bodies outside the active component: drawn faint, still picked. */
+  faded?: Set<string>;
   /** A print check's per-vertex tint by body (#101, #102). */
   check?: Map<string, Float32Array> | null;
   /** Origin planes on show from the browser, and the one chosen there. */
@@ -246,9 +248,10 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             colour: p.colour && /^#[0-9a-f]{6}$/i.test(p.colour) ? p.colour : undefined,
             warn: props.warn?.has(p.id) || (props.clash?.touch.has(p.id) && !props.clash.overlap.has(p.id)),
             clash: props.clash?.overlap.has(p.id),
+            faded: props.faded?.has(p.id),
           };
         }),
-    [parts, meshes, props.warn, props.clash],
+    [parts, meshes, props.warn, props.clash, props.faded],
   );
 
   // Frame the model when the first part arrives (a new model, an opened file).

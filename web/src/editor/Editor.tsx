@@ -126,6 +126,7 @@ import type { ThemeSetting } from "../state/theme";
 import { useTheme } from "../state/useTheme";
 import { createRegistry, formatCombo, type Command, type CommandContext } from "../state/commands";
 import { TOOLS, type ToolId } from "./tools";
+import { fadedOutside } from "./fade";
 import { AppShell } from "./AppShell";
 import { TopBar } from "./TopBar";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
@@ -1257,6 +1258,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // It's view state, as the marker is; a component that's gone or rolled past leaves the model active.
   const [activeComp, setActiveComp] = useState<string | null>(null);
   const workIn = activeComp && built.components.some((c) => c.id === activeComp) ? activeComp : null;
+  // As in Fusion, while a component is active the bodies outside it fade, so you can see where new steps go. The
+  // model's row makes the whole model active and brings them back.
+  const faded = useMemo(() => fadedOutside(workIn, built.components, parts), [workIn, built.components, parts]);
   // A sketch on a face goes with the body it sits on, so a joint that turns the body carries the sketch too.
   const linkOf = useRef(new Map<string, string | null>());
   linkOf.current = new Map(parts.map((p) => [p.id, p.link ?? null]));
@@ -3689,6 +3693,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           <View3D
             ref={vp.ref}
             parts={viewParts}
+            faded={faded}
             meshes={kernel.bodies}
             engine={kernel.state}
             rebuilding={kernel.rebuilding}

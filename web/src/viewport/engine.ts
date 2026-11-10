@@ -115,6 +115,8 @@ export interface EngineBody {
   warn?: boolean;
   /** In a clash (#178): tinted danger and drawn see-through, so the overlap shows inside it. */
   clash?: boolean;
+  /** Outside the active component, as Fusion fades it: see-through, but still picked. */
+  faded?: boolean;
   /** A reference body (#185): there to design around, never printed. Drawn see-through in the accent colour. */
   reference?: boolean;
   /** The mesh is already in place (the kernel built it there); position and rotation only place the gizmo. */
@@ -1702,10 +1704,11 @@ export class Engine {
       o.shaded.visible = o.edges.visible = o.flat.visible = o.creases.visible = false;
     }
     const ghost = !!o.body.ghost || !!preview?.dim;
-    const seeThrough = ghost || !!o.body.reference || !!o.body.clash;
+    const faded = !!o.body.faded;
+    const seeThrough = ghost || faded || !!o.body.reference || !!o.body.clash;
     for (const m of [o.shadedMaterial, o.flatMaterial]) {
       m.transparent = seeThrough;
-      m.opacity = ghost ? 0.3 : seeThrough ? 0.55 : 1;
+      m.opacity = ghost || faded ? 0.3 : seeThrough ? 0.55 : 1;
       m.depthWrite = !seeThrough;
     }
     o.idMesh.visible = !ghost && !preview?.mesh;
