@@ -21,6 +21,8 @@ export interface PoseControlsProps {
   /** Tool points (#176): joints kept out of the arm's drag, and the toggle; left out when there is no tool point. */
   locked?: string[];
   onLock?: (id: string, locked: boolean) => void;
+  /** Leaves out each joint's name: the joint list in This part shows it above the slider. */
+  bare?: boolean;
 }
 
 /** The range a joint's slider covers: its limits, or a whole turn for a wheel. */
@@ -42,6 +44,7 @@ export function PoseControls({
   nameOf,
   locked = [],
   onLock,
+  bare,
 }: PoseControlsProps) {
   // The last value a slider moved to, so letting go keeps it even before the new pose comes back round.
   const last = useRef(new Map<string, number>());
@@ -63,8 +66,8 @@ export function PoseControls({
         const by = drives.find((d) => d.driven === j.id);
         const drivesOthers = !by && drives.some((d) => d.driver === j.id);
         return (
-          <fieldset key={j.id} className="bc-pose-joint">
-            <legend className="bc-pose-name">{`${j.name}, ${kind.toLowerCase()}`}</legend>
+          <fieldset key={j.id} className="bc-pose-joint" aria-label={bare ? `${j.name}, ${kind.toLowerCase()}` : undefined}>
+            {!bare && <legend className="bc-pose-name">{`${j.name}, ${kind.toLowerCase()}`}</legend>}
             {by && <p className="bc-pose-driven">{`Driven by ${nameOf?.(by.driver) ?? "another joint"}`}</p>}
             <input
               type="range"

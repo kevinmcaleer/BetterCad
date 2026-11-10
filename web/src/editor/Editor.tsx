@@ -1003,10 +1003,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // Joint glyphs in the view (#172), each with its own eye in the browser (saved in looks, as a sketch's is). They ride on
   // the pose; hiding one hides its arrow, not the parts it moves.
   const browserJoints = useMemo(() => built.joints.map((j) => ({ ...j, hidden: !!doc.looks[j.id]?.hidden })), [built.joints, doc.looks]);
+  // A joint picked from This part's list: drawn brighter (even with its eye shut) until the selection changes.
+  const [litJoint, setLitJoint] = useState<string | null>(null);
+  useEffect(() => setLitJoint(null), [selection]);
   useEffect(() => {
     const frames = poseOn ? posedFrames(built.joints, linkMoves) : null;
-    vp.ref.current?.engine()?.setJoints(browserJoints.filter((j) => !j.hidden).map((j) => frames?.get(j.id) ?? j));
-  }, [built.joints, browserJoints, vp.ref, poseOn, linkMoves]);
+    vp.ref.current?.engine()?.setJoints(
+      browserJoints.filter((j) => !j.hidden || j.id === litJoint).map((j) => ({ ...(frames?.get(j.id) ?? j), id: j.id })),
+      litJoint,
+    );
+  }, [built.joints, browserJoints, vp.ref, poseOn, linkMoves, litJoint]);
 
   // Play (#194): turn a driving joint through its range, out and back (a wheel a whole turn), to watch the drive. It
   // poses live only, and Esc or Stop puts the pose back.
@@ -3881,6 +3887,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                         }
                       : undefined
                   }
+                  partJoints={{
+                    components: built.components,
+                    lit: litJoint,
+                    onLight: setLitJoint,
+                    onEdit: files.shared
+                      ? undefined
+                      : (id: string) => {
+                          const f = store.get().features.find((x) => x.id === id);
+                          if (f) editStep(f);
+                        },
+                  }}
                   pose={
                     built.joints.length
                       ? {

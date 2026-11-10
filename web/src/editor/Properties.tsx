@@ -14,6 +14,7 @@ import {
 import type { PoseControlsProps } from "../joint/PoseControls";
 import type { ClashListProps } from "../joint/ClashList";
 import type { MassInfo } from "../joint/MassRows";
+import { PartJoints, jointsOf, type PartJointsProps } from "../joint/PartJoints";
 import { FitMenu, type FitChoice } from "../fit/FitMenu";
 import { lazy, Suspense } from "react";
 import type { FinishId } from "@bettercad/kernel";
@@ -49,6 +50,11 @@ export interface PropertiesProps {
   /** Mass and centre of mass (#174) of the selected body and its link. */
   mass?: MassInfo;
   pose?: Omit<PoseControlsProps, "joints" | "onHome"> & { joints: PoseControlsProps["joints"]; selected: PoseControlsProps["joints"]; onHome: () => void };
+  /**
+   * Every joint made to and from the selection is listed, to show and open for editing: these are the components'
+   * names and the list's handlers; the joints and pose sliders come from `pose`.
+   */
+  partJoints?: Omit<PartJointsProps, "pose" | "joints"> & { components: { id: string; name: string }[] };
   /** The clash check (#178), on the model's summary. */
   clashes?: ClashListProps;
 }
@@ -130,6 +136,7 @@ export function Properties({
   pose,
   mass,
   clashes,
+  partJoints,
 }: PropertiesProps & { allParts?: Part[] }) {
   if (parts.length === 0) {
     return (
@@ -286,7 +293,14 @@ export function Properties({
     },
     { id: "rotation", title: "Rotation", content: fields("rotation") },
   ];
-  if (pose?.selected.length)
+  const listed = partJoints && pose ? jointsOf(parts, pose.joints, partJoints.components) : [];
+  if (partJoints && listed.length) {
+    sections.splice(1, 0, {
+      id: "pose",
+      title: listed.length === 1 ? "Joint" : "Joints",
+      content: <PartJoints {...partJoints} joints={listed} pose={pose} />,
+    });
+  } else if (pose?.selected.length)
     sections.splice(1, 0, {
       id: "pose",
       title: pose.selected.length === 1 ? "Joint" : "Joints",

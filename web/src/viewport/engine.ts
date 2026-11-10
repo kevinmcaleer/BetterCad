@@ -1003,13 +1003,26 @@ export class Engine {
     this.invalidate();
   }
 
-  /** Shows an arrow along each joint's axis (#172), or none. Drawn over the bodies so it shows inside them. */
-  setJoints(list: { origin: V3; axis: V3 }[] | null): void {
+  /**
+   * Shows an arrow along each joint's axis (#172), or none. Drawn over the bodies so it shows inside them. The `lit`
+   * joint (picked in This part) is longer and in the picked colour.
+   */
+  setJoints(list: { id?: string; origin: V3; axis: V3 }[] | null, lit: string | null = null): void {
     for (const a of this.jointArrows.children as ArrowHelper[]) a.dispose();
     this.jointArrows.clear();
-    const len = Math.max(15, (this.bounds()?.radius ?? 50) * 0.3);
+    const base = Math.max(15, (this.bounds()?.radius ?? 50) * 0.3);
     for (const j of list ?? []) {
-      const a = new ArrowHelper(new Vector3(...j.axis).normalize(), new Vector3(...j.origin), len, this.palette.snap, len * 0.25, len * 0.12);
+      const on = !!lit && j.id === lit;
+      const len = on ? base * 1.4 : base;
+      const a = new ArrowHelper(
+        new Vector3(...j.axis).normalize(),
+        new Vector3(...j.origin),
+        len,
+        on ? this.palette.picked : this.palette.snap,
+        len * 0.25,
+        len * 0.12,
+      );
+      a.name = on ? "lit" : "";
       a.renderOrder = 6;
       a.traverse((o) => {
         const m = (o as Mesh).material as Material | undefined;
@@ -1742,7 +1755,7 @@ export class Engine {
     this.capMat.uniforms.fill!.value.copy(p["part-fill"]);
     this.capMat.uniforms.line!.value.copy(p["part-line"]);
     this.arrow.setColor(p.snap);
-    for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(p.snap);
+    for (const a of this.jointArrows.children as ArrowHelper[]) a.setColor(a.name === "lit" ? p.picked : p.snap);
     for (const c of [...this.centres.children, ...this.tools.children] as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
     for (const c of this.clashBoxes.children as (LineSegments | Mesh)[]) (c.material as LineBasicMaterial).color.set(c.name === "clash" ? p.danger : p.warn);
     if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
