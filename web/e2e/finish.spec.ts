@@ -47,7 +47,7 @@ test("round the four top edges of a box", async ({ page }) => {
   const r = page.getByRole("textbox", { name: "Radius" });
   await r.fill("2");
   await r.press("Enter");
-  await expect(page.getByText("Rounded 4 edges of Box 1, 2 mm")).toBeVisible();
+  await expect(page.getByText("Filleted 4 edges of Box 1, 2 mm")).toBeVisible();
   await expect(page.getByRole("button", { name: /Fillet 1/ }).first()).toBeVisible();
 });
 
@@ -101,7 +101,7 @@ test("the picked edges show as a list, and reopening the step keeps them", async
   await list.getByRole("button", { name: "Take Edge 2 out" }).click();
   await expect(page.getByText("1 edge on Box 1.")).toBeVisible();
   await page.getByRole("button", { name: "OK", exact: true }).click();
-  await expect(page.getByText("Rounded 1 edge of Box 1, 4 mm")).toBeVisible();
+  await expect(page.getByText("Filleted 1 edge of Box 1, 4 mm")).toBeVisible();
 
   await page
     .getByRole("button", { name: /^Fillet 1/ })

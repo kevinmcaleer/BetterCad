@@ -23,7 +23,7 @@ export interface FinishDeps {
   doc: ModelDoc;
   at: number;
   view: RefObject<View3DHandle>;
-  /** The armed tool: fillet (round or bevel edges) or shell (faces left open). */
+  /** The armed tool: fillet (fillet or chamfer edges) or shell (faces left open). */
   tool: "fillet" | "shell" | null;
   onClose: () => void;
   say: (text: string, error?: boolean) => void;
@@ -106,7 +106,8 @@ export function useFinish(d: FinishDeps) {
     const D = deps.current;
     // Read through the ref: Enter in a size field commits it and finishes in the same moment.
     const { part: p, refs: r, bevel, radius, wall, outside } = live.current;
-    if (!p || (D.tool === "fillet" && !r.length)) return D.say(D.tool === "shell" ? "Click a face of the body to hollow" : "Click the edges to round", true);
+    if (!p || (D.tool === "fillet" && !r.length))
+      return D.say(D.tool === "shell" ? "Click a face of the body to hollow" : bevel ? "Click the edges to chamfer" : "Click the edges to fillet", true);
     const type = D.tool === "shell" ? "shell" : bevel ? "chamfer" : "fillet";
     const size = sizeNow ?? (type === "shell" ? wall : radius);
     if (sizeNow !== undefined) (type === "shell" ? setWall : setRadius)(sizeNow);
@@ -126,7 +127,7 @@ export function useFinish(d: FinishDeps) {
     D.say(
       type === "shell"
         ? `Hollowed ${name} to a ${size} mm wall${n ? "" : ". A sealed hollow traps material when printed"}`
-        : `${type === "fillet" ? "Rounded" : "Bevelled"} ${n === 1 ? "1 edge" : `${n} edges`} of ${name}, ${size} mm`,
+        : `${type === "fillet" ? "Filleted" : "Chamfered"} ${n === 1 ? "1 edge" : `${n} edges`} of ${name}, ${size} mm`,
     );
     setPart(null);
     setRefs([]);
@@ -201,8 +202,8 @@ export function useFinish(d: FinishDeps) {
         ? `Click more faces to leave open, or a picked one to close it. Enter hollows ${partName}.`
         : "Click the face to leave open, usually the top. Enter hollows the body."
       : part
-        ? `Click more edges of ${partName}, or a picked one to drop it. Enter ${bevel ? "bevels" : "rounds"} them.`
-        : `Click the edges to ${bevel ? "bevel" : "round"}.`;
+        ? `Click more edges of ${partName}, or a picked one to drop it. Enter ${bevel ? "chamfers" : "fillets"} them.`
+        : `Click the edges to ${bevel ? "chamfer" : "fillet"}.`;
 
   return {
     tool: d.tool,

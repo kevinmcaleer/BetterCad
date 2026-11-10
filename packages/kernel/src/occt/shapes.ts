@@ -75,6 +75,8 @@ const progress = (oc: OC) => new oc.Message_ProgressRange();
  * mesh covers far more than the face, so an STL of the body comes out wrong.
  */
 const FUZZY = 1e-6;
+/** Looser tolerances a boolean tries again with when the result is not a valid solid. */
+const RETRY_FUZZY = [FUZZY, 1e-5, 1e-4];
 
 export function box(oc: OC, size: Size3): TopoDS_Shape {
   positive(size, "box");
@@ -416,20 +418,39 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
       "boolean-failed",
       op === "join" ? "These bodies could not be joined." : op === "cut" ? "That cut could not be made." : "These bodies could not be intersected.",
       () => {
-        const mk = op === "join" ? new oc.BRepAlgoAPI_Fuse() : op === "cut" ? new oc.BRepAlgoAPI_Cut() : new oc.BRepAlgoAPI_Common();
-        const args = new oc.NCollection_List_TopoDS_Shape();
-        args.Append(out);
-        const tools = new oc.NCollection_List_TopoDS_Shape();
-        tools.Append(tool);
-        mk.SetArguments(args);
-        mk.SetTools(tools);
-        mk.SetFuzzyValue(FUZZY);
-        mk.Build(progress(oc));
-        if (!mk.IsDone()) throw new KernelError("boolean-failed", "That operation could not be worked out. Try moving the bodies slightly.");
-        if (op === "join") mk.SimplifyResult(true, true, 1e-6);
-        const res = mk.Shape();
-        t?.step(mk, [out, tool], res);
-        return res;
+        // A boolean of two valid solids can still give an invalid one: a face whose edges miss each other by more
+        // than 1e-6 mm, as where a cog stands flat on a face. Fillets and chamfers refuse an invalid body, so the
+        // next one would fail on any edge. A looser tolerance joins those edges; the first valid result is kept.
+        type Made = { mk: Parameters<Tracker["step"]>[0]; shape: TopoDS_Shape };
+        let best: Made | null = null;
+        for (const fuzzy of RETRY_FUZZY) {
+          const mk = op === "join" ? new oc.BRepAlgoAPI_Fuse() : op === "cut" ? new oc.BRepAlgoAPI_Cut() : new oc.BRepAlgoAPI_Common();
+          const args = new oc.NCollection_List_TopoDS_Shape();
+          args.Append(out);
+          const tools = new oc.NCollection_List_TopoDS_Shape();
+          tools.Append(tool);
+          mk.SetArguments(args);
+          mk.SetTools(tools);
+          mk.SetFuzzyValue(fuzzy);
+          // Leave the inputs as they were, so a try that fails hasn't loosened their tolerances for the next one.
+          mk.SetNonDestructive(true);
+          mk.Build(progress(oc));
+          if (!mk.IsDone()) {
+            if (best) break;
+            throw new KernelError("boolean-failed", "That operation could not be worked out. Try moving the bodies slightly.");
+          }
+          if (op === "join") mk.SimplifyResult(true, true, 1e-6);
+          const shape = mk.Shape();
+          if (valid(oc, shape)) {
+            best = { mk, shape };
+            break;
+          }
+          best ??= { mk, shape };
+          // An invalid body stays invalid whatever the tolerance, so only valid inputs are tried again.
+          if (fuzzy === FUZZY && !(valid(oc, out) && valid(oc, tool))) break;
+        }
+        t?.step(best!.mk, [out, tool], best!.shape);
+        return best!.shape;
       },
     );
   }

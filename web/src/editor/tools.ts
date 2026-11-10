@@ -105,7 +105,7 @@ export const TOOLS: Tool[] = [
     title: "Join, cut or intersect bodies",
     help: "Click the body to keep, then Shift-click the bodies to join, cut or intersect.",
   },
-  { id: "fillet", label: "Fillet", icon: "fillet", key: "g", title: "Round or bevel edges", help: "Click the edges to round." },
+  { id: "fillet", label: "Fillet", icon: "fillet", key: "g", title: "Fillet or chamfer edges", help: "Click the edges to fillet or chamfer." },
   { id: "shell", label: "Shell", icon: "shell", key: "s", title: "Hollow a body to a wall", help: "Click the face to leave open, usually the top." },
   {
     id: "measure",
