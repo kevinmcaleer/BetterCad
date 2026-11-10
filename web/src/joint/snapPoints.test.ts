@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { across, between, edgeCircle, faceSnaps, nearestSnap, type V3 } from "./snapPoints";
+import { across, between, edgeCircle, faceSnaps, nearSnaps, nearestSnap, wiggle, type V3 } from "./snapPoints";
 
 const ring = (c: V3, r: number, n = 24): V3[] =>
   Array.from({ length: n + 1 }, (_, i) => {
@@ -109,5 +109,29 @@ describe("between", () => {
   });
   it("goes halfway from a snap point to a face", () => {
     expect(between({ point: [0, 0, 0], normal: [0, 0, 1], plane: false }, { point: [3, 3, 8], normal: [0, 0, -1], plane: true })).toEqual([0, 0, 4]);
+  });
+});
+
+describe("nearSnaps", () => {
+  it("lists the snaps in reach, nearest first", () => {
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 6, y: 0 },
+      { x: 30, y: 0 },
+    ];
+    expect(nearSnaps(pts, { x: 4, y: 0 }, 12)).toEqual([1, 0]);
+  });
+});
+
+describe("wiggle", () => {
+  it("swings a hinge to each limit and back", () => {
+    expect(wiggle("revolute", -90, 45, 0.25)).toBeCloseTo(45);
+    expect(wiggle("revolute", -90, 45, 0.75)).toBeCloseTo(-90);
+    expect(wiggle("revolute", -90, 45, 1)).toBeCloseTo(0);
+  });
+  it("slides a slider out and back, and leaves a fixed joint be", () => {
+    expect(wiggle("prismatic", 0, 50, 0.5)).toBeCloseTo(50);
+    expect(wiggle("prismatic", 0, 50, 1)).toBeCloseTo(0);
+    expect(wiggle("fixed", 0, 0, 0.5)).toBeNull();
   });
 });

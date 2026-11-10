@@ -55,6 +55,9 @@ export class SnapMarks {
   private ghosts: LineSegments2;
   private ghostMat = new LineMaterial({ linewidth: 1.5, depthTest: false, transparent: true, worldUnits: false });
   private added = false;
+  /** The moving part's edges where the hovered snap would put it (#390). */
+  private partLines: LineSegments2;
+  private partMat = new LineMaterial({ linewidth: 1.5, depthTest: false, transparent: true, opacity: 0.75, worldUnits: false });
   /** The first of two Shift-clicks (#388), until the second. */
   private pinned: Points;
 
@@ -74,7 +77,12 @@ export class SnapMarks {
     this.pinned.frustumCulled = false;
     this.pinned.renderOrder = 9;
     this.pinned.visible = false;
-    this.group.add(this.ghosts, this.axes, this.dots, this.pinned);
+    this.partMat.color.copy(p.snap);
+    this.partLines = new LineSegments2(new LineSegmentsGeometry(), this.partMat);
+    this.partLines.frustumCulled = false;
+    this.partLines.renderOrder = 6;
+    this.partLines.visible = false;
+    this.group.add(this.partLines, this.ghosts, this.axes, this.dots, this.pinned);
   }
 
   /**
@@ -132,6 +140,17 @@ export class SnapMarks {
     } else this.eng.invalidate();
   }
 
+  /** Shows the moving part's outline where it would land, or takes it away. */
+  part(lines: [V3, V3][] | null): void {
+    if (!lines && !this.partLines.visible) return;
+    this.partLines.visible = !!lines;
+    if (lines) {
+      this.partLines.geometry.dispose();
+      this.partLines.geometry = new LineSegmentsGeometry().setPositions(lines.flat(2));
+    }
+    this.eng.invalidate();
+  }
+
   /** Marks the first of two Shift-clicks, or clears it. */
   pin(at: V3 | null): void {
     this.pinned.visible = !!at;
@@ -158,6 +177,8 @@ export class SnapMarks {
     (this.dots.material as ShaderMaterial).dispose();
     this.pinned.geometry.dispose();
     (this.pinned.material as ShaderMaterial).dispose();
+    this.partLines.geometry.dispose();
+    this.partMat.dispose();
     this.axes.geometry.dispose();
     this.axisMat.dispose();
     this.ghosts.geometry.dispose();

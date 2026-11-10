@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { Matrix4 } from "three";
 import { ESC, useEscape } from "@bettercad/ui";
 import {
   JOINT_KINDS,
@@ -10,6 +11,8 @@ import {
   mat4Apply,
   mat4ApplyDir,
   mat4InvertRigid,
+  mat4Mul,
+  linkTransforms,
   newId,
   setExpr,
   updateJoint,
@@ -27,7 +30,7 @@ import { isTyping } from "../state/commands";
 import { loupeAuto } from "../state/loupePref";
 import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "../sketch/loupe";
 import { SnapMarks } from "./snapMarks";
-import { between, facing, faceSnaps, nearestSnap, type SnapPoint, type V3 } from "./snapPoints";
+import { between, facing, faceSnaps, nearSnaps, wiggle, type SnapPoint, type V3 } from "./snapPoints";
 import { sharpCorners } from "./sharpCorners";
 
 /**
@@ -61,6 +64,8 @@ export const KEY = (id: string) => `joint:${id}`;
 const AXES: ReadonlySet<"axis"> = new Set(["axis"]);
 /** How near the pointer, in CSS px, a snap point has to be to take the click. */
 const SNAP_REACH = 12;
+/** How long a joint's wiggle takes, in ms (#394). */
+const WIGGLE_MS = 1400;
 
 /** The snaps: the moving component's, and the one it hangs from (which is the joint's axis). */
 export type JointPick = "child" | "parent";
@@ -178,6 +183,9 @@ export function useJoint(d: JointDeps) {
   /** The component a body is in, or null for Base. */
   const linkOf = (body: string) => deps.current.parts.find((p) => p.id === body)?.link ?? null;
 
+  const changeRef = useRef(change);
+  changeRef.current = change;
+
   /** Puts a snap's frame in: the moving part's, or the axis it hangs from. */
   const takeFrame = useCallback(
     (which: JointPick, l: string | null, f: Frame) => {
@@ -265,6 +273,33 @@ export function useJoint(d: JointDeps) {
       if (lens?.why === "crowd") quiet = true;
       show(null);
     };
+    /** The moving part's edges, carried to where a snap on `body` would put it: null when it would not move it. */
+    const ghostAt = (body: string, s: SnapPoint): [V3, V3][] | null => {
+      const x = live.current;
+      const l = linkOf(body);
+      if (!x.child || !x.from || l === x.child) return null;
+      const set = x.feature ?? x.draft;
+      const next = jointMove({ ...set, origin: s.point, axis: s.normal, from: x.from });
+      if (!next) return null;
+      const now = x.feature && x.feature.child === x.child ? jointMove(x.feature) : null;
+      const m = now ? mat4Mul(next, mat4InvertRigid(now)) : next;
+      const out: [V3, V3][] = [];
+      const ids = new Set(deps.current.links.find((k) => k.id === x.child)?.parts ?? []);
+      for (const b of eng.bodyCounts()) {
+        if (!ids.has(b.id)) continue;
+        for (let e = 0; e < b.edges; e++) {
+          const pts = eng.edgePoints(b.id, e) ?? [];
+          for (let i = 1; i < pts.length; i++) out.push([mat4Apply(m, pts[i - 1]!), mat4Apply(m, pts[i]!)]);
+        }
+      }
+      return out.length ? out : null;
+    };
+    const turnBy = (deg: number) => {
+      const set = live.current.feature ?? live.current.draft;
+      const a = (((((set.angle ?? 0) + deg + 180) % 360) + 360) % 360) - 180;
+      changeRef.current({ angle: a || undefined });
+    };
+    const flipOver = () => changeRef.current({ flip: !(live.current.feature ?? live.current.draft).flip || undefined });
     const onScreen = () => (face ? face.snaps.map((s) => eng.project(s.point)) : []);
     const openAt = (p: ScreenPoint, why: Loupe["why"], gap?: number | null) =>
       show({ anchor: p, pointer: p, zoom: loupeZoom(gap === undefined ? (crowding(onScreen(), p)?.gap ?? null) : gap), why });
@@ -289,7 +324,19 @@ export function useJoint(d: JointDeps) {
       }, CROWD_DWELL);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Alt" || isTyping(e.target)) return;
+      if (isTyping(e.target) || e.ctrlKey || e.metaKey) return;
+      if (e.type === "keydown" && e.key === "Tab" && last && face && live.current.target) {
+        // Tab: the next snap in reach under the pointer.
+        e.preventDefault();
+        turn = { n: turn.n + 1, at: lensed(lens, last.p) };
+        return refresh();
+      }
+      if (e.type === "keydown" && !e.altKey && (e.key === "q" || e.key === "Q" || e.key === "w" || e.key === "W")) {
+        // Q turns the part 90° about the joint (Shift+Q back), W flips it over (#392).
+        e.preventDefault();
+        return e.key.toLowerCase() === "q" ? turnBy(e.shiftKey ? -90 : 90) : flipOver();
+      }
+      if (e.key !== "Alt") return;
       if (e.type === "keydown") {
         // Alt alone would focus the browser's menu bar on Windows.
         e.preventDefault();
@@ -299,12 +346,19 @@ export function useJoint(d: JointDeps) {
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
 
+    /** Tab steps through the snaps in reach, nearest first (#391), until the pointer moves on. */
+    let turn = { n: 0, at: null as ScreenPoint | null };
+    const cycled = (p: ScreenPoint, reach: number) => {
+      if (turn.at && Math.hypot(p.x - turn.at.x, p.y - turn.at.y) > 3) turn = { n: 0, at: null };
+      const near = nearSnaps(onScreen(), p, reach);
+      return near.length ? near[turn.n % near.length]! : -1;
+    };
     /** The face and snap under a point (already lensed), and the edge there when no snap is in reach. */
     const look = (p: ScreenPoint) => {
       const f = eng.pick(p.x, p.y, "face");
       const reach = lens ? Math.max(2, SNAP_REACH / lens.zoom) : SNAP_REACH;
       // A snap of the face already shown keeps it, even over the next face (a cut-away corner sits past a round).
-      hot = face ? nearestSnap(onScreen(), p, reach) : -1;
+      hot = face ? cycled(p, reach) : -1;
       if (f && hot < 0 && (f.body !== face?.body || f.index !== face.index)) {
         const info = eng.faceInfo(f.body, f.index);
         const edges = (eng.faceEdges(f.body, f.index) ?? []).map((e) => e.points);
@@ -322,7 +376,7 @@ export function useJoint(d: JointDeps) {
             : { snaps: [], ghosts: [] };
         face = { body: f.body, index: f.index, snaps: [...snaps, ...sharp.snaps], ghosts: sharp.ghosts };
       }
-      if (hot < 0) hot = face ? nearestSnap(onScreen(), p, reach) : -1;
+      if (hot < 0) hot = face ? cycled(p, reach) : -1;
       // Off the face (on its rim, or past a corner), it stays while a snap is in reach.
       if (!f && hot < 0) face = null;
       const edge = hot < 0 ? eng.pick(p.x, p.y, "edge") : null;
@@ -331,23 +385,31 @@ export function useJoint(d: JointDeps) {
     const clearMarks = () => {
       face = null;
       hot = -1;
+      marks.part(null);
       marks.hide();
       eng.showHover(null);
       if (lens) show(null);
     };
+    /** Lights the face and snap under the pointer, with the moving part's ghost where it would land (#390). */
+    const hoverAt = (p: ScreenPoint, mods: Mods) => {
+      const t = live.current.target;
+      if (!t) return clearMarks();
+      const q = lensed(lens, p);
+      if (t === "parent" && eng.constructAt(q.x, q.y, AXES)) return clearMarks();
+      const at = look(q);
+      eng.showHover(at.edge ?? at.face);
+      if (face) marks.show(face.snaps, hot, face.ghosts);
+      else marks.hide();
+      const s = face && hot >= 0 ? face.snaps[hot] : null;
+      marks.part(s && t === "parent" ? ghostAt(face!.body, s) : null);
+      watch(p, mods);
+    };
+    const refresh = () => last && hoverAt(last.p, last.mods);
     eng.setInput({
       move: (p, mods, pressed) => {
-        const t = live.current.target;
         last = { p, mods };
         if (pressed) return;
-        if (!t) return clearMarks();
-        const q = lensed(lens, p);
-        if (t === "parent" && eng.constructAt(q.x, q.y, AXES)) return clearMarks();
-        const at = look(q);
-        eng.showHover(at.edge ?? at.face);
-        if (face) marks.show(face.snaps, hot, face.ghosts);
-        else marks.hide();
-        watch(p, mods);
+        hoverAt(p, mods);
       },
       down: (p0, mods) => {
         const t = live.current.target;
@@ -418,6 +480,47 @@ export function useJoint(d: JointDeps) {
       marks.dispose();
     };
   }, [d.active, engineOf, pickSnap, takeFrame, put]);
+
+  /**
+   * Swings the joint once through its range and back (#394), so a wrong axis or direction shows straight away. The
+   * parts move as they are, without a rebuild.
+   */
+  const playing = useRef(0);
+  const play = useCallback(() => {
+    const eng = engineOf();
+    const j = live.current.feature;
+    if (!eng || !j || wiggle(j.kind, j.lower, j.upper, 0.25) === null) return;
+    const run = ++playing.current;
+    const start = performance.now();
+    const step = () => {
+      if (run !== playing.current) return;
+      const t = Math.min(1, (performance.now() - start) / WIGGLE_MS);
+      const moves = new Map<string, Matrix4>();
+      const at = linkTransforms(deps.current.joints, { [j.id]: wiggle(j.kind, j.lower, j.upper, t) ?? 0 }, deps.current.links);
+      for (const l of deps.current.links) {
+        const m = at.get(l.id);
+        if (m) for (const id of l.parts) moves.set(id, new Matrix4().fromArray(m));
+      }
+      eng.setPose(t < 1 ? moves : null);
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, [engineOf]);
+  // A new joint, or a new kind or range, plays once by itself, unless you'd rather things kept still.
+  const wiggleKey = feature ? `${feature.id}:${feature.kind}:${feature.lower}:${feature.upper}` : null;
+  useEffect(() => {
+    if (!wiggleKey || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = window.setTimeout(play, 400);
+    return () => window.clearTimeout(t);
+  }, [wiggleKey, play]);
+  useEffect(
+    () => () => {
+      if (!playing.current) return;
+      playing.current++;
+      engineOf()?.setPose(null);
+    },
+    [engineOf, d.active],
+  );
 
   // The loupe redraws as the pointer moves in it: the view itself, magnified round where it opened.
   useEffect(() => {
@@ -545,6 +648,7 @@ export function useJoint(d: JointDeps) {
     links: d.links,
     loupe,
     loupeCanvas,
+    play,
   };
 }
 

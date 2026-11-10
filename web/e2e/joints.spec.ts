@@ -215,6 +215,32 @@ test("snap to the sharp corner behind a round, and between two snaps", async ({ 
   await expect(panel.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^-10, -10, 20 mm/ })).toBeVisible();
 });
 
+/** Line-up keys (#392) and showing how a joint moves (#394). */
+test("turn and flip a joint from the keyboard, and show how it moves", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
+  await hingeOnBase(page, "Component 1", 25);
+  const panel = page.getByRole("group", { name: "Joint options" });
+  await page.keyboard.press("q");
+  await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("90");
+  await page.keyboard.press("Shift+Q");
+  await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("0");
+  await panel.getByRole("button", { name: "Turn 90°" }).click();
+  await expect(panel.getByRole("textbox", { name: "Angle" })).toHaveValue("90");
+  await page.keyboard.press("w");
+  await expect(panel.getByRole("checkbox", { name: "Flip" })).toBeChecked();
+  await panel.getByRole("button", { name: "Show how it moves" }).click();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Made Joint 1: hinge, Component 1 on Base")).toBeVisible();
+});
+
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */
 test("pose a hinge with its slider and send it home", async ({ page }) => {
   await page.goto("/");
