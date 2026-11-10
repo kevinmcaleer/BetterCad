@@ -13,6 +13,7 @@ import {
   mat4InvertRigid,
   mat4Mul,
   linkTransforms,
+  makeComponent,
   newId,
   setExpr,
   updateJoint,
@@ -183,17 +184,35 @@ export function useJoint(d: JointDeps) {
   /** The component a body is in, or null for Base. */
   const linkOf = (body: string) => deps.current.parts.find((p) => p.id === body)?.link ?? null;
 
+  /**
+   * A body in Base picked as the part that moves becomes a component of its own, named after it, as its own step, so a
+   * joint can move it. Gives the new component.
+   */
+  const adopt = useCallback(
+    (body: string): string | null => {
+      const p = deps.current.parts.find((x) => x.id === body);
+      if (!p) return null;
+      const id = newId("f");
+      const name = makeComponent(store.get(), [body], id, undefined, undefined, p.name).features.find((f) => f.id === id)!.name;
+      deps.current.record((dd, at) => makeComponent(dd, [body], id, at, undefined, p.name), `Make ${name}`);
+      deps.current.say(`Made ${name} a component, so the joint can move it`);
+      return id;
+    },
+    [store],
+  );
+
   const changeRef = useRef(change);
   changeRef.current = change;
 
   /** Puts a snap's frame in: the moving part's, or the axis it hangs from. */
   const takeFrame = useCallback(
-    (which: JointPick, l: string | null, f: Frame) => {
-      if (which === "child") {
-        if (l === null) return deps.current.say("That body is in Base. Make it a component first: right-click it, then New component.", true);
-        if (others().some((j) => j.child === l)) return deps.current.say(`${nameOf(l)} already hangs from a joint`, true);
-      }
+    (which: JointPick, l: string | null, f: Frame, body?: string) => {
+      if (which === "child" && l !== null && others().some((j) => j.child === l)) return deps.current.say(`${nameOf(l)} already hangs from a joint`, true);
       if (live.current.target !== which) return;
+      if (which === "child" && l === null) {
+        l = body ? adopt(body) : null;
+        if (l === null) return deps.current.say("Pick a body to move", true);
+      }
       // A snap on the moving component itself gives the axis where it stands, and it hangs from what was chosen.
       if (which === "parent") return put(l !== null && l === live.current.child ? { frame: f } : { parent: l, frame: f });
       // The joint has moved its part already: the snap goes in where the part stood before.
@@ -204,20 +223,19 @@ export function useJoint(d: JointDeps) {
       const normal = back ? mat4ApplyDir(back, f.axis) : f.axis;
       put({ child: l!, from: { point, normal } });
     },
-    [nameOf, put],
+    [nameOf, put, adopt],
   );
 
   /** Picks a snap on a body: a round edge or face gives its centre and axis, a flat face its middle and normal. */
   const pickSnap = useCallback(
     (which: JointPick, ref: TopoRef) => {
       const l = linkOf(ref.body);
-      if (which === "child" && l === null) return takeFrame(which, l, { origin: [0, 0, 0], axis: [0, 0, 1] });
       void deps.current.measure([ref]).then(
         (r) => {
           const s = r?.items[0];
           const f = s && jointFrame(s);
           if (!f) return deps.current.say("Pick a face, a round edge or a straight edge for the snap", true);
-          takeFrame(which, l, f);
+          takeFrame(which, l, f, ref.body);
         },
         (e: unknown) => deps.current.say((e as { message?: string })?.message ?? "That snap could not be read", true),
       );
@@ -225,8 +243,14 @@ export function useJoint(d: JointDeps) {
     [takeFrame],
   );
 
-  /** Picks the component from the panel's list, without a snap. */
-  const pickChild = useCallback((l: string) => put({ child: l }), [put]);
+  /** Picks the component from the panel's list, without a snap. A body from the list becomes a component first. */
+  const pickChild = useCallback(
+    (l: string) => {
+      const c = deps.current.links.some((k) => k.id === l) ? l : adopt(l);
+      if (c) put({ child: c });
+    },
+    [put, adopt],
+  );
   const pickParent = useCallback((l: string | null) => put({ parent: l }), [put]);
 
   /** Clears a snap and picks it again with the next click. A made joint keeps its old axis until then. */
@@ -447,14 +471,14 @@ export function useJoint(d: JointDeps) {
           const first = half;
           half = null;
           marks.pin(null);
-          if (mid) takeFrame(t, linkOf(first.body), { origin: mid, axis: first.normal });
+          if (mid) takeFrame(t, linkOf(first.body), { origin: mid, axis: first.normal }, first.body);
           else deps.current.say("Pick two parallel faces, or a snap point and a face", true);
           return true;
         }
         half = null;
         marks.pin(null);
         if (face && s) {
-          takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal });
+          takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal }, face.body);
           return true;
         }
         const hit = at.edge ?? at.face;
@@ -617,7 +641,7 @@ export function useJoint(d: JointDeps) {
   const help = !d.active
     ? null
     : target === "child"
-      ? "Click a snap point, face or round edge on the component that moves. Shift-click two for the middle between them."
+      ? "Click a snap point, face or round edge on the part that moves. Shift-click two for the middle between them."
       : target === "parent"
         ? "Click a snap point, face, round edge or axis on the part it joins, or press Enter for Base. Shift-click two for the middle."
         : "Change any field. Enter keeps it, Esc puts it back.";
@@ -646,6 +670,8 @@ export function useJoint(d: JointDeps) {
     pickParent,
     nameOf,
     links: d.links,
+    /** Bodies in Base: picking one to move makes it a component. */
+    loose: d.parts.filter((p) => !p.link).map((p) => ({ id: p.id, name: p.name })),
     loupe,
     loupeCanvas,
     play,

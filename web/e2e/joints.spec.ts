@@ -47,9 +47,6 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
     .getByRole("toolbar", { name: "Model tools" })
     .getByRole("button", { name: /^Joint/ })
     .click();
-  // A body in Base can't move on its own.
-  await click(page, 0, 0, 20);
-  await expect(page.getByText(/That body is in Base/)).toBeVisible();
   await click(page, 25, 0, 20);
   await expect(page.getByText("Moves: Component 1")).toBeVisible();
   // Esc backs out the pick, then pick it again.
@@ -98,6 +95,30 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
   await expect(page.getByRole("button", { name: "Hide Component 1" })).toBeVisible();
   await page.getByRole("button", { name: "Show Joints" }).click();
   await expect(page.getByRole("button", { name: "Hide Joint 1" })).toBeVisible();
+});
+
+/** A body in Base picked to move becomes a component of its own, named after it, and the joint goes on. */
+test("joint a loose body: picking it makes it a component", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  const panel = page.getByRole("group", { name: "Joint options" });
+  const moving = panel.getByRole("combobox", { name: "The component that moves" });
+  await expect(moving.getByRole("option", { name: "Box 2" })).toHaveCount(1);
+  await click(page, 25, 0, 20);
+  await expect(page.getByText("Made Box 2 a component, so the joint can move it")).toBeVisible();
+  await expect(panel.getByText("Moves: Box 2")).toBeVisible();
+  await click(page, 8, 8, 20);
+  await expect(panel.getByText("Hangs from: Base")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Made Joint 1: hinge, Box 2 on Base")).toBeVisible();
 });
 
 /** Snap points (#383, #384): the hovered face shows its corners and edge middles, and a click near one takes it exactly. */
