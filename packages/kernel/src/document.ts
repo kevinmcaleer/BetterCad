@@ -2970,8 +2970,21 @@ export function updatePattern(doc: ModelDoc, id: string, change: Partial<Pattern
  * Makes a component (#171) of bodies, or an empty one to work in: "Component 1", inside `parent` when given. The bodies
  * leave any component they were in.
  */
-export function addLink(doc: ModelDoc, parts: string[], id = newId("f"), at?: number, parent?: string): ModelDoc {
-  return insert(doc, clampAt(doc, at), { id, type: "link", name: nextNamed(doc, "Component"), parts: [...parts], ...(parent ? { parent } : {}) });
+export function addLink(doc: ModelDoc, parts: string[], id = newId("f"), at?: number, parent?: string, name?: string): ModelDoc {
+  const named = name && !doc.features.some((f) => f.type === "link" && f.name === name) ? name : nextNamed(doc, "Component");
+  return insert(doc, clampAt(doc, at), { id, type: "link", name: named, parts: [...parts], ...(parent ? { parent } : {}) });
+}
+
+/**
+ * Makes a component of bodies, as the browser's New component and the Joint tool do: like `addLink`, and the bodies
+ * also leave wherever they were dragged to (#334), so the new component takes them. `name` is used when no other component
+ * has it.
+ */
+export function makeComponent(doc: ModelDoc, parts: string[], id = newId("f"), at?: number, parent?: string, name?: string): ModelDoc {
+  const owners = doc.owners;
+  const out =
+    owners && parts.some((x) => x in owners) ? { ...doc, owners: Object.fromEntries(Object.entries(owners).filter(([k]) => !parts.includes(k))) } : doc;
+  return addLink(out, parts, id, at, parent, name);
 }
 
 /**
