@@ -1,6 +1,6 @@
 import { Button, FeatureCheck, FeaturePanel, FeaturePicker, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry, type Scope } from "@bettercad/ui";
 import type { Part } from "../state/document";
-import { refText, throughAllAllowed, type AxisRef } from "../state/document";
+import { refText, throughAllAllowed, type AxisRef, type ExtrudeStart } from "../state/document";
 import { DIRECTIONS, EXTENTS, OPERATIONS, type ExtrudeSession } from "./useExtrude";
 
 /**
@@ -145,8 +145,46 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
     }));
     const extentEntry = EXTENTS.find((e) => e.id === now)!;
     const upTo = f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face";
+    const startNow = x.wantFrom ? "object" : (f.start ?? "profile");
+    const startEntry = STARTS.find((s) => s.id === startNow)!;
+    const starts: MenuEntry[] = STARTS.map((s) => ({ id: s.id, label: s.label, checked: startNow === s.id, onSelect: () => setStart(x, s.id) }));
+    const fromWhat = f.from?.kind === "vertex" ? "a point" : f.from?.kind === "edge" ? "an edge" : "a face";
     fields = (
       <>
+        <FeatureRow label="Start">
+          <MenuButton
+            label="Start"
+            entries={starts}
+            trigger={(p) => <Button {...p} label={startEntry.label} title="Where it starts: on the sketch, off it, or level with something you click" />}
+          />
+        </FeatureRow>
+        {startNow === "offset" && (
+          <NumberField
+            id="bc-ex-start"
+            label="Offset"
+            value={f.startOffset ?? 0}
+            scope={scope}
+            onChange={(v) => x.change({ startOffset: v })}
+            onCommit={(v, expr) => {
+              x.change({ startOffset: v });
+              x.setFieldExpr("startOffset", expr);
+            }}
+          />
+        )}
+        {startNow === "object" && (
+          <FeaturePicker
+            label="Object"
+            count={f.from && !x.wantFrom ? 1 : 0}
+            empty="Pick in the view"
+            picking={x.wantFrom}
+            title="What it starts level with. Click a face, edge or point in the view."
+            named={fromWhat === "a point" ? "1 point" : fromWhat === "an edge" ? "1 edge" : "1 face"}
+            onPick={() => x.pickFrom(true)}
+            onClear={() => x.pickFrom(true)}
+            clearTitle="Pick where it starts again"
+          />
+        )}
+        {x.wantFrom && <PanelNote live>Click a face, edge or point to start from</PanelNote>}
         {!to && (
           <FeatureRow label="Direction">
             <MenuButton
@@ -166,7 +204,9 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
           />
         </FeatureRow>
         {to ? (
-          <PanelNote live>{x.wantTo || !f.to ? "Click a face, edge or point" : `Up to ${upTo}, ${fmtMm(Math.abs(f.distance))}`}</PanelNote>
+          <PanelNote live>
+            {x.wantFrom ? "Then pick what it goes up to" : x.wantTo || !f.to ? "Click a face, edge or point" : `Up to ${upTo}, ${fmtMm(Math.abs(f.distance))}`}
+          </PanelNote>
         ) : all ? (
           f.direction === "one" && (
             <FeatureRow label="Side">
@@ -229,6 +269,21 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
       {error && !(f.type === "revolve" && !f.axis) && <PanelNote tone="error">{error}</PanelNote>}
     </FeaturePanel>
   );
+}
+
+const STARTS: { id: ExtrudeStart; label: string; title: string }[] = [
+  { id: "profile", label: "Profile plane", title: "Start on the sketch's plane" },
+  { id: "offset", label: "Offset", title: "Start a set distance off the sketch's plane" },
+  { id: "object", label: "Object", title: "Start level with a face, edge or point you click" },
+];
+
+/** Picks where it starts. Object waits for a click on a face, edge or point; Offset starts on the plane until a distance is typed. */
+function setStart(x: ExtrudeSession, st: ExtrudeStart) {
+  const f = x.feature;
+  if (f?.type !== "extrude") return;
+  x.pickFrom(st === "object" && !f.from);
+  if (st === "object" && !f.from) return;
+  x.change(st === "profile" ? { start: undefined } : st === "offset" ? { start: st, startOffset: f.startOffset ?? 0 } : { start: st });
 }
 
 const fmtMm = (v: number) => `${Math.round(v * 100) / 100} mm`;

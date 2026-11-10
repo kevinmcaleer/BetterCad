@@ -18,6 +18,7 @@ import { frameY, toWorld, type Frame, type Profile } from "@bettercad/sketch";
 import {
   extent,
   profilesMiddle,
+  startDistance,
   throughAllAllowed,
   toPartLocal,
   upToDistance,
@@ -212,10 +213,23 @@ export function ghostGeometry(frame: Frame, shapes: Profile[], from: number, to:
  * How far along the sketch's normal the ghost of a drag goes: the step's own extent, with through all cut down to
  * `reach` (the arrow's length) so it doesn't fill the view.
  */
-export function ghostSpan(f: ExtrudeFeature, reach: number): { from: number; to: number } {
+export function ghostSpan(f: ExtrudeFeature, reach: number, start = 0): { from: number; to: number } {
   const all = f.extent === "all" && throughAllAllowed(f.operation);
   const e = extent(f.direction, f.distance, f.distance2, all);
-  return all ? { from: Math.max(-reach, e.from), to: Math.min(reach, e.to) } : e;
+  return all ? { from: Math.max(-reach, e.from) + start, to: Math.min(reach, e.to) + start } : { from: e.from + start, to: e.to + start };
+}
+
+/**
+ * Where an extrude starts along its sketch's normal, mm, with the bodies where they are shown; 0 (the sketch's plane)
+ * while its start object is missing.
+ */
+export function startOf(f: ExtrudeFeature, frame: Frame, picked: Profile[], parts: Part[], moves?: Map<string, Mat4>): number {
+  if (!f.start || f.start === "profile" || !picked.length) return 0;
+  const s = startDistance(f, frame, profilesMiddle(picked), (id) => {
+    const p = parts.find((x) => x.id === id);
+    return p && shownPart(p, moves);
+  });
+  return typeof s === "number" ? s : 0;
 }
 
 /** Distance from a point to a segment, in screen pixels. */
@@ -227,7 +241,7 @@ export function segmentDistance(p: ScreenPoint, a: ScreenPoint, b: ScreenPoint):
 }
 
 /**
- * Where Extrude's arrow goes: from the middle of the picked shapes on the sketch's plane to the end the drag moves,
+ * Where Extrude's arrow goes: from the middle of the picked shapes on the plane it starts from (`start` mm off the sketch's) to the end the drag moves,
  * pointing the way it goes. `length` is that end along the sketch's normal, signed; through all has no end, so its
  * arrow is `reach` long on its side.
  */
@@ -236,10 +250,13 @@ export function arrowOf(
   frame: Frame,
   picked: Profile[],
   reachAt: number | ((base: V3) => number),
+  start = 0,
 ): { base: V3; end: V3; dir: V3; length: number } {
-  const base = toWorld(frame, profilesMiddle(picked)) as V3;
-  const reach = typeof reachAt === "number" ? reachAt : reachAt(base);
   const n = frame.normal;
+  const mid = toWorld(frame, profilesMiddle(picked));
+  // It starts where the extrude does: on the sketch's plane, or off it by the start's offset.
+  const base = [0, 1, 2].map((i) => mid[i]! + n[i]! * start) as V3;
+  const reach = typeof reachAt === "number" ? reachAt : reachAt(base);
   const all = f.extent === "all" && throughAllAllowed(f.operation);
   const one = f.direction === "one" || f.extent === "to";
   let length: number;
@@ -288,6 +305,7 @@ export function upToOf(
   frame: Frame,
   picked: Profile[],
   moves?: Map<string, Mat4>,
+  onPlane = false,
 ): { to: ExtrudeUpTo; reach: number } | string | null {
   // The picked point is where the body is shown, so it is kept in the body's own terms from there.
   part = shownPart(part, moves);
@@ -301,7 +319,7 @@ export function upToOf(
     if (pts?.length) at = { point: [0, 1, 2].map((i) => pts.reduce((a, q) => a + q[i]!, 0) / pts.length) as V3 };
   }
   if (!at) return null;
-  const reach = upToDistance(frame, profilesMiddle(picked), at);
+  const reach = upToDistance(frame, profilesMiddle(picked), at, onPlane);
   if (typeof reach === "string") return reach;
   return {
     reach,

@@ -35,6 +35,8 @@ function session(f: Partial<ExtrudeFeature>, targets: string[] = [], wantTo = fa
     help: "",
     change: vi.fn(),
     setExtent: vi.fn(),
+    pickFrom: vi.fn(),
+    wantFrom: false,
     flip: vi.fn(),
     wantTo,
     pickingTo: wantTo || feature.extent === "to",
@@ -75,6 +77,41 @@ describe("ExtrudeBar", () => {
     await userEvent.click(within(panel).getByRole("button", { name: "Fold the settings away" }));
     expect(within(panel).queryByText("Operation")).toBeNull();
     expect(within(panel).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+  });
+
+  it("picks where it starts: the profile plane, an offset or an object", async () => {
+    const x = session({}, ["a"]);
+    const { rerender } = render(<ExtrudeBar x={x} parts={parts} />);
+    await userEvent.click(screen.getByRole("button", { name: "Profile plane" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Object" }));
+    expect(x.pickFrom).toHaveBeenCalledWith(true);
+    // An offset is a distance, which can be a parameter.
+    const off = session({ start: "offset", startOffset: 4 }, ["a"]);
+    rerender(<ExtrudeBar x={off} parts={parts} />);
+    expect(screen.getByRole("textbox", { name: "Offset (mm)" })).toHaveValue("4");
+    // An object start says what it starts from, and picks again from the panel.
+    const obj = session({ start: "object", from: { body: "a", kind: "face", point: [0, 0, 0], normal: [0, 0, 1] } }, ["a"]);
+    rerender(<ExtrudeBar x={obj} parts={parts} />);
+    await userEvent.click(within(screen.getByRole("group", { name: "Object" })).getByRole("button", { name: "1 face" }));
+    expect(obj.pickFrom).toHaveBeenCalledWith(true);
+  });
+
+  it("starts the arrow and the drag ghost where the extrude starts", () => {
+    const f = session({ distance: 5, direction: "one" }).feature!;
+    const frame = { origin: [0, 0, 0] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
+    const square = {
+      points: [
+        [-1, -1],
+        [1, -1],
+        [1, 1],
+        [-1, 1],
+      ] as [number, number][],
+      holes: [],
+    } as unknown as Parameters<typeof arrowOf>[2][number];
+    const a = arrowOf(f, frame, [square], 20, 3);
+    expect(a.base[2]).toBeCloseTo(3);
+    expect(a.end[2]).toBeCloseTo(8);
+    expect(ghostSpan(f, 20, 3)).toEqual({ from: 3, to: 8 });
   });
 
   it("revolve: picks the axis by name, shows it picked, and clears it with the ×", async () => {
