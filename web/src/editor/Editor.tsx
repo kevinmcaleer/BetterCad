@@ -163,7 +163,6 @@ import { go } from "../cloud/route";
 import { useTour } from "../tour/Tour";
 import { COURSE_URL } from "../help/about";
 import { actionLog, editSummary } from "../report/actionLog";
-import { browserName } from "../report/browser";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { useWhatsNew } from "../whatsnew/useWhatsNew";
@@ -172,7 +171,7 @@ import { useStageNotice } from "../stage/useStageNotice";
 import { saveBcad } from "@bettercad/kernel/bcad";
 import type { BodyMass, Clash, ExportFormat, Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
-import { renderSession, type RenderSession, type RenderStyle, type SaveSize } from "../render/session";
+import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
@@ -196,6 +195,8 @@ const SketchBars = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchBar
 const SketchLabels = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchLabels })));
 const SketchPickBar = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchPickBar })));
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
+/** Tools that work on the model as posed (see poseOn). */
+const POSED_TOOLS = new Set(["select", "sketch", "extrude", "revolve"]);
 const MeasureBar = lazy(() => import("../measure/MeasureBar").then((m) => ({ default: m.MeasureBar })));
 // The command palette loads the first time it opens, to keep it out of first paint.
 const CommandPalette = lazy(() => import("./CommandPalette").then((m) => ({ default: m.CommandPalette })));
@@ -487,7 +488,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // follows wherever you orbited it when you come back.
   const openRender = (style?: RenderStyle) => {
     renderCam.current = vp.ref.current?.camera() ?? null;
-    setRender(renderSession(style));
+    // The session's settings load with the first render, to keep them out of first paint.
+    void import("../render/session").then((m) => setRender(m.renderSession(style)));
   };
   const closeRender = () => {
     const c = renderCam.current;
@@ -524,13 +526,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // Drive links (#194): the pose keeps the driving joints' values; the driven ones follow.
   const shownPose = useMemo(() => resolvePose(built.drives, pose), [built.drives, pose]);
   const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose, built.components), [built.joints, shownPose, built.components]);
-  /** Posed (Select tool, not sketching), a component's sketches and construction ride on it with its bodies. */
-  const poseOn = tool === "select";
+  /**
+   * Posed, a component's bodies, sketches and construction ride on it. The model stays posed while you sketch, extrude
+   * or revolve, as in Fusion, so what you draw lands where you see it; other tools work on it at home.
+   */
+  const poseOn = POSED_TOOLS.has(tool);
   const posedSketches = useMemo(() => {
     const m = new Map<string, Mat4>();
     if (poseOn) for (const s of built.sketches) if (s.component && linkMoves.has(s.component)) m.set(s.id, linkMoves.get(s.component)!);
     return m;
   }, [poseOn, built.sketches, linkMoves]);
+  /** Each posed body's move from home, so a face or point picked on it can be taken back home. */
+  const bodyMoves = useMemo(() => {
+    const m = new Map<string, Mat4>();
+    if (poseOn) for (const l of built.links) for (const id of l.parts) if (linkMoves.has(l.id)) m.set(id, linkMoves.get(l.id)!);
+    return m;
+  }, [poseOn, built.links, linkMoves]);
   const shownSketches = useMemo(() => built.sketches.filter((s) => !doc.looks[s.id]?.hidden), [built.sketches, doc.looks]);
   const browserConstruct = useMemo(
     () =>
@@ -561,6 +572,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     built: shownSketches,
     placed: built.sketches,
     posed: posedSketches,
+    bodyMoves,
     view: vp.ref,
     picking: tool === "sketch",
     onStarted: () => setTool("select"),
@@ -580,6 +592,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     record,
     doc,
     sketches: built.sketches,
+    posed: posedSketches,
+    bodyMoves,
     parts,
     bounds,
     selection,
@@ -597,6 +611,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     record,
     doc,
     sketches: built.sketches,
+    posed: posedSketches,
+    bodyMoves,
     parts,
     bounds,
     selection,
@@ -969,21 +985,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, [gizmoTool, linkMoves, posing, hasIk, ikDrag, vp.ref]);
   useEffect(() => {
     const moves = new Map<string, Matrix4>();
-    if (posing)
+    if (poseOn)
       for (const l of built.links) {
         const m = linkMoves.get(l.id);
         if (m) for (const id of l.parts) moves.set(id, new Matrix4().fromArray(m));
       }
     vp.ref.current?.engine()?.setPose(moves);
-  }, [posing, linkMoves, built.links, vp.ref]);
+  }, [poseOn, linkMoves, built.links, vp.ref]);
 
   // Joint glyphs in the view (#172), each with its own eye in the browser (saved in looks, as a sketch's is). They ride on
   // the pose; hiding one hides its arrow, not the parts it moves.
   const browserJoints = useMemo(() => built.joints.map((j) => ({ ...j, hidden: !!doc.looks[j.id]?.hidden })), [built.joints, doc.looks]);
   useEffect(() => {
-    const frames = posing ? posedFrames(built.joints, linkMoves) : null;
+    const frames = poseOn ? posedFrames(built.joints, linkMoves) : null;
     vp.ref.current?.engine()?.setJoints(browserJoints.filter((j) => !j.hidden).map((j) => frames?.get(j.id) ?? j));
-  }, [built.joints, browserJoints, vp.ref, posing, linkMoves]);
+  }, [built.joints, browserJoints, vp.ref, poseOn, linkMoves]);
 
   // Play (#194): turn a driving joint through its range, out and back (a wheel a whole turn), to watch the drive. It
   // poses live only, and Esc or Stop puts the pose back.
@@ -1074,10 +1090,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     () =>
       built.construct.flatMap((c) => {
         if (doc.looks[c.id]?.hidden) return [];
-        const m = posing && c.component ? linkMoves.get(c.component) : undefined;
+        const m = poseOn && c.component ? linkMoves.get(c.component) : undefined;
         return [m ? { ...c, geo: moveGeo(m, c.geo) } : c];
       }),
-    [built.construct, doc.looks, posing, linkMoves],
+    [built.construct, doc.looks, poseOn, linkMoves],
   );
   const patternAxis =
     tool === "pattern" && pattern.feature?.kind === "circle" && !pattern.feature.axisStep ? `origin:${pattern.feature.axis.toUpperCase()}` : null;
@@ -2682,11 +2698,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     if (centresShown)
       for (const [id, l] of linkMass) {
         if (!(l.props.mass > 0)) continue;
-        const m = posing && id ? linkMoves.get(id) : undefined;
+        const m = poseOn && id ? linkMoves.get(id) : undefined;
         list.push(m ? mat4Apply(m, l.props.com) : l.props.com);
       }
     vp.ref.current?.engine()?.setCentres(list.length ? list : null);
-  }, [centresShown, linkMass, posing, linkMoves, vp.ref]);
+  }, [centresShown, linkMass, poseOn, linkMoves, vp.ref]);
   const massInfo = useMemo(() => {
     if (!hasLinks || !selectedParts.length) return undefined;
     const linkIds = new Set(selectedParts.map((p) => p.link ?? ""));
@@ -3950,7 +3966,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             prefill={report.prefill}
             onClose={() => setReport(null)}
             model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
-            info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
+            info={() => ({ app: APP_VERSION, error: lastError(), actions: actionLog.list() })}
             say={say}
           />
         </Suspense>

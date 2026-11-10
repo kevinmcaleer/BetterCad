@@ -1,5 +1,6 @@
-import { SketchIndex, planeFrame, toWorld, type Sketch } from "@bettercad/sketch";
-import { bodyRef, type AxisRef, type Part } from "../state/document";
+import { SketchIndex, planeFrame, toWorld, type Frame, type Sketch } from "@bettercad/sketch";
+import { bodyRef, type AxisRef, type Mat4, type Part } from "../state/document";
+import { shownPart } from "./posed";
 import type { Engine, ScreenPoint } from "../viewport/engine";
 import type { Pick } from "../viewport/ids";
 import type { OverlayCurve } from "../sketch/overlay";
@@ -41,14 +42,23 @@ const AXIS_ONLY: ReadonlySet<"axis"> = new Set(["axis"]);
  * The axis under the pointer while Revolve wants one: an origin or construction axis first, then a line of the
  * step's sketch, then a straight edge of a body (not the one the revolve makes).
  */
-export function axisAt(eng: Engine, p: ScreenPoint, own: string, sk: Sketch | null, parts: Part[]): AxisHit | null {
+export function axisAt(
+  eng: Engine,
+  p: ScreenPoint,
+  own: string,
+  sk: Sketch | null,
+  parts: Part[],
+  shown?: Frame | null,
+  moves?: Map<string, Mat4>,
+): AxisHit | null {
   const shape = eng.constructAt(p.x, p.y, AXIS_ONLY);
   if (shape) {
     if (shape.startsWith("origin:")) return { axis: { kind: "ref", ref: { origin: shape.slice(7) as "X" | "Y" | "Z" } }, shape };
     return { axis: { kind: "ref", ref: { step: shape } }, shape };
   }
   if (sk) {
-    const frame = planeFrame(sk.plane);
+    // Where the sketch and bodies are shown: carried by their components' pose while the model is posed.
+    const frame = shown ?? planeFrame(sk.plane);
     const idx = new SketchIndex(sk);
     let best: { id: string; d: number } | null = null;
     for (const e of sk.entities) {
@@ -60,7 +70,8 @@ export function axisAt(eng: Engine, p: ScreenPoint, own: string, sk: Sketch | nu
     if (best) return { axis: { kind: "line", id: best.id }, line: best.id };
   }
   const hit = eng.pick(p.x, p.y, "edge");
-  const part = hit && parts.find((x) => x.id === hit.body);
+  const found = hit && parts.find((x) => x.id === hit.body);
+  const part = found && shownPart(found, moves);
   if (!hit || !part || hit.body === own) return null;
   const line = straightEdge(eng.edgePoints(hit.body, hit.index) ?? []);
   if (!line) return null;

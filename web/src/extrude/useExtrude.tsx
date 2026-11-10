@@ -5,6 +5,7 @@ import {
   addExtrude,
   addRevolve,
   extent,
+  moveFrame,
   newId,
   targetsOf,
   throughAllAllowed,
@@ -24,6 +25,7 @@ import {
   type ExtrudeFeature,
   type ExtrudeOperation,
   type ExtrudeParams,
+  type Mat4,
   type ModelDoc,
   type Part,
 } from "../state/document";
@@ -54,6 +56,10 @@ export interface ExtrudeDeps {
   doc: ModelDoc;
   /** Sketches built up to the timeline marker, in order. */
   sketches: { id: string; name: string; sketch: Sketch }[];
+  /** Moves from home by sketch id while the model is posed: the shapes are picked where the sketch is shown. */
+  posed?: Map<string, Mat4>;
+  /** Moves from home by body id while the model is posed, so what is picked on a body is kept in its own terms. */
+  bodyMoves?: Map<string, Mat4>;
   parts: Part[];
   /** The built bodies' boxes in the world, for the bodies a cut touches. */
   bounds?: Map<string, Box>;
@@ -120,6 +126,13 @@ type ProfileFeature = ExtrudeFeature | RevolveFeature;
 type Params = Partial<ExtrudeParams> & Partial<RevolveParams>;
 
 const outlineFill = (pr: Profile, shade: OverlayFill["shade"]): OverlayFill => ({ outer: pr.points, holes: pr.holes.map((h) => h.points), shade });
+
+/** A sketch's frame where it is shown: carried by its component's pose while the model is posed. */
+function shownFrame(s: { id: string; sketch: Sketch }, posed?: Map<string, Mat4>): Frame {
+  const f = planeFrame(s.sketch.plane);
+  const m = posed?.get(s.id);
+  return m ? moveFrame(m, f) : f;
+}
 
 export function useExtrude(d: ExtrudeDeps) {
   const { store, say } = d;
@@ -197,7 +210,7 @@ export function useExtrude(d: ExtrudeDeps) {
       const only = live.current.feature?.sketch;
       for (const s of [...L.sketches].reverse()) {
         if (only && s.id !== only) continue;
-        const f = planeFrame(s.sketch.plane);
+        const f = shownFrame(s, L.posed);
         const w = eng.rayPlane(p.x, p.y, f.origin, f.normal);
         if (!w) continue;
         const xy = toSketch(f, w);
@@ -366,7 +379,9 @@ export function useExtrude(d: ExtrudeDeps) {
       const f = live.current.feature;
       const m = axisMod.current;
       if (!eng || !m || f?.type !== "revolve") return null;
-      return m.axisAt(eng, p, f.body.id, deps.current.sketches.find((x) => x.id === f.sketch)?.sketch ?? null, deps.current.parts);
+      const L = deps.current;
+      const s = L.sketches.find((x) => x.id === f.sketch);
+      return m.axisAt(eng, p, f.body.id, s?.sketch ?? null, L.parts, s && shownFrame(s, L.posed), L.bodyMoves);
     },
     [engineOf],
   );
@@ -392,7 +407,7 @@ export function useExtrude(d: ExtrudeDeps) {
   /** The sketch frame an extrude's shapes are on. */
   const frameOfFeature = useCallback((f: ProfileFeature): Frame => {
     const s = deps.current.sketches.find((x) => x.id === f.sketch);
-    return s ? planeFrame(s.sketch.plane) : { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] };
+    return s ? shownFrame(s, deps.current.posed) : { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] };
   }, []);
 
   /** The face, edge or corner under the pointer that To object could end at: corners first, then edges, then faces. */
@@ -421,7 +436,8 @@ export function useExtrude(d: ExtrudeDeps) {
       const s = L.sketches.find((x) => x.id === f.sketch);
       const m = mod.current;
       if (!s || !m) return;
-      const r = m.upToOf(eng, hit, p, part, planeFrame(s.sketch.plane), pickedOf(f));
+      // Both where they are shown, so the point it ends at is kept in the body's own terms.
+      const r = m.upToOf(eng, hit, p, part, shownFrame(s, L.posed), pickedOf(f), L.bodyMoves);
       if (!r) return;
       if (typeof r === "string") return say(r, true);
       const { to, reach } = r;
@@ -585,7 +601,7 @@ export function useExtrude(d: ExtrudeDeps) {
     const list = [...bySketch].map(([id, fills]) => {
       const s = deps.current.sketches.find((x) => x.id === id);
       const o = new SketchOverlay(eng);
-      if (s) o.update({ frame: planeFrame(s.sketch.plane), curves: curves.get(id) ?? [], points: [], fills });
+      if (s) o.update({ frame: shownFrame(s, deps.current.posed), curves: curves.get(id) ?? [], points: [], fills });
       return o;
     });
     return () => list.forEach((o) => o.dispose());
