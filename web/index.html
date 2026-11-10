@@ -21,9 +21,73 @@
         }
       })();
     </script>
+    <style>
+      /* First-load splash inside #root: React replaces it when the app mounts. Tokens only, no literal colours. */
+      .bc-splash {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: var(--bc-space-8, 16px);
+        background: var(--bc-color-viewport, Canvas);
+        color: var(--bc-color-muted, GrayText);
+        font: var(--bc-type-ui-size, 13px) / 1.35 var(--bc-font-sans, system-ui, sans-serif);
+        animation: bc-splash-in 0.2s 0.3s both;
+      }
+      .bc-splash-logo {
+        width: 48px;
+        height: 48px;
+        color: var(--bc-color-accent, currentColor);
+      }
+      .bc-splash-spinner {
+        width: 24px;
+        height: 24px;
+        border: 3px solid var(--bc-color-line, transparent);
+        border-top-color: var(--bc-color-accent, currentColor);
+        border-radius: 50%;
+        animation: bc-splash-spin 0.8s linear infinite;
+      }
+      @keyframes bc-splash-in {
+        from {
+          opacity: 0;
+        }
+      }
+      @keyframes bc-splash-spin {
+        to {
+          transform: rotate(1turn);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bc-splash {
+          animation: none;
+        }
+        .bc-splash-spinner {
+          animation: none;
+          border-color: var(--bc-color-accent, currentColor);
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="bc-splash" role="status">
+        <svg
+          class="bc-splash-logo"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m12 2 8 4.5v9L12 20l-8-4.5v-9zM12 11l8-4.5M12 11 4 6.5M12 11v9" />
+        </svg>
+        <div class="bc-splash-spinner" aria-hidden="true"></div>
+        <span>Loading BetterCad</span>
+      </div>
+    </div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
