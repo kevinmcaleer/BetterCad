@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { across, edgeCircle, faceSnaps, nearestSnap, type V3 } from "./snapPoints";
+import { across, between, edgeCircle, faceSnaps, nearestSnap, type V3 } from "./snapPoints";
 
 const ring = (c: V3, r: number, n = 24): V3[] =>
   Array.from({ length: n + 1 }, (_, i) => {
@@ -95,5 +95,19 @@ describe("nearestSnap", () => {
     ];
     expect(nearestSnap(pts, { x: 7, y: 0 }, 12)).toBe(1);
     expect(nearestSnap(pts, { x: 40, y: 0 }, 12)).toBe(-1);
+  });
+});
+
+describe("between", () => {
+  it("halves two snap points", () => {
+    expect(between({ point: [0, 0, 0], normal: [0, 0, 1], plane: false }, { point: [10, 4, 2], normal: [1, 0, 0], plane: false })).toEqual([5, 2, 1]);
+  });
+  it("finds the midplane of two parallel faces, level with the first", () => {
+    const a = { point: [0, 3, 0] as V3, normal: [1, 0, 0] as V3, plane: true };
+    expect(between(a, { point: [10, 0, 5], normal: [-1, 0, 0], plane: true })).toEqual([5, 3, 0]);
+    expect(between(a, { point: [10, 0, 5], normal: [0, 1, 0], plane: true })).toBeNull();
+  });
+  it("goes halfway from a snap point to a face", () => {
+    expect(between({ point: [0, 0, 0], normal: [0, 0, 1], plane: false }, { point: [3, 3, 8], normal: [0, 0, -1], plane: true })).toEqual([0, 0, 4]);
   });
 });

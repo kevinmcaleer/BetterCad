@@ -27,7 +27,8 @@ import { isTyping } from "../state/commands";
 import { loupeAuto } from "../state/loupePref";
 import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "../sketch/loupe";
 import { SnapMarks } from "./snapMarks";
-import { faceSnaps, nearestSnap, type SnapPoint, type V3 } from "./snapPoints";
+import { between, facing, faceSnaps, nearestSnap, type SnapPoint, type V3 } from "./snapPoints";
+import { sharpCorners } from "./sharpCorners";
 
 /**
  * The Joint tool (#172), one panel like the Projects scene editor's: the component that moves and its snap, the one it
@@ -243,7 +244,11 @@ export function useJoint(d: JointDeps) {
     // The face under the pointer goes pale and shows its snap points (#383, #384); the nearest one within reach is hot.
     const marks = new SnapMarks(eng);
     eng.setHoverFill("snap-face");
-    let face: { body: string; index: number; snaps: SnapPoint[] } | null = null;
+    let face: { body: string; index: number; snaps: SnapPoint[]; ghosts: [V3, V3][] } | null = null;
+    /** The first of two Shift-clicks (#388): a snap point, or a flat face as its plane. */
+    let half: { body: string; point: V3; normal: V3; plane: boolean } | null = null;
+    /** Each face's edge numbers on the body last pointed at, for finding cut-away corners (#389). */
+    let topo: { body: string; faceEdges: number[][] | null } | null = null;
     let hot = -1;
     // The loupe: while it is open the pointer moves at its own speed inside it, so in the view it moves `zoom` times
     // slower, and picks reach only as far as the zoom allows.
@@ -297,14 +302,27 @@ export function useJoint(d: JointDeps) {
     /** The face and snap under a point (already lensed), and the edge there when no snap is in reach. */
     const look = (p: ScreenPoint) => {
       const f = eng.pick(p.x, p.y, "face");
-      if (f && (f.body !== face?.body || f.index !== face.index)) {
+      const reach = lens ? Math.max(2, SNAP_REACH / lens.zoom) : SNAP_REACH;
+      // A snap of the face already shown keeps it, even over the next face (a cut-away corner sits past a round).
+      hot = face ? nearestSnap(onScreen(), p, reach) : -1;
+      if (f && hot < 0 && (f.body !== face?.body || f.index !== face.index)) {
         const info = eng.faceInfo(f.body, f.index);
         const edges = (eng.faceEdges(f.body, f.index) ?? []).map((e) => e.points);
         const toward = eng.ray(p.x, p.y).dir.map((v) => -v) as V3;
-        face = { body: f.body, index: f.index, snaps: info ? faceSnaps(info, edges, toward) : [] };
+        const snaps = info ? faceSnaps(info, edges, toward) : [];
+        if (topo?.body !== f.body) topo = { body: f.body, faceEdges: eng.faceEdgeIds(f.body) };
+        const sharp =
+          info?.flat && topo.faceEdges && snaps[0]
+            ? sharpCorners(
+                { faceEdges: topo.faceEdges, face: (i) => eng.faceInfo(f.body, i), edge: (i) => eng.edgePoints(f.body, i) },
+                f.index,
+                snaps[0].normal,
+                snaps[0].x,
+              )
+            : { snaps: [], ghosts: [] };
+        face = { body: f.body, index: f.index, snaps: [...snaps, ...sharp.snaps], ghosts: sharp.ghosts };
       }
-      const reach = lens ? Math.max(2, SNAP_REACH / lens.zoom) : SNAP_REACH;
-      hot = face ? nearestSnap(onScreen(), p, reach) : -1;
+      if (hot < 0) hot = face ? nearestSnap(onScreen(), p, reach) : -1;
       // Off the face (on its rim, or past a corner), it stays while a snap is in reach.
       if (!f && hot < 0) face = null;
       const edge = hot < 0 ? eng.pick(p.x, p.y, "edge") : null;
@@ -327,11 +345,11 @@ export function useJoint(d: JointDeps) {
         if (t === "parent" && eng.constructAt(q.x, q.y, AXES)) return clearMarks();
         const at = look(q);
         eng.showHover(at.edge ?? at.face);
-        if (face) marks.show(face.snaps, hot);
+        if (face) marks.show(face.snaps, hot, face.ghosts);
         else marks.hide();
         watch(p, mods);
       },
-      down: (p0) => {
+      down: (p0, mods) => {
         const t = live.current.target;
         if (!t) return false;
         const p = lensed(lens, p0);
@@ -347,6 +365,32 @@ export function useJoint(d: JointDeps) {
         const at = look(p);
         const s = face && hot >= 0 ? face.snaps[hot] : null;
         if (lens) show(null);
+        if (mods.shift && face) {
+          // Shift-click two snaps or flat faces: the snap goes in halfway between them (#388).
+          const flat = !s && !at.edge ? eng.faceInfo(face.body, face.index) : null;
+          const toward = eng.ray(p.x, p.y).dir.map((v) => -v) as V3;
+          const pick = s
+            ? { body: face.body, point: s.point, normal: s.normal, plane: false }
+            : flat?.flat
+              ? { body: face.body, point: flat.centroid, normal: facing(flat.normal, toward), plane: true }
+              : null;
+          if (!pick) return true;
+          if (!half) {
+            half = pick;
+            marks.pin(pick.point);
+            deps.current.say("Shift-click a second snap point or face for the middle between them");
+            return true;
+          }
+          const mid = between(half, pick);
+          const first = half;
+          half = null;
+          marks.pin(null);
+          if (mid) takeFrame(t, linkOf(first.body), { origin: mid, axis: first.normal });
+          else deps.current.say("Pick two parallel faces, or a snap point and a face", true);
+          return true;
+        }
+        half = null;
+        marks.pin(null);
         if (face && s) {
           takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal });
           return true;
@@ -470,9 +514,9 @@ export function useJoint(d: JointDeps) {
   const help = !d.active
     ? null
     : target === "child"
-      ? "Click a face or a round edge on the component that moves, where it joins."
+      ? "Click a snap point, face or round edge on the component that moves. Shift-click two for the middle between them."
       : target === "parent"
-        ? "Click a face, a round edge or an axis on the part it joins, or press Enter for Base."
+        ? "Click a snap point, face, round edge or axis on the part it joins, or press Enter for Base. Shift-click two for the middle."
         : "Change any field. Enter keeps it, Esc puts it back.";
 
   return {
