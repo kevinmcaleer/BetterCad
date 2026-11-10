@@ -14,8 +14,10 @@ export interface SnapPoint {
   /** Across the face, square to `normal`, for the X of the drawn axes. */
   x: V3;
   kind: SnapKind;
-  /** Where a bevel or round cut the corner away (#389): drawn as a hollow ring. */
+  /** Where a bevel or round cut the corner away (#389), or a mesh's box corner (#395): drawn as a hollow ring. */
   sharp?: boolean;
+  /** A round hole's centre on a flat face: its radius, for lining up hole patterns (#393). */
+  hole?: number;
 }
 
 /** What the view says about a face (`Engine.faceInfo` and `Engine.faceEdges`). */
@@ -73,7 +75,7 @@ function circle3(a: V3, b: V3, c: V3): { centre: V3; axis: V3 } | null {
 }
 
 /** The circle an edge's points lie on (a whole circle or an arc), or null for any other curve. */
-export function edgeCircle(points: V3[], tol: number): { centre: V3; axis: V3; radius: number; closed: boolean } | null {
+export function edgeCircle(points: V3[], tol: number): { centre: V3; axis: V3; radius: number; closed: boolean; sweep: number } | null {
   if (points.length < 4) return null;
   const closed = len(sub(points[0]!, points[points.length - 1]!)) <= tol;
   const n = closed ? points.length - 1 : points.length;
@@ -81,11 +83,17 @@ export function edgeCircle(points: V3[], tol: number): { centre: V3; axis: V3; r
   if (!c) return null;
   const radius = len(sub(points[0]!, c.centre));
   if (radius < tol) return null;
-  for (const p of points) {
+  let sweep = 0;
+  points.forEach((p, i) => {
     const v = sub(p, c.centre);
-    if (Math.abs(len(v) - radius) > Math.max(tol, radius * 0.01) || Math.abs(dot(v, c.axis)) > tol) return null;
-  }
-  return { ...c, radius, closed };
+    if (Math.abs(len(v) - radius) > Math.max(tol, radius * 0.01) || Math.abs(dot(v, c.axis)) > tol) sweep = NaN;
+    if (i) {
+      const u = sub(points[i - 1]!, c.centre);
+      sweep += Math.atan2(len(cross(u, v)), dot(u, v));
+    }
+  });
+  if (Number.isNaN(sweep)) return null;
+  return { ...c, radius, closed, sweep: closed ? 360 : (sweep * 180) / Math.PI };
 }
 
 /**
@@ -98,15 +106,16 @@ export function faceSnaps(face: FaceShape, edges: V3[][], towards: V3, tol = 1e-
   let normal = unit(face.normal) ?? [0, 0, 1];
   if (face.flat && dot(normal, towards) < 0) normal = mul(normal, -1);
   const x = across(normal, face.edge);
-  const push = (point: V3, kind: SnapKind, n = normal, ax = x) => {
+  const push = (point: V3, kind: SnapKind, n = normal, ax = x, hole?: number) => {
     if (out.some((s) => len(sub(s.point, point)) <= tol)) return;
-    out.push({ point: tidy(point), normal: tidy(n), x: tidy(ax), kind });
+    out.push({ point: tidy(point), normal: tidy(n), x: tidy(ax), kind, ...(hole ? { hole } : {}) });
   };
   for (const pts of edges) {
     if (pts.length < 2) continue;
     const c = edgeCircle(pts, tol * 10);
     if (c) {
-      if (face.flat) push(c.centre, "centre");
+      // A hole: a whole circle, or one of the two halves OCCT can split it into.
+      if (face.flat) push(c.centre, "centre", normal, x, c.sweep >= 179 ? Math.round(c.radius * 1e6) / 1e6 : undefined);
       else {
         // A round edge on a curved face: its centre, facing away from the rest of the face.
         const facing = dot(sub(c.centre, face.centroid), c.axis) >= 0 ? c.axis : mul(c.axis, -1);
@@ -129,6 +138,38 @@ export function faceSnaps(face: FaceShape, edges: V3[][], towards: V3, tol = 1e-
   }
   if (face.flat) push(face.centroid, "middle");
   return out;
+}
+
+/**
+ * Snaps for an imported mesh (#395), which has no real faces or edges to snap to: its box's face that `normal` points
+ * through most (the hovered triangle's, facing the viewer), with that face's middle and corners and the box's centre,
+ * all facing out of it. `ghosts` are the box's twelve edges, to show where the corners are.
+ */
+export function boxSnaps(min: V3, max: V3, normal: V3): { snaps: SnapPoint[]; ghosts: [V3, V3][] } {
+  const k = [0, 1, 2].reduce((a, b) => (Math.abs(normal[b]!) > Math.abs(normal[a]!) ? b : a), 0);
+  const up = normal[k]! >= 0;
+  const n: V3 = [0, 0, 0];
+  n[k] = up ? 1 : -1;
+  const x = across(n);
+  const [i, j] = [0, 1, 2].filter((a) => a !== k) as [number, number];
+  const mid = mul(add(min, max), 0.5);
+  const at = (a: number, b: number, c: number): V3 => {
+    const p: V3 = [0, 0, 0];
+    p[i] = a;
+    p[j] = b;
+    p[k] = c;
+    return tidy(p);
+  };
+  const level = up ? max[k]! : min[k]!;
+  const snaps: SnapPoint[] = [
+    { point: at(mid[i]!, mid[j]!, level), normal: n, x, kind: "middle" },
+    ...[min[i]!, max[i]!].flatMap((a) => [min[j]!, max[j]!].map((b): SnapPoint => ({ point: at(a, b, level), normal: n, x, kind: "corner", sharp: true }))),
+    { point: tidy(mid), normal: n, x, kind: "centre" },
+  ];
+  const ghosts: [V3, V3][] = [];
+  const c = (m: number): V3 => [m & 1 ? max[0] : min[0], m & 2 ? max[1] : min[1], m & 4 ? max[2] : min[2]];
+  for (let m = 0; m < 8; m++) for (const bit of [1, 2, 4]) if (!(m & bit)) ghosts.push([c(m), c(m | bit)]);
+  return { snaps, ghosts };
 }
 
 /** The snap nearest `p` on screen within `reach` px, by index, or -1. */

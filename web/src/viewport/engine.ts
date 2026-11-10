@@ -1390,6 +1390,17 @@ export class Engine {
     return at ? Array.from({ length: at.length - 1 }, (_, f) => [...m.faceEdgeList!.subarray(at[f], at[f + 1])]) : null;
   }
 
+  /** A body's box in world space, where it is drawn. */
+  bodyBox(bodyId: string): { min: V3; max: V3 } | null {
+    const o = this.bodies.get(bodyId);
+    const g = o?.geometry;
+    if (!o || !g) return null;
+    if (!g.boundingBox) g.computeBoundingBox();
+    o.group.updateMatrixWorld(true);
+    const b = g.boundingBox!.clone().applyMatrix4(o.group.matrixWorld);
+    return { min: b.min.toArray() as V3, max: b.max.toArray() as V3 };
+  }
+
   /** Each body on show with its edge and corner counts, for snapping a sketch to the model. */
   bodyCounts(): { id: string; edges: number; vertices: number }[] {
     return this.order.map((o) => ({ id: o.body.id, edges: o.body.mesh.edgeSegs.length - 1, vertices: (o.body.mesh.vertices?.length ?? 0) / 3 }));
