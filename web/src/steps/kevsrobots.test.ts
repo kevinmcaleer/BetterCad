@@ -32,6 +32,7 @@ describe("kevsrobots projects client", () => {
     await expect(kevsrobots(async () => res(401, { detail: "Not authenticated" })).projects()).rejects.toThrow("Sign in with your kevsrobots account first.");
     await expect(kevsrobots(async () => res(403, { detail: "Accept the terms first" })).projects()).rejects.toThrow(/Accept the kevsrobots terms/);
     await expect(kevsrobots(async () => res(400, { detail: "A picture is too big" })).projects()).rejects.toThrow("A picture is too big");
+    await expect(kevsrobots(async () => res(404, { detail: "Not Found" })).send(3, "a.zip", new Uint8Array([1]))).rejects.toThrow(/server needs updating/);
     await expect(
       kevsrobots(async () => {
         throw new TypeError("network");
