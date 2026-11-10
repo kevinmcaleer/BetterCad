@@ -9,7 +9,7 @@ export const THEME_NAMES: Record<ThemeId, string> = {
   "holoroom": "Holoroom"
 };
 
-export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room";
+export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "snap-face" | "snap-point" | "snap-point-ring" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room";
 
 /** Every colour token's value in every theme. */
 export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
@@ -34,6 +34,9 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "dimension": "#237a2e",
     "picked": "#ff922b",
     "picked-edge": "#d9480f",
+    "snap-face": "#e4e6ea",
+    "snap-point": "#0b3a8f",
+    "snap-point-ring": "#ffffff",
     "danger": "#c92a2a",
     "warn": "#b45309",
     "warn-soft": "#fff7e6",
@@ -75,6 +78,9 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "dimension": "#6fd47a",
     "picked": "#ffa94d",
     "picked-edge": "#ff922b",
+    "snap-face": "#d3d7de",
+    "snap-point": "#0b3a8f",
+    "snap-point-ring": "#ffffff",
     "danger": "#ff6b6b",
     "warn": "#ffc078",
     "warn-soft": "#3a2a10",
@@ -116,6 +122,9 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "dimension": "#6fd47a",
     "picked": "#ffa94d",
     "picked-edge": "#ff922b",
+    "snap-face": "#d3d7de",
+    "snap-point": "#0b3a8f",
+    "snap-point-ring": "#ffffff",
     "danger": "#ff6b6b",
     "warn": "#ffc078",
     "warn-soft": "#3a2a10",

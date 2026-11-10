@@ -23,6 +23,7 @@ const PAIRS: [ColourName, ColourName][] = [
   ["danger", "bar"],
   ["danger", "rail"],
   ["dimension", "viewport"],
+  ["snap-point", "snap-face"],
 ];
 
 describe("contrast", () => {
