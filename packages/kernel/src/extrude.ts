@@ -203,8 +203,19 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
   // A text outline is its own polygon.
   if (loop.edges[0]?.loop !== undefined) return loop.points.map((a, i): ProfileSeg => ({ kind: "line", a, b: loop.points[(i + 1) % loop.points.length]! }));
   const idx = new SketchIndex(sketch);
-  return loop.edges.map(({ id, reversed }) => {
+  return loop.edges.map(({ id, reversed, span }) => {
     const e = idx.get(id)!;
+    // Part of a curve, cut where others cross it: a line between the two points, or the arc between them.
+    if (span) {
+      const [a, b] = span;
+      if (e.kind === "line") return reversed ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id };
+      if (e.kind === "point") throw new Error(`${id} is not a curve`);
+      const c = idx.xy(e.c);
+      if (Math.hypot(...sub(a, b)) < 1e-9) return { kind: "circle", c, r: e.r, id };
+      const s = angleOf(sub(a, c));
+      const m = polar(c, e.r, s + sweep(s, angleOf(sub(b, c))) / 2);
+      return reversed ? { kind: "arc", a: b, m, b: a, id } : { kind: "arc", a, m, b, id };
+    }
     if (e.kind === "circle") return { kind: "circle", c: idx.xy(e.c), r: e.r, id };
     if (e.kind === "line") {
       const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
@@ -235,10 +246,11 @@ export function textProfiles(sketch: Sketch, textId: string, all: Profile[] = re
 
 /**
  * The picked profiles as lines and arcs: those under the seeds, and every letter of the picked texts. Seeds that no
- * longer land in a profile, and texts that are gone, are reported.
+ * longer land in a profile, and texts that are gone, are reported. `split` cuts the sketch's curves where they cross,
+ * as steps made since that came in do (older steps keep whole shapes, so they build as they always did).
  */
-export function pickProfiles(sketch: Sketch, seeds: Vec2[], texts: string[] = []): { shapes: ProfileShape[]; lost: number; picked: Profile[] } {
-  const all = regions(sketch);
+export function pickProfiles(sketch: Sketch, seeds: Vec2[], texts: string[] = [], split = false): { shapes: ProfileShape[]; lost: number; picked: Profile[] } {
+  const all = regions(sketch, { split });
   const shapes: ProfileShape[] = [];
   const seen = new Set<Profile>();
   let lost = 0;

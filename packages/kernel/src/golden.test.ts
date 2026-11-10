@@ -31,7 +31,7 @@ import { bodyRef } from "./construct";
 import { extent, pickProfiles, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
 import { createRequire } from "node:module";
 import { parse } from "opentype.js";
-import { layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
+import { Draft, drawCircle, layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { readStep } from "./occt/export";
@@ -163,6 +163,19 @@ const holeOn = (top: number, p: HoleParams): HoleSpec => {
 };
 
 /** Text in Inter (the app's default font), 10 mm capitals, picked whole: letters with holes and a gap between lines. */
+/**
+ * A 40 × 20 face's projected outline with a 10 mm circle touching its top, bottom and right edges: cut where they
+ * meet, the two corners outside the circle are regions of their own.
+ */
+function cornerSketch(): Sketch {
+  const d = new Draft(newSketch());
+  const c = [d.point([0, 0], true), d.point([40, 0], true), d.point([40, 20], true), d.point([0, 20], true)];
+  for (let i = 0; i < 4; i++) d.line(c[i]!, c[(i + 1) % 4]!, { construction: true });
+  const s = d.done().sketch;
+  const face = { ...s, entities: s.entities.map((e) => (e.kind === "line" ? { ...e, projectedFrom: { body: "b", face: 0 } } : e)) };
+  return drawCircle(face, [30, 10], 10).sketch;
+}
+
 function textSketch(text: string): Sketch {
   const b = readFileSync(createRequire(import.meta.url).resolve("@fontsource/inter/files/inter-latin-400-normal.woff"));
   const f = parse(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
@@ -392,6 +405,24 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Through all (#61): a 3 mm circle pushed down from the top as far as THROUGH_ALL goes, leaving a hole right through.
   // Text (sketch Text tool): "B8o" over "Hi", extruded 2 mm; B, 8 and o keep their holes.
   "extrude-text": (oc) => prismOf(oc, { frame: XY, profiles: pickProfiles(textSketch("B8o\nHi"), [], ["t"]).shapes, from: 0, to: 2 }),
+  // Regions cut where curves cross: the corners outside the circle, cut from a 40 × 20 × 10 block, round its end.
+  "extrude-cut-split-corners": (oc) =>
+    boolean(oc, "cut", place(oc, box(oc, { x: 40, y: 20, z: 10 }), { position: { x: 20, y: 10, z: 0 } }), [
+      prismOf(oc, {
+        frame: XY,
+        profiles: pickProfiles(
+          cornerSketch(),
+          [
+            [39, 19],
+            [39, 1],
+          ],
+          [],
+          true,
+        ).shapes,
+        from: 0,
+        to: 10,
+      }),
+    ]),
   "extrude-cut-through-all": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

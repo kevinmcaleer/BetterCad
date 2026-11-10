@@ -199,7 +199,24 @@ export function useExtrude(d: ExtrudeDeps) {
     }
   }, [d.active, store]);
 
-  const regionsOf = useMemo(() => new Map(d.sketches.map((s) => [s.id, regions(s.sketch)])), [d.sketches]);
+  /**
+   * A sketch's regions, worked out when first wanted. New steps cut curves where they cross (`split`); a step from
+   * before that keeps whole shapes, so its picks stay as they were.
+   */
+  const regionsOf = useMemo(() => {
+    const cache = new Map<string, Profile[]>();
+    const byId = new Map(d.sketches.map((s) => [s.id, s.sketch]));
+    return (id: string, split = true): Profile[] => {
+      const k = `${split ? "s" : "w"}${id}`;
+      let r = cache.get(k);
+      if (!r) {
+        const sk = byId.get(id);
+        r = sk ? regions(sk, { split }) : [];
+        cache.set(k, r);
+      }
+      return r;
+    };
+  }, [d.sketches]);
 
   /** The closed shape under the pointer: in the step's own sketch once there is one, else the latest sketch that has one. */
   const hit = useCallback(
@@ -208,13 +225,14 @@ export function useExtrude(d: ExtrudeDeps) {
       if (!eng) return null;
       const L = deps.current;
       const only = live.current.feature?.sketch;
+      const split = live.current.feature ? !!live.current.feature.split : true;
       for (const s of [...L.sketches].reverse()) {
         if (only && s.id !== only) continue;
         const f = shownFrame(s, L.posed);
         const w = eng.rayPlane(p.x, p.y, f.origin, f.normal);
         if (!w) continue;
         const xy = toSketch(f, w);
-        const pr = profileAt(regionsOf.get(s.id) ?? [], xy);
+        const pr = profileAt(regionsOf(s.id, split), xy);
         if (pr) return { sketch: s.id, profile: pr, xy };
       }
       return null;
@@ -231,8 +249,8 @@ export function useExtrude(d: ExtrudeDeps) {
     const target = here(faceBody) ?? here(L.selection[0]) ?? L.parts[L.parts.length - 1]?.id;
     const operation = here(faceBody) ? "join" : "new";
     // A revolve's axis is the next pick: no guess, so it never turns round a line that wasn't meant.
-    if (L.kind === "revolve") return { sketch: sketchId, seeds: [seed], angle: 360, operation, target };
-    return { sketch: sketchId, seeds: [seed], distance: 10, direction: "one", operation, target };
+    if (L.kind === "revolve") return { sketch: sketchId, seeds: [seed], split: true, angle: 360, operation, target };
+    return { sketch: sketchId, seeds: [seed], split: true, distance: 10, direction: "one", operation, target };
   }, []);
 
   /** The bodies an extrude's solid touches, by their boxes. Empty when nothing is built yet. */
@@ -241,7 +259,7 @@ export function useExtrude(d: ExtrudeDeps) {
       const L = deps.current;
       const s = L.sketches.find((x) => x.id === f.sketch);
       if (!s || !L.bounds?.size) return [];
-      const all = regionsOf.get(f.sketch) ?? [];
+      const all = regionsOf(f.sketch, !!f.split);
       const letters = (f.texts ?? []).flatMap((t) => textProfiles(s.sketch, t, all).map((p) => p.points));
       const outlines = [...f.seeds.map((p) => seedProfile(all, p)?.points).filter((p): p is Vec2[] => !!p), ...letters];
       if (!outlines.length) return [];
@@ -337,7 +355,7 @@ export function useExtrude(d: ExtrudeDeps) {
       const L = live.current;
       if (!L.session) {
         const id = newId("f");
-        const base = defaults(h.sketch, seedIn(regionsOf.get(h.sketch) ?? [], h));
+        const base = defaults(h.sketch, seedIn(regionsOf(h.sketch), h));
         // A text is picked whole, by its id, so its letters follow the words when they change.
         const tid = textOf(h.profile);
         const params = tid ? { ...base, seeds: [], texts: [tid] } : base;
@@ -362,7 +380,7 @@ export function useExtrude(d: ExtrudeDeps) {
         change({ texts: texts.includes(tid) ? texts.filter((x) => x !== tid) : [...texts, tid] });
         return;
       }
-      const all = regionsOf.get(f.sketch) ?? [];
+      const all = regionsOf(f.sketch, !!f.split);
       const has = f.seeds.findIndex((s) => seedProfile(all, s) === h.profile);
       change({ seeds: has >= 0 ? f.seeds.filter((_, i) => i !== has) : [...f.seeds, seedIn(all, h)] });
     },
@@ -398,7 +416,7 @@ export function useExtrude(d: ExtrudeDeps) {
   /** The closed shapes an extrude has picked. */
   const pickedOf = useCallback(
     (f: ProfileFeature): Profile[] => {
-      const all = regionsOf.get(f.sketch) ?? [];
+      const all = regionsOf(f.sketch, !!f.split);
       return [...new Set(f.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p))];
     },
     [regionsOf],
@@ -569,7 +587,7 @@ export function useExtrude(d: ExtrudeDeps) {
   // The shapes in the step, shaded; the one under the pointer lit.
   const picked = useMemo(() => {
     if (!feature) return [];
-    const all = regionsOf.get(feature.sketch) ?? [];
+    const all = regionsOf(feature.sketch, !!feature.split);
     const sk = d.sketches.find((x) => x.id === feature.sketch)?.sketch;
     const letters = sk ? (feature.texts ?? []).flatMap((t) => textProfiles(sk, t, all)) : [];
     return [...new Set([...feature.seeds.map((s) => seedProfile(all, s)).filter((p): p is Profile => !!p), ...letters])];
@@ -581,13 +599,14 @@ export function useExtrude(d: ExtrudeDeps) {
     const bySketch = new Map<string, OverlayFill[]>();
     const add = (id: string, f: OverlayFill) => bySketch.set(id, [...(bySketch.get(id) ?? []), f]);
     // While the shapes are picked again, the sketch's other shapes show faintly, ready to click.
-    if (feature && wantShapes) for (const p of regionsOf.get(feature.sketch) ?? []) if (!picked.includes(p)) add(feature.sketch, outlineFill(p, "guide"));
+    if (feature && wantShapes)
+      for (const p of regionsOf(feature.sketch, !!feature.split)) if (!picked.includes(p)) add(feature.sketch, outlineFill(p, "guide"));
     if (feature) picked.forEach((p) => add(feature.sketch, outlineFill(p, "picked")));
     if (hover && !picked.includes(hover.profile)) {
       // A text lights up whole, as it is picked whole.
       const tid = textOf(hover.profile);
       const sk = tid && deps.current.sketches.find((x) => x.id === hover.sketch)?.sketch;
-      const lit = sk ? textProfiles(sk, tid, regionsOf.get(hover.sketch)) : [hover.profile];
+      const lit = sk ? textProfiles(sk, tid, regionsOf(hover.sketch, feature ? !!feature.split : true)) : [hover.profile];
       for (const p of lit) add(hover.sketch, outlineFill(p, "hover"));
     }
     // Revolve's axis when it is a sketch line, and the line under the pointer while it wants one.
@@ -686,7 +705,7 @@ export function useExtrude(d: ExtrudeDeps) {
       const f = store.get().features.find((x): x is ProfileFeature => x.id === id && (x.type === "extrude" || x.type === "revolve"));
       const s = f && deps.current.sketches.find((x) => x.id === f.sketch);
       if (!f || !s) return;
-      const all = regions(s.sketch);
+      const all = regions(s.sketch, { split: !!f.split });
       const kept = f.seeds.filter((p) => seedProfile(all, p));
       if (kept.length === f.seeds.length || (!kept.length && !f.texts?.length)) return;
       const label = `Edit ${f.name}`;
@@ -718,7 +737,7 @@ export function useExtrude(d: ExtrudeDeps) {
     [done, d.kind],
   );
 
-  const sketchCount = d.sketches.filter((s) => (regionsOf.get(s.id)?.length ?? 0) > 0).length;
+  const sketchCount = d.sketches.filter((s) => regionsOf(s.id).length > 0).length;
   const keep = ` Enter keeps the ${d.kind}, Esc cancels it.`;
   const dragText = d.kind === "extrude" ? " Drag the arrow to set how far, or click it to flip." : "";
   const help = !d.active

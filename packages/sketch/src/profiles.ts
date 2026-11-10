@@ -1,6 +1,6 @@
-import { SketchIndex, type Arc, type Curve, type Id, type Sketch, type Vec2 } from "./model";
+import { SketchIndex, type Id, type Sketch, type Vec2 } from "./model";
 import { textsOf } from "./text";
-import { angleOf, insidePolygon, perp, polygonArea, sampleArc, sub, wrap, norm, add, scale, mid } from "./geom2d";
+import { angleOf, insidePolygon, perp, polar, polygonArea, sampleArc, sub, sweep, wrap, norm, add, scale, mid } from "./geom2d";
 
 /**
  * Closed shapes in a sketch (#51), for extrude (#6). Lines and arcs that share end points (or are tied by coincident
@@ -13,6 +13,11 @@ export interface LoopEdge {
   reversed: boolean;
   /** For text: which of its outlines this loop is (the loop's points are the outline itself). */
   loop?: number;
+  /**
+   * When only part of the curve bounds the loop (it is cut where other curves cross it): where that part starts and
+   * ends, in the curve's own direction (anticlockwise on arcs and circles). Missing when the whole curve is used.
+   */
+  span?: [Vec2, Vec2];
 }
 
 export interface Loop {
@@ -51,81 +56,269 @@ function pointClasses(s: Sketch): (id: Id) => Id {
   return find;
 }
 
+/** How close two points may be and still be one, mm: crossings, touches and ends within it meet. */
+const TOL = 1e-5;
+const TAU = 2 * Math.PI;
+
+/** A curve, or a piece of one: a line from a to b, or an anticlockwise arc about c from angle s through sweep w. */
+type Geo = { kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; c: Vec2; r: number; s: number; w: number };
+
+/** Where along a curve a point is: 0..1 along a line, radians from the start round an arc. Null when it is off it. */
+function along(g: Geo, p: Vec2, closed: boolean): number | null {
+  if (g.kind === "line") {
+    const d = sub(g.b, g.a);
+    const l2 = d[0] ** 2 + d[1] ** 2;
+    const t = ((p[0] - g.a[0]) * d[0] + (p[1] - g.a[1]) * d[1]) / l2;
+    const q = add(g.a, scale(d, t));
+    const tol = TOL / Math.sqrt(l2);
+    if (Math.hypot(q[0] - p[0], q[1] - p[1]) > TOL || t < -tol || t > 1 + tol) return null;
+    return Math.max(0, Math.min(1, t));
+  }
+  if (Math.abs(Math.hypot(p[0] - g.c[0], p[1] - g.c[1]) - g.r) > TOL) return null;
+  let t = wrap(angleOf(sub(p, g.c)) - g.s);
+  const tol = TOL / g.r;
+  if (t > TAU - tol) t = 0;
+  if (closed) return t;
+  if (t > g.w + tol) return null;
+  return Math.min(t, g.w);
+}
+
+/** Where two curves meet, touches included, before checking the points are on both. */
+function meet(g: Geo, h: Geo): Vec2[] {
+  if (g.kind === "line" && h.kind === "line") {
+    const r = sub(g.b, g.a);
+    const s = sub(h.b, h.a);
+    const d = r[0] * s[1] - r[1] * s[0];
+    if (Math.abs(d) < 1e-12 * (Math.hypot(...r) * Math.hypot(...s) || 1)) return [];
+    const q = sub(h.a, g.a);
+    const t = (q[0] * s[1] - q[1] * s[0]) / d;
+    return [add(g.a, scale(r, t))];
+  }
+  if (g.kind === "arc" && h.kind === "line") return meet(h, g);
+  if (g.kind === "line" && h.kind === "arc") {
+    const d = norm(sub(g.b, g.a));
+    const t = (h.c[0] - g.a[0]) * d[0] + (h.c[1] - g.a[1]) * d[1];
+    const foot = add(g.a, scale(d, t));
+    const off = Math.hypot(foot[0] - h.c[0], foot[1] - h.c[1]);
+    if (off > h.r + TOL) return [];
+    if (off > h.r - TOL) return [foot];
+    const k = Math.sqrt(h.r * h.r - off * off);
+    return [add(foot, scale(d, -k)), add(foot, scale(d, k))];
+  }
+  const a = g as Extract<Geo, { kind: "arc" }>;
+  const b = h as Extract<Geo, { kind: "arc" }>;
+  const v = sub(b.c, a.c);
+  const dd = Math.hypot(v[0], v[1]);
+  if (dd < TOL) return [];
+  const u = scale(v, 1 / dd);
+  if (Math.abs(dd - (a.r + b.r)) < TOL) return [add(a.c, scale(u, a.r))];
+  if (Math.abs(dd - Math.abs(a.r - b.r)) < TOL) return [add(a.c, scale(u, a.r >= b.r ? a.r : -a.r))];
+  if (dd > a.r + b.r || dd < Math.abs(a.r - b.r)) return [];
+  const x = (a.r * a.r - b.r * b.r + dd * dd) / (2 * dd);
+  const y = Math.sqrt(Math.max(0, a.r * a.r - x * x));
+  const m = add(a.c, scale(u, x));
+  return [add(m, scale(perp(u), y)), sub(m, scale(perp(u), y))];
+}
+
 interface Half {
-  edge: Curve;
-  from: Id;
-  to: Id;
+  piece: Piece;
+  to: number;
   reversed: boolean;
-  /** Direction it leaves `from`, radians. */
+  /** Direction it leaves its start, radians. */
   out: number;
+  /** Signed curvature leaving (left turns positive), to order pieces that leave the same way (a tangent touch). */
+  bend: number;
   twin?: Half;
   used?: boolean;
 }
 
+interface Piece {
+  id: Id;
+  from: number;
+  to: number;
+  geo: Geo;
+  /** The whole curve, uncut. */
+  whole: boolean;
+}
+
 export function profiles(sketch: Sketch): Profiles {
-  return nest(sketch, false);
+  return nest(sketch, false, false);
 }
 
 /**
  * Every closed region a click can pick (#61): each loop less the loops directly inside it. Unlike `profiles`, a
- * circle inside a rectangle gives two regions, the ring and the disc, as in Fusion.
+ * circle inside a rectangle gives two regions, the ring and the disc, as in Fusion. With `split`, curves are also cut
+ * where they cross or touch, so a circle over a rectangle gives the parts of each, and edges projected from the model
+ * bound regions too; a region's holes are then the outlines of the separate shapes inside it.
  */
-export function regions(sketch: Sketch): Profile[] {
-  return nest(sketch, true).profiles;
+export function regions(sketch: Sketch, opts: { split?: boolean } = {}): Profile[] {
+  return nest(sketch, true, !!opts.split).profiles;
 }
 
-function nest(sketch: Sketch, all: boolean): Profiles {
+type L = Loop & { inner: Vec2; comp: string };
+
+function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
   const idx = new SketchIndex(sketch);
   const cls = pointClasses(sketch);
-  const xy = (id: Id) => idx.xy(id);
-  const loops: (Loop & { inner: Vec2 })[] = [];
+  const xy = (id: Id) => idx.xy(cls(id));
 
-  const curves = sketch.entities.filter((e): e is Curve => e.kind !== "point" && !e.construction);
-  const edges: Curve[] = [];
-  for (const e of curves) {
-    if (e.kind === "circle") loops.push(circleLoop(e.id, xy(e.c), e.r));
-    else if (e.kind === "arc" && cls(e.a) === cls(e.b)) loops.push(circleLoop(e.id, xy(e.c), e.r));
-    else if (!(e.kind === "line" && cls(e.a) === cls(e.b))) edges.push(e);
+  // Points: by coincident class, and when splitting also merged when they are within TOL.
+  const verts: Vec2[] = [];
+  const byClass = new Map<Id, number>();
+  const at = (p: Vec2): number => {
+    const i = split ? verts.findIndex((q) => Math.abs(q[0] - p[0]) < TOL && Math.abs(q[1] - p[1]) < TOL) : -1;
+    if (i >= 0) return i;
+    verts.push(p);
+    return verts.length - 1;
+  };
+  const vtx = (id: Id): number => {
+    const k = cls(id);
+    if (!byClass.has(k)) byClass.set(k, at(xy(k)));
+    return byClass.get(k)!;
+  };
+
+  interface Src {
+    id: Id;
+    geo: Geo;
+    closed: boolean;
+    cuts: { t: number; v: number }[];
+    ends: Id[];
   }
-
-  // Text outlines are loops of their own, anticlockwise like the rest.
-  for (const { text, loops: outlines } of textsOf(sketch)) {
-    if (text.construction) continue;
-    outlines.forEach((pts, i) => {
-      const points = polygonArea(pts) < 0 ? [...pts].reverse() : pts;
-      const area = Math.abs(polygonArea(points));
-      if (area > 1e-9) loops.push({ edges: [{ id: text.id, reversed: false, loop: i }], points, area, inner: innerPoint(points) });
+  const srcs: Src[] = [];
+  const loops: L[] = [];
+  for (const e of sketch.entities) {
+    if (e.kind === "point" || (e.construction && !(split && e.projectedFrom))) continue;
+    if (e.kind === "line") {
+      const [va, vb] = [vtx(e.a), vtx(e.b)];
+      if (va !== vb)
+        srcs.push({
+          id: e.id,
+          geo: { kind: "line", a: verts[va]!, b: verts[vb]! },
+          closed: false,
+          cuts: [
+            { t: 0, v: va },
+            { t: 1, v: vb },
+          ],
+          ends: [e.a, e.b],
+        });
+      continue;
+    }
+    const c = xy(e.c);
+    const [va, vb] = e.kind === "arc" ? [vtx(e.a), vtx(e.b)] : [0, 0];
+    if (e.kind === "circle" || va === vb) {
+      srcs.push({ id: e.id, geo: { kind: "arc", c, r: e.r, s: 0, w: TAU }, closed: true, cuts: [], ends: [] });
+      continue;
+    }
+    const s = angleOf(sub(verts[va]!, c));
+    const w = sweep(s, angleOf(sub(verts[vb]!, c)));
+    srcs.push({
+      id: e.id,
+      geo: { kind: "arc", c, r: e.r, s, w },
+      closed: false,
+      cuts: [
+        { t: 0, v: va },
+        { t: w, v: vb },
+      ],
+      ends: [e.a, e.b],
     });
   }
 
+  if (split) {
+    // Cut each curve where others cross or touch it, and where other curves end on it.
+    const cut = (x: Src, v: number) => {
+      const t = along(x.geo, verts[v]!, x.closed);
+      if (t !== null) x.cuts.push({ t, v });
+    };
+    srcs.forEach((x, i) =>
+      srcs.slice(i + 1).forEach((y) => {
+        for (const p of meet(x.geo, y.geo)) {
+          if (along(x.geo, p, x.closed) === null || along(y.geo, p, y.closed) === null) continue;
+          const v = at(p);
+          cut(x, v);
+          cut(y, v);
+        }
+      }),
+    );
+    const ends = new Set(srcs.flatMap((x) => (x.closed ? [] : [x.cuts[0]!.v, x.cuts[1]!.v])));
+    for (const x of srcs) for (const v of ends) if (!x.cuts.some((c) => c.v === v)) cut(x, v);
+  }
+
+  // The pieces between cuts; when splitting, the same piece twice (curves drawn over each other) counts once.
+  const pieces: Piece[] = [];
+  const seen = new Set<string>();
+  const addPiece = (id: Id, from: number, to: number, geo: Geo, whole: boolean) => {
+    if (split) {
+      const m = geo.kind === "line" ? mid(geo.a, geo.b) : polar(geo.c, geo.r, geo.s + geo.w / 2);
+      const key = `${Math.min(from, to)} ${Math.max(from, to)} ${Math.round(m[0] * 1e4)} ${Math.round(m[1] * 1e4)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+    }
+    pieces.push({ id, from, to, geo, whole });
+  };
+  for (const x of srcs) {
+    const cuts = [...x.cuts].sort((p, q) => p.t - q.t).filter((c, i, l) => i === 0 || c.v !== l[i - 1]!.v);
+    const g = x.geo;
+    if (x.closed) {
+      if (cuts.length > 1 && cuts[cuts.length - 1]!.v === cuts[0]!.v) cuts.pop();
+      if (g.kind !== "arc") continue;
+      if (!cuts.length) loops.push({ ...circleLoop(x.id, g.c, g.r), comp: `c${x.id}` });
+      cuts.forEach((c, i) => {
+        const n = cuts[(i + 1) % cuts.length]!;
+        addPiece(x.id, c.v, n.v, { kind: "arc", c: g.c, r: g.r, s: c.t, w: wrap(n.t - c.t) || TAU }, false);
+      });
+      continue;
+    }
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const [c, n] = [cuts[i]!, cuts[i + 1]!];
+      const whole = cuts.length === 2;
+      addPiece(x.id, c.v, n.v, g.kind === "line" ? { kind: "line", a: verts[c.v]!, b: verts[n.v]! } : { ...g, s: g.s + c.t, w: n.t - c.t }, whole);
+    }
+  }
+
   // Degrees, then prune dangling chains so they do not split faces.
-  const ends = (e: Curve & { a: Id; b: Id }) => [cls(e.a), cls(e.b)] as const;
-  const degree = new Map<Id, number>();
-  for (const e of edges as (Curve & { a: Id; b: Id })[]) for (const v of ends(e)) degree.set(v, (degree.get(v) ?? 0) + 1);
+  const degree = new Map<number, number>();
+  for (const p of pieces) for (const v of [p.from, p.to]) degree.set(v, (degree.get(v) ?? 0) + 1);
   const openEnds = new Set<Id>();
-  for (const e of edges as (Curve & { a: Id; b: Id })[]) for (const p of [e.a, e.b]) if (degree.get(cls(p)) === 1) openEnds.add(p);
-  let live = edges as (Curve & { a: Id; b: Id })[];
+  for (const x of srcs) for (const p of x.ends) if (degree.get(vtx(p)) === 1) openEnds.add(p);
+  let live = pieces;
   for (;;) {
-    const next = live.filter((e) => ends(e).every((v) => (degree.get(v) ?? 0) > 1));
+    const next = live.filter((p) => degree.get(p.from)! > 1 && degree.get(p.to)! > 1);
     if (next.length === live.length) break;
-    for (const e of live) if (!next.includes(e)) for (const v of ends(e)) degree.set(v, degree.get(v)! - 1);
+    for (const p of live) if (!next.includes(p)) for (const v of [p.from, p.to]) degree.set(v, degree.get(v)! - 1);
     live = next;
   }
 
+  // Which pieces join up: one outline round the outside of each joined-up set.
+  const comp = new Map<number, number>();
+  const root = (v: number): number => {
+    while (comp.has(v) && comp.get(v) !== v) v = comp.get(v)!;
+    return v;
+  };
+  for (const p of live) comp.set(root(p.from), root(p.to));
+
   // Half-edges and the faces they bound.
-  const outgoing = new Map<Id, Half[]>();
-  for (const e of live) {
-    const [u, v] = ends(e);
-    const fwd: Half = { edge: e, from: u, to: v, reversed: false, out: leave(e, false, xy) };
-    const back: Half = { edge: e, from: v, to: u, reversed: true, out: leave(e, true, xy) };
+  const outgoing = new Map<number, Half[]>();
+  for (const p of live) {
+    const g = p.geo;
+    const out = (rev: boolean) => (g.kind === "line" ? angleOf(rev ? sub(g.a, g.b) : sub(g.b, g.a)) : rev ? g.s + g.w - Math.PI / 2 : g.s + Math.PI / 2);
+    const bend = g.kind === "line" ? 0 : 1 / g.r;
+    const fwd: Half = { piece: p, to: p.to, reversed: false, out: out(false), bend };
+    const back: Half = { piece: p, to: p.from, reversed: true, out: out(true), bend: -bend, twin: fwd };
     fwd.twin = back;
-    back.twin = fwd;
-    for (const h of [fwd, back]) {
-      if (!outgoing.has(h.from)) outgoing.set(h.from, []);
-      outgoing.get(h.from)!.push(h);
+    for (const [v, h] of [
+      [p.from, fwd],
+      [p.to, back],
+    ] as const) {
+      if (!outgoing.has(v)) outgoing.set(v, []);
+      outgoing.get(v)!.push(h);
     }
   }
-  for (const list of outgoing.values()) list.sort((a, b) => wrap(a.out) - wrap(b.out));
+  const key = (h: Half) => {
+    const a = wrap(h.out);
+    return a > TAU - 1e-9 ? 0 : a;
+  };
+  // Pieces leaving the same way (a tangent touch) go in order of how hard they turn left.
+  for (const list of outgoing.values()) list.sort((a, b) => (Math.abs(key(a) - key(b)) > 1e-7 ? key(a) - key(b) : a.bend - b.bend));
   // Arriving along h, leave by the first edge clockwise from the way back: the sharpest left turn, so bounded faces
   // come out anticlockwise.
   const next = (h: Half): Half => {
@@ -133,7 +326,22 @@ function nest(sketch: Sketch, all: boolean): Profiles {
     const i = list.indexOf(h.twin!);
     return list[(i - 1 + list.length) % list.length]!;
   };
-  for (const list of outgoing.values()) {
+  const trace = (h: Half): Vec2[] => {
+    const g = h.piece.geo;
+    let pts: Vec2[] = [];
+    if (g.kind === "line") pts = [g.a, g.b];
+    else {
+      pts = sampleArc(g.c, g.r, g.s, g.s + g.w);
+      // Pin the ends to the points themselves so consecutive edges meet exactly.
+      pts[0] = verts[h.piece.from]!;
+      pts[pts.length - 1] = verts[h.piece.to]!;
+    }
+    return h.reversed ? pts.reverse() : pts;
+  };
+  const edgeOf = ({ piece: p, reversed }: Half): LoopEdge => (p.whole ? { id: p.id, reversed } : { id: p.id, reversed, span: [verts[p.from]!, verts[p.to]!] });
+
+  const outlines: L[] = [];
+  for (const list of outgoing.values())
     for (const start of list) {
       if (start.used) continue;
       const face: Half[] = [];
@@ -143,32 +351,61 @@ function nest(sketch: Sketch, all: boolean): Profiles {
         face.push(h);
         h = next(h);
       }
-      const points = face.flatMap((f) => trace(f, xy).slice(0, -1));
+      const points = face.flatMap((f) => trace(f).slice(0, -1));
       const area = polygonArea(points);
-      if (area > 1e-9) loops.push({ edges: face.map((f) => ({ id: f.edge.id, reversed: f.reversed })), points, area, inner: innerPoint(points) });
+      const c = `g${root(start.piece.from)}`;
+      const edges = face.map(edgeOf);
+      if (area > 1e-9) loops.push({ edges, points, area, inner: innerPoint(points), comp: c });
+      else if (area < -1e-9) {
+        // The outside of a joined-up set, turned anticlockwise: a hole in whatever region it sits in.
+        const pts = [...points].reverse();
+        const rev = [...edges].reverse().map((e) => ({ ...e, reversed: !e.reversed }));
+        outlines.push({ edges: rev, points: pts, area: -area, inner: innerPoint(pts), comp: c });
+      }
     }
+
+  // Text outlines are loops of their own, anticlockwise like the rest.
+  for (const { text, loops: outs } of textsOf(sketch)) {
+    if (text.construction) continue;
+    outs.forEach((pts, i) => {
+      const points = polygonArea(pts) < 0 ? [...pts].reverse() : pts;
+      const area = Math.abs(polygonArea(points));
+      if (area > 1e-9) loops.push({ edges: [{ id: text.id, reversed: false, loop: i }], points, area, inner: innerPoint(points), comp: `t${text.id} ${i}` });
+    });
   }
 
-  // Nesting: each loop's parent is the smallest loop around it.
-  const parent = loops.map((l, i) => {
+  // The smallest loop around a point, leaving out the loops of one joined-up set.
+  const around = (o: L, skip: string) => {
     let best = -1;
-    loops.forEach((o, j) => {
-      if (j !== i && o.area > l.area && insidePolygon(l.inner, o.points) && (best < 0 || o.area < loops[best]!.area)) best = j;
+    loops.forEach((l, j) => {
+      if (l !== o && l.comp !== skip && l.area > o.area && insidePolygon(o.inner, l.points) && (best < 0 || l.area < loops[best]!.area)) best = j;
     });
     return best;
-  });
+  };
+  const strip = (l: Loop): Loop => ({ edges: l.edges, points: l.points, area: l.area });
+
+  if (split) {
+    // Loops on their own (circles, letters) are their own outline.
+    for (const l of loops) if (!l.comp.startsWith("g")) outlines.push(l);
+    const out = loops.map((l): Profile => ({ ...strip(l), holes: [] }));
+    for (const o of outlines) out[around(o, o.comp)]?.holes.push(strip(o));
+    return { profiles: out, openEnds: [...openEnds] };
+  }
+
+  // Nesting: each loop's parent is the smallest loop around it. Loops inside loops alternate.
+  const parent = loops.map((l) => around(l, ""));
   const depth = (i: number): number => (parent[i]! < 0 ? 0 : 1 + depth(parent[i]!));
   const out: Profile[] = [];
   const byLoop = new Map<number, Profile>();
   loops.forEach((l, i) => {
     if (all || depth(i) % 2 === 0) {
-      const p: Profile = { edges: l.edges, points: l.points, area: l.area, holes: [] };
+      const p: Profile = { ...strip(l), holes: [] };
       byLoop.set(i, p);
       out.push(p);
     }
   });
   loops.forEach((l, i) => {
-    if (all || depth(i) % 2 === 1) byLoop.get(parent[i]!)?.holes.push({ edges: l.edges, points: l.points, area: l.area });
+    if (all || depth(i) % 2 === 1) byLoop.get(parent[i]!)?.holes.push(strip(l));
   });
   return { profiles: out, openEnds: [...openEnds] };
 }
@@ -176,30 +413,6 @@ function nest(sketch: Sketch, all: boolean): Profiles {
 function circleLoop(id: Id, c: Vec2, r: number): Loop & { inner: Vec2 } {
   const points = sampleArc(c, r, 0, 2 * Math.PI, 72).slice(0, -1);
   return { edges: [{ id, reversed: false }], points, area: Math.PI * r * r, inner: c };
-}
-
-/** The direction a curve leaves its start (or, reversed, its end). */
-function leave(e: Curve, reversed: boolean, xy: (id: Id) => Vec2): number {
-  if (e.kind === "line") return angleOf(reversed ? sub(xy(e.a), xy(e.b)) : sub(xy(e.b), xy(e.a)));
-  const a = e as Arc;
-  const c = xy(a.c);
-  // Anticlockwise tangent at the start; clockwise at the end when walked backwards.
-  if (!reversed) return angleOf(perp(sub(xy(a.a), c)));
-  const t = perp(sub(xy(a.b), c));
-  return angleOf([-t[0], -t[1]]);
-}
-
-/** A half-edge's points from its start to its end. */
-function trace(h: Half, xy: (id: Id) => Vec2): Vec2[] {
-  const e = h.edge;
-  if (e.kind === "line") return h.reversed ? [xy(e.b), xy(e.a)] : [xy(e.a), xy(e.b)];
-  const a = e as Arc;
-  const c = xy(a.c);
-  const pts = sampleArc(c, a.r, angleOf(sub(xy(a.a), c)), angleOf(sub(xy(a.b), c)));
-  // Pin the ends to the points themselves so consecutive edges meet exactly.
-  pts[0] = xy(a.a);
-  pts[pts.length - 1] = xy(a.b);
-  return h.reversed ? pts.reverse() : pts;
 }
 
 /** A point just inside an anticlockwise outline: off the middle of its longest side, to the left. */

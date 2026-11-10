@@ -117,7 +117,7 @@ export function useTour(d: TourDeps): TourApi {
         const f = [...doc.features].reverse().find((g) => g.type === "sketch");
         const region = f?.type === "sketch" ? regions(f.sketch)[0] : undefined;
         if (!f || !region) return doc;
-        return addExtrude(doc, { sketch: f.id, seeds: [seedOf(region)], distance: 10, direction: "one", operation: "new" });
+        return addExtrude(doc, { sketch: f.id, seeds: [seedOf(region)], split: true, distance: 10, direction: "one", operation: "new" });
       }, "Extrude 10 mm");
     } else if (id === "fillet") {
       x.armTool("fillet");
