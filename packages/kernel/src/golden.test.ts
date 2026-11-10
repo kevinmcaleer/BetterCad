@@ -9,6 +9,7 @@ import {
   chamfer,
   cone,
   cylinder,
+  elements,
   fillet,
   grow,
   holes,
@@ -33,6 +34,7 @@ import { parse } from "opentype.js";
 import { layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
+import { readStep } from "./occt/export";
 import { moved, overlapOf } from "./occt/clashes";
 import { catalogueShape } from "./occt/catalogue";
 import { placeOnFace } from "./catalogue";
@@ -64,6 +66,27 @@ function discOnOctagon(oc: OC): TopoDS_Shape {
   const octagon = prism(oc, polygonFace(oc, pts), [0, 0, 19]);
   const disc = place(oc, cylinder(oc, { x: 20, y: 20, z: 1 }), { position: { x: 0, y: 0, z: 19 } });
   return boolean(oc, "join", octagon, [disc]);
+}
+
+/**
+ * A 5.5 mm diamond cog standing 2 mm off a flat of an octagonal rim, cut down from a real model. Joined with the usual
+ * 1e-6 mm tolerance the result is not a valid solid, so a chamfer on the cog then failed on every edge.
+ */
+function cogOnFlat(oc: OC): TopoDS_Shape {
+  const [flat, cog] = readStep(oc, readFileSync(join(dirname(fileURLToPath(import.meta.url)), "testdata", "step", "cog-on-flat.step")));
+  return boolean(oc, "join", flat!.shape, [cog!.shape]);
+}
+
+/** The edge between the cog's top and one side: its number in `shape`. */
+function cogTopEdge(oc: OC, shape: TopoDS_Shape): number {
+  const mid = [8.1304, -14.547, 8.5555];
+  return elements(oc, shape, "edge").findIndex((e) => {
+    const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+    const p = c.Value((c.FirstParameter() + c.LastParameter()) / 2);
+    const hit = Math.hypot(p.X() - mid[0]!, p.Y() - mid[1]!, p.Z() - mid[2]!) < 1e-3;
+    c.delete();
+    return hit;
+  });
 }
 
 /** A 100 × 80 × 5 mm plate with a mounting feature on its top (#189). */
@@ -210,6 +233,11 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Edge 15 is one of the eight arcs under the disc; the round runs right round and out over the corners.
   "fillet-rim-on-octagon": (oc) => fillet(oc, discOnOctagon(oc), [15], 0.5),
   "chamfer-rim-on-octagon": (oc) => chamfer(oc, discOnOctagon(oc), [15], 0.5),
+  "join-cog-on-flat": cogOnFlat,
+  "chamfer-cog-on-flat": (oc) => {
+    const s = cogOnFlat(oc);
+    return chamfer(oc, s, [cogTopEdge(oc, s)], 1);
+  },
   "chamfer-all": (oc) => chamfer(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 1),
   tray: (oc) => shell(oc, fillet(oc, box(oc, { x: 40, y: 30, z: 15 }), [...Array(12).keys()], 3), [], 1.2),
   "hollow-sphere": (oc) => shell(oc, sphere(oc, { x: 20, y: 20, z: 20 }), [], 1),
