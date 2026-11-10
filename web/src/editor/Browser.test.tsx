@@ -299,6 +299,43 @@ describe("components (#171)", () => {
     expect(onBodiesHidden).toHaveBeenLastCalledWith(["d", "s1"], false, "Component 2");
   });
 
+  it("offers Hide others and Unhide all on a component, keeping what it holds", async () => {
+    const isolate = vi.fn();
+    render(
+      <BrowserPanel
+        model={nested()}
+        selection={[]}
+        onSelect={() => {}}
+        onAdd={() => {}}
+        onToggle={() => {}}
+        onBodiesHidden={() => {}}
+        onSketchesHidden={() => {}}
+        isolateMenu={(keep, name) => [
+          { id: "hide-others", label: "Hide others", onSelect: () => isolate(keep, name) },
+          { id: "unhide-all", label: "Unhide all", onSelect: () => isolate(null) },
+        ]}
+        onOrigin={() => {}}
+        onPicked={() => {}}
+        onSelectSketch={() => {}}
+        onRename={() => {}}
+        onRenameModel={() => {}}
+        onRenameSketch={() => {}}
+        onReorder={() => {}}
+        onSketchOn={() => {}}
+        partMenu={() => []}
+        sketchMenu={() => []}
+        renameId={null}
+        onRenameIdChange={() => {}}
+      />,
+    );
+    fireEvent.contextMenu(screen.getAllByText("Component 2")[0]!);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Hide others" }));
+    expect(isolate).toHaveBeenLastCalledWith(["d", "s1"], "Component 2");
+    fireEvent.contextMenu(screen.getAllByText("Component 1")[0]!);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Unhide all" }));
+    expect(isolate).toHaveBeenLastCalledWith(null);
+  });
+
   it("selects a component's bodies with those inside it, and a Bodies folder's own", () => {
     expect(browserPick(["L1"], nested()).parts).toEqual(["a", "b", "d"]);
     expect(browserPick(["L2"], nested()).parts).toEqual(["d"]);

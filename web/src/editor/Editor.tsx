@@ -1350,6 +1350,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [store],
   );
 
+  /** Hide others (keep: what stays shown, `name` names the step) or Unhide all (null): bodies, sketches and planes, one undo step. */
+  const isolate = (keep: string[] | null, name?: string) => {
+    const looks = live.current.doc.looks;
+    const ids = [...parts.map((p) => p.id), ...built.sketches.map((s) => s.id), ...browserConstruct.map((c) => c.id)];
+    const want = (id: string) => !!keep && !keep.includes(id);
+    const change = ids.filter((id) => !!looks[id]?.hidden !== want(id));
+    if (!change.length) return;
+    store.edit(
+      (d) => setLook(d, change, (id) => ({ hidden: want(id) })),
+      keep ? `Hide all but ${name ?? (keep.length === 1 ? (parts.find((p) => p.id === keep[0])?.name ?? "1 item") : `${keep.length} items`)}` : "Unhide all",
+    );
+  };
+  const anyHidden = [...parts, ...browserSketches, ...browserConstruct].some((x) => x.hidden);
+  const isolateEntries = (keep: string[], name?: string): MenuEntry[] => [
+    { id: "hide-others", label: "Hide others", icon: "eyeOff", onSelect: () => isolate(keep, name) },
+    { id: "unhide-all", label: "Unhide all", icon: "eye", disabled: !anyHidden, onSelect: () => isolate(null) },
+  ];
+
   const rename = useCallback(
     (id: string, name: string) => {
       const p = live.current.parts.find((x) => x.id === id);
@@ -2478,6 +2496,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ...vp.cubeMenu,
     { kind: "separator", id: "s-bed" },
     { id: "bed", label: "Show build volume", checked: showBed, multiple: true, onSelect: () => setShowBed(!showBed) },
+    ...(anyHidden ? [{ id: "unhide-all", label: "Unhide all", icon: "eye" as const, onSelect: () => isolate(null) }] : []),
   ];
   /** The bodies that print: shown, not holes, and measured by the kernel. */
   const printBoxes = useMemo(() => {
@@ -3148,6 +3167,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keys: formatCombo("shift+h"),
         onSelect: () => toggle(ids, "hidden"),
       },
+      ...isolateEntries(ids),
       { kind: "separator", id: "s1" },
       { id: "delete", label: "Delete", icon: "trash", keys: "Del", danger: true, onSelect: () => remove(ids) },
     ];
@@ -3535,6 +3555,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onOrigin={setOriginShown}
               onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}
               onSketchesHidden={(ids, hidden, name) => setHidden(ids, hidden, "sketches", name)}
+              isolateMenu={isolateEntries}
               onBrowserPicked={setBrowserPicked}
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}
