@@ -29,6 +29,12 @@ test("keyboard: tools, undo and the command palette", async ({ page }) => {
   await page.getByRole("combobox", { name: "Command" }).fill("holoroom");
   await page.keyboard.press("Enter");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "holoroom");
+
+  // / opens the same search, and the slash itself stays out of the field.
+  await page.keyboard.press("/");
+  const field = page.getByRole("combobox", { name: "Command" });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue("");
 });
 
 test("the saved theme applies before first paint", async ({ page }) => {
