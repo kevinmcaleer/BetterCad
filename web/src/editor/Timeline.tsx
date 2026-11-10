@@ -68,6 +68,11 @@ export interface TimelineProps {
   moveProblem?: (id: string, beforeId: string | null) => string | null;
   /** Another tool picks steps here (a Mirror of features): a click ticks or unticks a step it can take. */
   picking?: { can: (id: string) => boolean; picked: string[]; onPick: (f: Feature) => void } | null;
+  /**
+   * A component is active: its name and its steps. With `only` on, the strip shows just those steps; the marker, play
+   * controls and drags move between them, and the rest still build.
+   */
+  focus?: { name: string; ids: string[]; only: boolean; onToggle: () => void } | null;
 }
 
 /** How far, in pixels, a tile must be dragged before it starts to move rather than being clicked. */
@@ -100,6 +105,7 @@ export function Timeline({
   onReorder,
   moveProblem,
   picking,
+  focus,
 }: TimelineProps) {
   const strip = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
@@ -113,6 +119,13 @@ export function Timeline({
   const [moving, setMoving] = useState<{ id: string; gap: number } | null>(null);
   const n = features.length;
   const rolledBack = at < n;
+  /** The steps the strip shows, by index: all of them, or the active component's. */
+  const only = focus?.only ? new Set(focus.ids) : null;
+  const shownAt = features.flatMap((f, i) => (!only || only.has(f.id) ? [i] : []));
+  /** Where the marker can stop: the start, after each step shown, and the end. */
+  const stops = only ? [...new Set([0, ...shownAt.map((i) => i + 1), n])].sort((a, b) => a - b) : null;
+  const stepTo = (dir: -1 | 1) =>
+    stops ? (dir < 0 ? (stops.filter((g) => g < at).pop() ?? 0) : (stops.find((g) => g > at) ?? n)) : Math.max(0, Math.min(n, at + dir));
 
   const stopMoving = () => {
     press.current = null;
@@ -125,19 +138,19 @@ export function Timeline({
     marker.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [at, n]);
 
-  /** The gap nearest a pointer: the number of tiles whose centre is left of it. */
+  /** The gap nearest a pointer: just after the last tile whose centre is left of it (0 is before the first step). */
   const gapAt = (clientX: number) => {
     const tiles = strip.current?.querySelectorAll<HTMLElement>(".bc-tl-tile") ?? [];
     let i = 0;
-    tiles.forEach((t) => {
+    tiles.forEach((t, k) => {
       const r = t.getBoundingClientRect();
-      if (clientX > r.left + r.width / 2) i += 1;
+      if (clientX > r.left + r.width / 2) i = shownAt[k]! + 1;
     });
     return i;
   };
 
   const onMarkerKey = (e: KeyboardEvent) => {
-    const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: n }[e.key];
+    const to = { ArrowLeft: stepTo(-1), ArrowRight: stepTo(1), Home: 0, End: n }[e.key];
     if (to === undefined || e.altKey || e.ctrlKey || e.metaKey) return;
     e.preventDefault();
     e.stopPropagation();
@@ -261,8 +274,8 @@ export function Timeline({
       )}
       <div className="bc-tl-play" role="group" aria-label="Play controls">
         <IconButton icon="skipStart" title="Roll back to the start" disabled={at === 0} onClick={() => onMarker(0)} />
-        <IconButton icon="stepBack" title={`Step back (${formatCombo("alt+arrowleft")})`} disabled={at === 0} onClick={() => onMarker(at - 1)} />
-        <IconButton icon="stepForward" title={`Step forward (${formatCombo("alt+arrowright")})`} disabled={at === n} onClick={() => onMarker(at + 1)} />
+        <IconButton icon="stepBack" title={`Step back (${formatCombo("alt+arrowleft")})`} disabled={at === 0} onClick={() => onMarker(stepTo(-1))} />
+        <IconButton icon="stepForward" title={`Step forward (${formatCombo("alt+arrowright")})`} disabled={at === n} onClick={() => onMarker(stepTo(1))} />
         <IconButton icon="skipEnd" title="Go to the end" disabled={at === n} onClick={() => onMarker(n)} />
       </div>
       <div
@@ -280,6 +293,7 @@ export function Timeline({
         {n > 0 && markerEl}
         {moving && target && <div className={cx("bc-tl-drop", blocked && "bc-blocked")} style={{ order: 2 * moving.gap }} aria-hidden="true" />}
         {features.map((f, i) => {
+          if (only && !only.has(f.id)) return null;
           const why = failed.get(f.id);
           const state = [i >= at && "not built", f.suppressed && "suppressed", why && `problem: ${why}`].filter(Boolean).join(", ");
           const hold = longPress((p) => onMenu(f, p));
@@ -342,8 +356,17 @@ export function Timeline({
         })}
       </div>
       <span className="bc-tl-summary" aria-hidden="true">
-        {n === 0 ? "No steps yet" : rolledBack ? `Step ${at} of ${n}` : `${n} ${n === 1 ? "step" : "steps"}`}
+        {n === 0
+          ? "No steps yet"
+          : only
+            ? `${focus!.name}: ${rolledBack ? `step ${at} of ${n}` : `${shownAt.length} of ${n} steps`}`
+            : rolledBack
+              ? `Step ${at} of ${n}`
+              : `${n} ${n === 1 ? "step" : "steps"}`}
       </span>
+      {focus && (
+        <IconButton icon="component" title={focus.only ? `Show every step` : `Show only ${focus.name}'s steps`} on={focus.only} onClick={focus.onToggle} />
+      )}
       {onHistory && <IconButton icon="history" title="History" on={!!historyOpen} onClick={onHistory} />}
     </section>
   );
