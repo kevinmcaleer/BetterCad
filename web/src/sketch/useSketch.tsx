@@ -59,6 +59,7 @@ import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, Mods, ScreenPoint, WorldPlaneName } from "../viewport/engine";
 import { readPalette } from "../viewport/colours";
 import { isTyping } from "../state/commands";
+import { loupeAuto } from "../state/loupePref";
 import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "./loupe";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
@@ -1384,7 +1385,7 @@ export function useSketch(d: SketchDeps) {
       }
       if (pressed) return;
       if (mods.alt && !mods.shift) return openAt(p, "alt");
-      const crowd = crowding(screenPoints(), p);
+      const crowd = loupeAuto() ? crowding(screenPoints(), p) : null;
       if (!crowd) quiet = false;
       if (!crowd || quiet) return;
       dwell = window.setTimeout(() => {

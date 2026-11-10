@@ -1,5 +1,7 @@
 import { useEffect, type MutableRefObject } from "react";
-import { Button, FeaturePanel, FeaturePicker, FeatureRow, NumberField, PanelNote } from "@bettercad/ui";
+import { createPortal } from "react-dom";
+import { Button, FeaturePanel, FeaturePicker, FeatureRow, NumberField, PanelNote, cx } from "@bettercad/ui";
+import { loupeBox, loupeHint } from "../sketch/loupe";
 import { JOINT_KINDS, limitUnit, type JointKind } from "../state/document";
 import { useJoint, type JointDeps, type JointPick, type JointSession, type JointStage } from "./useJoint";
 
@@ -180,5 +182,30 @@ export function JointTool({
     },
     [onState, api],
   );
-  return <JointPanel x={x} scope={scope} error={x.session ? failed.get(x.session.id) : undefined} onCancel={onCancel} />;
+  return (
+    <>
+      <JointPanel x={x} scope={scope} error={x.session ? failed.get(x.session.id) : undefined} onCancel={onCancel} />
+      <JointLoupe x={x} />
+    </>
+  );
+}
+
+/** About where the top bar ends, in view pixels: the loupe opens below the pointer above this. */
+const TOP_BAR_BOTTOM = 72;
+
+/** The loupe over crowded snap points (#385), drawn in the 3D view, with how to close it above it (#386). */
+function JointLoupe({ x }: { x: JointSession }) {
+  const l = x.loupe;
+  const host = document.getElementById("bc-view");
+  if (!l || !host) return null;
+  const box = loupeBox(l.anchor, { width: host.clientWidth, height: host.clientHeight, top: TOP_BAR_BOTTOM });
+  const hint = loupeHint(l.why);
+  return createPortal(
+    <div className={cx("bc-loupe", box.below && "bc-below")} style={{ left: box.left, top: box.top }} aria-hidden="true" data-testid="joint-loupe">
+      <canvas ref={x.loupeCanvas} />
+      <span className="bc-loupe-zoom">{l.zoom}×</span>
+      {hint && <span className="bc-loupe-hint">{hint}</span>}
+    </div>,
+    host,
+  );
 }

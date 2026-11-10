@@ -69,3 +69,8 @@ export function loupeBox(
   const left = Math.min(Math.max(at.x - size / 2, 8), Math.max(8, view.width - size - 8));
   return { left, top, below };
 }
+
+/** The hint above the loupe: how to close it (#386). A finger's loupe closes as the finger lifts, so it has none. */
+export function loupeHint(why: Loupe["why"]): string | null {
+  return why === "crowd" ? "Esc closes the loupe" : why === "alt" ? "Let go of Alt to close the loupe" : null;
+}
