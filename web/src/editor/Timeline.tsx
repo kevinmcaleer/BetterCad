@@ -290,7 +290,6 @@ export function Timeline({
         }}
       >
         {n === 0 && <span className="bc-tl-empty">Each step you take shows here, in order.</span>}
-        {n > 0 && only && !shownAt.length && <span className="bc-tl-empty">Nothing in {focus!.name} yet.</span>}
         {n > 0 && markerEl}
         {moving && target && <div className={cx("bc-tl-drop", blocked && "bc-blocked")} style={{ order: 2 * moving.gap }} aria-hidden="true" />}
         {features.map((f, i) => {
