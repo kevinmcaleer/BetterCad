@@ -1383,6 +1383,13 @@ export class Engine {
     return new Vector3(v[vertex * 3]!, v[vertex * 3 + 1]!, v[vertex * 3 + 2]!).applyMatrix4(o.group.matrixWorld).toArray() as V3;
   }
 
+  /** Each face's edge numbers from the kernel, for finding a face's neighbours; null where it gave none. */
+  faceEdgeIds(bodyId: string): number[][] | null {
+    const m = this.bodies.get(bodyId)?.body.mesh;
+    const at = m?.faceEdgeStart;
+    return at ? Array.from({ length: at.length - 1 }, (_, f) => [...m.faceEdgeList!.subarray(at[f], at[f + 1])]) : null;
+  }
+
   /** Each body on show with its edge and corner counts, for snapping a sketch to the model. */
   bodyCounts(): { id: string; edges: number; vertices: number }[] {
     return this.order.map((o) => ({ id: o.body.id, edges: o.body.mesh.edgeSegs.length - 1, vertices: (o.body.mesh.vertices?.length ?? 0) / 3 }));

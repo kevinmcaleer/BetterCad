@@ -108,11 +108,22 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
             ))}
           </div>
         )}
+        {x.session && s.kind !== "fixed" && (
+          <FeatureRow label="">
+            <Button label="Show how it moves" title="Swing the part through its range and back" onClick={x.play} />
+          </FeatureRow>
+        )}
       </section>
       <section aria-label="Line-up" className="bc-fsection">
         <h3 className="bc-fsection-head">Line-up</h3>
         <div className="bc-fgrid">
           <NumberField label="Angle" unit="°" value={s.angle ?? 0} scope={scope} step={15} onCommit={(v) => x.change({ angle: v || undefined })} />
+          <Button
+            label="Turn 90°"
+            title="Turn the part a quarter turn about the joint; Shift+Q turns it back"
+            shortcut="Q"
+            onClick={() => x.change({ angle: (((((s.angle ?? 0) + 270) % 360) + 360) % 360) - 180 || undefined })}
+          />
           <NumberField label="Gap" value={s.gap ?? 0} scope={scope} onCommit={(v) => x.change({ gap: v || undefined })} />
           {XYZ.map((a, i) => (
             <NumberField
@@ -127,7 +138,7 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
               }}
             />
           ))}
-          <label className="bc-field bc-fgrid-check" data-tip="Turn the part over, onto the other side of the snap">
+          <label className="bc-field bc-fgrid-check" data-tip="Turn the part over, onto the other side of the snap (W)">
             <span className="bc-frow-label">Flip</span>
             <input type="checkbox" checked={!!s.flip} onChange={(e) => x.change({ flip: e.currentTarget.checked || undefined })} />
           </label>

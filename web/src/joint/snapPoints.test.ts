@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { across, edgeCircle, faceSnaps, nearestSnap, type V3 } from "./snapPoints";
+import { across, between, edgeCircle, faceSnaps, nearSnaps, nearestSnap, wiggle, type V3 } from "./snapPoints";
 
 const ring = (c: V3, r: number, n = 24): V3[] =>
   Array.from({ length: n + 1 }, (_, i) => {
@@ -95,5 +95,43 @@ describe("nearestSnap", () => {
     ];
     expect(nearestSnap(pts, { x: 7, y: 0 }, 12)).toBe(1);
     expect(nearestSnap(pts, { x: 40, y: 0 }, 12)).toBe(-1);
+  });
+});
+
+describe("between", () => {
+  it("halves two snap points", () => {
+    expect(between({ point: [0, 0, 0], normal: [0, 0, 1], plane: false }, { point: [10, 4, 2], normal: [1, 0, 0], plane: false })).toEqual([5, 2, 1]);
+  });
+  it("finds the midplane of two parallel faces, level with the first", () => {
+    const a = { point: [0, 3, 0] as V3, normal: [1, 0, 0] as V3, plane: true };
+    expect(between(a, { point: [10, 0, 5], normal: [-1, 0, 0], plane: true })).toEqual([5, 3, 0]);
+    expect(between(a, { point: [10, 0, 5], normal: [0, 1, 0], plane: true })).toBeNull();
+  });
+  it("goes halfway from a snap point to a face", () => {
+    expect(between({ point: [0, 0, 0], normal: [0, 0, 1], plane: false }, { point: [3, 3, 8], normal: [0, 0, -1], plane: true })).toEqual([0, 0, 4]);
+  });
+});
+
+describe("nearSnaps", () => {
+  it("lists the snaps in reach, nearest first", () => {
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 6, y: 0 },
+      { x: 30, y: 0 },
+    ];
+    expect(nearSnaps(pts, { x: 4, y: 0 }, 12)).toEqual([1, 0]);
+  });
+});
+
+describe("wiggle", () => {
+  it("swings a hinge to each limit and back", () => {
+    expect(wiggle("revolute", -90, 45, 0.25)).toBeCloseTo(45);
+    expect(wiggle("revolute", -90, 45, 0.75)).toBeCloseTo(-90);
+    expect(wiggle("revolute", -90, 45, 1)).toBeCloseTo(0);
+  });
+  it("slides a slider out and back, and leaves a fixed joint be", () => {
+    expect(wiggle("prismatic", 0, 50, 0.5)).toBeCloseTo(50);
+    expect(wiggle("prismatic", 0, 50, 1)).toBeCloseTo(0);
+    expect(wiggle("fixed", 0, 0, 0.5)).toBeNull();
   });
 });
