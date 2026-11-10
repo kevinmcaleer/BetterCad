@@ -156,6 +156,25 @@ describe("components (#171)", () => {
     expect(stampComponent(next, next, "C1")).toBe(next);
   });
 
+  it("files a sketch on a face under the component of the body it sits on, whatever is active", () => {
+    const doc = addLink(addLink(newDoc(), [], "C1"), [], "C2");
+    const plane = {
+      kind: "face" as const,
+      face: { body: "b1", face: 0 },
+      offset: 0,
+      frame: { origin: [0, 0, 0] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] },
+    };
+    const owner = (body: string) => (body === "b1" ? "C1" : undefined);
+    const next = addSketch(doc, plane, "s1");
+    expect(build(stampComponent(doc, next, "C2", owner)).sketches[0]).toMatchObject({ id: "s1", component: "C1" });
+    expect(build(stampComponent(doc, next, null, owner)).sketches[0]).toMatchObject({ id: "s1", component: "C1" });
+    // A body in the model keeps its sketch in the model.
+    expect(build(stampComponent(doc, next, "C2", () => null)).sketches[0]!.component).toBeUndefined();
+    // Anything else still goes into the active component.
+    const box = addPart(doc, "box", "p1");
+    expect(stampComponent(doc, box, "C2", owner).features.at(-1)).toMatchObject({ component: "C2" });
+  });
+
   it("files a construction plane made while a component is active under it", () => {
     const doc = addLink(newDoc(), [], "C1");
     const next = stampComponent(doc, addConstruct(doc, { kind: "offset", refs: [{ origin: "XY" }], value: 5 }, "p1"), "C1");

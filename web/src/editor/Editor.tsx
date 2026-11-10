@@ -1232,8 +1232,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // It's view state, as the marker is; a component that's gone or rolled past leaves the model active.
   const [activeComp, setActiveComp] = useState<string | null>(null);
   const workIn = activeComp && built.components.some((c) => c.id === activeComp) ? activeComp : null;
+  // A sketch on a face goes with the body it sits on, so a joint that turns the body carries the sketch too.
+  const linkOf = useRef(new Map<string, string | null>());
+  linkOf.current = new Map(parts.map((p) => [p.id, p.link ?? null]));
   useEffect(() => {
-    store.setStamp(workIn ? (before, after) => stampComponent(before, after, workIn) : null);
+    store.setStamp((before, after) => stampComponent(before, after, workIn, (body) => linkOf.current.get(body)));
     return () => store.setStamp(null);
   }, [store, workIn]);
   const activate = useCallback(
