@@ -40,6 +40,41 @@ describe("Timeline", () => {
     expect(move).toHaveAttribute("data-tip", "Move 1 · Box 1, X 9 mm");
     expect(d.features).toHaveLength(3);
   });
+  it("shows only the active component's steps until you show every step", () => {
+    const d = changeParts(addPart(addPart(newDoc(), "box", "a"), "sphere", "b"), ["a"], "position", { x: 9 });
+    const [box, , move] = d.features.map((f) => f.id) as [string, string, string];
+    const onMarker = vi.fn();
+    function Harness() {
+      const [only, setOnly] = useState(true);
+      return (
+        <Timeline
+          features={d.features}
+          at={1}
+          onMarker={onMarker}
+          failed={new Map()}
+          activeId={null}
+          summary={() => "x"}
+          onSelect={() => {}}
+          onMenu={() => {}}
+          focus={{ name: "Arm", ids: [box, move], only, onToggle: () => setOnly(!only) }}
+        />
+      );
+    }
+    render(<Harness />);
+    const bar = screen.getByRole("region", { name: "Timeline" });
+    expect(
+      within(bar)
+        .getAllByRole("button", { name: /, x/ })
+        .map((b) => b.getAttribute("aria-label")!.split(",")[0]),
+    ).toEqual(["Box 1", "Move 1"]);
+    expect(within(bar).getByText("Arm: step 1 of 3")).toBeInTheDocument();
+    // Stepping forward skips the sphere's step, which isn't shown.
+    fireEvent.click(within(bar).getByRole("button", { name: /^Step forward/ }));
+    expect(onMarker).toHaveBeenLastCalledWith(3);
+    fireEvent.click(within(bar).getByRole("button", { name: "Show every step" }));
+    expect(within(bar).getByRole("button", { name: /^Sphere 1/ })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: "Show only Arm's steps" })).toBeInTheDocument();
+  });
   it("marks a failed step", () => {
     const d = changeParts(addPart(newDoc(), "box", "a"), ["a"], "size", { z: 3 });
     render(

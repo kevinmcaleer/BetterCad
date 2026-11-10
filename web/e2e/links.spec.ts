@@ -173,3 +173,34 @@ test("hide a whole component from its eye, then show it again", async ({ page })
   await expect(page.getByRole("button", { name: "Hide Box 1" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hide Box 2" })).toBeVisible();
 });
+
+/** A component's timeline: clicking a component shows only its steps, until you show every step. */
+test("the timeline shows only the active component's steps", async ({ page }) => {
+  await page.goto("/");
+  for (const shape of ["Box", "Box", "Cylinder"]) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: shape, exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 1/ }).click();
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ modifiers: ["ControlOrMeta"] });
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  const timeline = page.getByRole("region", { name: "Timeline" });
+  const tiles = timeline.locator(".bc-tl-tile");
+  await expect(tiles).toHaveCount(4);
+
+  await page.getByRole("treeitem", { name: /Component 1$/ }).click();
+  await expect(page.getByRole("button", { name: "Working in Component 1" })).toBeVisible();
+  await expect(tiles).toHaveCount(3);
+  await expect(timeline.getByRole("button", { name: /^Cylinder 1/ })).toHaveCount(0);
+  await expect(timeline.getByText("Component 1: 3 of 4 steps")).toBeVisible();
+
+  await timeline.getByRole("button", { name: "Show every step" }).click();
+  await expect(tiles).toHaveCount(4);
+  await timeline.getByRole("button", { name: "Show only Component 1's steps" }).click();
+  await expect(tiles).toHaveCount(3);
+
+  // The model's row makes the model active again, and every step shows.
+  await page.getByRole("treeitem").first().click();
+  await expect(tiles).toHaveCount(4);
+});

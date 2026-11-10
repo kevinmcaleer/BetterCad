@@ -1269,6 +1269,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // As in Fusion, while a component is active the bodies outside it fade, so you can see where new steps go. The
   // model's row makes the whole model active and brings them back.
   const faded = useMemo(() => fadedOutside(workIn, built.components, parts), [workIn, built.components, parts]);
+  // The timeline shows only the active component's steps, until "Show every step" for that component.
+  const [allStepsFor, setAllStepsFor] = useState<string | null>(null);
+  // Worked out in a chunk of its own, so first paint doesn't carry it; until it lands, every step shows.
+  const [compSteps, setCompSteps] = useState<{ id: string; ids: string[] } | null>(null);
+  useEffect(() => {
+    if (!workIn) return;
+    let live = true;
+    void import("../state/componentSteps").then((m) => {
+      if (live) setCompSteps({ id: workIn, ids: m.componentSteps(doc, workIn) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [doc, workIn]);
+  const workInName = workIn ? (built.components.find((c) => c.id === workIn)?.name ?? "") : "";
   // A sketch on a face goes with the body it sits on, so a joint that turns the body carries the sketch too.
   const linkOf = useRef(new Map<string, string | null>());
   linkOf.current = new Map(parts.map((p) => [p.id, p.link ?? null]));
@@ -3831,6 +3846,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
               historyOpen={panel === "history"}
+              focus={
+                workIn && compSteps?.id === workIn
+                  ? {
+                      name: workInName,
+                      ids: compSteps.ids,
+                      only: allStepsFor !== workIn,
+                      onToggle: () => setAllStepsFor(allStepsFor === workIn ? null : workIn),
+                    }
+                  : null
+              }
               picking={
                 tool === "pattern" && pattern.of === "features" && !pattern.pickingPlane && !pattern.pickingAxis
                   ? {
