@@ -1,6 +1,6 @@
 import { newSketch } from "./model";
 import { drawCircle, drawPolyline, drawRectangle, drawArc3, Draft } from "./draw";
-import { profiles } from "./profiles";
+import { profiles, regions } from "./profiles";
 
 describe("profiles", () => {
   it("a rectangle with two circles is one profile with two holes", () => {
@@ -79,5 +79,69 @@ describe("profiles", () => {
     tied.constrain({ type: "coincident", a: pts[3]!.id, b: pts[4]!.id });
     tied.constrain({ type: "coincident", a: pts[5]!.id, b: pts[0]!.id });
     expect(profiles(tied.done().sketch).profiles[0]!.area).toBeCloseTo(50, 9);
+  });
+});
+
+describe("regions cut where curves cross (split)", () => {
+  // Net areas, sorted; arcs are sampled, so they are within a square millimetre or so.
+  const expectAreas = (list: { area: number; holes: { area: number }[] }[], want: number[]) => {
+    const got = list.map((p) => p.area - p.holes.reduce((a, h) => a + h.area, 0)).sort((a, b) => a - b);
+    expect(got).toHaveLength(want.length);
+    [...want].sort((a, b) => a - b).forEach((w, i) => expect(Math.abs(got[i]! - w)).toBeLessThan(1.5));
+  };
+
+  it("a circle over a rectangle's corner makes three regions", () => {
+    let s = drawRectangle(newSketch(), [0, 0], [20, 20]).sketch;
+    s = drawCircle(s, [20, 20], 10).sketch;
+    const q = (Math.PI * 100) / 4;
+    expectAreas(regions(s, { split: true }), [q, 3 * q, 400 - q]);
+    // Without splitting the two shapes stay whole.
+    expect(regions(s)).toHaveLength(2);
+  });
+
+  it("projected face edges bound regions: the corners outside a circle that touches them", () => {
+    const d = new Draft(newSketch());
+    const c = [d.point([0, 0], true), d.point([40, 0], true), d.point([40, 20], true), d.point([0, 20], true)];
+    for (let i = 0; i < 4; i++) d.line(c[i]!, c[(i + 1) % 4]!, { construction: true });
+    // A construction line the user drew does not bound anything.
+    d.line([0, 10], [40, 10], { construction: true });
+    let s = d.done().sketch;
+    const lines = s.entities
+      .filter((e) => e.kind === "line")
+      .slice(0, 4)
+      .map((e) => e.id);
+    s = { ...s, entities: s.entities.map((e) => (lines.includes(e.id) ? { ...e, projectedFrom: { body: "b", face: 0 } as never } : e)) };
+    s = drawCircle(s, [30, 10], 10).sketch;
+    const corner = (400 - 100 * Math.PI) / 4;
+    expectAreas(regions(s, { split: true }), [corner, corner, 100 * Math.PI, 800 - 100 * Math.PI - 2 * corner]);
+    // Each corner is a line, an arc and a line, the arc a quarter circle.
+    const small = regions(s, { split: true }).filter((p) => Math.abs(p.area - corner) < 0.5);
+    for (const p of small) {
+      expect(p.edges).toHaveLength(3);
+      expect(p.edges.every((e) => e.span)).toBe(true);
+    }
+  });
+
+  it("a circle inside a rectangle is the hole in the ring; a line across the circle splits only the disc", () => {
+    let s = drawRectangle(newSketch(), [0, 0], [60, 30]).sketch;
+    s = drawCircle(s, [30, 15], 10).sketch;
+    const d = new Draft(s);
+    d.line([20, 15], [40, 15]);
+    s = d.done().sketch;
+    const list = regions(s, { split: true });
+    const half = (Math.PI * 100) / 2;
+    expectAreas(list, [half, half, 1800 - 2 * half]);
+    const ring = list.find((p) => p.holes.length)!;
+    expect(ring.holes).toHaveLength(1);
+    expect(ring.holes[0]!.area).toBeCloseTo(Math.PI * 100, 0);
+  });
+
+  it("two overlapping circles make a lens and two crescents", () => {
+    let s = drawCircle(newSketch(), [0, 0], 10).sketch;
+    s = drawCircle(s, [10, 0], 10).sketch;
+    const list = regions(s, { split: true });
+    expect(list).toHaveLength(3);
+    const lens = 2 * 100 * Math.acos(0.5) - 5 * Math.sqrt(400 - 100);
+    expect(Math.min(...list.map((p) => p.area))).toBeCloseTo(lens, 0);
   });
 });
