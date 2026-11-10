@@ -1366,10 +1366,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [store],
   );
 
-  /** Hide others (keep: what stays shown, `name` names the step) or Unhide all (null): bodies, sketches and planes, one undo step. */
+  /** Hide others (keep: what stays shown, `name` names the step) or Unhide all (null): bodies only, one undo step.
+   *  Sketches and construction planes keep their own eyes, so one you hid stays hidden. */
   const isolate = (keep: string[] | null, name?: string) => {
     const looks = live.current.doc.looks;
-    const ids = [...parts.map((p) => p.id), ...built.sketches.map((s) => s.id), ...browserConstruct.map((c) => c.id)];
+    const ids = parts.map((p) => p.id);
     const want = (id: string) => !!keep && !keep.includes(id);
     const change = ids.filter((id) => !!looks[id]?.hidden !== want(id));
     if (!change.length) return;
@@ -1378,7 +1379,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       keep ? `Hide all but ${name ?? (keep.length === 1 ? (parts.find((p) => p.id === keep[0])?.name ?? "1 item") : `${keep.length} items`)}` : "Unhide all",
     );
   };
-  const anyHidden = [...parts, ...browserSketches, ...browserConstruct].some((x) => x.hidden);
+  const anyHidden = parts.some((x) => x.hidden);
   const isolateEntries = (keep: string[], name?: string): MenuEntry[] => [
     { id: "hide-others", label: "Hide others", icon: "eyeOff", onSelect: () => isolate(keep, name) },
     { id: "unhide-all", label: "Unhide all", icon: "eye", disabled: !anyHidden, onSelect: () => isolate(null) },
