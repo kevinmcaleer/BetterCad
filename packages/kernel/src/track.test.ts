@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addLink,
   addPart,
   addPattern,
   build,
@@ -175,6 +176,25 @@ describe("Track (Pattern's Track kind)", () => {
     expect(b.find((p) => p.id === "t.link.0")!.colour).toBe("#2e86de");
     expect(b.find((p) => p.id === copy)!.colour).toBe("#27ae60");
     expect(b.find((p) => p.id === "w1")!.colour).toBeUndefined();
+  });
+
+  it("mirrors a coloured track, as bodies or as a component, in its colours", () => {
+    let doc = setLook(trackDoc(), ["link"], () => ({ colour: "#222222", finish: "rubber" }));
+    doc = setLook(doc, ["w1"], () => ({ colour: "#888888" }));
+    const pieces = (d: ModelDoc) => featureParts(d.features.find((f) => f.id === "t")!);
+    const bodies = addPattern(doc, { parts: ["w1", ...pieces(doc)], kind: "mirror", plane: "XZ" }, "m");
+    let b = build(bodies).parts;
+    expect(b.find((p) => p.id === "m.link.0")!.colour).toBe("#222222");
+    expect(b.find((p) => p.id === "m.t.link.7.0")!).toMatchObject({ colour: "#222222", finish: "rubber" });
+    expect(b.find((p) => p.id === "m.w1.0")!.colour).toBe("#888888");
+    expect(b.find((p) => p.id === "w2")!.colour).toBeUndefined();
+    // A copy given its own colour keeps it.
+    b = build(setLook(bodies, ["m.link.0"], () => ({ colour: "#ffffff" }))).parts;
+    expect(b.find((p) => p.id === "m.link.0")!).toMatchObject({ colour: "#ffffff", finish: "rubber" });
+    const comp = addPattern(addLink(doc, ["w1", "w2", ...pieces(doc)], "L1"), { parts: [], kind: "mirror", of: "component", link: "L1", plane: "XZ" }, "m");
+    b = build(comp).parts;
+    expect(b.filter((p) => p.link === "m" && p.id.includes("link")).every((p) => p.colour === "#222222")).toBe(true);
+    expect(b.find((p) => p.id === "m.w2.0")!.colour).toBeUndefined();
   });
 
   it("follows the wheels when they move, and needs the steps that made them", () => {
