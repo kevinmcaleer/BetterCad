@@ -2369,7 +2369,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => void import("./fullscreen").then((m) => m.switchFullscreen(h().say)),
         keywords: "fullscreen phone tablet",
       },
-      { id: "help.palette", label: "Find a command", group: "Help", icon: "search", keys: ["mod+k"], run: () => setPaletteOpen(true) },
+      { id: "help.palette", label: "Find a command", group: "Help", icon: "search", keys: ["mod+k", "/"], run: () => setPaletteOpen(true) },
       { id: "print.overhangs", label: "Check overhangs", group: "View", icon: "printer", run: () => h().printCheck("overhang"), keywords: "support print 45" },
       {
         id: "print.thin",

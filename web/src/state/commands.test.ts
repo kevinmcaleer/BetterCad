@@ -45,6 +45,15 @@ describe("registry", () => {
     expect(reg.dispatch(ev("z", { ctrlKey: true }, input))).toBe(true);
     expect(ran).toEqual(["undo"]);
   });
+  it("opens the command search with / but never while typing", () => {
+    const { reg, ran, cmd } = setup();
+    reg.register(cmd("find", ["mod+k", "/"], { label: "Find a command" }));
+    expect(comboOf(ev("/"))).toBe("/");
+    expect(reg.dispatch(ev("/", {}, document.createElement("input")))).toBe(false);
+    expect(reg.dispatch(ev("/", {}, document.createElement("textarea")))).toBe(false);
+    expect(reg.dispatch(ev("/"))).toBe(true);
+    expect(ran).toEqual(["find"]);
+  });
   it("throws on a duplicate shortcut in development", () => {
     const { reg, cmd } = setup();
     expect(() => reg.register(cmd("other", ["m"]))).toThrow(/already used by move/);
