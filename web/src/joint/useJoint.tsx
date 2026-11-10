@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Matrix4 } from "three";
 import { ESC, useEscape } from "@bettercad/ui";
 import {
@@ -27,11 +27,11 @@ import type { MeasureResult, TopoRef } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine, Mods, ScreenPoint } from "../viewport/engine";
 import { readPalette } from "../viewport/colours";
-import { isTyping } from "../state/commands";
+import { isMac, isTyping } from "../state/commands";
 import { loupeAuto } from "../state/loupePref";
 import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "../sketch/loupe";
 import { SnapMarks } from "./snapMarks";
-import { between, boxSnaps, facing, faceSnaps, nearSnaps, wiggle, type SnapPoint, type V3 } from "./snapPoints";
+import { between, boxSnaps, facing, faceSnaps, nearSnaps, otherSide, wiggle, type SnapPoint, type V3 } from "./snapPoints";
 import { sharpCorners } from "./sharpCorners";
 import { lineUpHoles, type Hole } from "./holePattern";
 
@@ -66,6 +66,8 @@ export const KEY = (id: string) => `joint:${id}`;
 const AXES: ReadonlySet<"axis"> = new Set(["axis"]);
 /** How near the pointer, in CSS px, a snap point has to be to take the click. */
 const SNAP_REACH = 12;
+/** The click for the middle between two snaps (#388): Shift holds the face instead. */
+const MIDDLE_CLICK = isMac ? "Cmd-click" : "Ctrl-click";
 /** How long a joint's wiggle takes, in ms (#394). */
 const WIGGLE_MS = 1400;
 
@@ -310,6 +312,11 @@ export function useJoint(d: JointDeps) {
     /** Each face's edge numbers on the body last pointed at, for finding cut-away corners (#389). */
     let topo: { body: string; faceEdges: number[][] | null } | null = null;
     let hot = -1;
+    /**
+     * Shift held: the face under the pointer stays, and its nearest snap point is hot wherever the pointer goes, so you
+     * can slide across the face to a hole without another face or part taking over.
+     */
+    let held = false;
     // The loupe: while it is open the pointer moves at its own speed inside it, so in the view it moves `zoom` times
     // slower, and picks reach only as far as the zoom allows.
     let lens: Loupe | null = null;
@@ -388,6 +395,11 @@ export function useJoint(d: JointDeps) {
         e.preventDefault();
         return e.key.toLowerCase() === "q" ? turnBy(e.shiftKey ? -90 : 90) : flipOver();
       }
+      if (e.key === "Shift" && !e.repeat && last && !last.mods.touch) {
+        // Shift holds the face under the pointer; letting go lets it follow the pointer again.
+        last = { p: last.p, mods: { ...last.mods, shift: e.type === "keydown" } };
+        return refresh();
+      }
       if (e.key !== "Alt") return;
       if (e.type === "keydown") {
         // Alt alone would focus the browser's menu bar on Windows.
@@ -409,6 +421,10 @@ export function useJoint(d: JointDeps) {
     const look = (p: ScreenPoint) => {
       const f = eng.pick(p.x, p.y, "face");
       const reach = lens ? Math.max(2, SNAP_REACH / lens.zoom) : SNAP_REACH;
+      if (held && face) {
+        hot = cycled(p, Infinity);
+        return { edge: null, face: { body: face.body, kind: "face" as const, index: face.index } };
+      }
       // A snap of the face already shown keeps it, even over the next face (a cut-away corner sits past a round).
       hot = face ? cycled(p, reach) : -1;
       if (f && hot < 0 && (f.body !== face?.body || f.index !== face.index)) {
@@ -443,6 +459,7 @@ export function useJoint(d: JointDeps) {
       return { edge, face: face && { body: face.body, kind: "face" as const, index: face.index } };
     };
     const clearMarks = () => {
+      held = false;
       face = null;
       hot = -1;
       marks.part(null);
@@ -453,6 +470,8 @@ export function useJoint(d: JointDeps) {
     /** Lights the face and snap under the pointer, with the moving part's ghost where it would land (#390). */
     const hoverAt = (p: ScreenPoint, mods: Mods) => {
       const t = live.current.target;
+      if (!mods.shift || mods.touch) held = false;
+      else if (face) held = true;
       if (!t) return clearMarks();
       const q = lensed(lens, p);
       if (t === "parent" && eng.constructAt(q.x, q.y, AXES)) return clearMarks();
@@ -487,8 +506,8 @@ export function useJoint(d: JointDeps) {
         const at = look(p);
         const s = face && hot >= 0 ? face.snaps[hot] : null;
         if (lens) show(null);
-        if (mods.shift && face) {
-          // Shift-click two snaps or flat faces: the snap goes in halfway between them (#388).
+        if (mods.mod && face) {
+          // Ctrl-click (Cmd-click on a Mac) two snaps or flat faces: the snap goes in halfway between them (#388).
           const flat = !s && !at.edge ? eng.faceInfo(face.body, face.index) : null;
           const toward = eng.ray(p.x, p.y).dir.map((v) => -v) as V3;
           const pick = s
@@ -500,19 +519,22 @@ export function useJoint(d: JointDeps) {
           if (!half) {
             half = pick;
             marks.pin(pick.point);
-            deps.current.say("Shift-click a second snap point or face for the middle between them");
+            deps.current.say(`${MIDDLE_CLICK} a second snap point or face for the middle between them`);
             return true;
           }
           const mid = between(half, pick);
           const first = half;
           half = null;
           marks.pin(null);
+          held = false;
           if (mid) takeFrame(t, linkOf(first.body), { origin: mid, axis: first.normal }, first.body);
           else deps.current.say("Pick two parallel faces, or a snap point and a face", true);
           return true;
         }
         half = null;
         marks.pin(null);
+        // A pick lets a held face go: keep Shift down to hold the next face the pointer finds.
+        held = false;
         if (face && s) {
           const pattern = s.hole ? face.snaps.flatMap((h) => (h.hole ? [{ point: h.point, radius: h.hole }] : [])) : [];
           takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal }, face.body, pattern);
@@ -678,13 +700,17 @@ export function useJoint(d: JointDeps) {
   const help = !d.active
     ? null
     : target === "child"
-      ? "Click a snap point, face or round edge on the part that moves. Shift-click two for the middle between them."
+      ? `Click a snap point, face or round edge on the part that moves. Hold Shift to stay on one face. ${MIDDLE_CLICK} two for the middle between them.`
       : target === "parent"
-        ? "Click a snap point, face, round edge or axis on the part it joins, or press Enter for Base. Shift-click two for the middle."
+        ? `Click a snap point, face, round edge or axis on the part it joins, or press Enter for Base. Hold Shift to stay on one face. ${MIDDLE_CLICK} two for the middle.`
         : "Change any field. Enter keeps it, Esc puts it back.";
+
+  const ghostKey = otherSide({ target, child, from: !!from, parent, frame: !!frame }, d.links).join(" ");
+  const ghost = useMemo(() => (ghostKey ? ghostKey.split(" ") : []), [ghostKey]);
 
   return {
     stage,
+    ghost,
     target,
     setTarget,
     child,

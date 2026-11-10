@@ -145,6 +145,37 @@ test("snap a joint to a box corner from its snap points", async ({ page }) => {
   await expect(panel.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^0, -10, 20 mm/ })).toBeVisible();
 });
 
+/** Shift holds the face under the pointer, so its snap points can be reached from off the face. */
+test("hold a face with Shift and snap to its corner from past its edge", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  const panel = page.getByRole("group", { name: "Joint options" });
+  const box = (await page.getByTestId("view-canvas").boundingBox())!;
+  const proj = (p: number[]) => page.evaluate((q) => (window as unknown as View).__bcView.project(q), p);
+  // On Box 2's top, then Shift down, then well past its back left corner, out of reach of it: the held top's nearest
+  // snap, the corner, takes the click.
+  const top = await proj([25, 0, 20]);
+  await page.mouse.move(box.x + top.x, box.y + top.y, { steps: 3 });
+  await page.keyboard.down("Shift");
+  const past = await proj([11, 15, 20]);
+  await page.mouse.move(box.x + past.x, box.y + past.y, { steps: 6 });
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^15, 10, 20 mm/ })).toBeVisible();
+});
+
 /** The joint loupe (#385, #386): crowded snap points open it, the pointer is slower inside it, and Esc closes it. */
 test("pick a crowded joint snap through the loupe", async ({ page }) => {
   await page.goto("/");
@@ -221,11 +252,11 @@ test("snap to the sharp corner behind a round, and between two snaps", async ({ 
     .getByRole("button", { name: /^Joint/ })
     .click();
   const panel = page.getByRole("group", { name: "Joint options" });
-  // Shift-click a corner and an edge middle of Box 2's top: the snap goes halfway between them.
-  await page.keyboard.down("Shift");
+  // Ctrl-click a corner and an edge middle of Box 2's top: the snap goes halfway between them.
+  await page.keyboard.down("Control");
   await click(page, 15.4, -9.6, 20);
   await click(page, 34.6, 0, 20);
-  await page.keyboard.up("Shift");
+  await page.keyboard.up("Control");
   await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^25, -5, 20 mm/ })).toBeVisible();
   // On Box 1's rounded top, the corner the round cut away is a snap of its own, past the round (on the corner clear
   // of the Z axis, which would give the axis itself).
