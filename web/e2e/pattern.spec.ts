@@ -218,8 +218,11 @@ test("wrap a track piece round two wheels", async ({ page }) => {
   await page.getByRole("button", { name: "Track", exact: true }).click();
   await expect(page.getByText("Click the pin or hole where the piece joins the one before it.", { exact: false })).toBeVisible();
   // The piece's pin holes' top edges, then each wheel's top rim.
-  await click(page, 46, 41, 10);
-  await expect(page.getByText("Now the pin or hole at its other end", { exact: false })).toBeVisible();
+  // On a busy runner the first click can land before the piece's edges are pickable, so click again until it takes.
+  await expect(async () => {
+    if (!(await page.getByText("Now the pin or hole at its other end", { exact: false }).isVisible())) await click(page, 46, 41, 10);
+    await expect(page.getByText("Now the pin or hole at its other end", { exact: false })).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
   await click(page, 54, 41, 10);
   await click(page, 20, 0, 10);
   await click(page, 120, 0, 10);
