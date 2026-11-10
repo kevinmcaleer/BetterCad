@@ -1,4 +1,5 @@
 import type { Part, PatternFeature, Vec3 } from "./document";
+import type { Geo } from "./construct";
 import { frameToLocal } from "./extrude";
 import { partFrame } from "./catalogue";
 
@@ -143,14 +144,22 @@ export function patternMoves(f: PatternFeature, plane?: Plane, axis?: Axis): Cop
 }
 
 /**
- * The construction axis a circular pattern turns round (`axisStep`), where it is now; undefined for a world axis, and a
- * message when the axis is gone.
+ * The axis a circular pattern turns round, where it is now: a body's edge or round face (`axisRef`, given as `picked`
+ * where it is now) or a construction axis (`axisStep`); undefined for a world axis, and a message when the axis is gone.
  */
 export function patternAxis(
   f: PatternFeature,
   construct: readonly { id: string; geo: { what: string; origin?: readonly number[]; dir?: readonly number[] } }[] = [],
+  picked?: Geo | string,
 ): Axis | string | undefined {
-  if (f.kind !== "circle" || !f.axisStep) return undefined;
+  if (f.kind !== "circle") return undefined;
+  if (f.axisRef) {
+    if (typeof picked === "string") return "The edge it turns round is gone";
+    if (picked?.t === "circle") return { origin: v3(picked.centre), dir: unit(v3(picked.axis)) };
+    if (picked?.t === "line") return { origin: v3(picked.origin), dir: unit(v3(picked.dir)) };
+    return "The edge it turns round is gone";
+  }
+  if (!f.axisStep) return undefined;
   const c = construct.find((x) => x.id === f.axisStep);
   if (c?.geo.what !== "axis" || !c.geo.origin || !c.geo.dir) return "The axis it turns round is gone";
   return { origin: v3(c.geo.origin), dir: unit(v3(c.geo.dir)) };
@@ -306,5 +315,5 @@ export function patternSummary(f: PatternFeature, who: string, faceOwner?: strin
     const two = f.count2 > 1 ? ` × ${f.count2} along ${f.dir2.toUpperCase()} at ${f.spacing2} mm` : "";
     return `${who}, ${f.count1} along ${f.dir1.toUpperCase()} at ${f.spacing1} mm${two}${joined}`;
   }
-  return `${who}, ${f.count} round ${f.axisStep ? (axisName ?? "an axis") : f.axis.toUpperCase()}${f.angle < 360 ? ` over ${f.angle}°` : ""}${joined}`;
+  return `${who}, ${f.count} round ${f.axisStep || f.axisRef ? (axisName ?? "an axis") : f.axis.toUpperCase()}${f.angle < 360 ? ` over ${f.angle}°` : ""}${joined}`;
 }

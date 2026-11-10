@@ -26,6 +26,7 @@ import {
   wedge,
   type TopoDS_Shape,
 } from "./occt/shapes";
+import { bodyRef } from "./construct";
 import { extent, pickProfiles, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
 import { createRequire } from "node:module";
 import { parse } from "opentype.js";
@@ -305,6 +306,17 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   },
   "pattern-rect-pegs": (oc) => patterned(oc, "cylinder", { x: 6, y: 6, z: 10 }, 0, { kind: "rect", count1: 3, spacing1: 10, count2: 2, spacing2: 10 }),
   "pattern-circle-arms": (oc) => patterned(oc, "box", { x: 20, y: 4, z: 3 }, 12, { kind: "circle", count: 6, angle: 360 }),
+  // Arms turned round a hub's round top edge, off the origin: the copies circle the hub, not Z.
+  "pattern-circle-round-edge": (oc) => {
+    let doc = changeParts(addPart(newDoc(), "cylinder", "hub"), ["hub"], "size", { x: 10, y: 10, z: 6 });
+    doc = changeParts(doc, ["hub"], "position", { x: 30, y: 10, z: 0 });
+    doc = changeParts(addPart(doc, "box", "a"), ["a"], "size", { x: 20, y: 4, z: 3 });
+    doc = changeParts(doc, ["a"], "position", { x: 42, y: 10, z: 0 });
+    const hub = build(doc).parts.find((q) => q.id === "hub")!;
+    const axisRef = bodyRef(hub, "edge", 0, { t: "circle", centre: [30, 10, 6], axis: [0, 0, 1], radius: 5 });
+    doc = addPattern(doc, { parts: ["a"], kind: "circle", count: 6, angle: 360, join: true, axisRef });
+    return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
+  },
   "extrude-cut": (oc) =>
     boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, {

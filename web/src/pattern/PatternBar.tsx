@@ -72,7 +72,7 @@ function Axes({ label, row, value, onChange }: { label: string; row: string; val
   );
 }
 
-/** X, Y, Z or a construction axis, for a circular pattern to turn round. */
+/** X, Y, Z, a construction axis, or a round edge or face on the model, for a circular pattern to turn round. */
 function TurnAxis({ x }: { x: PatternSession }) {
   const f = x.feature!;
   const axes = x.construct.filter((c) => c.geo.what === "axis").map((c) => ({ id: c.id, name: x.nameOf(c.id) ?? "Axis" }));
@@ -83,7 +83,7 @@ function TurnAxis({ x }: { x: PatternSession }) {
         checked: f.axisStep === a.id,
         onSelect: () => {
           x.setPickingAxis(false);
-          x.change({ axisStep: a.id });
+          x.change({ axisStep: a.id, axisRef: undefined });
         },
       }))
     : [{ id: "none", label: "No construction axes yet. Make one with Construct.", disabled: true, onSelect: () => {} }];
@@ -95,17 +95,17 @@ function TurnAxis({ x }: { x: PatternSession }) {
             key={a}
             label={a.toUpperCase()}
             title={`Axis: round ${a.toUpperCase()}`}
-            on={!f.axisStep && !x.pickingAxis && f.axis === a}
+            on={!f.axisStep && !f.axisRef && !x.pickingAxis && f.axis === a}
             onClick={() => {
               x.setPickingAxis(false);
-              x.change({ axis: a, axisStep: undefined });
+              x.change({ axis: a, axisStep: undefined, axisRef: undefined });
             }}
           />
         ))}
         <Button
-          label={f.axisStep ? (x.nameOf(f.axisStep) ?? "Axis") : "Pick axis"}
-          title="Click a construction axis in the view to turn round, such as Axis 1"
-          on={!!f.axisStep || x.pickingAxis}
+          label={f.axisRef ? ("kind" in f.axisRef && f.axisRef.kind === "face" ? "Face" : "Edge") : f.axisStep ? (x.nameOf(f.axisStep) ?? "Axis") : "Pick axis"}
+          title="Click a round edge or face on the model to turn round its centre, or a construction axis"
+          on={!!f.axisStep || !!f.axisRef || x.pickingAxis}
           onClick={() => x.setPickingAxis(!x.pickingAxis)}
         />
         <MenuButton
@@ -222,8 +222,8 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
           : f.kind === "rect"
             ? `Copying ${what} in rows.`
             : x.pickingAxis
-              ? "Click a construction axis."
-              : `Copying ${what} round ${f.axisStep ? (x.nameOf(f.axisStep) ?? "an axis") : `the ${f.axis.toUpperCase()} axis`}.`}
+              ? "Click a round edge or face, or an axis."
+              : `Copying ${what} round ${f.axisRef ? `the ${"kind" in f.axisRef && f.axisRef.kind === "face" ? "face" : "edge"} you picked` : f.axisStep ? (x.nameOf(f.axisStep) ?? "an axis") : `the ${f.axis.toUpperCase()} axis`}.`}
       </PanelNote>
       {error && <PanelNote tone="error">{error}</PanelNote>}
     </FeaturePanel>

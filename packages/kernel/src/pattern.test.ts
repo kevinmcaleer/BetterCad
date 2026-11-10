@@ -23,6 +23,7 @@ import {
 } from "./document";
 import { copiesPer, copiesWhat, mirrorFace, mirrorPlane, movePoint, moveToLocal, patternMoves, patternProblem, undoMove, type CopyMove } from "./pattern";
 import { addConstruct } from "./document";
+import { bodyRef } from "./construct";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 
@@ -316,6 +317,33 @@ describe("Pattern of features, and round a construction axis", () => {
     expect(build(bodies).parts).toHaveLength(2);
     doc = { ...doc, features: doc.features.filter((g) => g.id !== "ax") };
     expect(build(doc).failed.get("p")).toBe("The axis it turns round is gone");
+  });
+
+  it("turns a hole round a round edge picked on a body, and follows the body when it moves", () => {
+    const kb = new ModelBuilder(oc);
+    let doc = holedBox();
+    const one = 16000 - bbox(kb, doc, "b").volume;
+    // A peg standing at x = 20, beside the box: its top edge's centre line is a vertical axis at x = 20.
+    doc = changeParts(addPart(doc, "cylinder", "peg"), ["peg"], "size", { x: 6, y: 6, z: 10 });
+    doc = changeParts(doc, ["peg"], "position", { x: 20, y: 0, z: 0 });
+    const peg = build(doc).parts.find((q) => q.id === "peg")!;
+    const axisRef = bodyRef(peg, "edge", 0, { t: "circle", centre: [20, 0, 10], axis: [0, 0, 1], radius: 3 });
+    doc = addPattern(doc, { parts: [], kind: "circle", of: "features", features: ["h1"], count: 2, axisRef }, "p");
+    // The copy lands at x = 30, off the box, so nothing more is cut.
+    expect(build(doc).failed.size).toBe(0);
+    expect(16000 - bbox(kb, doc, "b").volume).toBeCloseTo(one, 1);
+    expect(featureSummary(doc, doc.features.at(-1)!)).toMatch(/^Hole 1, 2 round an edge of /);
+    expect(dependsOn(doc, "p")).toContain(doc.features.find((g) => g.type === "add" && g.part.id === "peg")!.id);
+    // Moved to the origin, the peg takes the axis with it: the copy lands at x = -10, inside the box.
+    let moved = changeParts(addPart(holedBox(), "cylinder", "peg"), ["peg"], "size", { x: 6, y: 6, z: 10 });
+    moved = changeParts(moved, ["peg"], "position", { x: 0, y: 0, z: 0 });
+    moved = addPattern(moved, { parts: [], kind: "circle", of: "features", features: ["h1"], count: 2, axisRef }, "p");
+    expect(16000 - bbox(kb, moved, "b").volume).toBeCloseTo(2 * one, 1);
+    // A straight edge works too; with the peg gone, the step says so.
+    const line = updatePattern(doc, "p", { axisRef: bodyRef(peg, "edge", 1, { t: "line", origin: [20, 0, 0], dir: [0, 0, 1], length: 10 }) });
+    expect(16000 - bbox(kb, line, "b").volume).toBeCloseTo(one, 1);
+    const gone = { ...doc, features: doc.features.filter((g) => !(g.type === "add" && g.part.id === "peg")) };
+    expect(build(gone).failed.get("p")).toBe("The edge it turns round is gone");
   });
 
   it("asks for features when none are picked, and keeps its settings for when it is opened again", () => {

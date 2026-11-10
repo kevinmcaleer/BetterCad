@@ -311,6 +311,11 @@ export interface PatternFeature extends FeatureBase {
   axis: WorldAxis;
   /** Circle: a construction axis step (#265) to turn round instead of `axis`, where it is now. */
   axisStep?: string;
+  /**
+   * Circle: a body's round edge or face (its centre line) or straight edge to turn round instead, kept in the body's
+   * own coordinates so it follows the body's moves and pose.
+   */
+  axisRef?: ConstructRef;
   count: number;
   angle: number;
   /** Join each copy to its original, for one printable body, instead of keeping separate bodies. */
@@ -947,7 +952,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, plane);
           break;
         }
-        const axis = patternAxis(f, built);
+        const axis = patternAxis(f, built, f.kind === "circle" && f.axisRef ? refGeo(f.axisRef) : undefined);
         if (typeof axis === "string") {
           failed.set(f.id, axis);
           break;
@@ -1811,7 +1816,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
         f,
         what,
         f.step ? (doc.features.find((g) => g.id === f.step)?.name ?? "a gone plane") : f.face && (names.get(f.face.body) ?? "a body"),
-        f.axisStep ? (doc.features.find((g) => g.id === f.axisStep)?.name ?? "a gone axis") : undefined,
+        f.axisRef && "body" in f.axisRef
+          ? `${f.axisRef.kind === "face" ? "a face" : "an edge"} of ${names.get(f.axisRef.body) ?? "a gone body"}`
+          : f.axisStep
+            ? (doc.features.find((g) => g.id === f.axisStep)?.name ?? "a gone axis")
+            : undefined,
       );
     }
     case "move": {
@@ -2598,8 +2607,10 @@ function partsRead(f: Feature): string[] {
     case "delete":
     case "link":
       return f.parts;
-    case "pattern":
-      return f.face ? [...f.parts, f.face.body] : f.parts;
+    case "pattern": {
+      const extra = [f.face?.body, f.kind === "circle" && f.axisRef && "body" in f.axisRef ? f.axisRef.body : undefined];
+      return [...new Set([...f.parts, ...extra.filter((x): x is string => !!x)])];
+    }
     case "extrude":
       return f.extent === "to" && f.to ? [...new Set([...targetsOf(f), f.to.body])] : targetsOf(f);
     case "revolve":

@@ -1074,6 +1074,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     startKind: patternStart,
     onClose: () => setTool("select"),
     say,
+    measure: kernel.measure,
   });
   /** Mirror (#69): the Pattern tool, starting as a mirror. */
   const mirror = useCallback(() => {
@@ -1096,7 +1097,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     [built.construct, doc.looks, poseOn, linkMoves],
   );
   const patternAxis =
-    tool === "pattern" && pattern.feature?.kind === "circle" && !pattern.feature.axisStep ? `origin:${pattern.feature.axis.toUpperCase()}` : null;
+    tool === "pattern" && pattern.feature?.kind === "circle" && !pattern.feature.axisStep && !pattern.feature.axisRef
+      ? `origin:${pattern.feature.axis.toUpperCase()}`
+      : null;
   const jointAxis = tool === "joint" && jointUi?.stage === "parent";
   useEffect(() => {
     const eng = vp.ref.current?.engine();

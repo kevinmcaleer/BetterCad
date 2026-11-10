@@ -7,6 +7,7 @@ import {
   mirrorFace,
   mirrorableFeatures,
   newId,
+  patternCopyIds,
   updatePattern,
   type BuiltConstruct,
   type BuiltLink,
@@ -17,7 +18,9 @@ import {
   type PatternKind,
   type PatternParams,
 } from "../state/document";
+import type { MeasureResult, TopoRef } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
+import type { Pick as ViewPick } from "../viewport/ids";
 
 /**
  * Mirror and Pattern (#69). Pick the bodies (or have them picked when the tool comes up), and the step goes on the
@@ -27,7 +30,8 @@ import type { View3DHandle } from "../viewport/View3D";
  * A Mirror or Pattern can copy bodies, or the cuts, joins and holes of chosen features onto the same bodies (click the
  * steps on the timeline, or have one picked there when the tool comes up). A Mirror can also copy a whole component
  * (click one of its bodies, or choose it from the bar). Its plane is an origin plane, or a flat face picked in the view.
- * A circular pattern turns round X, Y or Z, or a construction axis clicked in the view or chosen from the bar.
+ * A circular pattern turns round X, Y or Z, a construction axis clicked in the view or chosen from the bar, or the
+ * centre line of a round edge or face (or a straight edge) clicked on the model.
  */
 export interface PatternDeps {
   store: {
@@ -55,6 +59,8 @@ export interface PatternDeps {
   startKind: PatternKind | null;
   onClose: () => void;
   say: (text: string, error?: boolean) => void;
+  /** The kernel's description of a pick: what a clicked edge or face is, for a circle's axis. */
+  measure: (refs: TopoRef[]) => Promise<MeasureResult | null>;
 }
 
 const KEY = (id: string) => `pattern:${id}`;
@@ -157,6 +163,7 @@ export function usePattern(d: PatternDeps) {
       delete kept.link;
       delete kept.face;
       delete kept.axisStep;
+      delete kept.axisRef;
       setLast((l) => ({ ...l, ...kept }));
       const s = live.current.session;
       const f = live.current.feature;
@@ -238,26 +245,55 @@ export function usePattern(d: PatternDeps) {
     if (!session || !d.active) setPickingPlane(false);
   }, [session, d.active]);
 
-  // Picking the axis: construction axes light up under the pointer.
+  // Picking the axis: construction axes light up under the pointer, and so do the model's edges and faces (a round
+  // one turns the copies round its centre). The pick code loads with the first pick.
   useEffect(() => {
     const eng = d.view.current?.engine();
     if (!d.active || !pickingAxis || !session || !eng) return;
+    let gone = false;
+    let mod: typeof import("./axisPick") | null = null;
+    void import("./axisPick").then((m) => (mod = m));
+    // Its own copies aren't picked: they're made from the axis.
+    const own = () => new Set(live.current.feature ? patternCopyIds(live.current.feature) : []);
+    const bodyAt = (p: { x: number; y: number }): ViewPick | null => (mod ? mod.bodyUnder(eng, p, own()) : null);
     eng.setInput({
-      move: () => {},
+      move: (p, _m, pressed) => {
+        if (pressed) return;
+        eng.showHover(eng.constructAt(p.x, p.y, AXES_ONLY) ? null : bodyAt(p));
+      },
       down: (p) => {
         const step = eng.constructAt(p.x, p.y, AXES_ONLY);
-        if (!step) {
-          deps.current.say("Click the X, Y or Z axis, or a construction axis.", true);
+        if (step) {
+          // An origin axis is the world axis of the same name.
+          const o = originAxis(step);
+          change(o ? { axis: o, axisStep: undefined, axisRef: undefined } : { axisStep: step, axisRef: undefined });
+          setPickingAxis(false);
           return true;
         }
-        // An origin axis is the world axis of the same name.
-        const o = originAxis(step);
-        change(o ? { axis: o, axisStep: undefined } : { axisStep: step });
-        setPickingAxis(false);
+        const hit = bodyAt(p);
+        if (!hit || !mod) {
+          deps.current.say("Click a round edge or face on the model, the X, Y or Z axis, or a construction axis.", true);
+          return true;
+        }
+        const m = mod;
+        void m.axisOfPick(eng, hit, p, deps.current.parts, deps.current.measure).then(
+          (ref) => {
+            if (gone) return;
+            if (typeof ref === "string") return deps.current.say(ref, true);
+            change({ axisRef: ref, axisStep: undefined });
+            setPickingAxis(false);
+          },
+          () => !gone && deps.current.say(m.NO_AXIS, true),
+        );
         return true;
       },
+      leave: () => eng.showHover(null),
     });
-    return () => eng.setInput(null);
+    return () => {
+      gone = true;
+      eng.setInput(null);
+      eng.showHover(null);
+    };
   }, [d.active, d.view, pickingAxis, session, change]);
   useEffect(() => {
     if (!session || !d.active || kind !== "circle") setPickingAxis(false);
@@ -316,7 +352,7 @@ export function usePattern(d: PatternDeps) {
     : pickingPlane
       ? "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
       : pickingAxis
-        ? "Click a construction axis to turn round. Esc stops picking."
+        ? "Click a round edge or face to turn round its centre, or an axis. Esc stops picking."
         : of === "features"
           ? session
             ? `Click more steps on the timeline to ${kind === "mirror" ? "mirror" : "copy"} them too. Enter keeps it, Esc takes it back.`
