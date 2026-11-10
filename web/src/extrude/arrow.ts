@@ -24,9 +24,11 @@ import {
   type ExtrudeFeature,
   type ExtrudeParams,
   type ExtrudeUpTo,
+  type Mat4,
   type Part,
 } from "../state/document";
 import type { Engine, ScreenPoint } from "../viewport/engine";
+import { shownPart } from "./posed";
 import type { Pick } from "../viewport/ids";
 import { readPalette } from "../viewport/colours";
 
@@ -285,7 +287,10 @@ export function upToOf(
   part: Part,
   frame: Frame,
   picked: Profile[],
+  moves?: Map<string, Mat4>,
 ): { to: ExtrudeUpTo; reach: number } | string | null {
+  // The picked point is where the body is shown, so it is kept in the body's own terms from there.
+  part = shownPart(part, moves);
   let at: { point: V3; normal?: V3 } | null = null;
   if (hit.kind === "face") {
     const info = eng.faceInfo(hit.body, hit.index);

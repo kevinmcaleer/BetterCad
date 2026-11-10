@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ESC, useEscape } from "@bettercad/ui";
-import { planeFrame, regions, toSketch, type Frame, type PlaneRef, type Profile, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { planeFrame, regions, toSketch, type Frame, type Profile, type Sketch, type Vec2 } from "@bettercad/sketch";
 import {
   addExtrude,
   addRevolve,
   extent,
-  mat4Mul,
   moveFrame,
   newId,
-  placeMatrix,
-  placeOf,
   targetsOf,
   throughAllAllowed,
   setExpr,
@@ -135,25 +132,6 @@ function shownFrame(s: { id: string; sketch: Sketch }, posed?: Map<string, Mat4>
   const f = planeFrame(s.sketch.plane);
   const m = posed?.get(s.id);
   return m ? moveFrame(m, f) : f;
-}
-
-/** A sketch moved to where it is shown, for picks that work it out from the plane. */
-function shownSketch(s: { id: string; sketch: Sketch }, posed?: Map<string, Mat4>): Sketch {
-  if (!posed?.has(s.id)) return s.sketch;
-  return { ...s.sketch, plane: { ...s.sketch.plane, offset: 0, frame: shownFrame(s, posed) } as PlaneRef };
-}
-
-/** A body placed where it is shown: its own place carried by its component's pose. */
-function shownPart(p: Part, moves?: Map<string, Mat4>): Part {
-  const m = moves?.get(p.id);
-  if (!m) return p;
-  const r = p.rotation ?? { x: 0, y: 0, z: 0 };
-  const at = placeOf(mat4Mul(m, placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z])));
-  return {
-    ...p,
-    position: { x: at.position[0], y: at.position[1], z: at.position[2] },
-    rotation: { x: at.rotation[0], y: at.rotation[1], z: at.rotation[2] },
-  };
 }
 
 export function useExtrude(d: ExtrudeDeps) {
@@ -403,13 +381,7 @@ export function useExtrude(d: ExtrudeDeps) {
       if (!eng || !m || f?.type !== "revolve") return null;
       const L = deps.current;
       const s = L.sketches.find((x) => x.id === f.sketch);
-      return m.axisAt(
-        eng,
-        p,
-        f.body.id,
-        s ? shownSketch(s, L.posed) : null,
-        L.parts.map((x) => shownPart(x, L.bodyMoves)),
-      );
+      return m.axisAt(eng, p, f.body.id, s?.sketch ?? null, L.parts, s && shownFrame(s, L.posed), L.bodyMoves);
     },
     [engineOf],
   );
@@ -465,7 +437,7 @@ export function useExtrude(d: ExtrudeDeps) {
       const m = mod.current;
       if (!s || !m) return;
       // Both where they are shown, so the point it ends at is kept in the body's own terms.
-      const r = m.upToOf(eng, hit, p, shownPart(part, L.bodyMoves), shownFrame(s, L.posed), pickedOf(f));
+      const r = m.upToOf(eng, hit, p, part, shownFrame(s, L.posed), pickedOf(f), L.bodyMoves);
       if (!r) return;
       if (typeof r === "string") return say(r, true);
       const { to, reach } = r;

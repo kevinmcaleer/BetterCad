@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Banner, Button, Dialog } from "@bettercad/ui";
-import { infoText, reportZip, sendReport, type ReportBody, type ReportInfo } from "./report";
+import { browserName, infoText, reportZip, sendReport, type ReportBody, type ReportInfo } from "./report";
 
 /**
  * Help > Report a problem (#109). The person says what happened and chooses whether to attach the model; everything
@@ -11,7 +11,8 @@ export interface ReportDialogProps {
   onClose: () => void;
   /** The open model as .bcad text, or null when there's nothing to attach. */
   model: () => string | null;
-  info: () => ReportInfo;
+  /** What to send with it; the dialog adds the browser. */
+  info: () => Omit<ReportInfo, "browser">;
   /** An error the app caught, to start the description with. */
   prefill?: string;
   say: (text: string) => void;
@@ -33,7 +34,7 @@ export function ReportDialog(p: ReportDialogProps) {
     setAttach(true);
     setFailed(null);
     setBusy(false);
-    setInfo(p.info());
+    setInfo({ ...p.info(), browser: browserName() });
     // The collected info is read once, when the dialog opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefill]);

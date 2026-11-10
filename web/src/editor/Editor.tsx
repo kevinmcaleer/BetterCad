@@ -163,7 +163,6 @@ import { go } from "../cloud/route";
 import { useTour } from "../tour/Tour";
 import { COURSE_URL } from "../help/about";
 import { actionLog, editSummary } from "../report/actionLog";
-import { browserName } from "../report/browser";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
 import { useWhatsNew } from "../whatsnew/useWhatsNew";
@@ -3966,7 +3965,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             prefill={report.prefill}
             onClose={() => setReport(null)}
             model={() => (store.get().features.length ? saveBcad(store.get()) : null)}
-            info={() => ({ app: APP_VERSION, browser: browserName(), error: lastError(), actions: actionLog.list() })}
+            info={() => ({ app: APP_VERSION, error: lastError(), actions: actionLog.list() })}
             say={say}
           />
         </Suspense>
