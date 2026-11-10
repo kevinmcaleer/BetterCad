@@ -31,8 +31,9 @@ import { isTyping } from "../state/commands";
 import { loupeAuto } from "../state/loupePref";
 import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "../sketch/loupe";
 import { SnapMarks } from "./snapMarks";
-import { between, facing, faceSnaps, nearSnaps, wiggle, type SnapPoint, type V3 } from "./snapPoints";
+import { between, boxSnaps, facing, faceSnaps, nearSnaps, wiggle, type SnapPoint, type V3 } from "./snapPoints";
 import { sharpCorners } from "./sharpCorners";
+import { lineUpHoles, type Hole } from "./holePattern";
 
 /**
  * The Joint tool (#172), one panel like the Projects scene editor's: the component that moves and its snap, the one it
@@ -97,7 +98,11 @@ export function useJoint(d: JointDeps) {
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
   const nameOf = useCallback((l: string | null) => (l === null ? "Base" : (deps.current.links.find((x) => x.id === l)?.name ?? "that link")), []);
 
+  /** The holes round each snap picked on a hole (#393): the moving part's where it stood before, the other's as it is. */
+  const holes = useRef<{ child: Hole[]; parent: Hole[] }>({ child: [], parent: [] });
+
   const reset = useCallback(() => {
+    holes.current = { child: [], parent: [] };
     setChild(null);
     setFrom(null);
     setParent(undefined);
@@ -153,7 +158,7 @@ export function useJoint(d: JointDeps) {
    * snap are in. `from: null` takes the moving part's snap off.
    */
   const put = useCallback(
-    (p: { child?: string; from?: Snap | null; parent?: string | null; frame?: Frame }) => {
+    (p: { child?: string; from?: Snap | null; parent?: string | null; frame?: Frame }, set: Partial<JointSettings> = {}) => {
       const x = live.current;
       const c = p.child ?? x.child;
       const up = "parent" in p ? p.parent : x.parent;
@@ -170,11 +175,11 @@ export function useJoint(d: JointDeps) {
       setTarget(c === null ? "child" : up === undefined || !f ? "parent" : null);
       if (x.session) {
         if (c === null || up === undefined || !f) return;
-        return change({ child: c, parent: up, origin: f.origin, axis: f.axis, from: snap ?? undefined });
+        return change({ child: c, parent: up, origin: f.origin, axis: f.axis, from: snap ?? undefined, ...set });
       }
       if (c === null || up === undefined || !f) return;
       const id = newId("f");
-      const params: JointParams = { child: c, parent: up, ...f, ...(snap ? { from: snap } : {}), ...x.draft };
+      const params: JointParams = { child: c, parent: up, ...f, ...(snap ? { from: snap } : {}), ...x.draft, ...set };
       deps.current.record((dd, at) => addJoint(dd, params, id, at), "Joint", KEY(id));
       setSession({ id, isNew: true });
     },
@@ -204,9 +209,26 @@ export function useJoint(d: JointDeps) {
   const changeRef = useRef(change);
   changeRef.current = change;
 
-  /** Puts a snap's frame in: the moving part's, or the axis it hangs from. */
+  /**
+   * The turn that lines up the rest of a hole pattern once both snaps are on holes (#393), saying how many line up.
+   * Nothing when either snap isn't on a pattern of holes.
+   */
+  const patternTurn = useCallback((from: Snap | null, f: Frame | null): Partial<JointSettings> => {
+    const { child, parent } = holes.current;
+    const set = live.current.feature ?? live.current.draft;
+    const r = from && f ? lineUpHoles({ origin: f.origin, axis: f.axis, from, flip: set.flip }, child, parent, set.angle ?? 0) : null;
+    if (!r) return {};
+    if (r.count < 2) {
+      deps.current.say("No turn lines up the other holes, so only this one lines up");
+      return {};
+    }
+    deps.current.say(`${r.count} holes line up`);
+    return { angle: r.angle || undefined };
+  }, []);
+
+  /** Puts a snap's frame in: the moving part's, or the axis it hangs from. `pattern` is the holes round a hole snap. */
   const takeFrame = useCallback(
-    (which: JointPick, l: string | null, f: Frame, body?: string) => {
+    (which: JointPick, l: string | null, f: Frame, body?: string, pattern: Hole[] = []) => {
       if (which === "child" && l !== null && others().some((j) => j.child === l)) return deps.current.say(`${nameOf(l)} already hangs from a joint`, true);
       if (live.current.target !== which) return;
       if (which === "child" && l === null) {
@@ -214,16 +236,22 @@ export function useJoint(d: JointDeps) {
         if (l === null) return deps.current.say("Pick a body to move", true);
       }
       // A snap on the moving component itself gives the axis where it stands, and it hangs from what was chosen.
-      if (which === "parent") return put(l !== null && l === live.current.child ? { frame: f } : { parent: l, frame: f });
+      if (which === "parent") {
+        if (l !== null && l === live.current.child) return put({ frame: f });
+        holes.current.parent = pattern;
+        return put({ parent: l, frame: f }, patternTurn(live.current.from, f));
+      }
       // The joint has moved its part already: the snap goes in where the part stood before.
       const j = live.current.feature;
       const m = j && j.child === l ? jointMove(j) : null;
       const back = m && mat4InvertRigid(m);
       const point = back ? mat4Apply(back, f.origin) : f.origin;
       const normal = back ? mat4ApplyDir(back, f.axis) : f.axis;
-      put({ child: l!, from: { point, normal } });
+      holes.current.child = pattern.map((h) => ({ ...h, point: back ? mat4Apply(back, h.point) : h.point }));
+      const from = { point, normal };
+      put({ child: l!, from }, patternTurn(from, live.current.frame));
     },
-    [nameOf, put, adopt],
+    [nameOf, put, adopt, patternTurn],
   );
 
   /** Picks a snap on a body: a round edge or face gives its centre and axis, a flat face its middle and normal. */
@@ -387,6 +415,14 @@ export function useJoint(d: JointDeps) {
         const info = eng.faceInfo(f.body, f.index);
         const edges = (eng.faceEdges(f.body, f.index) ?? []).map((e) => e.points);
         const toward = eng.ray(p.x, p.y).dir.map((v) => -v) as V3;
+        // An imported mesh has only triangles to snap to: its box gives the snaps instead (#395).
+        const box = deps.current.parts.find((x) => x.id === f.body)?.imported?.mesh ? eng.bodyBox(f.body) : null;
+        if (box) {
+          const b = boxSnaps(box.min, box.max, facing(info?.normal ?? toward, toward));
+          face = { body: f.body, index: f.index, ...b };
+          hot = cycled(p, reach);
+          return { edge: null, face: { body: face.body, kind: "face" as const, index: face.index } };
+        }
         const snaps = info ? faceSnaps(info, edges, toward) : [];
         if (topo?.body !== f.body) topo = { body: f.body, faceEdges: eng.faceEdgeIds(f.body) };
         const sharp =
@@ -478,7 +514,8 @@ export function useJoint(d: JointDeps) {
         half = null;
         marks.pin(null);
         if (face && s) {
-          takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal }, face.body);
+          const pattern = s.hole ? face.snaps.flatMap((h) => (h.hole ? [{ point: h.point, radius: h.hole }] : [])) : [];
+          takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal }, face.body, pattern);
           return true;
         }
         const hit = at.edge ?? at.face;
