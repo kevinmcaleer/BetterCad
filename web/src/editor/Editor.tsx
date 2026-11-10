@@ -1051,7 +1051,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [say],
   );
-  const [driveDialog, setDriveDialog] = useState<{ editing?: DriveFeature } | null>(null);
+  const [driveDialog, setDriveDialog] = useState<{ editing?: DriveFeature; together?: boolean; lead?: string } | null>(null);
   const saveDrive = useCallback(
     (p: DriveParams) => {
       const editing = driveDialog?.editing;
@@ -1063,7 +1063,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       const id = newId("f");
       const name = addDrive(live.current.doc, p, id).features.find((f) => f.id === id)!.name;
       record((d, at) => addDrive(d, p, id, at), `Add ${name}`);
-      say(`Added ${name}. Move either joint and the other follows.`);
+      say(p.kind === "together" ? `Added ${name}. Move any of its joints and the rest follow.` : `Added ${name}. Move either joint and the other follows.`);
     },
     [driveDialog, store, record, say],
   );
@@ -2223,6 +2223,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "drive gear belt rack ratio mimic joint robot link",
       },
       {
+        id: "drive.together",
+        scope: "model",
+        label: "Link joints",
+        group: "Edit",
+        icon: "link",
+        run: () => setDriveDialog({ together: true }),
+        when: () => build(live.current.doc).joints.filter(movable).length >= 2,
+        keywords: "motion link joints together wheels turn same speed mimic couple",
+      },
+      {
         id: "view.props",
         label: "Show or hide properties",
         group: "View",
@@ -3009,8 +3019,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         ? [
             {
               id: "edit",
-              label: "Edit drive",
-              icon: "gear" as const,
+              label: f.kind === "together" ? "Edit motion link" : "Edit drive",
+              icon: f.kind === "together" ? ("link" as const) : ("gear" as const),
               disabled: i >= at,
               onSelect: () => setDriveDialog({ editing: f }),
             },
@@ -3899,6 +3909,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                           const f = store.get().features.find((x) => x.id === id);
                           if (f) editStep(f);
                         },
+                    onLink:
+                      files.shared || built.joints.filter(movable).length < 2
+                        ? undefined
+                        : (id: string) => {
+                            // A joint already in a motion link opens that link; otherwise a new one led by this joint.
+                            const f = store
+                              .get()
+                              .features.find(
+                                (x): x is DriveFeature => x.type === "drive" && x.kind === "together" && [x.driver, x.driven, ...(x.more ?? [])].includes(id),
+                              );
+                            setDriveDialog(f ? { editing: f } : { together: true, lead: id });
+                          },
                   }}
                   pose={
                     built.joints.length
@@ -3937,7 +3959,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       </span>
       {driveDialog && (
         <Suspense fallback={null}>
-          <DriveDialog doc={doc} editing={driveDialog.editing} onDone={saveDrive} onCancel={() => setDriveDialog(null)} />
+          <DriveDialog
+            doc={doc}
+            editing={driveDialog.editing}
+            together={driveDialog.together}
+            lead={driveDialog.lead}
+            onDone={saveDrive}
+            onCancel={() => setDriveDialog(null)}
+          />
         </Suspense>
       )}
       {pendingDelete && (

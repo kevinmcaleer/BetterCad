@@ -9,6 +9,7 @@ import {
   addMatingGear,
   addRack,
   build,
+  featureSummary,
   newDoc,
   resolvePose,
   setPose,
@@ -17,7 +18,7 @@ import {
   type JointParams,
   type ModelDoc,
 } from "./document";
-import { driveRatioText, driveTo, type PoseDrive } from "./drivelinks";
+import { driveRatioText, driveTo, togetherMultiplier, type PoseDrive } from "./drivelinks";
 import { buildUrdf } from "./export/urdf";
 import type { PoseJoint } from "./pose";
 
@@ -193,5 +194,75 @@ describe("drive links (#194)", () => {
     expect(Number(mimic.getAttribute("multiplier"))).toBeCloseTo(0.01, 9);
     expect(mimic.getAttribute("offset")).toBe("0");
     expect(xml.querySelector('joint[name="Pinion"] mimic')).toBeNull();
+  });
+});
+
+/** Four wheels on a rover, two each side: the left ones turn about +Y, the right ones about −Y, all on the base. */
+function rover(): ModelDoc {
+  let d = newDoc("Rover");
+  const at: [number, number, number][] = [
+    [0, 40, 0],
+    [60, 40, 0],
+    [0, -40, 0],
+    [60, -40, 0],
+  ];
+  at.forEach((o, i) => {
+    d = addGear(d, step({ frame: { ...flat, origin: o } }), `g${i}`, `W${i}`);
+    d = addLink(d, [`W${i}`], `l${i}`);
+    d = addJoint(d, hinge(`l${i}`, o, { axis: [0, i < 2 ? 1 : -1, 0] }), `j${i}`);
+  });
+  return d;
+}
+
+describe("motion links", () => {
+  it("turns every wheel with the lead, the far side the other way round its own axis so the rover rolls straight", () => {
+    const d = addDrive(rover(), { kind: "together", driver: "j0", driven: "j1", more: ["j2", "j3"], ratio: 1 }, "m1");
+    const b = build(d);
+    expect(b.failed.size).toBe(0);
+    expect(d.features.find((f) => f.id === "m1")!.name).toBe("Motion link 1");
+    expect(b.drives.map((x) => [x.driven, x.multiplier])).toEqual([
+      ["j1", 1],
+      ["j2", -1],
+      ["j3", -1],
+    ]);
+    expect(resolvePose(b.drives, { j0: 30 })).toEqual({ j0: 30, j1: 30, j2: -30, j3: -30 });
+    // Moving a follower moves the lead, so every wheel stays in step.
+    expect(setPose(d, "j3", 45).pose).toEqual({ j0: -45 });
+    expect(
+      featureSummary(
+        d,
+        d.features.find((f) => f.id === "m1")!,
+      ),
+    ).toBe("Joint 1 moves Joint 2, Joint 3 and Joint 4 with it");
+  });
+
+  it("turns a joint ticked Other way back, and drops the followers from the pose", () => {
+    let d = setPose(setPose(rover(), "j1", 20), "j2", 10);
+    d = addDrive(d, { kind: "together", driver: "j0", driven: "j1", more: ["j2"], against: ["j2"], ratio: 1 }, "m1");
+    expect(d.pose).toBeUndefined();
+    expect(build(d).drives.find((x) => x.driven === "j2")!.multiplier).toBe(1);
+    expect(togetherMultiplier({ axis: [0, 0, 1] }, { axis: [0, 0, 1] }, true)).toBe(-1);
+  });
+
+  it("leaves out a deleted joint, and fails when one is already driven or slides", () => {
+    let d = addDrive(rover(), { kind: "together", driver: "j0", driven: "j1", more: ["gone"], ratio: 1 }, "m1");
+    expect(build(d).drives.map((x) => x.driven)).toEqual(["j1"]);
+    d = addDrive(d, { kind: "together", driver: "j2", driven: "j1", ratio: 1 }, "m2");
+    expect(build(d).failed.get("m2")).toBe("That joint is already driven");
+    let s = addGear(rover(), step(), "gs", "S");
+    s = addLink(s, ["S"], "ls");
+    s = addJoint(s, { kind: "prismatic", child: "ls", parent: null, origin: [0, 0, 0], axis: [1, 0, 0], lower: 0, upper: 10 }, "js");
+    s = addDrive(s, { kind: "together", driver: "j0", driven: "js", ratio: 1 }, "m1");
+    expect(build(s).failed.get("m1")).toBe("A joint that turns can't move with one that slides");
+  });
+
+  it("writes every follower as a mimic of the lead in the URDF", () => {
+    const b = build(addDrive(rover(), { kind: "together", driver: "j0", driven: "j1", more: ["j2"], ratio: 1 }, "m1"));
+    const tri = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]);
+    const bodies = b.parts.map((p) => ({ id: p.id, name: p.name, link: p.link, triangles: tri }));
+    const xml = new DOMParser().parseFromString(buildUrdf(bodies, b.links, b.joints, { name: "r", drives: b.drives }).urdf, "application/xml");
+    expect(xml.querySelector('joint[name="Joint_2"] mimic')!.getAttribute("joint")).toBe("Joint_1");
+    expect(xml.querySelector('joint[name="Joint_3"] mimic')!.getAttribute("multiplier")).toBe("-1");
+    expect(xml.querySelector('joint[name="Joint_1"] mimic')).toBeNull();
   });
 });

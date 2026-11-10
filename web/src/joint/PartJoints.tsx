@@ -18,6 +18,8 @@ export interface PartJointsProps {
   onLight: (id: string | null) => void;
   /** Opens the joint's panel to change it; left out when the model can't be changed. */
   onEdit?: (id: string) => void;
+  /** Links the joint to others so they move together (a motion link); left out when there's nothing to link it to. */
+  onLink?: (id: string) => void;
   /** The pose sliders, for the joints that move. */
   pose?: Omit<PoseControlsProps, "joints" | "onHome">;
 }
@@ -44,7 +46,7 @@ export function jointRelation({ joint, role, other }: PartJoint): string {
  * Every joint made to and from the selected bodies or component, in This part. Click a joint to show it in the view,
  * double-click it or press Edit to change it; one that moves keeps its pose slider.
  */
-export function PartJoints({ joints, lit, onLight, onEdit, pose }: PartJointsProps) {
+export function PartJoints({ joints, lit, onLight, onEdit, onLink, pose }: PartJointsProps) {
   return (
     <ul className="bc-part-joints" aria-label="Joints of this part">
       {joints.map((pj) => {
@@ -65,6 +67,16 @@ export function PartJoints({ joints, lit, onLight, onEdit, pose }: PartJointsPro
                 <span className="bc-part-joint-name">{j.name}</span>
                 <span className="bc-part-joint-what">{jointRelation(pj)}</span>
               </button>
+              {onLink && movable(j) && (
+                <Button
+                  icon="link"
+                  label="Link"
+                  size="dense"
+                  title={`Make other joints move with ${j.name}`}
+                  aria-label={`Link ${j.name} to other joints`}
+                  onClick={() => onLink(j.id)}
+                />
+              )}
               {onEdit && <Button icon="pencil" label="Edit" size="dense" title={`Edit ${j.name}`} aria-label={`Edit ${j.name}`} onClick={() => onEdit(j.id)} />}
             </div>
             {pose && movable(j) && <PoseControls {...pose} joints={[j]} onHome={undefined} bare />}
