@@ -182,3 +182,28 @@ test("pattern a hole picked on the timeline, not its body, and reopen it with it
   await expect(page.getByRole("textbox", { name: "Count" })).toHaveValue("2");
   await expect(page.getByText("Copying 1 feature round the Z axis.")).toBeVisible();
 });
+
+test("turn a circle pattern round an edge picked on the model", async ({ page }) => {
+  await addBox(page);
+  await page.keyboard.press("h");
+  await click(page, 5, 5, 20);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Made 1 hole in Box 1")).toBeVisible();
+
+  await page
+    .getByRole("region", { name: "Timeline" })
+    .getByRole("button", { name: /^Hole 1,/ })
+    .click();
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Pattern", exact: true }).click();
+  await page.getByRole("button", { name: "Circle", exact: true }).click();
+  await page.getByRole("button", { name: "Pick axis", exact: true }).click();
+  await expect(page.getByText("Click a round edge or face, or an axis.")).toBeVisible();
+  // The box's top edge along Y, at x = 10.
+  await click(page, 10, 0, 20);
+  await expect(page.getByText("Copying 1 feature round the edge you picked.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edge", pressed: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Z", exact: true, pressed: false })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Patterned 1 feature")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Timeline" }).getByRole("button", { name: /^Pattern 1, Hole 1, \d+ round an edge of Box 1/ })).toBeVisible();
+});
