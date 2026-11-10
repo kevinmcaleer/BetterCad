@@ -349,6 +349,35 @@ test("pose a hinge with its slider and send it home", async ({ page }) => {
   await expect(page.getByText("The joints are home")).toBeVisible();
 });
 
+/** This part lists every joint to and from the selection: click one to light it, Edit opens its panel. */
+test("list a part's joints in This part, light one and open it to edit", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
+  await hingeOnBase(page, "Component 1", 25);
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("treeitem", { name: /^Joint 1/ })).toBeVisible();
+
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click();
+  const props = page.getByRole("complementary", { name: "Properties" });
+  const list = props.getByRole("list", { name: "Joints of this part" });
+  const pick = list.getByRole("button", { name: /^Joint 1/ });
+  await expect(pick).toContainText("Hinge joint, on the base");
+  await expect(list.getByRole("slider", { name: "Angle" })).toBeVisible();
+  await pick.click();
+  await expect(pick).toHaveAttribute("aria-pressed", "true");
+  await list.getByRole("button", { name: "Edit Joint 1" }).click();
+  const panel = page.getByRole("group", { name: "Edit Joint 1 options" });
+  await expect(panel.getByText("Moves: Component 1")).toBeVisible();
+  await expect(panel.getByRole("combobox", { name: "Kind" })).toHaveValue("revolute");
+});
+
 /** Posing (#173): drag a link round its hinge in the view, snapping to 5°; Esc mid-drag puts it back. */
 test("drag a link round its hinge in the view, and Esc puts it back", async ({ page }) => {
   await page.goto("/");
