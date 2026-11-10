@@ -262,6 +262,56 @@ test("turn and flip a joint from the keyboard, and show how it moves", async ({ 
   await expect(page.getByText("Made Joint 1: hinge, Component 1 on Base")).toBeVisible();
 });
 
+/** An imported mesh (#395) takes its snaps from its box: here the box's centre, inside the cube. */
+test("snap a joint to the middle of an imported STL", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  const p = (x: number, y: number, z: number) => [x * 10, y * 10, z * 10];
+  const quads = [
+    [p(0, 0, 0), p(0, 1, 0), p(1, 1, 0), p(1, 0, 0)],
+    [p(0, 0, 1), p(1, 0, 1), p(1, 1, 1), p(0, 1, 1)],
+    [p(0, 0, 0), p(1, 0, 0), p(1, 0, 1), p(0, 0, 1)],
+    [p(1, 1, 0), p(0, 1, 0), p(0, 1, 1), p(1, 1, 1)],
+    [p(0, 1, 0), p(0, 0, 0), p(0, 0, 1), p(0, 1, 1)],
+    [p(1, 0, 0), p(1, 1, 0), p(1, 1, 1), p(1, 0, 1)],
+  ];
+  const tri = (a: number[], b: number[], c: number[]) =>
+    `facet normal 0 0 0\n outer loop\n${[a, b, c].map((v) => `  vertex ${v.join(" ")}`).join("\n")}\n endloop\nendfacet\n`;
+  const stl = `solid cube\n${quads.map(([a, b, c, d]) => tri(a!, b!, c!) + tri(a!, c!, d!)).join("")}endsolid cube\n`;
+  const canvas = (await page.getByTestId("view-canvas").boundingBox())!;
+  await page.evaluate(
+    ({ text, x, y }) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([text], "cube.stl"));
+      const target = document.querySelector("[data-testid='view-canvas']")!;
+      for (const type of ["dragenter", "dragover", "drop"])
+        target.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    },
+    { text: stl, x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 },
+  );
+  await expect(page.getByText("Imported 1 body from cube.stl")).toBeVisible({ timeout: 30_000 });
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  type Boxes = { __bcView: { bodyCounts(): { id: string }[]; bodyBox(id: string): { min: number[]; max: number[] } | null } };
+  await expect.poll(() => page.evaluate(() => (window as unknown as Boxes).__bcView.bodyCounts().length)).toBe(1);
+  const b = await page.evaluate(() => {
+    const v = (window as unknown as Boxes).__bcView;
+    return v.bodyBox(v.bodyCounts()[0]!.id)!;
+  });
+  const mid = [0, 1, 2].map((k) => (b.min[k]! + b.max[k]!) / 2);
+  // Over the cube's top first, so its box snaps show, then onto its centre.
+  const top = await page.evaluate((q) => (window as unknown as View).__bcView.project(q), [mid[0]! - 2, mid[1]! - 2, b.max[2]!]);
+  await page.mouse.move(canvas.x + top.x, canvas.y + top.y, { steps: 3 });
+  await click(page, mid[0]!, mid[1]!, mid[2]!);
+  await expect(page.getByText("Made cube a component, so the joint can move it")).toBeVisible();
+  const panel = page.getByRole("group", { name: "Joint options" });
+  // The box's centre, not the middle of the side under the pointer.
+  const label = `${[mid[0]!, mid[1]!, 5].map((v) => String(Math.round(v * 100) / 100 + 0)).join(", ")} mm`;
+  await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: label })).toBeVisible();
+});
+
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */
 test("pose a hinge with its slider and send it home", async ({ page }) => {
   await page.goto("/");

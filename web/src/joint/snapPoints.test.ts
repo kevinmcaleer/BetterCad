@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { across, between, edgeCircle, faceSnaps, nearSnaps, nearestSnap, wiggle, type V3 } from "./snapPoints";
+import { across, between, boxSnaps, edgeCircle, faceSnaps, nearSnaps, nearestSnap, wiggle, type V3 } from "./snapPoints";
 
 const ring = (c: V3, r: number, n = 24): V3[] =>
   Array.from({ length: n + 1 }, (_, i) => {
@@ -133,5 +133,30 @@ describe("wiggle", () => {
     expect(wiggle("prismatic", 0, 50, 0.5)).toBeCloseTo(50);
     expect(wiggle("prismatic", 0, 50, 1)).toBeCloseTo(0);
     expect(wiggle("fixed", 0, 0, 0.5)).toBeNull();
+  });
+});
+
+describe("holes", () => {
+  it("marks a whole circle on a flat face as a hole, and a corner round as not", () => {
+    const s = faceSnaps(top, [...square, ring([0, 0, 10], 3), ring([5, 5, 10], 2).slice(0, 7)], [0, 0, 1]);
+    expect(s.find((x) => x.point[0] === 0 && x.point[1] === 0)!.hole).toBeCloseTo(3);
+    expect(s.find((x) => x.point[0] === 5 && x.point[1] === 5)!.hole).toBeUndefined();
+  });
+  it("marks a hole OCCT split into two halves", () => {
+    const r = ring([0, 0, 10], 3);
+    const s = faceSnaps(top, [...square, r.slice(0, 13), r.slice(12)], [0, 0, 1]);
+    expect(s.filter((x) => x.hole).length).toBe(1);
+  });
+});
+
+describe("boxSnaps", () => {
+  it("gives a mesh's box face toward the viewer, its corners and the box centre", () => {
+    const { snaps, ghosts } = boxSnaps([0, 0, 0], [10, 20, 30], [0.2, -0.9, 0.1]);
+    expect(snaps.map((s) => s.kind)).toEqual(["middle", "corner", "corner", "corner", "corner", "centre"]);
+    expect(snaps[0]!.point).toEqual([5, 0, 15]);
+    expect(snaps[5]!.point).toEqual([5, 10, 15]);
+    expect(snaps.every((s) => s.normal[1] === -1)).toBe(true);
+    expect(snaps.filter((s) => s.kind === "corner").map((s) => s.point)).toContainEqual([10, 0, 30]);
+    expect(ghosts).toHaveLength(12);
   });
 });

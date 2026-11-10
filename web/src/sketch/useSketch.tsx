@@ -332,7 +332,9 @@ export function useSketch(d: SketchDeps) {
         if (bad.length) {
           if (!opts.quiet) {
             const names = [...new Set(bad.map((x) => describe(next, x)))].slice(0, 3).join(" and ");
-            say(`That fights ${names}. Delete one of them first.`, true);
+            // A conflict pulls two ways; a repeat only says again what is already held, so it is named as that.
+            if (r.status === "conflicting") say(`That fights ${names}. Delete one of them first.`, true);
+            else say(`That's already held in place, so it would repeat ${names}.`, true);
           }
           return false;
         }
@@ -952,9 +954,13 @@ export function useSketch(d: SketchDeps) {
       const L = live.current;
       const s = L.current();
       if (snapIt && d.onto && s && L.editingId) {
-        const out = addConstraints("coincident", s, [d.id, d.onto.id], L.origin ?? undefined);
+        // A point already on a line it lands in the middle of swaps its on constraint for the midpoint.
+        const line = middleLine(d.onto.id);
+        const base = line ? { ...s, constraints: s.constraints.filter((c) => !(c.type === "pointOn" && c.p === d.id && c.e === line)) } : s;
+        const out = addConstraints("coincident", base, [d.id, d.onto.id], L.origin ?? undefined);
+        const label = d.onto.kind === "on" ? "Put a point on a curve" : line ? "Put a point in the middle of a line" : "Make points coincident";
         if (typeof out === "string") say(out, true);
-        else L.apply(out, d.onto.kind === "on" ? "Put a point on a curve" : "Make points coincident", { key: d.key, strict: true });
+        else L.apply(out, label, { key: d.key, strict: true });
       }
       store.seal();
       if (d.onto) {

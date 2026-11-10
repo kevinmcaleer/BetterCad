@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { drawRectangle, drawCircle, drawLine, newSketch } from "@bettercad/sketch";
-import { ORIGIN, entityAt, snap, snapStep } from "./snap";
+import { Draft, drawRectangle, drawCircle, drawLine, newSketch } from "@bettercad/sketch";
+import { ORIGIN, entityAt, middleOf, snap, snapStep } from "./snap";
 import { dropTarget, unsnap } from "./drop";
 
 const rect = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
@@ -102,9 +102,9 @@ describe("dropTarget", () => {
   it("lands on a line or circle at the nearest spot, then the origin", () => {
     const s = drawCircle(drawLine(rect, [60, 0], [80, 0]).sketch, [100, 0], 10).sketch;
     const end = corner(s, 80, 0);
-    const on = dropTarget([20, 20.5], s, end, 0.8, null);
+    const on = dropTarget([15, 20.5], s, end, 0.8, null);
     expect(on).toMatchObject({ kind: "on", label: "On" });
-    expect(on!.xy).toEqual([20, 20]);
+    expect(on!.xy).toEqual([15, 20]);
     expect(dropTarget([100.3, 10.4], s, end, 0.8, null)).toMatchObject({ kind: "on" });
     expect(
       dropTarget([0.3, 0.3], drawLine(newSketch(), [5, 5], [9, 9]).sketch, corner(drawLine(newSketch(), [5, 5], [9, 9]).sketch, 9, 9), 0.8, [0, 0])?.id,
@@ -115,10 +115,28 @@ describe("dropTarget", () => {
   it("skips a curve the point already sits on", () => {
     const s = drawLine(rect, [60, 0], [80, 0]).sketch;
     const end = corner(s, 80, 0);
-    const top = dropTarget([20, 20.5], s, end, 0.8, null)!;
+    const top = dropTarget([15, 20.5], s, end, 0.8, null)!;
     expect(top.kind).toBe("on");
     const tied = { ...s, constraints: [...s.constraints, { id: "c1", type: "pointOn" as const, p: end, e: top.id }] };
-    expect(dropTarget([20, 20.5], tied, end, 0.8, null)).toBeNull();
+    expect(dropTarget([15, 20.5], tied, end, 0.8, null)).toBeNull();
+    // Its middle is still there to land on.
+    expect(dropTarget([20, 20.5], tied, end, 0.8, null)).toMatchObject({ id: middleOf(top.id), kind: "middle", xy: [20, 20] });
+  });
+
+  it("lands a centre in the middle of a line, and skips lines it is already the middle of", () => {
+    // A diamond's diagonals meet at a point held in the middle of both, beside a line whose middle is at (21, 0).
+    const d = new Draft(drawLine(newSketch(), [21, -30], [21, 30]).sketch);
+    const c = d.point([20, 0]);
+    const diag = [d.line(d.point([0, 0]), d.point([40, 0]), { construction: true }), d.line(d.point([20, -20]), d.point([20, 20]), { construction: true })];
+    for (const line of diag) d.constrain({ type: "midpoint", p: c, line });
+    const s = d.done().sketch;
+    const upright = s.entities.find((e) => e.kind === "line" && !diag.includes(e.id))!.id;
+    // Not "on" a diagonal (that only repeats its midpoint), but the other line's middle.
+    expect(dropTarget([20.6, 0.2], s, c, 0.8, null)).toMatchObject({ id: middleOf(upright), kind: "middle", xy: [21, 0] });
+    expect(dropTarget([10, 0.3], s, c, 0.8, null)).toBeNull();
+    // A line's own end never lands on its middle, only on the diagonal under it.
+    const end = s.entities.find((e) => e.kind === "point" && e.x === 21 && e.y === 30)!.id;
+    expect(dropTarget([21.3, 0], s, end, 0.8, null)).toMatchObject({ id: diag[0], kind: "on" });
   });
 });
 

@@ -292,6 +292,27 @@ describe("sketch tools", () => {
     const end = (s.entities.find((e) => e.id === a) as { a: string }).a;
     expect(addConstraints("coincident", s, [end, middleOf(a)])).toBe("A line's end can't sit on its own midpoint");
   });
+
+  it("puts a diamond's centre in the middle of another line, as a drag dropped there does", async () => {
+    // Kev's diamond: two construction diagonals with their crossing held in the middle of both, beside an upright line.
+    const d = new Draft(newSketch());
+    const c = d.point([20, 0]);
+    const diag = [d.line(d.point([0, 0]), d.point([40, 0]), { construction: true }), d.line(d.point([20, -20]), d.point([20, 20]), { construction: true })];
+    for (const line of diag) d.constrain({ type: "midpoint", p: c, line });
+    const upright = d.line(d.point([25, -30]), d.point([25, 32]));
+    d.constrain({ type: "pointOn", p: c, e: upright });
+    const s = d.done().sketch;
+    const solver = await Solver.load();
+    // Already on the line, as the drag drops it the on constraint gives way to the midpoint.
+    const base = { ...s, constraints: s.constraints.filter((x) => x.type !== "pointOn") };
+    const out = addConstraints("coincident", base, [c, middleOf(upright)]) as Sketch;
+    const r = solver.solve(out);
+    expect(newlyRedundant(solver.solve(s), r)).toEqual([]);
+    expect(r.status).not.toBe("conflicting");
+    const i = new SketchIndex(r.sketch);
+    const u = r.sketch.entities.find((e) => e.id === upright) as { a: string; b: string };
+    expect(i.xy(c)).toEqual([expect.closeTo((i.xy(u.a)[0] + i.xy(u.b)[0]) / 2), expect.closeTo((i.xy(u.a)[1] + i.xy(u.b)[1]) / 2)]);
+  });
 });
 
 describe("an axis as a line to measure from", () => {

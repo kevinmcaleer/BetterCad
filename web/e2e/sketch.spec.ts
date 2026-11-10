@@ -325,15 +325,22 @@ test("a point dropped on another point or a line is made coincident with it, and
   await expect(constraints.filter({ hasText: "Coincident" })).toHaveCount(0);
 
   // Its bottom end, let go near the rectangle's right edge, sits on it.
-  await drag(25, -10, 10.3, 0);
+  await drag(25, -10, 10.3, -2.5);
   await page.screenshot({ path: test.info().outputPath("dropped-on-edge.png") });
   await expect(constraints.filter({ hasText: /^On/ })).toHaveCount(1);
+
+  // Let go by the edge's middle, it goes in the middle instead: the on constraint gives way to a midpoint.
+  await page.keyboard.press("Control+z");
+  await expect(constraints.filter({ hasText: /^On/ })).toHaveCount(0);
+  await drag(25, -10, 10.3, 0);
+  await expect(constraints.filter({ hasText: "Midpoint" })).toHaveCount(1);
+  await expect(constraints.filter({ hasText: /^On/ })).toHaveCount(0);
 
   // Shift-dragging it pulls it free of the edge again.
   await page.keyboard.down("Shift");
   await drag(10, 0, 20, -10);
   await page.keyboard.up("Shift");
-  await expect(constraints.filter({ hasText: /^On/ })).toHaveCount(0);
+  await expect(constraints.filter({ hasText: "Midpoint" })).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath("pulled-free.png") });
 });
 
