@@ -100,6 +100,30 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
   await expect(page.getByRole("button", { name: "Hide Joint 1" })).toBeVisible();
 });
 
+/** Snap points (#383, #384): the hovered face shows its corners and edge middles, and a click near one takes it exactly. */
+test("snap a joint to a box corner from its snap points", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+  }
+  await page.getByRole("treeitem", { name: /^Box 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /New component/ }).click();
+  await expect(page.getByText("Made Component 1 of 1 body")).toBeVisible();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  const panel = page.getByRole("group", { name: "Joint options" });
+  // A little inside Box 2's corner, which is in reach, so the corner itself is the snap.
+  await click(page, 34.6, 9.6, 20);
+  await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^35, 10, 20 mm/ })).toBeVisible();
+  // The middle of Box 1's front top edge.
+  await click(page, 0.4, -9.6, 20);
+  await expect(panel.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^0, -10, 20 mm/ })).toBeVisible();
+});
+
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */
 test("pose a hinge with its slider and send it home", async ({ page }) => {
   await page.goto("/");

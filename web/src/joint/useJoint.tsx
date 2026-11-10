@@ -21,7 +21,9 @@ import {
 } from "../state/document";
 import type { MeasureResult, TopoRef } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
-import type { Engine } from "../viewport/engine";
+import type { Engine, ScreenPoint } from "../viewport/engine";
+import { SnapMarks } from "./snapMarks";
+import { faceSnaps, nearestSnap, type SnapPoint, type V3 } from "./snapPoints";
 
 /**
  * The Joint tool (#172), one panel like the Projects scene editor's: the component that moves and its snap, the one it
@@ -52,6 +54,8 @@ export interface JointDeps {
 
 export const KEY = (id: string) => `joint:${id}`;
 const AXES: ReadonlySet<"axis"> = new Set(["axis"]);
+/** How near the pointer, in CSS px, a snap point has to be to take the click. */
+const SNAP_REACH = 12;
 
 /** The snaps: the moving component's, and the one it hangs from (which is the joint's axis). */
 export type JointPick = "child" | "parent";
@@ -169,34 +173,43 @@ export function useJoint(d: JointDeps) {
   /** The component a body is in, or null for Base. */
   const linkOf = (body: string) => deps.current.parts.find((p) => p.id === body)?.link ?? null;
 
-  /** Picks a snap on a body: a round edge or face gives its centre and axis, a flat face its middle and normal. */
-  const pickSnap = useCallback(
-    (which: JointPick, ref: TopoRef) => {
-      const l = linkOf(ref.body);
+  /** Puts a snap's frame in: the moving part's, or the axis it hangs from. */
+  const takeFrame = useCallback(
+    (which: JointPick, l: string | null, f: Frame) => {
       if (which === "child") {
         if (l === null) return deps.current.say("That body is in Base. Make it a component first: right-click it, then New component.", true);
         if (others().some((j) => j.child === l)) return deps.current.say(`${nameOf(l)} already hangs from a joint`, true);
       }
+      if (live.current.target !== which) return;
+      // A snap on the moving component itself gives the axis where it stands, and it hangs from what was chosen.
+      if (which === "parent") return put(l !== null && l === live.current.child ? { frame: f } : { parent: l, frame: f });
+      // The joint has moved its part already: the snap goes in where the part stood before.
+      const j = live.current.feature;
+      const m = j && j.child === l ? jointMove(j) : null;
+      const back = m && mat4InvertRigid(m);
+      const point = back ? mat4Apply(back, f.origin) : f.origin;
+      const normal = back ? mat4ApplyDir(back, f.axis) : f.axis;
+      put({ child: l!, from: { point, normal } });
+    },
+    [nameOf, put],
+  );
+
+  /** Picks a snap on a body: a round edge or face gives its centre and axis, a flat face its middle and normal. */
+  const pickSnap = useCallback(
+    (which: JointPick, ref: TopoRef) => {
+      const l = linkOf(ref.body);
+      if (which === "child" && l === null) return takeFrame(which, l, { origin: [0, 0, 0], axis: [0, 0, 1] });
       void deps.current.measure([ref]).then(
         (r) => {
           const s = r?.items[0];
           const f = s && jointFrame(s);
           if (!f) return deps.current.say("Pick a face, a round edge or a straight edge for the snap", true);
-          if (live.current.target !== which) return;
-          // A snap on the moving component itself gives the axis where it stands, and it hangs from what was chosen.
-          if (which === "parent") return put(l !== null && l === live.current.child ? { frame: f } : { parent: l, frame: f });
-          // The joint has moved its part already: the snap goes in where the part stood before.
-          const j = live.current.feature;
-          const m = j && j.child === l ? jointMove(j) : null;
-          const back = m && mat4InvertRigid(m);
-          const point = back ? mat4Apply(back, f.origin) : f.origin;
-          const normal = back ? mat4ApplyDir(back, f.axis) : f.axis;
-          put({ child: l!, from: { point, normal } });
+          takeFrame(which, l, f);
         },
         (e: unknown) => deps.current.say((e as { message?: string })?.message ?? "That snap could not be read", true),
       );
     },
-    [nameOf, put],
+    [takeFrame],
   );
 
   /** Picks the component from the panel's list, without a snap. */
@@ -218,13 +231,47 @@ export function useJoint(d: JointDeps) {
   useEffect(() => {
     const eng = engineOf();
     if (!d.active || !eng) return;
-    const snapAt = (x: number, y: number) => eng.pick(x, y, "edge") ?? eng.pick(x, y, "face");
+    // The face under the pointer goes pale and shows its snap points (#383, #384); the nearest one within reach is hot.
+    const marks = new SnapMarks(eng);
+    eng.setHoverFill("snap-face");
+    let face: { body: string; index: number; snaps: SnapPoint[] } | null = null;
+    let hot = -1;
+    const look = (p: ScreenPoint) => {
+      const f = eng.pick(p.x, p.y, "face");
+      if (f && (f.body !== face?.body || f.index !== face.index)) {
+        const info = eng.faceInfo(f.body, f.index);
+        const edges = (eng.faceEdges(f.body, f.index) ?? []).map((e) => e.points);
+        const toward = eng.ray(p.x, p.y).dir.map((v) => -v) as V3;
+        face = { body: f.body, index: f.index, snaps: info ? faceSnaps(info, edges, toward) : [] };
+      }
+      hot = face
+        ? nearestSnap(
+            face.snaps.map((s) => eng.project(s.point)),
+            p,
+            SNAP_REACH,
+          )
+        : -1;
+      // Off the face (on its rim, or past a corner), it stays while a snap is in reach.
+      if (!f && hot < 0) face = null;
+      const edge = hot < 0 ? eng.pick(p.x, p.y, "edge") : null;
+      return { edge, face: face && { body: face.body, kind: "face" as const, index: face.index } };
+    };
+    const clearMarks = () => {
+      face = null;
+      hot = -1;
+      marks.hide();
+      eng.showHover(null);
+    };
     eng.setInput({
       move: (p, _m, pressed) => {
         const t = live.current.target;
-        if (pressed || !t) return;
-        if (t === "parent" && eng.constructAt(p.x, p.y, AXES)) return eng.showHover(null);
-        eng.showHover(snapAt(p.x, p.y));
+        if (pressed) return;
+        if (!t) return clearMarks();
+        if (t === "parent" && eng.constructAt(p.x, p.y, AXES)) return clearMarks();
+        const at = look(p);
+        eng.showHover(at.edge ?? at.face);
+        if (face) marks.show(face.snaps, hot);
+        else marks.hide();
       },
       down: (p) => {
         const t = live.current.target;
@@ -238,18 +285,26 @@ export function useJoint(d: JointDeps) {
             return true;
           }
         }
-        const hit = snapAt(p.x, p.y);
+        const at = look(p);
+        const s = face && hot >= 0 ? face.snaps[hot] : null;
+        if (face && s) {
+          takeFrame(t, linkOf(face.body), { origin: s.point, axis: s.normal });
+          return true;
+        }
+        const hit = at.edge ?? at.face;
         if (!hit) return false;
         pickSnap(t, { body: hit.body, kind: hit.kind as TopoRef["kind"], index: hit.index });
         return true;
       },
-      leave: () => eng.showHover(null),
+      leave: clearMarks,
     });
     return () => {
       eng.setInput(null);
       eng.showHover(null);
+      eng.setHoverFill(null);
+      marks.dispose();
     };
-  }, [d.active, engineOf, pickSnap, put]);
+  }, [d.active, engineOf, pickSnap, takeFrame, put]);
 
   /** Keeps (or drops) a limit's expression (#75), in the same undo step as its value. */
   const setFieldExpr = useCallback(

@@ -74,7 +74,7 @@ import {
 import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter } from "./ids";
 import { edgesOnOutline } from "./faceEdges";
 import { blurMaterial, capMaterial, dofMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
-import { readPalette, type Palette } from "./colours";
+import { readPalette, type Palette, type ViewColour } from "./colours";
 
 export type RenderStyle = "shaded" | "lineart";
 
@@ -327,6 +327,8 @@ export class Engine {
   private selected: Pick[] = [];
   private hover: Pick | null = null;
   private hoverEnabled = true;
+  /** A colour that replaces the hovered face's tint (the joint tool's pale snap face). */
+  private hoverFill: ViewColour | null = null;
   private selectLines: LineSegments2;
   private hoverLines: LineSegments2;
   private selectMat = new LineMaterial({ linewidth: 3, worldUnits: false });
@@ -1181,6 +1183,13 @@ export class Engine {
     this.setHover(p);
   }
 
+  /** Paints the hovered face in a token colour of its own, or back to the usual tint with null. */
+  setHoverFill(name: ViewColour | null): void {
+    this.hoverFill = name;
+    this.recolourAll();
+    this.invalidate();
+  }
+
   /** Hands the pointer to a tool (or back to the view, with null). */
   setInput(input: EngineInput | null): void {
     this.input = input;
@@ -1748,7 +1757,10 @@ export class Engine {
         c.copy(base);
         if (whole) c.lerp(p.snap, 0.35);
         if (faces?.has(f)) c.lerp(p.snap, 0.6);
-        else if (f === hoverFace) c.lerp(p.snap, 0.25);
+        else if (f === hoverFace) {
+          if (this.hoverFill) c.copy(p[this.hoverFill]);
+          else c.lerp(p.snap, 0.25);
+        }
         // A print check shows through the selection tint.
         if (checked && checked[v]! > 0) c.lerp(p.warn, 0.4 + 0.6 * checked[v]!);
         arr[v * 3] = c.r;

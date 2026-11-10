@@ -121,6 +121,12 @@
   --bc-color-picked: #ff922b;
   /* Ring round a `picked` snap marker. */
   --bc-color-picked-edge: #d9480f;
+  /* The face under the pointer while you pick a joint snap: a very light grey in every theme, so its snap points stand out. */
+  --bc-color-snap-face: #e4e6ea;
+  /* Joint snap points (small circles) and their ring's inside on `snap-face`. Holds 4.5:1 on `snap-face`. */
+  --bc-color-snap-point: #0b3a8f;
+  /* The ring round a joint snap point, so it reads on any part colour. */
+  --bc-color-snap-point-ring: #ffffff;
   /* Error status text, a part's missing-file mark, a context menu's Delete item. Pair with a word or icon, never colour alone. */
   --bc-color-danger: #c92a2a;
   /* Out-of-date and stale marks: the Update button, a stale hint, the amber frame. */
@@ -192,6 +198,9 @@
   --bc-color-dimension: #6fd47a;
   --bc-color-picked: #ffa94d;
   --bc-color-picked-edge: #ff922b;
+  --bc-color-snap-face: #d3d7de;
+  --bc-color-snap-point: #0b3a8f;
+  --bc-color-snap-point-ring: #ffffff;
   --bc-color-danger: #ff6b6b;
   --bc-color-warn: #ffc078;
   --bc-color-warn-soft: #3a2a10;
@@ -239,6 +248,9 @@
   --bc-color-dimension: #6fd47a;
   --bc-color-picked: #ffa94d;
   --bc-color-picked-edge: #ff922b;
+  --bc-color-snap-face: #d3d7de;
+  --bc-color-snap-point: #0b3a8f;
+  --bc-color-snap-point-ring: #ffffff;
   --bc-color-danger: #ff6b6b;
   --bc-color-warn: #ffc078;
   --bc-color-warn-soft: #3a2a10;
