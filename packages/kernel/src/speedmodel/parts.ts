@@ -377,6 +377,61 @@ function pasteSleeve(): ModelDoc {
   return t.doc;
 }
 
+/**
+ * 01-07 Flanged Hub, aluminium: a flange, a step and a hub, recessed underneath and bored through, rounded R3, six
+ * counterbored holes, and three ribs that thicken 10° each side toward the corner they fill (Extrude's taper, #402).
+ */
+function flangedHub(oc: OC): ModelDoc {
+  const t = new Timeline("Flanged Hub", oc);
+  const flange = t.sketch(world("XY"), (d) => d.circle([0, 0], 65));
+  const body = t.extrude({ sketch: flange, seeds: [[0, 0]], distance: 8, operation: "new" });
+  const step = t.sketch(world("XY", 8), (d) => d.circle([0, 0], 42));
+  t.extrude({ sketch: step, seeds: [[0, 0]], distance: 17, operation: "join", target: body });
+  const hub = t.sketch(world("XY", 25), (d) => d.circle([0, 0], 17.5));
+  t.extrude({ sketch: hub, seeds: [[0, 0]], distance: 27, operation: "join", target: body });
+  const recess = t.sketch(world("XY"), (d) => d.circle([0, 0], 36.5));
+  t.extrude({ sketch: recess, seeds: [[0, 0]], distance: 18, operation: "cut", target: body });
+  const bore = t.sketch(world("XY", 52), (d) => d.circle([0, 0], 10));
+  t.extrude({ sketch: bore, seeds: [[0, 0]], distance: -52, operation: "cut", target: body });
+  // R3 on the flange's top rim, both of the step's edges, the recess's ceiling and the hub's foot.
+  const round =
+    (z: number, r: number) =>
+    ([x, y, w]: [number, number, number]) =>
+      near0(w, z) && near0(Math.hypot(x, y), r, 0.05);
+  const rims: [number, number][] = [
+    [8, 65],
+    [8, 42],
+    [18, 36.5],
+    [25, 42],
+    [25, 17.5],
+  ];
+  t.finish({ type: "fillet", part: body, refs: rims.flatMap(([z, r]) => t.edges(body, round(z, r))), size: 3 });
+  // Six holes on a 107.95 mm circle, counterbored 13 mm, 4 mm deep, into the flange's top.
+  const on = (r: number) => (d: Draft) => {
+    for (let i = 0; i < 6; i++) d.circle([53.975 * Math.cos((i * Math.PI) / 3), 53.975 * Math.sin((i * Math.PI) / 3)], r);
+  };
+  const seeds: Vec2[] = Array.from({ length: 6 }, (_, i) => [53.975 * Math.cos((i * Math.PI) / 3), 53.975 * Math.sin((i * Math.PI) / 3)]);
+  const bores = t.sketch(world("XY", 8), on(6.5));
+  t.extrude({ sketch: bores, seeds, distance: -4, operation: "cut", target: body });
+  const holes = t.sketch(world("XY", 8), on(3));
+  t.extrude({ sketch: holes, seeds, distance: -8, operation: "cut", target: body });
+  // A rib: a 3 mm strip on a plane tipped 45° about Y, pushed 15 mm toward the hub's foot and thickening 10° each side,
+  // then trimmed to the corner above the step and just inside the hub.
+  const tilt = t.construct({ kind: "angle", refs: [{ origin: "Y" }], value: 45 });
+  const lean = 21.9 * Math.SQRT1_2;
+  const [ox, oz] = [10 + lean, 18 + lean];
+  const strip = t.sketch(
+    { kind: "construct", step: tilt, offset: (ox + oz) * Math.SQRT1_2, frame: { origin: [0, 0, 0], x: [0, 1, 0], normal: [Math.SQRT1_2, 0, Math.SQRT1_2] } },
+    (d) => rect(d, [0, (oz - ox) * Math.SQRT1_2], 3, ((73 - 35) / 2) * 1.414 + 5),
+  );
+  const rib = t.extrude({ sketch: strip, seeds: [[0, (oz - ox) * Math.SQRT1_2]], distance: -15, taper: -10, operation: "new" });
+  const corner = t.shape("box", { x: 50, y: 30, z: 40 }, { x: 16.5 + 25, y: 0, z: 25 });
+  t.combine(rib, [corner], "intersect");
+  t.pattern({ kind: "circle", parts: [rib], count: 3, angle: 360, axis: "z", join: true });
+  t.combine(body, [rib]);
+  return t.doc;
+}
+
 export const PARTS: SpeedPart[] = (
   [
     {
@@ -392,7 +447,7 @@ export const PARTS: SpeedPart[] = (
       name: "01-07 Flanged Hub",
       mass: 372.99,
       density: DENSITY.aluminium,
-      missing: ["A taper angle on Extrude, for the three ribs (10° each side)"],
+      build: flangedHub,
     },
     { id: "ppp0101", name: "01-01 Bearing Bracket", mass: 797.15, density: DENSITY.steel, build: bearingBracket },
     { id: "ppp0103", name: "01-03 C Clamp Base", mass: 96.13, density: DENSITY.aluminium, build: cClampBase },

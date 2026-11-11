@@ -38,10 +38,12 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   // until the render opens. Opening it can take more than the default 5 s there.
   await expect(async () => {
     if (!(await bar.count())) {
-      await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-      await page.getByRole("menuitem", { name: "Render in paper" }).click();
+      // Open the menu only when it isn't already open: a second click on its button would close it again.
+      const item = page.getByRole("menuitem", { name: "Render in paper" });
+      if (!(await item.isVisible())) await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click({ timeout: 5_000 });
+      await item.click({ timeout: 5_000 });
     }
-    await expect(bar).toBeVisible({ timeout: 20_000 });
+    await expect(bar).toBeVisible({ timeout: 15_000 });
   }).toPass({ timeout: 90_000 });
   await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
   // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done. Paper builds

@@ -472,6 +472,8 @@ export interface ExtrudeFeature extends FeatureBase {
   direction: ExtrudeDirection;
   /** The second side's distance, for "two". */
   distance2?: number;
+  /** Degrees the sides lean in away from the profile (#402), on every side it goes; negative leans out. */
+  taper?: number;
   /**
    * A distance (the default), through all (Cut and Intersect), or "to": up to the face, edge or point in `to`, one
    * side only. Through all keeps `distance` for its side; "to" keeps the distance it last reached there.
@@ -1500,7 +1502,13 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           break;
         }
         const span = extent(side, distance, f.distance2, all);
-        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, from: span.from + start, to: span.to + start };
+        const spec: PrismSpec = {
+          frame: planeFrame(sk.plane),
+          profiles: shapes,
+          from: span.from + start,
+          to: span.to + start,
+          ...(f.taper ? { taper: f.taper, base: start } : {}),
+        };
         if (f.operation === "new") {
           if (find(f.body.id) < 0)
             parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: prismSize(spec), prism: spec });
@@ -2328,8 +2336,9 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const how = f.direction === "symmetric" || (all && f.direction === "two") ? ", both ways" : f.direction === "two" ? ` and ${mm(f.distance2 ?? 0)}` : "";
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
       const from = f.start === "offset" ? `, from ${mm(f.startOffset ?? 0)} off` : f.start === "object" ? ", from an object" : "";
-      if (f.extent === "to") return `Up to ${f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face"}${from}, ${op}`;
-      return `${f.extent === "all" ? "Through all" : mm(f.distance)}${how}${from}, ${op}`;
+      const taper = f.taper ? `, ${Math.round(f.taper * 100) / 100}° taper` : "";
+      if (f.extent === "to") return `Up to ${f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face"}${from}${taper}, ${op}`;
+      return `${f.extent === "all" ? "Through all" : mm(f.distance)}${how}${from}${taper}, ${op}`;
     }
     case "fillet":
     case "chamfer": {
@@ -2406,6 +2415,7 @@ export type ExtrudeParams = Pick<
   | "distance"
   | "direction"
   | "distance2"
+  | "taper"
   | "extent"
   | "to"
   | "start"

@@ -224,6 +224,50 @@ function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: n
  * the profiles joined into one body.
  */
 export function prismOf(oc: OC, spec: PrismSpec, t?: Tracker): TopoDS_Shape {
+  const taper = spec.taper ?? 0;
+  if (!taper) return straightPrism(oc, spec, t);
+  if (!(Math.abs(taper) < 89)) throw new KernelError("invalid-size", "A taper needs an angle between -89° and 89°.");
+  // The shape is full size at `base` and narrows (or widens) away from it on each side.
+  const base = spec.base ?? spec.from;
+  const [lo, hi] = [Math.min(spec.from, spec.to), Math.max(spec.from, spec.to)];
+  const parts = [
+    [base, lo],
+    [base, hi],
+  ].filter(([a, b]) => Math.abs(b! - a!) > 1e-9);
+  const made = parts.map(([a, b]) => tapered(oc, { ...spec, from: a!, to: b! }, taper, t));
+  return made.length === 1 ? made[0]! : boolean(oc, "join", made[0]!, made.slice(1), t);
+}
+
+/** A prism from `from` to `to` with its sides leaning in by `angle`° away from its start: Extrude's taper (#402). */
+function tapered(oc: OC, spec: PrismSpec, angle: number, t?: Tracker): TopoDS_Shape {
+  const solid = straightPrism(oc, spec, t);
+  const n = spec.frame.normal;
+  const s = Math.sign(spec.to - spec.from);
+  const dir = new oc.gp_Dir(n[0] * s, n[1] * s, n[2] * s);
+  const o = spec.frame.origin;
+  const neutral = new oc.gp_Pln(new oc.gp_Pnt(o[0] + n[0] * spec.from, o[1] + n[1] * spec.from, o[2] + n[2] * spec.from), dir);
+  return guard(oc, "failed", "That shape could not be tapered. Try a smaller angle, or a shape of lines and arcs.", () => {
+    const mk = new oc.BRepOffsetAPI_DraftAngle(solid);
+    for (const f of elements(oc, solid, "face")) {
+      const face = oc.TopoDS.Face(f);
+      const surf = new oc.BRepAdaptor_Surface(face, true);
+      // The caps lie flat across the normal; every other face is a side.
+      if (surf.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
+        const a = surf.Plane().Axis().Direction();
+        if (Math.abs(a.X() * n[0] + a.Y() * n[1] + a.Z() * n[2]) > 1 - 1e-9) continue;
+      }
+      mk.Add(face, dir, (angle * Math.PI) / 180, neutral, true);
+      if (!mk.AddDone()) throw new KernelError("failed", "That shape could not be tapered. Try a smaller angle, or a shape of lines and arcs.");
+    }
+    mk.Build(new oc.Message_ProgressRange());
+    if (!mk.IsDone()) throw new KernelError("failed", "That shape could not be tapered. Try a smaller angle.");
+    const out = mk.Shape();
+    t?.step(mk as never, [solid], out);
+    return out;
+  });
+}
+
+function straightPrism(oc: OC, spec: PrismSpec, t?: Tracker): TopoDS_Shape {
   const depth = spec.to - spec.from;
   if (!(Math.abs(depth) > 1e-9)) throw new KernelError("invalid-size", "An extrude needs a distance other than 0 mm.");
   const n = spec.frame.normal;

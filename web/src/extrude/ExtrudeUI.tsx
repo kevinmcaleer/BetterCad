@@ -237,6 +237,18 @@ export function ExtrudeBar({ x, parts, error, scope }: { x: ExtrudeSession; part
             )}
           </>
         )}
+        {!all && (
+          <NumberField
+            id="bc-ex-taper"
+            label="Taper"
+            unit="°"
+            value={f.taper ?? 0}
+            min={-60}
+            max={60}
+            onChange={(v) => x.change({ taper: v || undefined })}
+            onCommit={(v) => x.change({ taper: v || undefined })}
+          />
+        )}
       </>
     );
   }
