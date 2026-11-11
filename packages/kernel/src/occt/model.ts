@@ -12,6 +12,7 @@ import {
   grow,
   measure,
   boundingBox,
+  frontOf,
   inset,
   place,
   prismOf,
@@ -460,7 +461,8 @@ export class ModelBuilder {
                   tool,
                   b.faces.map((n) => namer.prefix + n),
                 );
-            } else
+            } else if (o.half) tool = frontOf(oc, s, o.half);
+            else
               tool = o.sweep
                 ? sweepOf(oc, o.sweep, namer)
                 : o.loft
@@ -468,7 +470,13 @@ export class ModelBuilder {
                   : o.rev
                     ? revolveOf(oc, o.rev, namer)
                     : prismOf(oc, o.tool!, namer);
-            s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool], namer);
+            try {
+              s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool], namer);
+            } catch (e) {
+              // A split whose plane misses the body leaves one half empty.
+              if (o.half && isKernelError(e)) throw new KernelError("failed", "The plane misses the body, so there is nothing on one side of it");
+              throw e;
+            }
           }
           for (const m of flips) move(m);
           local = s;

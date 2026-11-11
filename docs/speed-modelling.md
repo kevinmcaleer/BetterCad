@@ -25,10 +25,10 @@ npx vitest run packages/kernel/src/speedmodel        # SPEED_LOG=1 prints each m
 
 Workarounds the parts needed, each a gap a person would hit in the app. The gaps are tracked in #398.
 
-- No Slot tool: five parts draw slots as two lines and two arcs.
+- No Slot tool: five parts draw slots as two lines and two arcs. (Slot tool since #403.)
 - The Hole tool only sizes heads from the screw table, and the table stops at M6. The bearing's Ø24 hole with a Ø34 counterbore and the Corner Tie's Ø8 with Ø15 are two Extrude cuts each.
-- The Arc tool is three-point only. Tangent arcs and arcs by centre were worked out by hand.
-- No Split body: half-shapes were drawn as half-shapes instead of cut in two.
+- The Arc tool was three-point only. Tangent arcs and arcs by centre were worked out by hand. (Centre and Tangent kinds since #405.)
+- No Split body: half-shapes were drawn as half-shapes instead of cut in two. (Split body since #406.)
 
 ## Adding a part
 

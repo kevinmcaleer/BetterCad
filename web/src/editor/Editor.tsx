@@ -233,6 +233,7 @@ const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => 
 const JointTool = lazy(() => import("../joint/JointPanel").then((m) => ({ default: m.JointTool })));
 const LoftTool = lazy(() => import("../loft/LoftTool").then((m) => ({ default: m.LoftTool })));
 const SweepTool = lazy(() => import("../sweep/SweepTool").then((m) => ({ default: m.SweepTool })));
+const SplitTool = lazy(() => import("../split/SplitTool").then((m) => ({ default: m.SplitTool })));
 const RecogniseTool = lazy(() => import("../recognise/RecogniseTool").then((m) => ({ default: m.RecogniseTool })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
@@ -756,6 +757,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const sweepEdited = useCallback(() => setSweepEdit(null), []);
   const [sweepUiHelp, setSweepHelp] = useState<string | null>(null);
   const sweepHelp = tool === "sweep" ? sweepUiHelp : null;
+  // And Split body (#406).
+  const splitApi = useRef<{ done(): void } | null>(null);
+  const [splitEdit, setSplitEdit] = useState<string | null>(null);
+  const splitEdited = useCallback(() => setSplitEdit(null), []);
+  const [splitUiHelp, setSplitHelp] = useState<string | null>(null);
+  const splitHelp = tool === "split" ? splitUiHelp : null;
 
   // Construction geometry (#265): the Construct menu arms the tool for one kind.
   const [constructKind, setConstructKind] = useState<ConstructKind | null>(null);
@@ -1991,17 +1998,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                         ? loftApi.current?.done()
                         : tool === "sweep"
                           ? sweepApi.current?.done()
-                          : tool === "joint"
-                            ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
-                              ? jointApi.current.pickParent(null)
-                              : jointApi.current?.done()
-                            : pattern.session
-                              ? pattern.done()
-                              : tool === "combine"
-                                ? combine(selection, combineOp, keepTools, combineFit)
-                                : finish.tool
-                                  ? finish.done()
-                                  : undefined,
+                          : tool === "split"
+                            ? splitApi.current?.done()
+                            : tool === "joint"
+                              ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                                ? jointApi.current.pickParent(null)
+                                : jointApi.current?.done()
+                              : pattern.session
+                                ? pattern.done()
+                                : tool === "combine"
+                                  ? combine(selection, combineOp, keepTools, combineFit)
+                                  : finish.tool
+                                    ? finish.done()
+                                    : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -2433,9 +2442,23 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().confirm(),
         when: () =>
           recogniseOk.current !== null ||
-          ["extrude", "revolve", "loft", "sweep", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
-            live.current.tool,
-          ),
+          [
+            "extrude",
+            "revolve",
+            "loft",
+            "sweep",
+            "split",
+            "pushpull",
+            "hole",
+            "mount",
+            "gear",
+            "joint",
+            "pattern",
+            "combine",
+            "fillet",
+            "shell",
+            "construct",
+          ].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -3163,6 +3186,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "split"
+        ? [
+            {
+              id: "edit",
+              label: "Edit split",
+              icon: "split" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("split");
+                setSplitEdit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "sweep"
         ? [
             {
@@ -3427,6 +3465,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         setEditingStep(f.id);
         setTool("sweep");
         return setSweepEdit(f.id);
+      case "split":
+        setEditingStep(f.id);
+        setTool("split");
+        return setSplitEdit(f.id);
       case "joint":
         // Opens the joint's panel with every field: both components and their snaps, how it moves and lines up.
         setEditingStep(f.id);
@@ -3495,6 +3537,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             revolve.help ||
             loftHelp ||
             sweepHelp ||
+            splitHelp ||
             pushpull.help ||
             hole.help ||
             mount.help ||
@@ -3507,6 +3550,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             revolve.help ||
             loftHelp ||
             sweepHelp ||
+            splitHelp ||
             pushpull.help ||
             hole.help ||
             mount.help ||
@@ -3872,6 +3916,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                     onEdited={loftEdited}
                     onHelp={setLoftHelp}
                     api={loftApi}
+                    error={(id) => failed.get(id)}
+                  />
+                </Suspense>
+              )}
+              {tool === "split" && (
+                <Suspense fallback={null}>
+                  <SplitTool
+                    deps={{ store, record, doc, parts, view: vp.ref, onClose: () => setTool("select"), say }}
+                    edit={splitEdit}
+                    onEdited={splitEdited}
+                    onHelp={setSplitHelp}
+                    api={splitApi}
                     error={(id) => failed.get(id)}
                   />
                 </Suspense>

@@ -105,6 +105,8 @@ export const ruler = "M3 16 16 3l5 5L8 21zM7 12l2 2M10 9l2 2M13 6l2 2";
 export const revolve = "M12 2v20M5 10a7 3 0 1 0 7-3M9 4.5 12 7l-2.8 2.4";
 /** Loft (#399): a wide shape at the bottom running into a small one at the top. */
 export const sweep = "M4 20v-8a8 8 0 0 1 8-8h8M2 20h4M20 2v4M8 20v-8a4 4 0 0 1 4-4h8";
+/** Split body: a block in two pieces along a slanted cut. */
+export const split = "M3 4h9L7 20H3zM16 4h5v16h-10z";
 export const loft = "M3 18h18l-2 3H5zM9 3h6v3H9zM3 18 9 6M21 18 15 6";
 export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
@@ -261,6 +263,7 @@ export const ICONS = {
   revolve,
   loft,
   sweep,
+  split,
   ruler,
   sliders,
   settings,

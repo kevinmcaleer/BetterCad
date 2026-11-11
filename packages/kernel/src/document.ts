@@ -44,6 +44,8 @@ import {
   copyPart,
   copyId,
   mirrorPlane,
+  mirrorPlaneText,
+  planeToLocal,
   copiesWhat,
   moveToLocal,
   opMoves,
@@ -241,6 +243,8 @@ export interface BodyOp {
   loft?: LoftSpec;
   /** Or a sweep's solid, in the part's own coordinates. */
   sweep?: SweepSpec;
+  /** Or everything on the normal's side of a plane (Split body, #406), in the part's own coordinates. */
+  half?: Plane;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
   body?: Part;
   /** A cut's printed gap (#183): the tool grows by this much on every side first, mm. */
@@ -605,6 +609,23 @@ export interface SweepFeature extends FeatureBase {
   targets?: string[];
   body: { id: string; name: string };
 }
+/** Which halves a Split keeps: both, or only the one on the plane's front (where its normal points) or back. */
+export type SplitKeep = "both" | "front" | "back";
+/**
+ * Split body (#406): a body cut in two by a plane, an origin plane (moved by `offset`), a construction plane or a flat
+ * face, picked as Mirror picks them. The body keeps the back half; the front half becomes a new body, `body`. Keeping
+ * one half throws the other away.
+ */
+export interface SplitFeature extends FeatureBase {
+  type: "split";
+  part: string;
+  plane: MirrorPlane;
+  offset: number;
+  face?: MirrorFace;
+  step?: string;
+  keep: SplitKeep;
+  body: { id: string; name: string };
+}
 /** Hole (#70): screw holes on one flat face of a part, sized from the screw table. */
 export interface HoleFeature extends FeatureBase, HoleParams {
   type: "hole";
@@ -742,6 +763,7 @@ export type Feature =
   | RevolveFeature
   | LoftFeature
   | SweepFeature
+  | SplitFeature
   | CombineFeature
   | FinishFeature
   | HoleFeature;
@@ -859,6 +881,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   revolve: "Revolve",
   loft: "Loft",
   sweep: "Sweep",
+  split: "Split",
   hole: "Hole",
   import: "Import",
   convert: "Convert",
@@ -986,6 +1009,7 @@ const BUILT = new Set<string>([
   "revolve",
   "loft",
   "sweep",
+  "split",
   "combine",
   "fillet",
   "chamfer",
@@ -1617,6 +1641,22 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           ];
         break;
       }
+      case "split": {
+        if (missing(f, [f.part]).length) break;
+        const pl = mirrorPlane(f, parts, built);
+        if (typeof pl === "string") {
+          failed.set(f.id, pl.replace("mirrors across", "splits along"));
+          break;
+        }
+        const i = find(f.part);
+        const src = parts[i]!;
+        const half = planeToLocal(pl, src);
+        const ops = src.ops ?? [];
+        if (f.keep === "both" && find(f.body.id) < 0)
+          parts.splice(i + 1, 0, { ...src, id: f.body.id, name: f.body.name, size: { ...src.size }, ops: [...ops, { op: "intersect", half, feature: f.id }] });
+        src.ops = [...ops, { op: f.keep === "front" ? "intersect" : "cut", half, feature: f.id }];
+        break;
+      }
       case "fillet":
       case "chamfer":
       case "shell":
@@ -1979,6 +2019,7 @@ function usedNames(doc: ModelDoc): Set<string> {
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
     if (f.type === "convert" || ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && f.operation === "new"))
       names.add(f.body.name);
+    if (f.type === "split" && f.keep === "both") names.add(f.body.name);
   }
   Object.values(doc.looks).forEach((l) => l.name && names.add(l.name));
   return names;
@@ -2180,6 +2221,8 @@ export function featureParts(f: Feature): string[] {
       return f.operation === "new" ? [f.body.id] : targetsOf(f);
     case "combine":
       return [f.target];
+    case "split":
+      return f.keep === "both" ? [f.part, f.body.id] : [f.part];
     case "fillet":
     case "chamfer":
     case "shell":
@@ -2223,6 +2266,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
     if (g.type === "convert" || ((g.type === "extrude" || g.type === "revolve" || g.type === "loft" || g.type === "sweep") && g.operation === "new"))
       names.set(g.body.id, g.body.name);
+    if (g.type === "split" && g.keep === "both") names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
@@ -2272,6 +2316,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "duplicate":
       return `Copies ${who(f.copies.map((c) => c.from))}`;
+    case "split": {
+      const along = mirrorPlaneText(f, f.step ? doc.features.find((g) => g.id === f.step)?.name : f.face && names.get(f.face.body));
+      return `${who([f.part])} along ${along}, ${f.keep === "both" ? "both halves kept" : `${f.keep} half kept`}`;
+    }
     case "pattern": {
       const step = (id: string) => doc.features.find((g) => g.id === id)?.name;
       const of = copiesWhat(f);
@@ -2467,6 +2515,23 @@ export function addSweep(doc: ModelDoc, params: SweepParams, id = newId("f"), bo
 /** Changes a Sweep step's settings (the tool edits it live, as one undo step). */
 export function updateSweep(doc: ModelDoc, id: string, change: Partial<SweepParams>): ModelDoc {
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "sweep" ? { ...f, ...change } : f)) };
+}
+
+export type SplitParams = Pick<SplitFeature, "part" | "plane" | "offset" | "face" | "step" | "keep">;
+
+/** Adds a Split body step (#406). The front half, when both are kept, gets the part id `bodyId` and its body's name. */
+export function addSplit(doc: ModelDoc, params: SplitParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const src = build(doc, at ?? doc.features.length).parts.find((p) => p.id === params.part);
+  const base = src?.name ?? "Body";
+  const taken = usedNames(doc);
+  let k = 2;
+  while (taken.has(`${base} (${k})`)) k++;
+  return insert(doc, at, { id, type: "split", name: nextFeatureName(doc, "split"), ...params, body: { id: bodyId, name: `${base} (${k})` } });
+}
+
+/** Changes a Split step's settings (the tool edits it live, as one undo step). */
+export function updateSplit(doc: ModelDoc, id: string, change: Partial<SplitParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "split" ? { ...f, ...change } : f)) };
 }
 
 /** Changes a Revolve step's settings (the tool edits it live, as one undo step). */
@@ -3157,6 +3222,8 @@ function partsRead(f: Feature): string[] {
       return targetsOf(f);
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
+    case "split":
+      return f.face && f.face.body !== f.part ? [f.part, f.face.body] : [f.part];
     case "construct":
       return [...new Set(f.refs.flatMap((r) => ("body" in r ? [r.body] : [])))];
     case "import":
@@ -3178,6 +3245,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
   if (f.type === "gear" || f.type === "convert") return [f.body.id];
+  if (f.type === "split") return f.keep === "both" ? [f.body.id] : [];
   if ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && f.operation === "new") return [f.body.id];
   return [];
 }
@@ -3226,6 +3294,8 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
     for (const c of [f.step, f.kind === "circle" ? f.axisStep : undefined]) if (c && before.some((x) => x.id === c)) out.add(c);
     for (const g of [...(f.features ?? []), ...(f.link ? [f.link] : [])]) if (before.some((x) => x.id === g)) out.add(g);
   }
+  // A split along a construction plane needs that plane.
+  if (f.type === "split" && f.step && before.some((x) => x.id === f.step)) out.add(f.step);
   // A joint needs the links it joins, and the joint its parent link hangs from.
   if (f.type === "joint") {
     for (const l of [f.child, f.parent]) if (l && before.some((g) => g.id === l)) out.add(l);
