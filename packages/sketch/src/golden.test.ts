@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Solver } from "./solver";
 import { newSketch, type Id, type Sketch } from "./model";
-import { Draft, drawCircle, drawPolygon, drawPolyline, drawRectangle } from "./draw";
+import { Draft, drawCircle, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
 
 /**
@@ -62,6 +62,20 @@ const CASES: Record<string, Case> = {
       d.dimension("length", [right!], 10);
       d.dimension("length", [armTop!], 10);
       return { sketch: d.done().sketch, edit: width, to: 100 };
+    },
+    loops: 1,
+    holes: 0,
+  },
+  "slot-tool": {
+    about: "A level slot (#403), 30 centre to centre and 8 wide, its left centre fixed at the origin; then 45 long.",
+    build() {
+      const r = drawSlot(newSketch(), [0, 0], [31, 5], 7, { length: 30, width: 8 })!;
+      const d = new Draft(r.sketch);
+      fixFirst(d);
+      const centre = r.ids[4]!;
+      d.constrain({ type: "horizontal", e: centre });
+      const length = d.dimensions.find((x) => x.kind === "length")!.id;
+      return { sketch: d.done().sketch, edit: length, to: 45 };
     },
     loops: 1,
     holes: 0,

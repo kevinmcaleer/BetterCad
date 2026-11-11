@@ -45,6 +45,36 @@ describe("sketch tools", () => {
     expect(c.sketch.entities.find((e) => e.kind === "circle")?.construction).toBe(true);
   });
 
+  it("previews a slot with its length, then its width from the pointer", () => {
+    expect(preview("slot", [[0, 0]], [30, 0]).values).toEqual([30]);
+    const p = preview(
+      "slot",
+      [
+        [0, 0],
+        [30, 0],
+      ],
+      [12, 4],
+    );
+    expect(p.values).toEqual([30, 8]);
+    const xs = p.lines[0]!.map((q) => q[0]);
+    expect(Math.min(...xs)).toBeCloseTo(-4);
+    expect(Math.max(...xs)).toBeCloseTo(34);
+  });
+
+  it("draws a slot that solves and closes, with typed sizes as dimensions", async () => {
+    const c = commit("slot", newSketch(), [free(0, 0), free(20, 0), free(5, 3)])!;
+    expect(c.label).toBe("Draw a slot");
+    expect(c.sketch.entities.filter((e) => e.kind === "arc")).toHaveLength(2);
+    expect(profiles(c.sketch).profiles).toHaveLength(1);
+    expect(profiles(c.sketch).profiles[0]!.area).toBeCloseTo(20 * 6 + Math.PI * 9, 0);
+    // Enter after the first click with both sizes typed.
+    const typed = commit("slot", newSketch(), [free(0, 0), free(3, 4)], [25, 6])!;
+    expect(typed.sketch.dimensions.map((d) => `${d.kind} ${d.value}`)).toEqual(["length 25", "diameter 6"]);
+    const r = (await Solver.load()).solve(typed.sketch);
+    expect(r.status).toBe("ok");
+    expect(commit("slot", newSketch(), [free(0, 0), free(20, 0)])).toBeNull();
+  });
+
   it("says what a constraint needs until the selection fits", () => {
     const s = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
     const lines = s.entities.filter((e) => e.kind === "line").map((e) => e.id);

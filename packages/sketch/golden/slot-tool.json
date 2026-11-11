@@ -1,0 +1,5 @@
+{
+  "about": "A level slot (#403), 30 centre to centre and 8 wide, its left centre fixed at the origin; then 45 long.",
+  "solved": [[0, 0], [30, 0], [0, 4], [30, 4], [30, -4], [0, -4], [4], [4]],
+  "edited": [[0, 0], [45, 0], [0, 4], [45, 4], [45, -4], [0, -4], [4], [4]]
+}
