@@ -32,6 +32,9 @@ interface Topo {
   /** The triangle across each triangle's k-th edge (v[k] to v[k+1]), or -1. */
   nbr: Int32Array;
   faceOf: Uint32Array;
+  /** Each triangle's flat run (its coplanar neighbours, reached edge to edge), and each run's area. */
+  run: Int32Array;
+  runArea: number[];
 }
 
 const cache = new WeakMap<object, { key: string; topo: Topo }>();
@@ -92,7 +95,18 @@ function topology(mesh: TriMesh, m: ArrayLike<number>): Topo {
   }
   const faceOf = new Uint32Array(count);
   for (let f = 0; f + 1 < mesh.faceTris.length; f++) faceOf.fill(f, mesh.faceTris[f]!, mesh.faceTris[f + 1]!);
-  const topo = { pts: P, tri, n, area, nbr, faceOf };
+  const topo: Topo = { pts: P, tri, n, area, nbr, faceOf, run: new Int32Array(count).fill(-1), runArea: [] };
+  for (let t = 0; t < count; t++) {
+    if (topo.run[t]! >= 0) continue;
+    const id = topo.runArea.length;
+    const r = flatRun(topo, [t]);
+    let a = 0;
+    for (const u of r) {
+      topo.run[u] = id;
+      a += area[u]!;
+    }
+    topo.runArea.push(a);
+  }
   cache.set(mesh, { key, topo });
   return topo;
 }
@@ -115,6 +129,15 @@ function grow(T: Topo, seed: number[], ok: (from: number, to: number) => boolean
     }
   }
   return out;
+}
+
+/** The coplanar triangles reached edge to edge from `seed`, which lie in its largest triangle's plane. */
+function flatRun(T: Topo, seed: number[]): Set<number> {
+  const s0 = seed.reduce((a, b) => (T.area[b]! > T.area[a]! ? b : a));
+  const at0 = pt(T, T.tri[s0 * 3]!);
+  const n0: V3 = [T.n[s0 * 3]!, T.n[s0 * 3 + 1]!, T.n[s0 * 3 + 2]!];
+  // Slivers (no area, so no normal) join whatever they touch.
+  return grow(T, seed, (_, o) => T.area[o]! === 0 || (nDot(T, s0, o) > FLAT && Math.abs(dot(sub(pt(T, T.tri[o * 3]!), at0), n0)) < 1e-3));
 }
 
 /** A run's outlines, each a closed list of welded vertices (first not repeated). */
@@ -180,6 +203,21 @@ export function splitOutline(loop: V3[]): V3[][] {
   return out;
 }
 
+/** The area a closed outline in a plane of normal `n` holds, and its centre. */
+function areaCentre(loop: V3[], n: V3): { area: number; centre: V3 } {
+  const o = loop[0]!;
+  const c: V3 = [0, 0, 0];
+  let area = 0;
+  for (let i = 1; i + 1 < loop.length; i++) {
+    const [a, b] = [sub(loop[i]!, o), sub(loop[i + 1]!, o)];
+    const w = dot([a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], n) / 2;
+    area += w;
+    for (let j = 0; j < 3; j++) c[j] += (w * (3 * o[j]! + a[j]! + b[j]!)) / 3;
+  }
+  if (Math.abs(area) < 1e-12) return { area: 0, centre: o };
+  return { area: Math.abs(area), centre: [c[0] / area, c[1] / area, c[2] / area] };
+}
+
 /**
  * The snaps on the run of triangles round face `face` of an imported mesh (`matrix` places it in the world), with the
  * run's outline to draw and the faces it covers. `towards` points at the viewer. A flat run gives the face snaps of a
@@ -199,9 +237,24 @@ export function meshSnaps(
   const s0 = seed.reduce((a, b) => (T.area[b]! > T.area[a]! ? b : a));
   const at0 = pt(T, T.tri[s0 * 3]!);
   const n0: V3 = [T.n[s0 * 3]!, T.n[s0 * 3 + 1]!, T.n[s0 * 3 + 2]!];
-  const flat = grow(T, seed, (_, o) => nDot(T, s0, o) > FLAT && Math.abs(dot(sub(pt(T, T.tri[o * 3]!), at0), n0)) < 1e-3);
-  const smooth = grow(T, [...flat], (a, o) => T.area[o]! === 0 || nDot(T, a, o) > SMOOTH);
-  const sum = (run: Set<number>) => [...run].reduce((s, t) => s + T.area[t]!, 0);
+  const flat = flatRun(T, seed);
+  // A curved surface is a band of flat facets of much the same size, each bent a little from the next (a peg's side,
+  // a ring's wall). A face is not: the small facets of a round along its edge, or the walls of a pocket, stop it.
+  const size = (t: number) => T.runArea[T.run[t]!]!;
+  const own = T.runArea[T.run[s0]!]!;
+  const smooth = grow(T, [...flat], (a, o) => {
+    if (T.run[o] === T.run[a]) return true;
+    const r = size(o) / own;
+    return T.area[o]! > 0 && nDot(T, a, o) > SMOOTH && r > 0.25 && r < 4;
+  });
+  // A facet of a band has two bent neighbours, one each side; a face ringed by a sloped wall or rounds has more.
+  const bent = new Set<number>();
+  for (const t of flat)
+    for (let k = 0; k < 3; k++) {
+      const o = T.nbr[t * 3 + k]!;
+      if (o >= 0 && T.run[o] !== T.run[t] && T.area[o]! > 0 && nDot(T, t, o) > SMOOTH) bent.add(T.run[o]!);
+    }
+  const runs = bent.size === 2 ? new Set([...smooth].map((t) => T.run[t]!)) : new Set<number>();
   const shape = (run: Set<number>, isFlat: boolean) => {
     const loops = outlines(T, run).map((l) => l.map((v) => pt(T, v)));
     const c: V3 = [0, 0, 0];
@@ -225,11 +278,21 @@ export function meshSnaps(
       });
     const centroid: V3 = a > 0 ? [c[0] / a, c[1] / a, c[2] / a] : at0;
     const snaps = faceSnaps({ flat: isFlat, normal: n0, centroid, edge }, loops.flatMap(splitOutline), towards);
+    // A hole of any shape through a flat face (a square socket) snaps at its middle, as a round one does.
+    const mid = snaps.find((x) => x.kind === "middle");
+    if (isFlat && mid && loops.length > 1) {
+      const held = loops.map((l) => ({ l, ...areaCentre(l, n0) }));
+      const outer = held.reduce((x, y) => (y.area > x.area ? y : x));
+      for (const h of held) {
+        if (h === outer || h.area <= 0 || snaps.some((x) => len(sub(x.point, h.centre)) < 1e-3)) continue;
+        snaps.push({ point: h.centre.map((v) => Math.round(v * 1e9) / 1e9 + 0) as V3, normal: mid.normal, x: mid.x, kind: "centre" });
+      }
+    }
     const faces = new Set([...run].map((t) => T.faceOf[t]!));
     return { snaps, ghosts, faces };
   };
-  // A flat run that is most of its smooth surroundings is a face in its own right (a box's side with rounded edges).
-  if (smooth.size > flat.size && sum(flat) < 0.25 * sum(smooth)) {
+  // Three or more facets bent round together are a curved surface: its round rims give the snaps.
+  if (runs.size >= 3) {
     const curved = shape(smooth, false);
     if (curved.snaps.length) return curved;
   }
