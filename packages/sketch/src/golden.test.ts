@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Solver } from "./solver";
 import { newSketch, type Id, type Sketch } from "./model";
-import { Draft, drawCircle, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
+import { Draft, drawCircle, drawEllipse, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
 
 /**
@@ -133,6 +133,18 @@ const CASES: Record<string, Case> = {
     loops: 1,
     holes: 0,
   },
+  ellipse: {
+    about: "A level ellipse (#401), 20 across and 8 up, centred on the origin; then 30 across.",
+    build() {
+      const r = drawEllipse(newSketch(), [0, 0], [12, 0.4], [0, 3], { first: 20, second: 8 })!;
+      const d = new Draft(r.sketch);
+      fixFirst(d);
+      const across = d.dimensions[0]!.id;
+      return { sketch: d.done().sketch, edit: across, to: 30 };
+    },
+    loops: 1,
+    holes: 0,
+  },
   hexagon: {
     about: "A hexagon with flats top and bottom, 20 across the flats, centred on the origin.",
     build() {
@@ -150,7 +162,8 @@ const CASES: Record<string, Case> = {
   },
 };
 
-const coords = (s: Sketch) => s.entities.flatMap((e) => (e.kind === "point" ? [[round(e.x), round(e.y)]] : e.kind === "line" ? [] : [[round(e.r)]]));
+const coords = (s: Sketch) =>
+  s.entities.flatMap((e) => (e.kind === "point" ? [[round(e.x), round(e.y)]] : e.kind === "circle" || e.kind === "arc" ? [[round(e.r)]] : []));
 const round = (v: number) => Math.round(v * 1e6) / 1e6 + 0;
 
 describe("golden sketches", () => {

@@ -1,5 +1,5 @@
 import { Algorithm, SolveStatus, init_planegcs_module, GcsWrapper, type SketchPrimitive } from "@salusoft89/planegcs";
-import { SketchIndex, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
+import { SketchIndex, constraintRefs, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
 import { angleOf, cross, dot, scale, sub } from "./geom2d";
 import { freedom } from "./dof";
 import { measureDimension } from "./measure";
@@ -121,6 +121,13 @@ export function toPrimitives(sketch: Sketch): SketchPrimitive[] {
       // holds): its radius is held instead.
       if (e.projectedFrom && fixed.has(e.c) && fixed.has(e.a) && fixed.has(e.b)) out.push({ id: `${e.id}#held`, type: "arc_radius", a_id: e.id, radius: e.r });
       else out.push({ id: `${e.id}#rules`, type: "arc_rules", a_id: e.id });
+    } else if (e.kind === "ellipse") {
+      // An ellipse is its axes: halved by the centre and square to each other.
+      [e.ax1, e.ax2].forEach((ax, i) => {
+        const l = idx.get(ax);
+        if (l?.kind === "line") out.push({ id: `${e.id}#mid${i}`, type: "p2p_symmetric_ppp", p1_id: l.a, p2_id: l.b, p_id: e.c });
+      });
+      out.push({ id: `${e.id}#square`, type: "perpendicular_ll", l1_id: e.ax1, l2_id: e.ax2 });
     }
   }
   for (const c of sketch.constraints) if (!c.suppressed) out.push(...constraintPrimitives(c, idx));
@@ -132,9 +139,11 @@ function constraintPrimitives(c: Constraint, idx: SketchIndex): SketchPrimitive[
   const kind = (id: Id) => idx.get(id)?.kind;
   const centre = (id: Id) => {
     const e = idx.get(id)!;
-    return e.kind === "circle" || e.kind === "arc" ? e.c : id;
+    return e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" ? e.c : id;
   };
   const id = c.id;
+  // Ellipses are held by their centre and axes; nothing else ties to the curve itself yet.
+  if (c.type !== "concentric" && constraintRefs(c).some((r) => kind(r) === "ellipse")) return [];
   switch (c.type) {
     case "coincident":
       return [{ id, type: "p2p_coincident", p1_id: c.a, p2_id: c.b }];

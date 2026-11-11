@@ -6,6 +6,8 @@ import {
   planeFrame,
   regions,
   sampleArc,
+  sampleEllipse,
+  ellipseGeo,
   sub,
   toSketch,
   toWorld,
@@ -75,6 +77,7 @@ export function curvePoints(sk: Sketch, id: string): Vec2[] | null {
   const e = idx.get(id);
   if (e?.kind === "line") return [idx.xy(e.a), idx.xy(e.b)];
   if (e?.kind === "circle") return sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72);
+  if (e?.kind === "ellipse") return sampleEllipse(ellipseGeo(idx, e));
   if (e?.kind === "arc") {
     const c = idx.xy(e.c);
     return sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c)));
@@ -164,14 +167,15 @@ export function useSweep(d: SweepDeps) {
           if (s.id === f.sketch) continue;
           const fr = shownFrame(s, L.posed);
           for (const e of s.sketch.entities) {
-            if (e.kind !== "line" && e.kind !== "arc" && e.kind !== "circle") continue;
+            if (e.kind === "point") continue;
             const pts = curvePoints(s.sketch, e.id);
             if (!pts) continue;
             const dist = toPolyline(
               p,
               pts.map((q) => eng.project(toWorld(fr, q) as [number, number, number])),
             );
-            if (dist <= 6 && (!best || dist < best.d)) best = { kind: "curve", sketch: s.id, curve: e.id, circle: e.kind === "circle", d: dist };
+            if (dist <= 6 && (!best || dist < best.d))
+              best = { kind: "curve", sketch: s.id, curve: e.id, circle: e.kind === "circle" || e.kind === "ellipse", d: dist };
           }
         }
         if (best) return { kind: "curve", sketch: best.sketch, curve: best.curve, circle: best.circle };

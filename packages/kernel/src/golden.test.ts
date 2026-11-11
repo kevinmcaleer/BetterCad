@@ -277,6 +277,33 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Revolve round an axis 10 mm off the sketch's plane (a construction axis or an edge above it).
   "revolve-offset-axis": (oc) =>
     revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(5, 0, 10, 30), holes: [], area: 300 }], axis: { ...Z_AXIS, offset: 10 }, angle: 360 }),
+  // Ellipses (#401): a 20 × 8 mm ellipse turned 30° and pushed up 5 mm; one taller than wide with a hole through it;
+  // half of one 8 wide and 20 tall turned round the Z axis into an egg.
+  "extrude-ellipse": (oc) =>
+    prismOf(oc, { frame: XY, profiles: [{ outer: [{ kind: "ellipse", c: [0, 0], r1: 10, r2: 4, rot: Math.PI / 6 }], holes: [], area: 0 }], from: 0, to: 5 }),
+  "extrude-ellipse-tall": (oc) =>
+    prismOf(oc, {
+      frame: XY,
+      profiles: [{ outer: [{ kind: "ellipse", c: [0, 0], r1: 3, r2: 8, rot: 0 }], holes: [[{ kind: "circle", c: [0, 0], r: 1 }]], area: 0 }],
+      from: 0,
+      to: 5,
+    }),
+  "revolve-half-ellipse": (oc) =>
+    revolveOf(oc, {
+      frame: XZ,
+      profiles: [
+        {
+          outer: [
+            { kind: "ellipse", c: [0, 15], r1: 10, r2: 4, rot: Math.PI / 2, t: [Math.PI, 2 * Math.PI] },
+            { kind: "line", a: [0, 25], b: [0, 5] },
+          ],
+          holes: [],
+          area: 0,
+        },
+      ],
+      axis: Z_AXIS,
+      angle: 360,
+    }),
   // Extrude's taper (#402): a 20 mm square 10 mm up, leaning in 10° (a frustum); out 10° both ways from the middle; a
   // ring whose bore opens as its outside closes in.
   "extrude-taper": (oc) => prismOf(oc, { frame: XY, profiles: [square(20)], from: 0, to: 10, taper: 10 }),

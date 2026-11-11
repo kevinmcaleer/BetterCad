@@ -81,6 +81,7 @@ import {
   fromPartLocal,
   pickProfiles,
   pathSegs,
+  segPoints,
   profilesMiddle,
   upToDistance,
   targetsOf,
@@ -1860,9 +1861,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
 function revolveSize(spec: RevolveSpec): Vec3 {
-  const pts = spec.profiles.flatMap((p) =>
-    p.outer.flatMap((g) => (g.kind === "circle" ? [[g.c[0] + g.r, g.c[1]] as Vec2, [g.c[0] - g.r, g.c[1]] as Vec2] : [g.a, g.b])),
-  );
+  const pts = spec.profiles.flatMap((p) => p.outer.flatMap(segPoints));
   const { origin: o, dir: d, offset = 0 } = spec.axis;
   const r = Math.max(0, ...pts.map((p) => Math.hypot((p[0] - o[0]) * d[1] - (p[1] - o[1]) * d[0], offset)));
   const along = pts.map((p) => (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1]);
@@ -1901,13 +1900,7 @@ function loftSpecOf(f: LoftFeature, sketchById: Map<string, Sketch>): LoftSpec |
 
 /** A loft's rough size: the box round every section's corners. */
 function loftSize(spec: LoftSpec): Vec3 {
-  const pts = spec.sections.flatMap((s) =>
-    s.profile.outer
-      .flatMap((g) =>
-        g.kind === "circle" ? [[g.c[0] - g.r, g.c[1] - g.r] as Vec2, [g.c[0] + g.r, g.c[1] + g.r] as Vec2] : g.kind === "arc" ? [g.a, g.m, g.b] : [g.a, g.b],
-      )
-      .map((q) => toWorld(s.frame, q)),
-  );
+  const pts = spec.sections.flatMap((s) => s.profile.outer.flatMap((g) => segPoints(g)).map((q) => toWorld(s.frame, q)));
   const span = (i: number) => Math.round((Math.max(...pts.map((c) => c[i]!)) - Math.min(...pts.map((c) => c[i]!))) * 1000) / 1000;
   return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
 }
@@ -1935,21 +1928,9 @@ function sweepSpecOf(f: SweepFeature, sketchById: Map<string, Sketch>, failed: M
 function sweepSize(spec: SweepSpec): Vec3 {
   const reach = Math.max(
     0,
-    ...spec.profiles.flatMap((p) =>
-      p.outer.flatMap((g) =>
-        g.kind === "circle"
-          ? [Math.hypot(...g.c) + g.r]
-          : g.kind === "arc"
-            ? [g.a, g.m, g.b].map((q) => Math.hypot(...q))
-            : [g.a, g.b].map((q) => Math.hypot(...q)),
-      ),
-    ),
+    ...spec.profiles.flatMap((p) => p.outer.flatMap((g) => (g.kind === "circle" ? [Math.hypot(...g.c) + g.r] : segPoints(g).map((q) => Math.hypot(...q))))),
   );
-  const pts = spec.path.segs
-    .flatMap((g) =>
-      g.kind === "circle" ? [[g.c[0] - g.r, g.c[1] - g.r] as Vec2, [g.c[0] + g.r, g.c[1] + g.r] as Vec2] : g.kind === "arc" ? [g.a, g.m, g.b] : [g.a, g.b],
-    )
-    .map((q) => toWorld(spec.path.frame, q));
+  const pts = spec.path.segs.flatMap((g) => segPoints(g)).map((q) => toWorld(spec.path.frame, q));
   const span = (i: number) => Math.round((Math.max(...pts.map((c) => c[i]!)) - Math.min(...pts.map((c) => c[i]!)) + 2 * reach) * 1000) / 1000;
   return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
 }
@@ -1979,11 +1960,7 @@ function profileTargets(
 
 /** A prism's rough size along X, Y and Z, for the props panel and the gizmo. */
 function prismSize(spec: PrismSpec): Vec3 {
-  const pts = spec.profiles.flatMap((p) =>
-    p.outer.flatMap((g) =>
-      g.kind === "circle" ? [[g.c[0] - g.r, g.c[1] - g.r] as Vec2, [g.c[0] + g.r, g.c[1] + g.r] as Vec2] : g.kind === "arc" ? [g.a, g.m, g.b] : [g.a, g.b],
-    ),
-  );
+  const pts = spec.profiles.flatMap((p) => p.outer.flatMap((g) => segPoints(g)));
   const f = spec.frame;
   const y = [f.normal[1] * f.x[2] - f.normal[2] * f.x[1], f.normal[2] * f.x[0] - f.normal[0] * f.x[2], f.normal[0] * f.x[1] - f.normal[1] * f.x[0]];
   const corners = pts.flatMap(([u, v]) => [spec.from, spec.to].map((w) => [0, 1, 2].map((i) => f.origin[i]! + f.x[i]! * u + y[i]! * v + f.normal[i]! * w)));

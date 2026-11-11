@@ -37,8 +37,18 @@ export interface Arc extends EntityBase {
   b: Id;
   r: number;
 }
-export type Entity = Point | Line | Circle | Arc;
-export type Curve = Line | Circle | Arc;
+/**
+ * An ellipse (#401): round centre `c`, its two axes the construction lines `ax1` and `ax2`, which cross square at the
+ * centre. Its size and turn come from those lines, so dimensioning a line sizes the ellipse.
+ */
+export interface Ellipse extends EntityBase {
+  kind: "ellipse";
+  c: Id;
+  ax1: Id;
+  ax2: Id;
+}
+export type Entity = Point | Line | Circle | Arc | Ellipse;
+export type Curve = Line | Circle | Arc | Ellipse;
 export type EntityKind = Entity["kind"];
 
 interface ConstraintBase {
@@ -265,23 +275,30 @@ export class SketchIndex {
       (e): e is Curve =>
         (e.kind === "line" && (e.a === pointId || e.b === pointId)) ||
         (e.kind === "arc" && (e.a === pointId || e.b === pointId || e.c === pointId)) ||
-        (e.kind === "circle" && e.c === pointId),
+        ((e.kind === "circle" || e.kind === "ellipse") && e.c === pointId),
     );
   }
 }
 
 /** Every entity, constraint and dimension a removal takes with it: curves take their points, if nothing else uses them. */
 export function removeEntities(s: Sketch, ids: Id[]): Sketch {
-  const gone = new Set(ids);
   const idx = new SketchIndex(s);
+  // An ellipse takes its axis lines.
+  ids = ids.flatMap((id) => {
+    const e = idx.get(id);
+    return e?.kind === "ellipse" ? [id, e.ax1, e.ax2] : [id];
+  });
+  const gone = new Set(ids);
   for (const id of ids) {
     const e = idx.get(id);
     if (!e || e.kind === "point") continue;
-    const pts = e.kind === "line" ? [e.a, e.b] : e.kind === "arc" ? [e.a, e.b, e.c] : [e.c];
+    const pts = curvePoints(e);
     for (const p of pts) if (idx.users(p).every((u) => gone.has(u.id))) gone.add(p);
   }
   // A point going takes the curves on it.
   for (const e of s.entities) if (e.kind !== "point" && curvePoints(e).some((p) => gone.has(p))) gone.add(e.id);
+  // An ellipse goes with either of its axes.
+  for (const e of s.entities) if (e.kind === "ellipse" && (gone.has(e.ax1) || gone.has(e.ax2))) gone.add(e.id);
   // A text goes with its anchor; picked by id, it takes its anchor unless something else uses it.
   for (const t of s.texts ?? [])
     if (gone.has(t.id) && idx.users(t.p).length === 0 && !(s.texts ?? []).some((o) => o !== t && o.p === t.p && !gone.has(o.id))) gone.add(t.p);
@@ -297,6 +314,51 @@ export function removeEntities(s: Sketch, ids: Id[]): Sketch {
 }
 
 export const curvePoints = (e: Curve): Id[] => (e.kind === "line" ? [e.a, e.b] : e.kind === "arc" ? [e.c, e.a, e.b] : [e.c]);
+
+/** An ellipse's shape: centre, the half-lengths of its first and second axes, and the first axis's angle. */
+export interface EllipseGeo {
+  c: Vec2;
+  r1: number;
+  r2: number;
+  rot: number;
+}
+
+export function ellipseGeo(idx: SketchIndex, e: Ellipse): EllipseGeo {
+  const line = (id: Id) => {
+    const l = idx.get(id);
+    if (l?.kind !== "line") throw new Error(`${id} is not a line`);
+    return [idx.xy(l.a), idx.xy(l.b)] as const;
+  };
+  const [a, b] = line(e.ax1);
+  const [p, q] = line(e.ax2);
+  return {
+    c: idx.xy(e.c),
+    r1: Math.hypot(b[0] - a[0], b[1] - a[1]) / 2,
+    r2: Math.hypot(q[0] - p[0], q[1] - p[1]) / 2,
+    rot: Math.atan2(b[1] - a[1], b[0] - a[0]),
+  };
+}
+
+/** The point at angle `t` round an ellipse (its eccentric angle, from the first axis). */
+export function ellipsePoint(g: EllipseGeo, t: number): Vec2 {
+  const [x, y] = [g.r1 * Math.cos(t), g.r2 * Math.sin(t)];
+  const [cs, sn] = [Math.cos(g.rot), Math.sin(g.rot)];
+  return [g.c[0] + x * cs - y * sn, g.c[1] + x * sn + y * cs];
+}
+
+/** The eccentric angle of the point on an ellipse nearest `p`'s direction, 0..2π. */
+export function ellipseAngle(g: EllipseGeo, p: Vec2): number {
+  const [dx, dy] = [p[0] - g.c[0], p[1] - g.c[1]];
+  const [cs, sn] = [Math.cos(g.rot), Math.sin(g.rot)];
+  const t = Math.atan2((-dx * sn + dy * cs) / (g.r2 || 1e-12), (dx * cs + dy * sn) / (g.r1 || 1e-12));
+  return t < 0 ? t + 2 * Math.PI : t;
+}
+
+/** An ellipse's outline as points, anticlockwise, closed (the last is the first). */
+export function sampleEllipse(g: EllipseGeo, from = 0, to = 2 * Math.PI, n = 72): Vec2[] {
+  const k = Math.max(4, Math.ceil((n * Math.abs(to - from)) / (2 * Math.PI)));
+  return Array.from({ length: k + 1 }, (_, i) => ellipsePoint(g, from + ((to - from) * i) / k));
+}
 
 export function constraintRefs(c: Constraint): Id[] {
   switch (c.type) {

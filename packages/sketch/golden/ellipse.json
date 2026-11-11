@@ -1,0 +1,17 @@
+{
+  "about": "A level ellipse (#401), 20 across and 8 up, centred on the origin; then 30 across.",
+  "solved": [
+    [0, 0],
+    [-10, 0],
+    [10, 0],
+    [0, -4],
+    [0, 4]
+  ],
+  "edited": [
+    [0, 0],
+    [-15, 0],
+    [15, 0],
+    [0, -4],
+    [0, 4]
+  ]
+}
