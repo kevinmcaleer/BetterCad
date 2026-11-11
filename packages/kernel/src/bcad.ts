@@ -73,6 +73,7 @@ const KNOWN: ReadonlySet<FeatureType> = new Set<FeatureType>([
   "pushpull",
   "offsetFace",
   "hole",
+  "decal",
 ]);
 
 /** True for a feature type this version can build. */

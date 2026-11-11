@@ -91,6 +91,8 @@ export interface BrowserModel {
   /** Section analyses, under Analysis; only `section`, the one applied, cuts the view. */
   sections?: { id: string; name: string }[];
   section?: string | null;
+  /** Decals (#263), under the body each sits on; the eye hides the picture only. */
+  decals?: { id: string; name: string; part: string; hidden?: boolean }[];
 }
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
@@ -259,6 +261,9 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         ghost: part.ghost,
         highlight: part.highlight,
       });
+      for (const d of m.decals ?? [])
+        if (d.part === part.id)
+          items.push({ id: d.id, name: d.name, icon: "image", kind: "decal", parentId: part.id, drag: false, toggles: ["hidden"], hidden: d.hidden });
     }
     const sks = o.sketches(c);
     if (sks.length)
@@ -440,6 +445,9 @@ export function BrowserPanel(p: BrowserPanelProps) {
     const secs = model.sections ?? [];
     if (id === ROW.analysis) return p.onApplySection?.(model.section ? null : (secs[secs.length - 1]?.id ?? null));
     if (secs.some((x) => x.id === id)) return p.onApplySection?.(model.section === id ? null : id);
+    // A decal's eye: its picture only.
+    const decal = model.decals?.find((x) => x.id === id);
+    if (decal) return p.onSketchesHidden([id], !decal.hidden);
     // A component's eye: its bodies, and those in the components inside it, as one step. Its sketches and
     // construction planes stay as you left them, so one you hid stays hidden when you show the component again.
     const comp = model.links?.find((l) => l.id === id);

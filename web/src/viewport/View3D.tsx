@@ -14,6 +14,7 @@ import {
 import { ViewCube, type MenuEntry } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
 import type { Part } from "../state/document";
+import type { Placement } from "../decal/place";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
 import { Engine, canDraw3D, type BodyDrag, type PreviewBody, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
 import { milestone } from "../perf";
@@ -96,8 +97,19 @@ export interface View3DProps {
   cubeMenu?: MenuEntry[];
   /** A step's result while its tool is open: drawn in place of the bodies it changes. */
   preview?: PreviewBody[] | null;
+  /** Decals (#263): pictures on bodies' faces, drawn once the kernel has built the body. */
+  decals?: ViewDecal[];
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
   children?: ReactNode;
+}
+
+/** A decal for the view: the face it sits on now (by number), where on it, and its picture as a data: URL. */
+export interface ViewDecal {
+  id: string;
+  part: string;
+  face: number;
+  at: Placement;
+  image: string;
 }
 
 /** Meshes by shape and size, so a part's triangles are made once. The kernel worker replaces this with #4. */
@@ -282,6 +294,16 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   useEffect(() => engine.current?.setCheck(check), [check, bodies]);
   const preview = props.preview ?? null;
   useEffect(() => engine.current?.setPreview(preview), [preview, bodies]);
+  const decals = props.decals;
+  useEffect(() => {
+    const shown = new Set(bodies.map((b) => b.id));
+    // Only on the kernel's own mesh: its faces are the ones the decal's face is numbered on.
+    const list = (decals ?? []).flatMap((d) => {
+      const mesh = shown.has(d.part) ? meshes?.get(d.part)?.mesh : undefined;
+      return mesh ? [{ id: d.id, body: d.part, mesh, face: d.face, at: d.at, image: d.image }] : [];
+    });
+    engine.current?.setDecals(list);
+  }, [decals, bodies, meshes]);
   const bed = props.bed;
   const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin},${bed.label ?? ""}` : "";
   useEffect(() => {

@@ -45,6 +45,7 @@ import {
   type Material,
   type Texture,
 } from "three";
+import type { DecalLayer, EngineDecal } from "./decals";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -780,6 +781,32 @@ export class Engine {
   private bed: Group | null = null;
   private bedSpec: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null = null;
 
+  /** Decals (#263) over their bodies' faces. Drawing them loads with the first one. */
+  setDecals(list: EngineDecal[]): void {
+    this.decalList = list;
+    if (this.decalLayer) return this.syncDecals();
+    if (!list.length || this.decalLoading) return;
+    this.decalLoading = true;
+    void import("./decals").then((m) => {
+      this.decalLayer = new m.DecalLayer(() => this.invalidate());
+      this.syncDecals();
+    });
+  }
+  private decalList: EngineDecal[] = [];
+  private decalLayer: DecalLayer | null = null;
+  private decalLoading = false;
+
+  private syncDecals(): void {
+    this.decalLayer?.set(
+      this.decalList,
+      (id) => {
+        const o = this.bodies.get(id);
+        return o && (o.shaded.visible || o.flat.visible) ? o.group : null;
+      },
+      this.section ? [this.clip] : [],
+    );
+  }
+
   /** Puts the bodies on stage, reusing what has not changed. */
   setBodies(list: EngineBody[]): void {
     const keep = new Set(list.map((b) => b.id));
@@ -815,6 +842,7 @@ export class Engine {
     if (this.hover && !keep.has(this.hover.body)) this.hover = null;
     this.recolourAll();
     this.syncGizmo();
+    this.syncDecals();
     this.invalidate();
   }
 
@@ -858,6 +886,7 @@ export class Engine {
     }
     for (const o of [...this.order, ...this.previews]) this.applyStyle(o);
     this.recolourAll();
+    this.syncDecals();
     this.invalidate();
   }
 
@@ -932,6 +961,7 @@ export class Engine {
       }
     }
     for (const m of [this.selectMat, this.hoverMat]) m.clippingPlanes = planes;
+    this.syncDecals();
     this.invalidate();
   }
 

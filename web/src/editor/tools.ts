@@ -20,6 +20,7 @@ export type ToolId =
   | "hole"
   | "mount"
   | "gear"
+  | "decal"
   | "joint"
   | "pattern"
   | "measure";
@@ -164,6 +165,7 @@ export const TOOLS: Tool[] = [
     title: "Hinge, wheel, slider or fixed joint between two components",
     help: "Click a face or a round edge on the part that moves, where it joins.",
   },
+  { id: "decal", label: "Decal", icon: "image", title: "Put a picture on a face", help: "Click a flat face, then choose a picture to put on it." },
   { id: "gear", label: "Gear", icon: "gear", title: "Spur gears, racks and GT2 pulleys", help: "Click the ground or a flat face where the gear goes." },
 ];
 
@@ -176,7 +178,7 @@ const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!)
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
   { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
   { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "loft", "sweep", "gear", "construct"]) },
-  { id: "change", label: "Change", tools: byId(["combine", "split", "hole", "fillet", "shell", "offsetFace", "pattern", "mount", "joint"]) },
+  { id: "change", label: "Change", tools: byId(["combine", "split", "hole", "fillet", "shell", "offsetFace", "pattern", "mount", "decal", "joint"]) },
   { id: "check", label: "Check", tools: byId(["measure", "section"]) },
 ];
 

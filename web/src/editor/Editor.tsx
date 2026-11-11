@@ -135,7 +135,7 @@ import { TopBar } from "./TopBar";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
 import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
-import { View3D } from "../viewport/View3D";
+import { View3D, type ViewDecal } from "../viewport/View3D";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
 import { useImportProgress } from "../files/useImportProgress";
@@ -157,6 +157,7 @@ import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
+import { useDecal } from "../decal/useDecal";
 import type { JointSession } from "../joint/useJoint";
 import type { JointUi } from "../joint/JointPanel";
 import { originShapes, useConstruct } from "../construct/useConstruct";
@@ -236,6 +237,15 @@ const SweepTool = lazy(() => import("../sweep/SweepTool").then((m) => ({ default
 const SplitTool = lazy(() => import("../split/SplitTool").then((m) => ({ default: m.SplitTool })));
 const RecogniseTool = lazy(() => import("../recognise/RecogniseTool").then((m) => ({ default: m.RecogniseTool })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
+/** Decals' pictures as data: URLs, made once per picture. */
+const decalUrls = new Map<string, string>();
+const decalUrl = (type: string, blob: string, data: string) => {
+  const key = `${type}:${blob}`;
+  let url = decalUrls.get(key);
+  if (!url) decalUrls.set(key, (url = `data:${type};base64,${data}`));
+  return url;
+};
+const DecalBar = lazy(() => import("../decal/DecalBar").then((m) => ({ default: m.DecalBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -626,6 +636,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   /** The built bodies' boxes, for the bodies an extrude cut touches. */
   const bounds = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.bbox])), [kernel.bodies]);
+  const browserDecals = useMemo(
+    () => (built.decals ?? []).map((d) => ({ id: d.id, name: d.name, part: d.part, hidden: !!doc.looks[d.id]?.hidden })),
+    [built.decals, doc.looks],
+  );
+  // Decals (#263) on the faces they sit on now, found again by name; hidden ones (their eye in the browser) left off.
+  const viewDecals = useMemo<ViewDecal[]>(
+    () =>
+      (built.decals ?? []).flatMap((d) => {
+        const data = doc.blobs?.[d.image.blob];
+        if (!data || doc.looks[d.id]?.hidden) return [];
+        const names = kernel.bodies.get(d.part)?.names?.faces;
+        const i = d.faceName && names ? names.indexOf(d.faceName) : -1;
+        return [{ id: d.id, part: d.part, face: i >= 0 ? i : d.face, at: d, image: decalUrl(d.image.type, d.image.blob, data) }];
+      }),
+    [built.decals, doc.blobs, doc.looks, kernel.bodies],
+  );
   const extrude = useExtrude({
     kind: "extrude",
     store,
@@ -729,6 +755,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     view: vp.ref,
     active: tool === "gear" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+  });
+
+  const decal = useDecal({
+    store,
+    record,
+    doc,
+    meshes: kernel.bodies,
+    view: vp.ref,
+    active: tool === "decal" && !sketch.editing,
     onClose: () => setTool("select"),
     say,
   });
@@ -1992,25 +2029,27 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   ? mount.done()
                   : gear.session
                     ? gear.done()
-                    : construct.session
-                      ? construct.done()
-                      : tool === "loft"
-                        ? loftApi.current?.done()
-                        : tool === "sweep"
-                          ? sweepApi.current?.done()
-                          : tool === "split"
-                            ? splitApi.current?.done()
-                            : tool === "joint"
-                              ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
-                                ? jointApi.current.pickParent(null)
-                                : jointApi.current?.done()
-                              : pattern.session
-                                ? pattern.done()
-                                : tool === "combine"
-                                  ? combine(selection, combineOp, keepTools, combineFit)
-                                  : finish.tool
-                                    ? finish.done()
-                                    : undefined,
+                    : decal.session
+                      ? decal.done()
+                      : construct.session
+                        ? construct.done()
+                        : tool === "loft"
+                          ? loftApi.current?.done()
+                          : tool === "sweep"
+                            ? sweepApi.current?.done()
+                            : tool === "split"
+                              ? splitApi.current?.done()
+                              : tool === "joint"
+                                ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                                  ? jointApi.current.pickParent(null)
+                                  : jointApi.current?.done()
+                                : pattern.session
+                                  ? pattern.done()
+                                  : tool === "combine"
+                                    ? combine(selection, combineOp, keepTools, combineFit)
+                                    : finish.tool
+                                      ? finish.done()
+                                      : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -2452,6 +2491,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             "hole",
             "mount",
             "gear",
+            "decal",
             "joint",
             "pattern",
             "combine",
@@ -3133,6 +3173,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "decal"
+        ? [
+            {
+              id: "edit",
+              label: "Edit decal",
+              icon: "image" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("decal");
+                decal.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "gear"
         ? [
             {
@@ -3458,6 +3512,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         return pattern.edit(f.id);
       case "drive":
         return setDriveDialog({ editing: f });
+      case "decal":
+        setEditingStep(f.id);
+        setTool("decal");
+        return decal.edit(f.id);
       case "loft":
         setEditingStep(f.id);
         setTool("loft");
@@ -3543,6 +3601,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             hole.help ||
             mount.help ||
             gear.help ||
+            decal.help ||
             jointHelp ||
             pattern.help ||
             measure.help ||
@@ -3556,6 +3615,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             hole.help ||
             mount.help ||
             gear.help ||
+            decal.help ||
             jointHelp ||
             pattern.help ||
             measure.help ||
@@ -3804,6 +3864,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onBrowserPicked={setBrowserPicked}
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}
+              decals={browserDecals}
               onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
@@ -4006,6 +4067,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
+              {tool === "decal" && (
+                <Suspense fallback={null}>
+                  <DecalBar x={decal} error={decal.session ? failed.get(decal.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
               {(tool === "mount" || tool === "pattern") && (
                 <Suspense fallback={null}>
                   {tool === "mount" ? (
@@ -4056,6 +4122,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             parts={viewParts}
             faded={faded}
             meshes={kernel.bodies}
+            decals={viewDecals}
             engine={kernel.state}
             rebuilding={kernel.rebuilding}
             kernelPerf={kernelPerf}
