@@ -5,6 +5,7 @@ import {
   box,
   chamfer,
   cone,
+  count,
   copyShape,
   cylinder,
   fillet,
@@ -24,7 +25,10 @@ import {
   type Measure,
 } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
-import { Namer, edgeNames, resolveNames } from "./naming";
+import { NAMING_LIMIT, Namer, edgeNames, resolveNames } from "./naming";
+import { plug } from "./plug";
+import { fromPartLocal } from "../extrude";
+import type { Recognition, RecogniseOptions, V3 } from "../recognise";
 import { build, printed, type ModelDoc, type Part } from "../document";
 import { opMoves, undoMove } from "../pattern";
 import { DEFAULT_INFILL, SHELL_MM, estimateWeight, materialOf } from "../print/materials";
@@ -32,7 +36,7 @@ import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeP
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
-import { readImport, type ImportedBody } from "./imports";
+import { importTriangles, readImport, type ImportedBody } from "./imports";
 import { findMates, type Mate } from "./mates";
 import { findClashes, overlapsAt, type Clash } from "./clashes";
 import { triangles } from "./export";
@@ -56,6 +60,11 @@ export interface BuiltBody {
    * too big to follow (large imports).
    */
   names?: { faces: string[]; edges: string[] };
+}
+
+/** What a mesh body was made from (#437), in the world, and whether its mesh has gaps. */
+export interface Recognised extends Recognition {
+  open: boolean;
 }
 
 export interface ImportInfo {
@@ -236,7 +245,7 @@ export class ModelBuilder {
       bodies = readImport(this.oc, format, fromBase64(data), name).map((b) => {
         const box = measure(this.oc, b.shape).bbox;
         const at = { x: -(box.min[0] + box.max[0]) / 2, y: -(box.min[1] + box.max[1]) / 2, z: -box.min[2] };
-        return { ...b, shape: place(this.oc, b.shape, { position: at }) };
+        return { ...b, shape: place(this.oc, b.shape, { position: at }), at };
       });
       this.files.set(blob, bodies);
     }
@@ -249,8 +258,48 @@ export class ModelBuilder {
     return { bodies: bodies.map((b) => ({ name: b.name, open: b.open, triangles: b.triangles })) };
   }
 
+  /**
+   * What an imported mesh body was made from (#437): its holes and round faces and edges, in the world as the body
+   * stands. `find` is the recogniser, loaded by the caller so its code stays out of the worker until it is asked for.
+   */
+  recognise(
+    doc: ModelDoc,
+    upTo: number | undefined,
+    body: string,
+    opts: RecogniseOptions,
+    find: (t: Float32Array, o: RecogniseOptions) => Recognition,
+    move: (r: Recognition, point: (v: V3) => V3, dir: (v: V3) => V3) => Recognition,
+  ): Recognised {
+    const p = build(doc, upTo).parts.find((x) => x.id === body);
+    this.useBlobs(doc);
+    if (!p) throw new KernelError("failed", "That body is gone.");
+    if (!p.imported?.mesh) throw new KernelError("failed", "Recognise features works on an imported STL or 3MF body.");
+    if (p.ops?.length || p.copy)
+      throw new KernelError("failed", "Recognise features reads a body as it was imported. Use it before other steps change the body.");
+    const b = this.importedShape(p);
+    const data = this.blobs[p.imported.blob];
+    const t = data ? importTriangles(p.imported.format, fromBase64(data), p.imported.index) : null;
+    if (!t) throw new KernelError("failed", "The imported file is missing from this model.");
+    const at = b.at ?? { x: 0, y: 0, z: 0 };
+    const local = new Float32Array(t.length);
+    for (let i = 0; i < t.length; i += 3) {
+      local[i] = t[i]! + at.x;
+      local[i + 1] = t[i + 1]! + at.y;
+      local[i + 2] = t[i + 2]! + at.z;
+    }
+    const place = { position: p.position, rotation: p.rotation };
+    return {
+      ...move(
+        find(local, opts),
+        (v) => fromPartLocal(v, place),
+        (v) => fromPartLocal(v, place, true),
+      ),
+      open: b.open,
+    };
+  }
+
   /** An imported body. */
-  private importedShape(p: Part): { shape: TopoDS_Shape; open: boolean } {
+  private importedShape(p: Part): ImportedBody {
     const im = p.imported!;
     const data = this.blobs[im.blob];
     if (!data && !this.files.has(im.blob)) throw new KernelError("failed", "The imported file is missing from this model.");
@@ -333,7 +382,10 @@ export class ModelBuilder {
         // Shapes this step makes fresh (its tool, a slab) are named under its id.
         namer.prefix = `${o.feature}:`;
         try {
-          if (p.imported?.mesh && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
+          // A mesh that has been converted (#448) and is small enough to name takes these like any body.
+          if (p.imported?.mesh && namer.off && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
+          if (open && o.op === "plug")
+            throw new KernelError("failed", "This mesh has gaps, so it can't be converted. Repair it in your slicer and import it again.");
           if (open && (o.op === "join" || o.op === "cut" || o.op === "intersect"))
             throw new KernelError("failed", "This mesh has holes, so it can't be combined");
           // A mirrored, turned or moved op (Mirror or Pattern of features): move the body the other way, make the op as
@@ -359,7 +411,15 @@ export class ModelBuilder {
           else if (o.op === "shell") s = shell(oc, s, refs, o.size ?? 0, o.outside, namer);
           else if (o.op === "pushpull") s = pushPull(oc, s, refs[0] ?? -1, o.size ?? 0, namer);
           else if (o.op === "hole") s = holes(oc, s, o.holes!, namer);
-          else {
+          else if (o.op === "plug") {
+            s = plug(oc, s, o.plugs ?? []);
+            // With its holes filled a mesh is often a handful of flat faces: few enough to name (#451), so later
+            // fillets, sketches and joints find their faces again.
+            if (namer.off && count(oc, s, "face") <= NAMING_LIMIT) {
+              namer.off = false;
+              namer.namesOf(s);
+            }
+          } else {
             // A body is built where it stood, then taken into this part's coordinates as they were then.
             let tool: TopoDS_Shape;
             if (o.body) {

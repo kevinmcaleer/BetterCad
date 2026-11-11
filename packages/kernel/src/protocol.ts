@@ -1,6 +1,7 @@
 import type { ModelDoc } from "./document";
 import type { KernelErrorData } from "./errors";
-import type { BodyMass, ImportInfo, ModelResult } from "./occt/model";
+import type { BodyMass, ImportInfo, ModelResult, Recognised } from "./occt/model";
+import type { RecogniseOptions } from "./recognise";
 import type { Reordered } from "./occt/repick";
 import type { ImportFormat } from "./imports";
 import type { Quality } from "./occt/tessellate";
@@ -27,6 +28,8 @@ export interface Methods {
   export: { params: ExportRequest & { name: string }; result: ExportResult };
   /** Reads a file to import (#82): its bodies, kept ready for the build that follows. */
   inspect: { params: { name: string; format: ImportFormat; blob: string; data: string }; result: ImportInfo };
+  /** What an imported mesh body was made from (#437): holes, round faces and round edges, in the world. */
+  recognise: { params: { doc: ModelDoc; upTo?: number; body: string } & RecogniseOptions; result: Recognised };
   /** Wall thickness (#101) on bodies' meshes: the per-vertex tint and the thin areas. */
   thickness: {
     params: { bodies: { id: string; positions: Float32Array; indices: Uint32Array }[]; threshold: number };
