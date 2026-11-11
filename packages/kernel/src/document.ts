@@ -9,6 +9,7 @@ import {
   newSketch,
   planeFrame,
   removeEntities,
+  toWorld,
   WORLD_FRAMES,
   type Frame,
   type PlaneRef,
@@ -93,6 +94,8 @@ import {
   type ProfileSeg,
   type ProfileShape,
   type RevolveSpec,
+  type LoftSpec,
+  type LoftSection,
   type SketchAxis,
 } from "./extrude";
 
@@ -171,6 +174,8 @@ export interface Part {
   prism?: PrismSpec;
   /** Or profiles turned round an axis (Revolve, #62). */
   revolve?: RevolveSpec;
+  /** Or a solid run through shapes on several planes (Loft, #399). */
+  loft?: LoftSpec;
   /** Joins, cuts and intersections made into the part, in its own coordinates, in timeline order. */
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
@@ -227,6 +232,8 @@ export interface BodyOp {
   plugs?: Plug[];
   /** Or a revolve's solid, in the part's own coordinates. */
   rev?: RevolveSpec;
+  /** Or a loft's solid, in the part's own coordinates. */
+  loft?: LoftSpec;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
   body?: Part;
   /** A cut's printed gap (#183): the tool grows by this much on every side first, mm. */
@@ -550,6 +557,26 @@ export interface RevolveFeature extends FeatureBase {
   targets?: string[];
   body: { id: string; name: string };
 }
+/** One shape a loft runs through: the closed shape of a sketch that holds `seed`, picked the way Extrude picks. */
+export interface LoftPick {
+  sketch: string;
+  seed: Vec2;
+}
+/**
+ * Loft (#399): a solid that runs through closed shapes on two or more sketch planes, in order, made into a new body or
+ * combined with one. Shapes are the regions curves make where they cross, as for new extrudes.
+ */
+export interface LoftFeature extends FeatureBase {
+  type: "loft";
+  sections: LoftPick[];
+  /** Straight sides from one shape to the next, rather than one smooth surface through them all. */
+  ruled?: boolean;
+  operation: ExtrudeOperation;
+  target?: string;
+  /** Every body it cuts or intersects (Join takes the first), as for Extrude. */
+  targets?: string[];
+  body: { id: string; name: string };
+}
 /** Hole (#70): screw holes on one flat face of a part, sized from the screw table. */
 export interface HoleFeature extends FeatureBase, HoleParams {
   type: "hole";
@@ -685,6 +712,7 @@ export type Feature =
   | SketchFeature
   | ExtrudeFeature
   | RevolveFeature
+  | LoftFeature
   | CombineFeature
   | FinishFeature
   | HoleFeature;
@@ -800,6 +828,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   shell: "Shell",
   pushpull: "Push/pull",
   revolve: "Revolve",
+  loft: "Loft",
   hole: "Hole",
   import: "Import",
   convert: "Convert",
@@ -925,6 +954,7 @@ const BUILT = new Set<string>([
   "sketch",
   "extrude",
   "revolve",
+  "loft",
   "combine",
   "fillet",
   "chamfer",
@@ -1510,6 +1540,24 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           t.ops = [...(t.ops ?? []), { op: f.operation, rev: { ...spec, frame: frameToLocal(spec.frame, t) }, feature: f.id }];
         break;
       }
+      case "loft": {
+        const spec = loftSpecOf(f, sketchById);
+        if (typeof spec === "string") {
+          failed.set(f.id, spec);
+          break;
+        }
+        if (f.operation === "new") {
+          if (find(f.body.id) < 0)
+            parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: loftSize(spec), loft: spec });
+          break;
+        }
+        for (const t of profileTargets(f, parts, find, failed))
+          t.ops = [
+            ...(t.ops ?? []),
+            { op: f.operation, loft: { ...spec, sections: spec.sections.map((x) => ({ ...x, frame: frameToLocal(x.frame, t) })) }, feature: f.id },
+          ];
+        break;
+      }
       case "fillet":
       case "chamfer":
       case "shell":
@@ -1769,8 +1817,45 @@ function revolveSize(spec: RevolveSpec): Vec3 {
   return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
 }
 
-/** The parts an extrude or revolve changes, as they stand now; notes on the step any that are gone. */
-function profileTargets(f: ExtrudeFeature | RevolveFeature, parts: Part[], find: (id: string) => number, failed: Map<string, string>): Part[] {
+/**
+ * A loft's shapes from its sketches, or why it can't be made: each pick must still be a closed shape, and each on a
+ * plane of its own.
+ */
+function loftSpecOf(f: LoftFeature, sketchById: Map<string, Sketch>): LoftSpec | string {
+  if (f.sections.length < 2) return f.sections.length ? "Pick a shape on another plane to loft to" : "Pick two or more closed shapes, each on its own plane";
+  const sections: LoftSection[] = [];
+  for (const [i, pick] of f.sections.entries()) {
+    const sk = sketchById.get(pick.sketch);
+    if (!sk) return `The sketch of shape ${i + 1} is gone or comes later on the timeline`;
+    const { shapes } = pickProfiles(sk, [pick.seed], [], true);
+    if (!shapes.length) return `Shape ${i + 1} is no longer closed. Close it in the sketch, or pick it again.`;
+    sections.push({ frame: planeFrame(sk.plane), profile: shapes[0]! });
+  }
+  for (let i = 1; i < sections.length; i++) {
+    const [a, b] = [sections[i - 1]!.frame, sections[i]!.frame];
+    const d = [0, 1, 2].map((k) => b.origin[k]! - a.origin[k]!);
+    const same = Math.abs(a.normal[0] * b.normal[0] + a.normal[1] * b.normal[1] + a.normal[2] * b.normal[2]) > 1 - 1e-9;
+    if (same && Math.abs(d[0]! * a.normal[0] + d[1]! * a.normal[1] + d[2]! * a.normal[2]) < 1e-6)
+      return `Shapes ${i} and ${i + 1} are on the same plane. Pick shapes on planes apart from each other.`;
+  }
+  return { sections, ...(f.ruled ? { ruled: true } : {}) };
+}
+
+/** A loft's rough size: the box round every section's corners. */
+function loftSize(spec: LoftSpec): Vec3 {
+  const pts = spec.sections.flatMap((s) =>
+    s.profile.outer
+      .flatMap((g) =>
+        g.kind === "circle" ? [[g.c[0] - g.r, g.c[1] - g.r] as Vec2, [g.c[0] + g.r, g.c[1] + g.r] as Vec2] : g.kind === "arc" ? [g.a, g.m, g.b] : [g.a, g.b],
+      )
+      .map((q) => toWorld(s.frame, q)),
+  );
+  const span = (i: number) => Math.round((Math.max(...pts.map((c) => c[i]!)) - Math.min(...pts.map((c) => c[i]!))) * 1000) / 1000;
+  return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
+}
+
+/** The parts an extrude, revolve or loft changes, as they stand now; notes on the step any that are gone. */
+function profileTargets(f: ExtrudeFeature | RevolveFeature | LoftFeature, parts: Part[], find: (id: string) => number, failed: Map<string, string>): Part[] {
   const ids = targetsOf(f);
   if (!ids.length) {
     failed.set(f.id, f.operation === "join" ? "Pick the body to change" : "Pick the bodies to change");
@@ -1810,7 +1895,7 @@ function usedNames(doc: ModelDoc): Set<string> {
   for (const f of doc.features) {
     if (f.type === "add" || f.type === "insert") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
-    if (f.type === "convert" || ((f.type === "extrude" || f.type === "revolve") && f.operation === "new")) names.add(f.body.name);
+    if (f.type === "convert" || ((f.type === "extrude" || f.type === "revolve" || f.type === "loft") && f.operation === "new")) names.add(f.body.name);
   }
   Object.values(doc.looks).forEach((l) => l.name && names.add(l.name));
   return names;
@@ -2020,6 +2105,7 @@ export function featureParts(f: Feature): string[] {
     case "mount":
       return [f.part];
     case "revolve":
+    case "loft":
       return f.operation === "new" ? [f.body.id] : targetsOf(f);
     case "import":
       return f.bodies.map((b) => b.id);
@@ -2051,7 +2137,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const g of doc.features) {
     if (g.type === "add" || g.type === "insert") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
-    if (g.type === "convert" || ((g.type === "extrude" || g.type === "revolve") && g.operation === "new")) names.set(g.body.id, g.body.name);
+    if (g.type === "convert" || ((g.type === "extrude" || g.type === "revolve" || g.type === "loft") && g.operation === "new"))
+      names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
@@ -2169,6 +2256,11 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
             : `the sketch's ${a.kind.toUpperCase()} axis`;
       return `${f.angle >= 360 ? "Full turn" : `${Math.round(f.angle * 100) / 100}°${f.symmetric ? " both ways" : ""}`} round ${axis}, ${op}`;
     }
+    case "loft": {
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
+      const n = f.sections.length;
+      return `Through ${n === 1 ? "1 shape" : `${n} shapes`}${f.ruled ? ", straight sides" : ""}, ${op}`;
+    }
     case "shell": {
       const n = f.refs.length;
       return `${mm(f.size)} wall${f.outside ? " outside" : ""}, ${n ? `${n === 1 ? "1 face" : `${n} faces`} open` : "sealed"}, ${who([f.part])}`;
@@ -2259,6 +2351,18 @@ export type RevolveParams = Pick<RevolveFeature, "sketch" | "seeds" | "split" | 
 /** Adds a Revolve step. Its new body (when it makes one) gets the part id `bodyId`. */
 export function addRevolve(doc: ModelDoc, params: RevolveParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
   return insert(doc, at, { id, type: "revolve", name: nextFeatureName(doc, "revolve"), ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+export type LoftParams = Pick<LoftFeature, "sections" | "ruled" | "operation" | "target" | "targets">;
+
+/** Adds a Loft step (#399). Its new body (when it makes one) gets the part id `bodyId`. */
+export function addLoft(doc: ModelDoc, params: LoftParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "loft", name: nextFeatureName(doc, "loft"), ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+/** Changes a Loft step's settings (the tool edits it live, as one undo step). */
+export function updateLoft(doc: ModelDoc, id: string, change: Partial<LoftParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "loft" ? { ...f, ...change } : f)) };
 }
 
 /** Changes a Revolve step's settings (the tool edits it live, as one undo step). */
@@ -2944,6 +3048,8 @@ function partsRead(f: Feature): string[] {
       return [...new Set([...targetsOf(f), ...(f.extent === "to" && f.to ? [f.to.body] : []), ...(f.start === "object" && f.from ? [f.from.body] : [])])];
     case "revolve":
       return f.axis?.kind === "ref" && "body" in f.axis.ref ? [...new Set([...targetsOf(f), f.axis.ref.body])] : targetsOf(f);
+    case "loft":
+      return targetsOf(f);
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
     case "construct":
@@ -2967,7 +3073,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
   if (f.type === "gear" || f.type === "convert") return [f.body.id];
-  if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
+  if ((f.type === "extrude" || f.type === "revolve" || f.type === "loft") && f.operation === "new") return [f.body.id];
   return [];
 }
 
@@ -2994,6 +3100,8 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   if (f.type === "extrude" || f.type === "revolve") {
     if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
   }
+  // A loft needs each of its sketches.
+  if (f.type === "loft") for (const x of f.sections) if (before.some((g) => g.id === x.sketch)) out.add(x.sketch);
   // A revolve round a construction axis needs that axis.
   if (f.type === "revolve" && f.axis?.kind === "ref" && "step" in f.axis.ref) {
     const step = f.axis.ref.step;
@@ -3293,7 +3401,8 @@ export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length):
       (f) =>
         !f.suppressed &&
         (ops.has(f.id) ||
-          ((f.type === "extrude" || f.type === "revolve" || f.type === "gear" || f.type === "pattern") && partsMade(f).some((p) => here.has(p)))),
+          ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "gear" || f.type === "pattern") &&
+            partsMade(f).some((p) => here.has(p)))),
     );
 }
 

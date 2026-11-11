@@ -5,6 +5,7 @@ import {
   addExtrude,
   addFinish,
   addHole,
+  addLoft,
   addPattern,
   addRevolve,
   addSketch,
@@ -14,6 +15,7 @@ import {
   type ExtrudeParams,
   type FinishParams,
   type HoleStepParams,
+  type LoftParams,
   type ModelDoc,
   type PatternParams,
   type RevolveParams,
@@ -26,7 +28,7 @@ import type { OC } from "../occt/oc";
 
 /**
  * A small kit for writing speed-modelling parts (Too Tall Toby and the like) as BetterCad timelines: the same steps a
- * person takes in the app (sketch, extrude, revolve, fillet, hole, mirror), with stable ids so the files only change
+ * person takes in the app (sketch, extrude, revolve, loft, fillet, hole, mirror), with stable ids so the files only change
  * when the model does. No step here does anything the app's tools can't.
  */
 export class Timeline {
@@ -60,6 +62,11 @@ export class Timeline {
   revolve(p: RevolveParams): string {
     const body = this.id("b");
     this.doc = addRevolve(this.doc, p, this.id("r"), body);
+    return body;
+  }
+  loft(p: LoftParams): string {
+    const body = this.id("b");
+    this.doc = addLoft(this.doc, p, this.id("l"), body);
     return body;
   }
   finish(p: FinishParams) {

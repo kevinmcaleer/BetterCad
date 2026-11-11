@@ -20,6 +20,7 @@ import {
   prismOf,
   pushPull,
   revolveOf,
+  loftOf,
   shell,
   sphere,
   torus,
@@ -161,6 +162,11 @@ const Z_AXIS = { origin: [0, 0] as [number, number], dir: [0, 1] as [number, num
 const rectAt = (x: number, y: number, w: number, h: number): ProfileSeg[] =>
   rect(w, h).map((g) => (g.kind === "line" ? { kind: "line", a: [g.a[0] + x, g.a[1] + y], b: [g.b[0] + x, g.b[1] + y] } : g));
 
+const XYat = (z: number) => ({ ...XY, origin: [0, 0, z] }) as PrismSpec["frame"];
+/** A square centred on the frame's origin. */
+const centred = (w: number) => rectAt(-w / 2, -w / 2, w, w);
+const square = (w: number) => ({ outer: centred(w), holes: [] as ProfileSeg[][], area: w * w });
+
 const holeOn = (top: number, p: HoleParams): HoleSpec => {
   const r = resolveHole(p) as { diameter: number; head?: HoleSpec["head"] };
   return { frame: { origin: [0, 0, top], x: [1, 0, 0], normal: [0, 0, 1] }, points: [[0, 0]], depth: p.depth, ...r };
@@ -269,6 +275,49 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Revolve round an axis 10 mm off the sketch's plane (a construction axis or an edge above it).
   "revolve-offset-axis": (oc) =>
     revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(5, 0, 10, 30), holes: [], area: 300 }], axis: { ...Z_AXIS, offset: 10 }, angle: 360 }),
+  // Loft (#399): a 20 mm square to a 10 mm one 10 mm above, straight sides (a frustum); a square to a circle, smooth;
+  // a square tube to a smaller one; three shapes; a loft cut through a block.
+  "loft-frustum": (oc) =>
+    loftOf(oc, {
+      ruled: true,
+      sections: [
+        { frame: XY, profile: square(20) },
+        { frame: XYat(10), profile: square(10) },
+      ],
+    }),
+  "loft-square-to-circle": (oc) =>
+    loftOf(oc, {
+      sections: [
+        { frame: XY, profile: square(20) },
+        { frame: XYat(20), profile: { outer: [{ kind: "circle", c: [0, 0], r: 6 }], holes: [], area: 0 } },
+      ],
+    }),
+  "loft-tube": (oc) =>
+    loftOf(oc, {
+      ruled: true,
+      sections: [
+        { frame: XY, profile: { ...square(20), holes: [centred(16)] } },
+        { frame: XYat(15), profile: { ...square(12), holes: [centred(8)] } },
+      ],
+    }),
+  "loft-three": (oc) =>
+    loftOf(oc, {
+      sections: [
+        { frame: XY, profile: square(20) },
+        { frame: XYat(10), profile: square(8) },
+        { frame: XYat(20), profile: square(16) },
+      ],
+    }),
+  "loft-cut": (oc) =>
+    boolean(oc, "cut", box(oc, { x: 30, y: 30, z: 20 }), [
+      loftOf(oc, {
+        ruled: true,
+        sections: [
+          { frame: XYat(5), profile: square(10) },
+          { frame: XYat(20), profile: square(20) },
+        ],
+      }),
+    ]),
   // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
   "pushpull-out": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, 5),
   "pushpull-in": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, -5),

@@ -99,15 +99,15 @@ describe(".bcad files (#79)", () => {
   it("keeps steps and fields from a newer BetterCad, and warns", () => {
     const f = JSON.parse(sample("schema1.bcad"));
     f.schema = 2;
-    f.document.features.push({ id: "f2", type: "loft", name: "Loft 1", sections: ["a", "b"] });
+    f.document.features.push({ id: "f2", type: "emboss", name: "Emboss 1", faces: ["a", "b"] });
     f.document.layers = [{ id: "l1" }];
     const r = loadBcad(JSON.stringify(f));
     if (r instanceof BcadError) throw r;
     expect(r.warning).toBe(NEWER_WARNING);
-    expect(r.doc.features[1]).toEqual({ id: "f2", type: "loft", name: "Loft 1", sections: ["a", "b"] });
+    expect(r.doc.features[1]).toEqual({ id: "f2", type: "emboss", name: "Emboss 1", faces: ["a", "b"] });
     expect((r.doc as unknown as { layers: unknown }).layers).toEqual([{ id: "l1" }]);
     // It stays in the file on the next save, and the step says why it does not build.
-    expect(saveBcad(r.doc)).toContain('"type": "loft"');
+    expect(saveBcad(r.doc)).toContain('"type": "emboss"');
     expect(build(r.doc).failed.get("f2")).toBe("This step needs a newer BetterCad");
   });
 

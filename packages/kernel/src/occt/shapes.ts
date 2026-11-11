@@ -2,7 +2,7 @@ import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Sh
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
-import type { PrismSpec, ProfileSeg, RevolveSpec } from "../extrude";
+import type { LoftSpec, PrismSpec, ProfileSeg, RevolveSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
 import type { CopyMove } from "../pattern";
 
@@ -307,6 +307,34 @@ export function revolveOf(oc: OC, spec: RevolveSpec, t?: Tracker): TopoDS_Shape 
   });
   if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to revolve.");
   return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1), t);
+}
+
+/**
+ * Loft (#399): one solid through each section's outline in turn, smooth unless ruled. Holes are lofted the same way
+ * and cut out, so every section needs as many holes as the first; they pair up in order.
+ */
+export function loftOf(oc: OC, spec: LoftSpec, t?: Tracker): TopoDS_Shape {
+  const { sections } = spec;
+  if (sections.length < 2) throw new KernelError("invalid-size", "A loft needs at least two shapes, each on its own plane.");
+  const holes = sections[0]!.profile.holes.length;
+  if (sections.some((s) => s.profile.holes.length !== holes))
+    throw new KernelError("open-profile", "Every shape in a loft needs the same number of holes. Pick shapes that match, or draw the holes later.");
+  const through = (pick: (k: number) => ProfileSeg[], tag: string) =>
+    guard(oc, "failed", "Those shapes could not be lofted. Check they don't cross each other, and try Straight sides.", () => {
+      const named: [TopoDS_Shape, string][] | undefined = t ? [] : undefined;
+      const mk = new oc.BRepOffsetAPI_ThruSections(true, !!spec.ruled, 1e-6);
+      // Lines and arcs, and shapes with different numbers of sides, are matched up and turned to line up.
+      mk.CheckCompatibility(true);
+      sections.forEach((sec, k) => mk.AddWire(oc.TopoDS.Wire(outlineWire(oc, sec, pick(k), 0, k === 0 ? named : undefined, tag))));
+      const out = mk.Shape();
+      if (!out || out.IsNull()) throw new KernelError("failed", "Those shapes could not be lofted.");
+      t?.sweep(mk, out, named!);
+      return out;
+    });
+  const outer = through((k) => sections[k]!.profile.outer, "p0.");
+  if (!holes) return outer;
+  const cuts = Array.from({ length: holes }, (_, j) => through((k) => sections[k]!.profile.holes[j]!, `p0h${j}.`));
+  return boolean(oc, "cut", outer, cuts, t);
 }
 
 /**
