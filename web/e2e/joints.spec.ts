@@ -293,7 +293,7 @@ test("turn and flip a joint from the keyboard, and show how it moves", async ({ 
   await expect(page.getByText("Made Joint 1: hinge, Component 1 on Base")).toBeVisible();
 });
 
-/** An imported mesh (#395) takes its snaps from its box: here the box's centre, inside the cube. */
+/** An imported mesh takes its snaps from the run of triangles under the pointer: here its top face's middle. */
 test("snap a joint to the middle of an imported STL", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
@@ -332,15 +332,60 @@ test("snap a joint to the middle of an imported STL", async ({ page }) => {
     return v.bodyBox(v.bodyCounts()[0]!.id)!;
   });
   const mid = [0, 1, 2].map((k) => (b.min[k]! + b.max[k]!) / 2);
-  // Over the cube's top first, so its box snaps show, then onto its centre.
+  // Over the cube's top first, so the top face's snaps show, then onto its middle.
   const top = await page.evaluate((q) => (window as unknown as View).__bcView.project(q), [mid[0]! - 2, mid[1]! - 2, b.max[2]!]);
   await page.mouse.move(canvas.x + top.x, canvas.y + top.y, { steps: 3 });
-  await click(page, mid[0]!, mid[1]!, mid[2]!);
+  await click(page, mid[0]!, mid[1]!, b.max[2]!);
   await expect(page.getByText("Made cube a component, so the joint can move it")).toBeVisible();
   const panel = page.getByRole("group", { name: "Joint options" });
-  // The box's centre, not the middle of the side under the pointer.
-  const label = `${[mid[0]!, mid[1]!, 5].map((v) => String(Math.round(v * 100) / 100 + 0)).join(", ")} mm`;
+  // The middle of the top face the pointer is on, found from its triangles.
+  const label = `${[mid[0]!, mid[1]!, b.max[2]!].map((v) => String(Math.round(v * 100) / 100 + 0)).join(", ")} mm`;
   await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: label })).toBeVisible();
+});
+
+/** A peg in an imported STL: its curved side gives the centre of its round top, which no single triangle has. */
+test("snap a joint to the end of a round peg in an imported STL", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  const n = 32;
+  const at = (i: number, z: number) => [6 * Math.cos((2 * Math.PI * i) / n), 6 * Math.sin((2 * Math.PI * i) / n), z].map((v) => v.toFixed(6));
+  const tri = (a: string[], b: string[], c: string[]) =>
+    `facet normal 0 0 0\n outer loop\n${[a, b, c].map((v) => `  vertex ${v.join(" ")}`).join("\n")}\n endloop\nendfacet\n`;
+  let body = "";
+  for (let i = 0; i < n; i++) {
+    body += tri(at(i, 0), at(i + 1, 0), at(i + 1, 20)) + tri(at(i, 0), at(i + 1, 20), at(i, 20));
+    body += tri(["0", "0", "20"], at(i, 20), at(i + 1, 20)) + tri(["0", "0", "0"], at(i + 1, 0), at(i, 0));
+  }
+  const canvas = (await page.getByTestId("view-canvas").boundingBox())!;
+  await page.evaluate(
+    ({ text, x, y }) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([text], "peg.stl"));
+      const target = document.querySelector("[data-testid='view-canvas']")!;
+      for (const type of ["dragenter", "dragover", "drop"])
+        target.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true, clientX: x, clientY: y }));
+    },
+    { text: `solid peg\n${body}endsolid peg\n`, x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 },
+  );
+  await expect(page.getByText("Imported 1 body from peg.stl")).toBeVisible({ timeout: 30_000 });
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Joint/ })
+    .click();
+  type Boxes = { __bcView: { bodyCounts(): { id: string }[]; bodyBox(id: string): { min: number[]; max: number[] } | null } };
+  await expect.poll(() => page.evaluate(() => (window as unknown as Boxes).__bcView.bodyCounts().length)).toBe(1);
+  const b = await page.evaluate(() => {
+    const v = (window as unknown as Boxes).__bcView;
+    return v.bodyBox(v.bodyCounts()[0]!.id)!;
+  });
+  const mid = [0, 1].map((k) => (b.min[k]! + b.max[k]!) / 2);
+  // Over the peg's side (the face toward the default camera), then onto the centre of its top.
+  const side = await page.evaluate((q) => (window as unknown as View).__bcView.project(q), [mid[0]! + 4.2, mid[1]! - 4.2, b.min[2]! + 15]);
+  await page.mouse.move(canvas.x + side.x, canvas.y + side.y, { steps: 3 });
+  await click(page, mid[0]!, mid[1]!, b.max[2]!);
+  await expect(page.getByText("Made peg a component, so the joint can move it")).toBeVisible();
+  const label = `${[mid[0]!, mid[1]!, b.max[2]!].map((v) => String(Math.round(v * 100) / 100 + 0)).join(", ")} mm`;
+  await expect(page.getByRole("group", { name: "Joint options" }).getByRole("region", { name: "Moves" }).getByRole("button", { name: label })).toBeVisible();
 });
 
 /** Posing (#173): a hinge turned with its slider, kept through undo, and sent home. */

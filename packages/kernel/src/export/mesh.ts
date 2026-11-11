@@ -9,6 +9,21 @@ export interface MeshBody {
   triangles: Float32Array;
 }
 
+/** The middle of the bodies' bounding box, in mm, or null when they have no triangles. */
+export function boxCentre(bodies: MeshBody[]): [number, number, number] | null {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (const b of bodies)
+    for (let i = 0; i < b.triangles.length; i++) {
+      const v = b.triangles[i]!;
+      const k = i % 3;
+      if (v < lo[k]!) lo[k] = v;
+      if (v > hi[k]!) hi[k] = v;
+    }
+  if (!Number.isFinite(lo[0]!)) return null;
+  return [0, 1, 2].map((k) => (lo[k]! + hi[k]!) / 2) as [number, number, number];
+}
+
 /** Moves bodies together so the lowest point sits on Z = 0, the slicer's bed. */
 export function placeOnBed<T extends MeshBody>(bodies: T[]): T[] {
   let low = Infinity;

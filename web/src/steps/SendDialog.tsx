@@ -132,8 +132,8 @@ export function SendDialog(p: SendDialogProps) {
       ) : (
         <>
           <p className="bc-note">
-            Sends the build steps, their pictures, the model with its joints, and an STL of each part to print. They wait in the project until you import them
-            there.
+            Sends the build steps, their pictures, the model with its joints, and an STL of each part, placed and joined in the project’s 3D model. They wait in
+            the project until you import them there.
           </p>
           <label className="bc-field-label" htmlFor="bc-send-project">
             Project
