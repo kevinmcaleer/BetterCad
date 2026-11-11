@@ -22,6 +22,7 @@ import {
   revolveOf,
   loftOf,
   sweepOf,
+  frontOf,
   shell,
   sphere,
   torus,
@@ -388,6 +389,17 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
         path: { frame: XY, segs: [{ kind: "line", a: [-20, 0], b: [20, 0] }] },
       }),
     ]),
+  // Split body (#406): a 20 mm box split by a plane through the Y axis at 30° from upright; the front half and the back.
+  "split-30-front": (oc) => {
+    const b = box(oc, { x: 20, y: 20, z: 20 });
+    const n = { x: Math.cos(Math.PI / 6), y: 0, z: Math.sin(Math.PI / 6) };
+    return boolean(oc, "intersect", b, [frontOf(oc, b, { origin: { x: 0, y: 0, z: 0 }, normal: n })]);
+  },
+  "split-30-back": (oc) => {
+    const b = box(oc, { x: 20, y: 20, z: 20 });
+    const n = { x: Math.cos(Math.PI / 6), y: 0, z: Math.sin(Math.PI / 6) };
+    return boolean(oc, "cut", b, [frontOf(oc, b, { origin: { x: 0, y: 0, z: 0 }, normal: n })]);
+  },
   // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
   "pushpull-out": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, 5),
   "pushpull-in": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, -5),

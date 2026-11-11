@@ -4,7 +4,7 @@ import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
 import type { EllipseSeg, LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
-import type { CopyMove } from "../pattern";
+import type { CopyMove, Plane } from "../pattern";
 
 /**
  * Making and changing solids with OpenCascade. Every function takes the loaded OC instance and returns a new shape;
@@ -1000,6 +1000,39 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
   props.delete();
   surf.delete();
   return out;
+}
+
+/**
+ * Everything of `shape` on the front of a plane (where its normal points), as a box that reaches past the shape on every
+ * side: the tool a Split body (#406) cuts with or keeps. A shape wholly on one side gives an empty half, so it fails.
+ */
+export function frontOf(oc: OC, shape: TopoDS_Shape, plane: Plane): TopoDS_Shape {
+  const { min, max } = boundingBox(oc, shape);
+  const n = [plane.normal.x, plane.normal.y, plane.normal.z];
+  const len = Math.hypot(n[0]!, n[1]!, n[2]!);
+  if (len < 1e-9) throw new KernelError("failed", "The plane has no direction");
+  const N = n.map((v) => v / len) as [number, number, number];
+  const o = [plane.origin.x, plane.origin.y, plane.origin.z];
+  const c = [0, 1, 2].map((i) => (min[i]! + max[i]!) / 2);
+  const d = c.reduce((a, v, i) => a + (v - o[i]!) * N[i]!, 0);
+  // The middle of the shape's box, dropped onto the plane: the box is centred there.
+  const at = c.map((v, i) => v - d * N[i]!);
+  const reach = Math.hypot(max[0]! - min[0]!, max[1]! - min[1]!, max[2]! - min[2]!) + Math.abs(d) + 10;
+  // Two directions in the plane, square to the normal and each other.
+  const a = Math.abs(N[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const dotA = a[0]! * N[0] + a[1]! * N[1] + a[2]! * N[2];
+  const xr = a.map((v, i) => v - dotA * N[i]!);
+  const xl = Math.hypot(xr[0]!, xr[1]!, xr[2]!);
+  const X = xr.map((v) => v / xl);
+  const Y = [N[1] * X[2]! - N[2] * X[1]!, N[2] * X[0]! - N[0] * X[2]!, N[0] * X[1]! - N[1] * X[0]!];
+  const mk = new oc.BRepPrimAPI_MakeBox(new oc.gp_Pnt(-reach, -reach, 0), 2 * reach, 2 * reach, reach);
+  const local = mk.Shape();
+  mk.delete();
+  const t = new oc.gp_Trsf();
+  t.SetValues(X[0]!, Y[0]!, N[0], at[0]!, X[1]!, Y[1]!, N[1], at[1]!, X[2]!, Y[2]!, N[2], at[2]!);
+  const moved = new oc.BRepBuilderAPI_Transform(local, t, true, false).Shape();
+  t.delete();
+  return moved;
 }
 
 /** The box round a shape, tight to the exact geometry (the plain one adds tolerances and control points). */

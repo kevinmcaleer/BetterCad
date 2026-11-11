@@ -20,6 +20,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   revolve: "revolve",
   loft: "loft",
   sweep: "sweep",
+  split: "split",
   hole: "hole",
   import: "upload",
   convert: "shapes",
