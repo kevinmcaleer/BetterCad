@@ -13,12 +13,12 @@ npx vitest run packages/kernel/src/speedmodel        # SPEED_LOG=1 prints each m
 | Part                  | Result                                                                 |
 | --------------------- | ---------------------------------------------------------------------- |
 | 01-01 Bearing Bracket | 797.15 g, matches                                                      |
-| 01-02 Post Cap        | Can't model it: needs an ellipse (#401); Sweep is in (#400)             |
+| 01-02 Post Cap        | Can't model it: needs an ellipse (#401); Sweep is in (#400)            |
 | 01-03 C Clamp Base    | 96.13 g, matches                                                       |
 | 01-04 Angle Bracket   | 310.00 g, matches                                                      |
 | 01-05 Paste Sleeve    | 56.73 g, within 0.35 g (Loft, #399)                                    |
 | 01-06 Bearing Jig     | 328.02 g, matches                                                      |
-| 01-07 Flanged Hub     | Can't model it: needs a taper angle on Extrude (#402)                   |
+| 01-07 Flanged Hub     | 372.97 g, within 0.02 g (Extrude's taper, #402)                        |
 | 01-08 Tie Plate       | 3387.06 g, matches                                                     |
 | 01-09 Corner Tie      | 307.23 g, matches                                                      |
 | 01-10 Light Cap       | 211.30 g, matches (2.3 s to build, most of it the R8 round on the rim) |

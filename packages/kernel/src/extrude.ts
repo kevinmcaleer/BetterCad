@@ -40,6 +40,10 @@ export interface PrismSpec {
   /** Where the solid starts and ends along the frame's normal, mm. */
   from: number;
   to: number;
+  /** Sides leaning in by this many degrees away from `base` (Extrude's taper, #402); negative leans out. */
+  taper?: number;
+  /** Where the shape is full size along the normal, mm, for a taper; `from` when missing. */
+  base?: number;
 }
 
 /** Revolve's geometry (#62): profiles turned round a line in their sketch plane. */

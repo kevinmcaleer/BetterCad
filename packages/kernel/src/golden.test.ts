@@ -277,6 +277,18 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Revolve round an axis 10 mm off the sketch's plane (a construction axis or an edge above it).
   "revolve-offset-axis": (oc) =>
     revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(5, 0, 10, 30), holes: [], area: 300 }], axis: { ...Z_AXIS, offset: 10 }, angle: 360 }),
+  // Extrude's taper (#402): a 20 mm square 10 mm up, leaning in 10° (a frustum); out 10° both ways from the middle; a
+  // ring whose bore opens as its outside closes in.
+  "extrude-taper": (oc) => prismOf(oc, { frame: XY, profiles: [square(20)], from: 0, to: 10, taper: 10 }),
+  "extrude-taper-both": (oc) => prismOf(oc, { frame: XY, profiles: [square(20)], from: -5, to: 5, base: 0, taper: -10 }),
+  "extrude-taper-ring": (oc) =>
+    prismOf(oc, {
+      frame: XY,
+      profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 10 }], holes: [[{ kind: "circle", c: [0, 0], r: 4 }]], area: 0 }],
+      from: 0,
+      to: 10,
+      taper: 5,
+    }),
   // Loft (#399): a 20 mm square to a 10 mm one 10 mm above, straight sides (a frustum); a square to a circle, smooth;
   // a square tube to a smaller one; three shapes; a loft cut through a block.
   "loft-frustum": (oc) =>
