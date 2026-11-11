@@ -210,7 +210,7 @@ export function TopBar(p: TopBarProps) {
                       key={t.id}
                       icon={t.icon}
                       label={t.label}
-                      shortcut={t.key?.toUpperCase()}
+                      shortcut={t.key && formatCombo(t.key)}
                       pressed={p.tool === t.id}
                       onPress={() => p.onArmTool(t.id)}
                     />

@@ -109,6 +109,8 @@ export const sweep = "M4 20v-8a8 8 0 0 1 8-8h8M2 20h4M20 2v4M8 20v-8a4 4 0 0 1 4
 export const split = "M3 4h9L7 20H3zM16 4h5v16h-10z";
 export const loft = "M3 18h18l-2 3H5zM9 3h6v3H9zM3 18 9 6M21 18 15 6";
 export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
+/** Offset face (#264): a wedge, its slope moved out along an arrow. */
+export const offsetFace = "M3 20h12L3 8zM6 5l13 13M10 13l3-3M13 10h-2.5M13 10v2.5";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
 export const wedge = "M3 20h12L3 8zM8 4v12h12M3 8l5-4M15 20l5-4M3 20l5-4";
 export const settings = "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1";
@@ -292,6 +294,7 @@ export const ICONS = {
   slot,
   ellipse,
   spline,
+  offsetFace,
   point,
   plane,
   axis,

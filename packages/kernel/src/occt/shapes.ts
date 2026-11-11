@@ -815,6 +815,84 @@ function halfSpace(oc: OC, s: Side, centre: V3, reach: number): TopoDS_Shape {
   return boolean(oc, "cut", big, [cyl]);
 }
 
+/** How far a point is into the body's side of a surface: positive inside, negative outside. */
+function depthIn(s: Side, p: V3): number {
+  const d = sub3(p, s.point);
+  if (s.kind === "plane") return -dot3(d, s.out);
+  const radial = len3(sub3(d, scale3(s.axis, dot3(d, s.axis))));
+  return s.inside ? s.radius - radial : radial - s.radius;
+}
+
+/** The same surface with the body on its other side. */
+const flipSide = (s: Side): Side => (s.kind === "plane" ? { ...s, out: scale3(s.out, -1) } : { ...s, inside: !s.inside });
+
+/**
+ * Offset face (#264): each face moved along its normal by `distance`, out (positive, the body grows) or in, with its
+ * neighbours stretched or cut back to meet it however they slant. Flat faces and round walls (a hole loosens or
+ * tightens). The piece added or taken away is the slab between the face and its new place, cut by each neighbour's
+ * surface on the face's side of it; every piece is worked out on the body as it is, then joined or cut in one go.
+ */
+export function offsetFaces(oc: OC, shape: TopoDS_Shape, faceIndices: number[], distance: number, t?: Tracker): TopoDS_Shape {
+  if (!(Math.abs(distance) > 1e-9)) return shape;
+  if (!faceIndices.length) throw new KernelError("invalid-size", "Pick the faces to offset.");
+  const faces = elements(oc, shape, "face");
+  const sides = faces.map((f) => sideOf(oc, oc.TopoDS.Face(f)));
+  const { bbox } = measure(oc, shape);
+  const reach = 2 * len3(sub3(bbox.max, bbox.min)) + 4 * Math.abs(distance) + 1;
+  const tol = 1e-6 * reach;
+  const pieces = faceIndices.map((i) => {
+    const f = faces[i];
+    if (!f) throw new KernelError("reference-missing", "A face it offsets is not there any more. Pick it again.");
+    const s = sides[i];
+    if (!s) throw new KernelError("failed", "Offset face works on flat faces and round walls.");
+    // The face's new surface, `distance` out from the body.
+    let moved: Side;
+    if (s.kind === "plane") moved = { ...s, point: add3(s.point, scale3(s.out, distance)) };
+    else {
+      const radius = s.radius + (s.inside ? distance : -distance);
+      if (!(radius > tol)) throw new KernelError("invalid-size", s.inside ? "That's further in than the round is thick." : "That closes the hole up.");
+      moved = { ...s, radius };
+    }
+    // Points round the face's edges, to tell which side of each neighbour it lies on.
+    const along: V3[] = [];
+    for (const e of elements(oc, f, "edge")) {
+      const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+      const [u0, u1] = [c.FirstParameter(), c.LastParameter()];
+      for (const k of [0.1, 0.5, 0.9]) along.push(v3(c.EvalD0(u0 + (u1 - u0) * k)));
+      c.delete();
+    }
+    const centre = along.reduce((a, b) => add3(a, b), [0, 0, 0] as V3).map((x) => x / Math.max(1, along.length)) as V3;
+    const edges = elements(oc, f, "edge");
+    const cuts: TopoDS_Shape[] = [];
+    faces.forEach((g, j) => {
+      if (j === i) return;
+      const shares = elements(oc, g, "edge").some((e) => edges.some((x) => x.IsSame(e)));
+      if (!shares) return;
+      const n = sides[j];
+      if (!n) throw new KernelError("failed", "Offset face needs the faces round it to be flat or round.");
+      // A face of the same surface carries on from this one: it bounds nothing.
+      if (sameSide(n, s)) return;
+      const depths = along.map((p) => depthIn(n, p));
+      if (depths.every((x) => x >= -tol)) cuts.push(halfSpace(oc, n, centre, reach));
+      else if (depths.every((x) => x <= tol)) cuts.push(halfSpace(oc, flipSide(n), centre, reach));
+      else throw new KernelError("failed", "That face's outline turns back on itself. Push/pull it instead.");
+    });
+    // The slab between the face and its new place: on the body's side of the new surface and off it of the old one
+    // to grow, the other way round to shrink.
+    const slab =
+      distance > 0
+        ? [halfSpace(oc, moved, centre, reach), halfSpace(oc, flipSide(s), centre, reach)]
+        : [halfSpace(oc, flipSide(moved), centre, reach), halfSpace(oc, s, centre, reach)];
+    const [first, ...rest] = slab;
+    return boolean(oc, "intersect", first!, [...rest, ...cuts]);
+  });
+  return guard(oc, "failed", "That offset could not be made. Try a smaller distance.", () => {
+    const out = boolean(oc, distance > 0 ? "join" : "cut", shape, pieces, t);
+    if (!valid(oc, out)) throw new KernelError("failed", "That offset turns the body inside out. Try a smaller distance.");
+    return out;
+  });
+}
+
 /**
  * Rounds or bevels edges OpenCascade's fillet cannot: it gives up where an edge ends at a corner it cannot close,
  * as at the end of a face pinched between other faces. Each picked edge lies between two faces; the part of the body

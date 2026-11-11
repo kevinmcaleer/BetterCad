@@ -71,6 +71,7 @@ const KNOWN: ReadonlySet<FeatureType> = new Set<FeatureType>([
   "chamfer",
   "shell",
   "pushpull",
+  "offsetFace",
   "hole",
 ]);
 

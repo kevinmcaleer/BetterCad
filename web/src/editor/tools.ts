@@ -16,6 +16,7 @@ export type ToolId =
   | "split"
   | "fillet"
   | "shell"
+  | "offsetFace"
   | "hole"
   | "mount"
   | "gear"
@@ -27,7 +28,7 @@ export interface Tool {
   id: ToolId;
   label: string;
   icon: IconName;
-  /** A single-letter shortcut; the rarer tools have none and live in the palette. */
+  /** A shortcut, a letter or a combo ("shift+p"); the rarer tools have none and live in the palette. */
   key?: string;
   title: string;
   /** The help line under the viewport while the tool is armed. */
@@ -132,6 +133,14 @@ export const TOOLS: Tool[] = [
   { id: "fillet", label: "Fillet", icon: "fillet", key: "g", title: "Fillet or chamfer edges", help: "Click the edges to fillet or chamfer." },
   { id: "shell", label: "Shell", icon: "shell", key: "s", title: "Hollow a body to a wall", help: "Click the face to leave open, usually the top." },
   {
+    id: "offsetFace",
+    label: "Offset face",
+    icon: "offsetFace",
+    key: "shift+p",
+    title: "Move faces along their normals",
+    help: "Click the faces to move: flat ones, or the wall of a hole.",
+  },
+  {
     id: "measure",
     label: "Measure",
     icon: "ruler",
@@ -167,7 +176,7 @@ const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!)
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
   { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
   { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "loft", "sweep", "gear", "construct"]) },
-  { id: "change", label: "Change", tools: byId(["combine", "split", "hole", "fillet", "shell", "pattern", "mount", "joint"]) },
+  { id: "change", label: "Change", tools: byId(["combine", "split", "hole", "fillet", "shell", "offsetFace", "pattern", "mount", "joint"]) },
   { id: "check", label: "Check", tools: byId(["measure", "section"]) },
 ];
 

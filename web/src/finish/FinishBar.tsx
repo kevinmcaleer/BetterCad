@@ -48,17 +48,17 @@ export function FinishBar({ f, preview, onCancel }: { f: FinishSession; preview?
     } catch {
       return;
     }
-    f.done(v > 0 ? v : undefined);
+    f.done(f.tool === "offsetFace" ? v || undefined : v > 0 ? v : undefined);
   };
   const n = f.refs.length;
   const shell = f.tool === "shell";
-  const noun = shell ? "faces" : "edges";
+  const noun = shell || f.tool === "offsetFace" ? "faces" : "edges";
   const picks = (
     <>
       <FeaturePicker
-        label={shell ? "Open faces" : "Edges"}
+        label={shell ? "Open faces" : noun === "faces" ? "Faces" : "Edges"}
         count={n}
-        empty={shell ? "Click faces" : "Click edges"}
+        empty={noun === "faces" ? "Click faces" : "Click edges"}
         picking
         title={n ? (listOpen ? `Hide the list of picked ${noun}` : `Show the picked ${noun} as a list`) : `Click ${noun} in the view to add them`}
         onPick={() => setListOpen((o) => !o)}
@@ -70,6 +70,25 @@ export function FinishBar({ f, preview, onCancel }: { f: FinishSession; preview?
   );
   const error = preview?.error ? <PanelNote tone="error">{preview.error}</PanelNote> : null;
   const cancel = { title: "Put the tool down", onClick: onCancel };
+  if (f.tool === "offsetFace") {
+    return (
+      <FeaturePanel
+        title="Offset face"
+        icon="offsetFace"
+        onFieldEnter={onFieldEnter}
+        cancel={cancel}
+        ok={{ title: "Move the faces", disabled: !n, onClick: () => f.done() }}
+      >
+        {picks}
+        <NumberField id="bc-finish-size" label="Distance" value={f.offsetBy} onCommit={(v) => f.setOffsetBy(v)} />
+        <PanelNote>
+          {f.part ? `${n === 1 ? "1 face" : `${n} faces`} on ${f.partName}. ` : "Click flat faces, or the wall of a hole. "}
+          Out grows the body; a minus distance moves the faces in.
+        </PanelNote>
+        {error}
+      </FeaturePanel>
+    );
+  }
   if (shell) {
     return (
       <FeaturePanel
