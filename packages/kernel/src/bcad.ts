@@ -53,6 +53,7 @@ const KNOWN: ReadonlySet<FeatureType> = new Set<FeatureType>([
   "mount",
   "insert",
   "import",
+  "convert",
   "add",
   "duplicate",
   "pattern",

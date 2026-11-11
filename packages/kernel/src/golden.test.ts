@@ -28,6 +28,10 @@ import {
   type TopoDS_Shape,
 } from "./occt/shapes";
 import { bodyRef } from "./construct";
+import { triangles } from "./occt/export";
+import { meshSolid } from "./occt/imports";
+import { plug } from "./occt/plug";
+import { recognise } from "./recognise";
 import { extent, pickProfiles, startDistance, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
 import { createRequire } from "node:module";
 import { parse } from "opentype.js";
@@ -458,6 +462,25 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     return boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, { frame, profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }], from: span.from + start, to: span.to + start }),
     ]);
+  }, // Convert (#448): a block with a 6 mm hole, saved as triangles, read back as a mesh, its hole found and filled, then
+  // cut again as a true cylinder.
+  "convert-mesh-hole": (oc) => {
+    const made = holes(oc, box(oc, { x: 30, y: 20, z: 8 }), {
+      frame: { origin: [0, 0, 8], x: [1, 0, 0], normal: [0, 0, 1] },
+      points: [[0, 0]],
+      diameter: 6,
+      depth: null,
+    });
+    const t = triangles(oc, made, 0.05);
+    const r = recognise(t);
+    let s = plug(
+      oc,
+      meshSolid(oc, t).shape,
+      r.holes.flatMap((h) => h.plugs),
+    );
+    for (const g of r.groups)
+      s = holes(oc, s, { frame: g.frame as unknown as HoleSpec["frame"], points: g.points, diameter: g.diameter, depth: g.depth, head: g.head });
+    return s;
   },
 };
 

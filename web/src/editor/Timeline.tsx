@@ -20,6 +20,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   revolve: "revolve",
   hole: "hole",
   import: "upload",
+  convert: "shapes",
   insert: "screw",
   mount: "hole",
   gear: "gear",

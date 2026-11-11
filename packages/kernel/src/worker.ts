@@ -39,7 +39,7 @@ ready.then(
     }),
 );
 
-const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: number) => Methods[M]["result"] } = {
+const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: number) => Methods[M]["result"] | Promise<Methods[M]["result"]> } = {
   ping: () => ({ ok: true, engine: "opencascade.js" }),
   build: ({ doc, upTo, quality }, id) => {
     // Say how far a long build has got (#76): after a moment, then at most every 50 ms.
@@ -79,6 +79,11 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
     }),
   reorder: ({ doc, id, beforeId }) => reorderWithPicks(occt!, builder!, doc, id, beforeId),
   inspect: (params) => builder!.inspect(params),
+  // The recogniser loads the first time it is asked for.
+  recognise: async ({ doc, upTo, body, tol, flat, rough }) => {
+    const { recognise, moved } = await import("./recognise");
+    return builder!.recognise(doc, upTo, body, { tol, flat, rough }, recognise, moved);
+  },
   estimate: (params, id) => exporter!.estimate(params, () => cancelled.has(id)),
   export: (params, id) => exporter!.export(params, () => cancelled.has(id)),
   thickness: ({ bodies, threshold }, id) =>
@@ -103,7 +108,7 @@ async function pump() {
     }
     try {
       if (!builder) throw new KernelError("kernel-crashed", "The geometry engine is not running.");
-      const result = (handlers[req.method] as (p: unknown, id: number) => unknown)(req.params, req.id);
+      const result = await (handlers[req.method] as (p: unknown, id: number) => unknown)(req.params, req.id);
       post({ kind: "result", id: req.id, result } as Response);
     } catch (e) {
       const error = isKernelError(e)
