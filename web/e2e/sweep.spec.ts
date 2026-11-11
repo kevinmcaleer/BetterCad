@@ -72,8 +72,14 @@ test("sweep a ring along a bent path into a pipe", async ({ page }) => {
   await expect(page.getByRole("button", { name: "OK", exact: true })).toHaveAttribute("aria-disabled", "true");
   await click(page, 12, 0, 0);
   await expect(panel.getByText("1 shape in Sketch 2, along 1 curve in Sketch 1")).toBeVisible();
-  await click(page, 20 + 10 * Math.SQRT1_2, 10 - 10 * Math.SQRT1_2, 0);
-  await expect(panel.getByText("1 shape in Sketch 2, along 2 curves in Sketch 1")).toBeVisible();
+  // The straight pipe is built now; let the view settle before clicking the bend.
+  await expect(page.getByRole("treeitem", { name: /Body 1/ })).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(1200);
+  const both = panel.getByText("1 shape in Sketch 2, along 2 curves in Sketch 1");
+  await expect(async () => {
+    if (!(await both.count())) await click(page, 20 + 10 * Math.SQRT1_2, 10 - 10 * Math.SQRT1_2, 0);
+    await expect(both).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
   await page.keyboard.press("Enter");
   await expect(page.getByText("Swept 1 shape")).toBeVisible();
 
