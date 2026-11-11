@@ -24,6 +24,7 @@
     "./samples": "./src/samples.ts",
     "./sample-list": "./src/sampleList.ts",
     "./zip": "./src/export/zip.ts",
+    "./mesh-files": "./src/export/mesh.ts",
     "./track-fit": "./src/trackFit.ts",
     "./track-motion": "./src/trackMotion.ts",
     "./gltf": "./src/export/gltf.ts"

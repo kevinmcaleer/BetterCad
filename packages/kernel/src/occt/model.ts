@@ -10,6 +10,7 @@ import {
   fillet,
   grow,
   measure,
+  boundingBox,
   inset,
   place,
   prismOf,
@@ -32,7 +33,7 @@ import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeP
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
-import { readImport, type ImportedBody } from "./imports";
+import { readImport, type ImportedBody, type Progress } from "./imports";
 import { findMates, type Mate } from "./mates";
 import { findClashes, overlapsAt, type Clash } from "./clashes";
 import { triangles } from "./export";
@@ -230,11 +231,12 @@ export class ModelBuilder {
   private files = new Map<string, ImportedBody[]>();
 
   /** A file's bodies, read once and each stood with its bottom centre on its own origin. */
-  private readFile(blob: string, format: ImportFormat, data: string, name: string): ImportedBody[] {
+  private readFile(blob: string, format: ImportFormat, data: string, name: string, progress?: Progress): ImportedBody[] {
     let bodies = this.files.get(blob);
     if (!bodies) {
-      bodies = readImport(this.oc, format, fromBase64(data), name).map((b) => {
-        const box = measure(this.oc, b.shape).bbox;
+      bodies = readImport(this.oc, format, fromBase64(data), name, progress).map((b) => {
+        // Only the box: a full measure of a mesh's thousands of faces takes seconds, and the build measures it anyway.
+        const box = boundingBox(this.oc, b.shape);
         const at = { x: -(box.min[0] + box.max[0]) / 2, y: -(box.min[1] + box.max[1]) / 2, z: -box.min[2] };
         return { ...b, shape: place(this.oc, b.shape, { position: at }) };
       });
@@ -244,8 +246,8 @@ export class ModelBuilder {
   }
 
   /** What an import would bring in (#82): its bodies' names, and which are open meshes. */
-  inspect(p: { name: string; format: ImportFormat; blob: string; data: string }): ImportInfo {
-    const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name));
+  inspect(p: { name: string; format: ImportFormat; blob: string; data: string }, progress?: Progress): ImportInfo {
+    const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name), progress);
     return { bodies: bodies.map((b) => ({ name: b.name, open: b.open, triangles: b.triangles })) };
   }
 
