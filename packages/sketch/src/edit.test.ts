@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { SketchIndex, newSketch, planeFrame, type Sketch } from "./model";
-import { Draft, drawLine, drawPolyline, drawRectangle, drawCircle } from "./draw";
-import { chainOf, cutsOn, filletAt, filletLines, flattenCurve, offsetChain, projectCurves, projectSegments, trimAt, trimPiece } from "./edit";
-import { extendAt, extendTarget, trimAlong } from "./edits";
+import { Draft, drawLine, drawPolyline, drawRectangle, drawCircle, drawSlot } from "./draw";
+import { chainOf, cutsOn, filletAt, filletLines, flattenCurve, offsetChain, projectCurves, projectSegments, setGroupedSize, trimAt, trimPiece } from "./edit";
+import { extendAt, extendTarget, offsetBoth, offsetRegion, trimAlong } from "./edits";
 import { profiles } from "./profiles";
 import { Solver } from "./solver";
 import { angleOf, dist, sub } from "./geom2d";
@@ -169,6 +169,72 @@ describe("offset", () => {
     const ring = ok(offsetChain(c, circle.id, 3)).entities.filter((e) => e.kind === "circle");
     expect(ring.map((e) => (e.kind === "circle" ? e.r : 0)).sort()).toEqual([10, 13]);
     expect(offsetChain(s, lines(s)[0]!.id, -15)).toBe("That distance is too far for this shape");
+  });
+});
+
+describe("offset, part two (#266)", () => {
+  const areas = (s: Sketch) =>
+    profiles(s)
+      .profiles.flatMap((p) => [p.area, ...p.holes.map((h) => h.area)])
+      .sort((a, b) => a - b);
+
+  it("gives every copied curve one distance, and setting it sets them all", () => {
+    const s = drawRectangle(newSketch(), [0, 0], [40, 20], { width: 40, height: 20 }).sketch;
+    const corner = lines(s)[0]!.kind === "line" ? (lines(s)[0] as { a: string }).a : "";
+    const out = ok(offsetChain({ ...s, constraints: [...s.constraints, { id: "fx", type: "fix", p: corner }] }, lines(s)[0]!.id, -2));
+    const dims = out.dimensions.filter((d) => d.kind === "distance");
+    expect(dims).toHaveLength(4);
+    expect(new Set(dims.map((d) => d.group)).size).toBe(1);
+    const wider = solver.solve(setGroupedSize(out, dims[2]!.id, 3, "wall"));
+    expect(wider.status).toBe("ok");
+    expect(wider.sketch.dimensions.filter((d) => d.group === dims[0]!.group).every((d) => d.value === 3 && d.expression === "wall")).toBe(true);
+    expect(areas(wider.sketch)[0]).toBeCloseTo(34 * 14, 1);
+  });
+
+  it("a circle's copy follows when the circle is resized", () => {
+    const c = drawCircle(newSketch(), [0, 0], 10).sketch;
+    const circle = c.entities.find((e) => e.kind === "circle")!;
+    const out = solver.solve(ok(offsetChain(c, circle.id, 3)));
+    expect(out.status).toBe("ok");
+    const bigger = solver.solve({
+      ...out.sketch,
+      dimensions: [...out.sketch.dimensions, { id: "r", kind: "radius", refs: [circle.id], expression: "15", value: 15, driving: true, labelOffset: [0, 0] }],
+    });
+    expect(bigger.status).toBe("ok");
+    const rs = bigger.sketch.entities.flatMap((e) => (e.kind === "circle" ? [e.r] : [])).sort((a, b) => a - b);
+    expect(rs[0]).toBeCloseTo(15, 6);
+    expect(rs[1]).toBeCloseTo(18, 6);
+  });
+
+  it("offsets a slot both sides", () => {
+    const s = drawSlot(newSketch(), [0, 0], [30, 0], 10)!.sketch;
+    const line = lines(s).find((l) => !l.construction)!;
+    const out = ok(offsetBoth(s, line.id, 2));
+    expect(solver.solve(out).status).toBe("ok");
+    // A slot's area is 30 × w + π (w/2)²: the copies are 14 and 6 wide round the 10 mm slot (arcs are sampled).
+    const slot = (w: number) => 30 * w + Math.PI * (w / 2) ** 2;
+    const a = profiles(out)
+      .profiles.map((p) => p.area)
+      .sort((x, y) => x - y);
+    expect(a[0]).toBeCloseTo(slot(6), 0);
+    expect(a[1]).toBeCloseTo(slot(14), 0);
+  });
+
+  it("offsets a region's outline and its holes, from a click inside it", () => {
+    let s = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
+    s = drawCircle(s, [20, 10], 4).sketch;
+    const out = ok(offsetRegion(s, [5, 5], -2));
+    const rs = out.entities.flatMap((e) => (e.kind === "circle" ? [e.r] : [])).sort((a, b) => a - b);
+    expect(rs).toEqual([4, 6]);
+    expect(lines(out).filter((l) => !l.construction)).toHaveLength(8);
+    expect(new Set(out.dimensions.filter((d) => d.group).map((d) => d.group)).size).toBe(1);
+    expect(offsetRegion(s, [80, 80], 2)).toBe("Click a line, arc or circle, or inside a closed shape");
+  });
+
+  it("an 8-sided outline both ways from a click", () => {
+    const s = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
+    const out = ok(offsetRegion(s, [5, 5], 1, true));
+    expect(lines(out)).toHaveLength(12);
   });
 });
 

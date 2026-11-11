@@ -1,11 +1,12 @@
 import { SketchIndex, newId, type Curve, type Entity, type Id, type Sketch, type Vec2 } from "./model";
-import { add, dist, dot, norm, perp, scale, sub } from "./geom2d";
+import { add, dist, dot, insidePolygon, norm, perp, scale, sub } from "./geom2d";
+import { regions } from "./profiles";
 import { Draft } from "./draw";
-import { crossings, param, samePoint, samples, shapeOf, trimAt, type EditResult, type Shape } from "./edit";
+import { crossings, offsetChain, param, samePoint, samples, shapeOf, trimAt, type EditResult, type Shape } from "./edit";
 
 /**
- * The sketch edits that load with their tools rather than at first paint (#267, #270): mirror, extend and trim by
- * dragging. The app imports them from "@bettercad/sketch/edits".
+ * The sketch edits that load with their tools rather than at first paint (#267, #270, #266): mirror, extend, trim by
+ * dragging, and offsetting both ways or a whole region. The app imports them from "@bettercad/sketch/edits".
  */
 
 /**
@@ -183,4 +184,42 @@ export function mirrorShapes(sketch: Sketch, ids: Id[], line: Id): EditResult {
     d.ids.push(id);
   }
   return d.done().sketch;
+}
+
+// ------------------------------------------------------------------ offset, part two (#266)
+
+/** Copies on both sides of the chain through `id` (#266): a wall round a centre line. Both share one distance. */
+export function offsetBoth(sketch: Sketch, id: Id, d: number): EditResult {
+  const group = newId("o");
+  const one = offsetChain(sketch, id, Math.abs(d), group);
+  if (typeof one === "string") return one;
+  return offsetChain(one, id, -Math.abs(d), group);
+}
+
+/**
+ * Offsets the whole outline of the region round `at` (#266): its outside and any holes, all by one distance. Positive
+ * grows the region (out past its outside, into its holes), negative shrinks it; `both` copies both ways.
+ */
+export function offsetRegion(sketch: Sketch, at: Vec2, d: number, both = false): EditResult {
+  if (!d) return "Type a distance";
+  const inside = regions(sketch)
+    .filter((r) => insidePolygon(at, r.points) && !r.holes.some((h) => insidePolygon(at, h.points)))
+    .sort((a, b) => a.area - b.area)[0];
+  if (!inside) return "Click a line, arc or circle, or inside a closed shape";
+  const idx = new SketchIndex(sketch);
+  const loops = [inside, ...inside.holes];
+  if (loops.some((l) => l.edges.some((e) => !["line", "arc", "circle"].includes(idx.get(e.id)?.kind ?? "")))) {
+    return "Offset takes lines, arcs and circles for now";
+  }
+  const group = newId("o");
+  let out = sketch;
+  for (const [i, l] of loops.entries()) {
+    const sign = i === 0 ? 1 : -1;
+    for (const s of both ? [1, -1] : [1]) {
+      const r = offsetChain(out, l.edges[0]!.id, sign * s * d, group);
+      if (typeof r === "string") return r;
+      out = r;
+    }
+  }
+  return out;
 }

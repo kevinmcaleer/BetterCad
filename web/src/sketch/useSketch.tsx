@@ -18,6 +18,8 @@ import {
   planeFrame,
   squareFrame,
   profiles,
+  regions,
+  setGroupedSize,
   removeEntities,
   sampleArc,
   sampleEllipse,
@@ -203,7 +205,7 @@ export interface TextEdit {
 /** Code the sketch loads on first use, to keep it out of first paint: drawing the loupe, and snapping to the model. */
 const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap"); edits?: typeof import("@bettercad/sketch/edits") } = {};
 /** Mirror, Extend and drag-to-trim (#267, #270) load when one of their tools is picked. */
-const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "trim", "extend"]);
+const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "trim", "extend", "offset"]);
 const loadEdits = () => void import("@bettercad/sketch/edits").then((m) => (lazy.edits = m));
 
 export function useSketch(d: SketchDeps) {
@@ -252,6 +254,8 @@ export function useSketch(d: SketchDeps) {
   const scope = useMemo(() => paramScope(d.doc), [d.doc]);
   const [filletR, setFilletR] = useState(2);
   const [offsetD, setOffsetD] = useState(2);
+  /** Offset copies to both sides at once (#266). */
+  const [offsetBoth, setOffsetBoth] = useState(false);
   /** The Mirror tool (#267): picking the shapes, or the line to mirror them across. */
   const [mirrorStage, setMirrorStage] = useState<"shapes" | "line">("shapes");
   const [projectGuide, setProjectGuide] = useState(true);
@@ -491,7 +495,8 @@ export function useSketch(d: SketchDeps) {
         return;
       }
       if (dm.driving && Math.abs(v - dm.value) < 1e-9 && text === dm.expression) return;
-      const next = { ...s, dimensions: s.dimensions.map((x) => (x.id === id ? { ...x, value: v, expression: text.trim(), driving: true } : x)) };
+      // An offset's distance (#266) is one number: setting one of its sizes sets them all.
+      const next = setGroupedSize(s, id, v, text.trim());
       apply(next, `Set ${DIM_NAME[dm.kind].toLowerCase()} to ${formatDimension({ ...dm, value: v, driving: true })}`, { strict: !dm.driving });
     },
     [current, apply, say],
@@ -869,6 +874,7 @@ export function useSketch(d: SketchDeps) {
     dimensionFor,
     filletR,
     offsetD,
+    offsetBoth,
     mirrorStage,
     projectGuide,
     ctool,
@@ -904,6 +910,7 @@ export function useSketch(d: SketchDeps) {
     dimensionFor,
     filletR,
     offsetD,
+    offsetBoth,
     mirrorStage,
     projectGuide,
     ctool,
@@ -1097,7 +1104,7 @@ export function useSketch(d: SketchDeps) {
       setEditPreview(t ? { lines: [t.pts], danger: false } : null);
     };
     /** The editing tools: Fillet, Trim, Offset and Project. */
-    const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
+    const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }, mods: Mods): boolean => {
       const L = live.current;
       const s = L.sketch!;
       const tol = reach * hit.px;
@@ -1121,12 +1128,25 @@ export function useSketch(d: SketchDeps) {
         } else say("Pick a corner, or two lines that meet", true);
         return true;
       }
-      const id = entityAt(hit.xy, s, tol, true);
-      if (!id) return false;
-      done(offsetToward(s, id, hit.xy, L.offsetD), "Offset");
+      const r = offsetAt(s, hit.xy, tol, mods.shift);
+      if (!r) return false;
+      done(r, "Offset");
       return true;
     };
-    const editMove = (p: ScreenPoint, hit: { xy: Vec2; px: number }) => {
+    /**
+     * Offset (#266) at a spot: the curve there, toward the pointer (or both ways); else the outline of the closed shape
+     * round it, inward (Shift: outward). Null when there is neither.
+     */
+    const offsetAt = (s: Sketch, xy: Vec2, tol: number, out: boolean): Sketch | string | null => {
+      const L = live.current;
+      const ed = lazy.edits;
+      const id = entityAt(xy, s, tol, true);
+      if (id) return L.offsetBoth && ed ? ed.offsetBoth(s, id, L.offsetD) : offsetToward(s, id, xy, L.offsetD);
+      if (!ed) return null;
+      const r = ed.offsetRegion(s, xy, out ? L.offsetD : -L.offsetD, L.offsetBoth);
+      return typeof r === "string" && !regions(s).length ? null : r;
+    };
+    const editMove = (p: ScreenPoint, hit: { xy: Vec2; px: number }, mods: Mods) => {
       const L = live.current;
       const s = L.sketch!;
       if (L.stool === "project") {
@@ -1137,13 +1157,15 @@ export function useSketch(d: SketchDeps) {
       const curvesOnly = L.stool !== "fillet";
       const id = entityAt(hit.xy, s, reach * hit.px, curvesOnly);
       setHover(id);
+      if (L.stool === "offset") {
+        const r = offsetAt(s, hit.xy, reach * hit.px, mods.shift);
+        return setEditPreview(r && typeof r !== "string" ? { lines: addedLines(s, r), danger: false } : null);
+      }
       if (!id || L.stool === "fillet") return setEditPreview(null);
       if (L.stool === "trim") {
         const piece = trimPiece(s, id, hit.xy);
         return setEditPreview(piece ? { lines: [piece.pts], danger: true } : null);
       }
-      const r = offsetToward(s, id, hit.xy, L.offsetD);
-      setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
     };
     /** Mirror (#267): clicks pick the shapes, then the line (or an axis) to mirror them across. */
     const mirrorShapesAcross = (line: Id, base: Sketch) => {
@@ -1318,7 +1340,7 @@ export function useSketch(d: SketchDeps) {
           trimDrag = { at: p, first: hit, path: [hit.xy], moved: false };
           return true;
         }
-        if (L.stool === "fillet" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
+        if (L.stool === "fillet" || L.stool === "offset" || L.stool === "project") return editDown(p, hit, mods);
         if (L.stool === "mirror") return mirrorDown(p, hit);
         if (L.stool === "text") {
           // A click on a text opens it; anywhere else places a new one there (or moves the one being set).
@@ -1446,7 +1468,7 @@ export function useSketch(d: SketchDeps) {
           return;
         }
         if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendMove(hit);
-        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
+        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit, mods);
         if (L.stool === "mirror") return mirrorMove(hit);
         if (L.ctool) {
           // The Coincident tool snaps to the point, origin or midpoint under the pointer, and lets go further away.
@@ -1973,6 +1995,8 @@ export function useSketch(d: SketchDeps) {
     setFilletR,
     offsetD,
     setOffsetD,
+    offsetBoth,
+    setOffsetBoth,
     mirrorStage,
     setMirrorStage,
     projectGuide,

@@ -441,7 +441,7 @@ function chainTurn(idx: SketchIndex, steps: Step[]): number {
  * open chain as drawn), negative inside. Lines stay parallel to their originals, held at the distance by a size; arcs
  * stay concentric. Circles copy as concentric circles.
  */
-export function offsetChain(sketch: Sketch, id: Id, d: number): EditResult {
+export function offsetChain(sketch: Sketch, id: Id, d: number, group: Id = newId("o")): EditResult {
   if (!d) return "Type a distance";
   const idx = new SketchIndex(sketch);
   const e = idx.get(id);
@@ -449,10 +449,21 @@ export function offsetChain(sketch: Sketch, id: Id, d: number): EditResult {
     const r = e.r + d;
     if (r <= 1e-9) return "That's further in than the circle is big";
     const dr = new Draft(sketch);
-    // Sharing the centre point keeps the copy concentric.
-    dr.dimension("radius", [dr.circle(e.c, r, e.construction)], r);
+    // Sharing the centre point keeps the copy concentric. A level construction spoke from the centre to the copy
+    // crosses the original, and the gap along it holds the distance, so the copy follows when the original is resized.
+    const c = idx.xy(e.c);
+    const copy = dr.circle(e.c, r, e.construction);
+    const rim = dr.point(add(c, [r, 0]), true);
+    dr.constrain({ type: "pointOn", p: rim, e: copy });
+    const spoke = dr.line(e.c, rim, { construction: true, auto: false });
+    dr.constrain({ type: "horizontal", e: spoke });
+    const on = dr.point(add(c, [e.r, 0]), true);
+    dr.constrain({ type: "pointOn", p: on, e: e.id });
+    dr.constrain({ type: "pointOn", p: on, e: spoke });
+    dr.dimension("distance", [on, rim], Math.abs(d), { group });
     return dr.done().sketch;
   }
+  if (e?.kind === "spline" || e?.kind === "ellipse") return "Offset takes lines, arcs and circles for now";
   const chain = chainOf(sketch, id);
   if (!chain) return "Pick a line, arc or circle";
   const { steps, closed } = chain;
@@ -510,6 +521,12 @@ export function offsetChain(sketch: Sketch, id: Id, d: number): EditResult {
       return "That distance is too far for this shape";
     }
   }
+  // Where the original runs smoothly from one curve into the next (a slot's sides into its ends), so does the copy.
+  // A tangent there already turns the copied line, so it isn't held parallel as well (that would say it twice).
+  const smooth = (i: number, j: number) =>
+    (j < n || closed) &&
+    sketch.constraints.some((c) => c.type === "tangent" && !c.suppressed && [c.a, c.b].includes(steps[i]!.e.id) && [c.a, c.b].includes(steps[j % n]!.e.id));
+  const copies: Id[] = [];
   for (let i = 0; i < n; i++) {
     const s = steps[i]!;
     const m = ms[i]!;
@@ -517,14 +534,26 @@ export function offsetChain(sketch: Sketch, id: Id, d: number): EditResult {
     const q = pointAfter(i);
     if (m.kind === "line") {
       const l = dr.line(p, q, { auto: false });
-      dr.constrain({ type: "parallel", a: l, b: s.e.id });
-      dr.dimension("distance", [p, s.e.id], Math.abs(d));
+      if (!smooth((i + n - 1) % n, i) && !smooth(i, i + 1)) dr.constrain({ type: "parallel", a: l, b: s.e.id });
+      dr.dimension("distance", [p, s.e.id], Math.abs(d), { group });
+      copies.push(l);
     } else {
       const c = (s.e as Arc).c;
-      dr.arc(c, m.rev ? q : p, m.rev ? p : q);
+      copies.push(dr.arc(c, m.rev ? q : p, m.rev ? p : q));
     }
   }
+  for (let i = 0; i < n; i++)
+    if (n > 1 && (i > 0 || closed) && smooth((i + n - 1) % n, i)) dr.constrain({ type: "tangent", a: copies[(i + n - 1) % n]!, b: copies[i]! });
   return dr.done().sketch;
+}
+
+/** Sets a size and every size grouped with it (#266) to `value`, typed as `expression`. */
+export function setGroupedSize(sketch: Sketch, id: Id, value: number, expression: string): Sketch {
+  const g = sketch.dimensions.find((x) => x.id === id)?.group;
+  return {
+    ...sketch,
+    dimensions: sketch.dimensions.map((x) => (x.id === id || (g && x.group === g) ? { ...x, value, expression, driving: true } : x)),
+  };
 }
 
 // ------------------------------------------------------------------ project

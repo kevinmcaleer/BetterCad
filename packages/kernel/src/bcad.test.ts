@@ -54,7 +54,7 @@ describe(".bcad files (#79)", () => {
     expect(build(r.doc).parts).toHaveLength(1);
     // Small and readable.
     expect(text.length).toBeLessThan(50_000);
-    expect(text.split("\n")[1]).toBe('  "schema": 2,');
+    expect(text.split("\n")[1]).toBe('  "schema": 3,');
   });
 
   it("writes the same bytes for the same model, whatever order its keys were made in", () => {
@@ -98,7 +98,7 @@ describe(".bcad files (#79)", () => {
 
   it("keeps steps and fields from a newer BetterCad, and warns", () => {
     const f = JSON.parse(sample("schema1.bcad"));
-    f.schema = 2;
+    f.schema = BCAD_SCHEMA + 1;
     f.document.features.push({ id: "f2", type: "emboss", name: "Emboss 1", faces: ["a", "b"] });
     f.document.layers = [{ id: "l1" }];
     const r = loadBcad(JSON.stringify(f));

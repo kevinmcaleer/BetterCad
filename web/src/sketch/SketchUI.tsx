@@ -94,7 +94,12 @@ export function SketchBars({ s }: { s: SketchSession }) {
           </span>
         )}
         {s.stool === "fillet" && <NumberField label="Radius" value={s.filletR} min={0.01} scope={s.scope} onCommit={(v) => s.setFilletR(v)} />}
-        {s.stool === "offset" && <NumberField label="Distance" value={s.offsetD} min={0.01} scope={s.scope} onCommit={(v) => s.setOffsetD(v)} />}
+        {s.stool === "offset" && (
+          <>
+            <NumberField label="Distance" value={s.offsetD} min={0.01} scope={s.scope} onCommit={(v) => s.setOffsetD(v)} />
+            <Button label="Both sides" title="Copy to both sides at once" on={s.offsetBoth} onClick={() => s.setOffsetBoth((b) => !b)} />
+          </>
+        )}
         {s.stool === "mirror" && (
           <span className="bc-sk-modes" role="group" aria-label="Mirror picks">
             <Button
@@ -264,7 +269,11 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   const pick = (id: Id, e: ReactMouseEvent) => s.setSel((sel) => (e.shiftKey ? (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]) : [id]));
 
   // Sizes hide with the palette's Dimensions option, except one being typed into or picked.
+  // An offset's sizes are one distance (#266): only the first of them shows.
+  const firstOfGroup = new Map<Id, Id>();
+  for (const d of s.sketch.dimensions) if (d.group && !firstOfGroup.has(d.group)) firstOfGroup.set(d.group, d.id);
   const dims = s.sketch.dimensions
+    .filter((d) => !d.group || firstOfGroup.get(d.group) === d.id || s.dimEdit === d.id || s.sel.includes(d.id))
     .filter((d) => s.options.dimensions || s.dimEdit === d.id || s.sel.includes(d.id))
     .map((d) => ({ d, art: dimensionArt(idx, d, px, centre), on: s.sel.includes(d.id) || conflicting.has(d.id) }));
   // A size being placed follows the pointer until a click puts it down.

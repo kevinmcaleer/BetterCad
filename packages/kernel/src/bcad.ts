@@ -6,7 +6,7 @@ import schemaJson from "./bcad.schema.json";
 import { MIGRATIONS } from "./migrations";
 import { upgradeDoc, type FeatureType, type ModelDoc } from "./document";
 
-export const BCAD_SCHEMA = 2;
+export const BCAD_SCHEMA = 3;
 export const BCAD_MIME = "application/vnd.bettercad+json";
 export const BCAD_EXT = ".bcad";
 export const APP_VERSION = "0.1.0";

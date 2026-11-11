@@ -1,0 +1,5 @@
+{
+  "about": "A 40 × 20 plate with a ⌀6 hole at its middle, its outline offset 2 inward from a click inside it (#266): a 36 × 16 rectangle inside, and a ⌀10 ring round the hole, all on one distance. Then the plate is 50 wide and the inner rectangle 46.",
+  "solved": [[0, 0], [40, 0], [40, 20], [0, 20], [20, 10], [3], [38, 2], [38, 18], [2, 18], [2, 2], [5], [25, 10], [23, 10]],
+  "edited": [[0, 0], [50, 0], [50, 20], [0, 20], [20, 10], [3], [48, 2], [48, 18], [2, 18], [2, 2], [5], [25, 10], [23, 10]]
+}
