@@ -3,7 +3,8 @@ import { SketchIndex, ellipseGeo, newSketch, removeEntities, type Ellipse, type 
 import { Draft, drawEllipse } from "./draw";
 import { Solver } from "./solver";
 import { profiles, regions } from "./profiles";
-import { allCrossings, trimAt } from "./edit";
+import { allCrossings } from "./edit";
+import { trimAt } from "./cut";
 import { lineEllipse } from "./ellipse";
 
 let solver: Solver;

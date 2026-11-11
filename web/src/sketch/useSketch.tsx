@@ -7,12 +7,7 @@ import {
   SketchIndex,
   Solver,
   angleOf,
-  filletAt,
-  filletLines,
-  offsetChain,
   projectCurves,
-  trimAt,
-  trimPiece,
   dist,
   formatDimension,
   planeFrame,
@@ -204,8 +199,8 @@ export interface TextEdit {
 
 /** Code the sketch loads on first use, to keep it out of first paint: drawing the loupe, and snapping to the model. */
 const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap"); edits?: typeof import("@bettercad/sketch/edits") } = {};
-/** Mirror, Extend and drag-to-trim (#267, #270) load when one of their tools is picked. */
-const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "trim", "extend", "offset"]);
+/** Mirror, Fillet, Trim, Extend and Offset (#54, #266, #267, #270) load with a sketch, or when one of them is picked. */
+const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "fillet", "trim", "extend", "offset"]);
 const loadEdits = () => void import("@bettercad/sketch/edits").then((m) => (lazy.edits = m));
 
 export function useSketch(d: SketchDeps) {
@@ -273,6 +268,10 @@ export function useSketch(d: SketchDeps) {
   );
   // Slice lasts for one sketch: each sketch starts with the whole model on show.
   useEffect(() => setOptions((o) => (o.slice ? { ...o, slice: false } : o)), [editingId]);
+  // The editing tools are ready by the time one is picked.
+  useEffect(() => {
+    if (editingId && !lazy.edits) loadEdits();
+  }, [editingId]);
   const result = useMemo<SolveResult | null>(() => {
     if (!sketch || !solver) return null;
     try {
@@ -1117,6 +1116,8 @@ export function useSketch(d: SketchDeps) {
         return true;
       }
       if (L.stool === "fillet") {
+        if (!lazy.edits) return false;
+        const { filletAt, filletLines } = lazy.edits;
         const id = entityAt(hit.xy, s, tol);
         const e = id ? s.entities.find((x) => x.id === id) : undefined;
         if (!id || !e) return false;
@@ -1141,8 +1142,8 @@ export function useSketch(d: SketchDeps) {
       const L = live.current;
       const ed = lazy.edits;
       const id = entityAt(xy, s, tol, true);
-      if (id) return L.offsetBoth && ed ? ed.offsetBoth(s, id, L.offsetD) : offsetToward(s, id, xy, L.offsetD);
       if (!ed) return null;
+      if (id) return L.offsetBoth ? ed.offsetBoth(s, id, L.offsetD) : offsetToward(ed.offsetChain, s, id, xy, L.offsetD);
       const r = ed.offsetRegion(s, xy, out ? L.offsetD : -L.offsetD, L.offsetBoth);
       return typeof r === "string" && !regions(s).length ? null : r;
     };
@@ -1163,7 +1164,7 @@ export function useSketch(d: SketchDeps) {
       }
       if (!id || L.stool === "fillet") return setEditPreview(null);
       if (L.stool === "trim") {
-        const piece = trimPiece(s, id, hit.xy);
+        const piece = lazy.edits?.trimPiece(s, id, hit.xy);
         return setEditPreview(piece ? { lines: [piece.pts], danger: true } : null);
       }
     };
@@ -1519,7 +1520,7 @@ export function useSketch(d: SketchDeps) {
           if (t.moved && lazy.edits) return done(lazy.edits.trimAlong(s, t.path), "Trim");
           setEditPreview(null);
           const id = entityAt(t.first.xy, s, reach * t.first.px, true);
-          if (id) done(trimAt(s, id, t.first.xy), "Trim");
+          if (id && lazy.edits) done(lazy.edits.trimAt(s, id, t.first.xy), "Trim");
           return;
         }
         if (tapPlace) {
@@ -2147,7 +2148,7 @@ function isPickable(s: Sketch, id: Id): boolean {
   return s.entities.some((e) => e.id === (line ?? id));
 }
 
-function offsetToward(s: Sketch, id: Id, at: Vec2, d: number): Sketch | string {
+function offsetToward(offsetChain: (s: Sketch, id: Id, d: number) => Sketch | string, s: Sketch, id: Id, at: Vec2, d: number): Sketch | string {
   const out = offsetChain(s, id, d);
   const inn = offsetChain(s, id, -d);
   if (typeof out === "string") return inn;

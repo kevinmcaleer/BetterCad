@@ -2,7 +2,8 @@ import { SketchIndex, newId, type Curve, type Entity, type Id, type Sketch, type
 import { add, dist, dot, insidePolygon, norm, perp, scale, sub } from "./geom2d";
 import { regions } from "./profiles";
 import { Draft } from "./draw";
-import { crossings, offsetChain, param, samePoint, samples, shapeOf, trimAt, type EditResult, type Shape } from "./edit";
+import { crossings, param, samples, shapeOf, type EditResult, type Shape } from "./edit";
+import { offsetChain, samePoint, trimAt } from "./cut";
 
 /**
  * The sketch edits that load with their tools rather than at first paint (#267, #270, #266): mirror, extend, trim by
@@ -223,3 +224,4 @@ export function offsetRegion(sketch: Sketch, at: Vec2, d: number, both = false):
   }
   return out;
 }
+export { filletAt, filletLines, offsetChain, trimAt, trimPiece } from "./cut";

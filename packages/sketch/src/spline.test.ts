@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { Draft, drawLine, drawSpline } from "./draw";
-import { trimAt } from "./edit";
+import { trimAt } from "./cut";
 import { SketchIndex, newSketch, removeEntities, type Sketch, type Spline, type Vec2 } from "./model";
 import { profiles, regions } from "./profiles";
 import { Solver } from "./solver";

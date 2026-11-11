@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { SketchIndex, newSketch, planeFrame, type Sketch } from "./model";
 import { Draft, drawLine, drawPolyline, drawRectangle, drawCircle, drawSlot } from "./draw";
-import { chainOf, cutsOn, filletAt, filletLines, flattenCurve, offsetChain, projectCurves, projectSegments, setGroupedSize, trimAt, trimPiece } from "./edit";
+import { chainOf, cutsOn, filletAt, filletLines, offsetChain, trimAt, trimPiece } from "./cut";
+import { flattenCurve, projectCurves, projectSegments, setGroupedSize } from "./edit";
 import { extendAt, extendTarget, offsetBoth, offsetRegion, trimAlong } from "./edits";
 import { profiles } from "./profiles";
 import { Solver } from "./solver";
