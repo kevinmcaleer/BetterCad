@@ -33,6 +33,7 @@ import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type
 import { SnapMarks } from "./snapMarks";
 import { between, boxSnaps, facing, faceSnaps, nearSnaps, otherSide, wiggle, type SnapPoint, type V3 } from "./snapPoints";
 import { sharpCorners } from "./sharpCorners";
+import { meshSnaps } from "./meshSnaps";
 import { lineUpHoles, type Hole } from "./holePattern";
 
 /**
@@ -306,7 +307,7 @@ export function useJoint(d: JointDeps) {
     // The face under the pointer goes pale and shows its snap points (#383, #384); the nearest one within reach is hot.
     const marks = new SnapMarks(eng);
     eng.setHoverFill("snap-face");
-    let face: { body: string; index: number; snaps: SnapPoint[]; ghosts: [V3, V3][] } | null = null;
+    let face: { body: string; index: number; snaps: SnapPoint[]; ghosts: [V3, V3][]; faces?: Set<number> } | null = null;
     /** The first of two Shift-clicks (#388): a snap point, or a flat face as its plane. */
     let half: { body: string; point: V3; normal: V3; plane: boolean } | null = null;
     /** Each face's edge numbers on the body last pointed at, for finding cut-away corners (#389). */
@@ -427,15 +428,20 @@ export function useJoint(d: JointDeps) {
       }
       // A snap of the face already shown keeps it, even over the next face (a cut-away corner sits past a round).
       hot = face ? cycled(p, reach) : -1;
-      if (f && hot < 0 && (f.body !== face?.body || f.index !== face.index)) {
+      if (f && hot < 0 && (f.body !== face?.body || (f.index !== face.index && !face.faces?.has(f.index)))) {
         const info = eng.faceInfo(f.body, f.index);
         const edges = (eng.faceEdges(f.body, f.index) ?? []).map((e) => e.points);
         const toward = eng.ray(p.x, p.y).dir.map((v) => -v) as V3;
-        // An imported mesh has only triangles to snap to: its box gives the snaps instead (#395).
-        const box = deps.current.parts.find((x) => x.id === f.body)?.imported?.mesh ? eng.bodyBox(f.body) : null;
-        if (box) {
-          const b = boxSnaps(box.min, box.max, facing(info?.normal ?? toward, toward));
-          face = { body: f.body, index: f.index, ...b };
+        // An imported mesh has only triangles: the flat or curved run round the one under the pointer gives the snaps.
+        const mesh = deps.current.parts.find((x) => x.id === f.body)?.imported?.mesh ? eng.bodyMesh(f.body) : null;
+        if (mesh) {
+          const run = meshSnaps(mesh.mesh, mesh.matrix, f.index, toward);
+          const box = run?.snaps.length ? null : eng.bodyBox(f.body);
+          face = {
+            body: f.body,
+            index: f.index,
+            ...(run?.snaps.length ? run : box ? boxSnaps(box.min, box.max, facing(info?.normal ?? toward, toward)) : { snaps: [], ghosts: [] }),
+          };
           hot = cycled(p, reach);
           return { edge: null, face: { body: face.body, kind: "face" as const, index: face.index } };
         }

@@ -1416,6 +1416,14 @@ export class Engine {
     return out;
   }
 
+  /** A body's triangles and the matrix that places it, for snaps on an imported mesh. */
+  bodyMesh(bodyId: string): { mesh: BodyMesh; matrix: number[] } | null {
+    const o = this.bodies.get(bodyId);
+    if (!o) return null;
+    o.group.updateMatrixWorld(true);
+    return { mesh: o.body.mesh, matrix: o.group.matrixWorld.elements.slice() };
+  }
+
   /** A body's box in world space, where it is drawn. */
   bodyBox(bodyId: string): { min: V3; max: V3 } | null {
     const o = this.bodies.get(bodyId);
