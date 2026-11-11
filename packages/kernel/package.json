@@ -28,7 +28,8 @@
     "./track-fit": "./src/trackFit.ts",
     "./recognise": "./src/recognise/steps.ts",
     "./track-motion": "./src/trackMotion.ts",
-    "./gltf": "./src/export/gltf.ts"
+    "./gltf": "./src/export/gltf.ts",
+    "./rigid": "./src/rigid.ts"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",

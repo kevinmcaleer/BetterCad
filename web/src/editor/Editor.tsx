@@ -109,6 +109,8 @@ import {
   type DriveFeature,
   type DriveParams,
   linkTransforms,
+  poseNesting,
+  rigidMates,
   moveGeo,
   type Mat4,
   posedFrames,
@@ -330,6 +332,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const featureCount = doc.features.length;
   const at = marker === null ? featureCount : Math.min(marker, featureCount);
   const built = useMemo(() => build(doc, at), [doc, at]);
+  const matesOf = useCallback((id: string) => rigidMates(built.rigid, id), [built.rigid]);
   const parts = built.parts;
   const kernel = useKernel(doc, at, parts);
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
@@ -487,6 +490,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     editDoc: store.edit,
     locked: store.isLocked,
     say,
+    matesOf,
   });
   live.current.dialogOpen ||= vp.namingOpen;
 
@@ -531,7 +535,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   livePoseRef.current = livePose;
   // Drive links (#194): the pose keeps the driving joints' values; the driven ones follow.
   const shownPose = useMemo(() => resolvePose(built.drives, pose), [built.drives, pose]);
-  const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose, built.components), [built.joints, shownPose, built.components]);
+  const nesting = useMemo(() => poseNesting(built), [built]);
+  const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose, nesting), [built.joints, shownPose, nesting]);
   /**
    * Posed, a component's bodies, sketches and construction ride on it. The model stays posed while you sketch, extrude
    * or revolve, as in Fusion, so what you draw lands where you see it; other tools work on it at home.
@@ -1351,6 +1356,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     [record, say, workIn, activate],
   );
+  // Rigid group (Fusion's): the picked bodies' components, and loose bodies, lock together and move as one.
+  const makeRigid = useCallback(
+    (ids: string[]) => {
+      void import("@bettercad/kernel/rigid").then(({ addRigid }) => {
+        const id = newId("f");
+        const f = addRigid(live.current.doc, ids, id).features.find((x) => x.id === id);
+        if (!f || f.type !== "rigid" || f.links.length + f.parts.length < 2)
+          return say("Pick parts in two or more components, or loose bodies, to lock together", true);
+        record((d, at) => addRigid(d, ids, id, at), `Make ${f.name}`);
+        say(`Made ${f.name}: moving any of its parts moves them all`);
+      });
+    },
+    [record, say],
+  );
   const selectLink = useCallback(
     (ids: string[]) => {
       const part = live.current.parts.find((p) => ids.includes(p.id) && p.link);
@@ -1836,6 +1855,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     fitBelt: (_ids: string[]) => {},
     meshGears: (_ids: string[]) => {},
     makeLink: (_ids: string[]) => {},
+    makeRigid: (_ids: string[]) => {},
     selectLink: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
@@ -1932,6 +1952,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     fitBelt: beltPicked,
     meshGears: meshPicked,
     makeLink,
+    makeRigid,
     selectLink,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
@@ -2352,6 +2373,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "component",
         run: () => h().makeLink(sel()),
         keywords: "robot rigid link body group joint urdf assembly part",
+      },
+      {
+        id: "rigid.make",
+        scope: "model",
+        label: "Rigid group",
+        group: "Edit",
+        icon: "lock",
+        run: () => h().makeRigid(sel()),
+        when: () => sel().length > 1,
+        keywords: "lock together assemble move as one fixed step assembly",
       },
       {
         id: "link.select",
@@ -3233,6 +3264,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         ? [{ id: "recognise", label: "Recognise features…", icon: "shapes" as const, onSelect: () => startRecognise(chosen[0]!.id) }]
         : []),
       { id: "make-link", label: "New component", icon: "component", onSelect: () => makeLink(ids) },
+      ...(ids.length > 1 ? [{ id: "make-rigid", label: "Rigid group", icon: "lock" as const, onSelect: () => makeRigid(ids) }] : []),
       ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select component", icon: "component" as const, onSelect: () => selectLink(ids) }] : []),
       {
         id: "reference",
@@ -3753,6 +3785,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                       parts,
                       links: built.links,
                       joints: built.joints,
+                      rigid: built.rigid,
                       view: vp.ref,
                       active: !sketch.editing,
                       onClose: () => setTool("select"),
@@ -3846,6 +3879,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             rebuilding={kernel.rebuilding}
             kernelPerf={kernelPerf}
             picks={finish.tool ? finish.picks : tool === "measure" ? measure.picks : vp.picks}
+            matesOf={matesOf}
             preview={preview}
             filter={vp.filter}
             mode={vp.mode}

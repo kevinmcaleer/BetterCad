@@ -27,6 +27,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   link: "component",
   joint: "joint",
   drive: "gear",
+  rigid: "lock",
   construct: "plane",
 };
 

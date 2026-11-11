@@ -203,6 +203,8 @@ export interface ImportSpec {
   format: ImportFormat;
   index: number;
   mesh: boolean;
+  /** The file's bodies keep their places in it (see `ImportFeature.keepLayout`). */
+  keepLayout?: boolean;
 }
 
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
@@ -336,6 +338,11 @@ export interface MoveFeature extends FeatureBase {
   position: Partial<Vec3>;
   /** Turns, in degrees (the gizmo's turn handles and the Rotation fields). */
   rotation?: Partial<Vec3>;
+  /**
+   * The parts move as one (a rigid group): `rotation` turns them about the world origin, then `position` shifts them,
+   * rather than each going to `position`.
+   */
+  together?: boolean;
 }
 export interface ResizeFeature extends FeatureBase {
   type: "resize";
@@ -380,6 +387,18 @@ export interface JointFeature extends FeatureBase {
   gap?: number;
   offset?: [number, number, number];
   flip?: boolean;
+}
+/**
+ * A rigid group (Fusion's, from its Assemble menu): components and loose bodies locked where they stand, so they move as
+ * one. Moving any one of them moves them all, a joint's line-up carries them all, and in URDF and a pose the other
+ * components are fixed to the one that moves on a joint (or the first). Each keeps its own place in the browser.
+ */
+export interface RigidFeature extends FeatureBase {
+  type: "rigid";
+  /** Component (link step) ids. */
+  links: string[];
+  /** Bodies that are in no component. */
+  parts: string[];
 }
 /**
  * A drive link (#194): turning the driver joint turns (or slides) the driven one by a ratio. For gears, a belt or a
@@ -549,6 +568,11 @@ export interface ImportFeature extends FeatureBase {
   format: ImportFormat;
   bodies: { id: string; name: string }[];
   position: Vec3;
+  /**
+   * The bodies keep where they sit in the file (a STEP assembly's placements), the whole file standing with its bottom
+   * centre at `position`. Imports made before this (left out) stand each body on its own, all at `position`.
+   */
+  keepLayout?: boolean;
 }
 /**
  * Convert (#448): an imported mesh body made editable. It makes a new body from the mesh as it stood, with the holes
@@ -644,6 +668,7 @@ export interface GearFeature extends FeatureBase {
 export type Feature =
   | ConstructFeature
   | DriveFeature
+  | RigidFeature
   | JointFeature
   | LinkFeature
   | GearFeature
@@ -784,6 +809,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   link: "Component",
   joint: "Joint",
   drive: "Drive",
+  rigid: "Rigid group",
   construct: "Construct",
 };
 
@@ -821,6 +847,29 @@ export interface Build {
   construct: BuiltConstruct[];
   /** Tracks that built: their pieces in order round the loop, so they can run round as the wheels turn. */
   tracks?: BuiltTrack[];
+  /** Rigid groups that built, with every body each one holds now (its components' bodies, nested ones too). */
+  rigid?: BuiltRigid[];
+}
+
+/** A rigid group as built. */
+export interface BuiltRigid {
+  id: string;
+  name: string;
+  links: string[];
+  parts: string[];
+  bodies: string[];
+  /** The component the others are fixed to (the one on a joint, or the first), and the ones fixed to it. */
+  root?: string;
+  fixed: string[];
+}
+
+/**
+ * Components with their parents for posing (`linkTransforms`): as nested, except that a rigid group's components ride
+ * on its root, so they all move with the one on a joint.
+ */
+export function poseNesting(b: Pick<Build, "components" | "rigid">): BuiltLink[] {
+  const over = new Map(b.rigid?.flatMap((g) => (g.root ? g.fixed.map((c) => [c, g.root!] as const) : [])) ?? []);
+  return over.size ? b.components.map((c) => (over.has(c.id) ? { ...c, parent: over.get(c.id)! } : c)) : b.components;
 }
 
 /** A track as built: its pieces, link 1 first, and what they were laid from. */
@@ -859,6 +908,7 @@ export interface BuiltLink {
 const BUILT = new Set<string>([
   "construct",
   "drive",
+  "rigid",
   "joint",
   "link",
   "gear",
@@ -911,6 +961,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const drives: BuiltDrive[] = [];
   const tracks: BuiltTrack[] = [];
   const built: BuiltConstruct[] = [];
+  /** Rigid groups as built so far: the components and loose bodies still there. */
+  const rigid: { id: string; name: string; links: string[]; parts: string[] }[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -966,7 +1018,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             hidden: false,
             position: { ...f.position },
             size: { x: 0, y: 0, z: 0 },
-            imported: { blob: f.blob, format: f.format, index, mesh: f.format !== "step" },
+            imported: { blob: f.blob, format: f.format, index, mesh: f.format !== "step", ...(f.keepLayout ? { keepLayout: true } : {}) },
           });
         });
         break;
@@ -1140,6 +1192,24 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         const key = f.type === "move" ? "position" : "size";
         const change = f.type === "move" ? f.position : f.size;
+        if (f.type === "move" && f.together) {
+          const r = { ...ZERO, ...f.rotation };
+          const by = placeMatrix([f.position.x ?? 0, f.position.y ?? 0, f.position.z ?? 0], [r.x, r.y, r.z]);
+          for (const id of f.parts) {
+            const i = find(id);
+            const p = parts[i];
+            if (!p) continue;
+            const r0 = p.rotation ?? ZERO;
+            const at = placeOf(mat4Mul(by, placeMatrix([p.position.x, p.position.y, p.position.z], [r0.x, r0.y, r0.z])));
+            const [x, y, z] = at.rotation;
+            parts[i] = {
+              ...p,
+              position: { x: at.position[0], y: at.position[1], z: at.position[2] },
+              ...(x || y || z || p.rotation ? { rotation: { x, y, z } } : {}),
+            };
+          }
+          break;
+        }
         for (const id of f.parts) {
           const p = parts[find(id)];
           if (!p || (f.type === "resize" && p.kind === "solid")) continue;
@@ -1189,12 +1259,20 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           const m = jointMove(f);
           if (m) {
             const moved = new Set([f.child]);
+            // Loose bodies locked to it by a rigid group.
+            const bodies = new Set<string>();
+            const goes = (id: string) => bodies.has(id) || moved.has(parts[find(id)]?.link ?? "");
             for (let grew = true; grew;) {
               grew = false;
               for (const l of linkSteps) if (l.parent && moved.has(l.parent) && !moved.has(l.id)) grew = !!moved.add(l.id);
+              for (const g of rigid) {
+                if (!g.links.some((l) => moved.has(l)) && !g.parts.some(goes)) continue;
+                for (const l of g.links) if (!moved.has(l)) grew = !!moved.add(l);
+                for (const id of g.parts) if (!bodies.has(id)) grew = !!bodies.add(id);
+              }
             }
             parts.forEach((p, i) => {
-              if (!p.link || !moved.has(p.link)) return;
+              if (!goes(p.id)) return;
               const r = p.rotation ?? ZERO;
               const at = placeOf(mat4Mul(m, placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z])));
               const [x, y, z] = at.rotation;
@@ -1209,8 +1287,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             sketches.forEach((s, i) => {
               const plane = s.sketch.plane;
               // A sketch on a face goes with the body it sits on, whichever component it is filed under.
-              const on = plane.kind === "face" ? parts[find(plane.face.body)]?.link : s.component;
-              if (!on || !moved.has(on)) return;
+              if (plane.kind === "face" ? !goes(plane.face.body) : !s.component || !moved.has(s.component)) return;
               const frame = moveFrame(m, plane.frame ?? WORLD_FRAMES[(plane as { plane: WorldPlane }).plane]);
               const sk = { ...s.sketch, plane: { ...plane, frame } };
               sketches[i] = { ...s, sketch: sk };
@@ -1222,6 +1299,14 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           }
           joints.push(alignedJoint(f));
         }
+        break;
+      }
+      case "rigid": {
+        const links = f.links.filter((l) => linkSteps.some((x) => x.id === l));
+        const bodies = f.parts.filter((id) => find(id) >= 0);
+        if (links.length + bodies.length < 2) {
+          failed.set(f.id, f.links.length + f.parts.length < 2 ? "Pick two or more parts to lock together" : "The parts it locks together are gone");
+        } else rigid.push({ id: f.id, name: f.name, links, parts: bodies });
         break;
       }
       case "drive": {
@@ -1608,7 +1693,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     const parent = ownerOf(l.id, l.parent);
     return { id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id), ...(parent ? { parent } : {}) };
   });
-  const links = components
+  const links: BuiltLink[] = components
     .filter((l) => l.parts.length)
     .map((l) => {
       // Up past empty or gone components to the nearest one with bodies (a loop stops at the model).
@@ -1622,7 +1707,49 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       }
       return { id: l.id, name: l.name, parts: l.parts };
     });
-  return { parts: looked, sketches, failed, links, components, joints, drives, construct: built, tracks };
+  // A rigid group's components are fixed to the one that moves on a joint, or the first, so URDF and a pose carry them.
+  const builtRigid: BuiltRigid[] = [];
+  for (const g of rigid) {
+    const at = (id: string) => links.findIndex((l) => l.id === id);
+    // A loose body put in a component since (the Joint tool does that) brings its component.
+    const later = g.parts.map((id) => looked.find((p) => p.id === id)?.link).filter((l): l is string => !!l);
+    const comps = [...new Set([...g.links, ...later])].filter((l) => at(l) >= 0);
+    const jointed = comps.filter((l) => joints.some((j) => j.child === l));
+    let root: string | undefined;
+    const fixed: string[] = [];
+    if (jointed.length > 1) failed.set(g.id, "Two of its components move on joints of their own");
+    else if (comps.length) {
+      root = jointed[0] ?? comps[0]!;
+      for (const c of comps) {
+        if (c === root) continue;
+        // One the root sits inside already carries it; fixing it to the root as well would make a loop.
+        let inside = false;
+        for (let up = links[at(root)]?.parent, n = 0; up && n <= links.length; up = links[at(up)]?.parent, n++) if (up === c) inside = true;
+        if (inside) continue;
+        links[at(c)] = { ...links[at(c)]!, parent: root };
+        fixed.push(c);
+      }
+    }
+    const held = new Set([...g.links, ...later]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const l of linkSteps) if (l.parent && held.has(l.parent) && !held.has(l.id)) grew = !!held.add(l.id);
+    }
+    const bodies = looked.filter((p) => (p.link && held.has(p.link)) || g.parts.includes(p.id)).map((p) => p.id);
+    builtRigid.push({ ...g, bodies, ...(root ? { root } : {}), fixed });
+  }
+  return {
+    parts: looked,
+    sketches,
+    failed,
+    links,
+    components,
+    joints,
+    drives,
+    construct: built,
+    tracks,
+    ...(builtRigid.length ? { rigid: builtRigid } : {}),
+  };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
@@ -1933,6 +2060,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       return constructSummary(f.kind, f.refs, f.value, (r) => refText(r, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name));
     case "link":
       return f.parts.length ? `${who(f.parts)}, one rigid component` : "A component to work in";
+    case "rigid": {
+      const names = [...f.links.map((l) => doc.features.find((g) => g.id === l)?.name ?? "a gone component"), ...(f.parts.length ? [who(f.parts)] : [])];
+      return `${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? "Nothing")} move as one`;
+    }
     case "joint": {
       const name = (l: string | null) => (l === null ? "Base" : (doc.features.find((g) => g.id === l)?.name ?? "a gone link"));
       const k = JOINT_KINDS.find((x) => x.id === f.kind)!;
@@ -1991,13 +2122,14 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       );
     }
     case "move": {
+      const by = f.together ? " as one" : "";
       const turn = f.rotation
         ? (["x", "y", "z"] as const)
             .filter((a) => f.rotation![a] !== undefined)
             .map((a) => `turn ${a.toUpperCase()} ${Math.round(f.rotation![a]! * 100) / 100}°`)
             .join(", ")
         : "";
-      return [who(f.parts), axes(f.position), turn].filter(Boolean).join(", ");
+      return [who(f.parts) + by, axes(f.position), turn].filter(Boolean).join(", ");
     }
     case "resize":
       return `${who(f.parts)}, ${axes(f.size)}`;
@@ -2339,7 +2471,8 @@ export interface ImportParams {
 export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: number): ModelDoc {
   const { data, ...rest } = p;
   const blobs = doc.blobs?.[p.blob] ? doc.blobs : { ...doc.blobs, [p.blob]: data };
-  return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest });
+  // New imports keep the file's layout: a STEP assembly looks as it did in the app that made it.
+  return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest, keepLayout: true });
 }
 
 /** Adds a Convert step (#448): a new body from a mesh body, with its recognised holes filled. */
@@ -2796,6 +2929,7 @@ function partsRead(f: Feature): string[] {
     case "resize":
     case "delete":
     case "link":
+    case "rigid":
       return f.parts;
     case "pattern": {
       const track = f.kind === "track" && f.track ? [f.track.start, f.track.end, ...f.track.wheels] : [];
@@ -2883,6 +3017,8 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
     const up = before.find((g) => g.type === "joint" && g.child === f.parent);
     if (up) out.add(up.id);
   }
+  // A rigid group needs its components.
+  if (f.type === "rigid") for (const l of f.links) if (before.some((g) => g.id === l)) out.add(l);
   // A drive needs its two joints, and the drive that drives its driver.
   if (f.type === "drive") {
     for (const j of [f.driver, f.driven, ...(f.more ?? [])]) if (before.some((g) => g.id === j)) out.add(j);
@@ -3198,6 +3334,24 @@ export function makeComponent(doc: ModelDoc, parts: string[], id = newId("f"), a
   return addLink(out, parts, id, at, parent, name);
 }
 
+/** Every body locked to this one by rigid groups, itself included; empty when it is in none. */
+export function rigidMates(rigid: BuiltRigid[] | undefined, id: string): string[] {
+  const out = new Set<string>();
+  for (let grew = true, seen = new Set([id]); grew;) {
+    grew = false;
+    for (const g of rigid ?? []) {
+      if (!g.bodies.some((x) => seen.has(x))) continue;
+      for (const x of g.bodies)
+        if (!out.has(x)) {
+          out.add(x);
+          seen.add(x);
+          grew = true;
+        }
+    }
+  }
+  return [...out];
+}
+
 /**
  * Moves bodies, sketches, construction steps or components into a component, or into the model (null), as the browser
  * does when you drag them (#334). A component never goes inside itself or one of its own.
@@ -3233,7 +3387,7 @@ export function stampComponent(
   const had = new Set(before.features.map((f) => f.id));
   let changed = false;
   const features = after.features.map((f) => {
-    if (had.has(f.id) || f.component || f.type === "link" || f.type === "joint" || f.type === "drive") return f;
+    if (had.has(f.id) || f.component || f.type === "link" || f.type === "joint" || f.type === "drive" || f.type === "rigid") return f;
     const plane = f.type === "sketch" ? f.sketch.plane : null;
     const on = plane?.kind === "face" && bodyComponent ? bodyComponent(plane.face.body) : undefined;
     const to = on === undefined ? component : on;

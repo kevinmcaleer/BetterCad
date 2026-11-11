@@ -117,4 +117,14 @@ describe("quickMesh", () => {
     // Flat normals of unit length.
     expect(Math.hypot(m.normals[0]!, m.normals[1]!, m.normals[2]!)).toBeCloseTo(1, 6);
   });
+
+  it("keeps a body where it sits in a file of several, as the kernel keeps the file's layout", () => {
+    // A second cube 30 mm along X and 20 mm up: the file spans 0…40 in X and 0…30 in Z.
+    const high = cube().map((v, i) => v + (i % 3 === 0 ? 30 : i % 3 === 2 ? 20 : 0));
+    const m = quickMesh(high, [cube(), high]);
+    const xs = m.positions.filter((_, i) => i % 3 === 0);
+    const zs = m.positions.filter((_, i) => i % 3 === 2);
+    expect([Math.min(...xs), Math.max(...xs)]).toEqual([10, 20]);
+    expect(Math.min(...zs)).toBe(20);
+  });
 });

@@ -87,7 +87,9 @@ export async function importFiles(files: File[], at: Vec3 | undefined, ctx: Impo
       };
       let ids: string[] | null = null;
       if (meshes) {
-        meshes.forEach((m, k) => quickMeshes.set(quickKey(blob, k), quickMesh(m.triangles)));
+        // The kernel keeps the file's layout: the whole file stands with its bottom centre on the origin.
+        const all = meshes.map((m) => m.triangles);
+        meshes.forEach((m, k) => quickMeshes.set(quickKey(blob, k), quickMesh(m.triangles, all)));
         ids = add(meshes.map((m) => ({ id: newId(), name: meshName(format, m.name, base) })));
         ctx.select(ids);
       }
@@ -124,17 +126,19 @@ export async function importFiles(files: File[], at: Vec3 | undefined, ctx: Impo
 }
 
 /**
- * A file's own triangles as a mesh the view can draw, stood with its bottom centre on its origin as the kernel stands
- * an import. One face, flat-shaded, no edges: it's only on show until the kernel's mesh is ready.
+ * A file's own triangles as a mesh the view can draw, shifted as the kernel stands an import: the bottom centre of
+ * `file` (every body's triangles; this body's alone when left out) on the origin. One face, flat-shaded, no edges: it's
+ * only on show until the kernel's mesh is ready.
  */
-export function quickMesh(t: Float32Array): BodyMesh {
+export function quickMesh(t: Float32Array, file: Float32Array[] = [t]): BodyMesh {
   const lo = [Infinity, Infinity, Infinity];
   const hi = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < t.length; i++) {
-    const k = i % 3;
-    if (t[i]! < lo[k]!) lo[k] = t[i]!;
-    if (t[i]! > hi[k]!) hi[k] = t[i]!;
-  }
+  for (const f of file)
+    for (let i = 0; i < f.length; i++) {
+      const k = i % 3;
+      if (f[i]! < lo[k]!) lo[k] = f[i]!;
+      if (f[i]! > hi[k]!) hi[k] = f[i]!;
+    }
   const shift = [-(lo[0]! + hi[0]!) / 2, -(lo[1]! + hi[1]!) / 2, -lo[2]!];
   const positions = new Float32Array(t.length);
   const normals = new Float32Array(t.length);

@@ -15,9 +15,11 @@ import {
   linkTransforms,
   makeComponent,
   newId,
+  rigidMates,
   setExpr,
   updateJoint,
   type BuiltLink,
+  type BuiltRigid,
   type JointFeature,
   type JointParams,
   type ModelDoc,
@@ -55,6 +57,8 @@ export interface JointDeps {
   parts: Part[];
   links: BuiltLink[];
   joints: JointFeature[];
+  /** Rigid groups: picking a loose body in one to move gathers the group's loose bodies into its component. */
+  rigid?: BuiltRigid[];
   view: RefObject<View3DHandle>;
   active: boolean;
   onClose: () => void;
@@ -201,9 +205,16 @@ export function useJoint(d: JointDeps) {
       const p = deps.current.parts.find((x) => x.id === body);
       if (!p) return null;
       const id = newId("f");
-      const name = makeComponent(store.get(), [body], id, undefined, undefined, p.name).features.find((f) => f.id === id)!.name;
-      deps.current.record((dd, at) => makeComponent(dd, [body], id, at, undefined, p.name), `Make ${name}`);
-      deps.current.say(`Made ${name} a component, so the joint can move it`);
+      const loose = new Set(deps.current.parts.filter((x) => !x.link).map((x) => x.id));
+      const group = rigidMates(deps.current.rigid, body).filter((x) => loose.has(x));
+      const bodies = group.length > 1 ? group : [body];
+      const name = makeComponent(store.get(), bodies, id, undefined, undefined, p.name).features.find((f) => f.id === id)!.name;
+      deps.current.record((dd, at) => makeComponent(dd, bodies, id, at, undefined, p.name), `Make ${name}`);
+      deps.current.say(
+        bodies.length > 1
+          ? `Made ${name} of the ${bodies.length} bodies locked together, so the joint can move them`
+          : `Made ${name} a component, so the joint can move it`,
+      );
       return id;
     },
     [store],
