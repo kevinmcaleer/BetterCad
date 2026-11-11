@@ -171,13 +171,19 @@ function bearingBracket(oc: OC): ModelDoc {
   const upright = t.sketch(world("XZ", 25), (d) => outline(d, [-57.5, 0], [[-5.5, 0], [-5.5, 42], { arc: [-31.5, 42], to: [-57.5, 42] }]));
   t.extrude({ sketch: upright, seeds: [[-31.5, 30]], distance: -12, operation: "join", target: body });
   const wall = t.last;
-  // The bearing's counterbore: Ø34 4 mm deep, then Ø24 through. The Hole tool only takes screw sizes for heads.
-  const bore = t.sketch(world("XZ", 25), (d) => d.circle([-31.5, 42], 17));
-  t.extrude({ sketch: bore, seeds: [[-31.5, 42]], distance: -4, operation: "cut", target: body });
-  const cb = t.last;
-  const through = t.sketch(world("XZ", 25), (d) => d.circle([-31.5, 42], 12));
-  t.extrude({ sketch: through, seeds: [[-31.5, 42]], distance: -12, operation: "cut", target: body });
-  t.pattern({ kind: "mirror", parts: [], of: "features", features: [wall, cb, t.last], plane: "XZ", offset: 0 });
+  // The bearing's hole: Ø24 through the upright, counterbored Ø34 4 mm deep, into its front face.
+  t.hole({
+    part: body,
+    frame: frame([-31.5, -25, 42], [0, -1, 0], [1, 0, 0]),
+    points: [[0, 0]],
+    size: "custom",
+    fit: "normal",
+    diameter: 24,
+    head: "counterbore",
+    headSize: { diameter: 34, depth: 4 },
+    depth: 12,
+  });
+  t.pattern({ kind: "mirror", parts: [], of: "features", features: [wall, t.last], plane: "XZ", offset: 0 });
   t.finish({ type: "fillet", part: body, refs: t.edges(body, ([x, , z]) => near0(x, -5.5) && near0(z, 15)), size: 9 });
   const corners = t.sketch(world("XY"), (d) => roundedRect(d, [0, 0], 115, 50, 6));
   t.extrude({ sketch: corners, seeds: [[0, 0]], distance: 80, operation: "intersect", target: body });
@@ -243,28 +249,20 @@ function cornerTie(oc: OC): ModelDoc {
     outline(d, [0, -37.5], [[0, 37.5], [-52, 37.5], { arc: [-52, 20.5], to: [-69, 20.5] }, [-69, -20.5], { arc: [-52, -20.5], to: [-52, -37.5] }]),
   );
   const body = t.extrude({ sketch: plate, seeds: [[-30, 0]], distance: 13, operation: "new" });
-  // 2× Ø8 through, Ø15 4 deep: no M8 in the screw table, so two cuts.
-  const cb = t.sketch(world("XY", 13), (d) => [20.5, -20.5].forEach((y) => d.circle([-52, y], 7.5)));
-  t.extrude({
-    sketch: cb,
-    seeds: [
-      [-52, 20.5],
-      [-52, -20.5],
+  // 2× Ø8 through, counterbored Ø15 4 mm deep.
+  t.hole({
+    part: body,
+    frame: frame([-52, 0, 13], [0, 0, 1], [1, 0, 0]),
+    points: [
+      [0, 20.5],
+      [0, -20.5],
     ],
-    distance: -4,
-    operation: "cut",
-    target: body,
-  });
-  const thru = t.sketch(world("XY", 13), (d) => [20.5, -20.5].forEach((y) => d.circle([-52, y], 4)));
-  t.extrude({
-    sketch: thru,
-    seeds: [
-      [-52, 20.5],
-      [-52, -20.5],
-    ],
-    distance: -13,
-    operation: "cut",
-    target: body,
+    size: "custom",
+    fit: "normal",
+    diameter: 8,
+    head: "counterbore",
+    headSize: { diameter: 15, depth: 4 },
+    depth: null,
   });
   // The upright: flanks 75° apart, tangent to the R15 top. YZ looks from +X: Y right, Z up.
   const a = (37.5 * Math.PI) / 180;

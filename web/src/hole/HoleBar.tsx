@@ -1,5 +1,5 @@
 import { Button, FeatureCheck, FeaturePanel, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry } from "@bettercad/ui";
-import { DEFAULT_HOLE_OFFSET, FITS, SCREWS, fitLabel, fitNote, resolveHole, screw } from "../state/document";
+import { DEFAULT_HOLE_OFFSET, FITS, SCREWS, defaultHeadSize, fitLabel, fitNote, resolveHole, screw } from "../state/document";
 import type { HoleSession } from "./useHole";
 
 const HEADS = [
@@ -60,6 +60,15 @@ export function HoleBar({ x, error, onCancel }: { x: HoleSession; error?: string
   const move = (axis: 0 | 1, v: number) =>
     x.change({ points: f.points.map((p, i) => (i === n - 1 ? ((axis ? [p[0], v] : [v, p[1]]) as [number, number]) : p)) });
   const custom = f.size === "custom";
+  const head = f.headSize;
+  // A custom hole's head is sized here: picking one starts it in proportion to the hole (a countersink at 90°).
+  const headChange = (id: (typeof HEADS)[number]["id"]) => {
+    if (!custom || id === "none") return { head: id };
+    const d = f.diameter ?? 5;
+    const now = f.headSize;
+    const fits = now && now.diameter > d && (id === "countersink" ? !!now.angle : now.depth > 0);
+    return { head: id, headSize: fits ? now : defaultHeadSize(d, id) };
+  };
   return (
     <FeaturePanel
       title="Hole"
@@ -80,13 +89,30 @@ export function HoleBar({ x, error, onCancel }: { x: HoleSession; error?: string
             <MenuButton label="Fit" entries={fits} trigger={(p) => <Button {...p} label={s ? fitLabel(s, f.fit, offset) : fit.label} title={fit.title} />} />
           </FeatureRow>
           {note && <PanelNote>{note}</PanelNote>}
-          <FeatureRow label="Head">
-            <span role="group" aria-label="Head" className="bc-segmented">
-              {HEADS.map((h) => (
-                <Button key={h.id} label={h.label} title={h.title} on={f.head === h.id} onClick={() => x.change({ head: h.id })} />
-              ))}
-            </span>
-          </FeatureRow>
+        </>
+      )}
+      <FeatureRow label="Head">
+        <span role="group" aria-label="Head" className="bc-segmented">
+          {HEADS.map((h) => (
+            <Button key={h.id} label={h.label} title={h.title} on={f.head === h.id} onClick={() => x.change(headChange(h.id))} />
+          ))}
+        </span>
+      </FeatureRow>
+      {custom && head && f.head !== "none" && (
+        <>
+          <NumberField label="Head diameter" unit="mm" value={head.diameter} min={0.1} onCommit={(v) => x.change({ headSize: { ...head, diameter: v } })} />
+          {f.head === "counterbore" ? (
+            <NumberField label="Head depth" unit="mm" value={head.depth} min={0.1} onCommit={(v) => x.change({ headSize: { ...head, depth: v } })} />
+          ) : (
+            <NumberField
+              label="Head angle"
+              unit="°"
+              value={head.angle ?? 90}
+              min={1}
+              max={179}
+              onCommit={(v) => x.change({ headSize: { ...head, angle: v } })}
+            />
+          )}
         </>
       )}
       <FeatureCheck label="Through all" title="Go right through the body" on={f.depth === null} onChange={(on) => x.change({ depth: on ? null : 5 })} />
