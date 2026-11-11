@@ -36,7 +36,8 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   // The view style menu opens it too, in paper white.
   await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
   await page.getByRole("menuitem", { name: "Render in paper" }).click();
-  await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true");
+  // Leaving the modelling view and opening the render again can take more than the default 5 s on a busy software GPU.
+  await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
   // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done. Paper builds
   // it again, and on a busy runner that has taken over 120 s.
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 240_000 });
