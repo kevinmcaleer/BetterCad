@@ -189,8 +189,9 @@ test("the line-art outline turns with the model, not a frame behind", async ({ p
   await page.addStyleTag({ content: ".bc-toast { visibility: hidden !important; }" });
   await page.waitForTimeout(500);
   // One orbit step draws one frame. Drawing it again with the camera still should change nothing: a stale outline would.
-  // The save toast (Autosaved) fades over the view on its own clock, so it is left out of both shots.
-  const shot = { style: ".bc-toast-slot { visibility: hidden !important; }" };
+  // Cards and toasts (Autosaved, tips, notices) come and go over the view on their own clocks, so both shots show the
+  // canvas alone.
+  const shot = { style: "body * { visibility: hidden !important; } [data-testid='view-canvas'] { visibility: visible !important; }" };
   await page.evaluate(() => (window as unknown as Orbit).__bcView.orbitBy(120, 40));
   await nextFrame(page);
   const turned = await canvas(page).screenshot(shot);
