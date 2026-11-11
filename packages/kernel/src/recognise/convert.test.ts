@@ -49,6 +49,7 @@ function imported(position = { x: 0, y: 0, z: 0 }): ModelDoc {
 
 const find = (d: ModelDoc) => m.recognise(d, undefined, "mesh", {}, recognise, moved);
 
+// Each test builds the model several times in OCCT: a few seconds here, two or three times that on a CI runner.
 describe("Convert (#448) and its Hole steps (#449)", () => {
   it("recognises an imported body where it stands", () => {
     const r = find(imported({ x: 50, y: 20, z: 10 }));
@@ -60,7 +61,7 @@ describe("Convert (#448) and its Hole steps (#449)", () => {
     expect(blind.origin[0]).toBeCloseTo(50, 4);
     expect(blind.origin[1]).toBeCloseTo(20, 4);
     expect(blind.origin[2]).toBeCloseTo(16, 4);
-  });
+  }, 30_000);
 
   it("makes a component with an editable body, a Hole step per kind of hole, and hides the mesh", () => {
     const d0 = imported({ x: 50, y: 20, z: 10 });
@@ -83,7 +84,7 @@ describe("Convert (#448) and its Hole steps (#449)", () => {
     expect(Math.abs(out.measure.volume - exact) / exact).toBeLessThan(1e-5);
     expect(out.measure.faces).toBe(6 + 6 + 2 + 1 + 2);
     expect(out.names?.faces.length).toBe(out.measure.faces);
-  });
+  }, 30_000);
 
   it("a recognised hole is a Hole step like any other: resize it, or untick it to leave it in the mesh", () => {
     const d0 = imported();
@@ -103,7 +104,7 @@ describe("Convert (#448) and its Hole steps (#449)", () => {
     const res = m.build(some.doc);
     expect(res.failed).toEqual([]);
     expect(Math.abs(res.bodies.find((x) => x.id === some.body)!.measure.volume - exact) / exact).toBeLessThan(1e-3);
-  });
+  }, 30_000);
 
   it("a converted body takes a fillet, which a mesh refuses", () => {
     const d0 = imported();
@@ -115,7 +116,7 @@ describe("Convert (#448) and its Hole steps (#449)", () => {
     expect(res.bodies.find((x) => x.id === made.body)!.measure.volume).toBeLessThan(exact);
     const onMesh = addFinish(d0, { type: "fillet", part: "mesh", refs: [0], size: 1 }, "fil");
     expect(m.build(onMesh).failed).toContainEqual(["fil", "Imported meshes can't be filleted; use a STEP file for that"]);
-  });
+  }, 30_000);
 
   it("moves with the body when a later step moves it, and only reads a body as it was imported", () => {
     const d0 = imported();
@@ -128,5 +129,5 @@ describe("Convert (#448) and its Hole steps (#449)", () => {
     expect(Math.abs(out.measure.volume - exact) / exact).toBeLessThan(1e-5);
     expect((out.measure.bbox.min[0] + out.measure.bbox.max[0]) / 2).toBeCloseTo(100, 4);
     expect(() => m.recognise(made.doc, undefined, made.body, {}, recognise, moved)).toThrow("as it was imported");
-  });
+  }, 30_000);
 });

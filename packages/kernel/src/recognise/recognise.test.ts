@@ -142,7 +142,7 @@ describe("mesh recognition scores (#439)", () => {
       }
     }
     console.log(rows.join("\n"));
-  });
+  }, 30_000);
 
   it("still finds them on a shaken mesh, once the tolerance is loosened", () => {
     const { shape, truth } = plate();
@@ -155,7 +155,7 @@ describe("mesh recognition scores (#439)", () => {
     expect(s.found).toBeGreaterThanOrEqual(5);
     expect(s.size).toBeLessThan(0.05);
     expect(s.depth).toBeLessThan(0.1);
-  });
+  }, 30_000);
 
   it("does not call these holes: a boss, a square hole", () => {
     let s = box(oc, { x: 40, y: 30, z: 6 });
@@ -168,7 +168,7 @@ describe("mesh recognition scores (#439)", () => {
     expect(r.faces.filter((f) => f.full && !f.concave)).toHaveLength(1);
     expect(r.faces[0]!.radius[0]).toBeCloseTo(4, 3);
     expect(r.edges.some((e) => Math.abs(e.radius - 4) < 1e-3 && e.full)).toBe(true);
-  });
+  }, 30_000);
 
   it("reads the bore of a tube as a hole right through, and leaves a pin in a pocket alone", () => {
     let tube = cylinder(oc, { x: 20, y: 20, z: 12 });
@@ -183,7 +183,7 @@ describe("mesh recognition scores (#439)", () => {
     const p = recognise(triangles(oc, pocket, 0.05));
     expect(p.holes).toHaveLength(1);
     expect(p.holes[0]).toMatchObject({ step: false });
-  });
+  }, 30_000);
 
   it("a recognised hole plugs and re-cuts to a true cylinder", () => {
     const { shape, truth } = plate();
@@ -210,7 +210,7 @@ describe("mesh recognition scores (#439)", () => {
     expect(r.groups.reduce((n, g) => n + g.points.length, 0)).toBe(truth.length);
     // Four corner holes share one step.
     expect(r.groups.some((g) => g.points.length === 4)).toBe(true);
-  });
+  }, 30_000);
 
   it("reads half a million triangles in a few seconds", () => {
     // A slab with a grid of 48-sided holes, written straight out as triangles (meshing it would take a minute).
