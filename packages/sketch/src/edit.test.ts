@@ -1,21 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { SketchIndex, newSketch, planeFrame, type Sketch } from "./model";
 import { Draft, drawLine, drawPolyline, drawRectangle, drawCircle } from "./draw";
-import {
-  chainOf,
-  cutsOn,
-  filletAt,
-  filletLines,
-  flattenCurve,
-  offsetChain,
-  projectCurves,
-  projectSegments,
-  trimAt,
-  trimPiece,
-  extendAt,
-  extendTarget,
-  trimAlong,
-} from "./edit";
+import { chainOf, cutsOn, filletAt, filletLines, flattenCurve, offsetChain, projectCurves, projectSegments, trimAt, trimPiece } from "./edit";
+import { extendAt, extendTarget, trimAlong } from "./edits";
 import { profiles } from "./profiles";
 import { Solver } from "./solver";
 import { angleOf, dist, sub } from "./geom2d";

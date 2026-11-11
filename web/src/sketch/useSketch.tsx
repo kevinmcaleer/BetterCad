@@ -10,10 +10,6 @@ import {
   filletAt,
   filletLines,
   offsetChain,
-  mirrorShapes,
-  extendAt,
-  extendTarget,
-  trimAlong,
   projectCurves,
   trimAt,
   trimPiece,
@@ -203,7 +199,10 @@ export interface TextEdit {
 }
 
 /** Code the sketch loads on first use, to keep it out of first paint: drawing the loupe, and snapping to the model. */
-const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap") } = {};
+const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap"); edits?: typeof import("@bettercad/sketch/edits") } = {};
+/** Mirror, Extend and drag-to-trim (#267, #270) load when one of their tools is picked. */
+const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "trim", "extend"]);
+const loadEdits = () => void import("@bettercad/sketch/edits").then((m) => (lazy.edits = m));
 
 export function useSketch(d: SketchDeps) {
   const { store, say } = d;
@@ -315,6 +314,7 @@ export function useSketch(d: SketchDeps) {
   const setStool = useCallback((t: SketchToolId) => {
     setStoolState(t);
     setMirrorStage("shapes");
+    if (EDIT_TOOLS.has(t) && !lazy.edits) loadEdits();
     setCtool(null);
     setPointer(null);
     setCursor(null);
@@ -1078,14 +1078,16 @@ export function useSketch(d: SketchDeps) {
       const s = live.current.sketch!;
       const id = entityAt(hit.xy, s, reach * hit.px, true);
       if (!id) return false;
-      done(extendAt(s, id, hit.xy), "Extend");
+      if (lazy.edits) done(lazy.edits.extendAt(s, id, hit.xy), "Extend");
+      else loadEdits();
       return true;
     };
     const extendMove = (hit: { xy: Vec2; px: number }) => {
       const s = live.current.sketch!;
       const id = entityAt(hit.xy, s, reach * hit.px, true);
       setHover(id);
-      const t = id ? extendTarget(s, id, hit.xy) : null;
+      if (!lazy.edits) loadEdits();
+      const t = id ? (lazy.edits?.extendTarget(s, id, hit.xy) ?? null) : null;
       setEditPreview(t ? { lines: [t.pts], danger: false } : null);
     };
     /** The editing tools: Fillet, Trim, Offset and Project. */
@@ -1140,7 +1142,9 @@ export function useSketch(d: SketchDeps) {
     /** Mirror (#267): clicks pick the shapes, then the line (or an axis) to mirror them across. */
     const mirrorShapesAcross = (line: Id, base: Sketch) => {
       const L = live.current;
-      done(mirrorShapes(base, L.sel, line), "Mirror");
+      const ed = lazy.edits;
+      if (!ed) return loadEdits();
+      done(ed.mirrorShapes(base, L.sel, line), "Mirror");
       setMirrorStage("shapes");
     };
     const mirrorDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
@@ -1174,7 +1178,7 @@ export function useSketch(d: SketchDeps) {
       const e = id ? s.entities.find((x) => x.id === id) : undefined;
       // Over the line to mirror across, the copy shows where it will go.
       if (L.mirrorStage === "line" && e?.kind === "line" && L.sel.length && !L.sel.includes(e.id)) {
-        const r = mirrorShapes(s, L.sel, e.id);
+        const r = lazy.edits?.mirrorShapes(s, L.sel, e.id) ?? "";
         return setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
       }
       setEditPreview(null);
@@ -1468,7 +1472,7 @@ export function useSketch(d: SketchDeps) {
           trimDrag = null;
           const s = L.sketch;
           if (!s) return;
-          if (t.moved) return done(trimAlong(s, t.path), "Trim");
+          if (t.moved && lazy.edits) return done(lazy.edits.trimAlong(s, t.path), "Trim");
           setEditPreview(null);
           const id = entityAt(t.first.xy, s, reach * t.first.px, true);
           if (id) done(trimAt(s, id, t.first.xy), "Trim");

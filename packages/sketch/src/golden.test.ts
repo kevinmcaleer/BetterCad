@@ -6,7 +6,7 @@ import { Solver } from "./solver";
 import { newSketch, type Id, type Sketch } from "./model";
 import { Draft, drawArcCentre, drawArcTangent, drawCircle, drawEllipse, drawLine, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
-import { mirrorShapes } from "./edit";
+import { mirrorShapes } from "./edits";
 
 /**
  * Golden sketches (#60): built through the model API, solved by the real planegcs in Node, and checked against
