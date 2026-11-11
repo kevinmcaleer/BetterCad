@@ -25,7 +25,7 @@ import {
 } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
 import { Namer, edgeNames, resolveNames } from "./naming";
-import { build, printed, type ModelDoc, type Part } from "../document";
+import { build, poseNesting, printed, type ModelDoc, type Part } from "../document";
 import { opMoves, undoMove } from "../pattern";
 import { DEFAULT_INFILL, SHELL_MM, estimateWeight, materialOf } from "../print/materials";
 import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeProps } from "../mass";
@@ -225,21 +225,33 @@ export class ModelBuilder {
     private limit: { bodies: number; bytes: number } = CACHE_LIMIT,
   ) {}
 
-  /** The document's imported files (base64 by hash), and the bodies read from them. */
+  /** The document's imported files (base64 by hash), and the bodies read from them, as the file has them. */
   private blobs: Record<string, string> = {};
-  private files = new Map<string, ImportedBody[]>();
+  private files = new Map<string, { raw: ImportedBody[]; placed: Partial<Record<"each" | "whole", ImportedBody[]>> }>();
 
-  /** A file's bodies, read once and each stood with its bottom centre on its own origin. */
-  private readFile(blob: string, format: ImportFormat, data: string, name: string): ImportedBody[] {
-    let bodies = this.files.get(blob);
-    if (!bodies) {
-      bodies = readImport(this.oc, format, fromBase64(data), name).map((b) => {
-        const box = measure(this.oc, b.shape).bbox;
-        const at = { x: -(box.min[0] + box.max[0]) / 2, y: -(box.min[1] + box.max[1]) / 2, z: -box.min[2] };
-        return { ...b, shape: place(this.oc, b.shape, { position: at }) };
-      });
-      this.files.set(blob, bodies);
+  /**
+   * A file's bodies, read once. `whole`: they keep their places in the file, the file's bottom centre on the origin.
+   * `each`: every body stands with its own bottom centre on the origin (imports made before `keepLayout`).
+   */
+  private readFile(blob: string, format: ImportFormat, data: string, name: string, how: "each" | "whole" = "whole"): ImportedBody[] {
+    let file = this.files.get(blob);
+    if (!file) {
+      file = { raw: readImport(this.oc, format, fromBase64(data), name), placed: {} };
+      this.files.set(blob, file);
     }
+    const done = file.placed[how];
+    if (done) return done;
+    const boxes = file.raw.map((b) => measure(this.oc, b.shape).bbox);
+    const all = {
+      min: [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b.min[k]!))),
+      max: [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k]!))),
+    };
+    const bodies = file.raw.map((b, i) => {
+      const box = how === "whole" ? all : boxes[i]!;
+      const at = { x: -(box.min[0]! + box.max[0]!) / 2, y: -(box.min[1]! + box.max[1]!) / 2, z: -box.min[2]! };
+      return { ...b, shape: place(this.oc, b.shape, { position: at }) };
+    });
+    file.placed[how] = bodies;
     return bodies;
   }
 
@@ -254,7 +266,7 @@ export class ModelBuilder {
     const im = p.imported!;
     const data = this.blobs[im.blob];
     if (!data && !this.files.has(im.blob)) throw new KernelError("failed", "The imported file is missing from this model.");
-    const b = this.readFile(im.blob, im.format, data ?? "", baseName(p.name))[im.index];
+    const b = this.readFile(im.blob, im.format, data ?? "", baseName(p.name), im.keepLayout ? "whole" : "each")[im.index];
     if (!b) throw new KernelError("failed", "That body is no longer in the imported file.");
     return b;
   }
@@ -506,7 +518,9 @@ export class ModelBuilder {
     upTo = doc.features.length,
     opts: { sameLink?: boolean; references?: boolean; cancelled?: () => boolean; progress?: (f: number) => void } = {},
   ): Clash[] {
-    const { parts, joints, links, drives, components } = build(doc, upTo);
+    const built = build(doc, upTo);
+    const { parts, joints, links, drives } = built;
+    const components = poseNesting(built);
     this.useBlobs(doc);
     const byLink = doc.pose ? linkTransforms(joints, resolvePose(drives, doc.pose), components) : new Map();
     const linkOf = new Map<string, string>();

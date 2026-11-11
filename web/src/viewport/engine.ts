@@ -358,6 +358,7 @@ export class Engine {
   /** The point drag under way: the one the gizmo was pressed with, though the point moves on (and is set anew). */
   private pointDragging: PointDrag | null = null;
   private gizmoBody: string | null = null;
+  private gizmoMates: string[] = [];
 
   // Section
   private section: Section | null = null;
@@ -877,9 +878,10 @@ export class Engine {
     if (!on) this.setHover(null);
   }
 
-  /** Shows the gizmo on a body, or hides it (null). */
-  setGizmo(id: string | null, mode: "translate" | "rotate" = "translate"): void {
+  /** Shows the gizmo on a body, or hides it (null). `mates` are bodies locked to it (a rigid group) that go with it. */
+  setGizmo(id: string | null, mode: "translate" | "rotate" = "translate", mates: string[] = []): void {
     this.gizmoBody = id;
+    this.gizmoMates = mates.filter((m) => m !== id);
     this.gizmoMode = mode;
     this.gizmo?.setMode(mode);
     this.syncGizmo();
@@ -1991,11 +1993,19 @@ export class Engine {
     const pos: V3 = [round(this.proxy.position.x), round(this.proxy.position.y), round(this.proxy.position.z)];
     const rot: V3 = [round(e.x / DEG), round(e.y / DEG), round(e.z / DEG)];
     const m = new Matrix4().compose(this.proxy.position, this.proxy.quaternion, new Vector3(1, 1, 1));
-    // A mesh built in place moves by the change from where it was, not to the new place.
-    if (o.body.world) m.multiply(bodyMatrix(o.body).invert());
-    for (const g of [o.group, o.pick, o.idMesh]) {
-      g.matrix.copy(m);
-      g.matrixWorldNeedsUpdate = true;
+    // The move from where it was: a mesh built in place takes just that, as do the bodies locked to it.
+    const by = m.clone().multiply(bodyMatrix(o.body).invert());
+    if (o.body.world) m.copy(by);
+    const place = (x: BodyObjects, to: Matrix4) => {
+      for (const g of [x.group, x.pick, x.idMesh]) {
+        g.matrix.copy(to);
+        g.matrixWorldNeedsUpdate = true;
+      }
+    };
+    place(o, m);
+    for (const mate of this.gizmoMates) {
+      const x = this.bodies.get(mate);
+      if (x) place(x, x.body.world ? by : by.clone().multiply(bodyMatrix(x.body)));
     }
     this.updateOverlays();
     this.invalidate();

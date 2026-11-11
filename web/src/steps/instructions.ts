@@ -41,6 +41,7 @@ const VERB: Record<Feature["type"], string> = {
   link: "Make a component",
   joint: "Add a joint",
   drive: "Link two joints",
+  rigid: "Lock parts together",
   construct: "Construct",
 };
 

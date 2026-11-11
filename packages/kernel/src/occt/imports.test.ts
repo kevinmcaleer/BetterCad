@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { loadOCCT, type OC } from "./oc";
 import { ModelBuilder } from "./model";
 import { Exporter } from "./exporter";
-import { addCombine, addFinish, addImport, addPart, build, newDoc, type ModelDoc } from "../document";
+import { addCombine, addFinish, addImport, addPart, build, newDoc, placePart, type ImportFeature, type ModelDoc } from "../document";
 import { write3mf, writeStl } from "../export/mesh";
 import { blobHash, importFormat, toBase64, type ImportFormat } from "../imports";
 
@@ -100,6 +100,34 @@ describe("imports (#82)", () => {
     // STEP bodies are exact: they can be filleted.
     const f = addFinish(d, { type: "fillet", part: "s2", refs: [0], size: 0.5 }, "fil");
     expect(m.build(f).failed.find(([id]) => id === "fil")).toBeUndefined();
+  });
+
+  it("keeps a STEP assembly's layout: each body where the source app placed it", () => {
+    // Two 20 mm boxes, one 40 mm along X and 15 mm up, as an assembly would have them.
+    let src = addPart(addPart(newDoc("Pair"), "box", "a"), "box", "b");
+    src = placePart(src, "b", { x: 40, y: 0, z: 15 }, { x: 0, y: 0, z: 0 });
+    const step = new Exporter(oc, m).export({ doc: src, bodies: null, format: "step", deflection: 0, name: "Pair" }).files[0]!.data;
+    const d = imported("pair.step", step, ["s1", "s2"], undefined, { x: 100, y: 0, z: 0 });
+    const r = m.build(d);
+    expect(r.failed).toEqual([]);
+    const boxes = r.bodies.map((b) => b.measure.bbox).sort((p, q) => p.min[0] - q.min[0]);
+    // The pair spans -10…50 in X and 0…35 in Z; its bottom centre lands on the import's position.
+    expect(boxes[0]!.min[0]).toBeCloseTo(70, 4);
+    expect(boxes[1]!.min[0] - boxes[0]!.min[0]).toBeCloseTo(40, 4);
+    expect(boxes[0]!.min[2]).toBeCloseTo(0, 4);
+    expect(boxes[1]!.min[2]).toBeCloseTo(15, 4);
+  });
+
+  it("still stands each body on its own for an import made before layouts were kept", () => {
+    const data = write3mf("Two", [
+      { name: "Low", triangles: cube() },
+      { name: "High", triangles: cube(20) },
+    ]);
+    const now = imported("two.3mf", data, ["a", "b"]);
+    expect((now.features[0] as ImportFeature).keepLayout).toBe(true);
+    expect(m.build(now).bodies.map((b) => Math.round(b.measure.bbox.min[2]))).toEqual([0, 20]);
+    const old = { ...now, features: now.features.map((f) => ({ ...f, keepLayout: undefined })) } as ModelDoc;
+    expect(m.build(old).bodies.map((b) => Math.round(b.measure.bbox.min[2]))).toEqual([0, 0]);
   });
 
   it("keeps a file's bytes once however many times it is imported", () => {

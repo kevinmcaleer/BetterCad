@@ -48,6 +48,8 @@ export interface View3DProps {
   kernelPerf?: KernelPerf | null;
   /** Whole parts picked (body filter), and faces, edges and vertices picked (the other filters). */
   picks: Pick[];
+  /** Bodies locked to one by rigid groups, itself included: the move gizmo carries them with it. */
+  matesOf?: (id: string) => string[];
   filter: SelectFilter;
   mode: ViewMode;
   style: RenderStyle;
@@ -299,7 +301,11 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   }, [stats]);
   // The gizmo sits on the one part picked while Move or Turn is armed.
   const gizmoPart = (mode === "move" || mode === "turn") && picks.length === 1 && picks[0]!.kind === "body" ? picks[0]!.body : null;
-  useEffect(() => engine.current?.setGizmo(gizmoPart, mode === "turn" ? "rotate" : "translate"), [gizmoPart, mode, bodies]);
+  const mates = (gizmoPart && props.matesOf?.(gizmoPart).join(" ")) || "";
+  useEffect(
+    () => engine.current?.setGizmo(gizmoPart, mode === "turn" ? "rotate" : "translate", mates ? mates.split(" ") : []),
+    [gizmoPart, mode, bodies, mates],
+  );
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget || e.altKey || e.ctrlKey || e.metaKey) return;
