@@ -52,15 +52,16 @@ export function SketchBars({ s }: { s: SketchSession }) {
   return (
     <>
       <Toolbar label="Sketch tools">
-        {SKETCH_TOOLS.map((t) => (
+        {SKETCH_TOOLS.filter((t) => !t.modeOf).map((t) => (
           <ToolButton
             key={t.id}
             icon={t.icon}
             label={t.label}
             shortcut={t.key.toUpperCase()}
-            pressed={s.stool === t.id && !s.ctool}
+            pressed={(s.stool === t.id || tool.modeOf === t.id) && !s.ctool}
             showLabel
-            onPress={() => s.pickTool(t.id)}
+            // A tool in one of its modes puts down the same as the tool itself.
+            onPress={() => s.pickTool(tool.modeOf === t.id ? s.stool : t.id)}
           />
         ))}
         <Toolbar.Separator />
@@ -101,6 +102,13 @@ export function SketchBars({ s }: { s: SketchSession }) {
             on={s.projectGuide}
             onClick={() => s.setProjectGuide(!s.projectGuide)}
           />
+        )}
+        {!s.ctool && (tool.modes ?? []).length > 1 && (
+          <span className="bc-sk-modes" role="group" aria-label={`${tool.label} kind`}>
+            {tool.modes!.map((m) => (
+              <Button key={m.id} label={m.mode ?? m.label} on={s.stool === m.id} onClick={() => s.stool !== m.id && s.pickTool(m.id)} />
+            ))}
+          </span>
         )}
         {s.stool === "polygon" && (
           <NumberField label="Sides" unit="none" value={s.sides} min={3} max={12} step={1} precision={0} onCommit={(v) => s.setSides(Math.round(v))} />

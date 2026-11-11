@@ -1,0 +1,5 @@
+{
+  "about": "A tangent arc (#405): a level line 20 long from the origin, then an R10 arc tangent to it turning up a quarter; then R15.",
+  "solved": [[0, 0], [20, 0], [30, 10], [20, 10], [10]],
+  "edited": [[0, 0], [20, 0], [35, 15], [20, 15], [15]]
+}

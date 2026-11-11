@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Solver } from "./solver";
 import { newSketch, type Id, type Sketch } from "./model";
-import { Draft, drawCircle, drawEllipse, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
+import { Draft, drawArcCentre, drawArcTangent, drawCircle, drawEllipse, drawLine, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
 
 /**
@@ -143,6 +143,37 @@ const CASES: Record<string, Case> = {
       return { sketch: d.done().sketch, edit: across, to: 30 };
     },
     loops: 1,
+    holes: 0,
+  },
+  "arc-centre": {
+    about: "A centre-point arc (#405): R10 about the origin, a quarter turn from 3 o'clock to 12; then R15.",
+    build() {
+      const s = drawArcCentre(newSketch(), [0, 0], [10, 1], [1, 12]).sketch;
+      const arc = s.entities.find((e) => e.kind === "arc") as { id: Id; c: Id; a: Id; b: Id };
+      const d = new Draft(s);
+      d.constrain({ type: "fix", p: arc.c });
+      d.constrain({ type: "horizontal", e: arc.c, b: arc.a });
+      d.constrain({ type: "vertical", e: arc.c, b: arc.b });
+      const r = d.dimension("radius", [arc.id], 10);
+      return { sketch: d.done().sketch, edit: r, to: 15 };
+    },
+    loops: 0,
+    holes: 0,
+  },
+  "arc-tangent": {
+    about: "A tangent arc (#405): a level line 20 long from the origin, then an R10 arc tangent to it turning up a quarter; then R15.",
+    build() {
+      let s = drawLine(newSketch(), [0, 0], [20, 0], { length: 20 }).sketch;
+      const line = s.entities.find((e) => e.kind === "line") as { id: Id; a: Id; b: Id };
+      s = drawArcTangent(s, line.b, [30, 11], 10)!.sketch;
+      const arc = s.entities.find((e) => e.kind === "arc") as { id: Id; c: Id; a: Id; b: Id };
+      const d = new Draft(s);
+      d.constrain({ type: "fix", p: line.a });
+      d.constrain({ type: "horizontal", e: arc.c, b: arc.b });
+      const r = d.dimensions.find((x) => x.kind === "radius")!.id;
+      return { sketch: d.done().sketch, edit: r, to: 15 };
+    },
+    loops: 0,
     holes: 0,
   },
   hexagon: {

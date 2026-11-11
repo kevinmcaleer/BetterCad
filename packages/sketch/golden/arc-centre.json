@@ -1,0 +1,5 @@
+{
+  "about": "A centre-point arc (#405): R10 about the origin, a quarter turn from 3 o'clock to 12; then R15.",
+  "solved": [[10, 0], [0, 0], [0, 10], [10]],
+  "edited": [[15, 0], [0, 0], [0, 15], [15]]
+}
