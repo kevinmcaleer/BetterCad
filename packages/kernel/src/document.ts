@@ -18,6 +18,7 @@ import {
 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
+import type { Plug } from "./recognise/holes";
 import { partBounds, partFrame, type CataloguePart } from "./catalogue";
 import type { FinishId } from "./looks";
 export {
@@ -207,7 +208,7 @@ export interface ImportSpec {
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
 export interface BodyOp {
   /** A boolean with a tool, or a finish on the part's own edges and faces. */
-  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "hole";
+  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "hole" | "plug";
   /** Edges (fillet, chamfer) or faces left open (shell), numbered on the part as it was before this op. */
   refs?: number[];
   /** The same edges or faces by name (#47), found again when earlier steps change; `refs` is the fallback. */
@@ -220,6 +221,8 @@ export interface BodyOp {
   tool?: PrismSpec;
   /** Holes (#70) cut into the part, in its own coordinates. */
   holes?: HoleSpec;
+  /** Recognised holes filled in (Convert, #448), in its own coordinates. */
+  plugs?: Plug[];
   /** Or a revolve's solid, in the part's own coordinates. */
   rev?: RevolveSpec;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
@@ -548,6 +551,18 @@ export interface ImportFeature extends FeatureBase {
   position: Vec3;
 }
 /**
+ * Convert (#448): an imported mesh body made editable. It makes a new body from the mesh as it stood, with the holes
+ * that were recognised in it filled, so Hole steps after it cut them again as true holes. The mesh body stays.
+ */
+export interface ConvertFeature extends FeatureBase {
+  type: "convert";
+  /** The mesh body it reads. */
+  part: string;
+  body: { id: string; name: string };
+  /** What fills each recognised hole, in the world as the mesh stood when it was converted. */
+  plugs: Plug[];
+}
+/**
  * A mounting feature (#189) on a flat face: standoffs on a hole pattern, or a servo horn mount (the horn's hub
  * recess, a screwdriver hole to the servo's own screw, and screw holes to bolt the horn's arms to the part).
  */
@@ -634,6 +649,7 @@ export type Feature =
   | GearFeature
   | MountFeature
   | ImportFeature
+  | ConvertFeature
   | InsertFeature
   | AddFeature
   | DuplicateFeature
@@ -761,6 +777,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   revolve: "Revolve",
   hole: "Hole",
   import: "Import",
+  convert: "Convert",
   insert: "Insert part",
   mount: "Mount",
   gear: "Gear",
@@ -847,6 +864,7 @@ const BUILT = new Set<string>([
   "gear",
   "mount",
   "import",
+  "convert",
   "insert",
   "add",
   "duplicate",
@@ -952,6 +970,31 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           });
         });
         break;
+      case "convert": {
+        const i = find(f.part);
+        const src = parts[i];
+        if (!src) {
+          failed.set(f.id, "The body it converts is gone");
+          break;
+        }
+        if (find(f.body.id) >= 0) break;
+        // A copy of the mesh in its own right: not in the mesh's component, so it goes into the one being worked in.
+        const rest = { ...src };
+        delete rest.link;
+        const plugs = f.plugs.map((p) => {
+          const l = frameToLocal({ origin: p.origin, x: p.axis, normal: p.axis }, src);
+          return { ...p, origin: l.origin, axis: l.normal };
+        });
+        parts.splice(i + 1, 0, {
+          ...rest,
+          id: f.body.id,
+          name: f.body.name,
+          position: { ...src.position },
+          size: { ...src.size },
+          ops: [...(src.ops ?? []), { op: "plug", plugs, feature: f.id }],
+        });
+        break;
+      }
       case "insert":
         if (find(f.part.id) < 0) {
           const [min, max] = partBounds(f.record);
@@ -1640,7 +1683,7 @@ function usedNames(doc: ModelDoc): Set<string> {
   for (const f of doc.features) {
     if (f.type === "add" || f.type === "insert") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
-    if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") names.add(f.body.name);
+    if (f.type === "convert" || ((f.type === "extrude" || f.type === "revolve") && f.operation === "new")) names.add(f.body.name);
   }
   Object.values(doc.looks).forEach((l) => l.name && names.add(l.name));
   return names;
@@ -1856,6 +1899,7 @@ export function featureParts(f: Feature): string[] {
     case "insert":
       return [f.part.id];
     case "gear":
+    case "convert":
       return [f.body.id];
     case "link":
     case "joint":
@@ -1880,7 +1924,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const g of doc.features) {
     if (g.type === "add" || g.type === "insert") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
-    if ((g.type === "extrude" || g.type === "revolve") && g.operation === "new") names.set(g.body.id, g.body.name);
+    if (g.type === "convert" || ((g.type === "extrude" || g.type === "revolve") && g.operation === "new")) names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
@@ -1918,6 +1962,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       return `${f.record.name}, ${f.record.mass} g${f.record.checked ? "" : ", sizes not checked"}`;
     case "import":
       return `${f.bodies.length === 1 ? "1 body" : `${f.bodies.length} bodies`} from ${f.file}`;
+    case "convert":
+      return `${who([f.part])} made editable${f.plugs.length ? ", holes filled ready to cut again" : ""}`;
     case "add": {
       const s = f.part.size;
       return `${KIND_LABEL[f.part.kind]}, ${s.x} × ${s.y} × ${s.z} mm`;
@@ -2294,6 +2340,11 @@ export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: 
   const { data, ...rest } = p;
   const blobs = doc.blobs?.[p.blob] ? doc.blobs : { ...doc.blobs, [p.blob]: data };
   return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest });
+}
+
+/** Adds a Convert step (#448): a new body from a mesh body, with its recognised holes filled. */
+export function addConvert(doc: ModelDoc, p: Pick<ConvertFeature, "part" | "body" | "plugs" | "component">, id = newId("f"), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "convert", name: nextFeatureName(doc, "convert"), ...p });
 }
 
 /** Adds an Insert part step (#187): a catalogue part, kept whole, standing at `position` turned by `rotation`. */
@@ -2716,7 +2767,10 @@ export function cutPocket(doc: ModelDoc, partId: string, o: PocketOptions, at?: 
   return { doc: d };
 }
 
-export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth">;
+export type HoleStepParams = Pick<
+  HoleFeature,
+  "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth" | "headSize" | "component"
+>;
 
 /** Adds a Hole step at `at` (the marker), or at the end. */
 export function addHole(doc: ModelDoc, params: HoleStepParams, id = newId("f"), at?: number): ModelDoc {
@@ -2778,7 +2832,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "pattern") return patternCopyIds(f);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
-  if (f.type === "gear") return [f.body.id];
+  if (f.type === "gear" || f.type === "convert") return [f.body.id];
   if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
   return [];
 }

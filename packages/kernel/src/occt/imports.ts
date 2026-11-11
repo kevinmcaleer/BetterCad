@@ -17,6 +17,8 @@ export interface ImportedBody {
   /** A mesh with gaps: it stays a shell, which can't be combined. */
   open: boolean;
   triangles?: number;
+  /** How far the builder moved it from where the file had it, to stand it on its own origin. */
+  at?: { x: number; y: number; z: number };
 }
 
 /** Sews triangles into a closed solid, or an open shell when they don't close. */
@@ -74,4 +76,11 @@ export function readImport(oc: OC, format: ImportFormat, data: Uint8Array, base:
   const meshes = format === "stl" ? [{ name: base, triangles: readStl(buf) }] : read3mf(buf);
   if (!meshes.length) throw new KernelError("failed", "That file has no shapes in it.");
   return meshes.map((m) => ({ name: format === "stl" || !m.name ? base : m.name, ...meshSolid(oc, m.triangles), triangles: m.triangles.length / 9 }));
+}
+
+/** The triangles of one body of a mesh file, as the file has them (#437), or null for a STEP file. */
+export function importTriangles(format: ImportFormat, data: Uint8Array, index: number): Float32Array | null {
+  if (format === "step") return null;
+  const buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  return format === "stl" ? (index === 0 ? readStl(buf) : null) : (read3mf(buf)[index]?.triangles ?? null);
 }

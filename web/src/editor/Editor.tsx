@@ -227,6 +227,7 @@ const ParamsDialog = lazy(() => import("./ParamsPanel").then((m) => ({ default: 
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => ({ default: m.ConstructBar })));
 const JointTool = lazy(() => import("../joint/JointPanel").then((m) => ({ default: m.JointTool })));
+const RecogniseTool = lazy(() => import("../recognise/RecogniseTool").then((m) => ({ default: m.RecogniseTool })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
 
@@ -724,6 +725,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   // The Joint tool (#172) loads with its panel; the editor keeps what Enter, the help line and the timeline need.
   const jointApi = useRef<JointSession | null>(null);
   const [jointUi, setJointUi] = useState<JointUi | null>(null);
+  // Recognise features (#446): the imported mesh whose holes are being found.
+  const [recognising, setRecognising] = useState<{ id: string; name: string } | null>(null);
+  const recogniseOk = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (tool !== "select") setRecognising(null);
+  }, [tool]);
   const [jointEdit, setJointEdit] = useState<string | null>(null);
   const jointEdited = useCallback(() => setJointEdit(null), []);
   const jointHelp = tool === "joint" ? (jointUi?.help ?? null) : null;
@@ -1787,6 +1794,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     savePose: () => {},
     openExport: () => {},
     exportSteps: () => {},
+    recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
     startTour: () => {},
@@ -1865,6 +1873,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     openExport: () => setExportOpen(true),
     exportSteps: () => exportBuildSteps(),
+    recognise: () => {
+      const meshes = parts.filter((p) => p.imported?.mesh && !p.ops?.length && !p.copy);
+      const picked = meshes.filter((p) => selection.includes(p.id));
+      const one = picked.length === 1 ? picked[0] : selection.length === 0 && meshes.length === 1 ? meshes[0] : null;
+      if (!one)
+        return say(
+          meshes.length
+            ? "Select one imported STL body, then choose Recognise features."
+            : "Recognise features works on an imported STL or 3MF body. Import one first.",
+        );
+      startRecognise(one.id);
+    },
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     startTour: tour.start,
@@ -1912,31 +1932,33 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
-      extrude.session
-        ? extrude.done()
-        : revolve.session
-          ? revolve.done()
-          : pushpull.session
-            ? pushpull.done()
-            : hole.session
-              ? hole.done()
-              : mount.session
-                ? mount.done()
-                : gear.session
-                  ? gear.done()
-                  : construct.session
-                    ? construct.done()
-                    : tool === "joint"
-                      ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
-                        ? jointApi.current.pickParent(null)
-                        : jointApi.current?.done()
-                      : pattern.session
-                        ? pattern.done()
-                        : tool === "combine"
-                          ? combine(selection, combineOp, keepTools, combineFit)
-                          : finish.tool
-                            ? finish.done()
-                            : undefined,
+      recogniseOk.current
+        ? recogniseOk.current()
+        : extrude.session
+          ? extrude.done()
+          : revolve.session
+            ? revolve.done()
+            : pushpull.session
+              ? pushpull.done()
+              : hole.session
+                ? hole.done()
+                : mount.session
+                  ? mount.done()
+                  : gear.session
+                    ? gear.done()
+                    : construct.session
+                      ? construct.done()
+                      : tool === "joint"
+                        ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                          ? jointApi.current.pickParent(null)
+                          : jointApi.current?.done()
+                        : pattern.session
+                          ? pattern.done()
+                          : tool === "combine"
+                            ? combine(selection, combineOp, keepTools, combineFit)
+                            : finish.tool
+                              ? finish.done()
+                              : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -2234,6 +2256,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "named pose robot arm joints remember position",
       },
       {
+        id: "tool.recognise",
+        scope: "model",
+        label: "Recognise features…",
+        group: "Tools",
+        icon: "shapes",
+        run: () => h().recognise(),
+        keywords: "stl mesh convert editable holes reverse engineer import 3mf",
+      },
+      {
         id: "check.clashes",
         scope: "model",
         label: "Check for clashes",
@@ -2348,6 +2379,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keys: ["enter"],
         run: () => h().confirm(),
         when: () =>
+          recogniseOk.current !== null ||
           ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
             live.current.tool,
           ),
@@ -3123,6 +3155,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     ];
   };
 
+  const startRecognise = (id: string) => {
+    const p = parts.find((x) => x.id === id);
+    if (!p) return;
+    setTool("select");
+    setSelection([id]);
+    setRecognising({ id, name: p.name });
+  };
+
   const partMenu = (ids: string[]): MenuEntry[] => {
     const chosen = parts.filter((p) => ids.includes(p.id));
     const allHidden = chosen.length > 0 && chosen.every((p) => p.hidden);
@@ -3184,6 +3224,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         : []),
       ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
         ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
+        : []),
+      ...(chosen.length === 1 && chosen[0]!.imported?.mesh && !chosen[0]!.ops?.length && !chosen[0]!.copy
+        ? [{ id: "recognise", label: "Recognise features…", icon: "shapes" as const, onSelect: () => startRecognise(chosen[0]!.id) }]
         : []),
       { id: "make-link", label: "New component", icon: "component", onSelect: () => makeLink(ids) },
       ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select component", icon: "component" as const, onSelect: () => selectLink(ids) }] : []),
@@ -3709,6 +3752,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                     failed={failed}
                     scope={scope}
                     onCancel={() => setTool("select")}
+                  />
+                </Suspense>
+              )}
+              {recognising && tool === "select" && (
+                <Suspense fallback={null}>
+                  <RecogniseTool
+                    key={recognising.id}
+                    part={recognising}
+                    doc={doc}
+                    upTo={at}
+                    parent={workIn ?? undefined}
+                    call={kernel.call}
+                    record={record}
+                    say={say}
+                    view={vp.ref}
+                    select={setSelection}
+                    okRef={recogniseOk}
+                    onClose={() => setRecognising(null)}
                   />
                 </Suspense>
               )}
