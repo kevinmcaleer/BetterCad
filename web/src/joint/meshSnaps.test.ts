@@ -98,3 +98,35 @@ describe("splitOutline", () => {
     expect(splitOutline(square)).toHaveLength(4);
   });
 });
+
+describe("meshSnaps on inside faces", () => {
+  it("keeps a pocket's floor flat even where sloped walls round it lead to a round rim", () => {
+    // A 32-sided dish: a flat floor of radius 10 at z 0, its wall sloping out at 30° to radius 30 at z 11.5.
+    const n = 32;
+    const ring = (i: number, r: number, z: number): V3 => [r * Math.cos((2 * Math.PI * i) / n), r * Math.sin((2 * Math.PI * i) / n), z];
+    const tris: [V3, V3, V3][] = [];
+    for (let i = 0; i < n; i++) {
+      tris.push([[0, 0, 0], ring(i, 10, 0), ring(i + 1, 10, 0)]);
+      tris.push([ring(i, 10, 0), ring(i, 30, 11.5), ring(i + 1, 30, 11.5)], [ring(i, 10, 0), ring(i + 1, 30, 11.5), ring(i + 1, 10, 0)]);
+    }
+    const r = meshSnaps(soup(tris), ID, 0, [0, 0, 1])!;
+    expect(r.snaps.some((s) => near(s.point, [0, 0, 0]))).toBe(true);
+    expect(r.snaps.every((s) => Math.abs(s.point[2]) < 1e-6)).toBe(true);
+  });
+
+  it("gives a square hole through a face its middle", () => {
+    // A 30 × 30 top at z 5 with a 10 × 10 square hole from (5, 5) to (15, 15).
+    const P = (x: number, y: number): V3 => [x, y, 5];
+    const quad = (a: V3, b: V3, c: V3, d: V3): [V3, V3, V3][] => [
+      [a, b, c],
+      [a, c, d],
+    ];
+    const outer = [P(0, 0), P(30, 0), P(30, 30), P(0, 30)];
+    const inner = [P(5, 5), P(15, 5), P(15, 15), P(5, 15)];
+    const tris = outer.flatMap((o, i) => quad(o, outer[(i + 1) % 4]!, inner[(i + 1) % 4]!, inner[i]!));
+    const r = meshSnaps(soup(tris), ID, 0, [0, 0, 1])!;
+    const centre = r.snaps.find((s) => s.kind === "centre")!;
+    expect(near(centre.point, [10, 10, 5])).toBe(true);
+    expect(centre.normal).toEqual([0, 0, 1]);
+  });
+});
