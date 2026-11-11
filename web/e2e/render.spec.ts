@@ -34,9 +34,15 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeVisible();
 
   // The view style menu opens it too, in paper white.
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-  await page.getByRole("menuitem", { name: "Render in paper" }).click();
-  // Leaving the modelling view and opening the render again can take more than the default 5 s on a busy software GPU.
+  // On a busy software GPU (CI) the first pick from the menu, just after leaving the render, has been lost; pick again
+  // until the render opens. Opening it can take more than the default 5 s there.
+  await expect(async () => {
+    if (!(await bar.count())) {
+      await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+      await page.getByRole("menuitem", { name: "Render in paper" }).click();
+    }
+    await expect(bar).toBeVisible({ timeout: 20_000 });
+  }).toPass({ timeout: 90_000 });
   await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
   // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done. Paper builds
   // it again, and on a busy runner that has taken over 120 s.

@@ -10,6 +10,7 @@ export type ToolId =
   | "extrude"
   | "revolve"
   | "loft"
+  | "sweep"
   | "pushpull"
   | "combine"
   | "fillet"
@@ -104,6 +105,13 @@ export const TOOLS: Tool[] = [
     title: "Run a solid through sketch shapes on different planes",
     help: "Click a closed sketch shape, then shapes on other planes in order.",
   },
+  {
+    id: "sweep",
+    label: "Sweep",
+    icon: "sweep",
+    title: "Push a sketch shape along a path",
+    help: "Click a closed sketch shape, then the lines and arcs of a path in another sketch.",
+  },
   { id: "pushpull", label: "Push/pull", icon: "pushpull", key: "p", title: "Push or pull a face", help: "Click a flat face and drag it in or out." },
   {
     id: "combine",
@@ -150,7 +158,7 @@ const byId = (ids: ToolId[]) => ids.map((id) => TOOLS.find((t) => t.id === id)!)
  */
 export const TOOL_GROUPS: { id: string; label: string; tools: Tool[] }[] = [
   { id: "arrange", label: "Arrange", tools: byId(["select", "move", "turn"]) },
-  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "loft", "gear", "construct"]) },
+  { id: "make", label: "Make", tools: byId(["sketch", "extrude", "pushpull", "revolve", "loft", "sweep", "gear", "construct"]) },
   { id: "change", label: "Change", tools: byId(["combine", "hole", "fillet", "shell", "pattern", "mount", "joint"]) },
   { id: "check", label: "Check", tools: byId(["measure", "section"]) },
 ];

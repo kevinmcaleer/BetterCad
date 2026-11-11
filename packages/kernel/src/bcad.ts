@@ -64,6 +64,7 @@ const KNOWN: ReadonlySet<FeatureType> = new Set<FeatureType>([
   "extrude",
   "revolve",
   "loft",
+  "sweep",
   "combine",
   "fillet",
   "chamfer",
