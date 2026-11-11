@@ -35,10 +35,10 @@ import { triangles } from "./occt/export";
 import { meshSolid } from "./occt/imports";
 import { plug } from "./occt/plug";
 import { recognise } from "./recognise";
-import { extent, pickProfiles, startDistance, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
+import { extent, pickProfiles, startDistance, upToDistance, splineSeg, type PrismSpec, type ProfileSeg } from "./extrude";
 import { createRequire } from "node:module";
 import { parse } from "opentype.js";
-import { Draft, drawCircle, layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
+import { Draft, drawCircle, fitSpline, layoutText, newSketch, splinePieces, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { readStep } from "./occt/export";
@@ -297,6 +297,62 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
           outer: [
             { kind: "ellipse", c: [0, 15], r1: 10, r2: 4, rot: Math.PI / 2, t: [Math.PI, 2 * Math.PI] },
             { kind: "line", a: [0, 25], b: [0, 5] },
+          ],
+          holes: [],
+          area: 0,
+        },
+      ],
+      axis: Z_AXIS,
+      angle: 360,
+    }),
+  // Splines (#269): a closed 5-point spline pushed up 5 mm (one smooth side face); a vase, an open spline closed by
+  // the axis and turned round it.
+  "extrude-spline": (oc) =>
+    prismOf(oc, {
+      frame: XY,
+      profiles: [
+        {
+          outer: [
+            splineSeg(
+              splinePieces(
+                fitSpline(
+                  [
+                    [10, 0],
+                    [3, 9],
+                    [-8, 6],
+                    [-8, -6],
+                    [3, -9],
+                  ],
+                  true,
+                ),
+              ),
+            ),
+          ],
+          holes: [],
+          area: 0,
+        },
+      ],
+      from: 0,
+      to: 5,
+    }),
+  "revolve-spline-vase": (oc) =>
+    revolveOf(oc, {
+      frame: XZ,
+      profiles: [
+        {
+          outer: [
+            splineSeg(
+              splinePieces(
+                fitSpline([
+                  [0, 0],
+                  [8, 4],
+                  [5, 14],
+                  [7, 22],
+                  [0, 30],
+                ]),
+              ),
+            ),
+            { kind: "line", a: [0, 30], b: [0, 0] },
           ],
           holes: [],
           area: 0,

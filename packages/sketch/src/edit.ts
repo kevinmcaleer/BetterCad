@@ -16,12 +16,14 @@ import {
   type Id,
   type Line,
   type ProjectedRef,
+  type Spline,
   type Sketch,
   type TopoRef,
   type Vec2,
   type Vec3,
 } from "./model";
 import { circleSide, curveEllipse, ellipseSide, lineEllipse } from "./ellipse";
+import { curveSplineParams, lineSide, sampleSpline, splineGeo, splineParam, splinePoint, splineSpline, type SplineGeo } from "./spline";
 import {
   add,
   angleOf,
@@ -136,11 +138,13 @@ export type Shape =
   | { kind: "line"; a: Vec2; b: Vec2 }
   | { kind: "circle"; c: Vec2; r: number }
   | { kind: "arc"; c: Vec2; r: number; s: number; w: number }
-  | { kind: "ellipse"; g: EllipseGeo };
+  | { kind: "ellipse"; g: EllipseGeo }
+  | { kind: "spline"; g: SplineGeo };
 
 export function shapeOf(idx: SketchIndex, e: Curve): Shape {
   if (e.kind === "line") return { kind: "line", a: idx.xy(e.a), b: idx.xy(e.b) };
   if (e.kind === "ellipse") return { kind: "ellipse", g: ellipseGeo(idx, e) };
+  if (e.kind === "spline") return { kind: "spline", g: splineGeo(idx, e) };
   const c = idx.xy(e.c);
   if (e.kind === "circle") return { kind: "circle", c, r: e.r };
   const s = angleOf(sub(idx.xy(e.a), c));
@@ -154,6 +158,7 @@ export function param(sh: Shape, p: Vec2): number {
     return ((p[0] - sh.a[0]) * d[0] + (p[1] - sh.a[1]) * d[1]) / (d[0] ** 2 + d[1] ** 2);
   }
   if (sh.kind === "ellipse") return ellipseAngle(sh.g, p);
+  if (sh.kind === "spline") return splineParam(sh.g, p).t;
   const ang = angleOf(sub(p, sh.c));
   return sh.kind === "circle" ? wrap(ang) : wrap(ang - sh.s);
 }
@@ -161,6 +166,7 @@ export function param(sh: Shape, p: Vec2): number {
 function pointAt(sh: Shape, t: number): Vec2 {
   if (sh.kind === "line") return add(sh.a, scale(sub(sh.b, sh.a), t));
   if (sh.kind === "ellipse") return ellipsePoint(sh.g, t);
+  if (sh.kind === "spline") return splinePoint(sh.g, t);
   return polar(sh.c, sh.r, sh.kind === "circle" ? t : sh.s + t);
 }
 
@@ -169,16 +175,31 @@ function contains(sh: Shape, p: Vec2): boolean {
     const t = param(sh, p);
     return t >= -1e-9 && t <= 1 + 1e-9;
   }
-  if (sh.kind === "circle" || sh.kind === "ellipse") return true;
+  if (sh.kind === "circle" || sh.kind === "ellipse" || sh.kind === "spline") return true;
   return onArc(angleOf(sub(p, sh.c)), sh.s, sh.s + sh.w);
 }
 
 /** Where two shapes cross. */
 export function crossings(a: Shape, b: Shape): Vec2[] {
   let pts: Vec2[];
-  if (a.kind === "ellipse" || b.kind === "ellipse") {
+  if (a.kind === "spline" || b.kind === "spline") {
+    const [sp, o] = (a.kind === "spline" ? [a, b] : [b, a]) as [Extract<Shape, { kind: "spline" }>, Shape];
+    if (o.kind === "spline") pts = splineSpline(sp.g, o.g);
+    else {
+      const side =
+        o.kind === "line"
+          ? lineSide(o.a, o.b)
+          : o.kind === "ellipse"
+            ? ellipseSide(o.g)
+            : (p: Vec2) => Math.hypot(p[0] - (o as { c: Vec2 }).c[0], p[1] - (o as { c: Vec2 }).c[1]) - (o as { r: number }).r;
+      pts = curveSplineParams(side, sp.g).map((t) => splinePoint(sp.g, t));
+    }
+  } else if (a.kind === "ellipse" || b.kind === "ellipse") {
     const [el, o] = (a.kind === "ellipse" ? [a, b] : [b, a]) as [Extract<Shape, { kind: "ellipse" }>, Shape];
-    pts = o.kind === "line" ? lineEllipse(o.a, o.b, el.g) : curveEllipse(o.kind === "ellipse" ? ellipseSide(o.g) : circleSide(o.c, o.r), el.g);
+    pts =
+      o.kind === "line"
+        ? lineEllipse(o.a, o.b, el.g)
+        : curveEllipse(o.kind === "ellipse" ? ellipseSide(o.g) : circleSide((o as { c: Vec2 }).c, (o as { r: number }).r), el.g);
   } else if (a.kind === "line" && b.kind === "line") {
     const x = lineLine(a.a, a.b, b.a, b.b);
     pts = x ? [x.p] : [];
@@ -194,14 +215,14 @@ export function cutsOn(sketch: Sketch, id: Id): number[] {
   const e = idx.get(id);
   if (!e || e.kind === "point") return [];
   const sh = shapeOf(idx, e);
-  const span = sh.kind === "line" ? 1 : sh.kind === "arc" ? sh.w : 2 * Math.PI;
+  const span = sh.kind === "line" ? 1 : sh.kind === "arc" ? sh.w : sh.kind === "spline" ? sh.g.bez.length : 2 * Math.PI;
   const eps = 1e-6;
   const ts: number[] = [];
   for (const o of sketch.entities) {
     if (o.id === id || o.kind === "point") continue;
     for (const p of crossings(sh, shapeOf(idx, o))) {
       const t = param(sh, p);
-      const inside = sh.kind === "circle" || sh.kind === "ellipse" ? true : t > eps && t < span - eps;
+      const inside = sh.kind === "circle" || sh.kind === "ellipse" || (sh.kind === "spline" && sh.g.closed) ? true : t > eps && t < span - eps;
       if (inside && !ts.some((x) => Math.abs(x - t) < 1e-6)) ts.push(t);
     }
   }
@@ -229,13 +250,14 @@ export function trimPiece(sketch: Sketch, id: Id, at: Vec2): { from: number; to:
   const t = param(sh, at);
   let from: number;
   let to: number;
-  if (sh.kind === "circle" || sh.kind === "ellipse") {
-    if (cuts.length < 2 || sh.kind === "ellipse") return { from: 0, to: 2 * Math.PI, pts: samples(sh, 0, 2 * Math.PI) };
+  if (sh.kind === "circle" || sh.kind === "ellipse" || (sh.kind === "spline" && sh.g.closed)) {
+    const period = sh.kind === "spline" ? sh.g.bez.length : 2 * Math.PI;
+    if (cuts.length < 2 || sh.kind === "ellipse") return { from: 0, to: period, pts: samples(sh, 0, period) };
     const after = cuts.find((x) => x > t);
-    to = after ?? cuts[0]! + 2 * Math.PI;
-    from = [...cuts].reverse().find((x) => x <= t) ?? cuts[cuts.length - 1]! - 2 * Math.PI;
+    to = after ?? cuts[0]! + period;
+    from = [...cuts].reverse().find((x) => x <= t) ?? cuts[cuts.length - 1]! - period;
   } else {
-    const span = sh.kind === "line" ? 1 : sh.w;
+    const span = sh.kind === "line" ? 1 : sh.kind === "spline" ? sh.g.bez.length : sh.w;
     const all = [0, ...cuts, span];
     const tc = Math.max(0, Math.min(span, t));
     const i = Math.max(0, all.findIndex((x) => x > tc) - 1);
@@ -247,6 +269,7 @@ export function trimPiece(sketch: Sketch, id: Id, at: Vec2): { from: number; to:
 
 export function samples(sh: Shape, from: number, to: number): Vec2[] {
   if (sh.kind === "line") return [pointAt(sh, from), pointAt(sh, to)];
+  if (sh.kind === "spline") return sampleSpline(sh.g, from, to);
   const n = Math.max(4, Math.ceil((to - from) / (Math.PI / 36)));
   return Array.from({ length: n + 1 }, (_, i) => pointAt(sh, from + ((to - from) * i) / n));
 }
@@ -292,6 +315,7 @@ export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
   }
 
   if (sh.kind === "ellipse") return "Trim takes an ellipse whole";
+  if (sh.kind === "spline") return trimSpline(sketch, e as Spline, sh.g, piece.from, piece.to);
   const span = sh.kind === "line" ? 1 : sh.w;
   const atStart = piece.from <= 1e-9;
   const atEnd = piece.to >= span - 1e-9;
@@ -318,6 +342,42 @@ export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
   if (old.kind === "line") d.constrain({ type: "parallel", a: id, b: twin });
   dropLength();
   return d.done().sketch;
+}
+
+/**
+ * Trims a piece of a spline (#269): what is left keeps the fit points outside the piece, with a new one where it was
+ * cut, so it bends much as before. A closed spline opens at the piece.
+ */
+function trimSpline(sketch: Sketch, e: Spline, g: SplineGeo, from: number, to: number): EditResult {
+  const n = g.bez.length;
+  const d = new Draft(sketch);
+  const keep = (pts: Id[], ends: [Vec2 | Id, Vec2 | Id]) => {
+    const ids = [typeof ends[0] === "string" ? ends[0] : d.point(ends[0]), ...pts, typeof ends[1] === "string" ? ends[1] : d.point(ends[1])];
+    return ids.filter((p, i) => i === 0 || p !== ids[i - 1]);
+  };
+  // Fit point i sits at parameter i.
+  const between = (a: number, b: number) => e.pts.filter((_, i) => i > a + 1e-9 && i < b - 1e-9);
+  const parts: Id[][] = [];
+  if (e.closed) {
+    // Open it at the piece: from the piece's end round to its start.
+    const ring = [...e.pts, ...e.pts].map((p, i) => [p, i] as const).filter(([, i]) => i > to + 1e-9 && i < from + n - 1e-9);
+    parts.push(
+      keep(
+        ring.map(([p]) => p),
+        [splinePoint(g, to % n), splinePoint(g, ((from % n) + n) % n)],
+      ),
+    );
+  } else {
+    if (from > 1e-9) parts.push(keep(between(0, from), [e.pts[0]!, splinePoint(g, from)]));
+    if (to < n - 1e-9) parts.push(keep(between(to, n), [splinePoint(g, to), e.pts[e.pts.length - 1]!]));
+  }
+  d.entities = d.entities.filter((x) => x.id !== e.id);
+  d.constraints = d.constraints.filter((c) => !constraintRefs(c).includes(e.id));
+  for (const pts of parts.filter((p) => p.length >= 2)) {
+    const id = newId("b");
+    d.entities.push({ id, kind: "spline", pts, ...(e.construction && { construction: true }) });
+  }
+  return prune(d.done().sketch, e.pts);
 }
 
 // ------------------------------------------------------------------ offset

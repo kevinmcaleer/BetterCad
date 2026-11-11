@@ -88,8 +88,9 @@ export function freedom(sketch: Sketch): Freedom {
   }
 
   const constraint = (c: Constraint) => {
-    // As in the solver, only concentric ties to an ellipse yet.
+    // As in the solver, only concentric ties to an ellipse yet; a spline's ties shape the curve, not its points.
     if (c.type !== "concentric" && constraintRefs(c).some((r) => idx.get(r)?.kind === "ellipse")) return;
+    if (constraintRefs(c).some((r) => idx.get(r)?.kind === "spline")) return;
     switch (c.type) {
       case "coincident":
         add([...px(c.a), ...px(c.b)], (v) => pt(v, c.a)[0] - pt(v, c.b)[0]);
@@ -279,7 +280,9 @@ export function freedom(sketch: Sketch): Freedom {
             ? pointFixed(e.c) && isFixed(`${e.id}.r`)
             : e.kind === "ellipse"
               ? pointFixed(e.c) && [e.ax1, e.ax2].every((ax) => ends(ax).every(pointFixed))
-              : pointFixed(e.c) && pointFixed(e.a) && pointFixed(e.b) && isFixed(`${e.id}.r`);
+              : e.kind === "spline"
+                ? e.pts.every(pointFixed)
+                : pointFixed(e.c) && pointFixed(e.a) && pointFixed(e.b) && isFixed(`${e.id}.r`);
     if (ok) fixed.add(e.id);
   }
   return { dof, fixed };

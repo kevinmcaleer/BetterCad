@@ -41,6 +41,8 @@ import {
   type SolveResult,
   type Sketch,
   type Vec2,
+  sampleSpline,
+  splineGeo,
 } from "@bettercad/sketch";
 import {
   addSketch,
@@ -220,6 +222,8 @@ export function useSketch(d: SketchDeps) {
   /** The magnifier loupe, while it is open. */
   const [loupe, setLoupe] = useState<Loupe | null>(null);
   const closeLoupe = useRef<() => void>(() => {});
+  /** Ends a spline under way with the points clicked so far (Enter); false when there is none to end. */
+  const endSpline = useRef<() => boolean>(() => false);
   /** The loupe's canvas, and the last picture of the sketch it magnifies. */
   const loupeCanvas = useRef<HTMLCanvasElement | null>(null);
   const lastView = useRef<OverlayView | null>(null);
@@ -686,6 +690,8 @@ export function useSketch(d: SketchDeps) {
 
   const finish = useCallback(
     (force = false) => {
+      // Enter with a spline under way ends the spline, not the sketch.
+      if (!force && endSpline.current()) return;
       const s = current();
       if (!s) return end();
       const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction) || !!s.texts?.some((t) => !t.construction);
@@ -1183,13 +1189,13 @@ export function useSketch(d: SketchDeps) {
       }
       setEditPreview(null);
     };
-    const finishShape = (all: Snap[]) => {
+    const finishShape = (all: Snap[], closed = false) => {
       const L = live.current;
       if (!L.sketch || !L.frame) return;
       // Model edges and corners the clicks snapped to come in first, in the same undo step as the shape.
       // (A click can only carry a model snap once the snapping code has loaded.)
       const { sketch: s, clicks } = lazy.modelSnap?.resolveModelSnaps(L.sketch, L.frame, all) ?? { sketch: L.sketch, clicks: all };
-      const c = commit(L.stool, s, clicks, L.typed, L.sides);
+      const c = commit(L.stool, s, clicks, L.typed, L.sides, closed);
       if (!c) {
         if (s !== L.sketch) L.apply(s, "Project a point");
         setClicks([]);
@@ -1233,13 +1239,29 @@ export function useSketch(d: SketchDeps) {
       return eng.pick(p.x, p.y, "vertex", true) ?? eng.pick(p.x, p.y, "edge", true);
     };
 
-    /** Adds a drawing tool's click, and draws the shape once it has them all. */
-    const addClick = (s: Snap) => {
+    /** Takes a drawing tool's clicks so far, and draws the shape once it has them all. */
+    const takeClicks = (all: Snap[], mods: Mods, px: number) => {
       const L = live.current;
-      const all = [...L.clicks, s];
-      const need = CLICKS[L.stool as keyof typeof CLICKS];
-      if (all.length >= need) finishShape(all);
+      if (L.stool === "spline") {
+        const s = all[all.length - 1]!;
+        const before = all.slice(0, -1);
+        const prev = before[before.length - 1];
+        // A double-click (a second click on the same spot) ends it, open.
+        if (prev && dist(s.xy, prev.xy) < 3 * px) return before.length >= 2 ? finishShape(before) : setClicks(before);
+        // Back on the first point, or a Shift-click, closes it.
+        const first = before[0]!;
+        if (before.length >= 3 && (dist(s.xy, first.xy) < reach * px || (!!s.ref && s.ref === first.ref))) return finishShape(before, true);
+        if (mods.shift && all.length >= 3) return finishShape(all, true);
+        return setClicks(all);
+      }
+      if (all.length >= CLICKS[L.stool as keyof typeof CLICKS]) finishShape(all);
       else setClicks(all);
+    };
+    endSpline.current = () => {
+      const L = live.current;
+      if (L.stool !== "spline" || L.clicks.length < 2) return false;
+      finishShape(L.clicks);
+      return true;
     };
 
     const input = {
@@ -1362,7 +1384,7 @@ export function useSketch(d: SketchDeps) {
           setCursor(s);
           return true;
         }
-        addClick(s);
+        takeClicks([...L.clicks, s], mods, hit.px);
         return true;
       },
       move: (p: ScreenPoint, mods: Mods, pressed: boolean) => {
@@ -1487,9 +1509,7 @@ export function useSketch(d: SketchDeps) {
         tap = null;
         const hit = at(p);
         if (!t || !hit || !L.sketch) return;
-        const all = [...t.base, ...(t.dragged ? [t.start] : []), snapAt(hit.xy, hit.px, mods)];
-        if (all.length >= CLICKS[L.stool as keyof typeof CLICKS]) finishShape(all);
-        else setClicks(all);
+        takeClicks([...t.base, ...(t.dragged ? [t.start] : []), snapAt(hit.xy, hit.px, mods)], mods, hit.px);
       },
       cancel: () => {
         // A second finger came down to pinch or pan: nothing goes in.
@@ -2025,6 +2045,7 @@ export function sketchView(
     if (e.kind === "line") curves.push({ pts: [idx.xy(e.a), idx.xy(e.b)], shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "circle") curves.push({ pts: sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72), shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "ellipse") curves.push({ pts: sampleEllipse(ellipseGeo(idx, e)), shade: shade(e.id), dashed: e.construction });
+    else if (e.kind === "spline") curves.push({ pts: sampleSpline(splineGeo(idx, e)), shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "arc") {
       const c = idx.xy(e.c);
       curves.push({ pts: sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c))), shade: shade(e.id), dashed: e.construction });
@@ -2125,6 +2146,7 @@ function addedLines(before: Sketch, after: Sketch): Vec2[][] {
     if (e.kind === "line") return [[idx.xy(e.a), idx.xy(e.b)]];
     if (e.kind === "circle") return [sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72)];
     if (e.kind === "ellipse") return [sampleEllipse(ellipseGeo(idx, e))];
+    if (e.kind === "spline") return [sampleSpline(splineGeo(idx, e))];
     if (e.kind === "arc") {
       const c = idx.xy(e.c);
       return [sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c)))];

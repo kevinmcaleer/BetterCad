@@ -10,10 +10,12 @@ import {
   type Line,
   type Point,
   type Sketch,
+  type Spline,
   type Vec2,
 } from "./model";
 import { angleOf, arcFrom3, dist, polygonPoints, sub } from "./geom2d";
 import { measureDimension } from "./measure";
+import { fitSpline, splineDeriv } from "./spline";
 import { SketchIndex } from "./model";
 
 /**
@@ -93,6 +95,13 @@ export class Draft {
     const ax1 = this.line(at(u, -r1), at(u, r1), { construction: true });
     const ax2 = this.line(at([-u[1], u[0]], -r2), at([-u[1], u[0]], r2), { construction: true, auto: false });
     const e: Ellipse = { id: newId("e"), kind: "ellipse", c: ci, ax1, ax2, ...(construction && { construction }) };
+    this.entities.push(e);
+    this.ids.push(e.id);
+    return e.id;
+  }
+  /** A spline (#269) through the points, in order; `closed` runs it back to the first. */
+  spline(pts: (Vec2 | Id)[], closed = false, construction = false): Id {
+    const e: Spline = { id: newId("b"), kind: "spline", pts: pts.map((p) => this.point(p)), ...(closed && { closed }), ...(construction && { construction }) };
     this.entities.push(e);
     this.ids.push(e.id);
     return e.id;
@@ -330,3 +339,42 @@ export function drawPolygon(s: Sketch, c: Vec2, r: number, sides: number, angle 
   d.ids = [ring, ...lines];
   return d.done();
 }
+
+/**
+ * A spline from the tool's clicks (#269). A click on a point already there uses it. `closed` runs it back to the
+ * first point; an end on a line's end is made tangent to that line when it nearly carries on from it.
+ */
+export function drawSpline(s: Sketch, pts: (Vec2 | Id)[], closed = false): Drawn | null {
+  if (pts.length < (closed ? 3 : 2)) return null;
+  const d = new Draft(s);
+  const id = d.spline(pts, closed);
+  if (closed) return d.done();
+  const sk = d.done().sketch;
+  const idx = new SketchIndex(sk);
+  const sp = idx.get(id) as Spline;
+  const g = fitSpline(
+    sp.pts.map((p) => idx.xy(p)),
+    false,
+  );
+  for (const [p, leaving] of [
+    [sp.pts[0]!, true],
+    [sp.pts[sp.pts.length - 1]!, false],
+  ] as const) {
+    const run = splineDeriv(g, leaving ? 0 : g.bez.length);
+    for (const l of sk.entities) {
+      if (l.kind !== "line" || (l.a !== p && l.b !== p)) continue;
+      const far = idx.xy(l.a === p ? l.b : l.a);
+      const at = idx.xy(p);
+      const along = leaving ? sub(at, far) : sub(far, at);
+      const cos = (along[0] * run[0] + along[1] * run[1]) / (Math.hypot(...along) * Math.hypot(...run) || 1);
+      if (cos > Math.cos((TANGENT_SNAP_DEG * Math.PI) / 180)) {
+        d.constrain({ type: "tangent", a: id, b: l.id });
+        break;
+      }
+    }
+  }
+  return d.done();
+}
+
+/** A spline end that leaves a line's end within this many degrees of carrying straight on is made tangent to it. */
+export const TANGENT_SNAP_DEG = 15;

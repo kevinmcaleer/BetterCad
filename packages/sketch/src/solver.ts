@@ -144,6 +144,8 @@ function constraintPrimitives(c: Constraint, idx: SketchIndex): SketchPrimitive[
   const id = c.id;
   // Ellipses are held by their centre and axes; nothing else ties to the curve itself yet.
   if (c.type !== "concentric" && constraintRefs(c).some((r) => kind(r) === "ellipse")) return [];
+  // A spline is its fit points: a tangent on it shapes the curve when it is drawn, and nothing else ties to it yet.
+  if (constraintRefs(c).some((r) => kind(r) === "spline")) return [];
   switch (c.type) {
     case "coincident":
       return [{ id, type: "p2p_coincident", p1_id: c.a, p2_id: c.b }];

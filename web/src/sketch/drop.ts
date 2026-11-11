@@ -104,7 +104,9 @@ export function unsnap(sketch: Sketch, p: Id): { sketch: Sketch; point: Id } | n
       ? { c: q }
       : split.kind === "line"
         ? { a: swap(split.a), b: swap(split.b) }
-        : { a: swap(split.a), b: swap(split.b), c: swap(split.c) }),
+        : split.kind === "spline"
+          ? { pts: split.pts.map(swap) }
+          : { a: swap(split.a), b: swap(split.b), c: swap(split.c) }),
   };
   const entities = [
     ...sketch.entities.map((e) => (e.id === split.id ? moved : e)),

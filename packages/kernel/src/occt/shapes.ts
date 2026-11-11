@@ -2,7 +2,7 @@ import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Sh
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
-import type { EllipseSeg, LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
+import type { EllipseSeg, SplineSeg, LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
 import type { CopyMove, Plane } from "../pattern";
 
@@ -210,6 +210,26 @@ function ellipseEdge(oc: OC, f: Frame, P: (p: Vec2) => gp_Pnt, g: EllipseSeg): T
   return (g.rev ? e.Reversed() : e) as TopoDS_Edge;
 }
 
+/**
+ * A spline (#269) as one B-spline edge: its cubic pieces end to end, so the solid's edge is exactly the curve the
+ * sketch draws. The joins are knots of full multiplicity, then thinned where the curve is smooth there (all of a fitted
+ * spline's joins), which leaves a C2 curve that OCCT measures and offsets well.
+ */
+function splineEdge(oc: OC, P: (p: Vec2) => gp_Pnt, g: SplineSeg): TopoDS_Edge {
+  const pieces = (g.poles.length - 1) / 3;
+  const pts = new oc.NCollection_Array1_gp_Pnt(1, g.poles.length);
+  g.poles.forEach((p, i) => pts.SetValue(i + 1, P(p)));
+  const knots = new oc.NCollection_Array1_double(1, pieces + 1);
+  const mults = new oc.NCollection_Array1_int(1, pieces + 1);
+  for (let i = 0; i <= pieces; i++) {
+    knots.SetValue(i + 1, g.knots[i]!);
+    mults.SetValue(i + 1, i === 0 || i === pieces ? 4 : 3);
+  }
+  const curve = new oc.Geom_BSplineCurve(pts, knots, mults, 3, false);
+  for (let i = pieces; i >= 2; i--) curve.RemoveKnot(i, 1, 1e-9);
+  return new oc.BRepBuilderAPI_MakeEdge(curve).Edge();
+}
+
 /** A closed outline of lines and arcs on a sketch frame, as a wire in world space. */
 function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: number, named?: [TopoDS_Shape, string][], tag = ""): TopoDS_Shape {
   const f = spec.frame;
@@ -223,6 +243,7 @@ function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: n
     if (g.kind === "line") e = new oc.BRepBuilderAPI_MakeEdge(P(g.a), P(g.b)).Edge();
     else if (g.kind === "arc") e = new oc.BRepBuilderAPI_MakeEdge(new oc.GC_MakeArcOfCircle(P(g.a), P(g.m), P(g.b)).Value()).Edge();
     else if (g.kind === "ellipse") e = ellipseEdge(oc, f, P, g);
+    else if (g.kind === "spline") e = splineEdge(oc, P, g);
     else {
       const c = P(g.c);
       const circ = new oc.gp_Circ(new oc.gp_Ax2(c, new oc.gp_Dir(f.normal[0], f.normal[1], f.normal[2]), new oc.gp_Dir(f.x[0], f.x[1], f.x[2])), g.r);

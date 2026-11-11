@@ -17,6 +17,9 @@ import {
   drawEllipse,
   tangentArcCentre,
   drawSlot,
+  drawSpline,
+  fitSpline,
+  sampleSpline,
   sampleEllipse,
   norm,
   scale,
@@ -42,6 +45,7 @@ export type SketchToolId =
   | "arcTangent"
   | "slot"
   | "ellipse"
+  | "spline"
   | "polygon"
   | "point"
   | "text"
@@ -54,7 +58,7 @@ export type SketchToolId =
   | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
-export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "arcCentre" | "arcTangent" | "slot" | "ellipse" | "polygon" | "point";
+export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "arcCentre" | "arcTangent" | "slot" | "ellipse" | "spline" | "polygon" | "point";
 export const isDrawTool = (t: SketchToolId): t is DrawToolId => t in CLICKS;
 
 export interface SketchTool {
@@ -144,6 +148,14 @@ export const SKETCH_TOOLS: SketchTool[] = [
     help: "Click the centre, then the end of one axis, then how far the other reaches. Type the width across each axis.",
     fields: ["First axis", "Second axis"],
   },
+  {
+    id: "spline",
+    label: "Spline",
+    icon: "spline",
+    key: "b",
+    help: "Click each point the curve passes through. Double-click or Enter ends it; click the first point, or Shift-click, to close it.",
+    fields: [],
+  },
   { id: "polygon", label: "Polygon", icon: "polygon", key: "n", help: "Click the centre, then a corner. Set the sides in the bar.", fields: ["Radius"] },
   {
     id: "point",
@@ -222,7 +234,10 @@ export const toolById = (id: SketchToolId): SketchTool & { modes?: SketchTool[] 
   return modes.length > 1 ? { ...t, modes } : t;
 };
 
-/** How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. */
+/**
+ * How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. The
+ * spline takes as many as you give it, until a double-click, Enter or a click on its first point.
+ */
 export const CLICKS: Record<DrawToolId, number> = {
   line: 2,
   rectangle: 2,
@@ -234,6 +249,7 @@ export const CLICKS: Record<DrawToolId, number> = {
   ellipse: 3,
   polygon: 2,
   point: 1,
+  spline: Infinity,
 };
 
 export interface Preview {
@@ -258,6 +274,11 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
     case "circle": {
       const r = dist(a, cursor);
       return { lines: [sampleArc(a, r, 0, 2 * Math.PI, 72)], values: [r * 2] };
+    }
+    case "spline": {
+      const pts = [...clicks, cursor].filter((p, i, all) => i === 0 || dist(p, all[i - 1]!) > 1e-6);
+      if (pts.length < 2) return { lines: [], values: [] };
+      return { lines: [sampleSpline(fitSpline(pts))], values: [] };
     }
     case "polygon": {
       const r = dist(a, cursor);
@@ -373,9 +394,17 @@ export interface Commit {
  * Finishes one shape. `typed` holds the sizes typed into the pills (undefined where nothing was typed); a typed size
  * becomes a driving dimension and moves the last click to match.
  */
-export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed: (number | undefined)[] = [], sides = 6): Commit | null {
+export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed: (number | undefined)[] = [], sides = 6, closed = false): Commit | null {
   const d = new Draft(sketch);
   switch (tool) {
+    case "spline": {
+      // A click on the spot of the one before (a double-click's second click) adds nothing.
+      const kept = clicks.filter((c, i) => i === 0 || dist(c.xy, clicks[i - 1]!.xy) > 1e-6);
+      if (kept.length < (closed ? 3 : 2)) return null;
+      const ids = kept.map((c) => place(d, c));
+      const r = drawSpline(d.done().sketch, ids, closed);
+      return r && { sketch: r.sketch, label: closed ? "Draw a closed spline" : "Draw a spline" };
+    }
     case "point": {
       const [s0] = clicks as [Snap];
       // A point already there (a corner, a centre, the origin's point) is not doubled.
@@ -708,14 +737,24 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
       const round = (k?: string) => curve(k) || k === "ellipse";
       return two && round(kinds[0]) && round(kinds[1]) ? [{ type, a, b }] : hint;
     }
-    case "tangent":
+    case "tangent": {
+      // A spline end leaves along a line it shares that end with (#269).
+      const sp = picked.map((id) => sketch.entities.find((e) => e.id === id));
+      const [s, l] = sp[0]?.kind === "spline" ? [sp[0], sp[1]] : [sp[1], sp[0]];
+      if (two && s?.kind === "spline") {
+        const ends = s.closed ? [] : [s.pts[0], s.pts[s.pts.length - 1]];
+        return l?.kind === "line" && (ends.includes(l.a) || ends.includes(l.b))
+          ? [{ type, a: s.id, b: l.id }]
+          : "A spline is tangent to a line that ends on one of its ends";
+      }
       return two && (curve(kinds[0]) || curve(kinds[1])) && kinds.every((k) => k === "line" || curve(k)) ? [{ type, a, b }] : hint;
+    }
     case "coincident": {
       if (two && only(["point"])) return [{ type, a, b }];
       const p = picked[kinds.indexOf("point")];
       const e = picked.find((_, i) => kinds[i] !== "point");
       // Points can't sit on an ellipse yet: the solver holds an ellipse by its axes alone.
-      return two && p && e && !kinds.includes("ellipse") ? [{ type: "pointOn", p, e }] : hint;
+      return two && p && e && !kinds.includes("ellipse") && !kinds.includes("spline") ? [{ type: "pointOn", p, e }] : hint;
     }
     case "midpoint": {
       const p = picked[kinds.indexOf("point")];
@@ -747,7 +786,8 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
             const l = sketch.entities.find((x) => x.id === ax);
             if (l?.kind === "line") [l.a, l.b].forEach((p) => pts.add(p));
           }
-        } else [e.c, ...(e.kind === "arc" ? [e.a, e.b] : [])].forEach((p) => pts.add(p));
+        } else if (e.kind === "spline") e.pts.forEach((p) => pts.add(p));
+        else [e.c, ...(e.kind === "arc" ? [e.a, e.b] : [])].forEach((p) => pts.add(p));
       }
       return pts.size ? [...pts].map((p) => ({ type, p })) : hint;
     }

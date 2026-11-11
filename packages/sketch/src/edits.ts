@@ -101,12 +101,9 @@ export function extendAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
   // A grown line's length no longer holds; an arc's radius does.
   if (e.kind === "line") d.dimensions = d.dimensions.filter((dm) => !(dm.refs.includes(id) && dm.kind === "length"));
   const other = idx.get(target.meets);
-  const landed =
-    other && other.kind !== "point" && other.kind !== "ellipse" && other.kind !== "circle"
-      ? [other.a, other.b].find((q) => dist(idx.xy(q), target.xy) < 1e-6)
-      : undefined;
+  const landed = other && (other.kind === "line" || other.kind === "arc") ? [other.a, other.b].find((q) => dist(idx.xy(q), target.xy) < 1e-6) : undefined;
   if (landed) d.constrain({ type: "coincident", a: p, b: landed });
-  else if (other && other.kind !== "point" && other.kind !== "ellipse") d.constrain({ type: "pointOn", p, e: other.id });
+  else if (other && (other.kind === "line" || other.kind === "arc" || other.kind === "circle")) d.constrain({ type: "pointOn", p, e: other.id });
   return d.done().sketch;
 }
 
