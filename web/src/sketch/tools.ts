@@ -11,7 +11,11 @@ import {
   add,
   cross,
   dot,
+  AXIS_SNAP_DEG,
+  directionAt,
+  drawArcTangent,
   drawEllipse,
+  tangentArcCentre,
   drawSlot,
   sampleEllipse,
   norm,
@@ -34,6 +38,8 @@ export type SketchToolId =
   | "rectangle"
   | "circle"
   | "arc"
+  | "arcCentre"
+  | "arcTangent"
   | "slot"
   | "ellipse"
   | "polygon"
@@ -46,7 +52,7 @@ export type SketchToolId =
   | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
-export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "slot" | "ellipse" | "polygon" | "point";
+export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "arcCentre" | "arcTangent" | "slot" | "ellipse" | "polygon" | "point";
 export const isDrawTool = (t: SketchToolId): t is DrawToolId => t in CLICKS;
 
 export interface SketchTool {
@@ -57,6 +63,12 @@ export interface SketchTool {
   help: string;
   /** Sizes that can be typed while drawing, in order (Tab moves between them). */
   fields: string[];
+  /**
+   * A way of using another tool (#405): picked from that tool's bar, not the palette, and shown as that tool. `mode`
+   * names it on the bar.
+   */
+  modeOf?: SketchToolId;
+  mode?: string;
 }
 
 export const SKETCH_TOOLS: SketchTool[] = [
@@ -85,7 +97,35 @@ export const SKETCH_TOOLS: SketchTool[] = [
     fields: ["Width", "Height"],
   },
   { id: "circle", label: "Circle", icon: "circle", key: "c", help: "Click the centre, then the edge. Type the diameter.", fields: ["Diameter"] },
-  { id: "arc", label: "Arc", icon: "arc", key: "a", help: "Click where the arc starts and ends, then a point it passes through.", fields: [] },
+  {
+    id: "arc",
+    label: "Arc",
+    icon: "arc",
+    key: "a",
+    help: "Click where the arc starts and ends, then a point it passes through.",
+    fields: [],
+    mode: "3 point",
+  },
+  {
+    id: "arcCentre",
+    label: "Arc",
+    icon: "arc",
+    key: "",
+    help: "Click the centre, then where the arc starts, then where it ends. Type the radius.",
+    fields: ["Radius"],
+    modeOf: "arc",
+    mode: "Centre",
+  },
+  {
+    id: "arcTangent",
+    label: "Arc",
+    icon: "arc",
+    key: "",
+    help: "Click the end of a line or arc, then where the arc ends. It carries on tangent. Type the radius.",
+    fields: ["Radius"],
+    modeOf: "arc",
+    mode: "Tangent",
+  },
   {
     id: "slot",
     label: "Slot",
@@ -147,10 +187,26 @@ export const SKETCH_TOOLS: SketchTool[] = [
   { id: "project", label: "Project", icon: "body", key: "j", help: "Click a face of a part to bring its edges into the sketch.", fields: [] },
 ];
 
-export const toolById = (id: SketchToolId) => SKETCH_TOOLS.find((t) => t.id === id)!;
+export const toolById = (id: SketchToolId): SketchTool & { modes?: SketchTool[] } => {
+  const t = SKETCH_TOOLS.find((x) => x.id === id)!;
+  const base = t.modeOf ?? t.id;
+  const modes = SKETCH_TOOLS.filter((x) => x.id === base || x.modeOf === base);
+  return modes.length > 1 ? { ...t, modes } : t;
+};
 
 /** How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. */
-export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, slot: 3, ellipse: 3, polygon: 2, point: 1 };
+export const CLICKS: Record<DrawToolId, number> = {
+  line: 2,
+  rectangle: 2,
+  circle: 2,
+  arc: 3,
+  arcCentre: 3,
+  arcTangent: 2,
+  slot: 3,
+  ellipse: 3,
+  polygon: 2,
+  point: 1,
+};
 
 export interface Preview {
   /** Polylines in sketch mm. */
@@ -160,7 +216,7 @@ export interface Preview {
 }
 
 /** What a tool would draw now, from its placed clicks and the cursor. */
-export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides = 6): Preview {
+export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides = 6, from?: Vec2 | null): Preview {
   const [a] = clicks;
   if (!a) return { lines: [], values: [] };
   switch (tool) {
@@ -202,9 +258,31 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
       const [s, e] = fit.ccw ? [a, b] : [b, a];
       return { lines: [sampleArc(fit.c, fit.r, angleOf(sub(s, fit.c)), angleOf(sub(e, fit.c)))], values: [fit.r] };
     }
+    case "arcCentre": {
+      const b = clicks[1];
+      const r = dist(a, b ?? cursor);
+      if (!b) return { lines: [[a, cursor]], values: [r] };
+      const [s0, e0] = turnsLeft(a, b, cursor) ? [b, cursor] : [cursor, b];
+      return { lines: [sampleArc(a, r, angleOf(sub(s0, a)), angleOf(sub(e0, a))), [a, b]], values: [r] };
+    }
+    case "arcTangent": {
+      // `from` is the way the curve the arc starts from leaves its end.
+      const c = from ? tangentArcCentre(a, from, cursor) : null;
+      if (!c) return { lines: [[a, cursor]], values: [] };
+      const [s0, e0] = turnsLeft(a, add(a, from!), cursor, true) ? [a, cursor] : [cursor, a];
+      return { lines: [sampleArc(c, dist(a, c), angleOf(sub(s0, c)), angleOf(sub(e0, c)))], values: [dist(a, c)] };
+    }
     default:
       return { lines: [], values: [] };
   }
+}
+
+/**
+ * Whether going from b to p turns anticlockwise about c (a centre arc's sweep follows the pointer the short way), or,
+ * with `ahead`, whether p is left of the heading from c through b.
+ */
+function turnsLeft(c: Vec2, b: Vec2, p: Vec2, ahead = false): boolean {
+  return ahead ? cross(sub(b, c), sub(p, c)) > 0 : cross(sub(b, c), sub(p, c)) >= 0;
 }
 
 /** A slot's width: twice the pointer's distance from the line through its two centres. */
@@ -221,6 +299,16 @@ function slotOutline(a: Vec2, b: Vec2, r: number): Vec2[] {
     ...sampleArc(a, r, t + Math.PI / 2, t + (3 * Math.PI) / 2, 24),
     add(b, scale([Math.sin(t), -Math.cos(t)], r)),
   ];
+}
+
+/** The newest arc with an end at `p`, which a line drawn on from there can carry on tangent to. */
+function arcEndingAt(s: Sketch, p: Id): Id | null {
+  for (const e of [...s.entities].reverse()) {
+    if (e.construction) continue;
+    if (e.kind === "line" && (e.a === p || e.b === p)) return null;
+    if (e.kind === "arc" && (e.a === p || e.b === p)) return e.id;
+  }
+  return null;
 }
 
 /**
@@ -282,6 +370,13 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
       if (a === b) return null;
       const id = d.line(a, b);
       if (length !== undefined && length > 0) d.dimension("length", [id], length);
+      // Leaving an arc's end nearly along it, the line carries on tangent (#405).
+      const arc = s0.kind === "end" && s0.ref ? arcEndingAt(sketch, s0.ref) : null;
+      const along = arc && directionAt(sketch, s0.ref!);
+      if (arc && along) {
+        const u = norm(sub(end.xy, s0.xy));
+        if ((Math.acos(Math.max(-1, Math.min(1, dot(u, along)))) * 180) / Math.PI < AXIS_SNAP_DEG) d.constrain({ type: "tangent", a: arc, b: id });
+      }
       return { sketch: d.done().sketch, label: "Draw a line", end: b };
     }
     case "rectangle": {
@@ -327,6 +422,30 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
       const b = place(d, s1);
       d.arc(fit.c, fit.ccw ? a : b, fit.ccw ? b : a);
       return { sketch: d.done().sketch, label: "Draw an arc" };
+    }
+    case "arcCentre": {
+      const [s0, s1, s2] = clicks as [Snap, Snap, Snap];
+      const r = typed[0] ?? dist(s0.xy, s1.xy);
+      if (!(r > 1e-6) || dist(s0.xy, s2.xy) < 1e-6) return null;
+      const c = place(d, s0);
+      const o = d.xy(c);
+      const startXy = add(o, scale(norm(sub(s1.xy, s0.xy)), r));
+      const a = typed[0] === undefined ? place(d, s1) : d.point(startXy);
+      const endXy = add(o, scale(norm(sub(s2.xy, s0.xy)), r));
+      // The end lands on the circle, along the pointer's direction; a point already there is used.
+      const b = s2.ref && s2.kind === "end" && Math.abs(dist(s2.xy, o) - r) < 1e-6 ? s2.ref : d.point(endXy);
+      if (a === b || dist(d.xy(a), d.xy(b)) < 1e-6) return null;
+      const id = turnsLeft(s0.xy, s1.xy, s2.xy) ? d.arc(c, a, b) : d.arc(c, b, a);
+      if (typed[0] !== undefined) d.dimension("radius", [id], r);
+      return { sketch: d.done().sketch, label: "Draw an arc", end: b };
+    }
+    case "arcTangent": {
+      const [s0, s1] = clicks as [Snap, Snap];
+      if (!s0.ref || s0.kind !== "end") return null;
+      const b = place(d, s1);
+      if (b === s0.ref) return null;
+      const r = drawArcTangent(d.done().sketch, s0.ref, b, typed[0]);
+      return r && { sketch: r.sketch, label: "Draw an arc", end: b };
     }
     case "slot": {
       // Two snaps when Enter is pressed after the first click with both sizes typed; three after the width click.

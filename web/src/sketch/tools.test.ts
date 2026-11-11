@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Draft, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
 import { Solver } from "@bettercad/sketch/solver";
-import { addConstraints, axisLine, commit, constraintsFor, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
+import { addConstraints, axisLine, commit, constraintsFor, toolById, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
 import { ORIGIN, middleOf, pickAt, pointPickAt, type Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
@@ -106,6 +106,45 @@ describe("sketch tools", () => {
     expect(constraintsFor("fix", ring, [e])).toHaveLength(5);
     const p = ring.entities.find((x) => x.kind === "point" && !x.construction)!.id;
     expect(typeof constraintsFor("coincident", ring, [p, e])).toBe("string");
+  });
+
+  it("gives the Arc tool three kinds, the extra two picked from its bar", () => {
+    expect(toolById("arcTangent").modes!.map((m) => m.mode)).toEqual(["3 point", "Centre", "Tangent"]);
+    expect(toolById("arc").modes).toHaveLength(3);
+    expect(toolById("line").modes).toBeUndefined();
+  });
+
+  it("draws a centre-point arc the way the pointer turns, with a typed radius as a dimension", () => {
+    expect(preview("arcCentre", [[0, 0]], [10, 0]).values).toEqual([10]);
+    const left = commit("arcCentre", newSketch(), [free(0, 0), free(10, 0), free(0, 7)])!;
+    const arc = left.sketch.entities.find((e) => e.kind === "arc") as { a: string; b: string; r: number };
+    const at = (id: string) => left.sketch.entities.find((e) => e.id === id) as { x: number; y: number };
+    expect(arc.r).toBe(10);
+    // Anticlockwise from 3 o'clock to 12, the end pulled onto the circle.
+    expect([at(arc.a).x, at(arc.a).y]).toEqual([10, 0]);
+    expect([at(arc.b).x, at(arc.b).y].map((v) => Math.round(v * 1e9) / 1e9 + 0)).toEqual([0, 10]);
+    const right = commit("arcCentre", newSketch(), [free(0, 0), free(10, 0), free(0, -7)], [12])!;
+    const r2 = right.sketch.entities.find((e) => e.kind === "arc") as { a: string; b: string };
+    const at2 = (id: string) => right.sketch.entities.find((e) => e.id === id) as { x: number; y: number };
+    // Clockwise is stored the other way round: from 6 o'clock up to 3.
+    expect(Math.round(at2(r2.a).y)).toBe(-12);
+    expect(right.sketch.dimensions.map((d) => `${d.kind} ${d.value}`)).toEqual(["radius 12"]);
+  });
+
+  it("carries a tangent arc on from a line's end, and a line on tangent from an arc's end", () => {
+    const line = commit("line", newSketch(), [free(0, 0), free(20, 0)])!;
+    const end: Snap = { xy: [20, 0], kind: "end", ref: line.end!, label: "End" };
+    const p = preview("arcTangent", [[20, 0]], [30, 10], 6, [1, 0]);
+    expect(p.values[0]).toBeCloseTo(10, 9);
+    const arc = commit("arcTangent", line.sketch, [end, free(30, 10)])!;
+    expect(arc.sketch.constraints.map((c) => c.type)).toEqual(["horizontal", "tangent"]);
+    expect(commit("arcTangent", line.sketch, [free(20, 0), free(30, 10)])).toBeNull();
+    // On from the arc's end, heading up: nearly along it, so tangent; well off it, not.
+    const tip: Snap = { xy: [30, 10], kind: "end", ref: arc.end!, label: "End" };
+    const on = commit("line", arc.sketch, [tip, free(30.2, 30)])!;
+    expect(on.sketch.constraints.filter((c) => c.type === "tangent")).toHaveLength(2);
+    const off = commit("line", arc.sketch, [tip, free(40, 30)])!;
+    expect(off.sketch.constraints.filter((c) => c.type === "tangent")).toHaveLength(1);
   });
 
   it("says what a constraint needs until the selection fits", () => {

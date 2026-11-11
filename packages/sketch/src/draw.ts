@@ -14,6 +14,7 @@ import {
 } from "./model";
 import { angleOf, arcFrom3, dist, polygonPoints, sub } from "./geom2d";
 import { measureDimension } from "./measure";
+import { SketchIndex } from "./model";
 
 /**
  * What each drawing tool adds to a sketch (#53), as pure functions: the entities, the automatic constraints
@@ -217,6 +218,62 @@ export function drawArcCentre(s: Sketch, c: Vec2, start: Vec2 | Id, end: Vec2): 
   const r = dist(c, d.xy(a));
   const ang = angleOf(sub(end, c));
   d.arc(c, a, [c[0] + r * Math.cos(ang), c[1] + r * Math.sin(ang)]);
+  return d.done();
+}
+
+/**
+ * The way a curve runs as it leaves its end `p` (#405), as a unit vector: along a line away from its other end, or
+ * along an arc's turn. The newest line or arc ending there is the one followed. Null when nothing ends at `p`.
+ */
+export function directionAt(s: Sketch, p: Id): Vec2 | null {
+  const idx = new SketchIndex(s);
+  const at = idx.xy(p);
+  for (const e of [...s.entities].reverse()) {
+    if (e.construction) continue;
+    if (e.kind === "line" && (e.a === p || e.b === p)) {
+      const d = sub(at, idx.xy(e.a === p ? e.b : e.a));
+      const l = Math.hypot(...d);
+      if (l > 1e-9) return [d[0] / l, d[1] / l];
+    }
+    if (e.kind === "arc" && (e.a === p || e.b === p)) {
+      const r = sub(at, idx.xy(e.c));
+      const l = Math.hypot(...r) || 1;
+      // Anticlockwise, an arc leaves its end b turning left of the radius; it leaves a the other way.
+      return e.b === p ? [-r[1] / l, r[0] / l] : [r[1] / l, -r[0] / l];
+    }
+  }
+  return null;
+}
+
+/** The centre of the arc that leaves `a` heading along `dir` and passes through `b`. Null when b is straight ahead. */
+export function tangentArcCentre(a: Vec2, dir: Vec2, b: Vec2): Vec2 | null {
+  const n: Vec2 = [-dir[1], dir[0]];
+  const v = sub(b, a);
+  const k = n[0] * v[0] + n[1] * v[1];
+  if (Math.abs(k) < 1e-9 * (Math.hypot(...v) || 1)) return null;
+  const t = (v[0] ** 2 + v[1] ** 2) / (2 * k);
+  return [a[0] + n[0] * t, a[1] + n[1] * t];
+}
+
+/**
+ * An arc carrying on from the end `p` of a line or arc, tangent to it, to `end` (#405). A tangent constraint keeps it
+ * so. `radius` becomes a radius dimension. Null when nothing ends at `p` or `end` is straight ahead.
+ */
+export function drawArcTangent(s: Sketch, p: Id, end: Vec2 | Id, radius?: number): Drawn | null {
+  const dir = directionAt(s, p);
+  if (!dir) return null;
+  // The same curve directionAt followed: the newest line or arc ending at p.
+  const from = [...s.entities].reverse().find((e) => !e.construction && (e.kind === "line" || e.kind === "arc") && (e.a === p || e.b === p))!;
+  const d = new Draft(s);
+  const b = d.point(end);
+  const a0 = d.xy(p);
+  const c = tangentArcCentre(a0, dir, d.xy(b));
+  if (!c || dist(a0, d.xy(b)) < 1e-9) return null;
+  // Turning left it runs anticlockwise from p; turning right, anticlockwise from the far end back to p.
+  const left = dir[0] * (d.xy(b)[1] - a0[1]) - dir[1] * (d.xy(b)[0] - a0[0]) > 0;
+  const arc = left ? d.arc(c, p, b) : d.arc(c, b, p);
+  d.constrain({ type: "tangent", a: from.id, b: arc });
+  if (radius !== undefined) d.dimension("radius", [arc], radius);
   return d.done();
 }
 

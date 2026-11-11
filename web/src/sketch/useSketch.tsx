@@ -22,6 +22,7 @@ import {
   sampleArc,
   sampleEllipse,
   ellipseGeo,
+  directionAt,
   slideAcross,
   sub,
   toSketch,
@@ -1118,7 +1119,11 @@ export function useSketch(d: SketchDeps) {
       eng.showHover(null);
       // The line tool chains from its last point, until it meets a point already there.
       const last = clicks[clicks.length - 1]!;
-      if (L.stool === "line" && c.end && !(last.ref && (last.kind === "end" || last.kind === "centre" || last.kind === "origin"))) {
+      if (
+        (L.stool === "line" || L.stool === "arcTangent") &&
+        c.end &&
+        !(last.ref && (last.kind === "end" || last.kind === "centre" || last.kind === "origin"))
+      ) {
         const p = c.sketch.entities.find((e) => e.id === c.end);
         setClicks(p?.kind === "point" ? [{ xy: [p.x, p.y], kind: "end", ref: p.id, label: "" }] : []);
       } else setClicks([]);
@@ -1561,9 +1566,10 @@ export function useSketch(d: SketchDeps) {
             clicks.map((c) => c.xy),
             cursor.xy,
             sides,
+            stool === "arcTangent" && clicks[0]?.ref && sketch ? directionAt(sketch, clicks[0].ref) : null,
           )
         : null,
-    [cursor, stool, clicks, sides],
+    [cursor, stool, clicks, sides, sketch],
   );
 
   useEffect(() => {
@@ -1688,7 +1694,7 @@ export function useSketch(d: SketchDeps) {
     setTyped([]);
     // Back to the view, so the next key is a shortcut again rather than more typing.
     document.getElementById("bc-view")?.focus();
-    if (L.stool === "line" && c.end) {
+    if ((L.stool === "line" || L.stool === "arcTangent") && c.end) {
       const p = c.sketch.entities.find((e) => e.id === c.end);
       setClicks(p?.kind === "point" ? [{ xy: [p.x, p.y], kind: "end", ref: p.id, label: "" }] : []);
     } else setClicks([]);
@@ -1709,7 +1715,7 @@ export function useSketch(d: SketchDeps) {
   const commands = useMemo<Command[]>(() => {
     const has = () => live.current.sel.length > 0;
     return [
-      ...SKETCH_TOOLS.map<Command>((t) => ({
+      ...SKETCH_TOOLS.filter((t) => !t.modeOf).map<Command>((t) => ({
         id: `sketch.${t.id}`,
         scope: "sketch",
         label: t.label,
