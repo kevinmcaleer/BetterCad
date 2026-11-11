@@ -3837,6 +3837,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             mode={vp.mode}
             style={vp.style}
             grid={vp.grid}
+            colourCycle={vp.colourCycle}
             ortho={vp.ortho}
             view={vp.view}
             section={sketch.slice ?? vp.section}

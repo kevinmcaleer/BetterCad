@@ -41,6 +41,14 @@ export function StageBars({ tool, onArmTool, vp, onePart, onRender, say }: Stage
             { id: "lineart", label: "Line art", keys: "L", checked: vp.style === "lineart", onSelect: () => vp.setStyle("lineart") },
             { kind: "separator", id: "grid-sep" },
             { id: "grid", label: "Floor grid", checked: vp.grid, multiple: true, onSelect: vp.toggleGrid },
+            {
+              id: "cycle",
+              label: "Colour cycle",
+              keys: formatCombo("shift+n"),
+              checked: vp.colourCycle,
+              multiple: true,
+              onSelect: vp.toggleColourCycle,
+            },
             ...(onRender
               ? ([
                   { kind: "separator", id: "render-sep" },
