@@ -159,6 +159,53 @@ function angleBracket(oc: OC): ModelDoc {
   return t.doc;
 }
 
+/**
+ * 01-02 Post Cap, ABS: a cap turned from a half section with an elliptical bead round its rim, a handle of elliptical
+ * section swept round an R17 arc and rounded where it meets the cap, then hollowed from below.
+ */
+function postCap(oc: OC): ModelDoc {
+  const t = new Timeline("Post Cap", oc);
+  // The half section: a Ø49 × 40 block with a Ø9 stem to 48, turned round Z.
+  const section = t.sketch(world("XZ"), (d) =>
+    outline(
+      d,
+      [0, 0],
+      [
+        [24.5, 0],
+        [24.5, 40],
+        [4.5, 40],
+        [4.5, 48],
+        [0, 48],
+      ],
+    ),
+  );
+  const body = t.revolve({ sketch: section, seeds: [[10, 10]], axis: { kind: "y" }, angle: 360, operation: "new" });
+  // The bead: a 40 × 16 ellipse at the stem's edge, 40 up, cut at the axis by a line, its right half turned on.
+  const bead = t.sketch(world("XZ"), (d) => {
+    d.ellipse([4.5, 40], 20, 8, 0);
+    d.line([0, 30], [0, 50]);
+  });
+  t.revolve({ sketch: bead, seeds: [[12, 40]], split: true, axis: { kind: "y" }, angle: 360, operation: "join", target: body });
+  // The handle: a 10 × 4 ellipse 15 mm left of the axis, 3 up, swept round an R17 arc to 37 up.
+  const handle = t.sketch(world("YZ", -15), (d) => d.ellipse([0, 3], 5, 2, 0));
+  const path = t.sketch(world("XZ"), (d) => d.arc([-15, 20], [-15, 37], [-15, 3]));
+  const arc = t.doc.features.find((f) => f.id === path);
+  const curves = arc?.type === "sketch" ? arc.sketch.entities.filter((e) => e.kind === "arc").map((e) => e.id) : [];
+  t.sweep({ sketch: handle, seeds: [[0, 3]], split: true, path: { sketch: path, curves }, operation: "join", target: body });
+  // R1 where the handle meets the cap's side.
+  t.finish({
+    type: "fillet",
+    part: body,
+    refs: t.edges(body, ([x, y, z]) => x < -20 && z > 0.5 && z < 39.5 && near0(Math.hypot(x, y), 24.5, 0.05)),
+    size: 1,
+  });
+  // Hollow from below: Ø42 at the bottom, its side leaning in 4° to 37 up, rounded R3 into the top.
+  const lean = 21 - 37 / Math.tan((86 * Math.PI) / 180);
+  const inside = t.sketch(world("XZ"), (d) => outline(d, [0, 0], [[21, 0], ...roundCorner([21, 0], [lean, 37], [0, 37], 3), [0, 37]]));
+  t.revolve({ sketch: inside, seeds: [[5, 10]], axis: { kind: "y" }, angle: 360, operation: "cut", target: body });
+  return t.doc;
+}
+
 /** 01-01 Bearing Bracket, steel: a slotted base, two counterbored uprights, rounded corners and a dovetail underneath. */
 function bearingBracket(oc: OC): ModelDoc {
   const t = new Timeline("Bearing Bracket", oc);
@@ -432,13 +479,7 @@ function flangedHub(oc: OC): ModelDoc {
 
 export const PARTS: SpeedPart[] = (
   [
-    {
-      id: "ppp0102",
-      name: "01-02 Post Cap",
-      mass: 43.09,
-      density: DENSITY.abs,
-      missing: ["An ellipse in sketches, for the rim's bead and the handle's section", "Sweep, to run the handle's section along its arc"],
-    },
+    { id: "ppp0102", name: "01-02 Post Cap", mass: 43.09, density: DENSITY.abs, build: postCap },
     { id: "ppp0105", name: "01-05 Paste Sleeve", mass: 57.08, density: DENSITY.abs, build: pasteSleeve },
     {
       id: "ppp0107",
