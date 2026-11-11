@@ -80,6 +80,20 @@ describe("exports of the model (#80, #81, #86)", () => {
     expect(() => x.estimate({ doc: d, bodies: ["h"], format: "stl", deflection: 0.1 })).toThrow("Only hole shapes are chosen");
   });
 
+  it("says where each file's bodies sit in the model, though the file is on the bed", () => {
+    let d = addPart(newDoc("Kit"), "box", "a");
+    d = addPart(d, "box", "b");
+    d = changeParts(d, ["b"], "position", { z: 40 });
+    const each = x.export({ doc: d, bodies: null, format: "stl", deflection: DEFLECTION.draft, separate: true, name: "Kit" });
+    expect(each.files.map((f) => f.parts)).toEqual([["a"], ["b"]]);
+    const [a, b] = each.files.map((f) => f.centre!);
+    expect(b![0] - a![0]).toBeCloseTo(25, 3);
+    expect(b![2] - a![2]).toBeCloseTo(40, 3);
+    // The file itself still sits on the bed.
+    const zs = [...readStl(each.files[1]!.data)].filter((_, i) => i % 3 === 2);
+    expect(Math.min(...zs)).toBeCloseTo(0, 3);
+  });
+
   it("leaves reference bodies out (#185)", () => {
     let d = addPart(newDoc("Mount"), "box", "a");
     d = addPart(d, "cylinder", "servo");
