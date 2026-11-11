@@ -10,6 +10,7 @@ import {
   filletAt,
   filletLines,
   offsetChain,
+  mirrorShapes,
   projectCurves,
   trimAt,
   trimPiece,
@@ -245,6 +246,8 @@ export function useSketch(d: SketchDeps) {
   const scope = useMemo(() => paramScope(d.doc), [d.doc]);
   const [filletR, setFilletR] = useState(2);
   const [offsetD, setOffsetD] = useState(2);
+  /** The Mirror tool (#267): picking the shapes, or the line to mirror them across. */
+  const [mirrorStage, setMirrorStage] = useState<"shapes" | "line">("shapes");
   const [projectGuide, setProjectGuide] = useState(true);
   /** What an editing tool would do under the pointer: the piece Trim removes (danger) or the copy Offset adds. */
   const [editPreview, setEditPreview] = useState<{ lines: Vec2[][]; danger: boolean } | null>(null);
@@ -308,6 +311,7 @@ export function useSketch(d: SketchDeps) {
 
   const setStool = useCallback((t: SketchToolId) => {
     setStoolState(t);
+    setMirrorStage("shapes");
     setCtool(null);
     setPointer(null);
     setCursor(null);
@@ -721,8 +725,8 @@ export function useSketch(d: SketchDeps) {
    * as a fixed construction line, so sizes and angles can measure from it. Null when none is under the pointer, or it
    * runs square through the sketch.
    */
-  const projectAxis = useCallback(
-    (p: ScreenPoint, near: Vec2): Id | null => {
+  const axisAt = useCallback(
+    (p: ScreenPoint, near: Vec2): { sketch: Sketch; id: Id } | null => {
       const eng = engineOf();
       const s = current();
       const f = live.current.frame;
@@ -732,12 +736,20 @@ export function useSketch(d: SketchDeps) {
       const a = toSketch(f, ax.origin);
       const b = toSketch(f, [ax.origin[0] + ax.dir[0], ax.origin[1] + ax.dir[1], ax.origin[2] + ax.dir[2]]);
       if (dist(a, b) < 1e-3) return null;
-      const { sketch: next, id } = axisLine(s, a, b, near);
-      if (next !== s && !apply(next, "Project an axis")) return null;
-      keepPlacing.current = current();
-      return id;
+      return axisLine(s, a, b, near);
     },
-    [engineOf, current, apply],
+    [engineOf, current],
+  );
+  const projectAxis = useCallback(
+    (p: ScreenPoint, near: Vec2): Id | null => {
+      const s = current();
+      const got = axisAt(p, near);
+      if (!s || !got) return null;
+      if (got.sketch !== s && !apply(got.sketch, "Project an axis")) return null;
+      keepPlacing.current = current();
+      return got.id;
+    },
+    [axisAt, current, apply],
   );
 
   // ---------------------------------------------------------------- text
@@ -830,6 +842,7 @@ export function useSketch(d: SketchDeps) {
     autoProject: options.autoProject,
     projectModel,
     projectAxis,
+    axisAt,
     current,
     editingId,
     feature,
@@ -847,6 +860,7 @@ export function useSketch(d: SketchDeps) {
     dimensionFor,
     filletR,
     offsetD,
+    mirrorStage,
     projectGuide,
     ctool,
     applyConstraint,
@@ -862,6 +876,7 @@ export function useSketch(d: SketchDeps) {
     autoProject: options.autoProject,
     projectModel,
     projectAxis,
+    axisAt,
     current,
     redefining,
     editingId,
@@ -880,6 +895,7 @@ export function useSketch(d: SketchDeps) {
     dimensionFor,
     filletR,
     offsetD,
+    mirrorStage,
     projectGuide,
     ctool,
     applyConstraint,
@@ -1102,6 +1118,48 @@ export function useSketch(d: SketchDeps) {
       const r = offsetToward(s, id, hit.xy, L.offsetD);
       setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
     };
+    /** Mirror (#267): clicks pick the shapes, then the line (or an axis) to mirror them across. */
+    const mirrorShapesAcross = (line: Id, base: Sketch) => {
+      const L = live.current;
+      done(mirrorShapes(base, L.sel, line), "Mirror");
+      setMirrorStage("shapes");
+    };
+    const mirrorDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
+      const L = live.current;
+      const s = L.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px);
+      const e = id ? s.entities.find((x) => x.id === id) : undefined;
+      if (L.mirrorStage === "line" || (!id && L.sel.length)) {
+        if (e?.kind === "line" && !L.sel.includes(e.id)) {
+          mirrorShapesAcross(e.id, s);
+          return true;
+        }
+        // An axis comes into the sketch in the same undo step as the mirror.
+        const axis = !id ? L.axisAt(p, hit.xy) : null;
+        if (axis) {
+          mirrorShapesAcross(axis.id, axis.sketch);
+          return true;
+        }
+        if (L.mirrorStage === "line") say("Pick a line or an axis to mirror across", true);
+        return !!id;
+      }
+      if (!id) return false;
+      setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+      return true;
+    };
+    const mirrorMove = (hit: { xy: Vec2; px: number }) => {
+      const L = live.current;
+      const s = L.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px);
+      setHover(id);
+      const e = id ? s.entities.find((x) => x.id === id) : undefined;
+      // Over the line to mirror across, the copy shows where it will go.
+      if (L.mirrorStage === "line" && e?.kind === "line" && L.sel.length && !L.sel.includes(e.id)) {
+        const r = mirrorShapes(s, L.sel, e.id);
+        return setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
+      }
+      setEditPreview(null);
+    };
     const finishShape = (all: Snap[]) => {
       const L = live.current;
       if (!L.sketch || !L.frame) return;
@@ -1211,6 +1269,7 @@ export function useSketch(d: SketchDeps) {
           return true;
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
+        if (L.stool === "mirror") return mirrorDown(p, hit);
         if (L.stool === "text") {
           // A click on a text opens it; anywhere else places a new one there (or moves the one being set).
           const t = L.textEdit?.id ? null : textAt(L.sketch, hit.xy, reach * hit.px);
@@ -1330,6 +1389,7 @@ export function useSketch(d: SketchDeps) {
           return;
         }
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
+        if (L.stool === "mirror") return mirrorMove(hit);
         if (L.ctool) {
           // The Coincident tool snaps to the point, origin or midpoint under the pointer, and lets go further away.
           setPointer({ x: p.x, y: p.y });
@@ -1677,6 +1737,8 @@ export function useSketch(d: SketchDeps) {
     },
     ESC.tool + 2,
   );
+  // Mirror backs out of picking the line to picking the shapes again.
+  useEscape(editing && stool === "mirror" && mirrorStage === "line", () => setMirrorStage("shapes"), ESC.tool + 3);
   useEscape(editing && loupe !== null, () => closeLoupe.current(), ESC.tool + 5);
   useEscape(editing && sel.length > 0, () => setSel([]), ESC.tool + 1);
   // Esc never drops the sketch by accident: the last layer only says how to finish.
@@ -1703,7 +1765,11 @@ export function useSketch(d: SketchDeps) {
   const pickTool = useCallback(
     (t: SketchToolId) => {
       if (t === "dimension" && live.current.sel.length && dimensionFor(live.current.sel)) return;
-      setStool(live.current.stool === t && t !== "select" ? "select" : t);
+      const next = live.current.stool === t && t !== "select" ? "select" : t;
+      setStool(next);
+      // Shapes already picked: Mirror goes straight to the line.
+      const s = live.current.sketch;
+      if (next === "mirror" && s && live.current.sel.some((id) => s.entities.some((e) => e.id === id))) setMirrorStage("line");
     },
     [dimensionFor, setStool],
   );
@@ -1839,6 +1905,8 @@ export function useSketch(d: SketchDeps) {
     setFilletR,
     offsetD,
     setOffsetD,
+    mirrorStage,
+    setMirrorStage,
     projectGuide,
     setProjectGuide,
     gridSnap,

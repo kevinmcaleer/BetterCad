@@ -95,6 +95,23 @@ export function SketchBars({ s }: { s: SketchSession }) {
         )}
         {s.stool === "fillet" && <NumberField label="Radius" value={s.filletR} min={0.01} scope={s.scope} onCommit={(v) => s.setFilletR(v)} />}
         {s.stool === "offset" && <NumberField label="Distance" value={s.offsetD} min={0.01} scope={s.scope} onCommit={(v) => s.setOffsetD(v)} />}
+        {s.stool === "mirror" && (
+          <span className="bc-sk-modes" role="group" aria-label="Mirror picks">
+            <Button
+              label={s.sel.length ? `Shapes (${s.sel.length})` : "Shapes"}
+              title="Click the shapes to mirror"
+              on={s.mirrorStage === "shapes"}
+              onClick={() => s.setMirrorStage("shapes")}
+            />
+            <Button
+              label="Mirror line"
+              title="Click a line or an axis to mirror the shapes across"
+              on={s.mirrorStage === "line"}
+              disabled={!s.sel.length}
+              onClick={() => s.setMirrorStage("line")}
+            />
+          </span>
+        )}
         {s.stool === "project" && (
           <Button
             label="As construction"

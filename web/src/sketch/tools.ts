@@ -49,6 +49,7 @@ export type SketchToolId =
   | "fillet"
   | "trim"
   | "offset"
+  | "mirror"
   | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
@@ -182,6 +183,14 @@ export const SKETCH_TOOLS: SketchTool[] = [
     icon: "shrink",
     key: "o",
     help: "Click a line, arc or circle. The copy goes on the side the pointer is on. Set the distance in the bar.",
+    fields: [],
+  },
+  {
+    id: "mirror",
+    label: "Mirror",
+    icon: "flipH",
+    key: "m",
+    help: "Click the shapes to mirror, then Mirror line and click a line or an axis. The copy follows the shapes.",
     fields: [],
   },
   { id: "project", label: "Project", icon: "body", key: "j", help: "Click a face of a part to bring its edges into the sketch.", fields: [] },
