@@ -103,6 +103,8 @@ export const torus = "M2 12a10 5 0 1 0 20 0a10 5 0 1 0-20 0M8 11.5a4 1.6 0 0 0 8
 export const sliders = "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4";
 export const ruler = "M3 16 16 3l5 5L8 21zM7 12l2 2M10 9l2 2M13 6l2 2";
 export const revolve = "M12 2v20M5 10a7 3 0 1 0 7-3M9 4.5 12 7l-2.8 2.4";
+/** Loft (#399): a wide shape at the bottom running into a small one at the top. */
+export const loft = "M3 18h18l-2 3H5zM9 3h6v3H9zM3 18 9 6M21 18 15 6";
 export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
 export const wedge = "M3 20h12L3 8zM8 4v12h12M3 8l5-4M15 20l5-4M3 20l5-4";
@@ -252,6 +254,7 @@ export const ICONS = {
   chamfer,
   shell,
   revolve,
+  loft,
   ruler,
   sliders,
   settings,

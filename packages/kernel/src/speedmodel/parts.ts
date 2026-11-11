@@ -352,6 +352,31 @@ function lightCap(oc: OC): ModelDoc {
   return t.doc;
 }
 
+/**
+ * 01-05 Paste Sleeve, ABS: a 3 mm skin lofted from a 45 × 38 slot to a 60 × 4 slot 103 mm up, with a straight 30 mm
+ * sleeve under the bottom. Each sketch holds the slot and the slot 3 mm out, so the ring between them is the shape.
+ */
+function pasteSleeve(): ModelDoc {
+  const t = new Timeline("Paste Sleeve");
+  const bottom = t.sketch(world("XY"), (d) => {
+    slot(d, [0, 0], 45, 38);
+    slot(d, [0, 0], 51, 44);
+  });
+  const top = t.sketch(world("XY", 103), (d) => {
+    slot(d, [0, 0], 60, 4);
+    slot(d, [0, 0], 66, 10);
+  });
+  const body = t.loft({
+    sections: [
+      { sketch: bottom, seed: [0, 20.5] },
+      { sketch: top, seed: [0, 3.5] },
+    ],
+    operation: "new",
+  });
+  t.extrude({ sketch: bottom, seeds: [[0, 20.5]], distance: -30, operation: "join", target: body });
+  return t.doc;
+}
+
 export const PARTS: SpeedPart[] = (
   [
     {
@@ -361,13 +386,7 @@ export const PARTS: SpeedPart[] = (
       density: DENSITY.abs,
       missing: ["An ellipse in sketches, for the rim's bead and the handle's section", "Sweep, to run the handle's section along its arc"],
     },
-    {
-      id: "ppp0105",
-      name: "01-05 Paste Sleeve",
-      mass: 57.08,
-      density: DENSITY.abs,
-      missing: ["Loft, from a 45 × 38 slot at the bottom to a 60 × 4 slot at the top", "A slot tool (drawn as lines and arcs here)"],
-    },
+    { id: "ppp0105", name: "01-05 Paste Sleeve", mass: 57.08, density: DENSITY.abs, build: pasteSleeve },
     {
       id: "ppp0107",
       name: "01-07 Flanged Hub",

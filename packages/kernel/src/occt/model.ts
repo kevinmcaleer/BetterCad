@@ -18,6 +18,7 @@ import {
   pushPull,
   holes,
   revolveOf,
+  loftOf,
   shell,
   sphere,
   torus,
@@ -121,6 +122,7 @@ export const partKey = (p: Part, q: Quality) =>
     p.rotation ?? null,
     p.prism ?? null,
     p.revolve ?? null,
+    p.loft ?? null,
     p.imported ?? null,
     p.catalogue ? [p.catalogue.id, p.catalogue.version, p.catalogue.model] : null,
     p.copy ?? null,
@@ -183,7 +185,9 @@ const MESH_REFUSAL: Partial<Record<string, string>> = {
 /** Steps that made a part, so a part that cannot be built marks its tile. */
 const makers = (doc: ModelDoc, id: string) =>
   doc.features.find(
-    (x) => (x.type === "add" && x.part.id === id) || ((x.type === "extrude" || x.type === "revolve") && x.operation === "new" && x.body.id === id),
+    (x) =>
+      (x.type === "add" && x.part.id === id) ||
+      ((x.type === "extrude" || x.type === "revolve" || x.type === "loft") && x.operation === "new" && x.body.id === id),
   );
 
 /** A part's own shape, before any join, cut or move. */
@@ -191,7 +195,7 @@ function primitive(oc: OC, p: Part): TopoDS_Shape {
   switch (p.kind) {
     case "solid":
       if (p.catalogue) return catalogueShape(oc, p.catalogue);
-      return p.revolve ? revolveOf(oc, p.revolve) : prismOf(oc, p.prism!);
+      return p.loft ? loftOf(oc, p.loft) : p.revolve ? revolveOf(oc, p.revolve) : prismOf(oc, p.prism!);
     case "box":
       return box(oc, p.size);
     case "cylinder":
@@ -386,7 +390,15 @@ export class ModelBuilder {
         const src = this.solid(p.copy.body, quality);
         local = unplace(oc, copyShape(oc, src.shape, p.copy.by), { position: p.copy.at });
         if (src.faces) namer.add(local, src.faces);
-      } else local = p.kind === "solid" && !p.catalogue ? (p.revolve ? revolveOf(oc, p.revolve, namer) : prismOf(oc, p.prism!, namer)) : primitive(oc, p);
+      } else
+        local =
+          p.kind === "solid" && !p.catalogue
+            ? p.loft
+              ? loftOf(oc, p.loft, namer)
+              : p.revolve
+                ? revolveOf(oc, p.revolve, namer)
+                : prismOf(oc, p.prism!, namer)
+            : primitive(oc, p);
       lap(base, !!kept);
       for (let i = 0; i < from; i++) lap(ops[i]!.feature, true);
       let faces = namer.off ? null : namer.namesOf(local);
@@ -444,7 +456,7 @@ export class ModelBuilder {
                   tool,
                   b.faces.map((n) => namer.prefix + n),
                 );
-            } else tool = o.rev ? revolveOf(oc, o.rev, namer) : prismOf(oc, o.tool!, namer);
+            } else tool = o.loft ? loftOf(oc, o.loft, namer) : o.rev ? revolveOf(oc, o.rev, namer) : prismOf(oc, o.tool!, namer);
             s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool], namer);
           }
           for (const m of flips) move(m);

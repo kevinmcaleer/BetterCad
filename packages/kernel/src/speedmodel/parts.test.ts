@@ -16,17 +16,22 @@ beforeAll(async () => {
 const buildable = PARTS.filter((p) => p.build);
 
 describe("speed-modelling parts", () => {
-  it.each(buildable.map((p) => [p.name, p] as const))("%s builds to the challenge's mass", (_, part) => {
-    const doc = part.build!(oc);
-    expect([...build(doc).failed]).toEqual([]);
-    const r = new ModelBuilder(oc).build(doc, undefined, "fine");
-    expect(r.failed).toEqual([]);
-    const bodies = r.bodies.filter((b) => !doc.looks[b.id]?.hidden);
-    expect(bodies).toHaveLength(1);
-    const mass = bodies[0]!.measure.volume * part.density;
-    if (process.env.SPEED_LOG) console.log(part.name, mass.toFixed(2), part.mass);
-    expect(Math.abs(mass - part.mass), `${mass.toFixed(2)} g, want ${part.mass} g`).toBeLessThan(1);
-  });
+  it.each(buildable.map((p) => [p.name, p] as const))(
+    "%s builds to the challenge's mass",
+    (_, part) => {
+      const doc = part.build!(oc);
+      expect([...build(doc).failed]).toEqual([]);
+      const r = new ModelBuilder(oc).build(doc, undefined, "fine");
+      expect(r.failed).toEqual([]);
+      const bodies = r.bodies.filter((b) => !doc.looks[b.id]?.hidden);
+      expect(bodies).toHaveLength(1);
+      const mass = bodies[0]!.measure.volume * part.density;
+      if (process.env.SPEED_LOG) console.log(part.name, mass.toFixed(2), part.mass);
+      expect(Math.abs(mass - part.mass), `${mass.toFixed(2)} g, want ${part.mass} g`).toBeLessThan(1);
+      // Fine meshes of lofted surfaces take a few seconds on a slow runner.
+    },
+    20_000,
+  );
 
   // The parts BetterCad can't model yet show as to-dos, each with what it is missing.
   for (const p of PARTS.filter((x) => !x.build)) it.todo(`${p.name}: ${p.missing!.join("; ")}`);

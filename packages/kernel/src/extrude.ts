@@ -57,6 +57,21 @@ export interface RevolveSpec {
   start?: number;
 }
 
+/**
+ * Loft's geometry (#399): a solid that runs smoothly through two or more closed shapes, each on its own sketch plane,
+ * in order. Holes run through it too when every shape has the same number of them.
+ */
+export interface LoftSpec {
+  sections: LoftSection[];
+  /** Flat sides straight from one shape to the next, rather than one smooth surface through them all. */
+  ruled?: boolean;
+}
+
+export interface LoftSection {
+  frame: Frame;
+  profile: ProfileShape;
+}
+
 /** A revolve's axis in its sketch's coordinates: a line along the plane, `offset` mm off it along the normal. */
 export interface SketchAxis {
   origin: Vec2;

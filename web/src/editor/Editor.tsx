@@ -231,6 +231,7 @@ const ParamsDialog = lazy(() => import("./ParamsPanel").then((m) => ({ default: 
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => ({ default: m.ConstructBar })));
 const JointTool = lazy(() => import("../joint/JointPanel").then((m) => ({ default: m.JointTool })));
+const LoftTool = lazy(() => import("../loft/LoftTool").then((m) => ({ default: m.LoftTool })));
 const RecogniseTool = lazy(() => import("../recognise/RecogniseTool").then((m) => ({ default: m.RecogniseTool })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
@@ -742,6 +743,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [jointEdit, setJointEdit] = useState<string | null>(null);
   const jointEdited = useCallback(() => setJointEdit(null), []);
   const jointHelp = tool === "joint" ? (jointUi?.help ?? null) : null;
+  // The Loft tool (#399) loads with its panel too.
+  const loftApi = useRef<{ done(): void } | null>(null);
+  const [loftEdit, setLoftEdit] = useState<string | null>(null);
+  const loftEdited = useCallback(() => setLoftEdit(null), []);
+  const [loftUiHelp, setLoftHelp] = useState<string | null>(null);
+  const loftHelp = tool === "loft" ? loftUiHelp : null;
 
   // Construction geometry (#265): the Construct menu arms the tool for one kind.
   const [constructKind, setConstructKind] = useState<ConstructKind | null>(null);
@@ -1973,17 +1980,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                     ? gear.done()
                     : construct.session
                       ? construct.done()
-                      : tool === "joint"
-                        ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
-                          ? jointApi.current.pickParent(null)
-                          : jointApi.current?.done()
-                        : pattern.session
-                          ? pattern.done()
-                          : tool === "combine"
-                            ? combine(selection, combineOp, keepTools, combineFit)
-                            : finish.tool
-                              ? finish.done()
-                              : undefined,
+                      : tool === "loft"
+                        ? loftApi.current?.done()
+                        : tool === "joint"
+                          ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                            ? jointApi.current.pickParent(null)
+                            : jointApi.current?.done()
+                          : pattern.session
+                            ? pattern.done()
+                            : tool === "combine"
+                              ? combine(selection, combineOp, keepTools, combineFit)
+                              : finish.tool
+                                ? finish.done()
+                                : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -2415,7 +2424,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().confirm(),
         when: () =>
           recogniseOk.current !== null ||
-          ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
+          ["extrude", "revolve", "loft", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
             live.current.tool,
           ),
       },
@@ -3145,6 +3154,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "loft"
+        ? [
+            {
+              id: "edit",
+              label: "Edit loft",
+              icon: "loft" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("loft");
+                setLoftEdit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -3371,6 +3395,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         return pattern.edit(f.id);
       case "drive":
         return setDriveDialog({ editing: f });
+      case "loft":
+        setEditingStep(f.id);
+        setTool("loft");
+        return setLoftEdit(f.id);
       case "joint":
         // Opens the joint's panel with every field: both components and their snaps, how it moves and lines up.
         setEditingStep(f.id);
@@ -3435,8 +3463,28 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? sketch.help
       : place.help
         ? place.help
-        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || jointHelp || pattern.help || measure.help || construct.help
-          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || jointHelp || pattern.help || measure.help || construct.help
+        : extrude.help ||
+            revolve.help ||
+            loftHelp ||
+            pushpull.help ||
+            hole.help ||
+            mount.help ||
+            gear.help ||
+            jointHelp ||
+            pattern.help ||
+            measure.help ||
+            construct.help
+          ? extrude.help ||
+            revolve.help ||
+            loftHelp ||
+            pushpull.help ||
+            hole.help ||
+            mount.help ||
+            gear.help ||
+            jointHelp ||
+            pattern.help ||
+            measure.help ||
+            construct.help
           : finish.help
             ? finish.help
             : vp.elementText
@@ -3772,6 +3820,29 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                     scope={scope}
                     error={construct.session ? failed.get(construct.session.id) : undefined}
                     onCancel={() => setTool("select")}
+                  />
+                </Suspense>
+              )}
+              {tool === "loft" && (
+                <Suspense fallback={null}>
+                  <LoftTool
+                    deps={{
+                      store,
+                      record,
+                      doc,
+                      sketches: built.sketches,
+                      posed: posedSketches,
+                      parts,
+                      view: vp.ref,
+                      onClose: () => setTool("select"),
+                      say,
+                      theme: resolved,
+                    }}
+                    edit={loftEdit}
+                    onEdited={loftEdited}
+                    onHelp={setLoftHelp}
+                    api={loftApi}
+                    error={(id) => failed.get(id)}
                   />
                 </Suspense>
               )}
