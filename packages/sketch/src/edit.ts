@@ -2,10 +2,15 @@ import {
   SketchIndex,
   constraintRefs,
   curvePoints,
+  ellipseAngle,
+  ellipseGeo,
+  ellipsePoint,
   newId,
+  removeEntities,
   toSketch,
   type Arc,
   type Curve,
+  type EllipseGeo,
   type Entity,
   type Frame,
   type Id,
@@ -16,6 +21,7 @@ import {
   type Vec2,
   type Vec3,
 } from "./model";
+import { circleSide, curveEllipse, ellipseSide, lineEllipse } from "./ellipse";
 import {
   add,
   angleOf,
@@ -126,10 +132,15 @@ export function filletLines(sketch: Sketch, a: Id, b: Id, r: number): EditResult
 // ------------------------------------------------------------------ trim
 
 /** A curve's shape for cutting: a line from a to b, or a circle or arc about c (arcs from angle s through sweep w). */
-type Shape = { kind: "line"; a: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number } | { kind: "arc"; c: Vec2; r: number; s: number; w: number };
+type Shape =
+  | { kind: "line"; a: Vec2; b: Vec2 }
+  | { kind: "circle"; c: Vec2; r: number }
+  | { kind: "arc"; c: Vec2; r: number; s: number; w: number }
+  | { kind: "ellipse"; g: EllipseGeo };
 
 function shapeOf(idx: SketchIndex, e: Curve): Shape {
   if (e.kind === "line") return { kind: "line", a: idx.xy(e.a), b: idx.xy(e.b) };
+  if (e.kind === "ellipse") return { kind: "ellipse", g: ellipseGeo(idx, e) };
   const c = idx.xy(e.c);
   if (e.kind === "circle") return { kind: "circle", c, r: e.r };
   const s = angleOf(sub(idx.xy(e.a), c));
@@ -142,12 +153,14 @@ function param(sh: Shape, p: Vec2): number {
     const d = sub(sh.b, sh.a);
     return ((p[0] - sh.a[0]) * d[0] + (p[1] - sh.a[1]) * d[1]) / (d[0] ** 2 + d[1] ** 2);
   }
+  if (sh.kind === "ellipse") return ellipseAngle(sh.g, p);
   const ang = angleOf(sub(p, sh.c));
   return sh.kind === "circle" ? wrap(ang) : wrap(ang - sh.s);
 }
 
 function pointAt(sh: Shape, t: number): Vec2 {
   if (sh.kind === "line") return add(sh.a, scale(sub(sh.b, sh.a), t));
+  if (sh.kind === "ellipse") return ellipsePoint(sh.g, t);
   return polar(sh.c, sh.r, sh.kind === "circle" ? t : sh.s + t);
 }
 
@@ -156,14 +169,17 @@ function contains(sh: Shape, p: Vec2): boolean {
     const t = param(sh, p);
     return t >= -1e-9 && t <= 1 + 1e-9;
   }
-  if (sh.kind === "circle") return true;
+  if (sh.kind === "circle" || sh.kind === "ellipse") return true;
   return onArc(angleOf(sub(p, sh.c)), sh.s, sh.s + sh.w);
 }
 
 /** Where two shapes cross. */
 function crossings(a: Shape, b: Shape): Vec2[] {
   let pts: Vec2[];
-  if (a.kind === "line" && b.kind === "line") {
+  if (a.kind === "ellipse" || b.kind === "ellipse") {
+    const [el, o] = (a.kind === "ellipse" ? [a, b] : [b, a]) as [Extract<Shape, { kind: "ellipse" }>, Shape];
+    pts = o.kind === "line" ? lineEllipse(o.a, o.b, el.g) : curveEllipse(o.kind === "ellipse" ? ellipseSide(o.g) : circleSide(o.c, o.r), el.g);
+  } else if (a.kind === "line" && b.kind === "line") {
     const x = lineLine(a.a, a.b, b.a, b.b);
     pts = x ? [x.p] : [];
   } else if (a.kind === "line") pts = lineCircle(a.a, a.b, (b as { c: Vec2 }).c, (b as { r: number }).r).map((x) => x.p);
@@ -179,13 +195,13 @@ export function cutsOn(sketch: Sketch, id: Id): number[] {
   if (!e || e.kind === "point") return [];
   const sh = shapeOf(idx, e);
   const span = sh.kind === "line" ? 1 : sh.kind === "arc" ? sh.w : 2 * Math.PI;
-  const eps = sh.kind === "line" ? 1e-6 : 1e-6;
+  const eps = 1e-6;
   const ts: number[] = [];
   for (const o of sketch.entities) {
     if (o.id === id || o.kind === "point") continue;
     for (const p of crossings(sh, shapeOf(idx, o))) {
       const t = param(sh, p);
-      const inside = sh.kind === "circle" ? true : t > eps && t < span - eps;
+      const inside = sh.kind === "circle" || sh.kind === "ellipse" ? true : t > eps && t < span - eps;
       if (inside && !ts.some((x) => Math.abs(x - t) < 1e-6)) ts.push(t);
     }
   }
@@ -213,8 +229,8 @@ export function trimPiece(sketch: Sketch, id: Id, at: Vec2): { from: number; to:
   const t = param(sh, at);
   let from: number;
   let to: number;
-  if (sh.kind === "circle") {
-    if (cuts.length < 2) return { from: 0, to: 2 * Math.PI, pts: samples(sh, 0, 2 * Math.PI) };
+  if (sh.kind === "circle" || sh.kind === "ellipse") {
+    if (cuts.length < 2 || sh.kind === "ellipse") return { from: 0, to: 2 * Math.PI, pts: samples(sh, 0, 2 * Math.PI) };
     const after = cuts.find((x) => x > t);
     to = after ?? cuts[0]! + 2 * Math.PI;
     from = [...cuts].reverse().find((x) => x <= t) ?? cuts[cuts.length - 1]! - 2 * Math.PI;
@@ -243,6 +259,8 @@ export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
   const idx = new SketchIndex(sketch);
   const e = idx.get(id);
   if (!e || e.kind === "point") return "Hover a line, circle or arc";
+  // An ellipse goes whole, with its axes: there are no ellipse arcs to keep the rest as.
+  if (e.kind === "ellipse") return removeEntities(sketch, [id]);
   const sh = shapeOf(idx, e);
   const piece = trimPiece(sketch, id, at)!;
   const cuts = cutsOn(sketch, id);
@@ -273,6 +291,7 @@ export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
     return d.done().sketch;
   }
 
+  if (sh.kind === "ellipse") return "Trim takes an ellipse whole";
   const span = sh.kind === "line" ? 1 : sh.w;
   const atStart = piece.from <= 1e-9;
   const atEnd = piece.to >= span - 1e-9;

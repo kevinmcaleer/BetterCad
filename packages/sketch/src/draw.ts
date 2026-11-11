@@ -5,6 +5,7 @@ import {
   type Constraint,
   type Dimension,
   type DimensionKind,
+  type Ellipse,
   type Id,
   type Line,
   type Point,
@@ -79,6 +80,22 @@ export class Draft {
     this.ids.push(e.id);
     return e.id;
   }
+  /**
+   * An ellipse (#401) about c: its first axis `r1` each side of the centre at angle `rot`, its second `r2` each side,
+   * square to it. Both axes are construction lines; the first is made level or upright when it nearly is.
+   */
+  ellipse(c: Vec2 | Id, r1: number, r2: number, rot: number, construction = false): Id {
+    const ci = this.point(c, true);
+    const o = this.xy(ci);
+    const u: Vec2 = [Math.cos(rot), Math.sin(rot)];
+    const at = (d: Vec2, k: number): Vec2 => [o[0] + d[0] * k, o[1] + d[1] * k];
+    const ax1 = this.line(at(u, -r1), at(u, r1), { construction: true });
+    const ax2 = this.line(at([-u[1], u[0]], -r2), at([-u[1], u[0]], r2), { construction: true, auto: false });
+    const e: Ellipse = { id: newId("e"), kind: "ellipse", c: ci, ax1, ax2, ...(construction && { construction }) };
+    this.entities.push(e);
+    this.ids.push(e.id);
+    return e.id;
+  }
   constrain(c: NewConstraint): Id {
     const id = c.id ?? newId("k");
     this.constraints.push({ ...c, id } as Constraint);
@@ -100,6 +117,31 @@ export function drawLine(s: Sketch, a: Vec2 | Id, b: Vec2 | Id, opts?: { constru
   const d = new Draft(s);
   const l = d.line(a, b, { construction: opts?.construction });
   if (opts?.length !== undefined) d.dimension("length", [l], opts.length);
+  return d.done();
+}
+
+/**
+ * An ellipse from the tool's clicks (#401): its centre, the end of one axis, and a point the other axis reaches out to.
+ * `size` holds typed widths across each axis, which become length dimensions on the axis lines.
+ */
+export function drawEllipse(s: Sketch, c: Vec2 | Id, end: Vec2, other: Vec2, size?: { first?: number; second?: number }): Drawn | null {
+  const d = new Draft(s);
+  const ci = d.point(c, true);
+  const o = d.xy(ci);
+  const v = sub(end, o);
+  const len = Math.hypot(...v);
+  if (!(len > 1e-6)) return null;
+  const r1 = size?.first !== undefined ? size.first / 2 : len;
+  const r2 = size?.second !== undefined ? size.second / 2 : Math.abs(v[0] * (other[1] - o[1]) - v[1] * (other[0] - o[0])) / len;
+  if (!(r1 > 1e-6) || !(r2 > 1e-6)) return null;
+  const id = d.ellipse(ci, r1, r2, Math.atan2(v[1], v[0]));
+  const e = d.entities.find((x) => x.id === id) as Ellipse;
+  // The sizes sit outside the ellipse, below its first axis and left of its second, not both on the centre.
+  const u: Vec2 = [Math.cos(Math.atan2(v[1], v[0])), Math.sin(Math.atan2(v[1], v[0]))];
+  const gap = (r: number) => r + Math.max(2, r / 2);
+  if (size?.first !== undefined) d.dimension("length", [e.ax1], size.first, { labelOffset: [u[1] * gap(r2), -u[0] * gap(r2)] });
+  if (size?.second !== undefined) d.dimension("length", [e.ax2], size.second, { labelOffset: [-u[0] * gap(r1), -u[1] * gap(r1)] });
+  d.ids = [id, e.ax1, e.ax2];
   return d.done();
 }
 

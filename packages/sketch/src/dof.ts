@@ -1,4 +1,4 @@
-import { SketchIndex, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
+import { SketchIndex, constraintRefs, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
 
 /**
  * Degrees of freedom per entity (#58). planegcs reports the sketch's total; to colour each entity we need to know which
@@ -30,7 +30,7 @@ export function freedom(sketch: Sketch): Freedom {
     if (e.kind === "point") {
       param(`${e.id}.x`, e.x);
       param(`${e.id}.y`, e.y);
-    } else if (e.kind !== "line") param(`${e.id}.r`, e.r);
+    } else if (e.kind === "circle" || e.kind === "arc") param(`${e.id}.r`, e.r);
   }
   const px = (id: Id) => [P.index.get(`${id}.x`)!, P.index.get(`${id}.y`)!] as const;
   const rr = (id: Id) => P.index.get(`${id}.r`)!;
@@ -54,7 +54,7 @@ export function freedom(sketch: Sketch): Freedom {
   };
   const centre = (id: Id) => {
     const e = idx.get(id)!;
-    return e.kind === "circle" || e.kind === "arc" ? e.c : id;
+    return e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" ? e.c : id;
   };
   const curveParams = (id: Id) => {
     const e = idx.get(id)!;
@@ -73,10 +73,23 @@ export function freedom(sketch: Sketch): Freedom {
     if (e.kind === "arc") {
       for (const end of [e.a, e.b])
         add([...px(end), ...px(e.c), rr(e.id)], (v) => Math.hypot(pt(v, end)[0] - pt(v, e.c)[0], pt(v, end)[1] - pt(v, e.c)[1]) - v[rr(e.id)]!);
+    } else if (e.kind === "ellipse") {
+      // Both axes are halved by the centre and cross square.
+      for (const ax of [e.ax1, e.ax2]) {
+        const [a, b] = ends(ax);
+        for (const k of [0, 1]) add([...px(e.c), ...lineParams(ax)], (v) => pt(v, e.c)[k] - (pt(v, a)[k] + pt(v, b)[k]) / 2);
+      }
+      add([...lineParams(e.ax1), ...lineParams(e.ax2)], (v) => {
+        const d1 = dir(v, e.ax1);
+        const d2 = dir(v, e.ax2);
+        return (d1[0] * d2[0] + d1[1] * d2[1]) / (Math.hypot(...d1) * Math.hypot(...d2) || 1);
+      });
     }
   }
 
   const constraint = (c: Constraint) => {
+    // As in the solver, only concentric ties to an ellipse yet.
+    if (c.type !== "concentric" && constraintRefs(c).some((r) => idx.get(r)?.kind === "ellipse")) return;
     switch (c.type) {
       case "coincident":
         add([...px(c.a), ...px(c.b)], (v) => pt(v, c.a)[0] - pt(v, c.b)[0]);
@@ -264,7 +277,9 @@ export function freedom(sketch: Sketch): Freedom {
           ? pointFixed(e.a) && pointFixed(e.b)
           : e.kind === "circle"
             ? pointFixed(e.c) && isFixed(`${e.id}.r`)
-            : pointFixed(e.c) && pointFixed(e.a) && pointFixed(e.b) && isFixed(`${e.id}.r`);
+            : e.kind === "ellipse"
+              ? pointFixed(e.c) && [e.ax1, e.ax2].every((ax) => ends(ax).every(pointFixed))
+              : pointFixed(e.c) && pointFixed(e.a) && pointFixed(e.b) && isFixed(`${e.id}.r`);
     if (ok) fixed.add(e.id);
   }
   return { dof, fixed };

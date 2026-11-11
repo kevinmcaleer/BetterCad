@@ -39,7 +39,7 @@ export function dropTarget(p: Vec2, sketch: Sketch, dragged: Id, tol: number, or
     else if (e.kind === "arc") [e.a, e.b, e.c].forEach((q) => skip.add(q));
     else if (e.kind === "circle") skip.add(e.c);
   }
-  const centres = new Set(sketch.entities.flatMap((e) => (e.kind === "circle" || e.kind === "arc" ? [e.c] : [])));
+  const centres = new Set(sketch.entities.flatMap((e) => (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" ? [e.c] : [])));
   let best = null as PointPick | null;
   let bestD = tol;
   for (const e of sketch.entities) {
@@ -100,7 +100,7 @@ export function unsnap(sketch: Sketch, p: Id): { sketch: Sketch; point: Id } | n
   const swap = (x: Id) => (x === p ? q : x);
   const moved = {
     ...split,
-    ...(split.kind === "circle"
+    ...(split.kind === "circle" || split.kind === "ellipse"
       ? { c: q }
       : split.kind === "line"
         ? { a: swap(split.a), b: swap(split.b) }

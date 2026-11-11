@@ -11,7 +11,9 @@ import {
   add,
   cross,
   dot,
+  drawEllipse,
   drawSlot,
+  sampleEllipse,
   norm,
   scale,
   type Id,
@@ -27,10 +29,24 @@ import { ORIGIN, isAtOrigin, middleLine, type Snap } from "./snap";
  * can be typed, and what one finished shape adds to the sketch. The sketch session routes pointer events here.
  */
 export type SketchToolId =
-  "select" | "line" | "rectangle" | "circle" | "arc" | "slot" | "polygon" | "point" | "text" | "dimension" | "fillet" | "trim" | "offset" | "project";
+  | "select"
+  | "line"
+  | "rectangle"
+  | "circle"
+  | "arc"
+  | "slot"
+  | "ellipse"
+  | "polygon"
+  | "point"
+  | "text"
+  | "dimension"
+  | "fillet"
+  | "trim"
+  | "offset"
+  | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
-export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "slot" | "polygon" | "point";
+export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "slot" | "ellipse" | "polygon" | "point";
 export const isDrawTool = (t: SketchToolId): t is DrawToolId => t in CLICKS;
 
 export interface SketchTool {
@@ -77,6 +93,14 @@ export const SKETCH_TOOLS: SketchTool[] = [
     key: "s",
     help: "Click one end's centre, then the other's, then how wide. Type the length, Tab, the width.",
     fields: ["Length", "Width"],
+  },
+  {
+    id: "ellipse",
+    label: "Ellipse",
+    icon: "ellipse",
+    key: "e",
+    help: "Click the centre, then the end of one axis, then how far the other reaches. Type the width across each axis.",
+    fields: ["First axis", "Second axis"],
   },
   { id: "polygon", label: "Polygon", icon: "polygon", key: "n", help: "Click the centre, then a corner. Set the sides in the bar.", fields: ["Radius"] },
   {
@@ -126,7 +150,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
 export const toolById = (id: SketchToolId) => SKETCH_TOOLS.find((t) => t.id === id)!;
 
 /** How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. */
-export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, slot: 3, polygon: 2, point: 1 };
+export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, slot: 3, ellipse: 3, polygon: 2, point: 1 };
 
 export interface Preview {
   /** Polylines in sketch mm. */
@@ -161,6 +185,14 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
       if (!b) return { lines: [[a, cursor]], values: [dist(a, cursor)] };
       const w = slotWidth(a, b, cursor);
       return { lines: w > 1e-6 ? [slotOutline(a, b, w / 2)] : [[a, b]], values: [dist(a, b), w] };
+    }
+    case "ellipse": {
+      const b = clicks[1];
+      if (!b) return { lines: [[a, cursor]], values: [2 * dist(a, cursor)] };
+      const r1 = dist(a, b);
+      const r2 = slotWidth(a, b, cursor) / 2;
+      const g = { c: a, r1, r2, rot: angleOf(sub(b, a)) };
+      return { lines: r2 > 1e-6 ? [sampleEllipse(g), [b, add(a, sub(a, b))]] : [[add(a, sub(a, b)), b]], values: [2 * r1, 2 * r2] };
     }
     case "arc": {
       const b = clicks[1];
@@ -313,6 +345,19 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
       if (a === b) return null;
       const r = drawSlot(d.done().sketch, a, b, w, { ...(length !== undefined && { length }), ...(width !== undefined && { width }) });
       return r && { sketch: r.sketch, label: "Draw a slot" };
+    }
+    case "ellipse": {
+      // As the slot: two snaps when Enter is pressed after the first click with both widths typed.
+      const [s0, s1, s2] = clicks as [Snap, Snap, Snap | undefined];
+      const [first, second] = typed;
+      if (!s2 && second === undefined) return null;
+      if (dist(s0.xy, s1.xy) < 1e-6) return null;
+      const c = place(d, s0);
+      const r = drawEllipse(d.done().sketch, c, s1.xy, s2?.xy ?? s1.xy, {
+        ...(first !== undefined && { first }),
+        ...(second !== undefined && { second }),
+      });
+      return r && { sketch: r.sketch, label: "Draw an ellipse" };
     }
     case "polygon": {
       const [s0, s1] = clicks as [Snap, Snap];
@@ -512,15 +557,18 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
       return two && only(["line"]) ? [{ type, a, b }] : hint;
     case "equal":
       return two && (only(["line"]) || (curve(kinds[0]) && curve(kinds[1]))) ? [{ type, a, b }] : hint;
-    case "concentric":
-      return two && curve(kinds[0]) && curve(kinds[1]) ? [{ type, a, b }] : hint;
+    case "concentric": {
+      const round = (k?: string) => curve(k) || k === "ellipse";
+      return two && round(kinds[0]) && round(kinds[1]) ? [{ type, a, b }] : hint;
+    }
     case "tangent":
       return two && (curve(kinds[0]) || curve(kinds[1])) && kinds.every((k) => k === "line" || curve(k)) ? [{ type, a, b }] : hint;
     case "coincident": {
       if (two && only(["point"])) return [{ type, a, b }];
       const p = picked[kinds.indexOf("point")];
       const e = picked.find((_, i) => kinds[i] !== "point");
-      return two && p && e ? [{ type: "pointOn", p, e }] : hint;
+      // Points can't sit on an ellipse yet: the solver holds an ellipse by its axes alone.
+      return two && p && e && !kinds.includes("ellipse") ? [{ type: "pointOn", p, e }] : hint;
     }
     case "midpoint": {
       const p = picked[kinds.indexOf("point")];
@@ -545,7 +593,14 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
         if (!e) continue;
         if (e.kind === "point") pts.add(e.id);
         else if (e.kind === "line") [e.a, e.b].forEach((p) => pts.add(p));
-        else [e.c, ...(e.kind === "arc" ? [e.a, e.b] : [])].forEach((p) => pts.add(p));
+        else if (e.kind === "ellipse") {
+          // Its centre and the ends of both axes: the whole ellipse stays put.
+          pts.add(e.c);
+          for (const ax of [e.ax1, e.ax2]) {
+            const l = sketch.entities.find((x) => x.id === ax);
+            if (l?.kind === "line") [l.a, l.b].forEach((p) => pts.add(p));
+          }
+        } else [e.c, ...(e.kind === "arc" ? [e.a, e.b] : [])].forEach((p) => pts.add(p));
       }
       return pts.size ? [...pts].map((p) => ({ type, p })) : hint;
     }

@@ -1,8 +1,8 @@
-import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Shape } from "replicad-opencascadejs";
+import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Shape, gp_Pnt } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
-import type { LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
+import type { EllipseSeg, LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
 import type { CopyMove } from "../pattern";
 
@@ -194,6 +194,22 @@ export function prism(oc: OC, profile: TopoDS_Shape, vector: [number, number, nu
   });
 }
 
+/**
+ * An ellipse, or part of one (#401), as an edge. OCCT wants the major axis first, so a wider second axis turns the
+ * frame a quarter and shifts the angles to match.
+ */
+function ellipseEdge(oc: OC, f: Frame, P: (p: Vec2) => gp_Pnt, g: EllipseSeg): TopoDS_Edge {
+  const swap = g.r2 > g.r1;
+  const rot = g.rot + (swap ? Math.PI / 2 : 0);
+  const along = toWorld({ ...f, origin: [0, 0, 0] }, [Math.cos(rot), Math.sin(rot)]);
+  const ax = new oc.gp_Ax2(P(g.c), new oc.gp_Dir(f.normal[0], f.normal[1], f.normal[2]), new oc.gp_Dir(along[0], along[1], along[2]));
+  const el = new oc.gp_Elips(ax, Math.max(g.r1, g.r2), Math.min(g.r1, g.r2));
+  if (!g.t) return new oc.BRepBuilderAPI_MakeEdge(el).Edge();
+  const shift = swap ? -Math.PI / 2 : 0;
+  const e = new oc.BRepBuilderAPI_MakeEdge(el, g.t[0] + shift, g.t[1] + shift).Edge();
+  return (g.rev ? e.Reversed() : e) as TopoDS_Edge;
+}
+
 /** A closed outline of lines and arcs on a sketch frame, as a wire in world space. */
 function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: number, named?: [TopoDS_Shape, string][], tag = ""): TopoDS_Shape {
   const f = spec.frame;
@@ -206,6 +222,7 @@ function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: n
     let e: TopoDS_Edge;
     if (g.kind === "line") e = new oc.BRepBuilderAPI_MakeEdge(P(g.a), P(g.b)).Edge();
     else if (g.kind === "arc") e = new oc.BRepBuilderAPI_MakeEdge(new oc.GC_MakeArcOfCircle(P(g.a), P(g.m), P(g.b)).Value()).Edge();
+    else if (g.kind === "ellipse") e = ellipseEdge(oc, f, P, g);
     else {
       const c = P(g.c);
       const circ = new oc.gp_Circ(new oc.gp_Ax2(c, new oc.gp_Dir(f.normal[0], f.normal[1], f.normal[2]), new oc.gp_Dir(f.x[0], f.x[1], f.x[2])), g.r);

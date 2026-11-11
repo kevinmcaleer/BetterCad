@@ -75,6 +75,39 @@ describe("sketch tools", () => {
     expect(commit("slot", newSketch(), [free(0, 0), free(20, 0)])).toBeNull();
   });
 
+  it("previews an ellipse with its two widths, and draws one that is a closed profile", async () => {
+    expect(preview("ellipse", [[0, 0]], [10, 0]).values).toEqual([20]);
+    expect(
+      preview(
+        "ellipse",
+        [
+          [0, 0],
+          [10, 0],
+        ],
+        [3, 4],
+      ).values,
+    ).toEqual([20, 8]);
+    const c = commit("ellipse", newSketch(), [free(0, 0), free(10, 0), free(3, 4)])!;
+    expect(c.label).toBe("Draw an ellipse");
+    expect(profiles(c.sketch).profiles[0]!.area).toBeCloseTo(Math.PI * 40, 6);
+    // Enter after the first click with both widths typed: they become dimensions.
+    const typed = commit("ellipse", newSketch(), [free(0, 0), free(7, 0.1)], [30, 12])!;
+    expect(typed.sketch.dimensions.map((d) => `${d.kind} ${d.value}`)).toEqual(["length 30", "length 12"]);
+    expect((await Solver.load()).solve(typed.sketch).status).toBe("ok");
+    expect(commit("ellipse", newSketch(), [free(0, 0), free(10, 0)])).toBeNull();
+  });
+
+  it("lets an ellipse be concentric or fixed, but nothing sit on it yet", () => {
+    const c = commit("ellipse", newSketch(), [free(0, 0), free(10, 0), free(3, 4)])!;
+    const e = c.sketch.entities.find((x) => x.kind === "ellipse")!.id;
+    const ring = commit("circle", c.sketch, [free(0, 0), free(2, 0)])!.sketch;
+    const circle = ring.entities.find((x) => x.kind === "circle")!.id;
+    expect(constraintsFor("concentric", ring, [e, circle])).toEqual([{ type: "concentric", a: e, b: circle }]);
+    expect(constraintsFor("fix", ring, [e])).toHaveLength(5);
+    const p = ring.entities.find((x) => x.kind === "point" && !x.construction)!.id;
+    expect(typeof constraintsFor("coincident", ring, [p, e])).toBe("string");
+  });
+
   it("says what a constraint needs until the selection fits", () => {
     const s = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
     const lines = s.entities.filter((e) => e.kind === "line").map((e) => e.id);

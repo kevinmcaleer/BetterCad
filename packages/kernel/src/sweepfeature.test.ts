@@ -50,7 +50,7 @@ describe("sweep (#400)", () => {
     const segs = pathSegs(f.sketch, curves(d, "s1"));
     if (typeof segs === "string") throw new Error(segs);
     expect(segs.map((g) => g.kind)).toEqual(["line", "arc", "line"]);
-    const ends = [segs[0]!, segs[2]!].map((g, i) => (g.kind === "circle" ? "" : (i ? g.b : g.a).join(","))).sort();
+    const ends = [segs[0]!, segs[2]!].map((g, i) => (g.kind === "circle" || g.kind === "ellipse" ? "" : (i ? g.b : g.a).join(","))).sort();
     expect(ends).toEqual(["0,0", "30,30"]);
   });
 

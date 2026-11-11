@@ -20,6 +20,8 @@ import {
   profiles,
   removeEntities,
   sampleArc,
+  sampleEllipse,
+  ellipseGeo,
   slideAcross,
   sub,
   toSketch,
@@ -1900,6 +1902,7 @@ export function sketchView(
     if (hidden(e)) continue;
     if (e.kind === "line") curves.push({ pts: [idx.xy(e.a), idx.xy(e.b)], shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "circle") curves.push({ pts: sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72), shade: shade(e.id), dashed: e.construction });
+    else if (e.kind === "ellipse") curves.push({ pts: sampleEllipse(ellipseGeo(idx, e)), shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "arc") {
       const c = idx.xy(e.c);
       curves.push({ pts: sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c))), shade: shade(e.id), dashed: e.construction });
@@ -1999,6 +2002,7 @@ function addedLines(before: Sketch, after: Sketch): Vec2[][] {
     if (had.has(e.id)) return [];
     if (e.kind === "line") return [[idx.xy(e.a), idx.xy(e.b)]];
     if (e.kind === "circle") return [sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72)];
+    if (e.kind === "ellipse") return [sampleEllipse(ellipseGeo(idx, e))];
     if (e.kind === "arc") {
       const c = idx.xy(e.c);
       return [sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c)))];
