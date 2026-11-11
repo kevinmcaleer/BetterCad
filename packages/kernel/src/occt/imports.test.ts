@@ -125,7 +125,10 @@ describe("imports (#82)", () => {
     expect(mesh.length).toBeGreaterThan(3);
     expect(mesh).toEqual([...mesh].sort((a, b) => a - b));
     expect(mesh.at(-1)).toBeGreaterThanOrEqual(0.9);
-    const step = read("kit.step", new Exporter(oc, m).export({ doc: addPart(newDoc("Kit"), "box", "bx"), bodies: null, format: "step", deflection: 0, name: "Kit" }).files[0]!.data);
+    const step = read(
+      "kit.step",
+      new Exporter(oc, m).export({ doc: addPart(newDoc("Kit"), "box", "bx"), bodies: null, format: "step", deflection: 0, name: "Kit" }).files[0]!.data,
+    );
     expect(step).toEqual([...step].sort((a, b) => a - b));
     expect(step.at(-1)).toBeGreaterThanOrEqual(0.9);
   });
