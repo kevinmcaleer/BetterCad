@@ -2,7 +2,7 @@ import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Sh
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
-import type { LoftSpec, PrismSpec, ProfileSeg, RevolveSpec } from "../extrude";
+import type { LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
 import type { CopyMove } from "../pattern";
 
@@ -335,6 +335,41 @@ export function loftOf(oc: OC, spec: LoftSpec, t?: Tracker): TopoDS_Shape {
   if (!holes) return outer;
   const cuts = Array.from({ length: holes }, (_, j) => through((k) => sections[k]!.profile.holes[j]!, `p0h${j}.`));
   return boolean(oc, "cut", outer, cuts, t);
+}
+
+/**
+ * Sweep (#400): each profile's outline pushed along the path, its holes swept the same way and cut out, the profiles
+ * joined. The profile keeps its angle to the path as it bends (a corrected Frenet frame).
+ */
+export function sweepOf(oc: OC, spec: SweepSpec, t?: Tracker): TopoDS_Shape {
+  if (!spec.path.segs.length) throw new KernelError("invalid-size", "Pick the lines and arcs of a path to sweep along.");
+  const spine = guard(oc, "failed", "The path's lines and arcs don't join end to end.", () => oc.TopoDS.Wire(outlineWire(oc, spec.path, spec.path.segs, 0)));
+  const along = (segs: ProfileSeg[], tag: string) =>
+    guard(oc, "failed", "That shape could not be swept along the path. Check the path doesn't bend tighter than the shape is wide.", () => {
+      const named: [TopoDS_Shape, string][] | undefined = t ? [] : undefined;
+      const mk = new oc.BRepOffsetAPI_MakePipeShell(spine);
+      mk.SetMode(true);
+      mk.Add(outlineWire(oc, spec, segs, 0, named, tag), false, true);
+      mk.Build();
+      if (!mk.IsDone() || !mk.MakeSolid()) throw new KernelError("failed", "That shape could not be swept along the path.");
+      const out = mk.Shape();
+      t?.sweep(mk, out, named!);
+      return out;
+    });
+  const bodies = spec.profiles.map((p, k) => {
+    const outer = along(p.outer, `p${k}.`);
+    return p.holes.length
+      ? boolean(
+          oc,
+          "cut",
+          outer,
+          p.holes.map((h, j) => along(h, `p${k}h${j}.`)),
+          t,
+        )
+      : outer;
+  });
+  if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to sweep.");
+  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1), t);
 }
 
 /**

@@ -2,7 +2,7 @@
 
 Speed-modelling challenges give you a drawing and ask for the part's mass. The mass checks the whole part at once, so they make a good test of what BetterCad can model and how it models it.
 
-`packages/kernel/src/speedmodel/` models Too Tall Toby's Party Pack 01 (ten parts) as BetterCad timelines. The steps are the ones the app's tools make: sketches, Extrude, Revolve, Loft, Fillet, Hole, Mirror, Combine and Library shapes. Each part must build with no failed steps and weigh within 1 g of the challenge's answer. The answers come from [build123d's worked versions](https://build123d.readthedocs.io/en/stable/tttt.html), which run on the same OpenCascade kernel. Toby's drawings may be used for any educational purpose.
+`packages/kernel/src/speedmodel/` models Too Tall Toby's Party Pack 01 (ten parts) as BetterCad timelines. The steps are the ones the app's tools make: sketches, Extrude, Revolve, Loft, Sweep, Fillet, Hole, Mirror, Combine and Library shapes. Each part must build with no failed steps and weigh within 1 g of the challenge's answer. The answers come from [build123d's worked versions](https://build123d.readthedocs.io/en/stable/tttt.html), which run on the same OpenCascade kernel. Toby's drawings may be used for any educational purpose.
 
 ```sh
 npx vitest run packages/kernel/src/speedmodel        # SPEED_LOG=1 prints each mass
@@ -13,7 +13,7 @@ npx vitest run packages/kernel/src/speedmodel        # SPEED_LOG=1 prints each m
 | Part                  | Result                                                                 |
 | --------------------- | ---------------------------------------------------------------------- |
 | 01-01 Bearing Bracket | 797.15 g, matches                                                      |
-| 01-02 Post Cap        | Can't model it: needs an ellipse (#401) and Sweep (#400)               |
+| 01-02 Post Cap        | Can't model it: needs an ellipse (#401); Sweep is in (#400)             |
 | 01-03 C Clamp Base    | 96.13 g, matches                                                       |
 | 01-04 Angle Bracket   | 310.00 g, matches                                                      |
 | 01-05 Paste Sleeve    | 56.73 g, within 0.35 g (Loft, #399)                                    |

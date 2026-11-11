@@ -232,6 +232,7 @@ const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m)
 const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => ({ default: m.ConstructBar })));
 const JointTool = lazy(() => import("../joint/JointPanel").then((m) => ({ default: m.JointTool })));
 const LoftTool = lazy(() => import("../loft/LoftTool").then((m) => ({ default: m.LoftTool })));
+const SweepTool = lazy(() => import("../sweep/SweepTool").then((m) => ({ default: m.SweepTool })));
 const RecogniseTool = lazy(() => import("../recognise/RecogniseTool").then((m) => ({ default: m.RecogniseTool })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
@@ -749,6 +750,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const loftEdited = useCallback(() => setLoftEdit(null), []);
   const [loftUiHelp, setLoftHelp] = useState<string | null>(null);
   const loftHelp = tool === "loft" ? loftUiHelp : null;
+  // The Sweep tool (#400) too.
+  const sweepApi = useRef<{ done(): void } | null>(null);
+  const [sweepEdit, setSweepEdit] = useState<string | null>(null);
+  const sweepEdited = useCallback(() => setSweepEdit(null), []);
+  const [sweepUiHelp, setSweepHelp] = useState<string | null>(null);
+  const sweepHelp = tool === "sweep" ? sweepUiHelp : null;
 
   // Construction geometry (#265): the Construct menu arms the tool for one kind.
   const [constructKind, setConstructKind] = useState<ConstructKind | null>(null);
@@ -1982,17 +1989,19 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                       ? construct.done()
                       : tool === "loft"
                         ? loftApi.current?.done()
-                        : tool === "joint"
-                          ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
-                            ? jointApi.current.pickParent(null)
-                            : jointApi.current?.done()
-                          : pattern.session
-                            ? pattern.done()
-                            : tool === "combine"
-                              ? combine(selection, combineOp, keepTools, combineFit)
-                              : finish.tool
-                                ? finish.done()
-                                : undefined,
+                        : tool === "sweep"
+                          ? sweepApi.current?.done()
+                          : tool === "joint"
+                            ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                              ? jointApi.current.pickParent(null)
+                              : jointApi.current?.done()
+                            : pattern.session
+                              ? pattern.done()
+                              : tool === "combine"
+                                ? combine(selection, combineOp, keepTools, combineFit)
+                                : finish.tool
+                                  ? finish.done()
+                                  : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -2424,7 +2433,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().confirm(),
         when: () =>
           recogniseOk.current !== null ||
-          ["extrude", "revolve", "loft", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
+          ["extrude", "revolve", "loft", "sweep", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
             live.current.tool,
           ),
       },
@@ -3154,6 +3163,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "sweep"
+        ? [
+            {
+              id: "edit",
+              label: "Edit sweep",
+              icon: "sweep" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("sweep");
+                setSweepEdit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "loft"
         ? [
             {
@@ -3399,6 +3423,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         setEditingStep(f.id);
         setTool("loft");
         return setLoftEdit(f.id);
+      case "sweep":
+        setEditingStep(f.id);
+        setTool("sweep");
+        return setSweepEdit(f.id);
       case "joint":
         // Opens the joint's panel with every field: both components and their snaps, how it moves and lines up.
         setEditingStep(f.id);
@@ -3466,6 +3494,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         : extrude.help ||
             revolve.help ||
             loftHelp ||
+            sweepHelp ||
             pushpull.help ||
             hole.help ||
             mount.help ||
@@ -3477,6 +3506,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           ? extrude.help ||
             revolve.help ||
             loftHelp ||
+            sweepHelp ||
             pushpull.help ||
             hole.help ||
             mount.help ||
@@ -3842,6 +3872,29 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                     onEdited={loftEdited}
                     onHelp={setLoftHelp}
                     api={loftApi}
+                    error={(id) => failed.get(id)}
+                  />
+                </Suspense>
+              )}
+              {tool === "sweep" && (
+                <Suspense fallback={null}>
+                  <SweepTool
+                    deps={{
+                      store,
+                      record,
+                      doc,
+                      sketches: built.sketches,
+                      posed: posedSketches,
+                      parts,
+                      view: vp.ref,
+                      onClose: () => setTool("select"),
+                      say,
+                      theme: resolved,
+                    }}
+                    edit={sweepEdit}
+                    onEdited={sweepEdited}
+                    onHelp={setSweepHelp}
+                    api={sweepApi}
                     error={(id) => failed.get(id)}
                   />
                 </Suspense>

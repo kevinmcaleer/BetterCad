@@ -80,6 +80,7 @@ import {
   startDistance,
   fromPartLocal,
   pickProfiles,
+  pathSegs,
   profilesMiddle,
   upToDistance,
   targetsOf,
@@ -96,6 +97,7 @@ import {
   type RevolveSpec,
   type LoftSpec,
   type LoftSection,
+  type SweepSpec,
   type SketchAxis,
 } from "./extrude";
 
@@ -176,6 +178,8 @@ export interface Part {
   revolve?: RevolveSpec;
   /** Or a solid run through shapes on several planes (Loft, #399). */
   loft?: LoftSpec;
+  /** Or shapes pushed along a path (Sweep, #400). */
+  sweep?: SweepSpec;
   /** Joins, cuts and intersections made into the part, in its own coordinates, in timeline order. */
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
@@ -234,6 +238,8 @@ export interface BodyOp {
   rev?: RevolveSpec;
   /** Or a loft's solid, in the part's own coordinates. */
   loft?: LoftSpec;
+  /** Or a sweep's solid, in the part's own coordinates. */
+  sweep?: SweepSpec;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
   body?: Part;
   /** A cut's printed gap (#183): the tool grows by this much on every side first, mm. */
@@ -577,6 +583,25 @@ export interface LoftFeature extends FeatureBase {
   targets?: string[];
   body: { id: string; name: string };
 }
+/**
+ * Sweep (#400): closed shapes of a sketch pushed along a path of lines and arcs drawn in another sketch, made into a
+ * new body or combined with one. Shapes are picked the way Extrude picks them.
+ */
+export interface SweepFeature extends FeatureBase {
+  type: "sweep";
+  sketch: string;
+  seeds: Vec2[];
+  split?: boolean;
+  /** Texts picked whole, as for Extrude. */
+  texts?: string[];
+  /** The path: lines and arcs of one sketch, end to end, or one circle. None until one is picked. */
+  path?: { sketch: string; curves: string[] };
+  operation: ExtrudeOperation;
+  target?: string;
+  /** Every body it cuts or intersects (Join takes the first), as for Extrude. */
+  targets?: string[];
+  body: { id: string; name: string };
+}
 /** Hole (#70): screw holes on one flat face of a part, sized from the screw table. */
 export interface HoleFeature extends FeatureBase, HoleParams {
   type: "hole";
@@ -713,6 +738,7 @@ export type Feature =
   | ExtrudeFeature
   | RevolveFeature
   | LoftFeature
+  | SweepFeature
   | CombineFeature
   | FinishFeature
   | HoleFeature;
@@ -829,6 +855,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   pushpull: "Push/pull",
   revolve: "Revolve",
   loft: "Loft",
+  sweep: "Sweep",
   hole: "Hole",
   import: "Import",
   convert: "Convert",
@@ -955,6 +982,7 @@ const BUILT = new Set<string>([
   "extrude",
   "revolve",
   "loft",
+  "sweep",
   "combine",
   "fillet",
   "chamfer",
@@ -1558,6 +1586,28 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           ];
         break;
       }
+      case "sweep": {
+        const spec = sweepSpecOf(f, sketchById, failed);
+        if (typeof spec === "string") {
+          failed.set(f.id, spec);
+          break;
+        }
+        if (f.operation === "new") {
+          if (find(f.body.id) < 0)
+            parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: sweepSize(spec), sweep: spec });
+          break;
+        }
+        for (const t of profileTargets(f, parts, find, failed))
+          t.ops = [
+            ...(t.ops ?? []),
+            {
+              op: f.operation,
+              sweep: { ...spec, frame: frameToLocal(spec.frame, t), path: { ...spec.path, frame: frameToLocal(spec.path.frame, t) } },
+              feature: f.id,
+            },
+          ];
+        break;
+      }
       case "fillet":
       case "chamfer":
       case "shell":
@@ -1854,8 +1904,55 @@ function loftSize(spec: LoftSpec): Vec3 {
   return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
 }
 
+/** A sweep's shapes and path from its sketches, or why it can't be made. Shapes no longer closed are noted. */
+function sweepSpecOf(f: SweepFeature, sketchById: Map<string, Sketch>, failed: Map<string, string>): SweepSpec | string {
+  const sk = sketchById.get(f.sketch);
+  if (!sk) return "Its sketch is gone or comes later on the timeline";
+  const { shapes, lost } = pickProfiles(sk, f.seeds, f.texts, f.split);
+  if (!shapes.length)
+    return f.seeds.length || f.texts?.length
+      ? "The shapes it swept are no longer closed. Close them in the sketch, or edit the sweep."
+      : "Pick closed shapes to sweep";
+  if (lost) failed.set(f.id, `${lost === 1 ? "One shape" : `${lost} shapes`} it swept ${lost === 1 ? "is" : "are"} no longer closed`);
+  if (!f.path) return "Pick a path to sweep along: lines and arcs in another sketch";
+  const ps = sketchById.get(f.path.sketch);
+  if (!ps) return "The sketch of its path is gone or comes later on the timeline";
+  if (f.path.sketch === f.sketch) return "The path is in the shape's own sketch. Draw it in a sketch on another plane.";
+  const segs = pathSegs(ps, f.path.curves);
+  if (typeof segs === "string") return segs;
+  return { frame: planeFrame(sk.plane), profiles: shapes, path: { frame: planeFrame(ps.plane), segs } };
+}
+
+/** A sweep's rough size: the box round its path, grown by the shapes' reach either side. */
+function sweepSize(spec: SweepSpec): Vec3 {
+  const reach = Math.max(
+    0,
+    ...spec.profiles.flatMap((p) =>
+      p.outer.flatMap((g) =>
+        g.kind === "circle"
+          ? [Math.hypot(...g.c) + g.r]
+          : g.kind === "arc"
+            ? [g.a, g.m, g.b].map((q) => Math.hypot(...q))
+            : [g.a, g.b].map((q) => Math.hypot(...q)),
+      ),
+    ),
+  );
+  const pts = spec.path.segs
+    .flatMap((g) =>
+      g.kind === "circle" ? [[g.c[0] - g.r, g.c[1] - g.r] as Vec2, [g.c[0] + g.r, g.c[1] + g.r] as Vec2] : g.kind === "arc" ? [g.a, g.m, g.b] : [g.a, g.b],
+    )
+    .map((q) => toWorld(spec.path.frame, q));
+  const span = (i: number) => Math.round((Math.max(...pts.map((c) => c[i]!)) - Math.min(...pts.map((c) => c[i]!)) + 2 * reach) * 1000) / 1000;
+  return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
+}
+
 /** The parts an extrude, revolve or loft changes, as they stand now; notes on the step any that are gone. */
-function profileTargets(f: ExtrudeFeature | RevolveFeature | LoftFeature, parts: Part[], find: (id: string) => number, failed: Map<string, string>): Part[] {
+function profileTargets(
+  f: ExtrudeFeature | RevolveFeature | LoftFeature | SweepFeature,
+  parts: Part[],
+  find: (id: string) => number,
+  failed: Map<string, string>,
+): Part[] {
   const ids = targetsOf(f);
   if (!ids.length) {
     failed.set(f.id, f.operation === "join" ? "Pick the body to change" : "Pick the bodies to change");
@@ -1895,7 +1992,8 @@ function usedNames(doc: ModelDoc): Set<string> {
   for (const f of doc.features) {
     if (f.type === "add" || f.type === "insert") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
-    if (f.type === "convert" || ((f.type === "extrude" || f.type === "revolve" || f.type === "loft") && f.operation === "new")) names.add(f.body.name);
+    if (f.type === "convert" || ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && f.operation === "new"))
+      names.add(f.body.name);
   }
   Object.values(doc.looks).forEach((l) => l.name && names.add(l.name));
   return names;
@@ -2106,6 +2204,7 @@ export function featureParts(f: Feature): string[] {
       return [f.part];
     case "revolve":
     case "loft":
+    case "sweep":
       return f.operation === "new" ? [f.body.id] : targetsOf(f);
     case "import":
       return f.bodies.map((b) => b.id);
@@ -2137,7 +2236,7 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const g of doc.features) {
     if (g.type === "add" || g.type === "insert") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
-    if (g.type === "convert" || ((g.type === "extrude" || g.type === "revolve" || g.type === "loft") && g.operation === "new"))
+    if (g.type === "convert" || ((g.type === "extrude" || g.type === "revolve" || g.type === "loft" || g.type === "sweep") && g.operation === "new"))
       names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
@@ -2261,6 +2360,12 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const n = f.sections.length;
       return `Through ${n === 1 ? "1 shape" : `${n} shapes`}${f.ruled ? ", straight sides" : ""}, ${op}`;
     }
+    case "sweep": {
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
+      const n = f.seeds.length + (f.texts?.length ?? 0);
+      const k = f.path?.curves.length ?? 0;
+      return `${n === 1 ? "1 shape" : `${n} shapes`} along ${k ? `a path of ${k === 1 ? "1 curve" : `${k} curves`}` : "a path still to pick"}, ${op}`;
+    }
     case "shell": {
       const n = f.refs.length;
       return `${mm(f.size)} wall${f.outside ? " outside" : ""}, ${n ? `${n === 1 ? "1 face" : `${n} faces`} open` : "sealed"}, ${who([f.part])}`;
@@ -2363,6 +2468,18 @@ export function addLoft(doc: ModelDoc, params: LoftParams, id = newId("f"), body
 /** Changes a Loft step's settings (the tool edits it live, as one undo step). */
 export function updateLoft(doc: ModelDoc, id: string, change: Partial<LoftParams>): ModelDoc {
   return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "loft" ? { ...f, ...change } : f)) };
+}
+
+export type SweepParams = Pick<SweepFeature, "sketch" | "seeds" | "split" | "texts" | "path" | "operation" | "target" | "targets">;
+
+/** Adds a Sweep step (#400). Its new body (when it makes one) gets the part id `bodyId`. */
+export function addSweep(doc: ModelDoc, params: SweepParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "sweep", name: nextFeatureName(doc, "sweep"), ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+/** Changes a Sweep step's settings (the tool edits it live, as one undo step). */
+export function updateSweep(doc: ModelDoc, id: string, change: Partial<SweepParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "sweep" ? { ...f, ...change } : f)) };
 }
 
 /** Changes a Revolve step's settings (the tool edits it live, as one undo step). */
@@ -3049,6 +3166,7 @@ function partsRead(f: Feature): string[] {
     case "revolve":
       return f.axis?.kind === "ref" && "body" in f.axis.ref ? [...new Set([...targetsOf(f), f.axis.ref.body])] : targetsOf(f);
     case "loft":
+    case "sweep":
       return targetsOf(f);
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
@@ -3073,7 +3191,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
   if (f.type === "gear" || f.type === "convert") return [f.body.id];
-  if ((f.type === "extrude" || f.type === "revolve" || f.type === "loft") && f.operation === "new") return [f.body.id];
+  if ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && f.operation === "new") return [f.body.id];
   return [];
 }
 
@@ -3100,6 +3218,8 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   if (f.type === "extrude" || f.type === "revolve") {
     if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
   }
+  // A sweep needs the sketch of its shapes and of its path.
+  if (f.type === "sweep") for (const id of [f.sketch, f.path?.sketch]) if (id && before.some((g) => g.id === id)) out.add(id);
   // A loft needs each of its sketches.
   if (f.type === "loft") for (const x of f.sections) if (before.some((g) => g.id === x.sketch)) out.add(x.sketch);
   // A revolve round a construction axis needs that axis.
@@ -3401,7 +3521,7 @@ export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length):
       (f) =>
         !f.suppressed &&
         (ops.has(f.id) ||
-          ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "gear" || f.type === "pattern") &&
+          ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep" || f.type === "gear" || f.type === "pattern") &&
             partsMade(f).some((p) => here.has(p)))),
     );
 }

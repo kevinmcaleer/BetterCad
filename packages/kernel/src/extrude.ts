@@ -72,6 +72,16 @@ export interface LoftSection {
   profile: ProfileShape;
 }
 
+/**
+ * Sweep's geometry (#400): closed shapes pushed along a path of lines and arcs drawn in another sketch. The path's
+ * curves are in order, end to end, in their own sketch's coordinates.
+ */
+export interface SweepSpec {
+  frame: Frame;
+  profiles: ProfileShape[];
+  path: { frame: Frame; segs: ProfileSeg[] };
+}
+
 /** A revolve's axis in its sketch's coordinates: a line along the plane, `offset` mm off it along the normal. */
 export interface SketchAxis {
   origin: Vec2;
@@ -116,6 +126,52 @@ export function axisOf(sketch: Sketch, ref: AxisRef): SketchAxis | null {
   const d = sub(b, a);
   const len = Math.hypot(d[0], d[1]);
   return len > 1e-9 ? { origin: a, dir: [d[0] / len, d[1] / len] } : null;
+}
+
+/**
+ * A sweep's path (#400): the picked lines and arcs of a sketch put end to end, in order from one free end, or why
+ * they can't be. A circle is a path on its own.
+ */
+export function pathSegs(sketch: Sketch, curves: string[]): ProfileSeg[] | string {
+  if (!curves.length) return "Pick the lines and arcs of a path to sweep along";
+  const idx = new SketchIndex(sketch);
+  type Piece = { id: string; a: Vec2; b: Vec2; seg: (rev: boolean) => ProfileSeg };
+  const pieces: Piece[] = [];
+  for (const id of curves) {
+    const e = idx.get(id);
+    if (!e || e.kind === "point") return "A line or arc of its path is gone. Pick the path again.";
+    if (e.kind === "circle") {
+      if (curves.length > 1) return "A circle is a path on its own. Pick it alone, or lines and arcs.";
+      return [{ kind: "circle", c: idx.xy(e.c), r: e.r, id }];
+    }
+    if (e.kind === "line") {
+      const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
+      pieces.push({ id, a, b, seg: (rev) => (rev ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id }) });
+    } else if (e.kind === "arc") {
+      const c = idx.xy(e.c);
+      const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
+      const st = angleOf(sub(a, c));
+      const m = polar(c, e.r, st + sweep(st, angleOf(sub(b, c))) / 2);
+      pieces.push({ id, a, b, seg: (rev) => (rev ? { kind: "arc", a: b, m, b: a, id } : { kind: "arc", a, m, b, id }) });
+    } else return "Paths are made of lines and arcs";
+  }
+  const near = (p: Vec2, q: Vec2) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-6;
+  const ends = (p: Vec2) => pieces.reduce((n, x) => n + (near(x.a, p) ? 1 : 0) + (near(x.b, p) ? 1 : 0), 0);
+  if (pieces.some((x) => ends(x.a) > 2 || ends(x.b) > 2)) return "The path branches. Pick lines and arcs that run end to end, one after another.";
+  // Start from a free end, so an open path runs from one end to the other.
+  const first = pieces.find((x) => ends(x.a) === 1) ?? pieces.find((x) => ends(x.b) === 1) ?? pieces[0]!;
+  const left = new Set(pieces);
+  let at = ends(first.a) === 1 || ends(first.b) !== 1 ? first.a : first.b;
+  const out: ProfileSeg[] = [];
+  while (left.size) {
+    const next = [...left].find((x) => near(x.a, at) || near(x.b, at));
+    if (!next) return "The path's lines and arcs don't join end to end. Join them in the sketch.";
+    left.delete(next);
+    const rev = !near(next.a, at);
+    out.push(next.seg(rev));
+    at = rev ? next.a : next.b;
+  }
+  return out;
 }
 
 /** Whether any picked shape lies on both sides of the axis (touching it along a line is fine). */

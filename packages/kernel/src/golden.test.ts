@@ -21,6 +21,7 @@ import {
   pushPull,
   revolveOf,
   loftOf,
+  sweepOf,
   shell,
   sphere,
   torus,
@@ -162,6 +163,7 @@ const Z_AXIS = { origin: [0, 0] as [number, number], dir: [0, 1] as [number, num
 const rectAt = (x: number, y: number, w: number, h: number): ProfileSeg[] =>
   rect(w, h).map((g) => (g.kind === "line" ? { kind: "line", a: [g.a[0] + x, g.a[1] + y], b: [g.b[0] + x, g.b[1] + y] } : g));
 
+const YZ = { origin: [0, 0, 0], x: [0, 1, 0], normal: [1, 0, 0] } as PrismSpec["frame"];
 const XYat = (z: number) => ({ ...XY, origin: [0, 0, z] }) as PrismSpec["frame"];
 /** A square centred on the frame's origin. */
 const centred = (w: number) => rectAt(-w / 2, -w / 2, w, w);
@@ -316,6 +318,35 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
           { frame: XYat(5), profile: square(10) },
           { frame: XYat(20), profile: square(20) },
         ],
+      }),
+    ]),
+  // Sweep (#400): a 4 mm tube with a 2 mm bore along a line, a quarter bend and a line; a 6 mm square round a 30 mm
+  // ring; a channel swept along a straight path cut into a block.
+  "sweep-bent-tube": (oc) =>
+    sweepOf(oc, {
+      frame: YZ,
+      profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 2 }], holes: [[{ kind: "circle", c: [0, 0], r: 1 }]], area: 0 }],
+      path: {
+        frame: XY,
+        segs: [
+          { kind: "line", a: [0, 0], b: [20, 0] },
+          { kind: "arc", a: [20, 0], m: [20 + 10 * Math.SQRT1_2, 10 - 10 * Math.SQRT1_2], b: [30, 10] },
+          { kind: "line", a: [30, 10], b: [30, 30] },
+        ],
+      },
+    }),
+  "sweep-ring": (oc) =>
+    sweepOf(oc, {
+      frame: XZ,
+      profiles: [{ outer: rectAt(12, -3, 6, 6), holes: [], area: 36 }],
+      path: { frame: XY, segs: [{ kind: "circle", c: [0, 0], r: 15 }] },
+    }),
+  "sweep-cut": (oc) =>
+    boolean(oc, "cut", box(oc, { x: 30, y: 30, z: 10 }), [
+      sweepOf(oc, {
+        frame: { ...YZ, origin: [-20, 0, 0] },
+        profiles: [{ outer: rectAt(-3, 7, 6, 6), holes: [], area: 36 }],
+        path: { frame: XY, segs: [{ kind: "line", a: [-20, 0], b: [20, 0] }] },
       }),
     ]),
   // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
