@@ -116,3 +116,19 @@ test("the picked edges show as a list, and reopening the step keeps them", async
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: /^Fillet 1, R 4 mm, 2 edges of Box 1/ })).toBeVisible();
 });
+
+test("offset a box's top face out 3 mm", async ({ page }) => {
+  await addBox(page);
+  await page.keyboard.press("Shift+P");
+  await expect(page.getByText("Click the faces to move: flat ones, or the wall of a hole.").first()).toBeVisible();
+  await click(page, 0, 0, 20);
+  await expect(page.getByText(/^1 face on Box 1\./)).toBeVisible();
+  const d = page.getByRole("textbox", { name: "Distance" });
+  await d.fill("3");
+  await d.press("Enter");
+  await expect(page.getByText("Moved 1 face of Box 1 out 3 mm")).toBeVisible();
+  await page.getByRole("treeitem", { name: /Box 1/ }).click();
+  // 20 × 20 × 23.
+  await expect(page.getByText("9,200 mm³")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: /^Offset face 1, Out 3 mm, 1 face of Box 1/ })).toBeVisible();
+});

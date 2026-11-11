@@ -213,7 +213,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
     label: "Offset",
     icon: "shrink",
     key: "o",
-    help: "Click a line, arc or circle. The copy goes on the side the pointer is on. Set the distance in the bar.",
+    help: "Click a line, arc or circle, and the copy goes on the side the pointer is on; or click inside a closed shape to copy its whole outline inward (Shift: outward). Set the distance, or both sides, in the bar.",
     fields: [],
   },
   {

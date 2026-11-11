@@ -21,7 +21,7 @@ import {
   removeParts,
   type ModelDoc,
 } from "./document";
-import { BcadError, loadBcad, saveBcad } from "./bcad";
+import { BCAD_SCHEMA, BcadError, loadBcad, saveBcad } from "./bcad";
 
 /** Three boxes, a, b and c. */
 const three = (): ModelDoc => addPart(addPart(addPart(newDoc(), "box", "a"), "box", "b"), "box", "c");
@@ -114,7 +114,7 @@ describe("links (#171)", () => {
     expect(build(back.doc).links).toEqual([{ id: "L1", name: "Component 1", parts: ["a"] }]);
     const old = loadBcad(readFileSync(join(__dirname, "testdata", "bcad", "schema1.bcad"), "utf8"));
     if (old instanceof BcadError) throw old;
-    expect(old.meta.schema).toBe(2);
+    expect(old.meta.schema).toBe(BCAD_SCHEMA);
     expect(build(old.doc).links).toEqual([]);
     expect(build(old.doc).parts.every((p) => p.link === undefined)).toBe(true);
   });

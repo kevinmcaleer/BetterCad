@@ -19,6 +19,7 @@ import {
   prism,
   prismOf,
   pushPull,
+  offsetFaces,
   revolveOf,
   loftOf,
   sweepOf,
@@ -169,6 +170,27 @@ const XYat = (z: number) => ({ ...XY, origin: [0, 0, z] }) as PrismSpec["frame"]
 /** A square centred on the frame's origin. */
 const centred = (w: number) => rectAt(-w / 2, -w / 2, w, w);
 const square = (w: number) => ({ outer: centred(w), holes: [] as ProfileSeg[][], area: w * w });
+
+/** The first face of a shape that is round, or else flat with its outward normal nearest `dir`. */
+const faceToward = (oc: OC, shape: TopoDS_Shape, dir: [number, number, number] | "round"): number => {
+  let best = -1;
+  let score = -Infinity;
+  elements(oc, shape, "face").forEach((f, i) => {
+    const face = oc.TopoDS.Face(f);
+    const s = new oc.BRepAdaptor_Surface(face, true);
+    const flat = s.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane;
+    if (dir === "round") {
+      if (!flat && best < 0) best = i;
+    } else if (flat) {
+      const d = s.Plane().Axis().Direction();
+      const k = face.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1;
+      const v = k * (d.X() * dir[0] + d.Y() * dir[1] + d.Z() * dir[2]);
+      if (v > score) [score, best] = [v, i];
+    }
+    s.delete();
+  });
+  return best;
+};
 
 const holeOn = (top: number, p: HoleParams): HoleSpec => {
   const r = resolveHole(p) as { diameter: number; head?: HoleSpec["head"] };
@@ -459,6 +481,16 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
   "pushpull-out": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, 5),
   "pushpull-in": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, -5),
+  // Offset face (#264): a wedge's slope out 2 mm, its bottom, back and ends stretched to meet it; and a 5 mm hole's
+  // wall in 0.2 mm, loosening it to 5.4 mm.
+  "offset-face-wedge": (oc) => {
+    const w = wedge(oc, { x: 20, y: 10, z: 10 });
+    return offsetFaces(oc, w, [faceToward(oc, w, [1, 0, 2])], 2);
+  },
+  "offset-face-hole": (oc) => {
+    const plate = boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 5 }), [cylinder(oc, { x: 5, y: 5, z: 5 })]);
+    return offsetFaces(oc, plate, [faceToward(oc, plate, "round")], -0.2);
+  },
   // Holes (#70), into the top of a plate.
   "hole-m3-plate": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "none", depth: null })),
   "hole-m3-countersunk": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "countersink", depth: null })),

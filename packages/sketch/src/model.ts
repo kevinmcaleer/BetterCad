@@ -106,6 +106,11 @@ export interface Dimension {
    */
   arms?: [1 | -1, 1 | -1];
   suppressed?: boolean;
+  /**
+   * Sizes that are one number (#266): an offset's distance to each curve it copies. Setting one sets them all, and only
+   * the first is shown.
+   */
+  group?: Id;
 }
 
 export type WorldPlane = "XY" | "XZ" | "YZ";

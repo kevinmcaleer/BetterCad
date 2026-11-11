@@ -222,7 +222,7 @@ export interface ImportSpec {
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
 export interface BodyOp {
   /** A boolean with a tool, or a finish on the part's own edges and faces. */
-  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "hole" | "plug";
+  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "offsetFace" | "hole" | "plug";
   /** Edges (fillet, chamfer) or faces left open (shell), numbered on the part as it was before this op. */
   refs?: number[];
   /** The same edges or faces by name (#47), found again when earlier steps change; `refs` is the fallback. */
@@ -532,8 +532,11 @@ export interface CombineFeature extends FeatureBase {
  * Edges and faces are numbered as the kernel numbers them on the part at that point of the timeline.
  */
 export interface FinishFeature extends FeatureBase {
-  /** Push/pull (#65) moves one flat face along its normal: out joins, in cuts. Its size is signed. */
-  type: "fillet" | "chamfer" | "shell" | "pushpull";
+  /**
+   * Push/pull (#65) moves one flat face along its normal: out joins, in cuts. Offset face (#264) moves several faces,
+   * flat or round, with their neighbours stretched to meet them. Both sizes are signed: out is positive.
+   */
+  type: "fillet" | "chamfer" | "shell" | "pushpull" | "offsetFace";
   part: string;
   /** Edges for fillet and chamfer; faces to leave open for shell. */
   refs: number[];
@@ -878,6 +881,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   chamfer: "Chamfer",
   shell: "Shell",
   pushpull: "Push/pull",
+  offsetFace: "Offset face",
   revolve: "Revolve",
   loft: "Loft",
   sweep: "Sweep",
@@ -1015,6 +1019,7 @@ const BUILT = new Set<string>([
   "chamfer",
   "shell",
   "pushpull",
+  "offsetFace",
   "hole",
 ]);
 
@@ -1660,7 +1665,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       case "fillet":
       case "chamfer":
       case "shell":
-      case "pushpull": {
+      case "pushpull":
+      case "offsetFace": {
         const t = parts[find(f.part)];
         if (!t) {
           failed.set(f.id, "The body it changes is gone");
@@ -1670,8 +1676,11 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, `Pick at least one edge to ${f.type === "fillet" ? "round" : "bevel"}`);
           break;
         }
-        if (f.type === "pushpull" ? !f.refs.length : !(f.size > 0)) {
-          failed.set(f.id, f.type === "pushpull" ? "Pick the face to pull" : "Give it a size above 0 mm");
+        if (f.type === "pushpull" || f.type === "offsetFace" ? !f.refs.length : !(f.size > 0)) {
+          failed.set(
+            f.id,
+            f.type === "pushpull" ? "Pick the face to pull" : f.type === "offsetFace" ? "Pick the faces to offset" : "Give it a size above 0 mm",
+          );
           break;
         }
         t.ops = [
@@ -2227,6 +2236,7 @@ export function featureParts(f: Feature): string[] {
     case "chamfer":
     case "shell":
     case "pushpull":
+    case "offsetFace":
     case "hole":
     case "mount":
       return [f.part];
@@ -2372,6 +2382,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "pushpull":
       return `${f.size >= 0 ? "Out" : "In"} ${mm(Math.abs(f.size))}, ${who([f.part])}`;
+    case "offsetFace": {
+      const n = f.refs.length;
+      return `${f.size >= 0 ? "Out" : "In"} ${mm(Math.abs(f.size))}, ${n === 1 ? "1 face" : `${n} faces`} of ${who([f.part])}`;
+    }
     case "hole": {
       const n = f.points.length;
       const head = f.head === "none" ? "" : `, ${f.head}`;
@@ -2475,7 +2489,7 @@ export function updateFinish(doc: ModelDoc, id: string, change: Partial<FinishPa
   return {
     ...doc,
     features: doc.features.map((f) => {
-      if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "pushpull")) return f;
+      if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "pushpull" && f.type !== "offsetFace")) return f;
       const next = { ...f, ...change } as FinishFeature;
       // New picks without names drop the old names, which would otherwise win over them.
       if (change.refs && !change.names?.length) delete next.names;
@@ -3251,7 +3265,7 @@ function partsMade(f: Feature): string[] {
 }
 
 /** Features that pick edges or faces by number need the part exactly as the steps before left it. */
-const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "hole", "mount"]);
+const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "offsetFace", "hole", "mount"]);
 
 /**
  * The features one feature needs before it on the timeline: the steps that made the parts it reads, its sketch, and

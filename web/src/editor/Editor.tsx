@@ -1229,7 +1229,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     at,
     view: vp.ref,
-    tool: sketch.editing ? null : tool === "fillet" || tool === "shell" ? tool : null,
+    tool: sketch.editing ? null : tool === "fillet" || tool === "shell" || tool === "offsetFace" ? tool : null,
     onClose: () => setTool("select"),
     say,
   });
@@ -2457,6 +2457,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             "combine",
             "fillet",
             "shell",
+            "offsetFace",
             "construct",
           ].includes(live.current.tool),
       },
@@ -3412,15 +3413,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const repick = (id: string) => {
     const i = store.get().features.findIndex((f) => f.id === id);
     const f = store.get().features[i];
-    if (!f || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell")) return;
+    if (!f || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "offsetFace")) return;
     const back = live.current.marker;
     // A step that built keeps its picks: they number the edges of the body just before it, which has not changed.
     const keep = !failed.has(f.id) && f.refs.length > 0;
     moveMarker(i);
-    setTool(f.type === "shell" ? "shell" : "fillet");
+    setTool(f.type === "shell" || f.type === "offsetFace" ? f.type : "fillet");
     finish.repick(f, () => setMarker(back), keep);
     const name = parts.find((p) => p.id === f.part)?.name ?? "the body";
-    const what = f.type === "shell" ? "faces to leave open" : "edges";
+    const what = f.type === "shell" ? "faces to leave open" : f.type === "offsetFace" ? "faces to move" : "edges";
     say(keep ? `Change the ${what} or the size on ${name}, then press Enter` : `Pick the ${what} again on ${name}, then press Enter`);
   };
   /**
@@ -3431,7 +3432,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const editStep = (f: Feature) => {
     const i = store.get().features.findIndex((x) => x.id === f.id);
     if (i < 0) return;
-    if (f.type === "fillet" || f.type === "chamfer" || f.type === "shell") return repick(f.id);
+    if (f.type === "fillet" || f.type === "chamfer" || f.type === "shell" || f.type === "offsetFace") return repick(f.id);
     if (i >= at) moveMarker(i + 1);
     switch (f.type) {
       case "sketch":
@@ -3495,7 +3496,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         tone="warn"
         action={
           <span className="bc-actions">
-            {(problem.type === "fillet" || problem.type === "chamfer" || problem.type === "shell") && (
+            {(problem.type === "fillet" || problem.type === "chamfer" || problem.type === "shell" || problem.type === "offsetFace") && (
               <Button size="dense" label="Re-pick" title="Pick the edges or faces again" onClick={() => repick(problem.id)} />
             )}
             {editEntry && "onSelect" in editEntry && <Button size="dense" label="Edit" onClick={editEntry.onSelect} />}
@@ -4024,7 +4025,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
-              {(tool === "fillet" || tool === "shell") && (
+              {(tool === "fillet" || tool === "shell" || tool === "offsetFace") && (
                 <Suspense fallback={null}>
                   <FinishBar f={finish} preview={finishPreview} onCancel={() => setTool("select")} />
                 </Suspense>

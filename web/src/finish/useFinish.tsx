@@ -8,7 +8,7 @@ import { PREVIEW_ID, type PreviewRequest } from "../kernel/usePreview";
 import { pickNames } from "./names";
 
 /**
- * Fillet, Chamfer (#67) and Shell (#68): click edges (or the faces to leave open) on one body, set the size, Enter.
+ * Fillet, Chamfer (#67), Shell (#68) and Offset face (#264): click edges (or the faces to leave open) on one body, set the size, Enter.
  * Picks are made on the body as it is, so the step goes on the timeline only when it is done; until then `preview`
  * asks the kernel for the result, which the view draws over the body while the picks stay on the body as it is.
  */
@@ -23,8 +23,8 @@ export interface FinishDeps {
   doc: ModelDoc;
   at: number;
   view: RefObject<View3DHandle>;
-  /** The armed tool: fillet (fillet or chamfer edges) or shell (faces left open). */
-  tool: "fillet" | "shell" | null;
+  /** The armed tool: fillet (fillet or chamfer edges), shell (faces left open) or offsetFace (faces moved). */
+  tool: "fillet" | "shell" | "offsetFace" | null;
   onClose: () => void;
   say: (text: string, error?: boolean) => void;
 }
@@ -38,14 +38,16 @@ export function useFinish(d: FinishDeps) {
   const [radius, setRadius] = useState(1);
   const [wall, setWall] = useState(1.2);
   const [outside, setOutside] = useState(false);
+  /** Offset face's distance: out (positive) grows the body. */
+  const [offsetBy, setOffsetBy] = useState(1);
   /** A step whose picks are being made again (#77), and how to put the timeline marker back after. */
   const editing = useRef<{ id: string; name: string; part: string; refs: number[]; restore: () => void } | null>(null);
   /** The step being changed, as state, so the preview follows it. */
   const [editId, setEditId] = useState<string | null>(null);
-  const live = useRef({ part, refs, bevel, radius, wall, outside });
-  live.current = { part, refs, bevel, radius, wall, outside };
+  const live = useRef({ part, refs, bevel, radius, wall, outside, offsetBy });
+  live.current = { part, refs, bevel, radius, wall, outside, offsetBy };
 
-  const kind = d.tool === "shell" ? "face" : "edge";
+  const kind = d.tool === "shell" || d.tool === "offsetFace" ? "face" : "edge";
   const engineOf = useCallback((): Engine | null => d.view.current?.engine() ?? null, [d.view]);
 
   // A fresh start each time the tool is armed or changed; putting it down ends a re-pick and rolls forward again.
@@ -105,16 +107,26 @@ export function useFinish(d: FinishDeps) {
   const done = useCallback((sizeNow?: number) => {
     const D = deps.current;
     // Read through the ref: Enter in a size field commits it and finishes in the same moment.
-    const { part: p, refs: r, bevel, radius, wall, outside } = live.current;
-    if (!p || (D.tool === "fillet" && !r.length))
-      return D.say(D.tool === "shell" ? "Click a face of the body to hollow" : bevel ? "Click the edges to chamfer" : "Click the edges to fillet", true);
-    const type = D.tool === "shell" ? "shell" : bevel ? "chamfer" : "fillet";
-    const size = sizeNow ?? (type === "shell" ? wall : radius);
-    if (sizeNow !== undefined) (type === "shell" ? setWall : setRadius)(sizeNow);
-    const label = type === "shell" ? "Shell" : type === "fillet" ? "Fillet" : "Chamfer";
+    const { part: p, refs: r, bevel, radius, wall, outside, offsetBy } = live.current;
+    if (!p || (D.tool !== "shell" && !r.length))
+      return D.say(
+        D.tool === "shell"
+          ? "Click a face of the body to hollow"
+          : D.tool === "offsetFace"
+            ? "Click the faces to offset"
+            : bevel
+              ? "Click the edges to chamfer"
+              : "Click the edges to fillet",
+        true,
+      );
+    const type = D.tool === "shell" ? "shell" : D.tool === "offsetFace" ? "offsetFace" : bevel ? "chamfer" : "fillet";
+    const size = sizeNow ?? (type === "shell" ? wall : type === "offsetFace" ? offsetBy : radius);
+    if (sizeNow !== undefined) (type === "shell" ? setWall : type === "offsetFace" ? setOffsetBy : setRadius)(sizeNow);
+    if (type === "offsetFace" && !size) return D.say("Type a distance: out grows the body, a minus distance moves the faces in", true);
+    const label = type === "shell" ? "Shell" : type === "offsetFace" ? "Offset face" : type === "fillet" ? "Fillet" : "Chamfer";
     const e = editing.current;
     // The picks by name too (#47), so they hold when an earlier step changes the body.
-    const names = pickNames(D.meshes?.get(p)?.names, type === "shell" ? "faces" : "edges", r);
+    const names = pickNames(D.meshes?.get(p)?.names, type === "shell" || type === "offsetFace" ? "faces" : "edges", r);
     if (e) {
       editing.current = null;
       setEditId(null);
@@ -127,7 +139,9 @@ export function useFinish(d: FinishDeps) {
     D.say(
       type === "shell"
         ? `Hollowed ${name} to a ${size} mm wall${n ? "" : ". A sealed hollow traps material when printed"}`
-        : `${type === "fillet" ? "Filleted" : "Chamfered"} ${n === 1 ? "1 edge" : `${n} edges`} of ${name}, ${size} mm`,
+        : type === "offsetFace"
+          ? `Moved ${n === 1 ? "1 face" : `${n} faces`} of ${name} ${size > 0 ? "out" : "in"} ${Math.abs(size)} mm`
+          : `${type === "fillet" ? "Filleted" : "Chamfered"} ${n === 1 ? "1 edge" : `${n} edges`} of ${name}, ${size} mm`,
     );
     setPart(null);
     setRefs([]);
@@ -148,7 +162,8 @@ export function useFinish(d: FinishDeps) {
     if (f.type === "shell") {
       setWall(f.size);
       setOutside(!!f.outside);
-    } else setRadius(f.size);
+    } else if (f.type === "offsetFace") setOffsetBy(f.size);
+    else setRadius(f.size);
   }, []);
 
   /** Takes every pick out. A step being changed stays on its body. */
@@ -181,10 +196,10 @@ export function useFinish(d: FinishDeps) {
 
   /** The step as it would be with these picks and settings, for the kernel to build and the view to show. */
   const preview = useMemo<PreviewRequest | null>(() => {
-    if (!d.tool || !part || (d.tool === "fillet" && !refs.length)) return null;
-    const type = d.tool === "shell" ? "shell" : bevel ? "chamfer" : "fillet";
-    const size = type === "shell" ? wall : radius;
-    if (!(size > 0)) return null;
+    if (!d.tool || !part || (d.tool !== "shell" && !refs.length)) return null;
+    const type = d.tool === "shell" ? "shell" : d.tool === "offsetFace" ? "offsetFace" : bevel ? "chamfer" : "fillet";
+    const size = type === "shell" ? wall : type === "offsetFace" ? offsetBy : radius;
+    if (type === "offsetFace" ? !size : !(size > 0)) return null;
     const params = { type, part, refs, size, outside: type === "shell" ? outside : undefined } as const;
     if (editId) {
       const i = d.doc.features.findIndex((f) => f.id === editId);
@@ -192,18 +207,22 @@ export function useFinish(d: FinishDeps) {
       return { doc: updateFinish(d.doc, editId, params), upTo: i + 1, step: editId, show: [part] };
     }
     return { doc: addFinish(d.doc, params, PREVIEW_ID, d.at), upTo: d.at + 1, step: PREVIEW_ID, show: [part] };
-  }, [d.tool, d.doc, d.at, part, refs, bevel, radius, wall, outside, editId]);
+  }, [d.tool, d.doc, d.at, part, refs, bevel, radius, wall, outside, offsetBy, editId]);
 
   const partName = part ? (d.parts.find((p) => p.id === part)?.name ?? null) : null;
   const help = !d.tool
     ? null
-    : d.tool === "shell"
+    : d.tool === "offsetFace"
       ? part
-        ? `Click more faces to leave open, or a picked one to close it. Enter hollows ${partName}.`
-        : "Click the face to leave open, usually the top. Enter hollows the body."
-      : part
-        ? `Click more edges of ${partName}, or a picked one to drop it. Enter ${bevel ? "chamfers" : "fillets"} them.`
-        : `Click the edges to ${bevel ? "chamfer" : "fillet"}.`;
+        ? `Click more faces of ${partName}, or a picked one to drop it. Enter moves them.`
+        : "Click the faces to move: flat ones, or the wall of a hole."
+      : d.tool === "shell"
+        ? part
+          ? `Click more faces to leave open, or a picked one to close it. Enter hollows ${partName}.`
+          : "Click the face to leave open, usually the top. Enter hollows the body."
+        : part
+          ? `Click more edges of ${partName}, or a picked one to drop it. Enter ${bevel ? "chamfers" : "fillets"} them.`
+          : `Click the edges to ${bevel ? "chamfer" : "fillet"}.`;
 
   return {
     tool: d.tool,
@@ -219,6 +238,8 @@ export function useFinish(d: FinishDeps) {
     setWall,
     outside,
     setOutside,
+    offsetBy,
+    setOffsetBy,
     done,
     clear,
     repick,

@@ -17,6 +17,7 @@ import {
   place,
   prismOf,
   pushPull,
+  offsetFaces,
   holes,
   revolveOf,
   loftOf,
@@ -183,6 +184,7 @@ const MESH_REFUSAL: Partial<Record<string, string>> = {
   chamfer: "Imported meshes can't be chamfered; use a STEP file for that",
   shell: "Imported meshes can't be shelled; use a STEP file for that",
   pushpull: "Imported meshes can't be pushed or pulled; use a STEP file for that",
+  offsetFace: "Imported meshes can't have faces offset; use a STEP file for that",
 };
 
 /** Steps that made a part, so a part that cannot be built marks its tile. */
@@ -441,6 +443,7 @@ export class ModelBuilder {
           if (o.op === "fillet" || o.op === "chamfer") s = (o.op === "fillet" ? fillet : chamfer)(oc, s, refs, o.size ?? 0, namer);
           else if (o.op === "shell") s = shell(oc, s, refs, o.size ?? 0, o.outside, namer);
           else if (o.op === "pushpull") s = pushPull(oc, s, refs[0] ?? -1, o.size ?? 0, namer);
+          else if (o.op === "offsetFace") s = offsetFaces(oc, s, refs, o.size ?? 0, namer);
           else if (o.op === "hole") s = holes(oc, s, o.holes!, namer);
           else if (o.op === "plug") {
             s = plug(oc, s, o.plugs ?? []);

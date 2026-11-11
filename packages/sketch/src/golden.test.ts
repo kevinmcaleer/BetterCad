@@ -6,7 +6,7 @@ import { Solver } from "./solver";
 import { newSketch, type Id, type Sketch } from "./model";
 import { Draft, drawArcCentre, drawArcTangent, drawCircle, drawEllipse, drawLine, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
-import { mirrorShapes } from "./edits";
+import { mirrorShapes, offsetRegion } from "./edits";
 
 /**
  * Golden sketches (#60): built through the model API, solved by the real planegcs in Node, and checked against
@@ -116,6 +116,24 @@ const CASES: Record<string, Case> = {
     },
     loops: 1,
     holes: 0,
+  },
+  "offset-plate": {
+    about:
+      "A 40 × 20 plate with a ⌀6 hole at its middle, its outline offset 2 inward from a click inside it (#266): a 36 × 16 rectangle inside, and a ⌀10 ring round the hole, all on one distance. Then the plate is 50 wide and the inner rectangle 46.",
+    build() {
+      const r = drawRectangle(newSketch(), [0, 0], [40, 20], { width: 40, height: 20 });
+      const d = new Draft(r.sketch);
+      fixFirst(d);
+      const hole = d.circle([20, 10], 3);
+      const c = (d.entities.find((e) => e.id === hole) as { c: Id }).c;
+      d.constrain({ type: "fix", p: c });
+      d.dimension("diameter", [hole], 6);
+      const out = offsetRegion(d.done().sketch, [5, 5], -2);
+      if (typeof out === "string") throw new Error(out);
+      return { sketch: out, edit: out.dimensions.find((x) => x.kind === "length" && x.value === 40)!.id, to: 50 };
+    },
+    loops: 2,
+    holes: 2,
   },
   "plate-with-holes": {
     about: "An 80 × 50 plate, four ⌀6 holes 60 apart across and 30 apart up, centred by two construction lines.",

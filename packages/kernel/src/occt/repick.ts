@@ -18,7 +18,7 @@ interface Sig {
 }
 
 /** Steps that pick edges or faces by number, and so can be re-picked by place after a reorder. */
-const REPICK = new Set<Feature["type"]>(["fillet", "chamfer", "shell", "pushpull"]);
+const REPICK = new Set<Feature["type"]>(["fillet", "chamfer", "shell", "pushpull", "offsetFace"]);
 const kindOf = (f: FinishFeature) => (f.type === "fillet" || f.type === "chamfer" ? "edge" : "face");
 
 /** How close, in mm, a picked edge or face must be to its match: the same line or plane, the nearest middle. */

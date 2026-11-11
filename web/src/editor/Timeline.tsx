@@ -17,6 +17,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   chamfer: "chamfer",
   shell: "shell",
   pushpull: "pushpull",
+  offsetFace: "offsetFace",
   revolve: "revolve",
   loft: "loft",
   sweep: "sweep",

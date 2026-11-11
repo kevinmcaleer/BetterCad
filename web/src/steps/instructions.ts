@@ -32,6 +32,7 @@ const VERB: Record<Feature["type"], string> = {
   chamfer: "Chamfer",
   shell: "Shell",
   pushpull: "Push or pull a face",
+  offsetFace: "Offset faces",
   revolve: "Revolve",
   loft: "Loft",
   sweep: "Sweep",
