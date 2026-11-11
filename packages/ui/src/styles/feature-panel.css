@@ -233,3 +233,39 @@
   margin-top: calc((var(--bc-control) - 16px) / 2);
   accent-color: var(--bc-color-accent);
 }
+/* Recognise features (#446): the holes found in a mesh, each with a tick. */
+.bc-recognise-list {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-1);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.bc-recognise-list li {
+  padding: var(--bc-space-1) var(--bc-space-2);
+  border-radius: var(--bc-radius-sm);
+  line-height: 1.4;
+}
+.bc-recognise-list li.bc-on {
+  background: var(--bc-color-hover);
+}
+.bc-recognise-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--bc-space-2);
+  cursor: pointer;
+}
+.bc-recognise-list input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--bc-color-accent);
+}
+.bc-recognise-left {
+  color: var(--bc-color-muted);
+}

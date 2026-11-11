@@ -26,6 +26,7 @@
     "./zip": "./src/export/zip.ts",
     "./mesh-files": "./src/export/mesh.ts",
     "./track-fit": "./src/trackFit.ts",
+    "./recognise": "./src/recognise/steps.ts",
     "./track-motion": "./src/trackMotion.ts",
     "./gltf": "./src/export/gltf.ts"
   },

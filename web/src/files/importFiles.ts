@@ -44,6 +44,7 @@ const KERNEL = 0.95;
 export async function importFiles(files: File[], at: Vec3 | undefined, ctx: ImportContext): Promise<void> {
   const made: string[] = [];
   const notes: string[] = [];
+  let meshFiles = 0;
   try {
     for (const [i, file] of files.entries()) {
       const format = importFormat(file.name);
@@ -100,6 +101,7 @@ export async function importFiles(files: File[], at: Vec3 | undefined, ctx: Impo
         }
         ids ??= add(info.bodies.map((b) => ({ id: newId(), name: b.name || base })));
         made.push(...ids);
+        if (format === "stl" || format === "3mf") meshFiles++;
         if (info.bodies.some((b) => b.open)) notes.push(`${file.name} has holes in its mesh, so it can't be combined.`);
         const tris = info.bodies.reduce((n, b) => n + (b.triangles ?? 0), 0);
         if (tris > BIG_MESH) notes.push(`${file.name} has ${tris.toLocaleString("en-GB")} triangles and may slow the view.`);
@@ -116,6 +118,8 @@ export async function importFiles(files: File[], at: Vec3 | undefined, ctx: Impo
   ctx.select(made);
   if (notes.length) return ctx.say(notes.join(" "));
   const what = `${made.length === 1 ? "1 body" : `${made.length} bodies`} from ${files.length === 1 ? files[0]!.name : `${files.length} files`}`;
+  // A mesh's holes can be made editable (#446): say where to find it, once the import has nothing else to say.
+  if (meshFiles && !ctx.reference) return ctx.say(`Imported ${what}. To change its holes, right-click it and choose Recognise features`);
   ctx.say(`Imported ${what}${ctx.reference ? " to design around" : ""}`, false, true);
 }
 

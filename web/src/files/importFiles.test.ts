@@ -71,7 +71,7 @@ describe("importing with progress", () => {
     await done;
     expect(k.seen.at(-1)).toBeNull();
     expect(quickMeshes.size).toBe(0);
-    expect(k.ctx.say).toHaveBeenCalledWith("Imported 1 body from cube.stl", false, true);
+    expect(k.ctx.say).toHaveBeenCalledWith("Imported 1 body from cube.stl. To change its holes, right-click it and choose Recognise features");
     // The bar only goes forward.
     const bar = k.seen.flatMap((p) => (p?.fraction === undefined ? [] : [p.fraction]));
     expect(bar).toEqual([...bar].sort((a, b) => a - b));

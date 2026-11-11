@@ -17,6 +17,8 @@ export interface ImportedBody {
   /** A mesh with gaps: it stays a shell, which can't be combined. */
   open: boolean;
   triangles?: number;
+  /** How far the builder moved it from where the file had it, to stand it on its own origin. */
+  at?: { x: number; y: number; z: number };
 }
 
 /** Hears how far a long read has got, 0 to 1. */
@@ -95,4 +97,11 @@ export function readImport(oc: OC, format: ImportFormat, data: Uint8Array, base:
     const made = meshSolid(oc, m.triangles, progress && ((f) => progress(from / total + f * share)));
     return { name: meshName(format, m.name, base), ...made, triangles: m.triangles.length / 9 };
   });
+}
+
+/** The triangles of one body of a mesh file, as the file has them (#437), or null for a STEP file. */
+export function importTriangles(format: ImportFormat, data: Uint8Array, index: number): Float32Array | null {
+  if (format === "step") return null;
+  const buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  return format === "stl" ? (index === 0 ? readStl(buf) : null) : (read3mf(buf)[index]?.triangles ?? null);
 }

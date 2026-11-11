@@ -17,6 +17,11 @@ export interface HoleParams {
   head: HoleHead;
   /** mm into the face, or null for Through all. */
   depth: number | null;
+  /**
+   * A custom hole's head, as measured (#449): its diameter and depth, and a countersink's whole angle. A size from
+   * the screw table takes its head from the table instead.
+   */
+  headSize?: { diameter: number; depth: number; angle?: number };
 }
 
 export interface HoleSpec {
@@ -33,6 +38,8 @@ export interface HoleSpec {
 export function resolveHole(p: HoleParams): { diameter: number; head?: HoleSpec["head"] } | { error: string } {
   if (p.size === "custom") {
     if (!(p.diameter && p.diameter > 0)) return { error: "Give the hole a diameter above 0 mm" };
+    const h = p.headSize;
+    if (p.head !== "none" && h && h.diameter > p.diameter && h.depth > 0) return { diameter: p.diameter, head: { kind: p.head, ...h } };
     return { diameter: p.diameter };
   }
   const s = screw(p.size);
