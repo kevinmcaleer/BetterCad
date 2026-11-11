@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Frame } from "@bettercad/sketch";
 import { addHole, addPart, build, changeParts, featureSummary, newDoc, type HoleStepParams, type ModelDoc } from "./document";
-import { holeSection, resolveHole } from "./holes";
+import { defaultHeadSize, holeSection, resolveHole } from "./holes";
 import { loadOCCT, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 
@@ -35,6 +35,36 @@ describe("hole settings", () => {
     const cs = resolveHole({ size: "M3", fit: "printed", head: "countersink", depth: null }) as { head: { depth: number } };
     // A 90° countersink is as deep as it is wide at the rim, less the hole, over two.
     expect(cs.head.depth).toBeCloseTo((6.72 - 3.4) / 2, 6);
+  });
+
+  it("takes a custom hole's head as given: a counterbore's size, a countersink's angle (#404)", () => {
+    const base = { size: "custom", diameter: 8, fit: "normal", depth: null } as const;
+    expect(resolveHole({ ...base, head: "counterbore", headSize: { diameter: 15, depth: 4 } })).toEqual({
+      diameter: 8,
+      head: { kind: "counterbore", diameter: 15, depth: 4 },
+    });
+    const cs = resolveHole({ ...base, head: "countersink", headSize: { diameter: 16, depth: 0, angle: 90 } });
+    expect(cs).toMatchObject({ diameter: 8, head: { kind: "countersink", diameter: 16, angle: 90 } });
+    expect((cs as { head: { depth: number } }).head.depth).toBeCloseTo(4, 9);
+    expect(resolveHole({ ...base, head: "counterbore", headSize: { diameter: 6, depth: 4 } })).toEqual({ error: "Make the head wider than the hole" });
+    expect(resolveHole({ ...base, head: "counterbore", headSize: { diameter: 15, depth: 0 } })).toEqual({ error: "Give the counterbore a depth above 0 mm" });
+    expect(resolveHole({ ...base, head: "countersink", headSize: { diameter: 15, depth: 0, angle: 180 } })).toEqual({
+      error: "Give the countersink an angle between 0° and 180°",
+    });
+    // No head size yet: a plain hole.
+    expect(resolveHole({ ...base, head: "counterbore" })).toEqual({ diameter: 8 });
+    expect(defaultHeadSize(8, "counterbore")).toEqual({ diameter: 14.4, depth: 4.8 });
+    expect(defaultHeadSize(8, "countersink")).toEqual({ diameter: 16, depth: 0, angle: 90 });
+  });
+
+  it("cuts a custom counterbore: Ø8 through 13 mm, Ø15 4 mm deep", () => {
+    let d = addPart(newDoc(), "box", "b");
+    d = changeParts(d, ["b"], "size", { x: 30, y: 30, z: 13 });
+    const top: Frame = { origin: [0, 0, 13], x: [1, 0, 0], normal: [0, 0, 1] };
+    d = addHole(d, hole({ frame: top, size: "custom", fit: "normal", diameter: 8, head: "counterbore", headSize: { diameter: 15, depth: 4 } }));
+    const r = bodies(d);
+    expect(r.failed).toEqual([]);
+    expect(r.bodies[0]!.measure.volume).toBeCloseTo(30 * 30 * 13 - cyl(8, 9) - cyl(15, 4), 1);
   });
 
   it("draws the section closed along the axis", () => {

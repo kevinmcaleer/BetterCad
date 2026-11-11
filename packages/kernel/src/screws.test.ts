@@ -19,6 +19,15 @@ describe("screw table", () => {
     expect(FITS.map((f) => f.id)).toEqual(["printed", "insert", "normal", "close", "tap"]);
   });
 
+  it("goes up to M12 for bigger robots (#404)", () => {
+    expect(SCREWS.filter((s) => s.system === "metric").map((s) => s.id)).toEqual(["M2", "M2.5", "M3", "M4", "M5", "M6", "M8", "M10", "M12"]);
+    expect(holeDiameter(screw("M8")!, "printed")).toBe(8.4);
+    expect(resolveHole({ size: "M10", fit: "normal", head: "counterbore", depth: null })).toMatchObject({
+      diameter: 11,
+      head: { kind: "counterbore", diameter: 16.4, depth: 10.2 },
+    });
+  });
+
   it("adds the printer's offset to a printed clearance, and says what it comes to", () => {
     const m3 = screw("M3")!;
     expect(holeDiameter(m3, "printed", 0.25)).toBe(3.25);

@@ -406,6 +406,14 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Holes (#70), into the top of a plate.
   "hole-m3-plate": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "none", depth: null })),
   "hole-m3-countersunk": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "countersink", depth: null })),
+  // A custom counterbore (#404): Ø8 through a 13 mm plate, Ø15 4 mm deep, as the Corner Tie's.
+  "hole-custom-counterbore": (oc) =>
+    holes(
+      oc,
+      box(oc, { x: 30, y: 30, z: 13 }),
+      holeOn(13, { size: "custom", diameter: 8, fit: "normal", head: "counterbore", headSize: { diameter: 15, depth: 4 }, depth: null }),
+    ),
+  "hole-m10-countersunk": (oc) => holes(oc, box(oc, { x: 40, y: 40, z: 12 }), holeOn(12, { size: "M10", fit: "normal", head: "countersink", depth: null })),
   "hole-m4-counterbore": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 10 }), holeOn(10, { size: "M4", fit: "printed", head: "counterbore", depth: 6 })),
   // Group (#66): a box with two hole cylinders is the box less both.
   group: (oc) =>
