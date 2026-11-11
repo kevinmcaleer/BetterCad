@@ -63,6 +63,8 @@ export function useDecal(d: DecalDeps) {
       setSession(null);
     }
   }, [d.active, store]);
+  // Putting the tool down keeps the decal.
+  useEffect(() => () => store.seal(), [store]);
 
   const change = useCallback(
     (c: Partial<DecalParams>, data?: string) => {

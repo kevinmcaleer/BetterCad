@@ -868,6 +868,30 @@ export interface ModelDoc {
    * step. `sent` is an ISO time.
    */
   kevsrobots?: { project: number; title: string; sent: string };
+  /** Canvases (#248): pictures pinned to a plane at true size, to trace over. Not steps, and never in exports. */
+  canvases?: CanvasImage[];
+}
+
+/**
+ * A canvas (#248): a picture on a plane, its middle `x`, `y` mm from the plane's origin along its axes, `width` by
+ * `height` mm, turned `angle`° and maybe flipped. Its bytes are in the document's blobs, as a decal's are.
+ */
+export interface CanvasImage {
+  id: string;
+  name: string;
+  plane: PlaneRef;
+  image: DecalImage;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  angle: number;
+  flip?: boolean;
+  /** 0 to 1. */
+  opacity: number;
+  /** Locked canvases can't be dragged or changed until unlocked. */
+  locked?: boolean;
+  hidden?: boolean;
 }
 
 /** A section analysis: a plane through `origin` facing `normal`, pushed `offset` mm along it. The view keeps the back. */

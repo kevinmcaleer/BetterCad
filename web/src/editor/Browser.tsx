@@ -24,6 +24,7 @@ export const ROW = {
   root: "browser:model",
   origin: "browser:origin",
   analysis: "browser:analysis",
+  canvases: "browser:canvases",
   bodies: "browser:bodies",
   sketches: "browser:sketches",
   construct: "browser:construct",
@@ -93,6 +94,8 @@ export interface BrowserModel {
   section?: string | null;
   /** Decals (#263), under the body each sits on; the eye hides the picture only. */
   decals?: { id: string; name: string; part: string; hidden?: boolean }[];
+  /** Canvases (#248): pictures on planes to trace over, under Canvases. */
+  canvases?: { id: string; name: string; hidden?: boolean }[];
 }
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
@@ -214,6 +217,23 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         rename: !m.readOnly,
         toggles: ["hidden"],
         hidden: x.id !== m.section,
+      });
+  }
+  // Canvases (#248), as Fusion's folder of them.
+  const cvs = m.canvases ?? [];
+  if (cvs.length) {
+    items.push(folder(ROW.canvases, "Canvases", { icon: "canvas", note: count(cvs.length), hidden: cvs.every((x) => x.hidden) }));
+    for (const x of cvs)
+      items.push({
+        id: x.id,
+        name: x.name,
+        icon: "canvas",
+        kind: "canvas",
+        parentId: ROW.canvases,
+        drag: false,
+        rename: !m.readOnly,
+        toggles: ["hidden"],
+        hidden: !!x.hidden,
       });
   }
   // Then the model's own folders and components, and each component's, inside out (#171).
@@ -395,6 +415,8 @@ export interface BrowserPanelProps {
   onEditSection?: (id: string) => void;
   onRenameSection?: (id: string, name: string) => void;
   onDeleteSection?: (id: string) => void;
+  /** Canvases (#248): show or hide one (or, with the folder's id, all), edit, rename or delete one. */
+  onCanvas?: (id: string, act: "hide" | "edit" | "rename" | "delete", name?: string) => void;
   /** Named poses (#177): go to one (null: Home), save the joints as a new one, update, rename or delete one. */
   onPose?: (id: string | null) => void;
   onSavePose?: () => void;
@@ -445,6 +467,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
     const secs = model.sections ?? [];
     if (id === ROW.analysis) return p.onApplySection?.(model.section ? null : (secs[secs.length - 1]?.id ?? null));
     if (secs.some((x) => x.id === id)) return p.onApplySection?.(model.section === id ? null : id);
+    if (id === ROW.canvases || model.canvases?.some((x) => x.id === id)) return p.onCanvas?.(id, "hide");
     // A decal's eye: its picture only.
     const decal = model.decals?.find((x) => x.id === id);
     if (decal) return p.onSketchesHidden([id], !decal.hidden);
@@ -494,6 +517,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
     if (id === ROW.root) return p.onRenameModel(name);
     if (model.poses?.some((x) => x.id === id)) return p.onRenamePose?.(id, name);
     if (model.sections?.some((x) => x.id === id)) return p.onRenameSection?.(id, name);
+    if (model.canvases?.some((x) => x.id === id)) return p.onCanvas?.(id, "rename", name);
     if (
       model.sketches.some((s) => s.id === id) ||
       model.links?.some((l) => l.id === id) ||
@@ -585,6 +609,21 @@ export function BrowserPanel(p: BrowserPanelProps) {
                 { id: "update", label: "Update to the joints now", icon: "save" as const, onSelect: () => p.onUpdatePose?.(id) },
                 { id: "rename", label: "Rename", icon: "pencil" as const, keys: "F2", onSelect: () => p.onRenameIdChange(id) },
                 { id: "delete", label: "Delete", icon: "trash" as const, onSelect: () => p.onDeletePose?.(id) },
+              ]),
+        ],
+      };
+    const cv = model.canvases?.find((x) => x.id === id);
+    if (cv)
+      return {
+        title: cv.name,
+        entries: [
+          { id: "show", label: cv.hidden ? "Show" : "Hide", icon: cv.hidden ? "eye" : "eyeOff", onSelect: () => toggle(id, "hidden") },
+          ...(model.readOnly
+            ? []
+            : [
+                { id: "edit", label: "Edit", icon: "canvas" as const, onSelect: () => p.onCanvas?.(id, "edit") },
+                { id: "rename", label: "Rename", icon: "pencil" as const, keys: "F2", onSelect: () => p.onRenameIdChange(id) },
+                { id: "delete", label: "Delete", icon: "trash" as const, onSelect: () => p.onCanvas?.(id, "delete") },
               ]),
         ],
       };
@@ -684,7 +723,12 @@ export function BrowserPanel(p: BrowserPanelProps) {
         renameId={p.renameId}
         onRenameIdChange={p.onRenameIdChange}
         onContextMenu={(id, at) => setMenu({ id, at })}
-        onOpen={(id) => !model.readOnly && !!model.sections?.some((x) => x.id === id) && (p.onEditSection?.(id), true)}
+        onOpen={(id) =>
+          !model.readOnly &&
+          (model.sections?.some((x) => x.id === id)
+            ? (p.onEditSection?.(id), true)
+            : !!model.canvases?.some((x) => x.id === id) && (p.onCanvas?.(id, "edit"), true))
+        }
       />
       {/* The how-to tips live in the tips card (Help → Tips); only the empty model keeps a first step here. */}
       {model.parts.length === 0 && <p className="bc-note">Double-click the name to rename your model. Add a shape from the Library, or start a sketch (K).</p>}

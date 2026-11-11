@@ -95,6 +95,8 @@ export interface LeftPanelProps {
   construct?: BrowserConstruct[];
   /** Decals (#263), shown under their bodies. */
   decals?: BrowserModel["decals"];
+  /** Canvases (#248) and what to do with them. */
+  canvases?: { list: BrowserModel["canvases"]; on: NonNullable<BrowserPanelProps["onCanvas"]> };
   onSketchOnStep?: (id: string) => void;
   features: Feature[];
   at: number;
@@ -173,6 +175,7 @@ function PartsPanel(p: LeftPanelProps) {
         joints: p.joints,
         construct: p.construct,
         decals: p.decals,
+        canvases: p.canvases?.list,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
         sections: p.sections?.sections,
@@ -212,6 +215,7 @@ function PartsPanel(p: LeftPanelProps) {
       onEditSection={p.sections?.onEditSection}
       onRenameSection={p.sections?.onRenameSection}
       onDeleteSection={p.sections?.onDeleteSection}
+      onCanvas={p.canvases?.on}
     />
   );
 }

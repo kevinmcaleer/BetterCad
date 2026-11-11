@@ -1,6 +1,44 @@
-import { useState } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import { Button, FeatureCheck, FeaturePanel, FeatureRow, NumberField, PanelNote } from "@bettercad/ui";
-import type { DecalSession } from "./useDecal";
+import { useDecal, type DecalDeps, type DecalSession } from "./useDecal";
+
+/**
+ * The Decal tool (#263) with its panel, loaded when the tool is first picked. The editor keeps a handle for Enter and
+ * the help line, and passes in a step to edit from the timeline.
+ */
+export function DecalTool({
+  deps,
+  edit,
+  onEdited,
+  onHelp,
+  api,
+  error,
+}: {
+  deps: DecalDeps;
+  edit: string | null;
+  onEdited: () => void;
+  onHelp: (help: string | null) => void;
+  api: MutableRefObject<{ done(): void } | null>;
+  /** Why the step can't be made, from the build. */
+  error?: (id: string) => string | undefined;
+}) {
+  const x = useDecal(deps);
+  api.current = x;
+  useEffect(() => {
+    if (!edit) return;
+    x.edit(edit);
+    onEdited();
+  }, [edit, x, onEdited]);
+  useEffect(() => onHelp(x.help), [x.help, onHelp]);
+  useEffect(
+    () => () => {
+      onHelp(null);
+      api.current = null;
+    },
+    [onHelp, api],
+  );
+  return <DecalBar x={x} error={x.session ? error?.(x.session.id) : undefined} onCancel={x.cancel} />;
+}
 
 const round = (v: number) => Math.round(v * 10) / 10;
 

@@ -156,8 +156,6 @@ import { usePushPull } from "../finish/usePushPull";
 import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { useMount } from "../mount/useMount";
-import { KEY as gearKey, useGear } from "../gear/useGear";
-import { useDecal } from "../decal/useDecal";
 import type { JointSession } from "../joint/useJoint";
 import type { JointUi } from "../joint/JointPanel";
 import { originShapes, useConstruct } from "../construct/useConstruct";
@@ -236,7 +234,8 @@ const LoftTool = lazy(() => import("../loft/LoftTool").then((m) => ({ default: m
 const SweepTool = lazy(() => import("../sweep/SweepTool").then((m) => ({ default: m.SweepTool })));
 const SplitTool = lazy(() => import("../split/SplitTool").then((m) => ({ default: m.SplitTool })));
 const RecogniseTool = lazy(() => import("../recognise/RecogniseTool").then((m) => ({ default: m.RecogniseTool })));
-const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
+const GearTool = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearTool })));
+const gearKey = (id: string) => `gear:${id}`;
 /** Decals' pictures as data: URLs, made once per picture. */
 const decalUrls = new Map<string, string>();
 const decalUrl = (type: string, blob: string, data: string) => {
@@ -245,7 +244,8 @@ const decalUrl = (type: string, blob: string, data: string) => {
   if (!url) decalUrls.set(key, (url = `data:${type};base64,${data}`));
   return url;
 };
-const DecalBar = lazy(() => import("../decal/DecalBar").then((m) => ({ default: m.DecalBar })));
+const CanvasTool = lazy(() => import("../canvas/CanvasBar").then((m) => ({ default: m.CanvasTool })));
+const DecalTool = lazy(() => import("../decal/DecalBar").then((m) => ({ default: m.DecalTool })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -652,6 +652,17 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       }),
     [built.decals, doc.blobs, doc.looks, kernel.bodies],
   );
+  // Canvases (#248) to trace over; hidden ones left off.
+  const viewCanvases = useMemo(
+    () => ({
+      list: (doc.canvases ?? []).flatMap((c) => {
+        const data = doc.blobs?.[c.image.blob];
+        return data && !c.hidden ? [{ id: c.id, plane: c.plane, at: c, opacity: c.opacity, image: decalUrl(c.image.type, c.image.blob, data) }] : [];
+      }),
+      construct: built.construct,
+    }),
+    [doc.canvases, doc.blobs, built.construct],
+  );
   const extrude = useExtrude({
     kind: "extrude",
     store,
@@ -749,26 +760,30 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
-  const gear = useGear({
-    store,
-    record,
-    doc,
-    view: vp.ref,
-    active: tool === "gear" && !sketch.editing,
-    onClose: () => setTool("select"),
-    say,
-  });
+  // The Gear tool (#191) loads with its panel; the editor keeps a handle for Enter and the help line.
+  const gearApi = useRef<{ done(): void } | null>(null);
+  const [gearEdit, setGearEdit] = useState<{ id: string; isNew?: boolean } | null>(null);
+  const gearEdited = useCallback(() => setGearEdit(null), []);
+  const [gearUiHelp, setGearHelp] = useState<string | null>(null);
 
-  const decal = useDecal({
-    store,
-    record,
-    doc,
-    meshes: kernel.bodies,
-    view: vp.ref,
-    active: tool === "decal" && !sketch.editing,
-    onClose: () => setTool("select"),
-    say,
-  });
+  // The Canvas tool (#248) loads with its panel; the browser's changes to canvases load with it too.
+  const canvasApi = useRef<{ done(): void } | null>(null);
+  const [canvasEdit, setCanvasEdit] = useState<string | null>(null);
+  const canvasEdited = useCallback(() => setCanvasEdit(null), []);
+  const [canvasUiHelp, setCanvasHelp] = useState<string | null>(null);
+  const onCanvas = (id: string, act: "hide" | "edit" | "rename" | "delete", name?: string) => {
+    if (act === "edit") {
+      setTool("canvas");
+      return setCanvasEdit(id);
+    }
+    void import("../canvas/canvas").then((m) => store.edit(...m.browserChange(store.get(), id === ROW.canvases ? null : id, act, name)));
+  };
+
+  // The Decal tool (#263) loads with its panel too.
+  const decalApi = useRef<{ done(): void } | null>(null);
+  const [decalEdit, setDecalEdit] = useState<string | null>(null);
+  const decalEdited = useCallback(() => setDecalEdit(null), []);
+  const [decalUiHelp, setDecalHelp] = useState<string | null>(null);
 
   // The Joint tool (#172) loads with its panel; the editor keeps what Enter, the help line and the timeline need.
   const jointApi = useRef<JointSession | null>(null);
@@ -1578,10 +1593,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       const fid = newId("f");
       record((d, at) => addMatingGear(d, a.id, a.gear.teeth, 0, fid, newId(), at), "Add mating gear", gearKey(fid));
       setTool("gear");
-      gear.edit(fid, true);
+      setGearEdit({ id: fid, isNew: true });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [record, say, gear.edit],
+    [record, say],
   );
 
   /** Add rack (#193): a rack meshed under the picked gear, with the bar open on it. */
@@ -1592,10 +1607,10 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       const fid = newId("f");
       record((d, at) => addRack(d, a.id, -90, fid, newId(), at), "Add rack", gearKey(fid));
       setTool("gear");
-      gear.edit(fid, true);
+      setGearEdit({ id: fid, isNew: true });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [record, say, gear.edit],
+    [record, say],
   );
 
   /** Fit a belt (#193): the nearest stock GT2 belt round two picked pulleys, the later one moved to suit. */
@@ -1749,7 +1764,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   );
   useLaunchFiles(openLaunched);
   // The empty editor's welcome (#99): only on a model with no steps, never on a share link or while picking a plane.
-  const emptyState = doc.features.length === 0 && !share && !files.shared && !files.viewing && tool !== "sketch" && tool !== "gear" && !sketch.editing;
+  const emptyState =
+    doc.features.length === 0 &&
+    !share &&
+    !files.shared &&
+    !files.viewing &&
+    tool !== "sketch" &&
+    tool !== "gear" &&
+    tool !== "canvas" &&
+    !doc.canvases?.length &&
+    !sketch.editing;
   const dropZone = useDrop({ view: vp.ref, openFiles: files.openFiles });
 
   // ---- timeline
@@ -2027,29 +2051,31 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                 ? hole.done()
                 : mount.session
                   ? mount.done()
-                  : gear.session
-                    ? gear.done()
-                    : decal.session
-                      ? decal.done()
-                      : construct.session
-                        ? construct.done()
-                        : tool === "loft"
-                          ? loftApi.current?.done()
-                          : tool === "sweep"
-                            ? sweepApi.current?.done()
-                            : tool === "split"
-                              ? splitApi.current?.done()
-                              : tool === "joint"
-                                ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
-                                  ? jointApi.current.pickParent(null)
-                                  : jointApi.current?.done()
-                                : pattern.session
-                                  ? pattern.done()
-                                  : tool === "combine"
-                                    ? combine(selection, combineOp, keepTools, combineFit)
-                                    : finish.tool
-                                      ? finish.done()
-                                      : undefined,
+                  : tool === "gear"
+                    ? gearApi.current?.done()
+                    : tool === "decal"
+                      ? decalApi.current?.done()
+                      : tool === "canvas"
+                        ? canvasApi.current?.done()
+                        : construct.session
+                          ? construct.done()
+                          : tool === "loft"
+                            ? loftApi.current?.done()
+                            : tool === "sweep"
+                              ? sweepApi.current?.done()
+                              : tool === "split"
+                                ? splitApi.current?.done()
+                                : tool === "joint"
+                                  ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                                    ? jointApi.current.pickParent(null)
+                                    : jointApi.current?.done()
+                                  : pattern.session
+                                    ? pattern.done()
+                                    : tool === "combine"
+                                      ? combine(selection, combineOp, keepTools, combineFit)
+                                      : finish.tool
+                                        ? finish.done()
+                                        : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -2492,6 +2518,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             "mount",
             "gear",
             "decal",
+            "canvas",
             "joint",
             "pattern",
             "combine",
@@ -3182,7 +3209,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               disabled: i >= at,
               onSelect: () => {
                 setTool("decal");
-                decal.edit(id);
+                setDecalEdit(id);
               },
             },
           ]
@@ -3196,7 +3223,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               disabled: i >= at,
               onSelect: () => {
                 setTool("gear");
-                gear.edit(id);
+                setGearEdit({ id });
               },
             },
           ]
@@ -3515,7 +3542,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       case "decal":
         setEditingStep(f.id);
         setTool("decal");
-        return decal.edit(f.id);
+        return setDecalEdit(f.id);
       case "loft":
         setEditingStep(f.id);
         setTool("loft");
@@ -3600,8 +3627,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             pushpull.help ||
             hole.help ||
             mount.help ||
-            gear.help ||
-            decal.help ||
+            (tool === "gear" && gearUiHelp) ||
+            (tool === "decal" && decalUiHelp) ||
+            (tool === "canvas" && canvasUiHelp) ||
             jointHelp ||
             pattern.help ||
             measure.help ||
@@ -3614,8 +3642,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             pushpull.help ||
             hole.help ||
             mount.help ||
-            gear.help ||
-            decal.help ||
+            (tool === "gear" && gearUiHelp) ||
+            (tool === "decal" && decalUiHelp) ||
+            (tool === "canvas" && canvasUiHelp) ||
             jointHelp ||
             pattern.help ||
             measure.help ||
@@ -3865,6 +3894,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}
               decals={browserDecals}
+              canvases={{ list: doc.canvases?.map((c) => ({ id: c.id, name: c.name, hidden: c.hidden })), on: onCanvas }}
               onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
@@ -4064,12 +4094,37 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
               {tool === "gear" && (
                 <Suspense fallback={null}>
-                  <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
+                  <GearTool
+                    deps={{ store, record, doc, view: vp.ref, active: true, onClose: () => setTool("select"), say }}
+                    edit={gearEdit}
+                    onEdited={gearEdited}
+                    onHelp={setGearHelp}
+                    api={gearApi}
+                    error={(id) => failed.get(id)}
+                  />
                 </Suspense>
               )}
-              {tool === "decal" && (
+              {tool === "canvas" && !sketch.editing && (
                 <Suspense fallback={null}>
-                  <DecalBar x={decal} error={decal.session ? failed.get(decal.session.id) : undefined} onCancel={() => setTool("select")} />
+                  <CanvasTool
+                    deps={{ store, doc, construct: built.construct, view: vp.ref, onClose: () => setTool("select"), say }}
+                    edit={canvasEdit}
+                    onEdited={canvasEdited}
+                    onHelp={setCanvasHelp}
+                    api={canvasApi}
+                  />
+                </Suspense>
+              )}
+              {tool === "decal" && !sketch.editing && (
+                <Suspense fallback={null}>
+                  <DecalTool
+                    deps={{ store, record, doc, meshes: kernel.bodies, view: vp.ref, active: true, onClose: () => setTool("select"), say }}
+                    edit={decalEdit}
+                    onEdited={decalEdited}
+                    onHelp={setDecalHelp}
+                    api={decalApi}
+                    error={(id) => failed.get(id)}
+                  />
                 </Suspense>
               )}
               {(tool === "mount" || tool === "pattern") && (
@@ -4123,6 +4178,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             faded={faded}
             meshes={kernel.bodies}
             decals={viewDecals}
+            canvases={viewCanvases}
             engine={kernel.state}
             rebuilding={kernel.rebuilding}
             kernelPerf={kernelPerf}

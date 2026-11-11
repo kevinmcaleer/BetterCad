@@ -55,6 +55,8 @@ export function useGear(d: GearDeps) {
       setSession(null);
     }
   }, [d.active, store]);
+  // Putting the tool down keeps the step.
+  useEffect(() => () => store.seal(), [store]);
 
   const change = useCallback(
     (c: Partial<GearParamsStep>) => {

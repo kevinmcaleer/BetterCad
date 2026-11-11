@@ -766,3 +766,44 @@ describe("decals in the browser (#263)", () => {
     expect(onBodiesHidden).not.toHaveBeenCalled();
   });
 });
+
+describe("canvases in the browser (#248)", () => {
+  const withCanvases = (hidden = false) => model({ canvases: [{ id: "c1", name: "Canvas 1", hidden }] });
+  const props = (onCanvas: (...a: unknown[]) => void) => ({
+    selection: [],
+    onSelect: () => {},
+    onAdd: () => {},
+    onToggle: () => {},
+    onBodiesHidden: () => {},
+    onSketchesHidden: () => {},
+    onOrigin: () => {},
+    onPicked: () => {},
+    onSelectSketch: () => {},
+    onRename: () => {},
+    onRenameModel: () => {},
+    onRenameSketch: () => {},
+    onReorder: () => {},
+    onSketchOn: () => {},
+    partMenu: () => [],
+    sketchMenu: () => [],
+    renameId: null,
+    onRenameIdChange: () => {},
+    onCanvas,
+  });
+
+  it("lists canvases in a Canvases folder", () => {
+    const items = browserItems(withCanvases());
+    expect(items.find((i) => i.id === ROW.canvases)).toMatchObject({ name: "Canvases" });
+    expect(items.find((i) => i.id === "c1")).toMatchObject({ name: "Canvas 1", parentId: ROW.canvases, icon: "canvas", toggles: ["hidden"] });
+  });
+
+  it("hides one with its eye, and edits it from its menu", async () => {
+    const onCanvas = vi.fn();
+    render(<BrowserPanel model={withCanvases()} {...props(onCanvas)} />);
+    await userEvent.click(screen.getByRole("button", { name: "Hide Canvas 1" }));
+    expect(onCanvas).toHaveBeenLastCalledWith("c1", "hide");
+    fireEvent.contextMenu(screen.getByText("Canvas 1"));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Edit/ }));
+    expect(onCanvas).toHaveBeenLastCalledWith("c1", "edit");
+  });
+});
