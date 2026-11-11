@@ -179,6 +179,43 @@ export function drawArcCentre(s: Sketch, c: Vec2, start: Vec2 | Id, end: Vec2): 
 }
 
 /**
+ * A slot (#403): two half-round ends about centres `a` and `b`, joined by straight sides tangent to both, the ends equal.
+ * A construction line joins the centres. A typed `length` (centre to centre) and `width` become dimensions.
+ */
+export function drawSlot(s: Sketch, a: Vec2 | Id, b: Vec2 | Id, width: number, size?: { length?: number; width?: number }): Drawn | null {
+  const d = new Draft(s);
+  const ca = d.point(a, true);
+  const cb = d.point(b, true);
+  const [pa, pb] = [d.xy(ca), d.xy(cb)];
+  const len = dist(pa, pb);
+  const r = width / 2;
+  if (!(len > 1e-6) || !(r > 1e-6)) return null;
+  const u: Vec2 = [(pb[0] - pa[0]) / len, (pb[1] - pa[1]) / len];
+  const n: Vec2 = [-u[1] * r, u[0] * r];
+  const at = (p: Vec2, k: number): Vec2 => [p[0] + n[0] * k, p[1] + n[1] * k];
+  const [a1, b1, b2, a2] = [d.point(at(pa, 1)), d.point(at(pb, 1)), d.point(at(pb, -1)), d.point(at(pa, -1))];
+  const centre = d.line(ca, cb, { construction: true });
+  const side1 = d.line(a1, b1, { auto: false });
+  // Arcs run anticlockwise: round the far end from the lower side to the upper, round the near end back down.
+  const endB = d.arc(cb, b2, b1);
+  const side2 = d.line(b2, a2, { auto: false });
+  const endA = d.arc(ca, a1, a2);
+  for (const [l, c] of [
+    [side1, endA],
+    [side1, endB],
+    [side2, endA],
+    [side2, endB],
+  ] as const)
+    d.constrain({ type: "tangent", a: l, b: c });
+  d.constrain({ type: "equal", a: endA, b: endB });
+  // The centre line's level or upright constraint (when drawn so) keeps the sides that way too.
+  if (size?.length !== undefined) d.dimension("length", [centre], size.length);
+  if (size?.width !== undefined) d.dimension("diameter", [endA], size.width);
+  d.ids = [side1, endB, side2, endA, centre];
+  return d.done();
+}
+
+/**
  * A regular polygon (3 to 12 sides) by centre and corner radius: equal sides, shared corners, and a construction
  * circle through the corners so one dimension sizes it.
  */

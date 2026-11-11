@@ -134,6 +134,8 @@ export const rect = "M4 6h16v12H4z";
 export const circle = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z";
 export const arc = "M4 18a8 8 0 0 1 16 0";
 export const polygon = "M7.5 4h9l4.5 8-4.5 8h-9L3 12z";
+/** A slot (#403): two round ends joined by straight sides. */
+export const slot = "M8 8h8a4 4 0 0 1 0 8H8a4 4 0 0 1 0-8z";
 /** A construction plane (#265): a sheet seen at an angle. */
 export const plane = "M7 4h14l-4 16H3z";
 /** A construction axis (#265): a line running through, with a tick at each end. */
@@ -280,6 +282,7 @@ export const ICONS = {
   circle,
   arc,
   polygon,
+  slot,
   point,
   plane,
   axis,

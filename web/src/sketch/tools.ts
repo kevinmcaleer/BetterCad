@@ -11,6 +11,7 @@ import {
   add,
   cross,
   dot,
+  drawSlot,
   norm,
   scale,
   type Id,
@@ -26,10 +27,10 @@ import { ORIGIN, isAtOrigin, middleLine, type Snap } from "./snap";
  * can be typed, and what one finished shape adds to the sketch. The sketch session routes pointer events here.
  */
 export type SketchToolId =
-  "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "point" | "text" | "dimension" | "fillet" | "trim" | "offset" | "project";
+  "select" | "line" | "rectangle" | "circle" | "arc" | "slot" | "polygon" | "point" | "text" | "dimension" | "fillet" | "trim" | "offset" | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
-export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "polygon" | "point";
+export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "slot" | "polygon" | "point";
 export const isDrawTool = (t: SketchToolId): t is DrawToolId => t in CLICKS;
 
 export interface SketchTool {
@@ -69,6 +70,14 @@ export const SKETCH_TOOLS: SketchTool[] = [
   },
   { id: "circle", label: "Circle", icon: "circle", key: "c", help: "Click the centre, then the edge. Type the diameter.", fields: ["Diameter"] },
   { id: "arc", label: "Arc", icon: "arc", key: "a", help: "Click where the arc starts and ends, then a point it passes through.", fields: [] },
+  {
+    id: "slot",
+    label: "Slot",
+    icon: "slot",
+    key: "s",
+    help: "Click one end's centre, then the other's, then how wide. Type the length, Tab, the width.",
+    fields: ["Length", "Width"],
+  },
   { id: "polygon", label: "Polygon", icon: "polygon", key: "n", help: "Click the centre, then a corner. Set the sides in the bar.", fields: ["Radius"] },
   {
     id: "point",
@@ -117,7 +126,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
 export const toolById = (id: SketchToolId) => SKETCH_TOOLS.find((t) => t.id === id)!;
 
 /** How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. */
-export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, polygon: 2, point: 1 };
+export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, slot: 3, polygon: 2, point: 1 };
 
 export interface Preview {
   /** Polylines in sketch mm. */
@@ -147,6 +156,12 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
       const pts = polygonPoints(a, r, sides, angleOf(sub(cursor, a)));
       return { lines: [[...pts, pts[0]!]], values: [r] };
     }
+    case "slot": {
+      const b = clicks[1];
+      if (!b) return { lines: [[a, cursor]], values: [dist(a, cursor)] };
+      const w = slotWidth(a, b, cursor);
+      return { lines: w > 1e-6 ? [slotOutline(a, b, w / 2)] : [[a, b]], values: [dist(a, b), w] };
+    }
     case "arc": {
       const b = clicks[1];
       if (!b) return { lines: [[a, cursor]], values: [] };
@@ -158,6 +173,22 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
     default:
       return { lines: [], values: [] };
   }
+}
+
+/** A slot's width: twice the pointer's distance from the line through its two centres. */
+export function slotWidth(a: Vec2, b: Vec2, cursor: Vec2): number {
+  const l = dist(a, b);
+  return l > 1e-9 ? (2 * Math.abs(cross(sub(b, a), sub(cursor, a)))) / l : 2 * dist(a, cursor);
+}
+
+/** A slot's outline round two centres, for the preview. */
+function slotOutline(a: Vec2, b: Vec2, r: number): Vec2[] {
+  const t = angleOf(sub(b, a));
+  return [
+    ...sampleArc(b, r, t - Math.PI / 2, t + Math.PI / 2, 24),
+    ...sampleArc(a, r, t + Math.PI / 2, t + (3 * Math.PI) / 2, 24),
+    add(b, scale([Math.sin(t), -Math.cos(t)], r)),
+  ];
 }
 
 /**
@@ -264,6 +295,24 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
       const b = place(d, s1);
       d.arc(fit.c, fit.ccw ? a : b, fit.ccw ? b : a);
       return { sketch: d.done().sketch, label: "Draw an arc" };
+    }
+    case "slot": {
+      // Two snaps when Enter is pressed after the first click with both sizes typed; three after the width click.
+      const [s0, s1, s2] = clicks as [Snap, Snap, Snap | undefined];
+      const [length, width] = typed;
+      let far = s1;
+      if (length !== undefined && length > 0) {
+        const dir = sub(s1.xy, s0.xy);
+        const l = Math.hypot(...dir) || 1;
+        far = { xy: add(s0.xy, scale(dir, length / l)), kind: "free", label: "" };
+      }
+      const w = width ?? (s2 ? slotWidth(s0.xy, far.xy, s2.xy) : 0);
+      if (dist(s0.xy, far.xy) < 1e-6 || !(w > 1e-6)) return null;
+      const a = place(d, s0);
+      const b = place(d, far);
+      if (a === b) return null;
+      const r = drawSlot(d.done().sketch, a, b, w, { ...(length !== undefined && { length }), ...(width !== undefined && { width }) });
+      return r && { sketch: r.sketch, label: "Draw a slot" };
     }
     case "polygon": {
       const [s0, s1] = clicks as [Snap, Snap];
