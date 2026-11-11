@@ -625,3 +625,81 @@ export function projectCurves(sketch: Sketch, frame: Frame, curves: ModelCurve[]
   }
   return { sketch: d.done().sketch, ids };
 }
+
+/** Where `p` lands mirrored across the line through `a` and `b`. */
+export function reflect(p: Vec2, a: Vec2, b: Vec2): Vec2 {
+  const u = norm(sub(b, a));
+  const foot = add(a, scale(u, dot(sub(p, a), u)));
+  return sub(scale(foot, 2), p);
+}
+
+/**
+ * Mirrors shapes across a line (#267). Each copied point is tied to its original by a Symmetric constraint, so editing
+ * one side moves the other; circles keep equal radii. Points on the mirror line are shared rather than doubled (and
+ * held on it), so a mirrored half profile closes into one shape. An ellipse brings its axes.
+ */
+export function mirrorShapes(sketch: Sketch, ids: Id[], line: Id): EditResult {
+  const idx = new SketchIndex(sketch);
+  const m = idx.get(line);
+  if (m?.kind !== "line") return "Pick a line to mirror across";
+  const a = idx.xy(m.a);
+  const b = idx.xy(m.b);
+  const len = dist(a, b);
+  if (len < 1e-9) return "That line has no length to mirror across";
+  const picked = new Set(ids.filter((id) => id !== line));
+  for (const id of [...picked]) {
+    const e = idx.get(id);
+    if (e?.kind === "ellipse") picked.add(e.ax1).add(e.ax2);
+  }
+  const shapes = [...picked].map((id) => idx.get(id)).filter((e): e is Entity => !!e && !(e.kind === "line" && e.id === line));
+  if (!shapes.length) return "Pick the shapes to mirror, then the line";
+  const n = perp(norm(sub(b, a)));
+  const onLine = (p: Vec2) => Math.abs(dot(n, sub(p, a))) < 1e-4;
+  const d = new Draft(sketch);
+  // Points already held on the line, or fixed, need nothing more to stay there.
+  const held = new Set(sketch.constraints.flatMap((c) => ((c.type === "pointOn" && c.e === line) || c.type === "fix" ? [c.p] : [])));
+  const copies = new Map<Id, Id>();
+  const copyPoint = (p: Id): Id => {
+    const had = copies.get(p);
+    if (had) return had;
+    const pt = idx.point(p);
+    const xy: Vec2 = [pt.x, pt.y];
+    let out: Id;
+    if (p === m.a || p === m.b) out = p;
+    else if (onLine(xy)) {
+      out = p;
+      if (!held.has(p)) {
+        d.constrain({ type: "pointOn", p, e: line });
+        held.add(p);
+      }
+    } else {
+      out = d.point(reflect(xy, a, b), !!pt.construction);
+      d.constrain({ type: "symmetric", a: p, b: out, line });
+    }
+    copies.set(p, out);
+    return out;
+  };
+  const made = new Map<Id, Id>();
+  for (const e of shapes) {
+    const construction = !!e.construction;
+    if (e.kind === "point") copyPoint(e.id);
+    else if (e.kind === "line") made.set(e.id, d.line(copyPoint(e.a), copyPoint(e.b), { construction, auto: false }));
+    else if (e.kind === "circle") {
+      const c = d.circle(copyPoint(e.c), e.r, construction);
+      d.constrain({ type: "equal", a: e.id, b: c });
+      made.set(e.id, c);
+    }
+    // A mirror turns the arc the other way round, so it runs from the copy of b to the copy of a.
+    else if (e.kind === "arc") made.set(e.id, d.arc(copyPoint(e.c), copyPoint(e.b), copyPoint(e.a), construction));
+  }
+  for (const e of shapes) {
+    if (e.kind !== "ellipse") continue;
+    const ax1 = made.get(e.ax1);
+    const ax2 = made.get(e.ax2);
+    if (!ax1 || !ax2) continue;
+    const id = newId("e");
+    d.entities.push({ id, kind: "ellipse", c: copyPoint(e.c), ax1, ax2, ...(e.construction && { construction: true }) });
+    d.ids.push(id);
+  }
+  return d.done().sketch;
+}

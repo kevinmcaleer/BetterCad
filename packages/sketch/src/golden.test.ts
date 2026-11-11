@@ -6,6 +6,7 @@ import { Solver } from "./solver";
 import { newSketch, type Id, type Sketch } from "./model";
 import { Draft, drawArcCentre, drawArcTangent, drawCircle, drawEllipse, drawLine, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
+import { mirrorShapes } from "./edit";
 
 /**
  * Golden sketches (#60): built through the model API, solved by the real planegcs in Node, and checked against
@@ -76,6 +77,42 @@ const CASES: Record<string, Case> = {
       d.constrain({ type: "horizontal", e: centre });
       const length = d.dimensions.find((x) => x.kind === "length")!.id;
       return { sketch: d.done().sketch, edit: length, to: 45 };
+    },
+    loops: 1,
+    holes: 0,
+  },
+  "mirror-bracket": {
+    about:
+      "Half a bracket (#267) against a fixed upright axis at x = 0: 15 out, 10 up, 10 in, 5 up, back to the axis. Mirror it across the axis for one closed shape 30 wide; then the base is 20, so 40 wide.",
+    build() {
+      const d0 = new Draft(newSketch());
+      const top = d0.point([0, 20], true);
+      const bottom = d0.point([0, -5], true);
+      d0.constrain({ type: "fix", p: top });
+      d0.constrain({ type: "fix", p: bottom });
+      const axis = d0.line(bottom, top, { construction: true, auto: false });
+      const half = drawPolyline(d0.done().sketch, [
+        [0, 0],
+        [14, 0],
+        [15, 11],
+        [5, 10],
+        [4, 15],
+        [0, 15],
+      ]);
+      const d = new Draft(half.sketch);
+      const [base, side, inward, up] = half.ids;
+      const p0 = (d.entities.find((e) => e.id === base) as { a: Id }).a;
+      d.constrain({ type: "fix", p: p0 });
+      for (const [i, id] of half.ids.entries())
+        if (!d.constraints.some((c) => (c.type === "horizontal" || c.type === "vertical") && c.e === id))
+          d.constrain({ type: i % 2 ? "vertical" : "horizontal", e: id });
+      const width = d.dimension("length", [base!], 15);
+      d.dimension("length", [side!], 10);
+      d.dimension("length", [inward!], 10);
+      d.dimension("length", [up!], 5);
+      const mirrored = mirrorShapes(d.done().sketch, half.ids, axis);
+      if (typeof mirrored === "string") throw new Error(mirrored);
+      return { sketch: mirrored, edit: width, to: 20 };
     },
     loops: 1,
     holes: 0,

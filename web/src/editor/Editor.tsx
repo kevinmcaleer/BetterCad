@@ -1181,11 +1181,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     const pickedAxis = axisOf(browserPicked ?? "");
     const picked = pickedAxis ? `origin:${pickedAxis}` : browserPicked;
     const lit = [constructHover, picked, construct.session?.id, revolve.axisShape, patternAxis].filter((x): x is string => !!x);
-    // The sketch's Dimension tool, Revolve, a round Pattern and Joint can use an axis too, so the origin's show while
+    // The sketch's Dimension and Mirror tools, Revolve, a round Pattern and Joint can use an axis too, so the origin's show while
     // they want one; Revolve and Pattern keep the one they turn round. The browser's eyes keep the rest on show.
     const want = construct.active
       ? construct.slot
-      : (sketch.editing && sketch.stool === "dimension") || revolve.pickingAxis || pattern.pickingAxis || jointAxis
+      : (sketch.editing && (sketch.stool === "dimension" || sketch.stool === "mirror")) || revolve.pickingAxis || pattern.pickingAxis || jointAxis
         ? "line"
         : null;
     const keep = new Set([revolve.axisShape, patternAxis, picked, ...originShown.filter((x) => (AXES as string[]).includes(x)).map((a) => `origin:${a}`)]);
