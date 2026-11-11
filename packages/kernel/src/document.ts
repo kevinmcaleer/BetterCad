@@ -550,6 +550,42 @@ export interface FinishFeature extends FeatureBase {
   /** Shell only: grow outward. */
   outside?: boolean;
 }
+/**
+ * A decal (#263): a picture on a flat face of a body. It makes no geometry: the view draws it over the face, and it
+ * follows the face (found again by name, #47) as earlier steps change the body. The picture's bytes are in the
+ * document's blobs, so a saved model carries its decals.
+ */
+export interface DecalFeature extends FeatureBase {
+  type: "decal";
+  part: string;
+  /** The face it sits on, numbered on the body as built, and by name when the kernel named it. */
+  face: number;
+  faceName?: string;
+  image: DecalImage;
+  /** Its centre, mm from the face's middle, along the face's own x and y (see the app's faceFrame). */
+  x: number;
+  y: number;
+  /** Its size on the face, mm. */
+  width: number;
+  height: number;
+  /** Turned anticlockwise, seen from outside the face, degrees. */
+  angle: number;
+  /** Mirrored left to right. */
+  flip?: boolean;
+}
+
+/** A decal's picture: its bytes are in the document's blobs under `blob`. */
+export interface DecalImage {
+  blob: string;
+  /** "image/png", "image/jpeg" or "image/svg+xml". */
+  type: string;
+  /** The file it came from. */
+  file: string;
+  /** Its size in pixels, for its shape. */
+  width: number;
+  height: number;
+}
+
 /** Revolve (#62): closed shapes of a sketch turned round an axis, made into a new body or combined with one. */
 export interface RevolveFeature extends FeatureBase {
   type: "revolve";
@@ -769,7 +805,8 @@ export type Feature =
   | SplitFeature
   | CombineFeature
   | FinishFeature
-  | HoleFeature;
+  | HoleFeature
+  | DecalFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -897,6 +934,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   drive: "Drive",
   rigid: "Rigid group",
   construct: "Construct",
+  decal: "Decal",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -935,6 +973,8 @@ export interface Build {
   tracks?: BuiltTrack[];
   /** Rigid groups that built, with every body each one holds now (its components' bodies, nested ones too). */
   rigid?: BuiltRigid[];
+  /** Decals (#263) that built, on bodies still there, in timeline order. */
+  decals?: DecalFeature[];
 }
 
 /** A rigid group as built. */
@@ -1021,6 +1061,7 @@ const BUILT = new Set<string>([
   "pushpull",
   "offsetFace",
   "hole",
+  "decal",
 ]);
 
 /** Construction geometry carried by a move: a plane, axis or point riding on its component. */
@@ -1053,6 +1094,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const built: BuiltConstruct[] = [];
   /** Rigid groups as built so far: the components and loose bodies still there. */
   const rigid: { id: string; name: string; links: string[]; parts: string[] }[] = [];
+  /** Decals (#263) that built, in timeline order. */
+  const decals: DecalFeature[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -1389,6 +1432,12 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           }
           joints.push(alignedJoint(f));
         }
+        break;
+      }
+      case "decal": {
+        if (find(f.part) < 0) failed.set(f.id, "The body it sits on is gone");
+        else if (!doc.blobs?.[f.image.blob]) failed.set(f.id, "Its picture is missing from the model");
+        else decals.push(f);
         break;
       }
       case "rigid": {
@@ -1905,6 +1954,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     construct: built,
     tracks,
     ...(builtRigid.length ? { rigid: builtRigid } : {}),
+    // A decal goes with its body when a later step deletes it.
+    ...(decals.length ? { decals: decals.filter((d) => looked.some((p) => p.id === d.part)) } : {}),
   };
 }
 
@@ -2255,6 +2306,7 @@ export function featureParts(f: Feature): string[] {
     case "joint":
     case "drive":
     case "construct":
+    case "decal":
       return [];
     default:
       return f.parts;
@@ -2281,6 +2333,8 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "decal":
+      return `${f.image.file}, ${Math.round(f.width * 100) / 100} × ${mm(f.height)} on ${who([f.part])}`;
     case "construct":
       return constructSummary(f.kind, f.refs, f.value, (r) => refText(r, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name));
     case "link":
@@ -2760,6 +2814,25 @@ export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: 
   const blobs = doc.blobs?.[p.blob] ? doc.blobs : { ...doc.blobs, [p.blob]: data };
   // New imports keep the file's layout: a STEP assembly looks as it did in the app that made it.
   return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest, keepLayout: true });
+}
+
+export type DecalParams = Omit<DecalFeature, "id" | "name" | "type" | "suppressed" | "exprs" | "component">;
+
+/** Adds a Decal step (#263), keeping its picture's bytes (base64) in the document's blobs. */
+export function addDecal(doc: ModelDoc, p: DecalParams, data: string, id = newId("f"), at?: number): ModelDoc {
+  const blobs = doc.blobs?.[p.image.blob] ? doc.blobs : { ...doc.blobs, [p.image.blob]: data };
+  return insert({ ...doc, blobs }, at, { id, type: "decal", name: nextFeatureName(doc, "decal"), ...p });
+}
+
+/** Moves, sizes, turns or flips a Decal step, or gives it a new picture (with that picture's bytes). */
+export function updateDecal(doc: ModelDoc, id: string, change: Partial<DecalParams>, data?: string): ModelDoc {
+  const blob = change.image?.blob;
+  const blobs = blob && data && !doc.blobs?.[blob] ? { ...doc.blobs, [blob]: data } : doc.blobs;
+  return {
+    ...doc,
+    ...(blobs ? { blobs } : {}),
+    features: doc.features.map((f) => (f.id === id && f.type === "decal" ? { ...f, ...change } : f)),
+  };
 }
 
 /** Adds a Convert step (#448): a new body from a mesh body, with its recognised holes filled. */
@@ -3265,7 +3338,7 @@ function partsMade(f: Feature): string[] {
 }
 
 /** Features that pick edges or faces by number need the part exactly as the steps before left it. */
-const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "offsetFace", "hole", "mount"]);
+const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "offsetFace", "hole", "mount", "decal"]);
 
 /**
  * The features one feature needs before it on the timeline: the steps that made the parts it reads, its sketch, and

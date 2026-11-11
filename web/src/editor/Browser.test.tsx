@@ -725,3 +725,44 @@ describe("section analyses", () => {
     expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Show"]);
   });
 });
+
+describe("decals in the browser (#263)", () => {
+  const withDecals = (hidden = false) => model({ decals: [{ id: "d1", name: "Decal 1", part: "a", hidden }] });
+
+  it("lists a decal under the body it sits on", () => {
+    const row = browserItems(withDecals()).find((i) => i.id === "d1");
+    expect(row).toMatchObject({ name: "Decal 1", parentId: "a", icon: "image", toggles: ["hidden"] });
+  });
+
+  it("hides and shows the picture with its eye, leaving the body alone", async () => {
+    const onSketchesHidden = vi.fn();
+    const onBodiesHidden = vi.fn();
+    const props = {
+      selection: [],
+      onSelect: () => {},
+      onAdd: () => {},
+      onToggle: () => {},
+      onBodiesHidden,
+      onSketchesHidden,
+      onOrigin: () => {},
+      onPicked: () => {},
+      onSelectSketch: () => {},
+      onRename: () => {},
+      onRenameModel: () => {},
+      onRenameSketch: () => {},
+      onReorder: () => {},
+      onSketchOn: () => {},
+      partMenu: () => [],
+      sketchMenu: () => [],
+      renameId: null,
+      onRenameIdChange: () => {},
+    };
+    const { rerender } = render(<BrowserPanel model={withDecals()} {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "Hide Decal 1" }));
+    expect(onSketchesHidden).toHaveBeenLastCalledWith(["d1"], true);
+    rerender(<BrowserPanel model={withDecals(true)} {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show Decal 1" }));
+    expect(onSketchesHidden).toHaveBeenLastCalledWith(["d1"], false);
+    expect(onBodiesHidden).not.toHaveBeenCalled();
+  });
+});

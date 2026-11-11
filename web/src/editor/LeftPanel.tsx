@@ -93,6 +93,8 @@ export interface LeftPanelProps {
   onSketchOn: (plane: WorldPlaneName) => void;
   /** Construction geometry (#265) for the browser, and sketching on a construction plane. */
   construct?: BrowserConstruct[];
+  /** Decals (#263), shown under their bodies. */
+  decals?: BrowserModel["decals"];
   onSketchOnStep?: (id: string) => void;
   features: Feature[];
   at: number;
@@ -170,6 +172,7 @@ function PartsPanel(p: LeftPanelProps) {
         active: p.activeComponent,
         joints: p.joints,
         construct: p.construct,
+        decals: p.decals,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
         sections: p.sections?.sections,
