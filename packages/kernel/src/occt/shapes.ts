@@ -463,17 +463,22 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
   return out;
 }
 
+/** Buckets for `elements`' shape hash. */
+const HASH_BUCKETS = 1 << 30;
+
 /**
  * Every sub-shape of a kind, each once, in a stable order (the face, edge and vertex numbering). This build cannot
- * make OCCT's shape maps, so shared edges and vertices are found by their position first, then IsSame.
+ * make OCCT's shape maps, so shared edges and vertices are found by their position first, then IsSame. Faces, shells
+ * and solids are bucketed by OCCT's shape hash (the one IsSame agrees with), so a mesh's thousands of triangle faces
+ * aren't each checked against all the others.
  */
 export function elements(oc: OC, shape: TopoDS_Shape, kind: ShapeKind): TopoDS_Shape[] {
   const out: TopoDS_Shape[] = [];
-  const buckets = new Map<string, TopoDS_Shape[]>();
+  const buckets = new Map<string | number, TopoDS_Shape[]>();
   const ex = new oc.TopExp_Explorer(shape, abs(oc, kind), oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
   for (; ex.More(); ex.Next()) {
     const s = ex.Current();
-    const key = kind === "edge" || kind === "vertex" ? spot(oc, s, kind) : "";
+    const key = kind === "edge" || kind === "vertex" ? spot(oc, s, kind) : oc.ReplicadShapeHasher.HashCode(s, HASH_BUCKETS);
     const bucket = buckets.get(key);
     if (bucket?.some((b) => b.IsSame(s))) continue;
     if (bucket) bucket.push(s);
@@ -846,11 +851,6 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
   const volume = props.Mass();
   const surf = new oc.GProp_GProps();
   oc.BRepGProp.SurfaceProperties(shape, surf, false, false);
-  const box = new oc.Bnd_Box();
-  // The optimal box is tight to the exact geometry (the plain one adds tolerances and control points).
-  oc.BRepBndLib.AddOptimal(shape, box, false, false);
-  const lo = box.CornerMin();
-  const hi = box.CornerMax();
   // gp_Mat isn't bound, so the tensor comes from moments about six axes through the centre of mass: the three axes give
   // the diagonal, and the diagonals between two axes give the products, I(u) = (Iaa + Ibb)/2 + Iab for u = (a + b)/√2.
   const about = (x: number, y: number, z: number) => {
@@ -867,7 +867,7 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
     area: surf.Mass(),
     centroid: [c.X(), c.Y(), c.Z()],
     inertia,
-    bbox: { min: [lo.X(), lo.Y(), lo.Z()], max: [hi.X(), hi.Y(), hi.Z()] },
+    bbox: boundingBox(oc, shape),
     solids: count(oc, shape, "solid"),
     faces: count(oc, shape, "face"),
     edges: count(oc, shape, "edge"),
@@ -875,6 +875,16 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
   };
   props.delete();
   surf.delete();
+  return out;
+}
+
+/** The box round a shape, tight to the exact geometry (the plain one adds tolerances and control points). */
+export function boundingBox(oc: OC, shape: TopoDS_Shape): Measure["bbox"] {
+  const box = new oc.Bnd_Box();
+  oc.BRepBndLib.AddOptimal(shape, box, false, false);
+  const lo = box.CornerMin();
+  const hi = box.CornerMax();
+  const out: Measure["bbox"] = { min: [lo.X(), lo.Y(), lo.Z()], max: [hi.X(), hi.Y(), hi.Z()] };
   box.delete();
   return out;
 }

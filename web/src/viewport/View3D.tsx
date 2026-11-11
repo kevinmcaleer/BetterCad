@@ -18,6 +18,7 @@ import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } 
 import { Engine, canDraw3D, type BodyDrag, type PreviewBody, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
 import { milestone } from "../perf";
 import type { KernelPerf } from "./PerfOverlay";
+import { quickKey, quickMeshes } from "./quickMeshes";
 
 // The performance overlay (#42) is for developers: it loads only when it's turned on.
 const PerfOverlay = lazy(() => import("./PerfOverlay").then((m) => ({ default: m.PerfOverlay })));
@@ -102,6 +103,8 @@ export interface View3DProps {
 /** Meshes by shape and size, so a part's triangles are made once. The kernel worker replaces this with #4. */
 const meshCache = new Map<string, BodyMesh>();
 function meshFor(p: Part): BodyMesh | null {
+  // An STL or 3MF being imported shows its own triangles until the kernel has built it.
+  if (p.imported) return quickMeshes.get(quickKey(p.imported.blob, p.imported.index)) ?? null;
   // A body from a sketch has no quick mesh: it shows once the kernel has built it.
   if (p.kind !== "box" && p.kind !== "cylinder" && p.kind !== "sphere") return null;
   const key = `${p.kind}:${p.size.x}:${p.size.y}:${p.size.z}`;

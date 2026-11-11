@@ -11,6 +11,7 @@ import {
   fillet,
   grow,
   measure,
+  boundingBox,
   inset,
   place,
   prismOf,
@@ -36,7 +37,7 @@ import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeP
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
-import { importTriangles, readImport, type ImportedBody } from "./imports";
+import { importTriangles, readImport, type ImportedBody, type Progress } from "./imports";
 import { findMates, type Mate } from "./mates";
 import { findClashes, overlapsAt, type Clash } from "./clashes";
 import { triangles } from "./export";
@@ -242,15 +243,16 @@ export class ModelBuilder {
    * A file's bodies, read once. `whole`: they keep their places in the file, the file's bottom centre on the origin.
    * `each`: every body stands with its own bottom centre on the origin (imports made before `keepLayout`).
    */
-  private readFile(blob: string, format: ImportFormat, data: string, name: string, how: "each" | "whole" = "whole"): ImportedBody[] {
+  private readFile(blob: string, format: ImportFormat, data: string, name: string, how: "each" | "whole" = "whole", progress?: Progress): ImportedBody[] {
     let file = this.files.get(blob);
     if (!file) {
-      file = { raw: readImport(this.oc, format, fromBase64(data), name), placed: {} };
+      file = { raw: readImport(this.oc, format, fromBase64(data), name, progress), placed: {} };
       this.files.set(blob, file);
     }
     const done = file.placed[how];
     if (done) return done;
-    const boxes = file.raw.map((b) => measure(this.oc, b.shape).bbox);
+    // Only the box: a full measure of a mesh's thousands of faces takes seconds, and the build measures it anyway.
+    const boxes = file.raw.map((b) => boundingBox(this.oc, b.shape));
     const all = {
       min: [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b.min[k]!))),
       max: [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k]!))),
@@ -265,8 +267,8 @@ export class ModelBuilder {
   }
 
   /** What an import would bring in (#82): its bodies' names, and which are open meshes. */
-  inspect(p: { name: string; format: ImportFormat; blob: string; data: string }): ImportInfo {
-    const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name));
+  inspect(p: { name: string; format: ImportFormat; blob: string; data: string }, progress?: Progress): ImportInfo {
+    const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name), "whole", progress);
     return { bodies: bodies.map((b) => ({ name: b.name, open: b.open, triangles: b.triangles })) };
   }
 
