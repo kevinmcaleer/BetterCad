@@ -211,3 +211,19 @@ test("the view style menu turns the floor grid off, and it stays off", async ({ 
   await page.reload();
   await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-grid", "off");
 });
+
+test("Shift+N and the view style menu turn colour cycling on and off", async ({ page }) => {
+  await page.goto("/");
+  await addShape(page, "Box");
+  await addShape(page, "Cylinder");
+  const view = page.getByRole("application", { name: /3D view/ });
+  await expect(view).toHaveAttribute("data-colour-cycle", "off");
+  await canvas(page).click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press("Shift+N");
+  await expect(view).toHaveAttribute("data-colour-cycle", "on");
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  const item = page.getByRole("menuitemcheckbox", { name: /Colour cycle/ });
+  await expect(item).toHaveAttribute("aria-checked", "true");
+  await item.click();
+  await expect(view).toHaveAttribute("data-colour-cycle", "off");
+});

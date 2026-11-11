@@ -53,6 +53,8 @@ export interface View3DProps {
   style: RenderStyle;
   /** Whether the floor grid shows (the view style menu); on when left out. */
   grid?: boolean;
+  /** Colour cycling (Shift+N): each component, or body in none, drawn in its own colour. View only. */
+  colourCycle?: boolean;
   ortho: boolean;
   /** The standard view the camera is in ("front", "top"…), or null once you turn away. Shown as data-view for tests. */
   view?: string | null;
@@ -249,6 +251,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             warn: props.warn?.has(p.id) || (props.clash?.touch.has(p.id) && !props.clash.overlap.has(p.id)),
             clash: props.clash?.overlap.has(p.id),
             faded: props.faded?.has(p.id),
+            cycle: p.link ?? p.id,
           };
         }),
     [parts, meshes, props.warn, props.clash, props.faded],
@@ -268,6 +271,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
   useEffect(() => engine.current?.setStyle(style), [style]);
   const grid = props.grid ?? true;
   useEffect(() => engine.current?.setGridShown(grid), [grid]);
+  const colourCycle = !!props.colourCycle;
+  useEffect(() => engine.current?.setColourCycle(colourCycle), [colourCycle]);
   const check = props.check ?? null;
   useEffect(() => engine.current?.setCheck(check), [check, bodies]);
   const preview = props.preview ?? null;
@@ -313,6 +318,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       aria-describedby="bc-view-keys"
       data-view={view ?? "free"}
       data-grid={grid ? "on" : "off"}
+      data-colour-cycle={colourCycle ? "on" : "off"}
       onKeyDown={onKeyDown}
     >
       <div ref={safe} className="bc-view-safe" aria-hidden="true" />

@@ -75,6 +75,7 @@ import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter }
 import { edgesOnOutline } from "./faceEdges";
 import { blurMaterial, capMaterial, dofMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
 import { readPalette, type Palette, type ViewColour } from "./colours";
+import { cycleColours } from "./cycle";
 
 export type RenderStyle = "shaded" | "lineart";
 
@@ -123,6 +124,8 @@ export interface EngineBody {
   world?: boolean;
   /** The body's own colour (#196), sRGB "#rrggbb", in place of the theme's part colour. */
   colour?: string;
+  /** What colour cycling colours it by: its component, or the body itself when it is in none. Its id when left out. */
+  cycle?: string;
 }
 
 /**
@@ -300,6 +303,8 @@ export class Engine {
   private floorGrid = true;
   /** The person's choice from the view style menu: off hides the floor grid everywhere. */
   private gridWanted = true;
+  /** Colour cycling (Fusion's): each part drawn in a colour of its own, over its saved colour, in this view only. */
+  private cycling = false;
   // Depth of field: the room drawn on its own, blurred where it is far from the model, then laid down as the background.
   private dofScene = new Scene();
   private dofRoomMat = gridMaterial(true);
@@ -575,6 +580,14 @@ export class Engine {
     if (this.gridWanted === on) return;
     this.gridWanted = on;
     this.grid.visible = !this.roomOn && this.floorGrid && on;
+    this.invalidate();
+  }
+
+  /** Turns colour cycling on or off: each component, or body in none, in a distinct colour. The model keeps its own. */
+  setColourCycle(on: boolean): void {
+    if (this.cycling === on) return;
+    this.cycling = on;
+    this.recolourAll();
     this.invalidate();
   }
 
@@ -1471,13 +1484,13 @@ export class Engine {
    * colours, with no selection, hover or check tints, so a thumbnail looks the same whatever the view was set to.
    */
   thumbnail(width = 320, height = 200): string | null {
-    const look = { style: this.style, palette: this.palette, selected: this.selected, hover: this.hover, check: this.check };
+    const look = { style: this.style, palette: this.palette, selected: this.selected, hover: this.hover, check: this.check, cycling: this.cycling };
     // The Light theme's colours; the background and grid are cleared or hidden anyway.
     const probe = document.body.appendChild(document.createElement("i"));
     probe.dataset.theme = "light";
     this.palette = readPalette(probe);
     probe.remove();
-    Object.assign(this, { selected: [], hover: null, check: null });
+    Object.assign(this, { selected: [], hover: null, check: null, cycling: false });
     this.setStyle("shaded");
     this.recolourAll();
     try {
@@ -1791,10 +1804,18 @@ export class Engine {
     for (const s of this.selected) if (s.kind === "face") (selFaces.get(s.body) ?? selFaces.set(s.body, new Set()).get(s.body)!).add(s.index);
     const c = new Color();
     const c2 = new Color();
+    const cycle = this.cycling ? cycleColours(this.order.map((o) => o.body.cycle ?? o.body.id)) : null;
     for (const o of [...this.order, ...this.previews]) {
       // A preview's faces are numbered afresh, so picks and checks on the body do not tint it.
       const own = !this.previews.includes(o);
-      const base = o.body.highlight ? c2.copy(p["part-highlight"]) : o.body.colour ? c2.setStyle(o.body.colour) : c2.copy(p["part-fill"]);
+      const cycled = cycle?.get(o.body.cycle ?? o.body.id);
+      const base = o.body.highlight
+        ? c2.copy(p["part-highlight"])
+        : cycled
+          ? c2.copy(cycled)
+          : o.body.colour
+            ? c2.setStyle(o.body.colour)
+            : c2.copy(p["part-fill"]);
       if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
       if (o.body.clash) base.lerp(p.danger, 0.75);

@@ -82,6 +82,7 @@ export function useViewport(d: ViewportDeps) {
   const [elements, setElements] = useState<Pick[]>([]);
   const [styleSetting, setStyleSetting] = useState<StyleSetting>(readStyle);
   const [grid, setGrid] = useState(readGrid);
+  const [colourCycle, setColourCycle] = useState(false);
   const [ortho, setOrtho] = useState(false);
   // Section analyses live in the model; on a model you can't change they change here, for this look only.
   const [scratch, setScratch] = useState<{ sections?: ModelDoc["sections"]; section?: string } | null>(null);
@@ -299,6 +300,14 @@ export function useViewport(d: ViewportDeps) {
     });
   }, []);
 
+  /** Colour cycling: each part in a colour of its own, for this visit. It never changes the colours the model saves. */
+  const toggleColourCycle = useCallback(() => {
+    setColourCycle((on) => {
+      live.current.say(on ? "Colour cycle off: parts in their own colours" : "Colour cycle on: each part in its own colour");
+      return !on;
+    });
+  }, []);
+
   const sectionRef = useRef(section);
   sectionRef.current = section;
   const sdocRef = useRef(sdoc);
@@ -364,6 +373,16 @@ export function useViewport(d: ViewportDeps) {
         keywords: "render style outline",
       },
       { id: "view.grid", scope: "model", label: "Show or hide the floor grid", group: "View", icon: "grid", run: toggleGrid, keywords: "floor grid lines" },
+      {
+        id: "view.colourCycle",
+        scope: "model",
+        label: "Colour cycle",
+        group: "View",
+        icon: "paint",
+        keys: ["shift+n"],
+        run: toggleColourCycle,
+        keywords: "color colour each part component distinct unique",
+      },
       { id: "view.setHome", label: "Set this view as home", group: "View", icon: "home", run: setHomeHere, keywords: "view cube camera" },
       {
         id: "view.resetHome",
@@ -472,6 +491,8 @@ export function useViewport(d: ViewportDeps) {
     style,
     grid,
     toggleGrid,
+    colourCycle,
+    toggleColourCycle,
     ortho,
     setOrtho,
     section,
