@@ -38,6 +38,63 @@ function meshKey(m: BodyMesh): string {
   return `${p.length}:${m.indices.length}:${h}`;
 }
 
+/** Where each printed part goes in the assembled model, for kevsrobots Projects' project model. */
+export const ASSEMBLY_FILE = "assembly.json";
+
+type V3 = [number, number, number];
+
+export interface AssemblyPart {
+  /** The body's id, when the file holds one body. */
+  id?: string;
+  name: string;
+  /** The part's STL in the zip. */
+  file: string;
+  /** The middle of the part where it sits in the model, at home, in mm (Z up). The STL itself sits on the bed. */
+  position: V3;
+  /** The component (robot link) it's in; none for Base. */
+  link?: string;
+}
+
+/**
+ * The assembly: each part where it sits, the components, and the joints between them as URDF has them (world origin
+ * and axis at home, mm and degrees), so kevsrobots Projects can join the parts the same way.
+ */
+export function assembly(doc: ModelDoc, upTo: number, parts: AssemblyPart[]) {
+  const built = build(doc, upTo);
+  const linkOf = new Map<string, string>();
+  for (const l of built.links) for (const id of l.parts) linkOf.set(id, l.id);
+  return {
+    generator: "BetterCad",
+    version: 1,
+    name: doc.name,
+    units: "mm",
+    parts: parts.map((p) => {
+      const link = p.id ? linkOf.get(p.id) : undefined;
+      return link ? { ...p, link } : p;
+    }),
+    links: built.links.map((l) => ({ id: l.id, name: l.name, ...(l.parent ? { parent: l.parent } : {}) })),
+    joints: built.joints.map((j) => ({
+      id: j.id,
+      name: j.name,
+      kind: j.kind,
+      child: j.child,
+      parent: j.parent,
+      origin: j.origin.map(round) as V3,
+      axis: j.axis,
+      lower: j.lower,
+      upper: j.upper,
+    })),
+  };
+}
+
+const round = (n: number) => Math.round(n * 1000) / 1000;
+
+/** "Rover-Wheel 1.stl" from a model called "Rover" is "Wheel 1". */
+export function partName(file: string, model: string): string {
+  const base = file.replace(/\.[^.]+$/, "");
+  return base.startsWith(`${model}-`) && base.length > model.length + 1 ? base.slice(model.length + 1) : base;
+}
+
 /** Safe in a file name on every system. */
 export const fileSafe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, " ").trim() || "Untitled model";
 
@@ -122,7 +179,21 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
       rosPackage: false,
       name: doc.name,
     });
-    if (k) for (const f of (await k).files) files.push({ name: `models/${fileSafe(f.name)}`, data: new Uint8Array(f.data) });
+    if (k) {
+      const placed: AssemblyPart[] = [];
+      for (const f of (await k).files) {
+        const name = `models/${fileSafe(f.name)}`;
+        files.push({ name, data: new Uint8Array(f.data) });
+        if (f.centre)
+          placed.push({
+            id: f.parts?.length === 1 ? f.parts[0] : undefined,
+            name: partName(f.name, doc.name),
+            file: name,
+            position: f.centre.map(round) as V3,
+          });
+      }
+      if (placed.length) files.push({ name: ASSEMBLY_FILE, data: enc.encode(JSON.stringify(assembly(doc, upTo, placed), null, 2)) });
+    }
   }
 
   const base = fileSafe(doc.name);

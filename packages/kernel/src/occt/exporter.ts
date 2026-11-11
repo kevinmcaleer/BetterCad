@@ -4,7 +4,7 @@ import { triangles, writeStep } from "./export";
 import { build, type ModelDoc, type Part } from "../document";
 import { linkTransforms, type Mat4 } from "../pose";
 import { resolvePose } from "../drivelinks";
-import { placeOnBed, stlBytes, triangleCount, write3mf, writeStl, type MeshBody } from "../export/mesh";
+import { boxCentre, placeOnBed, stlBytes, triangleCount, write3mf, writeStl, type MeshBody } from "../export/mesh";
 import { gltfBytes, writeGlb, writeGltf } from "../export/gltf";
 import { fileName } from "../bcad";
 import { pbrOf } from "../looks";
@@ -45,7 +45,11 @@ export interface ExportEstimate {
 }
 
 export interface ExportResult {
-  files: { name: string; data: ArrayBuffer }[];
+  /**
+   * `centre` (mesh formats): the middle of the file's bodies where they sit in the model, in mm, before any move onto
+   * the bed, so an assembly can put the part back where it goes. `parts`: the ids of the bodies in it.
+   */
+  files: { name: string; data: ArrayBuffer; centre?: [number, number, number]; parts?: string[] }[];
   triangles: number;
   skipped: number;
 }
@@ -196,6 +200,7 @@ export class Exporter {
         continue;
       }
       let bodies = g.parts.map((p) => this.posedMesh(p, r.deflection, moves.get(p.id)));
+      const centre = boxCentre(bodies) ?? undefined;
       if (!r.keepPosition) bodies = placeOnBed(bodies);
       total += triangleCount(bodies);
       if (r.format === "gltf") {
@@ -203,7 +208,8 @@ export class Exporter {
         const out = writeGltf(r.name, bodies, bin);
         files.push({ name: g.file, data: out.gltf }, { name: bin, data: out.bin });
       } else if (r.format === "glb") files.push({ name: g.file, data: writeGlb(r.name, bodies) });
-      else files.push({ name: g.file, data: r.format === "stl" ? writeStl(r.name, bodies) : write3mf(r.name, bodies) });
+      else
+        files.push({ name: g.file, data: r.format === "stl" ? writeStl(r.name, bodies) : write3mf(r.name, bodies), centre, parts: g.parts.map((p) => p.id) });
     }
     return { files, triangles: total, skipped };
   }
