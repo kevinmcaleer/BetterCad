@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { loadOCCT, type OC } from "./oc";
 import { ModelBuilder } from "./model";
 import { Exporter } from "./exporter";
+import { meshSolid } from "./imports";
+import { elements } from "./shapes";
 import { addCombine, addFinish, addImport, addPart, build, newDoc, type ModelDoc } from "../document";
 import { write3mf, writeStl } from "../export/mesh";
 import { blobHash, importFormat, toBase64, type ImportFormat } from "../imports";
@@ -109,4 +111,42 @@ describe("imports (#82)", () => {
     expect(Object.keys(d.blobs!)).toHaveLength(1);
     expect(d.features.map((f) => f.name)).toEqual(["Import 1", "Import 2"]);
   });
+
+  it("says how far it has got while it reads a mesh and a STEP file", () => {
+    const read = (file: string, bytes: ArrayBuffer) => {
+      const u = new Uint8Array(bytes);
+      const seen: number[] = [];
+      new ModelBuilder(oc).inspect({ name: file, format: importFormat(file)!, blob: blobHash(u), data: toBase64(u) }, (f) => seen.push(f));
+      return seen;
+    };
+    // Enough triangles for the loop to tick more than once.
+    const many = cubes(500);
+    const mesh = read("many.stl", writeStl("many", [{ name: "many", triangles: many }]));
+    expect(mesh.length).toBeGreaterThan(3);
+    expect(mesh).toEqual([...mesh].sort((a, b) => a - b));
+    expect(mesh.at(-1)).toBeGreaterThanOrEqual(0.9);
+    const step = read(
+      "kit.step",
+      new Exporter(oc, m).export({ doc: addPart(newDoc("Kit"), "box", "bx"), bodies: null, format: "step", deflection: 0, name: "Kit" }).files[0]!.data,
+    );
+    expect(step).toEqual([...step].sort((a, b) => a - b));
+    expect(step.at(-1)).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("counts a mesh's faces each once, however many there are", () => {
+    // 500 cubes in a row, none touching: more than one shell, so each of the 6,000 triangles stays its own face.
+    const { shape } = meshSolid(oc, cubes(500));
+    const t = performance.now();
+    expect(elements(oc, shape, "face")).toHaveLength(6000);
+    // Listing them used to check each face against all the others, about 6 s here; now it takes a few ms.
+    expect(performance.now() - t).toBeLessThan(1000);
+  });
 });
+
+/** `n` 10 mm cubes in a row, 5 mm apart, as one mesh. */
+function cubes(n: number): Float32Array {
+  const one = cube();
+  const out = new Float32Array(one.length * n);
+  for (let k = 0; k < n; k++) for (let i = 0; i < one.length; i++) out[k * one.length + i] = one[i]! + (i % 3 === 0 ? k * 15 : 0);
+  return out;
+}

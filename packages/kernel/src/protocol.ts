@@ -26,7 +26,7 @@ export interface Methods {
   estimate: { params: ExportRequest; result: ExportEstimate };
   /** STL, 3MF or STEP files from the exact B-rep (#80, #81). */
   export: { params: ExportRequest & { name: string }; result: ExportResult };
-  /** Reads a file to import (#82): its bodies, kept ready for the build that follows. */
+  /** Reads a file to import (#82): its bodies, kept ready for the build that follows. Posts progress. */
   inspect: { params: { name: string; format: ImportFormat; blob: string; data: string }; result: ImportInfo };
   /** What an imported mesh body was made from (#437): holes, round faces and round edges, in the world. */
   recognise: { params: { doc: ModelDoc; upTo?: number; body: string } & RecogniseOptions; result: Recognised };

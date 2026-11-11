@@ -14,6 +14,11 @@ export const isBcad = (name: string) => /\.(bcad|json)$/i.test(name);
 /** The name a file's body takes: the file name without its extension. */
 export const baseName = (name: string) => name.replace(/\.[^.]+$/, "") || "Imported";
 
+/** An imported mesh's body name: an STL is named after its file; a 3MF's objects keep their own names. */
+export function meshName(format: ImportFormat, name: string | undefined, base: string): string {
+  return format === "stl" || !name ? base : name;
+}
+
 export function toBase64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));

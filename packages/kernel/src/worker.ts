@@ -39,6 +39,17 @@ ready.then(
     }),
 );
 
+/** Passes progress on at most every 50 ms, so a long loop doesn't flood the app with messages. */
+function every50ms(fn: (fraction: number) => void): (fraction: number) => void {
+  let last = 0;
+  return (f) => {
+    const now = performance.now();
+    if (now - last < 50) return;
+    last = now;
+    fn(f);
+  };
+}
+
 const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: number) => Methods[M]["result"] | Promise<Methods[M]["result"]> } = {
   ping: () => ({ ok: true, engine: "opencascade.js" }),
   build: ({ doc, upTo, quality }, id) => {
@@ -78,7 +89,11 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
       progress: (fraction) => post({ kind: "progress", id, fraction }),
     }),
   reorder: ({ doc, id, beforeId }) => reorderWithPicks(occt!, builder!, doc, id, beforeId),
-  inspect: (params) => builder!.inspect(params),
+  inspect: (params, id) =>
+    builder!.inspect(
+      params,
+      every50ms((fraction) => post({ kind: "progress", id, fraction })),
+    ),
   // The recogniser loads the first time it is asked for.
   recognise: async ({ doc, upTo, body, tol, flat, rough }) => {
     const { recognise, moved } = await import("./recognise");

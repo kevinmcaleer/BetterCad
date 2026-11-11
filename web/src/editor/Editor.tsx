@@ -136,6 +136,8 @@ import { useViewport } from "./useViewport";
 import { View3D } from "../viewport/View3D";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
+import { useImportProgress } from "../files/useImportProgress";
+import { ImportToast } from "../files/ImportToast";
 import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
 import { useFiles } from "../files/useFiles";
 import { useDrop } from "../files/useDrop";
@@ -333,6 +335,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
   const failedRef = useRef(failed);
   failedRef.current = failed;
+  const imports = useImportProgress({ bodies: kernel.bodies, failed: kernel.failed, parts, off: kernel.state.status === "failed" });
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
   /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
@@ -1583,7 +1586,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     view: vp.ref,
     say,
-    onImport: (list, at) => importFiles(list, at, { call: kernel.call, record, say, select: setSelection }),
+    onImport: (list, at) =>
+      importFiles(list, at, { call: kernel.call, record, say, select: setSelection, progress: imports.setProgress, ready: imports.ready }),
     renderBodies: () => thumbBodies.current(),
     onSwitched: () => {
       setMarker(null);
@@ -3497,7 +3501,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         onChange={(e) => {
           const list = [...(e.target.files ?? [])];
           e.target.value = "";
-          if (list.length) void importFiles(list, undefined, { call: kernel.call, record, say, select: setSelection, reference: true });
+          if (list.length)
+            void importFiles(list, undefined, {
+              call: kernel.call,
+              record,
+              say,
+              select: setSelection,
+              reference: true,
+              progress: imports.setProgress,
+              ready: imports.ready,
+            });
         }}
       />
       <AppShell
@@ -3552,6 +3565,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         toast={
           <>
             <div className="bc-toast-slot" role="status" aria-live="polite">
+              {imports.progress && <ImportToast {...imports.progress} />}
               {toast && (
                 <div key={toast.id} className="bc-toast">
                   {toast.text}

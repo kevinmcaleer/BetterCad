@@ -296,6 +296,23 @@ body {
   box-shadow: var(--bc-shadow-float);
   animation: bc-toast 3000ms ease-out forwards;
 }
+/* An import's progress: stays up until the model is ready, with what it's doing and a bar. */
+.bc-toast-progress {
+  display: grid;
+  gap: var(--bc-space-1);
+  width: 260px;
+  max-width: 100%;
+  margin-bottom: var(--bc-space-2);
+  animation: none;
+}
+.bc-toast-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-toast-stage {
+  color: var(--bc-color-muted);
+  font-size: 12px;
+}
 @keyframes bc-toast {
   0% {
     opacity: 0;
