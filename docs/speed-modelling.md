@@ -13,7 +13,7 @@ npx vitest run packages/kernel/src/speedmodel        # SPEED_LOG=1 prints each m
 | Part                  | Result                                                                 |
 | --------------------- | ---------------------------------------------------------------------- |
 | 01-01 Bearing Bracket | 797.15 g, matches                                                      |
-| 01-02 Post Cap        | Can't model it: needs an ellipse (#401); Sweep is in (#400)            |
+| 01-02 Post Cap        | 43.09 g, matches (ellipses, #401, and Sweep, #400)                     |
 | 01-03 C Clamp Base    | 96.13 g, matches                                                       |
 | 01-04 Angle Bracket   | 310.00 g, matches                                                      |
 | 01-05 Paste Sleeve    | 56.73 g, within 0.35 g (Loft, #399)                                    |

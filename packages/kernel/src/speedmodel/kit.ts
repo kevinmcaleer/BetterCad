@@ -9,6 +9,7 @@ import {
   addPattern,
   addRevolve,
   addSketch,
+  addSweep,
   newDoc,
   updateSketch,
   type ConstructParams,
@@ -19,6 +20,7 @@ import {
   type ModelDoc,
   type PatternParams,
   type RevolveParams,
+  type SweepParams,
   type PartKind,
   type Vec3,
 } from "../document";
@@ -67,6 +69,11 @@ export class Timeline {
   loft(p: LoftParams): string {
     const body = this.id("b");
     this.doc = addLoft(this.doc, p, this.id("l"), body);
+    return body;
+  }
+  sweep(p: SweepParams): string {
+    const body = this.id("b");
+    this.doc = addSweep(this.doc, p, this.id("w"), body);
     return body;
   }
   finish(p: FinishParams) {
