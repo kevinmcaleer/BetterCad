@@ -47,8 +47,17 @@ export interface Ellipse extends EntityBase {
   ax1: Id;
   ax2: Id;
 }
-export type Entity = Point | Line | Circle | Arc | Ellipse;
-export type Curve = Line | Circle | Arc | Ellipse;
+/**
+ * A spline (#269): a smooth curve through its fit points, in order. `closed` runs it back to the first point. An end
+ * shared with a line and tied to it by a Tangent constraint leaves along that line.
+ */
+export interface Spline extends EntityBase {
+  kind: "spline";
+  pts: Id[];
+  closed?: boolean;
+}
+export type Entity = Point | Line | Circle | Arc | Ellipse | Spline;
+export type Curve = Line | Circle | Arc | Ellipse | Spline;
 export type EntityKind = Entity["kind"];
 
 interface ConstraintBase {
@@ -275,7 +284,8 @@ export class SketchIndex {
       (e): e is Curve =>
         (e.kind === "line" && (e.a === pointId || e.b === pointId)) ||
         (e.kind === "arc" && (e.a === pointId || e.b === pointId || e.c === pointId)) ||
-        ((e.kind === "circle" || e.kind === "ellipse") && e.c === pointId),
+        ((e.kind === "circle" || e.kind === "ellipse") && e.c === pointId) ||
+        (e.kind === "spline" && e.pts.includes(pointId)),
     );
   }
 }
@@ -313,7 +323,9 @@ export function removeEntities(s: Sketch, ids: Id[]): Sketch {
   };
 }
 
-export const curvePoints = (e: Curve): Id[] => (e.kind === "line" ? [e.a, e.b] : e.kind === "arc" ? [e.c, e.a, e.b] : [e.c]);
+export const curvePoints = (e: Curve): Id[] => (e.kind === "line" ? [e.a, e.b] : e.kind === "arc" ? [e.c, e.a, e.b] : e.kind === "spline" ? e.pts : [e.c]);
+/** A spline's two ends, or null for a closed one or another curve. */
+export const splineEnds = (e: Curve): [Id, Id] | null => (e.kind === "spline" && !e.closed ? [e.pts[0]!, e.pts[e.pts.length - 1]!] : null);
 
 /** An ellipse's shape: centre, the half-lengths of its first and second axes, and the first axis's angle. */
 export interface EllipseGeo {

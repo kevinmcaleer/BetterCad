@@ -16,12 +16,14 @@ import {
   type Id,
   type Line,
   type ProjectedRef,
+  type Spline,
   type Sketch,
   type TopoRef,
   type Vec2,
   type Vec3,
 } from "./model";
 import { circleSide, curveEllipse, ellipseSide, lineEllipse } from "./ellipse";
+import { curveSplineParams, lineSide, sampleSpline, splineGeo, splineParam, splinePoint, splineSpline, type SplineGeo } from "./spline";
 import {
   add,
   angleOf,
@@ -64,7 +66,7 @@ function prune(s: Sketch, candidates: Id[]): Sketch {
 }
 
 /** Points tied to `p` by coincident constraints, and `p`. */
-function samePoint(s: Sketch, p: Id): Set<Id> {
+export function samePoint(s: Sketch, p: Id): Set<Id> {
   const out = new Set([p]);
   for (let grew = true; grew;) {
     grew = false;
@@ -132,15 +134,17 @@ export function filletLines(sketch: Sketch, a: Id, b: Id, r: number): EditResult
 // ------------------------------------------------------------------ trim
 
 /** A curve's shape for cutting: a line from a to b, or a circle or arc about c (arcs from angle s through sweep w). */
-type Shape =
+export type Shape =
   | { kind: "line"; a: Vec2; b: Vec2 }
   | { kind: "circle"; c: Vec2; r: number }
   | { kind: "arc"; c: Vec2; r: number; s: number; w: number }
-  | { kind: "ellipse"; g: EllipseGeo };
+  | { kind: "ellipse"; g: EllipseGeo }
+  | { kind: "spline"; g: SplineGeo };
 
-function shapeOf(idx: SketchIndex, e: Curve): Shape {
+export function shapeOf(idx: SketchIndex, e: Curve): Shape {
   if (e.kind === "line") return { kind: "line", a: idx.xy(e.a), b: idx.xy(e.b) };
   if (e.kind === "ellipse") return { kind: "ellipse", g: ellipseGeo(idx, e) };
+  if (e.kind === "spline") return { kind: "spline", g: splineGeo(idx, e) };
   const c = idx.xy(e.c);
   if (e.kind === "circle") return { kind: "circle", c, r: e.r };
   const s = angleOf(sub(idx.xy(e.a), c));
@@ -148,12 +152,13 @@ function shapeOf(idx: SketchIndex, e: Curve): Shape {
 }
 
 /** Where along a shape a point is: 0..1 along a line, radians from the start on an arc or circle. */
-function param(sh: Shape, p: Vec2): number {
+export function param(sh: Shape, p: Vec2): number {
   if (sh.kind === "line") {
     const d = sub(sh.b, sh.a);
     return ((p[0] - sh.a[0]) * d[0] + (p[1] - sh.a[1]) * d[1]) / (d[0] ** 2 + d[1] ** 2);
   }
   if (sh.kind === "ellipse") return ellipseAngle(sh.g, p);
+  if (sh.kind === "spline") return splineParam(sh.g, p).t;
   const ang = angleOf(sub(p, sh.c));
   return sh.kind === "circle" ? wrap(ang) : wrap(ang - sh.s);
 }
@@ -161,6 +166,7 @@ function param(sh: Shape, p: Vec2): number {
 function pointAt(sh: Shape, t: number): Vec2 {
   if (sh.kind === "line") return add(sh.a, scale(sub(sh.b, sh.a), t));
   if (sh.kind === "ellipse") return ellipsePoint(sh.g, t);
+  if (sh.kind === "spline") return splinePoint(sh.g, t);
   return polar(sh.c, sh.r, sh.kind === "circle" ? t : sh.s + t);
 }
 
@@ -169,16 +175,31 @@ function contains(sh: Shape, p: Vec2): boolean {
     const t = param(sh, p);
     return t >= -1e-9 && t <= 1 + 1e-9;
   }
-  if (sh.kind === "circle" || sh.kind === "ellipse") return true;
+  if (sh.kind === "circle" || sh.kind === "ellipse" || sh.kind === "spline") return true;
   return onArc(angleOf(sub(p, sh.c)), sh.s, sh.s + sh.w);
 }
 
 /** Where two shapes cross. */
-function crossings(a: Shape, b: Shape): Vec2[] {
+export function crossings(a: Shape, b: Shape): Vec2[] {
   let pts: Vec2[];
-  if (a.kind === "ellipse" || b.kind === "ellipse") {
+  if (a.kind === "spline" || b.kind === "spline") {
+    const [sp, o] = (a.kind === "spline" ? [a, b] : [b, a]) as [Extract<Shape, { kind: "spline" }>, Shape];
+    if (o.kind === "spline") pts = splineSpline(sp.g, o.g);
+    else {
+      const side =
+        o.kind === "line"
+          ? lineSide(o.a, o.b)
+          : o.kind === "ellipse"
+            ? ellipseSide(o.g)
+            : (p: Vec2) => Math.hypot(p[0] - (o as { c: Vec2 }).c[0], p[1] - (o as { c: Vec2 }).c[1]) - (o as { r: number }).r;
+      pts = curveSplineParams(side, sp.g).map((t) => splinePoint(sp.g, t));
+    }
+  } else if (a.kind === "ellipse" || b.kind === "ellipse") {
     const [el, o] = (a.kind === "ellipse" ? [a, b] : [b, a]) as [Extract<Shape, { kind: "ellipse" }>, Shape];
-    pts = o.kind === "line" ? lineEllipse(o.a, o.b, el.g) : curveEllipse(o.kind === "ellipse" ? ellipseSide(o.g) : circleSide(o.c, o.r), el.g);
+    pts =
+      o.kind === "line"
+        ? lineEllipse(o.a, o.b, el.g)
+        : curveEllipse(o.kind === "ellipse" ? ellipseSide(o.g) : circleSide((o as { c: Vec2 }).c, (o as { r: number }).r), el.g);
   } else if (a.kind === "line" && b.kind === "line") {
     const x = lineLine(a.a, a.b, b.a, b.b);
     pts = x ? [x.p] : [];
@@ -194,14 +215,14 @@ export function cutsOn(sketch: Sketch, id: Id): number[] {
   const e = idx.get(id);
   if (!e || e.kind === "point") return [];
   const sh = shapeOf(idx, e);
-  const span = sh.kind === "line" ? 1 : sh.kind === "arc" ? sh.w : 2 * Math.PI;
+  const span = sh.kind === "line" ? 1 : sh.kind === "arc" ? sh.w : sh.kind === "spline" ? sh.g.bez.length : 2 * Math.PI;
   const eps = 1e-6;
   const ts: number[] = [];
   for (const o of sketch.entities) {
     if (o.id === id || o.kind === "point") continue;
     for (const p of crossings(sh, shapeOf(idx, o))) {
       const t = param(sh, p);
-      const inside = sh.kind === "circle" || sh.kind === "ellipse" ? true : t > eps && t < span - eps;
+      const inside = sh.kind === "circle" || sh.kind === "ellipse" || (sh.kind === "spline" && sh.g.closed) ? true : t > eps && t < span - eps;
       if (inside && !ts.some((x) => Math.abs(x - t) < 1e-6)) ts.push(t);
     }
   }
@@ -229,13 +250,14 @@ export function trimPiece(sketch: Sketch, id: Id, at: Vec2): { from: number; to:
   const t = param(sh, at);
   let from: number;
   let to: number;
-  if (sh.kind === "circle" || sh.kind === "ellipse") {
-    if (cuts.length < 2 || sh.kind === "ellipse") return { from: 0, to: 2 * Math.PI, pts: samples(sh, 0, 2 * Math.PI) };
+  if (sh.kind === "circle" || sh.kind === "ellipse" || (sh.kind === "spline" && sh.g.closed)) {
+    const period = sh.kind === "spline" ? sh.g.bez.length : 2 * Math.PI;
+    if (cuts.length < 2 || sh.kind === "ellipse") return { from: 0, to: period, pts: samples(sh, 0, period) };
     const after = cuts.find((x) => x > t);
-    to = after ?? cuts[0]! + 2 * Math.PI;
-    from = [...cuts].reverse().find((x) => x <= t) ?? cuts[cuts.length - 1]! - 2 * Math.PI;
+    to = after ?? cuts[0]! + period;
+    from = [...cuts].reverse().find((x) => x <= t) ?? cuts[cuts.length - 1]! - period;
   } else {
-    const span = sh.kind === "line" ? 1 : sh.w;
+    const span = sh.kind === "line" ? 1 : sh.kind === "spline" ? sh.g.bez.length : sh.w;
     const all = [0, ...cuts, span];
     const tc = Math.max(0, Math.min(span, t));
     const i = Math.max(0, all.findIndex((x) => x > tc) - 1);
@@ -245,8 +267,9 @@ export function trimPiece(sketch: Sketch, id: Id, at: Vec2): { from: number; to:
   return { from, to, pts: samples(sh, from, to) };
 }
 
-function samples(sh: Shape, from: number, to: number): Vec2[] {
+export function samples(sh: Shape, from: number, to: number): Vec2[] {
   if (sh.kind === "line") return [pointAt(sh, from), pointAt(sh, to)];
+  if (sh.kind === "spline") return sampleSpline(sh.g, from, to);
   const n = Math.max(4, Math.ceil((to - from) / (Math.PI / 36)));
   return Array.from({ length: n + 1 }, (_, i) => pointAt(sh, from + ((to - from) * i) / n));
 }
@@ -292,6 +315,7 @@ export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
   }
 
   if (sh.kind === "ellipse") return "Trim takes an ellipse whole";
+  if (sh.kind === "spline") return trimSpline(sketch, e as Spline, sh.g, piece.from, piece.to);
   const span = sh.kind === "line" ? 1 : sh.w;
   const atStart = piece.from <= 1e-9;
   const atEnd = piece.to >= span - 1e-9;
@@ -318,6 +342,42 @@ export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
   if (old.kind === "line") d.constrain({ type: "parallel", a: id, b: twin });
   dropLength();
   return d.done().sketch;
+}
+
+/**
+ * Trims a piece of a spline (#269): what is left keeps the fit points outside the piece, with a new one where it was
+ * cut, so it bends much as before. A closed spline opens at the piece.
+ */
+function trimSpline(sketch: Sketch, e: Spline, g: SplineGeo, from: number, to: number): EditResult {
+  const n = g.bez.length;
+  const d = new Draft(sketch);
+  const keep = (pts: Id[], ends: [Vec2 | Id, Vec2 | Id]) => {
+    const ids = [typeof ends[0] === "string" ? ends[0] : d.point(ends[0]), ...pts, typeof ends[1] === "string" ? ends[1] : d.point(ends[1])];
+    return ids.filter((p, i) => i === 0 || p !== ids[i - 1]);
+  };
+  // Fit point i sits at parameter i.
+  const between = (a: number, b: number) => e.pts.filter((_, i) => i > a + 1e-9 && i < b - 1e-9);
+  const parts: Id[][] = [];
+  if (e.closed) {
+    // Open it at the piece: from the piece's end round to its start.
+    const ring = [...e.pts, ...e.pts].map((p, i) => [p, i] as const).filter(([, i]) => i > to + 1e-9 && i < from + n - 1e-9);
+    parts.push(
+      keep(
+        ring.map(([p]) => p),
+        [splinePoint(g, to % n), splinePoint(g, ((from % n) + n) % n)],
+      ),
+    );
+  } else {
+    if (from > 1e-9) parts.push(keep(between(0, from), [e.pts[0]!, splinePoint(g, from)]));
+    if (to < n - 1e-9) parts.push(keep(between(to, n), [splinePoint(g, to), e.pts[e.pts.length - 1]!]));
+  }
+  d.entities = d.entities.filter((x) => x.id !== e.id);
+  d.constraints = d.constraints.filter((c) => !constraintRefs(c).includes(e.id));
+  for (const pts of parts.filter((p) => p.length >= 2)) {
+    const id = newId("b");
+    d.entities.push({ id, kind: "spline", pts, ...(e.construction && { construction: true }) });
+  }
+  return prune(d.done().sketch, e.pts);
 }
 
 // ------------------------------------------------------------------ offset
@@ -624,82 +684,4 @@ export function projectCurves(sketch: Sketch, frame: Frame, curves: ModelCurve[]
     ids.push(existing((e) => e.kind === "arc" && e.c === c && e.a === a && e.b === b) ?? tag(d.arc(c, a, b, construction), from));
   }
   return { sketch: d.done().sketch, ids };
-}
-
-/** Where `p` lands mirrored across the line through `a` and `b`. */
-export function reflect(p: Vec2, a: Vec2, b: Vec2): Vec2 {
-  const u = norm(sub(b, a));
-  const foot = add(a, scale(u, dot(sub(p, a), u)));
-  return sub(scale(foot, 2), p);
-}
-
-/**
- * Mirrors shapes across a line (#267). Each copied point is tied to its original by a Symmetric constraint, so editing
- * one side moves the other; circles keep equal radii. Points on the mirror line are shared rather than doubled (and
- * held on it), so a mirrored half profile closes into one shape. An ellipse brings its axes.
- */
-export function mirrorShapes(sketch: Sketch, ids: Id[], line: Id): EditResult {
-  const idx = new SketchIndex(sketch);
-  const m = idx.get(line);
-  if (m?.kind !== "line") return "Pick a line to mirror across";
-  const a = idx.xy(m.a);
-  const b = idx.xy(m.b);
-  const len = dist(a, b);
-  if (len < 1e-9) return "That line has no length to mirror across";
-  const picked = new Set(ids.filter((id) => id !== line));
-  for (const id of [...picked]) {
-    const e = idx.get(id);
-    if (e?.kind === "ellipse") picked.add(e.ax1).add(e.ax2);
-  }
-  const shapes = [...picked].map((id) => idx.get(id)).filter((e): e is Entity => !!e && !(e.kind === "line" && e.id === line));
-  if (!shapes.length) return "Pick the shapes to mirror, then the line";
-  const n = perp(norm(sub(b, a)));
-  const onLine = (p: Vec2) => Math.abs(dot(n, sub(p, a))) < 1e-4;
-  const d = new Draft(sketch);
-  // Points already held on the line, or fixed, need nothing more to stay there.
-  const held = new Set(sketch.constraints.flatMap((c) => ((c.type === "pointOn" && c.e === line) || c.type === "fix" ? [c.p] : [])));
-  const copies = new Map<Id, Id>();
-  const copyPoint = (p: Id): Id => {
-    const had = copies.get(p);
-    if (had) return had;
-    const pt = idx.point(p);
-    const xy: Vec2 = [pt.x, pt.y];
-    let out: Id;
-    if (p === m.a || p === m.b) out = p;
-    else if (onLine(xy)) {
-      out = p;
-      if (!held.has(p)) {
-        d.constrain({ type: "pointOn", p, e: line });
-        held.add(p);
-      }
-    } else {
-      out = d.point(reflect(xy, a, b), !!pt.construction);
-      d.constrain({ type: "symmetric", a: p, b: out, line });
-    }
-    copies.set(p, out);
-    return out;
-  };
-  const made = new Map<Id, Id>();
-  for (const e of shapes) {
-    const construction = !!e.construction;
-    if (e.kind === "point") copyPoint(e.id);
-    else if (e.kind === "line") made.set(e.id, d.line(copyPoint(e.a), copyPoint(e.b), { construction, auto: false }));
-    else if (e.kind === "circle") {
-      const c = d.circle(copyPoint(e.c), e.r, construction);
-      d.constrain({ type: "equal", a: e.id, b: c });
-      made.set(e.id, c);
-    }
-    // A mirror turns the arc the other way round, so it runs from the copy of b to the copy of a.
-    else if (e.kind === "arc") made.set(e.id, d.arc(copyPoint(e.c), copyPoint(e.b), copyPoint(e.a), construction));
-  }
-  for (const e of shapes) {
-    if (e.kind !== "ellipse") continue;
-    const ax1 = made.get(e.ax1);
-    const ax2 = made.get(e.ax2);
-    if (!ax1 || !ax2) continue;
-    const id = newId("e");
-    d.entities.push({ id, kind: "ellipse", c: copyPoint(e.c), ax1, ax2, ...(e.construction && { construction: true }) });
-    d.ids.push(id);
-  }
-  return d.done().sketch;
 }

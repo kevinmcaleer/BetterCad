@@ -10,7 +10,6 @@ import {
   filletAt,
   filletLines,
   offsetChain,
-  mirrorShapes,
   projectCurves,
   trimAt,
   trimPiece,
@@ -42,6 +41,8 @@ import {
   type SolveResult,
   type Sketch,
   type Vec2,
+  sampleSpline,
+  splineGeo,
 } from "@bettercad/sketch";
 import {
   addSketch,
@@ -200,7 +201,10 @@ export interface TextEdit {
 }
 
 /** Code the sketch loads on first use, to keep it out of first paint: drawing the loupe, and snapping to the model. */
-const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap") } = {};
+const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap"); edits?: typeof import("@bettercad/sketch/edits") } = {};
+/** Mirror, Extend and drag-to-trim (#267, #270) load when one of their tools is picked. */
+const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "trim", "extend"]);
+const loadEdits = () => void import("@bettercad/sketch/edits").then((m) => (lazy.edits = m));
 
 export function useSketch(d: SketchDeps) {
   const { store, say } = d;
@@ -218,6 +222,8 @@ export function useSketch(d: SketchDeps) {
   /** The magnifier loupe, while it is open. */
   const [loupe, setLoupe] = useState<Loupe | null>(null);
   const closeLoupe = useRef<() => void>(() => {});
+  /** Ends a spline under way with the points clicked so far (Enter); false when there is none to end. */
+  const endSpline = useRef<() => boolean>(() => false);
   /** The loupe's canvas, and the last picture of the sketch it magnifies. */
   const loupeCanvas = useRef<HTMLCanvasElement | null>(null);
   const lastView = useRef<OverlayView | null>(null);
@@ -312,6 +318,7 @@ export function useSketch(d: SketchDeps) {
   const setStool = useCallback((t: SketchToolId) => {
     setStoolState(t);
     setMirrorStage("shapes");
+    if (EDIT_TOOLS.has(t) && !lazy.edits) loadEdits();
     setCtool(null);
     setPointer(null);
     setCursor(null);
@@ -683,6 +690,8 @@ export function useSketch(d: SketchDeps) {
 
   const finish = useCallback(
     (force = false) => {
+      // Enter with a spline under way ends the spline, not the sketch.
+      if (!force && endSpline.current()) return;
       const s = current();
       if (!s) return end();
       const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction) || !!s.texts?.some((t) => !t.construction);
@@ -1019,6 +1028,8 @@ export function useSketch(d: SketchDeps) {
      * first puts a point where it came down, so one drag draws a line, rectangle, circle or polygon.
      */
     let tap: { at: ScreenPoint; start: Snap; base: Snap[]; dragged: boolean } | null = null;
+    /** Trim (#270): a press that either clicks one piece or drags a path across several. */
+    let trimDrag: { at: ScreenPoint; first: { xy: Vec2; px: number }; path: Vec2[]; moved: boolean } | null = null;
     /** A finger is down placing a size: it goes down where the finger lifts. */
     let tapPlace = false;
     /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
@@ -1068,6 +1079,23 @@ export function useSketch(d: SketchDeps) {
         setEditPreview(null);
       }
     };
+    /** Extend (#270): the end of a line or arc nearest the pointer grows to the next shape it meets. */
+    const extendDown = (hit: { xy: Vec2; px: number }): boolean => {
+      const s = live.current.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px, true);
+      if (!id) return false;
+      if (lazy.edits) done(lazy.edits.extendAt(s, id, hit.xy), "Extend");
+      else loadEdits();
+      return true;
+    };
+    const extendMove = (hit: { xy: Vec2; px: number }) => {
+      const s = live.current.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px, true);
+      setHover(id);
+      if (!lazy.edits) loadEdits();
+      const t = id ? (lazy.edits?.extendTarget(s, id, hit.xy) ?? null) : null;
+      setEditPreview(t ? { lines: [t.pts], danger: false } : null);
+    };
     /** The editing tools: Fillet, Trim, Offset and Project. */
     const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
       const L = live.current;
@@ -1095,8 +1123,7 @@ export function useSketch(d: SketchDeps) {
       }
       const id = entityAt(hit.xy, s, tol, true);
       if (!id) return false;
-      if (L.stool === "trim") done(trimAt(s, id, hit.xy), "Trim");
-      else done(offsetToward(s, id, hit.xy, L.offsetD), "Offset");
+      done(offsetToward(s, id, hit.xy, L.offsetD), "Offset");
       return true;
     };
     const editMove = (p: ScreenPoint, hit: { xy: Vec2; px: number }) => {
@@ -1121,7 +1148,9 @@ export function useSketch(d: SketchDeps) {
     /** Mirror (#267): clicks pick the shapes, then the line (or an axis) to mirror them across. */
     const mirrorShapesAcross = (line: Id, base: Sketch) => {
       const L = live.current;
-      done(mirrorShapes(base, L.sel, line), "Mirror");
+      const ed = lazy.edits;
+      if (!ed) return loadEdits();
+      done(ed.mirrorShapes(base, L.sel, line), "Mirror");
       setMirrorStage("shapes");
     };
     const mirrorDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
@@ -1155,18 +1184,18 @@ export function useSketch(d: SketchDeps) {
       const e = id ? s.entities.find((x) => x.id === id) : undefined;
       // Over the line to mirror across, the copy shows where it will go.
       if (L.mirrorStage === "line" && e?.kind === "line" && L.sel.length && !L.sel.includes(e.id)) {
-        const r = mirrorShapes(s, L.sel, e.id);
+        const r = lazy.edits?.mirrorShapes(s, L.sel, e.id) ?? "";
         return setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
       }
       setEditPreview(null);
     };
-    const finishShape = (all: Snap[]) => {
+    const finishShape = (all: Snap[], closed = false) => {
       const L = live.current;
       if (!L.sketch || !L.frame) return;
       // Model edges and corners the clicks snapped to come in first, in the same undo step as the shape.
       // (A click can only carry a model snap once the snapping code has loaded.)
       const { sketch: s, clicks } = lazy.modelSnap?.resolveModelSnaps(L.sketch, L.frame, all) ?? { sketch: L.sketch, clicks: all };
-      const c = commit(L.stool, s, clicks, L.typed, L.sides);
+      const c = commit(L.stool, s, clicks, L.typed, L.sides, closed);
       if (!c) {
         if (s !== L.sketch) L.apply(s, "Project a point");
         setClicks([]);
@@ -1210,13 +1239,29 @@ export function useSketch(d: SketchDeps) {
       return eng.pick(p.x, p.y, "vertex", true) ?? eng.pick(p.x, p.y, "edge", true);
     };
 
-    /** Adds a drawing tool's click, and draws the shape once it has them all. */
-    const addClick = (s: Snap) => {
+    /** Takes a drawing tool's clicks so far, and draws the shape once it has them all. */
+    const takeClicks = (all: Snap[], mods: Mods, px: number) => {
       const L = live.current;
-      const all = [...L.clicks, s];
-      const need = CLICKS[L.stool as keyof typeof CLICKS];
-      if (all.length >= need) finishShape(all);
+      if (L.stool === "spline") {
+        const s = all[all.length - 1]!;
+        const before = all.slice(0, -1);
+        const prev = before[before.length - 1];
+        // A double-click (a second click on the same spot) ends it, open.
+        if (prev && dist(s.xy, prev.xy) < 3 * px) return before.length >= 2 ? finishShape(before) : setClicks(before);
+        // Back on the first point, or a Shift-click, closes it.
+        const first = before[0]!;
+        if (before.length >= 3 && (dist(s.xy, first.xy) < reach * px || (!!s.ref && s.ref === first.ref))) return finishShape(before, true);
+        if (mods.shift && all.length >= 3) return finishShape(all, true);
+        return setClicks(all);
+      }
+      if (all.length >= CLICKS[L.stool as keyof typeof CLICKS]) finishShape(all);
       else setClicks(all);
+    };
+    endSpline.current = () => {
+      const L = live.current;
+      if (L.stool !== "spline" || L.clicks.length < 2) return false;
+      finishShape(L.clicks);
+      return true;
     };
 
     const input = {
@@ -1268,7 +1313,12 @@ export function useSketch(d: SketchDeps) {
           else setSel(picked.length > 1 ? [id] : []);
           return true;
         }
-        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
+        if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendDown(hit);
+        if (L.stool === "trim") {
+          trimDrag = { at: p, first: hit, path: [hit.xy], moved: false };
+          return true;
+        }
+        if (L.stool === "fillet" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
         if (L.stool === "mirror") return mirrorDown(p, hit);
         if (L.stool === "text") {
           // A click on a text opens it; anywhere else places a new one there (or moves the one being set).
@@ -1334,7 +1384,7 @@ export function useSketch(d: SketchDeps) {
           setCursor(s);
           return true;
         }
-        addClick(s);
+        takeClicks([...L.clicks, s], mods, hit.px);
         return true;
       },
       move: (p: ScreenPoint, mods: Mods, pressed: boolean) => {
@@ -1388,6 +1438,14 @@ export function useSketch(d: SketchDeps) {
           }
           return;
         }
+        if (pressed && trimDrag) {
+          const t = trimDrag;
+          t.path.push(hit.xy);
+          if (Math.hypot(p.x - t.at.x, p.y - t.at.y) > 4) t.moved = true;
+          if (t.moved) setEditPreview({ lines: [t.path], danger: true });
+          return;
+        }
+        if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendMove(hit);
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
         if (L.stool === "mirror") return mirrorMove(hit);
         if (L.ctool) {
@@ -1431,6 +1489,17 @@ export function useSketch(d: SketchDeps) {
       up: (p: ScreenPoint, mods: Mods) => {
         endDrag(true);
         const L = live.current;
+        if (trimDrag) {
+          const t = trimDrag;
+          trimDrag = null;
+          const s = L.sketch;
+          if (!s) return;
+          if (t.moved && lazy.edits) return done(lazy.edits.trimAlong(s, t.path), "Trim");
+          setEditPreview(null);
+          const id = entityAt(t.first.xy, s, reach * t.first.px, true);
+          if (id) done(trimAt(s, id, t.first.xy), "Trim");
+          return;
+        }
         if (tapPlace) {
           tapPlace = false;
           L.place();
@@ -1440,13 +1509,12 @@ export function useSketch(d: SketchDeps) {
         tap = null;
         const hit = at(p);
         if (!t || !hit || !L.sketch) return;
-        const all = [...t.base, ...(t.dragged ? [t.start] : []), snapAt(hit.xy, hit.px, mods)];
-        if (all.length >= CLICKS[L.stool as keyof typeof CLICKS]) finishShape(all);
-        else setClicks(all);
+        takeClicks([...t.base, ...(t.dragged ? [t.start] : []), snapAt(hit.xy, hit.px, mods)], mods, hit.px);
       },
       cancel: () => {
         // A second finger came down to pinch or pan: nothing goes in.
         endDrag(false);
+        trimDrag = null;
         if (tap?.dragged) setClicks(tap.base);
         tap = null;
         tapPlace = false;
@@ -1977,6 +2045,7 @@ export function sketchView(
     if (e.kind === "line") curves.push({ pts: [idx.xy(e.a), idx.xy(e.b)], shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "circle") curves.push({ pts: sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72), shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "ellipse") curves.push({ pts: sampleEllipse(ellipseGeo(idx, e)), shade: shade(e.id), dashed: e.construction });
+    else if (e.kind === "spline") curves.push({ pts: sampleSpline(splineGeo(idx, e)), shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "arc") {
       const c = idx.xy(e.c);
       curves.push({ pts: sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c))), shade: shade(e.id), dashed: e.construction });
@@ -2077,6 +2146,7 @@ function addedLines(before: Sketch, after: Sketch): Vec2[][] {
     if (e.kind === "line") return [[idx.xy(e.a), idx.xy(e.b)]];
     if (e.kind === "circle") return [sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72)];
     if (e.kind === "ellipse") return [sampleEllipse(ellipseGeo(idx, e))];
+    if (e.kind === "spline") return [sampleSpline(splineGeo(idx, e))];
     if (e.kind === "arc") {
       const c = idx.xy(e.c);
       return [sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c)))];

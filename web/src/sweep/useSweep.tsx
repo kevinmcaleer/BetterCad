@@ -15,6 +15,8 @@ import {
   type Profile,
   type Sketch,
   type Vec2,
+  sampleSpline,
+  splineGeo,
 } from "@bettercad/sketch";
 import {
   addSweep,
@@ -78,6 +80,7 @@ export function curvePoints(sk: Sketch, id: string): Vec2[] | null {
   if (e?.kind === "line") return [idx.xy(e.a), idx.xy(e.b)];
   if (e?.kind === "circle") return sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72);
   if (e?.kind === "ellipse") return sampleEllipse(ellipseGeo(idx, e));
+  if (e?.kind === "spline") return sampleSpline(splineGeo(idx, e));
   if (e?.kind === "arc") {
     const c = idx.xy(e.c);
     return sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c)));

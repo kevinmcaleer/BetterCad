@@ -1,6 +1,18 @@
 import { SketchIndex, ellipseAngle, ellipseGeo, ellipsePoint, sampleEllipse, type EllipseGeo, type Id, type Sketch, type Vec2 } from "./model";
 import { circleSide, curveEllipse, ellipseSide, lineEllipse } from "./ellipse";
 import { textsOf } from "./text";
+import {
+  curveSplineParams,
+  lineSide,
+  sampleSpline,
+  splineCurvature,
+  splineDeriv,
+  splineGeo,
+  splineParam,
+  splinePoint,
+  splineSpline,
+  type SplineGeo,
+} from "./spline";
 import { angleOf, insidePolygon, perp, polar, polygonArea, sampleArc, sub, sweep, wrap, norm, add, scale, mid } from "./geom2d";
 
 /**
@@ -66,7 +78,18 @@ const TAU = 2 * Math.PI;
  * ellipse (#401) is an arc squashed to `k` times as wide across its first axis, which is turned by `rot`; its angles
  * are eccentric angles.
  */
-type Geo = { kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; c: Vec2; r: number; s: number; w: number; k?: number; rot?: number };
+type Geo =
+  | { kind: "line"; a: Vec2; b: Vec2 }
+  | { kind: "arc"; c: Vec2; r: number; s: number; w: number; k?: number; rot?: number }
+  /** A spline (#269), or a piece of it from parameter s through w. */
+  | { kind: "spline"; g: SplineGeo; s: number; w: number };
+type SplinePiece = Extract<Geo, { kind: "spline" }>;
+/** Which side of a curve a point is, changing sign as it crosses (circles and ellipses by their rim). */
+const sideOf = (g: Exclude<Geo, SplinePiece>): ((p: Vec2) => number) => {
+  if (g.kind === "line") return lineSide(g.a, g.b);
+  const e = ell(g);
+  return e ? ellipseSide(e) : circleSide(g.c, g.r);
+};
 type ArcGeo = Extract<Geo, { kind: "arc" }>;
 
 const ell = (g: ArcGeo): EllipseGeo | null => (g.k === undefined ? null : { c: g.c, r1: g.r, r2: g.r * g.k, rot: g.rot ?? 0 });
@@ -99,6 +122,17 @@ function along(g: Geo, p: Vec2, closed: boolean): number | null {
     if (Math.hypot(q[0] - p[0], q[1] - p[1]) > TOL || t < -tol || t > 1 + tol) return null;
     return Math.max(0, Math.min(1, t));
   }
+  if (g.kind === "spline") {
+    const n = g.g.bez.length;
+    const { t: u, d } = splineParam(g.g, p);
+    if (d > TOL) return null;
+    let t = g.g.closed ? (((u - g.s) % n) + n) % n : u - g.s;
+    const tol = 1e-9;
+    if (g.g.closed && t > n - 1e-7) t = 0;
+    if (closed) return t;
+    if (t < -tol || t > g.w + tol) return null;
+    return Math.max(0, Math.min(t, g.w));
+  }
   const e = ell(g);
   if (e) {
     const q = ellipsePoint(e, ellipseAngle(e, p));
@@ -114,10 +148,15 @@ function along(g: Geo, p: Vec2, closed: boolean): number | null {
 
 /** Where two curves meet, touches included, before checking the points are on both. */
 function meet(g: Geo, h: Geo): Vec2[] {
+  if (g.kind === "spline" || h.kind === "spline") {
+    const [sp, o] = (g.kind === "spline" ? [g, h] : [h, g]) as [SplinePiece, Geo];
+    if (o.kind === "spline") return splineSpline(sp.g, o.g);
+    return curveSplineParams(sideOf(o), sp.g).map((t) => splinePoint(sp.g, t));
+  }
   const eg = g.kind === "arc" ? ell(g) : null;
   const eh = h.kind === "arc" ? ell(h) : null;
   if (eg || eh) {
-    const [e, o] = (eg ? [eg, h] : [eh, g]) as [EllipseGeo, Geo];
+    const [e, o] = (eg ? [eg, h] : [eh, g]) as [EllipseGeo, Exclude<Geo, SplinePiece>];
     if (o.kind === "line") return lineEllipse(o.a, o.b, e);
     const oe = ell(o);
     return curveEllipse(oe ? ellipseSide(oe) : circleSide(o.c, o.r), e);
@@ -245,6 +284,27 @@ function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
       srcs.push({ id: e.id, geo: { kind: "arc", c: xy(e.c), r: g.r1, s: 0, w: TAU, k: g.r2 / g.r1, rot: g.rot }, closed: true, cuts: [], ends: [] });
       continue;
     }
+    if (e.kind === "spline") {
+      const g = splineGeo(idx, e);
+      const n = g.bez.length;
+      if (!n) continue;
+      if (g.closed) {
+        srcs.push({ id: e.id, geo: { kind: "spline", g, s: 0, w: n }, closed: true, cuts: [], ends: [] });
+        continue;
+      }
+      const [va, vb] = [vtx(e.pts[0]!), vtx(e.pts[e.pts.length - 1]!)];
+      srcs.push({
+        id: e.id,
+        geo: { kind: "spline", g, s: 0, w: n },
+        closed: false,
+        cuts: [
+          { t: 0, v: va },
+          { t: n, v: vb },
+        ],
+        ends: [e.pts[0]!, e.pts[e.pts.length - 1]!],
+      });
+      continue;
+    }
     const c = xy(e.c);
     const [va, vb] = e.kind === "arc" ? [vtx(e.a), vtx(e.b)] : [0, 0];
     if (e.kind === "circle" || va === vb) {
@@ -290,7 +350,7 @@ function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
   const seen = new Set<string>();
   const addPiece = (id: Id, from: number, to: number, geo: Geo, whole: boolean) => {
     if (split) {
-      const m = geo.kind === "line" ? mid(geo.a, geo.b) : pointOn(geo, geo.s + geo.w / 2);
+      const m = geo.kind === "line" ? mid(geo.a, geo.b) : geo.kind === "spline" ? splinePoint(geo.g, geo.s + geo.w / 2) : pointOn(geo, geo.s + geo.w / 2);
       const key = `${Math.min(from, to)} ${Math.max(from, to)} ${Math.round(m[0] * 1e4)} ${Math.round(m[1] * 1e4)}`;
       if (seen.has(key)) return;
       seen.add(key);
@@ -302,11 +362,13 @@ function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
     const g = x.geo;
     if (x.closed) {
       if (cuts.length > 1 && cuts[cuts.length - 1]!.v === cuts[0]!.v) cuts.pop();
-      if (g.kind !== "arc") continue;
-      if (!cuts.length) loops.push({ ...circleLoop(x.id, g), comp: `c${x.id}` });
+      if (g.kind === "line") continue;
+      if (!cuts.length) loops.push({ ...(g.kind === "spline" ? splineLoop(x.id, g.g) : circleLoop(x.id, g)), comp: `c${x.id}` });
+      const period = g.kind === "spline" ? g.w : TAU;
       cuts.forEach((c, i) => {
         const n = cuts[(i + 1) % cuts.length]!;
-        addPiece(x.id, c.v, n.v, { ...g, s: c.t, w: wrap(n.t - c.t) || TAU }, false);
+        const w = (((n.t - c.t) % period) + period) % period || period;
+        addPiece(x.id, c.v, n.v, { ...g, s: c.t, w }, false);
       });
       continue;
     }
@@ -342,8 +404,22 @@ function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
   const outgoing = new Map<number, Half[]>();
   for (const p of live) {
     const g = p.geo;
-    const out = (rev: boolean) => (g.kind === "line" ? angleOf(rev ? sub(g.a, g.b) : sub(g.b, g.a)) : rev ? heading(g, g.s + g.w) + Math.PI : heading(g, g.s));
-    const bend = (rev: boolean) => (g.kind === "line" ? 0 : rev ? -curvature(g, g.s + g.w) : curvature(g, g.s));
+    const out = (rev: boolean) =>
+      g.kind === "line"
+        ? angleOf(rev ? sub(g.a, g.b) : sub(g.b, g.a))
+        : g.kind === "spline"
+          ? angleOf(splineDeriv(g.g, rev ? g.s + g.w : g.s)) + (rev ? Math.PI : 0)
+          : rev
+            ? heading(g, g.s + g.w) + Math.PI
+            : heading(g, g.s);
+    const bend = (rev: boolean) =>
+      g.kind === "line"
+        ? 0
+        : g.kind === "spline"
+          ? (rev ? -1 : 1) * splineCurvature(g.g, rev ? g.s + g.w : g.s)
+          : rev
+            ? -curvature(g, g.s + g.w)
+            : curvature(g, g.s);
     const fwd: Half = { piece: p, to: p.to, reversed: false, out: out(false), bend: bend(false) };
     const back: Half = { piece: p, to: p.from, reversed: true, out: out(true), bend: bend(true), twin: fwd };
     fwd.twin = back;
@@ -373,8 +449,8 @@ function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
     let pts: Vec2[] = [];
     if (g.kind === "line") pts = [g.a, g.b];
     else {
-      const e = ell(g);
-      pts = e ? sampleEllipse(e, g.s, g.s + g.w) : sampleArc(g.c, g.r, g.s, g.s + g.w);
+      const e = g.kind === "arc" ? ell(g) : null;
+      pts = g.kind === "spline" ? sampleSpline(g.g, g.s, g.s + g.w) : e ? sampleEllipse(e, g.s, g.s + g.w) : sampleArc(g.c, g.r, g.s, g.s + g.w);
       // Pin the ends to the points themselves so consecutive edges meet exactly.
       pts[0] = verts[h.piece.from]!;
       pts[pts.length - 1] = verts[h.piece.to]!;
@@ -451,6 +527,14 @@ function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
     if (all || depth(i) % 2 === 1) byLoop.get(parent[i]!)?.holes.push(strip(l));
   });
   return { profiles: out, openEnds: [...openEnds] };
+}
+
+/** A closed spline on its own, as an anticlockwise loop. */
+function splineLoop(id: Id, g: SplineGeo): Loop & { inner: Vec2 } {
+  const pts = sampleSpline(g).slice(0, -1);
+  const a = polygonArea(pts);
+  const points = a < 0 ? [...pts].reverse() : pts;
+  return { edges: [{ id, reversed: a < 0 }], points, area: Math.abs(a), inner: innerPoint(points) };
 }
 
 function circleLoop(id: Id, g: ArcGeo): Loop & { inner: Vec2 } {

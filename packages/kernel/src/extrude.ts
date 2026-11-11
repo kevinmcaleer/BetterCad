@@ -4,6 +4,11 @@ import {
   ellipseAngle,
   ellipseGeo,
   ellipsePoint,
+  splineGeo,
+  splineParam,
+  splinePieces,
+  splinePoint,
+  type Bezier,
   insidePolygon,
   polar,
   regions,
@@ -27,7 +32,7 @@ import type { ConstructRef } from "./construct";
  */
 /** One curve of a profile's outline; `id` is the sketch curve it came from, which names the face it sweeps (#47). */
 export type ProfileSeg = (
-  { kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; a: Vec2; m: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number } | EllipseSeg
+  { kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; a: Vec2; m: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number } | EllipseSeg | SplineSeg
 ) & {
   id?: string;
 };
@@ -46,10 +51,31 @@ export interface EllipseSeg {
   rev?: boolean;
 }
 
+/**
+ * A spline (#269), or part of one: cubic pieces end to end, as their poles (3 per piece, and the last end), in the
+ * order the outline walks them.
+ */
+export interface SplineSeg {
+  kind: "spline";
+  poles: Vec2[];
+  /** Where each piece starts and ends, rising (length + 1 of the pieces). */
+  knots: number[];
+}
+
+/** A spline segment from a run of its cubic pieces, walked backwards when `rev`. */
+export function splineSeg({ bez, knots }: { bez: Bezier[]; knots: number[] }, rev = false): SplineSeg {
+  const poles = [bez[0]![0], ...bez.flatMap((b) => [b[1], b[2], b[3]])];
+  if (!rev) return { kind: "spline", poles, knots };
+  const end = knots[knots.length - 1]!;
+  return { kind: "spline", poles: poles.reverse(), knots: knots.map((k) => end - k).reverse() };
+}
+
 /** Points a segment stays within the box of: ends and middle, a circle's box corners, points round an ellipse. */
 export function segPoints(g: ProfileSeg): Vec2[] {
   if (g.kind === "line") return [g.a, g.b];
   if (g.kind === "arc") return [g.a, g.m, g.b];
+  // A cubic stays inside its poles.
+  if (g.kind === "spline") return g.poles;
   if (g.kind === "circle")
     return [
       [g.c[0] - g.r, g.c[1] - g.r],
@@ -193,7 +219,15 @@ export function pathSegs(sketch: Sketch, curves: string[]): ProfileSeg[] | strin
       const st = angleOf(sub(a, c));
       const m = polar(c, e.r, st + sweep(st, angleOf(sub(b, c))) / 2);
       pieces.push({ id, a, b, seg: (rev) => (rev ? { kind: "arc", a: b, m, b: a, id } : { kind: "arc", a, m, b, id }) });
-    } else return "Paths are made of lines and arcs";
+    } else if (e.kind === "spline") {
+      const g = splineGeo(idx, e);
+      if (g.closed) {
+        if (curves.length > 1) return "A closed spline is a path on its own. Pick it alone, or lines and arcs.";
+        return [{ ...splineSeg(splinePieces(g)), id }];
+      }
+      const [a, b] = [splinePoint(g, 0), splinePoint(g, g.bez.length)];
+      pieces.push({ id, a, b, seg: (rev) => ({ ...splineSeg(splinePieces(g), rev), id }) });
+    } else return "Paths are made of lines, arcs and splines";
   }
   const near = (p: Vec2, q: Vec2) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-6;
   const ends = (p: Vec2) => pieces.reduce((n, x) => n + (near(x.a, p) ? 1 : 0) + (near(x.b, p) ? 1 : 0), 0);
@@ -327,6 +361,13 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
       const [a, b] = span;
       if (e.kind === "line") return reversed ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id };
       if (e.kind === "point") throw new Error(`${id} is not a curve`);
+      if (e.kind === "spline") {
+        const g = splineGeo(idx, e);
+        const t0 = splineParam(g, a).t;
+        let t1 = splineParam(g, b).t;
+        if (g.closed && t1 <= t0 + 1e-9) t1 += g.bez.length;
+        return { ...splineSeg(splinePieces(g, t0, t1), reversed), id };
+      }
       if (e.kind === "ellipse") {
         const g = ellipseGeo(idx, e);
         if (Math.hypot(...sub(a, b)) < 1e-9) return { kind: "ellipse", ...g, id };
@@ -343,6 +384,7 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
     }
     if (e.kind === "circle") return { kind: "circle", c: idx.xy(e.c), r: e.r, id };
     if (e.kind === "ellipse") return { kind: "ellipse", ...ellipseGeo(idx, e), id };
+    if (e.kind === "spline") return { ...splineSeg(splinePieces(splineGeo(idx, e)), reversed), id };
     if (e.kind === "line") {
       const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
       return reversed ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id };

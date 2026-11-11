@@ -140,6 +140,8 @@ export const polygon = "M7.5 4h9l4.5 8-4.5 8h-9L3 12z";
 export const slot = "M8 8h8a4 4 0 0 1 0 8H8a4 4 0 0 1 0-8z";
 /** An ellipse (#401): wider than it is tall. */
 export const ellipse = "M12 18c5 0 9-2.7 9-6s-4-6-9-6-9 2.7-9 6 4 6 9 6z";
+/** A spline (#269): a smooth wave through two fit points. */
+export const spline = "M3 18c3 0 4-12 9-12s6 12 9 12M10 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0";
 /** A construction plane (#265): a sheet seen at an angle. */
 export const plane = "M7 4h14l-4 16H3z";
 /** A construction axis (#265): a line running through, with a tick at each end. */
@@ -289,6 +291,7 @@ export const ICONS = {
   polygon,
   slot,
   ellipse,
+  spline,
   point,
   plane,
   axis,

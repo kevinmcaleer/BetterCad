@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { SketchIndex, newSketch, planeFrame, type Sketch } from "./model";
 import { Draft, drawLine, drawPolyline, drawRectangle, drawCircle } from "./draw";
 import { chainOf, cutsOn, filletAt, filletLines, flattenCurve, offsetChain, projectCurves, projectSegments, trimAt, trimPiece } from "./edit";
+import { extendAt, extendTarget, trimAlong } from "./edits";
 import { profiles } from "./profiles";
 import { Solver } from "./solver";
 import { angleOf, dist, sub } from "./geom2d";
@@ -304,5 +305,93 @@ describe("project model edges", () => {
     const at = sized.sketch.entities.find((e) => e.id === c) as { x: number; y: number };
     expect(at.x).toBeCloseTo(17);
     expect(at.y).toBeCloseTo(8);
+  });
+});
+
+describe("extend (#270)", () => {
+  const twoLines = () => {
+    const d = new Draft(newSketch());
+    const a = d.line([0, 0], [8, 0]);
+    const b = d.line([10, -5], [10, 5]);
+    return { s: d.done().sketch, a, b };
+  };
+
+  it("grows the nearer end to the next line and puts it on that line", () => {
+    const { s, a, b } = twoLines();
+    const t = extendTarget(s, a, [7, 0])!;
+    expect(t.end).toBe("b");
+    expect(t.xy[0]).toBeCloseTo(10);
+    expect(t.meets).toBe(b);
+    const out = extendAt(s, a, [7, 0]) as Sketch;
+    const line = out.entities.find((e) => e.id === a) as { b: string };
+    expect(new SketchIndex(out).xy(line.b)[0]).toBeCloseTo(10);
+    expect(out.constraints.some((c) => c.type === "pointOn" && c.e === b && c.p === line.b)).toBe(true);
+  });
+
+  it("joins two lines that nearly meet at a corner with a coincident", () => {
+    const d = new Draft(newSketch());
+    const a = d.line([0, 0], [9, 0]);
+    d.line([10, 0], [10, 10]);
+    const s = d.done().sketch;
+    const out = extendAt(s, a, [8, 0]) as Sketch;
+    expect(out.constraints.some((c) => c.type === "coincident")).toBe(true);
+  });
+
+  it("grows the start of an arc back to a line", () => {
+    const d = new Draft(newSketch());
+    // A quarter arc from (5,0) round to (0,5), and a level line at y = -3 below its start.
+    const arc = d.arc([0, 0], [5, 0], [0, 5]);
+    d.line([-10, -3], [10, -3]);
+    const s = d.done().sketch;
+    const t = extendTarget(s, arc, [5, 0.5])!;
+    expect(t.end).toBe("a");
+    expect(t.xy[1]).toBeCloseTo(-3);
+    expect(t.xy[0]).toBeCloseTo(4);
+  });
+
+  it("drops a grown line's length and won't pull a shared end", () => {
+    const d = new Draft(newSketch());
+    const a = d.line([0, 0], [8, 0]);
+    d.dimension("length", [a], 8);
+    d.line([10, -5], [10, 5]);
+    const s = d.done().sketch;
+    expect((extendAt(s, a, [7, 0]) as Sketch).dimensions).toHaveLength(0);
+    const { sketch: joined, ids } = drawPolyline(newSketch(), [
+      [0, 0],
+      [8, 0],
+      [8, 3],
+    ]);
+    const wall = new Draft(joined);
+    wall.line([10, -5], [10, 5]);
+    expect(extendAt(wall.done().sketch, ids[0]!, [7.9, 0])).toMatch(/joined/);
+  });
+
+  it("says when there is nothing to grow to", () => {
+    const { s, a } = twoLines();
+    expect(extendAt(s, a, [0.5, 0])).toMatch(/Nothing/);
+  });
+});
+
+describe("drag to trim (#270)", () => {
+  it("trims every piece of a grid a path crosses, in one go", () => {
+    // Three upright lines crossed by two level ones: drag across the three middle pieces.
+    const d = new Draft(newSketch());
+    for (const x of [0, 10, 20]) d.line([x, -10], [x, 20]);
+    d.line([-5, 0], [25, 0]);
+    d.line([-5, 10], [25, 10]);
+    const s = d.done().sketch;
+    const out = trimAlong(s, [
+      [-2, 5],
+      [22, 5],
+    ]) as Sketch;
+    expect(typeof out).toBe("object");
+    // Each upright splits in two; the path crosses nothing left.
+    expect(out.entities.filter((e) => e.kind === "line")).toHaveLength(8);
+    expect(
+      trimAlong(out, [
+        [-2, 5],
+        [22, 5],
+      ]),
+    ).toMatch(/Drag across/);
   });
 });

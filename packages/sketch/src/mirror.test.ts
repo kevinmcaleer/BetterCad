@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Draft, drawPolyline } from "./draw";
-import { mirrorShapes, reflect } from "./edit";
+import { mirrorShapes, reflect } from "./edits";
 import { SketchIndex, newSketch, type Sketch } from "./model";
 import { profiles } from "./profiles";
 import { Solver } from "./solver";

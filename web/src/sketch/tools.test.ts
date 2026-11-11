@@ -437,3 +437,39 @@ describe("an axis as a line to measure from", () => {
     expect(again.sketch).toBe(sketch);
   });
 });
+
+describe("the spline tool", () => {
+  it("previews the curve through the clicks and the pointer", () => {
+    const p = preview(
+      "spline",
+      [
+        [0, 0],
+        [10, 5],
+      ],
+      [20, 0],
+    );
+    expect(p.lines).toHaveLength(1);
+    expect(p.lines[0]!.length).toBeGreaterThan(10);
+    expect(p.lines[0]![0]).toEqual([0, 0]);
+  });
+
+  it("draws an open spline, skipping a double-click's repeat", () => {
+    const c = commit("spline", newSketch(), [free(0, 0), free(10, 5), free(20, 0), free(20, 0)])!;
+    expect(c.label).toBe("Draw a spline");
+    const sp = c.sketch.entities.filter((e) => e.kind === "spline");
+    expect(sp).toHaveLength(1);
+    expect(sp[0]!.kind === "spline" && sp[0]!.pts).toHaveLength(3);
+    expect(profiles(c.sketch).profiles).toHaveLength(0);
+  });
+
+  it("draws a closed spline that is a profile", () => {
+    const c = commit("spline", newSketch(), [free(10, 0), free(0, 10), free(-10, 0), free(0, -10)], [], 6, true)!;
+    expect(c.label).toBe("Draw a closed spline");
+    expect(profiles(c.sketch).profiles).toHaveLength(1);
+  });
+
+  it("needs two points, or three to close", () => {
+    expect(commit("spline", newSketch(), [free(0, 0), free(0, 0)])).toBeNull();
+    expect(commit("spline", newSketch(), [free(0, 0), free(5, 5)], [], 6, true)).toBeNull();
+  });
+});
