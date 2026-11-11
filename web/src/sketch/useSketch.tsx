@@ -11,6 +11,9 @@ import {
   filletLines,
   offsetChain,
   mirrorShapes,
+  extendAt,
+  extendTarget,
+  trimAlong,
   projectCurves,
   trimAt,
   trimPiece,
@@ -1019,6 +1022,8 @@ export function useSketch(d: SketchDeps) {
      * first puts a point where it came down, so one drag draws a line, rectangle, circle or polygon.
      */
     let tap: { at: ScreenPoint; start: Snap; base: Snap[]; dragged: boolean } | null = null;
+    /** Trim (#270): a press that either clicks one piece or drags a path across several. */
+    let trimDrag: { at: ScreenPoint; first: { xy: Vec2; px: number }; path: Vec2[]; moved: boolean } | null = null;
     /** A finger is down placing a size: it goes down where the finger lifts. */
     let tapPlace = false;
     /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
@@ -1068,6 +1073,21 @@ export function useSketch(d: SketchDeps) {
         setEditPreview(null);
       }
     };
+    /** Extend (#270): the end of a line or arc nearest the pointer grows to the next shape it meets. */
+    const extendDown = (hit: { xy: Vec2; px: number }): boolean => {
+      const s = live.current.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px, true);
+      if (!id) return false;
+      done(extendAt(s, id, hit.xy), "Extend");
+      return true;
+    };
+    const extendMove = (hit: { xy: Vec2; px: number }) => {
+      const s = live.current.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px, true);
+      setHover(id);
+      const t = id ? extendTarget(s, id, hit.xy) : null;
+      setEditPreview(t ? { lines: [t.pts], danger: false } : null);
+    };
     /** The editing tools: Fillet, Trim, Offset and Project. */
     const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
       const L = live.current;
@@ -1095,8 +1115,7 @@ export function useSketch(d: SketchDeps) {
       }
       const id = entityAt(hit.xy, s, tol, true);
       if (!id) return false;
-      if (L.stool === "trim") done(trimAt(s, id, hit.xy), "Trim");
-      else done(offsetToward(s, id, hit.xy, L.offsetD), "Offset");
+      done(offsetToward(s, id, hit.xy, L.offsetD), "Offset");
       return true;
     };
     const editMove = (p: ScreenPoint, hit: { xy: Vec2; px: number }) => {
@@ -1268,7 +1287,12 @@ export function useSketch(d: SketchDeps) {
           else setSel(picked.length > 1 ? [id] : []);
           return true;
         }
-        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
+        if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendDown(hit);
+        if (L.stool === "trim") {
+          trimDrag = { at: p, first: hit, path: [hit.xy], moved: false };
+          return true;
+        }
+        if (L.stool === "fillet" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
         if (L.stool === "mirror") return mirrorDown(p, hit);
         if (L.stool === "text") {
           // A click on a text opens it; anywhere else places a new one there (or moves the one being set).
@@ -1388,6 +1412,14 @@ export function useSketch(d: SketchDeps) {
           }
           return;
         }
+        if (pressed && trimDrag) {
+          const t = trimDrag;
+          t.path.push(hit.xy);
+          if (Math.hypot(p.x - t.at.x, p.y - t.at.y) > 4) t.moved = true;
+          if (t.moved) setEditPreview({ lines: [t.path], danger: true });
+          return;
+        }
+        if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendMove(hit);
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
         if (L.stool === "mirror") return mirrorMove(hit);
         if (L.ctool) {
@@ -1431,6 +1463,17 @@ export function useSketch(d: SketchDeps) {
       up: (p: ScreenPoint, mods: Mods) => {
         endDrag(true);
         const L = live.current;
+        if (trimDrag) {
+          const t = trimDrag;
+          trimDrag = null;
+          const s = L.sketch;
+          if (!s) return;
+          if (t.moved) return done(trimAlong(s, t.path), "Trim");
+          setEditPreview(null);
+          const id = entityAt(t.first.xy, s, reach * t.first.px, true);
+          if (id) done(trimAt(s, id, t.first.xy), "Trim");
+          return;
+        }
         if (tapPlace) {
           tapPlace = false;
           L.place();
@@ -1447,6 +1490,7 @@ export function useSketch(d: SketchDeps) {
       cancel: () => {
         // A second finger came down to pinch or pan: nothing goes in.
         endDrag(false);
+        trimDrag = null;
         if (tap?.dragged) setClicks(tap.base);
         tap = null;
         tapPlace = false;

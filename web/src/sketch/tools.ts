@@ -48,6 +48,7 @@ export type SketchToolId =
   | "dimension"
   | "fillet"
   | "trim"
+  | "extend"
   | "offset"
   | "mirror"
   | "project";
@@ -176,7 +177,25 @@ export const SKETCH_TOOLS: SketchTool[] = [
     help: "Click a corner, or two lines that meet, to round it. Set the radius in the bar.",
     fields: [],
   },
-  { id: "trim", label: "Trim", icon: "crop", key: "t", help: "Hover a piece between crossings and click to remove it.", fields: [] },
+  {
+    id: "trim",
+    label: "Trim",
+    icon: "crop",
+    key: "t",
+    help: "Click a piece between crossings to remove it, or drag across pieces to trim them all. Hold Alt to extend instead.",
+    fields: [],
+    mode: "Trim",
+  },
+  {
+    id: "extend",
+    label: "Trim",
+    icon: "crop",
+    key: "",
+    help: "Hover near the end of a line or arc to see it grow to the next shape, then click. The end joins what it meets.",
+    fields: [],
+    modeOf: "trim",
+    mode: "Extend",
+  },
   {
     id: "offset",
     label: "Offset",
