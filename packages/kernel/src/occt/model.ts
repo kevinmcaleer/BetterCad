@@ -8,6 +8,7 @@ import {
   count,
   copyShape,
   cylinder,
+  elements,
   fillet,
   grow,
   measure,
@@ -34,8 +35,9 @@ import { NAMING_LIMIT, Namer, edgeNames, resolveNames } from "./naming";
 import { plug } from "./plug";
 import { fromPartLocal } from "../extrude";
 import type { Recognition, RecogniseOptions, V3 } from "../recognise";
-import { build, poseNesting, printed, type ModelDoc, type Part } from "../document";
+import { build, poseNesting, printed, type BodyOp, type ModelDoc, type Part } from "../document";
 import { opMoves, undoMove } from "../pattern";
+import { match, signature, type Sig } from "./repick";
 import { DEFAULT_INFILL, SHELL_MM, estimateWeight, materialOf } from "../print/materials";
 import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeProps } from "../mass";
 import type { BodyMesh } from "../mesh";
@@ -136,6 +138,11 @@ export const partKey = (p: Part, q: Quality) =>
 
 /** How many part-way bodies to keep: enough for a few bodies' worth of steps while one is dragged or undone. */
 export const STEPS_KEPT = 240;
+const PICKS_KEPT = 4000;
+/** Finish steps whose picks Pattern and Mirror copies find again by place. */
+const FINISH = new Set(["fillet", "chamfer", "pushpull", "offsetFace"]);
+/** Thrown to leave a copied finish out without failing its step. */
+const SKIP = Symbol("skip");
 
 /**
  * How many finished bodies to keep for undo, redo and scrubbing the timeline (#76), and roughly how much memory they
@@ -237,6 +244,12 @@ export class ModelBuilder {
     string,
     { shape: TopoDS_Shape; open: boolean; failures: [string, string][]; faces: string[] | null; recovered: [string, string][] }
   >();
+
+  /**
+   * Where each finish step's picked edges or faces were when it was made (#426), by the step's key (see `chain`), so
+   * Pattern and Mirror copies of it find their own by place. Tiny, so many more are kept than `steps`.
+   */
+  private picksAt = new Map<string, Sig[]>();
 
   constructor(
     private oc: OC,
@@ -366,6 +379,13 @@ export class ModelBuilder {
       for (const o of ops) keys.push((at = chain(at, o)));
       let from = ops.length;
       while (from > 0 && !this.steps.has(keys[from - 1]!)) from--;
+      // A copied finish needs where its original's picks were; when that's been forgotten, the original is made again.
+      const sourceOf = (o: BodyOp) => (o.from ? ops.findIndex((x) => x.feature === o.from && !opMoves(x).length) : -1);
+      for (let i = from; i < ops.length; i++) {
+        const j = sourceOf(ops[i]!);
+        if (j >= 0 && j < from && !this.picksAt.has(keys[j]!)) from = j;
+      }
+      while (from > 0 && !this.steps.has(keys[from - 1]!)) from--;
       let local: TopoDS_Shape;
       let open = false;
       const failures: [string, string][] = [];
@@ -434,11 +454,33 @@ export class ModelBuilder {
           for (let j = flips.length - 1; j >= 0; j--) move(undoMove(flips[j]!));
           // Picks stored by name are found again by name; picks without, or on a body too big to name, by number.
           let refs = o.refs ?? [];
-          if (o.names?.length && !namer.off) {
+          const kind = o.op === "fillet" || o.op === "chamfer" ? "edge" : "face";
+          const copyOf = o.from ? sourceOf(o) : -1;
+          if (o.from) {
+            // A copy (#426): the body is moved back so this copy sits where the original did, so its edges or faces
+            // are the ones at the original's picks.
+            const at = copyOf >= 0 ? this.picksAt.get(keys[copyOf]!) : undefined;
+            if (!at) throw new KernelError("failed", "The step it copies is gone");
+            const sigs = elements(oc, s, kind).map((e) => signature(oc, e, kind));
+            refs = at.map((a) => match(a, kind, sigs));
+            if (refs.some((r) => r < 0)) {
+              recovered.push([o.feature, `A copy has no ${kind} where the original's was, so it was left out.`]);
+              throw SKIP;
+            }
+          } else if (o.names?.length && !namer.off) {
             const fs = namer.namesOf(s);
             const r = resolveNames(o.names, o.op === "fillet" || o.op === "chamfer" ? edgeNames(oc, s, fs) : fs, refs);
             refs = r.refs;
             if (r.recovered) recovered.push([o.feature, "Its edges or faces changed in an earlier step. Check it's on the right ones."]);
+          }
+          if (FINISH.has(o.op) && !o.from) {
+            const els = elements(oc, s, kind);
+            this.picksAt.delete(keys[i]!);
+            this.picksAt.set(
+              keys[i]!,
+              refs.filter((r) => els[r]).map((r) => signature(oc, els[r]!, kind)),
+            );
+            while (this.picksAt.size > PICKS_KEPT) this.picksAt.delete(this.picksAt.keys().next().value!);
           }
           if (o.op === "fillet" || o.op === "chamfer") s = (o.op === "fillet" ? fillet : chamfer)(oc, s, refs, o.size ?? 0, namer);
           else if (o.op === "shell") s = shell(oc, s, refs, o.size ?? 0, o.outside, namer);
@@ -484,7 +526,7 @@ export class ModelBuilder {
           for (const m of flips) move(m);
           local = s;
         } catch (e) {
-          failures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
+          if (e !== SKIP) failures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
         }
         faces = namer.off ? null : namer.namesOf(local);
         this.steps.set(keys[i]!, { shape: local, open, failures: [...failures], faces, recovered: [...recovered] });
