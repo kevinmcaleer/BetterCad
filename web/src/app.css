@@ -49,6 +49,13 @@ body {
   height: 100dvh;
   overflow: hidden;
 }
+/* The desktop ribbon is a taller top bar: its tab row, then its tools. Folded, only the tab row shows. */
+.bc-app:has(.bc-top-ribbon) {
+  --bc-top-height: 120px;
+}
+.bc-app:has(.bc-top-ribbon.bc-folded) {
+  --bc-top-height: 46px;
+}
 .bc-app.bc-left-closed {
   --bc-view-left: var(--bc-float-gap);
 }

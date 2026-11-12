@@ -104,3 +104,41 @@
   width: 16px;
   flex: none;
 }
+/* A row with a pin at its end (the ribbon's drop-downs): the pin shows on hover, or when the tool is pinned. */
+.bc-menu-row {
+  display: flex;
+  align-items: center;
+}
+.bc-menu-row > .bc-menu-item {
+  flex: 1;
+  min-width: 0;
+}
+.bc-menu-pin {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-muted);
+  opacity: 0;
+  cursor: pointer;
+}
+.bc-menu-row:hover .bc-menu-pin,
+.bc-menu-pin:focus-visible,
+.bc-menu-pin.bc-on {
+  opacity: 1;
+}
+.bc-menu-pin.bc-on {
+  color: var(--bc-color-accent);
+}
+.bc-menu-pin:hover {
+  background: var(--bc-color-hover);
+}
+.bc-menu-icon .bc-icon-colour {
+  width: 20px;
+  height: 20px;
+}

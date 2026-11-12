@@ -6,7 +6,22 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { ArmedBar, Button, MenuButton, cx, NumberField, evaluate, isExpression, ToolButton, Toolbar, useNameComplete, type Scope } from "@bettercad/ui";
+import {
+  ArmedBar,
+  Button,
+  MenuButton,
+  RibbonButton,
+  RibbonGroup,
+  cx,
+  NumberField,
+  evaluate,
+  isExpression,
+  ToolButton,
+  Toolbar,
+  useNameComplete,
+  type MenuEntry,
+  type Scope,
+} from "@bettercad/ui";
 import {
   CONSTRAINT_LABEL,
   SketchIndex,
@@ -27,11 +42,105 @@ import {
 import { ORIGIN, SNAP_LABEL } from "./snap";
 import { loupeBox, loupeHint } from "./loupe";
 import { anchorOf, dimensionArt, offsetTo } from "./dimensions";
-import { CONSTRAINT_TOOLS, SKETCH_TOOLS, constraintToolById, isDrawTool, isPointPick, levelOrUpright, levelOrUprightPoints, toolById } from "./tools";
+import {
+  CONSTRAINT_TOOLS,
+  SKETCH_TOOLS,
+  constraintToolById,
+  isDrawTool,
+  isPointPick,
+  levelOrUpright,
+  levelOrUprightPoints,
+  toolById,
+  type ConstraintToolId,
+  type SketchToolId,
+} from "./tools";
 import type { SketchSession } from "./useSketch";
 
-/** The sketch tool bar and the armed tool's strip, in place of the model bars while a sketch is open. */
-export function SketchBars({ s }: { s: SketchSession }) {
+/** Sketch tools whose line icon is also a model tool's: their colour icon is drawn flat. */
+const SKETCH_COLOUR: Partial<Record<SketchToolId, string>> = { fillet: "sk-fillet", mirror: "sk-mirror" };
+
+/** The ribbon's Sketch tab (desktop): draw, change, constrain, then Finish sketch, each group with a drop-down. */
+export function SketchRibbon({ s }: { s: SketchSession }) {
+  const tool = toolById(s.stool);
+  const on = (id: SketchToolId) => (s.stool === id || tool.modeOf === id) && !s.ctool;
+  const pick = (id: SketchToolId) => s.pickTool(tool.modeOf === id ? s.stool : id);
+  const tools = (ids: SketchToolId[]) => SKETCH_TOOLS.filter((t) => ids.includes(t.id));
+  const groups: [string, SketchToolId[], SketchToolId[]][] = [
+    [
+      "Draw",
+      ["select", "line", "rectangle", "circle", "arc", "slot", "ellipse", "spline", "polygon", "point", "text"],
+      ["line", "rectangle", "circle", "arc", "slot", "spline", "text"],
+    ],
+    ["Change", ["fillet", "trim", "extend", "offset", "mirror", "project"], ["trim", "offset", "mirror", "project"]],
+  ];
+  const entry = (t: (typeof SKETCH_TOOLS)[number]): MenuEntry => ({
+    id: t.id,
+    label: t.label,
+    icon: t.icon,
+    colour: SKETCH_COLOUR[t.id] ?? true,
+    keys: t.key.toUpperCase(),
+    onSelect: () => pick(t.id),
+  });
+  const pinnedConstraints: ConstraintToolId[] = ["coincident", "horizontalVertical", "parallel", "tangent", "equal", "fix"];
+  const dim = toolById("dimension");
+  return (
+    <>
+      {groups.map(([label, all, pins]) => (
+        <RibbonGroup key={label} label={label} entries={tools(all).map(entry)}>
+          {tools(pins).map((t) => (
+            <RibbonButton
+              key={t.id}
+              icon={t.icon}
+              colour={SKETCH_COLOUR[t.id] ?? true}
+              label={t.label}
+              shortcut={t.key.toUpperCase()}
+              pressed={on(t.id)}
+              onPress={() => pick(t.id)}
+            />
+          ))}
+        </RibbonGroup>
+      ))}
+      <RibbonGroup
+        label="Constrain"
+        entries={[
+          entry(dim),
+          ...CONSTRAINT_TOOLS.map<MenuEntry>((c) => ({
+            id: c.id,
+            label: c.label,
+            icon: "constraint",
+            colour: `sk-${c.id}`,
+            onSelect: () => s.constrain(c.id),
+          })),
+        ]}
+      >
+        <RibbonButton icon={dim.icon} label={dim.label} shortcut={dim.key.toUpperCase()} pressed={on("dimension")} onPress={() => pick("dimension")} />
+        {pinnedConstraints.map((id) => {
+          const c = constraintToolById(id);
+          return (
+            <RibbonButton
+              key={id}
+              icon="constraint"
+              colour={`sk-${id}`}
+              label={c.label}
+              short={id === "horizontalVertical" ? c.tag : undefined}
+              pressed={s.ctool === id}
+              onPress={() => s.constrain(id)}
+            />
+          );
+        })}
+      </RibbonGroup>
+      <RibbonGroup label="Finish" entries={[]}>
+        <RibbonButton icon="finish" colour={false} done label="Finish sketch" shortcut="Enter" onPress={() => s.finish()} />
+      </RibbonGroup>
+    </>
+  );
+}
+
+/**
+ * The sketch tool bar and the armed tool's strip, in place of the model bars while a sketch is open. With the ribbon
+ * the tools are on its Sketch tab, so only the strip shows.
+ */
+export function SketchBars({ s, ribbon }: { s: SketchSession; ribbon?: boolean }) {
   const tool = toolById(s.stool);
   const drawing = isDrawTool(s.stool);
   const onFieldKey = (e: ReactKeyboardEvent) => {
@@ -51,30 +160,33 @@ export function SketchBars({ s }: { s: SketchSession }) {
   };
   return (
     <>
-      <Toolbar label="Sketch tools">
-        {SKETCH_TOOLS.filter((t) => !t.modeOf).map((t) => (
-          <ToolButton
-            key={t.id}
-            icon={t.icon}
-            label={t.label}
-            shortcut={t.key.toUpperCase()}
-            pressed={(s.stool === t.id || tool.modeOf === t.id) && !s.ctool}
-            showLabel
-            // A tool in one of its modes puts down the same as the tool itself.
-            onPress={() => s.pickTool(tool.modeOf === t.id ? s.stool : t.id)}
+      {!ribbon && (
+        <Toolbar label="Sketch tools">
+          {SKETCH_TOOLS.filter((t) => !t.modeOf).map((t) => (
+            <ToolButton
+              key={t.id}
+              icon={t.icon}
+              colour={SKETCH_COLOUR[t.id] ?? true}
+              label={t.label}
+              shortcut={t.key.toUpperCase()}
+              pressed={(s.stool === t.id || tool.modeOf === t.id) && !s.ctool}
+              showLabel
+              // A tool in one of its modes puts down the same as the tool itself.
+              onPress={() => s.pickTool(tool.modeOf === t.id ? s.stool : t.id)}
+            />
+          ))}
+          <Toolbar.Separator />
+          <MenuButton
+            label="Constraints"
+            entries={CONSTRAINT_TOOLS.map((c) => ({ id: c.id, label: c.label, onSelect: () => s.constrain(c.id) }))}
+            trigger={(p) => (
+              <Button {...p} icon="constraint" label="Constrain" on={!!s.ctool} title="Pick a constraint, then click the geometry. Esc puts it down." />
+            )}
           />
-        ))}
-        <Toolbar.Separator />
-        <MenuButton
-          label="Constraints"
-          entries={CONSTRAINT_TOOLS.map((c) => ({ id: c.id, label: c.label, onSelect: () => s.constrain(c.id) }))}
-          trigger={(p) => (
-            <Button {...p} icon="constraint" label="Constrain" on={!!s.ctool} title="Pick a constraint, then click the geometry. Esc puts it down." />
-          )}
-        />
-        <Toolbar.Separator />
-        <Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />
-      </Toolbar>
+          <Toolbar.Separator />
+          <Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />
+        </Toolbar>
+      )}
       <ArmedBar title={s.ctool ? constraintToolById(s.ctool).label : tool.label} icon={s.ctool ? "constraint" : tool.icon}>
         {drawing && tool.fields.length > 0 && (
           <span className="bc-sk-fields" onKeyDown={onFieldKey}>

@@ -24,6 +24,7 @@ export {
   type PanelAction,
 } from "./FeaturePanel";
 export { Toolbar, ArmedBar, Separator, type ToolbarProps, type ArmedBarProps } from "./Toolbar";
+export { RibbonButton, RibbonGroup, type RibbonButtonProps, type RibbonGroupProps } from "./Ribbon";
 export { TooltipLayer, TooltipSample } from "./Tooltip";
 export { NumberField, Fields, stepFor, clamp, roundTo, scrubValue, type NumberFieldProps, type Unit } from "./NumberField";
 export { evaluate, isExpression, ExprError, completeAt, applyCompletion, type Scope, type Completion } from "./expr";
