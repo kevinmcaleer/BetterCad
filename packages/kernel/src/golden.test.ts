@@ -56,6 +56,9 @@ import {
   mirrorFace,
   addPattern,
   addPart,
+  addCombine,
+  addFinish,
+  type ModelDoc,
   type PatternParams,
   build,
   changeParts,
@@ -67,6 +70,7 @@ import {
 } from "./document";
 import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
+import { signature } from "./occt/repick";
 
 /** A 19 mm octagonal prism of circumradius 10 with a 1 mm, 20 mm wide disc on top: the disc's rim touches the corners. */
 function discOnOctagon(oc: OC): TopoDS_Shape {
@@ -133,6 +137,26 @@ function gearOf(oc: OC, change: Partial<GearParamsStep> = {}): TopoDS_Shape {
 }
 
 /** A part copied by a joined Mirror or Pattern step (#69), built as the one body it becomes. */
+/**
+ * A 40 × 40 × 5 mm plate with a 6 mm peg 8 mm tall joined on at x = 12, its top edge chamfered or filleted 1 mm, then
+ * the peg and its finish copied by `p` (#426): each copy's edge is found where the original's was.
+ */
+function finishedPeg(oc: OC, type: "fillet" | "chamfer", p: Partial<PatternParams> & { kind: PatternParams["kind"] }): TopoDS_Shape {
+  let doc: ModelDoc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 40, z: 5 });
+  doc = changeParts(addPart(doc, "cylinder", "peg"), ["peg"], "size", { x: 6, y: 6, z: 8 });
+  doc = changeParts(doc, ["peg"], "position", { x: 12, y: 0, z: 5 });
+  doc = addCombine(doc, { mode: "combine", target: "b", tools: [{ id: "peg", op: "join" }] }, "j");
+  const before = new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "b")!).shape;
+  // The peg's top rim: the round edge whose middle is on the peg's axis, 13 mm up.
+  const top = elements(oc, before, "edge").findIndex((e) => {
+    const s = signature(oc, e, "edge");
+    return !s.dir && Math.hypot(s.at[0] - 12, s.at[1], s.at[2] - 13) < 0.01;
+  });
+  doc = addFinish(doc, { type, part: "b", refs: [top], size: 1 }, "f");
+  doc = addPattern(doc, { parts: [], of: "features", features: ["j", "f"], ...p });
+  return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "b")!).shape;
+}
+
 function patterned(
   oc: OC,
   kind: "wedge" | "cylinder" | "box",
@@ -610,6 +634,10 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     doc = addPattern(doc, { parts: ["a"], kind: "circle", count: 6, angle: 360, join: true, axisRef });
     return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
   },
+  // A peg and its chamfer turned 4 times round Z: every peg is chamfered (#426).
+  "pattern-circle-chamfered-peg": (oc) => finishedPeg(oc, "chamfer", { kind: "circle", count: 4, angle: 360 }),
+  // A peg and its fillet mirrored across YZ: both pegs are rounded (#426).
+  "mirror-filleted-peg": (oc) => finishedPeg(oc, "fillet", { kind: "mirror", plane: "YZ" }),
   // Track (Pattern's Track kind): a 10 × 4 × 2 mm piece with pins 8 mm apart wrapped round two 40 mm wheels, 2 mm out.
   // 42 go round; the fifth piece is on the first wheel's round end, turned to follow it.
   "pattern-track-two-wheels": (oc) => {

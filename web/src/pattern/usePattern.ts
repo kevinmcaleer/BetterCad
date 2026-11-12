@@ -28,7 +28,7 @@ import type { TrackSlot } from "./trackPick";
  * timeline at once, so the copies show as you change the settings on the bar. The step copies whatever is picked:
  * Shift-click adds a body or takes it out. Enter keeps the step, Esc takes it back.
  *
- * A Mirror or Pattern can copy bodies, or the cuts, joins and holes of chosen features onto the same bodies (click the
+ * A Mirror or Pattern can copy bodies, or the cuts, joins, holes, fillets and chamfers of chosen features onto the same bodies (click the
  * steps on the timeline, or have one picked there when the tool comes up). A Mirror can also copy a whole component
  * (click one of its bodies, or choose it from the bar). Its plane is an origin plane, or a flat face picked in the view.
  * A circular pattern turns round X, Y or Z, a construction axis clicked in the view or chosen from the bar, or the
