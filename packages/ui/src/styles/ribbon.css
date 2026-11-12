@@ -1,0 +1,157 @@
+/* The desktop ribbon (wide screens with a mouse): tabs on the top bar's row, then big tools in groups, each group's
+   name opening a drop-down of every tool in it. Colours come only from tokens.css. */
+.bc-top.bc-top-ribbon {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+}
+.bc-ribbon-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+  height: 44px;
+  flex: none;
+  padding: 0 var(--bc-space-4);
+}
+.bc-ribbon-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: var(--bc-space-3);
+  padding-left: var(--bc-space-4);
+  border-left: 1px solid var(--bc-color-line);
+}
+.bc-tab {
+  height: 28px;
+  padding: 0 var(--bc-space-5);
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.bc-tab:hover:not(:disabled) {
+  background: var(--bc-color-hover);
+  color: var(--bc-color-ink);
+}
+.bc-tab[aria-selected="true"] {
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
+.bc-tab:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.bc-ribbon-tools {
+  border-top: 1px solid var(--bc-color-line);
+  min-width: 0;
+}
+.bc-tools.bc-ribbon-groups {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: stretch;
+  gap: 0;
+  padding: 3px var(--bc-space-2) 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bc-rgroup {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  padding: 0 var(--bc-space-2);
+  border-right: 1px solid var(--bc-color-line);
+}
+.bc-rgroup:last-child {
+  border-right: 0;
+}
+.bc-rgroup-tools {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+}
+.bc-rb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 52px;
+  padding: 5px var(--bc-space-2) 3px;
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.bc-rb:hover:not(:disabled) {
+  background: var(--bc-color-hover);
+}
+.bc-rb.bc-on {
+  background: var(--bc-color-accent-soft);
+  color: var(--bc-color-accent);
+}
+.bc-rb:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.bc-rb .bc-icon {
+  flex: none;
+}
+.bc-rb-label {
+  font-size: 11.5px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.bc-rb.bc-rb-done .bc-icon {
+  padding: 3px;
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+}
+.bc-rb.bc-rb-done .bc-rb-label {
+  color: var(--bc-color-accent);
+  font-weight: 600;
+}
+.bc-rgroup-name {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  margin: 0 2px 3px;
+  padding: 0 var(--bc-space-3);
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+span.bc-rgroup-name {
+  cursor: default;
+}
+button.bc-rgroup-name:hover,
+.bc-rgroup-name[aria-expanded="true"] {
+  background: var(--bc-color-hover);
+  color: var(--bc-color-ink);
+}
+.bc-rb:focus-visible,
+.bc-tab:focus-visible,
+.bc-rgroup-name:focus-visible,
+.bc-menu-pin:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+/* Colour tool icons draw a touch bigger on the compact bar than the 16px line icons, so their solids read. */
+.bc-tool .bc-icon-colour {
+  width: 20px;
+  height: 20px;
+}

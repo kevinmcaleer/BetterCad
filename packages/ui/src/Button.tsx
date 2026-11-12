@@ -78,11 +78,13 @@ export interface ToolButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   onPress?: () => void;
   /** Show the label beside the icon (it hides under 640px). */
   showLabel?: boolean;
+  /** The colour icon to draw (see Icon): on by default, or another colour icon's name. */
+  colour?: boolean | string;
 }
 
 /** An icon tool button for a Toolbar: 32px, aria-pressed, tooltip "Label (K)". */
 export const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolButton(
-  { icon, label, shortcut, pressed, onPress, showLabel, className, ...rest },
+  { icon, label, shortcut, pressed, onPress, showLabel, colour = true, className, ...rest },
   ref,
 ) {
   return (
@@ -97,7 +99,7 @@ export const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(functio
       onClick={onPress}
       {...rest}
     >
-      <Icon name={icon} size={16} />
+      <Icon name={icon} size={16} colour={colour} />
       {showLabel && <span>{label}</span>}
     </button>
   );

@@ -69,3 +69,35 @@ describe("Account menu", () => {
     expect(screen.queryByRole("menuitem", { name: /Admin/ })).toBeNull();
   });
 });
+
+describe("Ribbon", () => {
+  it("shows tabs, and the open tab's tools from the ribbon slot", () => {
+    const ribbon = vi.fn((tab: string) => <button type="button">{`${tab} tool`}</button>);
+    setup({ ribbon });
+    expect(screen.getByRole("tab", { name: "Model" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("toolbar", { name: "Model tools" })).toHaveTextContent("model tool");
+    fireEvent.click(screen.getByRole("tab", { name: "Assemble" }));
+    expect(screen.getByRole("tab", { name: "Assemble" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("assemble tool");
+  });
+
+  it("folds the tools away on a double-click of a tab, and a click brings them back", () => {
+    setup({ ribbon: () => <span>tools</span> });
+    fireEvent.doubleClick(screen.getByRole("tab", { name: "Model" }));
+    expect(screen.queryByRole("tabpanel")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Inspect" }));
+    expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+  });
+
+  it("puts a Sketch tab first while sketching, with the sketch tools", () => {
+    setup({ ribbon: () => <span>model</span>, sketchRibbon: <button type="button">Line</button> });
+    expect(screen.getByRole("tab", { name: "Sketch" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Model" })).toBeDisabled();
+    expect(screen.getByRole("toolbar", { name: "Sketch tools" })).toContainElement(screen.getByRole("button", { name: "Line" }));
+  });
+
+  it("keeps the compact bar for a shared model", () => {
+    setup({ ribbon: () => <span>tools</span>, shared: { owner: "Kev" } });
+    expect(screen.queryByRole("tab")).toBeNull();
+  });
+});

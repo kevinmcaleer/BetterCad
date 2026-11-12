@@ -12,7 +12,8 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   // Most tests run without the service worker (#94), so each new context doesn't download and cache the 25 MB app;
   // pwa.spec.ts turns it on.
-  // The first-run tour (#98) is marked done, so it stays out of the way; tour.spec.ts runs it.
+  // The first-run tour (#98) is marked done, so it stays out of the way; tour.spec.ts runs it. Tests drive the compact
+  // tool bar, which every window size can show; ribbon.spec.ts turns the desktop ribbon back on.
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "off",
@@ -28,6 +29,7 @@ export default defineConfig({
             { name: "bettercad.tourDone", value: "1" },
             { name: "bettercad.tips.hidden", value: "1" },
             { name: "bettercad.stage.seen", value: "alpha" },
+            { name: "bettercad.toolbar", value: "compact" },
           ],
         },
       ],

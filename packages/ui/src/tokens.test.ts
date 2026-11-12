@@ -36,6 +36,17 @@ describe("contrast", () => {
   }
 });
 
+describe("icon contrast", () => {
+  // Graphics need 3:1 (WCAG 1.4.11): an icon's outline against the bars it sits on.
+  for (const theme of THEMES) {
+    for (const bg of ["bar", "rail", "hover"] as ColourName[]) {
+      it(`icon-edge on ${bg} is at least 3:1 in ${theme.name}`, () => {
+        expect(contrast(colour("icon-edge", theme.id), colour(bg, theme.id))).toBeGreaterThanOrEqual(3);
+      });
+    }
+  }
+});
+
 describe("tokens.css", () => {
   it("has every colour token in every theme block", () => {
     const blocks = css.split(/\n(?=\S)/).filter((b) => b.includes("--bc-color-"));
