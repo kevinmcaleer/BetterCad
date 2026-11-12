@@ -18,7 +18,8 @@ export interface IconProps {
   colour?: boolean | string;
 }
 
-// The colour set loads after first paint, the first time one is asked for.
+// The colour set loads once the page is idle after the first colour icon asks for it, so it never competes with
+// first paint and the kernel's start-up; the line icons show until then.
 let colours: Record<string, string> | null = null;
 let loading = false;
 const waiting = new Set<() => void>();
@@ -26,10 +27,13 @@ function subscribe(fn: () => void) {
   waiting.add(fn);
   if (!loading) {
     loading = true;
-    void import("./colourIcons").then((m) => {
-      colours = m.colourIcons();
-      waiting.forEach((f) => f());
-    });
+    const load = () =>
+      void import("./colourIcons").then((m) => {
+        colours = m.colourIcons();
+        waiting.forEach((f) => f());
+      });
+    if (typeof requestIdleCallback === "function") requestIdleCallback(load, { timeout: 2000 });
+    else setTimeout(load, 0);
   }
   return () => void waiting.delete(fn);
 }
