@@ -566,7 +566,12 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
         // A boolean of two valid solids can still give an invalid one: a face whose edges miss each other by more
         // than 1e-6 mm, as where a cog stands flat on a face. Fillets and chamfers refuse an invalid body, so the
         // next one would fail on any edge. A looser tolerance joins those edges; the first valid result is kept.
-        type Made = { mk: Parameters<Tracker["step"]>[0]; shape: TopoDS_Shape };
+        // A join can also leave a tool that sits flat on the body as a loose solid beside it (two of eight cogs
+        // patterned round a wheel), valid but not joined: that is tried again too, keeping the fewest solids.
+        type Made = { mk: Parameters<Tracker["step"]>[0]; shape: TopoDS_Shape; solids: number; valid: boolean };
+        const apart = op === "join" ? count(oc, out, "solid") + count(oc, tool, "solid") : 0;
+        const touches = op === "join" && boxesMeet(oc, out, tool);
+        const better = (a: Made, b: Made | null) => !b || (a.valid && !b.valid) || (a.valid === b.valid && a.solids < b.solids);
         let best: Made | null = null;
         for (const fuzzy of RETRY_FUZZY) {
           const mk = op === "join" ? new oc.BRepAlgoAPI_Fuse() : op === "cut" ? new oc.BRepAlgoAPI_Cut() : new oc.BRepAlgoAPI_Common();
@@ -586,11 +591,9 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
           }
           if (op === "join") mk.SimplifyResult(true, true, 1e-6);
           const shape = mk.Shape();
-          if (valid(oc, shape)) {
-            best = { mk, shape };
-            break;
-          }
-          best ??= { mk, shape };
+          const made: Made = { mk, shape, valid: valid(oc, shape), solids: op === "join" ? count(oc, shape, "solid") : 0 };
+          if (better(made, best)) best = made;
+          if (made.valid && !(touches && made.solids === apart && apart > 1)) break;
           // An invalid body stays invalid whatever the tolerance, so only valid inputs are tried again.
           if (fuzzy === FUZZY && !(valid(oc, out) && valid(oc, tool))) break;
         }
@@ -606,6 +609,12 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
     );
   }
   return out;
+}
+
+/** Whether two shapes' boxes meet or overlap (to within 1 µm): only then can a join merge them. */
+function boxesMeet(oc: OC, a: TopoDS_Shape, b: TopoDS_Shape): boolean {
+  const [p, q] = [boundingBox(oc, a), boundingBox(oc, b)];
+  return [0, 1, 2].every((i) => p.min[i]! <= q.max[i]! + 1e-3 && q.min[i]! <= p.max[i]! + 1e-3);
 }
 
 /** Buckets for `elements`' shape hash. */

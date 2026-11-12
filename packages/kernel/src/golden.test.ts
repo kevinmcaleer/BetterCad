@@ -97,6 +97,22 @@ function cogTopEdge(oc: OC, shape: TopoDS_Shape): number {
   });
 }
 
+/**
+ * The four edges round the cog's top, by number in `shape`: 5.5 mm long and 2 mm further from the wheel's axis (Z) than
+ * the flat it stands on. Any one of them is what you'd pick to chamfer the stud.
+ */
+function cogTopEdges(oc: OC, shape: TopoDS_Shape): number[] {
+  const out: number[] = [];
+  elements(oc, shape, "edge").forEach((e, i) => {
+    const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+    const [a, m, b] = [c.FirstParameter(), (c.FirstParameter() + c.LastParameter()) / 2, c.LastParameter()].map((u) => c.Value(u));
+    const length = Math.hypot(a!.X() - b!.X(), a!.Y() - b!.Y(), a!.Z() - b!.Z());
+    if (Math.abs(length - 5.5) < 1e-3 && Math.hypot(m!.X(), m!.Y()) > 15.5) out.push(i);
+    c.delete();
+  });
+  return out;
+}
+
 /** A 100 × 80 × 5 mm plate with a mounting feature on its top (#189). */
 function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
   let doc = changeParts(addPart(newDoc(), "box", "plate"), ["plate"], "size", { x: 100, y: 80, z: 5 });
@@ -285,6 +301,11 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   "chamfer-cog-on-flat": (oc) => {
     const s = cogOnFlat(oc);
     return chamfer(oc, s, [cogTopEdge(oc, s)], 1);
+  },
+  // All four at once: Kev's chamfer on the stud failed again on 12 November (an out-of-date app, not the kernel).
+  "chamfer-cog-top-edges": (oc) => {
+    const s = cogOnFlat(oc);
+    return chamfer(oc, s, cogTopEdges(oc, s), 1);
   },
   "chamfer-all": (oc) => chamfer(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 1),
   tray: (oc) => shell(oc, fillet(oc, box(oc, { x: 40, y: 30, z: 15 }), [...Array(12).keys()], 3), [], 1.2),
@@ -759,4 +780,14 @@ describe("golden geometry", () => {
       20_000,
     );
   }
+});
+
+describe("chamfer on the cog stud", () => {
+  // Whichever top edge you pick, a 1 mm chamfer fits on it alone (#425).
+  it("fits 1 mm on each top edge by itself", () => {
+    const s = cogOnFlat(oc);
+    const tops = cogTopEdges(oc, s);
+    expect(tops).toHaveLength(4);
+    for (const e of tops) expect(valid(oc, chamfer(oc, s, [e], 1)), `edge ${e}`).toBe(true);
+  });
 });
