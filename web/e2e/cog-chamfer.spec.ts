@@ -39,8 +39,6 @@ test("a chamfer on a cog joined to a wheel builds, and still fits when you open 
   await chamfer.dblclick();
   await expect(page.getByRole("button", { name: "Chamfer", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(ed.field("Distance")).toHaveValue("1");
-  // The live preview builds the chamfer where it sits in the timeline; give it time to say if it doesn't fit.
-  await page.waitForTimeout(3000);
   await expect(page.getByText(/does not fit/)).toHaveCount(0);
   await page.getByRole("button", { name: "OK", exact: true }).click();
   await expect(timeline.getByRole("button", { name: /problem:/ })).toHaveCount(0, { timeout: 60_000 });
