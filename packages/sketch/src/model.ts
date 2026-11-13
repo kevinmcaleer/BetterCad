@@ -91,7 +91,10 @@ export type DimensionKind = "length" | "distance" | "distanceX" | "distanceY" | 
 export interface Dimension {
   id: Id;
   kind: DimensionKind;
-  /** length: [line]; distance*: [point, point] or [point, line]; radius/diameter: [circle|arc]; angle: [line, line]. */
+  /**
+   * length: [line]; distance*: [point, point], [point, line], or with circles and arcs in place of points (a circle or
+   * arc stands for its centre, or its edge with `edges`); radius/diameter: [circle|arc]; angle: [line, line].
+   */
   refs: Id[];
   /** What the user typed ("45", "width/2"). */
   expression: string;
@@ -105,6 +108,11 @@ export interface Dimension {
    * or -1 back along it. So two lines give four angles, one per quadrant. Missing means [1, 1].
    */
   arms?: [1 | -1, 1 | -1];
+  /**
+   * Distances to a circle only: measured to its edge (the nearest point on it) rather than its centre, as the gap between
+   * two circles or between a circle and a line or point. Always aligned.
+   */
+  edges?: boolean;
   suppressed?: boolean;
   /**
    * Sizes that are one number (#266): an offset's distance to each curve it copies. Setting one sets them all, and only
@@ -266,6 +274,21 @@ export function newSketch(plane: PlaneRef = { kind: "world", plane: "XY", offset
 }
 
 /** Looks entities up by id. Build one per read; sketches are small. */
+/** Whether a dimension kind is a distance, which may run to a circle's centre or edge. */
+export const isDistanceKind = (k: DimensionKind): k is "distance" | "distanceX" | "distanceY" => k === "distance" || k === "distanceX" || k === "distanceY";
+
+/**
+ * A size's refs as points and lines: a circle or arc in a distance stands for its centre, unless the distance is to its
+ * edge (`edges`), when the refs are kept as they are.
+ */
+export function measuredRefs(idx: SketchIndex, d: Pick<Dimension, "kind" | "refs" | "edges">): Id[] {
+  if (d.edges || !isDistanceKind(d.kind)) return d.refs;
+  return d.refs.map((r) => {
+    const e = idx.get(r);
+    return e?.kind === "circle" || e?.kind === "arc" ? e.c : r;
+  });
+}
+
 export class SketchIndex {
   readonly byId = new Map<Id, Entity>();
   constructor(readonly sketch: Sketch) {

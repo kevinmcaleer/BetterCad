@@ -40,6 +40,7 @@ import {
   type Vec2,
   sampleSpline,
   splineGeo,
+  measureDimension,
 } from "@bettercad/sketch";
 import {
   addSketch,
@@ -408,7 +409,10 @@ export function useSketch(d: SketchDeps) {
     [current, apply, say],
   );
 
-  /** The dimension tool on a selection: one line, circle or arc, two points, a point and a line, or two lines. */
+  /**
+   * The dimension tool on a selection: one line, circle or arc, two points, a point and a line, two lines, or a circle or
+   * arc with another, a line or a point.
+   */
   const dimensionFor = useCallback(
     (chosen: Id[]): boolean => {
       const now = current();
@@ -433,7 +437,14 @@ export function useSketch(d: SketchDeps) {
       }
       if (es.length === 2) {
         const [a, b] = es as [NonNullable<(typeof es)[0]>, NonNullable<(typeof es)[0]>];
-        if (a.kind === "point" && b.kind === "point") addDimension("distance", [a.id, b.id]);
+        // A circle or arc sizes from its centre (or, switched in the value box, its edge): to another, a line or a point.
+        const round = (e: { kind: string }) => e.kind === "circle" || e.kind === "arc";
+        if (round(a) && round(b)) addDimension("distance", [a.id, b.id]);
+        else if (round(a) && b.kind === "line") addDimension("distance", [a.id, b.id]);
+        else if (a.kind === "line" && round(b)) addDimension("distance", [b.id, a.id]);
+        else if (a.kind === "point" && round(b)) addDimension("distance", [a.id, b.id]);
+        else if (round(a) && b.kind === "point") addDimension("distance", [b.id, a.id]);
+        else if (a.kind === "point" && b.kind === "point") addDimension("distance", [a.id, b.id]);
         else if (a.kind === "point" && b.kind === "line") addDimension("distance", [a.id, b.id]);
         else if (a.kind === "line" && b.kind === "point") addDimension("distance", [b.id, a.id]);
         else if (a.kind === "line" && b.kind === "line") {
@@ -455,7 +466,11 @@ export function useSketch(d: SketchDeps) {
     const pl = live.current.placing;
     if (!pl) return;
     setPlacing(null);
-    addSize(pl.dim.kind, pl.dim.refs, pl.sketch, { labelOffset: pl.dim.labelOffset, ...(pl.dim.arms && { arms: pl.dim.arms }) });
+    addSize(pl.dim.kind, pl.dim.refs, pl.sketch, {
+      labelOffset: pl.dim.labelOffset,
+      ...(pl.dim.arms && { arms: pl.dim.arms }),
+      ...(pl.dim.edges && { edges: true }),
+    });
   }, [addSize]);
 
   /** Moves a size's label (dragged by its pill), live; `last` ends the drag as one undo step. */
@@ -497,6 +512,33 @@ export function useSketch(d: SketchDeps) {
       // An offset's distance (#266) is one number: setting one of its sizes sets them all.
       const next = setGroupedSize(s, id, v, text.trim());
       apply(next, `Set ${DIM_NAME[dm.kind].toLowerCase()} to ${formatDimension({ ...dm, value: v, driving: true })}`, { strict: !dm.driving });
+    },
+    [current, apply, say],
+  );
+
+  /**
+   * Switches a distance to a circle between its centre and its edge (the gap). The size takes what it measures now, so
+   * nothing moves until a new value is typed. To the edge it always runs aligned.
+   */
+  const setDimensionEdges = useCallback(
+    (id: Id, edges: boolean) => {
+      const s = current();
+      const dm = s?.dimensions.find((x) => x.id === id);
+      if (!s || !dm || !!dm.edges === edges) return;
+      const moved: Dimension = edges ? { ...dm, edges: true, kind: "distance" } : { ...dm };
+      if (!edges) delete moved.edges;
+      let value: number;
+      try {
+        value = measureDimension(s, moved);
+      } catch {
+        return;
+      }
+      if (edges && value < 1e-6) {
+        say("Those edges touch. Use a tangent constraint instead.", true);
+        return;
+      }
+      const next = { ...s, dimensions: s.dimensions.map((x) => (x.id === id ? { ...moved, value, expression: `${Math.round(value * 1000) / 1000}` } : x)) };
+      apply(next, edges ? "Size to the circle's edge" : "Size to the circle's centre");
     },
     [current, apply, say],
   );
@@ -1295,18 +1337,21 @@ export function useSketch(d: SketchDeps) {
         if (!hit || !L.sketch) return false;
         if (L.placing) {
           // A line's size is following the pointer and another line is clicked: size the angle between them, as in
-          // Fusion (or the gap, if they are parallel).
+          // Fusion (or the gap, if they are parallel). A circle or arc with another, or with a line: the distance from
+          // its centre.
           const [first, more] = L.placing.dim.refs;
-          const isLine = (id?: Id | false | null) => !!L.current()?.entities.some((e) => e.id === id && e.kind === "line");
-          const other = !more && isLine(first) && L.stool === "dimension" && (pickAt(hit.xy, L.sketch, reach * hit.px, L.origin) ?? L.projectAxis(p, hit.xy));
-          if (other !== first && isLine(other) && L.dimensionFor([first!, other as Id])) {
-            setPlacing((pl) => pl && { ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy) });
+          const kindOf = (id?: Id | false | null) => L.current()?.entities.find((e) => e.id === id)?.kind;
+          const sizes = (k?: string) => k === "line" || k === "circle" || k === "arc";
+          const other =
+            !more && sizes(kindOf(first)) && L.stool === "dimension" && (pickAt(hit.xy, L.sketch, reach * hit.px, L.origin) ?? L.projectAxis(p, hit.xy));
+          if (other !== first && sizes(kindOf(other)) && L.dimensionFor([first!, other as Id])) {
+            setPlacing((pl) => pl && { ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy, pl.dim.edges) });
             return true;
           }
           if (mods.touch) {
             // The size jumps to the finger, follows it, and goes down where it lifts.
             const pl = L.placing;
-            setPlacing({ ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy) });
+            setPlacing({ ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy, pl.dim.edges) });
             tapPlace = true;
             return true;
           }
@@ -1417,7 +1462,7 @@ export function useSketch(d: SketchDeps) {
         if (!hit || !L.sketch) return;
         if (L.placing) {
           const pl = L.placing;
-          const dim = placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy);
+          const dim = placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy, pl.dim.edges);
           setPlacing({ ...pl, dim });
           setHover(null);
           return;
@@ -2010,6 +2055,7 @@ export function useSketch(d: SketchDeps) {
     dimEdit,
     setDimEdit,
     setDimension,
+    setDimensionEdges,
     placing,
     moveLabel,
     textEdit,

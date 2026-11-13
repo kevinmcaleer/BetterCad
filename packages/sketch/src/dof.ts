@@ -1,4 +1,4 @@
-import { SketchIndex, constraintRefs, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
+import { SketchIndex, constraintRefs, measuredRefs, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
 
 /**
  * Degrees of freedom per entity (#58). planegcs reports the sketch's total; to colour each entity we need to know which
@@ -228,11 +228,23 @@ export function freedom(sketch: Sketch): Freedom {
         }
         break;
     }
-    if (e1?.kind === "line" && e0?.kind === "point") {
-      add([...px(r0), ...lineParams(r1!)], (v) => distToLine(v, r0, r1!));
+    if (d.edges) {
+      const gap = (v: number[], p: Id, c: Id) => Math.hypot(pt(v, p)[0] - pt(v, centre(c))[0], pt(v, p)[1] - pt(v, centre(c))[1]);
+      if (e0?.kind === "circle" && e1?.kind === "circle") add([...curveParams(r0), ...curveParams(r1!)], (v) => gap(v, e0.c, r1!) - v[rr(r0)]! - v[rr(r1!)]!);
+      else if (e0?.kind === "circle" && e1?.kind === "line")
+        add([...curveParams(r0), ...lineParams(r1!)], (v) => Math.abs(distToLine(v, e0.c, r1!)) - v[rr(r0)]!);
+      else if (e0?.kind === "point" && e1?.kind === "circle") add([...px(r0), ...curveParams(r1!)], (v) => gap(v, r0, r1!) - v[rr(r1!)]!);
       return;
     }
-    const [a, b] = e0?.kind === "line" ? ends(r0) : [r0, r1!];
+    // A circle or arc stands for its centre.
+    const [m0, m1] = measuredRefs(idx, d) as [Id, Id | undefined];
+    const p0 = idx.get(m0);
+    const p1 = m1 ? idx.get(m1) : undefined;
+    if (p1?.kind === "line" && p0?.kind === "point") {
+      add([...px(m0), ...lineParams(m1!)], (v) => distToLine(v, m0, m1!));
+      return;
+    }
+    const [a, b] = p0?.kind === "line" ? ends(m0) : [m0, m1!];
     if (d.kind === "distanceX") add([...px(a), ...px(b)], (v) => pt(v, b)[0] - pt(v, a)[0]);
     else if (d.kind === "distanceY") add([...px(a), ...px(b)], (v) => pt(v, b)[1] - pt(v, a)[1]);
     else add([...px(a), ...px(b)], (v) => Math.hypot(pt(v, b)[0] - pt(v, a)[0], pt(v, b)[1] - pt(v, a)[1]));

@@ -52,3 +52,12 @@
   position: static;
   transform: none;
 }
+/* A distance to a circle: Centres or Edges, just over the value so the name list below stays clear. */
+.bc-dim-edit > .bc-dim-to {
+  position: absolute;
+  bottom: calc(100% + var(--bc-space-1));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bc-color-bar);
+  white-space: nowrap;
+}

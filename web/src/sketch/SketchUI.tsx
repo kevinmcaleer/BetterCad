@@ -27,6 +27,7 @@ import {
   SketchIndex,
   add,
   constraintRefs,
+  edgesPossible,
   formatDimension,
   norm,
   perp,
@@ -312,6 +313,7 @@ export function DimInput({
   value,
   scope,
   onDone,
+  edges,
 }: {
   x: number;
   y: number;
@@ -319,6 +321,8 @@ export function DimInput({
   value: string;
   scope?: Scope;
   onDone: (text: string | null) => void;
+  /** A distance to a circle: whether it runs to the edge, and how to switch it (the box opens again after). */
+  edges?: { on: boolean; set: (on: boolean) => void };
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const done = useRef(false);
@@ -338,7 +342,41 @@ export function DimInput({
     onDone(text);
   };
   return (
-    <span className="bc-dim-edit" style={{ left: x, top: y }}>
+    <span
+      className="bc-dim-edit"
+      style={{ left: x, top: y }}
+      onBlur={(e) => {
+        // Moving between the value and the Centres / Edges switch keeps the box open.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) finish(ref.current?.value ?? text);
+      }}
+    >
+      {edges && (
+        <span role="group" aria-label="Measure to" className="bc-segmented bc-dim-to">
+          {(
+            [
+              [false, "Centres", "Size between the centres"],
+              [true, "Edges", "Size the gap between the edges"],
+            ] as const
+          ).map(([on, name, title]) => (
+            <Button
+              key={name}
+              label={name}
+              title={title}
+              size="dense"
+              on={edges.on === on}
+              // The value keeps the focus, so a click here does not close the box.
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (edges.on === on) return;
+                done.current = true;
+                edges.set(on);
+                // Still here when the switch was refused: the box stays open as it was.
+                queueMicrotask(() => (done.current = false));
+              }}
+            />
+          ))}
+        </span>
+      )}
       <input
         ref={ref}
         className="bc-dim bc-dim-input"
@@ -356,7 +394,6 @@ export function DimInput({
           if (names.onKeyDown(e)) return;
           if (e.key === "Enter") finish(e.currentTarget.value);
         }}
-        onBlur={(e) => finish(e.currentTarget.value)}
       />
       {names.list}
     </span>
@@ -469,12 +506,13 @@ export function SketchLabels({ s }: { s: SketchSession }) {
         if (s.dimEdit === d.id) {
           return (
             <DimInput
-              key={d.id}
+              key={`${d.id}:${!!d.edges}`}
               x={p.x}
               y={p.y}
               label={d.kind === "angle" ? "Angle in degrees" : "Size in mm"}
               value={d.expression}
               scope={s.scope}
+              edges={edgesPossible(idx, d) ? { on: !!d.edges, set: (on) => s.setDimensionEdges(d.id, on) } : undefined}
               onDone={(text) => {
                 if (text !== null) s.setDimension(d.id, text);
                 s.setDimEdit(null);
