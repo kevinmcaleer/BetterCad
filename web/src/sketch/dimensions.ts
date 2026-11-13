@@ -3,7 +3,9 @@ import {
   add,
   angleCorner,
   armsAt,
+  edgeGap,
   measureDimension,
+  measuredRefs,
   angleOf,
   cross,
   dist,
@@ -80,7 +82,10 @@ export function directionAt(p: Vec2, q: Vec2, at: Vec2): DimDirection {
 }
 
 /** The two ends a size's direction is chosen between: a line's ends, or two points. Null for any other size. */
-export function dimensionEnds(idx: SketchIndex, kind: Dimension["kind"], refs: string[]): [Vec2, Vec2] | null {
+export function dimensionEnds(idx: SketchIndex, kind: Dimension["kind"], given: string[], edges?: boolean): [Vec2, Vec2] | null {
+  // A gap to a circle's edge only runs aligned; otherwise a circle stands for its centre.
+  if (edges) return null;
+  const refs = given.length === 2 ? measuredRefs(idx, { kind: "distance", refs: given }) : given;
   const e0 = refs[0] ? idx.get(refs[0]) : undefined;
   const e1 = refs[1] ? idx.get(refs[1]) : undefined;
   if (!e0) return null;
@@ -101,7 +106,12 @@ export function kindFor(refs: string[], idx: SketchIndex, dir: DimDirection): Di
 }
 
 /** The point a size's label offset is measured from: the middle of what it measures, a rim point, or the foot on a line. */
-export function dimensionAnchor(idx: SketchIndex, d: Pick<Dimension, "kind" | "refs" | "arms">): Vec2 {
+export function dimensionAnchor(idx: SketchIndex, given: Pick<Dimension, "kind" | "refs" | "arms" | "edges">): Vec2 {
+  if (given.edges) {
+    const g = edgeGap(idx, given);
+    return g ? mid(g.a, g.b) : [0, 0];
+  }
+  const d = { ...given, refs: measuredRefs(idx, given) };
   const e0 = d.refs[0] ? idx.get(d.refs[0]) : undefined;
   const e1 = d.refs[1] ? idx.get(d.refs[1]) : undefined;
   if (!e0) return [0, 0];
@@ -220,7 +230,14 @@ function along(a: Vec2, b: Vec2, n: Vec2, o: number, px: number, text: Vec2): Di
   };
 }
 
-export function dimensionArt(idx: SketchIndex, d: Dimension, px: number, centre: Vec2): DimensionArt {
+export function dimensionArt(idx: SketchIndex, given: Dimension, px: number, centre: Vec2): DimensionArt {
+  if (given.edges) {
+    // The gap between a circle's edge and the other thing, straight across where they are nearest.
+    const g = edgeGap(idx, given);
+    return g ? aligned(g.a, g.b, px, centre, given.labelOffset) : { text: given.labelOffset, lines: [], arrows: [] };
+  }
+  // A circle or arc in a distance stands for its centre.
+  const d = { ...given, refs: measuredRefs(idx, given) };
   const e0 = d.refs[0] ? idx.get(d.refs[0]) : undefined;
   const e1 = d.refs[1] ? idx.get(d.refs[1]) : undefined;
   const textOnly = (at: Vec2): DimensionArt => ({ text: add(at, d.labelOffset), lines: [], arrows: [] });
@@ -343,12 +360,12 @@ function levelled(kind: "distanceX" | "distanceY", a: Vec2, b: Vec2, px: number,
 }
 
 /** A placing size's preview with its label at `xy` (left where it was when null), its direction picked from there. */
-export function placeAt(sketch: Sketch, kind: DimensionKind, refs: Id[], xy: Vec2 | null): Dimension {
+export function placeAt(sketch: Sketch, kind: DimensionKind, refs: Id[], xy: Vec2 | null, edges = false): Dimension {
   const idx = new SketchIndex(sketch);
-  const ends = dimensionEnds(idx, kind, refs);
-  const k = ends && xy ? kindFor(refs, idx, directionAt(ends[0], ends[1], xy)) : kind;
+  const ends = dimensionEnds(idx, kind, refs, edges);
+  const k = edges ? "distance" : ends && xy ? kindFor(refs, idx, directionAt(ends[0], ends[1], xy)) : kind;
   // A level or upright size on two points names the points; on a line it names the line.
-  const dim: Dimension = { id: "placing", kind: k, refs, expression: "", value: 0, driving: true, labelOffset: [0, 0] };
+  const dim: Dimension = { id: "placing", kind: k, refs, expression: "", value: 0, driving: true, labelOffset: [0, 0], ...(edges && { edges }) };
   // Two lines make four angles; the one the pointer is in is measured.
   const arms = k === "angle" && xy ? armsAt(idx, refs, xy) : null;
   if (arms) dim.arms = arms;

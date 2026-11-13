@@ -215,3 +215,40 @@ describe("an angle between two lines", () => {
     expect(straight.length).toBe(2);
   });
 });
+
+describe("sizing between circles", () => {
+  /** Two circles, R 5 at the origin and R 3 at (20, 20). */
+  function circles() {
+    const d = new Draft(newSketch());
+    const a = d.circle([0, 0], 5);
+    const b = d.circle([20, 20], 3);
+    return { sketch: d.done().sketch, a, b };
+  }
+
+  it("runs between the centres, across or up by where the pointer is", () => {
+    const { sketch, a, b } = circles();
+    const along = placeAt(sketch, "distance", [a, b], [10, 10]);
+    expect(along).toMatchObject({ kind: "distance", refs: [a, b] });
+    expect(along.value).toBeCloseTo(Math.hypot(20, 20));
+    const across = placeAt(sketch, "distance", [a, b], [10, 30]);
+    expect(across).toMatchObject({ kind: "distanceX", refs: [a, b] });
+    expect(across.value).toBeCloseTo(20);
+    // The arrows sit on the centres.
+    const art = dimensionArt(new SketchIndex(sketch), { ...along, labelOffset: [0, 0] }, 0.1, [50, 0]);
+    const tips = art.arrows.map((x) => x.tip);
+    expect(Math.hypot(tips[1]![0] - tips[0]![0], tips[1]![1] - tips[0]![1])).toBeCloseTo(Math.hypot(20, 20));
+  });
+
+  it("to the edges, the gap runs straight between the rims and stays aligned", () => {
+    const { sketch, a, b } = circles();
+    const gap = placeAt(sketch, "distance", [a, b], [10, 30], true);
+    expect(gap).toMatchObject({ kind: "distance", edges: true });
+    expect(gap.value).toBeCloseTo(Math.hypot(20, 20) - 8);
+    const art = dimensionArt(new SketchIndex(sketch), gap, 0.1, [50, 0]);
+    const [t0, t1] = art.arrows.map((x) => x.tip);
+    expect(Math.hypot(t1![0] - t0![0], t1![1] - t0![1])).toBeCloseTo(gap.value);
+    // The label is where it was put.
+    expect(art.text[0]).toBeCloseTo(10);
+    expect(art.text[1]).toBeCloseTo(30);
+  });
+});

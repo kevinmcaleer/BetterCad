@@ -591,6 +591,47 @@ test("size the angle between two lines, on the side the pointer is, and type it"
   await page.screenshot({ path: test.info().outputPath("angle-set.png") });
 });
 
+test("size the distance between two circles, centre to centre or edge to edge", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+  // Two circles, R 10 at the origin and R 5 at (40, 0).
+  await page.keyboard.press("c");
+  await click(page, 0, 0);
+  await click(page, 10, 0);
+  await click(page, 40, 0);
+  await click(page, 45, 0);
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: test.info().outputPath("circles.png") });
+
+  await page.keyboard.press("d");
+  const placing = page.locator(".bc-placing");
+  // The first circle's diameter follows the pointer; picking the second circle makes it the distance between them.
+  await click(page, 0, 10);
+  await expect(placing).toHaveAttribute("aria-label", /^Diameter/);
+  await click(page, 40, 5);
+  await expect(placing).toHaveAttribute("aria-label", /^Distance 40 mm/);
+  await click(page, 20, 20);
+  const input = page.getByRole("textbox", { name: "Size in mm" });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("40");
+  const edges = page.getByRole("group", { name: "Measure to" });
+  await expect(edges.getByRole("button", { name: "Centres", pressed: true })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("circle-centres.png") });
+
+  // Switched to the edges, the size measures the gap and keeps the value box open.
+  await edges.getByRole("button", { name: "Edges" }).click();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("25");
+  await input.fill("4");
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "4 mm", exact: true })).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath("circle-gap.png") });
+});
+
 test("measure an angle from the X axis", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
