@@ -9,7 +9,7 @@ export type Route =
   | { page: "signin"; next?: string }
   | { page: "signup"; next?: string }
   | { page: "account" }
-  | { page: "library"; bin?: boolean }
+  | { page: "library"; bin?: boolean; folder?: string; project?: string }
   | { page: "view"; token: string }
   | { page: "gallery" }
   | { page: "privacy" }
@@ -28,8 +28,13 @@ export function parseRoute(hash: string): Route {
       return { page: "signup", next };
     case "account":
       return { page: "account" };
-    case "library":
+    case "library": {
+      // "#/library/folder/<id>" and "#/library/project/<id>" (#273, #274), so Back works through folders.
+      const id = path.split("/")[2];
+      if (arg === "folder" && id) return { page: "library", folder: decodeURIComponent(id) };
+      if (arg === "project" && id) return { page: "library", project: decodeURIComponent(id) };
       return { page: "library", bin: arg === "bin" };
+    }
     case "edit":
       return arg ? { page: "editor", model: decodeURIComponent(arg) } : { page: "editor" };
     case "sample":

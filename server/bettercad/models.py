@@ -20,6 +20,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
+from . import where
 from .auth import CurrentUser, User, Writer, conn
 
 HASH = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -75,6 +76,14 @@ class NewModel(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     bcad: str
     note: str | None = Field(default=None, max_length=200)
+    #: Where it goes (#273): a folder, a project's top level, or My models when both are empty.
+    folder_id: str | None = None
+    project_id: str | None = None
+
+
+class Move(BaseModel):
+    folder_id: str | None = None
+    project_id: str | None = None
 
 
 class Save(BaseModel):
@@ -177,6 +186,8 @@ def router(settings) -> APIRouter:
             "created": row["created"],
             "modified": row["modified"],
             "deleted_at": row["deleted_at"],
+            "folder_id": row["folder_id"],
+            "project_id": row["project_id"],
             "thumbnail": f"/api/models/{row['id']}/thumbnail?v={row['version']}.{tag(row['thumbnail'])}"
             if row["thumbnail"]
             else None,
@@ -213,19 +224,32 @@ def router(settings) -> APIRouter:
         q: str = "",
         sort: Annotated[str, Query(pattern="^(modified|name)$")] = "modified",
         bin: bool = False,
+        folder: str | None = None,
+        project: str | None = None,
+        top: bool = False,
     ) -> dict:
+        """Every model, or with `folder`, `project` (its top level) or `top` (My models' top level) just those (#273).
+        The bin lists what was put there itself, not what went with a folder or project."""
         db = conn(request)
-        where = "user_id = ? AND deleted_at IS " + ("NOT NULL" if bin else "NULL")
+        where_ = "user_id = ? AND " + ("deleted_at IS NOT NULL AND binned_by IS NULL" if bin else "deleted_at IS NULL")
         args: list = [user.id]
+        if folder:
+            where_ += " AND folder_id = ?"
+            args.append(folder)
+        elif project:
+            where_ += " AND project_id = ? AND folder_id IS NULL"
+            args.append(project)
+        elif top:
+            where_ += " AND project_id IS NULL AND folder_id IS NULL"
         if q:
-            where += " AND name LIKE ? ESCAPE '\\'"
+            where_ += " AND name LIKE ? ESCAPE '\\'"
             args.append("%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
         order = "name COLLATE NOCASE ASC" if sort == "name" else "modified DESC"
-        total = db.execute(f"SELECT COUNT(*) FROM models WHERE {where}", args).fetchone()[0]
+        total = db.execute(f"SELECT COUNT(*) FROM models WHERE {where_}", args).fetchone()[0]
         rows = db.execute(
             f"SELECT m.*, (SELECT COALESCE(SUM(v.size), 0) FROM versions v WHERE v.model_id = m.id) AS bytes,"
             f" (SELECT COUNT(*) FROM versions v WHERE v.model_id = m.id) AS versions"
-            f" FROM models m WHERE {where} ORDER BY {order}, id LIMIT ? OFFSET ?",
+            f" FROM models m WHERE {where_} ORDER BY {order}, id LIMIT ? OFFSET ?",
             [*args, limit_, offset],
         )
         # Size is what the model takes from the quota: every saved version, as /api/me/usage counts it.
@@ -236,9 +260,13 @@ def router(settings) -> APIRouter:
         check_size(request)
         db = conn(request)
         write_check(db, user, len(body.bcad.encode()))
+        folder_id, project_id = where.resolve(db, user.id, body.folder_id, body.project_id)
         model_id = secrets.token_urlsafe(9)
         with db:
-            db.execute("INSERT INTO models (id, user_id, name) VALUES (?, ?, ?)", (model_id, user.id, body.name.strip()))
+            db.execute(
+                "INSERT INTO models (id, user_id, name, folder_id, project_id) VALUES (?, ?, ?, ?, ?)",
+                (model_id, user.id, body.name.strip(), folder_id, project_id),
+            )
             add_version(db, model_id, 1, body.bcad, body.note)
         return summary(own(db, user, model_id))
 
@@ -289,7 +317,11 @@ def router(settings) -> APIRouter:
         write_check(db, user, v["size"])
         copy = secrets.token_urlsafe(9)
         with db:
-            db.execute("INSERT INTO models (id, user_id, name) VALUES (?, ?, ?)", (copy, user.id, f"{m['name']} copy"))
+            # The copy sits beside the original.
+            db.execute(
+                "INSERT INTO models (id, user_id, name, folder_id, project_id) VALUES (?, ?, ?, ?, ?)",
+                (copy, user.id, f"{m['name']} copy", m["folder_id"], m["project_id"]),
+            )
             db.execute(
                 "INSERT INTO versions (model_id, number, bcad_json, size, thumbnail, note) VALUES (?, 1, ?, ?, ?, ?)",
                 (copy, v["bcad_json"], v["size"], v["thumbnail"], f"Copied from {m['name']}"),
@@ -312,9 +344,24 @@ def router(settings) -> APIRouter:
     @r.post("/models/{model_id}/restore")
     def undelete(model_id: str, request: Request, user: Writer) -> dict:
         db = conn(request)
-        own(db, user, model_id, binned=True)
+        m = own(db, user, model_id, binned=True)
+        # Its folder or project may have gone to the bin since: then it comes back one level up.
+        folder_id = m["folder_id"] if where.live_folder(db, m["folder_id"]) else None
+        project_id = m["project_id"] if where.live_project(db, m["project_id"]) else None
         with db:
-            db.execute("UPDATE models SET deleted_at = NULL WHERE id = ?", (model_id,))
+            db.execute(
+                "UPDATE models SET deleted_at = NULL, binned_by = NULL, folder_id = ?, project_id = ? WHERE id = ?",
+                (folder_id, project_id, model_id),
+            )
+        return summary(own(db, user, model_id))
+
+    @r.post("/models/{model_id}/move")
+    def move(model_id: str, body: Move, request: Request, user: Writer) -> dict:
+        db = conn(request)
+        own(db, user, model_id)
+        folder_id, project_id = where.resolve(db, user.id, body.folder_id, body.project_id)
+        with db:
+            db.execute("UPDATE models SET folder_id = ?, project_id = ? WHERE id = ?", (folder_id, project_id, model_id))
         return summary(own(db, user, model_id))
 
     @r.get("/models/{model_id}/thumbnail")

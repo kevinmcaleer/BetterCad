@@ -24,10 +24,27 @@ interface Model {
   modified: string;
   deleted_at: string | null;
   share?: string;
+  folder_id?: string | null;
+  project_id?: string | null;
+}
+/** Folders and projects (#273, #274), just enough for the library's pages. */
+interface Folder {
+  id: string;
+  user: number;
+  name: string;
+  parent_id: string | null;
+  project_id: string | null;
+}
+interface Project {
+  id: string;
+  user: number;
+  name: string;
+  readme: string;
 }
 
 export interface FakeServer {
   models: Map<string, Model>;
+  folders: Map<string, Folder>;
   blobs: Map<string, Buffer>;
   /** While true every request fails as if the network were gone. */
   down: boolean;
@@ -43,6 +60,8 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
   const sessions = new Map<string, { user: number; csrf: string }>();
   const models = new Map<string, Model>();
   const blobs = new Map<string, Buffer>();
+  const folders = new Map<string, Folder>();
+  const projects = new Map<string, Project>();
   let ids = 0;
 
   const json = (route: Route, status: number, body: unknown, headers: Record<string, string> = {}) =>
@@ -78,6 +97,8 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     created: m.created,
     modified: m.modified,
     deleted_at: m.deleted_at,
+    folder_id: m.folder_id ?? null,
+    project_id: m.project_id ?? null,
     thumbnail: m.versions.at(-1)!.bcad.includes('"thumbnail"') ? `/api/models/${m.id}/thumbnail?v=${m.versions.at(-1)!.number}` : null,
   });
   const addVersion = (m: Model, bcad: string, note: string | null) => {
@@ -145,9 +166,57 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       const b = blobs.get(key);
       return b ? route.fulfill({ status: 200, body: b }) : fail(route, 404, "That file isn't here.");
     }
+    const folderJson = (f: Folder) => ({
+      ...f,
+      created: now(),
+      modified: now(),
+      deleted_at: null,
+      models: [...models.values()].filter((m) => m.folder_id === f.id && !m.deleted_at).length,
+      folders: [...folders.values()].filter((c) => c.parent_id === f.id).length,
+    });
+    const projectJson = (p: Project) => ({
+      ...p,
+      cover: null,
+      created: now(),
+      modified: now(),
+      deleted_at: null,
+      models: [...models.values()].filter((m) => m.project_id === p.id && !m.deleted_at).length,
+    });
+    const placeOf = (b: { folder_id?: string | null; project_id?: string | null }) => {
+      const f = b.folder_id ? folders.get(b.folder_id) : undefined;
+      return f ? { folder_id: f.id, project_id: f.project_id } : { folder_id: null, project_id: b.project_id ?? null };
+    };
+    if (path === "places" && method === "GET") {
+      if (url.searchParams.get("bin") === "true") return json(route, 200, { folders: [], projects: [] });
+      const mine = <T extends { user: number }>(xs: Map<string, T>) => [...xs.values()].filter((x) => x.user === user.id);
+      return json(route, 200, { folders: mine(folders).map(folderJson), projects: mine(projects).map(projectJson) });
+    }
+    if (path === "folders" && method === "POST") {
+      const b = body();
+      const parent = b.parent_id ? folders.get(b.parent_id) : undefined;
+      const f: Folder = {
+        id: `f${++ids}`,
+        user: user.id,
+        name: b.name,
+        parent_id: parent?.id ?? null,
+        project_id: parent ? parent.project_id : (b.project_id ?? null),
+      };
+      folders.set(f.id, f);
+      return json(route, 201, folderJson(f));
+    }
+    if (path === "projects" && method === "POST") {
+      const b = body();
+      const p: Project = { id: `p${++ids}`, user: user.id, name: b.name, readme: b.readme ?? "" };
+      projects.set(p.id, p);
+      return json(route, 201, projectJson(p));
+    }
+    if (path.startsWith("projects/") && method === "GET") {
+      const p = projects.get(path.split("/")[1]!);
+      return p ? json(route, 200, projectJson(p)) : fail(route, 404, "That project isn't here. It may have been deleted.");
+    }
     if (path === "models" && method === "POST") {
       const b = body();
-      const m: Model = { id: `m${++ids}`, user: user.id, name: b.name, versions: [], created: now(), modified: now(), deleted_at: null };
+      const m: Model = { id: `m${++ids}`, user: user.id, name: b.name, versions: [], created: now(), modified: now(), deleted_at: null, ...placeOf(b) };
       addVersion(m, b.bcad, b.note ?? null);
       models.set(m.id, m);
       return json(route, 201, summary(m));
@@ -155,8 +224,11 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     if (path === "models" && method === "GET") {
       const q = (url.searchParams.get("q") ?? "").toLowerCase();
       const bin = url.searchParams.get("bin") === "true";
+      const [folder, project, top] = ["folder", "project", "top"].map((k) => url.searchParams.get(k));
+      const here = (m: Model) =>
+        folder ? m.folder_id === folder : project ? m.project_id === project && !m.folder_id : top ? !m.folder_id && !m.project_id : true;
       const list = [...models.values()]
-        .filter((m) => m.user === user.id && !!m.deleted_at === bin && m.name.toLowerCase().includes(q))
+        .filter((m) => m.user === user.id && !!m.deleted_at === bin && m.name.toLowerCase().includes(q) && here(m))
         .sort((a, b) => (url.searchParams.get("sort") === "name" ? a.name.localeCompare(b.name) : b.modified.localeCompare(a.modified)));
       const sized = (m: Model) => ({ ...summary(m), size: m.versions.reduce((n, v) => n + v.bcad.length, 0), versions: m.versions.length });
       return json(route, 200, { models: list.map(sized), total: list.length });
@@ -185,6 +257,10 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
         else m.deleted_at = now();
         return json(route, 200, { ok: true });
       }
+    }
+    if (sub === "move" && method === "POST") {
+      Object.assign(m, placeOf(body()));
+      return json(route, 200, summary(m));
     }
     if (sub === "duplicate") {
       const copy: Model = { ...m, id: `m${++ids}`, name: `${m.name} copy`, versions: [{ ...latest, number: 1 }], created: now(), modified: now() };
@@ -229,6 +305,7 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
 
   return Object.assign(server, {
     models,
+    folders,
     blobs,
     async signIn(ctx: BrowserContext, name = "Kev") {
       await signInAs(ctx, name);
