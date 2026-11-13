@@ -58,7 +58,7 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       label: "Insert",
       sections: [
         ["Parts", ["panel.library", "panel.catalogue", "tool.gear", "tool.mount"]],
-        ["Files", ["file.import", "file.importReference"]],
+        ["Files", ["file.import", "file.importReference", "tool.canvas"]],
       ],
       pins: ["panel.library", "tool.gear"],
     },
