@@ -186,6 +186,19 @@ const DRAW: Record<string, () => string> = {
   track: () =>
     `<rect x="2" y="7" width="20" height="10" rx="5" fill="${HI}" stroke="${EDGE}" stroke-width="0.9"/><rect x="4" y="9" width="16" height="6" rx="3" fill="${HOLE}" stroke="${EDGE}" stroke-width="0.6"/>` +
     `<circle cx="7" cy="12" r="2.6" fill="${SIDE}" stroke="${EDGE}" stroke-width="0.9"/><circle cx="17" cy="12" r="2.6" fill="${SIDE}" stroke="${EDGE}" stroke-width="0.9"/>`,
+  // Library shapes and arranging steps, as the timeline shows them: the new part in the accent.
+  cube: () => box(-5, -5, -5, 10, 10, 9, allHi),
+  cylinder: () => cyl(12, 7, 18, 7.5, 2.8, true),
+  sphere: () =>
+    `<circle cx="12" cy="12" r="8.5" fill="${HI}" stroke="${EDGE}" stroke-width="0.9"/>` +
+    `<path d="M3.5 12a8.5 3 0 0 0 17 0" fill="none" stroke="${EDGE}" stroke-width="0.8"/>`,
+  cone: () => `<path d="M12 3 4.5 17.5A7.5 2.8 0 0 0 19.5 17.5Z" fill="${HI}" stroke="${EDGE}" stroke-width="0.9" stroke-linejoin="round"/>`,
+  torus: () =>
+    `<ellipse cx="12" cy="13" rx="9.5" ry="5.5" fill="${HI}" stroke="${EDGE}" stroke-width="0.9"/>` +
+    `<ellipse cx="12" cy="12.4" rx="3.6" ry="1.7" fill="${HOLE}" stroke="${EDGE}" stroke-width="0.8"/>`,
+  wedge: () => poly([P(-5, 5, -5), P(5, 5, -5), P(-5, 5, 4)], HI_S) + poly([P(-5, -5, 4), P(5, -5, -5), P(5, 5, -5), P(-5, 5, 4)], HI),
+  resize: () => box(-4, -4, -4, 8, 8, 6) + hiLine("M3 21l4.5-4.5M3 21h4M3 21v-4M21 3l-4.5 4.5M21 3h-4M21 3v4", 1.6),
+  copy: () => box(-6, -1, -5, 6, 6, 6, [], { ox: 10, oy: 13 }) + box(-1, -6, -3, 6, 6, 6, allHi, { ox: 14, oy: 11 }),
   // Construct
   plane: () => box(-2.5, -2.5, -6, 5, 5, 5) + sheet(flatSquare(0, 8), 1.3),
   axis: () => box(-3.5, -3.5, -4, 7, 7, 6) + hiLine("M12 1V23", 1.9),

@@ -58,6 +58,11 @@
   width: 14px;
   height: 14px;
 }
+/* Colour tool icons (as on the ribbon) are drawn solid, so they fill the tile to read at this size. */
+.bc-tl-tile .bc-icon-colour {
+  width: 20px;
+  height: 20px;
+}
 .bc-tl-tile:hover {
   background: var(--bc-color-hover);
 }

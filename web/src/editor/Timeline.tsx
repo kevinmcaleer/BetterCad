@@ -48,8 +48,13 @@ export function partIcon(kind: PartKind): IconName {
 export function featureIcon(f: Feature): IconName {
   if (f.type === "add") return partIcon(f.part.kind);
   if (f.type === "construct") return constructIcon(constructKind(f.kind).what);
+  if (f.type === "pattern" && f.kind === "mirror") return "flipH";
+  if (f.type === "pattern" && f.kind === "track") return "track";
   return FEATURE_ICON[f.type];
 }
+
+/** The tile's colour icon, as the ribbon tool that makes the step draws it: its own name where the ribbon picks one. */
+export const featureColour = (f: Feature): true | string => (f.type === "rigid" ? "link" : true);
 
 export interface TimelineProps {
   features: Feature[];
@@ -357,7 +362,7 @@ export function Timeline({
                 stopMoving();
               }}
             >
-              <Icon name={featureIcon(f)} size={16} />
+              <Icon name={featureIcon(f)} size={16} colour={featureColour(f)} />
             </button>
           );
         })}
