@@ -14,12 +14,12 @@ const KINDS: { id: PatternKind; label: string; title: string }[] = [
 const PLANES: MirrorPlane[] = ["YZ", "XZ", "XY"];
 const OFS: { id: MirrorOf; label: string; title: string }[] = [
   { id: "bodies", label: "Bodies", title: "Mirror whole bodies" },
-  { id: "features", label: "Features", title: "Mirror the cuts, joins and holes of steps on the timeline onto the same bodies" },
+  { id: "features", label: "Features", title: "Mirror the cuts, joins, holes, fillets and chamfers of steps on the timeline onto the same bodies" },
   { id: "component", label: "Component", title: "Mirror every body in a component, as a new component" },
 ];
 const PATTERN_OFS: { id: MirrorOf; label: string; title: string }[] = [
   { id: "bodies", label: "Bodies", title: "Copy whole bodies" },
-  { id: "features", label: "Features", title: "Copy the cuts, joins and holes of steps on the timeline onto the same bodies" },
+  { id: "features", label: "Features", title: "Copy the cuts, joins, holes, fillets and chamfers of steps on the timeline onto the same bodies" },
 ];
 
 /** What a Mirror or Pattern copies, and the picks for features or a component: on the bar before the step starts, and after. */
@@ -29,7 +29,7 @@ function CopyWhat({ x }: { x: PatternSession }) {
   const ticked = f?.features ?? [];
   const featureEntries: MenuEntry[] = x.mirrorable.length
     ? x.mirrorable.map((m) => ({ id: m.id, label: m.name, checked: ticked.includes(m.id), multiple: true, onSelect: () => x.toggleFeature(m.id) }))
-    : [{ id: "none", label: `No cuts, joins or holes to ${mirror ? "mirror" : "copy"} yet`, disabled: true, onSelect: () => {} }];
+    : [{ id: "none", label: `No cuts, joins, holes or fillets to ${mirror ? "mirror" : "copy"} yet`, disabled: true, onSelect: () => {} }];
   const linkEntries: MenuEntry[] = x.links.length
     ? x.links.map((l) => ({ id: l.id, label: l.name, checked: f?.link === l.id, onSelect: () => x.pick({ link: l.id }) }))
     : [{ id: "none", label: "No components yet. Make one with Link.", disabled: true, onSelect: () => {} }];
@@ -50,7 +50,9 @@ function CopyWhat({ x }: { x: PatternSession }) {
           <MenuButton
             label={mirror ? "Features to mirror" : "Features to copy"}
             entries={featureEntries}
-            trigger={(p) => <Button {...p} label={featureLabel} title={`The steps whose cuts, joins and holes are ${mirror ? "mirrored" : "copied"}`} />}
+            trigger={(p) => (
+              <Button {...p} label={featureLabel} title={`The steps whose cuts, joins, holes, fillets and chamfers are ${mirror ? "mirrored" : "copied"}`} />
+            )}
           />
         </FeatureRow>
       )}

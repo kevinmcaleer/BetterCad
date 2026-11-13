@@ -165,6 +165,22 @@
   --bc-color-grid-major: #c3c7cd;
   /* The far walls and ceiling of the drawing room, drawn behind the grid when the camera looks up or out. Light and dark barely differ from `viewport`; Holoroom is true black. */
   --bc-color-room: #f6f7f9;
+  /* Tool icons: the lit top face of an icon's muted solid. Icons are a soft blue-grey solid with one part in `icon-accent`. */
+  --bc-color-icon-top: #d6dee9;
+  /* Tool icons: the front-left face of an icon's solid, a step darker than `icon-top`. */
+  --bc-color-icon-side: #adbacb;
+  /* Tool icons: the front-right face, the darkest of the three, and the inside of holes and shells. */
+  --bc-color-icon-side-dark: #8c9cb1;
+  /* Tool icons: outlines and drawn lines. Holds 3:1 on `bar` and `rail`, so icons read without their fills. */
+  --bc-color-icon-edge: #4a586b;
+  /* Tool icons: openings cut right through, such as a gear's bore. The colour of `bar`. */
+  --bc-color-icon-hole: #ffffff;
+  /* Tool icons: the one highlight on each icon, the part the tool makes or changes (the face that moves, the edge that rounds). Amber, so it never reads as selected, which is `accent`. */
+  --bc-color-icon-accent: #e0962a;
+  /* Tool icons: a highlighted solid's front-left face. */
+  --bc-color-icon-accent-side: #c47d1a;
+  /* Tool icons: a highlighted solid's front-right face. */
+  --bc-color-icon-accent-dark: #a5680f;
   /* A floating toolbar over the stage; a pressed rail button (0 1px 3px at 8%). */
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.12);
   /* The viewport frame on the stage; the selection toolbar (0 2px 10px at 16%). */
@@ -220,6 +236,14 @@
   --bc-color-grid: #2a2e36;
   --bc-color-grid-major: #3d424c;
   --bc-color-room: #15171b;
+  --bc-color-icon-top: #7a8698;
+  --bc-color-icon-side: #5c6779;
+  --bc-color-icon-side-dark: #465061;
+  --bc-color-icon-edge: #c9d2de;
+  --bc-color-icon-hole: #1b1d22;
+  --bc-color-icon-accent: #f0aa45;
+  --bc-color-icon-accent-side: #d18f2c;
+  --bc-color-icon-accent-dark: #a8701c;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);
@@ -270,6 +294,14 @@
   --bc-color-grid: #8a6d0f;
   --bc-color-grid-major: #f2c230;
   --bc-color-room: #000000;
+  --bc-color-icon-top: #7a8698;
+  --bc-color-icon-side: #5c6779;
+  --bc-color-icon-side-dark: #465061;
+  --bc-color-icon-edge: #c9d2de;
+  --bc-color-icon-hole: #1b1d22;
+  --bc-color-icon-accent: #f0aa45;
+  --bc-color-icon-accent-side: #d18f2c;
+  --bc-color-icon-accent-dark: #a8701c;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);

@@ -143,6 +143,8 @@ export interface MarkdownOptions {
   diagrams?: Map<number, string>;
   /** The finished model's picture. */
   finished?: string;
+  /** The parts to print, one file per shape, with how many of each. */
+  prints?: { name: string; file: string; count: number }[];
 }
 
 const escapeMd = (s: string) => s.replace(/([\\`*_[\]#<>|])/g, "\\$1");
@@ -178,6 +180,11 @@ export function stepsMarkdown(doc: ModelDoc, steps: BuildStep[], o: MarkdownOpti
             : `\`${p.expression}\`${p.name in values ? `, ${round(values[p.name]!)}${unit(p.unit)}` : ""}`
         } | ${escapeMd(p.comment ?? "")} |`,
       );
+    lines.push("");
+  }
+  if (o.prints?.length) {
+    lines.push("## Parts to print", "", "| Part | How many | File |", "| --- | --- | --- |");
+    for (const p of o.prints) lines.push(`| ${escapeMd(p.name)} | ${p.count} | [${escapeMd(p.file.split("/").pop()!)}](${encodeURI(p.file)}) |`);
     lines.push("");
   }
   for (const s of steps) {

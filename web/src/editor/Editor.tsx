@@ -132,6 +132,7 @@ import { TOOLS, type ToolId } from "./tools";
 import { fadedOutside } from "./fade";
 import { AppShell } from "./AppShell";
 import { TopBar } from "./TopBar";
+import { useRibbon } from "./ribbonPrefs";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
 import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
@@ -199,6 +200,9 @@ const loadSketchUI = () => import("../sketch/SketchUI");
 const SketchBars = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchBars })));
 const SketchLabels = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchLabels })));
 const SketchPickBar = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchPickBar })));
+const SketchRibbon = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchRibbon })));
+// The desktop ribbon's tools load after first paint; the top bar draws its tabs meanwhile.
+const RibbonTools = lazy(() => import("./Ribbon").then((m) => ({ default: m.RibbonTools })));
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 /** Tools that work on the model as posed (see poseOn). */
 const POSED_TOOLS = new Set(["select", "sketch", "extrude", "revolve"]);
@@ -364,6 +368,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, []);
 
   const narrow = useMedia(NARROW);
+  const ribbonOn = useRibbon();
   const [selection, setSelection] = useState<string[]>([]);
   // The browser's origin planes on show, and its sketch or plane pick: view state, like the marker.
   const [originShown, setOriginShown] = useState<OriginItem[]>([]);
@@ -1892,6 +1897,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const handlers = useRef({
     homeJoints: () => {},
+    togglePanel: (_id: PanelId) => {},
     armToolPoint: () => {},
     clearToolPoints: () => {},
     checkClashes: () => {},
@@ -1948,6 +1954,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   });
   handlers.current = {
     homeJoints,
+    togglePanel: (id: PanelId) => showPanel(panel === id ? "parts" : id),
     armToolPoint: () => {
       setTool("select");
       setToolPick(true);
@@ -2222,6 +2229,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().startConstruct(k.id),
         keywords: `construction ${k.what} ${k.title}`,
       })),
+      {
+        id: "panel.library",
+        scope: "model",
+        label: "Library",
+        group: "Tools",
+        icon: "shapes",
+        run: () => h().togglePanel("library"),
+        keywords: "parts shapes box cylinder",
+      },
+      {
+        id: "panel.catalogue",
+        scope: "model",
+        label: "Catalogue",
+        group: "Tools",
+        icon: "screw",
+        run: () => h().togglePanel("robot"),
+        keywords: "robot parts servo motor",
+      },
       {
         id: "tool.mirror",
         scope: "model",
@@ -3768,6 +3793,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             mirrorOn={mirrorOn}
             onMirror={() => toolbarPattern(true)}
             onNewComponent={() => makeLink([])}
+            ribbon={
+              ribbonOn
+                ? (tab) => (
+                    <Suspense fallback={null}>
+                      <RibbonTools tab={tab} registry={registry} tool={tool} mirrorOn={mirrorOn} panel={panel} />
+                    </Suspense>
+                  )
+                : undefined
+            }
+            sketchRibbon={
+              ribbonOn && sketch.editing ? (
+                <Suspense fallback={null}>
+                  <SketchRibbon s={sketch} />
+                </Suspense>
+              ) : undefined
+            }
             panel={panel}
             onPanel={showPanel}
             canUndo={store.canUndo()}
@@ -3919,7 +3960,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         stageToolbar={
           sketch.editing ? (
             <Suspense fallback={null}>
-              <SketchBars s={sketch} />
+              <SketchBars s={sketch} ribbon={ribbonOn} />
             </Suspense>
           ) : (
             <>

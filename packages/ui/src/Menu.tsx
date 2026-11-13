@@ -21,6 +21,10 @@ export type MenuEntry =
       checked?: boolean;
       /** One of several that can all be ticked (the bodies a cut goes through): renders as menuitemcheckbox. */
       multiple?: boolean;
+      /** Draw the colour tool icon (see Icon). */
+      colour?: boolean | string;
+      /** A pin at the row's end that toggles whether the tool shows on the ribbon. */
+      pin?: { on: boolean; onToggle: () => void };
       onSelect: () => void;
     }
   | { kind: "separator"; id: string }
@@ -89,7 +93,7 @@ export function Menu({ open, onClose, entries, label, title, style, className, a
               {en.label}
             </div>
           );
-        return (
+        const item = (
           <button
             key={en.id}
             type="button"
@@ -104,10 +108,32 @@ export function Menu({ open, onClose, entries, label, title, style, className, a
               en.onSelect();
             }}
           >
-            <span className="bc-menu-icon">{en.icon ? <Icon name={en.icon} size={16} /> : en.checked ? <Icon name="check" size={16} /> : null}</span>
+            <span className="bc-menu-icon">
+              {en.icon ? <Icon name={en.icon} size={16} colour={en.colour} /> : en.checked ? <Icon name="check" size={16} /> : null}
+            </span>
             <span>{en.label}</span>
             {en.keys && <span className="bc-keys">{en.keys}</span>}
           </button>
+        );
+        if (!en.pin) return item;
+        const pin = en.pin;
+        return (
+          <div key={en.id} className="bc-menu-row" role="none">
+            {item}
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={pin.on}
+              aria-label={`Show ${en.label} on the ribbon`}
+              data-tip={pin.on ? "Take it off the ribbon" : "Pin it to the ribbon"}
+              data-label=""
+              className={cx("bc-menu-pin", pin.on && "bc-on")}
+              tabIndex={-1}
+              onClick={pin.onToggle}
+            >
+              <Icon name="pin" size={14} />
+            </button>
+          </div>
         );
       })}
       {children}

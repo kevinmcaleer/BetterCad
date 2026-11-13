@@ -3,6 +3,7 @@
 @import "./styles/base.css";
 @import "./styles/button.css";
 @import "./styles/toolbar.css";
+@import "./styles/ribbon.css";
 @import "./styles/feature-panel.css";
 @import "./styles/rail.css";
 @import "./styles/parts-tree.css";

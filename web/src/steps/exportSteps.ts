@@ -51,6 +51,11 @@ export interface AssemblyPart {
   file: string;
   /** The middle of the part where it sits in the model, at home, in mm (Z up). The STL itself sits on the bed. */
   position: V3;
+  /**
+   * How it's turned from the STL (roll, pitch, yaw in degrees, about its middle: R = Rz Ry Rx). Copies of one shape
+   * share an STL, each turned its own way. None: not turned.
+   */
+  rotation?: V3;
   /** The component (robot link) it's in; none for Base. */
   link?: string;
 }
@@ -150,7 +155,7 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
       files.push({ name, data: new Uint8Array(await png.arrayBuffer()) });
       images.set(s.n, name);
       if (s.feature.type === "sketch") {
-        const diagram = await sketchDiagram(s.feature.sketch);
+        const diagram = await sketchDiagram(s.feature.sketch, undefined, undefined, f.sketch?.frame);
         if (diagram) {
           const dn = `images/${imageName(s.n, steps.length, "-sketch")}`;
           files.push({ name: dn, data: new Uint8Array(await diagram.arrayBuffer()) });
@@ -165,6 +170,7 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
     pictures.dispose();
   }
 
+  const prints: { name: string; file: string; count: number }[] = [];
   if (o.parts) {
     o.onProgress?.(1, "Making the parts to print");
     const k = o.call("export", {
@@ -174,6 +180,7 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
       format: "stl",
       deflection: DEFLECTION.normal,
       separate: true,
+      same: true,
       keepPosition: false,
       posed: false,
       rosPackage: false,
@@ -181,10 +188,21 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
     });
     if (k) {
       const placed: AssemblyPart[] = [];
+      const names = new Map(build(doc, upTo).parts.map((p) => [p.id, p.name]));
       for (const f of (await k).files) {
         const name = `models/${fileSafe(f.name)}`;
         files.push({ name, data: new Uint8Array(f.data) });
-        if (f.centre)
+        prints.push({ name: partName(f.name, doc.name), file: name, count: f.copies?.length ?? 1 });
+        if (f.copies)
+          for (const c of f.copies)
+            placed.push({
+              id: c.part,
+              name: names.get(c.part) ?? partName(f.name, doc.name),
+              file: name,
+              position: c.centre.map(round) as V3,
+              rotation: c.rotation,
+            });
+        else if (f.centre)
           placed.push({
             id: f.parts?.length === 1 ? f.parts[0] : undefined,
             name: partName(f.name, doc.name),
@@ -198,7 +216,7 @@ export async function exportSteps(o: StepsExport): Promise<StepsZip> {
 
   const base = fileSafe(doc.name);
   const modelFile = `${base}.bcad`;
-  const md = stepsMarkdown(doc, steps, { modelFile, failed, images, diagrams, finished: "images/finished.png" });
+  const md = stepsMarkdown(doc, steps, { modelFile, failed, images, diagrams, finished: "images/finished.png", prints });
   files.unshift({ name: "README.md", data: enc.encode(md) }, { name: modelFile, data: enc.encode(saveBcad(doc)) });
   o.onProgress?.(1, "Packing the steps");
   return { name: `${base} build steps.zip`, bytes: zip(files), steps: steps.length };

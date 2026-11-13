@@ -80,6 +80,25 @@ describe("exports of the model (#80, #81, #86)", () => {
     expect(() => x.estimate({ doc: d, bodies: ["h"], format: "stl", deflection: 0.1 })).toThrow("Only hole shapes are chosen");
   });
 
+  it("prints bodies of the same shape from one file, saying where each copy goes and how it's turned", () => {
+    let d = addPart(newDoc("Kit"), "box", "a");
+    d = changeParts(d, ["a"], "size", { x: 30, y: 20, z: 10 });
+    d = addPart(d, "box", "b");
+    d = changeParts(d, ["b"], "size", { x: 30, y: 20, z: 10 });
+    d = changeParts(d, ["b"], "rotation", { z: 90 });
+    d = addPart(d, "cylinder", "c");
+    const r = x.export({ doc: d, bodies: null, format: "stl", deflection: DEFLECTION.draft, separate: true, same: true, name: "Kit" });
+    expect(r.files.map((f) => f.name)).toEqual(["Kit-Box 1.stl", "Kit-Cylinder 1.stl"]);
+    const [boxes] = r.files;
+    expect(boxes!.copies!.map((c) => c.part)).toEqual(["a", "b"]);
+    const each = x.export({ doc: d, bodies: null, format: "stl", deflection: DEFLECTION.draft, separate: true, name: "Kit" });
+    // Each copy's middle is where that body's own file says it is.
+    each.files.slice(0, 2).forEach((f, i) => f.centre!.forEach((v, k) => expect(boxes!.copies![i]!.centre[k]).toBeCloseTo(v, 2)));
+    expect(boxes!.copies![0]!.rotation).toEqual([0, 0, 0]);
+    const yaw = boxes!.copies![1]!.rotation;
+    expect(Math.abs(yaw[2]) % 180).toBeCloseTo(90, 1);
+  });
+
   it("says where each file's bodies sit in the model, though the file is on the bed", () => {
     let d = addPart(newDoc("Kit"), "box", "a");
     d = addPart(d, "box", "b");

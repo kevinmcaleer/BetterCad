@@ -38,6 +38,7 @@ import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind 
 import { clampJoint, jointMove, mat4Apply, mat4ApplyDir, mat4Mul, moveFrame, placeMatrix, placeOf, type Mat4, type Pose } from "./pose";
 import { driveMultiplier, driveProblem, driveTo, togetherMultiplier, togetherProblem, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
 import {
+  FINISH_OPS,
   MIRRORED_OPS,
   PATTERN_DEFAULTS,
   copyName,
@@ -261,6 +262,11 @@ export interface BodyOp {
    * own coordinates, after any `mirror`, the first one first.
    */
   by?: CopyMove[];
+  /**
+   * A copied fillet, chamfer, push/pull or face offset: the step it copies. Its edges or faces are found where that
+   * step's picks were, on the body moved back by `by`, since its own names and numbers point at the original's.
+   */
+  from?: string;
   feature: string;
 }
 
@@ -1296,7 +1302,9 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
               const was = opMoves(o);
               const rest = { ...o };
               delete rest.mirror;
-              for (const m of moves) extra.push({ ...rest, by: [...was, moveToLocal(m, p)], feature: f.id });
+              // A copied finish finds its edges where the original's were (see `BodyOp.from`).
+              const from = FINISH_OPS.has(o.op) ? { from: o.from ?? o.feature } : {};
+              for (const m of moves) extra.push({ ...rest, ...from, by: [...was, moveToLocal(m, p)], feature: f.id });
             }
             if (extra.length) p.ops = [...p.ops!, ...extra];
             made += extra.length;
@@ -1307,7 +1315,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             failed.set(
               f.id,
               skipped
-                ? `Fillets, chamfers and shells can't be ${verb}. ${f.kind === "mirror" ? "Mirror" : "Pattern"} the body instead.`
+                ? `Shells can't be ${verb}. ${f.kind === "mirror" ? "Mirror" : "Pattern"} the body instead.`
                 : `The features it ${f.kind === "mirror" ? "mirrors" : "copies"} are gone`,
             );
         }
@@ -3676,8 +3684,8 @@ function syncMirrorParts(doc: ModelDoc, id: string): ModelDoc {
 }
 
 /**
- * The steps before `id` (or before the end) a Mirror or Pattern of features can copy: those that cut, joined, made holes
- * or made a body, and earlier Mirror and Pattern steps that did, so a mirror can be mirrored again.
+ * The steps before `id` (or before the end) a Mirror or Pattern of features can copy: those that cut, joined, made holes,
+ * filleted, chamfered, pushed or pulled, or made a body, and earlier Mirror and Pattern steps that did, so a mirror can be mirrored again.
  */
 export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length): Feature[] {
   const { parts } = build(doc, before);

@@ -40,3 +40,20 @@ for (const theme of THEMES) {
     expect(library.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
   });
 }
+
+for (const theme of THEMES) {
+  test(`the desktop ribbon and a group's drop-down have no axe violations in ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript((t) => {
+      localStorage.setItem("bettercad.theme", t);
+      localStorage.removeItem("bettercad.toolbar");
+    }, theme);
+    await page.goto("/");
+    const tools = page.getByRole("banner").getByRole("toolbar", { name: "Model tools" });
+    await expect(tools.locator(".bc-icon-colour").first()).toBeVisible();
+    await tools.getByRole("button", { name: "Modify", exact: true }).click();
+    await expect(page.getByRole("menu", { name: "Modify tools" })).toBeVisible();
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
+    expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
+  });
+}

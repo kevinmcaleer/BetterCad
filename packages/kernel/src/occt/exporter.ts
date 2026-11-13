@@ -4,6 +4,7 @@ import { triangles, writeStep } from "./export";
 import { build, poseNesting, type ModelDoc, type Part } from "../document";
 import { linkTransforms, type Mat4 } from "../pose";
 import { resolvePose } from "../drivelinks";
+import { rpy, sameShapes, type Mat3 } from "../export/same";
 import { boxCentre, placeOnBed, stlBytes, triangleCount, write3mf, writeStl, type MeshBody } from "../export/mesh";
 import { gltfBytes, writeGlb, writeGltf } from "../export/gltf";
 import { fileName } from "../bcad";
@@ -28,6 +29,11 @@ export interface ExportRequest {
   deflection: number;
   /** One file per body instead of one for all. */
   separate?: boolean;
+  /**
+   * With `separate`, mesh formats: one file per shape, so bodies that are the same shape only moved and turned (a
+   * track's pieces, a pattern's copies) share a file, which lists where each copy goes.
+   */
+  same?: boolean;
   /** Leave bodies where they are instead of putting the lowest point on Z = 0. */
   keepPosition?: boolean;
   /** Export the bodies as the joints are posed (#173) instead of at home. */
@@ -49,7 +55,14 @@ export interface ExportResult {
    * `centre` (mesh formats): the middle of the file's bodies where they sit in the model, in mm, before any move onto
    * the bed, so an assembly can put the part back where it goes. `parts`: the ids of the bodies in it.
    */
-  files: { name: string; data: ArrayBuffer; centre?: [number, number, number]; parts?: string[] }[];
+  files: {
+    name: string;
+    data: ArrayBuffer;
+    centre?: [number, number, number];
+    parts?: string[];
+    /** With `same`: every body printed from this file, with where its middle goes (mm) and its turn (roll, pitch, yaw °). */
+    copies?: { part: string; centre: [number, number, number]; rotation: [number, number, number] }[];
+  }[];
   triangles: number;
   skipped: number;
 }
@@ -189,6 +202,7 @@ export class Exporter {
         : [{ file: fileName(r.name, ext), parts }];
     const files: ExportResult["files"] = [];
     let total = 0;
+    if (r.same && r.separate && (r.format === "stl" || r.format === "3mf") && parts.length > 1) return this.sameShapes(r, parts, moves, skipped, cancelled);
     for (const g of groups) {
       if (cancelled()) throw new KernelError("cancelled", "Stopped.");
       if (r.format === "step") {
@@ -215,4 +229,39 @@ export class Exporter {
     }
     return { files, triangles: total, skipped };
   }
+
+  /** One file per shape (see `same`), named after the first body of it. */
+  private sameShapes(r: ExportRequest & { name: string }, parts: Part[], moves: Map<string, Mat4>, skipped: number, cancelled: () => boolean): ExportResult {
+    const meshes = parts.map((p) => {
+      if (cancelled()) throw new KernelError("cancelled", "Stopped.");
+      return this.posedMesh(p, r.deflection, moves.get(p.id));
+    });
+    const files: ExportResult["files"] = [];
+    let total = 0;
+    for (const g of sameShapes(meshes)) {
+      const first = parts[g.first]!;
+      let bodies = [meshes[g.first]!];
+      const centre = boxCentre(bodies) ?? [0, 0, 0];
+      if (!r.keepPosition) bodies = placeOnBed(bodies);
+      total += triangleCount(bodies);
+      const name = fileName(`${r.name}-${first.name}`, `.${r.format}`);
+      const data = r.format === "stl" ? writeStl(r.name, bodies) : write3mf(r.name, bodies);
+      const copies = g.copies.map((c) => {
+        const at = turnPoint(c.turn, centre);
+        return {
+          part: parts[c.index]!.id,
+          centre: [at[0] + c.move[0], at[1] + c.move[1], at[2] + c.move[2]] as [number, number, number],
+          rotation: rpy(c.turn),
+        };
+      });
+      files.push({ name, data, centre, parts: g.copies.map((c) => parts[c.index]!.id), copies });
+    }
+    return { files, triangles: total, skipped };
+  }
 }
+
+const turnPoint = (m: Mat3, p: [number, number, number]): [number, number, number] => [
+  m[0] * p[0] + m[1] * p[1] + m[2] * p[2],
+  m[3] * p[0] + m[4] * p[1] + m[5] * p[2],
+  m[6] * p[0] + m[7] * p[1] + m[8] * p[2],
+];

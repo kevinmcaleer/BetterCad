@@ -280,8 +280,13 @@ export function mirrorPlane(
   return { origin: tidy(add(w.origin, scale(w.normal, f.offset))), normal: w.normal };
 }
 
-/** Body steps a Mirror or Pattern of features can copy: joins, cuts, intersections and holes (fillets and shells pick by number). */
-export const MIRRORED_OPS = new Set(["join", "cut", "intersect", "hole"]);
+/**
+ * Body steps a Mirror or Pattern of features can copy: joins, cuts, intersections, holes, and finishes that pick edges or
+ * faces (#426). A shell can't be: a second shell on the same body would hollow it again.
+ */
+export const MIRRORED_OPS = new Set(["join", "cut", "intersect", "hole", "fillet", "chamfer", "pushpull", "offsetFace"]);
+/** Copyable steps that pick edges or faces, so each copy finds its own where the original's picks were. */
+export const FINISH_OPS = new Set(["fillet", "chamfer", "pushpull", "offsetFace"]);
 
 /** Where a point goes under a copy's move. */
 export function movePoint(p: Vec3, m: CopyMove): Vec3 {

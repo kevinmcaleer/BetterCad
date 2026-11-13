@@ -56,6 +56,9 @@ import {
   mirrorFace,
   addPattern,
   addPart,
+  addCombine,
+  addFinish,
+  type ModelDoc,
   type PatternParams,
   build,
   changeParts,
@@ -67,6 +70,7 @@ import {
 } from "./document";
 import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
+import { signature } from "./occt/repick";
 
 /** A 19 mm octagonal prism of circumradius 10 with a 1 mm, 20 mm wide disc on top: the disc's rim touches the corners. */
 function discOnOctagon(oc: OC): TopoDS_Shape {
@@ -97,6 +101,22 @@ function cogTopEdge(oc: OC, shape: TopoDS_Shape): number {
   });
 }
 
+/**
+ * The four edges round the cog's top, by number in `shape`: 5.5 mm long and 2 mm further from the wheel's axis (Z) than
+ * the flat it stands on. Any one of them is what you'd pick to chamfer the stud.
+ */
+function cogTopEdges(oc: OC, shape: TopoDS_Shape): number[] {
+  const out: number[] = [];
+  elements(oc, shape, "edge").forEach((e, i) => {
+    const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+    const [a, m, b] = [c.FirstParameter(), (c.FirstParameter() + c.LastParameter()) / 2, c.LastParameter()].map((u) => c.Value(u));
+    const length = Math.hypot(a!.X() - b!.X(), a!.Y() - b!.Y(), a!.Z() - b!.Z());
+    if (Math.abs(length - 5.5) < 1e-3 && Math.hypot(m!.X(), m!.Y()) > 15.5) out.push(i);
+    c.delete();
+  });
+  return out;
+}
+
 /** A 100 × 80 × 5 mm plate with a mounting feature on its top (#189). */
 function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
   let doc = changeParts(addPart(newDoc(), "box", "plate"), ["plate"], "size", { x: 100, y: 80, z: 5 });
@@ -117,6 +137,26 @@ function gearOf(oc: OC, change: Partial<GearParamsStep> = {}): TopoDS_Shape {
 }
 
 /** A part copied by a joined Mirror or Pattern step (#69), built as the one body it becomes. */
+/**
+ * A 40 × 40 × 5 mm plate with a 6 mm peg 8 mm tall joined on at x = 12, its top edge chamfered or filleted 1 mm, then
+ * the peg and its finish copied by `p` (#426): each copy's edge is found where the original's was.
+ */
+function finishedPeg(oc: OC, type: "fillet" | "chamfer", p: Partial<PatternParams> & { kind: PatternParams["kind"] }): TopoDS_Shape {
+  let doc: ModelDoc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 40, z: 5 });
+  doc = changeParts(addPart(doc, "cylinder", "peg"), ["peg"], "size", { x: 6, y: 6, z: 8 });
+  doc = changeParts(doc, ["peg"], "position", { x: 12, y: 0, z: 5 });
+  doc = addCombine(doc, { mode: "combine", target: "b", tools: [{ id: "peg", op: "join" }] }, "j");
+  const before = new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "b")!).shape;
+  // The peg's top rim: the round edge whose middle is on the peg's axis, 13 mm up.
+  const top = elements(oc, before, "edge").findIndex((e) => {
+    const s = signature(oc, e, "edge");
+    return !s.dir && Math.hypot(s.at[0] - 12, s.at[1], s.at[2] - 13) < 0.01;
+  });
+  doc = addFinish(doc, { type, part: "b", refs: [top], size: 1 }, "f");
+  doc = addPattern(doc, { parts: [], of: "features", features: ["j", "f"], ...p });
+  return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "b")!).shape;
+}
+
 function patterned(
   oc: OC,
   kind: "wedge" | "cylinder" | "box",
@@ -285,6 +325,11 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   "chamfer-cog-on-flat": (oc) => {
     const s = cogOnFlat(oc);
     return chamfer(oc, s, [cogTopEdge(oc, s)], 1);
+  },
+  // All four at once: Kev's chamfer on the stud failed again on 12 November (an out-of-date app, not the kernel).
+  "chamfer-cog-top-edges": (oc) => {
+    const s = cogOnFlat(oc);
+    return chamfer(oc, s, cogTopEdges(oc, s), 1);
   },
   "chamfer-all": (oc) => chamfer(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 1),
   tray: (oc) => shell(oc, fillet(oc, box(oc, { x: 40, y: 30, z: 15 }), [...Array(12).keys()], 3), [], 1.2),
@@ -589,6 +634,10 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     doc = addPattern(doc, { parts: ["a"], kind: "circle", count: 6, angle: 360, join: true, axisRef });
     return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
   },
+  // A peg and its chamfer turned 4 times round Z: every peg is chamfered (#426).
+  "pattern-circle-chamfered-peg": (oc) => finishedPeg(oc, "chamfer", { kind: "circle", count: 4, angle: 360 }),
+  // A peg and its fillet mirrored across YZ: both pegs are rounded (#426).
+  "mirror-filleted-peg": (oc) => finishedPeg(oc, "fillet", { kind: "mirror", plane: "YZ" }),
   // Track (Pattern's Track kind): a 10 × 4 × 2 mm piece with pins 8 mm apart wrapped round two 40 mm wheels, 2 mm out.
   // 42 go round; the fifth piece is on the first wheel's round end, turned to follow it.
   "pattern-track-two-wheels": (oc) => {
@@ -759,4 +808,14 @@ describe("golden geometry", () => {
       20_000,
     );
   }
+});
+
+describe("chamfer on the cog stud", () => {
+  // Whichever top edge you pick, a 1 mm chamfer fits on it alone (#425).
+  it("fits 1 mm on each top edge by itself", () => {
+    const s = cogOnFlat(oc);
+    const tops = cogTopEdges(oc, s);
+    expect(tops).toHaveLength(4);
+    for (const e of tops) expect(valid(oc, chamfer(oc, s, [e], 1)), `edge ${e}`).toBe(true);
+  });
 });

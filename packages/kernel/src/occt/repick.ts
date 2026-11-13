@@ -11,7 +11,7 @@ export interface SolidSource {
 
 type V3 = [number, number, number];
 /** Where an edge or face is: its middle, and the line's direction or the plane's normal and offset when it has one. */
-interface Sig {
+export interface Sig {
   at: V3;
   dir?: V3;
   offset?: number;
@@ -30,7 +30,7 @@ const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const dist = (a: V3, b: V3) => Math.hypot(...sub(a, b));
 
-function signature(oc: OC, s: TopoDS_Shape, kind: "edge" | "face"): Sig {
+export function signature(oc: OC, s: TopoDS_Shape, kind: "edge" | "face"): Sig {
   const props = new oc.GProp_GProps();
   if (kind === "edge") oc.BRepGProp.LinearProperties(s, props, false, false);
   else oc.BRepGProp.SurfaceProperties(s, props, false, false);
@@ -65,7 +65,7 @@ function signature(oc: OC, s: TopoDS_Shape, kind: "edge" | "face"): Sig {
 }
 
 /** The new element that is the same edge or face as `old`: on the same line or plane, nearest it; else nearest. */
-function match(old: Sig, kind: "edge" | "face", next: Sig[]): number {
+export function match(old: Sig, kind: "edge" | "face", next: Sig[]): number {
   let best = -1;
   let bestD = Infinity;
   next.forEach((n, i) => {
