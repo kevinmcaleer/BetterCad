@@ -5,7 +5,7 @@
     "shell": 385,
     "pages": 120,
     "kernelClient": 30,
-    "totalJs": 776
+    "totalJs": 780
   },
   "wasm": {
     "$comment": "MB. OCCT is the opencascade.js build replicad ships (23 MB); the issue's 12 MB / 3.5 MB target needs a slimmer build of the same unmodified OCCT (#4, #50).",

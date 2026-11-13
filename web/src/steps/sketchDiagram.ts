@@ -2,7 +2,7 @@
  * A sketch step's diagram: the sketch face on, zoomed to fit the picture, with thick curves and every size drawn as
  * the sketch draws it (extension lines, arrows and the value). Flat 2D canvas work, in the Light theme's colours.
  */
-import { formatDimension, SketchIndex, type Sketch, type Vec2 } from "@bettercad/sketch";
+import { formatDimension, SketchIndex, type Frame, type Sketch, type Vec2 } from "@bettercad/sketch";
 import { dimensionArt, type DimensionArt } from "../sketch/dimensions";
 import { sketchCurves } from "./curves";
 import { lightPalette, toPng } from "./picture";
@@ -78,8 +78,28 @@ function grown(geo: { min: Vec2; max: Vec2 }, fit: DiagramFit, textWidth: (t: st
   return b;
 }
 
-/** The diagram as a PNG, or null for a sketch with nothing drawn. */
-export async function sketchDiagram(sketch: Sketch, width = 1200, height = 900): Promise<Blob | null> {
+/**
+ * Quarter turns (anticlockwise) that put the model's up at the top of the diagram: world Z, or world Y for a sketch
+ * lying flat. The sketch's own axes can run any way round on a face or a plane seen from behind, which drew some
+ * sketches upside down.
+ */
+export function diagramTurn(frame: Frame): 0 | 1 | 2 | 3 {
+  const n = frame.normal;
+  const x = frame.x;
+  const y = [n[1] * x[2] - n[2] * x[1], n[2] * x[0] - n[0] * x[2], n[0] * x[1] - n[1] * x[0]];
+  const up = Math.abs(n[2]) > 0.9 ? [0, 1, 0] : [0, 0, 1];
+  const ux = up[0]! * x[0] + up[1]! * x[1] + up[2]! * x[2];
+  const uy = up[0]! * y[0]! + up[1]! * y[1]! + up[2]! * y[2]!;
+  if (Math.hypot(ux, uy) < 1e-6) return 0;
+  const deg = 90 - (Math.atan2(uy, ux) * 180) / Math.PI;
+  return (((Math.round(deg / 90) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
+}
+
+/** `q` turned `k` quarter turns anticlockwise. */
+const turned = (q: Vec2, k: number): Vec2 => (k === 1 ? [-q[1], q[0]] : k === 2 ? [-q[0], -q[1]] : k === 3 ? [q[1], -q[0]] : q);
+
+/** The diagram as a PNG, or null for a sketch with nothing drawn. `frame`: where the sketch sits, to keep up at the top. */
+export async function sketchDiagram(sketch: Sketch, width = 1200, height = 900, frame?: Frame): Promise<Blob | null> {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -89,10 +109,18 @@ export async function sketchDiagram(sketch: Sketch, width = 1200, height = 900):
   const font = getComputedStyle(document.documentElement).getPropertyValue("--bc-font-sans").trim() || "sans-serif";
   const size = Math.round(width / 50);
   ctx.font = `600 ${size}px ${font}`;
-  const fit = fitDiagram(sketch, width, height, width / 16, (t) => ctx.measureText(t).width);
+  const k = frame ? diagramTurn(frame) : 0;
+  // Fitted before the turn, so a quarter turn swaps the picture's sides.
+  const fit =
+    k % 2
+      ? fitDiagram(sketch, height, width, width / 16, (t) => ctx.measureText(t).width)
+      : fitDiagram(sketch, width, height, width / 16, (t) => ctx.measureText(t).width);
   if (!fit) return null;
   const { scale, centre } = fit;
-  const at = (q: Vec2): Vec2 => [width / 2 + (q[0] - centre[0]) * scale, height / 2 - (q[1] - centre[1]) * scale];
+  const at = (q: Vec2): Vec2 => {
+    const r = turned([q[0] - centre[0], q[1] - centre[1]], k);
+    return [width / 2 + r[0] * scale, height / 2 - r[1] * scale];
+  };
 
   ctx.fillStyle = css(p.viewport);
   ctx.fillRect(0, 0, width, height);
@@ -135,8 +163,9 @@ export async function sketchDiagram(sketch: Sketch, width = 1200, height = 900):
     for (const { tip, dir } of art.arrows) {
       const [x, y] = at(tip);
       // Sketch y runs up, the canvas's down.
-      const ux = dir[0];
-      const uy = -dir[1];
+      const d = turned(dir, k);
+      const ux = d[0];
+      const uy = -d[1];
       ctx.beginPath();
       ctx.moveTo(x, y);
       ctx.lineTo(x - ux * arrow - uy * arrow * 0.35, y - uy * arrow + ux * arrow * 0.35);
