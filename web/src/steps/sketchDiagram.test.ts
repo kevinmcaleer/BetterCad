@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { newSketch, type Sketch } from "@bettercad/sketch";
-import { fitDiagram } from "./sketchDiagram";
+import { diagramTurn, fitDiagram } from "./sketchDiagram";
 
 function rect(w: number, h: number, sized: boolean): Sketch {
   const s = newSketch({ kind: "world", plane: "XY", offset: 0 }, "Sketch 1", "s1");
@@ -28,6 +28,15 @@ function rect(w: number, h: number, sized: boolean): Sketch {
 const width = (t: string) => t.length * 12;
 
 describe("sketch diagram", () => {
+  it("turns the diagram so the model's up is at the top", () => {
+    expect(diagramTurn({ origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] })).toBe(0);
+    // A wall seen from the front, but with the sketch's X running left: its Y runs down, so a half turn.
+    expect(diagramTurn({ origin: [0, 0, 0], x: [-1, 0, 0], normal: [0, -1, 0] })).toBe(2);
+    expect(diagramTurn({ origin: [0, 0, 0], x: [1, 0, 0], normal: [0, -1, 0] })).toBe(0);
+    // X running up the wall: a quarter turn.
+    expect(diagramTurn({ origin: [0, 0, 0], x: [0, 0, 1], normal: [1, 0, 0] })).toBe(1);
+  });
+
   it("zooms a small sketch to fill the picture, whatever its size in mm", () => {
     const small = fitDiagram(rect(4, 3, false), 1200, 900, 75, width)!;
     const big = fitDiagram(rect(400, 300, false), 1200, 900, 75, width)!;

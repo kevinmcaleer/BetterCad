@@ -114,5 +114,12 @@ describe("build steps", () => {
     expect(md).toContain("> This step didn't build: The edge is gone.");
     expect(md).toContain("![Step 1: Base sketch](images/step-01.png)\n\n![Step 1: Base sketch, face on with its sizes](images/step-01-sketch.png)");
     expect(md).toContain("![Servo bracket, finished](images/finished.png)");
+    expect(md).not.toContain("Parts to print");
+  });
+
+  it("lists the parts to print, one file per shape, with how many", () => {
+    const doc = model();
+    const md = stepsMarkdown(doc, buildSteps(doc), { prints: [{ name: "Track", file: "models/Rover-Track.stl", count: 32 }] });
+    expect(md).toContain("## Parts to print\n\n| Part | How many | File |\n| --- | --- | --- |\n| Track | 32 | [Rover-Track.stl](models/Rover-Track.stl) |");
   });
 });
