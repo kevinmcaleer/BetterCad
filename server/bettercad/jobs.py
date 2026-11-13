@@ -37,11 +37,12 @@ def thin(db: sqlite3.Connection, keep_days: int = KEEP_DAYS, keep_old: int = KEE
 
 
 def empty_bin(db: sqlite3.Connection, days: int = BIN_DAYS) -> int:
-    """Deletes models that have been in the bin longer than `days`."""
+    """Deletes models, folders and projects that have been in the bin longer than `days`. Returns the models."""
+    age = (f"-{days} days",)
     with db:
-        cur = db.execute(
-            "DELETE FROM models WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)", (f"-{days} days",)
-        )
+        cur = db.execute("DELETE FROM models WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)", age)
+        db.execute("DELETE FROM folders WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)", age)
+        db.execute("DELETE FROM projects WHERE deleted_at IS NOT NULL AND deleted_at < datetime('now', ?)", age)
     return cur.rowcount
 
 

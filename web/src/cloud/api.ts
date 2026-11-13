@@ -38,6 +38,10 @@ export interface ModelSummary {
   deleted_at: string | null;
   /** A path under the API, or null when the model has no picture. */
   thumbnail: string | null;
+  /** The folder it lives in (#273), or null. A model in a folder also has its folder's project. */
+  folder_id?: string | null;
+  /** The project it lives in (#274), or null for My models. */
+  project_id?: string | null;
   /** Bytes the model takes from your quota, every saved version together. Only in the models list. */
   size?: number;
   /** How many versions are saved. Only in the models list. */
@@ -64,6 +68,42 @@ export interface Shared {
   modified: string;
   bcad: string;
   thumbnail: string | null;
+}
+
+/** A folder (#273): at the top of My models, in a project, or in another folder. */
+export interface Folder {
+  id: string;
+  name: string;
+  parent_id: string | null;
+  project_id: string | null;
+  created: string;
+  modified: string;
+  deleted_at: string | null;
+  /** Models directly inside. */
+  models: number;
+  /** Folders directly inside. */
+  folders: number;
+}
+
+/** A project (#274): one build's models and folders, with a readme and a cover picture. */
+export interface Project {
+  id: string;
+  name: string;
+  /** Markdown. */
+  readme: string;
+  /** A path under the API, or null. */
+  cover: string | null;
+  created: string;
+  modified: string;
+  deleted_at: string | null;
+  /** Models in it, at any depth. */
+  models: number;
+}
+
+/** Where a model or folder lives: a folder, a project's top level, or My models when both are empty. */
+export interface Place {
+  folder_id?: string | null;
+  project_id?: string | null;
 }
 
 export interface Usage {
@@ -199,16 +239,25 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     /** Deletes your models, files and settings here. Your kevsrobots.com account stays. */
     deleteMe: (confirm_username: string) => call<{ ok: true }>("DELETE", "account", { confirm_username }),
 
-    list: (o: { q?: string; sort?: "modified" | "name"; bin?: boolean; limit?: number; offset?: number } = {}) => {
+    /**
+     * Saved models: every one, or with `folder`, `project` (its top level) or `top` (My models' top level) only the
+     * ones there.
+     */
+    list: (
+      o: { q?: string; sort?: "modified" | "name"; bin?: boolean; limit?: number; offset?: number; folder?: string; project?: string; top?: boolean } = {},
+    ) => {
       const p = new URLSearchParams();
       if (o.q) p.set("q", o.q);
+      if (o.folder) p.set("folder", o.folder);
+      else if (o.project) p.set("project", o.project);
+      else if (o.top) p.set("top", "true");
       if (o.sort) p.set("sort", o.sort);
       if (o.bin) p.set("bin", "true");
       p.set("limit", String(o.limit ?? 200));
       if (o.offset) p.set("offset", String(o.offset));
       return call<{ models: ModelSummary[]; total: number }>("GET", `models?${p}`);
     },
-    create: (name: string, bcad: string, note?: string) => call<ModelSummary>("POST", "models", { name, bcad, note }),
+    create: (name: string, bcad: string, note?: string, place: Place = {}) => call<ModelSummary>("POST", "models", { name, bcad, note, ...place }),
     get: (id: string) => call<ModelFull>("GET", m(id)),
     /** Saves a new version. `ifMatch` is the version this save follows; a 409 means another tab saved first. */
     save: (id: string, bcad: string, o: { note?: string; name?: string; ifMatch?: number } = {}) =>
@@ -219,6 +268,8 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     duplicate: (id: string) => call<ModelSummary>("POST", `${m(id)}/duplicate`),
     remove: (id: string, forever = false) => call<{ ok: true }>("DELETE", `${m(id)}${forever ? "?forever=true" : ""}`),
     undelete: (id: string) => call<ModelSummary>("POST", `${m(id)}/restore`),
+    /** Any other call, for the parts of the app that load later (folders and projects, #273). */
+    call,
     versions: (id: string) => call<{ versions: VersionInfo[] }>("GET", `${m(id)}/versions`),
     version: (id: string, n: number) => call<ModelFull & VersionInfo>("GET", `${m(id)}/versions/${n}`),
     noteVersion: (id: string, n: number, note: string) => call<VersionInfo>("PATCH", `${m(id)}/versions/${n}`, { note }),

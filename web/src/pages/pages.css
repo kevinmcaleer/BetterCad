@@ -211,6 +211,164 @@
   margin-top: var(--bc-space-8);
 }
 
+/* Folders and projects (#273, #274) */
+.bc-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-2);
+  list-style: none;
+  margin: 0 0 var(--bc-space-6);
+  padding: 0;
+  color: var(--bc-color-muted);
+}
+.bc-crumb {
+  border-radius: var(--bc-radius-sm);
+  padding: 0 var(--bc-space-2);
+}
+.bc-crumb + .bc-crumb::before {
+  content: "/";
+  margin-inline-end: var(--bc-space-4);
+  color: var(--bc-color-muted);
+}
+.bc-crumb [aria-current] {
+  color: var(--bc-color-ink);
+}
+.bc-lib-h {
+  font-size: 15px;
+  margin: var(--bc-space-8) 0 var(--bc-space-4);
+}
+.bc-lib-folders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--bc-space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bc-folder {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  background: var(--bc-color-bar);
+  padding: var(--bc-space-2);
+}
+.bc-folder:hover,
+.bc-folder:focus-within {
+  background: var(--bc-color-hover);
+}
+.bc-folder-open {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  gap: var(--bc-space-4);
+  padding: var(--bc-space-2) var(--bc-space-3);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-folder-open > .bc-icon {
+  flex: none;
+  color: var(--bc-color-muted);
+}
+.bc-folder-open .bc-card-name,
+.bc-folder-open .bc-card-time {
+  display: block;
+}
+.bc-drop,
+.bc-crumb.bc-drop {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+  background: var(--bc-color-accent-soft);
+}
+.bc-card-place {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-lib-project {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-8);
+  align-items: flex-start;
+  margin-bottom: var(--bc-space-8);
+}
+.bc-lib-cover {
+  width: min(100%, 360px);
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: var(--bc-radius-md);
+  border: 1px solid var(--bc-color-line);
+}
+.bc-lib-about {
+  flex: 1 1 320px;
+  min-width: 0;
+  max-width: 65ch;
+}
+.bc-lib-about-tools,
+.bc-lib-cover-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-4);
+  align-items: center;
+  margin-top: var(--bc-space-6);
+}
+.bc-lib-members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bc-lib-members li {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+}
+.bc-readme h2 {
+  font-size: 20px;
+  margin: 0 0 var(--bc-space-4);
+}
+.bc-readme h3,
+.bc-readme h4 {
+  font-size: 16px;
+  margin: var(--bc-space-6) 0 var(--bc-space-2);
+}
+.bc-lib-readme-field {
+  height: auto;
+  padding: var(--bc-space-3) var(--bc-space-4);
+  resize: vertical;
+  font-family: var(--bc-font-mono, inherit);
+}
+.bc-lib-targets {
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow: auto;
+}
+.bc-lib-target {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  padding-block: var(--bc-space-2);
+  border-radius: var(--bc-radius-sm);
+  cursor: pointer;
+}
+.bc-lib-target:hover {
+  background: var(--bc-color-hover);
+}
+.bc-lib-target.bc-off {
+  color: var(--bc-color-muted);
+  cursor: default;
+}
+
 /* The admin console: users, each opening to their models */
 .bc-admin-users,
 .bc-admin-models {

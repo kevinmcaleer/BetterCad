@@ -37,6 +37,8 @@ def _move_blob_dir(blobs: Path, old: int, new: int) -> None:
 def _move(db: sqlite3.Connection, old: int, new: int) -> None:
     """Moves everything owned by account `old` onto account `new` (which must exist) and deletes `old`."""
     db.execute("UPDATE models SET user_id = ? WHERE user_id = ?", (new, old))
+    db.execute("UPDATE folders SET user_id = ? WHERE user_id = ?", (new, old))
+    db.execute("UPDATE projects SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("UPDATE OR IGNORE blobs SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("UPDATE OR IGNORE printer_profiles SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("DELETE FROM accounts WHERE id = ?", (old,))
