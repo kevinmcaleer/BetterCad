@@ -1,10 +1,15 @@
-import { SketchIndex, type Dimension, type Sketch, type Vec2 } from "./model";
-import { cross, dist, dot, len, lineLine, norm, scale, sub } from "./geom2d";
+import { SketchIndex, measuredRefs, type Dimension, type Sketch, type Vec2 } from "./model";
+import { add, cross, dist, dot, len, lineLine, norm, perp, scale, sub } from "./geom2d";
 
 /** What a dimension measures on the geometry as it is now: mm, or degrees for angles. Driven dimensions show this. */
-export function measureDimension(sketch: Sketch, d: Pick<Dimension, "kind" | "refs" | "arms">): number {
+export function measureDimension(sketch: Sketch, d: Pick<Dimension, "kind" | "refs" | "arms" | "edges">): number {
   const idx = new SketchIndex(sketch);
-  const [r0, r1] = d.refs;
+  if (d.edges) {
+    const g = edgeGap(idx, d);
+    if (!g) throw new Error("Pick a circle and another circle, a line or a point");
+    return g.value;
+  }
+  const [r0, r1] = measuredRefs(idx, d);
   const e0 = idx.get(r0!);
   const e1 = r1 ? idx.get(r1) : undefined;
   const lineEnds = (id: string): [Vec2, Vec2] => {
@@ -72,4 +77,56 @@ export function armsAt(sketch: Sketch | SketchIndex, refs: string[], p: Vec2): [
   const alpha = cross(w, c.v) / det;
   const beta = cross(c.u, w) / det;
   return [alpha < 0 ? -1 : 1, beta < 0 ? -1 : 1];
+}
+
+/**
+ * The gap a distance to a circle's edge measures (`edges`): between two circles, a circle and a line, or a point and a
+ * circle, from the nearest point on one to the nearest point on the other. `a` and `b` are its ends, in the refs'
+ * order; `value` is how far apart they are. Null for any other refs.
+ */
+export function edgeGap(sketch: Sketch | SketchIndex, d: Pick<Dimension, "refs">): { a: Vec2; b: Vec2; value: number } | null {
+  const idx = sketch instanceof SketchIndex ? sketch : new SketchIndex(sketch);
+  const e0 = d.refs[0] ? idx.get(d.refs[0]) : undefined;
+  const e1 = d.refs[1] ? idx.get(d.refs[1]) : undefined;
+  if (!e0 || !e1) return null;
+  /** The way from `from` to `to`, or `fallback` where they meet. */
+  const way = (from: Vec2, to: Vec2, fallback: Vec2): Vec2 => (dist(from, to) > 1e-9 ? norm(sub(to, from)) : fallback);
+  if (e0.kind === "circle" && e1.kind === "circle") {
+    const [c0, c1] = [idx.xy(e0.c), idx.xy(e1.c)];
+    const u = way(c0, c1, [1, 0]);
+    const d01 = dist(c0, c1);
+    // One circle round the other's centre: the gap is inside the bigger one, between the rims on the same side.
+    if (d01 < Math.max(e0.r, e1.r)) {
+      const a = add(c0, scale(u, e0.r));
+      const b = add(c1, scale(u, e1.r));
+      return { a, b, value: Math.abs(Math.max(e0.r, e1.r) - Math.min(e0.r, e1.r) - d01) };
+    }
+    return { a: add(c0, scale(u, e0.r)), b: add(c1, scale(u, -e1.r)), value: Math.abs(d01 - e0.r - e1.r) };
+  }
+  if (e0.kind === "circle" && e1.kind === "line") {
+    const c = idx.xy(e0.c);
+    const [l0, l1] = [idx.xy(e1.a), idx.xy(e1.b)];
+    const t = norm(sub(l1, l0));
+    const foot = add(l0, scale(t, dot(sub(c, l0), t)));
+    const u = way(c, foot, perp(t));
+    return { a: add(c, scale(u, e0.r)), b: foot, value: Math.abs(dist(c, foot) - e0.r) };
+  }
+  if (e0.kind === "point" && e1.kind === "circle") {
+    const p = idx.xy(e0.id);
+    const c = idx.xy(e1.c);
+    const u = way(c, p, [1, 0]);
+    return { a: p, b: add(c, scale(u, e1.r)), value: Math.abs(dist(c, p) - e1.r) };
+  }
+  return null;
+}
+
+/**
+ * Whether a distance can run to a circle's edge as well as its centre: a circle with another circle, a line or a point.
+ * Arcs size from their centre only.
+ */
+export function edgesPossible(sketch: Sketch | SketchIndex, d: Pick<Dimension, "kind" | "refs">): boolean {
+  if (d.kind !== "distance" && d.kind !== "distanceX" && d.kind !== "distanceY") return false;
+  const idx = sketch instanceof SketchIndex ? sketch : new SketchIndex(sketch);
+  const k = d.refs.map((r) => idx.get(r)?.kind).join(",");
+  return k === "circle,circle" || k === "circle,line" || k === "point,circle";
 }

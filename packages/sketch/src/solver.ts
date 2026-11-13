@@ -1,5 +1,5 @@
 import { Algorithm, SolveStatus, init_planegcs_module, GcsWrapper, type SketchPrimitive } from "@salusoft89/planegcs";
-import { SketchIndex, constraintRefs, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
+import { SketchIndex, constraintRefs, measuredRefs, type Constraint, type Dimension, type Id, type Sketch, type Vec2 } from "./model";
 import { angleOf, cross, dot, scale, sub } from "./geom2d";
 import { freedom } from "./dof";
 import { measureDimension } from "./measure";
@@ -250,8 +250,19 @@ function dimensionPrimitives(d: Dimension, idx: SketchIndex): SketchPrimitive[] 
     default:
       break;
   }
-  if (e0?.kind === "point" && e1?.kind === "line") return [{ id, type: "p2l_distance", p_id: r0, l_id: r1!, distance: d.value }];
-  const [a, b] = e0?.kind === "line" ? [e0.a, e0.b] : [r0, r1!];
+  if (d.edges) {
+    // planegcs measures these gaps outright: between rims, from a rim to a line, from a point to a rim.
+    if (e0?.kind === "circle" && e1?.kind === "circle") return [{ id, type: "c2cdistance", c1_id: r0, c2_id: r1!, dist: d.value }];
+    if (e0?.kind === "circle" && e1?.kind === "line") return [{ id, type: "c2ldistance", c_id: r0, l_id: r1!, dist: d.value }];
+    if (e0?.kind === "point" && e1?.kind === "circle") return [{ id, type: "p2cdistance", p_id: r0, c_id: r1!, distance: d.value }];
+    return [];
+  }
+  // A circle or arc stands for its centre.
+  const [m0, m1] = measuredRefs(idx, d) as [Id, Id | undefined];
+  const p0 = idx.get(m0);
+  const p1 = m1 ? idx.get(m1) : undefined;
+  if (p0?.kind === "point" && p1?.kind === "line") return [{ id, type: "p2l_distance", p_id: m0, l_id: m1!, distance: d.value }];
+  const [a, b] = p0?.kind === "line" ? [p0.a, p0.b] : [m0, m1!];
   if (d.kind === "distanceX" || d.kind === "distanceY") {
     const prop = d.kind === "distanceX" ? "x" : "y";
     const k = prop === "x" ? 0 : 1;
