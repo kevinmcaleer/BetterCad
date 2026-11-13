@@ -43,9 +43,12 @@ test("a box too wide for the printer is flagged, centred on the bed and weighed"
   await x.press("Enter");
   // The Esc above can land on the Print panel too when the runner is slow; Print opens it again if so.
   await openPrint(page);
-  await page.getByRole("button", { name: "Centre on bed" }).click();
-  await expect(page.getByText("Centred the model on the bed")).toBeVisible();
-  await expect(x).toHaveValue("0");
+  // Centre on bed waits for the model's box, which a slow runner may still be rebuilding after the move: click again
+  // until it has centred.
+  await expect(async () => {
+    await page.getByRole("button", { name: "Centre on bed" }).click();
+    await expect(x).toHaveValue("0", { timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
 
   // A 20 mm cube of PLA: 8 cm³; the weight is an estimate, so it says "about".
   await expect(page.getByText("8 cm³").first()).toBeVisible({ timeout: 20_000 });

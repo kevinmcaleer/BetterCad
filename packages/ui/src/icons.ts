@@ -110,6 +110,8 @@ export const split = "M3 4h9L7 20H3zM16 4h5v16h-10z";
 export const loft = "M3 18h18l-2 3H5zM9 3h6v3H9zM3 18 9 6M21 18 15 6";
 export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
 /** Offset face (#264): a wedge, its slope moved out along an arrow. */
+/** A picture laid on a plane, to trace over (#248). */
+export const canvas = "M2 19 6 5h16l-4 14zM6.5 15.5l4-4 3 3 2-2 2 2";
 export const offsetFace = "M3 20h12L3 8zM6 5l13 13M10 13l3-3M13 10h-2.5M13 10v2.5";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
 export const wedge = "M3 20h12L3 8zM8 4v12h12M3 8l5-4M15 20l5-4M3 20l5-4";
@@ -297,6 +299,7 @@ export const ICONS = {
   ellipse,
   spline,
   offsetFace,
+  canvas,
   point,
   plane,
   axis,

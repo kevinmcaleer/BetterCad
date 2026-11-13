@@ -85,4 +85,60 @@ for (const theme of THEMES) {
     await page.waitForTimeout(500);
     await expect(canvas).toHaveScreenshot(`decal-${theme}.png`, { maxDiffPixelRatio: 0.01 });
   });
+
+  test(`a canvas under a sketch, ${theme} @visual`, async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.addInitScript((t) => localStorage.setItem("bettercad.theme", t), theme);
+    await page.goto("/");
+    await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+    type V = { __bcView: { project(p: number[]): { x: number; y: number }; preset(v: string): void } };
+    await page.evaluate(() => (window as unknown as V).__bcView.preset("top"));
+    await page.waitForTimeout(1200);
+    const canvas = page.getByTestId("view-canvas");
+    const box = (await canvas.boundingBox())!;
+    const click = async (x: number, y: number) => {
+      const q = await page.evaluate((p) => (window as unknown as V).__bcView.project(p), [x, y, 0]);
+      await page.mouse.move(box.x + q.x, box.y + q.y, { steps: 3 });
+      await page.mouse.down();
+      await page.mouse.up();
+    };
+    await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Canvas", exact: true }).click();
+    await expect(page.getByText("Click a plane or a flat face, then choose a picture to trace over.").first()).toBeVisible();
+    await expect(async () => {
+      const chooser = page.waitForEvent("filechooser", { timeout: 2000 });
+      await click(15, 15);
+      await (await chooser).setFiles({ name: "part.png", mimeType: "image/png", buffer: LOGO });
+    }).toPass({ timeout: 15000 });
+    await expect(page.getByRole("textbox", { name: "Width" })).toHaveValue("100");
+    await page.getByRole("button", { name: "OK", exact: true }).click();
+    // Trace a triangle over it: its lines draw on top.
+    await page.keyboard.press("k");
+    await click(15, 15);
+    await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+    await click(0, 0);
+    await click(30, 0);
+    await click(30, 20);
+    await click(0, 0);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await page.getByRole("toolbar", { name: "Sketch tools" }).getByRole("button", { name: "Finish sketch" }).click();
+    await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          let w = 0;
+          (
+            window as unknown as {
+              __bcView: { scene: { traverse(fn: (o: { userData: { canvas?: string }; material?: { map?: { image?: { width: number } } } }) => void): void } };
+            }
+          ).__bcView.scene.traverse((o) => {
+            if (o.userData.canvas) w = o.material?.map?.image?.width ?? 0;
+          });
+          return w;
+        }),
+      )
+      .toBeGreaterThan(0);
+    await page.waitForTimeout(500);
+    await expect(canvas).toHaveScreenshot(`canvas-${theme}.png`, { maxDiffPixelRatio: 0.01 });
+  });
 }

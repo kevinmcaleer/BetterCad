@@ -13,8 +13,9 @@ import {
 } from "react";
 import { ViewCube, type MenuEntry } from "@bettercad/ui";
 import { primitiveMesh, type BodyMesh, type KernelState } from "@bettercad/kernel";
-import type { Part } from "../state/document";
+import type { BuiltConstruct, Part } from "../state/document";
 import type { Placement } from "../decal/place";
+import type { EngineCanvas } from "./canvases";
 import { DEFAULT_CAMERA, viewRotation, type CameraState, type Preset, type V3 } from "./camera";
 import { Engine, canDraw3D, type BodyDrag, type PreviewBody, type RenderStyle, type Section, type Stats, type WorldPlaneName } from "./engine";
 import { milestone } from "../perf";
@@ -99,6 +100,8 @@ export interface View3DProps {
   preview?: PreviewBody[] | null;
   /** Decals (#263): pictures on bodies' faces, drawn once the kernel has built the body. */
   decals?: ViewDecal[];
+  /** Canvases (#248): pictures on planes to trace over, with the construction steps as built for their planes. */
+  canvases?: { list: EngineCanvas[]; construct: BuiltConstruct[] };
   /** Labels drawn over the canvas (the sketch's sizes and marks). */
   children?: ReactNode;
 }
@@ -304,6 +307,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
     });
     engine.current?.setDecals(list);
   }, [decals, bodies, meshes]);
+  const canvases = props.canvases;
+  useEffect(() => engine.current?.setCanvases(canvases?.list ?? [], canvases?.construct), [canvases]);
   const bed = props.bed;
   const bedKey = bed ? `${bed.x},${bed.y},${bed.z},${bed.origin},${bed.label ?? ""}` : "";
   useEffect(() => {

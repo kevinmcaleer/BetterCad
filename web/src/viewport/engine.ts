@@ -46,6 +46,8 @@ import {
   type Texture,
 } from "three";
 import type { DecalLayer, EngineDecal } from "./decals";
+import type { CanvasLayer, EngineCanvas } from "./canvases";
+import type { BuiltConstruct } from "../state/document";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -796,7 +798,26 @@ export class Engine {
   private decalLayer: DecalLayer | null = null;
   private decalLoading = false;
 
+  /** Canvases (#248): pictures on planes to trace over. Drawing them loads with the first one. */
+  setCanvases(list: EngineCanvas[], construct: BuiltConstruct[] = []): void {
+    this.canvasList = list;
+    this.canvasConstruct = construct;
+    if (this.canvasLayer || !list.length || this.canvasLoading) return this.syncDecals();
+    this.canvasLoading = true;
+    void import("./canvases").then((m) => {
+      this.canvasLayer = new m.CanvasLayer(() => this.invalidate());
+      this.scene.add(this.canvasLayer.group);
+      this.syncDecals();
+    });
+  }
+  private canvasList: EngineCanvas[] = [];
+  private canvasConstruct: BuiltConstruct[] = [];
+  private canvasLayer: CanvasLayer | null = null;
+  private canvasLoading = false;
+
+  /** Decals and canvases, cut by the section when there is one. */
   private syncDecals(): void {
+    this.canvasLayer?.set(this.canvasList, this.canvasConstruct, this.section ? [this.clip] : []);
     this.decalLayer?.set(
       this.decalList,
       (id) => {

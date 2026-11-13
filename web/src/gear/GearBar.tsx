@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, type MutableRefObject } from "react";
 import { Button, FeatureCheck, FeaturePanel, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry } from "@bettercad/ui";
 import {
   GT2_BELTS,
@@ -13,7 +13,45 @@ import {
   type GearFeature,
   type GearParams,
 } from "../state/document";
-import type { GearSession } from "./useGear";
+import { useGear, type GearDeps, type GearSession } from "./useGear";
+
+/**
+ * The Gear tool with its panel, loaded when the tool is first picked. The editor keeps a handle for Enter and the help
+ * line, and passes in a step to edit (from the timeline, or a mating gear or rack just added).
+ */
+export function GearTool({
+  deps,
+  edit,
+  onEdited,
+  onHelp,
+  api,
+  error,
+}: {
+  deps: GearDeps;
+  edit: { id: string; isNew?: boolean } | null;
+  onEdited: () => void;
+  onHelp: (help: string | null) => void;
+  api: MutableRefObject<{ done(): void } | null>;
+  /** Why the step can't be made, from the build. */
+  error?: (id: string) => string | undefined;
+}) {
+  const x = useGear(deps);
+  api.current = x;
+  useEffect(() => {
+    if (!edit) return;
+    x.edit(edit.id, edit.isNew);
+    onEdited();
+  }, [edit, x, onEdited]);
+  useEffect(() => onHelp(x.help), [x.help, onHelp]);
+  useEffect(
+    () => () => {
+      onHelp(null);
+      api.current = null;
+    },
+    [onHelp, api],
+  );
+  return <GearBar x={x} error={x.session ? error?.(x.session.id) : undefined} onCancel={x.cancel} />;
+}
 
 const BORES: { id: GearBore["kind"]; label: string; title: string; diameter: number }[] = [
   { id: "none", label: "None", title: "No hole in the middle", diameter: 0 },

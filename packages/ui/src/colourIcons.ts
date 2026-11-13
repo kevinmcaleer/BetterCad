@@ -201,6 +201,12 @@ const DRAW: Record<string, () => string> = {
   copy: () => box(-6, -1, -5, 6, 6, 6, [], { ox: 10, oy: 13 }) + box(-1, -6, -3, 6, 6, 6, allHi, { ox: 14, oy: 11 }),
   // Construct
   plane: () => box(-2.5, -2.5, -6, 5, 5, 5) + sheet(flatSquare(0, 8), 1.3),
+  // A picture laid flat on a plane, to trace over (#248).
+  canvas: () =>
+    poly(flatSquare(0, 8), TOP) +
+    sheet(flatSquare(0, 5.5), 0.9) +
+    poly([P(-5.5, 5.5, 0), P(-1, 0, 0), P(1.5, 2.5, 0), P(3.5, -1, 0), P(5.5, 5.5, 0)], HI, 0.7) +
+    `<circle cx="${n(P(-3, -3, 0)[0])}" cy="${n(P(-3, -3, 0)[1])}" r="1.2" fill="${HI}"/>`,
   axis: () => box(-3.5, -3.5, -4, 7, 7, 6) + hiLine("M12 1V23", 1.9),
   point: () => {
     const [x, y] = P(4.5, -4.5, 2);
