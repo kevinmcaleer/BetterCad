@@ -182,25 +182,51 @@ export function useConstruct(d: ConstructDeps) {
     [take],
   );
 
+  /**
+   * A row clicked in the browser while a pick is wanted: a construction step or an origin plane, axis or point
+   * (`origin:XY`), hidden ones too. False for any other row, which the browser then selects as usual.
+   */
+  const pickRow = useCallback(
+    (id: string) => {
+      if (!live.current.slot || !deps.current.armed) return false;
+      if (!id.startsWith("origin:") && !deps.current.construct.some((c) => c.id === id)) return false;
+      pickShape(id);
+      return true;
+    },
+    [pickShape],
+  );
+
   // The view: origin planes for a plane slot, construction geometry, then faces, edges or vertices of bodies.
   useEffect(() => {
     const eng = engineOf();
     if (!active || !slot || !eng) return;
     const what = new Set([WHAT[slot]]);
     if (slot === "plane") eng.showPlanes(true);
+    // Finding planes under the pointer loads with the first plane pick, so it costs the first paint nothing.
+    let sheetAt: typeof import("./sheetAt").sheetAt | null = null;
+    let gone = false;
+    if (slot === "plane") void import("./sheetAt").then((m) => !gone && (sheetAt = m.sheetAt));
     type Hit = { shape: string } | { plane: "XY" | "XZ" | "YZ" } | { body: { body: string; kind: "face" | "edge" | "vertex"; index: number } };
-    // Points and axes are small, so they come first; then the bodies; then planes, which are big and see-through.
+    // Points and axes are small, so they come first; then the bodies. A plane slot takes a plane's border even through
+    // a body, and a construction plane in front of a face. The origin's planes are big and run through the model, so
+    // inside their border they only take clicks that miss the bodies.
+    const sheetHit = (id: string): Hit => (id.startsWith("origin:") ? { plane: id.slice(7) as "XY" | "XZ" | "YZ" } : { shape: id });
     const under = (x: number, y: number): Hit | null => {
       const shape = slot === "plane" ? null : eng.constructAt(x, y, what);
       if (shape) return { shape };
+      const sheet = sheetAt?.(eng, x, y) ?? null;
+      if (sheet?.border) return sheetHit(sheet.id);
       for (const f of FILTERS[slot]) {
         const h = eng.pick(x, y, f);
-        if (h) return { body: { body: h.body, kind: f, index: h.index } };
+        if (!h) continue;
+        if (sheet && !sheet.id.startsWith("origin:")) {
+          const s = eng.surfaceAt(x, y);
+          const r = eng.ray(x, y);
+          if (s && Math.hypot(s.point[0] - r.origin[0], s.point[1] - r.origin[1], s.point[2] - r.origin[2]) > sheet.distance) return sheetHit(sheet.id);
+        }
+        return { body: { body: h.body, kind: f, index: h.index } };
       }
-      const sheet = slot === "plane" ? eng.constructAt(x, y, what) : null;
-      if (sheet) return { shape: sheet };
-      const plane = slot === "plane" ? eng.planeAt(x, y) : null;
-      return plane ? { plane } : null;
+      return sheet ? sheetHit(sheet.id) : null;
     };
     eng.setInput({
       move: (p, _m, pressed) => {
@@ -225,6 +251,7 @@ export function useConstruct(d: ConstructDeps) {
       },
     });
     return () => {
+      gone = true;
       eng.setInput(null);
       eng.showHover(null);
       eng.hoverPlane(null);
@@ -283,7 +310,7 @@ export function useConstruct(d: ConstructDeps) {
   const help =
     !active && !session ? null : slot ? `Pick ${ACCEPT_TEXT[slot]}.` : info?.value ? `Set the ${info.value.label.toLowerCase()}. Enter keeps it.` : null;
 
-  return { kind, info, picks, slot, session, feature, setValue, done, cancel, back, edit, help, active: active || !!session };
+  return { kind, info, picks, slot, session, feature, pickRow, setValue, done, cancel, back, edit, help, active: active || !!session };
 }
 
 export type ConstructSession = ReturnType<typeof useConstruct>;

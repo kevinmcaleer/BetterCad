@@ -838,6 +838,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onHover: setConstructHover,
     measure: kernel.measure,
   });
+  const pickRow = construct.pickRow;
+  /** The Construct tool takes a construction step or an origin plane, axis or point clicked in the browser. */
+  const onRowPick = useCallback(
+    (id: string) => {
+      const o = planeOf(id) ?? axisOf(id) ?? (id === ROW.point ? "O" : null);
+      return pickRow(o ? `origin:${o}` : id);
+    },
+    [pickRow],
+  );
   const startConstruct = useCallback((k: ConstructKind) => {
     setConstructKind(k);
     setTool("construct");
@@ -3967,6 +3976,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onSketchesHidden={(ids, hidden, name) => setHidden(ids, hidden, "sketches", name)}
               isolateMenu={isolateEntries}
               onBrowserPicked={setBrowserPicked}
+              onRowPick={onRowPick}
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}
               decals={browserDecals}
