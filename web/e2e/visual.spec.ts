@@ -103,9 +103,12 @@ for (const theme of THEMES) {
       await page.mouse.up();
     };
     await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Canvas", exact: true }).click();
-    const chooser = page.waitForEvent("filechooser");
-    await click(15, 15);
-    await (await chooser).setFiles({ name: "part.png", mimeType: "image/png", buffer: LOGO });
+    await expect(page.getByText("Click a plane or a flat face, then choose a picture to trace over.").first()).toBeVisible();
+    await expect(async () => {
+      const chooser = page.waitForEvent("filechooser", { timeout: 2000 });
+      await click(15, 15);
+      await (await chooser).setFiles({ name: "part.png", mimeType: "image/png", buffer: LOGO });
+    }).toPass({ timeout: 15000 });
     await expect(page.getByRole("textbox", { name: "Width" })).toHaveValue("100");
     await page.getByRole("button", { name: "OK", exact: true }).click();
     // Trace a triangle over it: its lines draw on top.

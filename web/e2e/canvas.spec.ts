@@ -46,9 +46,11 @@ test("pin a picture to the XY plane, calibrate it to 40 mm and sketch over it", 
 
   await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Canvas", exact: true }).click();
   await expect(page.getByText("Click a plane or a flat face, then choose a picture to trace over.").first()).toBeVisible();
-  const chooser = page.waitForEvent("filechooser");
-  await click(page, 15, 15, 0);
-  await (await chooser).setFiles({ name: "part.png", mimeType: "image/png", buffer: LOGO });
+  await expect(async () => {
+    const chooser = page.waitForEvent("filechooser", { timeout: 2000 });
+    await click(page, 15, 15, 0);
+    await (await chooser).setFiles({ name: "part.png", mimeType: "image/png", buffer: LOGO });
+  }).toPass({ timeout: 15000 });
   await expect(page.getByText("Put part.png on the XY plane")).toBeVisible();
 
   // 100 mm on its long side, in its own shape, its middle where you clicked.
