@@ -427,14 +427,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     placing: live.current.placing,
   };
   const [registry] = useState(() =>
-    createRegistry((): CommandContext => ({
-      hasSelection: live.current.selection.length > 0,
-      inSketch: live.current.sketching,
-      toolActive: live.current.tool !== "select",
-      canUndo: store.canUndo(),
-      canRedo: store.canRedo(),
-      dialogOpen: live.current.dialogOpen,
-    })),
+    createRegistry(
+      (): CommandContext => ({
+        hasSelection: live.current.selection.length > 0,
+        inSketch: live.current.sketching,
+        toolActive: live.current.tool !== "select",
+        canUndo: store.canUndo(),
+        canRedo: store.canRedo(),
+        dialogOpen: live.current.dialogOpen,
+      }),
+    ),
   );
   // Re-render when commands are added or run, so enabled states stay fresh.
   useSyncExternalStore(registry.subscribe, registry.version);
@@ -1198,7 +1200,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onClose: () => setTool("select"),
     say,
     measure: kernel.measure,
+    onConstructHover: setConstructHover,
   });
+  // While a Mirror picks its plane, a construction plane clicked in the browser is the plane. Kept stable: the browser
+  // calls it from an effect.
+  const mirrorAcrossRef = useRef(pattern.mirrorAcross);
+  mirrorAcrossRef.current = pattern.mirrorAcross;
+  const onBrowserPicked = useCallback((id: string | null) => {
+    if (id && mirrorAcrossRef.current(id)) return;
+    setBrowserPicked(id);
+  }, []);
   /** Mirror (#69): the Pattern tool, starting as a mirror. */
   const mirror = useCallback(() => {
     setPatternStart("mirror");
@@ -1224,6 +1235,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? `origin:${pattern.feature.axis.toUpperCase()}`
       : null;
   const jointAxis = tool === "joint" && jointUi?.stage === "parent";
+  // The construction plane a Mirror mirrors across stays lit while the tool is open.
+  const mirrorStep = tool === "pattern" && pattern.feature?.kind === "mirror" ? (pattern.feature.step ?? null) : null;
   useEffect(() => {
     const eng = vp.ref.current?.engine();
     if (!eng) return;
@@ -1237,7 +1250,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     // An origin axis picked in the browser lights as `origin:X`.
     const pickedAxis = axisOf(browserPicked ?? "");
     const picked = pickedAxis ? `origin:${pickedAxis}` : browserPicked;
-    const lit = [constructHover, picked, construct.session?.id, revolve.axisShape, patternAxis].filter((x): x is string => !!x);
+    const lit = [constructHover, picked, construct.session?.id, revolve.axisShape, patternAxis, mirrorStep].filter((x): x is string => !!x);
     // The sketch's Dimension and Mirror tools, Revolve, a round Pattern and Joint can use an axis too, so the origin's show while
     // they want one; Revolve and Pattern keep the one they turn round. The browser's eyes keep the rest on show.
     const want = construct.active
@@ -1260,6 +1273,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     revolve.axisShape,
     pattern.pickingAxis,
     patternAxis,
+    mirrorStep,
     jointAxis,
     originShown,
     vp.ref,
@@ -3966,7 +3980,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}
               onSketchesHidden={(ids, hidden, name) => setHidden(ids, hidden, "sketches", name)}
               isolateMenu={isolateEntries}
-              onBrowserPicked={setBrowserPicked}
+              onBrowserPicked={onBrowserPicked}
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}
               decals={browserDecals}

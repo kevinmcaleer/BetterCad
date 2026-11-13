@@ -1,4 +1,4 @@
-import { Button, FeatureCheck, FeaturePanel, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry } from "@bettercad/ui";
+import { Button, FeatureCheck, FeaturePanel, FeaturePicker, FeatureRow, MenuButton, NumberField, PanelNote, type MenuEntry } from "@bettercad/ui";
 import { useMemo } from "react";
 import { trackFitText } from "@bettercad/kernel/track-fit";
 import { copiesWhat, TRACK_DEFAULTS, type MirrorOf, type MirrorPlane, type PatternKind, type WorldAxis } from "../state/document";
@@ -277,11 +277,43 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
               <Button
                 label="Face"
                 title="Click a flat face, a construction plane or an origin plane in the view, to mirror across"
-                on={!!f.face || !!f.step || x.pickingPlane}
-                onClick={() => x.setPickingPlane(!x.pickingPlane)}
+                on={!!f.face || x.pickingPlane === "face"}
+                onClick={() => x.setPickingPlane(x.pickingPlane === "face" ? false : "face")}
               />
             </span>
           </FeatureRow>
+          {(x.planes.length > 0 || f.step) && (
+            <FeaturePicker
+              label="Construction plane"
+              count={f.step ? 1 : 0}
+              named={x.stepName ?? "A gone plane"}
+              empty="Pick a plane"
+              picking={x.pickingPlane === "plane"}
+              title={
+                f.step
+                  ? `Mirrors across ${x.stepName ?? "a construction plane"}, and follows it when it moves`
+                  : "Mirror across a construction plane: click one in the view or the browser, or choose it here"
+              }
+              entries={[
+                { id: "pick", label: "Pick in the view", checked: x.pickingPlane === "plane", onSelect: () => x.setPickingPlane("plane") },
+                { kind: "separator", id: "sep" },
+                ...x.planes.map((c) => ({
+                  id: c.id,
+                  label: c.name,
+                  checked: f.step === c.id,
+                  onSelect: () => {
+                    x.setPickingPlane(false);
+                    x.change({ step: c.id, face: undefined });
+                  },
+                })),
+              ]}
+              onClear={() => {
+                x.change({ step: undefined });
+                x.setPickingPlane("plane");
+              }}
+              clearTitle="Clear the construction plane and pick another"
+            />
+          )}
           <NumberField label="Offset" unit="mm" value={f.offset} onCommit={(v) => x.change({ offset: v })} />
         </>
       )}
@@ -312,9 +344,11 @@ export function PatternBar({ x, error, onCancel }: { x: PatternSession; error?: 
       )}
       <PanelNote>
         {f.kind === "mirror"
-          ? x.pickingPlane
-            ? "Click a flat face, a construction plane or an origin plane."
-            : `Mirroring ${what} across ${f.step ? (x.stepName ?? "a construction plane") : f.face ? "a face" : f.plane}.`
+          ? x.pickingPlane === "plane"
+            ? "Click a construction plane in the view or the browser."
+            : x.pickingPlane
+              ? "Click a flat face, a construction plane or an origin plane."
+              : `Mirroring ${what} across ${f.step ? (x.stepName ?? "a construction plane") : f.face ? "a face" : f.plane}.`
           : f.kind === "track"
             ? x.pickingTrack
               ? TRACK_HELP[x.pickingTrack]

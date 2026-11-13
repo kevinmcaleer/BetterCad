@@ -62,6 +62,8 @@ export interface PatternDeps {
   say: (text: string, error?: boolean) => void;
   /** The kernel's description of a pick: what a clicked edge or face is, for a circle's axis. */
   measure: (refs: TopoRef[]) => Promise<MeasureResult | null>;
+  /** Lights the construction plane under the pointer while picking the mirror plane. */
+  onConstructHover?: (id: string | null) => void;
 }
 
 const KEY = (id: string) => `pattern:${id}`;
@@ -82,7 +84,8 @@ export function usePattern(d: PatternDeps) {
   const [session, setSession] = useState<{ id: string; isNew: boolean } | null>(null);
   const [last, setLast] = useState<Partial<PatternParams> & { kind: PatternKind }>({ kind: "rect" });
   /** Picking the mirror plane in the view: a flat face or an origin plane. */
-  const [pickingPlane, setPickingPlane] = useState(false);
+  /** Picking what a Mirror mirrors across in the view: a face (or any plane), or only a construction plane. */
+  const [pickingPlane, setPickingPlane] = useState<false | "face" | "plane">(false);
   /** Picking a construction axis in the view, for a circular pattern to turn round. */
   const [pickingAxis, setPickingAxis] = useState(false);
   /** Picking for a track: a pin on its piece, or the wheels' round edges. */
@@ -200,12 +203,22 @@ export function usePattern(d: PatternDeps) {
   useEffect(() => {
     const eng = d.view.current?.engine();
     if (!d.active || !pickingPlane || !session || !eng) return;
-    eng.showPlanes(true);
+    if (pickingPlane === "face") eng.showPlanes(true);
+    else eng.showConstructOver(true);
     const target = (x: number, y: number) => {
+      // Only construction planes (#265), over the model or not.
+      if (pickingPlane === "plane") {
+        const step = eng.constructAt(x, y, PLANES_ONLY);
+        return step ? { step } : null;
+      }
+      // A construction plane where it shows in front of the model: one through the middle of a body is mostly over its
+      // faces, so the face would win otherwise.
+      const front = eng.constructPlaneInFront(x, y);
+      if (front) return { step: front };
       const hit = eng.pick(x, y, "face");
       const info = hit && eng.faceInfo(hit.body, hit.index);
       if (hit && info?.flat) return { hit, info };
-      // A construction plane (#265), where no face is.
+      // A construction plane where no face is.
       const step = eng.constructAt(x, y, PLANES_ONLY);
       if (step) return { step };
       const plane = eng.planeAt(x, y);
@@ -217,10 +230,12 @@ export function usePattern(d: PatternDeps) {
         const t = target(p.x, p.y);
         eng.showHover((t && "hit" in t ? t.hit : null) ?? null);
         eng.hoverPlane((t && "plane" in t ? t.plane : null) ?? null);
+        deps.current.onConstructHover?.((t && "step" in t ? t.step : null) ?? null);
       },
       down: (p) => {
         const t = target(p.x, p.y);
         if (!t) return false;
+        deps.current.onConstructHover?.(null);
         if ("plane" in t) change({ plane: t.plane, face: undefined, step: undefined });
         else if ("step" in t) change({ step: t.step, face: undefined });
         else {
@@ -236,13 +251,16 @@ export function usePattern(d: PatternDeps) {
       leave: () => {
         eng.showHover(null);
         eng.hoverPlane(null);
+        deps.current.onConstructHover?.(null);
       },
     });
     return () => {
       eng.setInput(null);
       eng.showPlanes(false);
+      eng.showConstructOver(false);
       eng.showHover(null);
       eng.hoverPlane(null);
+      deps.current.onConstructHover?.(null);
     };
   }, [d.active, d.view, pickingPlane, session, change]);
   useEffect(() => {
@@ -373,14 +391,16 @@ export function usePattern(d: PatternDeps) {
 
   useEscape(!!session, cancel, ESC.tool + 1);
   // Esc while picking the plane stops picking, and keeps the step.
-  useEscape(pickingPlane, () => setPickingPlane(false), ESC.tool + 2);
+  useEscape(!!pickingPlane, () => setPickingPlane(false), ESC.tool + 2);
   useEscape(pickingAxis, () => setPickingAxis(false), ESC.tool + 2);
   useEscape(!!pickingTrack, () => setPickingTrack(null), ESC.tool + 2);
 
   const help = !d.active
     ? null
     : pickingPlane
-      ? "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
+      ? pickingPlane === "plane"
+        ? "Click a construction plane in the view or the browser to mirror across. Esc stops picking."
+        : "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
       : pickingAxis
         ? "Click a round edge or face to turn round its centre, or an axis. Esc stops picking."
         : pickingTrack
@@ -407,10 +427,13 @@ export function usePattern(d: PatternDeps) {
     pick,
     toggleFeature,
     pickingPlane,
-    setPickingPlane: (on: boolean) => {
+    /** Starts picking a face or plane (`true`, or "face"), only a construction plane ("plane"), or stops (false). */
+    setPickingPlane: (on: boolean | "face" | "plane") => {
       setPickingAxis(false);
-      setPickingPlane(on);
+      setPickingPlane(on === true ? "face" : on);
     },
+    /** The construction planes before the step, which a Mirror can mirror across. */
+    planes: d.construct.filter((c) => c.geo.what === "plane"),
     pickingAxis,
     setPickingAxis: (on: boolean) => {
       setPickingPlane(false);
@@ -432,6 +455,17 @@ export function usePattern(d: PatternDeps) {
     nameOf: (id: string) => d.doc.features.find((f) => f.id === id)?.name,
     stepName: feature?.step ? d.doc.features.find((f) => f.id === feature.step)?.name : undefined,
     change,
+    /**
+     * Mirrors across a construction plane chosen in the browser while picking the plane; false when it isn't picking
+     * one, or `id` isn't a construction plane before the step.
+     */
+    mirrorAcross: (id: string): boolean => {
+      if (!pickingPlane || !session) return false;
+      if (d.construct.find((c) => c.id === id)?.geo.what !== "plane") return false;
+      change({ step: id, face: undefined });
+      setPickingPlane(false);
+      return true;
+    },
     /** Sets what it copies before it starts, or switches an open one. */
     setOf: (o: MirrorOf) => (live.current.session ? change({ of: o }) : (setLast((l) => ({ ...l, of: o })), deps.current.setSelection([]))),
     done,
