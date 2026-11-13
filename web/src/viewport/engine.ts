@@ -45,6 +45,7 @@ import {
   type Material,
   type Texture,
 } from "three";
+import type { DecalLayer, EngineDecal } from "./decals";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
@@ -75,6 +76,7 @@ import { FACE_ONLY, encodeId, findPick, samePick, type Pick, type SelectFilter }
 import { edgesOnOutline } from "./faceEdges";
 import { blurMaterial, capMaterial, dofMaterial, gridMaterial, outlineMaterial, pickMaterial, QUAD_VERT } from "./shaders";
 import { readPalette, type Palette, type ViewColour } from "./colours";
+import { cycleColours } from "./cycle";
 
 export type RenderStyle = "shaded" | "lineart";
 
@@ -123,6 +125,8 @@ export interface EngineBody {
   world?: boolean;
   /** The body's own colour (#196), sRGB "#rrggbb", in place of the theme's part colour. */
   colour?: string;
+  /** What colour cycling colours it by: its component, or the body itself when it is in none. Its id when left out. */
+  cycle?: string;
 }
 
 /**
@@ -300,6 +304,8 @@ export class Engine {
   private floorGrid = true;
   /** The person's choice from the view style menu: off hides the floor grid everywhere. */
   private gridWanted = true;
+  /** Colour cycling (Fusion's): each part drawn in a colour of its own, over its saved colour, in this view only. */
+  private cycling = false;
   // Depth of field: the room drawn on its own, blurred where it is far from the model, then laid down as the background.
   private dofScene = new Scene();
   private dofRoomMat = gridMaterial(true);
@@ -353,6 +359,7 @@ export class Engine {
   /** The point drag under way: the one the gizmo was pressed with, though the point moves on (and is set anew). */
   private pointDragging: PointDrag | null = null;
   private gizmoBody: string | null = null;
+  private gizmoMates: string[] = [];
 
   // Section
   private section: Section | null = null;
@@ -578,6 +585,14 @@ export class Engine {
     this.invalidate();
   }
 
+  /** Turns colour cycling on or off: each component, or body in none, in a distinct colour. The model keeps its own. */
+  setColourCycle(on: boolean): void {
+    if (this.cycling === on) return;
+    this.cycling = on;
+    this.recolourAll();
+    this.invalidate();
+  }
+
   setSize(width: number, height: number): void {
     this.width = Math.max(1, Math.round(width));
     this.height = Math.max(1, Math.round(height));
@@ -766,6 +781,32 @@ export class Engine {
   private bed: Group | null = null;
   private bedSpec: { x: number; y: number; z: number; origin: "centre" | "corner"; label?: string } | null = null;
 
+  /** Decals (#263) over their bodies' faces. Drawing them loads with the first one. */
+  setDecals(list: EngineDecal[]): void {
+    this.decalList = list;
+    if (this.decalLayer) return this.syncDecals();
+    if (!list.length || this.decalLoading) return;
+    this.decalLoading = true;
+    void import("./decals").then((m) => {
+      this.decalLayer = new m.DecalLayer(() => this.invalidate());
+      this.syncDecals();
+    });
+  }
+  private decalList: EngineDecal[] = [];
+  private decalLayer: DecalLayer | null = null;
+  private decalLoading = false;
+
+  private syncDecals(): void {
+    this.decalLayer?.set(
+      this.decalList,
+      (id) => {
+        const o = this.bodies.get(id);
+        return o && (o.shaded.visible || o.flat.visible) ? o.group : null;
+      },
+      this.section ? [this.clip] : [],
+    );
+  }
+
   /** Puts the bodies on stage, reusing what has not changed. */
   setBodies(list: EngineBody[]): void {
     const keep = new Set(list.map((b) => b.id));
@@ -801,6 +842,7 @@ export class Engine {
     if (this.hover && !keep.has(this.hover.body)) this.hover = null;
     this.recolourAll();
     this.syncGizmo();
+    this.syncDecals();
     this.invalidate();
   }
 
@@ -844,6 +886,7 @@ export class Engine {
     }
     for (const o of [...this.order, ...this.previews]) this.applyStyle(o);
     this.recolourAll();
+    this.syncDecals();
     this.invalidate();
   }
 
@@ -864,9 +907,10 @@ export class Engine {
     if (!on) this.setHover(null);
   }
 
-  /** Shows the gizmo on a body, or hides it (null). */
-  setGizmo(id: string | null, mode: "translate" | "rotate" = "translate"): void {
+  /** Shows the gizmo on a body, or hides it (null). `mates` are bodies locked to it (a rigid group) that go with it. */
+  setGizmo(id: string | null, mode: "translate" | "rotate" = "translate", mates: string[] = []): void {
     this.gizmoBody = id;
+    this.gizmoMates = mates.filter((m) => m !== id);
     this.gizmoMode = mode;
     this.gizmo?.setMode(mode);
     this.syncGizmo();
@@ -917,6 +961,7 @@ export class Engine {
       }
     }
     for (const m of [this.selectMat, this.hoverMat]) m.clippingPlanes = planes;
+    this.syncDecals();
     this.invalidate();
   }
 
@@ -1471,13 +1516,13 @@ export class Engine {
    * colours, with no selection, hover or check tints, so a thumbnail looks the same whatever the view was set to.
    */
   thumbnail(width = 320, height = 200): string | null {
-    const look = { style: this.style, palette: this.palette, selected: this.selected, hover: this.hover, check: this.check };
+    const look = { style: this.style, palette: this.palette, selected: this.selected, hover: this.hover, check: this.check, cycling: this.cycling };
     // The Light theme's colours; the background and grid are cleared or hidden anyway.
     const probe = document.body.appendChild(document.createElement("i"));
     probe.dataset.theme = "light";
     this.palette = readPalette(probe);
     probe.remove();
-    Object.assign(this, { selected: [], hover: null, check: null });
+    Object.assign(this, { selected: [], hover: null, check: null, cycling: false });
     this.setStyle("shaded");
     this.recolourAll();
     try {
@@ -1791,10 +1836,18 @@ export class Engine {
     for (const s of this.selected) if (s.kind === "face") (selFaces.get(s.body) ?? selFaces.set(s.body, new Set()).get(s.body)!).add(s.index);
     const c = new Color();
     const c2 = new Color();
+    const cycle = this.cycling ? cycleColours(this.order.map((o) => o.body.cycle ?? o.body.id)) : null;
     for (const o of [...this.order, ...this.previews]) {
       // A preview's faces are numbered afresh, so picks and checks on the body do not tint it.
       const own = !this.previews.includes(o);
-      const base = o.body.highlight ? c2.copy(p["part-highlight"]) : o.body.colour ? c2.setStyle(o.body.colour) : c2.copy(p["part-fill"]);
+      const cycled = cycle?.get(o.body.cycle ?? o.body.id);
+      const base = o.body.highlight
+        ? c2.copy(p["part-highlight"])
+        : cycled
+          ? c2.copy(cycled)
+          : o.body.colour
+            ? c2.setStyle(o.body.colour)
+            : c2.copy(p["part-fill"]);
       if (o.body.reference) base.lerp(p.accent, 0.5);
       if (o.body.warn) base.lerp(p.warn, 0.65);
       if (o.body.clash) base.lerp(p.danger, 0.75);
@@ -1970,11 +2023,19 @@ export class Engine {
     const pos: V3 = [round(this.proxy.position.x), round(this.proxy.position.y), round(this.proxy.position.z)];
     const rot: V3 = [round(e.x / DEG), round(e.y / DEG), round(e.z / DEG)];
     const m = new Matrix4().compose(this.proxy.position, this.proxy.quaternion, new Vector3(1, 1, 1));
-    // A mesh built in place moves by the change from where it was, not to the new place.
-    if (o.body.world) m.multiply(bodyMatrix(o.body).invert());
-    for (const g of [o.group, o.pick, o.idMesh]) {
-      g.matrix.copy(m);
-      g.matrixWorldNeedsUpdate = true;
+    // The move from where it was: a mesh built in place takes just that, as do the bodies locked to it.
+    const by = m.clone().multiply(bodyMatrix(o.body).invert());
+    if (o.body.world) m.copy(by);
+    const place = (x: BodyObjects, to: Matrix4) => {
+      for (const g of [x.group, x.pick, x.idMesh]) {
+        g.matrix.copy(to);
+        g.matrixWorldNeedsUpdate = true;
+      }
+    };
+    place(o, m);
+    for (const mate of this.gizmoMates) {
+      const x = this.bodies.get(mate);
+      if (x) place(x, x.body.world ? by : by.clone().multiply(bodyMatrix(x.body)));
     }
     this.updateOverlays();
     this.invalidate();

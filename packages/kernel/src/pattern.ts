@@ -260,7 +260,7 @@ export function mirrorFace(part: Pick<Part, "id" | "position" | "rotation">, fac
  * body stands now. A message when the face's body is gone.
  */
 export function mirrorPlane(
-  f: PatternFeature,
+  f: Pick<PatternFeature, "plane" | "offset" | "face" | "step">,
   parts: readonly Part[],
   construct: readonly { id: string; geo: { what: string; frame?: { origin: number[]; normal: number[] } } }[] = [],
 ): Plane | string {
@@ -280,8 +280,13 @@ export function mirrorPlane(
   return { origin: tidy(add(w.origin, scale(w.normal, f.offset))), normal: w.normal };
 }
 
-/** Body steps a Mirror or Pattern of features can copy: joins, cuts, intersections and holes (fillets and shells pick by number). */
-export const MIRRORED_OPS = new Set(["join", "cut", "intersect", "hole"]);
+/**
+ * Body steps a Mirror or Pattern of features can copy: joins, cuts, intersections, holes, and finishes that pick edges or
+ * faces (#426). A shell can't be: a second shell on the same body would hollow it again.
+ */
+export const MIRRORED_OPS = new Set(["join", "cut", "intersect", "hole", "fillet", "chamfer", "pushpull", "offsetFace"]);
+/** Copyable steps that pick edges or faces, so each copy finds its own where the original's picks were. */
+export const FINISH_OPS = new Set(["fillet", "chamfer", "pushpull", "offsetFace"]);
 
 /** Where a point goes under a copy's move. */
 export function movePoint(p: Vec3, m: CopyMove): Vec3 {
@@ -317,7 +322,7 @@ export function patternCopyIds(f: PatternFeature): string[] {
 }
 
 /** A Mirror's plane on its tile: "YZ", "YZ at 5 mm", "a face of Box 2", "Plane 1". `owner` names the face's body or the plane. */
-export function mirrorPlaneText(f: PatternFeature, owner?: string): string {
+export function mirrorPlaneText(f: Pick<PatternFeature, "offset" | "step" | "face" | "plane">, owner?: string): string {
   const at = f.offset ? ` at ${f.offset} mm` : "";
   if (f.step) return `${owner ?? "a construction plane"}${at}`;
   return f.face ? `a face of ${owner ?? "a body"}${at}` : `${f.plane}${at}`;

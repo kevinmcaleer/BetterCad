@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Button, Icon, IconButton, MenuButton, Separator, ToolButton, Toolbar, cx, type MenuEntry } from "@bettercad/ui";
 import type { ThemeSetting } from "../state/theme";
 import { formatCombo } from "../state/commands";
@@ -9,6 +9,7 @@ import { TOOL_GROUPS, type ToolId } from "./tools";
 import { CONSTRUCT_KINDS, type ConstructKind } from "../state/document";
 import { constructIcon } from "./Timeline";
 import type { PanelId } from "./LeftPanel";
+import type { RibbonTab } from "./ribbonPrefs";
 
 const CLOUD_TEXT: Record<CloudState, string> = {
   saved: "Saved to your account",
@@ -78,7 +79,20 @@ export interface TopBarProps {
   onMirror?: () => void;
   /** New component (#171): an empty one to work in, inside the active one. From bodies is on their menu. */
   onNewComponent?: () => void;
+  /**
+   * The desktop ribbon: when set, the bar grows a row of tabs and big tools, and this draws the open tab's tools
+   * (loaded after first paint). Unset, the compact bar shows.
+   */
+  ribbon?: (tab: Exclude<RibbonTab, "sketch">) => ReactNode;
+  /** A sketch is open: the ribbon's Sketch tab takes over, and this draws its tools. */
+  sketchRibbon?: ReactNode;
 }
+
+const TABS: [Exclude<RibbonTab, "sketch">, string][] = [
+  ["model", "Model"],
+  ["assemble", "Assemble"],
+  ["inspect", "Inspect"],
+];
 
 /** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
 export function constructEntries(on: (k: ConstructKind) => void): MenuEntry[] {
@@ -149,35 +163,71 @@ function SaveSplit(p: TopBarProps) {
 const panelToggle = (p: TopBarProps, id: PanelId) => () => p.onPanel(p.panel === id ? "parts" : id);
 
 export function TopBar(p: TopBarProps) {
+  const [tab, setTab] = useState<Exclude<RibbonTab, "sketch">>("model");
+  const [folded, setFolded] = useState(false);
+  const ribbon = !p.shared && p.ribbon;
+  const sketching = !!p.sketchRibbon;
+  const title = (
+    <span className="bc-title">
+      <Icon name="cube" size={18} />
+      <span className="bc-brand">BetterCad</span>
+    </span>
+  );
+  if (ribbon) {
+    const pick = (t: Exclude<RibbonTab, "sketch">) => {
+      setTab(t);
+      setFolded(false);
+    };
+    return (
+      <header className={cx("bc-top bc-top-ribbon", folded && "bc-folded")}>
+        <div className="bc-ribbon-bar">
+          {title}
+          {browserToggle(p)}
+          <span className="bc-ribbon-tabs" role="tablist" aria-label="Tool tabs">
+            {sketching && (
+              <button type="button" role="tab" id="bc-tab-sketch" className="bc-tab" aria-selected aria-controls="bc-ribbon-tools">
+                Sketch
+              </button>
+            )}
+            {TABS.map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                id={`bc-tab-${id}`}
+                className="bc-tab"
+                aria-selected={!sketching && tab === id}
+                aria-controls="bc-ribbon-tools"
+                disabled={sketching}
+                data-tip={folded ? undefined : "Double-click to fold the tools away"}
+                onClick={() => pick(id)}
+                onDoubleClick={() => setFolded(!folded)}
+              >
+                {label}
+              </button>
+            ))}
+          </span>
+          <span className="bc-grow" />
+          {undoRedo(p)}
+          <Separator />
+          {rightSide(p)}
+        </div>
+        {!folded && (
+          <div className="bc-ribbon-tools" id="bc-ribbon-tools" role="tabpanel" aria-labelledby={`bc-tab-${sketching ? "sketch" : tab}`}>
+            <Toolbar label={sketching ? "Sketch tools" : "Model tools"} className="bc-ribbon-groups">
+              {sketching ? p.sketchRibbon : ribbon(tab)}
+            </Toolbar>
+          </div>
+        )}
+      </header>
+    );
+  }
   return (
     <header className="bc-top">
-      <span className="bc-title">
-        <Icon name="cube" size={18} />
-        <span className="bc-brand">BetterCad</span>
-      </span>
-      <IconButton
-        className="bc-browser-toggle"
-        icon="layers"
-        title="Browser"
-        on={p.panel === "parts"}
-        aria-controls="bc-left-panel"
-        onClick={() => p.onPanel(p.panel === "parts" ? null : "parts")}
-      />
+      {title}
+      {browserToggle(p)}
       <Separator />
-      <Button
-        icon="undo"
-        title={p.canUndo ? `Undo ${p.undoLabel.toLowerCase()}` : "Undo"}
-        shortcut={formatCombo("mod+z")}
-        disabled={!p.canUndo}
-        onClick={p.onUndo}
-      />
-      <Button
-        icon="redo"
-        title={p.canRedo ? `Redo ${p.redoLabel.toLowerCase()}` : "Redo"}
-        shortcut={formatCombo("shift+mod+z")}
-        disabled={!p.canRedo}
-        onClick={p.onRedo}
-      />
+      {undoRedo(p)}
       {!p.shared && (
         <>
           <Separator />
@@ -210,7 +260,7 @@ export function TopBar(p: TopBarProps) {
                       key={t.id}
                       icon={t.icon}
                       label={t.label}
-                      shortcut={t.key?.toUpperCase()}
+                      shortcut={t.key && formatCombo(t.key)}
                       pressed={p.tool === t.id}
                       onPress={() => p.onArmTool(t.id)}
                     />
@@ -222,6 +272,36 @@ export function TopBar(p: TopBarProps) {
         </>
       )}
       <span className="bc-grow" />
+      {rightSide(p)}
+    </header>
+  );
+}
+
+function undoRedo(p: TopBarProps) {
+  return (
+    <>
+      <Button
+        icon="undo"
+        title={p.canUndo ? `Undo ${p.undoLabel.toLowerCase()}` : "Undo"}
+        shortcut={formatCombo("mod+z")}
+        disabled={!p.canUndo}
+        onClick={p.onUndo}
+      />
+      <Button
+        icon="redo"
+        title={p.canRedo ? `Redo ${p.redoLabel.toLowerCase()}` : "Redo"}
+        shortcut={formatCombo("shift+mod+z")}
+        disabled={!p.canRedo}
+        onClick={p.onRedo}
+      />
+    </>
+  );
+}
+
+/** Find, properties, Parameters, Save (or a share's downloads), Help and the account menu, on the bar's right. */
+function rightSide(p: TopBarProps) {
+  return (
+    <>
       <IconButton className="bc-find" icon="search" title={`Find a command (/ or ${formatCombo("mod+k")})`} onClick={p.onPalette} />
       <IconButton className="bc-props-toggle" icon="info" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
       {!p.shared && <IconButton icon="sliders" title="Parameters" on={!!p.paramsOpen} onClick={p.onParams} />}
@@ -286,6 +366,19 @@ export function TopBar(p: TopBarProps) {
           <ThemePicker value={p.theme} onChange={p.onTheme} compact />
         </div>
       </MenuButton>
-    </header>
+    </>
+  );
+}
+
+function browserToggle(p: TopBarProps) {
+  return (
+    <IconButton
+      className="bc-browser-toggle"
+      icon="layers"
+      title="Browser"
+      on={p.panel === "parts"}
+      aria-controls="bc-left-panel"
+      onClick={() => p.onPanel(p.panel === "parts" ? null : "parts")}
+    />
   );
 }

@@ -5,17 +5,24 @@ import {
   box,
   chamfer,
   cone,
+  count,
   copyShape,
   cylinder,
+  elements,
   fillet,
   grow,
   measure,
+  boundingBox,
+  frontOf,
   inset,
   place,
   prismOf,
   pushPull,
+  offsetFaces,
   holes,
   revolveOf,
+  loftOf,
+  sweepOf,
   shell,
   sphere,
   torus,
@@ -24,15 +31,19 @@ import {
   type Measure,
 } from "./shapes";
 import { tessellate, type Quality } from "./tessellate";
-import { Namer, edgeNames, resolveNames } from "./naming";
-import { build, printed, type ModelDoc, type Part } from "../document";
+import { NAMING_LIMIT, Namer, edgeNames, resolveNames } from "./naming";
+import { plug } from "./plug";
+import { fromPartLocal } from "../extrude";
+import type { Recognition, RecogniseOptions, V3 } from "../recognise";
+import { build, poseNesting, printed, type BodyOp, type ModelDoc, type Part } from "../document";
 import { opMoves, undoMove } from "../pattern";
+import { match, signature, type Sig } from "./repick";
 import { DEFAULT_INFILL, SHELL_MM, estimateWeight, materialOf } from "../print/materials";
 import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeProps } from "../mass";
 import type { BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
-import { readImport, type ImportedBody } from "./imports";
+import { importTriangles, readImport, type ImportedBody, type Progress } from "./imports";
 import { findMates, type Mate } from "./mates";
 import { findClashes, overlapsAt, type Clash } from "./clashes";
 import { triangles } from "./export";
@@ -56,6 +67,11 @@ export interface BuiltBody {
    * too big to follow (large imports).
    */
   names?: { faces: string[]; edges: string[] };
+}
+
+/** What a mesh body was made from (#437), in the world, and whether its mesh has gaps. */
+export interface Recognised extends Recognition {
+  open: boolean;
 }
 
 export interface ImportInfo {
@@ -111,6 +127,8 @@ export const partKey = (p: Part, q: Quality) =>
     p.rotation ?? null,
     p.prism ?? null,
     p.revolve ?? null,
+    p.loft ?? null,
+    p.sweep ?? null,
     p.imported ?? null,
     p.catalogue ? [p.catalogue.id, p.catalogue.version, p.catalogue.model] : null,
     p.copy ?? null,
@@ -120,6 +138,11 @@ export const partKey = (p: Part, q: Quality) =>
 
 /** How many part-way bodies to keep: enough for a few bodies' worth of steps while one is dragged or undone. */
 export const STEPS_KEPT = 240;
+const PICKS_KEPT = 4000;
+/** Finish steps whose picks Pattern and Mirror copies find again by place. */
+const FINISH = new Set(["fillet", "chamfer", "pushpull", "offsetFace"]);
+/** Thrown to leave a copied finish out without failing its step. */
+const SKIP = Symbol("skip");
 
 /**
  * How many finished bodies to keep for undo, redo and scrubbing the timeline (#76), and roughly how much memory they
@@ -168,12 +191,15 @@ const MESH_REFUSAL: Partial<Record<string, string>> = {
   chamfer: "Imported meshes can't be chamfered; use a STEP file for that",
   shell: "Imported meshes can't be shelled; use a STEP file for that",
   pushpull: "Imported meshes can't be pushed or pulled; use a STEP file for that",
+  offsetFace: "Imported meshes can't have faces offset; use a STEP file for that",
 };
 
 /** Steps that made a part, so a part that cannot be built marks its tile. */
 const makers = (doc: ModelDoc, id: string) =>
   doc.features.find(
-    (x) => (x.type === "add" && x.part.id === id) || ((x.type === "extrude" || x.type === "revolve") && x.operation === "new" && x.body.id === id),
+    (x) =>
+      (x.type === "add" && x.part.id === id) ||
+      ((x.type === "extrude" || x.type === "revolve" || x.type === "loft" || x.type === "sweep") && x.operation === "new" && x.body.id === id),
   );
 
 /** A part's own shape, before any join, cut or move. */
@@ -181,7 +207,7 @@ function primitive(oc: OC, p: Part): TopoDS_Shape {
   switch (p.kind) {
     case "solid":
       if (p.catalogue) return catalogueShape(oc, p.catalogue);
-      return p.revolve ? revolveOf(oc, p.revolve) : prismOf(oc, p.prism!);
+      return p.sweep ? sweepOf(oc, p.sweep) : p.loft ? loftOf(oc, p.loft) : p.revolve ? revolveOf(oc, p.revolve) : prismOf(oc, p.prism!);
     case "box":
       return box(oc, p.size);
     case "cylinder":
@@ -219,42 +245,101 @@ export class ModelBuilder {
     { shape: TopoDS_Shape; open: boolean; failures: [string, string][]; faces: string[] | null; recovered: [string, string][] }
   >();
 
+  /**
+   * Where each finish step's picked edges or faces were when it was made (#426), by the step's key (see `chain`), so
+   * Pattern and Mirror copies of it find their own by place. Tiny, so many more are kept than `steps`.
+   */
+  private picksAt = new Map<string, Sig[]>();
+
   constructor(
     private oc: OC,
     /** How much to keep (#76); smaller in tests. */
     private limit: { bodies: number; bytes: number } = CACHE_LIMIT,
   ) {}
 
-  /** The document's imported files (base64 by hash), and the bodies read from them. */
+  /** The document's imported files (base64 by hash), and the bodies read from them, as the file has them. */
   private blobs: Record<string, string> = {};
-  private files = new Map<string, ImportedBody[]>();
+  private files = new Map<string, { raw: ImportedBody[]; placed: Partial<Record<"each" | "whole", ImportedBody[]>> }>();
 
-  /** A file's bodies, read once and each stood with its bottom centre on its own origin. */
-  private readFile(blob: string, format: ImportFormat, data: string, name: string): ImportedBody[] {
-    let bodies = this.files.get(blob);
-    if (!bodies) {
-      bodies = readImport(this.oc, format, fromBase64(data), name).map((b) => {
-        const box = measure(this.oc, b.shape).bbox;
-        const at = { x: -(box.min[0] + box.max[0]) / 2, y: -(box.min[1] + box.max[1]) / 2, z: -box.min[2] };
-        return { ...b, shape: place(this.oc, b.shape, { position: at }) };
-      });
-      this.files.set(blob, bodies);
+  /**
+   * A file's bodies, read once. `whole`: they keep their places in the file, the file's bottom centre on the origin.
+   * `each`: every body stands with its own bottom centre on the origin (imports made before `keepLayout`).
+   */
+  private readFile(blob: string, format: ImportFormat, data: string, name: string, how: "each" | "whole" = "whole", progress?: Progress): ImportedBody[] {
+    let file = this.files.get(blob);
+    if (!file) {
+      file = { raw: readImport(this.oc, format, fromBase64(data), name, progress), placed: {} };
+      this.files.set(blob, file);
     }
+    const done = file.placed[how];
+    if (done) return done;
+    // Only the box: a full measure of a mesh's thousands of faces takes seconds, and the build measures it anyway.
+    const boxes = file.raw.map((b) => boundingBox(this.oc, b.shape));
+    const all = {
+      min: [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b.min[k]!))),
+      max: [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k]!))),
+    };
+    const bodies = file.raw.map((b, i) => {
+      const box = how === "whole" ? all : boxes[i]!;
+      const at = { x: -(box.min[0]! + box.max[0]!) / 2, y: -(box.min[1]! + box.max[1]!) / 2, z: -box.min[2]! };
+      return { ...b, shape: place(this.oc, b.shape, { position: at }), at };
+    });
+    file.placed[how] = bodies;
     return bodies;
   }
 
   /** What an import would bring in (#82): its bodies' names, and which are open meshes. */
-  inspect(p: { name: string; format: ImportFormat; blob: string; data: string }): ImportInfo {
-    const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name));
+  inspect(p: { name: string; format: ImportFormat; blob: string; data: string }, progress?: Progress): ImportInfo {
+    const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name), "whole", progress);
     return { bodies: bodies.map((b) => ({ name: b.name, open: b.open, triangles: b.triangles })) };
   }
 
+  /**
+   * What an imported mesh body was made from (#437): its holes and round faces and edges, in the world as the body
+   * stands. `find` is the recogniser, loaded by the caller so its code stays out of the worker until it is asked for.
+   */
+  recognise(
+    doc: ModelDoc,
+    upTo: number | undefined,
+    body: string,
+    opts: RecogniseOptions,
+    find: (t: Float32Array, o: RecogniseOptions) => Recognition,
+    move: (r: Recognition, point: (v: V3) => V3, dir: (v: V3) => V3) => Recognition,
+  ): Recognised {
+    const p = build(doc, upTo).parts.find((x) => x.id === body);
+    this.useBlobs(doc);
+    if (!p) throw new KernelError("failed", "That body is gone.");
+    if (!p.imported?.mesh) throw new KernelError("failed", "Recognise features works on an imported STL or 3MF body.");
+    if (p.ops?.length || p.copy)
+      throw new KernelError("failed", "Recognise features reads a body as it was imported. Use it before other steps change the body.");
+    const b = this.importedShape(p);
+    const data = this.blobs[p.imported.blob];
+    const t = data ? importTriangles(p.imported.format, fromBase64(data), p.imported.index) : null;
+    if (!t) throw new KernelError("failed", "The imported file is missing from this model.");
+    const at = b.at ?? { x: 0, y: 0, z: 0 };
+    const local = new Float32Array(t.length);
+    for (let i = 0; i < t.length; i += 3) {
+      local[i] = t[i]! + at.x;
+      local[i + 1] = t[i + 1]! + at.y;
+      local[i + 2] = t[i + 2]! + at.z;
+    }
+    const place = { position: p.position, rotation: p.rotation };
+    return {
+      ...move(
+        find(local, opts),
+        (v) => fromPartLocal(v, place),
+        (v) => fromPartLocal(v, place, true),
+      ),
+      open: b.open,
+    };
+  }
+
   /** An imported body. */
-  private importedShape(p: Part): { shape: TopoDS_Shape; open: boolean } {
+  private importedShape(p: Part): ImportedBody {
     const im = p.imported!;
     const data = this.blobs[im.blob];
     if (!data && !this.files.has(im.blob)) throw new KernelError("failed", "The imported file is missing from this model.");
-    const b = this.readFile(im.blob, im.format, data ?? "", baseName(p.name))[im.index];
+    const b = this.readFile(im.blob, im.format, data ?? "", baseName(p.name), im.keepLayout ? "whole" : "each")[im.index];
     if (!b) throw new KernelError("failed", "That body is no longer in the imported file.");
     return b;
   }
@@ -294,6 +379,13 @@ export class ModelBuilder {
       for (const o of ops) keys.push((at = chain(at, o)));
       let from = ops.length;
       while (from > 0 && !this.steps.has(keys[from - 1]!)) from--;
+      // A copied finish needs where its original's picks were; when that's been forgotten, the original is made again.
+      const sourceOf = (o: BodyOp) => (o.from ? ops.findIndex((x) => x.feature === o.from && !opMoves(x).length) : -1);
+      for (let i = from; i < ops.length; i++) {
+        const j = sourceOf(ops[i]!);
+        if (j >= 0 && j < from && !this.picksAt.has(keys[j]!)) from = j;
+      }
+      while (from > 0 && !this.steps.has(keys[from - 1]!)) from--;
       let local: TopoDS_Shape;
       let open = false;
       const failures: [string, string][] = [];
@@ -323,7 +415,17 @@ export class ModelBuilder {
         const src = this.solid(p.copy.body, quality);
         local = unplace(oc, copyShape(oc, src.shape, p.copy.by), { position: p.copy.at });
         if (src.faces) namer.add(local, src.faces);
-      } else local = p.kind === "solid" && !p.catalogue ? (p.revolve ? revolveOf(oc, p.revolve, namer) : prismOf(oc, p.prism!, namer)) : primitive(oc, p);
+      } else
+        local =
+          p.kind === "solid" && !p.catalogue
+            ? p.sweep
+              ? sweepOf(oc, p.sweep, namer)
+              : p.loft
+                ? loftOf(oc, p.loft, namer)
+                : p.revolve
+                  ? revolveOf(oc, p.revolve, namer)
+                  : prismOf(oc, p.prism!, namer)
+            : primitive(oc, p);
       lap(base, !!kept);
       for (let i = 0; i < from; i++) lap(ops[i]!.feature, true);
       let faces = namer.off ? null : namer.namesOf(local);
@@ -333,7 +435,10 @@ export class ModelBuilder {
         // Shapes this step makes fresh (its tool, a slab) are named under its id.
         namer.prefix = `${o.feature}:`;
         try {
-          if (p.imported?.mesh && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
+          // A mesh that has been converted (#448) and is small enough to name takes these like any body.
+          if (p.imported?.mesh && namer.off && MESH_REFUSAL[o.op]) throw new KernelError("failed", MESH_REFUSAL[o.op]!);
+          if (open && o.op === "plug")
+            throw new KernelError("failed", "This mesh has gaps, so it can't be converted. Repair it in your slicer and import it again.");
           if (open && (o.op === "join" || o.op === "cut" || o.op === "intersect"))
             throw new KernelError("failed", "This mesh has holes, so it can't be combined");
           // A mirrored, turned or moved op (Mirror or Pattern of features): move the body the other way, make the op as
@@ -349,17 +454,48 @@ export class ModelBuilder {
           for (let j = flips.length - 1; j >= 0; j--) move(undoMove(flips[j]!));
           // Picks stored by name are found again by name; picks without, or on a body too big to name, by number.
           let refs = o.refs ?? [];
-          if (o.names?.length && !namer.off) {
+          const kind = o.op === "fillet" || o.op === "chamfer" ? "edge" : "face";
+          const copyOf = o.from ? sourceOf(o) : -1;
+          if (o.from) {
+            // A copy (#426): the body is moved back so this copy sits where the original did, so its edges or faces
+            // are the ones at the original's picks.
+            const at = copyOf >= 0 ? this.picksAt.get(keys[copyOf]!) : undefined;
+            if (!at) throw new KernelError("failed", "The step it copies is gone");
+            const sigs = elements(oc, s, kind).map((e) => signature(oc, e, kind));
+            refs = at.map((a) => match(a, kind, sigs));
+            if (refs.some((r) => r < 0)) {
+              recovered.push([o.feature, `A copy has no ${kind} where the original's was, so it was left out.`]);
+              throw SKIP;
+            }
+          } else if (o.names?.length && !namer.off) {
             const fs = namer.namesOf(s);
             const r = resolveNames(o.names, o.op === "fillet" || o.op === "chamfer" ? edgeNames(oc, s, fs) : fs, refs);
             refs = r.refs;
             if (r.recovered) recovered.push([o.feature, "Its edges or faces changed in an earlier step. Check it's on the right ones."]);
           }
+          if (FINISH.has(o.op) && !o.from) {
+            const els = elements(oc, s, kind);
+            this.picksAt.delete(keys[i]!);
+            this.picksAt.set(
+              keys[i]!,
+              refs.filter((r) => els[r]).map((r) => signature(oc, els[r]!, kind)),
+            );
+            while (this.picksAt.size > PICKS_KEPT) this.picksAt.delete(this.picksAt.keys().next().value!);
+          }
           if (o.op === "fillet" || o.op === "chamfer") s = (o.op === "fillet" ? fillet : chamfer)(oc, s, refs, o.size ?? 0, namer);
           else if (o.op === "shell") s = shell(oc, s, refs, o.size ?? 0, o.outside, namer);
           else if (o.op === "pushpull") s = pushPull(oc, s, refs[0] ?? -1, o.size ?? 0, namer);
+          else if (o.op === "offsetFace") s = offsetFaces(oc, s, refs, o.size ?? 0, namer);
           else if (o.op === "hole") s = holes(oc, s, o.holes!, namer);
-          else {
+          else if (o.op === "plug") {
+            s = plug(oc, s, o.plugs ?? []);
+            // With its holes filled a mesh is often a handful of flat faces: few enough to name (#451), so later
+            // fillets, sketches and joints find their faces again.
+            if (namer.off && count(oc, s, "face") <= NAMING_LIMIT) {
+              namer.off = false;
+              namer.namesOf(s);
+            }
+          } else {
             // A body is built where it stood, then taken into this part's coordinates as they were then.
             let tool: TopoDS_Shape;
             if (o.body) {
@@ -370,13 +506,27 @@ export class ModelBuilder {
                   tool,
                   b.faces.map((n) => namer.prefix + n),
                 );
-            } else tool = o.rev ? revolveOf(oc, o.rev, namer) : prismOf(oc, o.tool!, namer);
-            s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool], namer);
+            } else if (o.half) tool = frontOf(oc, s, o.half);
+            else
+              tool = o.sweep
+                ? sweepOf(oc, o.sweep, namer)
+                : o.loft
+                  ? loftOf(oc, o.loft, namer)
+                  : o.rev
+                    ? revolveOf(oc, o.rev, namer)
+                    : prismOf(oc, o.tool!, namer);
+            try {
+              s = boolean(oc, o.op, s, [o.op === "cut" && o.gap ? grow(oc, tool, o.gap) : tool], namer);
+            } catch (e) {
+              // A split whose plane misses the body leaves one half empty.
+              if (o.half && isKernelError(e)) throw new KernelError("failed", "The plane misses the body, so there is nothing on one side of it");
+              throw e;
+            }
           }
           for (const m of flips) move(m);
           local = s;
         } catch (e) {
-          failures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
+          if (e !== SKIP) failures.push([o.feature, isKernelError(e) ? e.message : "That step could not be made."]);
         }
         faces = namer.off ? null : namer.namesOf(local);
         this.steps.set(keys[i]!, { shape: local, open, failures: [...failures], faces, recovered: [...recovered] });
@@ -506,7 +656,9 @@ export class ModelBuilder {
     upTo = doc.features.length,
     opts: { sameLink?: boolean; references?: boolean; cancelled?: () => boolean; progress?: (f: number) => void } = {},
   ): Clash[] {
-    const { parts, joints, links, drives, components } = build(doc, upTo);
+    const built = build(doc, upTo);
+    const { parts, joints, links, drives } = built;
+    const components = poseNesting(built);
     this.useBlobs(doc);
     const byLink = doc.pose ? linkTransforms(joints, resolvePose(drives, doc.pose), components) : new Map();
     const linkOf = new Map<string, string>();

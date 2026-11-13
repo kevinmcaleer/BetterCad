@@ -3,6 +3,8 @@ import {
   allCrossings,
   closestOnSegment,
   dist,
+  ellipseDistance,
+  ellipseGeo,
   mid,
   sub,
   angleOf,
@@ -12,6 +14,8 @@ import {
   type ModelCurve,
   type Sketch,
   type Vec2,
+  splineGeo,
+  splineParam,
 } from "@bettercad/sketch";
 import type { ModelTarget } from "./modelSnap";
 
@@ -104,8 +108,8 @@ export interface PointPick {
  */
 export function pointPickAt(p: Vec2, sketch: Sketch, tol: number, origin: Vec2 | null): PointPick | null {
   const idx = new SketchIndex(sketch);
-  const centres = new Set(sketch.entities.flatMap((e) => (e.kind === "circle" || e.kind === "arc" ? [e.c] : [])));
-  const ends = new Set(sketch.entities.flatMap((e) => (e.kind === "line" || e.kind === "arc" ? [e.a, e.b] : [])));
+  const centres = new Set(sketch.entities.flatMap((e) => (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" ? [e.c] : [])));
+  const ends = new Set(sketch.entities.flatMap((e) => (e.kind === "line" || e.kind === "arc" ? [e.a, e.b] : e.kind === "spline" ? e.pts : [])));
   let best = null as PointPick | null;
   let bestD = tol;
   const consider = (c: PointPick) => {
@@ -154,7 +158,7 @@ export function snap(cursor: Vec2, sketch: Sketch, o: SnapOptions): Snap {
   const tol = (o.radius ?? 8) * o.px;
   const idx = new SketchIndex(sketch);
   const skip = o.exclude ?? new Set<Id>();
-  const centres = new Set(sketch.entities.flatMap((e) => (e.kind === "circle" || e.kind === "arc" ? [e.c] : [])));
+  const centres = new Set(sketch.entities.flatMap((e) => (e.kind === "circle" || e.kind === "arc" || e.kind === "ellipse" ? [e.c] : [])));
 
   let best = null as Snap | null;
   let bestD = tol;
@@ -260,6 +264,8 @@ export function entityAt(p: Vec2, sketch: Sketch, tol: number, curvesOnly = fals
     let d = Infinity;
     if (e.kind === "line") d = dist(closestOnSegment(p, idx.xy(e.a), idx.xy(e.b)).p, p);
     else if (e.kind === "circle") d = Math.abs(dist(idx.xy(e.c), p) - e.r);
+    else if (e.kind === "ellipse") d = ellipseDistance(ellipseGeo(idx, e), p);
+    else if (e.kind === "spline") d = splineParam(splineGeo(idx, e), p).d;
     else if (e.kind === "arc") {
       const c = idx.xy(e.c);
       const ang = angleOf(sub(p, c));

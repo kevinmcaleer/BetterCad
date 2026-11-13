@@ -39,6 +39,7 @@ import {
 import type { WorldPlaneName } from "../viewport/engine";
 import { cachedBytes, clearCachedApp } from "../pwa/register";
 import { loupeAuto, setLoupeAuto } from "../state/loupePref";
+import { setToolbarMode, toolbarMode, type ToolbarMode } from "./ribbonPrefs";
 
 export type PanelId = "parts" | "library" | "robot" | "history" | "print" | "settings";
 
@@ -93,6 +94,8 @@ export interface LeftPanelProps {
   onSketchOn: (plane: WorldPlaneName) => void;
   /** Construction geometry (#265) for the browser, and sketching on a construction plane. */
   construct?: BrowserConstruct[];
+  /** Decals (#263), shown under their bodies. */
+  decals?: BrowserModel["decals"];
   onSketchOnStep?: (id: string) => void;
   features: Feature[];
   at: number;
@@ -170,6 +173,7 @@ function PartsPanel(p: LeftPanelProps) {
         active: p.activeComponent,
         joints: p.joints,
         construct: p.construct,
+        decals: p.decals,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
         sections: p.sections?.sections,
@@ -283,6 +287,7 @@ function SettingsPanel(p: LeftPanelProps) {
       <h2 className="bc-panel-title">Theme</h2>
       <ThemePicker value={p.theme} onChange={p.onTheme} />
       <p className="bc-note">System follows your device, light or dark. Holoroom is a black drawing room with a yellow grid.</p>
+      <ToolbarSetting />
       <h2 className="bc-panel-title">Timeline</h2>
       <label className="bc-check">
         <input type="checkbox" checked={p.timelineShown} onChange={(e) => p.onTimelineShown(e.target.checked)} />
@@ -338,6 +343,42 @@ function SettingsPanel(p: LeftPanelProps) {
           </a>
         </>
       ) : null}
+    </>
+  );
+}
+
+/** The tool bar: the desktop ribbon, the compact bar, or whichever suits the window. */
+function ToolbarSetting() {
+  const [mode, setMode] = useState(toolbarMode);
+  const choices: [ToolbarMode, string][] = [
+    ["auto", "Automatic"],
+    ["ribbon", "Ribbon"],
+    ["compact", "Compact"],
+  ];
+  return (
+    <>
+      <h2 className="bc-panel-title" id="bc-toolbar-mode">
+        Tool bar
+      </h2>
+      <div role="radiogroup" aria-labelledby="bc-toolbar-mode">
+        {choices.map(([m, label]) => (
+          <label key={m} className="bc-check">
+            <input
+              type="radio"
+              name="bc-toolbar-mode"
+              checked={mode === m}
+              onChange={() => {
+                setToolbarMode(m);
+                setMode(m);
+              }}
+            />
+            <span>{label}</span>
+          </label>
+        ))}
+      </div>
+      <p className="bc-note">
+        Automatic shows the ribbon, with big tools and a list under each group, on wide screens with a mouse, and the compact bar on tablets and phones.
+      </p>
     </>
   );
 }

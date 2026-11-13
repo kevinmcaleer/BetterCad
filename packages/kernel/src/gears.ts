@@ -204,7 +204,7 @@ export function gearOutline(p: GearParams, spin = 0): Vec2[] {
 export function gearArea(p: GearParams): number {
   let s = 0;
   for (const g of gearSegs(p)) {
-    if (g.kind === "circle") continue;
+    if (g.kind === "circle" || g.kind === "ellipse" || g.kind === "spline") continue;
     s += (g.a[0] * g.b[1] - g.b[0] * g.a[1]) / 2;
     if (g.kind === "arc") s += arcBulge(g.a, g.m, g.b);
   }

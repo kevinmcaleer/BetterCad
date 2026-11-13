@@ -19,7 +19,11 @@ import {
   prism,
   prismOf,
   pushPull,
+  offsetFaces,
   revolveOf,
+  loftOf,
+  sweepOf,
+  frontOf,
   shell,
   sphere,
   torus,
@@ -28,10 +32,14 @@ import {
   type TopoDS_Shape,
 } from "./occt/shapes";
 import { bodyRef } from "./construct";
-import { extent, pickProfiles, startDistance, upToDistance, type PrismSpec, type ProfileSeg } from "./extrude";
+import { triangles } from "./occt/export";
+import { meshSolid } from "./occt/imports";
+import { plug } from "./occt/plug";
+import { recognise } from "./recognise";
+import { extent, pickProfiles, startDistance, upToDistance, splineSeg, type PrismSpec, type ProfileSeg } from "./extrude";
 import { createRequire } from "node:module";
 import { parse } from "opentype.js";
-import { Draft, drawCircle, layoutText, newSketch, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
+import { Draft, drawCircle, fitSpline, layoutText, newSketch, splinePieces, type GlyphFont, type PathCommand, type Sketch } from "@bettercad/sketch";
 import { resolveHole, type HoleParams, type HoleSpec } from "./holes";
 import { tessellate } from "./occt/tessellate";
 import { readStep } from "./occt/export";
@@ -48,6 +56,9 @@ import {
   mirrorFace,
   addPattern,
   addPart,
+  addCombine,
+  addFinish,
+  type ModelDoc,
   type PatternParams,
   build,
   changeParts,
@@ -59,6 +70,7 @@ import {
 } from "./document";
 import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
+import { signature } from "./occt/repick";
 
 /** A 19 mm octagonal prism of circumradius 10 with a 1 mm, 20 mm wide disc on top: the disc's rim touches the corners. */
 function discOnOctagon(oc: OC): TopoDS_Shape {
@@ -89,6 +101,22 @@ function cogTopEdge(oc: OC, shape: TopoDS_Shape): number {
   });
 }
 
+/**
+ * The four edges round the cog's top, by number in `shape`: 5.5 mm long and 2 mm further from the wheel's axis (Z) than
+ * the flat it stands on. Any one of them is what you'd pick to chamfer the stud.
+ */
+function cogTopEdges(oc: OC, shape: TopoDS_Shape): number[] {
+  const out: number[] = [];
+  elements(oc, shape, "edge").forEach((e, i) => {
+    const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+    const [a, m, b] = [c.FirstParameter(), (c.FirstParameter() + c.LastParameter()) / 2, c.LastParameter()].map((u) => c.Value(u));
+    const length = Math.hypot(a!.X() - b!.X(), a!.Y() - b!.Y(), a!.Z() - b!.Z());
+    if (Math.abs(length - 5.5) < 1e-3 && Math.hypot(m!.X(), m!.Y()) > 15.5) out.push(i);
+    c.delete();
+  });
+  return out;
+}
+
 /** A 100 × 80 × 5 mm plate with a mounting feature on its top (#189). */
 function mountOn(oc: OC, params: Partial<MountParams>): TopoDS_Shape {
   let doc = changeParts(addPart(newDoc(), "box", "plate"), ["plate"], "size", { x: 100, y: 80, z: 5 });
@@ -109,6 +137,26 @@ function gearOf(oc: OC, change: Partial<GearParamsStep> = {}): TopoDS_Shape {
 }
 
 /** A part copied by a joined Mirror or Pattern step (#69), built as the one body it becomes. */
+/**
+ * A 40 × 40 × 5 mm plate with a 6 mm peg 8 mm tall joined on at x = 12, its top edge chamfered or filleted 1 mm, then
+ * the peg and its finish copied by `p` (#426): each copy's edge is found where the original's was.
+ */
+function finishedPeg(oc: OC, type: "fillet" | "chamfer", p: Partial<PatternParams> & { kind: PatternParams["kind"] }): TopoDS_Shape {
+  let doc: ModelDoc = changeParts(addPart(newDoc(), "box", "b"), ["b"], "size", { x: 40, y: 40, z: 5 });
+  doc = changeParts(addPart(doc, "cylinder", "peg"), ["peg"], "size", { x: 6, y: 6, z: 8 });
+  doc = changeParts(doc, ["peg"], "position", { x: 12, y: 0, z: 5 });
+  doc = addCombine(doc, { mode: "combine", target: "b", tools: [{ id: "peg", op: "join" }] }, "j");
+  const before = new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "b")!).shape;
+  // The peg's top rim: the round edge whose middle is on the peg's axis, 13 mm up.
+  const top = elements(oc, before, "edge").findIndex((e) => {
+    const s = signature(oc, e, "edge");
+    return !s.dir && Math.hypot(s.at[0] - 12, s.at[1], s.at[2] - 13) < 0.01;
+  });
+  doc = addFinish(doc, { type, part: "b", refs: [top], size: 1 }, "f");
+  doc = addPattern(doc, { parts: [], of: "features", features: ["j", "f"], ...p });
+  return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "b")!).shape;
+}
+
 function patterned(
   oc: OC,
   kind: "wedge" | "cylinder" | "box",
@@ -156,6 +204,33 @@ const XZ = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, -1, 0] } as PrismSpec[
 const Z_AXIS = { origin: [0, 0] as [number, number], dir: [0, 1] as [number, number] };
 const rectAt = (x: number, y: number, w: number, h: number): ProfileSeg[] =>
   rect(w, h).map((g) => (g.kind === "line" ? { kind: "line", a: [g.a[0] + x, g.a[1] + y], b: [g.b[0] + x, g.b[1] + y] } : g));
+
+const YZ = { origin: [0, 0, 0], x: [0, 1, 0], normal: [1, 0, 0] } as PrismSpec["frame"];
+const XYat = (z: number) => ({ ...XY, origin: [0, 0, z] }) as PrismSpec["frame"];
+/** A square centred on the frame's origin. */
+const centred = (w: number) => rectAt(-w / 2, -w / 2, w, w);
+const square = (w: number) => ({ outer: centred(w), holes: [] as ProfileSeg[][], area: w * w });
+
+/** The first face of a shape that is round, or else flat with its outward normal nearest `dir`. */
+const faceToward = (oc: OC, shape: TopoDS_Shape, dir: [number, number, number] | "round"): number => {
+  let best = -1;
+  let score = -Infinity;
+  elements(oc, shape, "face").forEach((f, i) => {
+    const face = oc.TopoDS.Face(f);
+    const s = new oc.BRepAdaptor_Surface(face, true);
+    const flat = s.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane;
+    if (dir === "round") {
+      if (!flat && best < 0) best = i;
+    } else if (flat) {
+      const d = s.Plane().Axis().Direction();
+      const k = face.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED ? -1 : 1;
+      const v = k * (d.X() * dir[0] + d.Y() * dir[1] + d.Z() * dir[2]);
+      if (v > score) [score, best] = [v, i];
+    }
+    s.delete();
+  });
+  return best;
+};
 
 const holeOn = (top: number, p: HoleParams): HoleSpec => {
   const r = resolveHole(p) as { diameter: number; head?: HoleSpec["head"] };
@@ -251,6 +326,11 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     const s = cogOnFlat(oc);
     return chamfer(oc, s, [cogTopEdge(oc, s)], 1);
   },
+  // All four at once: Kev's chamfer on the stud failed again on 12 November (an out-of-date app, not the kernel).
+  "chamfer-cog-top-edges": (oc) => {
+    const s = cogOnFlat(oc);
+    return chamfer(oc, s, cogTopEdges(oc, s), 1);
+  },
   "chamfer-all": (oc) => chamfer(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 1),
   tray: (oc) => shell(oc, fillet(oc, box(oc, { x: 40, y: 30, z: 15 }), [...Array(12).keys()], 3), [], 1.2),
   "hollow-sphere": (oc) => shell(oc, sphere(oc, { x: 20, y: 20, z: 20 }), [], 1),
@@ -265,12 +345,208 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Revolve round an axis 10 mm off the sketch's plane (a construction axis or an edge above it).
   "revolve-offset-axis": (oc) =>
     revolveOf(oc, { frame: XZ, profiles: [{ outer: rectAt(5, 0, 10, 30), holes: [], area: 300 }], axis: { ...Z_AXIS, offset: 10 }, angle: 360 }),
+  // Ellipses (#401): a 20 × 8 mm ellipse turned 30° and pushed up 5 mm; one taller than wide with a hole through it;
+  // half of one 8 wide and 20 tall turned round the Z axis into an egg.
+  "extrude-ellipse": (oc) =>
+    prismOf(oc, { frame: XY, profiles: [{ outer: [{ kind: "ellipse", c: [0, 0], r1: 10, r2: 4, rot: Math.PI / 6 }], holes: [], area: 0 }], from: 0, to: 5 }),
+  "extrude-ellipse-tall": (oc) =>
+    prismOf(oc, {
+      frame: XY,
+      profiles: [{ outer: [{ kind: "ellipse", c: [0, 0], r1: 3, r2: 8, rot: 0 }], holes: [[{ kind: "circle", c: [0, 0], r: 1 }]], area: 0 }],
+      from: 0,
+      to: 5,
+    }),
+  "revolve-half-ellipse": (oc) =>
+    revolveOf(oc, {
+      frame: XZ,
+      profiles: [
+        {
+          outer: [
+            { kind: "ellipse", c: [0, 15], r1: 10, r2: 4, rot: Math.PI / 2, t: [Math.PI, 2 * Math.PI] },
+            { kind: "line", a: [0, 25], b: [0, 5] },
+          ],
+          holes: [],
+          area: 0,
+        },
+      ],
+      axis: Z_AXIS,
+      angle: 360,
+    }),
+  // Splines (#269): a closed 5-point spline pushed up 5 mm (one smooth side face); a vase, an open spline closed by
+  // the axis and turned round it.
+  "extrude-spline": (oc) =>
+    prismOf(oc, {
+      frame: XY,
+      profiles: [
+        {
+          outer: [
+            splineSeg(
+              splinePieces(
+                fitSpline(
+                  [
+                    [10, 0],
+                    [3, 9],
+                    [-8, 6],
+                    [-8, -6],
+                    [3, -9],
+                  ],
+                  true,
+                ),
+              ),
+            ),
+          ],
+          holes: [],
+          area: 0,
+        },
+      ],
+      from: 0,
+      to: 5,
+    }),
+  "revolve-spline-vase": (oc) =>
+    revolveOf(oc, {
+      frame: XZ,
+      profiles: [
+        {
+          outer: [
+            splineSeg(
+              splinePieces(
+                fitSpline([
+                  [0, 0],
+                  [8, 4],
+                  [5, 14],
+                  [7, 22],
+                  [0, 30],
+                ]),
+              ),
+            ),
+            { kind: "line", a: [0, 30], b: [0, 0] },
+          ],
+          holes: [],
+          area: 0,
+        },
+      ],
+      axis: Z_AXIS,
+      angle: 360,
+    }),
+  // Extrude's taper (#402): a 20 mm square 10 mm up, leaning in 10° (a frustum); out 10° both ways from the middle; a
+  // ring whose bore opens as its outside closes in.
+  "extrude-taper": (oc) => prismOf(oc, { frame: XY, profiles: [square(20)], from: 0, to: 10, taper: 10 }),
+  "extrude-taper-both": (oc) => prismOf(oc, { frame: XY, profiles: [square(20)], from: -5, to: 5, base: 0, taper: -10 }),
+  "extrude-taper-ring": (oc) =>
+    prismOf(oc, {
+      frame: XY,
+      profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 10 }], holes: [[{ kind: "circle", c: [0, 0], r: 4 }]], area: 0 }],
+      from: 0,
+      to: 10,
+      taper: 5,
+    }),
+  // Loft (#399): a 20 mm square to a 10 mm one 10 mm above, straight sides (a frustum); a square to a circle, smooth;
+  // a square tube to a smaller one; three shapes; a loft cut through a block.
+  "loft-frustum": (oc) =>
+    loftOf(oc, {
+      ruled: true,
+      sections: [
+        { frame: XY, profile: square(20) },
+        { frame: XYat(10), profile: square(10) },
+      ],
+    }),
+  "loft-square-to-circle": (oc) =>
+    loftOf(oc, {
+      sections: [
+        { frame: XY, profile: square(20) },
+        { frame: XYat(20), profile: { outer: [{ kind: "circle", c: [0, 0], r: 6 }], holes: [], area: 0 } },
+      ],
+    }),
+  "loft-tube": (oc) =>
+    loftOf(oc, {
+      ruled: true,
+      sections: [
+        { frame: XY, profile: { ...square(20), holes: [centred(16)] } },
+        { frame: XYat(15), profile: { ...square(12), holes: [centred(8)] } },
+      ],
+    }),
+  "loft-three": (oc) =>
+    loftOf(oc, {
+      sections: [
+        { frame: XY, profile: square(20) },
+        { frame: XYat(10), profile: square(8) },
+        { frame: XYat(20), profile: square(16) },
+      ],
+    }),
+  "loft-cut": (oc) =>
+    boolean(oc, "cut", box(oc, { x: 30, y: 30, z: 20 }), [
+      loftOf(oc, {
+        ruled: true,
+        sections: [
+          { frame: XYat(5), profile: square(10) },
+          { frame: XYat(20), profile: square(20) },
+        ],
+      }),
+    ]),
+  // Sweep (#400): a 4 mm tube with a 2 mm bore along a line, a quarter bend and a line; a 6 mm square round a 30 mm
+  // ring; a channel swept along a straight path cut into a block.
+  "sweep-bent-tube": (oc) =>
+    sweepOf(oc, {
+      frame: YZ,
+      profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 2 }], holes: [[{ kind: "circle", c: [0, 0], r: 1 }]], area: 0 }],
+      path: {
+        frame: XY,
+        segs: [
+          { kind: "line", a: [0, 0], b: [20, 0] },
+          { kind: "arc", a: [20, 0], m: [20 + 10 * Math.SQRT1_2, 10 - 10 * Math.SQRT1_2], b: [30, 10] },
+          { kind: "line", a: [30, 10], b: [30, 30] },
+        ],
+      },
+    }),
+  "sweep-ring": (oc) =>
+    sweepOf(oc, {
+      frame: XZ,
+      profiles: [{ outer: rectAt(12, -3, 6, 6), holes: [], area: 36 }],
+      path: { frame: XY, segs: [{ kind: "circle", c: [0, 0], r: 15 }] },
+    }),
+  "sweep-cut": (oc) =>
+    boolean(oc, "cut", box(oc, { x: 30, y: 30, z: 10 }), [
+      sweepOf(oc, {
+        frame: { ...YZ, origin: [-20, 0, 0] },
+        profiles: [{ outer: rectAt(-3, 7, 6, 6), holes: [], area: 36 }],
+        path: { frame: XY, segs: [{ kind: "line", a: [-20, 0], b: [20, 0] }] },
+      }),
+    ]),
+  // Split body (#406): a 20 mm box split by a plane through the Y axis at 30° from upright; the front half and the back.
+  "split-30-front": (oc) => {
+    const b = box(oc, { x: 20, y: 20, z: 20 });
+    const n = { x: Math.cos(Math.PI / 6), y: 0, z: Math.sin(Math.PI / 6) };
+    return boolean(oc, "intersect", b, [frontOf(oc, b, { origin: { x: 0, y: 0, z: 0 }, normal: n })]);
+  },
+  "split-30-back": (oc) => {
+    const b = box(oc, { x: 20, y: 20, z: 20 });
+    const n = { x: Math.cos(Math.PI / 6), y: 0, z: Math.sin(Math.PI / 6) };
+    return boolean(oc, "cut", b, [frontOf(oc, b, { origin: { x: 0, y: 0, z: 0 }, normal: n })]);
+  },
   // Push/pull (#65): the top of a 20 mm box out 5 mm, and in 5 mm.
   "pushpull-out": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, 5),
   "pushpull-in": (oc) => pushPull(oc, box(oc, { x: 20, y: 20, z: 20 }), 5, -5),
+  // Offset face (#264): a wedge's slope out 2 mm, its bottom, back and ends stretched to meet it; and a 5 mm hole's
+  // wall in 0.2 mm, loosening it to 5.4 mm.
+  "offset-face-wedge": (oc) => {
+    const w = wedge(oc, { x: 20, y: 10, z: 10 });
+    return offsetFaces(oc, w, [faceToward(oc, w, [1, 0, 2])], 2);
+  },
+  "offset-face-hole": (oc) => {
+    const plate = boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 5 }), [cylinder(oc, { x: 5, y: 5, z: 5 })]);
+    return offsetFaces(oc, plate, [faceToward(oc, plate, "round")], -0.2);
+  },
   // Holes (#70), into the top of a plate.
   "hole-m3-plate": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "none", depth: null })),
   "hole-m3-countersunk": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 5 }), holeOn(5, { size: "M3", fit: "printed", head: "countersink", depth: null })),
+  // A custom counterbore (#404): Ø8 through a 13 mm plate, Ø15 4 mm deep, as the Corner Tie's.
+  "hole-custom-counterbore": (oc) =>
+    holes(
+      oc,
+      box(oc, { x: 30, y: 30, z: 13 }),
+      holeOn(13, { size: "custom", diameter: 8, fit: "normal", head: "counterbore", headSize: { diameter: 15, depth: 4 }, depth: null }),
+    ),
+  "hole-m10-countersunk": (oc) => holes(oc, box(oc, { x: 40, y: 40, z: 12 }), holeOn(12, { size: "M10", fit: "normal", head: "countersink", depth: null })),
   "hole-m4-counterbore": (oc) => holes(oc, box(oc, { x: 20, y: 20, z: 10 }), holeOn(10, { size: "M4", fit: "printed", head: "counterbore", depth: 6 })),
   // Group (#66): a box with two hole cylinders is the box less both.
   group: (oc) =>
@@ -358,6 +634,10 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     doc = addPattern(doc, { parts: ["a"], kind: "circle", count: 6, angle: 360, join: true, axisRef });
     return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
   },
+  // A peg and its chamfer turned 4 times round Z: every peg is chamfered (#426).
+  "pattern-circle-chamfered-peg": (oc) => finishedPeg(oc, "chamfer", { kind: "circle", count: 4, angle: 360 }),
+  // A peg and its fillet mirrored across YZ: both pegs are rounded (#426).
+  "mirror-filleted-peg": (oc) => finishedPeg(oc, "fillet", { kind: "mirror", plane: "YZ" }),
   // Track (Pattern's Track kind): a 10 × 4 × 2 mm piece with pins 8 mm apart wrapped round two 40 mm wheels, 2 mm out.
   // 42 go round; the fifth piece is on the first wheel's round end, turned to follow it.
   "pattern-track-two-wheels": (oc) => {
@@ -458,6 +738,25 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
     return boolean(oc, "cut", box(oc, { x: 20, y: 20, z: 20 }), [
       prismOf(oc, { frame, profiles: [{ outer: [{ kind: "circle", c: [0, 0], r: 3 }], holes: [], area: 0 }], from: span.from + start, to: span.to + start }),
     ]);
+  }, // Convert (#448): a block with a 6 mm hole, saved as triangles, read back as a mesh, its hole found and filled, then
+  // cut again as a true cylinder.
+  "convert-mesh-hole": (oc) => {
+    const made = holes(oc, box(oc, { x: 30, y: 20, z: 8 }), {
+      frame: { origin: [0, 0, 8], x: [1, 0, 0], normal: [0, 0, 1] },
+      points: [[0, 0]],
+      diameter: 6,
+      depth: null,
+    });
+    const t = triangles(oc, made, 0.05);
+    const r = recognise(t);
+    let s = plug(
+      oc,
+      meshSolid(oc, t).shape,
+      r.holes.flatMap((h) => h.plugs),
+    );
+    for (const g of r.groups)
+      s = holes(oc, s, { frame: g.frame as unknown as HoleSpec["frame"], points: g.points, diameter: g.diameter, depth: g.depth, head: g.head });
+    return s;
   },
 };
 
@@ -509,4 +808,14 @@ describe("golden geometry", () => {
       20_000,
     );
   }
+});
+
+describe("chamfer on the cog stud", () => {
+  // Whichever top edge you pick, a 1 mm chamfer fits on it alone (#425).
+  it("fits 1 mm on each top edge by itself", () => {
+    const s = cogOnFlat(oc);
+    const tops = cogTopEdges(oc, s);
+    expect(tops).toHaveLength(4);
+    for (const e of tops) expect(valid(oc, chamfer(oc, s, [e], 1)), `edge ${e}`).toBe(true);
+  });
 });

@@ -1,135 +1,46 @@
 import {
   SketchIndex,
-  constraintRefs,
   curvePoints,
-  newId,
+  ellipseAngle,
+  ellipseGeo,
+  ellipsePoint,
   toSketch,
-  type Arc,
   type Curve,
+  type EllipseGeo,
   type Entity,
   type Frame,
   type Id,
-  type Line,
   type ProjectedRef,
   type Sketch,
   type TopoRef,
   type Vec2,
   type Vec3,
 } from "./model";
-import {
-  add,
-  angleOf,
-  circleCircle,
-  circleFrom3,
-  dist,
-  dot,
-  filletCorner,
-  lineCircle,
-  lineLine,
-  norm,
-  onArc,
-  perp,
-  polar,
-  polygonArea,
-  scale,
-  sub,
-  sweep,
-  wrap,
-} from "./geom2d";
+import { circleSide, curveEllipse, ellipseSide, lineEllipse } from "./ellipse";
+import { curveSplineParams, lineSide, sampleSpline, splineGeo, splineParam, splinePoint, splineSpline, type SplineGeo } from "./spline";
+import { add, angleOf, circleCircle, circleFrom3, dist, dot, lineCircle, lineLine, onArc, polar, scale, sub, sweep, wrap } from "./geom2d";
 import { Draft } from "./draw";
 
 /**
- * The editing tools (#54) as pure functions on a sketch: round a corner, trim a piece between crossings, offset a
- * chain. Each returns the new sketch, or a sentence saying why it can't, for the tool's hint.
+ * What the editing tools (#54) share with the rest of the sketch: curves as shapes to cut, where they cross, grouped
+ * sizes, and bringing model edges in. The tools themselves are in cut.ts and edits.ts, loaded with a sketch.
  */
 export type EditResult = Sketch | string;
-
-/** Drops points nothing uses any more, with the constraints and sizes on them. */
-function prune(s: Sketch, candidates: Id[]): Sketch {
-  const used = new Set(s.entities.flatMap((e) => (e.kind === "point" ? [] : curvePoints(e))));
-  const gone = new Set(candidates.filter((p) => !used.has(p)));
-  if (!gone.size) return s;
-  return {
-    ...s,
-    entities: s.entities.filter((e) => !gone.has(e.id)),
-    constraints: s.constraints.filter((c) => !constraintRefs(c).some((r) => gone.has(r))),
-    dimensions: s.dimensions.filter((d) => !d.refs.some((r) => gone.has(r))),
-  };
-}
-
-/** Points tied to `p` by coincident constraints, and `p`. */
-function samePoint(s: Sketch, p: Id): Set<Id> {
-  const out = new Set([p]);
-  for (let grew = true; grew;) {
-    grew = false;
-    for (const c of s.constraints) {
-      if (c.type !== "coincident" || c.suppressed) continue;
-      if (out.has(c.a) !== out.has(c.b)) {
-        out.add(c.a);
-        out.add(c.b);
-        grew = true;
-      }
-    }
-  }
-  return out;
-}
-
-// ------------------------------------------------------------------ fillet corner
-
-/** Rounds the corner where two lines meet at `point` with a tangent arc of radius `r`. */
-export function filletAt(sketch: Sketch, point: Id, r: number): EditResult {
-  if (!(r > 0)) return "Type a radius above 0";
-  const at = samePoint(sketch, point);
-  const lines = sketch.entities.filter((e): e is Line => e.kind === "line" && (at.has(e.a) || at.has(e.b)));
-  if (lines.length !== 2) return "Pick a corner where two lines meet";
-  const idx = new SketchIndex(sketch);
-  const [l1, l2] = lines as [Line, Line];
-  const end1: "a" | "b" = at.has(l1.a) ? "a" : "b";
-  const end2: "a" | "b" = at.has(l2.a) ? "a" : "b";
-  const corner = idx.xy(l1[end1]);
-  const far1 = idx.xy(l1[end1 === "a" ? "b" : "a"]);
-  const far2 = idx.xy(l2[end2 === "a" ? "b" : "a"]);
-  const f = filletCorner(corner, far1, far2, r);
-  if (!f) return `A ${r} mm round doesn't fit this corner`;
-
-  const d = new Draft(sketch);
-  const t1 = d.point(f.ta);
-  const t2 = d.point(f.tb);
-  d.entities = d.entities.map((e) => (e.id === l1.id ? { ...l1, [end1]: t1 } : e.id === l2.id ? { ...l2, [end2]: t2 } : e));
-  const arc = d.arc(f.c, f.ccw ? t1 : t2, f.ccw ? t2 : t1);
-  d.constrain({ type: "tangent", a: arc, b: l1.id });
-  d.constrain({ type: "tangent", a: arc, b: l2.id });
-  d.dimension("radius", [arc], r);
-  let out = d.done().sketch;
-  // The corner and anything tied to it go; the lines keep their other constraints.
-  out = {
-    ...out,
-    constraints: out.constraints.filter((c) => !constraintRefs(c).some((x) => at.has(x))),
-    dimensions: out.dimensions.filter((x) => !x.refs.some((y) => at.has(y))),
-  };
-  return prune(out, [...at]);
-}
-
-/** Rounds the corner two lines share. */
-export function filletLines(sketch: Sketch, a: Id, b: Id, r: number): EditResult {
-  const idx = new SketchIndex(sketch);
-  const l1 = idx.get(a);
-  const l2 = idx.get(b);
-  if (l1?.kind !== "line" || l2?.kind !== "line") return "Pick two lines, or the corner between them";
-  for (const p of [l1.a, l1.b]) {
-    const at = samePoint(sketch, p);
-    if (at.has(l2.a) || at.has(l2.b)) return filletAt(sketch, p, r);
-  }
-  return "Those lines don't meet at a corner";
-}
 
 // ------------------------------------------------------------------ trim
 
 /** A curve's shape for cutting: a line from a to b, or a circle or arc about c (arcs from angle s through sweep w). */
-type Shape = { kind: "line"; a: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number } | { kind: "arc"; c: Vec2; r: number; s: number; w: number };
+export type Shape =
+  | { kind: "line"; a: Vec2; b: Vec2 }
+  | { kind: "circle"; c: Vec2; r: number }
+  | { kind: "arc"; c: Vec2; r: number; s: number; w: number }
+  | { kind: "ellipse"; g: EllipseGeo }
+  | { kind: "spline"; g: SplineGeo };
 
-function shapeOf(idx: SketchIndex, e: Curve): Shape {
+export function shapeOf(idx: SketchIndex, e: Curve): Shape {
   if (e.kind === "line") return { kind: "line", a: idx.xy(e.a), b: idx.xy(e.b) };
+  if (e.kind === "ellipse") return { kind: "ellipse", g: ellipseGeo(idx, e) };
+  if (e.kind === "spline") return { kind: "spline", g: splineGeo(idx, e) };
   const c = idx.xy(e.c);
   if (e.kind === "circle") return { kind: "circle", c, r: e.r };
   const s = angleOf(sub(idx.xy(e.a), c));
@@ -137,17 +48,21 @@ function shapeOf(idx: SketchIndex, e: Curve): Shape {
 }
 
 /** Where along a shape a point is: 0..1 along a line, radians from the start on an arc or circle. */
-function param(sh: Shape, p: Vec2): number {
+export function param(sh: Shape, p: Vec2): number {
   if (sh.kind === "line") {
     const d = sub(sh.b, sh.a);
     return ((p[0] - sh.a[0]) * d[0] + (p[1] - sh.a[1]) * d[1]) / (d[0] ** 2 + d[1] ** 2);
   }
+  if (sh.kind === "ellipse") return ellipseAngle(sh.g, p);
+  if (sh.kind === "spline") return splineParam(sh.g, p).t;
   const ang = angleOf(sub(p, sh.c));
   return sh.kind === "circle" ? wrap(ang) : wrap(ang - sh.s);
 }
 
-function pointAt(sh: Shape, t: number): Vec2 {
+export function pointAt(sh: Shape, t: number): Vec2 {
   if (sh.kind === "line") return add(sh.a, scale(sub(sh.b, sh.a), t));
+  if (sh.kind === "ellipse") return ellipsePoint(sh.g, t);
+  if (sh.kind === "spline") return splinePoint(sh.g, t);
   return polar(sh.c, sh.r, sh.kind === "circle" ? t : sh.s + t);
 }
 
@@ -156,40 +71,38 @@ function contains(sh: Shape, p: Vec2): boolean {
     const t = param(sh, p);
     return t >= -1e-9 && t <= 1 + 1e-9;
   }
-  if (sh.kind === "circle") return true;
+  if (sh.kind === "circle" || sh.kind === "ellipse" || sh.kind === "spline") return true;
   return onArc(angleOf(sub(p, sh.c)), sh.s, sh.s + sh.w);
 }
 
 /** Where two shapes cross. */
-function crossings(a: Shape, b: Shape): Vec2[] {
+export function crossings(a: Shape, b: Shape): Vec2[] {
   let pts: Vec2[];
-  if (a.kind === "line" && b.kind === "line") {
+  if (a.kind === "spline" || b.kind === "spline") {
+    const [sp, o] = (a.kind === "spline" ? [a, b] : [b, a]) as [Extract<Shape, { kind: "spline" }>, Shape];
+    if (o.kind === "spline") pts = splineSpline(sp.g, o.g);
+    else {
+      const side =
+        o.kind === "line"
+          ? lineSide(o.a, o.b)
+          : o.kind === "ellipse"
+            ? ellipseSide(o.g)
+            : (p: Vec2) => Math.hypot(p[0] - (o as { c: Vec2 }).c[0], p[1] - (o as { c: Vec2 }).c[1]) - (o as { r: number }).r;
+      pts = curveSplineParams(side, sp.g).map((t) => splinePoint(sp.g, t));
+    }
+  } else if (a.kind === "ellipse" || b.kind === "ellipse") {
+    const [el, o] = (a.kind === "ellipse" ? [a, b] : [b, a]) as [Extract<Shape, { kind: "ellipse" }>, Shape];
+    pts =
+      o.kind === "line"
+        ? lineEllipse(o.a, o.b, el.g)
+        : curveEllipse(o.kind === "ellipse" ? ellipseSide(o.g) : circleSide((o as { c: Vec2 }).c, (o as { r: number }).r), el.g);
+  } else if (a.kind === "line" && b.kind === "line") {
     const x = lineLine(a.a, a.b, b.a, b.b);
     pts = x ? [x.p] : [];
   } else if (a.kind === "line") pts = lineCircle(a.a, a.b, (b as { c: Vec2 }).c, (b as { r: number }).r).map((x) => x.p);
   else if (b.kind === "line") pts = lineCircle(b.a, b.b, a.c, a.r).map((x) => x.p);
   else pts = circleCircle(a.c, a.r, b.c, b.r);
   return pts.filter((p) => contains(a, p) && contains(b, p));
-}
-
-/** The points along a curve where others cross or touch it, as sorted parameters inside its ends. */
-export function cutsOn(sketch: Sketch, id: Id): number[] {
-  const idx = new SketchIndex(sketch);
-  const e = idx.get(id);
-  if (!e || e.kind === "point") return [];
-  const sh = shapeOf(idx, e);
-  const span = sh.kind === "line" ? 1 : sh.kind === "arc" ? sh.w : 2 * Math.PI;
-  const eps = sh.kind === "line" ? 1e-6 : 1e-6;
-  const ts: number[] = [];
-  for (const o of sketch.entities) {
-    if (o.id === id || o.kind === "point") continue;
-    for (const p of crossings(sh, shapeOf(idx, o))) {
-      const t = param(sh, p);
-      const inside = sh.kind === "circle" ? true : t > eps && t < span - eps;
-      if (inside && !ts.some((x) => Math.abs(x - t) < 1e-6)) ts.push(t);
-    }
-  }
-  return ts.sort((x, y) => x - y);
 }
 
 /** Every point where two curves cross, with the two curves (for the snap to intersections, #55). */
@@ -203,249 +116,20 @@ export function allCrossings(sketch: Sketch, skip: Set<Id> = new Set()): { xy: V
   return out;
 }
 
-/** The piece of a curve between the crossings either side of `at`: its parameter range, for the hover highlight. */
-export function trimPiece(sketch: Sketch, id: Id, at: Vec2): { from: number; to: number; pts: Vec2[] } | null {
-  const idx = new SketchIndex(sketch);
-  const e = idx.get(id);
-  if (!e || e.kind === "point") return null;
-  const sh = shapeOf(idx, e);
-  const cuts = cutsOn(sketch, id);
-  const t = param(sh, at);
-  let from: number;
-  let to: number;
-  if (sh.kind === "circle") {
-    if (cuts.length < 2) return { from: 0, to: 2 * Math.PI, pts: samples(sh, 0, 2 * Math.PI) };
-    const after = cuts.find((x) => x > t);
-    to = after ?? cuts[0]! + 2 * Math.PI;
-    from = [...cuts].reverse().find((x) => x <= t) ?? cuts[cuts.length - 1]! - 2 * Math.PI;
-  } else {
-    const span = sh.kind === "line" ? 1 : sh.w;
-    const all = [0, ...cuts, span];
-    const tc = Math.max(0, Math.min(span, t));
-    const i = Math.max(0, all.findIndex((x) => x > tc) - 1);
-    from = all[i]!;
-    to = all[Math.min(i + 1, all.length - 1)]!;
-  }
-  return { from, to, pts: samples(sh, from, to) };
-}
-
-function samples(sh: Shape, from: number, to: number): Vec2[] {
+export function samples(sh: Shape, from: number, to: number): Vec2[] {
   if (sh.kind === "line") return [pointAt(sh, from), pointAt(sh, to)];
+  if (sh.kind === "spline") return sampleSpline(sh.g, from, to);
   const n = Math.max(4, Math.ceil((to - from) / (Math.PI / 36)));
   return Array.from({ length: n + 1 }, (_, i) => pointAt(sh, from + ((to - from) * i) / n));
 }
 
-/**
- * Removes the piece of a curve between the crossings either side of `at`. A curve nothing crosses goes whole; a line
- * or arc cut in the middle becomes two, keeping its constraints on the first part (and its direction on both).
- */
-export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
-  const idx = new SketchIndex(sketch);
-  const e = idx.get(id);
-  if (!e || e.kind === "point") return "Hover a line, circle or arc";
-  const sh = shapeOf(idx, e);
-  const piece = trimPiece(sketch, id, at)!;
-  const cuts = cutsOn(sketch, id);
-  const removeWhole = () => {
-    const pts = curvePoints(e);
-    const out = {
-      ...sketch,
-      entities: sketch.entities.filter((x) => x.id !== id),
-      constraints: sketch.constraints.filter((c) => !constraintRefs(c).includes(id)),
-      dimensions: sketch.dimensions.filter((d) => !d.refs.includes(id)),
-    };
-    return prune(out, pts);
+/** Sets a size and every size grouped with it (#266) to `value`, typed as `expression`. */
+export function setGroupedSize(sketch: Sketch, id: Id, value: number, expression: string): Sketch {
+  const g = sketch.dimensions.find((x) => x.id === id)?.group;
+  return {
+    ...sketch,
+    dimensions: sketch.dimensions.map((x) => (x.id === id || (g && x.group === g) ? { ...x, value, expression, driving: true } : x)),
   };
-  if (!cuts.length || (sh.kind === "circle" && cuts.length < 2)) return removeWhole();
-
-  const d = new Draft(sketch);
-  // A shortened line's length no longer holds; an arc's radius does.
-  const dropLength = () => {
-    d.dimensions = d.dimensions.filter((dm) => !(dm.refs.includes(id) && dm.kind === "length"));
-  };
-
-  if (sh.kind === "circle") {
-    // What is left runs anticlockwise from the end of the piece back round to its start.
-    const a = d.point(pointAt(sh, piece.to));
-    const b = d.point(pointAt(sh, piece.from));
-    const c = e as Extract<Entity, { kind: "circle" }>;
-    d.entities = d.entities.map((x) => (x.id === id ? ({ id, kind: "arc", c: c.c, a, b, r: c.r, ...(c.construction && { construction: true }) } as Arc) : x));
-    return d.done().sketch;
-  }
-
-  const span = sh.kind === "line" ? 1 : sh.w;
-  const atStart = piece.from <= 1e-9;
-  const atEnd = piece.to >= span - 1e-9;
-  const old = e as Line | Arc;
-  if (atStart || atEnd) {
-    const p = d.point(pointAt(sh, atStart ? piece.to : piece.from));
-    const end = atStart ? "a" : "b";
-    const gone = old[end];
-    d.entities = d.entities.map((x) => (x.id === id ? { ...old, [end]: p } : x));
-    d.constraints = d.constraints.filter((c) => !(constraintRefs(c).includes(gone) && constraintRefs(c).includes(id)));
-    dropLength();
-    return prune(d.done().sketch, [gone]);
-  }
-  // Cut out of the middle: the curve keeps its start, a new one takes the rest.
-  const p1 = d.point(pointAt(sh, piece.from));
-  const p2 = d.point(pointAt(sh, piece.to));
-  d.entities = d.entities.map((x) => (x.id === id ? { ...old, b: p1 } : x));
-  const twin = newId(old.kind === "line" ? "l" : "a");
-  d.entities.push({ ...old, id: twin, a: p2 });
-  for (const c of sketch.constraints) {
-    if ((c.type === "horizontal" || c.type === "vertical") && c.e === id) d.constrain({ type: c.type, e: twin });
-    if ((c.type === "parallel" || c.type === "perpendicular") && (c.a === id || c.b === id)) d.constrain({ type: c.type, a: twin, b: c.a === id ? c.b : c.a });
-  }
-  if (old.kind === "line") d.constrain({ type: "parallel", a: id, b: twin });
-  dropLength();
-  return d.done().sketch;
-}
-
-// ------------------------------------------------------------------ offset
-
-interface Step {
-  e: Line | Arc;
-  /** Walked from b to a. */
-  rev: boolean;
-}
-
-/** The lines and arcs joined end to end with `id`, in order, and whether they close. */
-export function chainOf(sketch: Sketch, id: Id): { steps: Step[]; closed: boolean } | null {
-  const idx = new SketchIndex(sketch);
-  const first = idx.get(id);
-  if (first?.kind !== "line" && first?.kind !== "arc") return null;
-  const curves = sketch.entities.filter((e): e is Line | Arc => (e.kind === "line" || e.kind === "arc") && e.construction === first.construction);
-  const touching = (p: Id, not: Id) => {
-    const same = samePoint(sketch, p);
-    const found = curves.filter((c) => c.id !== not && (same.has(c.a) || same.has(c.b)));
-    return found.length === 1 ? found[0]! : null;
-  };
-  const steps: Step[] = [{ e: first, rev: false }];
-  const used = new Set([first.id]);
-  let closed = false;
-  // Forward from the end, then backward from the start.
-  for (let tail = first.b, prev = first.id; ;) {
-    const n = touching(tail, prev);
-    if (!n) break;
-    if (n.id === first.id || used.has(n.id)) {
-      closed = n.id === steps[0]!.e.id;
-      break;
-    }
-    const rev = !samePoint(sketch, tail).has(n.a);
-    steps.push({ e: n, rev });
-    used.add(n.id);
-    tail = rev ? n.a : n.b;
-    prev = n.id;
-  }
-  if (!closed) {
-    for (let head = first.a, prev = first.id; ;) {
-      const n = touching(head, prev);
-      if (!n || used.has(n.id)) break;
-      const rev = samePoint(sketch, head).has(n.a);
-      steps.unshift({ e: n, rev });
-      used.add(n.id);
-      head = rev ? n.b : n.a;
-      prev = n.id;
-    }
-  }
-  return { steps, closed };
-}
-
-/** Which way is "out" of a closed chain: +1 when its left side is outside (it runs clockwise). */
-function chainTurn(idx: SketchIndex, steps: Step[]): number {
-  const pts = steps.map((s) => idx.xy(s.rev ? s.e.b : s.e.a));
-  return polygonArea(pts) > 0 ? -1 : 1;
-}
-
-/**
- * A parallel copy of the chain through `id` at distance `d`: positive is outside a closed shape (or to the left of an
- * open chain as drawn), negative inside. Lines stay parallel to their originals, held at the distance by a size; arcs
- * stay concentric. Circles copy as concentric circles.
- */
-export function offsetChain(sketch: Sketch, id: Id, d: number): EditResult {
-  if (!d) return "Type a distance";
-  const idx = new SketchIndex(sketch);
-  const e = idx.get(id);
-  if (e?.kind === "circle") {
-    const r = e.r + d;
-    if (r <= 1e-9) return "That's further in than the circle is big";
-    const dr = new Draft(sketch);
-    // Sharing the centre point keeps the copy concentric.
-    dr.dimension("radius", [dr.circle(e.c, r, e.construction)], r);
-    return dr.done().sketch;
-  }
-  const chain = chainOf(sketch, id);
-  if (!chain) return "Pick a line, arc or circle";
-  const { steps, closed } = chain;
-  const side = (closed ? chainTurn(idx, steps) : 1) * d;
-  // Each step offset to its left by `side`, as an oriented shape.
-  const moved = steps.map((s) => {
-    const a = idx.xy(s.rev ? s.e.b : s.e.a);
-    const b = idx.xy(s.rev ? s.e.a : s.e.b);
-    if (s.e.kind === "line") {
-      const n = scale(perp(norm(sub(b, a))), side);
-      return { kind: "line" as const, a: add(a, n), b: add(b, n) };
-    }
-    const c = idx.xy(s.e.c);
-    // Walking an arc anticlockwise its left is the centre; walked backwards, the outside.
-    const r = s.e.r + (s.rev ? side : -side);
-    if (r <= 1e-9) return null;
-    const start = polar(c, r, angleOf(sub(a, c)));
-    const end = polar(c, r, angleOf(sub(b, c)));
-    return { kind: "arc" as const, c, r, a: start, b: end, rev: s.rev };
-  });
-  if (moved.some((m) => !m)) return "That distance is bigger than an arc in the chain";
-  const ms = moved as NonNullable<(typeof moved)[number]>[];
-  // Corners: where neighbouring offset curves meet (nearest to their naive ends).
-  const corner = (i: number, j: number): Vec2 => {
-    const p = ms[i]!;
-    const q = ms[j]!;
-    const guess = p.b;
-    let opts: Vec2[] = [];
-    if (p.kind === "line" && q.kind === "line") {
-      const x = lineLine(p.a, p.b, q.a, q.b);
-      opts = x ? [x.p] : [];
-    } else if (p.kind === "line" && q.kind === "arc") opts = lineCircle(p.a, p.b, q.c, q.r).map((x) => x.p);
-    else if (p.kind === "arc" && q.kind === "line") opts = lineCircle(q.a, q.b, p.c, p.r).map((x) => x.p);
-    else if (p.kind === "arc" && q.kind === "arc") opts = circleCircle(p.c, p.r, q.c, q.r);
-    if (!opts.length) return guess;
-    return opts.reduce((best, o) => (dist(o, guess) < dist(best, guess) ? o : best));
-  };
-  const n = ms.length;
-  const corners: Vec2[] = [];
-  for (let i = 0; i < n; i++) {
-    if (i + 1 < n) corners.push(corner(i, i + 1));
-    else if (closed) corners.push(corner(i, 0));
-  }
-  const dr = new Draft(sketch);
-  const startPt = closed ? null : dr.point(ms[0]!.a);
-  const cornerPts = corners.map((p) => dr.point(p));
-  const pointBefore = (i: number) => (i === 0 ? (closed ? cornerPts[n - 1]! : startPt!) : cornerPts[i - 1]!);
-  const pointAfter = (i: number) => (i === n - 1 && !closed ? dr.point(ms[n - 1]!.b) : cornerPts[i]!);
-  // A corner that crossed over (offset too far in) would flip a line: refuse it.
-  for (let i = 0; i < n; i++) {
-    const m = ms[i]!;
-    const from = dr.xy(pointBefore(i));
-    const to = i === n - 1 && !closed ? m.b : corners[i]!;
-    if (m.kind === "line" && dot(sub(to, from), sub(m.b, m.a)) <= 1e-9) {
-      return "That distance is too far for this shape";
-    }
-  }
-  for (let i = 0; i < n; i++) {
-    const s = steps[i]!;
-    const m = ms[i]!;
-    const p = pointBefore(i);
-    const q = pointAfter(i);
-    if (m.kind === "line") {
-      const l = dr.line(p, q, { auto: false });
-      dr.constrain({ type: "parallel", a: l, b: s.e.id });
-      dr.dimension("distance", [p, s.e.id], Math.abs(d));
-    } else {
-      const c = (s.e as Arc).c;
-      dr.arc(c, m.rev ? q : p, m.rev ? p : q);
-    }
-  }
-  return dr.done().sketch;
 }
 
 // ------------------------------------------------------------------ project

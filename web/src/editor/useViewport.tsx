@@ -68,6 +68,8 @@ export interface ViewportDeps {
   /** A view-only model or an old version: section analyses then change for this look only. */
   locked: () => boolean;
   say: (text: string, error?: boolean) => void;
+  /** Bodies locked to one by rigid groups, itself included; empty when it is in none. */
+  matesOf?: (id: string) => string[];
 }
 
 const ELEMENT_NAME: Record<SelectFilter, string> = { body: "Body", face: "Face", edge: "Edge", vertex: "Point" };
@@ -82,6 +84,7 @@ export function useViewport(d: ViewportDeps) {
   const [elements, setElements] = useState<Pick[]>([]);
   const [styleSetting, setStyleSetting] = useState<StyleSetting>(readStyle);
   const [grid, setGrid] = useState(readGrid);
+  const [colourCycle, setColourCycle] = useState(false);
   const [ortho, setOrtho] = useState(false);
   // Section analyses live in the model; on a model you can't change they change here, for this look only.
   const [scratch, setScratch] = useState<{ sections?: ModelDoc["sections"]; section?: string } | null>(null);
@@ -151,7 +154,13 @@ export function useViewport(d: ViewportDeps) {
     if (!p) return;
     const pos: Vec3 = { x: position[0], y: position[1], z: position[2] };
     const rot: Vec3 = { x: rotation[0], y: rotation[1], z: rotation[2] };
-    live.current.record((doc, at) => placePart(doc, id, pos, rot, at), `${live.current.tool === "turn" ? "Turn" : "Move"} ${p.name}`);
+    const verb = live.current.tool === "turn" ? "Turn" : "Move";
+    const mates = live.current.matesOf?.(id) ?? [];
+    if (mates.length < 2) return live.current.record((doc, at) => placePart(doc, id, pos, rot, at), `${verb} ${p.name}`);
+    // A rigid group moves as one (its edits load on first use).
+    void import("@bettercad/kernel/rigid").then(({ placeRigid }) =>
+      live.current.record((doc, at) => placeRigid(doc, id, pos, rot, mates, at), `${verb} ${p.name} and the parts locked to it`),
+    );
   }, []);
 
   const onTransforming = useCallback((_id: string, position: [number, number, number], rotation: [number, number, number]) => {
@@ -299,6 +308,14 @@ export function useViewport(d: ViewportDeps) {
     });
   }, []);
 
+  /** Colour cycling: each part in a colour of its own, for this visit. It never changes the colours the model saves. */
+  const toggleColourCycle = useCallback(() => {
+    setColourCycle((on) => {
+      live.current.say(on ? "Colour cycle off: parts in their own colours" : "Colour cycle on: each part in its own colour");
+      return !on;
+    });
+  }, []);
+
   const sectionRef = useRef(section);
   sectionRef.current = section;
   const sdocRef = useRef(sdoc);
@@ -364,6 +381,16 @@ export function useViewport(d: ViewportDeps) {
         keywords: "render style outline",
       },
       { id: "view.grid", scope: "model", label: "Show or hide the floor grid", group: "View", icon: "grid", run: toggleGrid, keywords: "floor grid lines" },
+      {
+        id: "view.colourCycle",
+        scope: "model",
+        label: "Colour cycle",
+        group: "View",
+        icon: "paint",
+        keys: ["shift+n"],
+        run: toggleColourCycle,
+        keywords: "color colour each part component distinct unique",
+      },
       { id: "view.setHome", label: "Set this view as home", group: "View", icon: "home", run: setHomeHere, keywords: "view cube camera" },
       {
         id: "view.resetHome",
@@ -472,6 +499,8 @@ export function useViewport(d: ViewportDeps) {
     style,
     grid,
     toggleGrid,
+    colourCycle,
+    toggleColourCycle,
     ortho,
     setOrtho,
     section,

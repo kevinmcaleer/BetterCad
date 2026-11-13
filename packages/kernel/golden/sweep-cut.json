@@ -1,0 +1,15 @@
+{
+  "volume": 8460,
+  "area": 3144,
+  "centroid": [0, 0, 4.7766],
+  "inertia": [740937.766, 702057.766, 1307880, 0, 0, 0],
+  "bbox": {
+    "min": [-15, -15, 0],
+    "max": [15, 15, 10]
+  },
+  "solids": 1,
+  "faces": 10,
+  "edges": 24,
+  "vertices": 16,
+  "triangles": true
+}

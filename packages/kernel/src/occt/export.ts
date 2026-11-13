@@ -76,13 +76,22 @@ export function writeStep(oc: OC, bodies: { name: string; shape: TopoDS_Shape }[
 }
 
 /** Reads a STEP file into its solids (#82 uses this; export's round-trip test does too). */
-export function readStep(oc: OC, data: ArrayBuffer | Uint8Array): { name: string; shape: TopoDS_Shape }[] {
+export function readStep(oc: OC, data: ArrayBuffer | Uint8Array, progress?: (fraction: number) => void): { name: string; shape: TopoDS_Shape }[] {
   const path = "/bettercad-import.step";
   oc.FS.writeFile(path, data instanceof Uint8Array ? data : new Uint8Array(data));
   const reader = new oc.STEPControl_Reader();
   try {
+    progress?.(0.05);
     if (reader.ReadFile(path) !== oc.IFSelect_ReturnStatus.IFSelect_RetDone) throw new KernelError("failed", "That STEP file could not be read.");
-    reader.TransferRoots(new oc.Message_ProgressRange());
+    // Reading the text is about half the work; making the solids, root by root, is the rest.
+    progress?.(0.5);
+    const roots = reader.NbRootsForTransfer();
+    for (let i = 1; i <= roots; i++) {
+      const range = new oc.Message_ProgressRange();
+      reader.TransferRoot(i, range);
+      range.delete();
+      progress?.(0.5 + (0.45 * i) / roots);
+    }
     const list: TopoDS_Shape[] = [];
     for (let i = 1; i <= reader.NbShapes(); i++) {
       const shape = reader.Shape(i);

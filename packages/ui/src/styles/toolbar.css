@@ -169,6 +169,11 @@
 .bc-sk-fields .bc-field {
   width: 96px;
 }
+/* A tool's kinds (the Arc tool's 3 point, Centre and Tangent), side by side. */
+.bc-sk-modes {
+  display: inline-flex;
+  gap: var(--bc-space-1);
+}
 /* Why the armed tool's step cannot be made. */
 .bc-armed-note.bc-armed-error {
   color: var(--bc-color-danger);

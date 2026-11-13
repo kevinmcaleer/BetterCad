@@ -1,6 +1,14 @@
 import {
   SketchIndex,
   angleOf,
+  ellipseAngle,
+  ellipseGeo,
+  ellipsePoint,
+  splineGeo,
+  splineParam,
+  splinePieces,
+  splinePoint,
+  type Bezier,
   insidePolygon,
   polar,
   regions,
@@ -23,9 +31,59 @@ import type { ConstructRef } from "./construct";
  * time the timeline is built, so editing the sketch reshapes the body.
  */
 /** One curve of a profile's outline; `id` is the sketch curve it came from, which names the face it sweeps (#47). */
-export type ProfileSeg = ({ kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; a: Vec2; m: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number }) & {
+export type ProfileSeg = (
+  { kind: "line"; a: Vec2; b: Vec2 } | { kind: "arc"; a: Vec2; m: Vec2; b: Vec2 } | { kind: "circle"; c: Vec2; r: number } | EllipseSeg | SplineSeg
+) & {
   id?: string;
 };
+
+/**
+ * An ellipse (#401), or part of one: half-widths `r1` along its first axis (at angle `rot`) and `r2` across it. A part
+ * runs anticlockwise between eccentric angles `t[0]` and `t[1]` (`t[1]` the larger); `rev` walks it the other way.
+ */
+export interface EllipseSeg {
+  kind: "ellipse";
+  c: Vec2;
+  r1: number;
+  r2: number;
+  rot: number;
+  t?: [number, number];
+  rev?: boolean;
+}
+
+/**
+ * A spline (#269), or part of one: cubic pieces end to end, as their poles (3 per piece, and the last end), in the
+ * order the outline walks them.
+ */
+export interface SplineSeg {
+  kind: "spline";
+  poles: Vec2[];
+  /** Where each piece starts and ends, rising (length + 1 of the pieces). */
+  knots: number[];
+}
+
+/** A spline segment from a run of its cubic pieces, walked backwards when `rev`. */
+export function splineSeg({ bez, knots }: { bez: Bezier[]; knots: number[] }, rev = false): SplineSeg {
+  const poles = [bez[0]![0], ...bez.flatMap((b) => [b[1], b[2], b[3]])];
+  if (!rev) return { kind: "spline", poles, knots };
+  const end = knots[knots.length - 1]!;
+  return { kind: "spline", poles: poles.reverse(), knots: knots.map((k) => end - k).reverse() };
+}
+
+/** Points a segment stays within the box of: ends and middle, a circle's box corners, points round an ellipse. */
+export function segPoints(g: ProfileSeg): Vec2[] {
+  if (g.kind === "line") return [g.a, g.b];
+  if (g.kind === "arc") return [g.a, g.m, g.b];
+  // A cubic stays inside its poles.
+  if (g.kind === "spline") return g.poles;
+  if (g.kind === "circle")
+    return [
+      [g.c[0] - g.r, g.c[1] - g.r],
+      [g.c[0] + g.r, g.c[1] + g.r],
+    ];
+  const [t0, t1] = g.t ?? [0, 2 * Math.PI];
+  return Array.from({ length: 49 }, (_, i) => ellipsePoint({ c: g.c, r1: g.r1, r2: g.r2, rot: g.rot }, t0 + ((t1 - t0) * i) / 48));
+}
 
 export interface ProfileShape {
   outer: ProfileSeg[];
@@ -40,6 +98,10 @@ export interface PrismSpec {
   /** Where the solid starts and ends along the frame's normal, mm. */
   from: number;
   to: number;
+  /** Sides leaning in by this many degrees away from `base` (Extrude's taper, #402); negative leans out. */
+  taper?: number;
+  /** Where the shape is full size along the normal, mm, for a taper; `from` when missing. */
+  base?: number;
 }
 
 /** Revolve's geometry (#62): profiles turned round a line in their sketch plane. */
@@ -55,6 +117,31 @@ export interface RevolveSpec {
   angle: number;
   /** Degrees to start from (minus half the angle for a symmetric revolve). */
   start?: number;
+}
+
+/**
+ * Loft's geometry (#399): a solid that runs smoothly through two or more closed shapes, each on its own sketch plane,
+ * in order. Holes run through it too when every shape has the same number of them.
+ */
+export interface LoftSpec {
+  sections: LoftSection[];
+  /** Flat sides straight from one shape to the next, rather than one smooth surface through them all. */
+  ruled?: boolean;
+}
+
+export interface LoftSection {
+  frame: Frame;
+  profile: ProfileShape;
+}
+
+/**
+ * Sweep's geometry (#400): closed shapes pushed along a path of lines and arcs drawn in another sketch. The path's
+ * curves are in order, end to end, in their own sketch's coordinates.
+ */
+export interface SweepSpec {
+  frame: Frame;
+  profiles: ProfileShape[];
+  path: { frame: Frame; segs: ProfileSeg[] };
 }
 
 /** A revolve's axis in its sketch's coordinates: a line along the plane, `offset` mm off it along the normal. */
@@ -101,6 +188,64 @@ export function axisOf(sketch: Sketch, ref: AxisRef): SketchAxis | null {
   const d = sub(b, a);
   const len = Math.hypot(d[0], d[1]);
   return len > 1e-9 ? { origin: a, dir: [d[0] / len, d[1] / len] } : null;
+}
+
+/**
+ * A sweep's path (#400): the picked lines and arcs of a sketch put end to end, in order from one free end, or why
+ * they can't be. A circle is a path on its own.
+ */
+export function pathSegs(sketch: Sketch, curves: string[]): ProfileSeg[] | string {
+  if (!curves.length) return "Pick the lines and arcs of a path to sweep along";
+  const idx = new SketchIndex(sketch);
+  type Piece = { id: string; a: Vec2; b: Vec2; seg: (rev: boolean) => ProfileSeg };
+  const pieces: Piece[] = [];
+  for (const id of curves) {
+    const e = idx.get(id);
+    if (!e || e.kind === "point") return "A line or arc of its path is gone. Pick the path again.";
+    if (e.kind === "circle") {
+      if (curves.length > 1) return "A circle is a path on its own. Pick it alone, or lines and arcs.";
+      return [{ kind: "circle", c: idx.xy(e.c), r: e.r, id }];
+    }
+    if (e.kind === "ellipse") {
+      if (curves.length > 1) return "An ellipse is a path on its own. Pick it alone, or lines and arcs.";
+      return [{ kind: "ellipse", ...ellipseGeo(idx, e), id }];
+    }
+    if (e.kind === "line") {
+      const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
+      pieces.push({ id, a, b, seg: (rev) => (rev ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id }) });
+    } else if (e.kind === "arc") {
+      const c = idx.xy(e.c);
+      const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
+      const st = angleOf(sub(a, c));
+      const m = polar(c, e.r, st + sweep(st, angleOf(sub(b, c))) / 2);
+      pieces.push({ id, a, b, seg: (rev) => (rev ? { kind: "arc", a: b, m, b: a, id } : { kind: "arc", a, m, b, id }) });
+    } else if (e.kind === "spline") {
+      const g = splineGeo(idx, e);
+      if (g.closed) {
+        if (curves.length > 1) return "A closed spline is a path on its own. Pick it alone, or lines and arcs.";
+        return [{ ...splineSeg(splinePieces(g)), id }];
+      }
+      const [a, b] = [splinePoint(g, 0), splinePoint(g, g.bez.length)];
+      pieces.push({ id, a, b, seg: (rev) => ({ ...splineSeg(splinePieces(g), rev), id }) });
+    } else return "Paths are made of lines, arcs and splines";
+  }
+  const near = (p: Vec2, q: Vec2) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-6;
+  const ends = (p: Vec2) => pieces.reduce((n, x) => n + (near(x.a, p) ? 1 : 0) + (near(x.b, p) ? 1 : 0), 0);
+  if (pieces.some((x) => ends(x.a) > 2 || ends(x.b) > 2)) return "The path branches. Pick lines and arcs that run end to end, one after another.";
+  // Start from a free end, so an open path runs from one end to the other.
+  const first = pieces.find((x) => ends(x.a) === 1) ?? pieces.find((x) => ends(x.b) === 1) ?? pieces[0]!;
+  const left = new Set(pieces);
+  let at = ends(first.a) === 1 || ends(first.b) !== 1 ? first.a : first.b;
+  const out: ProfileSeg[] = [];
+  while (left.size) {
+    const next = [...left].find((x) => near(x.a, at) || near(x.b, at));
+    if (!next) return "The path's lines and arcs don't join end to end. Join them in the sketch.";
+    left.delete(next);
+    const rev = !near(next.a, at);
+    out.push(next.seg(rev));
+    at = rev ? next.a : next.b;
+  }
+  return out;
 }
 
 /** Whether any picked shape lies on both sides of the axis (touching it along a line is fine). */
@@ -216,6 +361,21 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
       const [a, b] = span;
       if (e.kind === "line") return reversed ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id };
       if (e.kind === "point") throw new Error(`${id} is not a curve`);
+      if (e.kind === "spline") {
+        const g = splineGeo(idx, e);
+        const t0 = splineParam(g, a).t;
+        let t1 = splineParam(g, b).t;
+        if (g.closed && t1 <= t0 + 1e-9) t1 += g.bez.length;
+        return { ...splineSeg(splinePieces(g, t0, t1), reversed), id };
+      }
+      if (e.kind === "ellipse") {
+        const g = ellipseGeo(idx, e);
+        if (Math.hypot(...sub(a, b)) < 1e-9) return { kind: "ellipse", ...g, id };
+        const t0 = ellipseAngle(g, a);
+        let t1 = ellipseAngle(g, b);
+        if (t1 <= t0) t1 += 2 * Math.PI;
+        return { kind: "ellipse", ...g, t: [t0, t1], ...(reversed && { rev: true }), id };
+      }
       const c = idx.xy(e.c);
       if (Math.hypot(...sub(a, b)) < 1e-9) return { kind: "circle", c, r: e.r, id };
       const s = angleOf(sub(a, c));
@@ -223,6 +383,8 @@ function segsOf(sketch: Sketch, loop: Loop): ProfileSeg[] {
       return reversed ? { kind: "arc", a: b, m, b: a, id } : { kind: "arc", a, m, b, id };
     }
     if (e.kind === "circle") return { kind: "circle", c: idx.xy(e.c), r: e.r, id };
+    if (e.kind === "ellipse") return { kind: "ellipse", ...ellipseGeo(idx, e), id };
+    if (e.kind === "spline") return { ...splineSeg(splinePieces(splineGeo(idx, e)), reversed), id };
     if (e.kind === "line") {
       const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
       return reversed ? { kind: "line", a: b, b: a, id } : { kind: "line", a, b, id };

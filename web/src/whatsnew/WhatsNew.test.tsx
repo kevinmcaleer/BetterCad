@@ -31,7 +31,9 @@ describe("WhatsNewDialog", () => {
   it("lists every note and marks the new ones", () => {
     render(<WhatsNewDialog fresh={[NOTES[0]!.id]} onClose={() => {}} />);
     expect(screen.getByRole("dialog", { name: "What's new" })).toBeInTheDocument();
-    for (const n of NOTES) expect(screen.getByRole("article", { name: new RegExp(n.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) })).toBeInTheDocument();
+    // One query for every article: a role query per note grows with the square of the notes and timed out on CI.
+    const names = screen.getAllByRole("article").map((a) => a.getAttribute("aria-label") ?? a.textContent ?? "");
+    for (const n of NOTES) expect(names.some((x) => x.includes(n.title))).toBe(true);
     expect(screen.getAllByText("New")).toHaveLength(1);
   });
 });

@@ -103,7 +103,14 @@ export const torus = "M2 12a10 5 0 1 0 20 0a10 5 0 1 0-20 0M8 11.5a4 1.6 0 0 0 8
 export const sliders = "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4";
 export const ruler = "M3 16 16 3l5 5L8 21zM7 12l2 2M10 9l2 2M13 6l2 2";
 export const revolve = "M12 2v20M5 10a7 3 0 1 0 7-3M9 4.5 12 7l-2.8 2.4";
+/** Loft (#399): a wide shape at the bottom running into a small one at the top. */
+export const sweep = "M4 20v-8a8 8 0 0 1 8-8h8M2 20h4M20 2v4M8 20v-8a4 4 0 0 1 4-4h8";
+/** Split body: a block in two pieces along a slanted cut. */
+export const split = "M3 4h9L7 20H3zM16 4h5v16h-10z";
+export const loft = "M3 18h18l-2 3H5zM9 3h6v3H9zM3 18 9 6M21 18 15 6";
 export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
+/** Offset face (#264): a wedge, its slope moved out along an arrow. */
+export const offsetFace = "M3 20h12L3 8zM6 5l13 13M10 13l3-3M13 10h-2.5M13 10v2.5";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
 export const wedge = "M3 20h12L3 8zM8 4v12h12M3 8l5-4M15 20l5-4M3 20l5-4";
 export const settings = "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1";
@@ -131,6 +138,12 @@ export const rect = "M4 6h16v12H4z";
 export const circle = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z";
 export const arc = "M4 18a8 8 0 0 1 16 0";
 export const polygon = "M7.5 4h9l4.5 8-4.5 8h-9L3 12z";
+/** A slot (#403): two round ends joined by straight sides. */
+export const slot = "M8 8h8a4 4 0 0 1 0 8H8a4 4 0 0 1 0-8z";
+/** An ellipse (#401): wider than it is tall. */
+export const ellipse = "M12 18c5 0 9-2.7 9-6s-4-6-9-6-9 2.7-9 6 4 6 9 6z";
+/** A spline (#269): a smooth wave through two fit points. */
+export const spline = "M3 18c3 0 4-12 9-12s6 12 9 12M10 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0";
 /** A construction plane (#265): a sheet seen at an angle. */
 export const plane = "M7 4h14l-4 16H3z";
 /** A construction axis (#265): a line running through, with a tick at each end. */
@@ -140,6 +153,8 @@ export const finish = "M20 6 9 17l-5-5";
 export const cloud = "M17.5 19H8a6 6 0 1 1 5.7-7.9h.3a4.5 4.5 0 0 1 3.5 7.9z";
 export const cloudOff = "M2 2l20 20M5.8 8.2A6 6 0 0 0 8 19h9M21 15.5a4.5 4.5 0 0 0-7-4.4M10 5.2A6 6 0 0 1 13.7 11";
 // Print readiness (#11).
+/** Pin a tool to the ribbon. */
+export const pin = "M9 3h6l-1 6 4 4H6l4-4zM12 13v8";
 export const printer = "M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6z";
 export const share = "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4";
 
@@ -252,6 +267,9 @@ export const ICONS = {
   chamfer,
   shell,
   revolve,
+  loft,
+  sweep,
+  split,
   ruler,
   sliders,
   settings,
@@ -275,6 +293,10 @@ export const ICONS = {
   circle,
   arc,
   polygon,
+  slot,
+  ellipse,
+  spline,
+  offsetFace,
   point,
   plane,
   axis,
@@ -283,6 +305,7 @@ export const ICONS = {
   cloudOff,
   share,
   printer,
+  pin,
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Draft, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
 import { Solver } from "@bettercad/sketch/solver";
-import { addConstraints, axisLine, commit, constraintsFor, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
+import { addConstraints, axisLine, commit, constraintsFor, toolById, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
 import { ORIGIN, middleOf, pickAt, pointPickAt, type Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
@@ -43,6 +43,108 @@ describe("sketch tools", () => {
     expect(c.label).toBe("Draw a 5-sided polygon");
     expect(c.sketch.entities.filter((e) => e.kind === "line")).toHaveLength(5);
     expect(c.sketch.entities.find((e) => e.kind === "circle")?.construction).toBe(true);
+  });
+
+  it("previews a slot with its length, then its width from the pointer", () => {
+    expect(preview("slot", [[0, 0]], [30, 0]).values).toEqual([30]);
+    const p = preview(
+      "slot",
+      [
+        [0, 0],
+        [30, 0],
+      ],
+      [12, 4],
+    );
+    expect(p.values).toEqual([30, 8]);
+    const xs = p.lines[0]!.map((q) => q[0]);
+    expect(Math.min(...xs)).toBeCloseTo(-4);
+    expect(Math.max(...xs)).toBeCloseTo(34);
+  });
+
+  it("draws a slot that solves and closes, with typed sizes as dimensions", async () => {
+    const c = commit("slot", newSketch(), [free(0, 0), free(20, 0), free(5, 3)])!;
+    expect(c.label).toBe("Draw a slot");
+    expect(c.sketch.entities.filter((e) => e.kind === "arc")).toHaveLength(2);
+    expect(profiles(c.sketch).profiles).toHaveLength(1);
+    expect(profiles(c.sketch).profiles[0]!.area).toBeCloseTo(20 * 6 + Math.PI * 9, 0);
+    // Enter after the first click with both sizes typed.
+    const typed = commit("slot", newSketch(), [free(0, 0), free(3, 4)], [25, 6])!;
+    expect(typed.sketch.dimensions.map((d) => `${d.kind} ${d.value}`)).toEqual(["length 25", "diameter 6"]);
+    const r = (await Solver.load()).solve(typed.sketch);
+    expect(r.status).toBe("ok");
+    expect(commit("slot", newSketch(), [free(0, 0), free(20, 0)])).toBeNull();
+  });
+
+  it("previews an ellipse with its two widths, and draws one that is a closed profile", async () => {
+    expect(preview("ellipse", [[0, 0]], [10, 0]).values).toEqual([20]);
+    expect(
+      preview(
+        "ellipse",
+        [
+          [0, 0],
+          [10, 0],
+        ],
+        [3, 4],
+      ).values,
+    ).toEqual([20, 8]);
+    const c = commit("ellipse", newSketch(), [free(0, 0), free(10, 0), free(3, 4)])!;
+    expect(c.label).toBe("Draw an ellipse");
+    expect(profiles(c.sketch).profiles[0]!.area).toBeCloseTo(Math.PI * 40, 6);
+    // Enter after the first click with both widths typed: they become dimensions.
+    const typed = commit("ellipse", newSketch(), [free(0, 0), free(7, 0.1)], [30, 12])!;
+    expect(typed.sketch.dimensions.map((d) => `${d.kind} ${d.value}`)).toEqual(["length 30", "length 12"]);
+    expect((await Solver.load()).solve(typed.sketch).status).toBe("ok");
+    expect(commit("ellipse", newSketch(), [free(0, 0), free(10, 0)])).toBeNull();
+  });
+
+  it("lets an ellipse be concentric or fixed, but nothing sit on it yet", () => {
+    const c = commit("ellipse", newSketch(), [free(0, 0), free(10, 0), free(3, 4)])!;
+    const e = c.sketch.entities.find((x) => x.kind === "ellipse")!.id;
+    const ring = commit("circle", c.sketch, [free(0, 0), free(2, 0)])!.sketch;
+    const circle = ring.entities.find((x) => x.kind === "circle")!.id;
+    expect(constraintsFor("concentric", ring, [e, circle])).toEqual([{ type: "concentric", a: e, b: circle }]);
+    expect(constraintsFor("fix", ring, [e])).toHaveLength(5);
+    const p = ring.entities.find((x) => x.kind === "point" && !x.construction)!.id;
+    expect(typeof constraintsFor("coincident", ring, [p, e])).toBe("string");
+  });
+
+  it("gives the Arc tool three kinds, the extra two picked from its bar", () => {
+    expect(toolById("arcTangent").modes!.map((m) => m.mode)).toEqual(["3 point", "Centre", "Tangent"]);
+    expect(toolById("arc").modes).toHaveLength(3);
+    expect(toolById("line").modes).toBeUndefined();
+  });
+
+  it("draws a centre-point arc the way the pointer turns, with a typed radius as a dimension", () => {
+    expect(preview("arcCentre", [[0, 0]], [10, 0]).values).toEqual([10]);
+    const left = commit("arcCentre", newSketch(), [free(0, 0), free(10, 0), free(0, 7)])!;
+    const arc = left.sketch.entities.find((e) => e.kind === "arc") as { a: string; b: string; r: number };
+    const at = (id: string) => left.sketch.entities.find((e) => e.id === id) as { x: number; y: number };
+    expect(arc.r).toBe(10);
+    // Anticlockwise from 3 o'clock to 12, the end pulled onto the circle.
+    expect([at(arc.a).x, at(arc.a).y]).toEqual([10, 0]);
+    expect([at(arc.b).x, at(arc.b).y].map((v) => Math.round(v * 1e9) / 1e9 + 0)).toEqual([0, 10]);
+    const right = commit("arcCentre", newSketch(), [free(0, 0), free(10, 0), free(0, -7)], [12])!;
+    const r2 = right.sketch.entities.find((e) => e.kind === "arc") as { a: string; b: string };
+    const at2 = (id: string) => right.sketch.entities.find((e) => e.id === id) as { x: number; y: number };
+    // Clockwise is stored the other way round: from 6 o'clock up to 3.
+    expect(Math.round(at2(r2.a).y)).toBe(-12);
+    expect(right.sketch.dimensions.map((d) => `${d.kind} ${d.value}`)).toEqual(["radius 12"]);
+  });
+
+  it("carries a tangent arc on from a line's end, and a line on tangent from an arc's end", () => {
+    const line = commit("line", newSketch(), [free(0, 0), free(20, 0)])!;
+    const end: Snap = { xy: [20, 0], kind: "end", ref: line.end!, label: "End" };
+    const p = preview("arcTangent", [[20, 0]], [30, 10], 6, [1, 0]);
+    expect(p.values[0]).toBeCloseTo(10, 9);
+    const arc = commit("arcTangent", line.sketch, [end, free(30, 10)])!;
+    expect(arc.sketch.constraints.map((c) => c.type)).toEqual(["horizontal", "tangent"]);
+    expect(commit("arcTangent", line.sketch, [free(20, 0), free(30, 10)])).toBeNull();
+    // On from the arc's end, heading up: nearly along it, so tangent; well off it, not.
+    const tip: Snap = { xy: [30, 10], kind: "end", ref: arc.end!, label: "End" };
+    const on = commit("line", arc.sketch, [tip, free(30.2, 30)])!;
+    expect(on.sketch.constraints.filter((c) => c.type === "tangent")).toHaveLength(2);
+    const off = commit("line", arc.sketch, [tip, free(40, 30)])!;
+    expect(off.sketch.constraints.filter((c) => c.type === "tangent")).toHaveLength(1);
   });
 
   it("says what a constraint needs until the selection fits", () => {
@@ -333,5 +435,41 @@ describe("an axis as a line to measure from", () => {
     const again = axisLine(sketch, [5, 0], [6, 0], [-20, 0]);
     expect(again.id).toBe(id);
     expect(again.sketch).toBe(sketch);
+  });
+});
+
+describe("the spline tool", () => {
+  it("previews the curve through the clicks and the pointer", () => {
+    const p = preview(
+      "spline",
+      [
+        [0, 0],
+        [10, 5],
+      ],
+      [20, 0],
+    );
+    expect(p.lines).toHaveLength(1);
+    expect(p.lines[0]!.length).toBeGreaterThan(10);
+    expect(p.lines[0]![0]).toEqual([0, 0]);
+  });
+
+  it("draws an open spline, skipping a double-click's repeat", () => {
+    const c = commit("spline", newSketch(), [free(0, 0), free(10, 5), free(20, 0), free(20, 0)])!;
+    expect(c.label).toBe("Draw a spline");
+    const sp = c.sketch.entities.filter((e) => e.kind === "spline");
+    expect(sp).toHaveLength(1);
+    expect(sp[0]!.kind === "spline" && sp[0]!.pts).toHaveLength(3);
+    expect(profiles(c.sketch).profiles).toHaveLength(0);
+  });
+
+  it("draws a closed spline that is a profile", () => {
+    const c = commit("spline", newSketch(), [free(10, 0), free(0, 10), free(-10, 0), free(0, -10)], [], 6, true)!;
+    expect(c.label).toBe("Draw a closed spline");
+    expect(profiles(c.sketch).profiles).toHaveLength(1);
+  });
+
+  it("needs two points, or three to close", () => {
+    expect(commit("spline", newSketch(), [free(0, 0), free(0, 0)])).toBeNull();
+    expect(commit("spline", newSketch(), [free(0, 0), free(5, 5)], [], 6, true)).toBeNull();
   });
 });

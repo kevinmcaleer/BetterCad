@@ -9,6 +9,7 @@ import {
   newSketch,
   planeFrame,
   removeEntities,
+  toWorld,
   WORLD_FRAMES,
   type Frame,
   type PlaneRef,
@@ -18,6 +19,7 @@ import {
 } from "@bettercad/sketch";
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
+import type { Plug } from "./recognise/holes";
 import { partBounds, partFrame, type CataloguePart } from "./catalogue";
 import type { FinishId } from "./looks";
 export {
@@ -36,12 +38,15 @@ import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind 
 import { clampJoint, jointMove, mat4Apply, mat4ApplyDir, mat4Mul, moveFrame, placeMatrix, placeOf, type Mat4, type Pose } from "./pose";
 import { driveMultiplier, driveProblem, driveTo, togetherMultiplier, togetherProblem, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
 import {
+  FINISH_OPS,
   MIRRORED_OPS,
   PATTERN_DEFAULTS,
   copyName,
   copyPart,
   copyId,
   mirrorPlane,
+  mirrorPlaneText,
+  planeToLocal,
   copiesWhat,
   moveToLocal,
   opMoves,
@@ -78,6 +83,8 @@ import {
   startDistance,
   fromPartLocal,
   pickProfiles,
+  pathSegs,
+  segPoints,
   profilesMiddle,
   upToDistance,
   targetsOf,
@@ -92,6 +99,9 @@ import {
   type ProfileSeg,
   type ProfileShape,
   type RevolveSpec,
+  type LoftSpec,
+  type LoftSection,
+  type SweepSpec,
   type SketchAxis,
 } from "./extrude";
 
@@ -170,6 +180,10 @@ export interface Part {
   prism?: PrismSpec;
   /** Or profiles turned round an axis (Revolve, #62). */
   revolve?: RevolveSpec;
+  /** Or a solid run through shapes on several planes (Loft, #399). */
+  loft?: LoftSpec;
+  /** Or shapes pushed along a path (Sweep, #400). */
+  sweep?: SweepSpec;
   /** Joins, cuts and intersections made into the part, in its own coordinates, in timeline order. */
   ops?: BodyOp[];
   /** A hole (#64): drawn see-through, and cut away rather than joined when grouped. */
@@ -202,12 +216,14 @@ export interface ImportSpec {
   format: ImportFormat;
   index: number;
   mesh: boolean;
+  /** The file's bodies keep their places in it (see `ImportFeature.keepLayout`). */
+  keepLayout?: boolean;
 }
 
 /** One boolean made into a part by a later step (the step's id, so a failure lands on its tile). */
 export interface BodyOp {
   /** A boolean with a tool, or a finish on the part's own edges and faces. */
-  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "hole";
+  op: "join" | "cut" | "intersect" | "fillet" | "chamfer" | "shell" | "pushpull" | "offsetFace" | "hole" | "plug";
   /** Edges (fillet, chamfer) or faces left open (shell), numbered on the part as it was before this op. */
   refs?: number[];
   /** The same edges or faces by name (#47), found again when earlier steps change; `refs` is the fallback. */
@@ -220,8 +236,16 @@ export interface BodyOp {
   tool?: PrismSpec;
   /** Holes (#70) cut into the part, in its own coordinates. */
   holes?: HoleSpec;
+  /** Recognised holes filled in (Convert, #448), in its own coordinates. */
+  plugs?: Plug[];
   /** Or a revolve's solid, in the part's own coordinates. */
   rev?: RevolveSpec;
+  /** Or a loft's solid, in the part's own coordinates. */
+  loft?: LoftSpec;
+  /** Or a sweep's solid, in the part's own coordinates. */
+  sweep?: SweepSpec;
+  /** Or everything on the normal's side of a plane (Split body, #406), in the part's own coordinates. */
+  half?: Plane;
   /** Or a whole body (Combine, #66), as it stood then, placed in the world. */
   body?: Part;
   /** A cut's printed gap (#183): the tool grows by this much on every side first, mm. */
@@ -238,6 +262,11 @@ export interface BodyOp {
    * own coordinates, after any `mirror`, the first one first.
    */
   by?: CopyMove[];
+  /**
+   * A copied fillet, chamfer, push/pull or face offset: the step it copies. Its edges or faces are found where that
+   * step's picks were, on the body moved back by `by`, since its own names and numbers point at the original's.
+   */
+  from?: string;
   feature: string;
 }
 
@@ -333,6 +362,11 @@ export interface MoveFeature extends FeatureBase {
   position: Partial<Vec3>;
   /** Turns, in degrees (the gizmo's turn handles and the Rotation fields). */
   rotation?: Partial<Vec3>;
+  /**
+   * The parts move as one (a rigid group): `rotation` turns them about the world origin, then `position` shifts them,
+   * rather than each going to `position`.
+   */
+  together?: boolean;
 }
 export interface ResizeFeature extends FeatureBase {
   type: "resize";
@@ -377,6 +411,18 @@ export interface JointFeature extends FeatureBase {
   gap?: number;
   offset?: [number, number, number];
   flip?: boolean;
+}
+/**
+ * A rigid group (Fusion's, from its Assemble menu): components and loose bodies locked where they stand, so they move as
+ * one. Moving any one of them moves them all, a joint's line-up carries them all, and in URDF and a pose the other
+ * components are fixed to the one that moves on a joint (or the first). Each keeps its own place in the browser.
+ */
+export interface RigidFeature extends FeatureBase {
+  type: "rigid";
+  /** Component (link step) ids. */
+  links: string[];
+  /** Bodies that are in no component. */
+  parts: string[];
 }
 /**
  * A drive link (#194): turning the driver joint turns (or slides) the driven one by a ratio. For gears, a belt or a
@@ -437,6 +483,8 @@ export interface ExtrudeFeature extends FeatureBase {
   direction: ExtrudeDirection;
   /** The second side's distance, for "two". */
   distance2?: number;
+  /** Degrees the sides lean in away from the profile (#402), on every side it goes; negative leans out. */
+  taper?: number;
   /**
    * A distance (the default), through all (Cut and Intersect), or "to": up to the face, edge or point in `to`, one
    * side only. Through all keeps `distance` for its side; "to" keeps the distance it last reached there.
@@ -490,8 +538,11 @@ export interface CombineFeature extends FeatureBase {
  * Edges and faces are numbered as the kernel numbers them on the part at that point of the timeline.
  */
 export interface FinishFeature extends FeatureBase {
-  /** Push/pull (#65) moves one flat face along its normal: out joins, in cuts. Its size is signed. */
-  type: "fillet" | "chamfer" | "shell" | "pushpull";
+  /**
+   * Push/pull (#65) moves one flat face along its normal: out joins, in cuts. Offset face (#264) moves several faces,
+   * flat or round, with their neighbours stretched to meet them. Both sizes are signed: out is positive.
+   */
+  type: "fillet" | "chamfer" | "shell" | "pushpull" | "offsetFace";
   part: string;
   /** Edges for fillet and chamfer; faces to leave open for shell. */
   refs: number[];
@@ -505,6 +556,42 @@ export interface FinishFeature extends FeatureBase {
   /** Shell only: grow outward. */
   outside?: boolean;
 }
+/**
+ * A decal (#263): a picture on a flat face of a body. It makes no geometry: the view draws it over the face, and it
+ * follows the face (found again by name, #47) as earlier steps change the body. The picture's bytes are in the
+ * document's blobs, so a saved model carries its decals.
+ */
+export interface DecalFeature extends FeatureBase {
+  type: "decal";
+  part: string;
+  /** The face it sits on, numbered on the body as built, and by name when the kernel named it. */
+  face: number;
+  faceName?: string;
+  image: DecalImage;
+  /** Its centre, mm from the face's middle, along the face's own x and y (see the app's faceFrame). */
+  x: number;
+  y: number;
+  /** Its size on the face, mm. */
+  width: number;
+  height: number;
+  /** Turned anticlockwise, seen from outside the face, degrees. */
+  angle: number;
+  /** Mirrored left to right. */
+  flip?: boolean;
+}
+
+/** A decal's picture: its bytes are in the document's blobs under `blob`. */
+export interface DecalImage {
+  blob: string;
+  /** "image/png", "image/jpeg" or "image/svg+xml". */
+  type: string;
+  /** The file it came from. */
+  file: string;
+  /** Its size in pixels, for its shape. */
+  width: number;
+  height: number;
+}
+
 /** Revolve (#62): closed shapes of a sketch turned round an axis, made into a new body or combined with one. */
 export interface RevolveFeature extends FeatureBase {
   type: "revolve";
@@ -528,6 +615,62 @@ export interface RevolveFeature extends FeatureBase {
   targets?: string[];
   body: { id: string; name: string };
 }
+/** One shape a loft runs through: the closed shape of a sketch that holds `seed`, picked the way Extrude picks. */
+export interface LoftPick {
+  sketch: string;
+  seed: Vec2;
+}
+/**
+ * Loft (#399): a solid that runs through closed shapes on two or more sketch planes, in order, made into a new body or
+ * combined with one. Shapes are the regions curves make where they cross, as for new extrudes.
+ */
+export interface LoftFeature extends FeatureBase {
+  type: "loft";
+  sections: LoftPick[];
+  /** Straight sides from one shape to the next, rather than one smooth surface through them all. */
+  ruled?: boolean;
+  operation: ExtrudeOperation;
+  target?: string;
+  /** Every body it cuts or intersects (Join takes the first), as for Extrude. */
+  targets?: string[];
+  body: { id: string; name: string };
+}
+/**
+ * Sweep (#400): closed shapes of a sketch pushed along a path of lines and arcs drawn in another sketch, made into a
+ * new body or combined with one. Shapes are picked the way Extrude picks them.
+ */
+export interface SweepFeature extends FeatureBase {
+  type: "sweep";
+  sketch: string;
+  seeds: Vec2[];
+  split?: boolean;
+  /** Texts picked whole, as for Extrude. */
+  texts?: string[];
+  /** The path: lines and arcs of one sketch, end to end, or one circle. None until one is picked. */
+  path?: { sketch: string; curves: string[] };
+  operation: ExtrudeOperation;
+  target?: string;
+  /** Every body it cuts or intersects (Join takes the first), as for Extrude. */
+  targets?: string[];
+  body: { id: string; name: string };
+}
+/** Which halves a Split keeps: both, or only the one on the plane's front (where its normal points) or back. */
+export type SplitKeep = "both" | "front" | "back";
+/**
+ * Split body (#406): a body cut in two by a plane, an origin plane (moved by `offset`), a construction plane or a flat
+ * face, picked as Mirror picks them. The body keeps the back half; the front half becomes a new body, `body`. Keeping
+ * one half throws the other away.
+ */
+export interface SplitFeature extends FeatureBase {
+  type: "split";
+  part: string;
+  plane: MirrorPlane;
+  offset: number;
+  face?: MirrorFace;
+  step?: string;
+  keep: SplitKeep;
+  body: { id: string; name: string };
+}
 /** Hole (#70): screw holes on one flat face of a part, sized from the screw table. */
 export interface HoleFeature extends FeatureBase, HoleParams {
   type: "hole";
@@ -546,6 +689,23 @@ export interface ImportFeature extends FeatureBase {
   format: ImportFormat;
   bodies: { id: string; name: string }[];
   position: Vec3;
+  /**
+   * The bodies keep where they sit in the file (a STEP assembly's placements), the whole file standing with its bottom
+   * centre at `position`. Imports made before this (left out) stand each body on its own, all at `position`.
+   */
+  keepLayout?: boolean;
+}
+/**
+ * Convert (#448): an imported mesh body made editable. It makes a new body from the mesh as it stood, with the holes
+ * that were recognised in it filled, so Hole steps after it cut them again as true holes. The mesh body stays.
+ */
+export interface ConvertFeature extends FeatureBase {
+  type: "convert";
+  /** The mesh body it reads. */
+  part: string;
+  body: { id: string; name: string };
+  /** What fills each recognised hole, in the world as the mesh stood when it was converted. */
+  plugs: Plug[];
 }
 /**
  * A mounting feature (#189) on a flat face: standoffs on a hole pattern, or a servo horn mount (the horn's hub
@@ -629,11 +789,13 @@ export interface GearFeature extends FeatureBase {
 export type Feature =
   | ConstructFeature
   | DriveFeature
+  | RigidFeature
   | JointFeature
   | LinkFeature
   | GearFeature
   | MountFeature
   | ImportFeature
+  | ConvertFeature
   | InsertFeature
   | AddFeature
   | DuplicateFeature
@@ -644,9 +806,13 @@ export type Feature =
   | SketchFeature
   | ExtrudeFeature
   | RevolveFeature
+  | LoftFeature
+  | SweepFeature
+  | SplitFeature
   | CombineFeature
   | FinishFeature
-  | HoleFeature;
+  | HoleFeature
+  | DecalFeature;
 export type FeatureType = Feature["type"];
 
 /** How a part looks, and its name in the parts tree. Not part of the timeline, the way Fusion keeps visibility. */
@@ -758,16 +924,23 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   chamfer: "Chamfer",
   shell: "Shell",
   pushpull: "Push/pull",
+  offsetFace: "Offset face",
   revolve: "Revolve",
+  loft: "Loft",
+  sweep: "Sweep",
+  split: "Split",
   hole: "Hole",
   import: "Import",
+  convert: "Convert",
   insert: "Insert part",
   mount: "Mount",
   gear: "Gear",
   link: "Component",
   joint: "Joint",
   drive: "Drive",
+  rigid: "Rigid group",
   construct: "Construct",
+  decal: "Decal",
 };
 
 export function newDoc(name = "Untitled model"): ModelDoc {
@@ -804,6 +977,31 @@ export interface Build {
   construct: BuiltConstruct[];
   /** Tracks that built: their pieces in order round the loop, so they can run round as the wheels turn. */
   tracks?: BuiltTrack[];
+  /** Rigid groups that built, with every body each one holds now (its components' bodies, nested ones too). */
+  rigid?: BuiltRigid[];
+  /** Decals (#263) that built, on bodies still there, in timeline order. */
+  decals?: DecalFeature[];
+}
+
+/** A rigid group as built. */
+export interface BuiltRigid {
+  id: string;
+  name: string;
+  links: string[];
+  parts: string[];
+  bodies: string[];
+  /** The component the others are fixed to (the one on a joint, or the first), and the ones fixed to it. */
+  root?: string;
+  fixed: string[];
+}
+
+/**
+ * Components with their parents for posing (`linkTransforms`): as nested, except that a rigid group's components ride
+ * on its root, so they all move with the one on a joint.
+ */
+export function poseNesting(b: Pick<Build, "components" | "rigid">): BuiltLink[] {
+  const over = new Map(b.rigid?.flatMap((g) => (g.root ? g.fixed.map((c) => [c, g.root!] as const) : [])) ?? []);
+  return over.size ? b.components.map((c) => (over.has(c.id) ? { ...c, parent: over.get(c.id)! } : c)) : b.components;
 }
 
 /** A track as built: its pieces, link 1 first, and what they were laid from. */
@@ -842,11 +1040,13 @@ export interface BuiltLink {
 const BUILT = new Set<string>([
   "construct",
   "drive",
+  "rigid",
   "joint",
   "link",
   "gear",
   "mount",
   "import",
+  "convert",
   "insert",
   "add",
   "duplicate",
@@ -857,12 +1057,17 @@ const BUILT = new Set<string>([
   "sketch",
   "extrude",
   "revolve",
+  "loft",
+  "sweep",
+  "split",
   "combine",
   "fillet",
   "chamfer",
   "shell",
   "pushpull",
+  "offsetFace",
   "hole",
+  "decal",
 ]);
 
 /** Construction geometry carried by a move: a plane, axis or point riding on its component. */
@@ -893,6 +1098,10 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const drives: BuiltDrive[] = [];
   const tracks: BuiltTrack[] = [];
   const built: BuiltConstruct[] = [];
+  /** Rigid groups as built so far: the components and loose bodies still there. */
+  const rigid: { id: string; name: string; links: string[]; parts: string[] }[] = [];
+  /** Decals (#263) that built, in timeline order. */
+  const decals: DecalFeature[] = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -948,10 +1157,35 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             hidden: false,
             position: { ...f.position },
             size: { x: 0, y: 0, z: 0 },
-            imported: { blob: f.blob, format: f.format, index, mesh: f.format !== "step" },
+            imported: { blob: f.blob, format: f.format, index, mesh: f.format !== "step", ...(f.keepLayout ? { keepLayout: true } : {}) },
           });
         });
         break;
+      case "convert": {
+        const i = find(f.part);
+        const src = parts[i];
+        if (!src) {
+          failed.set(f.id, "The body it converts is gone");
+          break;
+        }
+        if (find(f.body.id) >= 0) break;
+        // A copy of the mesh in its own right: not in the mesh's component, so it goes into the one being worked in.
+        const rest = { ...src };
+        delete rest.link;
+        const plugs = f.plugs.map((p) => {
+          const l = frameToLocal({ origin: p.origin, x: p.axis, normal: p.axis }, src);
+          return { ...p, origin: l.origin, axis: l.normal };
+        });
+        parts.splice(i + 1, 0, {
+          ...rest,
+          id: f.body.id,
+          name: f.body.name,
+          position: { ...src.position },
+          size: { ...src.size },
+          ops: [...(src.ops ?? []), { op: "plug", plugs, feature: f.id }],
+        });
+        break;
+      }
       case "insert":
         if (find(f.part.id) < 0) {
           const [min, max] = partBounds(f.record);
@@ -1044,7 +1278,9 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
               const was = opMoves(o);
               const rest = { ...o };
               delete rest.mirror;
-              for (const m of moves) extra.push({ ...rest, by: [...was, moveToLocal(m, p)], feature: f.id });
+              // A copied finish finds its edges where the original's were (see `BodyOp.from`).
+              const from = FINISH_OPS.has(o.op) ? { from: o.from ?? o.feature } : {};
+              for (const m of moves) extra.push({ ...rest, ...from, by: [...was, moveToLocal(m, p)], feature: f.id });
             }
             if (extra.length) p.ops = [...p.ops!, ...extra];
             made += extra.length;
@@ -1055,7 +1291,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             failed.set(
               f.id,
               skipped
-                ? `Fillets, chamfers and shells can't be ${verb}. ${f.kind === "mirror" ? "Mirror" : "Pattern"} the body instead.`
+                ? `Shells can't be ${verb}. ${f.kind === "mirror" ? "Mirror" : "Pattern"} the body instead.`
                 : `The features it ${f.kind === "mirror" ? "mirrors" : "copies"} are gone`,
             );
         }
@@ -1097,6 +1333,24 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         const key = f.type === "move" ? "position" : "size";
         const change = f.type === "move" ? f.position : f.size;
+        if (f.type === "move" && f.together) {
+          const r = { ...ZERO, ...f.rotation };
+          const by = placeMatrix([f.position.x ?? 0, f.position.y ?? 0, f.position.z ?? 0], [r.x, r.y, r.z]);
+          for (const id of f.parts) {
+            const i = find(id);
+            const p = parts[i];
+            if (!p) continue;
+            const r0 = p.rotation ?? ZERO;
+            const at = placeOf(mat4Mul(by, placeMatrix([p.position.x, p.position.y, p.position.z], [r0.x, r0.y, r0.z])));
+            const [x, y, z] = at.rotation;
+            parts[i] = {
+              ...p,
+              position: { x: at.position[0], y: at.position[1], z: at.position[2] },
+              ...(x || y || z || p.rotation ? { rotation: { x, y, z } } : {}),
+            };
+          }
+          break;
+        }
         for (const id of f.parts) {
           const p = parts[find(id)];
           if (!p || (f.type === "resize" && p.kind === "solid")) continue;
@@ -1146,12 +1400,20 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           const m = jointMove(f);
           if (m) {
             const moved = new Set([f.child]);
+            // Loose bodies locked to it by a rigid group.
+            const bodies = new Set<string>();
+            const goes = (id: string) => bodies.has(id) || moved.has(parts[find(id)]?.link ?? "");
             for (let grew = true; grew;) {
               grew = false;
               for (const l of linkSteps) if (l.parent && moved.has(l.parent) && !moved.has(l.id)) grew = !!moved.add(l.id);
+              for (const g of rigid) {
+                if (!g.links.some((l) => moved.has(l)) && !g.parts.some(goes)) continue;
+                for (const l of g.links) if (!moved.has(l)) grew = !!moved.add(l);
+                for (const id of g.parts) if (!bodies.has(id)) grew = !!bodies.add(id);
+              }
             }
             parts.forEach((p, i) => {
-              if (!p.link || !moved.has(p.link)) return;
+              if (!goes(p.id)) return;
               const r = p.rotation ?? ZERO;
               const at = placeOf(mat4Mul(m, placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z])));
               const [x, y, z] = at.rotation;
@@ -1166,8 +1428,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
             sketches.forEach((s, i) => {
               const plane = s.sketch.plane;
               // A sketch on a face goes with the body it sits on, whichever component it is filed under.
-              const on = plane.kind === "face" ? parts[find(plane.face.body)]?.link : s.component;
-              if (!on || !moved.has(on)) return;
+              if (plane.kind === "face" ? !goes(plane.face.body) : !s.component || !moved.has(s.component)) return;
               const frame = moveFrame(m, plane.frame ?? WORLD_FRAMES[(plane as { plane: WorldPlane }).plane]);
               const sk = { ...s.sketch, plane: { ...plane, frame } };
               sketches[i] = { ...s, sketch: sk };
@@ -1179,6 +1440,20 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           }
           joints.push(alignedJoint(f));
         }
+        break;
+      }
+      case "decal": {
+        if (find(f.part) < 0) failed.set(f.id, "The body it sits on is gone");
+        else if (!doc.blobs?.[f.image.blob]) failed.set(f.id, "Its picture is missing from the model");
+        else decals.push(f);
+        break;
+      }
+      case "rigid": {
+        const links = f.links.filter((l) => linkSteps.some((x) => x.id === l));
+        const bodies = f.parts.filter((id) => find(id) >= 0);
+        if (links.length + bodies.length < 2) {
+          failed.set(f.id, f.links.length + f.parts.length < 2 ? "Pick two or more parts to lock together" : "The parts it locks together are gone");
+        } else rigid.push({ id: f.id, name: f.name, links, parts: bodies });
         break;
       }
       case "drive": {
@@ -1314,7 +1589,13 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           break;
         }
         const span = extent(side, distance, f.distance2, all);
-        const spec: PrismSpec = { frame: planeFrame(sk.plane), profiles: shapes, from: span.from + start, to: span.to + start };
+        const spec: PrismSpec = {
+          frame: planeFrame(sk.plane),
+          profiles: shapes,
+          from: span.from + start,
+          to: span.to + start,
+          ...(f.taper ? { taper: f.taper, base: start } : {}),
+        };
         if (f.operation === "new") {
           if (find(f.body.id) < 0)
             parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: prismSize(spec), prism: spec });
@@ -1382,10 +1663,67 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           t.ops = [...(t.ops ?? []), { op: f.operation, rev: { ...spec, frame: frameToLocal(spec.frame, t) }, feature: f.id }];
         break;
       }
+      case "loft": {
+        const spec = loftSpecOf(f, sketchById);
+        if (typeof spec === "string") {
+          failed.set(f.id, spec);
+          break;
+        }
+        if (f.operation === "new") {
+          if (find(f.body.id) < 0)
+            parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: loftSize(spec), loft: spec });
+          break;
+        }
+        for (const t of profileTargets(f, parts, find, failed))
+          t.ops = [
+            ...(t.ops ?? []),
+            { op: f.operation, loft: { ...spec, sections: spec.sections.map((x) => ({ ...x, frame: frameToLocal(x.frame, t) })) }, feature: f.id },
+          ];
+        break;
+      }
+      case "sweep": {
+        const spec = sweepSpecOf(f, sketchById, failed);
+        if (typeof spec === "string") {
+          failed.set(f.id, spec);
+          break;
+        }
+        if (f.operation === "new") {
+          if (find(f.body.id) < 0)
+            parts.push({ id: f.body.id, name: f.body.name, kind: "solid", hidden: false, position: { ...ZERO }, size: sweepSize(spec), sweep: spec });
+          break;
+        }
+        for (const t of profileTargets(f, parts, find, failed))
+          t.ops = [
+            ...(t.ops ?? []),
+            {
+              op: f.operation,
+              sweep: { ...spec, frame: frameToLocal(spec.frame, t), path: { ...spec.path, frame: frameToLocal(spec.path.frame, t) } },
+              feature: f.id,
+            },
+          ];
+        break;
+      }
+      case "split": {
+        if (missing(f, [f.part]).length) break;
+        const pl = mirrorPlane(f, parts, built);
+        if (typeof pl === "string") {
+          failed.set(f.id, pl.replace("mirrors across", "splits along"));
+          break;
+        }
+        const i = find(f.part);
+        const src = parts[i]!;
+        const half = planeToLocal(pl, src);
+        const ops = src.ops ?? [];
+        if (f.keep === "both" && find(f.body.id) < 0)
+          parts.splice(i + 1, 0, { ...src, id: f.body.id, name: f.body.name, size: { ...src.size }, ops: [...ops, { op: "intersect", half, feature: f.id }] });
+        src.ops = [...ops, { op: f.keep === "front" ? "intersect" : "cut", half, feature: f.id }];
+        break;
+      }
       case "fillet":
       case "chamfer":
       case "shell":
-      case "pushpull": {
+      case "pushpull":
+      case "offsetFace": {
         const t = parts[find(f.part)];
         if (!t) {
           failed.set(f.id, "The body it changes is gone");
@@ -1395,8 +1733,11 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, `Pick at least one edge to ${f.type === "fillet" ? "round" : "bevel"}`);
           break;
         }
-        if (f.type === "pushpull" ? !f.refs.length : !(f.size > 0)) {
-          failed.set(f.id, f.type === "pushpull" ? "Pick the face to pull" : "Give it a size above 0 mm");
+        if (f.type === "pushpull" || f.type === "offsetFace" ? !f.refs.length : !(f.size > 0)) {
+          failed.set(
+            f.id,
+            f.type === "pushpull" ? "Pick the face to pull" : f.type === "offsetFace" ? "Pick the faces to offset" : "Give it a size above 0 mm",
+          );
           break;
         }
         t.ops = [
@@ -1565,7 +1906,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     const parent = ownerOf(l.id, l.parent);
     return { id: l.id, name: l.name, parts: looked.filter((p) => p.link === l.id).map((p) => p.id), ...(parent ? { parent } : {}) };
   });
-  const links = components
+  const links: BuiltLink[] = components
     .filter((l) => l.parts.length)
     .map((l) => {
       // Up past empty or gone components to the nearest one with bodies (a loop stops at the model).
@@ -1579,14 +1920,56 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
       }
       return { id: l.id, name: l.name, parts: l.parts };
     });
-  return { parts: looked, sketches, failed, links, components, joints, drives, construct: built, tracks };
+  // A rigid group's components are fixed to the one that moves on a joint, or the first, so URDF and a pose carry them.
+  const builtRigid: BuiltRigid[] = [];
+  for (const g of rigid) {
+    const at = (id: string) => links.findIndex((l) => l.id === id);
+    // A loose body put in a component since (the Joint tool does that) brings its component.
+    const later = g.parts.map((id) => looked.find((p) => p.id === id)?.link).filter((l): l is string => !!l);
+    const comps = [...new Set([...g.links, ...later])].filter((l) => at(l) >= 0);
+    const jointed = comps.filter((l) => joints.some((j) => j.child === l));
+    let root: string | undefined;
+    const fixed: string[] = [];
+    if (jointed.length > 1) failed.set(g.id, "Two of its components move on joints of their own");
+    else if (comps.length) {
+      root = jointed[0] ?? comps[0]!;
+      for (const c of comps) {
+        if (c === root) continue;
+        // One the root sits inside already carries it; fixing it to the root as well would make a loop.
+        let inside = false;
+        for (let up = links[at(root)]?.parent, n = 0; up && n <= links.length; up = links[at(up)]?.parent, n++) if (up === c) inside = true;
+        if (inside) continue;
+        links[at(c)] = { ...links[at(c)]!, parent: root };
+        fixed.push(c);
+      }
+    }
+    const held = new Set([...g.links, ...later]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const l of linkSteps) if (l.parent && held.has(l.parent) && !held.has(l.id)) grew = !!held.add(l.id);
+    }
+    const bodies = looked.filter((p) => (p.link && held.has(p.link)) || g.parts.includes(p.id)).map((p) => p.id);
+    builtRigid.push({ ...g, bodies, ...(root ? { root } : {}), fixed });
+  }
+  return {
+    parts: looked,
+    sketches,
+    failed,
+    links,
+    components,
+    joints,
+    drives,
+    construct: built,
+    tracks,
+    ...(builtRigid.length ? { rigid: builtRigid } : {}),
+    // A decal goes with its body when a later step deletes it.
+    ...(decals.length ? { decals: decals.filter((d) => looked.some((p) => p.id === d.part)) } : {}),
+  };
 }
 
 /** A revolve's rough size: the box round the profiles swept a full turn (good enough for the props panel). */
 function revolveSize(spec: RevolveSpec): Vec3 {
-  const pts = spec.profiles.flatMap((p) =>
-    p.outer.flatMap((g) => (g.kind === "circle" ? [[g.c[0] + g.r, g.c[1]] as Vec2, [g.c[0] - g.r, g.c[1]] as Vec2] : [g.a, g.b])),
-  );
+  const pts = spec.profiles.flatMap((p) => p.outer.flatMap(segPoints));
   const { origin: o, dir: d, offset = 0 } = spec.axis;
   const r = Math.max(0, ...pts.map((p) => Math.hypot((p[0] - o[0]) * d[1] - (p[1] - o[1]) * d[0], offset)));
   const along = pts.map((p) => (p[0] - o[0]) * d[0] + (p[1] - o[1]) * d[1]);
@@ -1599,8 +1982,74 @@ function revolveSize(spec: RevolveSpec): Vec3 {
   return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
 }
 
-/** The parts an extrude or revolve changes, as they stand now; notes on the step any that are gone. */
-function profileTargets(f: ExtrudeFeature | RevolveFeature, parts: Part[], find: (id: string) => number, failed: Map<string, string>): Part[] {
+/**
+ * A loft's shapes from its sketches, or why it can't be made: each pick must still be a closed shape, and each on a
+ * plane of its own.
+ */
+function loftSpecOf(f: LoftFeature, sketchById: Map<string, Sketch>): LoftSpec | string {
+  if (f.sections.length < 2) return f.sections.length ? "Pick a shape on another plane to loft to" : "Pick two or more closed shapes, each on its own plane";
+  const sections: LoftSection[] = [];
+  for (const [i, pick] of f.sections.entries()) {
+    const sk = sketchById.get(pick.sketch);
+    if (!sk) return `The sketch of shape ${i + 1} is gone or comes later on the timeline`;
+    const { shapes } = pickProfiles(sk, [pick.seed], [], true);
+    if (!shapes.length) return `Shape ${i + 1} is no longer closed. Close it in the sketch, or pick it again.`;
+    sections.push({ frame: planeFrame(sk.plane), profile: shapes[0]! });
+  }
+  for (let i = 1; i < sections.length; i++) {
+    const [a, b] = [sections[i - 1]!.frame, sections[i]!.frame];
+    const d = [0, 1, 2].map((k) => b.origin[k]! - a.origin[k]!);
+    const same = Math.abs(a.normal[0] * b.normal[0] + a.normal[1] * b.normal[1] + a.normal[2] * b.normal[2]) > 1 - 1e-9;
+    if (same && Math.abs(d[0]! * a.normal[0] + d[1]! * a.normal[1] + d[2]! * a.normal[2]) < 1e-6)
+      return `Shapes ${i} and ${i + 1} are on the same plane. Pick shapes on planes apart from each other.`;
+  }
+  return { sections, ...(f.ruled ? { ruled: true } : {}) };
+}
+
+/** A loft's rough size: the box round every section's corners. */
+function loftSize(spec: LoftSpec): Vec3 {
+  const pts = spec.sections.flatMap((s) => s.profile.outer.flatMap((g) => segPoints(g)).map((q) => toWorld(s.frame, q)));
+  const span = (i: number) => Math.round((Math.max(...pts.map((c) => c[i]!)) - Math.min(...pts.map((c) => c[i]!))) * 1000) / 1000;
+  return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
+}
+
+/** A sweep's shapes and path from its sketches, or why it can't be made. Shapes no longer closed are noted. */
+function sweepSpecOf(f: SweepFeature, sketchById: Map<string, Sketch>, failed: Map<string, string>): SweepSpec | string {
+  const sk = sketchById.get(f.sketch);
+  if (!sk) return "Its sketch is gone or comes later on the timeline";
+  const { shapes, lost } = pickProfiles(sk, f.seeds, f.texts, f.split);
+  if (!shapes.length)
+    return f.seeds.length || f.texts?.length
+      ? "The shapes it swept are no longer closed. Close them in the sketch, or edit the sweep."
+      : "Pick closed shapes to sweep";
+  if (lost) failed.set(f.id, `${lost === 1 ? "One shape" : `${lost} shapes`} it swept ${lost === 1 ? "is" : "are"} no longer closed`);
+  if (!f.path) return "Pick a path to sweep along: lines and arcs in another sketch";
+  const ps = sketchById.get(f.path.sketch);
+  if (!ps) return "The sketch of its path is gone or comes later on the timeline";
+  if (f.path.sketch === f.sketch) return "The path is in the shape's own sketch. Draw it in a sketch on another plane.";
+  const segs = pathSegs(ps, f.path.curves);
+  if (typeof segs === "string") return segs;
+  return { frame: planeFrame(sk.plane), profiles: shapes, path: { frame: planeFrame(ps.plane), segs } };
+}
+
+/** A sweep's rough size: the box round its path, grown by the shapes' reach either side. */
+function sweepSize(spec: SweepSpec): Vec3 {
+  const reach = Math.max(
+    0,
+    ...spec.profiles.flatMap((p) => p.outer.flatMap((g) => (g.kind === "circle" ? [Math.hypot(...g.c) + g.r] : segPoints(g).map((q) => Math.hypot(...q))))),
+  );
+  const pts = spec.path.segs.flatMap((g) => segPoints(g)).map((q) => toWorld(spec.path.frame, q));
+  const span = (i: number) => Math.round((Math.max(...pts.map((c) => c[i]!)) - Math.min(...pts.map((c) => c[i]!)) + 2 * reach) * 1000) / 1000;
+  return pts.length ? { x: span(0), y: span(1), z: span(2) } : { ...ZERO };
+}
+
+/** The parts an extrude, revolve or loft changes, as they stand now; notes on the step any that are gone. */
+function profileTargets(
+  f: ExtrudeFeature | RevolveFeature | LoftFeature | SweepFeature,
+  parts: Part[],
+  find: (id: string) => number,
+  failed: Map<string, string>,
+): Part[] {
   const ids = targetsOf(f);
   if (!ids.length) {
     failed.set(f.id, f.operation === "join" ? "Pick the body to change" : "Pick the bodies to change");
@@ -1619,11 +2068,7 @@ function profileTargets(f: ExtrudeFeature | RevolveFeature, parts: Part[], find:
 
 /** A prism's rough size along X, Y and Z, for the props panel and the gizmo. */
 function prismSize(spec: PrismSpec): Vec3 {
-  const pts = spec.profiles.flatMap((p) =>
-    p.outer.flatMap((g) =>
-      g.kind === "circle" ? [[g.c[0] - g.r, g.c[1] - g.r] as Vec2, [g.c[0] + g.r, g.c[1] + g.r] as Vec2] : g.kind === "arc" ? [g.a, g.m, g.b] : [g.a, g.b],
-    ),
-  );
+  const pts = spec.profiles.flatMap((p) => p.outer.flatMap((g) => segPoints(g)));
   const f = spec.frame;
   const y = [f.normal[1] * f.x[2] - f.normal[2] * f.x[1], f.normal[2] * f.x[0] - f.normal[0] * f.x[2], f.normal[0] * f.x[1] - f.normal[1] * f.x[0]];
   const corners = pts.flatMap(([u, v]) => [spec.from, spec.to].map((w) => [0, 1, 2].map((i) => f.origin[i]! + f.x[i]! * u + y[i]! * v + f.normal[i]! * w)));
@@ -1640,7 +2085,9 @@ function usedNames(doc: ModelDoc): Set<string> {
   for (const f of doc.features) {
     if (f.type === "add" || f.type === "insert") names.add(f.part.name);
     if (f.type === "duplicate") f.copies.forEach((c) => names.add(c.name));
-    if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") names.add(f.body.name);
+    if (f.type === "convert" || ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && f.operation === "new"))
+      names.add(f.body.name);
+    if (f.type === "split" && f.keep === "both") names.add(f.body.name);
   }
   Object.values(doc.looks).forEach((l) => l.name && names.add(l.name));
   return names;
@@ -1842,25 +2289,32 @@ export function featureParts(f: Feature): string[] {
       return f.operation === "new" ? [f.body.id] : targetsOf(f);
     case "combine":
       return [f.target];
+    case "split":
+      return f.keep === "both" ? [f.part, f.body.id] : [f.part];
     case "fillet":
     case "chamfer":
     case "shell":
     case "pushpull":
+    case "offsetFace":
     case "hole":
     case "mount":
       return [f.part];
     case "revolve":
+    case "loft":
+    case "sweep":
       return f.operation === "new" ? [f.body.id] : targetsOf(f);
     case "import":
       return f.bodies.map((b) => b.id);
     case "insert":
       return [f.part.id];
     case "gear":
+    case "convert":
       return [f.body.id];
     case "link":
     case "joint":
     case "drive":
     case "construct":
+    case "decal":
       return [];
     default:
       return f.parts;
@@ -1880,15 +2334,23 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
   for (const g of doc.features) {
     if (g.type === "add" || g.type === "insert") names.set(g.part.id, g.part.name);
     if (g.type === "duplicate") g.copies.forEach((c) => names.set(c.id, c.name));
-    if ((g.type === "extrude" || g.type === "revolve") && g.operation === "new") names.set(g.body.id, g.body.name);
+    if (g.type === "convert" || ((g.type === "extrude" || g.type === "revolve" || g.type === "loft" || g.type === "sweep") && g.operation === "new"))
+      names.set(g.body.id, g.body.name);
+    if (g.type === "split" && g.keep === "both") names.set(g.body.id, g.body.name);
   }
   for (const [id, l] of Object.entries(doc.looks)) if (l.name) names.set(id, l.name);
   const who = (ids: string[]) => (ids.length === 1 ? (names.get(ids[0]!) ?? "1 part") : `${ids.length} parts`);
   switch (f.type) {
+    case "decal":
+      return `${f.image.file}, ${Math.round(f.width * 100) / 100} × ${mm(f.height)} on ${who([f.part])}`;
     case "construct":
       return constructSummary(f.kind, f.refs, f.value, (r) => refText(r, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name));
     case "link":
       return f.parts.length ? `${who(f.parts)}, one rigid component` : "A component to work in";
+    case "rigid": {
+      const names = [...f.links.map((l) => doc.features.find((g) => g.id === l)?.name ?? "a gone component"), ...(f.parts.length ? [who(f.parts)] : [])];
+      return `${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? "Nothing")} move as one`;
+    }
     case "joint": {
       const name = (l: string | null) => (l === null ? "Base" : (doc.features.find((g) => g.id === l)?.name ?? "a gone link"));
       const k = JOINT_KINDS.find((x) => x.id === f.kind)!;
@@ -1918,12 +2380,18 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       return `${f.record.name}, ${f.record.mass} g${f.record.checked ? "" : ", sizes not checked"}`;
     case "import":
       return `${f.bodies.length === 1 ? "1 body" : `${f.bodies.length} bodies`} from ${f.file}`;
+    case "convert":
+      return `${who([f.part])} made editable${f.plugs.length ? ", holes filled ready to cut again" : ""}`;
     case "add": {
       const s = f.part.size;
       return `${KIND_LABEL[f.part.kind]}, ${s.x} × ${s.y} × ${s.z} mm`;
     }
     case "duplicate":
       return `Copies ${who(f.copies.map((c) => c.from))}`;
+    case "split": {
+      const along = mirrorPlaneText(f, f.step ? doc.features.find((g) => g.id === f.step)?.name : f.face && names.get(f.face.body));
+      return `${who([f.part])} along ${along}, ${f.keep === "both" ? "both halves kept" : `${f.keep} half kept`}`;
+    }
     case "pattern": {
       const step = (id: string) => doc.features.find((g) => g.id === id)?.name;
       const of = copiesWhat(f);
@@ -1945,13 +2413,14 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       );
     }
     case "move": {
+      const by = f.together ? " as one" : "";
       const turn = f.rotation
         ? (["x", "y", "z"] as const)
             .filter((a) => f.rotation![a] !== undefined)
             .map((a) => `turn ${a.toUpperCase()} ${Math.round(f.rotation![a]! * 100) / 100}°`)
             .join(", ")
         : "";
-      return [who(f.parts), axes(f.position), turn].filter(Boolean).join(", ");
+      return [who(f.parts) + by, axes(f.position), turn].filter(Boolean).join(", ");
     }
     case "resize":
       return `${who(f.parts)}, ${axes(f.size)}`;
@@ -1964,8 +2433,9 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const how = f.direction === "symmetric" || (all && f.direction === "two") ? ", both ways" : f.direction === "two" ? ` and ${mm(f.distance2 ?? 0)}` : "";
       const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
       const from = f.start === "offset" ? `, from ${mm(f.startOffset ?? 0)} off` : f.start === "object" ? ", from an object" : "";
-      if (f.extent === "to") return `Up to ${f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face"}${from}, ${op}`;
-      return `${f.extent === "all" ? "Through all" : mm(f.distance)}${how}${from}, ${op}`;
+      const taper = f.taper ? `, ${Math.round(f.taper * 100) / 100}° taper` : "";
+      if (f.extent === "to") return `Up to ${f.to?.kind === "vertex" ? "a point" : f.to?.kind === "edge" ? "an edge" : "a face"}${from}${taper}, ${op}`;
+      return `${f.extent === "all" ? "Through all" : mm(f.distance)}${how}${from}${taper}, ${op}`;
     }
     case "fillet":
     case "chamfer": {
@@ -1974,6 +2444,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     }
     case "pushpull":
       return `${f.size >= 0 ? "Out" : "In"} ${mm(Math.abs(f.size))}, ${who([f.part])}`;
+    case "offsetFace": {
+      const n = f.refs.length;
+      return `${f.size >= 0 ? "Out" : "In"} ${mm(Math.abs(f.size))}, ${n === 1 ? "1 face" : `${n} faces`} of ${who([f.part])}`;
+    }
     case "hole": {
       const n = f.points.length;
       const head = f.head === "none" ? "" : `, ${f.head}`;
@@ -1990,6 +2464,17 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
             ? refText(a.ref, (id) => names.get(id) ?? doc.features.find((g) => g.id === id)?.name)
             : `the sketch's ${a.kind.toUpperCase()} axis`;
       return `${f.angle >= 360 ? "Full turn" : `${Math.round(f.angle * 100) / 100}°${f.symmetric ? " both ways" : ""}`} round ${axis}, ${op}`;
+    }
+    case "loft": {
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
+      const n = f.sections.length;
+      return `Through ${n === 1 ? "1 shape" : `${n} shapes`}${f.ruled ? ", straight sides" : ""}, ${op}`;
+    }
+    case "sweep": {
+      const op = f.operation === "new" ? "new body" : `${f.operation} ${who(targetsOf(f))}`;
+      const n = f.seeds.length + (f.texts?.length ?? 0);
+      const k = f.path?.curves.length ?? 0;
+      return `${n === 1 ? "1 shape" : `${n} shapes`} along ${k ? `a path of ${k === 1 ? "1 curve" : `${k} curves`}` : "a path still to pick"}, ${op}`;
     }
     case "shell": {
       const n = f.refs.length;
@@ -2031,6 +2516,7 @@ export type ExtrudeParams = Pick<
   | "distance"
   | "direction"
   | "distance2"
+  | "taper"
   | "extent"
   | "to"
   | "start"
@@ -2065,7 +2551,7 @@ export function updateFinish(doc: ModelDoc, id: string, change: Partial<FinishPa
   return {
     ...doc,
     features: doc.features.map((f) => {
-      if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "pushpull")) return f;
+      if (f.id !== id || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "pushpull" && f.type !== "offsetFace")) return f;
       const next = { ...f, ...change } as FinishFeature;
       // New picks without names drop the old names, which would otherwise win over them.
       if (change.refs && !change.names?.length) delete next.names;
@@ -2081,6 +2567,47 @@ export type RevolveParams = Pick<RevolveFeature, "sketch" | "seeds" | "split" | 
 /** Adds a Revolve step. Its new body (when it makes one) gets the part id `bodyId`. */
 export function addRevolve(doc: ModelDoc, params: RevolveParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
   return insert(doc, at, { id, type: "revolve", name: nextFeatureName(doc, "revolve"), ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+export type LoftParams = Pick<LoftFeature, "sections" | "ruled" | "operation" | "target" | "targets">;
+
+/** Adds a Loft step (#399). Its new body (when it makes one) gets the part id `bodyId`. */
+export function addLoft(doc: ModelDoc, params: LoftParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "loft", name: nextFeatureName(doc, "loft"), ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+/** Changes a Loft step's settings (the tool edits it live, as one undo step). */
+export function updateLoft(doc: ModelDoc, id: string, change: Partial<LoftParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "loft" ? { ...f, ...change } : f)) };
+}
+
+export type SweepParams = Pick<SweepFeature, "sketch" | "seeds" | "split" | "texts" | "path" | "operation" | "target" | "targets">;
+
+/** Adds a Sweep step (#400). Its new body (when it makes one) gets the part id `bodyId`. */
+export function addSweep(doc: ModelDoc, params: SweepParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "sweep", name: nextFeatureName(doc, "sweep"), ...params, body: { id: bodyId, name: nextName(doc, "solid") } });
+}
+
+/** Changes a Sweep step's settings (the tool edits it live, as one undo step). */
+export function updateSweep(doc: ModelDoc, id: string, change: Partial<SweepParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "sweep" ? { ...f, ...change } : f)) };
+}
+
+export type SplitParams = Pick<SplitFeature, "part" | "plane" | "offset" | "face" | "step" | "keep">;
+
+/** Adds a Split body step (#406). The front half, when both are kept, gets the part id `bodyId` and its body's name. */
+export function addSplit(doc: ModelDoc, params: SplitParams, id = newId("f"), bodyId = newId(), at?: number): ModelDoc {
+  const src = build(doc, at ?? doc.features.length).parts.find((p) => p.id === params.part);
+  const base = src?.name ?? "Body";
+  const taken = usedNames(doc);
+  let k = 2;
+  while (taken.has(`${base} (${k})`)) k++;
+  return insert(doc, at, { id, type: "split", name: nextFeatureName(doc, "split"), ...params, body: { id: bodyId, name: `${base} (${k})` } });
+}
+
+/** Changes a Split step's settings (the tool edits it live, as one undo step). */
+export function updateSplit(doc: ModelDoc, id: string, change: Partial<SplitParams>): ModelDoc {
+  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "split" ? { ...f, ...change } : f)) };
 }
 
 /** Changes a Revolve step's settings (the tool edits it live, as one undo step). */
@@ -2293,7 +2820,32 @@ export interface ImportParams {
 export function addImport(doc: ModelDoc, p: ImportParams, id = newId("f"), at?: number): ModelDoc {
   const { data, ...rest } = p;
   const blobs = doc.blobs?.[p.blob] ? doc.blobs : { ...doc.blobs, [p.blob]: data };
-  return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest });
+  // New imports keep the file's layout: a STEP assembly looks as it did in the app that made it.
+  return insert({ ...doc, blobs }, at, { id, type: "import", name: nextFeatureName(doc, "import"), ...rest, keepLayout: true });
+}
+
+export type DecalParams = Omit<DecalFeature, "id" | "name" | "type" | "suppressed" | "exprs" | "component">;
+
+/** Adds a Decal step (#263), keeping its picture's bytes (base64) in the document's blobs. */
+export function addDecal(doc: ModelDoc, p: DecalParams, data: string, id = newId("f"), at?: number): ModelDoc {
+  const blobs = doc.blobs?.[p.image.blob] ? doc.blobs : { ...doc.blobs, [p.image.blob]: data };
+  return insert({ ...doc, blobs }, at, { id, type: "decal", name: nextFeatureName(doc, "decal"), ...p });
+}
+
+/** Moves, sizes, turns or flips a Decal step, or gives it a new picture (with that picture's bytes). */
+export function updateDecal(doc: ModelDoc, id: string, change: Partial<DecalParams>, data?: string): ModelDoc {
+  const blob = change.image?.blob;
+  const blobs = blob && data && !doc.blobs?.[blob] ? { ...doc.blobs, [blob]: data } : doc.blobs;
+  return {
+    ...doc,
+    ...(blobs ? { blobs } : {}),
+    features: doc.features.map((f) => (f.id === id && f.type === "decal" ? { ...f, ...change } : f)),
+  };
+}
+
+/** Adds a Convert step (#448): a new body from a mesh body, with its recognised holes filled. */
+export function addConvert(doc: ModelDoc, p: Pick<ConvertFeature, "part" | "body" | "plugs" | "component">, id = newId("f"), at?: number): ModelDoc {
+  return insert(doc, at, { id, type: "convert", name: nextFeatureName(doc, "convert"), ...p });
 }
 
 /** Adds an Insert part step (#187): a catalogue part, kept whole, standing at `position` turned by `rotation`. */
@@ -2716,7 +3268,10 @@ export function cutPocket(doc: ModelDoc, partId: string, o: PocketOptions, at?: 
   return { doc: d };
 }
 
-export type HoleStepParams = Pick<HoleFeature, "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth">;
+export type HoleStepParams = Pick<
+  HoleFeature,
+  "part" | "frame" | "points" | "size" | "fit" | "diameter" | "offset" | "head" | "depth" | "headSize" | "component"
+>;
 
 /** Adds a Hole step at `at` (the marker), or at the end. */
 export function addHole(doc: ModelDoc, params: HoleStepParams, id = newId("f"), at?: number): ModelDoc {
@@ -2742,6 +3297,7 @@ function partsRead(f: Feature): string[] {
     case "resize":
     case "delete":
     case "link":
+    case "rigid":
       return f.parts;
     case "pattern": {
       const track = f.kind === "track" && f.track ? [f.track.start, f.track.end, ...f.track.wheels] : [];
@@ -2756,8 +3312,13 @@ function partsRead(f: Feature): string[] {
       return [...new Set([...targetsOf(f), ...(f.extent === "to" && f.to ? [f.to.body] : []), ...(f.start === "object" && f.from ? [f.from.body] : [])])];
     case "revolve":
       return f.axis?.kind === "ref" && "body" in f.axis.ref ? [...new Set([...targetsOf(f), f.axis.ref.body])] : targetsOf(f);
+    case "loft":
+    case "sweep":
+      return targetsOf(f);
     case "combine":
       return [f.target, ...f.tools.map((t) => t.id)];
+    case "split":
+      return f.face && f.face.body !== f.part ? [f.part, f.face.body] : [f.part];
     case "construct":
       return [...new Set(f.refs.flatMap((r) => ("body" in r ? [r.body] : [])))];
     case "import":
@@ -2778,13 +3339,14 @@ function partsMade(f: Feature): string[] {
   if (f.type === "pattern") return patternCopyIds(f);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
-  if (f.type === "gear") return [f.body.id];
-  if ((f.type === "extrude" || f.type === "revolve") && f.operation === "new") return [f.body.id];
+  if (f.type === "gear" || f.type === "convert") return [f.body.id];
+  if (f.type === "split") return f.keep === "both" ? [f.body.id] : [];
+  if ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && f.operation === "new") return [f.body.id];
   return [];
 }
 
 /** Features that pick edges or faces by number need the part exactly as the steps before left it. */
-const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "hole", "mount"]);
+const PICKS_BY_NUMBER = new Set<FeatureType>(["fillet", "chamfer", "shell", "pushpull", "offsetFace", "hole", "mount", "decal"]);
 
 /**
  * The features one feature needs before it on the timeline: the steps that made the parts it reads, its sketch, and
@@ -2806,6 +3368,10 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
   if (f.type === "extrude" || f.type === "revolve") {
     if (before.some((g) => g.id === f.sketch)) out.add(f.sketch);
   }
+  // A sweep needs the sketch of its shapes and of its path.
+  if (f.type === "sweep") for (const id of [f.sketch, f.path?.sketch]) if (id && before.some((g) => g.id === id)) out.add(id);
+  // A loft needs each of its sketches.
+  if (f.type === "loft") for (const x of f.sections) if (before.some((g) => g.id === x.sketch)) out.add(x.sketch);
   // A revolve round a construction axis needs that axis.
   if (f.type === "revolve" && f.axis?.kind === "ref" && "step" in f.axis.ref) {
     const step = f.axis.ref.step;
@@ -2823,12 +3389,16 @@ export function dependsOn(doc: ModelDoc, id: string, strict = false): string[] {
     for (const c of [f.step, f.kind === "circle" ? f.axisStep : undefined]) if (c && before.some((x) => x.id === c)) out.add(c);
     for (const g of [...(f.features ?? []), ...(f.link ? [f.link] : [])]) if (before.some((x) => x.id === g)) out.add(g);
   }
+  // A split along a construction plane needs that plane.
+  if (f.type === "split" && f.step && before.some((x) => x.id === f.step)) out.add(f.step);
   // A joint needs the links it joins, and the joint its parent link hangs from.
   if (f.type === "joint") {
     for (const l of [f.child, f.parent]) if (l && before.some((g) => g.id === l)) out.add(l);
     const up = before.find((g) => g.type === "joint" && g.child === f.parent);
     if (up) out.add(up.id);
   }
+  // A rigid group needs its components.
+  if (f.type === "rigid") for (const l of f.links) if (before.some((g) => g.id === l)) out.add(l);
   // A drive needs its two joints, and the drive that drives its driver.
   if (f.type === "drive") {
     for (const j of [f.driver, f.driven, ...(f.more ?? [])]) if (before.some((g) => g.id === j)) out.add(j);
@@ -3090,8 +3660,8 @@ function syncMirrorParts(doc: ModelDoc, id: string): ModelDoc {
 }
 
 /**
- * The steps before `id` (or before the end) a Mirror or Pattern of features can copy: those that cut, joined, made holes
- * or made a body, and earlier Mirror and Pattern steps that did, so a mirror can be mirrored again.
+ * The steps before `id` (or before the end) a Mirror or Pattern of features can copy: those that cut, joined, made holes,
+ * filleted, chamfered, pushed or pulled, or made a body, and earlier Mirror and Pattern steps that did, so a mirror can be mirrored again.
  */
 export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length): Feature[] {
   const { parts } = build(doc, before);
@@ -3103,7 +3673,8 @@ export function mirrorableFeatures(doc: ModelDoc, before = doc.features.length):
       (f) =>
         !f.suppressed &&
         (ops.has(f.id) ||
-          ((f.type === "extrude" || f.type === "revolve" || f.type === "gear" || f.type === "pattern") && partsMade(f).some((p) => here.has(p)))),
+          ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep" || f.type === "gear" || f.type === "pattern") &&
+            partsMade(f).some((p) => here.has(p)))),
     );
 }
 
@@ -3144,6 +3715,24 @@ export function makeComponent(doc: ModelDoc, parts: string[], id = newId("f"), a
   return addLink(out, parts, id, at, parent, name);
 }
 
+/** Every body locked to this one by rigid groups, itself included; empty when it is in none. */
+export function rigidMates(rigid: BuiltRigid[] | undefined, id: string): string[] {
+  const out = new Set<string>();
+  for (let grew = true, seen = new Set([id]); grew;) {
+    grew = false;
+    for (const g of rigid ?? []) {
+      if (!g.bodies.some((x) => seen.has(x))) continue;
+      for (const x of g.bodies)
+        if (!out.has(x)) {
+          out.add(x);
+          seen.add(x);
+          grew = true;
+        }
+    }
+  }
+  return [...out];
+}
+
 /**
  * Moves bodies, sketches, construction steps or components into a component, or into the model (null), as the browser
  * does when you drag them (#334). A component never goes inside itself or one of its own.
@@ -3179,7 +3768,7 @@ export function stampComponent(
   const had = new Set(before.features.map((f) => f.id));
   let changed = false;
   const features = after.features.map((f) => {
-    if (had.has(f.id) || f.component || f.type === "link" || f.type === "joint" || f.type === "drive") return f;
+    if (had.has(f.id) || f.component || f.type === "link" || f.type === "joint" || f.type === "drive" || f.type === "rigid") return f;
     const plane = f.type === "sketch" ? f.sketch.plane : null;
     const on = plane?.kind === "face" && bodyComponent ? bodyComponent(plane.face.body) : undefined;
     const to = on === undefined ? component : on;

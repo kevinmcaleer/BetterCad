@@ -96,6 +96,18 @@ describe("ExtrudeBar", () => {
     expect(obj.pickFrom).toHaveBeenCalledWith(true);
   });
 
+  it("leans the sides in by a taper, but not through all (#402)", async () => {
+    const x = session({ taper: 5 }, ["a"]);
+    const { rerender } = render(<ExtrudeBar x={x} parts={parts} />);
+    const taper = screen.getByRole("textbox", { name: "Taper (°)" });
+    expect(taper).toHaveValue("5");
+    await userEvent.clear(taper);
+    await userEvent.type(taper, "10{Enter}");
+    expect(x.change).toHaveBeenCalledWith({ taper: 10 });
+    rerender(<ExtrudeBar x={session({ extent: "all" }, ["a"])} parts={parts} />);
+    expect(screen.queryByRole("textbox", { name: "Taper (°)" })).toBeNull();
+  });
+
   it("starts the arrow and the drag ghost where the extrude starts", () => {
     const f = session({ distance: 5, direction: "one" }).feature!;
     const frame = { origin: [0, 0, 0] as [number, number, number], x: [1, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };

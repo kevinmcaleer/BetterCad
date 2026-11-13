@@ -159,6 +159,53 @@ function angleBracket(oc: OC): ModelDoc {
   return t.doc;
 }
 
+/**
+ * 01-02 Post Cap, ABS: a cap turned from a half section with an elliptical bead round its rim, a handle of elliptical
+ * section swept round an R17 arc and rounded where it meets the cap, then hollowed from below.
+ */
+function postCap(oc: OC): ModelDoc {
+  const t = new Timeline("Post Cap", oc);
+  // The half section: a Ø49 × 40 block with a Ø9 stem to 48, turned round Z.
+  const section = t.sketch(world("XZ"), (d) =>
+    outline(
+      d,
+      [0, 0],
+      [
+        [24.5, 0],
+        [24.5, 40],
+        [4.5, 40],
+        [4.5, 48],
+        [0, 48],
+      ],
+    ),
+  );
+  const body = t.revolve({ sketch: section, seeds: [[10, 10]], axis: { kind: "y" }, angle: 360, operation: "new" });
+  // The bead: a 40 × 16 ellipse at the stem's edge, 40 up, cut at the axis by a line, its right half turned on.
+  const bead = t.sketch(world("XZ"), (d) => {
+    d.ellipse([4.5, 40], 20, 8, 0);
+    d.line([0, 30], [0, 50]);
+  });
+  t.revolve({ sketch: bead, seeds: [[12, 40]], split: true, axis: { kind: "y" }, angle: 360, operation: "join", target: body });
+  // The handle: a 10 × 4 ellipse 15 mm left of the axis, 3 up, swept round an R17 arc to 37 up.
+  const handle = t.sketch(world("YZ", -15), (d) => d.ellipse([0, 3], 5, 2, 0));
+  const path = t.sketch(world("XZ"), (d) => d.arc([-15, 20], [-15, 37], [-15, 3]));
+  const arc = t.doc.features.find((f) => f.id === path);
+  const curves = arc?.type === "sketch" ? arc.sketch.entities.filter((e) => e.kind === "arc").map((e) => e.id) : [];
+  t.sweep({ sketch: handle, seeds: [[0, 3]], split: true, path: { sketch: path, curves }, operation: "join", target: body });
+  // R1 where the handle meets the cap's side.
+  t.finish({
+    type: "fillet",
+    part: body,
+    refs: t.edges(body, ([x, y, z]) => x < -20 && z > 0.5 && z < 39.5 && near0(Math.hypot(x, y), 24.5, 0.05)),
+    size: 1,
+  });
+  // Hollow from below: Ø42 at the bottom, its side leaning in 4° to 37 up, rounded R3 into the top.
+  const lean = 21 - 37 / Math.tan((86 * Math.PI) / 180);
+  const inside = t.sketch(world("XZ"), (d) => outline(d, [0, 0], [[21, 0], ...roundCorner([21, 0], [lean, 37], [0, 37], 3), [0, 37]]));
+  t.revolve({ sketch: inside, seeds: [[5, 10]], axis: { kind: "y" }, angle: 360, operation: "cut", target: body });
+  return t.doc;
+}
+
 /** 01-01 Bearing Bracket, steel: a slotted base, two counterbored uprights, rounded corners and a dovetail underneath. */
 function bearingBracket(oc: OC): ModelDoc {
   const t = new Timeline("Bearing Bracket", oc);
@@ -171,13 +218,19 @@ function bearingBracket(oc: OC): ModelDoc {
   const upright = t.sketch(world("XZ", 25), (d) => outline(d, [-57.5, 0], [[-5.5, 0], [-5.5, 42], { arc: [-31.5, 42], to: [-57.5, 42] }]));
   t.extrude({ sketch: upright, seeds: [[-31.5, 30]], distance: -12, operation: "join", target: body });
   const wall = t.last;
-  // The bearing's counterbore: Ø34 4 mm deep, then Ø24 through. The Hole tool only takes screw sizes for heads.
-  const bore = t.sketch(world("XZ", 25), (d) => d.circle([-31.5, 42], 17));
-  t.extrude({ sketch: bore, seeds: [[-31.5, 42]], distance: -4, operation: "cut", target: body });
-  const cb = t.last;
-  const through = t.sketch(world("XZ", 25), (d) => d.circle([-31.5, 42], 12));
-  t.extrude({ sketch: through, seeds: [[-31.5, 42]], distance: -12, operation: "cut", target: body });
-  t.pattern({ kind: "mirror", parts: [], of: "features", features: [wall, cb, t.last], plane: "XZ", offset: 0 });
+  // The bearing's hole: Ø24 through the upright, counterbored Ø34 4 mm deep, into its front face.
+  t.hole({
+    part: body,
+    frame: frame([-31.5, -25, 42], [0, -1, 0], [1, 0, 0]),
+    points: [[0, 0]],
+    size: "custom",
+    fit: "normal",
+    diameter: 24,
+    head: "counterbore",
+    headSize: { diameter: 34, depth: 4 },
+    depth: 12,
+  });
+  t.pattern({ kind: "mirror", parts: [], of: "features", features: [wall, t.last], plane: "XZ", offset: 0 });
   t.finish({ type: "fillet", part: body, refs: t.edges(body, ([x, , z]) => near0(x, -5.5) && near0(z, 15)), size: 9 });
   const corners = t.sketch(world("XY"), (d) => roundedRect(d, [0, 0], 115, 50, 6));
   t.extrude({ sketch: corners, seeds: [[0, 0]], distance: 80, operation: "intersect", target: body });
@@ -243,28 +296,20 @@ function cornerTie(oc: OC): ModelDoc {
     outline(d, [0, -37.5], [[0, 37.5], [-52, 37.5], { arc: [-52, 20.5], to: [-69, 20.5] }, [-69, -20.5], { arc: [-52, -20.5], to: [-52, -37.5] }]),
   );
   const body = t.extrude({ sketch: plate, seeds: [[-30, 0]], distance: 13, operation: "new" });
-  // 2× Ø8 through, Ø15 4 deep: no M8 in the screw table, so two cuts.
-  const cb = t.sketch(world("XY", 13), (d) => [20.5, -20.5].forEach((y) => d.circle([-52, y], 7.5)));
-  t.extrude({
-    sketch: cb,
-    seeds: [
-      [-52, 20.5],
-      [-52, -20.5],
+  // 2× Ø8 through, counterbored Ø15 4 mm deep.
+  t.hole({
+    part: body,
+    frame: frame([-52, 0, 13], [0, 0, 1], [1, 0, 0]),
+    points: [
+      [0, 20.5],
+      [0, -20.5],
     ],
-    distance: -4,
-    operation: "cut",
-    target: body,
-  });
-  const thru = t.sketch(world("XY", 13), (d) => [20.5, -20.5].forEach((y) => d.circle([-52, y], 4)));
-  t.extrude({
-    sketch: thru,
-    seeds: [
-      [-52, 20.5],
-      [-52, -20.5],
-    ],
-    distance: -13,
-    operation: "cut",
-    target: body,
+    size: "custom",
+    fit: "normal",
+    diameter: 8,
+    head: "counterbore",
+    headSize: { diameter: 15, depth: 4 },
+    depth: null,
   });
   // The upright: flanks 75° apart, tangent to the R15 top. YZ looks from +X: Y right, Z up.
   const a = (37.5 * Math.PI) / 180;
@@ -352,28 +397,96 @@ function lightCap(oc: OC): ModelDoc {
   return t.doc;
 }
 
+/**
+ * 01-05 Paste Sleeve, ABS: a 3 mm skin lofted from a 45 × 38 slot to a 60 × 4 slot 103 mm up, with a straight 30 mm
+ * sleeve under the bottom. Each sketch holds the slot and the slot 3 mm out, so the ring between them is the shape.
+ */
+function pasteSleeve(): ModelDoc {
+  const t = new Timeline("Paste Sleeve");
+  const bottom = t.sketch(world("XY"), (d) => {
+    slot(d, [0, 0], 45, 38);
+    slot(d, [0, 0], 51, 44);
+  });
+  const top = t.sketch(world("XY", 103), (d) => {
+    slot(d, [0, 0], 60, 4);
+    slot(d, [0, 0], 66, 10);
+  });
+  const body = t.loft({
+    sections: [
+      { sketch: bottom, seed: [0, 20.5] },
+      { sketch: top, seed: [0, 3.5] },
+    ],
+    operation: "new",
+  });
+  t.extrude({ sketch: bottom, seeds: [[0, 20.5]], distance: -30, operation: "join", target: body });
+  return t.doc;
+}
+
+/**
+ * 01-07 Flanged Hub, aluminium: a flange, a step and a hub, recessed underneath and bored through, rounded R3, six
+ * counterbored holes, and three ribs that thicken 10° each side toward the corner they fill (Extrude's taper, #402).
+ */
+function flangedHub(oc: OC): ModelDoc {
+  const t = new Timeline("Flanged Hub", oc);
+  const flange = t.sketch(world("XY"), (d) => d.circle([0, 0], 65));
+  const body = t.extrude({ sketch: flange, seeds: [[0, 0]], distance: 8, operation: "new" });
+  const step = t.sketch(world("XY", 8), (d) => d.circle([0, 0], 42));
+  t.extrude({ sketch: step, seeds: [[0, 0]], distance: 17, operation: "join", target: body });
+  const hub = t.sketch(world("XY", 25), (d) => d.circle([0, 0], 17.5));
+  t.extrude({ sketch: hub, seeds: [[0, 0]], distance: 27, operation: "join", target: body });
+  const recess = t.sketch(world("XY"), (d) => d.circle([0, 0], 36.5));
+  t.extrude({ sketch: recess, seeds: [[0, 0]], distance: 18, operation: "cut", target: body });
+  const bore = t.sketch(world("XY", 52), (d) => d.circle([0, 0], 10));
+  t.extrude({ sketch: bore, seeds: [[0, 0]], distance: -52, operation: "cut", target: body });
+  // R3 on the flange's top rim, both of the step's edges, the recess's ceiling and the hub's foot.
+  const round =
+    (z: number, r: number) =>
+    ([x, y, w]: [number, number, number]) =>
+      near0(w, z) && near0(Math.hypot(x, y), r, 0.05);
+  const rims: [number, number][] = [
+    [8, 65],
+    [8, 42],
+    [18, 36.5],
+    [25, 42],
+    [25, 17.5],
+  ];
+  t.finish({ type: "fillet", part: body, refs: rims.flatMap(([z, r]) => t.edges(body, round(z, r))), size: 3 });
+  // Six holes on a 107.95 mm circle, counterbored 13 mm, 4 mm deep, into the flange's top.
+  const on = (r: number) => (d: Draft) => {
+    for (let i = 0; i < 6; i++) d.circle([53.975 * Math.cos((i * Math.PI) / 3), 53.975 * Math.sin((i * Math.PI) / 3)], r);
+  };
+  const seeds: Vec2[] = Array.from({ length: 6 }, (_, i) => [53.975 * Math.cos((i * Math.PI) / 3), 53.975 * Math.sin((i * Math.PI) / 3)]);
+  const bores = t.sketch(world("XY", 8), on(6.5));
+  t.extrude({ sketch: bores, seeds, distance: -4, operation: "cut", target: body });
+  const holes = t.sketch(world("XY", 8), on(3));
+  t.extrude({ sketch: holes, seeds, distance: -8, operation: "cut", target: body });
+  // A rib: a 3 mm strip on a plane tipped 45° about Y, pushed 15 mm toward the hub's foot and thickening 10° each side,
+  // then trimmed to the corner above the step and just inside the hub.
+  const tilt = t.construct({ kind: "angle", refs: [{ origin: "Y" }], value: 45 });
+  const lean = 21.9 * Math.SQRT1_2;
+  const [ox, oz] = [10 + lean, 18 + lean];
+  const strip = t.sketch(
+    { kind: "construct", step: tilt, offset: (ox + oz) * Math.SQRT1_2, frame: { origin: [0, 0, 0], x: [0, 1, 0], normal: [Math.SQRT1_2, 0, Math.SQRT1_2] } },
+    (d) => rect(d, [0, (oz - ox) * Math.SQRT1_2], 3, ((73 - 35) / 2) * 1.414 + 5),
+  );
+  const rib = t.extrude({ sketch: strip, seeds: [[0, (oz - ox) * Math.SQRT1_2]], distance: -15, taper: -10, operation: "new" });
+  const corner = t.shape("box", { x: 50, y: 30, z: 40 }, { x: 16.5 + 25, y: 0, z: 25 });
+  t.combine(rib, [corner], "intersect");
+  t.pattern({ kind: "circle", parts: [rib], count: 3, angle: 360, axis: "z", join: true });
+  t.combine(body, [rib]);
+  return t.doc;
+}
+
 export const PARTS: SpeedPart[] = (
   [
-    {
-      id: "ppp0102",
-      name: "01-02 Post Cap",
-      mass: 43.09,
-      density: DENSITY.abs,
-      missing: ["An ellipse in sketches, for the rim's bead and the handle's section", "Sweep, to run the handle's section along its arc"],
-    },
-    {
-      id: "ppp0105",
-      name: "01-05 Paste Sleeve",
-      mass: 57.08,
-      density: DENSITY.abs,
-      missing: ["Loft, from a 45 × 38 slot at the bottom to a 60 × 4 slot at the top", "A slot tool (drawn as lines and arcs here)"],
-    },
+    { id: "ppp0102", name: "01-02 Post Cap", mass: 43.09, density: DENSITY.abs, build: postCap },
+    { id: "ppp0105", name: "01-05 Paste Sleeve", mass: 57.08, density: DENSITY.abs, build: pasteSleeve },
     {
       id: "ppp0107",
       name: "01-07 Flanged Hub",
       mass: 372.99,
       density: DENSITY.aluminium,
-      missing: ["A taper angle on Extrude, for the three ribs (10° each side)"],
+      build: flangedHub,
     },
     { id: "ppp0101", name: "01-01 Bearing Bracket", mass: 797.15, density: DENSITY.steel, build: bearingBracket },
     { id: "ppp0103", name: "01-03 C Clamp Base", mass: 96.13, density: DENSITY.aluminium, build: cClampBase },

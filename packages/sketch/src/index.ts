@@ -10,6 +10,8 @@ export * from "./draw";
 export * from "./dof";
 export * from "./edit";
 export * from "./text";
+export * from "./ellipse";
+export * from "./spline";
 // The solver loads on its own, from "@bettercad/sketch/solver", so planegcs stays out of the app's first paint.
 export type { Solver, SolveResult, SolveStatusName } from "./solver";
 

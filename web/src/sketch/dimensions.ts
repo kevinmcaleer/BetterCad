@@ -7,6 +7,10 @@ import {
   angleOf,
   cross,
   dist,
+  ellipseGeo,
+  ellipsePoint,
+  splineGeo,
+  splinePoint,
   mid,
   norm,
   perp,
@@ -161,6 +165,8 @@ export function anchorOf(idx: SketchIndex, e: Entity): Vec2 {
   if (e.kind === "point") return [e.x, e.y];
   if (e.kind === "line") return mid(idx.xy(e.a), idx.xy(e.b));
   if (e.kind === "circle") return polar(idx.xy(e.c), e.r, -Math.PI / 4);
+  if (e.kind === "ellipse") return ellipsePoint(ellipseGeo(idx, e), -Math.PI / 4);
+  if (e.kind === "spline") return splinePoint(splineGeo(idx, e), e.pts.length / 2 - (e.closed ? 0 : 0.5));
   const c = idx.xy(e.c);
   return polar(c, e.r, (angleOf(sub(idx.xy(e.a), c)) + angleOf(sub(idx.xy(e.b), c))) / 2);
 }

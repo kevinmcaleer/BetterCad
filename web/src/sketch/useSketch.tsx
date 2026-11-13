@@ -7,19 +7,19 @@ import {
   SketchIndex,
   Solver,
   angleOf,
-  filletAt,
-  filletLines,
-  offsetChain,
   projectCurves,
-  trimAt,
-  trimPiece,
   dist,
   formatDimension,
   planeFrame,
   squareFrame,
   profiles,
+  regions,
+  setGroupedSize,
   removeEntities,
   sampleArc,
+  sampleEllipse,
+  ellipseGeo,
+  directionAt,
   slideAcross,
   sub,
   toSketch,
@@ -38,6 +38,8 @@ import {
   type SolveResult,
   type Sketch,
   type Vec2,
+  sampleSpline,
+  splineGeo,
 } from "@bettercad/sketch";
 import {
   addSketch,
@@ -196,7 +198,10 @@ export interface TextEdit {
 }
 
 /** Code the sketch loads on first use, to keep it out of first paint: drawing the loupe, and snapping to the model. */
-const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap") } = {};
+const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap"); edits?: typeof import("@bettercad/sketch/edits") } = {};
+/** Mirror, Fillet, Trim, Extend and Offset (#54, #266, #267, #270) load with a sketch, or when one of them is picked. */
+const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "fillet", "trim", "extend", "offset"]);
+const loadEdits = () => void import("@bettercad/sketch/edits").then((m) => (lazy.edits = m));
 
 export function useSketch(d: SketchDeps) {
   const { store, say } = d;
@@ -214,6 +219,8 @@ export function useSketch(d: SketchDeps) {
   /** The magnifier loupe, while it is open. */
   const [loupe, setLoupe] = useState<Loupe | null>(null);
   const closeLoupe = useRef<() => void>(() => {});
+  /** Ends a spline under way with the points clicked so far (Enter); false when there is none to end. */
+  const endSpline = useRef<() => boolean>(() => false);
   /** The loupe's canvas, and the last picture of the sketch it magnifies. */
   const loupeCanvas = useRef<HTMLCanvasElement | null>(null);
   const lastView = useRef<OverlayView | null>(null);
@@ -242,6 +249,10 @@ export function useSketch(d: SketchDeps) {
   const scope = useMemo(() => paramScope(d.doc), [d.doc]);
   const [filletR, setFilletR] = useState(2);
   const [offsetD, setOffsetD] = useState(2);
+  /** Offset copies to both sides at once (#266). */
+  const [offsetBoth, setOffsetBoth] = useState(false);
+  /** The Mirror tool (#267): picking the shapes, or the line to mirror them across. */
+  const [mirrorStage, setMirrorStage] = useState<"shapes" | "line">("shapes");
   const [projectGuide, setProjectGuide] = useState(true);
   /** What an editing tool would do under the pointer: the piece Trim removes (danger) or the copy Offset adds. */
   const [editPreview, setEditPreview] = useState<{ lines: Vec2[][]; danger: boolean } | null>(null);
@@ -257,6 +268,10 @@ export function useSketch(d: SketchDeps) {
   );
   // Slice lasts for one sketch: each sketch starts with the whole model on show.
   useEffect(() => setOptions((o) => (o.slice ? { ...o, slice: false } : o)), [editingId]);
+  // The editing tools are ready by the time one is picked.
+  useEffect(() => {
+    if (editingId && !lazy.edits) loadEdits();
+  }, [editingId]);
   const result = useMemo<SolveResult | null>(() => {
     if (!sketch || !solver) return null;
     try {
@@ -305,6 +320,8 @@ export function useSketch(d: SketchDeps) {
 
   const setStool = useCallback((t: SketchToolId) => {
     setStoolState(t);
+    setMirrorStage("shapes");
+    if (EDIT_TOOLS.has(t) && !lazy.edits) loadEdits();
     setCtool(null);
     setPointer(null);
     setCursor(null);
@@ -477,7 +494,8 @@ export function useSketch(d: SketchDeps) {
         return;
       }
       if (dm.driving && Math.abs(v - dm.value) < 1e-9 && text === dm.expression) return;
-      const next = { ...s, dimensions: s.dimensions.map((x) => (x.id === id ? { ...x, value: v, expression: text.trim(), driving: true } : x)) };
+      // An offset's distance (#266) is one number: setting one of its sizes sets them all.
+      const next = setGroupedSize(s, id, v, text.trim());
       apply(next, `Set ${DIM_NAME[dm.kind].toLowerCase()} to ${formatDimension({ ...dm, value: v, driving: true })}`, { strict: !dm.driving });
     },
     [current, apply, say],
@@ -676,6 +694,8 @@ export function useSketch(d: SketchDeps) {
 
   const finish = useCallback(
     (force = false) => {
+      // Enter with a spline under way ends the spline, not the sketch.
+      if (!force && endSpline.current()) return;
       const s = current();
       if (!s) return end();
       const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction) || !!s.texts?.some((t) => !t.construction);
@@ -718,8 +738,8 @@ export function useSketch(d: SketchDeps) {
    * as a fixed construction line, so sizes and angles can measure from it. Null when none is under the pointer, or it
    * runs square through the sketch.
    */
-  const projectAxis = useCallback(
-    (p: ScreenPoint, near: Vec2): Id | null => {
+  const axisAt = useCallback(
+    (p: ScreenPoint, near: Vec2): { sketch: Sketch; id: Id } | null => {
       const eng = engineOf();
       const s = current();
       const f = live.current.frame;
@@ -729,12 +749,20 @@ export function useSketch(d: SketchDeps) {
       const a = toSketch(f, ax.origin);
       const b = toSketch(f, [ax.origin[0] + ax.dir[0], ax.origin[1] + ax.dir[1], ax.origin[2] + ax.dir[2]]);
       if (dist(a, b) < 1e-3) return null;
-      const { sketch: next, id } = axisLine(s, a, b, near);
-      if (next !== s && !apply(next, "Project an axis")) return null;
-      keepPlacing.current = current();
-      return id;
+      return axisLine(s, a, b, near);
     },
-    [engineOf, current, apply],
+    [engineOf, current],
+  );
+  const projectAxis = useCallback(
+    (p: ScreenPoint, near: Vec2): Id | null => {
+      const s = current();
+      const got = axisAt(p, near);
+      if (!s || !got) return null;
+      if (got.sketch !== s && !apply(got.sketch, "Project an axis")) return null;
+      keepPlacing.current = current();
+      return got.id;
+    },
+    [axisAt, current, apply],
   );
 
   // ---------------------------------------------------------------- text
@@ -827,6 +855,7 @@ export function useSketch(d: SketchDeps) {
     autoProject: options.autoProject,
     projectModel,
     projectAxis,
+    axisAt,
     current,
     editingId,
     feature,
@@ -844,6 +873,8 @@ export function useSketch(d: SketchDeps) {
     dimensionFor,
     filletR,
     offsetD,
+    offsetBoth,
+    mirrorStage,
     projectGuide,
     ctool,
     applyConstraint,
@@ -859,6 +890,7 @@ export function useSketch(d: SketchDeps) {
     autoProject: options.autoProject,
     projectModel,
     projectAxis,
+    axisAt,
     current,
     redefining,
     editingId,
@@ -877,6 +909,8 @@ export function useSketch(d: SketchDeps) {
     dimensionFor,
     filletR,
     offsetD,
+    offsetBoth,
+    mirrorStage,
     projectGuide,
     ctool,
     applyConstraint,
@@ -1000,6 +1034,8 @@ export function useSketch(d: SketchDeps) {
      * first puts a point where it came down, so one drag draws a line, rectangle, circle or polygon.
      */
     let tap: { at: ScreenPoint; start: Snap; base: Snap[]; dragged: boolean } | null = null;
+    /** Trim (#270): a press that either clicks one piece or drags a path across several. */
+    let trimDrag: { at: ScreenPoint; first: { xy: Vec2; px: number }; path: Vec2[]; moved: boolean } | null = null;
     /** A finger is down placing a size: it goes down where the finger lifts. */
     let tapPlace = false;
     /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
@@ -1049,8 +1085,25 @@ export function useSketch(d: SketchDeps) {
         setEditPreview(null);
       }
     };
+    /** Extend (#270): the end of a line or arc nearest the pointer grows to the next shape it meets. */
+    const extendDown = (hit: { xy: Vec2; px: number }): boolean => {
+      const s = live.current.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px, true);
+      if (!id) return false;
+      if (lazy.edits) done(lazy.edits.extendAt(s, id, hit.xy), "Extend");
+      else loadEdits();
+      return true;
+    };
+    const extendMove = (hit: { xy: Vec2; px: number }) => {
+      const s = live.current.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px, true);
+      setHover(id);
+      if (!lazy.edits) loadEdits();
+      const t = id ? (lazy.edits?.extendTarget(s, id, hit.xy) ?? null) : null;
+      setEditPreview(t ? { lines: [t.pts], danger: false } : null);
+    };
     /** The editing tools: Fillet, Trim, Offset and Project. */
-    const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
+    const editDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }, mods: Mods): boolean => {
       const L = live.current;
       const s = L.sketch!;
       const tol = reach * hit.px;
@@ -1063,6 +1116,8 @@ export function useSketch(d: SketchDeps) {
         return true;
       }
       if (L.stool === "fillet") {
+        if (!lazy.edits) return false;
+        const { filletAt, filletLines } = lazy.edits;
         const id = entityAt(hit.xy, s, tol);
         const e = id ? s.entities.find((x) => x.id === id) : undefined;
         if (!id || !e) return false;
@@ -1074,13 +1129,25 @@ export function useSketch(d: SketchDeps) {
         } else say("Pick a corner, or two lines that meet", true);
         return true;
       }
-      const id = entityAt(hit.xy, s, tol, true);
-      if (!id) return false;
-      if (L.stool === "trim") done(trimAt(s, id, hit.xy), "Trim");
-      else done(offsetToward(s, id, hit.xy, L.offsetD), "Offset");
+      const r = offsetAt(s, hit.xy, tol, mods.shift);
+      if (!r) return false;
+      done(r, "Offset");
       return true;
     };
-    const editMove = (p: ScreenPoint, hit: { xy: Vec2; px: number }) => {
+    /**
+     * Offset (#266) at a spot: the curve there, toward the pointer (or both ways); else the outline of the closed shape
+     * round it, inward (Shift: outward). Null when there is neither.
+     */
+    const offsetAt = (s: Sketch, xy: Vec2, tol: number, out: boolean): Sketch | string | null => {
+      const L = live.current;
+      const ed = lazy.edits;
+      const id = entityAt(xy, s, tol, true);
+      if (!ed) return null;
+      if (id) return L.offsetBoth ? ed.offsetBoth(s, id, L.offsetD) : offsetToward(ed.offsetChain, s, id, xy, L.offsetD);
+      const r = ed.offsetRegion(s, xy, out ? L.offsetD : -L.offsetD, L.offsetBoth);
+      return typeof r === "string" && !regions(s).length ? null : r;
+    };
+    const editMove = (p: ScreenPoint, hit: { xy: Vec2; px: number }, mods: Mods) => {
       const L = live.current;
       const s = L.sketch!;
       if (L.stool === "project") {
@@ -1091,21 +1158,67 @@ export function useSketch(d: SketchDeps) {
       const curvesOnly = L.stool !== "fillet";
       const id = entityAt(hit.xy, s, reach * hit.px, curvesOnly);
       setHover(id);
+      if (L.stool === "offset") {
+        const r = offsetAt(s, hit.xy, reach * hit.px, mods.shift);
+        return setEditPreview(r && typeof r !== "string" ? { lines: addedLines(s, r), danger: false } : null);
+      }
       if (!id || L.stool === "fillet") return setEditPreview(null);
       if (L.stool === "trim") {
-        const piece = trimPiece(s, id, hit.xy);
+        const piece = lazy.edits?.trimPiece(s, id, hit.xy);
         return setEditPreview(piece ? { lines: [piece.pts], danger: true } : null);
       }
-      const r = offsetToward(s, id, hit.xy, L.offsetD);
-      setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
     };
-    const finishShape = (all: Snap[]) => {
+    /** Mirror (#267): clicks pick the shapes, then the line (or an axis) to mirror them across. */
+    const mirrorShapesAcross = (line: Id, base: Sketch) => {
+      const L = live.current;
+      const ed = lazy.edits;
+      if (!ed) return loadEdits();
+      done(ed.mirrorShapes(base, L.sel, line), "Mirror");
+      setMirrorStage("shapes");
+    };
+    const mirrorDown = (p: ScreenPoint, hit: { xy: Vec2; px: number }): boolean => {
+      const L = live.current;
+      const s = L.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px);
+      const e = id ? s.entities.find((x) => x.id === id) : undefined;
+      if (L.mirrorStage === "line" || (!id && L.sel.length)) {
+        if (e?.kind === "line" && !L.sel.includes(e.id)) {
+          mirrorShapesAcross(e.id, s);
+          return true;
+        }
+        // An axis comes into the sketch in the same undo step as the mirror.
+        const axis = !id ? L.axisAt(p, hit.xy) : null;
+        if (axis) {
+          mirrorShapesAcross(axis.id, axis.sketch);
+          return true;
+        }
+        if (L.mirrorStage === "line") say("Pick a line or an axis to mirror across", true);
+        return !!id;
+      }
+      if (!id) return false;
+      setSel((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
+      return true;
+    };
+    const mirrorMove = (hit: { xy: Vec2; px: number }) => {
+      const L = live.current;
+      const s = L.sketch!;
+      const id = entityAt(hit.xy, s, reach * hit.px);
+      setHover(id);
+      const e = id ? s.entities.find((x) => x.id === id) : undefined;
+      // Over the line to mirror across, the copy shows where it will go.
+      if (L.mirrorStage === "line" && e?.kind === "line" && L.sel.length && !L.sel.includes(e.id)) {
+        const r = lazy.edits?.mirrorShapes(s, L.sel, e.id) ?? "";
+        return setEditPreview(typeof r === "string" ? null : { lines: addedLines(s, r), danger: false });
+      }
+      setEditPreview(null);
+    };
+    const finishShape = (all: Snap[], closed = false) => {
       const L = live.current;
       if (!L.sketch || !L.frame) return;
       // Model edges and corners the clicks snapped to come in first, in the same undo step as the shape.
       // (A click can only carry a model snap once the snapping code has loaded.)
       const { sketch: s, clicks } = lazy.modelSnap?.resolveModelSnaps(L.sketch, L.frame, all) ?? { sketch: L.sketch, clicks: all };
-      const c = commit(L.stool, s, clicks, L.typed, L.sides);
+      const c = commit(L.stool, s, clicks, L.typed, L.sides, closed);
       if (!c) {
         if (s !== L.sketch) L.apply(s, "Project a point");
         setClicks([]);
@@ -1116,7 +1229,11 @@ export function useSketch(d: SketchDeps) {
       eng.showHover(null);
       // The line tool chains from its last point, until it meets a point already there.
       const last = clicks[clicks.length - 1]!;
-      if (L.stool === "line" && c.end && !(last.ref && (last.kind === "end" || last.kind === "centre" || last.kind === "origin"))) {
+      if (
+        (L.stool === "line" || L.stool === "arcTangent") &&
+        c.end &&
+        !(last.ref && (last.kind === "end" || last.kind === "centre" || last.kind === "origin"))
+      ) {
         const p = c.sketch.entities.find((e) => e.id === c.end);
         setClicks(p?.kind === "point" ? [{ xy: [p.x, p.y], kind: "end", ref: p.id, label: "" }] : []);
       } else setClicks([]);
@@ -1145,13 +1262,29 @@ export function useSketch(d: SketchDeps) {
       return eng.pick(p.x, p.y, "vertex", true) ?? eng.pick(p.x, p.y, "edge", true);
     };
 
-    /** Adds a drawing tool's click, and draws the shape once it has them all. */
-    const addClick = (s: Snap) => {
+    /** Takes a drawing tool's clicks so far, and draws the shape once it has them all. */
+    const takeClicks = (all: Snap[], mods: Mods, px: number) => {
       const L = live.current;
-      const all = [...L.clicks, s];
-      const need = CLICKS[L.stool as keyof typeof CLICKS];
-      if (all.length >= need) finishShape(all);
+      if (L.stool === "spline") {
+        const s = all[all.length - 1]!;
+        const before = all.slice(0, -1);
+        const prev = before[before.length - 1];
+        // A double-click (a second click on the same spot) ends it, open.
+        if (prev && dist(s.xy, prev.xy) < 3 * px) return before.length >= 2 ? finishShape(before) : setClicks(before);
+        // Back on the first point, or a Shift-click, closes it.
+        const first = before[0]!;
+        if (before.length >= 3 && (dist(s.xy, first.xy) < reach * px || (!!s.ref && s.ref === first.ref))) return finishShape(before, true);
+        if (mods.shift && all.length >= 3) return finishShape(all, true);
+        return setClicks(all);
+      }
+      if (all.length >= CLICKS[L.stool as keyof typeof CLICKS]) finishShape(all);
       else setClicks(all);
+    };
+    endSpline.current = () => {
+      const L = live.current;
+      if (L.stool !== "spline" || L.clicks.length < 2) return false;
+      finishShape(L.clicks);
+      return true;
     };
 
     const input = {
@@ -1203,7 +1336,13 @@ export function useSketch(d: SketchDeps) {
           else setSel(picked.length > 1 ? [id] : []);
           return true;
         }
-        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editDown(p, hit);
+        if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendDown(hit);
+        if (L.stool === "trim") {
+          trimDrag = { at: p, first: hit, path: [hit.xy], moved: false };
+          return true;
+        }
+        if (L.stool === "fillet" || L.stool === "offset" || L.stool === "project") return editDown(p, hit, mods);
+        if (L.stool === "mirror") return mirrorDown(p, hit);
         if (L.stool === "text") {
           // A click on a text opens it; anywhere else places a new one there (or moves the one being set).
           const t = L.textEdit?.id ? null : textAt(L.sketch, hit.xy, reach * hit.px);
@@ -1268,7 +1407,7 @@ export function useSketch(d: SketchDeps) {
           setCursor(s);
           return true;
         }
-        addClick(s);
+        takeClicks([...L.clicks, s], mods, hit.px);
         return true;
       },
       move: (p: ScreenPoint, mods: Mods, pressed: boolean) => {
@@ -1322,7 +1461,16 @@ export function useSketch(d: SketchDeps) {
           }
           return;
         }
-        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit);
+        if (pressed && trimDrag) {
+          const t = trimDrag;
+          t.path.push(hit.xy);
+          if (Math.hypot(p.x - t.at.x, p.y - t.at.y) > 4) t.moved = true;
+          if (t.moved) setEditPreview({ lines: [t.path], danger: true });
+          return;
+        }
+        if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendMove(hit);
+        if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit, mods);
+        if (L.stool === "mirror") return mirrorMove(hit);
         if (L.ctool) {
           // The Coincident tool snaps to the point, origin or midpoint under the pointer, and lets go further away.
           setPointer({ x: p.x, y: p.y });
@@ -1364,6 +1512,17 @@ export function useSketch(d: SketchDeps) {
       up: (p: ScreenPoint, mods: Mods) => {
         endDrag(true);
         const L = live.current;
+        if (trimDrag) {
+          const t = trimDrag;
+          trimDrag = null;
+          const s = L.sketch;
+          if (!s) return;
+          if (t.moved && lazy.edits) return done(lazy.edits.trimAlong(s, t.path), "Trim");
+          setEditPreview(null);
+          const id = entityAt(t.first.xy, s, reach * t.first.px, true);
+          if (id && lazy.edits) done(lazy.edits.trimAt(s, id, t.first.xy), "Trim");
+          return;
+        }
         if (tapPlace) {
           tapPlace = false;
           L.place();
@@ -1373,13 +1532,12 @@ export function useSketch(d: SketchDeps) {
         tap = null;
         const hit = at(p);
         if (!t || !hit || !L.sketch) return;
-        const all = [...t.base, ...(t.dragged ? [t.start] : []), snapAt(hit.xy, hit.px, mods)];
-        if (all.length >= CLICKS[L.stool as keyof typeof CLICKS]) finishShape(all);
-        else setClicks(all);
+        takeClicks([...t.base, ...(t.dragged ? [t.start] : []), snapAt(hit.xy, hit.px, mods)], mods, hit.px);
       },
       cancel: () => {
         // A second finger came down to pinch or pan: nothing goes in.
         endDrag(false);
+        trimDrag = null;
         if (tap?.dragged) setClicks(tap.base);
         tap = null;
         tapPlace = false;
@@ -1559,9 +1717,10 @@ export function useSketch(d: SketchDeps) {
             clicks.map((c) => c.xy),
             cursor.xy,
             sides,
+            stool === "arcTangent" && clicks[0]?.ref && sketch ? directionAt(sketch, clicks[0].ref) : null,
           )
         : null,
-    [cursor, stool, clicks, sides],
+    [cursor, stool, clicks, sides, sketch],
   );
 
   useEffect(() => {
@@ -1669,6 +1828,8 @@ export function useSketch(d: SketchDeps) {
     },
     ESC.tool + 2,
   );
+  // Mirror backs out of picking the line to picking the shapes again.
+  useEscape(editing && stool === "mirror" && mirrorStage === "line", () => setMirrorStage("shapes"), ESC.tool + 3);
   useEscape(editing && loupe !== null, () => closeLoupe.current(), ESC.tool + 5);
   useEscape(editing && sel.length > 0, () => setSel([]), ESC.tool + 1);
   // Esc never drops the sketch by accident: the last layer only says how to finish.
@@ -1686,7 +1847,7 @@ export function useSketch(d: SketchDeps) {
     setTyped([]);
     // Back to the view, so the next key is a shortcut again rather than more typing.
     document.getElementById("bc-view")?.focus();
-    if (L.stool === "line" && c.end) {
+    if ((L.stool === "line" || L.stool === "arcTangent") && c.end) {
       const p = c.sketch.entities.find((e) => e.id === c.end);
       setClicks(p?.kind === "point" ? [{ xy: [p.x, p.y], kind: "end", ref: p.id, label: "" }] : []);
     } else setClicks([]);
@@ -1695,7 +1856,11 @@ export function useSketch(d: SketchDeps) {
   const pickTool = useCallback(
     (t: SketchToolId) => {
       if (t === "dimension" && live.current.sel.length && dimensionFor(live.current.sel)) return;
-      setStool(live.current.stool === t && t !== "select" ? "select" : t);
+      const next = live.current.stool === t && t !== "select" ? "select" : t;
+      setStool(next);
+      // Shapes already picked: Mirror goes straight to the line.
+      const s = live.current.sketch;
+      if (next === "mirror" && s && live.current.sel.some((id) => s.entities.some((e) => e.id === id))) setMirrorStage("line");
     },
     [dimensionFor, setStool],
   );
@@ -1707,7 +1872,7 @@ export function useSketch(d: SketchDeps) {
   const commands = useMemo<Command[]>(() => {
     const has = () => live.current.sel.length > 0;
     return [
-      ...SKETCH_TOOLS.map<Command>((t) => ({
+      ...SKETCH_TOOLS.filter((t) => !t.modeOf).map<Command>((t) => ({
         id: `sketch.${t.id}`,
         scope: "sketch",
         label: t.label,
@@ -1831,6 +1996,10 @@ export function useSketch(d: SketchDeps) {
     setFilletR,
     offsetD,
     setOffsetD,
+    offsetBoth,
+    setOffsetBoth,
+    mirrorStage,
+    setMirrorStage,
     projectGuide,
     setProjectGuide,
     gridSnap,
@@ -1900,6 +2069,8 @@ export function sketchView(
     if (hidden(e)) continue;
     if (e.kind === "line") curves.push({ pts: [idx.xy(e.a), idx.xy(e.b)], shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "circle") curves.push({ pts: sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72), shade: shade(e.id), dashed: e.construction });
+    else if (e.kind === "ellipse") curves.push({ pts: sampleEllipse(ellipseGeo(idx, e)), shade: shade(e.id), dashed: e.construction });
+    else if (e.kind === "spline") curves.push({ pts: sampleSpline(splineGeo(idx, e)), shade: shade(e.id), dashed: e.construction });
     else if (e.kind === "arc") {
       const c = idx.xy(e.c);
       curves.push({ pts: sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c))), shade: shade(e.id), dashed: e.construction });
@@ -1977,7 +2148,7 @@ function isPickable(s: Sketch, id: Id): boolean {
   return s.entities.some((e) => e.id === (line ?? id));
 }
 
-function offsetToward(s: Sketch, id: Id, at: Vec2, d: number): Sketch | string {
+function offsetToward(offsetChain: (s: Sketch, id: Id, d: number) => Sketch | string, s: Sketch, id: Id, at: Vec2, d: number): Sketch | string {
   const out = offsetChain(s, id, d);
   const inn = offsetChain(s, id, -d);
   if (typeof out === "string") return inn;
@@ -1999,6 +2170,8 @@ function addedLines(before: Sketch, after: Sketch): Vec2[][] {
     if (had.has(e.id)) return [];
     if (e.kind === "line") return [[idx.xy(e.a), idx.xy(e.b)]];
     if (e.kind === "circle") return [sampleArc(idx.xy(e.c), e.r, 0, 2 * Math.PI, 72)];
+    if (e.kind === "ellipse") return [sampleEllipse(ellipseGeo(idx, e))];
+    if (e.kind === "spline") return [sampleSpline(splineGeo(idx, e))];
     if (e.kind === "arc") {
       const c = idx.xy(e.c);
       return [sampleArc(c, e.r, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c)))];

@@ -1,0 +1,31 @@
+{
+  "about": "Half a bracket (#267) against a fixed upright axis at x = 0: 15 out, 10 up, 10 in, 5 up, back to the axis. Mirror it across the axis for one closed shape 30 wide; then the base is 20, so 40 wide.",
+  "solved": [
+    [0, 20],
+    [0, -5],
+    [0, 0],
+    [15, 0],
+    [15, 10],
+    [5, 10],
+    [5, 15],
+    [0, 15],
+    [-15, 0],
+    [-15, 10],
+    [-5, 10],
+    [-5, 15]
+  ],
+  "edited": [
+    [0, 20],
+    [0, -5],
+    [0, 0],
+    [20, 0],
+    [20, 10],
+    [10, 10],
+    [10, 15],
+    [0, 15],
+    [-20, 0],
+    [-20, 10],
+    [-10, 10],
+    [-10, 15]
+  ]
+}

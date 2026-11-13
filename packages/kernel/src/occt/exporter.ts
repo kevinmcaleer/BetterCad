@@ -1,7 +1,7 @@
 import { partKey, type ModelBuilder } from "./model";
 import type { OC } from "./oc";
 import { triangles, writeStep } from "./export";
-import { build, type ModelDoc, type Part } from "../document";
+import { build, poseNesting, type ModelDoc, type Part } from "../document";
 import { linkTransforms, type Mat4 } from "../pose";
 import { resolvePose } from "../drivelinks";
 import { rpy, sameShapes, type Mat3 } from "../export/same";
@@ -77,7 +77,9 @@ export class Exporter {
   ) {}
 
   private pick(r: ExportRequest): { parts: Part[]; skipped: number; moves: Map<string, Mat4> } {
-    const { parts, joints, links, drives, components } = build(r.doc, r.upTo);
+    const built = build(r.doc, r.upTo);
+    const { parts, joints, links, drives } = built;
+    const components = poseNesting(built);
     // Each body's move from home, when posed: its link's.
     const moves = new Map<string, Mat4>();
     if (r.posed && r.doc.pose) {

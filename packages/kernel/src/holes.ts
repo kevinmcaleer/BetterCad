@@ -17,6 +17,11 @@ export interface HoleParams {
   head: HoleHead;
   /** mm into the face, or null for Through all. */
   depth: number | null;
+  /**
+   * A custom hole's head, as measured (#449): its diameter and depth, and a countersink's whole angle. A size from
+   * the screw table takes its head from the table instead.
+   */
+  headSize?: { diameter: number; depth: number; angle?: number };
 }
 
 export interface HoleSpec {
@@ -29,11 +34,27 @@ export interface HoleSpec {
   head?: { kind: "countersink" | "counterbore"; diameter: number; depth: number; angle?: number };
 }
 
+/** A custom hole's starting head: a counterbore or countersink in proportion to it, for the fields to start from. */
+export function defaultHeadSize(diameter: number, head: Exclude<HoleHead, "none">): NonNullable<HoleParams["headSize"]> {
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  return head === "counterbore" ? { diameter: r1(diameter * 1.8), depth: r1(diameter * 0.6) } : { diameter: r1(diameter * 2), depth: 0, angle: 90 };
+}
+
 /** The diameter and head a hole's settings come to, or an error to show. */
 export function resolveHole(p: HoleParams): { diameter: number; head?: HoleSpec["head"] } | { error: string } {
   if (p.size === "custom") {
     if (!(p.diameter && p.diameter > 0)) return { error: "Give the hole a diameter above 0 mm" };
-    return { diameter: p.diameter };
+    const h = p.headSize;
+    if (p.head === "none" || !h) return { diameter: p.diameter };
+    if (!(h.diameter > p.diameter)) return { error: "Make the head wider than the hole" };
+    // A countersink's depth follows from its angle: the cone runs from the head's width down to the hole's.
+    if (p.head === "countersink" && h.angle) {
+      if (!(h.angle > 0 && h.angle < 180)) return { error: "Give the countersink an angle between 0° and 180°" };
+      const depth = (h.diameter - p.diameter) / 2 / Math.tan(((h.angle / 2) * Math.PI) / 180);
+      return { diameter: p.diameter, head: { kind: "countersink", diameter: h.diameter, depth, angle: h.angle } };
+    }
+    if (!(h.depth > 0)) return { error: "Give the counterbore a depth above 0 mm" };
+    return { diameter: p.diameter, head: { kind: p.head, ...h } };
   }
   const s = screw(p.size);
   if (!s) return { error: "That screw size is not in the table" };

@@ -32,15 +32,22 @@ const VERB: Record<Feature["type"], string> = {
   chamfer: "Chamfer",
   shell: "Shell",
   pushpull: "Push or pull a face",
+  offsetFace: "Offset faces",
+  decal: "Put a picture on a face",
   revolve: "Revolve",
+  loft: "Loft",
+  sweep: "Sweep",
+  split: "Split",
   hole: "Add holes",
   import: "Import",
+  convert: "Make a mesh editable",
   insert: "Insert a part",
   mount: "Add a mount",
   gear: "Add a gear",
   link: "Make a component",
   joint: "Add a joint",
   drive: "Link two joints",
+  rigid: "Lock parts together",
   construct: "Construct",
 };
 
@@ -112,7 +119,7 @@ export function buildSteps(doc: ModelDoc, upTo = doc.features.length): BuildStep
     if (f.type === "sketch") {
       ({ text, details } = sketchStep(f.sketch));
     } else {
-      const from = f.type === "extrude" || f.type === "revolve" ? ` **${nameOf(f.sketch)}**` : "";
+      const from = f.type === "extrude" || f.type === "revolve" || f.type === "sweep" ? ` **${nameOf(f.sketch)}**` : "";
       text = sentence(`${VERB[f.type]}${from}: ${featureSummary(doc, f)}`);
     }
     out.push({ n: out.length + 1, at: i + 1, feature: f, title: f.name, text, details: [...details, ...exprDetails(f)] });

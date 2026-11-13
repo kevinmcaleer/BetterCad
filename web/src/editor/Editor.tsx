@@ -109,6 +109,8 @@ import {
   type DriveFeature,
   type DriveParams,
   linkTransforms,
+  poseNesting,
+  rigidMates,
   moveGeo,
   type Mat4,
   posedFrames,
@@ -130,12 +132,15 @@ import { TOOLS, type ToolId } from "./tools";
 import { fadedOutside } from "./fade";
 import { AppShell } from "./AppShell";
 import { TopBar } from "./TopBar";
+import { useRibbon } from "./ribbonPrefs";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
 import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
-import { View3D } from "../viewport/View3D";
+import { View3D, type ViewDecal } from "../viewport/View3D";
 import { useStatus } from "./useStatus";
 import { useKernel } from "../kernel/useKernel";
+import { useImportProgress } from "../files/useImportProgress";
+import { ImportToast } from "../files/ImportToast";
 import { PREVIEW_ID, usePreview, type PreviewRequest } from "../kernel/usePreview";
 import { useFiles } from "../files/useFiles";
 import { useDrop } from "../files/useDrop";
@@ -153,6 +158,7 @@ import { useHole } from "../hole/useHole";
 import { usePlacePart } from "../catalogue/usePlacePart";
 import { useMount } from "../mount/useMount";
 import { KEY as gearKey, useGear } from "../gear/useGear";
+import { useDecal } from "../decal/useDecal";
 import type { JointSession } from "../joint/useJoint";
 import type { JointUi } from "../joint/JointPanel";
 import { originShapes, useConstruct } from "../construct/useConstruct";
@@ -196,6 +202,9 @@ const loadSketchUI = () => import("../sketch/SketchUI");
 const SketchBars = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchBars })));
 const SketchLabels = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchLabels })));
 const SketchPickBar = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchPickBar })));
+const SketchRibbon = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchRibbon })));
+// The desktop ribbon's tools load after first paint; the top bar draws its tabs meanwhile.
+const RibbonTools = lazy(() => import("./Ribbon").then((m) => ({ default: m.RibbonTools })));
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 /** Tools that work on the model as posed (see poseOn). */
 const POSED_TOOLS = new Set(["select", "sketch", "extrude", "revolve"]);
@@ -227,7 +236,20 @@ const ParamsDialog = lazy(() => import("./ParamsPanel").then((m) => ({ default: 
 const CataloguePanel = lazy(() => import("../catalogue/CataloguePanel").then((m) => ({ default: m.CataloguePanel })));
 const ConstructBar = lazy(() => import("../construct/ConstructBar").then((m) => ({ default: m.ConstructBar })));
 const JointTool = lazy(() => import("../joint/JointPanel").then((m) => ({ default: m.JointTool })));
+const LoftTool = lazy(() => import("../loft/LoftTool").then((m) => ({ default: m.LoftTool })));
+const SweepTool = lazy(() => import("../sweep/SweepTool").then((m) => ({ default: m.SweepTool })));
+const SplitTool = lazy(() => import("../split/SplitTool").then((m) => ({ default: m.SplitTool })));
+const RecogniseTool = lazy(() => import("../recognise/RecogniseTool").then((m) => ({ default: m.RecogniseTool })));
 const GearBar = lazy(() => import("../gear/GearBar").then((m) => ({ default: m.GearBar })));
+/** Decals' pictures as data: URLs, made once per picture. */
+const decalUrls = new Map<string, string>();
+const decalUrl = (type: string, blob: string, data: string) => {
+  const key = `${type}:${blob}`;
+  let url = decalUrls.get(key);
+  if (!url) decalUrls.set(key, (url = `data:${type};base64,${data}`));
+  return url;
+};
+const DecalBar = lazy(() => import("../decal/DecalBar").then((m) => ({ default: m.DecalBar })));
 const DriveDialog = lazy(() => import("../joint/DriveDialog").then((m) => ({ default: m.DriveDialog })));
 
 const PANELS: RailItem<PanelId>[] = [
@@ -327,11 +349,13 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const featureCount = doc.features.length;
   const at = marker === null ? featureCount : Math.min(marker, featureCount);
   const built = useMemo(() => build(doc, at), [doc, at]);
+  const matesOf = useCallback((id: string) => rigidMates(built.rigid, id), [built.rigid]);
   const parts = built.parts;
   const kernel = useKernel(doc, at, parts);
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
   const failedRef = useRef(failed);
   failedRef.current = failed;
+  const imports = useImportProgress({ bodies: kernel.bodies, failed: kernel.failed, parts, off: kernel.state.status === "failed" });
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
   /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
@@ -344,6 +368,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   }, []);
 
   const narrow = useMedia(NARROW);
+  const ribbonOn = useRibbon();
   const [selection, setSelection] = useState<string[]>([]);
   // The browser's origin planes on show, and its sketch or plane pick: view state, like the marker.
   const [originShown, setOriginShown] = useState<OriginItem[]>([]);
@@ -483,6 +508,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     editDoc: store.edit,
     locked: store.isLocked,
     say,
+    matesOf,
   });
   live.current.dialogOpen ||= vp.namingOpen;
 
@@ -527,7 +553,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   livePoseRef.current = livePose;
   // Drive links (#194): the pose keeps the driving joints' values; the driven ones follow.
   const shownPose = useMemo(() => resolvePose(built.drives, pose), [built.drives, pose]);
-  const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose, built.components), [built.joints, shownPose, built.components]);
+  const nesting = useMemo(() => poseNesting(built), [built]);
+  const linkMoves = useMemo(() => linkTransforms(built.joints, shownPose, nesting), [built.joints, shownPose, nesting]);
   /**
    * Posed, a component's bodies, sketches and construction ride on it. The model stays posed while you sketch, extrude
    * or revolve, as in Fusion, so what you draw lands where you see it; other tools work on it at home.
@@ -614,6 +641,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   /** The built bodies' boxes, for the bodies an extrude cut touches. */
   const bounds = useMemo(() => new Map([...kernel.bodies].map(([id, b]) => [id, b.measure.bbox])), [kernel.bodies]);
+  const browserDecals = useMemo(
+    () => (built.decals ?? []).map((d) => ({ id: d.id, name: d.name, part: d.part, hidden: !!doc.looks[d.id]?.hidden })),
+    [built.decals, doc.looks],
+  );
+  // Decals (#263) on the faces they sit on now, found again by name; hidden ones (their eye in the browser) left off.
+  const viewDecals = useMemo<ViewDecal[]>(
+    () =>
+      (built.decals ?? []).flatMap((d) => {
+        const data = doc.blobs?.[d.image.blob];
+        if (!data || doc.looks[d.id]?.hidden) return [];
+        const names = kernel.bodies.get(d.part)?.names?.faces;
+        const i = d.faceName && names ? names.indexOf(d.faceName) : -1;
+        return [{ id: d.id, part: d.part, face: i >= 0 ? i : d.face, at: d, image: decalUrl(d.image.type, d.image.blob, data) }];
+      }),
+    [built.decals, doc.blobs, doc.looks, kernel.bodies],
+  );
   const extrude = useExtrude({
     kind: "extrude",
     store,
@@ -721,12 +764,47 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     say,
   });
 
+  const decal = useDecal({
+    store,
+    record,
+    doc,
+    meshes: kernel.bodies,
+    view: vp.ref,
+    active: tool === "decal" && !sketch.editing,
+    onClose: () => setTool("select"),
+    say,
+  });
+
   // The Joint tool (#172) loads with its panel; the editor keeps what Enter, the help line and the timeline need.
   const jointApi = useRef<JointSession | null>(null);
   const [jointUi, setJointUi] = useState<JointUi | null>(null);
+  // Recognise features (#446): the imported mesh whose holes are being found.
+  const [recognising, setRecognising] = useState<{ id: string; name: string } | null>(null);
+  const recogniseOk = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (tool !== "select") setRecognising(null);
+  }, [tool]);
   const [jointEdit, setJointEdit] = useState<string | null>(null);
   const jointEdited = useCallback(() => setJointEdit(null), []);
   const jointHelp = tool === "joint" ? (jointUi?.help ?? null) : null;
+  // The Loft tool (#399) loads with its panel too.
+  const loftApi = useRef<{ done(): void } | null>(null);
+  const [loftEdit, setLoftEdit] = useState<string | null>(null);
+  const loftEdited = useCallback(() => setLoftEdit(null), []);
+  const [loftUiHelp, setLoftHelp] = useState<string | null>(null);
+  const loftHelp = tool === "loft" ? loftUiHelp : null;
+  // The Sweep tool (#400) too.
+  const sweepApi = useRef<{ done(): void } | null>(null);
+  const [sweepEdit, setSweepEdit] = useState<string | null>(null);
+  const sweepEdited = useCallback(() => setSweepEdit(null), []);
+  const [sweepUiHelp, setSweepHelp] = useState<string | null>(null);
+  const sweepHelp = tool === "sweep" ? sweepUiHelp : null;
+  // And Split body (#406).
+  const splitApi = useRef<{ done(): void } | null>(null);
+  const [splitEdit, setSplitEdit] = useState<string | null>(null);
+  const splitEdited = useCallback(() => setSplitEdit(null), []);
+  const [splitUiHelp, setSplitHelp] = useState<string | null>(null);
+  const splitHelp = tool === "split" ? splitUiHelp : null;
 
   // Construction geometry (#265): the Construct menu arms the tool for one kind.
   const [constructKind, setConstructKind] = useState<ConstructKind | null>(null);
@@ -1145,11 +1223,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     const pickedAxis = axisOf(browserPicked ?? "");
     const picked = pickedAxis ? `origin:${pickedAxis}` : browserPicked;
     const lit = [constructHover, picked, construct.session?.id, revolve.axisShape, patternAxis].filter((x): x is string => !!x);
-    // The sketch's Dimension tool, Revolve, a round Pattern and Joint can use an axis too, so the origin's show while
+    // The sketch's Dimension and Mirror tools, Revolve, a round Pattern and Joint can use an axis too, so the origin's show while
     // they want one; Revolve and Pattern keep the one they turn round. The browser's eyes keep the rest on show.
     const want = construct.active
       ? construct.slot
-      : (sketch.editing && sketch.stool === "dimension") || revolve.pickingAxis || pattern.pickingAxis || jointAxis
+      : (sketch.editing && (sketch.stool === "dimension" || sketch.stool === "mirror")) || revolve.pickingAxis || pattern.pickingAxis || jointAxis
         ? "line"
         : null;
     const keep = new Set([revolve.axisShape, patternAxis, picked, ...originShown.filter((x) => (AXES as string[]).includes(x)).map((a) => `origin:${a}`)]);
@@ -1193,7 +1271,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     at,
     view: vp.ref,
-    tool: sketch.editing ? null : tool === "fillet" || tool === "shell" ? tool : null,
+    tool: sketch.editing ? null : tool === "fillet" || tool === "shell" || tool === "offsetFace" ? tool : null,
     onClose: () => setTool("select"),
     say,
   });
@@ -1340,6 +1418,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       say(`Made ${name} of ${ids.length === 1 ? "1 body" : `${ids.length} bodies`}. They stay separate bodies.`);
     },
     [record, say, workIn, activate],
+  );
+  // Rigid group (Fusion's): the picked bodies' components, and loose bodies, lock together and move as one.
+  const makeRigid = useCallback(
+    (ids: string[]) => {
+      void import("@bettercad/kernel/rigid").then(({ addRigid }) => {
+        const id = newId("f");
+        const f = addRigid(live.current.doc, ids, id).features.find((x) => x.id === id);
+        if (!f || f.type !== "rigid" || f.links.length + f.parts.length < 2)
+          return say("Pick parts in two or more components, or loose bodies, to lock together", true);
+        record((d, at) => addRigid(d, ids, id, at), `Make ${f.name}`);
+        say(`Made ${f.name}: moving any of its parts moves them all`);
+      });
+    },
+    [record, say],
   );
   const selectLink = useCallback(
     (ids: string[]) => {
@@ -1576,7 +1668,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     doc,
     view: vp.ref,
     say,
-    onImport: (list, at) => importFiles(list, at, { call: kernel.call, record, say, select: setSelection }),
+    onImport: (list, at) =>
+      importFiles(list, at, { call: kernel.call, record, say, select: setSelection, progress: imports.setProgress, ready: imports.ready }),
     renderBodies: () => thumbBodies.current(),
     onSwitched: () => {
       setMarker(null);
@@ -1780,6 +1873,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
 
   const handlers = useRef({
     homeJoints: () => {},
+    togglePanel: (_id: PanelId) => {},
     armToolPoint: () => {},
     clearToolPoints: () => {},
     checkClashes: () => {},
@@ -1787,6 +1881,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     savePose: () => {},
     openExport: () => {},
     exportSteps: () => {},
+    recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
     startTour: () => {},
@@ -1824,6 +1919,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     fitBelt: (_ids: string[]) => {},
     meshGears: (_ids: string[]) => {},
     makeLink: (_ids: string[]) => {},
+    makeRigid: (_ids: string[]) => {},
     selectLink: (_ids: string[]) => {},
     turnPlacing: () => {},
     confirm: () => {},
@@ -1834,6 +1930,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   });
   handlers.current = {
     homeJoints,
+    togglePanel: (id: PanelId) => showPanel(panel === id ? "parts" : id),
     armToolPoint: () => {
       setTool("select");
       setToolPick(true);
@@ -1865,6 +1962,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     },
     openExport: () => setExportOpen(true),
     exportSteps: () => exportBuildSteps(),
+    recognise: () => {
+      const meshes = parts.filter((p) => p.imported?.mesh && !p.ops?.length && !p.copy);
+      const picked = meshes.filter((p) => selection.includes(p.id));
+      const one = picked.length === 1 ? picked[0] : selection.length === 0 && meshes.length === 1 ? meshes[0] : null;
+      if (!one)
+        return say(
+          meshes.length
+            ? "Select one imported STL body, then choose Recognise features."
+            : "Recognise features works on an imported STL or 3MF body. Import one first.",
+        );
+      startRecognise(one.id);
+    },
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     startTour: tour.start,
@@ -1908,35 +2017,46 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     fitBelt: beltPicked,
     meshGears: meshPicked,
     makeLink,
+    makeRigid,
     selectLink,
     turnPlacing: place.turn,
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
-      extrude.session
-        ? extrude.done()
-        : revolve.session
-          ? revolve.done()
-          : pushpull.session
-            ? pushpull.done()
-            : hole.session
-              ? hole.done()
-              : mount.session
-                ? mount.done()
-                : gear.session
-                  ? gear.done()
-                  : construct.session
-                    ? construct.done()
-                    : tool === "joint"
-                      ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
-                        ? jointApi.current.pickParent(null)
-                        : jointApi.current?.done()
-                      : pattern.session
-                        ? pattern.done()
-                        : tool === "combine"
-                          ? combine(selection, combineOp, keepTools, combineFit)
-                          : finish.tool
-                            ? finish.done()
-                            : undefined,
+      recogniseOk.current
+        ? recogniseOk.current()
+        : extrude.session
+          ? extrude.done()
+          : revolve.session
+            ? revolve.done()
+            : pushpull.session
+              ? pushpull.done()
+              : hole.session
+                ? hole.done()
+                : mount.session
+                  ? mount.done()
+                  : gear.session
+                    ? gear.done()
+                    : decal.session
+                      ? decal.done()
+                      : construct.session
+                        ? construct.done()
+                        : tool === "loft"
+                          ? loftApi.current?.done()
+                          : tool === "sweep"
+                            ? sweepApi.current?.done()
+                            : tool === "split"
+                              ? splitApi.current?.done()
+                              : tool === "joint"
+                                ? jointApi.current?.stage === "parent" && jointApi.current.parent === undefined
+                                  ? jointApi.current.pickParent(null)
+                                  : jointApi.current?.done()
+                                : pattern.session
+                                  ? pattern.done()
+                                  : tool === "combine"
+                                    ? combine(selection, combineOp, keepTools, combineFit)
+                                    : finish.tool
+                                      ? finish.done()
+                                      : undefined,
     suppressActive: () => {
       if (activeFeatureId) suppressFeature(activeFeatureId);
     },
@@ -2083,6 +2203,24 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         run: () => h().startConstruct(k.id),
         keywords: `construction ${k.what} ${k.title}`,
       })),
+      {
+        id: "panel.library",
+        scope: "model",
+        label: "Library",
+        group: "Tools",
+        icon: "shapes",
+        run: () => h().togglePanel("library"),
+        keywords: "parts shapes box cylinder",
+      },
+      {
+        id: "panel.catalogue",
+        scope: "model",
+        label: "Catalogue",
+        group: "Tools",
+        icon: "screw",
+        run: () => h().togglePanel("robot"),
+        keywords: "robot parts servo motor",
+      },
       {
         id: "tool.mirror",
         scope: "model",
@@ -2234,6 +2372,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "named pose robot arm joints remember position",
       },
       {
+        id: "tool.recognise",
+        scope: "model",
+        label: "Recognise features…",
+        group: "Tools",
+        icon: "shapes",
+        run: () => h().recognise(),
+        keywords: "stl mesh convert editable holes reverse engineer import 3mf",
+      },
+      {
         id: "check.clashes",
         scope: "model",
         label: "Check for clashes",
@@ -2319,6 +2466,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keywords: "robot rigid link body group joint urdf assembly part",
       },
       {
+        id: "rigid.make",
+        scope: "model",
+        label: "Rigid group",
+        group: "Edit",
+        icon: "lock",
+        run: () => h().makeRigid(sel()),
+        when: () => sel().length > 1,
+        keywords: "lock together assemble move as one fixed step assembly",
+      },
+      {
         id: "link.select",
         scope: "model",
         label: "Select component",
@@ -2348,9 +2505,26 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keys: ["enter"],
         run: () => h().confirm(),
         when: () =>
-          ["extrude", "revolve", "pushpull", "hole", "mount", "gear", "joint", "pattern", "combine", "fillet", "shell", "construct"].includes(
-            live.current.tool,
-          ),
+          recogniseOk.current !== null ||
+          [
+            "extrude",
+            "revolve",
+            "loft",
+            "sweep",
+            "split",
+            "pushpull",
+            "hole",
+            "mount",
+            "gear",
+            "decal",
+            "joint",
+            "pattern",
+            "combine",
+            "fillet",
+            "shell",
+            "offsetFace",
+            "construct",
+          ].includes(live.current.tool),
       },
       ...([...PRIMITIVES] as PartKind[]).map<Command>((k) => ({
         id: `add.${k}`,
@@ -3024,6 +3198,20 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "decal"
+        ? [
+            {
+              id: "edit",
+              label: "Edit decal",
+              icon: "image" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setTool("decal");
+                decal.edit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "gear"
         ? [
             {
@@ -3078,6 +3266,51 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             },
           ]
         : []),
+      ...(f.type === "split"
+        ? [
+            {
+              id: "edit",
+              label: "Edit split",
+              icon: "split" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("split");
+                setSplitEdit(id);
+              },
+            },
+          ]
+        : []),
+      ...(f.type === "sweep"
+        ? [
+            {
+              id: "edit",
+              label: "Edit sweep",
+              icon: "sweep" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("sweep");
+                setSweepEdit(id);
+              },
+            },
+          ]
+        : []),
+      ...(f.type === "loft"
+        ? [
+            {
+              id: "edit",
+              label: "Edit loft",
+              icon: "loft" as const,
+              disabled: i >= at,
+              onSelect: () => {
+                setEditingStep(id);
+                setTool("loft");
+                setLoftEdit(id);
+              },
+            },
+          ]
+        : []),
       ...(f.type === "revolve"
         ? [
             {
@@ -3121,6 +3354,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       { kind: "separator", id: "s1" },
       { id: "delete", label: "Delete", icon: "trash", danger: true, onSelect: () => deleteFeature(id) },
     ];
+  };
+
+  const startRecognise = (id: string) => {
+    const p = parts.find((x) => x.id === id);
+    if (!p) return;
+    setTool("select");
+    setSelection([id]);
+    setRecognising({ id, name: p.name });
   };
 
   const partMenu = (ids: string[]): MenuEntry[] => {
@@ -3185,7 +3426,11 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ...(chosen.length === 2 && chosen.every((p) => isSpur(p.id))
         ? [{ id: "mesh-gears", label: "Mesh gears", icon: "gear" as const, onSelect: () => meshPicked(chosen.map((p) => p.id)) }]
         : []),
+      ...(chosen.length === 1 && chosen[0]!.imported?.mesh && !chosen[0]!.ops?.length && !chosen[0]!.copy
+        ? [{ id: "recognise", label: "Recognise features…", icon: "shapes" as const, onSelect: () => startRecognise(chosen[0]!.id) }]
+        : []),
       { id: "make-link", label: "New component", icon: "component", onSelect: () => makeLink(ids) },
+      ...(ids.length > 1 ? [{ id: "make-rigid", label: "Rigid group", icon: "lock" as const, onSelect: () => makeRigid(ids) }] : []),
       ...(chosen.some((p) => p.link) ? [{ id: "select-link", label: "Select component", icon: "component" as const, onSelect: () => selectLink(ids) }] : []),
       {
         id: "reference",
@@ -3247,15 +3492,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const repick = (id: string) => {
     const i = store.get().features.findIndex((f) => f.id === id);
     const f = store.get().features[i];
-    if (!f || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell")) return;
+    if (!f || (f.type !== "fillet" && f.type !== "chamfer" && f.type !== "shell" && f.type !== "offsetFace")) return;
     const back = live.current.marker;
     // A step that built keeps its picks: they number the edges of the body just before it, which has not changed.
     const keep = !failed.has(f.id) && f.refs.length > 0;
     moveMarker(i);
-    setTool(f.type === "shell" ? "shell" : "fillet");
+    setTool(f.type === "shell" || f.type === "offsetFace" ? f.type : "fillet");
     finish.repick(f, () => setMarker(back), keep);
     const name = parts.find((p) => p.id === f.part)?.name ?? "the body";
-    const what = f.type === "shell" ? "faces to leave open" : "edges";
+    const what = f.type === "shell" ? "faces to leave open" : f.type === "offsetFace" ? "faces to move" : "edges";
     say(keep ? `Change the ${what} or the size on ${name}, then press Enter` : `Pick the ${what} again on ${name}, then press Enter`);
   };
   /**
@@ -3266,7 +3511,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const editStep = (f: Feature) => {
     const i = store.get().features.findIndex((x) => x.id === f.id);
     if (i < 0) return;
-    if (f.type === "fillet" || f.type === "chamfer" || f.type === "shell") return repick(f.id);
+    if (f.type === "fillet" || f.type === "chamfer" || f.type === "shell" || f.type === "offsetFace") return repick(f.id);
     if (i >= at) moveMarker(i + 1);
     switch (f.type) {
       case "sketch":
@@ -3292,6 +3537,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         return pattern.edit(f.id);
       case "drive":
         return setDriveDialog({ editing: f });
+      case "decal":
+        setEditingStep(f.id);
+        setTool("decal");
+        return decal.edit(f.id);
+      case "loft":
+        setEditingStep(f.id);
+        setTool("loft");
+        return setLoftEdit(f.id);
+      case "sweep":
+        setEditingStep(f.id);
+        setTool("sweep");
+        return setSweepEdit(f.id);
+      case "split":
+        setEditingStep(f.id);
+        setTool("split");
+        return setSplitEdit(f.id);
       case "joint":
         // Opens the joint's panel with every field: both components and their snaps, how it moves and lines up.
         setEditingStep(f.id);
@@ -3318,7 +3579,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         tone="warn"
         action={
           <span className="bc-actions">
-            {(problem.type === "fillet" || problem.type === "chamfer" || problem.type === "shell") && (
+            {(problem.type === "fillet" || problem.type === "chamfer" || problem.type === "shell" || problem.type === "offsetFace") && (
               <Button size="dense" label="Re-pick" title="Pick the edges or faces again" onClick={() => repick(problem.id)} />
             )}
             {editEntry && "onSelect" in editEntry && <Button size="dense" label="Edit" onClick={editEntry.onSelect} />}
@@ -3356,8 +3617,34 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? sketch.help
       : place.help
         ? place.help
-        : extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || jointHelp || pattern.help || measure.help || construct.help
-          ? extrude.help || revolve.help || pushpull.help || hole.help || mount.help || gear.help || jointHelp || pattern.help || measure.help || construct.help
+        : extrude.help ||
+            revolve.help ||
+            loftHelp ||
+            sweepHelp ||
+            splitHelp ||
+            pushpull.help ||
+            hole.help ||
+            mount.help ||
+            gear.help ||
+            decal.help ||
+            jointHelp ||
+            pattern.help ||
+            measure.help ||
+            construct.help
+          ? extrude.help ||
+            revolve.help ||
+            loftHelp ||
+            sweepHelp ||
+            splitHelp ||
+            pushpull.help ||
+            hole.help ||
+            mount.help ||
+            gear.help ||
+            decal.help ||
+            jointHelp ||
+            pattern.help ||
+            measure.help ||
+            construct.help
           : finish.help
             ? finish.help
             : vp.elementText
@@ -3454,7 +3741,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         onChange={(e) => {
           const list = [...(e.target.files ?? [])];
           e.target.value = "";
-          if (list.length) void importFiles(list, undefined, { call: kernel.call, record, say, select: setSelection, reference: true });
+          if (list.length)
+            void importFiles(list, undefined, {
+              call: kernel.call,
+              record,
+              say,
+              select: setSelection,
+              reference: true,
+              progress: imports.setProgress,
+              ready: imports.ready,
+            });
         }}
       />
       <AppShell
@@ -3468,6 +3764,22 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             mirrorOn={mirrorOn}
             onMirror={() => toolbarPattern(true)}
             onNewComponent={() => makeLink([])}
+            ribbon={
+              ribbonOn
+                ? (tab) => (
+                    <Suspense fallback={null}>
+                      <RibbonTools tab={tab} registry={registry} tool={tool} mirrorOn={mirrorOn} panel={panel} />
+                    </Suspense>
+                  )
+                : undefined
+            }
+            sketchRibbon={
+              ribbonOn && sketch.editing ? (
+                <Suspense fallback={null}>
+                  <SketchRibbon s={sketch} />
+                </Suspense>
+              ) : undefined
+            }
             panel={panel}
             onPanel={showPanel}
             canUndo={store.canUndo()}
@@ -3509,6 +3821,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         toast={
           <>
             <div className="bc-toast-slot" role="status" aria-live="polite">
+              {imports.progress && <ImportToast {...imports.progress} />}
               {toast && (
                 <div key={toast.id} className="bc-toast">
                   {toast.text}
@@ -3592,6 +3905,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onBrowserPicked={setBrowserPicked}
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}
+              decals={browserDecals}
               onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
@@ -3616,7 +3930,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         stageToolbar={
           sketch.editing ? (
             <Suspense fallback={null}>
-              <SketchBars s={sketch} />
+              <SketchBars s={sketch} ribbon={ribbonOn} />
             </Suspense>
           ) : (
             <>
@@ -3686,6 +4000,64 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   />
                 </Suspense>
               )}
+              {tool === "loft" && (
+                <Suspense fallback={null}>
+                  <LoftTool
+                    deps={{
+                      store,
+                      record,
+                      doc,
+                      sketches: built.sketches,
+                      posed: posedSketches,
+                      parts,
+                      view: vp.ref,
+                      onClose: () => setTool("select"),
+                      say,
+                      theme: resolved,
+                    }}
+                    edit={loftEdit}
+                    onEdited={loftEdited}
+                    onHelp={setLoftHelp}
+                    api={loftApi}
+                    error={(id) => failed.get(id)}
+                  />
+                </Suspense>
+              )}
+              {tool === "split" && (
+                <Suspense fallback={null}>
+                  <SplitTool
+                    deps={{ store, record, doc, parts, view: vp.ref, onClose: () => setTool("select"), say }}
+                    edit={splitEdit}
+                    onEdited={splitEdited}
+                    onHelp={setSplitHelp}
+                    api={splitApi}
+                    error={(id) => failed.get(id)}
+                  />
+                </Suspense>
+              )}
+              {tool === "sweep" && (
+                <Suspense fallback={null}>
+                  <SweepTool
+                    deps={{
+                      store,
+                      record,
+                      doc,
+                      sketches: built.sketches,
+                      posed: posedSketches,
+                      parts,
+                      view: vp.ref,
+                      onClose: () => setTool("select"),
+                      say,
+                      theme: resolved,
+                    }}
+                    edit={sweepEdit}
+                    onEdited={sweepEdited}
+                    onHelp={setSweepHelp}
+                    api={sweepApi}
+                    error={(id) => failed.get(id)}
+                  />
+                </Suspense>
+              )}
               {tool === "joint" && (
                 <Suspense fallback={null}>
                   <JointTool
@@ -3696,6 +4068,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                       parts,
                       links: built.links,
                       joints: built.joints,
+                      rigid: built.rigid,
                       view: vp.ref,
                       active: !sketch.editing,
                       onClose: () => setTool("select"),
@@ -3712,9 +4085,32 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   />
                 </Suspense>
               )}
+              {recognising && tool === "select" && (
+                <Suspense fallback={null}>
+                  <RecogniseTool
+                    key={recognising.id}
+                    part={recognising}
+                    doc={doc}
+                    upTo={at}
+                    parent={workIn ?? undefined}
+                    call={kernel.call}
+                    record={record}
+                    say={say}
+                    view={vp.ref}
+                    select={setSelection}
+                    okRef={recogniseOk}
+                    onClose={() => setRecognising(null)}
+                  />
+                </Suspense>
+              )}
               {tool === "gear" && (
                 <Suspense fallback={null}>
                   <GearBar x={gear} error={gear.session ? failed.get(gear.session.id) : undefined} onCancel={() => setTool("select")} />
+                </Suspense>
+              )}
+              {tool === "decal" && (
+                <Suspense fallback={null}>
+                  <DecalBar x={decal} error={decal.session ? failed.get(decal.session.id) : undefined} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
               {(tool === "mount" || tool === "pattern") && (
@@ -3736,7 +4132,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
                   <PushPullBar x={pushpull} error={pushpull.session ? failed.get(pushpull.session.id) : undefined} onCancel={() => setTool("select")} />
                 </Suspense>
               )}
-              {(tool === "fillet" || tool === "shell") && (
+              {(tool === "fillet" || tool === "shell" || tool === "offsetFace") && (
                 <Suspense fallback={null}>
                   <FinishBar f={finish} preview={finishPreview} onCancel={() => setTool("select")} />
                 </Suspense>
@@ -3767,15 +4163,18 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             parts={viewParts}
             faded={faded}
             meshes={kernel.bodies}
+            decals={viewDecals}
             engine={kernel.state}
             rebuilding={kernel.rebuilding}
             kernelPerf={kernelPerf}
             picks={finish.tool ? finish.picks : tool === "measure" ? measure.picks : vp.picks}
+            matesOf={matesOf}
             preview={preview}
             filter={vp.filter}
             mode={vp.mode}
             style={vp.style}
             grid={vp.grid}
+            colourCycle={vp.colourCycle}
             ortho={vp.ortho}
             view={vp.view}
             section={sketch.slice ?? vp.section}

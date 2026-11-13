@@ -49,6 +49,13 @@ body {
   height: 100dvh;
   overflow: hidden;
 }
+/* The desktop ribbon is a taller top bar: its tab row, then its tools. Folded, only the tab row shows. */
+.bc-app:has(.bc-top-ribbon) {
+  --bc-top-height: 120px;
+}
+.bc-app:has(.bc-top-ribbon.bc-folded) {
+  --bc-top-height: 46px;
+}
 .bc-app.bc-left-closed {
   --bc-view-left: var(--bc-float-gap);
 }
@@ -295,6 +302,23 @@ body {
   border-radius: var(--bc-radius-lg);
   box-shadow: var(--bc-shadow-float);
   animation: bc-toast 3000ms ease-out forwards;
+}
+/* An import's progress: stays up until the model is ready, with what it's doing and a bar. */
+.bc-toast-progress {
+  display: grid;
+  gap: var(--bc-space-1);
+  width: 260px;
+  max-width: 100%;
+  margin-bottom: var(--bc-space-2);
+  animation: none;
+}
+.bc-toast-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-toast-stage {
+  color: var(--bc-color-muted);
+  font-size: 12px;
 }
 @keyframes bc-toast {
   0% {

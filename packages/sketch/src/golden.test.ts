@@ -4,8 +4,9 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Solver } from "./solver";
 import { newSketch, type Id, type Sketch } from "./model";
-import { Draft, drawCircle, drawPolygon, drawPolyline, drawRectangle } from "./draw";
+import { Draft, drawArcCentre, drawArcTangent, drawCircle, drawEllipse, drawLine, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
+import { mirrorShapes, offsetRegion } from "./edits";
 
 /**
  * Golden sketches (#60): built through the model API, solved by the real planegcs in Node, and checked against
@@ -66,6 +67,74 @@ const CASES: Record<string, Case> = {
     loops: 1,
     holes: 0,
   },
+  "slot-tool": {
+    about: "A level slot (#403), 30 centre to centre and 8 wide, its left centre fixed at the origin; then 45 long.",
+    build() {
+      const r = drawSlot(newSketch(), [0, 0], [31, 5], 7, { length: 30, width: 8 })!;
+      const d = new Draft(r.sketch);
+      fixFirst(d);
+      const centre = r.ids[4]!;
+      d.constrain({ type: "horizontal", e: centre });
+      const length = d.dimensions.find((x) => x.kind === "length")!.id;
+      return { sketch: d.done().sketch, edit: length, to: 45 };
+    },
+    loops: 1,
+    holes: 0,
+  },
+  "mirror-bracket": {
+    about:
+      "Half a bracket (#267) against a fixed upright axis at x = 0: 15 out, 10 up, 10 in, 5 up, back to the axis. Mirror it across the axis for one closed shape 30 wide; then the base is 20, so 40 wide.",
+    build() {
+      const d0 = new Draft(newSketch());
+      const top = d0.point([0, 20], true);
+      const bottom = d0.point([0, -5], true);
+      d0.constrain({ type: "fix", p: top });
+      d0.constrain({ type: "fix", p: bottom });
+      const axis = d0.line(bottom, top, { construction: true, auto: false });
+      const half = drawPolyline(d0.done().sketch, [
+        [0, 0],
+        [14, 0],
+        [15, 11],
+        [5, 10],
+        [4, 15],
+        [0, 15],
+      ]);
+      const d = new Draft(half.sketch);
+      const [base, side, inward, up] = half.ids;
+      const p0 = (d.entities.find((e) => e.id === base) as { a: Id }).a;
+      d.constrain({ type: "fix", p: p0 });
+      for (const [i, id] of half.ids.entries())
+        if (!d.constraints.some((c) => (c.type === "horizontal" || c.type === "vertical") && c.e === id))
+          d.constrain({ type: i % 2 ? "vertical" : "horizontal", e: id });
+      const width = d.dimension("length", [base!], 15);
+      d.dimension("length", [side!], 10);
+      d.dimension("length", [inward!], 10);
+      d.dimension("length", [up!], 5);
+      const mirrored = mirrorShapes(d.done().sketch, half.ids, axis);
+      if (typeof mirrored === "string") throw new Error(mirrored);
+      return { sketch: mirrored, edit: width, to: 20 };
+    },
+    loops: 1,
+    holes: 0,
+  },
+  "offset-plate": {
+    about:
+      "A 40 × 20 plate with a ⌀6 hole at its middle, its outline offset 2 inward from a click inside it (#266): a 36 × 16 rectangle inside, and a ⌀10 ring round the hole, all on one distance. Then the plate is 50 wide and the inner rectangle 46.",
+    build() {
+      const r = drawRectangle(newSketch(), [0, 0], [40, 20], { width: 40, height: 20 });
+      const d = new Draft(r.sketch);
+      fixFirst(d);
+      const hole = d.circle([20, 10], 3);
+      const c = (d.entities.find((e) => e.id === hole) as { c: Id }).c;
+      d.constrain({ type: "fix", p: c });
+      d.dimension("diameter", [hole], 6);
+      const out = offsetRegion(d.done().sketch, [5, 5], -2);
+      if (typeof out === "string") throw new Error(out);
+      return { sketch: out, edit: out.dimensions.find((x) => x.kind === "length" && x.value === 40)!.id, to: 50 };
+    },
+    loops: 2,
+    holes: 2,
+  },
   "plate-with-holes": {
     about: "An 80 × 50 plate, four ⌀6 holes 60 apart across and 30 apart up, centred by two construction lines.",
     build() {
@@ -119,6 +188,49 @@ const CASES: Record<string, Case> = {
     loops: 1,
     holes: 0,
   },
+  ellipse: {
+    about: "A level ellipse (#401), 20 across and 8 up, centred on the origin; then 30 across.",
+    build() {
+      const r = drawEllipse(newSketch(), [0, 0], [12, 0.4], [0, 3], { first: 20, second: 8 })!;
+      const d = new Draft(r.sketch);
+      fixFirst(d);
+      const across = d.dimensions[0]!.id;
+      return { sketch: d.done().sketch, edit: across, to: 30 };
+    },
+    loops: 1,
+    holes: 0,
+  },
+  "arc-centre": {
+    about: "A centre-point arc (#405): R10 about the origin, a quarter turn from 3 o'clock to 12; then R15.",
+    build() {
+      const s = drawArcCentre(newSketch(), [0, 0], [10, 1], [1, 12]).sketch;
+      const arc = s.entities.find((e) => e.kind === "arc") as { id: Id; c: Id; a: Id; b: Id };
+      const d = new Draft(s);
+      d.constrain({ type: "fix", p: arc.c });
+      d.constrain({ type: "horizontal", e: arc.c, b: arc.a });
+      d.constrain({ type: "vertical", e: arc.c, b: arc.b });
+      const r = d.dimension("radius", [arc.id], 10);
+      return { sketch: d.done().sketch, edit: r, to: 15 };
+    },
+    loops: 0,
+    holes: 0,
+  },
+  "arc-tangent": {
+    about: "A tangent arc (#405): a level line 20 long from the origin, then an R10 arc tangent to it turning up a quarter; then R15.",
+    build() {
+      let s = drawLine(newSketch(), [0, 0], [20, 0], { length: 20 }).sketch;
+      const line = s.entities.find((e) => e.kind === "line") as { id: Id; a: Id; b: Id };
+      s = drawArcTangent(s, line.b, [30, 11], 10)!.sketch;
+      const arc = s.entities.find((e) => e.kind === "arc") as { id: Id; c: Id; a: Id; b: Id };
+      const d = new Draft(s);
+      d.constrain({ type: "fix", p: line.a });
+      d.constrain({ type: "horizontal", e: arc.c, b: arc.b });
+      const r = d.dimensions.find((x) => x.kind === "radius")!.id;
+      return { sketch: d.done().sketch, edit: r, to: 15 };
+    },
+    loops: 0,
+    holes: 0,
+  },
   hexagon: {
     about: "A hexagon with flats top and bottom, 20 across the flats, centred on the origin.",
     build() {
@@ -136,7 +248,8 @@ const CASES: Record<string, Case> = {
   },
 };
 
-const coords = (s: Sketch) => s.entities.flatMap((e) => (e.kind === "point" ? [[round(e.x), round(e.y)]] : e.kind === "line" ? [] : [[round(e.r)]]));
+const coords = (s: Sketch) =>
+  s.entities.flatMap((e) => (e.kind === "point" ? [[round(e.x), round(e.y)]] : e.kind === "circle" || e.kind === "arc" ? [[round(e.r)]] : []));
 const round = (v: number) => Math.round(v * 1e6) / 1e6 + 0;
 
 describe("golden sketches", () => {

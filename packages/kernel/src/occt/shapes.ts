@@ -1,10 +1,10 @@
-import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Shape } from "replicad-opencascadejs";
+import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Shape, gp_Pnt } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
-import type { PrismSpec, ProfileSeg, RevolveSpec } from "../extrude";
+import type { EllipseSeg, SplineSeg, LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
-import type { CopyMove } from "../pattern";
+import type { CopyMove, Plane } from "../pattern";
 
 /**
  * Making and changing solids with OpenCascade. Every function takes the loaded OC instance and returns a new shape;
@@ -194,6 +194,42 @@ export function prism(oc: OC, profile: TopoDS_Shape, vector: [number, number, nu
   });
 }
 
+/**
+ * An ellipse, or part of one (#401), as an edge. OCCT wants the major axis first, so a wider second axis turns the
+ * frame a quarter and shifts the angles to match.
+ */
+function ellipseEdge(oc: OC, f: Frame, P: (p: Vec2) => gp_Pnt, g: EllipseSeg): TopoDS_Edge {
+  const swap = g.r2 > g.r1;
+  const rot = g.rot + (swap ? Math.PI / 2 : 0);
+  const along = toWorld({ ...f, origin: [0, 0, 0] }, [Math.cos(rot), Math.sin(rot)]);
+  const ax = new oc.gp_Ax2(P(g.c), new oc.gp_Dir(f.normal[0], f.normal[1], f.normal[2]), new oc.gp_Dir(along[0], along[1], along[2]));
+  const el = new oc.gp_Elips(ax, Math.max(g.r1, g.r2), Math.min(g.r1, g.r2));
+  if (!g.t) return new oc.BRepBuilderAPI_MakeEdge(el).Edge();
+  const shift = swap ? -Math.PI / 2 : 0;
+  const e = new oc.BRepBuilderAPI_MakeEdge(el, g.t[0] + shift, g.t[1] + shift).Edge();
+  return (g.rev ? e.Reversed() : e) as TopoDS_Edge;
+}
+
+/**
+ * A spline (#269) as one B-spline edge: its cubic pieces end to end, so the solid's edge is exactly the curve the
+ * sketch draws. The joins are knots of full multiplicity, then thinned where the curve is smooth there (all of a fitted
+ * spline's joins), which leaves a C2 curve that OCCT measures and offsets well.
+ */
+function splineEdge(oc: OC, P: (p: Vec2) => gp_Pnt, g: SplineSeg): TopoDS_Edge {
+  const pieces = (g.poles.length - 1) / 3;
+  const pts = new oc.NCollection_Array1_gp_Pnt(1, g.poles.length);
+  g.poles.forEach((p, i) => pts.SetValue(i + 1, P(p)));
+  const knots = new oc.NCollection_Array1_double(1, pieces + 1);
+  const mults = new oc.NCollection_Array1_int(1, pieces + 1);
+  for (let i = 0; i <= pieces; i++) {
+    knots.SetValue(i + 1, g.knots[i]!);
+    mults.SetValue(i + 1, i === 0 || i === pieces ? 4 : 3);
+  }
+  const curve = new oc.Geom_BSplineCurve(pts, knots, mults, 3, false);
+  for (let i = pieces; i >= 2; i--) curve.RemoveKnot(i, 1, 1e-9);
+  return new oc.BRepBuilderAPI_MakeEdge(curve).Edge();
+}
+
 /** A closed outline of lines and arcs on a sketch frame, as a wire in world space. */
 function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: number, named?: [TopoDS_Shape, string][], tag = ""): TopoDS_Shape {
   const f = spec.frame;
@@ -206,6 +242,8 @@ function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: n
     let e: TopoDS_Edge;
     if (g.kind === "line") e = new oc.BRepBuilderAPI_MakeEdge(P(g.a), P(g.b)).Edge();
     else if (g.kind === "arc") e = new oc.BRepBuilderAPI_MakeEdge(new oc.GC_MakeArcOfCircle(P(g.a), P(g.m), P(g.b)).Value()).Edge();
+    else if (g.kind === "ellipse") e = ellipseEdge(oc, f, P, g);
+    else if (g.kind === "spline") e = splineEdge(oc, P, g);
     else {
       const c = P(g.c);
       const circ = new oc.gp_Circ(new oc.gp_Ax2(c, new oc.gp_Dir(f.normal[0], f.normal[1], f.normal[2]), new oc.gp_Dir(f.x[0], f.x[1], f.x[2])), g.r);
@@ -224,6 +262,50 @@ function outlineWire(oc: OC, spec: { frame: Frame }, segs: ProfileSeg[], lift: n
  * the profiles joined into one body.
  */
 export function prismOf(oc: OC, spec: PrismSpec, t?: Tracker): TopoDS_Shape {
+  const taper = spec.taper ?? 0;
+  if (!taper) return straightPrism(oc, spec, t);
+  if (!(Math.abs(taper) < 89)) throw new KernelError("invalid-size", "A taper needs an angle between -89° and 89°.");
+  // The shape is full size at `base` and narrows (or widens) away from it on each side.
+  const base = spec.base ?? spec.from;
+  const [lo, hi] = [Math.min(spec.from, spec.to), Math.max(spec.from, spec.to)];
+  const parts = [
+    [base, lo],
+    [base, hi],
+  ].filter(([a, b]) => Math.abs(b! - a!) > 1e-9);
+  const made = parts.map(([a, b]) => tapered(oc, { ...spec, from: a!, to: b! }, taper, t));
+  return made.length === 1 ? made[0]! : boolean(oc, "join", made[0]!, made.slice(1), t);
+}
+
+/** A prism from `from` to `to` with its sides leaning in by `angle`° away from its start: Extrude's taper (#402). */
+function tapered(oc: OC, spec: PrismSpec, angle: number, t?: Tracker): TopoDS_Shape {
+  const solid = straightPrism(oc, spec, t);
+  const n = spec.frame.normal;
+  const s = Math.sign(spec.to - spec.from);
+  const dir = new oc.gp_Dir(n[0] * s, n[1] * s, n[2] * s);
+  const o = spec.frame.origin;
+  const neutral = new oc.gp_Pln(new oc.gp_Pnt(o[0] + n[0] * spec.from, o[1] + n[1] * spec.from, o[2] + n[2] * spec.from), dir);
+  return guard(oc, "failed", "That shape could not be tapered. Try a smaller angle, or a shape of lines and arcs.", () => {
+    const mk = new oc.BRepOffsetAPI_DraftAngle(solid);
+    for (const f of elements(oc, solid, "face")) {
+      const face = oc.TopoDS.Face(f);
+      const surf = new oc.BRepAdaptor_Surface(face, true);
+      // The caps lie flat across the normal; every other face is a side.
+      if (surf.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
+        const a = surf.Plane().Axis().Direction();
+        if (Math.abs(a.X() * n[0] + a.Y() * n[1] + a.Z() * n[2]) > 1 - 1e-9) continue;
+      }
+      mk.Add(face, dir, (angle * Math.PI) / 180, neutral, true);
+      if (!mk.AddDone()) throw new KernelError("failed", "That shape could not be tapered. Try a smaller angle, or a shape of lines and arcs.");
+    }
+    mk.Build(new oc.Message_ProgressRange());
+    if (!mk.IsDone()) throw new KernelError("failed", "That shape could not be tapered. Try a smaller angle.");
+    const out = mk.Shape();
+    t?.step(mk as never, [solid], out);
+    return out;
+  });
+}
+
+function straightPrism(oc: OC, spec: PrismSpec, t?: Tracker): TopoDS_Shape {
   const depth = spec.to - spec.from;
   if (!(Math.abs(depth) > 1e-9)) throw new KernelError("invalid-size", "An extrude needs a distance other than 0 mm.");
   const n = spec.frame.normal;
@@ -306,6 +388,69 @@ export function revolveOf(oc: OC, spec: RevolveSpec, t?: Tracker): TopoDS_Shape 
       : outer;
   });
   if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to revolve.");
+  return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1), t);
+}
+
+/**
+ * Loft (#399): one solid through each section's outline in turn, smooth unless ruled. Holes are lofted the same way
+ * and cut out, so every section needs as many holes as the first; they pair up in order.
+ */
+export function loftOf(oc: OC, spec: LoftSpec, t?: Tracker): TopoDS_Shape {
+  const { sections } = spec;
+  if (sections.length < 2) throw new KernelError("invalid-size", "A loft needs at least two shapes, each on its own plane.");
+  const holes = sections[0]!.profile.holes.length;
+  if (sections.some((s) => s.profile.holes.length !== holes))
+    throw new KernelError("open-profile", "Every shape in a loft needs the same number of holes. Pick shapes that match, or draw the holes later.");
+  const through = (pick: (k: number) => ProfileSeg[], tag: string) =>
+    guard(oc, "failed", "Those shapes could not be lofted. Check they don't cross each other, and try Straight sides.", () => {
+      const named: [TopoDS_Shape, string][] | undefined = t ? [] : undefined;
+      const mk = new oc.BRepOffsetAPI_ThruSections(true, !!spec.ruled, 1e-6);
+      // Lines and arcs, and shapes with different numbers of sides, are matched up and turned to line up.
+      mk.CheckCompatibility(true);
+      sections.forEach((sec, k) => mk.AddWire(oc.TopoDS.Wire(outlineWire(oc, sec, pick(k), 0, k === 0 ? named : undefined, tag))));
+      const out = mk.Shape();
+      if (!out || out.IsNull()) throw new KernelError("failed", "Those shapes could not be lofted.");
+      t?.sweep(mk, out, named!);
+      return out;
+    });
+  const outer = through((k) => sections[k]!.profile.outer, "p0.");
+  if (!holes) return outer;
+  const cuts = Array.from({ length: holes }, (_, j) => through((k) => sections[k]!.profile.holes[j]!, `p0h${j}.`));
+  return boolean(oc, "cut", outer, cuts, t);
+}
+
+/**
+ * Sweep (#400): each profile's outline pushed along the path, its holes swept the same way and cut out, the profiles
+ * joined. The profile keeps its angle to the path as it bends (a corrected Frenet frame).
+ */
+export function sweepOf(oc: OC, spec: SweepSpec, t?: Tracker): TopoDS_Shape {
+  if (!spec.path.segs.length) throw new KernelError("invalid-size", "Pick the lines and arcs of a path to sweep along.");
+  const spine = guard(oc, "failed", "The path's lines and arcs don't join end to end.", () => oc.TopoDS.Wire(outlineWire(oc, spec.path, spec.path.segs, 0)));
+  const along = (segs: ProfileSeg[], tag: string) =>
+    guard(oc, "failed", "That shape could not be swept along the path. Check the path doesn't bend tighter than the shape is wide.", () => {
+      const named: [TopoDS_Shape, string][] | undefined = t ? [] : undefined;
+      const mk = new oc.BRepOffsetAPI_MakePipeShell(spine);
+      mk.SetMode(true);
+      mk.Add(outlineWire(oc, spec, segs, 0, named, tag), false, true);
+      mk.Build();
+      if (!mk.IsDone() || !mk.MakeSolid()) throw new KernelError("failed", "That shape could not be swept along the path.");
+      const out = mk.Shape();
+      t?.sweep(mk, out, named!);
+      return out;
+    });
+  const bodies = spec.profiles.map((p, k) => {
+    const outer = along(p.outer, `p${k}.`);
+    return p.holes.length
+      ? boolean(
+          oc,
+          "cut",
+          outer,
+          p.holes.map((h, j) => along(h, `p${k}h${j}.`)),
+          t,
+        )
+      : outer;
+  });
+  if (!bodies.length) throw new KernelError("open-profile", "Pick at least one closed shape to sweep.");
   return bodies.length === 1 ? bodies[0]! : boolean(oc, "join", bodies[0]!, bodies.slice(1), t);
 }
 
@@ -421,7 +566,12 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
         // A boolean of two valid solids can still give an invalid one: a face whose edges miss each other by more
         // than 1e-6 mm, as where a cog stands flat on a face. Fillets and chamfers refuse an invalid body, so the
         // next one would fail on any edge. A looser tolerance joins those edges; the first valid result is kept.
-        type Made = { mk: Parameters<Tracker["step"]>[0]; shape: TopoDS_Shape };
+        // A join can also leave a tool that sits flat on the body as a loose solid beside it (two of eight cogs
+        // patterned round a wheel), valid but not joined: that is tried again too, keeping the fewest solids.
+        type Made = { mk: Parameters<Tracker["step"]>[0]; shape: TopoDS_Shape; solids: number; valid: boolean };
+        const apart = op === "join" ? count(oc, out, "solid") + count(oc, tool, "solid") : 0;
+        const touches = op === "join" && boxesMeet(oc, out, tool);
+        const better = (a: Made, b: Made | null) => !b || (a.valid && !b.valid) || (a.valid === b.valid && a.solids < b.solids);
         let best: Made | null = null;
         for (const fuzzy of RETRY_FUZZY) {
           const mk = op === "join" ? new oc.BRepAlgoAPI_Fuse() : op === "cut" ? new oc.BRepAlgoAPI_Cut() : new oc.BRepAlgoAPI_Common();
@@ -441,11 +591,9 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
           }
           if (op === "join") mk.SimplifyResult(true, true, 1e-6);
           const shape = mk.Shape();
-          if (valid(oc, shape)) {
-            best = { mk, shape };
-            break;
-          }
-          best ??= { mk, shape };
+          const made: Made = { mk, shape, valid: valid(oc, shape), solids: op === "join" ? count(oc, shape, "solid") : 0 };
+          if (better(made, best)) best = made;
+          if (made.valid && !(touches && made.solids === apart && apart > 1)) break;
           // An invalid body stays invalid whatever the tolerance, so only valid inputs are tried again.
           if (fuzzy === FUZZY && !(valid(oc, out) && valid(oc, tool))) break;
         }
@@ -463,17 +611,28 @@ export function boolean(oc: OC, op: BooleanOp, target: TopoDS_Shape, tools: Topo
   return out;
 }
 
+/** Whether two shapes' boxes meet or overlap (to within 1 µm): only then can a join merge them. */
+function boxesMeet(oc: OC, a: TopoDS_Shape, b: TopoDS_Shape): boolean {
+  const [p, q] = [boundingBox(oc, a), boundingBox(oc, b)];
+  return [0, 1, 2].every((i) => p.min[i]! <= q.max[i]! + 1e-3 && q.min[i]! <= p.max[i]! + 1e-3);
+}
+
+/** Buckets for `elements`' shape hash. */
+const HASH_BUCKETS = 1 << 30;
+
 /**
  * Every sub-shape of a kind, each once, in a stable order (the face, edge and vertex numbering). This build cannot
- * make OCCT's shape maps, so shared edges and vertices are found by their position first, then IsSame.
+ * make OCCT's shape maps, so shared edges and vertices are found by their position first, then IsSame. Faces, shells
+ * and solids are bucketed by OCCT's shape hash (the one IsSame agrees with), so a mesh's thousands of triangle faces
+ * aren't each checked against all the others.
  */
 export function elements(oc: OC, shape: TopoDS_Shape, kind: ShapeKind): TopoDS_Shape[] {
   const out: TopoDS_Shape[] = [];
-  const buckets = new Map<string, TopoDS_Shape[]>();
+  const buckets = new Map<string | number, TopoDS_Shape[]>();
   const ex = new oc.TopExp_Explorer(shape, abs(oc, kind), oc.TopAbs_ShapeEnum.TopAbs_SHAPE);
   for (; ex.More(); ex.Next()) {
     const s = ex.Current();
-    const key = kind === "edge" || kind === "vertex" ? spot(oc, s, kind) : "";
+    const key = kind === "edge" || kind === "vertex" ? spot(oc, s, kind) : oc.ReplicadShapeHasher.HashCode(s, HASH_BUCKETS);
     const bucket = buckets.get(key);
     if (bucket?.some((b) => b.IsSame(s))) continue;
     if (bucket) bucket.push(s);
@@ -665,6 +824,84 @@ function halfSpace(oc: OC, s: Side, centre: V3, reach: number): TopoDS_Shape {
   return boolean(oc, "cut", big, [cyl]);
 }
 
+/** How far a point is into the body's side of a surface: positive inside, negative outside. */
+function depthIn(s: Side, p: V3): number {
+  const d = sub3(p, s.point);
+  if (s.kind === "plane") return -dot3(d, s.out);
+  const radial = len3(sub3(d, scale3(s.axis, dot3(d, s.axis))));
+  return s.inside ? s.radius - radial : radial - s.radius;
+}
+
+/** The same surface with the body on its other side. */
+const flipSide = (s: Side): Side => (s.kind === "plane" ? { ...s, out: scale3(s.out, -1) } : { ...s, inside: !s.inside });
+
+/**
+ * Offset face (#264): each face moved along its normal by `distance`, out (positive, the body grows) or in, with its
+ * neighbours stretched or cut back to meet it however they slant. Flat faces and round walls (a hole loosens or
+ * tightens). The piece added or taken away is the slab between the face and its new place, cut by each neighbour's
+ * surface on the face's side of it; every piece is worked out on the body as it is, then joined or cut in one go.
+ */
+export function offsetFaces(oc: OC, shape: TopoDS_Shape, faceIndices: number[], distance: number, t?: Tracker): TopoDS_Shape {
+  if (!(Math.abs(distance) > 1e-9)) return shape;
+  if (!faceIndices.length) throw new KernelError("invalid-size", "Pick the faces to offset.");
+  const faces = elements(oc, shape, "face");
+  const sides = faces.map((f) => sideOf(oc, oc.TopoDS.Face(f)));
+  const { bbox } = measure(oc, shape);
+  const reach = 2 * len3(sub3(bbox.max, bbox.min)) + 4 * Math.abs(distance) + 1;
+  const tol = 1e-6 * reach;
+  const pieces = faceIndices.map((i) => {
+    const f = faces[i];
+    if (!f) throw new KernelError("reference-missing", "A face it offsets is not there any more. Pick it again.");
+    const s = sides[i];
+    if (!s) throw new KernelError("failed", "Offset face works on flat faces and round walls.");
+    // The face's new surface, `distance` out from the body.
+    let moved: Side;
+    if (s.kind === "plane") moved = { ...s, point: add3(s.point, scale3(s.out, distance)) };
+    else {
+      const radius = s.radius + (s.inside ? distance : -distance);
+      if (!(radius > tol)) throw new KernelError("invalid-size", s.inside ? "That's further in than the round is thick." : "That closes the hole up.");
+      moved = { ...s, radius };
+    }
+    // Points round the face's edges, to tell which side of each neighbour it lies on.
+    const along: V3[] = [];
+    for (const e of elements(oc, f, "edge")) {
+      const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+      const [u0, u1] = [c.FirstParameter(), c.LastParameter()];
+      for (const k of [0.1, 0.5, 0.9]) along.push(v3(c.EvalD0(u0 + (u1 - u0) * k)));
+      c.delete();
+    }
+    const centre = along.reduce((a, b) => add3(a, b), [0, 0, 0] as V3).map((x) => x / Math.max(1, along.length)) as V3;
+    const edges = elements(oc, f, "edge");
+    const cuts: TopoDS_Shape[] = [];
+    faces.forEach((g, j) => {
+      if (j === i) return;
+      const shares = elements(oc, g, "edge").some((e) => edges.some((x) => x.IsSame(e)));
+      if (!shares) return;
+      const n = sides[j];
+      if (!n) throw new KernelError("failed", "Offset face needs the faces round it to be flat or round.");
+      // A face of the same surface carries on from this one: it bounds nothing.
+      if (sameSide(n, s)) return;
+      const depths = along.map((p) => depthIn(n, p));
+      if (depths.every((x) => x >= -tol)) cuts.push(halfSpace(oc, n, centre, reach));
+      else if (depths.every((x) => x <= tol)) cuts.push(halfSpace(oc, flipSide(n), centre, reach));
+      else throw new KernelError("failed", "That face's outline turns back on itself. Push/pull it instead.");
+    });
+    // The slab between the face and its new place: on the body's side of the new surface and off it of the old one
+    // to grow, the other way round to shrink.
+    const slab =
+      distance > 0
+        ? [halfSpace(oc, moved, centre, reach), halfSpace(oc, flipSide(s), centre, reach)]
+        : [halfSpace(oc, flipSide(moved), centre, reach), halfSpace(oc, s, centre, reach)];
+    const [first, ...rest] = slab;
+    return boolean(oc, "intersect", first!, [...rest, ...cuts]);
+  });
+  return guard(oc, "failed", "That offset could not be made. Try a smaller distance.", () => {
+    const out = boolean(oc, distance > 0 ? "join" : "cut", shape, pieces, t);
+    if (!valid(oc, out)) throw new KernelError("failed", "That offset turns the body inside out. Try a smaller distance.");
+    return out;
+  });
+}
+
 /**
  * Rounds or bevels edges OpenCascade's fillet cannot: it gives up where an edge ends at a corner it cannot close,
  * as at the end of a face pinched between other faces. Each picked edge lies between two faces; the part of the body
@@ -846,11 +1083,6 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
   const volume = props.Mass();
   const surf = new oc.GProp_GProps();
   oc.BRepGProp.SurfaceProperties(shape, surf, false, false);
-  const box = new oc.Bnd_Box();
-  // The optimal box is tight to the exact geometry (the plain one adds tolerances and control points).
-  oc.BRepBndLib.AddOptimal(shape, box, false, false);
-  const lo = box.CornerMin();
-  const hi = box.CornerMax();
   // gp_Mat isn't bound, so the tensor comes from moments about six axes through the centre of mass: the three axes give
   // the diagonal, and the diagonals between two axes give the products, I(u) = (Iaa + Ibb)/2 + Iab for u = (a + b)/√2.
   const about = (x: number, y: number, z: number) => {
@@ -867,7 +1099,7 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
     area: surf.Mass(),
     centroid: [c.X(), c.Y(), c.Z()],
     inertia,
-    bbox: { min: [lo.X(), lo.Y(), lo.Z()], max: [hi.X(), hi.Y(), hi.Z()] },
+    bbox: boundingBox(oc, shape),
     solids: count(oc, shape, "solid"),
     faces: count(oc, shape, "face"),
     edges: count(oc, shape, "edge"),
@@ -875,6 +1107,49 @@ export function measure(oc: OC, shape: TopoDS_Shape): Measure {
   };
   props.delete();
   surf.delete();
+  return out;
+}
+
+/**
+ * Everything of `shape` on the front of a plane (where its normal points), as a box that reaches past the shape on every
+ * side: the tool a Split body (#406) cuts with or keeps. A shape wholly on one side gives an empty half, so it fails.
+ */
+export function frontOf(oc: OC, shape: TopoDS_Shape, plane: Plane): TopoDS_Shape {
+  const { min, max } = boundingBox(oc, shape);
+  const n = [plane.normal.x, plane.normal.y, plane.normal.z];
+  const len = Math.hypot(n[0]!, n[1]!, n[2]!);
+  if (len < 1e-9) throw new KernelError("failed", "The plane has no direction");
+  const N = n.map((v) => v / len) as [number, number, number];
+  const o = [plane.origin.x, plane.origin.y, plane.origin.z];
+  const c = [0, 1, 2].map((i) => (min[i]! + max[i]!) / 2);
+  const d = c.reduce((a, v, i) => a + (v - o[i]!) * N[i]!, 0);
+  // The middle of the shape's box, dropped onto the plane: the box is centred there.
+  const at = c.map((v, i) => v - d * N[i]!);
+  const reach = Math.hypot(max[0]! - min[0]!, max[1]! - min[1]!, max[2]! - min[2]!) + Math.abs(d) + 10;
+  // Two directions in the plane, square to the normal and each other.
+  const a = Math.abs(N[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const dotA = a[0]! * N[0] + a[1]! * N[1] + a[2]! * N[2];
+  const xr = a.map((v, i) => v - dotA * N[i]!);
+  const xl = Math.hypot(xr[0]!, xr[1]!, xr[2]!);
+  const X = xr.map((v) => v / xl);
+  const Y = [N[1] * X[2]! - N[2] * X[1]!, N[2] * X[0]! - N[0] * X[2]!, N[0] * X[1]! - N[1] * X[0]!];
+  const mk = new oc.BRepPrimAPI_MakeBox(new oc.gp_Pnt(-reach, -reach, 0), 2 * reach, 2 * reach, reach);
+  const local = mk.Shape();
+  mk.delete();
+  const t = new oc.gp_Trsf();
+  t.SetValues(X[0]!, Y[0]!, N[0], at[0]!, X[1]!, Y[1]!, N[1], at[1]!, X[2]!, Y[2]!, N[2], at[2]!);
+  const moved = new oc.BRepBuilderAPI_Transform(local, t, true, false).Shape();
+  t.delete();
+  return moved;
+}
+
+/** The box round a shape, tight to the exact geometry (the plain one adds tolerances and control points). */
+export function boundingBox(oc: OC, shape: TopoDS_Shape): Measure["bbox"] {
+  const box = new oc.Bnd_Box();
+  oc.BRepBndLib.AddOptimal(shape, box, false, false);
+  const lo = box.CornerMin();
+  const hi = box.CornerMax();
+  const out: Measure["bbox"] = { min: [lo.X(), lo.Y(), lo.Z()], max: [hi.X(), hi.Y(), hi.Z()] };
   box.delete();
   return out;
 }

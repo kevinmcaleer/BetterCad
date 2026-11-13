@@ -11,6 +11,16 @@ import {
   add,
   cross,
   dot,
+  AXIS_SNAP_DEG,
+  directionAt,
+  drawArcTangent,
+  drawEllipse,
+  tangentArcCentre,
+  drawSlot,
+  drawSpline,
+  fitSpline,
+  sampleSpline,
+  sampleEllipse,
   norm,
   scale,
   type Id,
@@ -26,10 +36,29 @@ import { ORIGIN, isAtOrigin, middleLine, type Snap } from "./snap";
  * can be typed, and what one finished shape adds to the sketch. The sketch session routes pointer events here.
  */
 export type SketchToolId =
-  "select" | "line" | "rectangle" | "circle" | "arc" | "polygon" | "point" | "text" | "dimension" | "fillet" | "trim" | "offset" | "project";
+  | "select"
+  | "line"
+  | "rectangle"
+  | "circle"
+  | "arc"
+  | "arcCentre"
+  | "arcTangent"
+  | "slot"
+  | "ellipse"
+  | "spline"
+  | "polygon"
+  | "point"
+  | "text"
+  | "dimension"
+  | "fillet"
+  | "trim"
+  | "extend"
+  | "offset"
+  | "mirror"
+  | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
-export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "polygon" | "point";
+export type DrawToolId = "line" | "rectangle" | "circle" | "arc" | "arcCentre" | "arcTangent" | "slot" | "ellipse" | "spline" | "polygon" | "point";
 export const isDrawTool = (t: SketchToolId): t is DrawToolId => t in CLICKS;
 
 export interface SketchTool {
@@ -40,6 +69,12 @@ export interface SketchTool {
   help: string;
   /** Sizes that can be typed while drawing, in order (Tab moves between them). */
   fields: string[];
+  /**
+   * A way of using another tool (#405): picked from that tool's bar, not the palette, and shown as that tool. `mode`
+   * names it on the bar.
+   */
+  modeOf?: SketchToolId;
+  mode?: string;
 }
 
 export const SKETCH_TOOLS: SketchTool[] = [
@@ -68,7 +103,59 @@ export const SKETCH_TOOLS: SketchTool[] = [
     fields: ["Width", "Height"],
   },
   { id: "circle", label: "Circle", icon: "circle", key: "c", help: "Click the centre, then the edge. Type the diameter.", fields: ["Diameter"] },
-  { id: "arc", label: "Arc", icon: "arc", key: "a", help: "Click where the arc starts and ends, then a point it passes through.", fields: [] },
+  {
+    id: "arc",
+    label: "Arc",
+    icon: "arc",
+    key: "a",
+    help: "Click where the arc starts and ends, then a point it passes through.",
+    fields: [],
+    mode: "3 point",
+  },
+  {
+    id: "arcCentre",
+    label: "Arc",
+    icon: "arc",
+    key: "",
+    help: "Click the centre, then where the arc starts, then where it ends. Type the radius.",
+    fields: ["Radius"],
+    modeOf: "arc",
+    mode: "Centre",
+  },
+  {
+    id: "arcTangent",
+    label: "Arc",
+    icon: "arc",
+    key: "",
+    help: "Click the end of a line or arc, then where the arc ends. It carries on tangent. Type the radius.",
+    fields: ["Radius"],
+    modeOf: "arc",
+    mode: "Tangent",
+  },
+  {
+    id: "slot",
+    label: "Slot",
+    icon: "slot",
+    key: "s",
+    help: "Click one end's centre, then the other's, then how wide. Type the length, Tab, the width.",
+    fields: ["Length", "Width"],
+  },
+  {
+    id: "ellipse",
+    label: "Ellipse",
+    icon: "ellipse",
+    key: "e",
+    help: "Click the centre, then the end of one axis, then how far the other reaches. Type the width across each axis.",
+    fields: ["First axis", "Second axis"],
+  },
+  {
+    id: "spline",
+    label: "Spline",
+    icon: "spline",
+    key: "b",
+    help: "Click each point the curve passes through. Double-click or Enter ends it; click the first point, or Shift-click, to close it.",
+    fields: [],
+  },
   { id: "polygon", label: "Polygon", icon: "polygon", key: "n", help: "Click the centre, then a corner. Set the sides in the bar.", fields: ["Radius"] },
   {
     id: "point",
@@ -102,22 +189,68 @@ export const SKETCH_TOOLS: SketchTool[] = [
     help: "Click a corner, or two lines that meet, to round it. Set the radius in the bar.",
     fields: [],
   },
-  { id: "trim", label: "Trim", icon: "crop", key: "t", help: "Hover a piece between crossings and click to remove it.", fields: [] },
+  {
+    id: "trim",
+    label: "Trim",
+    icon: "crop",
+    key: "t",
+    help: "Click a piece between crossings to remove it, or drag across pieces to trim them all. Hold Alt to extend instead.",
+    fields: [],
+    mode: "Trim",
+  },
+  {
+    id: "extend",
+    label: "Trim",
+    icon: "crop",
+    key: "",
+    help: "Hover near the end of a line or arc to see it grow to the next shape, then click. The end joins what it meets.",
+    fields: [],
+    modeOf: "trim",
+    mode: "Extend",
+  },
   {
     id: "offset",
     label: "Offset",
     icon: "shrink",
     key: "o",
-    help: "Click a line, arc or circle. The copy goes on the side the pointer is on. Set the distance in the bar.",
+    help: "Click a line, arc or circle, and the copy goes on the side the pointer is on; or click inside a closed shape to copy its whole outline inward (Shift: outward). Set the distance, or both sides, in the bar.",
+    fields: [],
+  },
+  {
+    id: "mirror",
+    label: "Mirror",
+    icon: "flipH",
+    key: "m",
+    help: "Click the shapes to mirror, then Mirror line and click a line or an axis. The copy follows the shapes.",
     fields: [],
   },
   { id: "project", label: "Project", icon: "body", key: "j", help: "Click a face of a part to bring its edges into the sketch.", fields: [] },
 ];
 
-export const toolById = (id: SketchToolId) => SKETCH_TOOLS.find((t) => t.id === id)!;
+export const toolById = (id: SketchToolId): SketchTool & { modes?: SketchTool[] } => {
+  const t = SKETCH_TOOLS.find((x) => x.id === id)!;
+  const base = t.modeOf ?? t.id;
+  const modes = SKETCH_TOOLS.filter((x) => x.id === base || x.modeOf === base);
+  return modes.length > 1 ? { ...t, modes } : t;
+};
 
-/** How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. */
-export const CLICKS: Record<DrawToolId, number> = { line: 2, rectangle: 2, circle: 2, arc: 3, polygon: 2, point: 1 };
+/**
+ * How many clicks a tool takes to finish one shape. The line tool chains: each click after the first is a line. The
+ * spline takes as many as you give it, until a double-click, Enter or a click on its first point.
+ */
+export const CLICKS: Record<DrawToolId, number> = {
+  line: 2,
+  rectangle: 2,
+  circle: 2,
+  arc: 3,
+  arcCentre: 3,
+  arcTangent: 2,
+  slot: 3,
+  ellipse: 3,
+  polygon: 2,
+  point: 1,
+  spline: Infinity,
+};
 
 export interface Preview {
   /** Polylines in sketch mm. */
@@ -127,7 +260,7 @@ export interface Preview {
 }
 
 /** What a tool would draw now, from its placed clicks and the cursor. */
-export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides = 6): Preview {
+export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides = 6, from?: Vec2 | null): Preview {
   const [a] = clicks;
   if (!a) return { lines: [], values: [] };
   switch (tool) {
@@ -142,10 +275,29 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
       const r = dist(a, cursor);
       return { lines: [sampleArc(a, r, 0, 2 * Math.PI, 72)], values: [r * 2] };
     }
+    case "spline": {
+      const pts = [...clicks, cursor].filter((p, i, all) => i === 0 || dist(p, all[i - 1]!) > 1e-6);
+      if (pts.length < 2) return { lines: [], values: [] };
+      return { lines: [sampleSpline(fitSpline(pts))], values: [] };
+    }
     case "polygon": {
       const r = dist(a, cursor);
       const pts = polygonPoints(a, r, sides, angleOf(sub(cursor, a)));
       return { lines: [[...pts, pts[0]!]], values: [r] };
+    }
+    case "slot": {
+      const b = clicks[1];
+      if (!b) return { lines: [[a, cursor]], values: [dist(a, cursor)] };
+      const w = slotWidth(a, b, cursor);
+      return { lines: w > 1e-6 ? [slotOutline(a, b, w / 2)] : [[a, b]], values: [dist(a, b), w] };
+    }
+    case "ellipse": {
+      const b = clicks[1];
+      if (!b) return { lines: [[a, cursor]], values: [2 * dist(a, cursor)] };
+      const r1 = dist(a, b);
+      const r2 = slotWidth(a, b, cursor) / 2;
+      const g = { c: a, r1, r2, rot: angleOf(sub(b, a)) };
+      return { lines: r2 > 1e-6 ? [sampleEllipse(g), [b, add(a, sub(a, b))]] : [[add(a, sub(a, b)), b]], values: [2 * r1, 2 * r2] };
     }
     case "arc": {
       const b = clicks[1];
@@ -155,9 +307,57 @@ export function preview(tool: SketchToolId, clicks: Vec2[], cursor: Vec2, sides 
       const [s, e] = fit.ccw ? [a, b] : [b, a];
       return { lines: [sampleArc(fit.c, fit.r, angleOf(sub(s, fit.c)), angleOf(sub(e, fit.c)))], values: [fit.r] };
     }
+    case "arcCentre": {
+      const b = clicks[1];
+      const r = dist(a, b ?? cursor);
+      if (!b) return { lines: [[a, cursor]], values: [r] };
+      const [s0, e0] = turnsLeft(a, b, cursor) ? [b, cursor] : [cursor, b];
+      return { lines: [sampleArc(a, r, angleOf(sub(s0, a)), angleOf(sub(e0, a))), [a, b]], values: [r] };
+    }
+    case "arcTangent": {
+      // `from` is the way the curve the arc starts from leaves its end.
+      const c = from ? tangentArcCentre(a, from, cursor) : null;
+      if (!c) return { lines: [[a, cursor]], values: [] };
+      const [s0, e0] = turnsLeft(a, add(a, from!), cursor, true) ? [a, cursor] : [cursor, a];
+      return { lines: [sampleArc(c, dist(a, c), angleOf(sub(s0, c)), angleOf(sub(e0, c)))], values: [dist(a, c)] };
+    }
     default:
       return { lines: [], values: [] };
   }
+}
+
+/**
+ * Whether going from b to p turns anticlockwise about c (a centre arc's sweep follows the pointer the short way), or,
+ * with `ahead`, whether p is left of the heading from c through b.
+ */
+function turnsLeft(c: Vec2, b: Vec2, p: Vec2, ahead = false): boolean {
+  return ahead ? cross(sub(b, c), sub(p, c)) > 0 : cross(sub(b, c), sub(p, c)) >= 0;
+}
+
+/** A slot's width: twice the pointer's distance from the line through its two centres. */
+export function slotWidth(a: Vec2, b: Vec2, cursor: Vec2): number {
+  const l = dist(a, b);
+  return l > 1e-9 ? (2 * Math.abs(cross(sub(b, a), sub(cursor, a)))) / l : 2 * dist(a, cursor);
+}
+
+/** A slot's outline round two centres, for the preview. */
+function slotOutline(a: Vec2, b: Vec2, r: number): Vec2[] {
+  const t = angleOf(sub(b, a));
+  return [
+    ...sampleArc(b, r, t - Math.PI / 2, t + Math.PI / 2, 24),
+    ...sampleArc(a, r, t + Math.PI / 2, t + (3 * Math.PI) / 2, 24),
+    add(b, scale([Math.sin(t), -Math.cos(t)], r)),
+  ];
+}
+
+/** The newest arc with an end at `p`, which a line drawn on from there can carry on tangent to. */
+function arcEndingAt(s: Sketch, p: Id): Id | null {
+  for (const e of [...s.entities].reverse()) {
+    if (e.construction) continue;
+    if (e.kind === "line" && (e.a === p || e.b === p)) return null;
+    if (e.kind === "arc" && (e.a === p || e.b === p)) return e.id;
+  }
+  return null;
 }
 
 /**
@@ -194,9 +394,17 @@ export interface Commit {
  * Finishes one shape. `typed` holds the sizes typed into the pills (undefined where nothing was typed); a typed size
  * becomes a driving dimension and moves the last click to match.
  */
-export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed: (number | undefined)[] = [], sides = 6): Commit | null {
+export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed: (number | undefined)[] = [], sides = 6, closed = false): Commit | null {
   const d = new Draft(sketch);
   switch (tool) {
+    case "spline": {
+      // A click on the spot of the one before (a double-click's second click) adds nothing.
+      const kept = clicks.filter((c, i) => i === 0 || dist(c.xy, clicks[i - 1]!.xy) > 1e-6);
+      if (kept.length < (closed ? 3 : 2)) return null;
+      const ids = kept.map((c) => place(d, c));
+      const r = drawSpline(d.done().sketch, ids, closed);
+      return r && { sketch: r.sketch, label: closed ? "Draw a closed spline" : "Draw a spline" };
+    }
     case "point": {
       const [s0] = clicks as [Snap];
       // A point already there (a corner, a centre, the origin's point) is not doubled.
@@ -219,6 +427,13 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
       if (a === b) return null;
       const id = d.line(a, b);
       if (length !== undefined && length > 0) d.dimension("length", [id], length);
+      // Leaving an arc's end nearly along it, the line carries on tangent (#405).
+      const arc = s0.kind === "end" && s0.ref ? arcEndingAt(sketch, s0.ref) : null;
+      const along = arc && directionAt(sketch, s0.ref!);
+      if (arc && along) {
+        const u = norm(sub(end.xy, s0.xy));
+        if ((Math.acos(Math.max(-1, Math.min(1, dot(u, along)))) * 180) / Math.PI < AXIS_SNAP_DEG) d.constrain({ type: "tangent", a: arc, b: id });
+      }
       return { sketch: d.done().sketch, label: "Draw a line", end: b };
     }
     case "rectangle": {
@@ -264,6 +479,61 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
       const b = place(d, s1);
       d.arc(fit.c, fit.ccw ? a : b, fit.ccw ? b : a);
       return { sketch: d.done().sketch, label: "Draw an arc" };
+    }
+    case "arcCentre": {
+      const [s0, s1, s2] = clicks as [Snap, Snap, Snap];
+      const r = typed[0] ?? dist(s0.xy, s1.xy);
+      if (!(r > 1e-6) || dist(s0.xy, s2.xy) < 1e-6) return null;
+      const c = place(d, s0);
+      const o = d.xy(c);
+      const startXy = add(o, scale(norm(sub(s1.xy, s0.xy)), r));
+      const a = typed[0] === undefined ? place(d, s1) : d.point(startXy);
+      const endXy = add(o, scale(norm(sub(s2.xy, s0.xy)), r));
+      // The end lands on the circle, along the pointer's direction; a point already there is used.
+      const b = s2.ref && s2.kind === "end" && Math.abs(dist(s2.xy, o) - r) < 1e-6 ? s2.ref : d.point(endXy);
+      if (a === b || dist(d.xy(a), d.xy(b)) < 1e-6) return null;
+      const id = turnsLeft(s0.xy, s1.xy, s2.xy) ? d.arc(c, a, b) : d.arc(c, b, a);
+      if (typed[0] !== undefined) d.dimension("radius", [id], r);
+      return { sketch: d.done().sketch, label: "Draw an arc", end: b };
+    }
+    case "arcTangent": {
+      const [s0, s1] = clicks as [Snap, Snap];
+      if (!s0.ref || s0.kind !== "end") return null;
+      const b = place(d, s1);
+      if (b === s0.ref) return null;
+      const r = drawArcTangent(d.done().sketch, s0.ref, b, typed[0]);
+      return r && { sketch: r.sketch, label: "Draw an arc", end: b };
+    }
+    case "slot": {
+      // Two snaps when Enter is pressed after the first click with both sizes typed; three after the width click.
+      const [s0, s1, s2] = clicks as [Snap, Snap, Snap | undefined];
+      const [length, width] = typed;
+      let far = s1;
+      if (length !== undefined && length > 0) {
+        const dir = sub(s1.xy, s0.xy);
+        const l = Math.hypot(...dir) || 1;
+        far = { xy: add(s0.xy, scale(dir, length / l)), kind: "free", label: "" };
+      }
+      const w = width ?? (s2 ? slotWidth(s0.xy, far.xy, s2.xy) : 0);
+      if (dist(s0.xy, far.xy) < 1e-6 || !(w > 1e-6)) return null;
+      const a = place(d, s0);
+      const b = place(d, far);
+      if (a === b) return null;
+      const r = drawSlot(d.done().sketch, a, b, w, { ...(length !== undefined && { length }), ...(width !== undefined && { width }) });
+      return r && { sketch: r.sketch, label: "Draw a slot" };
+    }
+    case "ellipse": {
+      // As the slot: two snaps when Enter is pressed after the first click with both widths typed.
+      const [s0, s1, s2] = clicks as [Snap, Snap, Snap | undefined];
+      const [first, second] = typed;
+      if (!s2 && second === undefined) return null;
+      if (dist(s0.xy, s1.xy) < 1e-6) return null;
+      const c = place(d, s0);
+      const r = drawEllipse(d.done().sketch, c, s1.xy, s2?.xy ?? s1.xy, {
+        ...(first !== undefined && { first }),
+        ...(second !== undefined && { second }),
+      });
+      return r && { sketch: r.sketch, label: "Draw an ellipse" };
     }
     case "polygon": {
       const [s0, s1] = clicks as [Snap, Snap];
@@ -463,15 +733,28 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
       return two && only(["line"]) ? [{ type, a, b }] : hint;
     case "equal":
       return two && (only(["line"]) || (curve(kinds[0]) && curve(kinds[1]))) ? [{ type, a, b }] : hint;
-    case "concentric":
-      return two && curve(kinds[0]) && curve(kinds[1]) ? [{ type, a, b }] : hint;
-    case "tangent":
+    case "concentric": {
+      const round = (k?: string) => curve(k) || k === "ellipse";
+      return two && round(kinds[0]) && round(kinds[1]) ? [{ type, a, b }] : hint;
+    }
+    case "tangent": {
+      // A spline end leaves along a line it shares that end with (#269).
+      const sp = picked.map((id) => sketch.entities.find((e) => e.id === id));
+      const [s, l] = sp[0]?.kind === "spline" ? [sp[0], sp[1]] : [sp[1], sp[0]];
+      if (two && s?.kind === "spline") {
+        const ends = s.closed ? [] : [s.pts[0], s.pts[s.pts.length - 1]];
+        return l?.kind === "line" && (ends.includes(l.a) || ends.includes(l.b))
+          ? [{ type, a: s.id, b: l.id }]
+          : "A spline is tangent to a line that ends on one of its ends";
+      }
       return two && (curve(kinds[0]) || curve(kinds[1])) && kinds.every((k) => k === "line" || curve(k)) ? [{ type, a, b }] : hint;
+    }
     case "coincident": {
       if (two && only(["point"])) return [{ type, a, b }];
       const p = picked[kinds.indexOf("point")];
       const e = picked.find((_, i) => kinds[i] !== "point");
-      return two && p && e ? [{ type: "pointOn", p, e }] : hint;
+      // Points can't sit on an ellipse yet: the solver holds an ellipse by its axes alone.
+      return two && p && e && !kinds.includes("ellipse") && !kinds.includes("spline") ? [{ type: "pointOn", p, e }] : hint;
     }
     case "midpoint": {
       const p = picked[kinds.indexOf("point")];
@@ -496,6 +779,14 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
         if (!e) continue;
         if (e.kind === "point") pts.add(e.id);
         else if (e.kind === "line") [e.a, e.b].forEach((p) => pts.add(p));
+        else if (e.kind === "ellipse") {
+          // Its centre and the ends of both axes: the whole ellipse stays put.
+          pts.add(e.c);
+          for (const ax of [e.ax1, e.ax2]) {
+            const l = sketch.entities.find((x) => x.id === ax);
+            if (l?.kind === "line") [l.a, l.b].forEach((p) => pts.add(p));
+          }
+        } else if (e.kind === "spline") e.pts.forEach((p) => pts.add(p));
         else [e.c, ...(e.kind === "arc" ? [e.a, e.b] : [])].forEach((p) => pts.add(p));
       }
       return pts.size ? [...pts].map((p) => ({ type, p })) : hint;

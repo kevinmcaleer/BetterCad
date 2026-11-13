@@ -5,14 +5,18 @@ import {
   type Constraint,
   type Dimension,
   type DimensionKind,
+  type Ellipse,
   type Id,
   type Line,
   type Point,
   type Sketch,
+  type Spline,
   type Vec2,
 } from "./model";
 import { angleOf, arcFrom3, dist, polygonPoints, sub } from "./geom2d";
 import { measureDimension } from "./measure";
+import { fitSpline, splineDeriv } from "./spline";
+import { SketchIndex } from "./model";
 
 /**
  * What each drawing tool adds to a sketch (#53), as pure functions: the entities, the automatic constraints
@@ -79,6 +83,29 @@ export class Draft {
     this.ids.push(e.id);
     return e.id;
   }
+  /**
+   * An ellipse (#401) about c: its first axis `r1` each side of the centre at angle `rot`, its second `r2` each side,
+   * square to it. Both axes are construction lines; the first is made level or upright when it nearly is.
+   */
+  ellipse(c: Vec2 | Id, r1: number, r2: number, rot: number, construction = false): Id {
+    const ci = this.point(c, true);
+    const o = this.xy(ci);
+    const u: Vec2 = [Math.cos(rot), Math.sin(rot)];
+    const at = (d: Vec2, k: number): Vec2 => [o[0] + d[0] * k, o[1] + d[1] * k];
+    const ax1 = this.line(at(u, -r1), at(u, r1), { construction: true });
+    const ax2 = this.line(at([-u[1], u[0]], -r2), at([-u[1], u[0]], r2), { construction: true, auto: false });
+    const e: Ellipse = { id: newId("e"), kind: "ellipse", c: ci, ax1, ax2, ...(construction && { construction }) };
+    this.entities.push(e);
+    this.ids.push(e.id);
+    return e.id;
+  }
+  /** A spline (#269) through the points, in order; `closed` runs it back to the first. */
+  spline(pts: (Vec2 | Id)[], closed = false, construction = false): Id {
+    const e: Spline = { id: newId("b"), kind: "spline", pts: pts.map((p) => this.point(p)), ...(closed && { closed }), ...(construction && { construction }) };
+    this.entities.push(e);
+    this.ids.push(e.id);
+    return e.id;
+  }
   constrain(c: NewConstraint): Id {
     const id = c.id ?? newId("k");
     this.constraints.push({ ...c, id } as Constraint);
@@ -100,6 +127,31 @@ export function drawLine(s: Sketch, a: Vec2 | Id, b: Vec2 | Id, opts?: { constru
   const d = new Draft(s);
   const l = d.line(a, b, { construction: opts?.construction });
   if (opts?.length !== undefined) d.dimension("length", [l], opts.length);
+  return d.done();
+}
+
+/**
+ * An ellipse from the tool's clicks (#401): its centre, the end of one axis, and a point the other axis reaches out to.
+ * `size` holds typed widths across each axis, which become length dimensions on the axis lines.
+ */
+export function drawEllipse(s: Sketch, c: Vec2 | Id, end: Vec2, other: Vec2, size?: { first?: number; second?: number }): Drawn | null {
+  const d = new Draft(s);
+  const ci = d.point(c, true);
+  const o = d.xy(ci);
+  const v = sub(end, o);
+  const len = Math.hypot(...v);
+  if (!(len > 1e-6)) return null;
+  const r1 = size?.first !== undefined ? size.first / 2 : len;
+  const r2 = size?.second !== undefined ? size.second / 2 : Math.abs(v[0] * (other[1] - o[1]) - v[1] * (other[0] - o[0])) / len;
+  if (!(r1 > 1e-6) || !(r2 > 1e-6)) return null;
+  const id = d.ellipse(ci, r1, r2, Math.atan2(v[1], v[0]));
+  const e = d.entities.find((x) => x.id === id) as Ellipse;
+  // The sizes sit outside the ellipse, below its first axis and left of its second, not both on the centre.
+  const u: Vec2 = [Math.cos(Math.atan2(v[1], v[0])), Math.sin(Math.atan2(v[1], v[0]))];
+  const gap = (r: number) => r + Math.max(2, r / 2);
+  if (size?.first !== undefined) d.dimension("length", [e.ax1], size.first, { labelOffset: [u[1] * gap(r2), -u[0] * gap(r2)] });
+  if (size?.second !== undefined) d.dimension("length", [e.ax2], size.second, { labelOffset: [-u[0] * gap(r1), -u[1] * gap(r1)] });
+  d.ids = [id, e.ax1, e.ax2];
   return d.done();
 }
 
@@ -179,6 +231,99 @@ export function drawArcCentre(s: Sketch, c: Vec2, start: Vec2 | Id, end: Vec2): 
 }
 
 /**
+ * The way a curve runs as it leaves its end `p` (#405), as a unit vector: along a line away from its other end, or
+ * along an arc's turn. The newest line or arc ending there is the one followed. Null when nothing ends at `p`.
+ */
+export function directionAt(s: Sketch, p: Id): Vec2 | null {
+  const idx = new SketchIndex(s);
+  const at = idx.xy(p);
+  for (const e of [...s.entities].reverse()) {
+    if (e.construction) continue;
+    if (e.kind === "line" && (e.a === p || e.b === p)) {
+      const d = sub(at, idx.xy(e.a === p ? e.b : e.a));
+      const l = Math.hypot(...d);
+      if (l > 1e-9) return [d[0] / l, d[1] / l];
+    }
+    if (e.kind === "arc" && (e.a === p || e.b === p)) {
+      const r = sub(at, idx.xy(e.c));
+      const l = Math.hypot(...r) || 1;
+      // Anticlockwise, an arc leaves its end b turning left of the radius; it leaves a the other way.
+      return e.b === p ? [-r[1] / l, r[0] / l] : [r[1] / l, -r[0] / l];
+    }
+  }
+  return null;
+}
+
+/** The centre of the arc that leaves `a` heading along `dir` and passes through `b`. Null when b is straight ahead. */
+export function tangentArcCentre(a: Vec2, dir: Vec2, b: Vec2): Vec2 | null {
+  const n: Vec2 = [-dir[1], dir[0]];
+  const v = sub(b, a);
+  const k = n[0] * v[0] + n[1] * v[1];
+  if (Math.abs(k) < 1e-9 * (Math.hypot(...v) || 1)) return null;
+  const t = (v[0] ** 2 + v[1] ** 2) / (2 * k);
+  return [a[0] + n[0] * t, a[1] + n[1] * t];
+}
+
+/**
+ * An arc carrying on from the end `p` of a line or arc, tangent to it, to `end` (#405). A tangent constraint keeps it
+ * so. `radius` becomes a radius dimension. Null when nothing ends at `p` or `end` is straight ahead.
+ */
+export function drawArcTangent(s: Sketch, p: Id, end: Vec2 | Id, radius?: number): Drawn | null {
+  const dir = directionAt(s, p);
+  if (!dir) return null;
+  // The same curve directionAt followed: the newest line or arc ending at p.
+  const from = [...s.entities].reverse().find((e) => !e.construction && (e.kind === "line" || e.kind === "arc") && (e.a === p || e.b === p))!;
+  const d = new Draft(s);
+  const b = d.point(end);
+  const a0 = d.xy(p);
+  const c = tangentArcCentre(a0, dir, d.xy(b));
+  if (!c || dist(a0, d.xy(b)) < 1e-9) return null;
+  // Turning left it runs anticlockwise from p; turning right, anticlockwise from the far end back to p.
+  const left = dir[0] * (d.xy(b)[1] - a0[1]) - dir[1] * (d.xy(b)[0] - a0[0]) > 0;
+  const arc = left ? d.arc(c, p, b) : d.arc(c, b, p);
+  d.constrain({ type: "tangent", a: from.id, b: arc });
+  if (radius !== undefined) d.dimension("radius", [arc], radius);
+  return d.done();
+}
+
+/**
+ * A slot (#403): two half-round ends about centres `a` and `b`, joined by straight sides tangent to both, the ends equal.
+ * A construction line joins the centres. A typed `length` (centre to centre) and `width` become dimensions.
+ */
+export function drawSlot(s: Sketch, a: Vec2 | Id, b: Vec2 | Id, width: number, size?: { length?: number; width?: number }): Drawn | null {
+  const d = new Draft(s);
+  const ca = d.point(a, true);
+  const cb = d.point(b, true);
+  const [pa, pb] = [d.xy(ca), d.xy(cb)];
+  const len = dist(pa, pb);
+  const r = width / 2;
+  if (!(len > 1e-6) || !(r > 1e-6)) return null;
+  const u: Vec2 = [(pb[0] - pa[0]) / len, (pb[1] - pa[1]) / len];
+  const n: Vec2 = [-u[1] * r, u[0] * r];
+  const at = (p: Vec2, k: number): Vec2 => [p[0] + n[0] * k, p[1] + n[1] * k];
+  const [a1, b1, b2, a2] = [d.point(at(pa, 1)), d.point(at(pb, 1)), d.point(at(pb, -1)), d.point(at(pa, -1))];
+  const centre = d.line(ca, cb, { construction: true });
+  const side1 = d.line(a1, b1, { auto: false });
+  // Arcs run anticlockwise: round the far end from the lower side to the upper, round the near end back down.
+  const endB = d.arc(cb, b2, b1);
+  const side2 = d.line(b2, a2, { auto: false });
+  const endA = d.arc(ca, a1, a2);
+  for (const [l, c] of [
+    [side1, endA],
+    [side1, endB],
+    [side2, endA],
+    [side2, endB],
+  ] as const)
+    d.constrain({ type: "tangent", a: l, b: c });
+  d.constrain({ type: "equal", a: endA, b: endB });
+  // The centre line's level or upright constraint (when drawn so) keeps the sides that way too.
+  if (size?.length !== undefined) d.dimension("length", [centre], size.length);
+  if (size?.width !== undefined) d.dimension("diameter", [endA], size.width);
+  d.ids = [side1, endB, side2, endA, centre];
+  return d.done();
+}
+
+/**
  * A regular polygon (3 to 12 sides) by centre and corner radius: equal sides, shared corners, and a construction
  * circle through the corners so one dimension sizes it.
  */
@@ -194,3 +339,42 @@ export function drawPolygon(s: Sketch, c: Vec2, r: number, sides: number, angle 
   d.ids = [ring, ...lines];
   return d.done();
 }
+
+/**
+ * A spline from the tool's clicks (#269). A click on a point already there uses it. `closed` runs it back to the
+ * first point; an end on a line's end is made tangent to that line when it nearly carries on from it.
+ */
+export function drawSpline(s: Sketch, pts: (Vec2 | Id)[], closed = false): Drawn | null {
+  if (pts.length < (closed ? 3 : 2)) return null;
+  const d = new Draft(s);
+  const id = d.spline(pts, closed);
+  if (closed) return d.done();
+  const sk = d.done().sketch;
+  const idx = new SketchIndex(sk);
+  const sp = idx.get(id) as Spline;
+  const g = fitSpline(
+    sp.pts.map((p) => idx.xy(p)),
+    false,
+  );
+  for (const [p, leaving] of [
+    [sp.pts[0]!, true],
+    [sp.pts[sp.pts.length - 1]!, false],
+  ] as const) {
+    const run = splineDeriv(g, leaving ? 0 : g.bez.length);
+    for (const l of sk.entities) {
+      if (l.kind !== "line" || (l.a !== p && l.b !== p)) continue;
+      const far = idx.xy(l.a === p ? l.b : l.a);
+      const at = idx.xy(p);
+      const along = leaving ? sub(at, far) : sub(far, at);
+      const cos = (along[0] * run[0] + along[1] * run[1]) / (Math.hypot(...along) * Math.hypot(...run) || 1);
+      if (cos > Math.cos((TANGENT_SNAP_DEG * Math.PI) / 180)) {
+        d.constrain({ type: "tangent", a: id, b: l.id });
+        break;
+      }
+    }
+  }
+  return d.done();
+}
+
+/** A spline end that leaves a line's end within this many degrees of carrying straight on is made tangent to it. */
+export const TANGENT_SNAP_DEG = 15;
