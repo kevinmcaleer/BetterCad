@@ -1191,6 +1191,23 @@ export class Engine {
     return ray.intersectObjects(sheets, false)[0]?.object.name ?? null;
   }
 
+  /**
+   * The see-through planes a tool can pick (construction/sheetAt.ts): each construction plane's sheet and, while
+   * they're shown, the origin's (`origin:XY`), with the vertices of the outline that counts. An origin plane's inner
+   * edges lie on the axes, under the model, so only its outer two do.
+   */
+  planeSheets(): { mesh: Mesh; id: string; outline: number[] }[] {
+    this.planes.updateMatrixWorld(true);
+    return [
+      ...(this.construct.children.filter((c) => c instanceof Mesh) as Mesh[]).map((mesh) => ({ mesh, id: mesh.name, outline: [0, 1, 2, 5, 0] })),
+      ...(this.planesPicking ? (this.planes.children as Mesh[]).filter((m) => m.visible) : []).map((mesh) => ({
+        mesh,
+        id: `origin:${mesh.name}`,
+        outline: [0, 1, 3],
+      })),
+    ];
+  }
+
   showStats(on: boolean): void {
     this.statsOn = on;
     this.frameTimes = [];

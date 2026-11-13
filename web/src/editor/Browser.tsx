@@ -397,6 +397,8 @@ export interface BrowserPanelProps {
   onOrigin: (shown: OriginItem[]) => void;
   /** The sketch, plane, axis or origin point picked in the browser, for the view to mark. */
   onPicked: (id: string | null) => void;
+  /** A tool that wants a plane, axis or point takes a row clicked while it waits; true when it took it. */
+  onRowPick?: (id: string) => boolean;
   onSelectSketch: (id: string) => void;
   onRename: (id: string, name: string) => void;
   /** The model's own name, from the top row. */
@@ -441,6 +443,8 @@ export function BrowserPanel(p: BrowserPanelProps) {
   useEffect(() => () => onPicked(null), [onPicked]);
 
   const select = (ids: string[]) => {
+    const tail = ids[ids.length - 1];
+    if (tail && p.onRowPick?.(tail)) return;
     const r = browserPick(ids, model);
     setOther(r.other);
     ours.current = true;

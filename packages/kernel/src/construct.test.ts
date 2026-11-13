@@ -206,6 +206,27 @@ describe("construction steps on the timeline (#265)", () => {
     ).toBe("Axis through two planes: Plane 2 and the YZ plane");
   });
 
+  it("puts a midplane between two construction planes, an origin plane and a face, and follows them", () => {
+    let doc = boxDoc();
+    doc = addConstruct(doc, { kind: "offset", refs: [{ origin: "XY" }], value: 4 }, "p1");
+    doc = addConstruct(doc, { kind: "offset", refs: [{ origin: "XY" }], value: 30 }, "p2");
+    doc = addConstruct(doc, { kind: "midplane", refs: [{ step: "p1" }, { step: "p2" }], value: 0 }, "m1");
+    doc = addConstruct(doc, { kind: "midplane", refs: [bodyRef(boxPart(doc), "face", 1, top), { origin: "XY" }], value: 0 }, "m2");
+    doc = addConstruct(doc, { kind: "midplane", refs: [{ step: "p2" }, { origin: "YZ" }], value: 0 }, "m3");
+    let b = build(doc);
+    expect(b.failed.size).toBe(0);
+    const at = (id: string) => planeOf(b.construct.find((c) => c.id === id)!.geo);
+    close(at("m1").origin, [0, 0, 17]);
+    close(at("m2").origin, [0, 0, 10]);
+    // Planes that meet: it goes through where they meet, at 45° to both.
+    close(at("m3").normal.map(Math.abs), [Math.SQRT1_2, 0, Math.SQRT1_2]);
+    // Moving an input plane moves the midplane with it.
+    doc = updateConstruct(doc, "p2", { value: 40 });
+    b = build(doc);
+    close(at("m1").origin, [0, 0, 22]);
+    expect(dependsOn(doc, "m1")).toEqual(["p1", "p2"]);
+  });
+
   it("fails, with a reason, when what it was made from is gone", () => {
     let doc = boxDoc();
     doc = addConstruct(doc, { kind: "offset", refs: [bodyRef(boxPart(doc), "face", 1, top)], value: 1 }, "pl");
