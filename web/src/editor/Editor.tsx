@@ -1379,6 +1379,41 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     };
   }, [doc, workIn]);
   const workInName = workIn ? (built.components.find((c) => c.id === workIn)?.name ?? "") : "";
+  // As Fusion's timeline: a mark over each step of the picked bodies, and a bar in each step's component colour. Worked
+  // out in the same lazy chunk; a model with no components and nothing picked never loads it.
+  const hasComps = built.components.length > 0;
+  const [bands, setBands] = useState<Map<string, { name: string; colour: string }> | undefined>(undefined);
+  useEffect(() => {
+    if (!hasComps) {
+      setBands(undefined);
+      return;
+    }
+    let live = true;
+    void Promise.all([import("../state/componentSteps"), import("../viewport/cycleHue")]).then(([m, hue]) => {
+      if (!live) return;
+      const { of, cycle, names } = m.stepComponents(doc);
+      setBands(new Map([...of].map(([f, c]) => [f, { name: names.get(c) ?? "", colour: hue.cycleCss(cycle.indexOf(c)) }])));
+    });
+    return () => {
+      live = false;
+    };
+  }, [doc, hasComps]);
+  const pickedBodies = useMemo(() => selection.filter((id) => parts.some((p) => p.id === id)).join("\n"), [selection, parts]);
+  const [marked, setMarked] = useState<Set<string> | undefined>(undefined);
+  useEffect(() => {
+    if (!pickedBodies) {
+      setMarked(undefined);
+      return;
+    }
+    let live = true;
+    void import("../state/componentSteps").then((m) => {
+      if (live) setMarked(new Set(m.bodySteps(doc, pickedBodies.split("\n"))));
+    });
+    return () => {
+      live = false;
+    };
+  }, [doc, pickedBodies]);
+
   // A sketch on a face goes with the body it sits on, so a joint that turns the body carries the sketch too.
   const linkOf = useRef(new Map<string, string | null>());
   linkOf.current = new Map(parts.map((p) => [p.id, p.link ?? null]));
@@ -4263,6 +4298,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onEdit={editStep}
               onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
               historyOpen={panel === "history"}
+              marked={marked}
+              bands={bands}
               focus={
                 workIn && compSteps?.id === workIn
                   ? {

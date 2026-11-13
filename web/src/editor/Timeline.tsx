@@ -80,6 +80,10 @@ export interface TimelineProps {
    * controls and drags move between them, and the rest still build.
    */
   focus?: { name: string; ids: string[]; only: boolean; onToggle: () => void } | null;
+  /** Steps that make or change the picked body, each marked above its tile (as Fusion's). */
+  marked?: ReadonlySet<string>;
+  /** The component each step belongs to, shown as a bar of that component's colour under its tile. */
+  bands?: ReadonlyMap<string, { name: string; colour: string }>;
 }
 
 /** How far, in pixels, a tile must be dragged before it starts to move rather than being clicked. */
@@ -113,6 +117,8 @@ export function Timeline({
   moveProblem,
   picking,
   focus,
+  marked,
+  bands,
 }: TimelineProps) {
   const strip = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
@@ -306,6 +312,9 @@ export function Timeline({
           const hold = longPress((p) => onMenu(f, p));
           const pickable = picking?.can(f.id);
           const picked = !!pickable && picking!.picked.includes(f.id);
+          const band = bands?.get(f.id);
+          const mark = !!marked?.has(f.id);
+          const about = [band && `in ${band.name}`, mark && "makes or changes the picked body"].filter(Boolean).join(", ");
           return (
             <button
               key={f.id}
@@ -313,6 +322,7 @@ export function Timeline({
               className={cx(
                 "bc-tl-tile",
                 f.id === activeId && "bc-on",
+                mark && "bc-marked",
                 i >= at && "bc-after",
                 f.suppressed && "bc-suppressed",
                 why && "bc-failed",
@@ -320,7 +330,7 @@ export function Timeline({
                 picking && (picked ? "bc-picked" : pickable ? "bc-pickable" : "bc-unpickable"),
               )}
               aria-pressed={picking ? picked : f.id === activeId}
-              aria-label={`${f.name}, ${summary(f)}${state ? `, ${state}` : ""}`}
+              aria-label={`${f.name}, ${summary(f)}${state ? `, ${state}` : ""}${about ? `, ${about}` : ""}`}
               data-tip={
                 picking
                   ? `${f.name} · ${pickable ? (picked ? "Click to take it out" : "Click to add it") : "Can't be picked"}`
@@ -358,6 +368,8 @@ export function Timeline({
               }}
             >
               <Icon name={featureIcon(f)} size={16} />
+              {mark && <span className="bc-tl-mark" aria-hidden="true" />}
+              {band && <span className="bc-tl-band" style={{ background: band.colour }} aria-hidden="true" />}
             </button>
           );
         })}
