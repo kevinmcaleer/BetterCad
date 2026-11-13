@@ -380,6 +380,8 @@ export class Engine {
   private construct = new Group();
   private constructItems: ConstructShape[] = [];
   private constructLit = new Set<string>();
+  /** Construction planes show over the bodies while a tool picks only them (one inside a body is hidden otherwise). */
+  private constructOver = false;
   private arrowDrag: { startOffset: number; x: number; y: number } | null = null;
 
   // Input
@@ -1128,15 +1130,21 @@ export class Engine {
         c.push(c[1]!.clone().negate(), c[0]!.clone().negate());
         const pts = c.map((v) => v.add(o));
         const g = new BufferGeometry().setFromPoints([pts[0]!, pts[1]!, pts[2]!, pts[0]!, pts[2]!, pts[3]!]);
-        const sheet = new Mesh(g, new MeshBasicMaterial({ color: colour, transparent: true, opacity: on ? 0.3 : 0.12, depthWrite: false, side: 2 }));
+        // A lit plane (hovered or picked) shows through the bodies, so one through the middle of a body can be seen.
+        const over = on || this.constructOver;
+        const sheet = new Mesh(
+          g,
+          new MeshBasicMaterial({ color: colour, transparent: true, opacity: on ? 0.3 : 0.12, depthWrite: false, depthTest: !over, side: 2 }),
+        );
         sheet.name = it.id;
         sheet.renderOrder = 4;
         this.construct.add(sheet);
         const edge = new LineSegments(
           new BufferGeometry().setFromPoints([pts[0]!, pts[1]!, pts[1]!, pts[2]!, pts[2]!, pts[3]!, pts[3]!, pts[0]!]),
-          new LineBasicMaterial({ color: colour, transparent: true, opacity: on ? 1 : 0.6 }),
+          new LineBasicMaterial({ color: colour, transparent: true, opacity: on ? 1 : 0.6, depthTest: !over }),
         );
-        edge.renderOrder = 4;
+        edge.renderOrder = over ? 6 : 4;
+        if (over) sheet.renderOrder = 6;
         this.construct.add(edge);
       } else if (it.what === "axis") {
         const d = new Vector3(...it.dir!).normalize().multiplyScalar(r * 1.5);
@@ -1165,6 +1173,13 @@ export class Engine {
    * The construction geometry under a point, if any: a point within 8 px first, then an axis within 6 px, then the
    * nearest plane. `what` limits it to the kinds a tool can take.
    */
+  /** Draws the construction planes over the bodies (true) while a tool picks only them, or back in place. */
+  showConstructOver(on: boolean): void {
+    if (this.constructOver === on) return;
+    this.constructOver = on;
+    this.setConstruct(this.constructItems, [...this.constructLit]);
+  }
+
   /** A construction shape in the view, by id. */
   constructShape(id: string): ConstructShape | null {
     return this.constructItems.find((c) => c.id === id) ?? null;

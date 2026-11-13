@@ -237,3 +237,42 @@ test("wrap a track piece round two wheels", async ({ page }) => {
     page.getByRole("region", { name: "Timeline" }).getByRole("button", { name: new RegExp(`^Pattern 1, Track piece, ${count} pieces round 2 wheels`) }),
   ).toBeVisible();
 });
+
+/** Mirror across a construction plane: picked in the view (even inside the body), in the browser, or by name. */
+test("mirror a box across a construction plane through its middle", async ({ page }) => {
+  await addBox(page);
+  await page.getByRole("toolbar", { name: "Model tools" }).getByRole("button", { name: "Construct" }).click();
+  await page.getByRole("menuitem", { name: "Offset plane" }).click();
+  await click(page, 0, 0, 20);
+  const distance = page.getByRole("textbox", { name: "Distance" });
+  await distance.fill("-10");
+  await distance.press("Enter");
+  await expect(page.getByText("Made Plane 1")).toBeVisible();
+
+  await mirrorTool(page);
+  await expect(page.getByText("Mirroring 1 body across YZ.")).toBeVisible();
+  const row = page.getByRole("group", { name: "Construction plane" });
+  await row.getByRole("button", { name: "Pick a plane" }).click();
+  await page.getByRole("menuitemradio", { name: "Pick in the view" }).click();
+  await expect(page.getByText("Click a construction plane in the view or the browser.").first()).toBeVisible();
+  // The plane is inside the box, so this click goes through the box's top face to it.
+  await click(page, 0, 0, 10);
+  await expect(page.getByText("Mirroring 1 body across Plane 1.")).toBeVisible();
+  await expect(row.getByRole("button", { name: "Plane 1" })).toBeVisible();
+
+  // Cleared, it picks again: here from the browser.
+  await row.getByRole("button", { name: "Clear the construction plane and pick another" }).click();
+  await expect(page.getByText("Click a construction plane in the view or the browser.").first()).toBeVisible();
+  await page.getByRole("treeitem", { name: /Plane 1/ }).click();
+  await expect(page.getByText("Mirroring 1 body across Plane 1.")).toBeVisible();
+
+  // An origin plane, then the construction plane again by name.
+  await page.getByRole("group", { name: "Mirror plane" }).getByRole("button", { name: "XZ" }).click();
+  await expect(page.getByText("Mirroring 1 body across XZ.")).toBeVisible();
+  await row.getByRole("button", { name: "Pick a plane" }).click();
+  await page.getByRole("menuitemradio", { name: "Plane 1" }).click();
+  await expect(page.getByText("Mirroring 1 body across Plane 1.")).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Mirrored 1 body")).toBeVisible();
+  await expect(bodyRows(page)).toHaveCount(2);
+});

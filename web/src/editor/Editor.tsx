@@ -839,11 +839,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     measure: kernel.measure,
   });
   const pickRow = construct.pickRow;
-  /** The Construct tool takes a construction step or an origin plane, axis or point clicked in the browser. */
+  // A Mirror picking its plane: set once the Pattern tool is made, further down.
+  const mirrorAcrossRef = useRef<(id: string) => boolean>(() => false);
+  /**
+   * The Construct tool takes a construction step or an origin plane, axis or point clicked in the browser; a Mirror
+   * picking its plane takes a construction or origin plane.
+   */
   const onRowPick = useCallback(
     (id: string) => {
       const o = planeOf(id) ?? axisOf(id) ?? (id === ROW.point ? "O" : null);
-      return pickRow(o ? `origin:${o}` : id);
+      return pickRow(o ? `origin:${o}` : id) || mirrorAcrossRef.current(planeOf(id) ? `origin:${planeOf(id)}` : id);
     },
     [pickRow],
   );
@@ -1207,7 +1212,9 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     onClose: () => setTool("select"),
     say,
     measure: kernel.measure,
+    onConstructHover: setConstructHover,
   });
+  mirrorAcrossRef.current = pattern.mirrorAcross;
   /** Mirror (#69): the Pattern tool, starting as a mirror. */
   const mirror = useCallback(() => {
     setPatternStart("mirror");
@@ -1233,6 +1240,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
       ? `origin:${pattern.feature.axis.toUpperCase()}`
       : null;
   const jointAxis = tool === "joint" && jointUi?.stage === "parent";
+  // The construction plane a Mirror mirrors across stays lit while the tool is open.
+  const mirrorStep = tool === "pattern" && pattern.feature?.kind === "mirror" ? (pattern.feature.step ?? null) : null;
   useEffect(() => {
     const eng = vp.ref.current?.engine();
     if (!eng) return;
@@ -1246,7 +1255,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     // An origin axis picked in the browser lights as `origin:X`.
     const pickedAxis = axisOf(browserPicked ?? "");
     const picked = pickedAxis ? `origin:${pickedAxis}` : browserPicked;
-    const lit = [constructHover, picked, construct.session?.id, revolve.axisShape, patternAxis].filter((x): x is string => !!x);
+    const lit = [constructHover, picked, construct.session?.id, revolve.axisShape, patternAxis, mirrorStep].filter((x): x is string => !!x);
     // The sketch's Dimension and Mirror tools, Revolve, a round Pattern and Joint can use an axis too, so the origin's show while
     // they want one; Revolve and Pattern keep the one they turn round. The browser's eyes keep the rest on show.
     const want = construct.active
@@ -1269,6 +1278,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     revolve.axisShape,
     pattern.pickingAxis,
     patternAxis,
+    mirrorStep,
     jointAxis,
     originShown,
     vp.ref,
