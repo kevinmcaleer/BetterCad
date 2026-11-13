@@ -75,6 +75,30 @@ describe("Timeline", () => {
     expect(within(bar).getByRole("button", { name: /^Sphere 1/ })).toBeInTheDocument();
     expect(within(bar).getByRole("button", { name: "Show only Arm's steps" })).toBeInTheDocument();
   });
+  it("marks the picked body's steps and bars each step in its component's colour", () => {
+    const d = changeParts(addPart(addPart(newDoc(), "box", "a"), "sphere", "b"), ["a"], "position", { x: 9 });
+    const [box, sphere, move] = d.features.map((f) => f.id) as [string, string, string];
+    render(
+      <Timeline
+        features={d.features}
+        at={3}
+        onMarker={() => {}}
+        failed={new Map()}
+        activeId={null}
+        summary={() => "x"}
+        onSelect={() => {}}
+        onMenu={() => {}}
+        marked={new Set([box, move])}
+        bands={new Map([[sphere, { name: "Wheel", colour: "red" }]])}
+      />,
+    );
+    const bar = screen.getByRole("region", { name: "Timeline" });
+    expect(within(bar).getByRole("button", { name: "Box 1, x, makes or changes the picked body" })).toHaveClass("bc-marked");
+    expect(within(bar).getByRole("button", { name: "Move 1, x, makes or changes the picked body" })).toHaveClass("bc-marked");
+    const wheel = within(bar).getByRole("button", { name: "Sphere 1, x, in Wheel" });
+    expect(wheel).not.toHaveClass("bc-marked");
+    expect(wheel.querySelector(".bc-tl-band")).toHaveStyle({ background: "red" });
+  });
   it("marks a failed step", () => {
     const d = changeParts(addPart(newDoc(), "box", "a"), ["a"], "size", { z: 3 });
     render(
@@ -301,6 +325,15 @@ describe("Timeline edit", () => {
 });
 
 describe("Editor timeline", () => {
+  it("marks the steps of the body you pick", async () => {
+    render(<Editor />);
+    addBox();
+    addBox();
+    // A new box is picked as it lands.
+    const bar = screen.getByRole("region", { name: "Timeline" });
+    expect(await within(bar).findByRole("button", { name: /^Box 2.*makes or changes the picked body/ })).toHaveClass("bc-marked");
+    expect(within(bar).getByRole("button", { name: /^Box 1/ })).not.toHaveClass("bc-marked");
+  });
   it("rolls the model back and inserts new steps at the marker", () => {
     render(<Editor />);
     addBox();
