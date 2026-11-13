@@ -427,16 +427,14 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     placing: live.current.placing,
   };
   const [registry] = useState(() =>
-    createRegistry(
-      (): CommandContext => ({
-        hasSelection: live.current.selection.length > 0,
-        inSketch: live.current.sketching,
-        toolActive: live.current.tool !== "select",
-        canUndo: store.canUndo(),
-        canRedo: store.canRedo(),
-        dialogOpen: live.current.dialogOpen,
-      }),
-    ),
+    createRegistry((): CommandContext => ({
+      hasSelection: live.current.selection.length > 0,
+      inSketch: live.current.sketching,
+      toolActive: live.current.tool !== "select",
+      canUndo: store.canUndo(),
+      canRedo: store.canRedo(),
+      dialogOpen: live.current.dialogOpen,
+    })),
   );
   // Re-render when commands are added or run, so enabled states stay fresh.
   useSyncExternalStore(registry.subscribe, registry.version);
