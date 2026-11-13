@@ -1207,20 +1207,6 @@ export class Engine {
   }
 
   /**
-<<<<<<< HEAD
-   * The construction plane under a point when it is nearer than the model there, so a plane through the middle of a
-   * body can be clicked where it shows in front of it (a face would win otherwise). Ghosted bodies are passed over.
-   */
-  constructPlaneInFront(x: number, y: number): string | null {
-    const ray = new Raycaster();
-    ray.setFromCamera(new Vector2((x / this.width) * 2 - 1, -(y / this.height) * 2 + 1), this.activeCamera);
-    const sheets = this.construct.children.filter((c) => c instanceof Mesh);
-    const sheet = ray.intersectObjects(sheets, false)[0];
-    if (!sheet) return null;
-    const meshes = this.order.filter((b) => !b.body.ghost).map((b) => (this.style === "shaded" ? b.shaded : b.flat));
-    const body = ray.intersectObjects(meshes, false)[0];
-    return !body || sheet.distance < body.distance ? sheet.object.name : null;
-=======
    * The see-through planes a tool can pick (construction/sheetAt.ts): each construction plane's sheet and, while
    * they're shown, the origin's (`origin:XY`), with the vertices of the outline that counts. An origin plane's inner
    * edges lie on the axes, under the model, so only its outer two do.
@@ -1235,7 +1221,6 @@ export class Engine {
         outline: [0, 1, 3],
       })),
     ];
->>>>>>> origin/main
   }
 
   showStats(on: boolean): void {

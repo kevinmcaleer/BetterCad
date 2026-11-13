@@ -254,7 +254,7 @@ test("mirror a box across a construction plane through its middle", async ({ pag
   const row = page.getByRole("group", { name: "Construction plane" });
   await row.getByRole("button", { name: "Pick a plane" }).click();
   await page.getByRole("menuitemradio", { name: "Pick in the view" }).click();
-  await expect(page.getByText("Click a construction plane in the view or the browser.")).toBeVisible();
+  await expect(page.getByText("Click a construction plane in the view or the browser.").first()).toBeVisible();
   // The plane is inside the box, so this click goes through the box's top face to it.
   await click(page, 0, 0, 10);
   await expect(page.getByText("Mirroring 1 body across Plane 1.")).toBeVisible();
@@ -262,7 +262,7 @@ test("mirror a box across a construction plane through its middle", async ({ pag
 
   // Cleared, it picks again: here from the browser.
   await row.getByRole("button", { name: "Clear the construction plane and pick another" }).click();
-  await expect(page.getByText("Click a construction plane in the view or the browser.")).toBeVisible();
+  await expect(page.getByText("Click a construction plane in the view or the browser.").first()).toBeVisible();
   await page.getByRole("treeitem", { name: /Plane 1/ }).click();
   await expect(page.getByText("Mirroring 1 body across Plane 1.")).toBeVisible();
 

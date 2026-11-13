@@ -12,6 +12,7 @@ import {
   type BuiltConstruct,
   type BuiltLink,
   type MirrorOf,
+  type MirrorPlane,
   type ModelDoc,
   type Part,
   type PatternFeature,
@@ -205,15 +206,18 @@ export function usePattern(d: PatternDeps) {
     if (!d.active || !pickingPlane || !session || !eng) return;
     if (pickingPlane === "face") eng.showPlanes(true);
     else eng.showConstructOver(true);
+    // Finding a plane in front of a face loads with the first pick.
+    let planeInFront: typeof import("../construct/sheetAt").planeInFront | null = null;
+    let gone = false;
+    if (pickingPlane === "face") void import("../construct/sheetAt").then((m) => !gone && (planeInFront = m.planeInFront));
     const target = (x: number, y: number) => {
       // Only construction planes (#265), over the model or not.
       if (pickingPlane === "plane") {
         const step = eng.constructAt(x, y, PLANES_ONLY);
         return step ? { step } : null;
       }
-      // A construction plane where it shows in front of the model: one through the middle of a body is mostly over its
-      // faces, so the face would win otherwise.
-      const front = eng.constructPlaneInFront(x, y);
+      // A construction plane by its border, or in front of the model (one through a body is mostly behind faces).
+      const front = planeInFront?.(eng, x, y);
       if (front) return { step: front };
       const hit = eng.pick(x, y, "face");
       const info = hit && eng.faceInfo(hit.body, hit.index);
@@ -255,6 +259,7 @@ export function usePattern(d: PatternDeps) {
       },
     });
     return () => {
+      gone = true;
       eng.setInput(null);
       eng.showPlanes(false);
       eng.showConstructOver(false);
@@ -399,7 +404,7 @@ export function usePattern(d: PatternDeps) {
     ? null
     : pickingPlane
       ? pickingPlane === "plane"
-        ? "Click a construction plane in the view or the browser to mirror across. Esc stops picking."
+        ? "Click a construction plane in the view or the browser. Esc stops picking."
         : "Click a flat face, a construction plane or an origin plane to mirror across. Esc stops picking."
       : pickingAxis
         ? "Click a round edge or face to turn round its centre, or an axis. Esc stops picking."
@@ -456,13 +461,15 @@ export function usePattern(d: PatternDeps) {
     stepName: feature?.step ? d.doc.features.find((f) => f.id === feature.step)?.name : undefined,
     change,
     /**
-     * Mirrors across a construction plane chosen in the browser while picking the plane; false when it isn't picking
-     * one, or `id` isn't a construction plane before the step.
+     * Mirrors across a plane clicked in the browser while picking one (a construction plane, or `origin:XY` in Face
+     * mode); false when it isn't picking, or `id` isn't one.
      */
     mirrorAcross: (id: string): boolean => {
       if (!pickingPlane || !session) return false;
-      if (d.construct.find((c) => c.id === id)?.geo.what !== "plane") return false;
-      change({ step: id, face: undefined });
+      const o = id.startsWith("origin:") && pickingPlane === "face" ? (id.slice(7) as MirrorPlane) : null;
+      if (o) change({ plane: o, face: undefined, step: undefined });
+      else if (d.construct.find((c) => c.id === id)?.geo.what === "plane") change({ step: id, face: undefined });
+      else return false;
       setPickingPlane(false);
       return true;
     },

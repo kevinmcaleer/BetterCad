@@ -839,11 +839,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     measure: kernel.measure,
   });
   const pickRow = construct.pickRow;
-  /** The Construct tool takes a construction step or an origin plane, axis or point clicked in the browser. */
+  // A Mirror picking its plane: set once the Pattern tool is made, further down.
+  const mirrorAcrossRef = useRef<(id: string) => boolean>(() => false);
+  /**
+   * The Construct tool takes a construction step or an origin plane, axis or point clicked in the browser; a Mirror
+   * picking its plane takes a construction or origin plane.
+   */
   const onRowPick = useCallback(
     (id: string) => {
       const o = planeOf(id) ?? axisOf(id) ?? (id === ROW.point ? "O" : null);
-      return pickRow(o ? `origin:${o}` : id);
+      return pickRow(o ? `origin:${o}` : id) || mirrorAcrossRef.current(planeOf(id) ? `origin:${planeOf(id)}` : id);
     },
     [pickRow],
   );
@@ -1209,14 +1214,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     measure: kernel.measure,
     onConstructHover: setConstructHover,
   });
-  // While a Mirror picks its plane, a construction plane clicked in the browser is the plane. Kept stable: the browser
-  // calls it from an effect.
-  const mirrorAcrossRef = useRef(pattern.mirrorAcross);
   mirrorAcrossRef.current = pattern.mirrorAcross;
-  const onBrowserPicked = useCallback((id: string | null) => {
-    if (id && mirrorAcrossRef.current(id)) return;
-    setBrowserPicked(id);
-  }, []);
   /** Mirror (#69): the Pattern tool, starting as a mirror. */
   const mirror = useCallback(() => {
     setPatternStart("mirror");
@@ -3987,12 +3985,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}
               onSketchesHidden={(ids, hidden, name) => setHidden(ids, hidden, "sketches", name)}
               isolateMenu={isolateEntries}
-<<<<<<< HEAD
-              onBrowserPicked={onBrowserPicked}
-=======
               onBrowserPicked={setBrowserPicked}
               onRowPick={onRowPick}
->>>>>>> origin/main
               onSketchOn={sketch.startOnPlane}
               construct={browserConstruct}
               decals={browserDecals}

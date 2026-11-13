@@ -31,3 +31,16 @@ export function sheetAt(eng: Engine, x: number, y: number): { id: string; distan
   )[0];
   return hit ? { id: sheets.find((s) => s.mesh === hit.object)!.id, distance: hit.distance, border: false } : null;
 }
+
+/**
+ * A construction plane (not an origin one) under a point that should win over the model there: by its border, or
+ * where it is nearer than the surface under the pointer. Mirror's Face pick uses it.
+ */
+export function planeInFront(eng: Engine, x: number, y: number): string | null {
+  const s = sheetAt(eng, x, y);
+  if (!s || s.id.startsWith("origin:")) return null;
+  if (s.border) return s.id;
+  const at = eng.surfaceAt(x, y);
+  const r = eng.ray(x, y);
+  return !at || Math.hypot(at.point[0] - r.origin[0], at.point[1] - r.origin[1], at.point[2] - r.origin[2]) > s.distance ? s.id : null;
+}
