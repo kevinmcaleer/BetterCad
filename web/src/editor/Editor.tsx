@@ -220,6 +220,7 @@ const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ defaul
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
 const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: m.Versions })));
 const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
+const InsertModelDialog = lazy(() => import("../insert/InsertModelDialog").then((m) => ({ default: m.InsertModelDialog })));
 const SendDialog = lazy(() => import("../steps/SendDialog").then((m) => ({ default: m.SendDialog })));
 const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 // Release notes (What's new) load in their own chunk, after first paint.
@@ -402,6 +403,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
   const [crash, setCrash] = useState<Caught | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [insertOpen, setInsertOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // Send to kevsrobots: the build steps to a kevsrobots project.
   const [sendOpen, setSendOpen] = useState(false);
@@ -2000,6 +2002,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     makeRigid: (_ids: string[]) => {},
     selectLink: (_ids: string[]) => {},
     turnPlacing: () => {},
+    insertModel: () => {},
     confirm: () => {},
     suppressActive: () => {},
     activeFeature: (): string | null => null,
@@ -2098,6 +2101,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     makeRigid,
     selectLink,
     turnPlacing: place.turn,
+    insertModel: () => setInsertOpen(true),
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
       recogniseOk.current
@@ -2544,6 +2548,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         icon: "component",
         run: () => h().makeLink(sel()),
         keywords: "robot rigid link body group joint urdf assembly part",
+      },
+      {
+        id: "model.insert",
+        scope: "model",
+        label: "Insert model",
+        group: "Tools",
+        icon: "insertModel",
+        keys: ["shift+i"],
+        run: () => h().insertModel(),
+        keywords: "assembly my models library bcad component place another model part",
       },
       {
         id: "rigid.make",
@@ -3847,6 +3861,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             mirrorOn={mirrorOn}
             onMirror={() => toolbarPattern(true)}
             onNewComponent={() => makeLink([])}
+            onInsertModel={() => setInsertOpen(true)}
             ribbon={
               ribbonOn
                 ? (tab) => (
@@ -4632,6 +4647,21 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             files={files.store}
             say={say}
             onGroup={(ids) => group(ids)}
+          />
+        </Suspense>
+      )}
+      {insertOpen && (
+        <Suspense fallback={null}>
+          <InsertModelDialog
+            api={api}
+            signedIn={!!account}
+            current={files.cloud?.modelId}
+            onCancel={() => setInsertOpen(false)}
+            onPick={(m) => {
+              setInsertOpen(false);
+              setTool("select");
+              place.place(m);
+            }}
           />
         </Suspense>
       )}

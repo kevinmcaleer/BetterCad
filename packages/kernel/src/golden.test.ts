@@ -170,6 +170,23 @@ function patterned(
   return new ModelBuilder(oc).solid(build(doc).parts.find((q) => q.id === "a")!).shape;
 }
 
+/**
+ * Insert model (#482): a 30 × 20 × 10 mm block with a 6 mm hole cut through it, inserted turned 90° about Z at
+ * (40, 10, 5), then a 10 mm cube in the host joined to it.
+ */
+function insertedModel(oc: OC): TopoDS_Shape {
+  let inner = changeParts(addPart(newDoc("Block"), "box", "block"), ["block"], "size", { x: 30, y: 20, z: 10 });
+  inner = changeParts(inner, ["block"], "position", { x: 10, y: 0, z: 0 });
+  inner = changeParts(addPart(inner, "cylinder", "pin"), ["pin"], "size", { x: 6, y: 6, z: 30 });
+  inner = changeParts(inner, ["pin"], "position", { x: 15, y: 0, z: -10 });
+  inner = addCombine(inner, { mode: "combine", target: "block", tools: [{ id: "pin", op: "cut" }] });
+  let doc = insertModel(newDoc(), { kind: "file", name: "Block" }, inner, { position: { x: 40, y: 10, z: 5 }, rotation: { x: 0, y: 0, z: 90 } }, "ins");
+  doc = changeParts(addPart(doc, "box", "cube"), ["cube"], "size", { x: 10, y: 10, z: 10 });
+  doc = changeParts(doc, ["cube"], "position", { x: 40, y: 0, z: 5 });
+  doc = addCombine(doc, { mode: "combine", target: "ins/block", tools: [{ id: "cube", op: "join" }] });
+  return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "ins/block")!).shape;
+}
+
 /** A 60 × 40 × 5 mm plate with a catalogue part's pocket and holes cut in it (#188). */
 function pocketIn(oc: OC, id: string): TopoDS_Shape {
   let doc = changeParts(addPart(newDoc(), "box", "plate"), ["plate"], "size", { x: 60, y: 40, z: 5 });
@@ -178,6 +195,7 @@ function pocketIn(oc: OC, id: string): TopoDS_Shape {
   return new ModelBuilder(oc).solid(build(doc).parts.find((p) => p.id === "plate")!).shape;
 }
 import { meshVolume, triangleCount } from "./mesh";
+import { insertModel } from "./insertmodel";
 
 /**
  * Golden tests (#49): every kernel operation, measured from the exact B-rep and checked against a stored answer in
@@ -561,6 +579,8 @@ const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
   // Catalogue parts (#186): a servo's blocks joined, and a bearing with its bore taken out.
   "catalogue-sg90": (oc) => catalogueShape(oc, cataloguePart("sg90")!),
   "catalogue-608": (oc) => catalogueShape(oc, cataloguePart("608")!),
+  // Insert model (#482): another model's body, turned and moved into this one, then joined to a body here.
+  "model-inserted-joined": (oc) => insertedModel(oc),
   // Cut pocket (#188): an SG90's pocket at a sliding fit and its M2 holes through a 5 mm plate; a Pico's four holes.
   "pocket-sg90-plate": (oc) => pocketIn(oc, "sg90"),
   "pocket-pico-holes": (oc) => pocketIn(oc, "pico"),

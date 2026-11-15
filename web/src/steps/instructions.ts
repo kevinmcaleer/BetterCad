@@ -42,6 +42,7 @@ const VERB: Record<Feature["type"], string> = {
   import: "Import",
   convert: "Make a mesh editable",
   insert: "Insert a part",
+  model: "Insert a model",
   mount: "Add a mount",
   gear: "Add a gear",
   link: "Make a component",

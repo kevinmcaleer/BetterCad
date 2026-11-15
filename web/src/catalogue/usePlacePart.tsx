@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { ESC, useEscape } from "@bettercad/ui";
-import { insertCatalogue, newId, placeOnFace, type CataloguePart, type ModelDoc } from "../state/document";
+import { insertCatalogue, newId, placeOnFace, type CataloguePart, type ModelDoc, type Vec3 } from "../state/document";
 import type { View3DHandle } from "../viewport/View3D";
 
 /**
- * Placing a catalogue part (#187): pick it in Robot parts, then click a flat face (or the ground) and it stands there,
- * its z along the face's normal. Turn it 90° at a time before clicking; Esc puts it back.
+ * Placing a catalogue part (#187) or another model (#484): pick it, then click a flat face (or the ground) and it
+ * stands there, its z along the face's normal. Turn it 90° at a time before clicking; Esc puts it back.
  */
 export interface PlaceDeps {
   record: (fn: (d: ModelDoc, at: number | undefined) => ModelDoc, label: string) => void;
@@ -15,21 +15,48 @@ export interface PlaceDeps {
   say: (text: string, error?: boolean) => void;
 }
 
+/** Something to place: what the bar calls it, and how it goes into the document once a spot is clicked. */
+export interface Placeable {
+  id: string;
+  name: string;
+  /** It goes in as a step whose id is a step's ("f…") rather than a part's. */
+  step?: boolean;
+  /** A catalogue part whose sizes aren't checked against a real one. */
+  unchecked?: boolean;
+  /** Puts it in at `place`, as `id` (the new part's or step's), at the marker `at`. */
+  put: (doc: ModelDoc, place: { position: Vec3; rotation: Vec3 }, id: string, at: number | undefined) => ModelDoc;
+  /** What to select once it's in. */
+  selects: (id: string) => string[];
+  /** What to say once it's in. */
+  done: string;
+}
+
+/** A catalogue part as a placeable: one reference body. */
+export const catalogueItem = (rec: CataloguePart): Placeable => ({
+  id: rec.id,
+  name: rec.name,
+  unchecked: !rec.checked,
+  put: (doc, place, id, i) => insertCatalogue(doc, rec, place, id, undefined, i),
+  selects: (id) => [id],
+  done: `Placed ${rec.name}, ${rec.mass} g`,
+});
+
 /** Parts land on a 0.5 mm grid. */
 const snap = (v: number) => Math.round(v * 2) / 2 + 0;
 
 export function usePlacePart(d: PlaceDeps) {
   const deps = useRef(d);
   deps.current = d;
-  const [part, setPart] = useState<CataloguePart | null>(null);
+  const [part, setPart] = useState<Placeable | null>(null);
   const [quarters, setQuarters] = useState(0);
   const live = useRef({ part, quarters });
   live.current = { part, quarters };
 
-  const start = useCallback((p: CataloguePart) => {
+  const place = useCallback((p: Placeable) => {
     setPart((cur) => (cur?.id === p.id ? null : p));
     setQuarters(0);
   }, []);
+  const start = useCallback((p: CataloguePart) => place(catalogueItem(p)), [place]);
   const cancel = useCallback(() => setPart(null), []);
   const turn = useCallback(() => setQuarters((q) => (q + 1) % 4), []);
 
@@ -60,10 +87,10 @@ export function usePlacePart(d: PlaceDeps) {
         const { part: rec, quarters: q } = live.current;
         if (!rec) return false;
         const at = point.map(snap) as [number, number, number];
-        const id = newId();
-        deps.current.record((doc, i) => insertCatalogue(doc, rec, placeOnFace(at, normal, x, q), id, undefined, i), `Insert ${rec.name}`);
-        deps.current.select([id]);
-        deps.current.say(`Placed ${rec.name}, ${rec.mass} g`);
+        const id = newId(rec.step ? "f" : "p");
+        deps.current.record((doc, i) => rec.put(doc, placeOnFace(at, normal, x, q), id, i), `Insert ${rec.name}`);
+        deps.current.select(rec.selects(id));
+        deps.current.say(rec.done);
         eng.showHover(null);
         setPart(null);
         return true;
@@ -77,9 +104,8 @@ export function usePlacePart(d: PlaceDeps) {
   }, [part]);
 
   useEscape(!!part, cancel, ESC.tool);
-
   const help = part ? `Click a flat face, or the ground, to place the ${part.name}. T turns it 90° first. Esc puts it back.` : null;
-  return { part, quarters, start, cancel, turn, help };
+  return { part, quarters, start, place, cancel, turn, help };
 }
 
 export type PlaceSession = ReturnType<typeof usePlacePart>;

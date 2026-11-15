@@ -162,6 +162,8 @@ export const share = "M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 
 
 // Components (#171): two parts joined into one; the active component's radio, on and off.
 export const component = "M3 3h8v8H3zM13 13h8v8h-8zM7 11v6h6M17 13V7h-6";
+// Insert model (#484): another model coming into this one.
+export const insertModel = "M3 9h12v12H3zM21 3l-10 10M11 7v6h6";
 export const radioOff = "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z";
 export const radioOn = "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z";
 // Tips: a light bulb.
@@ -169,6 +171,7 @@ export const bulb = "M9 18h6M10 22h4M15 14c.2-1 .7-1.7 1.5-2.5A5.5 5.5 0 0 0 18 
 
 export const ICONS = {
   component,
+  insertModel,
   bulb,
   radioOff,
   radioOn,
