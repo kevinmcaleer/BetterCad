@@ -744,6 +744,24 @@ export interface InsertFeature extends FeatureBase {
   position: Vec3;
   rotation?: Vec3;
 }
+/**
+ * Insert model (#482): another BetterCad model brought into this one as one component (#480). It remembers where it
+ * came from (a model in your account and its version, or a file) so a newer version can be offered (#489), and keeps a
+ * copy of the model so the assembly always rebuilds: offline, by share link, or after the source is gone. The copy's
+ * imported files live in this document's blobs. Its bodies come in as `<step id>/<their id>`, placed by `position`
+ * and `rotation` (the inserted model's origin lands on `position`).
+ */
+export interface ModelInsertFeature extends FeatureBase {
+  type: "model";
+  source: ModelSource;
+  /** The inserted model as it was, without its blobs (they are in this document's). */
+  model: ModelDoc;
+  position: Vec3;
+  rotation?: Vec3;
+}
+/** Where an inserted model came from: a model in your account at a version, or a .bcad file. */
+export type ModelSource = { kind: "account"; id: string; version: number; name: string } | { kind: "file"; name: string };
+
 /** A shaft hole through a gear: round, D-flat for a motor shaft, or a servo horn's hub and four arm holes. */
 export interface GearBore {
   kind: "none" | "round" | "dflat" | "horn";
@@ -787,6 +805,7 @@ export interface GearFeature extends FeatureBase {
 }
 
 export type Feature =
+  | ModelInsertFeature
   | ConstructFeature
   | DriveFeature
   | RigidFeature
@@ -957,6 +976,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   import: "Import",
   convert: "Convert",
   insert: "Insert part",
+  model: "Insert model",
   mount: "Mount",
   gear: "Gear",
   link: "Component",
@@ -1072,6 +1092,7 @@ const BUILT = new Set<string>([
   "import",
   "convert",
   "insert",
+  "model",
   "add",
   "duplicate",
   "pattern",
@@ -1103,6 +1124,61 @@ export function moveGeo(m: Mat4, g: ConstructGeo): ConstructGeo {
     return { what: "axis", origin: mat4Apply(m, g.origin), dir: [d[0] / l, d[1] / l, d[2] / l] };
   }
   return { what: "point", at: mat4Apply(m, g.at) };
+}
+
+/** An inserted model's id prefix: its bodies are `<step>/<id>` in the host. */
+export const insertedId = (step: string, id: string) => `${step}/${id}`;
+
+/** How deep models may sit inside models before a build gives up: a copy can't hold itself, but a crafted file might. */
+const INSERT_DEPTH = 8;
+let insertDepth = 0;
+/** Inner builds by the kept copy, which never changes in place (documents are replaced, not edited). */
+const innerBuilds = new WeakMap<ModelDoc, { parts: Part[]; failed?: string } | string>();
+
+/**
+ * The bodies an Insert model step brings in: the kept model built on its own, each body with its looks, named for
+ * the host and placed by the step. Or why it can't be.
+ */
+function innerParts(f: ModelInsertFeature): { parts: Part[]; failed?: string } | string {
+  let got = innerBuilds.get(f.model);
+  if (!got) {
+    if (insertDepth >= INSERT_DEPTH) return "Models sit too deep inside one another";
+    insertDepth += 1;
+    try {
+      const b = build(f.model);
+      const bad = b.failed.size;
+      got = {
+        // Hidden ghosts and highlights are how its author last looked at it, not part of the model.
+        parts: b.parts.map((p) => ({ ...p, ghost: undefined, highlight: undefined })),
+        ...(bad ? { failed: `${f.source.name}: ${bad === 1 ? "1 step" : `${bad} steps`} didn't build` } : {}),
+      };
+    } catch {
+      got = `${f.source.name} can't be built`;
+    } finally {
+      insertDepth -= 1;
+    }
+    innerBuilds.set(f.model, got);
+  }
+  if (typeof got === "string") return got;
+  const r = { ...ZERO, ...f.rotation };
+  const by = placeMatrix([f.position.x, f.position.y, f.position.z], [r.x, r.y, r.z]);
+  const parts = got.parts.map((p): Part => {
+    const r0 = p.rotation ?? ZERO;
+    const at = placeOf(mat4Mul(by, placeMatrix([p.position.x, p.position.y, p.position.z], [r0.x, r0.y, r0.z])));
+    const [x, y, z] = at.rotation;
+    const out: Part = {
+      ...p,
+      id: insertedId(f.id, p.id),
+      position: { x: at.position[0], y: at.position[1], z: at.position[2] },
+      size: { ...p.size },
+    };
+    if (x || y || z) out.rotation = { x, y, z };
+    else delete out.rotation;
+    delete out.ghost;
+    delete out.highlight;
+    return out;
+  });
+  return { parts, ...(got.failed ? { failed: got.failed } : {}) };
 }
 
 /** Replays the first `upTo` features (all of them by default) into parts. */
@@ -1226,6 +1302,19 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           });
         }
         break;
+      case "model": {
+        const inner = innerParts(f);
+        if (typeof inner === "string") {
+          failed.set(f.id, inner);
+          break;
+        }
+        if (!inner.parts.length) failed.set(f.id, `${f.source.name} has no bodies to bring in`);
+        else if (inner.failed) failed.set(f.id, inner.failed);
+        for (const p of inner.parts) if (find(p.id) < 0) parts.push({ ...p, link: f.id });
+        // The whole model is one component, which joints can move; it sits in the component it was inserted into.
+        linkSteps.push({ id: f.id, type: "link", name: f.name, parts: inner.parts.map((p) => p.id), ...(f.component ? { parent: f.component } : {}) });
+        break;
+      }
       case "add":
         if (find(f.part.id) < 0) parts.push({ ...f.part, position: { ...f.part.position }, size: { ...f.part.size }, hidden: false });
         break;
@@ -2331,6 +2420,10 @@ export function featureParts(f: Feature): string[] {
       return f.bodies.map((b) => b.id);
     case "insert":
       return [f.part.id];
+    case "model": {
+      const inner = innerParts(f);
+      return typeof inner === "string" ? [] : inner.parts.map((p) => p.id);
+    }
     case "gear":
     case "convert":
       return [f.body.id];
@@ -2402,6 +2495,12 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
         : `${f.horn === "single" ? "Single" : f.horn === "double" ? "Double" : "Cross"} horn, ${f.size} holes ${mm(f.arm)} out`;
     case "insert":
       return `${f.record.name}, ${f.record.mass} g${f.record.checked ? "" : ", sizes not checked"}`;
+    case "model": {
+      const inner = innerParts(f);
+      const n = typeof inner === "string" ? 0 : inner.parts.length;
+      const from = f.source.kind === "account" ? `version ${f.source.version} of ${f.source.name}` : `${f.source.name} from a file`;
+      return `${from}, ${n === 1 ? "1 body" : `${n} bodies`}, one component`;
+    }
     case "import":
       return `${f.bodies.length === 1 ? "1 body" : `${f.bodies.length} bodies`} from ${f.file}`;
     case "convert":
@@ -3347,6 +3446,7 @@ function partsRead(f: Feature): string[] {
       return [...new Set(f.refs.flatMap((r) => ("body" in r ? [r.body] : [])))];
     case "import":
     case "insert":
+    case "model":
     case "gear":
     case "joint":
     case "drive":
@@ -3363,6 +3463,10 @@ function partsMade(f: Feature): string[] {
   if (f.type === "pattern") return patternCopyIds(f);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
+  if (f.type === "model") {
+    const inner = innerParts(f);
+    return typeof inner === "string" ? [] : inner.parts.map((p) => p.id);
+  }
   if (f.type === "gear" || f.type === "convert") return [f.body.id];
   if (f.type === "split") return f.keep === "both" ? [f.body.id] : [];
   if ((f.type === "extrude" || f.type === "revolve" || f.type === "loft" || f.type === "sweep") && f.operation === "new") return [f.body.id];

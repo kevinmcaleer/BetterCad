@@ -27,6 +27,7 @@ export const FEATURE_ICON: Record<Feature["type"], IconName> = {
   import: "upload",
   convert: "shapes",
   insert: "screw",
+  model: "insertModel",
   mount: "hole",
   gear: "gear",
   link: "component",

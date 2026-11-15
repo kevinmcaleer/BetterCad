@@ -63,6 +63,8 @@ export interface TopBarProps {
   shared?: { owner: string } | null;
   onOpenCopy?: () => void;
   onDownloadBcad?: () => void;
+  /** Opens the Insert model picker (#484). */
+  onInsertModel?: () => void;
   onExport?: () => void;
   /** Build steps: a picture per timeline step and a Markdown guide, as a .zip. */
   onExportSteps?: () => void;
@@ -240,6 +242,7 @@ export function TopBar(p: TopBarProps) {
                     <ToolButton icon="component" label="New component" onPress={p.onNewComponent} />
                     <ToolButton icon="shapes" label="Library" pressed={p.panel === "library"} onPress={panelToggle(p, "library")} />
                     <ToolButton icon="screw" label="Catalogue" pressed={p.panel === "robot"} onPress={panelToggle(p, "robot")} />
+                    {p.onInsertModel && <ToolButton icon="insertModel" label="Insert model" shortcut={formatCombo("shift+i")} onPress={p.onInsertModel} />}
                   </>
                 )}
                 {g.tools.map((t) =>

@@ -237,6 +237,10 @@ const DRAW: Record<string, () => string> = {
     `<path d="M3 3h18v18H3z" fill="none" stroke="${EDGE}" stroke-width="1.5" stroke-linejoin="round"/><rect x="3" y="5.5" width="18" height="2.2" fill="${SIDE}" stroke="${EDGE}" stroke-width="0.7"/>` +
     `<path d="M10.5 7.7h3l-1.5 2.4z" fill="${DARK}" stroke="${EDGE}" stroke-width="0.7"/><rect x="5" y="17" width="14" height="2.2" fill="${TOP}" stroke="${EDGE}" stroke-width="0.7"/>` +
     `<rect x="9" y="12.5" width="6" height="4.5" fill="${HI}" stroke="${EDGE}" stroke-width="0.7"/>`,
+  insertModel: () =>
+    `<rect x="1.5" y="7.5" width="15" height="15" rx="2.5" fill="none" stroke="${HI}" stroke-width="1.4" stroke-dasharray="2.2 1.6"/>` +
+    box(-6, -2, -3, 6, 6, 5) +
+    hiLine("M22 2l-7.5 7.5M14 4.5V10h5.5", 1.9),
   // Assemble
   joint: () =>
     box(-7, -2.5, -4, 6, 5, 4) +

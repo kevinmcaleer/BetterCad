@@ -57,7 +57,7 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       id: "insert",
       label: "Insert",
       sections: [
-        ["Parts", ["panel.library", "panel.catalogue", "tool.gear", "tool.mount"]],
+        ["Parts", ["panel.library", { id: "model.insert", short: "Model" }, "panel.catalogue", "tool.gear", "tool.mount"]],
         ["Files", ["file.import", "file.importReference", "tool.canvas"]],
       ],
       pins: ["panel.library", "tool.gear"],
@@ -74,8 +74,13 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
     {
       id: "components",
       label: "Components",
-      sections: [["", [{ id: "link.make", short: "Component" }, "tool.joint", { id: "rigid.make", colour: "link" }, "link.select"]]],
-      pins: ["link.make", "tool.joint", "rigid.make"],
+      sections: [
+        [
+          "",
+          [{ id: "link.make", short: "Component" }, { id: "model.insert", short: "Insert" }, "tool.joint", { id: "rigid.make", colour: "link" }, "link.select"],
+        ],
+      ],
+      pins: ["link.make", "model.insert", "tool.joint", "rigid.make"],
     },
     {
       id: "motion",
