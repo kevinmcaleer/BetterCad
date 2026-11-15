@@ -60,7 +60,7 @@ function page(route: Route) {
     case "account":
       return <AccountPage />;
     case "library":
-      return <Library bin={route.bin} />;
+      return <Library bin={route.bin} folder={route.folder} project={route.project} />;
     case "privacy":
       return <PrivacyPage />;
     case "terms":

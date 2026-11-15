@@ -109,6 +109,37 @@ test("rename, duplicate, delete and restore in the library", async ({ page, cont
   await expect(page.getByRole("button", { name: /^Open Gear/ })).toHaveCount(1);
 });
 
+test("make a folder, move a model into it and find it by search", async ({ page, context }) => {
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/#/library");
+  await page.getByRole("button", { name: "New model" }).first().click();
+  await expect(page).toHaveURL(/#\/edit\//);
+  await page.goto("/#/library");
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByLabel("Folder name").fill("Wheels");
+  await page.getByRole("button", { name: "Make" }).click();
+  await expect(page.getByRole("button", { name: "Open folder Wheels" })).toBeVisible();
+
+  await page.getByRole("button", { name: "More for Untitled model" }).click();
+  await page.getByRole("menuitem", { name: "Move to…" }).click();
+  await page
+    .getByRole("dialog", { name: "Move Untitled model" })
+    .getByRole("radio", { name: /Wheels/ })
+    .check();
+  await page.getByRole("button", { name: "Move here" }).click();
+  await expect(page.getByText("Moved Untitled model to Wheels")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Untitled model" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Open folder Wheels" }).click();
+  await expect(page).toHaveURL(/#\/library\/folder\/f\d+$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Wheels" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Untitled model" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Breadcrumbs" }).getByRole("link", { name: "My models" }).click();
+  await page.getByLabel("Search by name").fill("untitled");
+  await expect(page.getByRole("list", { name: "Search results" }).getByText("Wheels")).toBeVisible();
+});
+
 test("a save from a second tab warns about the first", async ({ page, context }) => {
   const server = await fakeApi(context);
   await server.signIn(context);
