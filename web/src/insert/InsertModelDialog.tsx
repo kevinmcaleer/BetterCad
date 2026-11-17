@@ -26,6 +26,15 @@ export function modelItem({ source, doc }: PickedModel): Placeable {
   };
 }
 
+/** Reads a model saved in your account, with its imported files, ready to place as a linked component. */
+export async function savedItem(api: Api, id: string): Promise<Placeable> {
+  const got = await api.get(id);
+  const r = loadBcad(got.bcad);
+  if (r instanceof BcadError) throw new Error(r.message);
+  const doc = await fillBlobs(api, { ...r.doc, name: got.name });
+  return modelItem({ source: { kind: "account", id, version: got.version, name: got.name }, doc });
+}
+
 export interface InsertModelDialogProps {
   api: Api;
   signedIn: boolean;
@@ -76,12 +85,7 @@ export function InsertModelDialog({ api, signedIn, current, onPick, onCancel }: 
     setBusy(m.id);
     setProblem(null);
     try {
-      const got = await api.get(m.id);
-      const doc = read(got.bcad);
-      if (doc)
-        onPick(
-          modelItem({ source: { kind: "account", id: m.id, version: got.version, name: got.name }, doc: await fillBlobs(api, { ...doc, name: got.name }) }),
-        );
+      onPick(await savedItem(api, m.id));
     } catch (e) {
       setProblem((e as Error).message);
     } finally {

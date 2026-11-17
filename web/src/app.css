@@ -99,6 +99,62 @@ body {
   left: var(--bc-float-gap);
   width: var(--bc-side-width);
 }
+/* The model picker (#480) hugs the left edge, before the browser: a slim tab until opened, then a panel as wide as the
+   browser. The browser, and the view's clear area, move over to make room. */
+.bc-app.bc-has-picker {
+  --bc-picker-room: calc(36px + var(--bc-float-gap));
+  --bc-view-left: calc(var(--bc-picker-room) + var(--bc-side-width) + 2 * var(--bc-float-gap));
+}
+.bc-app.bc-has-picker.bc-left-closed {
+  --bc-view-left: calc(var(--bc-picker-room) + var(--bc-float-gap));
+}
+.bc-app.bc-has-picker.bc-picker-open {
+  --bc-picker-room: calc(var(--bc-side-width) + var(--bc-float-gap));
+}
+.bc-app.bc-has-picker .bc-left {
+  left: calc(var(--bc-float-gap) + var(--bc-picker-room));
+}
+.bc-app .bc-picker-tab,
+.bc-app .bc-picker {
+  position: absolute;
+  z-index: 10;
+  top: var(--bc-view-top);
+  left: var(--bc-float-gap);
+}
+.bc-app .bc-picker-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  width: 36px;
+  padding: var(--bc-space-4) 0;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  background: var(--bc-color-rail);
+  box-shadow: var(--bc-shadow-float);
+  color: var(--bc-color-ink);
+  font: inherit;
+  font-size: 13px;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+}
+.bc-app .bc-picker-tab:hover {
+  background: var(--bc-color-hover);
+}
+.bc-app .bc-picker {
+  width: var(--bc-side-width);
+  max-height: calc(100% - var(--bc-view-top) - var(--bc-float-gap));
+}
+.bc-picker-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bc-space-4);
+}
+.bc-picker-body .bc-parts-head {
+  margin: 0;
+}
+.bc-picker-hide .bc-icon {
+  transform: rotate(180deg);
+}
 /* The right column: a failed step's banner over the props panel. Only the cards take clicks. */
 .bc-app .bc-right {
   right: var(--bc-float-gap);
@@ -805,6 +861,23 @@ kbd {
     --bc-view-right: var(--bc-float-gap);
     /* The tools take the bottom edge; the bottom stack sits just above them. */
     --bc-foot-bottom: calc(var(--bc-rail-bar) + 2 * var(--bc-float-gap));
+  }
+  /* The model picker's tab gives its room back; opened (from the command palette), it is a sheet like the panels. */
+  .bc-app.bc-has-picker,
+  .bc-app.bc-has-picker.bc-left-closed {
+    --bc-picker-room: 0px;
+    --bc-view-left: var(--bc-float-gap);
+  }
+  .bc-app .bc-picker-tab {
+    display: none;
+  }
+  .bc-app .bc-picker {
+    top: auto;
+    right: var(--bc-float-gap);
+    bottom: calc(var(--bc-rail-bar) + 2 * var(--bc-float-gap));
+    z-index: 12;
+    width: auto;
+    max-height: 55%;
   }
   /* The panels are sheets over the view, just above the tools. */
   .bc-app .bc-left,
