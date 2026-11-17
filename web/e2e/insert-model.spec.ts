@@ -53,3 +53,43 @@ test("insert a saved model from My models, place it, and joint-ready as one comp
   await expect(page.getByRole("button", { name: /^Horn/ }).first()).toBeVisible();
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
 });
+
+test("the My models panel lists saved models and right-click inserts one", async ({ page, context }) => {
+  test.setTimeout(90_000);
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Kev: account and settings" })).toBeVisible();
+
+  // Save a cylinder as Horn, then start a new model.
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Cylinder", exact: true }).click();
+  await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
+  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("menuitem", { name: "Save to your account…" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Horn");
+  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
+  await page.keyboard.press("ControlOrMeta+n");
+  await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toHaveCount(0);
+
+  // Folded by default: a tab at the left edge opens it.
+  const panel = page.getByRole("complementary", { name: "My models" });
+  await expect(panel).toHaveCount(0);
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-tab.png") });
+  await page.getByRole("button", { name: "My models" }).click();
+  const tree = panel.getByRole("tree", { name: "Your models" });
+  await expect(tree.getByRole("button", { name: "Horn" })).toBeVisible();
+  await tree.getByRole("button", { name: "Horn" }).click({ button: "right" });
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-menu.png") });
+  await page.getByRole("menuitem", { name: "Insert as a linked component" }).click();
+  await expect(page.getByText("Click a flat face, or the ground, to place the Horn.", { exact: false }).first()).toBeVisible();
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-panel.png") });
+  await click(page, -40, -40, 0);
+  await expect(page.getByText("Inserted Horn as a component.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
+
+  // Its hide button folds it back to the tab.
+  await panel.getByRole("button", { name: "Hide my models" }).click();
+  await expect(panel).toHaveCount(0);
+});

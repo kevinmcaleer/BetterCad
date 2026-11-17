@@ -11,6 +11,9 @@ export interface AppShellProps {
   /** The open rail panel, or null when it is folded away. */
   leftPanel: ReactNode | null;
   leftLabel?: string;
+  /** The model picker (#480) at the left edge: a slim tab, or the open panel, before the browser. */
+  picker?: ReactNode;
+  pickerOpen?: boolean;
   stageToolbar: ReactNode;
   /** The viewport. Epic #3 mounts the canvas here. */
   stage: ReactNode;
@@ -38,6 +41,8 @@ export function AppShell({
   toast,
   leftPanel,
   leftLabel,
+  picker,
+  pickerOpen,
   stageToolbar,
   stage,
   timeline,
@@ -77,13 +82,22 @@ export function AppShell({
   return (
     <div
       ref={appRef}
-      className={cx("bc bc-app", !leftPanel && "bc-left-closed", rightOpen && "bc-right-open", rightHidden && "bc-right-hidden", !timeline && "bc-no-timeline")}
+      className={cx(
+        "bc bc-app",
+        !leftPanel && "bc-left-closed",
+        !!picker && "bc-has-picker",
+        !!picker && pickerOpen && "bc-picker-open",
+        rightOpen && "bc-right-open",
+        rightHidden && "bc-right-hidden",
+        !timeline && "bc-no-timeline",
+      )}
     >
       <a className="bc-skip" href="#bc-view">
         Skip to the 3D view
       </a>
       {topBar}
       <div className="bc-body">
+        {picker}
         {leftPanel && (
           <aside className="bc-side bc-left" id="bc-left-panel" aria-label={leftLabel}>
             {leftPanel}

@@ -4,6 +4,7 @@ import {
   Button,
   ContextMenu,
   ESC,
+  Icon,
   cx,
   TooltipLayer,
   useEscape,
@@ -220,6 +221,7 @@ const FinishBar = lazy(() => import("../finish/FinishBar").then((m) => ({ defaul
 const PushPullBar = lazy(() => import("../finish/PushPullBar").then((m) => ({ default: m.PushPullBar })));
 const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: m.Versions })));
 const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
+const ModelPicker = lazy(() => import("../insert/ModelPicker").then((m) => ({ default: m.ModelPicker })));
 const InsertModelDialog = lazy(() => import("../insert/InsertModelDialog").then((m) => ({ default: m.InsertModelDialog })));
 const SendDialog = lazy(() => import("../steps/SendDialog").then((m) => ({ default: m.SendDialog })));
 const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
@@ -404,6 +406,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
   const [crash, setCrash] = useState<Caught | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
+  // The model picker (#480) beside the browser: folded to a tab until opened.
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // Send to kevsrobots: the build steps to a kevsrobots project.
   const [sendOpen, setSendOpen] = useState(false);
@@ -2003,6 +2007,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     selectLink: (_ids: string[]) => {},
     turnPlacing: () => {},
     insertModel: () => {},
+    togglePicker: () => {},
     confirm: () => {},
     suppressActive: () => {},
     activeFeature: (): string | null => null,
@@ -2102,6 +2107,7 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
     selectLink,
     turnPlacing: place.turn,
     insertModel: () => setInsertOpen(true),
+    togglePicker: () => setPickerOpen((o) => !o),
     importReference: () => referenceInput.current?.click(),
     confirm: () =>
       recogniseOk.current
@@ -2558,6 +2564,15 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         keys: ["shift+i"],
         run: () => h().insertModel(),
         keywords: "assembly my models library bcad component place another model part",
+      },
+      {
+        id: "view.models",
+        scope: "model",
+        label: "My models panel",
+        group: "View",
+        icon: "folder",
+        run: () => h().togglePicker(),
+        keywords: "model picker projects folders saved models insert linked component side panel",
       },
       {
         id: "rigid.make",
@@ -3945,6 +3960,30 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
           </>
         }
         leftLabel={panel ? PANEL_TITLES[panel] : undefined}
+        pickerOpen={pickerOpen}
+        picker={
+          share ? undefined : pickerOpen ? (
+            <aside className="bc-side bc-picker" id="bc-picker" aria-label="My models">
+              <Suspense fallback={<p className="bc-note">Loading…</p>}>
+                <ModelPicker
+                  api={api}
+                  signedIn={!!account}
+                  current={files.cloud?.modelId}
+                  onClose={() => setPickerOpen(false)}
+                  onInsert={(m) => {
+                    setTool("select");
+                    place.place(m);
+                  }}
+                />
+              </Suspense>
+            </aside>
+          ) : (
+            <button type="button" className="bc-picker-tab" aria-expanded="false" data-tip="Show my models" onClick={() => setPickerOpen(true)}>
+              <Icon name="folder" size={16} />
+              <span>My models</span>
+            </button>
+          )
+        }
         leftPanel={
           panel && (
             <LeftPanel
