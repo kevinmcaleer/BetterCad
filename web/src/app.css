@@ -114,6 +114,10 @@ body {
 .bc-app.bc-has-picker .bc-left {
   left: calc(var(--bc-float-gap) + var(--bc-picker-room));
 }
+/* The folded tab is short and sits at the top, so the timeline along the bottom keeps the width it had. */
+.bc-app.bc-has-picker:not(.bc-picker-open) .bc-stage-foot {
+  left: calc(var(--bc-view-left) - var(--bc-picker-room));
+}
 .bc-app .bc-picker-tab,
 .bc-app .bc-picker {
   position: absolute;
