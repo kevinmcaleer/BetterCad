@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react";
 import { SuiteSwitcher } from "./SuiteSwitcher";
+import "../vendor/kr-suite.js";
 
 // The switcher draws itself in a shadow root, so these look inside it.
 function shadowOf() {
