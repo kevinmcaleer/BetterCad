@@ -156,6 +156,10 @@ body {
 .bc-picker-body .bc-parts-head {
   margin: 0;
 }
+/* On wide screens the edge tab opens it; the top-bar button is for narrow screens, where the tab is hidden. */
+.bc-app .bc-top .bc-models-toggle {
+  display: none;
+}
 .bc-picker-hide .bc-icon {
   transform: rotate(180deg);
 }
@@ -874,6 +878,9 @@ kbd {
   }
   .bc-app .bc-picker-tab {
     display: none;
+  }
+  .bc-app .bc-top .bc-models-toggle {
+    display: inline-flex;
   }
   .bc-app .bc-picker {
     top: auto;
@@ -1693,4 +1700,22 @@ kbd {
 }
 .bc-frame-graph-60 {
   stroke: var(--bc-color-line);
+}
+/* A phone's top bar holds the logo, browser and My models, undo and redo, properties, parameters, Save, Help and the
+   account: Save keeps its icon (its name stays for screen readers) and the separators close up, so the account fits. */
+@media (max-width: 480px) {
+  .bc-app .bc-top .bc-split > .bc-btn:first-child > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .bc-app .bc-top {
+    gap: var(--bc-space-1);
+  }
+  .bc-app .bc-top > .bc-sep {
+    margin: 0;
+  }
 }

@@ -3877,6 +3877,8 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
             onMirror={() => toolbarPattern(true)}
             onNewComponent={() => makeLink([])}
             onInsertModel={() => setInsertOpen(true)}
+            onModels={share ? undefined : () => setPickerOpen((o) => !o)}
+            modelsOpen={pickerOpen}
             ribbon={
               ribbonOn
                 ? (tab) => (
