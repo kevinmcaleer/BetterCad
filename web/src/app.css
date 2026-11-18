@@ -156,6 +156,10 @@ body {
 .bc-picker-body .bc-parts-head {
   margin: 0;
 }
+/* On wide screens the edge tab opens it; the top-bar button is for narrow screens, where the tab is hidden. */
+.bc-app .bc-top .bc-models-toggle {
+  display: none;
+}
 .bc-picker-hide .bc-icon {
   transform: rotate(180deg);
 }
@@ -874,6 +878,9 @@ kbd {
   }
   .bc-app .bc-picker-tab {
     display: none;
+  }
+  .bc-app .bc-top .bc-models-toggle {
+    display: inline-flex;
   }
   .bc-app .bc-picker {
     top: auto;

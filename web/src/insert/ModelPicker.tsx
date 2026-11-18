@@ -116,7 +116,7 @@ export function ModelPicker({ api, signedIn, current, onInsert, onClose }: Model
               empty={<p className="bc-note">{q ? "No models match that." : "No saved models yet. Save one to your account and it shows here."}</p>}
             />
           )}
-          <p className="bc-note">Right-click a model to insert it as a linked component.</p>
+          <p className="bc-note">Right-click a model, or press and hold it, to insert it as a linked component.</p>
           <Button
             variant="secondary"
             size="wide"

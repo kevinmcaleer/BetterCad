@@ -81,6 +81,9 @@ export interface TopBarProps {
   onMirror?: () => void;
   /** New component (#171): an empty one to work in, inside the active one. From bodies is on their menu. */
   onNewComponent?: () => void;
+  /** Opens or folds the My models panel (#480). Its button shows only on narrow screens, where the edge tab is hidden. */
+  onModels?: () => void;
+  modelsOpen?: boolean;
   /**
    * The desktop ribbon: when set, the bar grows a row of tabs and big tools, and this draws the open tab's tools
    * (loaded after first paint). Unset, the compact bar shows.
@@ -228,6 +231,9 @@ export function TopBar(p: TopBarProps) {
     <header className="bc-top">
       {title}
       {browserToggle(p)}
+      {p.onModels && (
+        <IconButton className="bc-models-toggle" icon="folder" title={p.modelsOpen ? "Hide my models" : "My models"} on={!!p.modelsOpen} onClick={p.onModels} />
+      )}
       <Separator />
       {undoRedo(p)}
       {!p.shared && (

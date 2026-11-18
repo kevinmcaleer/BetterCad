@@ -93,3 +93,18 @@ test("the My models panel lists saved models and right-click inserts one", async
   await panel.getByRole("button", { name: "Hide my models" }).click();
   await expect(panel).toHaveCount(0);
 });
+
+test("on a phone, the top bar's My models button opens the panel as a sheet", async ({ page, context }) => {
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  const top = page.getByRole("banner");
+  await expect(top.getByRole("button", { name: "My models" })).toBeVisible();
+  await top.getByRole("button", { name: "My models" }).click();
+  const panel = page.getByRole("complementary", { name: "My models" });
+  await expect(panel.getByRole("searchbox", { name: "Search your models" })).toBeVisible();
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-phone.png") });
+  await top.getByRole("button", { name: "Hide my models" }).click();
+  await expect(panel).toHaveCount(0);
+});
