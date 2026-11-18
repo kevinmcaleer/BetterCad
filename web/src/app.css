@@ -313,6 +313,26 @@ body {
 .bc-brand {
   white-space: nowrap;
 }
+/* The kevsrobots suite switcher beside the logo (kevsrobots.com#581): its colours from our tokens. */
+.bc-suite {
+  --kr-ink: var(--bc-color-ink);
+  --kr-ink-soft: var(--bc-color-muted);
+  --kr-line: var(--bc-color-line);
+  --kr-panel: var(--bc-color-bar);
+  --kr-sunk: var(--bc-color-hover);
+  --kr-shadow: var(--bc-shadow-pop);
+  --kr-accent: var(--bc-color-accent);
+  --kr-on-accent: var(--bc-color-on-accent);
+  --kr-focus: var(--bc-color-accent);
+  --kr-font-ui: var(--bc-font-sans);
+  flex: none;
+}
+/* Before the script upgrades it, keep its space so the bar does not jump. */
+.bc-suite:not(:defined) {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+}
 /* The tools ride on the top bar, beside the logo: no card of their own. Squeezed, they scroll sideways. */
 .bc-top > .bc-top-tools {
   flex: 0 1 auto;

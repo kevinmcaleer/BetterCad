@@ -7,3 +7,5 @@ packages/ui/src/tokens.json
 package-lock.json
 *.md
 dist-types
+# A copy of https://www.kevsrobots.com/assets/suite/kr-suite.js, kept byte for byte (kevsrobots.com#581)
+web/src/vendor
