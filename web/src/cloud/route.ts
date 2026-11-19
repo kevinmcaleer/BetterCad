@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 /**
  * Hash routes, so the app runs from any static host: "#/" is the editor, then the pages of epic #9.
  * "#/edit/<id>" opens a saved model in the editor; "#/view/<token>" is a share link; "#/sample/<id>" opens a sample (#99).
+ * "#/view/<token>?frame=1" is the share link inside a frame on another page (#508): the model and the view tools, no app chrome.
  */
 export type Route =
   | { page: "editor"; model?: string; sample?: string }
@@ -10,7 +11,7 @@ export type Route =
   | { page: "signup"; next?: string }
   | { page: "account" }
   | { page: "library"; bin?: boolean; folder?: string; project?: string }
-  | { page: "view"; token: string }
+  | { page: "view"; token: string; frame?: boolean }
   | { page: "gallery" }
   | { page: "privacy" }
   | { page: "terms" }
@@ -40,7 +41,8 @@ export function parseRoute(hash: string): Route {
     case "sample":
       return arg ? { page: "editor", sample: decodeURIComponent(arg) } : { page: "editor" };
     case "view":
-      return arg ? { page: "view", token: decodeURIComponent(arg) } : { page: "editor" };
+      if (!arg) return { page: "editor" };
+      return q.get("frame") === "1" ? { page: "view", token: decodeURIComponent(arg), frame: true } : { page: "view", token: decodeURIComponent(arg) };
     case "gallery":
       return { page: "gallery" };
     case "privacy":

@@ -66,6 +66,8 @@ describe("routes", () => {
     expect(parseRoute("#/signin?next=%23%2Flibrary")).toEqual({ page: "signin", next: "#/library" });
     expect(parseRoute("#/library/bin")).toEqual({ page: "library", bin: true });
     expect(parseRoute("#/view/abc")).toEqual({ page: "view", token: "abc" });
+    expect(parseRoute("#/view/abc?frame=1")).toEqual({ page: "view", token: "abc", frame: true });
+    expect(parseRoute("#/view/abc?frame=0")).toEqual({ page: "view", token: "abc" });
     expect(parseRoute("#/view")).toEqual({ page: "editor" });
     expect(parseRoute("#/gallery")).toEqual({ page: "gallery" });
     expect(parseRoute("#/admin")).toEqual({ page: "admin" });

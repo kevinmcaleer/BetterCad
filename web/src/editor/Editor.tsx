@@ -338,11 +338,13 @@ export interface EditorProps {
   model?: string;
   /** A share link's token ("#/view/<token>"): the model read-only (#92). */
   share?: string;
+  /** The share link is inside a frame on another page (#508): no top bar, panels or timeline. */
+  frame?: boolean;
   /** A sample model to open as a new one ("#/sample/<id>", #99). */
   sample?: string;
 }
 
-export function Editor({ active = true, model, share, sample }: EditorProps = {}) {
+export function Editor({ active = true, model, share, sample, frame = false }: EditorProps = {}) {
   const [store] = useState(() => createStore<ModelDoc>(newDoc()));
   const history = useSyncExternalStore(store.subscribe, store.history);
   const doc = history.present;
@@ -3866,6 +3868,16 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
         }}
       />
       <AppShell
+        frame={
+          frame && share ? (
+            <header className="bc-frame-bar" data-floats="">
+              <span className="bc-frame-name">{files.shared ? `${files.shared.name} by ${files.shared.owner}` : "Loading the model…"}</span>
+              <a className="bc-frame-open" href={`/view/${encodeURIComponent(share)}`} target="_blank" rel="noopener">
+                Open in BetterCad
+              </a>
+            </header>
+          ) : undefined
+        }
         topBar={
           <TopBar
             paramsOpen={paramsOpen}
@@ -3944,12 +3956,12 @@ export function Editor({ active = true, model, share, sample }: EditorProps = {}
               )}
             </div>
             {paramsDialog}
-            {whatsNew.card && (
+            {whatsNew.card && !frame && (
               <Suspense fallback={null}>
                 <WhatsNewCard fresh={whatsNew.fresh} onOpen={whatsNew.show} onDismiss={whatsNew.dismiss} />
               </Suspense>
             )}
-            {stage.open && !emptyState && (
+            {stage.open && !emptyState && !frame && (
               <Suspense fallback={null}>
                 <StageNotice onDismiss={stage.dismiss} />
               </Suspense>

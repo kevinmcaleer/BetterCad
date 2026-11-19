@@ -137,14 +137,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         base = str(request.base_url).rstrip("/")
         safe = html.escape(token, quote=True)
         js = json.dumps(token).replace("<", "\\u003c")
+        # ?frame=1 is the link inside a frame on another page (#508): the viewer then leaves out the app chrome.
+        frame = "?frame=1" if request.query_params.get("frame") == "1" else ""
         title = html.escape(f"{row['name']} by {row['owner']} · BetterCad" if row else "BetterCad", quote=True)
         image = f'<meta property="og:image" content="{base}/api/shared/{safe}/thumbnail">' if row and row["thumbnail"] else ""
         page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{title}</title>
 <meta property="og:title" content="{title}"><meta property="og:type" content="website">
 <meta property="og:description" content="A 3D model made in BetterCad. Open it to look around, measure and download.">
 <meta property="og:url" content="{base}/view/{safe}">{image}<meta name="twitter:card" content="summary_large_image">
-<meta http-equiv="refresh" content="0; url=/#/view/{safe}"></head>
-<body><script>location.replace("/#/view/" + encodeURIComponent({js}));</script>
+<meta http-equiv="refresh" content="0; url=/#/view/{safe}{frame}"></head>
+<body><script>location.replace("/#/view/" + encodeURIComponent({js}) + "{frame}");</script>
 <a href="/#/view/{safe}">Open the model</a></body></html>"""
         return HTMLResponse(
             page,

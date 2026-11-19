@@ -27,6 +27,11 @@ export interface AppShellProps {
   rightHidden?: boolean;
   /** Puts the props panel away (wide) or closes its sheet (narrow); the panel shows a hide button when given. */
   onHideRight?: () => void;
+  /**
+   * Frame mode (#508): a share link shown inside a frame on another page. This slim bar replaces the top bar, and
+   * the picker, panels and timeline are left out, so the frame is the model and the view tools.
+   */
+  frame?: ReactNode;
 }
 
 /**
@@ -51,7 +56,9 @@ export function AppShell({
   rightOpen,
   rightHidden,
   onHideRight,
+  frame,
 }: AppShellProps) {
+  const framed = frame !== undefined && frame !== null && frame !== false;
   const appRef = useRef<HTMLDivElement>(null);
   const footRef = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
@@ -69,7 +76,8 @@ export function AppShell({
   // The props panel folds into, and grows back out of, the top bar's properties button: scaling about the button's
   // centre carries the card there, so you can see where it went.
   useLayoutEffect(() => {
-    const right = rightRef.current!;
+    const right = rightRef.current;
+    if (!right) return;
     const btn = appRef.current!.querySelector(".bc-props-toggle")?.getBoundingClientRect();
     const box = (right.offsetParent ?? document.body).getBoundingClientRect();
     if (!btn || !btn.width) return;
@@ -84,21 +92,22 @@ export function AppShell({
       ref={appRef}
       className={cx(
         "bc bc-app",
-        !leftPanel && "bc-left-closed",
-        !!picker && "bc-has-picker",
-        !!picker && pickerOpen && "bc-picker-open",
-        rightOpen && "bc-right-open",
-        rightHidden && "bc-right-hidden",
-        !timeline && "bc-no-timeline",
+        framed && "bc-app-frame",
+        (framed || !leftPanel) && "bc-left-closed",
+        !framed && !!picker && "bc-has-picker",
+        !framed && !!picker && pickerOpen && "bc-picker-open",
+        !framed && rightOpen && "bc-right-open",
+        (framed || rightHidden) && "bc-right-hidden",
+        (framed || !timeline) && "bc-no-timeline",
       )}
     >
       <a className="bc-skip" href="#bc-view">
         Skip to the 3D view
       </a>
-      {topBar}
+      {framed ? frame : topBar}
       <div className="bc-body">
-        {picker}
-        {leftPanel && (
+        {!framed && picker}
+        {!framed && leftPanel && (
           <aside className="bc-side bc-left" id="bc-left-panel" aria-label={leftLabel}>
             {leftPanel}
           </aside>
@@ -112,12 +121,14 @@ export function AppShell({
           <div className="bc-stage-foot" data-floats="" ref={footRef}>
             {status && <div className="bc-status-pill">{status}</div>}
             <div className="bc-help">{helpLine}</div>
-            {timeline}
+            {!framed && timeline}
           </div>
         </main>
-        <div className="bc-right" ref={rightRef}>
-          <PropsHide.Provider value={onHideRight ?? null}>{rightPanel}</PropsHide.Provider>
-        </div>
+        {!framed && (
+          <div className="bc-right" ref={rightRef}>
+            <PropsHide.Provider value={onHideRight ?? null}>{rightPanel}</PropsHide.Provider>
+          </div>
+        )}
       </div>
     </div>
   );

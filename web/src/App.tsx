@@ -103,6 +103,7 @@ export function App() {
           model={route.page === "editor" ? route.model : undefined}
           sample={route.page === "editor" ? route.sample : undefined}
           share={route.page === "view" ? route.token : undefined}
+          frame={route.page === "view" && !!route.frame}
         />
       </div>
     </AccountProvider>
