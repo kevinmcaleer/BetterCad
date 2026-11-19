@@ -242,5 +242,9 @@ def test_view_page_previews_and_redirects(user, make_client):
         assert f"/api/shared/{token}/thumbnail" in page.text
         assert f"url=/#/view/{token}" in page.text
         assert "frame-ancestors" in page.headers["content-security-policy"]
+        # Inside a frame on another page (#508), the viewer is asked for without the app chrome.
+        framed = anon.get(f"/view/{token}?frame=1")
+        assert f"url=/#/view/{token}?frame=1" in framed.text and '+ "?frame=1"' in framed.text
+        assert "frame=1" not in anon.get(f"/view/{token}?frame=yes").text
         odd = anon.get("/view/%3Cscript%3E%22x")
         assert odd.status_code == 200 and '<script>"x' not in odd.text and "BetterCad" in odd.text
