@@ -25,7 +25,7 @@ A free, browser-based CAD tool for 3D printing: Fusion-style constrained sketche
 
 ## Rules
 
-- The 3D view fills the whole window. The top bar (logo and tools on one row), panels, view bar, timeline and overlays float over it as cards and never box it in: no docked columns, no frame around the view. Overlays inside the view keep clear of the cards with the `--bc-view-top/left/right/bottom` insets set on `.bc-app`.
+- The top bar (logo and tools on one row, or the ribbon) is docked full width along the top edge, like Snakie's toolbar, so the kevsrobots apps switcher sits in the same place in both apps. Below it the 3D view fills the window; panels, view bar, timeline and overlays float over it as cards and never box it in: no docked columns, no frame around the view. Overlays inside the view keep clear of the cards with the `--bc-view-top/left/right/bottom` insets set on `.bc-app`.
 - Tokens only. Components use `var(--bc-…)`; no literal colours outside the generated `tokens.css`. A test enforces it.
 - Never edit `tokens.css` or `tokens.ts` by hand. Change the design system, copy `tokens.json`, run `npm run tokens`.
 - Tools sit on the top bar beside the logo, grouped and ranked by how often they are used (`TOOL_GROUPS` in `web/src/editor/tools.ts`). On wide screens with a mouse the top bar is a ribbon instead (`RIBBON` in `web/src/editor/Ribbon.tsx`): tabs, big colour icons with names, and a drop-down per group; a new tool goes in both. Colour tool icons are drawn in `packages/ui/src/colourIcons.ts` from the `icon-*` tokens. The left panel is the browser, headed by the model name; Library, Parameters and Print open in its place from top-bar buttons, Settings from the account menu, History from the timeline.
