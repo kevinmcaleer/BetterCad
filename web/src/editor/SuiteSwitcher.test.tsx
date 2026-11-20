@@ -13,7 +13,7 @@ describe("the kevsrobots app switcher", () => {
   it("lists the four apps and marks BetterCAD as where you are", () => {
     const { root } = shadowOf();
     const links = [...root.querySelectorAll("a")];
-    expect(links.map((a) => a.textContent!.replace(/\s+/g, " ").trim().split(" ")[1])).toEqual(["Learn", "Projects", "Snakie", "BetterCAD"]);
+    expect(links.map((a) => a.querySelector("b")!.textContent!.split(" ")[0])).toEqual(["Learn", "Projects", "Snakie", "BetterCAD"]);
     const here = links.filter((a) => a.getAttribute("aria-current"));
     expect(here).toHaveLength(1);
     expect(here[0]!.dataset.app).toBe("bettercad");
