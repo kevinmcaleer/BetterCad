@@ -140,12 +140,20 @@ export interface AdminUser {
   models: AdminModel[];
 }
 
+/**
+ * Why a call with status 0 got no answer from BetterCad: the request never left (`network`: offline, DNS, a dropped
+ * connection) or something else answered in its place (`no-server`: a static host's HTML, or a proxy's bare 5xx
+ * page while the server is down or restarting). `http` is that other answer's status, when there was one.
+ */
+export type NoAnswer = { why: "network" } | { why: "no-server"; http: number };
+
 export class ApiError extends Error {
   override name = "ApiError";
   constructor(
     message: string,
     readonly status: number,
     readonly data?: unknown,
+    readonly noAnswer?: NoAnswer,
   ) {
     super(message);
   }
@@ -174,13 +182,13 @@ export function createApi(base = "api/", f: Fetch = (i, o) => fetch(i, o)) {
     try {
       r = await f(base + path, { method, headers: h, body: payload, credentials: "same-origin" });
     } catch {
-      throw new ApiError(OFFLINE, 0);
+      throw new ApiError(OFFLINE, 0, undefined, { why: "network" });
     }
     if (method === "HEAD") return r.ok as unknown as T;
     const type = r.headers.get("content-type") ?? "";
     const data: unknown = type.includes("json") ? await r.json().catch(() => null) : null;
     // A static host answers with the app's HTML, and a proxy with nothing behind it with a bare 5xx: no server.
-    if (!type.includes("json") && r.status !== 413) throw new ApiError(OFFLINE, 0);
+    if (!type.includes("json") && r.status !== 413) throw new ApiError(OFFLINE, 0, undefined, { why: "no-server", http: r.status });
     if (!r.ok) {
       const detail = (data as { detail?: unknown } | null)?.detail;
       const message =
