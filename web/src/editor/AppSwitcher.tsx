@@ -1,7 +1,5 @@
-// The kevsrobots suite's shared web components (kevinmcaleer/kevsrobots.com#581). Vendored so the switcher
-// works offline: the canonical copy is kevsrobots.com/web/assets/suite/kr-suite.js. Change it there first, then copy it here.
+import { useEffect } from "react";
 import type * as React from "react";
-import "../vendor/kr-suite.js";
 
 declare module "react" {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -18,5 +16,9 @@ declare module "react" {
  * from the theme tokens (`kr-app-switcher` in app.css), so it follows Light, Dark and Holoroom.
  */
 export function AppSwitcher() {
+  // The kevsrobots suite's shared web components (kevinmcaleer/kevsrobots.com#581), vendored so the switcher works offline
+  // (the service worker precaches every chunk). The canonical copy is kevsrobots.com/web/assets/suite/kr-suite.js: change it
+  // there first, then copy it here. It loads after first paint, and the element upgrades when it arrives.
+  useEffect(() => void import("../vendor/kr-suite.js"), []);
   return <kr-app-switcher app="bettercad" target="_blank" />;
 }
