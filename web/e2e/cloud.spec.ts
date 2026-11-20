@@ -195,7 +195,9 @@ test("offline saves wait in the browser and go when the network is back", async 
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();
   await page.keyboard.press("ControlOrMeta+s");
   // The browser still says it's online, so this reads as the server not answering, not as being offline.
-  await expect(page.getByText("BetterCad\u2019s server can\u2019t be reached just now. Your connection looks fine. This save waits and goes when it's back.")).toBeVisible();
+  await expect(
+    page.getByText("BetterCad\u2019s server can\u2019t be reached just now. Your connection looks fine. This save waits and goes when it's back."),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveAccessibleDescription("Server not answering: saves when it's back");
 
   // The library shows the last list it saw.
