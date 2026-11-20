@@ -7,3 +7,4 @@ packages/ui/src/tokens.json
 package-lock.json
 *.md
 dist-types
+web/src/vendor
