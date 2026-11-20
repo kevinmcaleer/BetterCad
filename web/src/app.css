@@ -360,6 +360,12 @@ kr-app-switcher {
   --kr-shadow: var(--bc-shadow-dialog);
   --kr-font-ui: var(--bc-font-sans);
 }
+/* Its code loads on first use (AppSwitcher.tsx): hold its 32 px button's place until then. */
+kr-app-switcher:not(:defined) {
+  display: inline-block;
+  width: 32px;
+  height: 32px;
+}
 /* The tools ride on the top bar, beside the logo: no card of their own. Squeezed, they scroll sideways. */
 .bc-top > .bc-top-tools {
   flex: 0 1 auto;
