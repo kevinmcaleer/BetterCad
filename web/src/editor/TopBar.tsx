@@ -10,6 +10,7 @@ import { CONSTRUCT_KINDS, type ConstructKind } from "../state/document";
 import { constructIcon } from "./Timeline";
 import type { PanelId } from "./LeftPanel";
 import type { RibbonTab } from "./ribbonPrefs";
+import { AppSwitcher } from "./AppSwitcher";
 
 const CLOUD_TEXT: Record<CloudState, string> = {
   saved: "Saved to your account",
@@ -176,6 +177,7 @@ export function TopBar(p: TopBarProps) {
     <span className="bc-title">
       <Icon name="cube" size={18} />
       <span className="bc-brand">BetterCad</span>
+      <AppSwitcher />
     </span>
   );
   if (ribbon) {

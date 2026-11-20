@@ -347,6 +347,19 @@ body {
 .bc-brand {
   white-space: nowrap;
 }
+/* The kevsrobots apps switcher (kr-suite.js) reads --kr-* custom properties: map them onto the theme tokens. */
+kr-app-switcher {
+  --kr-ink: var(--bc-color-ink);
+  --kr-ink-soft: var(--bc-color-muted);
+  --kr-line: var(--bc-color-line);
+  --kr-panel: var(--bc-color-bar);
+  --kr-sunk: var(--bc-color-hover);
+  --kr-accent: var(--bc-color-accent);
+  --kr-on-accent: var(--bc-color-on-accent);
+  --kr-focus: var(--bc-color-accent);
+  --kr-shadow: var(--bc-shadow-dialog);
+  --kr-font-ui: var(--bc-font-sans);
+}
 /* The tools ride on the top bar, beside the logo: no card of their own. Squeezed, they scroll sideways. */
 .bc-top > .bc-top-tools {
   flex: 0 1 auto;
