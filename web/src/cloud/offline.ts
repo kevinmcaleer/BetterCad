@@ -1,4 +1,5 @@
 import { idbKV, type KV } from "../files/idb";
+import { trouble } from "./trouble";
 import { ApiError, type Api, type ModelFull, type ModelSummary } from "./api";
 
 /**
@@ -41,7 +42,8 @@ export function createOffline(queue: KV<Queued> = idbKV<Queued>("cloudQueue"), c
               out.saved.push({ modelId: q.modelId, version: r.version });
               await queue.del(q.modelId);
             } catch (e) {
-              if (e instanceof ApiError && e.status === 0) break;
+              // Offline, no server or signed out: keep it for next time rather than drop it.
+              if (trouble(e)) break;
               await queue.del(q.modelId);
               if (e instanceof ApiError && e.status === 409) out.conflicts.push(q);
             }

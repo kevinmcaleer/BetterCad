@@ -4,7 +4,7 @@ import { fileName, saveBcad } from "@bettercad/kernel/bcad";
 import { newDoc } from "../state/document";
 import { ApiError, serverTime, type Folder, type ModelSummary, type Place, type Project, type Usage } from "../cloud/api";
 import { offline } from "../cloud/offline";
-import { trouble, type Trouble } from "../cloud/trouble";
+import { logInAgain, trouble, type Trouble } from "../cloud/trouble";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { ago } from "../files/autosave";
@@ -459,18 +459,6 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     }
   };
 
-  /** Straight to kevsrobots.com's sign-in, which sends you back here; the sign-in page if that can't be asked. */
-  const logInAgain = async () => {
-    const back = window.location.hash || "#/library";
-    try {
-      const { signin_url } = await api.links(back);
-      if (signin_url) return window.location.assign(signin_url);
-    } catch {
-      // Fall through to BetterCad's own sign-in page.
-    }
-    go(`#/signin?next=${encodeURIComponent(back)}`);
-  };
-
   const act = async (fn: () => Promise<unknown>, done: string) => {
     try {
       await fn();
@@ -688,7 +676,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
               tone="warn"
               action={
                 problem.kind === "signin" ? (
-                  <Button variant="primary" label="Log in again" icon="user" onClick={() => void logInAgain()} />
+                  <Button variant="primary" label="Log in again" icon="user" onClick={() => void logInAgain(api)} />
                 ) : (
                   <Button label={retrying ? "Trying again…" : "Retry"} disabled={retrying} onClick={() => void retry()} />
                 )

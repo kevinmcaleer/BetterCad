@@ -1,4 +1,5 @@
-import { ApiError, OFFLINE } from "./api";
+import { ApiError, OFFLINE, type Api } from "./api";
+import { go } from "./route";
 
 /**
  * What went wrong reaching your account, told apart so the page can say so and offer the way back: being offline
@@ -23,4 +24,15 @@ export function trouble(e: unknown, online = typeof navigator === "undefined" ? 
   if (e.status >= 500)
     return { kind: "unreachable", text: e.message && e.message !== OFFLINE ? e.message : `BetterCad’s server isn’t answering just now (error ${e.status}).` };
   return null;
+}
+
+/** Straight to kevsrobots.com's sign-in, which sends you back to `back`; BetterCad's sign-in page if that can't be asked. */
+export async function logInAgain(api: Api, back = window.location.hash || "#/library") {
+  try {
+    const { signin_url } = await api.links(back);
+    if (signin_url) return window.location.assign(signin_url);
+  } catch {
+    // Fall through to BetterCad's own sign-in page.
+  }
+  go(`#/signin?next=${encodeURIComponent(back)}`);
 }

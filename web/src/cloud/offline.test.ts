@@ -37,6 +37,15 @@ describe("the offline queue", () => {
     expect((await o.queued()).length).toBe(1);
   });
 
+  it("keeps a save when the sign-in ran out or the server sent an error page, instead of dropping it", async () => {
+    const o = createOffline(memoryKV(), memoryKV());
+    await o.queue(q("a", 1));
+    await o.flush(createApi("api/", async () => json(401, { detail: "Sign in to do that." })));
+    await o.flush(createApi("api/", async () => new Response("<html>Bad gateway</html>", { status: 502, headers: { "content-type": "text/html" } })));
+    await o.flush(createApi("api/", async () => json(503, { detail: "kevsrobots.com sign-in can't be reached just now." })));
+    expect((await o.queued()).map((x) => x.modelId)).toEqual(["a"]);
+  });
+
   it("remembers the list and the last ten models", async () => {
     const o = createOffline(memoryKV(), memoryKV());
     await o.rememberList([]);

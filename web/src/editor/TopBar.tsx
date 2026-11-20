@@ -16,6 +16,8 @@ const CLOUD_TEXT: Record<CloudState, string> = {
   saving: "Saving to your account…",
   dirty: "Changes not saved to your account yet",
   offline: "Offline: saves when you're back",
+  unreachable: "Server not answering: saves when it's back",
+  signin: "Sign-in ran out: click Save to log in again",
   error: "Not saved to your account",
 };
 
@@ -137,12 +139,14 @@ export function saveMenuEntries(
  * entries. When the model is saved to an account, the icon and description say how that stands.
  */
 function SaveSplit(p: TopBarProps) {
-  const bad = p.cloud === "error" || p.cloud === "offline";
+  const bad = p.cloud === "error" || p.cloud === "offline" || p.cloud === "unreachable" || p.cloud === "signin";
   return (
     <span className={cx("bc-split", bad && "bc-bad")} role="group" aria-label="Save">
       <Button
         variant="primary"
-        icon={p.cloud === "offline" ? "cloudOff" : p.cloud === "error" ? "warning" : p.cloud ? "cloud" : "save"}
+        icon={
+          p.cloud === "offline" || p.cloud === "unreachable" ? "cloudOff" : p.cloud === "error" || p.cloud === "signin" ? "warning" : p.cloud ? "cloud" : "save"
+        }
         label="Save"
         title={p.cloud ? CLOUD_TEXT[p.cloud] : (p.saveTip ?? "Save your model")}
         shortcut={formatCombo("mod+s")}
