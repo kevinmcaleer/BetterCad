@@ -577,16 +577,26 @@ export class Engine {
   setFloorGrid(on: boolean): void {
     if (this.floorGrid === on) return;
     this.floorGrid = on;
-    this.grid.visible = !this.roomOn && on && this.gridWanted;
+    this.showGrid();
     this.invalidate();
   }
 
-  /** The person's floor grid setting (the Holoroom room stays either way). */
+  /** The person's floor grid setting. Off also takes down the Holoroom room, whose walls are grid lines too. */
   setGridShown(on: boolean): void {
     if (this.gridWanted === on) return;
     this.gridWanted = on;
-    this.grid.visible = !this.roomOn && this.floorGrid && on;
+    this.showGrid();
     this.invalidate();
+  }
+
+  /** Whether the Holoroom room is drawn: the Holoroom theme with the floor grid on. */
+  get roomShown(): boolean {
+    return this.roomOn && this.gridWanted;
+  }
+
+  private showGrid(): void {
+    this.grid.visible = !this.roomOn && this.floorGrid && this.gridWanted;
+    this.room.visible = this.roomShown;
   }
 
   /** Turns colour cycling on or off: each component, or body in none, in a distinct colour. The model keeps its own. */
@@ -1876,8 +1886,7 @@ export class Engine {
     for (const c of [...this.centres.children, ...this.tools.children] as LineSegments[]) (c.material as LineBasicMaterial).color.set(p.snap);
     for (const c of this.clashBoxes.children as (LineSegments | Mesh)[]) (c.material as LineBasicMaterial).color.set(c.name === "clash" ? p.danger : p.warn);
     if (this.constructItems.length) this.setConstruct(this.constructItems, [...this.constructLit]);
-    this.grid.visible = !this.roomOn && this.floorGrid && this.gridWanted;
-    this.room.visible = this.roomOn;
+    this.showGrid();
     this.paintPlanes?.();
   }
 
@@ -2234,7 +2243,7 @@ export class Engine {
   /** Draws the scene to the screen; in the Holoroom the room goes down first, its far walls out of focus. */
   private renderScene(cam: Camera): void {
     const r = this.renderer;
-    if (!this.roomOn) {
+    if (!this.roomShown) {
       r.render(this.scene, cam);
       return;
     }
