@@ -15,6 +15,10 @@ function server() {
   const models: Record<string, { id: string; name: string; folder_id: string | null; project_id: string | null }> = {
     m1: { id: "m1", name: "Wheel", folder_id: null, project_id: null },
     m2: { id: "m2", name: "Bolt", folder_id: "parts", project_id: null },
+    m3: { id: "m3", name: "Chassis", folder_id: null, project_id: "rover" },
+    m4: { id: "m4", name: "Arm", folder_id: null, project_id: "rover" },
+    m5: { id: "m5", name: "Gripper", folder_id: null, project_id: "rover" },
+    m6: { id: "m6", name: "Mast", folder_id: null, project_id: "rover" },
   };
   const calls: string[] = [];
   // Set to make the models list fail the way a real one can: a sign-in that ran out, or a proxy with no server.
@@ -58,8 +62,17 @@ function server() {
       const q = u.searchParams.get("q");
       const f = u.searchParams.get("folder");
       const p = u.searchParams.get("project");
+      const top = u.searchParams.get("top");
       const list = Object.values(models).filter((m) =>
-        q ? m.name.toLowerCase().includes(q.toLowerCase()) : f ? m.folder_id === f : p ? m.project_id === p && !m.folder_id : !m.folder_id && !m.project_id,
+        q
+          ? m.name.toLowerCase().includes(q.toLowerCase())
+          : f
+            ? m.folder_id === f
+            : p
+              ? m.project_id === p && !m.folder_id
+              : top
+                ? !m.folder_id && !m.project_id
+                : true,
       );
       return json({ models: list.map(summary), total: list.length });
     }
@@ -99,6 +112,16 @@ describe("library folders and projects", () => {
     expect(within(models).getByRole("button", { name: "Open Wheel" })).toBeVisible();
     expect(within(models).queryByRole("button", { name: "Open Bolt" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Breadcrumbs" })).toBeNull();
+  });
+
+  it("shows what's inside a project on its card, a click from each model", async () => {
+    mount();
+    const peek = await screen.findByRole("list", { name: "Models in Rover" });
+    const links = within(peek).getAllByRole("link");
+    expect(links.slice(0, 3).map((a) => a.getAttribute("href"))).toEqual(["#/edit/m3", "#/edit/m4", "#/edit/m5"]);
+    expect(within(peek).getByRole("link", { name: /Chassis/ })).toBeVisible();
+    expect(within(peek).getByRole("link", { name: "See all 4 models" })).toHaveAttribute("href", "#/library/project/rover");
+    expect(within(screen.getByRole("list", { name: "Your models" })).queryByRole("button", { name: "Open Chassis" })).toBeNull();
   });
 
   it("opens a folder with breadcrumbs back to My models", async () => {
