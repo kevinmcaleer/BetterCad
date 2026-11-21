@@ -213,6 +213,27 @@ test("the view style menu turns the floor grid off, and it stays off", async ({ 
   await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-grid", "off");
 });
 
+test.describe("on a touch screen", () => {
+  test.use({ hasTouch: true });
+
+  test("tapping Floor grid in the Holoroom takes the room's grid down too", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("bettercad.theme", "holoroom"));
+    await page.goto("/");
+    const view = page.getByRole("application", { name: /3D view/ });
+    const roomShown = () => page.evaluate(() => (window as unknown as { __bcView: { roomShown: boolean } }).__bcView.roomShown);
+    await expect(view).toHaveAttribute("data-grid", "on");
+    await expect.poll(roomShown).toBe(true);
+    await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).tap();
+    await page.getByRole("menuitemcheckbox", { name: "Floor grid" }).tap();
+    await expect(view).toHaveAttribute("data-grid", "off");
+    await expect.poll(roomShown).toBe(false);
+    await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).tap();
+    await expect(page.getByRole("menuitemcheckbox", { name: "Floor grid" })).toHaveAttribute("aria-checked", "false");
+    await page.getByRole("menuitemcheckbox", { name: "Floor grid" }).tap();
+    await expect.poll(roomShown).toBe(true);
+  });
+});
+
 test("Shift+N and the view style menu turn colour cycling on and off", async ({ page }) => {
   await page.goto("/");
   await addShape(page, "Box");
