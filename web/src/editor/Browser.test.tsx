@@ -341,6 +341,41 @@ describe("components (#171)", () => {
     expect(isolate).toHaveBeenLastCalledWith(null);
   });
 
+  it("offers Remove on an inserted model's component, but not in a shared model", async () => {
+    const onRemove = vi.fn();
+    const props = {
+      selection: [],
+      onSelect: () => {},
+      onAdd: () => {},
+      onToggle: () => {},
+      onBodiesHidden: () => {},
+      onSketchesHidden: () => {},
+      componentRemove: (id: string) => (id === "L2" ? [{ id: "remove", label: "Remove Component 2", onSelect: () => onRemove(id) }] : []),
+      onOrigin: () => {},
+      onPicked: () => {},
+      onSelectSketch: () => {},
+      onRename: () => {},
+      onRenameModel: () => {},
+      onRenameSketch: () => {},
+      onReorder: () => {},
+      onSketchOn: () => {},
+      partMenu: () => [],
+      sketchMenu: () => [],
+      renameId: null,
+      onRenameIdChange: () => {},
+    };
+    const { rerender } = render(<BrowserPanel model={nested()} {...props} />);
+    fireEvent.contextMenu(screen.getAllByText("Component 1")[0]!);
+    expect(screen.queryByRole("menuitem", { name: /^Remove/ })).not.toBeInTheDocument();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    fireEvent.contextMenu(screen.getAllByText("Component 2")[0]!);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Remove Component 2" }));
+    expect(onRemove).toHaveBeenCalledWith("L2");
+    rerender(<BrowserPanel model={{ ...nested(), readOnly: true }} {...props} />);
+    fireEvent.contextMenu(screen.getAllByText("Component 2")[0]!);
+    expect(screen.queryByRole("menuitem", { name: "Remove Component 2" })).not.toBeInTheDocument();
+  });
+
   it("selects a component's bodies with those inside it, and a Bodies folder's own", () => {
     expect(browserPick(["L1"], nested()).parts).toEqual(["a", "b", "d"]);
     expect(browserPick(["L2"], nested()).parts).toEqual(["d"]);

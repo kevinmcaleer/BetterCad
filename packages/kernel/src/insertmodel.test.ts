@@ -9,12 +9,13 @@ import {
   insertedId,
   newDoc,
   removeFeature,
+  removeParts,
   setLook,
   type ModelDoc,
   type ModelSource,
 } from "./document";
 import { loadBcad, saveBcad } from "./bcad";
-import { insertModel } from "./insertmodel";
+import { insertModel, modelRemoval, removeInsertedModel } from "./insertmodel";
 
 /** A servo horn: a 20 × 6 × 3 mm arm on a 6 mm round hub, coloured, standing on the origin. */
 function horn(): ModelDoc {
@@ -114,5 +115,44 @@ describe("Insert model step (#482, #483)", () => {
     if (back instanceof Error) throw back;
     expect(back.warning).toBeUndefined();
     expect(build(back.doc).parts.map((p) => p.id)).toEqual(["ins/arm", "ins/hub"]);
+  });
+});
+
+describe("Remove an inserted model (#480)", () => {
+  it("takes its joints with it, and nothing else", () => {
+    let d = addLink(addPart(newDoc(), "box", "base"), ["base"], "baseLink");
+    d = insertModel(d, SRC, horn(), { position: { x: 0, y: 0, z: 20 } }, "ins");
+    d = addJoint(d, { kind: "revolute", child: "ins", parent: "baseLink", origin: [0, 0, 20], axis: [0, 0, 1], lower: -90, upper: 90 }, "j");
+    d = setLook(d, ["ins/arm", "base"], () => ({ colour: "#0000ff" }));
+    expect(modelRemoval(d, "ins").ties.map((f) => f.id)).toEqual(["j"]);
+    expect(modelRemoval(d, "ins").uses).toEqual([]);
+    const after = removeInsertedModel(d, "ins");
+    expect(after.features.map((f) => f.id)).not.toContain("ins");
+    expect(after.features.map((f) => f.id)).not.toContain("j");
+    expect(Object.keys(after.looks)).toEqual(["base"]);
+    const b = build(after);
+    expect(b.failed.size).toBe(0);
+    expect(b.parts.map((p) => p.id)).toEqual(["base"]);
+    expect(b.components.map((c) => c.id)).toEqual(["baseLink"]);
+  });
+
+  it("leaves steps that use its bodies unless you say all, and moves what was in it to its parent", () => {
+    let d = addLink(newDoc(), [], "arm");
+    d = insertModel(d, SRC, horn(), { position: { x: 0, y: 0, z: 0 } }, "ins", undefined, "arm");
+    d = removeParts(d, ["ins/hub"]);
+    d = { ...d, features: [...d.features, { ...d.features.at(-1)!, id: "later", component: "ins", parts: [] } as never] };
+    d = { ...d, owners: { "ins/arm": "arm", x: "ins" } };
+    const { uses } = modelRemoval(d, "ins");
+    expect(uses.length).toBe(1);
+    const kept = removeInsertedModel(d, "ins");
+    expect(kept.features.length).toBe(3);
+    expect(kept.features.find((f) => f.id === "later")!.component).toBe("arm");
+    expect(kept.owners).toEqual({ x: "arm" });
+    expect(removeInsertedModel(d, "ins", true).features.map((f) => f.id)).toEqual(["arm", "later"]);
+  });
+
+  it("does nothing to a step that isn't an inserted model", () => {
+    const d = addLink(newDoc(), [], "arm");
+    expect(removeInsertedModel(d, "arm")).toBe(d);
   });
 });
