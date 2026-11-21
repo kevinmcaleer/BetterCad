@@ -34,14 +34,6 @@
 .bc-row.bc-on {
   background: var(--bc-color-accent-soft);
 }
-/* The component you're working in (#171): an accent bar and name, so it's plain where new things go. */
-.bc-row.bc-row-active {
-  box-shadow: inset 3px 0 0 var(--bc-color-accent);
-}
-.bc-row.bc-row-active .bc-row-name {
-  color: var(--bc-color-accent);
-  font-weight: 600;
-}
 .bc-row.bc-off .bc-row-name {
   color: var(--bc-color-muted);
   font-style: italic;
@@ -174,4 +166,25 @@
 }
 .bc-row[data-kind="folder"] .bc-row-name .bc-icon {
   color: var(--bc-color-muted);
+}
+/* The component you're working in (#171): the whole row filled in accent, so it's plain where new things go.
+   A solid fill, where a selected row is only `accent-soft`, so the two never look alike.
+   Last in the sheet so it wins over hidden (`bc-off`) and folder colours. */
+.bc-row.bc-row-active,
+.bc-row.bc-row-active:hover {
+  background: var(--bc-color-accent);
+}
+.bc-row.bc-row-active .bc-row-name,
+.bc-row.bc-row-active .bc-row-name .bc-icon,
+.bc-row.bc-row-active .bc-row-note,
+.bc-row.bc-row-active .bc-disclose,
+.bc-row.bc-row-active .bc-icon-btn,
+.bc-row.bc-row-active .bc-icon-btn.bc-quiet:not(.bc-on) {
+  color: var(--bc-color-on-accent);
+}
+.bc-row.bc-row-active .bc-row-name {
+  font-weight: 600;
+}
+.bc-row.bc-row-active .bc-row-name:focus-visible {
+  outline-color: var(--bc-color-on-accent);
 }
