@@ -3600,7 +3600,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         ? `${selectedParts[0]!.name} selected.`
         : `${selectedParts.length} parts selected.`;
   /** A failed step's way out (#77): fix it where it can be fixed, or set it aside. */
-  const problemId = activeFeatureId && failed.has(activeFeatureId) ? activeFeatureId : null;
+  const shownStep = pickedStep ?? activeFeatureId;
+  const problemId = shownStep && failed.has(shownStep) ? shownStep : null;
   const problem = problemId ? doc.features.find((f) => f.id === problemId) : undefined;
   const repick = (id: string) => {
     const i = store.get().features.findIndex((f) => f.id === id);
@@ -3706,20 +3707,24 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     </div>
   );
   const problemCount = failed.size;
+  /** The steps with a problem, in timeline order. */
+  const problemSteps = doc.features.filter((f) => failed.has(f.id));
+  const nextProblem = problemSteps[(problemSteps.findIndex((f) => f.id === problemId) + 1) % Math.max(1, problemSteps.length)];
   const problemsButton =
     problemCount > 0 && !sketch.editing && tool === "select" ? (
       <Button
         size="dense"
         icon="warning"
         label={`Rebuilt with ${problemCount === 1 ? "1 problem" : `${problemCount} problems`}`}
-        title="Select the first step with a problem"
+        title={nextProblem ? `Show ${nextProblem.name}: ${failed.get(nextProblem.id)}` : "Show the step with a problem"}
         onClick={() => {
-          const first = doc.features.find((f) => failed.has(f.id));
-          if (first) {
-            setActiveFeature(first.id);
-            setPropsOpen(true);
-            setPropsHidden(false);
-          }
+          // Picks the step even when it has no parts left to select, so its tile lights and its banner says why.
+          const f = nextProblem;
+          if (!f) return;
+          if (workIn && compSteps?.id === workIn && !compSteps.ids.includes(f.id)) setAllStepsFor(workIn);
+          pickStep(f);
+          setPropsOpen(true);
+          setPropsHidden(false);
         }}
       />
     ) : null;

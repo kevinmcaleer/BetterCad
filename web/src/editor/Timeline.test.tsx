@@ -113,7 +113,9 @@ describe("Timeline", () => {
         onMenu={() => {}}
       />,
     );
-    expect(screen.getByRole("button", { name: /^Resize 1.*problem/ })).toHaveClass("bc-failed");
+    const tile = screen.getByRole("button", { name: /^Resize 1.*problem/ });
+    expect(tile).toHaveClass("bc-failed");
+    expect(tile).toHaveAttribute("data-tip", expect.stringContaining("Resize 1 has a problem: The parts it changes are gone"));
   });
   it("moves the marker with the keyboard and the play controls", () => {
     const { onMarker } = setup(2);
