@@ -4089,7 +4089,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             </Suspense>
           ) : (
             <>
-              {files.banners}
+              {/* On the empty editor the recover notice sits above the start card instead, so the two never overlap. */}
+              {!emptyState && files.banners}
               {render ? (
                 <Suspense
                   fallback={
@@ -4416,11 +4417,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   onOpen={() => void open()}
                   onSample={(id) => files.openSample(id)}
                   notice={
-                    stage.open && (
-                      <Suspense fallback={null}>
-                        <StageNotice inline onDismiss={stage.dismiss} />
-                      </Suspense>
-                    )
+                    <>
+                      {files.banners}
+                      {stage.open && (
+                        <Suspense fallback={null}>
+                          <StageNotice inline onDismiss={stage.dismiss} />
+                        </Suspense>
+                      )}
+                    </>
                   }
                 />
               </Suspense>

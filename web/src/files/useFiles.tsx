@@ -4,7 +4,8 @@ import { BcadError, fileName, loadBcad, nameFromFile, saveBcad } from "@betterca
 import { newDoc, newId, type ModelDoc, type Vec3 } from "../state/document";
 import { importFormat, isBcad } from "@bettercad/kernel";
 import type { View3DHandle } from "../viewport/View3D";
-import { ago, createAutosave, recoverable, type Autosave, type AutosaveRecord } from "./autosave";
+import { createAutosave, recoverable, type Autosave, type AutosaveRecord } from "./autosave";
+import { RecoverNotice } from "./RecoverNotice";
 import { createFileStore, type FileHandle, type FileStore, type Opened, type Recent } from "./fileStore";
 import { useAccount } from "../cloud/account";
 import { ApiError, serverTime } from "../cloud/api";
@@ -368,9 +369,12 @@ export function useFiles(d: FilesDeps) {
       // An autosave of this model newer than the file: offer it.
       const fileTime = Date.parse(r.meta.modified) || 0;
       const a = await auto.get(id).catch(() => undefined);
+      const newer = !!a && a.modified > fileTime + 1000 && (a.savedAt === null || a.modified > a.savedAt);
+      // The file is as new as the autosave: it has nothing left to recover, so it isn't offered on the next visit.
+      if (a && !newer) await auto.markSaved(id, a.modified).catch(() => undefined);
       setRecover((list) => {
         const rest = list.filter((x) => x.id !== id);
-        return a && a.modified > fileTime + 1000 && (a.savedAt === null || a.modified > a.savedAt) ? [a, ...rest] : rest;
+        return a && newer ? [a, ...rest] : rest;
       });
       deps.current.say(r.warning ?? `Opened ${opened.name}`, !!r.warning);
       return true;
@@ -495,7 +499,17 @@ export function useFiles(d: FilesDeps) {
         store.edit(() => docIn, `Open ${got.name}`);
         setBaseline(docIn);
         setCloud({ modelId, state: "saved" });
-        setRecover((list) => list.filter((x) => x.id !== meta.current.id));
+        // An autosave of this model no newer than the account's copy is settled, so it isn't offered on the next visit.
+        // A newer one stays on offer, as it does for a file.
+        const id = meta.current.id;
+        const savedTime = serverTime(got.modified) || 0;
+        const a = await auto.get(id).catch(() => undefined);
+        const newer = !!a && a.modified > savedTime + 1000 && (a.savedAt === null || a.modified > a.savedAt);
+        if (a && !newer) await auto.markSaved(id, a.modified).catch(() => undefined);
+        setRecover((list) => {
+          const rest = list.filter((x) => x.id !== id);
+          return a && newer ? [a, ...rest] : rest;
+        });
         deps.current.onSwitched();
         const stale = cached as Trouble | null;
         if (stale) setCloud({ modelId, state: stale.kind });
@@ -589,6 +603,14 @@ export function useFiles(d: FilesDeps) {
     },
     [auto],
   );
+
+  /** Forgets every autosave on offer; each is kept a day in the bin in case. */
+  const discardAll = useCallback(() => {
+    setRecover((l) => {
+      for (const r of l) void auto.discard(r.id);
+      return [];
+    });
+  }, [auto]);
 
   /** Shows an old version read-only (#91), keeping the current one to come back to. */
   const previewVersion = useCallback(
@@ -706,24 +728,7 @@ export function useFiles(d: FilesDeps) {
     </div>
   ) : null;
 
-  const banners = recover.length ? (
-    <div className="bc-recover">
-      {recover.slice(0, 3).map((r) => (
-        <Banner
-          key={r.id}
-          tone="warn"
-          action={
-            <span className="bc-actions">
-              <Button size="dense" label="Recover" title={`Open what was autosaved of ${r.name}`} onClick={() => recoverOne(r)} />
-              <Button size="dense" label="Discard" title="Forget this autosave" onClick={() => discardOne(r)} />
-            </span>
-          }
-        >
-          Recover ‘{r.name}’ from {ago(Date.now() - r.modified)}
-        </Banner>
-      ))}
-    </div>
-  ) : null;
+  const banners = recover.length ? <RecoverNotice list={recover} onRecover={recoverOne} onDiscard={discardOne} onDiscardAll={discardAll} /> : null;
 
   const dialog = ask ? (
     <Dialog
