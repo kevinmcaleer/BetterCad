@@ -90,6 +90,7 @@ export interface LeftPanelProps {
   onBodiesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   onSketchesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   isolateMenu?: BrowserPanelProps["isolateMenu"];
+  componentRemove?: BrowserPanelProps["componentRemove"];
   onBrowserPicked: (id: string | null) => void;
   onRowPick?: (id: string) => boolean;
   onSketchOn: (plane: WorldPlaneName) => void;
@@ -192,6 +193,7 @@ function PartsPanel(p: LeftPanelProps) {
       onBodiesHidden={p.onBodiesHidden}
       onSketchesHidden={p.onSketchesHidden}
       isolateMenu={p.isolateMenu}
+      componentRemove={p.componentRemove}
       onOrigin={p.onOrigin}
       onPicked={p.onBrowserPicked}
       onRowPick={p.onRowPick}

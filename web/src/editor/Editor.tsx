@@ -1892,16 +1892,26 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       const d0 = store.get();
       const f = d0.features.find((x) => x.id === id);
       if (!f) return;
+      setPendingDelete(null);
+      // An inserted model (#480) takes its joints with it, and gives back what was made inside it.
+      if (f.type === "model") return removeModel(id, withDependents);
       const gone = withDependents ? [id, ...dependents(d0, id).map((x) => x.id)] : [id];
       const m = live.current.marker;
       const before = m === null ? 0 : d0.features.slice(0, m).filter((x) => gone.includes(x.id)).length;
       store.edit((d) => (withDependents ? removeWithDependents(d, id) : removeFeature(d, id)), `Delete ${f.name}`);
       if (m !== null && before) setMarker(m - before);
-      setPendingDelete(null);
       say(`Deleted ${gone.length === 1 ? f.name : `${f.name} and ${gone.length - 1} more`}. ${formatCombo("mod+z")} brings it back.`);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- removeModel only reads refs and setters
     [store, say],
   );
+  /** Remove an inserted model (#480); with `all` unset it asks first when other steps use its bodies. */
+  const removeModel = (id: string, all?: boolean) =>
+    void import("../insert/removeModel").then((m) =>
+      m.removeModel({ store, id, all, ask: setPendingDelete, marker: live.current.marker, setMarker, setSelection, say }),
+    );
+  /** The inserted model a body came in with, if any. */
+  const modelOf = (partId: string) => doc.features.find((f) => f.type === "model" && partId.startsWith(`${f.id}/`));
   /** Deleting the last step just deletes it. Anything earlier asks first, since the steps after it rebuild. */
   const deleteFeature = useCallback(
     (id: string) => {
@@ -3560,9 +3570,18 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       },
       ...isolateEntries(ids),
       { kind: "separator", id: "s1" },
+      ...insertedModels(ids).map((f) => ({
+        id: `remove-${f.id}`,
+        label: `Remove ${f.name}`,
+        icon: "trash" as const,
+        danger: true,
+        onSelect: () => removeModel(f.id),
+      })),
       { id: "delete", label: "Delete", icon: "trash", keys: "Del", danger: true, onSelect: () => remove(ids) },
     ];
   };
+  /** The inserted models the picked bodies came in with, each once. */
+  const insertedModels = (ids: string[]) => [...new Set(ids.map((id) => modelOf(id)).filter((f): f is Feature => !!f))];
 
   // Help (#110): the same commands as the palette's Help group.
   const helpEntries: MenuEntry[] = [
@@ -4055,6 +4074,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}
               onSketchesHidden={(ids, hidden, name) => setHidden(ids, hidden, "sketches", name)}
               isolateMenu={isolateEntries}
+              componentRemove={(id) => {
+                const f = doc.features.find((x) => x.id === id && x.type === "model");
+                return f
+                  ? [
+                      { kind: "separator", id: "remove-sep" },
+                      { id: "remove", label: `Remove ${f.name}`, icon: "trash", danger: true, onSelect: () => removeModel(id) },
+                    ]
+                  : [];
+              }}
               onBrowserPicked={setBrowserPicked}
               onRowPick={onRowPick}
               onSketchOn={sketch.startOnPlane}

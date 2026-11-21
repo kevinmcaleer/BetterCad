@@ -52,6 +52,17 @@ test("insert a saved model from My models, place it, and joint-ready as one comp
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Horn/ }).first()).toBeVisible();
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
+
+  // Right-click the component in the browser to remove it, and undo brings it back.
+  const browser = page.getByRole("tree", { name: "Browser" });
+  await browser.getByText("Horn", { exact: true }).first().click({ button: "right" });
+  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-remove.png") });
+  await page.getByRole("menuitem", { name: "Remove Horn" }).click();
+  await expect(page.getByText("Removed Horn.", { exact: false }).first()).toBeVisible();
+  await expect(browser.getByText("Horn", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
 });
 
 test("the My models panel lists saved models and right-click inserts one", async ({ page, context }) => {

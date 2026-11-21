@@ -1,6 +1,7 @@
 import { Button, Dialog } from "@bettercad/ui";
 import { dependents, usedByText, type ModelDoc } from "../state/document";
 import { formatCombo } from "../state/commands";
+import { modelRemoval } from "@bettercad/kernel/insert-model";
 import { laterText, stepsAfter } from "./DeleteStepDialog";
 
 export interface DeleteStepDialogProps {
@@ -11,16 +12,20 @@ export interface DeleteStepDialogProps {
   onDelete: (all: boolean) => void;
 }
 
+const list = (names: string[]) => (names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+
 /** Asks before a step that isn't the last one goes, since everything after it rebuilds without it. */
 export function DeleteStepDialog({ doc, id, onCancel, onDelete }: DeleteStepDialogProps) {
   const f = doc.features.find((x) => x.id === id);
-  const deps = dependents(doc, id);
+  // An inserted model's joints always go with it (#480), so only the steps that use its bodies are a choice.
+  const model = f?.type === "model";
+  const deps = model ? modelRemoval(doc, id).uses : dependents(doc, id);
   const later = stepsAfter(doc, id);
   const undo = formatCombo("mod+z");
   return (
     <Dialog
       open
-      title={`Delete ${f?.name ?? "this step"}`}
+      title={`${model ? "Remove" : "Delete"} ${f?.name ?? "this step"}`}
       icon="trash"
       onCancel={onCancel}
       footer={
@@ -39,7 +44,7 @@ export function DeleteStepDialog({ doc, id, onCancel, onDelete }: DeleteStepDial
     >
       {deps.length ? (
         <>
-          <p>{usedByText(doc, id)}.</p>
+          <p>{model ? `${f!.name} is used by ${list(deps.map((d) => d.name))}` : usedByText(doc, id)}.</p>
           <p className="bc-note">Delete them too, or keep them and fix them afterwards. {undo} undoes either.</p>
         </>
       ) : (
