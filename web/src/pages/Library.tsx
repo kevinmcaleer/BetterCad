@@ -323,20 +323,47 @@ function FolderTile({
   );
 }
 
+/** The pictures of a project's models, up to four, for a project with no cover picture. */
+function Mosaic({ srcs }: { srcs: string[] }) {
+  return (
+    <span className="bc-thumb bc-mosaic" data-n={srcs.length}>
+      {srcs.map((src) => (
+        <img key={src} src={src} alt="" width={160} height={100} loading="lazy" />
+      ))}
+    </span>
+  );
+}
+
+/** How many of a project's models the card lists by name; the rest are a click away in the project. */
+export const PEEK = 3;
+
 function ProjectCard({
   project,
   bin,
   cover,
+  inside,
+  thumb,
   entries,
   onDrop,
 }: {
   project: Project;
   bin: boolean;
   cover: string | null;
+  /** The project's models, newest first, wherever they are in it; null while they load or in the bin. */
+  inside: ModelSummary[] | null;
+  thumb: (m: ModelSummary) => string | null;
   entries: MenuEntry[];
   onDrop: (d: Dragged) => void;
 }) {
   const drop = useDrop(onDrop);
+  const pictures = inside
+    ? inside
+        .map(thumb)
+        .filter((t): t is string => !!t)
+        .slice(0, 4)
+    : [];
+  const shown = inside?.slice(0, PEEK) ?? [];
+  const more = (inside?.length ?? 0) - shown.length;
   return (
     <li className={cx("bc-card", drop.over && "bc-drop")} {...(bin ? {} : drop.props)}>
       <button
@@ -346,7 +373,7 @@ function ProjectCard({
         onClick={() => !bin && go(hashOf({ kind: "project", id: project.id }))}
         disabled={bin}
       >
-        <Thumb src={cover} icon="template" />
+        {!cover && pictures.length > 0 ? <Mosaic srcs={pictures} /> : <Thumb src={cover} icon="template" />}
       </button>
       <div className="bc-card-foot">
         <div className="bc-card-text">
@@ -364,6 +391,31 @@ function ProjectCard({
           trigger={(t) => <Button {...t} icon="more" title={`More for ${project.name}`} />}
         />
       </div>
+      {!bin && shown.length > 0 && (
+        <ul className="bc-card-models" aria-label={`Models in ${project.name}`}>
+          {shown.map((m) => {
+            const src = thumb(m);
+            return (
+              <li key={m.id}>
+                <a href={`#/edit/${m.id}`} title={`Open ${m.name}`}>
+                  <span className="bc-card-model-pic">
+                    {src ? <img src={src} alt="" width={32} height={20} loading="lazy" /> : <Icon name="cube" size={14} />}
+                  </span>
+                  <span className="bc-card-model-name">{m.name}</span>
+                  <span className="bc-card-time">{ago(Date.now() - serverTime(m.modified))}</span>
+                </a>
+              </li>
+            );
+          })}
+          {more > 0 && (
+            <li>
+              <a className="bc-card-models-all" href={hashOf({ kind: "project", id: project.id })}>
+                {`See all ${inside!.length} models`}
+              </a>
+            </li>
+          )}
+        </ul>
+      )}
     </li>
   );
 }
@@ -375,6 +427,8 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
   const places = useMemo(() => placesApi(api), [api]);
   const here: Here = folder ? { kind: "folder", id: folder } : project ? { kind: "project", id: project } : { kind: "root" };
   const [models, setModels] = useState<ModelSummary[] | null>(null);
+  // Every model in a project, by project, so the project cards show what's inside them.
+  const [inside, setInside] = useState<Record<string, ModelSummary[]> | null>(null);
   const [tree, setTree] = useState<Tree>({ folders: [], projects: [] });
   const [binned, setBinned] = useState<Tree>({ folders: [], projects: [] });
   const [usage, setUsage] = useState<Usage | null>(null);
@@ -398,7 +452,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     try {
       const searching = !!q;
       const where = bin || searching ? {} : here.kind === "folder" ? { folder: here.id } : here.kind === "project" ? { project: here.id } : { top: true };
-      const [list, use, tree_, inBin] = await Promise.all([
+      const [list, use, tree_, inBin, all] = await Promise.all([
         api.list({ q, sort, bin, ...where }),
         api.usage(),
         // An older server has no folders yet: carry on with none.
@@ -407,10 +461,15 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
           throw e;
         }),
         bin ? places.places(true).catch(() => ({ folders: [], projects: [] })) : Promise.resolve(null),
+        // At the top of My models: every model, to group by project. Not needed to show the page, so a failure is no models.
+        !bin && !searching && here.kind === "root" ? api.list({ sort: "modified" }).catch(() => null) : Promise.resolve(null),
       ]);
       setModels(list.models);
       setUsage(use);
       setTree(tree_);
+      const byProject: Record<string, ModelSummary[]> = {};
+      for (const m of all?.models ?? []) if (m.project_id) (byProject[m.project_id] ??= []).push(m);
+      setInside(all ? byProject : null);
       if (inBin) setBinned(inBin);
       setMissing(
         (here.kind === "folder" && !tree_.folders.some((f) => f.id === here.id)) || (here.kind === "project" && !tree_.projects.some((p) => p.id === here.id)),
@@ -697,6 +756,8 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
                     project={p}
                     bin={bin}
                     cover={p.cover ? api.url(p.cover) : null}
+                    inside={bin || !inside ? null : (inside[p.id] ?? [])}
+                    thumb={(m) => (m.thumbnail ? api.url(m.thumbnail) : null)}
                     entries={projectEntries(p)}
                     onDrop={(d) => moveTo(d, { project_id: p.id })}
                   />

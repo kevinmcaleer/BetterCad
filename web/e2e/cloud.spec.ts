@@ -79,6 +79,25 @@ test("save a box to the account, open it again from the library after a reload",
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
 });
 
+test("a project's card shows its models, and one opens straight from My models", async ({ page, context }) => {
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/#/library");
+  await page.getByRole("button", { name: "New project" }).click();
+  await page.getByLabel("Project name").fill("Rover");
+  await page.getByRole("button", { name: "Make" }).click();
+  await expect(page).toHaveURL(/#\/library\/project\//);
+  await page.getByRole("button", { name: "New model" }).first().click();
+  await expect(page).toHaveURL(/#\/edit\//);
+  const id = page.url().split("/edit/")[1];
+  await page.goto("/#/library");
+  const peek = page.getByRole("list", { name: "Models in Rover" });
+  await expect(peek.getByRole("link", { name: /Untitled model/ })).toBeVisible();
+  if (process.env.PEEK_SHOT) await page.screenshot({ path: process.env.PEEK_SHOT });
+  await peek.getByRole("link", { name: /Untitled model/ }).click();
+  await expect(page).toHaveURL(new RegExp(`#/edit/${id}$`));
+});
+
 test("rename, duplicate, delete and restore in the library", async ({ page, context }) => {
   const server = await fakeApi(context);
   await server.signIn(context);

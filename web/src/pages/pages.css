@@ -286,6 +286,79 @@
   outline-offset: 1px;
   background: var(--bc-color-accent-soft);
 }
+/* A project with no cover shows its models' pictures (up to four). */
+.bc-mosaic {
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 1fr;
+  gap: 1px;
+  place-items: stretch;
+  background: var(--bc-color-line);
+  overflow: hidden;
+}
+.bc-mosaic > * {
+  grid-area: auto;
+  min-height: 0;
+  background: var(--bc-color-thumb-bg);
+}
+.bc-mosaic[data-n="1"] {
+  grid-template-columns: 1fr;
+}
+.bc-mosaic[data-n="3"] > :first-child {
+  grid-row: span 2;
+}
+/* The project's newest models by name, each a click from the editor. */
+.bc-card-models {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--bc-space-3) var(--bc-space-3);
+  border-top: 1px solid var(--bc-color-line);
+  padding-top: var(--bc-space-2);
+}
+.bc-card-models a {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  min-height: 32px;
+  padding: var(--bc-space-1) var(--bc-space-3);
+  border-radius: var(--bc-radius-sm);
+  color: inherit;
+  text-decoration: none;
+}
+.bc-card-models a:hover,
+.bc-card-models a:focus-visible {
+  background: var(--bc-color-hover);
+}
+.bc-card-model-pic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 20px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bc-color-thumb-bg);
+  color: var(--bc-color-thumb-ink);
+}
+.bc-card-model-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.bc-card-model-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-card-models .bc-card-time {
+  flex: none;
+}
+.bc-card-models a.bc-card-models-all {
+  color: var(--bc-color-accent);
+  font-size: 13px;
+}
 .bc-card-place {
   display: flex;
   align-items: center;
