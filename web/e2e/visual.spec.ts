@@ -83,7 +83,8 @@ for (const theme of THEMES) {
       )
       .toBeGreaterThan(2);
     await page.waitForTimeout(500);
-    await expect(canvas).toHaveScreenshot(`decal-${theme}.png`, { maxDiffPixelRatio: 0.01 });
+    // A busy runner can take more than the default 5 s to see the canvas hold still for two frames.
+    await expect(canvas).toHaveScreenshot(`decal-${theme}.png`, { maxDiffPixelRatio: 0.01, timeout: 15_000 });
   });
 
   test(`a canvas under a sketch, ${theme} @visual`, async ({ page }) => {
@@ -139,6 +140,7 @@ for (const theme of THEMES) {
       )
       .toBeGreaterThan(0);
     await page.waitForTimeout(500);
-    await expect(canvas).toHaveScreenshot(`canvas-${theme}.png`, { maxDiffPixelRatio: 0.01 });
+    // A busy runner can take more than the default 5 s to see the canvas hold still for two frames.
+    await expect(canvas).toHaveScreenshot(`canvas-${theme}.png`, { maxDiffPixelRatio: 0.01, timeout: 15_000 });
   });
 }

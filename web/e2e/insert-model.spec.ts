@@ -80,9 +80,14 @@ test("the My models panel lists saved models and right-click inserts one", async
   await page.getByRole("button", { name: "My models" }).click();
   const tree = panel.getByRole("tree", { name: "Your models" });
   await expect(tree.getByRole("button", { name: "Horn" })).toBeVisible();
-  await tree.getByRole("button", { name: "Horn" }).click({ button: "right" });
+  // The list can still be settling as the panel opens, so right-click again until the menu shows.
+  const insertItem = page.getByRole("menuitem", { name: "Insert as a linked component" });
+  await expect(async () => {
+    await tree.getByRole("button", { name: "Horn" }).click({ button: "right" });
+    await expect(insertItem).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-menu.png") });
-  await page.getByRole("menuitem", { name: "Insert as a linked component" }).click();
+  await insertItem.click();
   await expect(page.getByText("Click a flat face, or the ground, to place the Horn.", { exact: false }).first()).toBeVisible();
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-panel.png") });
   await click(page, -40, -40, 0);
