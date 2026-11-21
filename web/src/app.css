@@ -23,14 +23,15 @@ body {
   outline-offset: 1px;
 }
 
-/* ---- editor frame: the 3D view fills the whole window. The top bar (with the tools), panels, view bar and timeline float
-   over it as cards and never box it in. The --bc-view-* insets are the part of the view nothing covers, so
-   overlays inside the view (the view cube, hints, the empty state) sit clear of the floating cards. */
+/* ---- editor frame: the top bar (with the tools) runs the full width along the top edge, as Snakie's toolbar does, so
+   the kevsrobots apps switcher beside the logo sits in the same place in both. Below it the 3D view fills the window;
+   the panels, view bar and timeline float over it as cards and never box it in. The --bc-view-* insets are the part
+   of the view nothing covers, so overlays inside the view (the view cube, hints, the empty state) sit clear of them. */
 .bc-app {
   --bc-float-gap: var(--bc-space-4);
   --bc-top-height: 46px;
   --bc-props-width: 280px;
-  --bc-view-top: calc(var(--bc-top-height) + 2 * var(--bc-float-gap));
+  --bc-view-top: calc(var(--bc-top-height) + var(--bc-float-gap));
   --bc-view-left: calc(var(--bc-side-width) + 2 * var(--bc-float-gap));
   --bc-view-right: calc(var(--bc-props-width) + 2 * var(--bc-float-gap));
   /* The bottom stack (status, help line, rolled-back warning, timeline) starts --bc-foot-bottom up from the edge.
@@ -99,17 +100,16 @@ body {
 .bc-app .bc-top {
   position: absolute;
   z-index: 20;
-  top: var(--bc-float-gap);
-  left: var(--bc-float-gap);
-  right: var(--bc-float-gap);
+  top: 0;
+  left: 0;
+  right: 0;
   flex-wrap: nowrap;
   height: var(--bc-top-height);
   min-height: var(--bc-top-height);
   padding-top: 0;
   padding-bottom: 0;
-  border: 1px solid var(--bc-color-line);
-  border-radius: var(--bc-radius-lg);
-  box-shadow: var(--bc-shadow-float);
+  border: 0;
+  border-bottom: 1px solid var(--bc-color-line);
 }
 .bc-app > .bc-body {
   position: absolute;

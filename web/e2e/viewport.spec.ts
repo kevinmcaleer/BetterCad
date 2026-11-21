@@ -219,7 +219,9 @@ test("Shift+N and the view style menu turn colour cycling on and off", async ({ 
   await addShape(page, "Cylinder");
   const view = page.getByRole("application", { name: /3D view/ });
   await expect(view).toHaveAttribute("data-colour-cycle", "off");
-  await canvas(page).click({ position: { x: 5, y: 5 } });
+  // An empty spot of the view: the strip between the top bar (docked along the top edge) and the floating panels.
+  const bar = await page.locator("header.bc-top").boundingBox();
+  await canvas(page).click({ position: { x: 5, y: (bar?.height ?? 46) + 5 } });
   await page.keyboard.press("Shift+N");
   await expect(view).toHaveAttribute("data-colour-cycle", "on");
   await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
