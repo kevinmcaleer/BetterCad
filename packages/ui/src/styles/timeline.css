@@ -102,16 +102,31 @@
   border-top: 2px solid currentColor;
   transform: rotate(-45deg);
 }
-/* A feature that failed to build: a warn corner mark. */
-.bc-tl-tile.bc-failed::before {
-  content: "";
+/* A feature that failed to build: a warn tile with a warning badge on its top-left corner, clear of the marker. */
+.bc-tl-tile.bc-failed {
+  border-color: var(--bc-color-warn);
+  background: var(--bc-color-warn-soft);
+}
+.bc-tl-tile.bc-failed.bc-on {
+  box-shadow: 0 0 0 2px var(--bc-color-accent);
+}
+.bc-tl-tile .bc-tl-fail .bc-icon {
+  width: 10px;
+  height: 10px;
+}
+.bc-tl-fail {
   position: absolute;
-  top: -1px;
-  right: -1px;
-  border-style: solid;
-  border-width: 0 8px 8px 0;
-  border-color: transparent var(--bc-color-warn) transparent transparent;
-  border-top-right-radius: var(--bc-radius-sm);
+  z-index: 1;
+  top: -5px;
+  left: -5px;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--bc-color-warn);
+  color: var(--bc-color-bar);
+  pointer-events: none;
 }
 /* A step that makes or changes the picked body: a mark above its tile, as Fusion's. */
 .bc-tl-mark {

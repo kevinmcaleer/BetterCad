@@ -156,6 +156,10 @@ export function Timeline({
   useEffect(() => {
     marker.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [at, n]);
+  // And the active step, when something else picks it (the problems button, the browser).
+  useEffect(() => {
+    strip.current?.querySelector(".bc-tl-tile.bc-on")?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeId]);
 
   /** The gap nearest a pointer: just after the last tile whose centre is left of it (0 is before the first step). */
   const gapAt = (clientX: number) => {
@@ -340,7 +344,9 @@ export function Timeline({
               data-tip={
                 picking
                   ? `${f.name} · ${pickable ? (picked ? "Click to take it out" : "Click to add it") : "Can't be picked"}`
-                  : `${f.name} · ${summary(f)}${why ? `. ${why}` : ""}${tipHow}`
+                  : why
+                    ? `${f.name} has a problem: ${why}${tipHow}`
+                    : `${f.name} · ${summary(f)}${tipHow}`
               }
               style={{ order: 2 * i + 1 }}
               onClick={(e) => tileClick(f, e)}
@@ -374,6 +380,11 @@ export function Timeline({
               }}
             >
               <Icon name={featureIcon(f)} size={16} colour={featureColour(f)} />
+              {why && (
+                <span className="bc-tl-fail" aria-hidden="true">
+                  <Icon name="warning" size={10} />
+                </span>
+              )}
               {mark && <span className="bc-tl-mark" aria-hidden="true" />}
               {band && <span className="bc-tl-band" style={{ background: band.colour }} aria-hidden="true" />}
             </button>
