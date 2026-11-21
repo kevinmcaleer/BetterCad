@@ -167,6 +167,7 @@ import type { FileHandle } from "../files/fileStore";
 import { useMeasure } from "../measure/useMeasure";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
+import { logInAgain } from "../cloud/trouble";
 import { useTour } from "../tour/Tour";
 import { COURSE_URL } from "../help/about";
 import { actionLog, editSummary } from "../report/actionLog";
@@ -3917,7 +3918,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onRedo={doRedo}
             saveEntries={saveEntries}
             saveTip={saveTip}
-            onSave={() => void save()}
+            // A run-out sign-in: Save logs in again, and the save that waits goes once you're back.
+            onSave={() => void (files.cloud?.state === "signin" ? logInAgain(api, window.location.hash || "#/") : save())}
             helpEntries={helpEntries}
             account={account ? { name: account.name, admin: account.admin } : null}
             accountsOn={accountReady && accountsOn}

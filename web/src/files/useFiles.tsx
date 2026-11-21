@@ -10,13 +10,25 @@ import { useAccount } from "../cloud/account";
 import { ApiError, serverTime } from "../cloud/api";
 import { fillBlobs, stripBlobs } from "../cloud/cloudDoc";
 import { offline } from "../cloud/offline";
+import { trouble, type Trouble } from "../cloud/trouble";
 import type { Store } from "../state/store";
 import { sampleUrl } from "../samples/samples";
 import type { History } from "../state/history";
 import type { RenderBody } from "../render/pathRender";
 
 /** Where a model saved to an account stands (#90): shown by the cloud icon in the title. */
-export type CloudState = "saved" | "saving" | "dirty" | "offline" | "error";
+/** `unreachable`: online, but BetterCad's server isn't answering. `signin`: the sign-in ran out. Both keep the save waiting. */
+/** How often saves that wait are tried again while the browser is online (the server may be back). */
+const RETRY_WAITING = 30_000;
+
+/** What a save that has to wait says, by why it waits. */
+const WAITING = {
+  offline: () => "You're offline. This save waits and goes when you're back.",
+  unreachable: (why: string) => `${why} This save waits and goes when it's back.`,
+  signin: () => "Your sign-in has run out. Log in again (click Save) and this save goes then.",
+};
+
+export type CloudState = "saved" | "saving" | "dirty" | "offline" | "unreachable" | "signin" | "error";
 export const CLOUD_AUTOSAVE = 30_000;
 
 /** Changes the address without a new history entry, and tells the router. */
@@ -108,6 +120,8 @@ export function useFiles(d: FilesDeps) {
   const { api, account } = useAccount();
   const signedIn = !!account;
   const [cloud, setCloud] = useState<{ modelId: string; state: CloudState } | null>(null);
+  const cloudNow = useRef<CloudState | null>(null);
+  cloudNow.current = cloud?.state ?? null;
   // Another tab saved first: Save anyway or Reload.
   const [conflict, setConflict] = useState(false);
   // A model that isn't in the account yet: what to call it.
@@ -296,16 +310,19 @@ export function useFiles(d: FilesDeps) {
           setConflict(true);
           return false;
         }
-        setCloud({ modelId: modelId ?? "", state: err.status === 0 ? "offline" : "error" });
-        // Offline (#96): the newest save of this model waits in the browser and goes when you're back.
-        if (err.status === 0 && m.cloud && text) {
+        const t = trouble(err);
+        const was = cloudNow.current;
+        setCloud({ modelId: modelId ?? "", state: t?.kind ?? "error" });
+        // Offline, no server or signed out (#96): the newest save of this model waits in the browser and goes later.
+        if (t && m.cloud && text) {
           await offline()
             .queue({ modelId: m.cloud.modelId, name: current.name, bcad: text, note: o.note, version: m.cloud.version, at: Date.now() })
             .catch(() => undefined);
-          if (o.note !== "autosave") deps.current.say("You're offline. This save waits and goes when you're back.");
+          // An autosave only speaks up when the trouble is new, so a run-out sign-in isn't missed.
+          if (o.note !== "autosave" || (t.kind === "signin" && was !== "signin")) deps.current.say(WAITING[t.kind](t.text), t.kind === "signin");
           return false;
         }
-        deps.current.say(err.status === 0 ? "Not saved: you're offline. Autosave keeps a copy in this browser." : err.message, true);
+        deps.current.say(t ? `Not saved. ${t.text} Autosave keeps a copy in this browser.` : err.message, true);
         return false;
       }
     },
@@ -451,16 +468,17 @@ export function useFiles(d: FilesDeps) {
     async (modelId: string) => {
       deps.current.say("Opening…", false, true);
       try {
-        let cached = false;
+        let cached: Trouble | null = null;
         const got = await api.get(modelId).then(
           (g) => {
             void offline().rememberModel(g);
             return g;
           },
           async (e: ApiError) => {
-            const copy = e.status === 0 ? await offline().lastModel(modelId) : null;
-            if (!copy) throw e;
-            cached = true;
+            const t = trouble(e);
+            const copy = t ? await offline().lastModel(modelId) : null;
+            if (!t || !copy) throw e;
+            cached = t;
             return copy;
           },
         );
@@ -479,8 +497,9 @@ export function useFiles(d: FilesDeps) {
         setCloud({ modelId, state: "saved" });
         setRecover((list) => list.filter((x) => x.id !== meta.current.id));
         deps.current.onSwitched();
-        if (cached) setCloud({ modelId, state: "offline" });
-        deps.current.say(r.warning ?? (cached ? `You're offline. ${got.name} is the copy from your last visit.` : `Opened ${got.name}`), !!r.warning);
+        const stale = cached as Trouble | null;
+        if (stale) setCloud({ modelId, state: stale.kind });
+        deps.current.say(r.warning ?? (stale ? `${stale.text} ${got.name} is the copy from your last visit.` : `Opened ${got.name}`), !!r.warning);
         return true;
       } catch (e) {
         deps.current.say((e as Error).message, true);
@@ -531,7 +550,10 @@ export function useFiles(d: FilesDeps) {
     window.addEventListener("offline", gone);
     document.addEventListener("visibilitychange", visible);
     if (navigator.onLine) void run();
+    // Online but the server wasn't answering: try what waits again now and then, not only when the network changes.
+    const again = setInterval(() => navigator.onLine && void run(), RETRY_WAITING);
     return () => {
+      clearInterval(again);
       window.removeEventListener("online", online);
       window.removeEventListener("offline", gone);
       document.removeEventListener("visibilitychange", visible);

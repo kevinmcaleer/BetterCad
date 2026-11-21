@@ -17,6 +17,8 @@ function server() {
     m2: { id: "m2", name: "Bolt", folder_id: "parts", project_id: null },
   };
   const calls: string[] = [];
+  // Set to make the models list fail the way a real one can: a sign-in that ran out, or a proxy with no server.
+  const fail: { with: (() => Response) | null } = { with: null };
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
   const summary = (m: (typeof models)[string]) => ({
     ...m,
@@ -52,6 +54,7 @@ function server() {
             },
       );
     if (u.pathname === "/api/models" && method === "GET") {
+      if (fail.with) return fail.with();
       const q = u.searchParams.get("q");
       const f = u.searchParams.get("folder");
       const p = u.searchParams.get("project");
@@ -74,7 +77,7 @@ function server() {
     }
     return json({ detail: "nope" }, 404);
   });
-  return { api, calls, models, folders };
+  return { api, calls, models, folders, fail };
 }
 
 function mount(props: Parameters<typeof Library>[0] = {}) {
@@ -153,5 +156,36 @@ describe("readme", () => {
     expect(screen.getByText(/<b>hi<\/b>/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "ok" })).toHaveAttribute("href", "https://kevsrobots.com");
     expect(screen.queryByRole("link", { name: "bad" })).toBeNull();
+  });
+});
+
+describe("library when the list can't be fetched", () => {
+  it("asks you to log in again when the sign-in has run out, not that you're offline", async () => {
+    const s = server();
+    s.fail.with = () => new Response(JSON.stringify({ detail: "Sign in to do that." }), { status: 401, headers: { "Content-Type": "application/json" } });
+    render(
+      <AccountProvider api={s.api}>
+        <Library />
+      </AccountProvider>,
+    );
+    expect(await screen.findByText(/Your sign-in has run out/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Log in again" })).toBeVisible();
+    expect(screen.queryByText(/offline/)).toBeNull();
+  });
+
+  it("says the server isn't answering, with the error, and Retry brings the models back", async () => {
+    const s = server();
+    s.fail.with = () => new Response("<html>Bad gateway</html>", { status: 502, headers: { "Content-Type": "text/html" } });
+    render(
+      <AccountProvider api={s.api}>
+        <Library />
+      </AccountProvider>,
+    );
+    expect(await screen.findByText(/BetterCad\u2019s server isn\u2019t answering just now \(error 502\)/)).toBeVisible();
+    expect(screen.queryByText(/offline/)).toBeNull();
+    s.fail.with = null;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("button", { name: "Open Wheel" })).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
   });
 });

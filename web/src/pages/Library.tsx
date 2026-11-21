@@ -4,6 +4,7 @@ import { fileName, saveBcad } from "@bettercad/kernel/bcad";
 import { newDoc } from "../state/document";
 import { ApiError, serverTime, type Folder, type ModelSummary, type Place, type Project, type Usage } from "../cloud/api";
 import { offline } from "../cloud/offline";
+import { logInAgain, trouble, type Trouble } from "../cloud/trouble";
 import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { ago } from "../files/autosave";
@@ -386,7 +387,10 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
   const [moving, setMoving] = useState<{ item: Dragged; from: Place } | null>(null);
   const [naming, setNaming] = useState<"folder" | "project" | null>(null);
   const [editing, setEditing] = useState(false);
+  // Why the list couldn't be fetched (offline, no server, signed out), and whether the last synced list shows instead.
+  const [problem, setProblem] = useState<Trouble | null>(null);
   const [stale, setStale] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [missing, setMissing] = useState(false);
 
   const load = useCallback(async () => {
@@ -412,16 +416,22 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
         (here.kind === "folder" && !tree_.folders.some((f) => f.id === here.id)) || (here.kind === "project" && !tree_.projects.some((p) => p.id === here.id)),
       );
       setError(null);
+      setProblem(null);
       setStale(false);
       if (!q && !bin && here.kind === "root") void offline().rememberList(list.models);
     } catch (e) {
-      // Offline (#96): the last list this browser saw, read-only.
-      const last = e instanceof ApiError && e.status === 0 && !bin && here.kind === "root" ? await offline().lastList() : null;
+      // Offline, the server not answering or signed out (#96): the last list this browser saw, read-only, and a way back.
+      const t = trouble(e);
+      const last = t && !bin && here.kind === "root" ? await offline().lastList() : null;
+      setProblem(t);
       if (last) {
         setModels(q ? last.filter((m) => m.name.toLowerCase().includes(q.toLowerCase())) : last);
         setStale(true);
         setError(null);
-      } else setError((e as Error).message);
+      } else {
+        setStale(false);
+        setError(t ? null : (e as Error).message);
+      }
     }
     // `here` is rebuilt every render; its parts are the dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -431,6 +441,23 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     const t = setTimeout(() => void load(), q ? 200 : 0);
     return () => clearTimeout(t);
   }, [load, q]);
+
+  // Back online: fetch again without waiting to be asked.
+  useEffect(() => {
+    if (problem?.kind !== "offline") return;
+    const back = () => void load();
+    window.addEventListener("online", back);
+    return () => window.removeEventListener("online", back);
+  }, [problem, load]);
+
+  const retry = async () => {
+    setRetrying(true);
+    try {
+      await load();
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   const act = async (fn: () => Promise<unknown>, done: string) => {
     try {
@@ -644,7 +671,21 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
               {error}
             </p>
           )}
-          {stale && <Banner tone="warn">You&rsquo;re offline. Showing your last synced models.</Banner>}
+          {problem && (
+            <Banner
+              tone="warn"
+              action={
+                problem.kind === "signin" ? (
+                  <Button variant="primary" label="Log in again" icon="user" onClick={() => void logInAgain(api)} />
+                ) : (
+                  <Button label={retrying ? "Trying again…" : "Retry"} disabled={retrying} onClick={() => void retry()} />
+                )
+              }
+            >
+              {problem.text}{" "}
+              {stale ? "Showing your last synced models." : problem.kind === "signin" ? "Log in again to see your models." : "Try again in a moment."}
+            </Banner>
+          )}
           {bin && <p className="bc-page-note">Things stay in the bin for 30 days, then they&rsquo;re deleted. A folder or project takes what&rsquo;s in it.</p>}
           {projects.length > 0 && (
             <>
