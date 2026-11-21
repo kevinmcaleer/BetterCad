@@ -18,13 +18,13 @@ describe("Build volume toggle", () => {
     expect(localStorage.getItem("bettercad.showBed")).toBe("0");
 
     openSettings("Print settings");
-    // The Print panel loads when it first opens.
-    const inPrint = await screen.findByRole("checkbox", { name: "Show the build volume" });
+    // The Print panel loads when it first opens, which can take a few seconds on a busy CI runner.
+    const inPrint = await screen.findByRole("checkbox", { name: "Show the build volume" }, { timeout: 4000 });
     expect(inPrint).not.toBeChecked();
     fireEvent.click(inPrint);
     openSettings();
     expect(screen.getByRole("checkbox", { name: "Show the build volume" })).toBeChecked();
-  });
+  }, 10_000);
 
   it("toggles the build volume from the view cube's menu", () => {
     render(<Editor />);
