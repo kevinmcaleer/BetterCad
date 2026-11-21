@@ -1065,6 +1065,53 @@ kbd {
   gap: var(--bc-space-2);
   width: min(480px, 100%);
 }
+.bc-recover > .bc-banner {
+  margin: 0;
+}
+/* Above the start card on an empty model, as wide as the card. */
+.bc-empty-state-host > .bc-recover {
+  flex: none;
+  width: min(560px, 100%);
+  pointer-events: auto;
+}
+/* Every model that can be recovered, under the one notice; it scrolls rather than covering the view. */
+.bc-recover-list {
+  margin: 0;
+  padding: var(--bc-space-2);
+  list-style: none;
+  max-height: min(240px, 40dvh);
+  overflow-y: auto;
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+}
+.bc-recover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-2) var(--bc-space-3);
+}
+.bc-recover-row + .bc-recover-row {
+  border-top: 1px solid var(--bc-color-line);
+}
+.bc-recover-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+}
+.bc-recover-name strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-recover-when {
+  color: var(--bc-color-muted);
+  font-size: 12px;
+}
 .bc-export {
   display: grid;
   grid-template-columns: auto 1fr;
