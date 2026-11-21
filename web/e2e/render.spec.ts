@@ -16,10 +16,12 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
 
   await page.keyboard.press("Shift+R");
   const bar = page.getByRole("group", { name: "Render options" });
-  await expect(bar).toBeVisible();
+  // On a software GPU (SwiftShader in CI) the path tracer's shader takes over a minute to build, and the whole page
+  // is frozen while it does: every check made in that time stalls with it and runs out of its own short timeout. So
+  // wait for the finished picture first, then check the rest; nothing below runs during a freeze.
+  await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 200_000 });
   await expect(page.getByRole("img", { name: /Rendered picture of the model/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Pick: Bodies" })).toHaveCount(0);
-  await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 120_000 });
 
   // The render has its own view cube, turning the picture; the modelling view comes back looking the same way.
   const cube = page.getByRole("group", { name: "View cube" });
@@ -33,22 +35,12 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "top");
   await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeVisible();
 
-  // The view style menu opens it too, in paper white.
-  // On a busy software GPU (CI) the first pick from the menu, just after leaving the render, has been lost; pick again
-  // until the render opens. Opening it can take more than the default 5 s there.
-  await expect(async () => {
-    if (!(await bar.count())) {
-      // Open the menu only when it isn't already open: a second click on its button would close it again.
-      const item = page.getByRole("menuitem", { name: "Render in paper" });
-      if (!(await item.isVisible())) await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click({ timeout: 5_000 });
-      await item.click({ timeout: 5_000 });
-    }
-    await expect(bar).toBeVisible({ timeout: 15_000 });
-  }).toPass({ timeout: 90_000 });
-  await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true", { timeout: 60_000 });
-  // A software GPU (CI) takes a while to build the path tracer's shader; wait for it before pressing Done. Paper builds
-  // it again, and on a busy runner that has taken over 120 s.
+  // The view style menu opens it too, in paper white. Paper builds the path tracer's shader again, which freezes a
+  // software GPU's page for over a minute (more on a busy runner), so wait for the finished picture, then check it.
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await page.getByRole("menuitem", { name: "Render in paper" }).click();
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 240_000 });
+  await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true");
   // The render's cube has the house too: home is the corner view, so the top view is left behind.
   await cube.hover({ force: true });
   await cube.getByRole("button", { name: "Go home" }).click({ force: true });
@@ -88,10 +80,13 @@ test("switching an open render to Paper drops the colours", async ({ page }) => 
   expect(r - b).toBeGreaterThan(60);
 
   await bar.getByRole("button", { name: "Paper" }).click({ force: true });
-  await expect(status).not.toHaveText("2 of 2 samples", { timeout: 30_000 });
-  await expect(status).toHaveText("2 of 2 samples", { timeout: 200_000 });
-  const [pr, , pb] = await middleColour(page);
-  expect(pr - pb).toBeLessThan(30);
+  // Paper builds the path tracer's shader again, freezing a software GPU's page for a minute or more, so don't wait
+  // for the count to drop first (that check can stall past its own timeout): wait for a finished picture in paper.
+  await expect
+    .poll(async () => (await status.textContent()) === "2 of 2 samples" && (([pr, , pb]) => pr - pb)(await middleColour(page)) < 30, {
+      timeout: 200_000,
+    })
+    .toBe(true);
 });
 
 test("Save image saves the picture already rendered, without rendering it again", async ({ page }) => {
