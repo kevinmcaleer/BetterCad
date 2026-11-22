@@ -128,6 +128,33 @@ test("section: click a face, then type how far", async ({ page }) => {
   await expect(page.getByRole("treeitem", { name: /^Section 1/ })).toHaveCount(0);
 });
 
+test("section: bodies made while it is on are cut too", async ({ page }) => {
+  await page.goto("/");
+  await addShape(page, "Box");
+  await page.getByRole("application", { name: /3D view/ }).focus();
+  await page.keyboard.press("x");
+  await page.waitForTimeout(400);
+  const box = (await canvas(page).boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const offset = page.getByRole("textbox", { name: /Offset/ });
+  await offset.fill("-5");
+  await offset.press("Enter");
+  await expect(page.getByRole("button", { name: "Hide Section 1" })).toBeVisible();
+  // A new body (as a rebuild makes while the arrow is dragged) is cut like the rest.
+  await addShape(page, "Cylinder");
+  await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
+  type Obj = { isMesh?: boolean; visible: boolean; material?: { type: string; clippingPlanes: unknown[] | null } };
+  const uncut = () =>
+    page.evaluate(() => {
+      let n = 0;
+      (window as unknown as { __bcView: { scene: { traverse(fn: (o: Obj) => void): void } } }).__bcView.scene.traverse((o) => {
+        if (o.isMesh && o.material?.type === "MeshStandardMaterial" && !o.material.clippingPlanes?.length) n++;
+      });
+      return n;
+    });
+  await expect.poll(uncut).toBe(0);
+});
+
 test("named views: save one and find it in the menu", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Views" }).click();
