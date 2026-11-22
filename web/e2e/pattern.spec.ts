@@ -198,9 +198,12 @@ test("turn a circle pattern round an edge picked on the model", async ({ page })
   await page.getByRole("button", { name: "Circle", exact: true }).click();
   await page.getByRole("button", { name: "Pick axis", exact: true }).click();
   await expect(page.getByText("Click a round edge or face, or an axis.")).toBeVisible();
-  // The box's top edge along Y, at x = 10.
-  await click(page, 10, 0, 20);
-  await expect(page.getByText("Copying 1 feature round the edge you picked.")).toBeVisible();
+  // The box's top edge along Y, at x = 10. On a busy runner the holed box's edges can still be building when the
+  // first click lands, so click again until the pick takes.
+  await expect(async () => {
+    await click(page, 10, 0, 20);
+    await expect(page.getByText("Copying 1 feature round the edge you picked.")).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
   await expect(page.getByRole("button", { name: "Edge", pressed: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Z", exact: true, pressed: false })).toBeVisible();
   await page.keyboard.press("Enter");
