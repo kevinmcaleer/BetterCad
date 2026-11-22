@@ -1,5 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
-import { Banner, Button, Dialog, ESC, Icon, MenuButton, cx, useEscape, type MenuEntry } from "@bettercad/ui";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type MouseEvent } from "react";
+import {
+  Banner,
+  Button,
+  ContextMenu,
+  Dialog,
+  ESC,
+  Icon,
+  MenuButton,
+  clickSelect,
+  cx,
+  longPress,
+  useEscape,
+  type ContextMenuState,
+  type MenuEntry,
+} from "@bettercad/ui";
 import { fileName, saveBcad } from "@bettercad/kernel/bcad";
 import { newDoc } from "../state/document";
 import { ApiError, serverTime, type Folder, type ModelSummary, type Place, type Project, type Usage } from "../cloud/api";
@@ -22,13 +36,19 @@ import { ROOT_NAME, crumbs, foldersIn, hashOf, keyOf, placeName, placeOf, target
  * Folders and projects (#273, #274): projects hold folders, folders nest, and a model lives in one place. The address
  * names the place ("#/library/folder/<id>", "#/library/project/<id>"), breadcrumbs lead back up, and models and folders
  * move by dragging onto a folder, project or breadcrumb, or with Move to… in their menu. Search covers every place.
+ *
+ * Right-click a card for its menu. Ctrl/Cmd-click, Shift-click, a card's tick box or a long press picks models; the
+ * selection bar then moves, bins or restores them all at once, and so does right-click or dragging one of them.
  */
 
 const MB = 1024 * 1024;
 export const formatMB = (n: number) => `${n < 10 * MB ? (n / MB).toFixed(1).replace(/\.0$/, "") : Math.round(n / MB)} MB`;
 
 /** What is being dragged, and what it can be dropped on. */
-type Dragged = { kind: "model"; id: string; name: string } | { kind: "folder"; id: string; name: string };
+type Dragged = { kind: "model"; id: string; name: string } | { kind: "folder"; id: string; name: string } | { kind: "models"; ids: string[]; name: string };
+
+/** "3 models", "1 model". */
+const countOf = (n: number) => `${n} ${n === 1 ? "model" : "models"}`;
 const DRAG_TYPE = "application/x-bettercad-item";
 
 function Thumb({ src, icon = "cube" }: { src: string | null; icon?: "cube" | "template" }) {
@@ -198,10 +218,23 @@ function ProjectDialog({
 }
 
 /** Move to…: every folder and project, with where the item is now and anywhere it can't go dimmed. */
-function MoveDialog({ tree, item, from, onMove, onCancel }: { tree: Tree; item: Dragged; from: Place; onMove: (to: Place) => void; onCancel: () => void }) {
+function MoveDialog({
+  tree,
+  item,
+  from,
+  onMove,
+  onCancel,
+}: {
+  tree: Tree;
+  item: Dragged;
+  /** Where it is now; null for a selection from more than one place. */
+  from: Place | null;
+  onMove: (to: Place) => void;
+  onCancel: () => void;
+}) {
   const all = useMemo(() => targets(tree), [tree]);
   const blocked = useMemo(() => (item.kind === "folder" ? within(tree, item.id) : new Set<string>()), [tree, item]);
-  const here = keyOf(from);
+  const here = from ? keyOf(from) : null;
   const [pick, setPick] = useState<string | null>(null);
   const chosen = all.find((t) => t.key === pick);
   return (
@@ -259,6 +292,13 @@ const dragProps = (d: Dragged) => ({
   },
 });
 
+/** Right-click opens the card's own menu at the pointer; a link inside keeps the browser's menu. */
+const menuAt = (onMenu: (at: ContextMenuState) => void) => (e: MouseEvent) => {
+  if ((e.target as Element).closest("a, input")) return;
+  e.preventDefault();
+  onMenu({ x: e.clientX, y: e.clientY });
+};
+
 function Crumb({ name, here, last, onDrop }: { name: string; here: Here; last: boolean; onDrop: (d: Dragged) => void }) {
   const drop = useDrop(onDrop);
   return (
@@ -276,6 +316,7 @@ function FolderTile({
   onOpen,
   onRename,
   onDrop,
+  onMenu,
 }: {
   folder: Folder;
   bin: boolean;
@@ -284,6 +325,7 @@ function FolderTile({
   onOpen: () => void;
   onRename: (name: string | null) => void;
   onDrop: (d: Dragged) => void;
+  onMenu: (at: ContextMenuState) => void;
 }) {
   const drop = useDrop(onDrop);
   const count = [
@@ -296,6 +338,7 @@ function FolderTile({
     <li
       className={cx("bc-folder", drop.over && "bc-drop")}
       {...(bin ? {} : { ...drop.props, ...dragProps({ kind: "folder", id: folder.id, name: folder.name }) })}
+      onContextMenu={menuAt(onMenu)}
     >
       {renaming ? (
         <div className="bc-folder-open">
@@ -351,6 +394,7 @@ function ProjectCard({
   thumb,
   entries,
   onDrop,
+  onMenu,
 }: {
   project: Project;
   bin: boolean;
@@ -360,6 +404,7 @@ function ProjectCard({
   thumb: (m: ModelSummary) => string | null;
   entries: MenuEntry[];
   onDrop: (d: Dragged) => void;
+  onMenu: (at: ContextMenuState) => void;
 }) {
   const drop = useDrop(onDrop);
   const pictures = inside
@@ -371,7 +416,7 @@ function ProjectCard({
   const shown = inside?.slice(0, PEEK) ?? [];
   const more = (inside?.length ?? 0) - shown.length;
   return (
-    <li className={cx("bc-card", drop.over && "bc-drop")} {...(bin ? {} : drop.props)}>
+    <li className={cx("bc-card", drop.over && "bc-drop")} {...(bin ? {} : drop.props)} onContextMenu={menuAt(onMenu)}>
       <button
         type="button"
         className="bc-card-open"
@@ -426,7 +471,12 @@ function ProjectCard({
   );
 }
 
-type Deleting = { kind: "model"; item: ModelSummary } | { kind: "folder"; item: Folder } | { kind: "project"; item: Project };
+type Deleting =
+  | { kind: "model"; item: ModelSummary }
+  | { kind: "folder"; item: Folder }
+  | { kind: "project"; item: Project }
+  /** The selection: to the bin, or out of the bin for good. */
+  | { kind: "models"; item: { name: string }; ids: string[]; forever: boolean };
 
 export function Library({ bin = false, folder, project }: { bin?: boolean; folder?: string; project?: string }) {
   const { api, account, ready } = useAccount();
@@ -444,7 +494,15 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
   const [status, setStatus] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Deleting | null>(null);
-  const [moving, setMoving] = useState<{ item: Dragged; from: Place } | null>(null);
+  const [moving, setMoving] = useState<{ item: Dragged; from: Place | null } | null>(null);
+  // Picked models (ids, in the order picked) and the card a Shift-click ranges from.
+  const [picked, setPicked] = useState<string[]>([]);
+  const anchor = useRef<string | null>(null);
+  // A long press picks a card; the click its finger lifts with mustn't open or unpick it.
+  const pressed = useRef(false);
+  const [menu, setMenu] = useState<{ at: ContextMenuState; title: string; entries: MenuEntry[] } | null>(null);
+  // What the last action can take back (models sent to the bin), shown beside the status line.
+  const [undo, setUndo] = useState<{ label: string; run: () => Promise<unknown>; done: string } | null>(null);
   const [naming, setNaming] = useState<"folder" | "project" | null>(null);
   const [editing, setEditing] = useState(false);
   // Why the list couldn't be fetched (offline, no server, signed out), and whether the last synced list shows instead.
@@ -471,6 +529,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
         !bin && !searching && here.kind === "root" ? api.list({ sort: "modified" }).catch(() => null) : Promise.resolve(null),
       ]);
       setModels(list.models);
+      setPicked((p) => (p.length ? p.filter((id) => list.models.some((m) => m.id === id)) : p));
       setUsage(use);
       setTree(tree_);
       const byProject: Record<string, ModelSummary[]> = {};
@@ -507,6 +566,13 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     return () => clearTimeout(t);
   }, [load, q]);
 
+  // A new place, search or the bin starts with nothing picked.
+  useEffect(() => {
+    setPicked([]);
+    anchor.current = null;
+  }, [bin, folder, project, q]);
+  useEscape(picked.length > 0, () => setPicked([]), ESC.selection);
+
   // Back online: fetch again without waiting to be asked.
   useEffect(() => {
     if (problem?.kind !== "offline") return;
@@ -524,12 +590,15 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     }
   };
 
-  const act = async (fn: () => Promise<unknown>, done: string) => {
+  /** Runs a change, says what it did and fetches again. `back` is how to take it back, offered as Undo. */
+  const act = async (fn: () => Promise<unknown>, done: string, back?: { run: () => Promise<unknown>; done: string }) => {
     try {
       await fn();
       setStatus(done);
+      setUndo(back ? { label: `Undo: ${done}`, ...back } : null);
       await load();
     } catch (e) {
+      setUndo(null);
       setStatus((e as Error).message);
     }
   };
@@ -612,7 +681,24 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
       setStatus("A folder can't go inside itself.");
       return;
     }
-    void act(() => (d.kind === "model" ? places.move(d.id, to) : places.moveFolder(d.id, to)), `Moved ${d.name} to ${name}`);
+    if (d.kind === "models") setPicked([]);
+    void act(
+      () => (d.kind === "model" ? places.move(d.id, to) : d.kind === "models" ? places.moveMany(d.ids, to) : places.moveFolder(d.id, to)),
+      `Moved ${d.name} to ${name}`,
+    );
+  };
+
+  /** Picks a model card: alone, Ctrl/Cmd toggles it, Shift ranges from the last one picked. */
+  const pick = (id: string, mods: { shift?: boolean; toggle?: boolean }) => {
+    const r = clickSelect(
+      (models ?? []).map((m) => m.id),
+      picked,
+      anchor.current,
+      id,
+      mods,
+    );
+    setPicked(r.selection);
+    anchor.current = r.anchor;
   };
 
   if (!ready) return <Page title="My models">{null}</Page>;
@@ -697,6 +783,48 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
           { kind: "separator", id: "s" },
           { id: "delete", label: "Delete…", icon: "trash", danger: true, onSelect: () => setDeleting({ kind: "project", item: p }) },
         ];
+
+  const pickedModels = (models ?? []).filter((m) => picked.includes(m.id));
+  const many = (): { item: Dragged & { kind: "models" }; from: Place | null } => {
+    const item = { kind: "models" as const, ids: pickedModels.map((m) => m.id), name: countOf(pickedModels.length) };
+    // "Here now" in Move to… only when they all live in one place.
+    const at = new Set(pickedModels.map((m) => keyOf(m)));
+    return { item, from: at.size === 1 ? pickedModels[0]! : null };
+  };
+  const restoreMany = () => {
+    const { item } = many();
+    setPicked([]);
+    void act(() => places.restoreMany(item.ids), `Restored ${item.name}`);
+  };
+  const deleteMany = (forever: boolean) => {
+    const { item } = many();
+    setDeleting({ kind: "models", item, ids: item.ids, forever });
+  };
+  const manyEntries = (): MenuEntry[] => {
+    const { item } = many();
+    const clear: MenuEntry = { id: "clear", label: "Clear selection", icon: "close", onSelect: () => setPicked([]) };
+    return bin
+      ? [
+          { id: "restore", label: `Restore ${item.name}`, icon: "undo", onSelect: restoreMany },
+          { id: "forever", label: `Delete ${item.name} for ever…`, icon: "trash", danger: true, onSelect: () => deleteMany(true) },
+          { kind: "separator", id: "s" },
+          clear,
+        ]
+      : [
+          { id: "move", label: `Move ${item.name} to…`, icon: "move", onSelect: () => setMoving(many()) },
+          { id: "delete", label: `Delete ${item.name}…`, icon: "trash", danger: true, onSelect: () => deleteMany(false) },
+          { kind: "separator", id: "s" },
+          clear,
+        ];
+  };
+
+  /** Right-click on a model card: the selection's menu if it's one of several picked, else its own. */
+  const modelMenu = (m: ModelSummary, at: ContextMenuState) => {
+    if (pressed.current) return;
+    if (picked.length > 1 && picked.includes(m.id)) return setMenu({ at, title: `${picked.length} selected`, entries: manyEntries() });
+    if (picked.length && !picked.includes(m.id)) setPicked([]);
+    setMenu({ at, title: m.name, entries: modelEntries(m) });
+  };
 
   const empty = models && models.length === 0 && folders.length === 0 && projects.length === 0;
 
@@ -802,9 +930,23 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
               <Button label="Bin" icon="trash" onClick={() => go("#/library/bin")} />
             )}
           </div>
-          <p role="status" className="bc-page-note">
-            {status}
-          </p>
+          <div className="bc-lib-status">
+            <p role="status" className="bc-page-note">
+              {status}
+            </p>
+            {undo && (
+              <Button
+                icon="undo"
+                label="Undo"
+                title={undo.label}
+                onClick={() => {
+                  const u = undo;
+                  setUndo(null);
+                  void act(u.run, u.done);
+                }}
+              />
+            )}
+          </div>
           {error && (
             <p className="bc-page-error" role="alert">
               {error}
@@ -840,6 +982,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
                     thumb={(m) => (m.thumbnail ? api.url(m.thumbnail) : null)}
                     entries={projectEntries(p)}
                     onDrop={(d) => moveTo(d, { project_id: p.id })}
+                    onMenu={(at) => setMenu({ at, title: p.name, entries: projectEntries(p) })}
                   />
                 ))}
               </ul>
@@ -862,6 +1005,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
                       if (name) void act(() => places.renameFolder(f.id, name), `Renamed to ${name}`);
                     }}
                     onDrop={(d) => moveTo(d, { folder_id: f.id })}
+                    onMenu={(at) => setMenu({ at, title: f.name, entries: folderEntries(f) })}
                   />
                 ))}
               </ul>
@@ -888,62 +1032,134 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
           {models && models.length > 0 && (
             <>
               {(folders.length > 0 || projects.length > 0) && <h2 className="bc-lib-h">Models</h2>}
-              <ul className="bc-lib-grid" aria-label={bin ? "Deleted models" : searching ? "Search results" : "Your models"}>
-                {models.map((m) => (
-                  <li key={m.id} className="bc-card" {...(bin ? {} : dragProps({ kind: "model", id: m.id, name: m.name }))}>
-                    <button
-                      type="button"
-                      className="bc-card-open"
-                      aria-label={bin ? `${m.name}, in the bin` : `Open ${m.name}`}
-                      onClick={() => !bin && go(`#/edit/${m.id}`)}
-                      disabled={bin}
+              <ul
+                className={cx("bc-lib-grid", picked.length > 0 && "bc-picking")}
+                aria-label={bin ? "Deleted models" : searching ? "Search results" : "Your models"}
+              >
+                {models.map((m) => {
+                  const on = picked.includes(m.id);
+                  // Dragging one of several picked models takes them all.
+                  const dragged: Dragged = on && picked.length > 1 ? many().item : { kind: "model", id: m.id, name: m.name };
+                  const press = longPress(() => {
+                    pressed.current = true;
+                    pick(m.id, { toggle: true });
+                  });
+                  return (
+                    <li
+                      key={m.id}
+                      className={cx("bc-card", on && "bc-picked")}
+                      {...(bin ? {} : dragProps(dragged))}
+                      {...press}
+                      onPointerDown={(e) => {
+                        pressed.current = false;
+                        press.onPointerDown(e);
+                      }}
+                      onContextMenu={menuAt((at) => modelMenu(m, at))}
                     >
-                      <Thumb src={m.thumbnail ? api.url(m.thumbnail) : null} />
-                    </button>
-                    <div className="bc-card-foot">
-                      <div className="bc-card-text">
-                        {renaming === m.id ? (
-                          <RenameField
-                            name={m.name}
-                            onDone={(name) => {
-                              setRenaming(null);
-                              if (name) void act(() => api.rename(m.id, name), `Renamed to ${name}`);
-                            }}
-                          />
-                        ) : (
-                          <div className="bc-card-name" title={m.name}>
-                            {m.name}
-                          </div>
-                        )}
-                        {searching && !bin && (
-                          <div className="bc-card-time bc-card-place">
-                            <Icon name={m.folder_id ? "folder" : m.project_id ? "template" : "home"} size={12} /> {placeName(tree, m)}
-                          </div>
-                        )}
-                        <div className="bc-card-time">{ago(Date.now() - serverTime(bin && m.deleted_at ? m.deleted_at : m.modified))}</div>
-                        {m.size != null && (
-                          <div
-                            className="bc-card-size"
-                            title={m.versions && m.versions > 1 ? `${formatBytes(m.size)} across ${m.versions} versions` : undefined}
-                          >
-                            {formatBytes(m.size)}
-                          </div>
-                        )}
-                      </div>
-                      <MenuButton
-                        label={`${m.name} menu`}
-                        align="end"
-                        entries={modelEntries(m)}
-                        trigger={(t) => <Button {...t} icon="more" title={`More for ${m.name}`} />}
+                      <input
+                        type="checkbox"
+                        className="bc-card-pick"
+                        aria-label={`Select ${m.name}`}
+                        checked={on}
+                        onChange={() => {}}
+                        onClick={(e) => pick(m.id, { shift: e.shiftKey, toggle: true })}
                       />
-                    </div>
-                  </li>
-                ))}
+                      <button
+                        type="button"
+                        className="bc-card-open"
+                        aria-label={bin ? `${m.name}, in the bin` : `Open ${m.name}`}
+                        aria-pressed={picked.length ? on : undefined}
+                        onClick={(e) => {
+                          if (pressed.current) {
+                            pressed.current = false;
+                            return;
+                          }
+                          // With a modifier, while picking, or in the bin (where nothing opens), a click picks.
+                          const toggle = e.ctrlKey || e.metaKey;
+                          if (toggle || e.shiftKey || picked.length || bin)
+                            return pick(m.id, { shift: e.shiftKey, toggle: toggle || picked.length > 0 || bin });
+                          go(`#/edit/${m.id}`);
+                        }}
+                      >
+                        <Thumb src={m.thumbnail ? api.url(m.thumbnail) : null} />
+                      </button>
+                      <div className="bc-card-foot">
+                        <div className="bc-card-text">
+                          {renaming === m.id ? (
+                            <RenameField
+                              name={m.name}
+                              onDone={(name) => {
+                                setRenaming(null);
+                                if (name) void act(() => api.rename(m.id, name), `Renamed to ${name}`);
+                              }}
+                            />
+                          ) : (
+                            <div className="bc-card-name" title={m.name}>
+                              {m.name}
+                            </div>
+                          )}
+                          {searching && !bin && (
+                            <div className="bc-card-time bc-card-place">
+                              <Icon name={m.folder_id ? "folder" : m.project_id ? "template" : "home"} size={12} /> {placeName(tree, m)}
+                            </div>
+                          )}
+                          <div className="bc-card-time">{ago(Date.now() - serverTime(bin && m.deleted_at ? m.deleted_at : m.modified))}</div>
+                          {m.size != null && (
+                            <div
+                              className="bc-card-size"
+                              title={m.versions && m.versions > 1 ? `${formatBytes(m.size)} across ${m.versions} versions` : undefined}
+                            >
+                              {formatBytes(m.size)}
+                            </div>
+                          )}
+                        </div>
+                        <MenuButton
+                          label={`${m.name} menu`}
+                          align="end"
+                          entries={modelEntries(m)}
+                          trigger={(t) => <Button {...t} icon="more" title={`More for ${m.name}`} />}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}
         </>
       )}
+      {pickedModels.length > 0 && (
+        <div className="bc-lib-selbar" role="toolbar" aria-label="Selected models">
+          <span className="bc-lib-selbar-count">{`${pickedModels.length} selected`}</span>
+          {pickedModels.length < (models?.length ?? 0) && (
+            <Button
+              label="Select all"
+              onClick={() => {
+                setPicked((models ?? []).map((m) => m.id));
+              }}
+            />
+          )}
+          {bin ? (
+            <>
+              <Button icon="undo" label="Restore" onClick={() => restoreMany()} />
+              <Button icon="trash" label="Delete for ever…" variant="danger" onClick={() => deleteMany(true)} />
+            </>
+          ) : (
+            <>
+              <Button icon="move" label="Move to…" onClick={() => setMoving(many())} />
+              <Button icon="trash" label="Delete…" variant="danger" onClick={() => deleteMany(false)} />
+            </>
+          )}
+          <Button icon="close" label="Clear" title="Clear selection (Esc)" onClick={() => setPicked([])} />
+        </div>
+      )}
+      <ContextMenu
+        at={menu?.at ?? null}
+        title={menu?.title}
+        label={menu ? `${menu.title} menu` : ""}
+        entries={menu?.entries ?? []}
+        onClose={() => setMenu(null)}
+      />
       {usage && (
         <p className="bc-lib-usage">
           {usage.models} {usage.models === 1 ? "model" : "models"} · {formatMB(usage.bytes)} of {formatMB(usage.quota)}
@@ -996,7 +1212,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
       {deleting && (
         <Dialog
           open
-          title={`Delete ${deleting.item.name}?`}
+          title={deleting.kind === "models" && deleting.forever ? `Delete ${deleting.item.name} for ever?` : `Delete ${deleting.item.name}?`}
           icon="trash"
           onCancel={() => setDeleting(null)}
           footer={
@@ -1009,7 +1225,15 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
                   const d = deleting;
                   setDeleting(null);
                   const gone = `Moved ${d.item.name} to the bin`;
-                  if (d.kind === "model") void act(() => api.remove(d.item.id), gone);
+                  if (d.kind === "models") {
+                    setPicked([]);
+                    if (d.forever)
+                      void act(async () => {
+                        for (const id of d.ids) await api.remove(id, true);
+                      }, `Deleted ${d.item.name} for ever`);
+                    else void act(() => places.removeMany(d.ids), gone, { run: () => places.restoreMany(d.ids), done: `Restored ${d.item.name}` });
+                  } else if (d.kind === "model")
+                    void act(() => api.remove(d.item.id), gone, { run: () => api.undelete(d.item.id), done: `Restored ${d.item.name}` });
                   else if (d.kind === "folder") void act(() => places.removeFolder(d.item.id), gone);
                   else
                     void act(async () => {
@@ -1022,9 +1246,13 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
           }
         >
           <p>
-            {deleting.kind === "model"
-              ? "It goes to the bin for 30 days, where you can restore it."
-              : "It goes to the bin with everything in it for 30 days, where you can restore it."}
+            {deleting.kind === "models"
+              ? deleting.forever
+                ? "They're gone for good. You can't undo this."
+                : "They go to the bin for 30 days, where you can restore them."
+              : deleting.kind === "model"
+                ? "It goes to the bin for 30 days, where you can restore it."
+                : "It goes to the bin with everything in it for 30 days, where you can restore it."}
           </p>
         </Dialog>
       )}

@@ -223,3 +223,31 @@ def test_the_bin_empties_folders_and_projects_after_30_days(user):
         db.execute("UPDATE projects SET deleted_at = datetime('now', '-31 days')")
     jobs.empty_bin(db)
     assert places(user, bin=True) == {"folders": [], "projects": []}
+
+
+def test_move_bin_and_restore_several_models_at_once(user):
+    parts = folder(user, "Parts")
+    a, b, c = create(user, "A"), create(user, "B"), create(user, "C")
+    r = user.post("/api/models/bulk/move", json={"ids": [a["id"], b["id"], a["id"]], "folder_id": parts["id"]})
+    assert r.json() == {"moved": 2}
+    assert names(user, f"?folder={parts['id']}") == ["A", "B"]
+    assert user.post("/api/models/bulk/delete", json={"ids": [a["id"], c["id"]]}).json() == {"deleted": 2}
+    assert names(user) == ["B"]
+    assert names(user, "?bin=true") == ["A", "C"]
+    assert user.post("/api/models/bulk/restore", json={"ids": [a["id"], c["id"]]}).json() == {"restored": 2}
+    assert names(user) == ["A", "B", "C"]
+    assert names(user, f"?folder={parts['id']}") == ["A", "B"]
+    # All or nothing: an id that isn't there stops the lot, and nothing moves.
+    assert user.post("/api/models/bulk/move", json={"ids": [c["id"], "missing"], "folder_id": parts["id"]}).status_code == 404
+    assert names(user, f"?folder={parts['id']}") == ["A", "B"]
+    assert user.post("/api/models/bulk/delete", json={"ids": []}).status_code == 422
+
+
+def test_another_persons_models_cant_be_moved_or_binned_in_bulk(make_client):
+    with make_client() as mine, make_client() as theirs:
+        sign_up(mine, "a@example.com", "Ann")
+        sign_up(theirs, "b@example.com", "Bob")
+        m = create(mine, "Wheel")
+        assert theirs.post("/api/models/bulk/delete", json={"ids": [m["id"]]}).status_code == 404
+        assert theirs.post("/api/models/bulk/move", json={"ids": [m["id"]]}).status_code == 404
+        assert names(mine) == ["Wheel"]

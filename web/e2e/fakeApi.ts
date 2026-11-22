@@ -236,6 +236,17 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       const sized = (m: Model) => ({ ...summary(m), size: m.versions.reduce((n, v) => n + v.bcad.length, 0), versions: m.versions.length });
       return json(route, 200, { models: list.map(sized), total: list.length });
     }
+    if (path.startsWith("models/bulk/") && method === "POST") {
+      const b = body();
+      const picked = (b.ids as string[]).map((i) => models.get(i));
+      if (picked.some((x) => !x || x.user !== user.id)) return fail(route, 404, "That model isn't here. It may have been deleted.");
+      const what = path.slice("models/bulk/".length);
+      for (const x of picked as Model[]) {
+        if (what === "move") Object.assign(x, placeOf(b));
+        else x.deleted_at = what === "delete" ? now() : null;
+      }
+      return json(route, 200, { [what === "move" ? "moved" : what === "delete" ? "deleted" : "restored"]: picked.length });
+    }
     const [, id, sub, n, action] = path.split("/");
     const m = id ? models.get(id) : undefined;
     if (!m || m.user !== user.id) return fail(route, 404, "That model isn't here. It may have been deleted.");

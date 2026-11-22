@@ -8,6 +8,10 @@ export function placesApi(api: Api) {
   const forever = (yes: boolean) => (yes ? "?forever=true" : "");
   return {
     move: (id: string, to: Place) => call<ModelSummary>("POST", `models/${encodeURIComponent(id)}/move`, to),
+    /** Several models at once (the selection): all of them, or none if one isn't there. */
+    moveMany: (ids: string[], to: Place) => call<{ moved: number }>("POST", "models/bulk/move", { ids, ...to }),
+    removeMany: (ids: string[]) => call<{ deleted: number }>("POST", "models/bulk/delete", { ids }),
+    restoreMany: (ids: string[]) => call<{ restored: number }>("POST", "models/bulk/restore", { ids }),
     /** Every folder and project; with `bin`, the ones put in the bin. */
     places: (bin = false) => call<{ folders: Folder[]; projects: Project[] }>("GET", `places${bin ? "?bin=true" : ""}`),
     newFolder: (name: string, where: { parent_id?: string | null; project_id?: string | null } = {}) => call<Folder>("POST", "folders", { name, ...where }),

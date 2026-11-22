@@ -415,3 +415,52 @@ test("upload a .bcad and a STEP file, each saved as a model that opens", async (
       .first(),
   ).toBeVisible({ timeout: 60_000 });
 });
+
+test("right-click a model, then pick several and move or bin them together", async ({ page, context }) => {
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/#/library");
+  const stl = (name: string) => ({
+    name: `${name}.stl`,
+    mimeType: "model/stl",
+    buffer: Buffer.from(`solid t\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 10 0 0\nvertex 0 10 0\nendloop\nendfacet\nendsolid t\n`),
+  });
+  await page.getByLabel("Files to upload").setInputFiles(["Wheel", "Axle", "Hub", "Motor"].map(stl));
+  await expect(page.getByText("Uploaded 4 models")).toBeVisible(SAVE);
+  await page.getByRole("button", { name: "New folder" }).click();
+  await page.getByLabel("Folder name").fill("Drive");
+  await page.getByRole("button", { name: "Make" }).click();
+  await expect(page.getByRole("button", { name: "Open folder Drive" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open Wheel" }).click({ button: "right" });
+  const menu = page.getByRole("menu", { name: "Wheel menu" });
+  await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+  await menu.getByRole("menuitem", { name: "Rename" }).click();
+  await page.getByRole("textbox", { name: "New name" }).fill("Front wheel");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Renamed to Front wheel")).toBeVisible();
+
+  const mod = process.platform === "darwin" ? "Meta" : "Control";
+  await page.getByRole("button", { name: "Open Axle" }).click({ modifiers: [mod] });
+  await page.getByRole("button", { name: "Open Motor" }).click({ modifiers: [mod] });
+  const bar = page.getByRole("toolbar", { name: "Selected models" });
+  await expect(bar).toContainText("2 selected");
+  if (process.env.PICK_SHOT) await page.screenshot({ path: process.env.PICK_SHOT });
+  await bar.getByRole("button", { name: "Move to…" }).click();
+  await page.getByRole("dialog", { name: "Move 2 models" }).getByRole("radio", { name: /Drive/ }).check();
+  await page.getByRole("button", { name: "Move here" }).click();
+  await expect(page.getByText("Moved 2 models to Drive")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Axle" })).toHaveCount(0);
+  await expect(bar).toHaveCount(0);
+
+  await page.getByRole("checkbox", { name: "Select Hub" }).check();
+  await page.getByRole("checkbox", { name: "Select Front wheel" }).check();
+  await page.getByRole("button", { name: "Open Hub" }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete 2 models…" }).click();
+  await page.getByRole("dialog", { name: "Delete 2 models?" }).getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("Moved 2 models to the bin")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Hub" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByText("Restored 2 models")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Hub" })).toBeVisible();
+});
