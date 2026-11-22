@@ -11,6 +11,7 @@ import {
   orbit,
   pan,
   presetOf,
+  rollBy,
   snapTo,
   toPreset,
   viewDir,
@@ -32,6 +33,33 @@ describe("camera", () => {
     const front = cameraBasis(toPreset(DEFAULT_CAMERA, "front"));
     near(front.up, [0, 0, 1]);
     near(front.right, [1, 0, 0]);
+  });
+
+  it("rolls the view a quarter turn about the line of sight, the picture turning clockwise", () => {
+    const front = toPreset(DEFAULT_CAMERA, "front");
+    const cw = rollBy(front, 1);
+    expect(cw.roll).toBe(90);
+    const b = cameraBasis(cw);
+    near(b.back, [0, -1, 0]); // still looking from the front
+    near(b.up, [-1, 0, 0]); // the world's −X is now up the screen…
+    near(b.right, [0, 0, 1]); // …and Z points right: the picture turned clockwise
+    near(cameraBasis(rollBy(front, -1)).up, [1, 0, 0]);
+    // Four quarter turns come back round; a preset or a cube pick squares the roll off.
+    expect(rollBy(rollBy(rollBy(cw, 1), 1), 1).roll).toBe(0);
+    expect(presetOf(cw)).toBeNull();
+    expect(presetOf(rollBy(rollBy(rollBy(cw, 1), 1), 1))).toBe("front");
+    expect(lookFrom(cw, [0, 0, 1]).roll).toBe(0);
+    expect(toPreset(cw, "front").roll).toBe(0);
+    // Half way through the glide it has turned 45°.
+    expect(lerpCamera(front, cw, 0.5).roll).toBeCloseTo(45, 6);
+  });
+
+  it("orbits a rolled view along the drag on the rolled screen", () => {
+    // Rolled 90° clockwise, a drag down the screen (which raises elevation unrolled) now runs along the old horizontal.
+    const cw = rollBy(toPreset(DEFAULT_CAMERA, "front"), 1);
+    const o = orbit(cw, 0, 10);
+    expect(o.elevation).toBeCloseTo(0, 6);
+    expect(Math.abs(o.azimuth - cw.azimuth)).toBeCloseTo(10, 6);
   });
 
   it("a sketch on any face is square to the screen when you look straight at it", () => {

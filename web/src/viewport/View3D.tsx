@@ -374,6 +374,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
         rotation={rotation}
         onPick={(d) => engine.current?.lookFrom(d)}
         onOrbit={(dx, dy) => engine.current?.orbitBy(dx, dy)}
+        onRoll={(dir) => engine.current?.roll(dir)}
         onHome={props.onHome}
         menu={props.cubeMenu}
       />

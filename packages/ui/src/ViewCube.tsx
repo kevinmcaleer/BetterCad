@@ -77,6 +77,11 @@ export interface ViewCubeProps {
   onOrbitEnd?: () => void;
   /** Go home: shows a house by the cube while the pointer is over it (always, on touch screens). */
   onHome?: () => void;
+  /**
+   * Roll the view a quarter turn about the line of sight: 1 clockwise, −1 anticlockwise. Shows two curved arrows by
+   * the cube's top right, on hover, and always while the view looks square at a face.
+   */
+  onRoll?: (dir: 1 | -1) => void;
   /** The cube's own menu (Go home, projection, home view), under a small arrow by the cube and on a right-click. */
   menu?: MenuEntry[];
 }
@@ -87,8 +92,10 @@ export interface ViewCubeProps {
  * place under the pointer lights up. X, Y and Z (red, green, blue) run along the edges from the bottom-front-left
  * corner.
  */
-export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, menu }: ViewCubeProps) {
+export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, onRoll, menu }: ViewCubeProps) {
   const r = rotation;
+  // Looking straight at a face: the line of sight runs along an axis.
+  const square = Math.max(Math.abs(r[6]!), Math.abs(r[7]!), Math.abs(r[8]!)) > 0.9999;
   const [hover, setHover] = useState<string | null>(null);
   const [context, setContext] = useState<ContextMenuState | null>(null);
   const press = useRef<{ x: number; y: number; lastX: number; lastY: number; moved: boolean; raw: V3 | null } | null>(null);
@@ -205,7 +212,7 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
   };
 
   return (
-    <div className="bc-viewcube" role="group" aria-label="View cube">
+    <div className={`bc-viewcube${square ? " bc-viewcube-square" : ""}`} role="group" aria-label="View cube">
       <svg
         className="bc-viewcube-svg"
         viewBox={`0 0 ${SIZE} ${SIZE}`}
@@ -299,6 +306,12 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
         {labels(true)}
       </svg>
       {onHome && <Button className="bc-cube-btn bc-cube-home" size="dense" icon="home" title="Go home" onClick={onHome} />}
+      {onRoll && (
+        <>
+          <Button className="bc-cube-btn bc-cube-roll bc-cube-roll-ccw" size="dense" icon="rollCcw" title="Turn anticlockwise 90°" onClick={() => onRoll(-1)} />
+          <Button className="bc-cube-btn bc-cube-roll bc-cube-roll-cw" size="dense" icon="rollCw" title="Turn clockwise 90°" onClick={() => onRoll(1)} />
+        </>
+      )}
       {menu?.length ? (
         <>
           <MenuButton

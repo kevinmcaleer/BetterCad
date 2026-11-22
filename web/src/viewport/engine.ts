@@ -66,6 +66,7 @@ import {
   orbit,
   pan,
   presetOf,
+  rollBy,
   toPreset,
   zoom,
   type CameraState,
@@ -658,6 +659,11 @@ export class Engine {
   /** Glides round to look from `dir` (a view cube face, edge or corner). */
   lookFrom(dir: V3): void {
     this.setCamera(lookFrom(this.tween?.to ?? this.cam, dir), true);
+  }
+
+  /** Rolls the view a quarter turn about the line of sight (the view cube's turn arrows): 1 clockwise, −1 anticlockwise. */
+  roll(dir: 1 | -1): void {
+    this.setCamera(rollBy(this.tween?.to ?? this.cam, dir), true);
   }
 
   /** Turns the view by a drag on the view cube, in pixels; stops any glide. */
@@ -1366,7 +1372,7 @@ export class Engine {
   lookAt(origin: V3, normal: V3, animate = true): void {
     const { azimuth, elevation } = facing(normal);
     const base = this.tween?.to ?? this.cam;
-    this.setCamera({ ...base, target: origin, azimuth, elevation, ortho: true }, animate);
+    this.setCamera({ ...base, target: origin, azimuth, elevation, roll: 0, ortho: true }, animate);
   }
 
   /** Shows the three origin planes to pick from, sized to the model (at least 40 mm), or hides them. */

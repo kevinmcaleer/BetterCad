@@ -359,6 +359,22 @@ export function useViewport(d: ViewportDeps) {
     const list: Command[] = [
       { id: "view.home", label: "Go home", group: "View", icon: "home", keys: ["home"], run: goHome, keywords: "view cube reset camera" },
       ...presets.map<Command>((v) => ({ id: `view.${v.id}`, label: `${v.label} view`, group: "View", icon: "camera", keys: [v.key], run: () => preset(v.id) })),
+      {
+        id: "view.rollCw",
+        label: "Turn the view clockwise 90°",
+        group: "View",
+        icon: "rollCw",
+        run: () => view3d.current?.engine()?.roll(1),
+        keywords: "view cube roll rotate",
+      },
+      {
+        id: "view.rollCcw",
+        label: "Turn the view anticlockwise 90°",
+        group: "View",
+        icon: "rollCcw",
+        run: () => view3d.current?.engine()?.roll(-1),
+        keywords: "view cube roll rotate counterclockwise",
+      },
       { id: "view.fit", scope: "model", label: "Fit the parts in the view", group: "View", icon: "frame", keys: ["f"], run: fit },
       {
         id: "view.ortho",
