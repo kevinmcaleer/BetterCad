@@ -88,11 +88,14 @@ test("the My models panel lists saved models and right-click inserts one", async
   await page.keyboard.press("ControlOrMeta+n");
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toHaveCount(0);
 
-  // Folded by default: a tab at the left edge opens it.
+  // Folded by default, it takes no room: the browser keeps the left edge, and the top bar's folder button opens it.
   const panel = page.getByRole("complementary", { name: "My models" });
   await expect(panel).toHaveCount(0);
+  const browserLeft = async () => (await page.locator("#bc-left-panel").boundingBox())!.x;
+  await expect.poll(browserLeft).toBeLessThan(20);
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT.replace(".png", "-tab.png") });
-  await page.getByRole("button", { name: "My models" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "My models" }).click();
+  await expect.poll(browserLeft).toBeGreaterThan(200);
   const tree = panel.getByRole("tree", { name: "Your models" });
   await expect(tree.getByRole("button", { name: "Horn" })).toBeVisible();
   // The list can still be settling as the panel opens, so right-click again until the menu shows.
@@ -109,9 +112,10 @@ test("the My models panel lists saved models and right-click inserts one", async
   await expect(page.getByText("Inserted Horn as a component.", { exact: false })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
 
-  // Its hide button folds it back to the tab.
+  // Its hide button folds it away, and the browser moves back to the left edge.
   await panel.getByRole("button", { name: "Hide my models" }).click();
   await expect(panel).toHaveCount(0);
+  await expect.poll(browserLeft).toBeLessThan(20);
 });
 
 test("on a phone, the top bar's My models button opens the panel as a sheet", async ({ page, context }) => {
