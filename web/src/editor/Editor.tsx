@@ -3744,7 +3744,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             {(problem.type === "fillet" || problem.type === "chamfer" || problem.type === "shell" || problem.type === "offsetFace") && (
               <Button size="dense" label="Re-pick" title="Pick the edges or faces again" onClick={() => repick(problem.id)} />
             )}
-            {editEntry && "onSelect" in editEntry && <Button size="dense" label="Edit" onClick={editEntry.onSelect} />}
+            {editEntry && "onSelect" in editEntry && <Button size="dense" label="Edit" onClick={() => editEntry.onSelect()} />}
             <Button size="dense" label={problem.suppressed ? "Unsuppress" : "Suppress"} onClick={() => suppressFeature(problem.id)} />
             <Button size="dense" variant="danger" label="Delete" onClick={() => deleteFeature(problem.id)} />
           </span>

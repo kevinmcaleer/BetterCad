@@ -10,6 +10,7 @@ import {
 import {
   ArmedBar,
   Button,
+  ContextMenu,
   MenuButton,
   RibbonButton,
   RibbonGroup,
@@ -39,6 +40,7 @@ import {
   type Constraint,
   type Dimension,
   type Id,
+  type Sketch,
   type Vec2,
 } from "@bettercad/sketch";
 import { ORIGIN, SNAP_LABEL } from "./snap";
@@ -641,7 +643,70 @@ export function SketchLabels({ s }: { s: SketchSession }) {
           {s.cursor.label || SNAP_LABEL[s.cursor.kind]}
         </span>
       )}
+      {s.pickList && <SketchPickList s={s} />}
     </div>
+  );
+}
+
+/** How an item reads in the long-press list: what it is, with its size, so two lines on top of each other can be told apart. */
+export function pickLabel(sketch: Sketch, id: Id): string {
+  if (id === ORIGIN) return "Origin";
+  const e = sketch.entities.find((x) => x.id === id);
+  if (!e) return "Item";
+  const n = (v: number) => `${Math.round(v * 100) / 100}`;
+  const idx = new SketchIndex(sketch);
+  const kind = e.projectedFrom ? "Projected " : e.construction ? "Construction " : "";
+  const name = (base: string) => (kind ? kind + base.toLowerCase() : base);
+  switch (e.kind) {
+    case "line": {
+      const [a, b] = [idx.xy(e.a), idx.xy(e.b)];
+      return `${name("Line")} ${n(Math.hypot(b[0] - a[0], b[1] - a[1]))} mm`;
+    }
+    case "circle":
+      return `${name("Circle")} ⌀ ${n(e.r * 2)} mm`;
+    case "arc":
+      return `${name("Arc")} R ${n(e.r)} mm`;
+    case "ellipse":
+      return name("Ellipse");
+    case "spline":
+      return name("Spline");
+    default: {
+      const centre = sketch.entities.some((x) => (x.kind === "circle" || x.kind === "arc" || x.kind === "ellipse") && x.c === id);
+      const end = sketch.entities.some(
+        (x) => ((x.kind === "line" || x.kind === "arc") && (x.a === id || x.b === id)) || (x.kind === "spline" && x.pts.includes(id)),
+      );
+      return name(centre ? "Centre point" : end ? "End point" : "Point");
+    }
+  }
+}
+
+/**
+ * A long press with Select where things lie on top of each other: everything under the pointer in a list, as Fusion's
+ * Select other. Pointing at a row lights its item; clicking it picks it (Shift adds it to the picks).
+ */
+function SketchPickList({ s }: { s: SketchSession }) {
+  const l = s.pickList!;
+  const sketch = s.sketch!;
+  const r = s.engineOf()!.canvas.getBoundingClientRect();
+  const close = () => {
+    s.setPickList(null);
+    s.setHover(null);
+  };
+  const entries: MenuEntry[] = l.items.map((id, i) => ({
+    id: `${id}:${i}`,
+    label: pickLabel(sketch, id),
+    onHover: () => s.setHover(id),
+    onSelect: (mods) => s.setSel(l.add || mods?.shift ? [...l.before.filter((x) => x !== id), id] : [id]),
+  }));
+  return (
+    <ContextMenu
+      at={{ x: l.at.x + r.left, y: l.at.y + r.top }}
+      entries={entries}
+      label="Pick what's under the pointer"
+      title="Pick one"
+      onClose={close}
+      onLeave={() => s.setHover(null)}
+    />
   );
 }
 
