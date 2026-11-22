@@ -154,6 +154,14 @@ export function squareRoll(roll = 0): number {
 }
 
 /**
+ * The quarter turn to save with a sketch: the view's roll, squared, while the camera looks straight at the sketch's
+ * plane (along its normal); null when it looks some other way.
+ */
+export function sketchTurn(c: CameraState, normal: V3): number | null {
+  return dot(viewDir(c.azimuth, c.elevation), norm(normal)) > 0.9999 ? squareRoll(c.roll) : null;
+}
+
+/**
  * The camera looking from `dir` (towards the camera, any length) at the same target and distance: a view cube face,
  * edge or corner. Straight down or up keeps the Top view's +Y up the screen. A turned view keeps its turn, squared to
  * the nearest quarter turn, as in Fusion: upside down and nudged, a click squares it up and leaves it upside down.

@@ -71,7 +71,7 @@ import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide, type SketchOption, type SketchOptions } from "./options";
-import { viewDir } from "../viewport/camera";
+import { sketchTurn, viewDir } from "../viewport/camera";
 import { placeAt } from "./dimensions";
 import type { ModelTarget } from "./modelSnap";
 import { ORIGIN, entityAt, middleLine, pickAt, pointPickAt, snap, snapStep, type PointPick, type Snap } from "./snap";
@@ -698,7 +698,7 @@ export function useSketch(d: SketchDeps) {
       const plane = { ...s.plane, offset: v } as PlaneRef;
       store.edit((doc) => updateSketch(doc, id, (x) => ({ ...x, plane })), "Move the sketch plane", `offset:${id}`);
       const f = posedFrame(id, plane, deps.current.construct, deps.current.placed, deps.current.posed);
-      engineOf()?.lookAt(f.origin, f.normal);
+      engineOf()?.lookAt(f.origin, f.normal, true, s.turn ?? 0);
     },
     [current, store, engineOf],
   );
@@ -706,7 +706,7 @@ export function useSketch(d: SketchDeps) {
   /** Turns the view to look straight at the sketch's plane, as Fusion's Look At does, keeping the view's quarter turn. */
   const lookAtSketch = useCallback(() => {
     const f = live.current.frame;
-    if (f) engineOf()?.lookAt(f.origin, f.normal, true, true);
+    if (f) engineOf()?.lookAt(f.origin, f.normal, true, "keep");
   }, [engineOf]);
 
   /** The palette's Linetype: normal or construction for the picked curves, and for the ones you draw next. */
@@ -805,7 +805,7 @@ export function useSketch(d: SketchDeps) {
       const fr = posedFrame(id, f.sketch.plane, deps.current.construct, deps.current.placed, deps.current.posed);
       const eng = engineOf();
       keptOrtho.current ??= eng?.camera.ortho ?? null;
-      eng?.lookAt(fr.origin, fr.normal);
+      eng?.lookAt(fr.origin, fr.normal, true, f.sketch.turn ?? 0);
       say(`Editing ${f.name}. Enter finishes.`);
     },
     [store, engineOf, setStool, say],
@@ -813,6 +813,16 @@ export function useSketch(d: SketchDeps) {
 
   const end = useCallback(() => {
     const name = live.current.feature?.name;
+    // Still looking straight at the sketch, turned with the view cube's arrows: the sketch keeps that turn for next time.
+    const id = live.current.editingId;
+    const s = live.current.sketch;
+    const f = live.current.frame;
+    const cam = engineOf()?.goal;
+    if (id && s && f && cam) {
+      const turn = sketchTurn(cam, f.normal);
+      if (turn !== null && turn !== (s.turn ?? 0))
+        store.edit((doc) => updateSketch(doc, id, (x) => ({ ...x, turn: turn || undefined })), "Turn the sketch view");
+    }
     store.seal();
     setEditingId(null);
     setStool("select");
@@ -823,7 +833,7 @@ export function useSketch(d: SketchDeps) {
     setCursor(null);
     setTextEdit(null);
     if (name) say(`Finished ${name}`);
-  }, [store, setStool, say]);
+  }, [store, setStool, say, engineOf]);
 
   const finish = useCallback(
     (force = false) => {

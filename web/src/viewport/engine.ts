@@ -67,6 +67,7 @@ import {
   pan,
   presetOf,
   rollBy,
+  squareRoll,
   toPreset,
   zoom,
   type CameraState,
@@ -1383,13 +1384,14 @@ export class Engine {
   }
 
   /**
-   * Turns to look straight at a plane, orthographic, keeping the zoom. The frame's X runs to the right when it can;
-   * `keepTurn` keeps the view's roll, squared to the nearest quarter turn, as Look at does once you have turned it.
+   * Turns to look straight at a plane, orthographic, keeping the zoom. The frame's X runs to the right when it can,
+   * turned `turn` degrees (a sketch's saved quarter turn); "keep" keeps the view's roll, squared to the nearest
+   * quarter turn, as Look at does once you have turned it.
    */
-  lookAt(origin: V3, normal: V3, animate = true, keepTurn = false): void {
+  lookAt(origin: V3, normal: V3, animate = true, turn: number | "keep" = 0): void {
     const { azimuth, elevation } = facing(normal);
     const base = this.tween?.to ?? this.cam;
-    const roll = keepTurn ? (((((Math.round((base.roll ?? 0) / 90) % 4) + 4) % 4) * 90 + 180) % 360) - 180 : 0;
+    const roll = squareRoll(turn === "keep" ? base.roll : turn);
     this.setCamera({ ...base, target: origin, azimuth, elevation, roll, ortho: true }, animate);
   }
 
