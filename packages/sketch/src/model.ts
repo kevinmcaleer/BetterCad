@@ -203,6 +203,11 @@ export interface Sketch {
   dimensions: Dimension[];
   /** Text, kept apart from the entities as it is outlines rather than solvable curves. Missing in older files. */
   texts?: SketchText[];
+  /**
+   * How far the view is turned while you look at it, in degrees: a quarter turn (90, 180 or −90) set with the view
+   * cube's turn arrows, so the sketch opens the way you left it. Missing means upright.
+   */
+  turn?: number;
 }
 
 export const WORLD_FRAMES: Record<WorldPlane, Frame> = {

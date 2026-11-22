@@ -12,6 +12,7 @@ import {
   pan,
   presetOf,
   rollBy,
+  sketchTurn,
   snapTo,
   toPreset,
   viewDir,
@@ -65,6 +66,16 @@ describe("camera", () => {
     expect(lookFrom({ ...DEFAULT_CAMERA, roll: 100 }, [0, 0, 1]).roll).toBe(90);
     expect(lookFrom({ ...DEFAULT_CAMERA, roll: -30 }, [1, 0, 0]).roll).toBe(0);
     expect(lookFrom(DEFAULT_CAMERA, [0, -1, 0]).roll).toBe(0);
+  });
+
+  it("a sketch keeps the view's quarter turn only while the view looks straight at it", () => {
+    const top = toPreset(DEFAULT_CAMERA, "top");
+    expect(sketchTurn(rollBy(rollBy(top, 1), 1), [0, 0, 1])).toBe(-180);
+    expect(sketchTurn({ ...top, roll: 95 }, [0, 0, 1])).toBe(90);
+    expect(sketchTurn(top, [0, 0, 1])).toBe(0);
+    // Turned away from the plane, or looking at its back: nothing to keep.
+    expect(sketchTurn(orbit(top, 0, -20), [0, 0, 1])).toBeNull();
+    expect(sketchTurn(top, [0, 0, -1])).toBeNull();
   });
 
   it("orbits a rolled view along the drag on the rolled screen", () => {

@@ -326,6 +326,8 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
               role="button"
               tabIndex={0}
               aria-label={t.label}
+              // A click leaves the focus where it was, so Enter still finishes a sketch rather than turning again.
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => onRoll(t.dir)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
