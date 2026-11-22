@@ -4,7 +4,7 @@ import { loadOCCT, loadTimes, type OC } from "./occt/oc";
 import { ModelBuilder } from "./occt/model";
 import { reorderWithPicks } from "./occt/repick";
 import { Exporter } from "./occt/exporter";
-import { KernelError, isKernelError } from "./errors";
+import { KernelError, isKernelError, unexpected } from "./errors";
 import type { Methods, Request, Response } from "./protocol";
 import { thickness } from "./print/checks";
 import { suggestOrientations } from "./print/orient";
@@ -133,7 +133,8 @@ async function pump() {
     } catch (e) {
       const error = isKernelError(e)
         ? { code: e.code, message: e.message, detail: e.detail }
-        : { code: "failed" as const, message: "Something went wrong in the geometry engine.", detail: String(e) };
+        : unexpected(e, (occt as unknown as { getExceptionMessage?: (e: unknown) => unknown } | null)?.getExceptionMessage);
+      if (!isKernelError(e)) console.error(`Geometry engine: ${req.method} failed:`, error.detail, e);
       post({ kind: "error", id: req.id, error });
     }
     cancelled.delete(req.id);
