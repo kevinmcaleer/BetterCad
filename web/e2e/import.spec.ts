@@ -52,3 +52,15 @@ test("refuses files it can't open, and more than one model at once", async ({ pa
   ]);
   await expect(page.getByText("Drop one BetterCad file at a time")).toBeVisible();
 });
+
+test("Insert model takes an STL from your computer and adds it to the open model as a component", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.keyboard.press("Shift+I");
+  const dialog = page.getByRole("dialog", { name: "Insert model" });
+  await dialog.getByLabel("File to insert").setInputFiles({ name: "servo horn.stl", mimeType: "model/stl", buffer: Buffer.from(cubeStl()) });
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Inserted servo horn.stl as a component")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("treeitem", { name: /servo horn/ }).first()).toBeVisible();
+  await expect(page.getByText("1,000 mm³")).toBeVisible({ timeout: 30_000 });
+});

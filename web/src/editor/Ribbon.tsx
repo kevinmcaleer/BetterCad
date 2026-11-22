@@ -57,10 +57,13 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       id: "insert",
       label: "Insert",
       sections: [
-        ["Parts", ["panel.library", { id: "model.insert", short: "Model" }, "panel.catalogue", "tool.gear", "tool.mount"]],
+        [
+          "Parts",
+          ["panel.library", { id: "model.insert", short: "Model" }, { id: "file.insert", short: "File" }, "panel.catalogue", "tool.gear", "tool.mount"],
+        ],
         ["Files", ["file.import", "file.importReference", "tool.canvas"]],
       ],
-      pins: ["panel.library", "tool.gear"],
+      pins: ["panel.library", "file.insert", "tool.gear"],
     },
     {
       id: "inspect",
@@ -77,7 +80,14 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       sections: [
         [
           "",
-          [{ id: "link.make", short: "Component" }, { id: "model.insert", short: "Insert" }, "tool.joint", { id: "rigid.make", colour: "link" }, "link.select"],
+          [
+            { id: "link.make", short: "Component" },
+            { id: "model.insert", short: "Insert" },
+            { id: "file.insert", short: "Insert file" },
+            "tool.joint",
+            { id: "rigid.make", colour: "link" },
+            "link.select",
+          ],
         ],
       ],
       pins: ["link.make", "model.insert", "tool.joint", "rigid.make"],
