@@ -177,6 +177,8 @@ describe("sketch tools", () => {
     expect(constraintsFor("perpendicular", s, [lines[0]!, lines[1]!])).toEqual([{ type: "perpendicular", a: lines[0], b: lines[1] }]);
     expect(constraintsFor("coincident", s, [pts[0]!, lines[1]!])).toEqual([{ type: "pointOn", p: pts[0], e: lines[1] }]);
     expect(constraintsFor("fix", s, [lines[0]!])).toHaveLength(2);
+    expect(constraintsFor("collinear", s, [pts[0]!, lines[1]!])).toBe("Pick two lines");
+    expect(constraintsFor("collinear", s, [lines[0]!, lines[2]!])).toEqual([{ type: "collinear", a: lines[0], b: lines[2] }]);
   });
 
   it("fixes a point drawn on the origin, once, and shares it", () => {

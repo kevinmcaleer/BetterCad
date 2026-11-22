@@ -211,7 +211,8 @@ export function trimAt(sketch: Sketch, id: Id, at: Vec2): EditResult {
   d.entities.push({ ...old, id: twin, a: p2 });
   for (const c of sketch.constraints) {
     if ((c.type === "horizontal" || c.type === "vertical") && c.e === id) d.constrain({ type: c.type, e: twin });
-    if ((c.type === "parallel" || c.type === "perpendicular") && (c.a === id || c.b === id)) d.constrain({ type: c.type, a: twin, b: c.a === id ? c.b : c.a });
+    if ((c.type === "parallel" || c.type === "perpendicular" || c.type === "collinear") && (c.a === id || c.b === id))
+      d.constrain({ type: c.type, a: twin, b: c.a === id ? c.b : c.a });
   }
   if (old.kind === "line") d.constrain({ type: "parallel", a: id, b: twin });
   dropLength();

@@ -296,6 +296,7 @@ const DRAW: Record<string, () => string> = {
     line("M4 7h16M17 4v16", EDGE, 1.6) + `<rect x="7" y="4.5" width="5" height="5" rx="1" fill="${HI}" stroke="${EDGE}" stroke-width="0.7"/>`,
   "sk-parallel": () => line("M4 15L14 5M10 19L20 9", EDGE, 1.6) + hiLine("M8 8.5l3 3M13.5 14l1 1", 1.4),
   "sk-perpendicular": () => line("M4 20h16M8 20V4", EDGE, 1.6) + `<path d="M8 15h5v5" fill="none" stroke="${HI}" stroke-width="1.6"/>`,
+  "sk-collinear": () => line("M3 18L9 13M15 8.5L21 4", EDGE, 1.8) + line("M9 13l6-4.5", HI, 1.4, dashed) + dot(9, 13, 1.8) + dot(15, 8.5, 1.8),
   "sk-tangent": () => `<circle cx="11" cy="13" r="6" fill="${TOP}" stroke="${EDGE}" stroke-width="1.6"/>` + line("M3 7h18", EDGE, 1.6) + dot(11, 7, 2),
   "sk-equal": () => line("M4 9h7M13 9h7M4 15h16", EDGE, 1.6) + hiLine("M7.5 6.5v5M12 12.5v5", 1.5),
   "sk-concentric": () =>
