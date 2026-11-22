@@ -311,6 +311,10 @@ const DRAW: Record<string, () => string> = {
     line("M4 19L20 5", EDGE, 1.6) +
     `<rect x="9" y="10" width="6" height="5.5" rx="1" fill="${HI}" stroke="${EDGE}" stroke-width="0.8"/>` +
     line("M10.4 10V8.4a1.6 1.6 0 0 1 3.2 0V10", EDGE, 1.2),
+  "sk-curvature": () => line("M3 18h7", EDGE, 1.8) + hiLine("M10 18c5 0 9-4 10-12", 1.8) + dot(10, 18, 1.8),
+  "sk-polygon": () =>
+    `<circle cx="12" cy="12" r="9" fill="none" stroke="${EDGE}" stroke-width="1" stroke-dasharray="2 2"/>` + hiLine("M12 3l8.6 6.2-3.3 10.1H6.7L3.4 9.2z", 1.6),
+  "sk-auto": () => line("M4 20h12M4 20V8", EDGE, 1.6) + dot(4, 20, 1.8) + hiLine("M15 3l1.2 2.8L19 7l-2.8 1.2L15 11l-1.2-2.8L11 7l2.8-1.2z", 1.2),
   "sk-symmetric": () => line("M12 2v20", EDGE, 1.2, dashed) + dot(5, 12, 2) + dot(19, 12, 2) + hiLine("M7.5 12h2.5M14 12h2.5", 1.4),
 };
 

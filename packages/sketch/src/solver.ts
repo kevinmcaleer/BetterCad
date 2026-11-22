@@ -202,8 +202,9 @@ function constraintPrimitives(c: Constraint, idx: SketchIndex): SketchPrimitive[
       if (l?.kind !== "line") return [];
       return [{ id, type: "p2p_symmetric_ppp", p1_id: l.a, p2_id: l.b, p_id: c.p }];
     }
+    // Fixed points are pushed as fixed parameters; curvature shapes a spline, which has no rules of its own.
     case "fix":
-      // Fixed points are pushed as fixed parameters.
+    case "curvature":
       return [];
     case "symmetric":
       return [{ id, type: "p2p_symmetric_ppl", p1_id: c.a, p2_id: c.b, l_id: c.line }];

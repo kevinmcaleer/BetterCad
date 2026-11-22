@@ -1,4 +1,5 @@
 import type { Id, SketchIndex, Spline, Vec2 } from "./model";
+import { scale, sub } from "./geom2d";
 
 /**
  * Fit-point splines (#269): a smooth curve through the points, as cubic pieces end to end. The pieces are the C2
@@ -45,8 +46,37 @@ function solve(A: number[][], b: number[]): number[] {
 /**
  * The spline through `pts`. `start` and `end` are directions (unit) the curve leaves its first point and arrives at its
  * last; without them the ends are natural (straight-ish). A closed spline runs back to its first point smoothly.
+ * `bend` gives an end with a direction its bend as well (curvature continuous, G2): the second derivative there, 0 for
+ * a line, towards the centre over the radius squared for an arc. That end's piece is set by its end alone, and the
+ * rest of the curve carries on from it smoothly (C1 at the next fit point).
  */
-export function fitSpline(pts: Vec2[], closed = false, start?: Vec2, end?: Vec2): SplineGeo {
+export function fitSpline(pts: Vec2[], closed = false, start?: Vec2, end?: Vec2, bend: { start?: Vec2; end?: Vec2 } = {}): SplineGeo {
+  const m0 = pts.length - 1;
+  const set = (p0: Vec2, d: Vec2, c: Vec2, h: number, sgn: number): Vec2[] => {
+    // Bézier handles from the end's direction and second derivative: p1 = p0 + d h/3, p2 = 2 p1 - p0 + c h²/6.
+    const p1: Vec2 = [p0[0] + (sgn * d[0] * h) / 3, p0[1] + (sgn * d[1] * h) / 3];
+    return [p1, [2 * p1[0] - p0[0] + (c[0] * h * h) / 6, 2 * p1[1] - p0[1] + (c[1] * h * h) / 6]];
+  };
+  const len = (i: number) => Math.max(1e-9, Math.hypot(pts[i + 1]![0] - pts[i]![0], pts[i + 1]![1] - pts[i]![1]));
+  if (!closed && start && bend.start && m0 >= 1) {
+    const h = len(0);
+    const [p1, p2] = set(pts[0]!, start, bend.start, h, 1);
+    const p3 = pts[1]!;
+    const first: Bezier = [pts[0]!, p1, p2, p3];
+    if (m0 === 1) return { bez: [first], closed, h: [h] };
+    const rest = fitSpline(pts.slice(1), false, [(3 * (p3[0] - p2[0])) / h, (3 * (p3[1] - p2[1])) / h], end, { end: bend.end });
+    return { bez: [first, ...rest.bez], closed, h: [h, ...(rest.h ?? [])] };
+  }
+  if (!closed && end && bend.end && m0 >= 1) {
+    const h = len(m0 - 1);
+    const p3 = pts[m0]!;
+    const [p2, p1] = set(p3, end, bend.end, h, -1);
+    const p0 = pts[m0 - 1]!;
+    const last: Bezier = [p0, p1, p2, p3];
+    if (m0 === 1) return { bez: [last], closed, h: [h] };
+    const rest = fitSpline(pts.slice(0, m0), false, start, [(3 * (p1[0] - p0[0])) / h, (3 * (p1[1] - p0[1])) / h]);
+    return { bez: [...rest.bez, last], closed, h: [...(rest.h ?? []), h] };
+  }
   const P = closed ? [...pts, pts[0]!] : pts;
   const m = P.length - 1;
   if (m < 1) return { bez: [], closed, h: [] };
@@ -226,27 +256,41 @@ export function splineSpline(g: SplineGeo, h: SplineGeo): Vec2[] {
 }
 
 /**
- * A spline entity's shape in a sketch: its fit points, and an end made tangent to a line it shares that end with
- * leaves (or arrives) along that line.
+ * A spline entity's shape in a sketch: its fit points, and an end made tangent to a line or arc it shares that end
+ * with leaves (or arrives) along it. A curvature constraint there also bends the end as the line or arc does (G2).
  */
 export function splineGeo(idx: SketchIndex, e: Spline): SplineGeo {
   const pts = e.pts.map((p) => idx.xy(p));
   if (e.closed) return fitSpline(pts, true);
+  const bend: { start?: Vec2; end?: Vec2 } = {};
   const dirAt = (p: Id, leaving: boolean): Vec2 | undefined => {
     for (const c of idx.sketch.constraints) {
-      if (c.type !== "tangent" || c.suppressed || (c.a !== e.id && c.b !== e.id)) continue;
+      if ((c.type !== "tangent" && c.type !== "curvature") || c.suppressed || (c.a !== e.id && c.b !== e.id)) continue;
       const l = idx.get(c.a === e.id ? c.b : c.a);
-      if (l?.kind !== "line" || (l.a !== p && l.b !== p)) continue;
-      const far = idx.xy(l.a === p ? l.b : l.a);
+      if ((l?.kind !== "line" && l?.kind !== "arc") || (l.a !== p && l.b !== p)) continue;
       const at = idx.xy(p);
-      // Leaving, the curve carries on from the line, away from its far end; arriving, it runs on into the line.
-      const d: Vec2 = leaving ? [at[0] - far[0], at[1] - far[1]] : [far[0] - at[0], far[1] - at[1]];
+      // Which way the line or arc runs away from the shared end.
+      let away: Vec2;
+      if (l.kind === "line") away = sub(idx.xy(l.a === p ? l.b : l.a), at);
+      else {
+        const r = sub(at, idx.xy(l.c));
+        // An arc runs anticlockwise from a to b: away from a anticlockwise, away from b clockwise.
+        away = l.a === p ? [-r[1], r[0]] : [r[1], -r[0]];
+      }
+      // Leaving, the curve carries on from it; arriving, it runs on into it.
+      const d: Vec2 = leaving ? [-away[0], -away[1]] : away;
       const n = Math.hypot(d[0], d[1]);
-      if (n > 1e-12) return [d[0] / n, d[1] / n];
+      if (n < 1e-12) continue;
+      if (c.type === "curvature") {
+        const k: Vec2 = l.kind === "arc" ? scale(sub(idx.xy(l.c), at), 1 / (l.r * l.r)) : [0, 0];
+        if (leaving) bend.start = k;
+        else bend.end = k;
+      }
+      return [d[0] / n, d[1] / n];
     }
     return undefined;
   };
-  return fitSpline(pts, false, dirAt(e.pts[0]!, true), dirAt(e.pts[e.pts.length - 1]!, false));
+  return fitSpline(pts, false, dirAt(e.pts[0]!, true), dirAt(e.pts[e.pts.length - 1]!, false), bend);
 }
 
 /** Splits a cubic at u: the part before and the part after (de Casteljau). */
