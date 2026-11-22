@@ -759,7 +759,9 @@ export function useExtrude(d: ExtrudeDeps) {
   const help = !d.active
     ? null
     : !sketchCount
-      ? "Draw a closed shape in a sketch first. Press K to start one."
+      ? d.sketches.length
+        ? "No sketch has a closed shape yet. Open one and use Find open ends."
+        : "Draw a closed shape in a sketch first. Press K to start one."
       : session
         ? wantShapes
           ? `Click shapes to add them or take them out. Esc when you're done picking.`
