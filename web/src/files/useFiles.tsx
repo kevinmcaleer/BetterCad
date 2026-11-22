@@ -290,18 +290,22 @@ export function useFiles(d: FilesDeps) {
         if (!m.cloud) {
           const made = await api.create(current.name, text, o.note);
           m.cloud = { modelId: made.id, version: made.version };
-          // The address now names the model, so a reload opens it again.
-          setRoute(`#/edit/${made.id}`);
+          // The address now names the model, so a reload opens it again (unless another model is open by now).
+          if (meta.current === m) setRoute(`#/edit/${made.id}`);
         } else {
           const r = await api.save(m.cloud.modelId, text, { note: o.note, name: current.name, ifMatch: o.force ? undefined : m.cloud.version });
           m.cloud = { ...m.cloud, version: r.version };
         }
         m.created ??= new Date().toISOString();
         m.savedAt = Date.now();
-        setBaseline(current);
         await auto.markSaved(m.id, m.savedAt);
-        setCloud({ modelId: m.cloud.modelId, state: "saved" });
-        renderCloudThumb(m.cloud.modelId, m.cloud.version);
+        // A new model (or another one) opened while this saved: it stays unlinked from the one just saved.
+        const still = meta.current === m;
+        if (still) {
+          setBaseline(current);
+          setCloud({ modelId: m.cloud.modelId, state: "saved" });
+          renderCloudThumb(m.cloud.modelId, m.cloud.version);
+        }
         if (o.note !== "autosave") deps.current.say(`Saved ${current.name} to your account`, false, true);
         return true;
       } catch (e) {
