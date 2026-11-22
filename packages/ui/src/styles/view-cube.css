@@ -39,6 +39,20 @@
   right: -8px;
   bottom: -6px;
 }
+/* The turn arrows sit by the top right corner, as in Fusion. */
+.bc-viewcube .bc-cube-roll {
+  top: -6px;
+  width: 20px;
+  height: 20px;
+}
+.bc-viewcube .bc-cube-roll-ccw {
+  right: 14px;
+}
+.bc-viewcube .bc-cube-roll-cw {
+  right: -8px;
+}
+/* Square on to a face the arrows always show, since that is when you want them. */
+.bc-viewcube-square .bc-cube-roll,
 .bc-viewcube:hover .bc-cube-btn,
 .bc-viewcube:focus-within .bc-cube-btn,
 .bc-viewcube .bc-cube-btn[aria-expanded="true"] {

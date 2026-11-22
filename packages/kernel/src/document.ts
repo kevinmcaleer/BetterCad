@@ -278,6 +278,8 @@ export interface ViewCamera {
   elevation: number;
   distance: number;
   ortho: boolean;
+  /** Degrees rolled about the line of sight, clockwise on screen. Missing means 0. */
+  roll?: number;
 }
 
 /** A saved camera (Named views, #40). */

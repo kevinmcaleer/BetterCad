@@ -13,6 +13,11 @@ export interface CameraState {
   elevation: number;
   distance: number;
   ortho: boolean;
+  /**
+   * Degrees the view is rolled about the line of sight (the view cube's turn arrows). Positive turns the picture
+   * clockwise on screen. Missing means 0.
+   */
+  roll?: number;
 }
 
 export type Preset = "iso" | "front" | "side" | "top" | "back" | "left" | "bottom";
@@ -58,11 +63,18 @@ export const norm = (a: V3): V3 => {
   return [a[0] / l, a[1] / l, a[2] / l];
 };
 
+/** The camera's right and up after rolling the picture `roll` degrees clockwise on screen. */
+function rolled(right: V3, up: V3, roll = 0): { right: V3; up: V3 } {
+  if (!roll) return { right, up };
+  const cs = Math.cos(roll * RAD);
+  const sn = Math.sin(roll * RAD);
+  return { right: add(right.map((v) => v * cs) as V3, up, sn), up: add(up.map((v) => v * cs) as V3, right, -sn) };
+}
+
 /** The camera's position, and its right / up / back axes in world space. */
 export function cameraBasis(c: CameraState) {
   const back = viewDir(c.azimuth, c.elevation);
-  const up = viewUp(c.azimuth, c.elevation);
-  const right = cross(up, back);
+  const { right, up } = rolled(cross(viewUp(c.azimuth, c.elevation), back), viewUp(c.azimuth, c.elevation), c.roll);
   return { position: add(c.target, back, c.distance), right, up, back };
 }
 
@@ -76,10 +88,9 @@ export function facing(normal: V3): { azimuth: number; elevation: number } {
 }
 
 /** World → camera rotation, row-major 3×3 (rows: right, up, back). The view cube turns by this. */
-export function viewRotation(c: Pick<CameraState, "azimuth" | "elevation">): number[] {
+export function viewRotation(c: Pick<CameraState, "azimuth" | "elevation" | "roll">): number[] {
   const back = viewDir(c.azimuth, c.elevation);
-  const up = viewUp(c.azimuth, c.elevation);
-  const right = cross(up, back);
+  const { right, up } = rolled(cross(viewUp(c.azimuth, c.elevation), back), viewUp(c.azimuth, c.elevation), c.roll);
   return [...right, ...up, ...back];
 }
 
@@ -89,8 +100,16 @@ export const halfHeight = (c: Pick<CameraState, "distance">) => c.distance * Mat
 const clampDistance = (d: number) => Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, d));
 const wrap = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180;
 
-/** Turntable orbit: dx, dy in degrees. Elevation stops at straight up and straight down. */
+/**
+ * Turntable orbit: dx, dy in degrees. Elevation stops at straight up and straight down. On a rolled view the turn is
+ * taken as a drag on the rolled screen, so the model still follows the pointer.
+ */
 export function orbit(c: CameraState, dAzimuth: number, dElevation: number): CameraState {
+  if (c.roll) {
+    const cs = Math.cos(c.roll * RAD);
+    const sn = Math.sin(c.roll * RAD);
+    [dAzimuth, dElevation] = [dAzimuth * cs - dElevation * sn, dAzimuth * sn + dElevation * cs];
+  }
   return { ...c, azimuth: wrap(c.azimuth + dAzimuth), elevation: Math.max(-90, Math.min(90, c.elevation + dElevation)) };
 }
 
@@ -118,7 +137,14 @@ export function zoom(c: CameraState, factor: number, ndcX = 0, ndcY = 0, aspect 
 
 /** The camera for a preset, keeping the target and distance. */
 export function toPreset(c: CameraState, p: Preset): CameraState {
-  return { ...c, ...PRESETS[p] };
+  return { ...c, ...PRESETS[p], roll: 0 };
+}
+
+/** Rolls the view a quarter turn about the line of sight: clockwise on screen when `dir` is 1, anticlockwise at −1. */
+export function rollBy(c: CameraState, dir: 1 | -1): CameraState {
+  // Snap to whole quarter turns, so a roll from an odd angle lands square.
+  const quarter = Math.round((c.roll ?? 0) / 90) + dir;
+  return { ...c, roll: (((((quarter % 4) + 4) % 4) * 90 + 180) % 360) - 180 };
 }
 
 /**
@@ -127,14 +153,14 @@ export function toPreset(c: CameraState, p: Preset): CameraState {
  */
 export function lookFrom(c: CameraState, dir: V3): CameraState {
   const [x, y, z] = norm(dir);
-  if (Math.abs(z) > 0.9999) return { ...c, ...PRESETS[z > 0 ? "top" : "bottom"] };
-  return { ...c, azimuth: Math.atan2(y, x) / RAD, elevation: Math.asin(z) / RAD };
+  if (Math.abs(z) > 0.9999) return { ...c, ...PRESETS[z > 0 ? "top" : "bottom"], roll: 0 };
+  return { ...c, azimuth: Math.atan2(y, x) / RAD, elevation: Math.asin(z) / RAD, roll: 0 };
 }
 
 /** Which preset the camera is at, if any. */
 export function presetOf(c: CameraState): Preset | null {
   for (const [name, p] of Object.entries(PRESETS) as [Preset, { azimuth: number; elevation: number }][]) {
-    if (Math.abs(c.elevation - p.elevation) < 0.01 && Math.abs(wrap(c.azimuth - p.azimuth)) < 0.01) return name;
+    if (Math.abs(c.elevation - p.elevation) < 0.01 && Math.abs(wrap(c.azimuth - p.azimuth)) < 0.01 && Math.abs(wrap(c.roll ?? 0)) < 0.01) return name;
   }
   return null;
 }
@@ -177,6 +203,7 @@ export function lerpCamera(a: CameraState, b: CameraState, t: number): CameraSta
     target: [mix(a.target[0], b.target[0]), mix(a.target[1], b.target[1]), mix(a.target[2], b.target[2])],
     azimuth: wrap(a.azimuth + wrap(b.azimuth - a.azimuth) * s),
     elevation: mix(a.elevation, b.elevation),
+    roll: wrap((a.roll ?? 0) + wrap((b.roll ?? 0) - (a.roll ?? 0)) * s),
     // Distances tween in log space, so a long zoom feels even.
     distance: Math.exp(mix(Math.log(a.distance), Math.log(b.distance))),
     ortho: t < 1 ? a.ortho : b.ortho,

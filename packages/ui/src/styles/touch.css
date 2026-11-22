@@ -16,9 +16,16 @@
     height: 36px;
     min-width: 36px;
   }
-  .bc-viewcube .bc-cube-btn {
+  .bc-viewcube .bc-cube-btn,
+  .bc-viewcube .bc-cube-roll {
     width: 32px;
     height: 32px;
+  }
+  .bc-viewcube .bc-cube-roll {
+    top: -14px;
+  }
+  .bc-viewcube .bc-cube-roll-ccw {
+    right: 28px;
   }
   /* No hover with a finger: nothing waits for one, and a tap does not leave a hover look behind. */
   .bc-app {

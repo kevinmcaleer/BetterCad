@@ -68,6 +68,9 @@ export const spinner = "M21 12a9 9 0 1 1-6.2-8.6";
 export const cube = "m12 2 8 4.5v9L12 20l-8-4.5v-9zM12 11l8-4.5M12 11 4 6.5M12 11v9";
 export const move = "M5 9 2 12l3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20";
 export const rotate = "M21 12a9 9 0 1 1-3-6.7M21 3v6h-6";
+/** The view cube's turn arrows: a quarter turn clockwise and anticlockwise. */
+export const rollCw = "M5 12a7 7 0 0 1 12-4.9M18 3v4.5h-4.5";
+export const rollCcw = "M19 12a7 7 0 0 0-12-4.9M6 3v4.5h4.5";
 export const frame = "M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5";
 export const link = "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1";
 /** A hinge (#172): two arms meeting at a pin. */
@@ -237,6 +240,8 @@ export const ICONS = {
   cube,
   move,
   rotate,
+  rollCw,
+  rollCcw,
   frame,
   link,
   joint,
