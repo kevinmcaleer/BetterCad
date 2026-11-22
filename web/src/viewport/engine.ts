@@ -1372,11 +1372,15 @@ export class Engine {
     return px > 1e-9 ? 1 / px : 1;
   }
 
-  /** Turns to look straight at a plane, orthographic, keeping the zoom. The frame's X runs to the right when it can. */
-  lookAt(origin: V3, normal: V3, animate = true): void {
+  /**
+   * Turns to look straight at a plane, orthographic, keeping the zoom. The frame's X runs to the right when it can;
+   * `keepTurn` keeps the view's roll, squared to the nearest quarter turn, as Look at does once you have turned it.
+   */
+  lookAt(origin: V3, normal: V3, animate = true, keepTurn = false): void {
     const { azimuth, elevation } = facing(normal);
     const base = this.tween?.to ?? this.cam;
-    this.setCamera({ ...base, target: origin, azimuth, elevation, roll: 0, ortho: true }, animate);
+    const roll = keepTurn ? (((((Math.round((base.roll ?? 0) / 90) % 4) + 4) % 4) * 90 + 180) % 360) - 180 : 0;
+    this.setCamera({ ...base, target: origin, azimuth, elevation, roll, ortho: true }, animate);
   }
 
   /** Shows the three origin planes to pick from, sized to the model (at least 40 mm), or hides them. */
