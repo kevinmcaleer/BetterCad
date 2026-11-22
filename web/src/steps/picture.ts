@@ -23,7 +23,8 @@ import {
 import type { BodyMesh } from "@bettercad/kernel";
 import { toWorld, type Frame, type Sketch } from "@bettercad/sketch";
 import { sketchCurves } from "./curves";
-import { cameraBasis, DEFAULT_CAMERA, fit, FOV, type V3 } from "../viewport/camera";
+import { cameraBasis, DEFAULT_CAMERA, FOV, type V3 } from "../viewport/camera";
+import { fit } from "../viewport/fitSphere";
 import { readPalette, type Palette } from "../viewport/colours";
 
 export interface PictureBody {

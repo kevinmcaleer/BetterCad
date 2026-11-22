@@ -3,7 +3,8 @@ import { Banner, Button, MenuButton, ViewCube, type MenuEntry } from "@bettercad
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
-import { DEFAULT_CAMERA, fit, lookFrom, orbit, pan, PRESETS, rollBy, viewRotation, zoom, type CameraState } from "../viewport/camera";
+import { DEFAULT_CAMERA, lookFrom, orbit, pan, PRESETS, rollBy, viewRotation, zoom, type CameraState } from "../viewport/camera";
+import { fit } from "../viewport/fitSphere";
 import { Box3, Sphere, Vector3 } from "three";
 import type { Section } from "../viewport/engine";
 import type { CutPlane } from "./cut";

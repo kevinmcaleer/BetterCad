@@ -3,8 +3,13 @@ import {
   DEFAULT_CAMERA,
   cameraBasis,
   facing,
-  fit,
-  fitInRect,
+  PRESETS,
+  boxCorners,
+  dot,
+  fitPoints,
+  halfHeight,
+  type CameraState,
+  type V3,
   gridStep,
   lerpCamera,
   lookFrom,
@@ -18,6 +23,7 @@ import {
   viewDir,
   zoom,
 } from "./camera";
+import { fit } from "./fitSphere";
 import { frameY, squareFrame, type Vec3 } from "@bettercad/sketch";
 import { FACE_ONLY, decodeId, encodeId, findPick } from "./ids";
 
@@ -139,21 +145,39 @@ describe("camera", () => {
     expect(mid.distance).toBeCloseTo(100);
   });
 
-  it("fit frames the model in the part of the view the panels leave clear", () => {
-    const whole = fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, null);
-    expect(whole).toEqual(fit(DEFAULT_CAMERA, [0, 0, 0], 50, 1000 / 800));
-    // A clear area half the height and centred on the view: twice as far back, same target.
-    const half = fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, { left: 250, top: 200, width: 500, height: 400 });
-    expect(half.distance).toBeCloseTo(whole.distance * 2);
-    expect(half.target[0]).toBeCloseTo(0);
-    expect(half.target[2]).toBeCloseTo(0);
-    // The clear area sits right of centre: the target moves left, so the model shows to the right.
-    const right = fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, { left: 500, top: 200, width: 500, height: 400 });
-    const { right: r } = cameraBasis(right);
-    const along = right.target[0] * r[0] + right.target[1] * r[1] + right.target[2] * r[2];
-    expect(along).toBeLessThan(0);
-    // Too small to use: frames the whole view.
-    expect(fitInRect(DEFAULT_CAMERA, [0, 0, 0], 50, 1000, 800, { left: 0, top: 0, width: 20, height: 20 })).toEqual(whole);
+  it("fit fills the clear area with the model's outline, keeping the view's direction and roll", () => {
+    const box = boxCorners([-40, -20, 0], [40, 20, 30]);
+    const rect = { left: 300, top: 100, width: 500, height: 600 };
+    for (const ortho of [false, true]) {
+      for (const turn of [{}, PRESETS.front, { roll: 90 }]) {
+        const c: CameraState = { ...DEFAULT_CAMERA, ...turn, ortho };
+        const f = fitPoints(c, box, 1000, 800, rect, 0.05);
+        expect(f.azimuth).toBe(c.azimuth);
+        expect(f.elevation).toBe(c.elevation);
+        expect(f.roll).toBe(c.roll);
+        const px = box.map((p) => onScreen(f, p, 1000, 800));
+        const xs = px.map((p) => p[0]);
+        const ys = px.map((p) => p[1]);
+        // Inside the clear area, less the margin...
+        expect(Math.min(...xs)).toBeGreaterThan(rect.left + 25 - 0.5);
+        expect(Math.max(...xs)).toBeLessThan(rect.left + rect.width - 25 + 0.5);
+        expect(Math.min(...ys)).toBeGreaterThan(rect.top + 30 - 0.5);
+        expect(Math.max(...ys)).toBeLessThan(rect.top + rect.height - 30 + 0.5);
+        // ...and touching both its edges on one axis at least.
+        const fillsX = Math.abs(Math.min(...xs) - (rect.left + 25)) < 1 && Math.abs(Math.max(...xs) - (rect.left + rect.width - 25)) < 1;
+        const fillsY = Math.abs(Math.min(...ys) - (rect.top + 30)) < 1 && Math.abs(Math.max(...ys) - (rect.top + rect.height - 30)) < 1;
+        expect(fillsX || fillsY).toBe(true);
+      }
+    }
+  });
+
+  it("fit without a usable clear area fills the whole view", () => {
+    const box = boxCorners([0, 0, 0], [10, 10, 10]);
+    const whole = fitPoints(DEFAULT_CAMERA, box, 1000, 800, null);
+    expect(fitPoints(DEFAULT_CAMERA, box, 1000, 800, { left: 0, top: 0, width: 20, height: 20 })).toEqual(whole);
+    const xs = box.map((p) => onScreen(whole, p, 1000, 800)[0]);
+    expect(Math.min(...xs)).toBeGreaterThan(0);
+    expect(Math.max(...xs)).toBeLessThan(1000);
   });
 
   it("the grid steps by powers of ten, never under 1 mm", () => {
@@ -208,3 +232,14 @@ describe("picking IDs", () => {
     expect(findPick(px, size, "body", true)).toEqual({ body: 2, element: 0 });
   });
 });
+
+/** Where a world point lands on a `width` x `height` px view, from its top left. */
+function onScreen(c: CameraState, p: V3, width: number, height: number): [number, number] {
+  const { position, right, up, back } = cameraBasis(c);
+  const d: V3 = [p[0] - position[0], p[1] - position[1], p[2] - position[2]];
+  const h = halfHeight(c);
+  const depth = c.ortho ? 1 : -dot(d, back) / c.distance;
+  const nx = dot(d, right) / (h * (width / height) * depth);
+  const ny = dot(d, up) / (h * depth);
+  return [((nx + 1) / 2) * width, ((1 - ny) / 2) * height];
+}
