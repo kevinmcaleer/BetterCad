@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Checks the build and the benchmarks against budgets.json (#108). Prints a Markdown table, adds it to the GitHub job
- * summary, writes it to budgets-report.md for the pull request comment, and exits 1 on any breach. Each measurement
- * is optional, so it runs locally on just a build:
+ * summary, writes it to budgets-report.md for the pull request comment, and exits 1 on any breach. A measure budgets.json
+ * marks as warn only (the Lighthouse performance score, which swings from run to run) is reported and annotated as a
+ * warning but never fails the check. Each measurement is optional, so it runs locally on just a build:
  *
  *   node scripts/budgets.mjs [--dist web/dist] [--kernel k.json] [--viewport v.json] [--lighthouse lh.json]
  */
@@ -15,7 +16,7 @@ const arg = (name, fallback) => (args.includes(`--${name}`) ? args[args.indexOf(
 const budgets = JSON.parse(readFileSync("budgets.json", "utf8"));
 const dist = arg("dist", "web/dist");
 const rows = [];
-const add = (area, what, now, limit, unit, ok) => rows.push({ area, what, now, limit, unit, ok });
+const add = (area, what, now, limit, unit, ok, warnOnly = false) => rows.push({ area, what, now, limit, unit, ok, warnOnly });
 const kb = (n) => n / 1024;
 const mb = (n) => n / 1024 / 1024;
 const fix = (n, d = 1) => (n === null || n === undefined ? "–" : Number(n).toFixed(d));
@@ -95,22 +96,33 @@ if (lhFile && existsSync(lhFile)) {
     budgets.lighthouse.performance,
     "score, at least",
     perf >= budgets.lighthouse.performance,
+    budgets.lighthouse.performanceBlocks === false,
   );
   const installable = lh.audits["installable-manifest"]?.score === 1;
   add("Lighthouse", "Installable as an app", installable ? 1 : 0, 1, "yes", installable || !budgets.lighthouse.installable);
 }
 
-const failed = rows.filter((r) => !r.ok);
+const failed = rows.filter((r) => !r.ok && !r.warnOnly);
+const warned = rows.filter((r) => !r.ok && r.warnOnly);
+const mark = (r) => (r.ok ? "✓" : r.warnOnly ? "⚠" : "✗");
 const table = [
   "| | Area | Measure | Now | Budget | |",
   "| --- | --- | --- | ---: | ---: | --- |",
   ...rows.map(
     (r) =>
-      `| ${r.ok ? "✓" : "✗"} | ${r.area} | ${r.what} | ${fix(r.now, r.unit.startsWith("score") || r.unit === "yes" ? 2 : 1)} | ${fix(r.limit, r.unit.startsWith("score") ? 2 : 1)} | ${r.unit} |`,
+      `| ${mark(r)} | ${r.area} | ${r.what} | ${fix(r.now, r.unit.startsWith("score") || r.unit === "yes" ? 2 : 1)} | ${fix(r.limit, r.unit.startsWith("score") ? 2 : 1)} | ${r.unit} |`,
   ),
 ].join("\n");
-const report = `<!-- budgets -->\n## Performance budgets\n\n${failed.length ? `**${failed.length} over budget.**` : "Everything is within budget."} Budgets live in \`budgets.json\`; raise one only with a reason in the PR.\n\n${table}\n`;
+const verdict = failed.length
+  ? `**${failed.length} over budget.**`
+  : warned.length
+    ? "Everything that blocks is within budget."
+    : "Everything is within budget.";
+const warning = warned.length ? ` ${warned.length} under its mark but warn only (⚠), so it does not fail the check.` : "";
+const report = `<!-- budgets -->\n## Performance budgets\n\n${verdict}${warning} Budgets live in \`budgets.json\`; raise one only with a reason in the PR.\n\n${table}\n`;
 console.log(report);
 writeFileSync("budgets-report.md", report);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, report + "\n");
+if (process.env.GITHUB_ACTIONS)
+  for (const r of warned) console.log(`::warning title=${r.area} budget (warn only)::${r.what}: ${fix(r.now, 2)}, budget ${fix(r.limit, 2)} ${r.unit}`);
 if (failed.length) process.exit(1);
