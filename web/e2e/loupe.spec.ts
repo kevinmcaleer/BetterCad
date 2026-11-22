@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { Editor } from "./pages/editor";
 
 type View = { __bcView: { project(p: number[]): { x: number; y: number }; preset(p: string): void } };
 
@@ -68,4 +69,44 @@ test("the loupe opens over points too close to pick apart, and Alt opens it anyw
   await expect(loupe).toBeVisible();
   await page.keyboard.up("Alt");
   await expect(loupe).toHaveCount(0);
+});
+
+test("the loupe shows the sketch's lines at full width, on a view turned upside down", async ({ page }) => {
+  const ed = await new Editor(page).open();
+  await ed.view.preset("top");
+  await page.keyboard.press("k");
+  await ed.view.clickUntil(20, 20, 0, ed.sketchTools);
+  await page.waitForTimeout(800);
+  // Turned half way round with the view cube, as when a sketch is seen from underneath.
+  const turn = page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Turn clockwise 90°" });
+  for (let i = 0; i < 2; i++) {
+    await turn.click();
+    await page.waitForTimeout(700);
+  }
+
+  // A line across, with two points almost on top of each other in its middle: a crowd the loupe opens over.
+  await ed.view.click(-20, 5);
+  await ed.view.click(20, 5);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("p");
+  await placePoint(page, 0, 5);
+  await placePoint(page, 0.02, 5);
+  await page.keyboard.press("Escape");
+  const m = await at(page, 0.01, 5);
+  await page.mouse.move(m.x + 40, m.y + 40, { steps: 2 });
+  await page.mouse.move(m.x, m.y, { steps: 4 });
+  const loupe = page.locator(".bc-loupe");
+  await expect(loupe).toBeVisible();
+  await expect(loupe.locator(".bc-loupe-zoom")).toHaveText("40×");
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: test.info().outputPath("loupe-turned.png") });
+
+  // The line crosses the loupe in the sketch's colour, a pixel or more wide all the way: not a faint hairline.
+  const strong = await loupe.locator("canvas").evaluate((c: HTMLCanvasElement) => {
+    const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3]! > 200 && d[i + 2]! - d[i]! > 80) n++;
+    return n / (c.width / (window.devicePixelRatio || 1));
+  });
+  expect(strong).toBeGreaterThan(1);
 });
