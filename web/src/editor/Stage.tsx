@@ -16,12 +16,14 @@ export interface StageBarsProps {
   onePart: boolean;
   /** Opens the Render view (#197) in its colours or in paper white. */
   onRender?: (style: RenderStyle) => void;
+  /** Starts a new drawing (#555). */
+  onDrawing?: () => void;
   /** Shows the Full screen button (phones and tablets), with where it says why there is none. */
   say?: Say;
 }
 
 /** The view bar floating over the viewport (the tools live on the top bar), and the armed tool's options strip. */
-export function StageBars({ tool, onArmTool, vp, onePart, onRender, say }: StageBarsProps) {
+export function StageBars({ tool, onArmTool, vp, onePart, onRender, onDrawing, say }: StageBarsProps) {
   const filter = FILTERS.find((f) => f.id === vp.filter)!;
   return (
     <>
@@ -56,6 +58,7 @@ export function StageBars({ tool, onArmTool, vp, onePart, onRender, say }: Stage
                   { id: "paper", label: "Render in paper", icon: "sun", onSelect: () => onRender("paper") },
                 ] as MenuEntry[])
               : []),
+            ...(onDrawing ? ([{ id: "drawing", label: "New drawing", icon: "drawing", onSelect: onDrawing }] as MenuEntry[]) : []),
           ]}
           trigger={(p) => (
             <Button {...p} icon="paint" label={vp.style === "lineart" ? "Line art" : "Shaded"} title="How the view draws the model, or a rendered picture" />

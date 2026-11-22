@@ -181,6 +181,10 @@
   --bc-color-icon-accent-side: #c47d1a;
   /* Tool icons: a highlighted solid's front-right face. */
   --bc-color-icon-accent-dark: #a5680f;
+  /* A drawing sheet in the Drawing workspace: the page itself, on `stage`. Stays paper in every theme, a touch warmer in the dark ones so it does not glare. */
+  --bc-color-paper: #ffffff;
+  /* Everything drawn on `paper`: part edges, hidden lines, centre lines, dimensions, the border and the title block. The same in every theme, because the sheet prints. */
+  --bc-color-paper-ink: #16181d;
   /* A floating toolbar over the stage; a pressed rail button (0 1px 3px at 8%). */
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.12);
   /* The viewport frame on the stage; the selection toolbar (0 2px 10px at 16%). */
@@ -244,6 +248,8 @@
   --bc-color-icon-accent: #f0aa45;
   --bc-color-icon-accent-side: #d18f2c;
   --bc-color-icon-accent-dark: #a8701c;
+  --bc-color-paper: #f4f2ec;
+  --bc-color-paper-ink: #16181d;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);
@@ -302,6 +308,8 @@
   --bc-color-icon-accent: #f0aa45;
   --bc-color-icon-accent-side: #d18f2c;
   --bc-color-icon-accent-dark: #a8701c;
+  --bc-color-paper: #f4f2ec;
+  --bc-color-paper-ink: #16181d;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);

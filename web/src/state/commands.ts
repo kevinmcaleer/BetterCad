@@ -8,6 +8,8 @@ export interface CommandContext {
   canUndo: boolean;
   canRedo: boolean;
   dialogOpen: boolean;
+  /** A drawing's sheet covers the view (#559). */
+  inDrawing?: boolean;
 }
 
 export type CommandGroup = "File" | "Edit" | "Tools" | "Sketch" | "Timeline" | "View" | "Panels" | "Theme" | "Help";
@@ -26,9 +28,10 @@ export interface Command {
   when?: (ctx: CommandContext) => boolean;
   /**
    * Where it applies: "sketch" while a sketch is open, "model" otherwise, both when unset. Commands in different
-   * scopes may share a key (L is line art in the model and Line in a sketch).
+   * scopes may share a key (L is line art in the model and Line in a sketch). "drawing" is while a drawing's sheet
+   * is open: then only those, files, themes, help and undo apply, since the model is out of sight under the sheet.
    */
-  scope?: "model" | "sketch";
+  scope?: "model" | "sketch" | "drawing";
   run: (ctx: CommandContext) => void;
 }
 
@@ -113,7 +116,10 @@ export function createRegistry(getContext: () => CommandContext) {
     };
   }
 
-  const inScope = (c: Command, ctx: CommandContext) => !c.scope || (c.scope === "sketch") === ctx.inSketch;
+  const inScope = (c: Command, ctx: CommandContext) =>
+    ctx.inDrawing
+      ? c.scope === "drawing" || (!c.scope && (c.group === "File" || c.group === "Theme" || c.group === "Help" || c.id === "edit.undo" || c.id === "edit.redo"))
+      : c.scope !== "drawing" && (!c.scope || (c.scope === "sketch") === ctx.inSketch);
   const enabled = (c: Command, ctx = getContext()) => inScope(c, ctx) && (!c.when || c.when(ctx));
 
   function run(id: string): boolean {

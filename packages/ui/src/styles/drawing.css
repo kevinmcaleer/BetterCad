@@ -1,0 +1,113 @@
+/* The Drawing workspace (#559): a sheet of paper covers the whole 3D view, under the floating cards. */
+.bc-drawing {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background: var(--bc-color-stage);
+  touch-action: none;
+  cursor: grab;
+}
+.bc-drawing:active {
+  cursor: grabbing;
+}
+/* The part of the view the cards leave clear: Fit sheet centres the page in it. */
+.bc-drawing-clear {
+  position: absolute;
+  inset: calc(var(--bc-view-top, 0px) + var(--bc-bars-room, 0px)) var(--bc-view-right, 0px) var(--bc-view-bottom, 0px) var(--bc-view-left, 0px);
+  visibility: hidden;
+  pointer-events: none;
+}
+.bc-drawing-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  font-family: var(--bc-font-sans);
+}
+/* The 3D view's cube and marks belong to the model under the sheet. */
+.bc-viewport:has(.bc-drawing) .bc-viewcube {
+  display: none;
+}
+/* Everything on the sheet is in paper millimetres: line widths are those of a printed drawing. */
+.bc-sheet-paper {
+  fill: var(--bc-color-paper);
+  filter: drop-shadow(var(--bc-shadow-frame));
+}
+.bc-sheet-thick,
+.bc-sheet-thin {
+  fill: none;
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.7px;
+  stroke-linejoin: miter;
+}
+.bc-sheet-thin {
+  stroke-width: 0.25px;
+}
+.bc-sheet-block {
+  fill: var(--bc-color-paper);
+}
+.bc-sheet-text {
+  fill: var(--bc-color-paper-ink);
+  stroke: none;
+  user-select: none;
+}
+.bc-sheet-field {
+  cursor: text;
+  outline: none;
+}
+.bc-sheet-field > rect {
+  pointer-events: all;
+}
+.bc-sheet-field:hover > rect,
+.bc-sheet-field:focus-visible > rect {
+  stroke: var(--bc-color-snap);
+  stroke-width: 0.5px;
+}
+/* The box you type a title block field in, laid over its cell. */
+.bc-drawing-field {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--bc-color-snap);
+  border-radius: 0;
+  padding: 0 var(--bc-space-2);
+  background: var(--bc-color-paper);
+  color: var(--bc-color-paper-ink);
+  font-family: var(--bc-font-sans);
+  text-align: center;
+  outline: none;
+}
+/* Sheet set-up and Sheet settings: names down the left, their controls beside them. */
+.bc-sheet-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--bc-space-3) var(--bc-space-4);
+  padding-top: var(--bc-space-5);
+}
+.bc-sheet-card .bc-select,
+.bc-sheet-card .bc-text {
+  width: 100%;
+  min-width: 0;
+}
+.bc-sheet-card .bc-segmented {
+  justify-self: start;
+}
+.bc-sheet-card > .bc-check,
+.bc-sheet-card > .bc-note,
+.bc-sheet-card-head {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.bc-sheet-card-head {
+  margin-top: var(--bc-space-4);
+  font-size: var(--bc-type-small-strong-size);
+  font-weight: var(--bc-type-small-strong-weight);
+  color: var(--bc-color-muted);
+}
+.bc-sheet-card-date {
+  display: flex;
+  gap: var(--bc-space-3);
+}
+.bc-sheet-card-date .bc-btn {
+  flex: none;
+}
