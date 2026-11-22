@@ -371,3 +371,22 @@ test("after a save to the account, a rendered picture replaces the thumbnail", a
   const thumb = page.getByRole("button", { name: "Open Bracket" }).locator("img");
   await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(320);
 });
+
+test("upload STL files into a project, each as a model that opens with its body", async ({ page, context }) => {
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/#/library");
+  await page.getByRole("button", { name: "New project" }).click();
+  await page.getByLabel("Project name").fill("Rover");
+  await page.getByRole("button", { name: "Make" }).click();
+  await expect(page).toHaveURL(/#\/library\/project\//);
+  const tri = (z: number) => `facet normal 0 0 1\n outer loop\n  vertex 0 0 ${z}\n  vertex 10 0 ${z}\n  vertex 0 10 ${z}\n endloop\nendfacet\n`;
+  const stl = (name: string) => ({ name, mimeType: "model/stl", buffer: Buffer.from(`solid ${name}\n${tri(0)}${tri(5)}endsolid ${name}\n`) });
+  await page.getByLabel("STL or 3MF files to upload").setInputFiles([stl("Wheel hub.stl"), stl("Tyre.stl")]);
+  await expect(page.getByText("Uploaded 2 models")).toBeVisible(SAVE);
+  expect([...server.models.values()].map((m) => m.name).sort()).toEqual(["Tyre", "Wheel hub"]);
+  expect(server.blobs.size).toBe(2);
+  await page.getByRole("button", { name: "Open Tyre" }).click();
+  await expect(page).toHaveURL(/#\/edit\//);
+  await expect(page.getByRole("treeitem", { name: /Tyre/ }).first()).toBeVisible({ timeout: 30_000 });
+});

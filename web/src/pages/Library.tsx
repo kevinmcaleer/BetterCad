@@ -33,6 +33,12 @@ const DRAG_TYPE = "application/x-bettercad-item";
 
 function Thumb({ src, icon = "cube" }: { src: string | null; icon?: "cube" | "template" }) {
   const [state, setState] = useState<"loading" | "done" | "none">(src ? "loading" : "none");
+  // A picture can arrive after the card shows (an uploaded model's, once it's rendered): load the new one.
+  const [shown, setShown] = useState(src);
+  if (shown !== src) {
+    setShown(src);
+    setState(src ? "loading" : "none");
+  }
   return (
     <span className={cx("bc-thumb", state === "loading" && "bc-loading")}>
       {src && state !== "none" ? (
@@ -528,6 +534,56 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     }
   };
 
+  // Uploading STL and 3MF files (each its own model, here): the code loads on first use.
+  const [uploading, setUploading] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  const upload = async (files: File[]) => {
+    if (!files.length || uploading || bin) return;
+    setUploading(true);
+    try {
+      const u = await import("./upload");
+      const { made, failed } = await u.uploadModels(api, files, placeOf(tree, here), setStatus);
+      const done = made.length === 1 ? `Uploaded ${made[0]!.name}` : made.length ? `Uploaded ${made.length} models` : "";
+      setStatus([done, ...failed].filter(Boolean).join(". "));
+      if (made.length) await load();
+    } catch (e) {
+      setStatus((e as Error).message);
+    } finally {
+      setUploading(false);
+    }
+  };
+  const uploadRef = useRef(upload);
+  uploadRef.current = upload;
+
+  // Files dropped anywhere on the page upload too; a model or folder dragged inside the page isn't a file.
+  useEffect(() => {
+    if (bin) return;
+    const files = (e: globalThis.DragEvent) => e.dataTransfer?.types.includes("Files");
+    const over = (e: globalThis.DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "copy";
+    };
+    const drop = (e: globalThis.DragEvent) => {
+      if (!files(e)) return;
+      e.preventDefault();
+      void uploadRef.current([...(e.dataTransfer?.files ?? [])]);
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => {
+      window.removeEventListener("dragover", over);
+      window.removeEventListener("drop", drop);
+    };
+  }, [bin]);
+
+  // Each uploaded model's picture arrives after the upload: show it as it comes.
+  useEffect(() => {
+    const again = () => void load();
+    window.addEventListener("bc-upload-picture", again);
+    return () => window.removeEventListener("bc-upload-picture", again);
+  }, [load]);
+
   const create = () =>
     act(async () => {
       const m = await api.create("Untitled model", saveBcad(newDoc()), undefined, placeOf(tree, here));
@@ -701,6 +757,30 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
           )}
           <div className="bc-lib-tools">
             {!bin && <Button variant="primary" icon="plus" label="New model" onClick={() => void create()} />}
+            {!bin && (
+              <Button
+                icon="upload"
+                label="Upload STL"
+                title="Upload STL or 3MF files, each as a model here. You can drop them on the page too"
+                busy={uploading}
+                onClick={() => picker.current?.click()}
+              />
+            )}
+            {!bin && (
+              <input
+                ref={picker}
+                type="file"
+                accept=".stl,.3mf"
+                multiple
+                hidden
+                aria-label="STL or 3MF files to upload"
+                onChange={(e) => {
+                  const files = [...(e.target.files ?? [])];
+                  e.target.value = "";
+                  void upload(files);
+                }}
+              />
+            )}
             {!bin && <Button icon="folder" label="New folder" onClick={() => setNaming("folder")} />}
             {!bin && here.kind === "root" && <Button icon="template" label="New project" onClick={() => setNaming("project")} />}
             <input
@@ -801,6 +881,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
                         : "No models yet"}
               </p>
               {!bin && !q && <Button variant="primary" icon="plus" label="New model" onClick={() => void create()} />}
+              {!bin && !q && <p className="bc-page-note">Or drop STL files here to upload them.</p>}
               {!bin && !q && here.kind === "root" && <SampleCards onOpen={(id) => go(`#/sample/${id}`)} title="Or start from a sample" />}
             </div>
           )}
