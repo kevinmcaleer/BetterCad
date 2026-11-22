@@ -185,6 +185,8 @@
   --bc-color-paper: #ffffff;
   /* Everything drawn on `paper`: part edges, hidden lines, centre lines, dimensions, the border and the title block. The same in every theme, because the sheet prints. */
   --bc-color-paper-ink: #16181d;
+  /* On `paper`: the view, field or mark you are pointing at or have selected, and the ghost of a view being placed. Blue, as geometry feedback is everywhere else; one value for every theme because paper does not change. 3:1 on `paper` as a graphic. */
+  --bc-color-paper-pick: #1a5fc4;
   /* A floating toolbar over the stage; a pressed rail button (0 1px 3px at 8%). */
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.12);
   /* The viewport frame on the stage; the selection toolbar (0 2px 10px at 16%). */
@@ -250,6 +252,7 @@
   --bc-color-icon-accent-dark: #a8701c;
   --bc-color-paper: #f4f2ec;
   --bc-color-paper-ink: #16181d;
+  --bc-color-paper-pick: #1a5fc4;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);
@@ -310,6 +313,7 @@
   --bc-color-icon-accent-dark: #a8701c;
   --bc-color-paper: #f4f2ec;
   --bc-color-paper-ink: #16181d;
+  --bc-color-paper-pick: #1a5fc4;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);
