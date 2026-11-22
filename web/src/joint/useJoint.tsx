@@ -13,6 +13,7 @@ import {
   mat4InvertRigid,
   mat4Mul,
   linkTransforms,
+  liftParts,
   makeComponent,
   newId,
   rigidMates,
@@ -37,6 +38,7 @@ import { between, boxSnaps, facing, faceSnaps, nearSnaps, otherSide, wiggle, typ
 import { sharpCorners } from "./sharpCorners";
 import { meshSnaps } from "./meshSnaps";
 import { lineUpHoles, type Hole } from "./holePattern";
+import { assemblyLinks, assemblyRoot, underFloor } from "./floor";
 
 /**
  * The Joint tool (#172), one panel like the Projects scene editor's: the component that moves and its snap, the one it
@@ -657,6 +659,45 @@ export function useJoint(d: JointDeps) {
   /** What OK waits for, if anything. */
   const missing = child === null ? "the component that moves" : parent === undefined ? "what it hangs from" : frame === null ? "a snap on it" : null;
 
+  /**
+   * A joint that lines a part up under another can leave it under the floor, where the part above and the floor grid
+   * hide it. Then the panel says so, and offers to lift the assembly back onto the floor: `by` mm, moving `root`, the
+   * component at the top of the chain (null when that is Base, which can't move).
+   */
+  const [under, setUnder] = useState<{ by: number; name: string; root: string | null } | null>(null);
+  const jointChild = feature?.child ?? null;
+  const jointParent = feature ? feature.parent : undefined;
+  useEffect(() => {
+    if (jointChild === null || jointParent === undefined) return setUnder(null);
+    // The view draws the rebuilt model a frame after it lands.
+    const raf = requestAnimationFrame(() => {
+      const e = engineOf();
+      const { joints, links, parts } = deps.current;
+      if (!e) return;
+      const root = assemblyRoot(joints, jointParent);
+      const set = assemblyLinks(joints, links, root ?? jointChild);
+      const boxes = parts.filter((p) => p.link && set.has(p.link)).map((p) => ({ p, box: e.bodyBox(p.id) }));
+      const by = underFloor(boxes.map((b) => b.box));
+      if (!by) return setUnder(null);
+      const low = boxes.reduce((a, b) => ((b.box?.min[2] ?? 0) < (a.box?.min[2] ?? 0) ? b : a));
+      setUnder({ by, name: nameOf(low.p.link ?? null), root });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [jointChild, jointParent, d.parts, d.joints, engineOf, nameOf]);
+
+  /** Keeps the joint, then lifts the assembly onto the floor as a Move step of its own. */
+  const lift = useCallback(() => {
+    const u = under;
+    const s = live.current.session;
+    if (!u || u.root === null || !s) return;
+    const ids = deps.current.parts.filter((p) => p.link === u.root).map((p) => p.id);
+    store.seal();
+    deps.current.record((dd, at) => liftParts(dd, ids, u.by, at), "Lift onto the floor");
+    deps.current.say(`Lifted ${nameOf(u.root)} ${Math.round(u.by * 10) / 10} mm, with what's jointed to it, onto the floor`);
+    reset();
+    deps.current.onClose();
+  }, [under, store, reset, nameOf]);
+
   const done = useCallback(() => {
     const s = live.current.session;
     const f = s && (store.get().features.find((x) => x.id === s.id) as JointFeature | undefined);
@@ -751,6 +792,8 @@ export function useJoint(d: JointDeps) {
     loupe,
     loupeCanvas,
     play,
+    under,
+    lift,
   };
 }
 
