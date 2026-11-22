@@ -7,7 +7,7 @@
 import { SketchIndex, curvePoints, ellipseGeo, newId, sampleEllipse, splineEnds, type Constraint, type Curve, type Id, type Sketch, type Vec2 } from "./model";
 import { angleOf, closestOnSegment, dist, polar, sub, wrap } from "./geom2d";
 import { sampleSpline, splineGeo } from "./spline";
-import { openEndsOf } from "./profiles";
+import { openEndsOf, regions } from "./profiles";
 
 export type Gap =
   /** Two open ends near each other. */
@@ -16,6 +16,8 @@ export type Gap =
   | { kind: "curve"; a: Id; curve: Id; from: Vec2; to: Vec2; size: number; join: boolean }
   /** An open end with nothing near it. */
   | { kind: "open"; a: Id; from: Vec2 }
+  /** Two ends on the same spot that aren't joined: they meet now, but come apart if one is dragged. */
+  | { kind: "touch"; a: Id; b: Id; from: Vec2 }
   /** Two lines lying partly along each other: `from`..`to` is where they overlap. */
   | { kind: "overlap"; curves: [Id, Id]; from: Vec2; to: Vec2 };
 
@@ -25,6 +27,8 @@ export interface GapReport {
   openEnds: number;
   /** How far apart ends may be and still be joined in place, mm. */
   joinTol: number;
+  /** How many closed shapes Extrude can pick. */
+  shapes: number;
 }
 
 /** The widest gap Join closes: 2 mm, or 3% of the sketch's size on a big sketch. */
@@ -114,10 +118,37 @@ function analyse(s: Sketch): GapReport {
     gaps.push({ kind: "curve", a, curve: n.curve, from, to: n.to, size: n.size, join: n.size <= joinTol });
     done.add(a);
   }
-  gaps.push(...overlaps(idx, curves));
-  const size = (g: Gap) => (g.kind === "ends" || g.kind === "curve" ? g.size : g.kind === "overlap" ? -1 : Infinity);
+  gaps.push(...overlaps(idx, curves), ...touching(s, idx, curves));
+  const size = (g: Gap) => (g.kind === "ends" || g.kind === "curve" ? g.size : g.kind === "overlap" ? -1 : g.kind === "touch" ? 1e9 : Infinity);
   gaps.sort((x, y) => size(x) - size(y));
-  return { gaps, openEnds: open.length, joinTol };
+  return { gaps, openEnds: open.length, joinTol, shapes: regions(s, { split: true }).length };
+}
+
+/** Ends of different curves that sit on the same spot but aren't the same point or tied by a coincident constraint. */
+function touching(s: Sketch, idx: SketchIndex, curves: Curve[]): Gap[] {
+  const parent = new Map<Id, Id>();
+  const find = (id: Id): Id => {
+    while (parent.has(id) && parent.get(id) !== id) id = parent.get(id)!;
+    return id;
+  };
+  for (const c of s.constraints) if (c.type === "coincident" && !c.suppressed) parent.set(find(c.a), find(c.b));
+  const ends: { id: Id; at: Vec2; curve: Id }[] = [];
+  for (const c of curves) for (const p of endsOf(c)) ends.push({ id: p, at: idx.xy(p), curve: c.id });
+  const out: Gap[] = [];
+  const paired = new Set<string>();
+  for (let i = 0; i < ends.length; i++)
+    for (let j = i + 1; j < ends.length; j++) {
+      const [e, f] = [ends[i]!, ends[j]!];
+      if (e.curve === f.curve || dist(e.at, f.at) > 1e-4) continue;
+      const [x, y] = [find(e.id), find(f.id)];
+      if (x === y) continue;
+      const key = [x, y].sort().join("|");
+      if (paired.has(key)) continue;
+      paired.add(key);
+      parent.set(x, y);
+      out.push({ kind: "touch", a: e.id, b: f.id, from: e.at });
+    }
+  return out;
 }
 
 /** The points a curve can end at. */
@@ -199,7 +230,7 @@ export function joinGap(s: Sketch, g: Gap): Sketch {
 export function joinAll(s: Sketch, gaps: Gap[]): Sketch {
   const add: Constraint[] = [];
   for (const g of gaps) {
-    if (g.kind === "ends") add.push({ id: newId("k"), type: "coincident", a: g.a, b: g.b });
+    if (g.kind === "ends" || g.kind === "touch") add.push({ id: newId("k"), type: "coincident", a: g.a, b: g.b });
     else if (g.kind === "curve") add.push({ id: newId("k"), type: "pointOn", p: g.a, e: g.curve });
   }
   return add.length ? { ...s, constraints: [...s.constraints, ...add] } : s;
@@ -222,15 +253,19 @@ export function gapLabel(g: Gap): string {
       return "Open end";
     case "overlap":
       return "Lines overlap";
+    case "touch":
+      return "Ends touch but aren't joined";
   }
 }
 
 /** The palette's one-line summary. */
 export function gapSummary(r: GapReport): string {
   const overlapping = r.gaps.filter((g) => g.kind === "overlap").length;
+  const loose = r.gaps.filter((g) => g.kind === "touch").length;
   const parts = [
     r.openEnds ? `${r.openEnds} open ${r.openEnds === 1 ? "end" : "ends"}` : "",
     overlapping ? `${overlapping} ${overlapping === 1 ? "overlap" : "overlaps"}` : "",
+    loose ? `${loose} loose ${loose === 1 ? "join" : "joins"}` : "",
   ].filter(Boolean);
   return parts.length ? parts.join(" and ").replace(/^./, (c) => c.toUpperCase()) : "No open ends";
 }

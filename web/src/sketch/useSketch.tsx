@@ -12,7 +12,6 @@ import {
   formatDimension,
   planeFrame,
   squareFrame,
-  profiles,
   regions,
   setGroupedSize,
   removeEntities,
@@ -890,7 +889,7 @@ export function useSketch(d: SketchDeps) {
       const s = current();
       if (!s) return end();
       const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction) || !!s.texts?.some((t) => !t.construction);
-      if (!force && drawn && profiles(s).profiles.length === 0) {
+      if (!force && drawn && shapesOf(s).length === 0) {
         setFinishWarn(true);
         setGapsOn(true);
         return;
@@ -2391,6 +2390,14 @@ export function useSketch(d: SketchDeps) {
   };
 }
 
+const shapeCache = new WeakMap<Sketch, ReturnType<typeof regions>>();
+/** The closed shapes Extrude picks from: curves cut where they cross and ends that touch meet, as new steps build them. */
+function shapesOf(s: Sketch) {
+  let r = shapeCache.get(s);
+  if (!r) shapeCache.set(s, (r = regions(s, { split: true })));
+  return r;
+}
+
 /** The overlay's picture of a sketch: each curve and point in its state's shade, plus the tool's preview. */
 export function sketchView(
   s: Sketch,
@@ -2451,9 +2458,7 @@ export function sketchView(
   }
   if (cursor) points.push({ xy: cursor.xy, shade: cursor.kind === "free" ? "preview" : "hover", big: cursor.kind !== "free" });
   // The closed shapes Extrude can use, shaded faintly, as Fusion's profiles are.
-  const fills: OverlayFill[] = show?.profile
-    ? profiles(s).profiles.map((p) => ({ outer: p.points, holes: p.holes.map((h) => h.points), shade: "free" as const }))
-    : [];
+  const fills: OverlayFill[] = show?.profile ? shapesOf(s).map((p) => ({ outer: p.points, holes: p.holes.map((h) => h.points), shade: "free" as const })) : [];
   return { frame, curves, points, fills, fillOpacity: 0.14 };
 }
 
