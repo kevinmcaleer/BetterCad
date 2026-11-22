@@ -4,7 +4,7 @@
  */
 import { Box3, Vector3 } from "three";
 import { PathRender, type RenderBody } from "./pathRender";
-import { DEFAULT_CAMERA, fit } from "../viewport/camera";
+import { DEFAULT_CAMERA, boxCorners, fitPoints } from "../viewport/camera";
 
 export const THUMB_SAMPLES = 10;
 /** Past this the browser is too slow to render well, and the shaded thumbnail stays. */
@@ -49,9 +49,7 @@ export async function renderThumbnail(bodies: RenderBody[], o: ThumbnailOptions 
     pr.setBodies(bodies);
     pr.setPreset("studio");
     pr.setStyle("finishes");
-    const c = box.getCenter(new Vector3());
-    const r = Math.max(box.getSize(new Vector3()).length() / 2, 5);
-    pr.setCamera(fit(DEFAULT_CAMERA, [c.x, c.y, c.z], r, width / height));
+    pr.setCamera(fitPoints(DEFAULT_CAMERA, boxCorners(box.min.toArray(), box.max.toArray()), width, height));
     // Rendered at twice the size and shrunk: each pixel averages four, which takes the grain out of a few samples.
     const png = await pr.snapshot(width * 2, height * 2, samples, () => {
       if (performance.now() > until) throw new Error("Too slow");

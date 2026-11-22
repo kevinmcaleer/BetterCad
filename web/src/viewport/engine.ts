@@ -57,8 +57,8 @@ import {
   DEFAULT_CAMERA,
   FOV,
   cameraBasis,
-  fit as fitCamera,
-  fitInRect,
+  boxCorners,
+  fitPoints,
   gridStep,
   halfHeight,
   lerpCamera,
@@ -716,9 +716,7 @@ export class Engine {
 
   /** Frames a box in world space (a print check's area, #101, #102). */
   fitBox(min: [number, number, number], max: [number, number, number]): void {
-    const c: [number, number, number] = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
-    const r = Math.max(Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) / 2, 5);
-    this.setCamera(fitInRect(this.tween?.to ?? this.cam, c, r * 1.4, this.width, this.height, this.safeArea?.()), true);
+    this.setCamera(fitPoints(this.tween?.to ?? this.cam, boxCorners(min, max), this.width, this.height, this.safeArea?.()), true);
   }
 
   /**
@@ -732,15 +730,36 @@ export class Engine {
   }
   private check: Map<string, Float32Array> | null = null;
 
-  /** Frames the given bodies (all when empty). */
+  /**
+   * Frames the given bodies (all when empty) as tightly as their shape allows in the part of the view the panels leave
+   * clear, keeping the view's direction and roll.
+   */
   fit(ids?: string[]): void {
-    const s = this.bounds(ids?.length ? ids : undefined);
     const base = this.tween?.to ?? this.cam;
-    if (!s) {
+    const points = this.fitPointsOf(ids?.length ? ids : undefined);
+    if (!points.length) {
       this.setCamera({ ...base, target: [0, 0, 10], distance: DEFAULT_CAMERA.distance }, true);
       return;
     }
-    this.setCamera(fitInRect(base, [s.center.x, s.center.y, s.center.z], s.radius, this.width, this.height, this.safeArea?.()), true);
+    this.setCamera(fitPoints(base, points, this.width, this.height, this.safeArea?.()), true);
+  }
+
+  /** The bodies' vertices in world space, every nth on a big mesh so Fit stays quick. */
+  private fitPointsOf(ids?: string[]): [number, number, number][] {
+    const list = ids ? this.order.filter((b) => ids.includes(b.body.id)) : this.order;
+    const total = list.reduce((n, b) => n + (b.geometry.getAttribute("position")?.count ?? 0), 0);
+    const step = Math.max(1, Math.ceil(total / 200_000));
+    const out: [number, number, number][] = [];
+    const v = new Vector3();
+    for (const b of list) {
+      const pos = b.geometry.getAttribute("position");
+      if (!pos) continue;
+      for (let i = 0; i < pos.count; i += step) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(b.group.matrix);
+        out.push([v.x, v.y, v.z]);
+      }
+    }
+    return out;
   }
 
   /**
@@ -1692,9 +1711,7 @@ export class Engine {
         box.expandByObject(b.shaded);
       }
       if (box.isEmpty()) return null;
-      const c = box.getCenter(new Vector3());
-      const r = Math.max(box.getSize(new Vector3()).length() / 2, 5);
-      this.cam = fitCamera({ ...DEFAULT_CAMERA, ortho: this.cam.ortho }, [c.x, c.y, c.z], r, width / height);
+      this.cam = fitPoints({ ...DEFAULT_CAMERA, ortho: this.cam.ortho }, boxCorners(box.min.toArray(), box.max.toArray()), width, height);
       return this.thumbnail(width, height);
     } finally {
       this.order.forEach((b, i) => {

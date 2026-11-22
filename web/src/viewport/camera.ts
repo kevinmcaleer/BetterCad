@@ -199,16 +199,92 @@ export interface ViewRect {
   height: number;
 }
 
+/** The share of the clear area Fit leaves empty round the model, on each side. */
+export const FIT_MARGIN = 0.06;
+
 /**
- * Frames a sphere inside `rect` of a view `width` × `height` px: sized to the rect and centred on it, so nothing
- * lands under the panels that float over the view. Without a usable rect it frames the whole view.
+ * Frames a set of world points (a model's corners or vertices) so they fill `rect` of a view `width` × `height` px,
+ * less a small margin, as tightly as they can: the view keeps its direction and roll and only moves and zooms. In
+ * perspective the camera stands where the points' outermost rays just touch the clear area's edges; in orthographic
+ * the scale fits their spread on screen. Without a usable rect it fills the whole view. The target lands in the middle
+ * of the points' depth, so turning afterwards turns round the model.
  */
-export function fitInRect(c: CameraState, centre: V3, radius: number, width: number, height: number, rect?: ViewRect | null): CameraState {
-  const aspect = width / Math.max(height, 1);
-  if (!rect || rect.width < 80 || rect.height < 80) return fit(c, centre, radius, aspect);
-  const scale = Math.min(Math.max(width / rect.width, height / rect.height, 1), 4);
-  const f = fit(c, centre, radius * scale, aspect);
-  return pan(f, rect.left + rect.width / 2 - width / 2, rect.top + rect.height / 2 - height / 2, height);
+export function fitPoints(c: CameraState, points: readonly V3[], width: number, height: number, rect?: ViewRect | null, margin = FIT_MARGIN): CameraState {
+  if (!points.length) return c;
+  const W = Math.max(width, 1);
+  const H = Math.max(height, 1);
+  const r = rect && rect.width >= 80 && rect.height >= 80 ? rect : { left: 0, top: 0, width: W, height: H };
+  // The clear area less the margin, in normalised screen coordinates (−1…1, y up).
+  const mx = r.width * margin;
+  const my = r.height * margin;
+  const l = (2 * (r.left + mx)) / W - 1;
+  const rt = (2 * (r.left + r.width - mx)) / W - 1;
+  const t = 1 - (2 * (r.top + my)) / H;
+  const b = 1 - (2 * (r.top + r.height - my)) / H;
+  const aspect = W / H;
+  const { right, up, back } = cameraBasis(c);
+  // Each point along the camera's right, up and forward (into the screen).
+  let uMin = Infinity,
+    uMax = -Infinity,
+    vMin = Infinity,
+    vMax = -Infinity,
+    wMin = Infinity,
+    wMax = -Infinity;
+  const pts = points.map((p) => {
+    const u = dot(p, right),
+      v = dot(p, up),
+      w = -dot(p, back);
+    uMin = Math.min(uMin, u);
+    uMax = Math.max(uMax, u);
+    vMin = Math.min(vMin, v);
+    vMax = Math.max(vMax, v);
+    wMin = Math.min(wMin, w);
+    wMax = Math.max(wMax, w);
+    return [u, v, w] as const;
+  });
+  // Too small to frame (a point, a flat line seen edge on): treat it as 2 mm across.
+  const pad = (lo: number, hi: number) => (hi - lo < 2 ? [(lo + hi) / 2 - 1, (lo + hi) / 2 + 1] : [lo, hi]);
+  [uMin, uMax] = pad(uMin, uMax);
+  [vMin, vMax] = pad(vMin, vMax);
+  const tanH = Math.tan((FOV / 2) * RAD);
+  const wMid = (wMin + wMax) / 2;
+  let U: number, V: number, Wc: number, distance: number;
+  if (c.ortho) {
+    // The half height the view must show so the spread fits the clear area's width and height.
+    const hh = Math.max((uMax - uMin) / ((rt - l) * aspect), (vMax - vMin) / (t - b));
+    U = (uMin + uMax) / 2 - ((l + rt) / 2) * hh * aspect;
+    V = (vMin + vMax) / 2 - ((t + b) / 2) * hh;
+    distance = clampDistance(hh / tanH);
+    Wc = wMid - distance;
+  } else {
+    // A point is inside the clear area while lo ≤ (u − U) / (w − W) ≤ hi, a pair of planes through the camera on each
+    // axis. Each pair meets the points at the depth where both just touch; the camera takes the further back.
+    const axis = (i: 0 | 1, lo: number, hi: number) => {
+      let A = -Infinity,
+        B = Infinity;
+      for (const p of pts) {
+        A = Math.max(A, p[i] - hi * p[2]);
+        B = Math.min(B, p[i] - lo * p[2]);
+      }
+      return { A, B, W: (B - A) / (hi - lo) };
+    };
+    const x = axis(0, l * tanH * aspect, rt * tanH * aspect);
+    const y = axis(1, b * tanH, t * tanH);
+    Wc = Math.min(x.W, y.W);
+    // The looser axis has room to spare: sit in the middle of it.
+    U = (x.A + rt * tanH * aspect * Wc + x.B + l * tanH * aspect * Wc) / 2;
+    V = (y.A + t * tanH * Wc + y.B + b * tanH * Wc) / 2;
+    distance = clampDistance(Math.max(wMid - Wc, 1));
+  }
+  const eye = add(add(right.map((k) => k * U) as V3, up, V), back, -Wc);
+  return { ...c, target: add(eye, back, -distance), distance };
+}
+
+/** The eight corners of a box. */
+export function boxCorners(min: V3, max: V3): V3[] {
+  const out: V3[] = [];
+  for (const x of [min[0], max[0]]) for (const y of [min[1], max[1]]) for (const z of [min[2], max[2]]) out.push([x, y, z]);
+  return out;
 }
 
 /** Eases from a to b; t from 0 to 1. Azimuth takes the short way round. */
