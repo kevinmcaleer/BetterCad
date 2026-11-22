@@ -142,7 +142,6 @@
   outline: none;
 }
 .bc-viewcube:hover .bc-cube-roll,
-.bc-viewcube-awake .bc-cube-roll,
 .bc-cube-roll:focus-visible {
   opacity: 1;
   transition-delay: 0s;
@@ -166,6 +165,12 @@
 .bc-cube-roll:focus-visible .bc-cube-roll-arrow {
   stroke: var(--bc-color-accent);
   stroke-width: 2.2;
+}
+/* No hover on a touch screen, so the arrows always show there, as the cube's buttons do. */
+@media (hover: none) {
+  .bc-cube-roll {
+    opacity: 1;
+  }
 }
 /* A finger needs more to aim at. */
 @media (pointer: coarse) {

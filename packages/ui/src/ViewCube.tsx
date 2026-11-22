@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "./Button";
 import { ContextMenu, MenuButton, type ContextMenuState, type MenuEntry } from "./Menu";
 
@@ -43,8 +43,6 @@ const FOCAL = C / Math.tan((16 * Math.PI) / 180);
 const EDGE = 0.64;
 /** Further than this many pixels and a press is a drag. */
 const DRAG_PX = 3;
-/** How long the turn arrows stay after a tap on a touch screen. */
-const WAKE_MS = 4000;
 /** The turn arrows reach this far past the cube's box. */
 const ROLL_PAD = 10;
 
@@ -92,8 +90,8 @@ export interface ViewCubeProps {
   onHome?: () => void;
   /**
    * Roll the view a quarter turn about the line of sight: 1 clockwise, −1 anticlockwise. Shows two curved arrows by
-   * the cube's top right while the pointer is over the cube or the arrows, as in Fusion; on a touch screen, for a
-   * while after a tap on the cube.
+   * the cube's top right while the pointer is over the cube or the arrows, as in Fusion; always on a touch screen,
+   * like the cube's other buttons.
    */
   onRoll?: (dir: 1 | -1) => void;
   /** The cube's own menu (Go home, projection, home view), under a small arrow by the cube and on a right-click. */
@@ -108,15 +106,7 @@ export interface ViewCubeProps {
  */
 export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, onRoll, menu }: ViewCubeProps) {
   const r = rotation;
-  // A finger has no hover, so a tap on the cube wakes the turn arrows for a few seconds.
-  const [awake, setAwake] = useState(false);
-  const sleep = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => void (sleep.current && clearTimeout(sleep.current)), []);
-  const wake = () => {
-    setAwake(true);
-    if (sleep.current) clearTimeout(sleep.current);
-    sleep.current = setTimeout(() => setAwake(false), WAKE_MS);
-  };
+
   const [hover, setHover] = useState<string | null>(null);
   const [context, setContext] = useState<ContextMenuState | null>(null);
   const press = useRef<{ x: number; y: number; lastX: number; lastY: number; moved: boolean; raw: V3 | null } | null>(null);
@@ -203,7 +193,6 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
     return raw ? (raw.split(",").map(Number) as V3) : null;
   };
   const onDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (e.pointerType === "touch" && onRoll) wake();
     if (e.button !== 0 || press.current) return;
     e.stopPropagation();
     press.current = { x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false, raw: placeAt(e.target) };
@@ -234,7 +223,7 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
   };
 
   return (
-    <div className={`bc-viewcube${awake ? " bc-viewcube-awake" : ""}`} role="group" aria-label="View cube">
+    <div className="bc-viewcube" role="group" aria-label="View cube">
       <svg
         className="bc-viewcube-svg"
         viewBox={`0 0 ${SIZE} ${SIZE}`}
@@ -337,10 +326,7 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
               role="button"
               tabIndex={0}
               aria-label={t.label}
-              onClick={() => {
-                onRoll(t.dir);
-                if (awake) wake();
-              }}
+              onClick={() => onRoll(t.dir)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();

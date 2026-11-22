@@ -412,18 +412,14 @@ describe("ViewCube", () => {
     expect(screen.getByRole("menu", { name: "View cube" })).toBeInTheDocument();
   });
 
-  it("turns the view a quarter turn with its arrows, woken by a tap on a touch screen", async () => {
+  it("turns the view a quarter turn with its arrows", async () => {
     const onRoll = vi.fn();
-    const { container } = render(<ViewCube onRoll={onRoll} />);
+    render(<ViewCube onRoll={onRoll} />);
     const cube = screen.getByRole("group", { name: "View cube" });
     await userEvent.click(within(cube).getByRole("button", { name: "Turn clockwise 90°" }));
     expect(onRoll).toHaveBeenLastCalledWith(1);
     await userEvent.click(within(cube).getByRole("button", { name: "Turn anticlockwise 90°" }));
     expect(onRoll).toHaveBeenLastCalledWith(-1);
-    // A mouse shows them by hover (CSS); a finger has none, so a tap on the cube wakes them.
-    expect(container.querySelector(".bc-viewcube-awake")).toBeNull();
-    fireEvent.pointerDown(container.querySelector(".bc-viewcube-svg")!, { pointerType: "touch", button: 0 });
-    expect(container.querySelector(".bc-viewcube-awake")).not.toBeNull();
   });
 
   it("leaves the buttons out when it has nowhere to send them", () => {
