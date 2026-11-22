@@ -401,8 +401,11 @@ test("upload a .bcad and a STEP file, each saved as a model that opens", async (
   await page
     .getByLabel("Files to upload")
     .setInputFiles([`${root}web/public/samples/bracket.bcad`, `${root}packages/kernel/src/testdata/step/cog-on-flat.step`]);
-  // The STEP file waits for the geometry engine to read its solids.
+  // The STEP file waits for the geometry engine to read its solids; the upload card shows how far each file has got.
+  const card = page.getByRole("region", { name: "Uploads" });
+  await expect(card.getByText("bracket.bcad")).toBeVisible();
   await expect(page.getByText("Uploaded 2 models")).toBeVisible({ timeout: 90_000 });
+  await expect(card).toContainText("Saved as cog-on-flat");
   const names = [...server.models.values()].map((m) => m.name);
   expect(names).toContain("cog-on-flat");
   expect(names).toHaveLength(2);
