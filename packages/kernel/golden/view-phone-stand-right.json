@@ -1,0 +1,13 @@
+{
+  "box": "-35,0 to 35,54",
+  "curves": [
+    "hidden sharp line -35,4 35,4 <- f5|f9:f0",
+    "visible sharp line -35,0 -35,12 <- f1|f2",
+    "visible sharp line -35,0 35,0 <- f1|f4",
+    "visible sharp line -35,12 -35,54 <- f2|f9:f1",
+    "visible sharp line -35,12 35,12 <- f1|f9:f5",
+    "visible sharp line -35,54 35,54 <- f0|f9:f1",
+    "visible sharp line 35,0 35,12 <- f1|f3",
+    "visible sharp line 35,12 35,54 <- f3|f9:f1"
+  ]
+}

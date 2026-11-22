@@ -10,7 +10,8 @@ import { loadOCCT, loadTimes } from "../src/occt/oc";
 import { ModelBuilder } from "../src/occt/model";
 import { boolean, box, count, cylinder, fillet, measure, place, prismOf, shell, sphere } from "../src/occt/shapes";
 import type { TopoDS_Shape } from "replicad-opencascadejs";
-import { addPart, changeParts, newDoc } from "../src/document";
+import { addPart, build, changeParts, newDoc } from "../src/document";
+import { projectView, VIEWS } from "../src/occt/project";
 import { tessellate } from "../src/occt/tessellate";
 import { SAMPLES } from "../src/samples";
 import { thickness } from "../src/print/checks";
@@ -26,6 +27,12 @@ const oc = await loadOCCT();
 const loadMs = performance.now() - t0;
 const sample = (id: string) => SAMPLES.find((s) => s.id === id)!.build();
 const ball = tessellate(oc, shell(oc, sphere(oc, { x: 60, y: 60, z: 60 }), [], 1), "fine");
+
+/** The coupon's bodies as built, for the drawing view (#558). */
+const couponBuilder = new ModelBuilder(oc);
+const coupon = build(sample("hole-calibration"))
+  .parts.filter((p) => !p.hole)
+  .map((p) => couponBuilder.solid(p).shape);
 
 /** A 10 mm thick plate with an n × n grid of 2 mm holes, cut in one go: a body with many faces. */
 function plate(n: number, dx = 0): TopoDS_Shape {
@@ -71,6 +78,7 @@ const cases: Record<string, () => unknown> = {
   "Build the hole calibration coupon (40 cuts)": () => new ModelBuilder(oc).build(sample("hole-calibration")),
   "Fillet all 12 edges of a box": () => fillet(oc, box(oc, { x: 20, y: 20, z: 20 }), [...Array(12).keys()], 2),
   "Mesh a hollow sphere, fine": () => tessellate(oc, shell(oc, sphere(oc, { x: 60, y: 60, z: 60 }), [], 1), "fine"),
+  "Draw the hole calibration coupon, front view": () => projectView(oc, coupon, VIEWS.front),
   "Thin-wall check, hollow sphere": () => thickness(ball, 0.8),
   "Orientation suggestions, hollow sphere": () => suggestOrientations([ball]),
   "Make a 10 mm box": () => box(oc, { x: 10, y: 10, z: 10 }),

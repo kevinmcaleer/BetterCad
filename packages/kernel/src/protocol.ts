@@ -11,6 +11,7 @@ import type { Clash } from "./occt/clashes";
 import type { SweepResult } from "./sweep";
 import type { CheckArea } from "./print/checks";
 import type { Orientation, OrientWeights } from "./print/orient";
+import type { ModelView, ModelViewRequest } from "./view";
 import type { ExportEstimate, ExportRequest, ExportResult } from "./occt/exporter";
 
 /**
@@ -56,6 +57,8 @@ export interface Methods {
   mass: { params: { doc: ModelDoc; upTo?: number }; result: BodyMass[] };
   /** Moves a timeline step (#286), finding moved fillets' and shells' edges and faces again by place. */
   reorder: { params: { doc: ModelDoc; id: string; beforeId: string | null }; result: Reordered };
+  /** A flat view of the model for a drawing (#558): visible and hidden edges as 2D curves, each with where it came from. */
+  view: { params: { doc: ModelDoc; upTo?: number } & ModelViewRequest; result: ModelView };
   /** Round trip, for tests and to check the worker is alive. */
   ping: { params: Record<string, never>; result: { ok: true; engine: string } };
 }

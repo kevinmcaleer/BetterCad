@@ -45,7 +45,9 @@ import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
 import { importTriangles, readImport, type ImportedBody, type Progress } from "./imports";
 import { findMates, type Mate } from "./mates";
-import { findClashes, overlapsAt, type Clash } from "./clashes";
+import { findClashes, moved, overlapsAt, type Clash } from "./clashes";
+import type { projectView } from "./project";
+import type { ModelView, ModelViewRequest, ViewSource } from "../view";
 import { triangles } from "./export";
 import { meshTree, type MeshTree } from "../collide";
 import { sweepClashes, type SweepOptions, type SweepResult } from "../sweep";
@@ -143,6 +145,9 @@ const PICKS_KEPT = 4000;
 const FINISH = new Set(["fillet", "chamfer", "pushpull", "offsetFace"]);
 /** Thrown to leave a copied finish out without failing its step. */
 const SKIP = Symbol("skip");
+
+/** How many drawing views are kept (#558): a few sheets' worth. Each is some kilobytes of curves. */
+export const VIEWS_KEPT = 48;
 
 /**
  * How many finished bodies to keep for undo, redo and scrubbing the timeline (#76), and roughly how much memory they
@@ -629,6 +634,83 @@ export class ModelBuilder {
     }
     const order = new Map(doc.features.map((f, i) => [f.id, i]));
     return [...by.values()].sort((a, b) => (order.get(a.feature) ?? 1e9) - (order.get(b.feature) ?? 1e9));
+  }
+
+  /** Views already worked out, by what they show and from where, least recently used first. */
+  private views = new Map<string, ModelView>();
+
+  /**
+   * A flat view of the model for a drawing (#558): the bodies asked for, as they stand at the document's pose, seen
+   * from `frame`. Kept by what makes each body, where it stands and how it is seen, so opening a drawing again, moving
+   * a view on its sheet or changing a body the view doesn't show costs nothing. `project` is `projectView`, handed in
+   * so the worker can load it the first time a drawing asks.
+   */
+  view(doc: ModelDoc, upTo = doc.features.length, req: ModelViewRequest, project: typeof projectView): ModelView {
+    const built = build(doc, upTo);
+    const { parts, joints, links, drives, components } = built;
+    this.useBlobs(doc);
+    let wanted: (id: string) => boolean = () => true;
+    if ("bodies" in req.shows) {
+      const ids = new Set(req.shows.bodies);
+      wanted = (id) => ids.has(id);
+    } else if ("component" in req.shows) {
+      // The component's own bodies and those of every component nested in it.
+      const inside = new Set([req.shows.component]);
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const c of components) if (c.parent && inside.has(c.parent) && !inside.has(c.id)) grew = !!inside.add(c.id);
+      }
+      const ids = new Set(components.filter((c) => inside.has(c.id)).flatMap((c) => c.parts));
+      wanted = (id) => ids.has(id);
+    }
+    const byLink = doc.pose ? linkTransforms(joints, resolvePose(drives, doc.pose), poseNesting(built)) : new Map();
+    const linkOf = new Map<string, string>();
+    for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
+    const shown = parts.filter((p) => !p.hole && !p.hidden && wanted(p.id));
+    const moves = shown.map((p) => byLink.get(linkOf.get(p.id) ?? ""));
+    const key = canonical([shown.map((p, i) => [partKey(p, "fast"), moves[i] ?? null]), req.frame, req.hidden ?? true, req.smooth ?? true, req.trace ?? true]);
+    const had = this.views.get(key);
+    if (had) {
+      // Used again: move it to the fresh end.
+      this.views.delete(key);
+      this.views.set(key, had);
+      return { ...had, bodies: shown.map((p) => p.id), ms: 0 };
+    }
+    const t0 = performance.now();
+    const solids: Solid[] = [];
+    const ids: string[] = [];
+    shown.forEach((p, i) => {
+      try {
+        const s = this.solid(p);
+        solids.push(moves[i] ? { ...s, shape: moved(this.oc, s.shape, moves[i]) } : s);
+        ids.push(p.id);
+      } catch {
+        // A body that can't build has nothing to draw; the timeline already says why.
+      }
+    });
+    const flat = project(
+      this.oc,
+      solids.map((s) => s.shape),
+      req.frame,
+      req,
+    );
+    const source = (body: number, kind: "edge" | "face", index: number): ViewSource => {
+      const names = solids[body]!.body.names;
+      const name = kind === "edge" ? names?.edges[index] : names?.faces[index];
+      return name === undefined ? { body: ids[body]!, kind, index } : { body: ids[body]!, kind, index, name };
+    };
+    const view: ModelView = {
+      edges: flat.edges.map(({ from, ...e }) =>
+        from ? { ...e, source: from.edge !== undefined ? source(from.body, "edge", from.edge) : source(from.body, "face", from.face!) } : e,
+      ),
+      box: flat.box,
+      rounds: flat.rounds.map(({ body, face, ...r }) => ({ ...r, source: source(body, "face", face) })),
+      bodies: ids,
+      ms: performance.now() - t0,
+    };
+    this.views.set(key, view);
+    while (this.views.size > VIEWS_KEPT) this.views.delete(this.views.keys().next().value!);
+    return view;
   }
 
   /** Mating faces (#184) between the bodies that print, as built up to `upTo`. */

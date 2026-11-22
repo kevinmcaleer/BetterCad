@@ -31,7 +31,9 @@
     "./gltf": "./src/export/gltf.ts",
     "./rigid": "./src/rigid.ts",
     "./insert-model": "./src/insertmodel.ts",
-    "./dim-names": "./src/dimNames.ts"
+    "./dim-names": "./src/dimNames.ts",
+    "./drawing": "./src/drawing.ts",
+    "./view": "./src/view.ts"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",

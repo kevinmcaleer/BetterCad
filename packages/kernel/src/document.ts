@@ -3,6 +3,7 @@
  * It is plain JSON with no DOM, three.js or OCCT types, so the app, the kernel worker and Node tests share it. The
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
+import type { Drawing } from "./drawing";
 import {
   drawCentreRectangle,
   drawCircle,
@@ -898,6 +899,8 @@ export interface ModelDoc {
   kevsrobots?: { project: number; title: string; sent: string };
   /** Canvases (#248): pictures pinned to a plane at true size, to trace over. Not steps, and never in exports. */
   canvases?: CanvasImage[];
+  /** Drawings (#555): 2D sheets made from the model. They read it and never change it, so they are not steps. */
+  drawings?: Drawing[];
 }
 
 /**

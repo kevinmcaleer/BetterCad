@@ -72,6 +72,11 @@ const handlers: { [M in keyof Methods]: (params: Methods[M]["params"], id: numbe
   measure: ({ doc, upTo, refs }) => builder!.measure(doc, refs, upTo),
   mates: ({ doc, upTo, limit }) => builder!.mates(doc, upTo, limit),
   mass: ({ doc, upTo }) => builder!.mass(doc, upTo),
+  // Views for drawings load the first time one is asked for.
+  view: async ({ doc, upTo, ...req }) => {
+    const { projectView } = await import("./occt/project");
+    return builder!.view(doc, upTo, req, projectView);
+  },
   clashes: ({ doc, upTo, sameLink, references }, id) =>
     builder!.clashes(doc, upTo, {
       sameLink,
