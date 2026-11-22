@@ -991,17 +991,21 @@ export class Engine {
     }
     this.cap.visible = !!s;
     this.arrow.visible = !!s && showArrow;
-    for (const b of this.order) {
-      for (const m of [b.shadedMaterial, b.flatMaterial, b.edges.material as Material, b.creases.material as Material]) m.clippingPlanes = planes;
-      for (const m of b.pickMaterials) m.clippingPlanes = planes;
-      for (const st of b.stencil) {
-        st.visible = !!s;
-        (st.material as Material).clippingPlanes = planes;
-      }
-    }
+    for (const b of [...this.bodies.values(), ...this.previews]) this.clipBody(b);
     for (const m of [this.selectMat, this.hoverMat]) m.clippingPlanes = planes;
     this.syncDecals();
     this.invalidate();
+  }
+
+  /** Cuts one body by the section, or uncuts it. */
+  private clipBody(b: BodyObjects): void {
+    const planes = this.section ? [this.clip] : [];
+    for (const m of [b.shadedMaterial, b.flatMaterial, b.edges.material as Material, b.creases.material as Material]) m.clippingPlanes = planes;
+    for (const m of b.pickMaterials) m.clippingPlanes = planes;
+    for (const st of b.stencil) {
+      st.visible = !!this.section;
+      (st.material as Material).clippingPlanes = planes;
+    }
   }
 
   /** Marks each link's centre of mass (#174) with a small three-axis cross, drawn over the bodies, or none. */
@@ -1817,7 +1821,8 @@ export class Engine {
       stencil,
       faceOfVertex,
     };
-    if (this.section) this.setSection(this.section, this.arrow.visible);
+    // A body made while a section is on (the model rebuilt, or a preview) is cut like the rest.
+    this.clipBody(o);
     return o;
   }
 
