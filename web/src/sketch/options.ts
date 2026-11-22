@@ -46,6 +46,7 @@ export const DEFAULT_OPTIONS: SketchOptions = {
 export const OPTION_ROWS: { id: SketchOption; label: string; title: string }[] = [
   { id: "grid", label: "Sketch grid", title: "Show a grid on the sketch's plane" },
   { id: "snap", label: "Snap", title: "Snap to the grid. Hold Shift to place freely." },
+  { id: "slice", label: "Slice", title: "Hide the model between you and the sketch's plane" },
   { id: "profile", label: "Profile", title: "Shade the closed shapes you can extrude" },
   { id: "points", label: "Points", title: "Show the end and centre points" },
   { id: "dimensions", label: "Dimensions", title: "Show the sizes on the sketch" },
@@ -57,7 +58,6 @@ export const OPTION_ROWS: { id: SketchOption; label: string; title: string }[] =
     label: "Auto project geometry",
     title: "Bring in the edges of the face you sketch on, and any model edge or corner you size or constrain to",
   },
-  { id: "slice", label: "Slice", title: "Hide the model between you and the sketch's plane" },
 ];
 
 /** Options that last for one sketch only. */

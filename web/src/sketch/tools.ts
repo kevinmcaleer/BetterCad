@@ -835,3 +835,9 @@ export function axisLine(s: Sketch, a: Vec2, b: Vec2, near: Vec2): { sketch: Ske
   const id = d.line(ends[0]!, ends[1]!, { construction: true, auto: false });
   return { sketch: d.done().sketch, id };
 }
+
+/** The curves `after` adds to `before`, made construction geometry, for Linetype. */
+export function asConstruction(before: Sketch, after: Sketch): Sketch {
+  const had = new Set(before.entities.map((e) => e.id));
+  return { ...after, entities: after.entities.map((e) => (had.has(e.id) || e.kind === "point" ? e : { ...e, construction: true })) };
+}

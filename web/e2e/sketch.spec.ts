@@ -302,6 +302,43 @@ test("the sketch palette shows the state, hides sizes and looks at the sketch", 
   await expect(page.getByText("Finished Sketch 1")).toBeVisible();
 });
 
+test("Linetype draws construction lines and turns picked lines back to normal", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page.keyboard.press("k");
+  await click(page, 20, 20);
+  await page.waitForTimeout(800);
+
+  const palette = page.getByRole("complementary", { name: "Sketch palette" });
+  const linetype = palette.getByRole("group", { name: "Linetype" });
+  const normal = linetype.getByRole("button", { name: /normal/ });
+  const construction = linetype.getByRole("button", { name: /construction/ });
+  await expect(normal).toHaveAttribute("aria-pressed", "true");
+  await construction.click();
+  await expect(construction).toHaveAttribute("aria-pressed", "true");
+
+  // Drawn as construction, all four sides are construction lines.
+  await page.keyboard.press("r");
+  await click(page, -10, -5);
+  await click(page, 10, 5);
+  await page.keyboard.press("v");
+  await click(page, 0, 5);
+  await expect(construction).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("ControlOrMeta+a");
+  await expect(construction).toHaveAttribute("aria-pressed", "true");
+
+  // Picked, they turn normal, so the rectangle is a shape to extrude again.
+  await normal.click();
+  await expect(normal).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(normal).toHaveAttribute("aria-pressed", "true");
+  await click(page, 0, 5);
+  await expect(normal).toHaveAttribute("aria-pressed", "true");
+  await palette.getByRole("button", { name: "Finish sketch" }).click();
+  await expect(page.getByText("Finished Sketch 1")).toBeVisible();
+});
+
 test("drag a line to slide it square across, and line ends show only while drawing", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
