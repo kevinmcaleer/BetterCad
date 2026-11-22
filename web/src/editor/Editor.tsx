@@ -366,6 +366,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
   /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
   const [viewMenuAt, setViewMenuAt] = useState<{ ids: string[]; at: ContextMenuState } | null>(null);
+  /** The sketch's right-click menu, on what is picked in the sketch. */
+  const [sketchMenuAt, setSketchMenuAt] = useState<{ ids: string[]; at: ContextMenuState } | null>(null);
   const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
   const [timelineShown, setTimelineShownState] = useState(() => recall(TIMELINE_KEY) !== "off");
   const setTimelineShown = useCallback((on: boolean) => {
@@ -4432,7 +4434,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onPoint={toolPick ? takePoint : undefined}
             onCamera={composedCamera}
             onMenu={(pick, at) => {
-              if (sketch.editing) return;
+              if (sketch.editing) return setSketchMenuAt({ ids: sketch.menuAt(at), at });
               const body = pick && parts.some((p) => p.id === pick.body) ? pick.body : null;
               const ids = body ? (selection.includes(body) ? selection : [body]) : [];
               if (body) setSelection(ids);
@@ -4700,6 +4702,18 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         label="Step actions"
         title={doc.features.find((f) => f.id === featureMenuAt?.id)?.name}
         entries={featureMenuAt ? featureMenu(featureMenuAt.id) : []}
+      />
+      <ContextMenu
+        at={sketch.editing ? (sketchMenuAt?.at ?? null) : null}
+        onClose={() => setSketchMenuAt(null)}
+        label="Sketch actions"
+        title="Sketch"
+        entries={(sketchMenuAt ? ["sketch.removeDuplicates", ...(sketchMenuAt.ids.length ? ["sketch.construction", "sketch.delete"] : [])] : []).flatMap(
+          (id) => {
+            const c = commands.find((x) => x.id === id);
+            return c ? [{ id, label: c.label, icon: c.icon, keys: c.keys && formatCombo(c.keys[0]!), onSelect: () => registry.run(id) }] : [];
+          },
+        )}
       />
       <ContextMenu
         at={viewMenuAt?.at ?? null}

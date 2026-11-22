@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./solver": "./src/solver.ts",
     "./edits": "./src/edits.ts",
-    "./dxf": "./src/dxf.ts"
+    "./dxf": "./src/dxf.ts",
+    "./dedupe": "./src/dedupe.ts"
   },
   "scripts": {
     "build": "tsc -b"
