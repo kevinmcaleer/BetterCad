@@ -67,7 +67,7 @@ import type { Engine, Mods, ScreenPoint, WorldPlaneName } from "../viewport/engi
 import { readPalette } from "../viewport/colours";
 import { isTyping } from "../state/commands";
 import { loupeAuto } from "../state/loupePref";
-import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "./loupe";
+import { CROWD_DWELL, LOUPE_SIZE, crowding, follow, loupeZoom, type Loupe } from "./loupe";
 import type { Pick } from "../viewport/ids";
 import { SketchOverlay, type OverlayCurve, type OverlayFill, type OverlayPoint, type OverlayView, type Shade } from "./overlay";
 import { loadOptions, saveOptions, sketchGrid, sliceSection, sliceSide, type SketchOption, type SketchOptions } from "./options";
@@ -1243,13 +1243,11 @@ export function useSketch(d: SketchDeps) {
     };
     /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
     const SLIDE = 12;
-    const zoomNow = () => (lens && lens.why !== "touch" ? lens.zoom : 1);
     const at = (p: ScreenPoint): { xy: Vec2; px: number } | null => {
       const f = live.current.frame;
       if (!f) return null;
       const w = eng.rayPlane(p.x, p.y, f.origin, f.normal);
-      // With the loupe open, picks reach only as far as its zoom allows.
-      return w ? { xy: toSketch(f, w), px: eng.pixelSize(f.origin) / zoomNow() } : null;
+      return w ? { xy: toSketch(f, w), px: eng.pixelSize(f.origin) } : null;
     };
     pickOnPage.current = (c, touch) => {
       const r = eng.canvas.getBoundingClientRect();
@@ -1278,7 +1276,7 @@ export function useSketch(d: SketchDeps) {
       return snap(xy, L.sketch!, {
         model: modelSnaps(),
         px,
-        grid: L.gridSnap || mods.mod ? snapStep(px * zoomNow()) : null,
+        grid: L.gridSnap || mods.mod ? snapStep(px) : null,
         from,
         exclude,
         off: mods.shift,
@@ -1832,21 +1830,19 @@ export function useSketch(d: SketchDeps) {
       return pts;
     };
     const openAt = (p: ScreenPoint, why: Loupe["why"], gap?: number | null) =>
-      show({ anchor: p, pointer: p, zoom: loupeZoom(gap === undefined ? (crowding(screenPoints(), p)?.gap ?? null) : gap), why });
+      show({ anchor: p, opened: p, zoom: loupeZoom(gap === undefined ? (crowding(screenPoints(), p)?.gap ?? null) : gap), why });
     /** Opens, follows or closes the loupe as the pointer moves, before the move is handled. */
     const watch = (p: ScreenPoint, mods: Mods, pressed: boolean) => {
       window.clearTimeout(dwell);
       if (live.current.placing || live.current.textEdit) return lens && show(null);
       if (mods.touch) {
-        if (lens?.why === "touch") show({ ...lens, anchor: p, pointer: p });
+        if (lens?.why === "touch") show({ ...lens, anchor: p });
         return;
       }
       if (lens) {
         if (lens.why === "alt" && !mods.alt) return show(null);
-        const away = Math.hypot(p.x - lens.anchor.x, p.y - lens.anchor.y) > LOUPE_REACH;
-        // Moving off the loupe's edge closes it, or with Alt held, moves it to the pointer.
-        if (away && !pressed) return lens.why === "alt" ? openAt(p, "alt") : show(null);
-        return show({ ...lens, pointer: p });
+        // It follows the pointer; a crowd's closes once the pointer leaves the crowd.
+        return show(follow(lens, p, pressed));
       }
       if (pressed) return;
       if (mods.alt && !mods.shift) return openAt(p, "alt");
@@ -1875,7 +1871,7 @@ export function useSketch(d: SketchDeps) {
     eng.setInput({
       down: (p, mods) => {
         pagePress = p;
-        const handled = input.down(lensed(lens, p), mods);
+        const handled = input.down(p, mods);
         // A finger hides what it's on: the loupe shows it while the finger is down.
         if (handled && mods.touch) openAt(p, "touch");
         return handled;
@@ -1883,10 +1879,10 @@ export function useSketch(d: SketchDeps) {
       move: (p, mods, pressed) => {
         last = { p, mods };
         watch(p, mods, pressed);
-        input.move(lensed(lens, p), mods, pressed);
+        input.move(p, mods, pressed);
       },
       up: (p, mods) => {
-        input.up(lensed(lens, p), mods);
+        input.up(p, mods);
         if (lens?.why === "touch") show(null);
       },
       cancel: () => {

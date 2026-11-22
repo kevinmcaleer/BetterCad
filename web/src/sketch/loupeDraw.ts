@@ -66,7 +66,7 @@ const colourOf = (c: LoupeColours, s: Shade) =>
  * Draws the loupe: `picture`, the view itself rendered `zoom` times bigger round the anchor (model, grid and sketch,
  * `Engine.magnify`), or where there is none, the sketch's curves and points near the anchor redrawn bigger. `toScreen`
  * takes a sketch point to view pixels, so the loupe matches the view at any camera angle. The pointer shows as a cross
- * at its 1:1 place.
+ * in the middle.
  */
 export function drawLoupe(
   ctx: CanvasRenderingContext2D,
@@ -88,7 +88,7 @@ export function drawLoupe(
   ctx.clip();
   if (picture) {
     ctx.drawImage(picture, 0, 0, size, size);
-    drawPointer(ctx, l, colours, c);
+    drawPointer(ctx, colours, c);
     ctx.restore();
     return;
   }
@@ -116,13 +116,13 @@ export function drawLoupe(
     ctx.fillStyle = colourOf(colours, p.shade);
     ctx.fillRect(q.x - r, q.y - r, 2 * r, 2 * r);
   }
-  drawPointer(ctx, l, colours, c);
+  drawPointer(ctx, colours, c);
   ctx.restore();
 }
 
-/** The pointer: a thin cross where it is inside the loupe, with a halo so it shows on any picture. */
-function drawPointer(ctx: CanvasRenderingContext2D, l: Loupe, colours: LoupeColours, c: number) {
-  const m = l.why === "touch" ? { x: c, y: c } : { x: c + (l.pointer.x - l.anchor.x), y: c + (l.pointer.y - l.anchor.y) };
+/** The pointer: a thin cross in the middle of the loupe, with a halo so it shows on any picture. */
+function drawPointer(ctx: CanvasRenderingContext2D, colours: LoupeColours, c: number) {
+  const m = { x: c, y: c };
   ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(m.x - 9, m.y);
