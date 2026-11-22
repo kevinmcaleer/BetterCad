@@ -108,6 +108,7 @@ export function SketchRibbon({ s }: { s: SketchSession }) {
         label="Constrain"
         entries={[
           entry(dim),
+          { id: "auto", label: "AutoConstrain", icon: "constraint", colour: "sk-auto", onSelect: s.autoConstrain },
           ...CONSTRAINT_TOOLS.map<MenuEntry>((c) => ({
             id: c.id,
             label: c.label,
@@ -182,7 +183,10 @@ export function SketchBars({ s, ribbon }: { s: SketchSession; ribbon?: boolean }
           <Toolbar.Separator />
           <MenuButton
             label="Constraints"
-            entries={CONSTRAINT_TOOLS.map((c) => ({ id: c.id, label: c.label, onSelect: () => s.constrain(c.id) }))}
+            entries={[
+              { id: "auto", label: "AutoConstrain", onSelect: s.autoConstrain },
+              ...CONSTRAINT_TOOLS.map((c) => ({ id: c.id, label: c.label, onSelect: () => s.constrain(c.id) })),
+            ]}
             trigger={(p) => (
               <Button {...p} icon="constraint" label="Constrain" on={!!s.ctool} title="Pick a constraint, then click the geometry. Esc puts it down." />
             )}
@@ -291,6 +295,7 @@ const GLYPH: Partial<Record<Constraint["type"], string>> = {
   midpoint: "M",
   fix: "F",
   symmetric: "S",
+  curvature: "κ",
 };
 
 /** An arrowhead 9 px long and 6 px wide, its tip at `tip`, pointing away from `back` (a pixel behind it). */

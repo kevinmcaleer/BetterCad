@@ -152,6 +152,61 @@ describe("tangent ends", () => {
     expect(d[1]).toBeCloseTo(0, 9);
   });
 
+  /** Signed curvature of a piece at its start, or at its end walked backwards (so the sign flips there). */
+  const bendAt = ([p0, p1, p2, p3]: [Vec2, Vec2, Vec2, Vec2], end: boolean): number => {
+    const [a, b, c] = end ? [p3, p2, p1] : [p0, p1, p2];
+    const d1: Vec2 = [3 * (b[0] - a[0]), 3 * (b[1] - a[1])];
+    const d2: Vec2 = [6 * (a[0] - 2 * b[0] + c[0]), 6 * (a[1] - 2 * b[1] + c[1])];
+    return (d1[0] * d2[1] - d1[1] * d2[0]) / Math.hypot(...d1) ** 3;
+  };
+
+  it("curvature on a line: tangent and straight where it leaves (G2)", () => {
+    const { s, spline, line } = lineThenSpline();
+    const tangent = splineGeo(new SketchIndex(s), s.entities.find((e) => e.id === spline) as Spline);
+    expect(Math.abs(bendAt(tangent.bez[0]!, false))).toBeGreaterThan(0.01);
+    const g2 = { ...s, constraints: s.constraints.map((c) => (c.type === "tangent" ? { ...c, type: "curvature" as const } : c)) };
+    const g = splineGeo(new SketchIndex(g2), s.entities.find((e) => e.id === spline) as Spline);
+    const d = unit(splineDeriv(g, 0));
+    expect(d[0]).toBeCloseTo(1, 9);
+    expect(d[1]).toBeCloseTo(0, 9);
+    expect(bendAt(g.bez[0]!, false)).toBeCloseTo(0, 9);
+    // Still through every fit point, and smooth where the pieces meet.
+    expect(splinePoint(g, 2)).toEqual([20, 2].map((x) => expect.closeTo(x, 9)));
+    const [a, b] = [unit(splineDeriv(g, 1 - 1e-9)), unit(splineDeriv(g, 1 + 1e-9))];
+    expect(a[0]).toBeCloseTo(b[0], 6);
+    expect(a[1]).toBeCloseTo(b[1], 6);
+    expect(line).toBeTruthy();
+  });
+
+  it("curvature on an arc: bends as the arc does where they meet", () => {
+    const d = new Draft(newSketch());
+    // A quarter arc of radius 10 round the origin, from (10, 0) up to (0, 10); the spline carries on from its end.
+    const arc = d.arc([0, 0], [10, 0], [0, 10]);
+    const end = (d.entities.find((e) => e.id === arc) as { b: string }).b;
+    const spline = d.spline([end, [-8, 14], [-15, 10], [-20, 4]]);
+    d.constrain({ type: "curvature", a: spline, b: arc });
+    const s = d.done().sketch;
+    const g = splineGeo(new SketchIndex(s), s.entities.find((e) => e.id === spline) as Spline);
+    // Leaving (0, 10) heading on anticlockwise: along -x, turning left at 1/10.
+    const dir = unit(splineDeriv(g, 0));
+    expect(dir[0]).toBeCloseTo(-1, 9);
+    expect(dir[1]).toBeCloseTo(0, 9);
+    expect(bendAt(g.bez[0]!, false)).toBeCloseTo(0.1, 6);
+    // Arriving at the arc's start instead: the arc bends the same way.
+    const d2 = new Draft(newSketch());
+    const arc2 = d2.arc([0, 0], [10, 0], [0, 10]);
+    const start = (d2.entities.find((e) => e.id === arc2) as { a: string }).a;
+    const sp2 = d2.spline([[0, -20], [6, -12], start]);
+    d2.constrain({ type: "curvature", a: sp2, b: arc2 });
+    const s2 = d2.done().sketch;
+    const g2 = splineGeo(new SketchIndex(s2), s2.entities.find((e) => e.id === sp2) as Spline);
+    const last = g2.bez[g2.bez.length - 1]!;
+    const into = unit(splineDeriv(g2, g2.bez.length));
+    expect(into[0]).toBeCloseTo(0, 9);
+    expect(into[1]).toBeCloseTo(1, 9);
+    expect(-bendAt(last, true)).toBeCloseTo(0.1, 6);
+  });
+
   it("stays tangent when a fit point is dragged", () => {
     const { s, spline } = lineThenSpline();
     const sp = s.entities.find((e) => e.id === spline) as Spline;

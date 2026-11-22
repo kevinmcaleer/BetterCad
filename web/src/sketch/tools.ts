@@ -560,7 +560,7 @@ export function commit(tool: SketchToolId, sketch: Sketch, clicks: Snap[], typed
  * and two points line up across or up, whichever they are nearer to already.
  * The sketch origin can be picked wherever a point can.
  */
-export type ConstraintToolId = Exclude<NewConstraint["type"], "horizontal" | "vertical"> | "horizontalVertical";
+export type ConstraintToolId = Exclude<NewConstraint["type"], "horizontal" | "vertical"> | "horizontalVertical" | "polygon";
 
 export interface ConstraintTool {
   id: ConstraintToolId;
@@ -584,6 +584,8 @@ export const CONSTRAINT_TOOLS: ConstraintTool[] = [
   { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line, or two lines to line up their midpoints", picks: 2 },
   { id: "fix", label: "Fix", hint: "Pick points, lines or curves", picks: 1 },
   { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line", picks: 3 },
+  { id: "curvature", label: "Curvature", hint: "Pick a spline and a line or arc on its end", picks: 2 },
+  { id: "polygon", label: "Polygon", hint: "Pick a side of a closed outline of lines", picks: 1 },
 ];
 
 export const constraintToolById = (id: ConstraintToolId) => CONSTRAINT_TOOLS.find((t) => t.id === id)!;
@@ -739,16 +741,18 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
       const round = (k?: string) => curve(k) || k === "ellipse";
       return two && round(kinds[0]) && round(kinds[1]) ? [{ type, a, b }] : hint;
     }
+    case "curvature":
     case "tangent": {
-      // A spline end leaves along a line it shares that end with (#269).
+      // A spline end leaves along a line or arc it shares that end with (#269), and with curvature bends as it does.
       const sp = picked.map((id) => sketch.entities.find((e) => e.id === id));
       const [s, l] = sp[0]?.kind === "spline" ? [sp[0], sp[1]] : [sp[1], sp[0]];
       if (two && s?.kind === "spline") {
         const ends = s.closed ? [] : [s.pts[0], s.pts[s.pts.length - 1]];
-        return l?.kind === "line" && (ends.includes(l.a) || ends.includes(l.b))
+        return (l?.kind === "line" || l?.kind === "arc") && (ends.includes(l.a) || ends.includes(l.b))
           ? [{ type, a: s.id, b: l.id }]
-          : "A spline is tangent to a line that ends on one of its ends";
+          : "A spline is tangent to a line or arc on one of its ends";
       }
+      if (type === "curvature") return hint;
       return two && (curve(kinds[0]) || curve(kinds[1])) && kinds.every((k) => k === "line" || curve(k)) ? [{ type, a, b }] : hint;
     }
     case "coincident": {

@@ -25,6 +25,29 @@ export function SketchPanel({ s }: { s: SketchSession }) {
   const picked = pickedCurves.length > 0;
   const construction = picked ? pickedCurves.every((e) => e.construction) : s.drawConstruction;
   const state = conflicting.size > 0 ? "bad" : s.result?.dof === 0 ? "done" : "free";
+  const constraintList = sk.constraints.length ? (
+    <ul className="bc-sk-list" aria-label="Constraints">
+      {sk.constraints.map((c) => (
+        <li key={c.id} className={conflicting.has(c.id) ? "bc-bad" : undefined}>
+          <button type="button" className="bc-sk-item" aria-pressed={s.sel.includes(c.id)} onClick={() => s.setSel([c.id])}>
+            {CONSTRAINT_LABEL[c.type]}
+            {conflicting.has(c.id) ? " (fights)" : redundant.has(c.id) ? " (repeats)" : ""}
+          </button>
+          <Button
+            icon="trash"
+            size="dense"
+            title={`Delete the ${CONSTRAINT_LABEL[c.type].toLowerCase()} constraint`}
+            onClick={() => {
+              s.setSel([c.id]);
+              setTimeout(s.removeSelected, 0);
+            }}
+          />
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p className="bc-note">Pick lines or points, then choose Constrain.</p>
+  );
   const sections: PropsSection[] = [
     {
       id: "sketch",
@@ -132,28 +155,17 @@ export function SketchPanel({ s }: { s: SketchSession }) {
     {
       id: "sketch-constraints",
       title: `Constraints (${sk.constraints.length})`,
-      content: sk.constraints.length ? (
-        <ul className="bc-sk-list" aria-label="Constraints">
-          {sk.constraints.map((c) => (
-            <li key={c.id} className={conflicting.has(c.id) ? "bc-bad" : undefined}>
-              <button type="button" className="bc-sk-item" aria-pressed={s.sel.includes(c.id)} onClick={() => s.setSel([c.id])}>
-                {CONSTRAINT_LABEL[c.type]}
-                {conflicting.has(c.id) ? " (fights)" : redundant.has(c.id) ? " (repeats)" : ""}
-              </button>
-              <Button
-                icon="trash"
-                size="dense"
-                title={`Delete the ${CONSTRAINT_LABEL[c.type].toLowerCase()} constraint`}
-                onClick={() => {
-                  s.setSel([c.id]);
-                  setTimeout(s.removeSelected, 0);
-                }}
-              />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="bc-note">Pick lines or points, then choose Constrain.</p>
+      content: (
+        <>
+          <Button
+            icon="constraint"
+            label="AutoConstrain"
+            variant="secondary"
+            title="Add the constraints that already hold, such as ends that meet and level lines"
+            onClick={s.autoConstrain}
+          />
+          {constraintList}
+        </>
       ),
     },
   ];

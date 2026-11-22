@@ -178,6 +178,17 @@ describe("sketch tools", () => {
     expect(constraintsFor("coincident", s, [pts[0]!, lines[1]!])).toEqual([{ type: "pointOn", p: pts[0], e: lines[1] }]);
     expect(constraintsFor("fix", s, [lines[0]!])).toHaveLength(2);
     expect(constraintsFor("collinear", s, [pts[0]!, lines[1]!])).toBe("Pick two lines");
+    // Curvature takes a spline and a line or arc on one of its ends; tangent takes an arc there too.
+    const d = new Draft(newSketch());
+    const arc = d.arc([0, 0], [10, 0], [0, 10]);
+    const end = (d.entities.find((e) => e.id === arc) as { b: string }).b;
+    const spline = d.spline([end, [-8, 14], [-15, 10]]);
+    const far = d.line([30, 30], [40, 30], { auto: false });
+    const sk = d.done().sketch;
+    expect(constraintsFor("curvature", sk, [arc, spline])).toEqual([{ type: "curvature", a: spline, b: arc }]);
+    expect(constraintsFor("tangent", sk, [spline, arc])).toEqual([{ type: "tangent", a: spline, b: arc }]);
+    expect(constraintsFor("curvature", sk, [spline, far])).toBe("A spline is tangent to a line or arc on one of its ends");
+    expect(constraintsFor("curvature", sk, [arc, far])).toBe("Pick a spline and a line or arc on its end");
     expect(constraintsFor("collinear", s, [lines[0]!, lines[2]!])).toEqual([{ type: "collinear", a: lines[0], b: lines[2] }]);
   });
 

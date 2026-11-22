@@ -285,6 +285,7 @@ function remapConstraint(c: Constraint, f: (id: Id) => Id, along: Set<Id>): Cons
     case "perpendicular":
     case "collinear":
     case "tangent":
+    case "curvature":
     case "equal":
     case "concentric":
       return { ...c, a: f(c.a), b: f(c.b) };
@@ -320,6 +321,7 @@ function cleanConstraints(list: Constraint[], idx: SketchIndex): Constraint[] {
       case "perpendicular":
       case "collinear":
       case "tangent":
+      case "curvature":
       case "equal":
       case "concentric": {
         if (c.a === c.b) continue;
