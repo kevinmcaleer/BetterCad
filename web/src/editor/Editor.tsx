@@ -4038,7 +4038,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         pickerOpen={pickerOpen}
         picker={
           share ? undefined : pickerOpen ? (
-            <aside className="bc-side bc-picker" id="bc-picker" aria-label="My models">
+            <aside className="bc-side bc-models-side" id="bc-models-side" aria-label="My models">
               <Suspense fallback={<p className="bc-note">Loading…</p>}>
                 <ModelPicker
                   api={api}

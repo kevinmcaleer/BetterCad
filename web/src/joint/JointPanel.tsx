@@ -70,6 +70,20 @@ export function JointPanel({ x, error, scope, onCancel }: { x: JointSession; err
       ok={{ title: x.missing ? `Pick ${x.missing} first` : "Keep the joint", disabled: !x.session || !!x.missing, onClick: x.done }}
     >
       {x.help && <PanelNote live>{x.help}</PanelNote>}
+      {x.under && (
+        <section aria-label="Under the floor" className="bc-fsection">
+          <PanelNote live>
+            {x.under.name} is {Math.round(x.under.by * 10) / 10} mm under the floor, so the floor and the parts above can hide it.
+          </PanelNote>
+          {x.under.root !== null && (
+            <Button
+              label="Lift onto the floor"
+              title={`Keep the joint and move ${x.nameOf(x.under.root)} up ${Math.round(x.under.by * 10) / 10} mm, with what's jointed to it`}
+              onClick={x.lift}
+            />
+          )}
+        </section>
+      )}
       <section aria-label="Moves" className="bc-fsection">
         <h3 className="bc-fsection-head">{x.child === null ? "Moves" : `Moves: ${x.nameOf(x.child)}`}</h3>
         {choose("The component that moves", x.child ?? "", comps, x.pickChild, x.loose)}
