@@ -90,6 +90,11 @@ export type DimensionKind = "length" | "distance" | "distanceX" | "distanceY" | 
 /** A constraint with a number. Driving dimensions move geometry; driven ones only report. */
 export interface Dimension {
   id: Id;
+  /**
+   * What other sizes and fields call it ("d1", "d2"…, as in Fusion): unique across the model, given when it is made,
+   * and changed from Parameters. Typing `d1 * 2` into another size links the two.
+   */
+  name?: string;
   kind: DimensionKind;
   /**
    * length: [line]; distance*: [point, point], [point, line], or with circles and arcs in place of points (a circle or

@@ -1,5 +1,5 @@
 import { addParam, addPart, changeParts, newDoc, type Feature, type ModelDoc } from "../state/document";
-import { checkModelParam, modelParams, setModelParam } from "./modelParams";
+import { checkModelParam, editModelParam, modelParams, setModelParam } from "./modelParams";
 
 function withSketch(doc: ModelDoc): ModelDoc {
   const sketch: Feature = {
@@ -65,5 +65,29 @@ describe("modelParams", () => {
     expect(checkModelParam(pattern, "count1", "2.5", {})).toEqual({ problem: "Use a whole number, 1 or more" });
     const move = { id: "m", name: "Move 1", type: "move" } as unknown as Feature;
     expect(checkModelParam(move, "position.x", "-5", {})).toEqual({ value: -5 });
+  });
+
+  it("names sketch sizes, and refuses sizes that use each other", () => {
+    const d = withSketch(newDoc());
+    const f = d.features[0]!;
+    const named = {
+      ...d,
+      features: [
+        {
+          ...f,
+          sketch: {
+            ...(f as { sketch: object }).sketch,
+            dimensions: (f.type === "sketch" ? f.sketch.dimensions : []).map((x, i) => ({
+              ...x,
+              name: `d${i + 1}`,
+              expression: i ? "d1 / 2" : "40",
+              driving: true,
+            })),
+          },
+        } as Feature,
+      ],
+    };
+    expect(modelParams(named)[0]!.params.map((p) => p.name)).toEqual(["d1", "d2"]);
+    expect(editModelParam(named, "s", "dim:d1", "d2 + 1")).toBe("Sketch 1: d1 and d2 depend on each other");
   });
 });

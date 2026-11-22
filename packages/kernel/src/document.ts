@@ -11,6 +11,7 @@ import {
   removeEntities,
   toWorld,
   WORLD_FRAMES,
+  type Dimension,
   type Frame,
   type PlaneRef,
   type Sketch,
@@ -1218,7 +1219,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     const p = parts[find(r.body)];
     return p ? bodyGeo(r, p) : "The body it was made from is gone";
   };
-  const { values } = evaluateParams(doc.params);
+  const values = paramScope(doc);
   // Bodies a step makes while a component is active go into it, unless they already have one (a copy keeps its own).
   let owner: { component: string; had: Set<string> } | null = null;
   // Then a move in the browser (#334) wins.
@@ -2887,7 +2888,21 @@ export function redefineSketchPlane(doc: ModelDoc, id: string, plane: PlaneRef):
 }
 
 export function updateSketch(doc: ModelDoc, id: string, fn: (s: Sketch) => Sketch): ModelDoc {
-  return { ...doc, features: doc.features.map((f) => (f.id === id && f.type === "sketch" ? { ...f, sketch: fn(f.sketch) } : f)) };
+  let was: Sketch | null = null;
+  let now: Sketch | null = null;
+  const next = {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.id !== id || f.type !== "sketch") return f;
+      was = f.sketch;
+      now = fn(f.sketch);
+      return { ...f, sketch: now };
+    }),
+  };
+  if (!was || !now) return next;
+  // New sizes get their names (d1, d2…); sizes deleted leave what used them their number.
+  const gone = (was as Sketch).dimensions.filter((d) => d.name && !(now as Sketch).dimensions.some((x) => x.name === d.name));
+  return nameDimensions(gone.length ? freezeNames(next, gone) : next);
 }
 
 /** Turns an epic #2 file (a flat list of parts) into a timeline: one Add feature per part. */
@@ -2912,7 +2927,9 @@ function migrateV1(d: { name: string; parts: Part[] }): ModelDoc {
 export function upgradeDoc(d: Record<string, unknown>): ModelDoc {
   if (d.version === 1 && Array.isArray(d.parts)) return migrateV1(d as unknown as { name: string; parts: Part[] });
   const looks = d.looks && typeof d.looks === "object" ? (d.looks as Record<string, Look>) : {};
-  return { ...d, format: "bettercad", version: 2, name: String(d.name ?? "Untitled model"), features: (d.features ?? []) as Feature[], looks } as ModelDoc;
+  const doc = { ...d, format: "bettercad", version: 2, name: String(d.name ?? "Untitled model"), features: (d.features ?? []) as Feature[], looks } as ModelDoc;
+  // Files from before sizes had names (d1, d2…) get them, in timeline order.
+  return nameDimensions(doc);
 }
 
 /** Parses a saved document, throwing a one-line message when it is not a BetterCad model. (.bcad files: see bcad.ts.) */
@@ -3654,6 +3671,7 @@ export function paramNameProblem(doc: ModelDoc, name: string, exceptId?: string)
   if (!NAME_RE.test(name)) return "Use letters, digits and _, starting with a letter";
   if (/^(mm|cm|m|in|deg)$/i.test(name)) return `${name} is a unit, so it can't be a name`;
   if ((doc.params ?? []).some((p) => p.name === name && p.id !== exceptId)) return `There is already a parameter called ${name}`;
+  if (namedDimensions(doc).has(name)) return `${name} is the name of a sketch size`;
   return null;
 }
 
@@ -3721,16 +3739,154 @@ export function setExpr(doc: ModelDoc, featureId: string, path: string, expressi
  * solver can't meet, keeps what it had.
  */
 export function relinkSketches(doc: ModelDoc, solve: (sketch: Sketch) => Sketch | null): ModelDoc {
-  const scope = paramScope(doc);
-  let changed = false;
-  const features = doc.features.map((f) => {
-    if (f.type !== "sketch") return f;
+  // Sizes can use sizes in other sketches (d5 = d1 * 2), later or earlier in the timeline: go round until settled.
+  let out = doc;
+  for (let pass = 0; pass < 6; pass++) {
+    const scope = paramScope(out);
+    let changed = false;
+    const features = out.features.map((f) => {
+      if (f.type !== "sketch") return f;
+      const bound = rebindDimensions(f.sketch, scope);
+      if (bound === f.sketch) return f;
+      const solved = solve(bound);
+      if (!solved) return f;
+      changed = true;
+      return { ...f, sketch: solved };
+    });
+    if (!changed) break;
+    out = { ...out, features };
+  }
+  return out;
+}
+
+/**
+ * The values of every parameter, and of every named sketch size (d1, d2…), for number fields to use. A size's value
+ * is the one it was last solved to, so a field that says `d1 * 2` follows d1.
+ */
+export function paramScope(doc: ModelDoc): Record<string, number> {
+  const values = { ...evaluateParams(doc.params).values };
+  for (const f of doc.features) {
+    if (f.type !== "sketch") continue;
+    for (const d of f.sketch.dimensions) if (d.name && !(d.name in values)) values[d.name] = d.value;
+  }
+  return values;
+}
+
+/** Every named sketch size in the model, by name, with the sketch it is in. */
+export function namedDimensions(doc: ModelDoc): Map<string, { sketch: string; dim: Dimension }> {
+  const out = new Map<string, { sketch: string; dim: Dimension }>();
+  for (const f of doc.features)
+    if (f.type === "sketch") for (const d of f.sketch.dimensions) if (d.name && !out.has(d.name)) out.set(d.name, { sketch: f.id, dim: d });
+  return out;
+}
+
+/**
+ * Names every sketch size that has none (d1, d2…, as Fusion does), unique across the model and clear of the
+ * parameters' names. A size that shares a name with one before it (a copied sketch) gets a new one. Unchanged when
+ * every size already has its own name.
+ */
+export function nameDimensions(doc: ModelDoc): ModelDoc {
+  const params = new Set((doc.params ?? []).map((p) => p.name));
+  const taken = new Set(params);
+  const seen = new Set<string>();
+  let top = 0;
+  let needs = false;
+  for (const f of doc.features) {
+    if (f.type !== "sketch") continue;
+    for (const d of f.sketch.dimensions) {
+      if (!d.name || params.has(d.name) || seen.has(d.name)) needs = true;
+      if (d.name) {
+        seen.add(d.name);
+        taken.add(d.name);
+        const m = /^d(\d+)$/.exec(d.name);
+        if (m) top = Math.max(top, Number(m[1]));
+      }
+    }
+  }
+  if (!needs) return doc;
+  const next = () => {
+    while (taken.has(`d${++top}`));
+    taken.add(`d${top}`);
+    return `d${top}`;
+  };
+  const kept = new Set<string>();
+  return {
+    ...doc,
+    features: doc.features.map((f) => {
+      if (f.type !== "sketch") return f;
+      let changed = false;
+      const dimensions = f.sketch.dimensions.map((d) => {
+        if (d.name && !params.has(d.name) && !kept.has(d.name)) {
+          kept.add(d.name);
+          return d;
+        }
+        changed = true;
+        return { ...d, name: next() };
+      });
+      return changed ? { ...f, sketch: { ...f.sketch, dimensions } } : f;
+    }),
+  };
+}
+
+/** Writes each of `dims`' names, wherever an expression uses it, as the number it stood for. */
+function freezeNames(doc: ModelDoc, dims: Dimension[]): ModelDoc {
+  const swap = (e: string) => dims.reduce((t, d) => (namesIn(t).includes(d.name!) ? renameIn(t, d.name!, String(Math.round(d.value * 1e6) / 1e6)) : t), e);
+  return {
+    ...doc,
+    params: doc.params?.map((p) => ({ ...p, expression: swap(p.expression) })),
+    features: doc.features.map((f) => {
+      if (!featureExprs(f).some((e) => dims.some((d) => namesIn(e).includes(d.name!)))) return f;
+      const exprs = f.exprs && Object.fromEntries(Object.entries(f.exprs).map(([k, e]) => [k, swap(e)]));
+      const g = { ...f, exprs } as Feature;
+      if (g.type !== "sketch") return g;
+      return { ...g, sketch: { ...g.sketch, dimensions: g.sketch.dimensions.map((d) => ({ ...d, expression: swap(d.expression) })) } };
+    }),
+  };
+}
+
+/**
+ * Whether giving the size `dimId` the expression `expression` would make sizes depend on each other in a ring
+ * ("d1 uses itself", "d1 and d2 depend on each other"), or null.
+ */
+export function dimensionLoop(doc: ModelDoc, dimId: string, expression: string): string | null {
+  const named = namedDimensions(doc);
+  let self: string | undefined;
+  for (const [n, x] of named) if (x.dim.id === dimId) self = n;
+  if (!self) return null;
+  const uses = (n: string) => (n === self ? namesIn(expression) : namesIn(named.get(n)?.dim.expression ?? "")).filter((m) => named.has(m));
+  const path: string[] = [];
+  const seen = new Set<string>();
+  const walk = (n: string): boolean => {
+    for (const m of uses(n)) {
+      if (m === self) return true;
+      if (seen.has(m)) continue;
+      seen.add(m);
+      path.push(m);
+      if (walk(m)) return true;
+      path.pop();
+    }
+    return false;
+  };
+  if (!walk(self)) return null;
+  const ring = [self, ...path];
+  return ring.length === 1 ? `${self} uses itself` : `${ring.join(" and ")} depend on each other`;
+}
+
+/**
+ * A sketch's sizes that use names (parameters or other sizes, d1 * 2) worked out again from `scope` and from each
+ * other, before it is solved. Unchanged when nothing moved.
+ */
+export function rebindDimensions(sketch: Sketch, scope: Record<string, number>): Sketch {
+  let dims = sketch.dimensions;
+  for (let pass = 0; pass < 8; pass++) {
+    const here = { ...scope };
+    for (const d of dims) if (d.name) here[d.name] = d.value;
     let moved = false;
-    const dimensions = f.sketch.dimensions.map((d) => {
+    const next = dims.map((d) => {
       if (!d.driving || !namesIn(d.expression).length) return d;
       let v: number;
       try {
-        v = evaluate(d.expression, scope);
+        v = evaluate(d.expression, here);
       } catch {
         return d;
       }
@@ -3738,18 +3894,10 @@ export function relinkSketches(doc: ModelDoc, solve: (sketch: Sketch) => Sketch 
       moved = true;
       return { ...d, value: v };
     });
-    if (!moved) return f;
-    const solved = solve({ ...f.sketch, dimensions });
-    if (!solved) return f;
-    changed = true;
-    return { ...f, sketch: solved };
-  });
-  return changed ? { ...doc, features } : doc;
-}
-
-/** The values of every parameter, for number fields to use. */
-export function paramScope(doc: ModelDoc): Record<string, number> {
-  return evaluateParams(doc.params).values;
+    if (!moved) break;
+    dims = next;
+  }
+  return dims === sketch.dimensions ? sketch : { ...sketch, dimensions: dims };
 }
 
 // ---- mirror and patterns (#69)

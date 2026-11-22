@@ -92,7 +92,7 @@ export function SketchPanel({ s }: { s: SketchSession }) {
           {sk.dimensions.map((d, i) => (
             <NumberField
               key={d.id}
-              label={`${DIM_LABEL[d.kind]} ${i + 1}`}
+              label={`${DIM_LABEL[d.kind]} ${i + 1}${d.name ? ` (${d.name})` : ""}`}
               value={Math.round(d.value * 1000) / 1000}
               unit={d.kind === "angle" ? "°" : "mm"}
               locked={!d.driving}

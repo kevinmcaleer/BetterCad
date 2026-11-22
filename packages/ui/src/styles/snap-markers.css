@@ -209,6 +209,14 @@
 .bc-dim-pill.bc-on {
   border-color: var(--bc-color-accent);
 }
+/* While a size is typed, the others show their names (d1) and a click puts the name in. */
+.bc-dim-pill.bc-dim-named {
+  border-color: var(--bc-color-dimension);
+  cursor: copy;
+}
+.bc-dim-name {
+  font-weight: 600;
+}
 /* A size pill drags to move its label; the click that only picks it still works. */
 .bc-dim-pill {
   touch-action: none;
