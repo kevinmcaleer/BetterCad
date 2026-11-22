@@ -33,15 +33,26 @@ async function pickShape(page: Page, x: number, y: number, taken: Locator) {
   }).toPass({ timeout: 15_000 });
 }
 
+/**
+ * Starts a sketch on the ground plane at a point. Under load the click can land before the Sketch tool is ready to take
+ * a plane (the model is still being drawn after an extrude), so it clicks again until the sketch opens.
+ */
+async function startSketch(page: Page, x: number, y: number) {
+  const tools = page.getByRole("toolbar", { name: "Sketch tools" });
+  await page.keyboard.press("k");
+  await expect(async () => {
+    if (!(await tools.count())) await click(page, x, y);
+    await expect(tools).toBeVisible({ timeout: 1500 });
+  }).toPass({ timeout: 15_000 });
+}
+
 test("extrude a sketched rectangle into a body", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
   await page.waitForTimeout(1200);
 
   // A 30 × 20 mm rectangle on the XY plane.
-  await page.keyboard.press("k");
-  await click(page, 20, 20);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await startSketch(page, 20, 20);
   await page.waitForTimeout(800);
   await page.keyboard.press("r");
   await click(page, -10, -10);
@@ -81,9 +92,7 @@ test("Esc cancels an extrude", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
   await page.waitForTimeout(1200);
-  await page.keyboard.press("k");
-  await click(page, 20, 20);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await startSketch(page, 20, 20);
   await page.waitForTimeout(800);
   await page.keyboard.press("c");
   await expect(page.getByRole("button", { name: /^Circle/, pressed: true })).toBeVisible();
@@ -113,9 +122,7 @@ test("cut a hole right through a body with Through all", async ({ page }) => {
   await page.waitForTimeout(1200);
 
   // A 30 × 20 mm block, 20 mm tall.
-  await page.keyboard.press("k");
-  await click(page, 20, 20);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await startSketch(page, 20, 20);
   await page.waitForTimeout(800);
   await page.keyboard.press("r");
   await click(page, -10, -10);
@@ -175,9 +182,7 @@ test("cut up to a face, then drag the arrow to set how deep", async ({ page }) =
   await page.waitForTimeout(1200);
 
   // A 30 × 20 mm block, 20 mm tall.
-  await page.keyboard.press("k");
-  await click(page, 20, 20);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await startSketch(page, 20, 20);
   await page.waitForTimeout(800);
   await page.keyboard.press("r");
   await click(page, -10, -10);
@@ -198,9 +203,7 @@ test("cut up to a face, then drag the arrow to set how deep", async ({ page }) =
   await expect(page.getByText("Extruded one shape 20 mm")).toBeVisible();
 
   // A 6 mm circle on the ground plane under it.
-  await page.keyboard.press("k");
-  await click(page, 25, 25);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await startSketch(page, 25, 25);
   await page.waitForTimeout(800);
   await page.keyboard.press("c");
   await click(page, 0, 0);
@@ -243,9 +246,7 @@ test("start an extrude level with a face, so one sketch cuts a pocket in the top
   await page.waitForTimeout(1200);
 
   // A 30 × 20 mm block, 20 mm tall.
-  await page.keyboard.press("k");
-  await click(page, 20, 20);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await startSketch(page, 20, 20);
   await page.waitForTimeout(800);
   await page.keyboard.press("r");
   await click(page, -10, -10);
@@ -266,9 +267,7 @@ test("start an extrude level with a face, so one sketch cuts a pocket in the top
   await expect(page.getByText("Extruded one shape 20 mm")).toBeVisible();
 
   // A 6 mm circle on the ground plane, under the block.
-  await page.keyboard.press("k");
-  await click(page, 25, 25);
-  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await startSketch(page, 25, 25);
   await page.waitForTimeout(800);
   await page.keyboard.press("c");
   await click(page, 0, 0);
