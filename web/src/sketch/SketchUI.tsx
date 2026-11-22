@@ -5,6 +5,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type MutableRefObject,
 } from "react";
 import {
   ArmedBar,
@@ -314,6 +315,7 @@ export function DimInput({
   scope,
   onDone,
   edges,
+  insert,
 }: {
   x: number;
   y: number;
@@ -321,6 +323,8 @@ export function DimInput({
   value: string;
   scope?: Scope;
   onDone: (text: string | null) => void;
+  /** Filled in with a way to put a name at the caret: clicking another size while typing links to it, as in Fusion. */
+  insert?: MutableRefObject<((name: string) => void) | null>;
   /** A distance to a circle: whether it runs to the edge, and how to switch it (the box opens again after). */
   edges?: { on: boolean; set: (on: boolean) => void };
 }) {
@@ -336,6 +340,23 @@ export function DimInput({
     }, 0);
     return () => clearTimeout(t);
   }, []);
+  useEffect(() => {
+    if (!insert) return;
+    insert.current = (name) => {
+      const el = ref.current;
+      if (!el) return;
+      const a = el.selectionStart ?? el.value.length;
+      const b = el.selectionEnd ?? a;
+      const out = el.value.slice(0, a) + name + el.value.slice(b);
+      setText(out);
+      names.update(out, null);
+      el.focus();
+      setTimeout(() => el.setSelectionRange(a + name.length, a + name.length), 0);
+    };
+    return () => {
+      insert.current = null;
+    };
+  });
   const finish = (text: string | null) => {
     if (done.current) return;
     done.current = true;
@@ -407,6 +428,8 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   const grab = useRef<{ id: Id; cx: number; cy: number; x: number; y: number; moved: boolean; offset?: Vec2 } | null>(null);
   /** The click that ends a drag does not pick the size. */
   const dragged = useRef(false);
+  /** While a size is being typed, clicking another puts its name in (d1), linking the two. */
+  const insertName = useRef<((name: string) => void) | null>(null);
   if (!s.sketch || !s.frame || !eng) return null;
   const frame = s.frame;
   const px = eng.pixelSize(frame.origin);
@@ -513,6 +536,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
               value={d.expression}
               scope={s.scope}
               edges={edgesPossible(idx, d) ? { on: !!d.edges, set: (on) => s.setDimensionEdges(d.id, on) } : undefined}
+              insert={insertName}
               onDone={(text) => {
                 if (text !== null) s.setDimension(d.id, text);
                 s.setDimEdit(null);
@@ -520,6 +544,30 @@ export function SketchLabels({ s }: { s: SketchSession }) {
             />
           );
         }
+        const shown = d.driving ? formatDimension(d) : `(${formatDimension(d)})`;
+        // Another size is being typed: this one offers its name, and a click puts it in.
+        if (s.dimEdit && d.name) {
+          const use = (e: { preventDefault: () => void }) => {
+            // The size being typed keeps the focus, so the box stays open.
+            e.preventDefault();
+            insertName.current?.(d.name!);
+          };
+          return (
+            <button
+              key={d.id}
+              type="button"
+              className={`bc-dim bc-dim-pill bc-dim-named${d.driving ? "" : " bc-driven"}`}
+              style={{ left: p.x, top: p.y }}
+              title={`Use ${d.name} in the size you're typing`}
+              aria-label={`Use ${d.name}, ${formatDimension(d)}`}
+              onPointerDown={use}
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              <span className="bc-dim-name">{d.name}</span> {shown}
+            </button>
+          );
+        }
+        const named = d.name ? `${d.name}. ` : "";
         return (
           <button
             key={d.id}
@@ -527,11 +575,12 @@ export function SketchLabels({ s }: { s: SketchSession }) {
             className={`bc-dim bc-dim-pill${on ? " bc-on" : ""}${d.driving ? "" : " bc-driven"}`}
             style={{ left: p.x, top: p.y }}
             title={
-              !d.driving
+              named +
+              (!d.driving
                 ? "A reference size: it follows the geometry. Drag to move it"
                 : isExpression(d.expression)
                   ? `= ${d.expression}. Double-click to change it, drag to move it`
-                  : "Double-click to type a size, drag to move it"
+                  : "Double-click to type a size, drag to move it")
             }
             onPointerDown={(e) => onGrab(d, e, p.x, p.y)}
             onPointerMove={(e) => onDrag(d, e)}
@@ -546,7 +595,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
             }}
             onDoubleClick={() => s.setDimEdit(d.id)}
           >
-            {d.driving ? formatDimension(d) : `(${formatDimension(d)})`}
+            {shown}
           </button>
         );
       })}

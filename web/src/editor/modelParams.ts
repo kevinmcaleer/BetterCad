@@ -1,6 +1,6 @@
 import { evaluate } from "@bettercad/ui";
 import type { Solver } from "@bettercad/sketch";
-import { namesIn, paramScope, setPath, type Feature, type ModelDoc, type ParamUnit } from "../state/document";
+import { dimensionLoop, namesIn, paramScope, relinkSketches, setPath, type Feature, type ModelDoc, type ParamUnit } from "../state/document";
 
 /**
  * Model parameters (Fusion's): the sizes each timeline step was made with, so the Parameters dialog can list and change
@@ -17,6 +17,8 @@ export interface ModelParam {
   unit: ParamUnit;
   /** Driven sketch dimensions only report. */
   readOnly?: boolean;
+  /** A sketch dimension's name (d1), which other sizes use to link to it. */
+  name?: string;
 }
 
 export interface FeatureParams {
@@ -150,6 +152,7 @@ export function featureParams(f: Feature): ModelParam[] {
           value: d.value,
           unit: d.kind === "angle" ? "deg" : "mm",
           readOnly: !d.driving || undefined,
+          name: d.name,
         };
       });
   }
@@ -234,11 +237,17 @@ export function editModelParam(doc: ModelDoc, featureId: string, path: string, e
   if (!f) return "That step is gone";
   const checked = checkModelParam(f, path, expression, paramScope(doc));
   if ("problem" in checked) return `${f.name}: ${checked.problem}`;
+  const loop = path.startsWith("dim:") ? dimensionLoop(doc, path.slice(4), expression) : null;
+  if (loop) return `${f.name}: ${loop}`;
   const next = setModelParam(doc, featureId, path, expression, checked.value);
   if (f.type !== "sketch") return next;
   const g = next.features.find((x) => x.id === featureId);
   if (g?.type !== "sketch" || !solver) return next;
   const r = solver.solve(g.sketch);
   if (r.status !== "ok" && r.status !== "redundant") return `${f.name} can't take that size`;
-  return { ...next, features: next.features.map((x) => (x.id === featureId ? { ...g, sketch: r.sketch } : x)) };
+  // Sizes that use this one (d2 = d1 / 2), here or in other sketches, follow.
+  return relinkSketches({ ...next, features: next.features.map((x) => (x.id === featureId ? { ...g, sketch: r.sketch } : x)) }, (sk) => {
+    const q = solver.solve(sk);
+    return q.status === "ok" || q.status === "redundant" ? q.sketch : null;
+  });
 }

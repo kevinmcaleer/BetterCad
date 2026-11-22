@@ -1,6 +1,7 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import type { Solver } from "@bettercad/sketch";
 import { Banner, Button, Dialog, Icon, IconButton } from "@bettercad/ui";
+import { dimensionNameProblem, renameDimension } from "@bettercad/kernel/dim-names";
 import { evaluateParams, paramNameProblem, paramUses, removeParamProblem, type ModelDoc, type ParamUnit, type Parameter } from "../state/document";
 import { featureIcon } from "./Timeline";
 import { editModelParam, modelParams, type ModelParam } from "./modelParams";
@@ -89,7 +90,10 @@ export function ParamsPanel({ doc, onAdd, onChange, onRemove, onShowUses, onEdit
   const steps = useMemo(() => modelParams(doc), [doc]);
   const shownSteps = q
     ? steps
-        .map((s) => ({ ...s, params: has(s.feature.name, q) ? s.params : s.params.filter((m) => has(m.label, q) || has(m.expression, q)) }))
+        .map((s) => ({
+          ...s,
+          params: has(s.feature.name, q) ? s.params : s.params.filter((m) => has(m.label, q) || has(m.expression, q) || has(m.name ?? "", q)),
+        }))
         .filter((s) => s.params.length)
     : steps;
 
@@ -116,6 +120,13 @@ export function ParamsPanel({ doc, onAdd, onChange, onRemove, onShowUses, onEdit
     };
     if (f?.type === "sketch") void loadSolver().then(apply);
     else apply();
+  };
+  /** A sketch size's name (d1), and every expression that used it. */
+  const renameDim = (path: string, name: string) => {
+    const id = path.slice(4);
+    const why = dimensionNameProblem(doc, id, name);
+    if (why) return say(why, true);
+    onEdit(`Rename a size to ${name}`, (d) => (dimensionNameProblem(d, id, name) ? d : renameDimension(d, id, name)));
   };
   const toggle = (id: string) =>
     setOpen((s) => {
@@ -277,7 +288,15 @@ export function ParamsPanel({ doc, onAdd, onChange, onRemove, onShowUses, onEdit
                   </th>
                 </tr>,
                 ...(expanded
-                  ? list.map((m) => <ModelRow key={`${f.id}:${m.path}`} featureName={f.name} m={m} onCommit={(e) => onModelChange(f.id, m.path, e)} />)
+                  ? list.map((m) => (
+                      <ModelRow
+                        key={`${f.id}:${m.path}`}
+                        featureName={f.name}
+                        m={m}
+                        onCommit={(e) => onModelChange(f.id, m.path, e)}
+                        onRename={(name) => renameDim(m.path, name)}
+                      />
+                    ))
                   : []),
               ];
             })}
@@ -292,11 +311,21 @@ export function ParamsPanel({ doc, onAdd, onChange, onRemove, onShowUses, onEdit
   );
 }
 
-function ModelRow({ featureName, m, onCommit }: { featureName: string; m: ModelParam; onCommit: (expression: string) => void }) {
+function ModelRow({
+  featureName,
+  m,
+  onCommit,
+  onRename,
+}: {
+  featureName: string;
+  m: ModelParam;
+  onCommit: (expression: string) => void;
+  onRename: (name: string) => void;
+}) {
   const label = `${m.label} of ${featureName}`;
   return (
     <tr className="bc-params-model">
-      <td className="bc-params-label">{m.label}</td>
+      <td className="bc-params-label">{m.name ? <Cell label={`Name of ${label}`} value={m.name} onCommit={(n) => n && onRename(n)} mono /> : m.label}</td>
       <td>
         {m.readOnly ? (
           <span className="bc-note" title="A driven size only reports">
@@ -310,7 +339,9 @@ function ModelRow({ featureName, m, onCommit }: { featureName: string; m: ModelP
       <td className="bc-params-value" aria-label={`Value of ${label}`}>
         {showValue(m.value, m.unit)}
       </td>
-      <td colSpan={3} />
+      <td colSpan={3} className="bc-note">
+        {m.name ? m.label : null}
+      </td>
     </tr>
   );
 }
