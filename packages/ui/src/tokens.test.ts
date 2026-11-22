@@ -19,6 +19,8 @@ const PAIRS: [ColourName, ColourName][] = [
   ["accent", "rail"],
   ["accent", "accent-soft"],
   ["on-accent", "accent"],
+  // A drawing sheet (#559): ink on paper, the same in every theme because the sheet prints.
+  ["paper-ink", "paper"],
   ["warn-ink", "warn-soft"],
   ["danger", "bar"],
   ["danger", "rail"],

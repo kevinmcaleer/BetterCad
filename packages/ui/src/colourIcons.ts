@@ -263,6 +263,11 @@ const DRAW: Record<string, () => string> = {
   camera: () =>
     `<ellipse cx="12" cy="20" rx="8" ry="2" fill="${DARK}" opacity="0.5"/><circle cx="12" cy="11" r="8" fill="${SIDE}" stroke="${EDGE}" stroke-width="0.9"/>` +
     `<path d="M12 3a8 8 0 0 0 0 16a8 8 0 0 1 0-16z" fill="${TOP}"/><circle cx="12" cy="11" r="8" fill="none" stroke="${EDGE}" stroke-width="0.9"/><circle cx="9" cy="7.8" r="2.6" fill="${HI}"/>`,
+  // A drawing sheet, its title block in the accent
+  drawing: () =>
+    `<rect x="3" y="4" width="18" height="16" fill="${TOP}" stroke="${EDGE}" stroke-width="1.4"/>` +
+    `<rect x="12" y="15" width="9" height="5" fill="${HI}" stroke="${EDGE}" stroke-width="0.9"/>` +
+    line("M6 8h5v4H6z", EDGE, 1.2),
   clash: () => box(-6, -3, -5, 7, 7, 7) + box(-1, -5, -3, 7, 7, 7) + poly([P(-1, -3, 2), P(1, -3, 2), P(1, 2, 2), P(-1, 2, 2)], HI, 0.7),
   // Sketch: flat shapes with their points in the accent
   line: () => line("M5 19L19 5", EDGE, 1.8) + dot(5, 19, 2) + dot(19, 5, 2),

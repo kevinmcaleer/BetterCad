@@ -180,6 +180,7 @@ import { importFormat, type BodyMass, type Clash, type ExportFormat, type Mate }
 import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
+import type { DrawingApi, SheetChoice } from "../drawing/DrawingView";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
@@ -278,6 +279,11 @@ const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ 
 /** The Render view and its path tracer load on first Render (#197). */
 const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
 const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
+// Drawings (#555): the sheet, its bar and its set-up card load the first time a drawing opens.
+const drawingCode = () => import("../drawing/DrawingView");
+const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingPaper })));
+const DrawingBar = lazy(() => drawingCode().then((m) => ({ default: m.DrawingBar })));
+const SheetCard = lazy(() => drawingCode().then((m) => ({ default: m.SheetCard })));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 /** Importing a mesh or STEP file loads its code when you first do it (#320). */
@@ -407,6 +413,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   // Render (#197): the session while the Render view is open, and where its camera got to.
   const [render, setRender] = useState<RenderSession | null>(null);
   const renderCam = useRef<CameraState | null>(null);
+  // The drawing whose sheet covers the view (#559), and its set-up card: for a new drawing, or the open one's sheet.
+  const [drawing, setDrawing] = useState<string | null>(null);
+  const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
+  const drawingApi = useRef<DrawingApi | null>(null);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
   const [crash, setCrash] = useState<Caught | null>(null);
@@ -426,7 +436,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   activeRef.current = active;
   // The registry reads the latest state through a ref, so commands are registered once.
   const measuresRef = useRef(new Map<string, { area: number; bbox: Box3 }>());
-  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, sketching: false, placing: false });
+  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, drawing: false, sketching: false, placing: false });
   live.current = {
     doc,
     parts,
@@ -434,7 +444,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     at,
     selection,
     tool,
-    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null,
+    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null || sheetCard !== null,
+    drawing: drawing !== null,
     sketching: live.current.sketching,
     placing: live.current.placing,
   };
@@ -446,6 +457,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       canUndo: store.canUndo(),
       canRedo: store.canRedo(),
       dialogOpen: live.current.dialogOpen,
+      inDrawing: live.current.drawing,
     })),
   );
   // Re-render when commands are added or run, so enabled states stay fresh.
@@ -535,6 +547,40 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const c = renderCam.current;
     setRender(null);
     if (c) vp.ref.current?.setCamera(c, false);
+  };
+  // Drawings (#555). A drawing opens the way a sketch does: its sheet takes the view until you finish it.
+  const shownDrawing = drawing ? doc.drawings?.find((d) => d.id === drawing) : undefined;
+  useEffect(() => {
+    // Undo, or opening another model, can take the open drawing away.
+    if (drawing && !shownDrawing) setDrawing(null);
+  }, [drawing, shownDrawing]);
+  const enterDrawing = (id: string) => {
+    setRender(null);
+    setTool("select");
+    setSelection([]);
+    setDrawing(id);
+  };
+  const onDrawing = (act: "new" | "open" | "settings" | "rename" | "delete", id?: string, name?: string) => {
+    if (live.current.sketching) return say("Finish the sketch first.");
+    if (act === "new") return setSheetCard("new");
+    if (!id) return;
+    if (act === "open" || act === "settings") {
+      enterDrawing(id);
+      if (act === "settings") setSheetCard("settings");
+      return;
+    }
+    void drawingCode().then((m) => store.edit(...m.drawingChange(id, act, name)));
+  };
+  /** The set-up card's Done: makes the drawing and opens it, or changes the open sheet. */
+  const sheetChosen = (choice: SheetChoice) => {
+    const making = sheetCard === "new";
+    setSheetCard(null);
+    void drawingCode().then((m) => {
+      if (!making) return shownDrawing && store.edit(...m.sheetChange(shownDrawing, choice));
+      const made = m.makeDrawing(store.get(), choice, account?.name);
+      store.edit(() => made.doc, "New drawing");
+      enterDrawing(made.id);
+    });
   };
   const onRenderCamera = useCallback((c: CameraState) => {
     renderCam.current = c;
@@ -1990,6 +2036,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   // Esc backs out one layer at a time: the narrow sheets, then the tool, then the selection. Menus and dialogs sit above.
   useEscape(tool !== "select", () => setTool("select"), ESC.tool);
   useEscape(render !== null, () => closeRender(), ESC.tool);
+  useEscape(drawing !== null, () => setDrawing(null), ESC.tool);
   useEscape(narrow && (panel !== null || propsOpen), () => (propsOpen ? setPropsOpen(false) : setPanel(null)), ESC.panel);
   // On a wide screen the Library, Parameters, Print, History and Settings give way to the browser again.
   useEscape(!narrow && panel !== null && panel !== "parts", () => setPanel("parts"), ESC.panel);
@@ -2016,6 +2063,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit") => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2111,6 +2159,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     },
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
+    drawing: (act) =>
+      act === "fit" ? drawingApi.current?.fit() : act === "finish" ? setDrawing(null) : act === "new" ? onDrawing("new") : setSheetCard("settings"),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -2773,6 +2823,26 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         run: () => h().openRender(),
         keywords: "photo picture image path trace blender",
       },
+      {
+        id: "drawing.new",
+        scope: "model",
+        label: "New drawing",
+        group: "File",
+        icon: "drawing",
+        run: () => h().drawing("new"),
+        keywords: "2d sheet page paper technical views dimensions",
+      },
+      { id: "drawing.fit", scope: "drawing", label: "Fit the sheet in the view", group: "View", icon: "frame", keys: ["f"], run: () => h().drawing("fit") },
+      {
+        id: "drawing.settings",
+        scope: "drawing",
+        label: "Sheet settings",
+        group: "File",
+        icon: "settings",
+        run: () => h().drawing("settings"),
+        keywords: "page size title block",
+      },
+      { id: "drawing.finish", scope: "drawing", label: "Finish drawing", group: "File", icon: "finish", run: () => h().drawing("finish") },
       {
         id: "view.fullscreen",
         label: "Full screen",
@@ -3813,49 +3883,51 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       />
     ) : null;
 
-  const helpText = render
-    ? "Drag to turn the picture, right-drag to pan, scroll to zoom. Esc goes back to modelling."
-    : sketch.help
-      ? sketch.help
-      : place.help
-        ? place.help
-        : extrude.help ||
-            revolve.help ||
-            loftHelp ||
-            sweepHelp ||
-            splitHelp ||
-            pushpull.help ||
-            hole.help ||
-            mount.help ||
-            (tool === "gear" && gearUiHelp) ||
-            (tool === "decal" && decalUiHelp) ||
-            (tool === "canvas" && canvasUiHelp) ||
-            jointHelp ||
-            pattern.help ||
-            measure.help ||
-            construct.help
-          ? extrude.help ||
-            revolve.help ||
-            loftHelp ||
-            sweepHelp ||
-            splitHelp ||
-            pushpull.help ||
-            hole.help ||
-            mount.help ||
-            (tool === "gear" && gearUiHelp) ||
-            (tool === "decal" && decalUiHelp) ||
-            (tool === "canvas" && canvasUiHelp) ||
-            jointHelp ||
-            pattern.help ||
-            measure.help ||
-            construct.help
-          : finish.help
-            ? finish.help
-            : vp.elementText
-              ? `${vp.elementText} Esc clears it.`
-              : tool === "select" && selectedParts.length
-                ? `${selectionText} Esc clears the selection.`
-                : activeTool.help;
+  const helpText = drawing
+    ? "Drag to move the sheet, scroll to zoom. Double-click a title block field to fill it in. Esc goes back to the model."
+    : render
+      ? "Drag to turn the picture, right-drag to pan, scroll to zoom. Esc goes back to modelling."
+      : sketch.help
+        ? sketch.help
+        : place.help
+          ? place.help
+          : extrude.help ||
+              revolve.help ||
+              loftHelp ||
+              sweepHelp ||
+              splitHelp ||
+              pushpull.help ||
+              hole.help ||
+              mount.help ||
+              (tool === "gear" && gearUiHelp) ||
+              (tool === "decal" && decalUiHelp) ||
+              (tool === "canvas" && canvasUiHelp) ||
+              jointHelp ||
+              pattern.help ||
+              measure.help ||
+              construct.help
+            ? extrude.help ||
+              revolve.help ||
+              loftHelp ||
+              sweepHelp ||
+              splitHelp ||
+              pushpull.help ||
+              hole.help ||
+              mount.help ||
+              (tool === "gear" && gearUiHelp) ||
+              (tool === "decal" && decalUiHelp) ||
+              (tool === "canvas" && canvasUiHelp) ||
+              jointHelp ||
+              pattern.help ||
+              measure.help ||
+              construct.help
+            : finish.help
+              ? finish.help
+              : vp.elementText
+                ? `${vp.elementText} Esc clears it.`
+                : tool === "select" && selectedParts.length
+                  ? `${selectionText} Esc clears the selection.`
+                  : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -4168,6 +4240,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               construct={browserConstruct}
               decals={browserDecals}
               canvases={{ list: doc.canvases?.map((c) => ({ id: c.id, name: c.name, hidden: c.hidden })), on: onCanvas }}
+              drawings={{ list: doc.drawings?.map((d) => ({ id: d.id, name: d.name })), open: drawing, on: onDrawing }}
               onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
@@ -4198,7 +4271,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             <>
               {/* On the empty editor the recover notice sits above the start card instead, so the two never overlap. */}
               {!emptyState && files.banners}
-              {render ? (
+              {shownDrawing ? (
+                <Suspense fallback={null}>
+                  <DrawingBar
+                    name={shownDrawing.name}
+                    readOnly={!!files.shared}
+                    onSettings={() => setSheetCard("settings")}
+                    onFit={() => drawingApi.current?.fit()}
+                    onFinish={() => setDrawing(null)}
+                  />
+                </Suspense>
+              ) : render ? (
                 <Suspense
                   fallback={
                     <div role="group" aria-label="Render options" className="bc-tools bc-armed">
@@ -4226,6 +4309,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   vp={vp}
                   onePart={selection.length === 1}
                   onRender={openRender}
+                  onDrawing={files.shared ? undefined : () => onDrawing("new")}
                   say={window.matchMedia?.("(pointer: coarse)").matches ? say : undefined}
                 />
               )}
@@ -4499,6 +4583,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             {sketch.sketch && (
               <Suspense fallback={null}>
                 <SketchLabels s={sketch} />
+              </Suspense>
+            )}
+            {shownDrawing && (
+              <Suspense fallback={null}>
+                <DrawingPaper
+                  drawing={shownDrawing}
+                  readOnly={!!files.shared}
+                  api={drawingApi}
+                  onTitle={(field, value) => void drawingCode().then((m) => store.edit(...m.titleChange(shownDrawing, field, value)))}
+                />
               </Suspense>
             )}
             {render && (
@@ -4808,6 +4902,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             info={() => ({ app: APP_VERSION, error: lastError(), actions: actionLog.list() })}
             say={say}
           />
+        </Suspense>
+      )}
+      {sheetCard && (
+        <Suspense fallback={null}>
+          <SheetCard sheet={sheetCard === "settings" ? shownDrawing?.sheets[0] : undefined} onCancel={() => setSheetCard(null)} onDone={sheetChosen} />
         </Suspense>
       )}
       {exportOpen && (
