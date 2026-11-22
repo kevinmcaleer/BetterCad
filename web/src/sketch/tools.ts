@@ -568,22 +568,22 @@ export interface ConstraintTool {
   hint: string;
   /** How many picks make one constraint. */
   picks: number;
-  /** A short mark for the tag that follows the pointer. */
-  tag: string;
+  /** A short mark for the tag that follows the pointer, when not the label. */
+  tag?: string;
 }
 
 export const CONSTRAINT_TOOLS: ConstraintTool[] = [
-  { id: "coincident", label: "Coincident", hint: "Pick two points, or a point and a line or curve", picks: 2, tag: "Coincident" },
+  { id: "coincident", label: "Coincident", hint: "Pick two points, or a point and a line or curve", picks: 2 },
   { id: "horizontalVertical", label: "Horizontal/Vertical", hint: "Pick lines, or two points to line them up", picks: 1, tag: "H/V" },
-  { id: "parallel", label: "Parallel", hint: "Pick two lines", picks: 2, tag: "Parallel" },
-  { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines", picks: 2, tag: "Perpendicular" },
-  { id: "collinear", label: "Collinear", hint: "Pick two lines to put them on one line", picks: 2, tag: "Collinear" },
-  { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves", picks: 2, tag: "Tangent" },
-  { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs", picks: 2, tag: "Equal" },
-  { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs", picks: 2, tag: "Concentric" },
-  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line, or two lines to line up their midpoints", picks: 2, tag: "Midpoint" },
-  { id: "fix", label: "Fix", hint: "Pick points, lines or curves", picks: 1, tag: "Fix" },
-  { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line", picks: 3, tag: "Symmetric" },
+  { id: "parallel", label: "Parallel", hint: "Pick two lines", picks: 2 },
+  { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines", picks: 2 },
+  { id: "collinear", label: "Collinear", hint: "Pick two lines", picks: 2 },
+  { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves", picks: 2 },
+  { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs", picks: 2 },
+  { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs", picks: 2 },
+  { id: "midpoint", label: "Midpoint", hint: "Pick a point and a line, or two lines to line up their midpoints", picks: 2 },
+  { id: "fix", label: "Fix", hint: "Pick points, lines or curves", picks: 1 },
+  { id: "symmetric", label: "Symmetric", hint: "Pick two points and a line", picks: 3 },
 ];
 
 export const constraintToolById = (id: ConstraintToolId) => CONSTRAINT_TOOLS.find((t) => t.id === id)!;
@@ -729,14 +729,9 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
       if (!fresh.length) return picked.length === 1 ? "That line is already horizontal or vertical" : "Those lines are already horizontal or vertical";
       return fresh.map((e) => ({ type: levelOrUpright(sketch, e)!, e }));
     }
-    case "collinear":
-      if (two && only(["line"]) && a !== b) {
-        const pair = (c: (typeof sketch.constraints)[number]) => c.type === "collinear" && ((c.a === a && c.b === b) || (c.a === b && c.b === a));
-        return sketch.constraints.some(pair) ? "Those lines are already collinear" : [{ type, a, b }];
-      }
-      return hint;
     case "parallel":
     case "perpendicular":
+    case "collinear":
       return two && only(["line"]) ? [{ type, a, b }] : hint;
     case "equal":
       return two && (only(["line"]) || (curve(kinds[0]) && curve(kinds[1]))) ? [{ type, a, b }] : hint;

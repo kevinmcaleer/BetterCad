@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Draft, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type NewConstraint, type Sketch } from "@bettercad/sketch";
+import { Draft, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
 import { Solver } from "@bettercad/sketch/solver";
 import {
   addConstraints,
@@ -177,12 +177,8 @@ describe("sketch tools", () => {
     expect(constraintsFor("perpendicular", s, [lines[0]!, lines[1]!])).toEqual([{ type: "perpendicular", a: lines[0], b: lines[1] }]);
     expect(constraintsFor("coincident", s, [pts[0]!, lines[1]!])).toEqual([{ type: "pointOn", p: pts[0], e: lines[1] }]);
     expect(constraintsFor("fix", s, [lines[0]!])).toHaveLength(2);
-    expect(constraintsFor("collinear", s, [pts[0]!, lines[1]!])).toBe("Pick two lines to put them on one line");
-    const both = constraintsFor("collinear", s, [lines[0]!, lines[2]!]);
-    expect(both).toEqual([{ type: "collinear", a: lines[0], b: lines[2] }]);
-    const d = new Draft(s);
-    d.constrain((both as NewConstraint[])[0]!);
-    expect(constraintsFor("collinear", d.done().sketch, [lines[2]!, lines[0]!])).toBe("Those lines are already collinear");
+    expect(constraintsFor("collinear", s, [pts[0]!, lines[1]!])).toBe("Pick two lines");
+    expect(constraintsFor("collinear", s, [lines[0]!, lines[2]!])).toEqual([{ type: "collinear", a: lines[0], b: lines[2] }]);
   });
 
   it("fixes a point drawn on the origin, once, and shares it", () => {
