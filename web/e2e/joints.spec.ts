@@ -81,6 +81,16 @@ test("snap a component onto Base in the joint panel, back out a pick with Esc, t
   const editing = page.getByRole("group", { name: "Edit Joint 1 options" });
   await expect(editing.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^25, 0, 20 mm/ })).toBeVisible();
   await expect(editing.getByRole("region", { name: "Hangs from" }).getByRole("button", { name: /^0, 0, 20 mm/ })).toBeVisible();
+  // Each snap sits in its own Snap row, under the Component list, not drawn over it.
+  for (const name of ["Moves", "Hangs from"]) {
+    const section = editing.getByRole("region", { name, exact: true });
+    const list = (await section.getByRole("combobox").boundingBox())!;
+    const row = (await section.getByRole("group", { name: "Snap" }).boundingBox())!;
+    const pick = (await section.getByRole("group", { name: "Snap" }).getByRole("button", { name: / mm/ }).boundingBox())!;
+    expect(pick.y).toBeGreaterThanOrEqual(list.y + list.height);
+    expect(pick.y).toBeGreaterThanOrEqual(row.y - 1);
+    expect(pick.y + pick.height).toBeLessThanOrEqual(row.y + row.height + 1);
+  }
   await expect(editing.getByRole("textbox", { name: "Angle" })).toHaveValue("15");
   await expect(editing.getByRole("combobox", { name: "Kind" })).toHaveValue("prismatic");
   await editing.getByRole("button", { name: "Cancel" }).click();

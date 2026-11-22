@@ -157,7 +157,7 @@ body {
   left: calc(var(--bc-view-left) - var(--bc-picker-room));
 }
 .bc-app .bc-picker-tab,
-.bc-app .bc-picker {
+.bc-app .bc-models-side {
   position: absolute;
   z-index: 10;
   top: var(--bc-view-top);
@@ -182,7 +182,7 @@ body {
 .bc-app .bc-picker-tab:hover {
   background: var(--bc-color-hover);
 }
-.bc-app .bc-picker {
+.bc-app .bc-models-side {
   width: var(--bc-side-width);
   max-height: calc(100% - var(--bc-view-top) - var(--bc-float-gap));
 }
@@ -939,7 +939,7 @@ kbd {
   .bc-app .bc-top .bc-models-toggle {
     display: inline-flex;
   }
-  .bc-app .bc-picker {
+  .bc-app .bc-models-side {
     top: auto;
     right: var(--bc-float-gap);
     bottom: calc(var(--bc-rail-bar) + 2 * var(--bc-float-gap));
