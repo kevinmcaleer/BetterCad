@@ -114,3 +114,6 @@ export function unsnap(sketch: Sketch, p: Id): { sketch: Sketch; point: Id } | n
   ];
   return { sketch: { ...sketch, entities, constraints }, point: q };
 }
+
+/** Double-click picks a whole outline: loaded with the rest of the sketch's drag and drop. */
+export { connectedCurves } from "@bettercad/sketch";

@@ -205,6 +205,8 @@ export interface TextEdit {
 const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import("./modelSnap"); edits?: typeof import("@bettercad/sketch/edits") } = {};
 /** Mirror, Fillet, Trim, Extend and Offset (#54, #266, #267, #270) load with a sketch, or when one of them is picked. */
 const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "fillet", "trim", "extend", "offset"]);
+/** How soon a second press on the same curve counts as a double-click, ms. */
+const DOUBLE_MS = 400;
 const loadEdits = () => void import("@bettercad/sketch/edits").then((m) => (lazy.edits = m));
 
 export function useSketch(d: SketchDeps) {
@@ -1098,6 +1100,8 @@ export function useSketch(d: SketchDeps) {
     let trimDrag: { at: ScreenPoint; first: { xy: Vec2; px: number }; path: Vec2[]; moved: boolean } | null = null;
     /** A finger is down placing a size: it goes down where the finger lifts. */
     let tapPlace = false;
+    /** The last press on a curve with Select: a second one soon after, on the same curve, picks its whole chain. */
+    let lastPress: { id: Id; at: ScreenPoint; t: number } | null = null;
     /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
     const SLIDE = 12;
     const zoomNow = () => (lens && lens.why !== "touch" ? lens.zoom : 1);
@@ -1454,8 +1458,22 @@ export function useSketch(d: SketchDeps) {
             if (!mods.shift) setSel([]);
             return false;
           }
-          setSel((s) => (mods.shift || mods.mod ? (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]) : s.includes(id) ? s : [id]));
           const e = L.sketch.entities.find((x) => x.id === id);
+          // A double-click (or double-tap) on a curve picks every curve joined to it end to end, as in Fusion.
+          const now = performance.now();
+          const again =
+            !!lastPress &&
+            lastPress.id === id &&
+            now - lastPress.t < DOUBLE_MS &&
+            Math.hypot(p.x - lastPress.at.x, p.y - lastPress.at.y) < (mods.touch ? 24 : 6);
+          lastPress = e && e.kind !== "point" && !again ? { id, at: p, t: now } : null;
+          const chain = again && drop ? drop.connectedCurves(L.sketch, id) : [];
+          if (chain.length) {
+            const add = mods.shift || mods.mod;
+            setSel((s) => (add ? [...s.filter((x) => !chain.includes(x)), ...chain] : chain));
+            return true;
+          }
+          setSel((s) => (mods.shift || mods.mod ? (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]) : s.includes(id) ? s : [id]));
           if (e?.kind === "point") drag = { id, key: `drag:${L.editingId}:${id}`, moved: false, free: mods.shift };
           else if (e?.kind === "line") {
             const idx = new SketchIndex(L.sketch);
