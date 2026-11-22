@@ -52,8 +52,8 @@ test("extend a line to meet another, then drag to trim a grid", async ({ page })
   await expect(vertical).toHaveCount(3);
 });
 
-/** Break (Fusion's): a line crossed by two others splits into three joined pieces; Sketch scale doubles a circle. */
-test("break a line where others cross it, then scale a circle", async ({ page }) => {
+/** Break (Fusion's): a line crossed by two others splits into three joined pieces; Sketch scale doubles a line. */
+test("break a line where others cross it, then scale a line", async ({ page }) => {
   test.setTimeout(90_000);
   const ed = await new Editor(page).open();
   await ed.view.preset("top");
@@ -68,8 +68,9 @@ test("break a line where others cross it, then scale a circle", async ({ page })
     await page.keyboard.press("l");
   };
   await line([-20, 0], [20, 0]);
-  await line([-8, -10], [-8, 10]);
-  await line([8, -10], [8, 10]);
+  // On the 10 mm grid, so the clicks land where the lines snap to.
+  await line([-10, -10], [-10, 10]);
+  await line([10, -10], [10, 10]);
   const constraints = page.getByRole("list", { name: "Constraints" }).getByRole("listitem");
   await ed.sketchTools.getByRole("button", { name: /^Break/ }).click();
   await ed.view.click(0, 0);
@@ -79,10 +80,10 @@ test("break a line where others cross it, then scale a circle", async ({ page })
   await expect(constraints.filter({ hasText: /^Parallel/ })).toHaveCount(0);
 
   await ed.sketchTools.getByRole("button", { name: /^Sketch scale/ }).click();
-  await ed.view.click(8, 5);
+  await ed.view.click(10, 5);
   const picks = page.getByRole("group", { name: "Sketch scale picks" });
   await expect(picks.getByRole("button", { name: "Shapes (1)" })).toBeVisible();
   await picks.getByRole("button", { name: "Base point" }).click();
-  await ed.view.click(8, -10);
-  await expect(page.getByTitle("Undo sketch scale").first()).toBeAttached();
+  await ed.view.click(10, -10);
+  await expect(page.getByRole("button", { name: "Undo sketch scale" })).toBeVisible();
 });
