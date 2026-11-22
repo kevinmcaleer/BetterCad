@@ -842,3 +842,60 @@ describe("canvases in the browser (#248)", () => {
     expect(onCanvas).toHaveBeenLastCalledWith("c1", "edit");
   });
 });
+
+describe("drawings", () => {
+  const drs = { drawings: [{ id: "dr1", name: "Drawing 1" }], drawing: "dr1" };
+  const props = () => ({
+    selection: [],
+    onSelect: () => {},
+    onAdd: () => {},
+    onToggle: () => {},
+    onBodiesHidden: () => {},
+    onSketchesHidden: () => {},
+    onOrigin: () => {},
+    onPicked: () => {},
+    onSelectSketch: () => {},
+    onRename: () => {},
+    onRenameModel: () => {},
+    onRenameSketch: () => {},
+    onReorder: () => {},
+    onSketchOn: () => {},
+    partMenu: () => [],
+    sketchMenu: () => [],
+    renameId: null,
+    onRenameIdChange: () => {},
+    onDrawing: vi.fn(),
+  });
+
+  it("lists them under Drawings with no eye, and marks the one that is open", () => {
+    const items = browserItems(model(drs));
+    expect(items.find((i) => i.id === ROW.drawings)).toMatchObject({ name: "Drawings", toggles: [] });
+    expect(items.find((i) => i.id === "dr1")).toMatchObject({ name: "Drawing 1", parentId: ROW.drawings, toggles: [], note: "Open" });
+    expect(browserItems(model({ ...drs, drawing: null })).find((i) => i.id === "dr1")?.note).toBeUndefined();
+    expect(browserItems(model()).some((i) => i.id === ROW.drawings)).toBe(false);
+  });
+
+  it("double-click opens one, and the menu opens, sets up, renames and deletes", async () => {
+    const p = props();
+    render(<BrowserPanel model={model(drs)} {...p} />);
+    await userEvent.dblClick(screen.getByRole("button", { name: /^Drawing 1/ }));
+    expect(p.onDrawing).toHaveBeenLastCalledWith("open", "dr1");
+    fireEvent.contextMenu(row(/^Drawing 1/));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Open", "Sheet settings", "RenameF2", "Delete"]);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Sheet settings" }));
+    expect(p.onDrawing).toHaveBeenLastCalledWith("settings", "dr1");
+    fireEvent.contextMenu(row(/^Drawing 1/));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(p.onDrawing).toHaveBeenLastCalledWith("delete", "dr1");
+    fireEvent.contextMenu(row(/^Drawings/));
+    await userEvent.click(screen.getByRole("menuitem", { name: "New drawing" }));
+    expect(p.onDrawing).toHaveBeenLastCalledWith("new");
+  });
+
+  it("a view-only model can open them but not change them", () => {
+    const p = props();
+    render(<BrowserPanel model={model({ ...drs, readOnly: true })} {...p} />);
+    fireEvent.contextMenu(row(/^Drawing 1/));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Open"]);
+  });
+});

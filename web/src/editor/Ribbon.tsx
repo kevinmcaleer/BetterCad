@@ -68,7 +68,18 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
     {
       id: "inspect",
       label: "Inspect",
-      sections: [["", ["tool.measure", "tool.section", { id: "check.clashes", short: "Clashes", colour: "clash" }, { id: "view.render", colour: "camera" }]]],
+      sections: [
+        [
+          "",
+          [
+            "tool.measure",
+            "tool.section",
+            { id: "check.clashes", short: "Clashes", colour: "clash" },
+            { id: "view.render", colour: "camera" },
+            { id: "drawing.new", short: "Drawing", colour: "drawing" },
+          ],
+        ],
+      ],
       pins: ["tool.measure", "tool.section"],
     },
   ],
@@ -144,7 +155,20 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       ],
       pins: ["check.clashes"],
     },
-    { id: "show", label: "Show", sections: [["", [{ id: "view.render", colour: "camera" }]]], pins: ["view.render"] },
+    {
+      id: "show",
+      label: "Show",
+      sections: [
+        [
+          "",
+          [
+            { id: "view.render", colour: "camera" },
+            { id: "drawing.new", short: "Drawing", colour: "drawing" },
+          ],
+        ],
+      ],
+      pins: ["view.render", "drawing.new"],
+    },
   ],
 };
 

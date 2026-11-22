@@ -89,3 +89,35 @@ describe("palette search", () => {
     expect(search(reg.list(), "").length).toBe(5);
   });
 });
+
+describe("the drawing scope", () => {
+  it("with a sheet open, only drawing commands, files, themes, help and undo apply", () => {
+    const { reg, ran, cmd } = setup({ inDrawing: true });
+    reg.register([
+      cmd("view.fit", ["f"], { scope: "model" }),
+      cmd("drawing.fit", ["f"], { scope: "drawing" }),
+      cmd("file.save", ["mod+s"], { group: "File" }),
+      cmd("edit.undo", ["mod+u"]),
+      cmd("drawing.new", [], { scope: "model", group: "File" }),
+    ]);
+    expect(["view.fit", "drawing.fit", "file.save", "edit.undo", "move", "drawing.new"].map((id) => reg.enabled(id))).toEqual([
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
+    reg.dispatch(ev("f"));
+    reg.dispatch(ev("m"));
+    expect(ran).toEqual(["drawing.fit"]);
+  });
+
+  it("drawing commands sleep while modelling, and may share a key with a model command", () => {
+    const { reg, ran, cmd } = setup();
+    reg.register([cmd("view.fit", ["f"], { scope: "model" }), cmd("drawing.fit", ["f"], { scope: "drawing" })]);
+    expect(reg.enabled("drawing.fit")).toBe(false);
+    reg.dispatch(ev("f"));
+    expect(ran).toEqual(["view.fit"]);
+  });
+});

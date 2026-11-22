@@ -9,7 +9,7 @@ export const THEME_NAMES: Record<ThemeId, string> = {
   "holoroom": "Holoroom"
 };
 
-export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "snap-face" | "snap-point" | "snap-point-ring" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room" | "icon-top" | "icon-side" | "icon-side-dark" | "icon-edge" | "icon-hole" | "icon-accent" | "icon-accent-side" | "icon-accent-dark";
+export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "snap-face" | "snap-point" | "snap-point-ring" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room" | "icon-top" | "icon-side" | "icon-side-dark" | "icon-edge" | "icon-hole" | "icon-accent" | "icon-accent-side" | "icon-accent-dark" | "paper" | "paper-ink";
 
 /** Every colour token's value in every theme. */
 export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
@@ -63,7 +63,9 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "icon-hole": "#ffffff",
     "icon-accent": "#e0962a",
     "icon-accent-side": "#c47d1a",
-    "icon-accent-dark": "#a5680f"
+    "icon-accent-dark": "#a5680f",
+    "paper": "#ffffff",
+    "paper-ink": "#16181d"
   },
   "dark": {
     "accent": "#a78bfa",
@@ -115,7 +117,9 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "icon-hole": "#1b1d22",
     "icon-accent": "#f0aa45",
     "icon-accent-side": "#d18f2c",
-    "icon-accent-dark": "#a8701c"
+    "icon-accent-dark": "#a8701c",
+    "paper": "#f4f2ec",
+    "paper-ink": "#16181d"
   },
   "holoroom": {
     "accent": "#a78bfa",
@@ -167,6 +171,8 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "icon-hole": "#1b1d22",
     "icon-accent": "#f0aa45",
     "icon-accent-side": "#d18f2c",
-    "icon-accent-dark": "#a8701c"
+    "icon-accent-dark": "#a8701c",
+    "paper": "#f4f2ec",
+    "paper-ink": "#16181d"
   }
 };

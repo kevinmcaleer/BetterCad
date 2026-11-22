@@ -100,6 +100,8 @@ export interface LeftPanelProps {
   decals?: BrowserModel["decals"];
   /** Canvases (#248) and what to do with them. */
   canvases?: { list: BrowserModel["canvases"]; on: NonNullable<BrowserPanelProps["onCanvas"]> };
+  /** Drawings (#555): the list, the one whose sheet is open, and the browser's actions on them. */
+  drawings?: { list: BrowserModel["drawings"]; open: string | null; on: NonNullable<BrowserPanelProps["onDrawing"]> };
   onSketchOnStep?: (id: string) => void;
   features: Feature[];
   at: number;
@@ -179,6 +181,8 @@ function PartsPanel(p: LeftPanelProps) {
         construct: p.construct,
         decals: p.decals,
         canvases: p.canvases?.list,
+        drawings: p.drawings?.list,
+        drawing: p.drawings?.open,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
         sections: p.sections?.sections,
@@ -221,6 +225,7 @@ function PartsPanel(p: LeftPanelProps) {
       onRenameSection={p.sections?.onRenameSection}
       onDeleteSection={p.sections?.onDeleteSection}
       onCanvas={p.canvases?.on}
+      onDrawing={p.drawings?.on}
     />
   );
 }
