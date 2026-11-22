@@ -193,8 +193,28 @@ describe("library folders and projects", () => {
     await screen.findByRole("button", { name: "Upload" });
     fireEvent.change(screen.getByLabelText("Files to upload"), { target: { files: [stlFile("Wheel hub.stl"), stlFile("Tyre.stl")] } });
     expect(await screen.findByText("Uploaded 2 models")).toBeVisible();
+    // The upload card lists each file and the model it made.
+    const card = screen.getByRole("region", { name: "Uploads" });
+    expect(card).toHaveTextContent("2 models uploaded");
+    expect(card).toHaveTextContent("Saved as Wheel hub");
     const made = Object.values(s.models).filter((m) => m.name === "Wheel hub" || m.name === "Tyre");
     expect(made.map((m) => m.project_id)).toEqual(["rover", "rover"]);
+  });
+
+  it("says on the upload card why a file didn't go up, and keeps it until closed", async () => {
+    mount({ project: "rover" });
+    await screen.findByRole("button", { name: "Upload" });
+    const quiet = console.error;
+    console.error = () => undefined;
+    const bytes = new TextEncoder().encode("solid x\nendsolid x\n");
+    const broken = { name: "Servo.stl", arrayBuffer: async () => bytes.buffer } as unknown as File;
+    fireEvent.change(screen.getByLabelText("Files to upload"), { target: { files: [broken] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("That STL file is damaged.");
+    console.error = quiet;
+    expect(screen.getByRole("region", { name: "Uploads" })).toHaveTextContent("Upload failed");
+    expect(screen.getByText("1 file didn't upload")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("region", { name: "Uploads" })).not.toBeInTheDocument();
   });
 
   it("uploads STL files dropped on the page", async () => {

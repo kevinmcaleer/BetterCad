@@ -3,7 +3,7 @@ import { read3mf, readStl, type MeshBody } from "@bettercad/kernel/mesh-files";
 import { loadBcad, saveBcad } from "@bettercad/kernel/bcad";
 import { addImport, newDoc, newId, type ModelDoc } from "../state/document";
 import { stripBlobs } from "../cloud/cloudDoc";
-import type { Api, ModelSummary, Place } from "../cloud/api";
+import { ApiError, type Api, type ModelSummary, type Place } from "../cloud/api";
 
 /**
  * Uploads files to My models: each file becomes a saved model of its own, in the folder or project on show. A .bcad
@@ -20,13 +20,23 @@ export const UPLOAD_ACCEPT = ".bcad,.stl,.3mf,.step,.stp";
 
 export const canUpload = (name: string) => isBcad(name) || importFormat(name) !== null;
 
-/** The geometry engine's calls the upload needs: reading a STEP file's bodies, and building a model for its picture. */
-export type Engine = <M extends "inspect" | "build">(method: M, params: Methods[M]["params"]) => Promise<Methods[M]["result"]>;
+/** How far the engine has got: still starting (downloading and compiling), or working on the call, 0 to 1. */
+export type EngineProgress = (phase: "starting" | "working", fraction: number) => void;
 
-/** The engine this tab uses, started on first call. */
-const browserEngine: Engine = async (method, params) => {
+/** The geometry engine's calls the upload needs: reading a STEP file's bodies, and building a model for its picture. */
+export type Engine = <M extends "inspect" | "build">(method: M, params: Methods[M]["params"], progress?: EngineProgress) => Promise<Methods[M]["result"]>;
+
+/** The engine this tab uses, started on first call. Its download is most of the wait the first time, so it says how far that has got. */
+const browserEngine: Engine = async (method, params, progress) => {
+  progress?.("starting", 0);
   const { kernel } = await import("@bettercad/kernel/browser");
-  return kernel().call(method, params);
+  const k = kernel();
+  const stop = progress ? k.subscribe((s) => s.status === "loading" && progress("starting", s.fraction)) : undefined;
+  try {
+    return await k.call(method, params, progress && ((f) => progress("working", f)));
+  } finally {
+    stop?.();
+  }
 };
 
 /** How an uploaded model gets its picture: its own, its triangles as they are, or built by the engine. */
@@ -68,13 +78,13 @@ export function meshModel(file: string, bytes: Uint8Array): Prepared & { picture
 }
 
 /** A new model holding a STEP `file` as one Import step: the engine reads it to find its bodies. */
-export async function stepModel(file: string, bytes: Uint8Array, engine: Engine): Promise<Prepared> {
+export async function stepModel(file: string, bytes: Uint8Array, engine: Engine, progress?: EngineProgress): Promise<Prepared> {
   const base = baseName(file);
   const blob = blobHash(bytes);
   const data = toBase64(bytes);
   let info;
   try {
-    info = await engine("inspect", { name: file, format: "step", blob, data });
+    info = await engine("inspect", { name: file, format: "step", blob, data }, progress);
   } catch (e) {
     throw readError(file, e);
   }
@@ -99,10 +109,38 @@ export function bcadModel(file: string, text: string): Prepared {
   return { name, doc: loaded.doc, thumbnail, picture: thumbnail ? null : { doc: loaded.doc } };
 }
 
-async function prepare(file: File, engine: Engine): Promise<Prepared> {
+/** One file's line on the upload card: waiting its turn, on its way (what it's doing, and how far), saved, or why it failed. */
+export interface UploadRow {
+  file: string;
+  state: "waiting" | "working" | "done" | "failed";
+  /** What it's doing now; once saved, the model's name; once failed, why. */
+  stage: string;
+  /** 0 to 1 while it works. */
+  fraction?: number;
+}
+
+/** Where each stage sits on a file's bar. A STEP file spends most of its time in the engine; a mesh goes straight up. */
+const BAR = { read: 0.05, engineStart: 0.05, engineWork: 0.4, upload: 0.8, save: 0.93 } as const;
+
+/** Why a save to the account failed, in words: a proxy's bare refusal says its status, so the cause can be found. */
+function saveError(e: unknown): string {
+  if (e instanceof ApiError && e.noAnswer?.why === "no-server" && e.noAnswer.http >= 400 && e.noAnswer.http !== 404) {
+    return `The server turned the file away (HTTP ${e.noAnswer.http}). Try again, or report a problem if it keeps happening.`;
+  }
+  return (e as Error)?.message || "That didn't work.";
+}
+
+async function prepare(file: File, engine: Engine, stage: (text: string, fraction: number) => void): Promise<Prepared> {
+  stage("Reading the file", 0);
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (isBcad(file.name)) return bcadModel(file.name, new TextDecoder().decode(bytes));
-  if (importFormat(file.name) === "step") return stepModel(file.name, bytes, engine);
+  if (importFormat(file.name) === "step") {
+    return stepModel(file.name, bytes, engine, (phase, f) =>
+      phase === "starting"
+        ? stage("Starting the geometry engine", BAR.engineStart + (BAR.engineWork - BAR.engineStart) * f)
+        : stage("Finding the solids", BAR.engineWork + (BAR.upload - BAR.engineWork) * f),
+    );
+  }
   return meshModel(file.name, bytes);
 }
 
@@ -113,27 +151,55 @@ export interface UploadResult {
 }
 
 /**
- * Saves each file as a model in `place`, one after another. `say` hears how far it has got. Files the library can't
- * take are skipped and named in `failed`.
+ * Saves each file as a model in `place`, one after another. `report` hears every file's line each time one changes,
+ * for the upload card. Files the library can't take are failed at once, with the reason.
  */
-export async function uploadModels(api: Api, files: File[], place: Place, say: (text: string) => void, engine: Engine = browserEngine): Promise<UploadResult> {
+export async function uploadModels(
+  api: Api,
+  files: File[],
+  place: Place,
+  report: (rows: UploadRow[]) => void,
+  engine: Engine = browserEngine,
+): Promise<UploadResult> {
   const made: ModelSummary[] = [];
   const failed: string[] = [];
   const pictures: { model: ModelSummary; picture: NonNullable<Picture> }[] = [];
+  const rows: UploadRow[] = files.map((f) =>
+    canUpload(f.name)
+      ? { file: f.name, state: "waiting", stage: "Waiting" }
+      : { file: f.name, state: "failed", stage: "BetterCad takes .bcad, STL, 3MF and STEP files." },
+  );
+  const set = (i: number, row: Partial<UploadRow>) => {
+    rows[i] = { ...rows[i]!, ...row };
+    report(rows.map((r) => ({ ...r })));
+  };
+  report(rows.map((r) => ({ ...r })));
   for (const [i, file] of files.entries()) {
-    if (!canUpload(file.name)) {
+    if (rows[i]!.state === "failed") {
       failed.push(`${file.name} isn't a BetterCad, STL, 3MF or STEP file.`);
       continue;
     }
-    say(files.length > 1 ? `Uploading ${file.name} (${i + 1} of ${files.length})` : `Uploading ${file.name}`);
+    const stage = (text: string, fraction: number) => set(i, { state: "working", stage: text, fraction });
     try {
-      const m = await prepare(file, engine);
-      const doc = await stripBlobs(api, m.doc);
-      const model = await api.create(m.name, saveBcad(doc, { thumbnail: m.thumbnail }), `Uploaded ${file.name}`, place);
+      const m = await prepare(file, engine, stage);
+      stage("Uploading the file", BAR.upload);
+      let model: ModelSummary;
+      try {
+        const doc = await stripBlobs(api, m.doc);
+        stage("Saving the model", BAR.save);
+        model = await api.create(m.name, saveBcad(doc, { thumbnail: m.thumbnail }), `Uploaded ${file.name}`, place);
+      } catch (e) {
+        throw new Error(saveError(e));
+      }
       made.push(model);
+      set(i, { state: "done", stage: model.name, fraction: 1 });
       if (m.picture) pictures.push({ model, picture: m.picture });
     } catch (e) {
-      failed.push((e as Error).message);
+      const why = ((e as Error)?.message || "That file couldn't be read.").replace(`${file.name}: `, "");
+      // Kept in the console too, with the error itself, so a report can say what went wrong.
+      console.error(`Upload of ${file.name} failed:`, e);
+      failed.push(`${file.name}: ${why}`);
+      set(i, { state: "failed", stage: why, fraction: undefined });
     }
   }
   if (pictures.length) void drawPictures(api, pictures, engine);
