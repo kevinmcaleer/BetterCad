@@ -1,4 +1,13 @@
-import { addDrawing, changeSheet, removeDrawing, renameDrawing, standardFor, type Drawing, type TitleBlock } from "@bettercad/kernel/drawing";
+import {
+  addDrawing,
+  changeSheet,
+  removeDrawing,
+  renameDrawing,
+  standardFor,
+  type Drawing,
+  type DrawingSheet,
+  type TitleBlock,
+} from "@bettercad/kernel/drawing";
 import type { ModelDoc } from "../state/document";
 import { today } from "./layout";
 import { rememberSheet, type SheetPick } from "./prefs";
@@ -53,4 +62,9 @@ export function titleChange(drawing: Drawing, field: keyof TitleBlock, value: st
 /** The browser's Rename and Delete. */
 export function drawingChange(id: string, act: "rename" | "delete", name?: string): Edit {
   return act === "delete" ? [(d) => removeDrawing(d, id), "Delete drawing"] : [(d) => renameDrawing(d, id, name ?? ""), "Rename drawing"];
+}
+
+/** A change to the open sheet's views: one placed, moved, edited or deleted. */
+export function sheetEdit(drawing: Drawing, change: (s: DrawingSheet) => DrawingSheet, label: string): Edit {
+  return [(d) => changeSheet(d, drawing.id, drawing.sheets[0]!.id, change), label];
 }

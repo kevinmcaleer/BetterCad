@@ -60,14 +60,14 @@
 }
 .bc-sheet-field:hover > rect,
 .bc-sheet-field:focus-visible > rect {
-  stroke: var(--bc-color-snap);
+  stroke: var(--bc-color-paper-pick);
   stroke-width: 0.5px;
 }
 /* The box you type a title block field in, laid over its cell. */
 .bc-drawing-field {
   position: absolute;
   box-sizing: border-box;
-  border: 2px solid var(--bc-color-snap);
+  border: 2px solid var(--bc-color-paper-pick);
   border-radius: 0;
   padding: 0 var(--bc-space-2);
   background: var(--bc-color-paper);
@@ -110,4 +110,50 @@
 }
 .bc-sheet-card-date .bc-btn {
   flex: none;
+}
+/* Views on the sheet (#561). Line widths are a printed drawing's: thick for edges you see, thin dashes for hidden. */
+.bc-view {
+  cursor: move;
+  outline: none;
+}
+.bc-view-visible,
+.bc-view-hidden {
+  fill: none;
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.bc-view-hidden {
+  stroke-width: 0.25px;
+  stroke-dasharray: 2 1;
+  stroke-linecap: butt;
+}
+/* What a view is pointed at and dragged by: its box, drawn only when it is selected or has no picture yet. */
+.bc-view-hit {
+  fill: none;
+  stroke: none;
+  pointer-events: all;
+}
+.bc-view:hover > .bc-view-hit,
+.bc-view:focus-visible > .bc-view-hit,
+.bc-view-on > .bc-view-hit,
+.bc-view-wait {
+  stroke: var(--bc-color-paper-pick);
+  stroke-width: 0.35px;
+  stroke-dasharray: 1.5 1.5;
+}
+.bc-view-on > .bc-view-hit {
+  stroke-dasharray: none;
+}
+/* The view being placed, following the pointer. */
+.bc-view-ghost {
+  pointer-events: none;
+}
+.bc-view-ghost .bc-view-visible {
+  stroke: var(--bc-color-paper-pick);
+}
+.bc-drawing:has(.bc-view-ghost) {
+  cursor: crosshair;
 }

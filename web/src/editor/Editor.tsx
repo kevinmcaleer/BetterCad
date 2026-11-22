@@ -180,7 +180,7 @@ import { importFormat, type BodyMass, type Clash, type ExportFormat, type Mate }
 import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
-import type { DrawingApi, SheetChoice } from "../drawing/DrawingView";
+import type { DrawingApi, DrawingTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
@@ -283,6 +283,7 @@ const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ defau
 const drawingCode = () => import("../drawing/DrawingView");
 const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingPaper })));
 const DrawingBar = lazy(() => drawingCode().then((m) => ({ default: m.DrawingBar })));
+const DrawingRibbon = lazy(() => drawingCode().then((m) => ({ default: m.DrawingRibbon })));
 const SheetCard = lazy(() => drawingCode().then((m) => ({ default: m.SheetCard })));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
@@ -417,6 +418,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [drawing, setDrawing] = useState<string | null>(null);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
+  const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
   const [crash, setCrash] = useState<Caught | null>(null);
@@ -553,7 +555,18 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   useEffect(() => {
     // Undo, or opening another model, can take the open drawing away.
     if (drawing && !shownDrawing) setDrawing(null);
+    if (!drawing) setDrawingTool(null);
   }, [drawing, shownDrawing]);
+  const kernelView = kernel.call;
+  const viewCall = useCallback<ViewCall>((p) => kernelView("view", p), [kernelView]);
+  // The Drawing tab and the drawing's bar share their buttons.
+  const drawingBar = {
+    baseView: drawingTool === "base",
+    onBaseView: () => setDrawingTool((t) => (t === "base" ? null : "base")),
+    onSettings: () => setSheetCard("settings"),
+    onFit: () => drawingApi.current?.fit(),
+    onFinish: () => setDrawing(null),
+  };
   const enterDrawing = (id: string) => {
     setRender(null);
     setTool("select");
@@ -1811,7 +1824,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     [record, say],
   );
 
-  const armTool = useCallback((id: ToolId) => setTool((t) => (t === id && id !== "select" ? "select" : id)), []);
+  const armTool = useCallback((id: ToolId) => {
+    // A modelling tool picked from the compact bar leaves a drawing's sheet for the model.
+    setDrawing(null);
+    setTool((t) => (t === id && id !== "select" ? "select" : id));
+  }, []);
 
   // What a rendered thumbnail draws: the shown bodies, read when a save finishes.
   const thumbBodies = useRef<() => RenderBody[]>(() => []);
@@ -2063,7 +2080,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit") => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit" | "base") => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2160,7 +2177,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     drawing: (act) =>
-      act === "fit" ? drawingApi.current?.fit() : act === "finish" ? setDrawing(null) : act === "new" ? onDrawing("new") : setSheetCard("settings"),
+      act === "base"
+        ? setDrawingTool("base")
+        : act === "fit"
+          ? drawingApi.current?.fit()
+          : act === "finish"
+            ? setDrawing(null)
+            : act === "new"
+              ? onDrawing("new")
+              : setSheetCard("settings"),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -2831,6 +2856,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         icon: "drawing",
         run: () => h().drawing("new"),
         keywords: "2d sheet page paper technical views dimensions",
+      },
+      {
+        id: "drawing.baseView",
+        scope: "drawing",
+        label: "Base view",
+        group: "Tools",
+        icon: "drawing",
+        keys: ["b"],
+        run: () => h().drawing("base"),
+        keywords: "front top side isometric place",
       },
       { id: "drawing.fit", scope: "drawing", label: "Fit the sheet in the view", group: "View", icon: "frame", keys: ["f"], run: () => h().drawing("fit") },
       {
@@ -4075,6 +4110,13 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   )
                 : undefined
             }
+            drawingRibbon={
+              ribbonOn && shownDrawing ? (
+                <Suspense fallback={null}>
+                  <DrawingRibbon readOnly={!!files.shared} {...drawingBar} />
+                </Suspense>
+              ) : undefined
+            }
             sketchRibbon={
               ribbonOn && sketch.editing ? (
                 <Suspense fallback={null}>
@@ -4273,13 +4315,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               {!emptyState && files.banners}
               {shownDrawing ? (
                 <Suspense fallback={null}>
-                  <DrawingBar
-                    name={shownDrawing.name}
-                    readOnly={!!files.shared}
-                    onSettings={() => setSheetCard("settings")}
-                    onFit={() => drawingApi.current?.fit()}
-                    onFinish={() => setDrawing(null)}
-                  />
+                  <DrawingBar name={shownDrawing.name} readOnly={!!files.shared} {...drawingBar} />
                 </Suspense>
               ) : render ? (
                 <Suspense
@@ -4591,6 +4627,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   drawing={shownDrawing}
                   readOnly={!!files.shared}
                   api={drawingApi}
+                  doc={doc}
+                  upTo={at}
+                  call={viewCall}
+                  tool={drawingTool}
+                  onTool={setDrawingTool}
+                  onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label)))}
+                  components={built.components}
+                  bodies={parts}
                   onTitle={(field, value) => void drawingCode().then((m) => store.edit(...m.titleChange(shownDrawing, field, value)))}
                 />
               </Suspense>

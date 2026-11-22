@@ -77,6 +77,85 @@ test("make a drawing, fill in its title block, leave it and open it again", { ta
   await expect(page.getByRole("treeitem", { name: /^Drawing 1/ })).toHaveCount(0);
 });
 
+/** Base view (#561): the model's lines on the sheet, from the real kernel. */
+test("place a base view of the bracket, move it, change it and delete it", { tag: "@journey" }, async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A3");
+  const paper = (await page.locator(".bc-sheet-paper").boundingBox())!;
+
+  // B arms Base view: its card opens, and the view follows the pointer until a click puts it down.
+  await page.keyboard.press("b");
+  const card = page.getByRole("dialog", { name: "Base view" });
+  await expect(card.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await expect(card.getByLabel("Scale")).toContainText("Fit, 2:1");
+  await page.mouse.move(paper.x + paper.width * 0.3, paper.y + paper.height * 0.4);
+  await expect(page.locator(".bc-view-ghost path")).toHaveAttribute("d", /M/);
+  await page.mouse.click(paper.x + paper.width * 0.3, paper.y + paper.height * 0.4);
+  await expect(card).toHaveCount(0);
+  const front = page.getByRole("button", { name: "Front view, 2:1" });
+  await expect(front).toBeVisible({ timeout: 30_000 });
+  // The bracket from the front is an L with its two holes behind, dashed; the title block takes the view's scale.
+  await expect(front.locator(".bc-view-visible")).toHaveAttribute("d", /^(M[^M]+){6,}$/);
+  await expect(front.locator(".bc-view-hidden")).toHaveAttribute("d", /M/);
+  await expect(page.getByRole("img", { name: "Scale: 2:1" })).toBeVisible();
+  const box = (await front.boundingBox())!;
+  expect(Math.abs(box.x + box.width / 2 - (paper.x + paper.width * 0.3))).toBeLessThan(3);
+
+  // Drag it across the sheet.
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 120, box.y + box.height / 2 + 40, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await front.boundingBox())!.x - box.x)).toBe(120);
+
+  // A second view by keyboard: an isometric, placed in the middle of the clear space with Enter.
+  await page.keyboard.press("b");
+  await card.getByLabel("Direction").selectOption({ label: "Isometric, front right" });
+  await expect(card.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await card.getByLabel("Direction").press("Enter");
+  const iso = page.getByRole("button", { name: /^Isometric view, / });
+  await expect(iso).toBeVisible({ timeout: 30_000 });
+  await expect(iso.locator(".bc-view-visible")).toHaveAttribute("d", /A/, { timeout: 30_000 });
+
+  // Double-click changes a view; Delete takes it away; the drawing keeps its views when you leave and come back.
+  await iso.dblclick();
+  await card.getByLabel("Direction").selectOption({ label: "Top" });
+  await card.getByRole("button", { name: "Done" }).click();
+  const top = page.getByRole("button", { name: /^Top view, / });
+  await expect(top).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "Drawing: Drawing 1" })).toHaveCount(0);
+  await page.getByRole("treeitem", { name: /^Drawing 1/ }).dblclick();
+  await expect(top).toBeVisible({ timeout: 30_000 });
+  await expect(front).toBeVisible();
+  await top.focus();
+  await page.keyboard.press("Delete");
+  await expect(top).toHaveCount(0);
+  await expect(front).toBeVisible();
+});
+
+test("a sheet with a front view of the bracket @visual", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A4");
+  await page.keyboard.press("b");
+  const card = page.getByRole("dialog", { name: "Base view" });
+  await expect(card.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await card.getByRole("button", { name: "Place" }).click();
+  await expect(page.getByRole("button", { name: /^Front view, / }).locator(".bc-view-hidden")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+  // Nothing selected, so the picture is the sheet as it prints.
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  // Just the page, which the cards keep clear of at this size, with the date (today's) covered.
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-front.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+  });
+});
+
 test("a drawing opens by touch, and a pinch zooms the sheet", async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 820, height: 1180 }, storageState: test.info().project.use.storageState });
   const page = await context.newPage();
