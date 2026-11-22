@@ -392,7 +392,7 @@ function modelsToggle(p: TopBarProps) {
       icon="folder"
       title={p.modelsOpen ? "Hide my models" : "My models"}
       on={!!p.modelsOpen}
-      aria-controls="bc-models-side"
+      aria-controls={p.modelsOpen ? "bc-models-side" : undefined}
       onClick={p.onModels}
     />
   );
