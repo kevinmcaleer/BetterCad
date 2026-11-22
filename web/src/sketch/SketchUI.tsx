@@ -63,7 +63,14 @@ import { SketchPatternPanel } from "./SketchPatternPanel";
 import { findGaps, gapLabel, type Gap } from "@bettercad/sketch/gaps";
 
 /** Sketch tools whose line icon is also a model tool's: their colour icon is drawn flat. */
-const SKETCH_COLOUR: Partial<Record<SketchToolId, string>> = { fillet: "sk-fillet", mirror: "sk-mirror", pattern: "sk-pattern" };
+const SKETCH_COLOUR: Partial<Record<SketchToolId, string>> = {
+  fillet: "sk-fillet",
+  mirror: "sk-mirror",
+  pattern: "sk-pattern",
+  extend: "sk-extend",
+  break: "sk-break",
+  scale: "sk-scale",
+};
 
 /** The ribbon's Sketch tab (desktop): draw, change, constrain, then Finish sketch, each group with a drop-down. */
 export function SketchRibbon({ s }: { s: SketchSession }) {
@@ -77,7 +84,7 @@ export function SketchRibbon({ s }: { s: SketchSession }) {
       ["select", "line", "rectangle", "circle", "arc", "slot", "ellipse", "spline", "polygon", "point", "text"],
       ["line", "rectangle", "circle", "arc", "slot", "spline", "text"],
     ],
-    ["Change", ["fillet", "trim", "extend", "offset", "mirror", "pattern", "project"], ["trim", "offset", "mirror", "pattern", "project"]],
+    ["Change", ["fillet", "trim", "extend", "break", "scale", "offset", "mirror", "pattern", "project"], ["trim", "offset", "mirror", "pattern", "project"]],
   ];
   const entry = (t: (typeof SKETCH_TOOLS)[number]): MenuEntry => ({
     id: t.id,
@@ -225,21 +232,22 @@ export function SketchBars({ s, ribbon }: { s: SketchSession; ribbon?: boolean }
               <Button label="Both sides" title="Copy to both sides at once" on={s.offsetBoth} onClick={() => s.setOffsetBoth((b) => !b)} />
             </>
           )}
-          {s.stool === "mirror" && (
-            <span className="bc-sk-modes" role="group" aria-label="Mirror picks">
+          {(s.stool === "mirror" || s.stool === "scale") && (
+            <span className="bc-sk-modes" role="group" aria-label={`${tool.label} picks`}>
               <Button
                 label={s.sel.length ? `Shapes (${s.sel.length})` : "Shapes"}
-                title="Click the shapes to mirror"
+                title="Click the shapes"
                 on={s.mirrorStage === "shapes"}
                 onClick={() => s.setMirrorStage("shapes")}
               />
               <Button
-                label="Mirror line"
-                title="Click a line or an axis to mirror the shapes across"
+                label={s.stool === "scale" ? "Base point" : "Mirror line"}
+                title={s.stool === "scale" ? "Click the point to scale the shapes about" : "Click a line or an axis to mirror the shapes across"}
                 on={s.mirrorStage === "line"}
                 disabled={!s.sel.length}
                 onClick={() => s.setMirrorStage("line")}
               />
+              {s.stool === "scale" && <NumberField label="Scale" unit="none" value={s.scaleK} min={0.001} scope={s.scope} onCommit={(v) => s.setScaleK(v)} />}
             </span>
           )}
           {s.stool === "project" && (
