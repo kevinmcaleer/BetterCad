@@ -3,21 +3,21 @@ import type { ScreenPoint } from "../viewport/engine";
 /**
  * The magnifier loupe: a round, zoomed-in view of the sketch near the pointer, for telling apart points that sit too
  * close together to pick. It opens by itself when two or more points crowd the pointer, while Alt (Option) is held,
- * and under a finger. While it is open the pointer moves at 1:1 inside it, so each pixel the mouse moves is a fraction
- * of a pixel in the sketch, and picking reaches only as far as the zoom allows.
+ * and under a finger. While it is open it follows the pointer, magnifying whatever is under it, with the pointer in its
+ * middle.
  */
 export interface Loupe {
-  /** Where the zoom is centred, in view pixels. */
+  /** Where the zoom is centred, in view pixels: the pointer. */
   anchor: ScreenPoint;
   zoom: number;
-  /** Where the pointer really is. Inside the loupe it shows at `pointer - anchor` from the middle. */
-  pointer: ScreenPoint;
+  /** Where it opened. A crowd's loupe closes once the pointer wanders `LOUPE_REACH` from here. */
+  opened: ScreenPoint;
   why: "crowd" | "alt" | "touch";
 }
 
 /** The loupe's width and height in CSS pixels. */
 export const LOUPE_SIZE = 168;
-/** How far the pointer may wander from the anchor before a crowd loupe closes: the edge of the loupe. */
+/** How far the pointer may wander from where a crowd's loupe opened before it closes. */
 export const LOUPE_REACH = LOUPE_SIZE / 2 - 8;
 /** Points this close to the pointer, in screen pixels, count towards a crowd. */
 export const CROWD_REACH = 12;
@@ -47,10 +47,13 @@ export function loupeZoom(gap: number | null): number {
   return Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, SPREAD / gap)));
 }
 
-/** Where the pointer acts while the loupe is open: its movement from the anchor, shrunk by the zoom. */
-export function lensed(l: Loupe | null, p: ScreenPoint): ScreenPoint {
-  if (!l || l.why === "touch") return p;
-  return { x: l.anchor.x + (p.x - l.anchor.x) / l.zoom, y: l.anchor.y + (p.y - l.anchor.y) / l.zoom };
+/**
+ * The loupe after the pointer moves to `p`: centred on it, or null when a crowd's loupe has been left behind. It stays
+ * open while a button is held, so a drag that starts in it can finish.
+ */
+export function follow(l: Loupe, p: ScreenPoint, pressed = false): Loupe | null {
+  if (l.why === "crowd" && !pressed && Math.hypot(p.x - l.opened.x, p.y - l.opened.y) > LOUPE_REACH) return null;
+  return { ...l, anchor: p };
 }
 
 /**

@@ -52,9 +52,13 @@ test("the loupe opens over points too close to pick apart, and Alt opens it anyw
   expect(box.y + box.height).toBeLessThan(a.y);
   await page.screenshot({ path: test.info().outputPath("loupe.png") });
 
-  // Inside the loupe the pointer moves slowly: going to where the second point shows in it picks that point.
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  await page.mouse.move(mid.x + (b.x - mid.x) * zoom, mid.y + (b.y - mid.y) * zoom, { steps: 4 });
+  // It follows the pointer, so it moves across with it, still above it.
+  await page.mouse.move(b.x + 20, b.y, { steps: 4 });
+  await expect(loupe).toBeVisible();
+  const moved = (await loupe.boundingBox())!;
+  expect(moved.x + moved.width / 2).toBeCloseTo(b.x + 20, -1);
+  // Back on the second point, it picks that point.
+  await page.mouse.move(b.x, b.y, { steps: 4 });
   await expect(page.locator(".bc-snap-label")).toBeVisible();
   await page.screenshot({ path: test.info().outputPath("loupe-picked.png") });
 
