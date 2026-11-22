@@ -163,6 +163,15 @@ function constraintPrimitives(c: Constraint, idx: SketchIndex): SketchPrimitive[
       return [{ id, type: "parallel", l1_id: c.a, l2_id: c.b }];
     case "perpendicular":
       return [{ id, type: "perpendicular_ll", l1_id: c.a, l2_id: c.b }];
+    case "collinear": {
+      // Both ends of b on a's line: parallel and in line, as Fusion's Collinear.
+      const b = idx.get(c.b);
+      if (b?.kind !== "line") return [];
+      return [
+        { id: `${id}#0`, type: "point_on_line_pl", p_id: b.a, l_id: c.a },
+        { id: `${id}#1`, type: "point_on_line_pl", p_id: b.b, l_id: c.a },
+      ];
+    }
     case "tangent": {
       const [a, b] = [kind(c.a), kind(c.b)];
       // Curves that share an end are tangent at that point: their directions there agree (or are opposite). The

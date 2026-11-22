@@ -284,6 +284,7 @@ const GLYPH: Partial<Record<Constraint["type"], string>> = {
   vertical: "V",
   parallel: "∥",
   perpendicular: "⊥",
+  collinear: "⋯",
   tangent: "T",
   equal: "=",
   concentric: "◎",
@@ -722,7 +723,7 @@ function toolTag(s: SketchSession): string {
       first && isPointPick(s.sketch, s.hover) ? levelOrUprightPoints(s.sketch, first, s.hover, s.origin ?? undefined) : levelOrUpright(s.sketch, s.hover);
     if (k) return CONSTRAINT_LABEL[k];
   }
-  return t.tag;
+  return t.tag ?? t.label;
 }
 
 /**
