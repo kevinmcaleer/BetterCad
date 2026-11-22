@@ -207,6 +207,18 @@ const lazy: { loupe?: typeof import("./loupeDraw"); modelSnap?: typeof import(".
 const EDIT_TOOLS = new Set<SketchToolId>(["mirror", "fillet", "trim", "extend", "offset"]);
 /** How soon a second press on the same curve counts as a double-click, ms. */
 const DOUBLE_MS = 400;
+/** How long a press on the sketch rests still before it lists everything under it, ms (as a finger's long press). */
+const HOLD_MS = 500;
+
+/** A long press on a crowded spot (Select): everything under it, to pick the one hidden underneath. */
+export interface PickList {
+  /** Where to open the list, on the view. */
+  at: { x: number; y: number };
+  items: Id[];
+  /** Shift or Ctrl was held: the pick adds to what was picked before the press. */
+  add: boolean;
+  before: Id[];
+}
 const loadEdits = () => void import("@bettercad/sketch/edits").then((m) => (lazy.edits = m));
 
 export function useSketch(d: SketchDeps) {
@@ -235,6 +247,7 @@ export function useSketch(d: SketchDeps) {
   const [typed, setTyped] = useState<(number | undefined)[]>([]);
   const [sel, setSel] = useState<Id[]>([]);
   const [hover, setHover] = useState<Id | null>(null);
+  const [pickList, setPickList] = useState<PickList | null>(null);
   const [sides, setSides] = useState(6);
   const [options, setOptions] = useState<SketchOptions>(loadOptions);
   const setOption = useCallback((k: SketchOption, v: boolean) => {
@@ -1102,6 +1115,33 @@ export function useSketch(d: SketchDeps) {
     let tapPlace = false;
     /** The last press on a curve with Select: a second one soon after, on the same curve, picks its whole chain. */
     let lastPress: { id: Id; at: ScreenPoint; t: number } | null = null;
+    /** A press with Select waiting to become a long press: where it came down, on the page and in the sketch. */
+    let hold: { at: ScreenPoint; timer: number } | null = null;
+    /** The pointer on the view as it last went down, for the long-press list (the loupe moves `p`). */
+    let pagePress: ScreenPoint | null = null;
+    const dropHold = () => {
+      if (hold) window.clearTimeout(hold.timer);
+      hold = null;
+    };
+    /** Starts the long-press clock on a press in Select: held still, it lists what is under it when there's more than one. */
+    const startHold = (p: ScreenPoint, xy: Vec2, px: number, mods: Mods, before: Id[]) => {
+      dropHold();
+      const page = pagePress ?? p;
+      const h = { at: p, timer: 0 };
+      h.timer = window.setTimeout(() => {
+        if (hold !== h) return;
+        hold = null;
+        const L = live.current;
+        const items = L.sketch && drop && !drag?.moved ? drop.entitiesAt(xy, L.sketch, reach * px, false, L.origin) : [];
+        if (items.length < 2) return;
+        // The press is now the list's: letting go does not move or pick anything else.
+        endDrag(false);
+        lastPress = null;
+        setSel(before);
+        setPickList({ at: page, items, add: mods.shift || mods.mod, before });
+      }, HOLD_MS);
+      hold = h;
+    };
     /** How far a finger slides, in screen pixels, before it is a drag rather than a tap. */
     const SLIDE = 12;
     const zoomNow = () => (lens && lens.why !== "touch" ? lens.zoom : 1);
@@ -1473,6 +1513,7 @@ export function useSketch(d: SketchDeps) {
             setSel((s) => (add ? [...s.filter((x) => !chain.includes(x)), ...chain] : chain));
             return true;
           }
+          startHold(p, hit.xy, hit.px, mods, L.sel);
           setSel((s) => (mods.shift || mods.mod ? (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]) : s.includes(id) ? s : [id]));
           if (e?.kind === "point") drag = { id, key: `drag:${L.editingId}:${id}`, moved: false, free: mods.shift };
           else if (e?.kind === "line") {
@@ -1502,6 +1543,11 @@ export function useSketch(d: SketchDeps) {
           setPlacing({ ...pl, dim });
           setHover(null);
           return;
+        }
+        if (pressed && hold) {
+          // Still enough to be a long press: the drag waits until the pointer clearly moves.
+          if (Math.hypot(p.x - hold.at.x, p.y - hold.at.y) < (mods.touch ? 10 : 4)) return;
+          dropHold();
         }
         if (pressed && drag) {
           if (!L.solver) return;
@@ -1591,6 +1637,7 @@ export function useSketch(d: SketchDeps) {
         eng.showHover(from ? { body: from.body, kind: from.vertex !== undefined ? "vertex" : "edge", index: from.vertex ?? from.edge ?? 0 } : null);
       },
       up: (p: ScreenPoint, mods: Mods) => {
+        dropHold();
         endDrag(true);
         const L = live.current;
         if (trimDrag) {
@@ -1617,6 +1664,7 @@ export function useSketch(d: SketchDeps) {
       },
       cancel: () => {
         // A second finger came down to pinch or pan: nothing goes in.
+        dropHold();
         endDrag(false);
         trimDrag = null;
         if (tap?.dragged) setClicks(tap.base);
@@ -1698,6 +1746,7 @@ export function useSketch(d: SketchDeps) {
 
     eng.setInput({
       down: (p, mods) => {
+        pagePress = p;
         const handled = input.down(lensed(lens, p), mods);
         // A finger hides what it's on: the loupe shows it while the finger is down.
         if (handled && mods.touch) openAt(p, "touch");
@@ -1729,9 +1778,13 @@ export function useSketch(d: SketchDeps) {
       window.removeEventListener("keyup", onKey);
       closeLoupe.current = () => {};
       setLoupe(null);
+      dropHold();
+      setPickList(null);
       eng.setInput(null);
     };
   }, [editingId, engineOf, store, say]);
+  // A new tool closes a long-press list left open.
+  useEffect(() => setPickList(null), [stool, ctool]);
 
   // ---------------------------------------------------------------- drawing
 
@@ -2071,6 +2124,9 @@ export function useSketch(d: SketchDeps) {
     sel,
     setSel,
     hover,
+    setHover,
+    pickList,
+    setPickList,
     sides,
     setSides,
     filletR,
