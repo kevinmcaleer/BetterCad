@@ -194,8 +194,8 @@ export const FIT_MARGIN = 0.06;
 
 /**
  * Frames a set of world points (a model's corners or vertices) so they fill `rect` of a view `width` × `height` px,
- * less a small margin, as tightly as they can: the view keeps its direction and roll and only moves and zooms. Without
- * a usable rect it fills the whole view. The target lands in the middle of the points' depth, so turning afterwards
+ * less a small margin, as tightly as they can: the view keeps its direction and roll and only moves and zooms. When the
+ * rect is under a third of the view either way (a tool's panel pushed it into a strip), it fills the whole view. The target lands in the middle of the points' depth, so turning afterwards
  * turns round the model.
  *
  * On each screen axis a point is inside the clear area while lo ≤ (u − U) / (w − W) ≤ hi, for a camera at (U, W) and a
@@ -207,7 +207,7 @@ export function fitPoints(c: CameraState, points: readonly V3[], width: number, 
   if (!points.length) return c;
   const W = Math.max(width, 1);
   const H = Math.max(height, 1);
-  const r = rect && rect.width >= 80 && rect.height >= 80 ? rect : { left: 0, top: 0, width: W, height: H };
+  const r = rect && rect.width >= Math.max(80, W / 3) && rect.height >= Math.max(80, H / 3) ? rect : { left: 0, top: 0, width: W, height: H };
   const { right, up, back } = cameraBasis(c);
   const tanH = Math.tan((FOV / 2) * RAD);
   let wMin = Infinity;
