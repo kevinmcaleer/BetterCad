@@ -147,14 +147,22 @@ export function rollBy(c: CameraState, dir: 1 | -1): CameraState {
   return { ...c, roll: (((((quarter % 4) + 4) % 4) * 90 + 180) % 360) - 180 };
 }
 
+/** A roll squared off to the nearest quarter turn, −180…90. */
+export function squareRoll(roll = 0): number {
+  const quarter = (((Math.round(roll / 90) % 4) + 4) % 4) * 90;
+  return ((quarter + 180) % 360) - 180;
+}
+
 /**
  * The camera looking from `dir` (towards the camera, any length) at the same target and distance: a view cube face,
- * edge or corner. Straight down or up keeps the Top view's +Y up the screen.
+ * edge or corner. Straight down or up keeps the Top view's +Y up the screen. A turned view keeps its turn, squared to
+ * the nearest quarter turn, as in Fusion: upside down and nudged, a click squares it up and leaves it upside down.
  */
 export function lookFrom(c: CameraState, dir: V3): CameraState {
   const [x, y, z] = norm(dir);
-  if (Math.abs(z) > 0.9999) return { ...c, ...PRESETS[z > 0 ? "top" : "bottom"], roll: 0 };
-  return { ...c, azimuth: Math.atan2(y, x) / RAD, elevation: Math.asin(z) / RAD, roll: 0 };
+  const roll = squareRoll(c.roll);
+  if (Math.abs(z) > 0.9999) return { ...c, ...PRESETS[z > 0 ? "top" : "bottom"], roll };
+  return { ...c, azimuth: Math.atan2(y, x) / RAD, elevation: Math.asin(z) / RAD, roll };
 }
 
 /** Which preset the camera is at, if any. */

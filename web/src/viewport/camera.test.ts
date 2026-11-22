@@ -48,10 +48,23 @@ describe("camera", () => {
     expect(rollBy(rollBy(rollBy(cw, 1), 1), 1).roll).toBe(0);
     expect(presetOf(cw)).toBeNull();
     expect(presetOf(rollBy(rollBy(rollBy(cw, 1), 1), 1))).toBe("front");
-    expect(lookFrom(cw, [0, 0, 1]).roll).toBe(0);
     expect(toPreset(cw, "front").roll).toBe(0);
     // Half way through the glide it has turned 45°.
     expect(lerpCamera(front, cw, 0.5).roll).toBeCloseTo(45, 6);
+  });
+
+  it("a cube pick keeps the view's quarter turn instead of standing it upright", () => {
+    // Turned upside down, then nudged by an orbit: clicking Front squares it up, still upside down.
+    const upside = orbit(rollBy(rollBy(toPreset(DEFAULT_CAMERA, "front"), 1), 1), 8, 5);
+    const back = lookFrom(upside, [0, -1, 0]);
+    expect(back.roll).toBe(-180);
+    expect(back.azimuth).toBeCloseTo(-90, 6);
+    expect(back.elevation).toBeCloseTo(0, 6);
+    near(cameraBasis(back).up, [0, 0, -1]);
+    // An odd roll squares to the nearest quarter turn; an upright view stays upright.
+    expect(lookFrom({ ...DEFAULT_CAMERA, roll: 100 }, [0, 0, 1]).roll).toBe(90);
+    expect(lookFrom({ ...DEFAULT_CAMERA, roll: -30 }, [1, 0, 0]).roll).toBe(0);
+    expect(lookFrom(DEFAULT_CAMERA, [0, -1, 0]).roll).toBe(0);
   });
 
   it("orbits a rolled view along the drag on the rolled screen", () => {
