@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "./Button";
 import { ContextMenu, MenuButton, type ContextMenuState, type MenuEntry } from "./Menu";
 
@@ -43,6 +43,19 @@ const FOCAL = C / Math.tan((16 * Math.PI) / 180);
 const EDGE = 0.64;
 /** Further than this many pixels and a press is a drag. */
 const DRAG_PX = 3;
+/** How long the turn arrows stay after a tap on a touch screen. */
+const WAKE_MS = 4000;
+/** The turn arrows reach this far past the cube's box. */
+const ROLL_PAD = 10;
+
+/**
+ * Fusion's turn arrows: two curves round the cube's top right corner, on a circle of 46 about the cube's centre. The
+ * top one heads left (anticlockwise), the right one heads down (clockwise).
+ */
+const ROLLS = [
+  { dir: -1 as const, label: "Turn anticlockwise 90°", d: "M78.4 14.3A46 46 0 0 0 46.4 6.3M50.8 8.6L46.4 6.3L50.1 3" },
+  { dir: 1 as const, label: "Turn clockwise 90°", d: "M89.7 25.6A46 46 0 0 1 97.7 57.6M101 53.9L97.7 57.6L95.4 53.2" },
+];
 
 const add = (a: V3, b: V3, s = 1): V3 => [a[0] + b[0] * s, a[1] + b[1] * s, a[2] + b[2] * s];
 const key = (v: V3) => v.join(",");
@@ -79,7 +92,8 @@ export interface ViewCubeProps {
   onHome?: () => void;
   /**
    * Roll the view a quarter turn about the line of sight: 1 clockwise, −1 anticlockwise. Shows two curved arrows by
-   * the cube's top right, on hover, and always while the view looks square at a face.
+   * the cube's top right while the pointer is over the cube or the arrows, as in Fusion; on a touch screen, for a
+   * while after a tap on the cube.
    */
   onRoll?: (dir: 1 | -1) => void;
   /** The cube's own menu (Go home, projection, home view), under a small arrow by the cube and on a right-click. */
@@ -94,8 +108,15 @@ export interface ViewCubeProps {
  */
 export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, onRoll, menu }: ViewCubeProps) {
   const r = rotation;
-  // Looking straight at a face: the line of sight runs along an axis.
-  const square = Math.max(Math.abs(r[6]!), Math.abs(r[7]!), Math.abs(r[8]!)) > 0.9999;
+  // A finger has no hover, so a tap on the cube wakes the turn arrows for a few seconds.
+  const [awake, setAwake] = useState(false);
+  const sleep = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => void (sleep.current && clearTimeout(sleep.current)), []);
+  const wake = () => {
+    setAwake(true);
+    if (sleep.current) clearTimeout(sleep.current);
+    sleep.current = setTimeout(() => setAwake(false), WAKE_MS);
+  };
   const [hover, setHover] = useState<string | null>(null);
   const [context, setContext] = useState<ContextMenuState | null>(null);
   const press = useRef<{ x: number; y: number; lastX: number; lastY: number; moved: boolean; raw: V3 | null } | null>(null);
@@ -182,6 +203,7 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
     return raw ? (raw.split(",").map(Number) as V3) : null;
   };
   const onDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === "touch" && onRoll) wake();
     if (e.button !== 0 || press.current) return;
     e.stopPropagation();
     press.current = { x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false, raw: placeAt(e.target) };
@@ -212,7 +234,7 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
   };
 
   return (
-    <div className={`bc-viewcube${square ? " bc-viewcube-square" : ""}`} role="group" aria-label="View cube">
+    <div className={`bc-viewcube${awake ? " bc-viewcube-awake" : ""}`} role="group" aria-label="View cube">
       <svg
         className="bc-viewcube-svg"
         viewBox={`0 0 ${SIZE} ${SIZE}`}
@@ -307,10 +329,31 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
       </svg>
       {onHome && <Button className="bc-cube-btn bc-cube-home" size="dense" icon="home" title="Go home" onClick={onHome} />}
       {onRoll && (
-        <>
-          <Button className="bc-cube-btn bc-cube-roll bc-cube-roll-ccw" size="dense" icon="rollCcw" title="Turn anticlockwise 90°" onClick={() => onRoll(-1)} />
-          <Button className="bc-cube-btn bc-cube-roll bc-cube-roll-cw" size="dense" icon="rollCw" title="Turn clockwise 90°" onClick={() => onRoll(1)} />
-        </>
+        <svg className="bc-cube-rolls" viewBox={`${-ROLL_PAD} ${-ROLL_PAD} ${SIZE + 2 * ROLL_PAD} ${SIZE + 2 * ROLL_PAD}`}>
+          {ROLLS.map((t) => (
+            <g
+              key={t.dir}
+              className={`bc-cube-roll bc-cube-roll-${t.dir > 0 ? "cw" : "ccw"}`}
+              role="button"
+              tabIndex={0}
+              aria-label={t.label}
+              onClick={() => {
+                onRoll(t.dir);
+                if (awake) wake();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onRoll(t.dir);
+                }
+              }}
+            >
+              <title>{t.label}</title>
+              <path className="bc-cube-roll-hit" d={t.d} />
+              <path className="bc-cube-roll-arrow" d={t.d} />
+            </g>
+          ))}
+        </svg>
       )}
       {menu?.length ? (
         <>
