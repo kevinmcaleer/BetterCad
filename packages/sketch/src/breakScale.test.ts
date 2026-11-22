@@ -95,7 +95,6 @@ describe("sketch scale", () => {
     expect(s.dimensions.map((d) => d.value).sort((a, b) => a - b)).toEqual([20, 40]);
     const solved = solver.solve(s);
     expect(solved.status).toBe("ok");
-
   });
 
   it("scales circles' radii, keeps formulas linked, and leaves unpicked shapes alone", () => {
