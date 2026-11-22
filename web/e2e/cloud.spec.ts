@@ -382,11 +382,36 @@ test("upload STL files into a project, each as a model that opens with its body"
   await expect(page).toHaveURL(/#\/library\/project\//);
   const tri = (z: number) => `facet normal 0 0 1\n outer loop\n  vertex 0 0 ${z}\n  vertex 10 0 ${z}\n  vertex 0 10 ${z}\n endloop\nendfacet\n`;
   const stl = (name: string) => ({ name, mimeType: "model/stl", buffer: Buffer.from(`solid ${name}\n${tri(0)}${tri(5)}endsolid ${name}\n`) });
-  await page.getByLabel("STL or 3MF files to upload").setInputFiles([stl("Wheel hub.stl"), stl("Tyre.stl")]);
+  await page.getByLabel("Files to upload").setInputFiles([stl("Wheel hub.stl"), stl("Tyre.stl")]);
   await expect(page.getByText("Uploaded 2 models")).toBeVisible(SAVE);
   expect([...server.models.values()].map((m) => m.name).sort()).toEqual(["Tyre", "Wheel hub"]);
   expect(server.blobs.size).toBe(2);
   await page.getByRole("button", { name: "Open Tyre" }).click();
   await expect(page).toHaveURL(/#\/edit\//);
   await expect(page.getByRole("treeitem", { name: /Tyre/ }).first()).toBeVisible({ timeout: 30_000 });
+});
+
+test("upload a .bcad and a STEP file, each saved as a model that opens", async ({ page, context }) => {
+  test.setTimeout(120_000);
+  const server = await fakeApi(context);
+  await server.signIn(context);
+  await page.goto("/#/library");
+  await expect(page.getByRole("button", { name: "Upload" })).toBeVisible();
+  const root = new URL("../../", import.meta.url).pathname;
+  await page
+    .getByLabel("Files to upload")
+    .setInputFiles([`${root}web/public/samples/bracket.bcad`, `${root}packages/kernel/src/testdata/step/cog-on-flat.step`]);
+  // The STEP file waits for the geometry engine to read its solids.
+  await expect(page.getByText("Uploaded 2 models")).toBeVisible({ timeout: 90_000 });
+  const names = [...server.models.values()].map((m) => m.name);
+  expect(names).toContain("cog-on-flat");
+  expect(names).toHaveLength(2);
+  await page.getByRole("button", { name: "Open cog-on-flat" }).click();
+  await expect(page).toHaveURL(/#\/edit\//);
+  await expect(
+    page
+      .getByRole("treeitem", { name: /Import/ })
+      .or(page.getByRole("treeitem", { name: /cog/i }))
+      .first(),
+  ).toBeVisible({ timeout: 60_000 });
 });

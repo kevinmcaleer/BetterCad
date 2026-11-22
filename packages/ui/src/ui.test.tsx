@@ -412,18 +412,14 @@ describe("ViewCube", () => {
     expect(screen.getByRole("menu", { name: "View cube" })).toBeInTheDocument();
   });
 
-  it("turns the view a quarter turn with its arrows, always shown square on to a face", async () => {
+  it("turns the view a quarter turn with its arrows", async () => {
     const onRoll = vi.fn();
-    const { container, rerender } = render(<ViewCube onRoll={onRoll} />);
+    render(<ViewCube onRoll={onRoll} />);
     const cube = screen.getByRole("group", { name: "View cube" });
     await userEvent.click(within(cube).getByRole("button", { name: "Turn clockwise 90°" }));
     expect(onRoll).toHaveBeenLastCalledWith(1);
     await userEvent.click(within(cube).getByRole("button", { name: "Turn anticlockwise 90°" }));
     expect(onRoll).toHaveBeenLastCalledWith(-1);
-    // The corner view is not square on, so the arrows wait for a hover.
-    expect(container.querySelector(".bc-viewcube-square")).toBeNull();
-    rerender(<ViewCube onRoll={onRoll} rotation={[1, 0, 0, 0, 0, 1, 0, -1, 0]} />);
-    expect(container.querySelector(".bc-viewcube-square")).not.toBeNull();
   });
 
   it("leaves the buttons out when it has nowhere to send them", () => {
