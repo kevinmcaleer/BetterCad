@@ -7,6 +7,7 @@ import { OPTION_ROWS } from "./options";
 import { DIM_LABEL } from "./SketchUI";
 import { FONTS } from "./text/fonts";
 import type { SketchSession } from "./useSketch";
+import { bridgeGap, findGaps, gapLabel, gapSummary, joinAll, joinGap, type Gap } from "@bettercad/sketch/gaps";
 
 /**
  * The sketch palette, floating on the right while a sketch is open, after Fusion's: how constrained the sketch is,
@@ -72,12 +73,22 @@ export function SketchPanel({ s }: { s: SketchSession }) {
                 </span>
               }
             >
-              This sketch has no closed shape yet, so it can't be extruded.
+              This sketch has no closed shape yet, so it can't be extruded. The red rings show where it's open.
             </Banner>
+          )}
+          {!s.gapsOn && (
+            <Button
+              icon="search"
+              label="Find open ends"
+              variant="secondary"
+              title="Show the ends that meet nothing, and the gaps that keep a shape from closing"
+              onClick={() => s.setGapsOn(true)}
+            />
           )}
         </>
       ),
     },
+    ...(s.gapsOn ? [gapSection(s)] : []),
     ...(pickedText
       ? [
           {
@@ -178,6 +189,58 @@ export function SketchPanel({ s }: { s: SketchSession }) {
       footer={<Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />}
     />
   );
+}
+
+/** Find open ends: what keeps a shape from closing, each with a fix where one is safe. */
+function gapSection(s: SketchSession): PropsSection {
+  const sk = s.sketch!;
+  const report = findGaps(sk);
+  const joinable = report.gaps.filter((g) => (g.kind === "ends" || g.kind === "curve") && g.join);
+  const pick = (g: Gap) => s.setSel(g.kind === "overlap" ? [...g.curves] : g.kind === "curve" ? [g.a, g.curve] : g.kind === "ends" ? [g.a, g.b] : [g.a]);
+  return {
+    id: "sketch-gaps",
+    title: "Open ends",
+    content: (
+      <>
+        <p className="bc-note" role="status">
+          {gapSummary(report)}
+        </p>
+        {report.gaps.length === 0 && <p className="bc-note">Every end meets another curve.</p>}
+        {joinable.length > 1 && (
+          <Button
+            icon="check"
+            label={`Join all ${joinable.length} near gaps`}
+            variant="secondary"
+            title={`Join every gap under ${report.joinTol} mm, moving the ends together`}
+            onClick={() => s.apply(joinAll(sk, joinable), "Join ends")}
+          />
+        )}
+        {report.gaps.length > 0 && (
+          <ul className="bc-sk-list" aria-label="Open ends">
+            {report.gaps.map((g, i) => (
+              <li key={i} className="bc-bad">
+                <button type="button" className="bc-sk-item" onClick={() => pick(g)}>
+                  {gapLabel(g)}
+                </button>
+                {(g.kind === "ends" || g.kind === "curve") && g.join && (
+                  <Button
+                    icon="check"
+                    size="dense"
+                    title={g.kind === "ends" ? "Join the two ends" : "Put the end on the curve"}
+                    onClick={() => s.apply(joinGap(sk, g), "Join ends")}
+                  />
+                )}
+                {g.kind === "ends" && (
+                  <Button icon="line" size="dense" title="Close the gap with a line" onClick={() => s.apply(bridgeGap(sk, g), "Close the gap with a line")} />
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <Button label="Hide open ends" variant="secondary" onClick={() => s.setGapsOn(false)} />
+      </>
+    ),
+  };
 }
 
 /**

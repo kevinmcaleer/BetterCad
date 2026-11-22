@@ -12,7 +12,8 @@
     "./dxf": "./src/dxf.ts",
     "./dedupe": "./src/dedupe.ts",
     "./auto": "./src/auto.ts",
-    "./pattern": "./src/pattern.ts"
+    "./pattern": "./src/pattern.ts",
+    "./gaps": "./src/gaps.ts"
   },
   "scripts": {
     "build": "tsc -b"

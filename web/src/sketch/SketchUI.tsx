@@ -60,6 +60,7 @@ import {
 } from "./tools";
 import type { SketchSession } from "./useSketch";
 import { SketchPatternPanel } from "./SketchPatternPanel";
+import { findGaps, gapLabel, type Gap } from "@bettercad/sketch/gaps";
 
 /** Sketch tools whose line icon is also a model tool's: their colour icon is drawn flat. */
 const SKETCH_COLOUR: Partial<Record<SketchToolId, string>> = { fillet: "sk-fillet", mirror: "sk-mirror", pattern: "sk-pattern" };
@@ -522,6 +523,7 @@ export function SketchLabels({ s }: { s: SketchSession }) {
 
   return (
     <div className="bc-snaps" data-tick={s.camTick}>
+      {s.gapsOn && <GapMarks gaps={findGaps(s.sketch).gaps} at={at} />}
       {(dims.length > 0 || placing) && (
         <svg className="bc-dim-art" aria-hidden="true">
           {[...dims, ...(placing ? [{ ...placing, on: true }] : [])].map(({ d, art, on }) => (
@@ -659,6 +661,40 @@ export function SketchLabels({ s }: { s: SketchSession }) {
       )}
       {s.pickList && <SketchPickList s={s} />}
     </div>
+  );
+}
+
+/** Find open ends: a ring on every open end, a dashed line across each gap, and a pill naming it. */
+function GapMarks({ gaps, at }: { gaps: Gap[]; at: (xy: Vec2) => { x: number; y: number } }) {
+  return (
+    <>
+      <svg className="bc-gap-art" aria-hidden="true">
+        {gaps.map((g, i) => {
+          const p = at(g.from);
+          if (g.kind === "overlap") {
+            const q = at(g.to);
+            return <line key={i} className="bc-gap-overlap" x1={p.x} y1={p.y} x2={q.x} y2={q.y} />;
+          }
+          const q = g.kind === "open" ? null : at(g.to);
+          return (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={9} />
+              {q && <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} />}
+              {g.kind === "ends" && q && <circle cx={q.x} cy={q.y} r={9} />}
+            </g>
+          );
+        })}
+      </svg>
+      {gaps.map((g, i) => {
+        const p = at(g.from);
+        const q = g.kind === "open" ? p : at(g.to);
+        return (
+          <span key={i} className="bc-gap-label" style={{ left: (p.x + q.x) / 2, top: Math.min(p.y, q.y) }}>
+            {gapLabel(g)}
+          </span>
+        );
+      })}
+    </>
   );
 }
 

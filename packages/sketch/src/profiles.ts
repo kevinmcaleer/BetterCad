@@ -231,6 +231,9 @@ export function regions(sketch: Sketch, opts: { split?: boolean } = {}): Profile
   return nest(sketch, true, !!opts.split).profiles;
 }
 
+/** Ends that meet nothing once curves are cut where they cross, as `regions` with `split` sees them. */
+export const openEndsOf = (sketch: Sketch): Id[] => nest(sketch, true, true).openEnds;
+
 type L = Loop & { inner: Vec2; comp: string };
 
 function nest(sketch: Sketch, all: boolean, split: boolean): Profiles {
