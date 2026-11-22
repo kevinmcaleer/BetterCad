@@ -44,11 +44,14 @@ import {
 } from "@bettercad/sketch";
 import {
   addSketch,
+  dimensionLoop,
   mat4InvertRigid,
   moveFrame,
   newId,
   paramScope,
+  rebindDimensions,
   redefineSketchPlane,
+  relinkSketches,
   updateSketch,
   type BuiltConstruct,
   type Mat4,
@@ -356,6 +359,8 @@ export function useSketch(d: SketchDeps) {
     (next: Sketch, label: string, opts: { key?: string; strict?: boolean; quiet?: boolean } = {}): boolean => {
       const id = live.current.editingId;
       if (!id) return false;
+      // Sizes that use other sizes (d2 = d1 / 2) follow before the solve.
+      next = rebindDimensions(next, paramScope(store.get()));
       let solved = next;
       if (solver) {
         let r: SolveResult;
@@ -384,7 +389,15 @@ export function useSketch(d: SketchDeps) {
         }
         solved = r.sketch;
       }
-      store.edit((doc) => updateSketch(doc, id, () => solved), label, opts.key);
+      // And sizes in other sketches that use this one's (d5 = d1 * 2) follow after it.
+      const relink = (doc: ModelDoc) =>
+        solver
+          ? relinkSketches(doc, (sk) => {
+              const r = solver.solve(sk);
+              return r.status === "ok" || r.status === "redundant" ? r.sketch : null;
+            })
+          : doc;
+      store.edit((doc) => relink(updateSketch(doc, id, () => solved)), label, opts.key);
       return true;
     },
     [solver, store, say, describe, current],
@@ -508,12 +521,17 @@ export function useSketch(d: SketchDeps) {
         say("Type an angle between 0° and 180°", true);
         return;
       }
+      const loop = dimensionLoop(store.get(), id, text);
+      if (loop) {
+        say(`${loop}, so that can't be its size`, true);
+        return;
+      }
       if (dm.driving && Math.abs(v - dm.value) < 1e-9 && text === dm.expression) return;
       // An offset's distance (#266) is one number: setting one of its sizes sets them all.
       const next = setGroupedSize(s, id, v, text.trim());
       apply(next, `Set ${DIM_NAME[dm.kind].toLowerCase()} to ${formatDimension({ ...dm, value: v, driving: true })}`, { strict: !dm.driving });
     },
-    [current, apply, say],
+    [current, apply, say, store],
   );
 
   /**

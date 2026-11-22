@@ -126,6 +126,53 @@ test("a sketch size uses a parameter, offered by name, and follows it", async ({
   await expect(page.getByRole("button", { name: "50 mm", exact: true })).toBeVisible();
 });
 
+test("click another size while typing to link to it by name, and it follows", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+  await page.waitForTimeout(1200);
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Sketch/ })
+    .click();
+  await click(page, 20, 20);
+  await expect(page.getByRole("toolbar", { name: "Sketch tools" })).toBeVisible();
+  await page.waitForTimeout(800);
+  await page.keyboard.press("r");
+  await click(page, -10, -10);
+  const far = await at(page, 10, 5);
+  await page.mouse.move(far.x, far.y, { steps: 3 });
+  await page.getByRole("textbox", { name: "Width (mm)", exact: true }).fill("30");
+  await page.keyboard.press("Tab");
+  await page.getByRole("textbox", { name: "Height (mm)", exact: true }).fill("20");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "30 mm", exact: true })).toHaveAttribute("title", /^d1\./);
+
+  // While the height is typed, the width shows its name; a click puts it in, and the box stays open.
+  await page.getByRole("button", { name: "20 mm", exact: true }).dblclick();
+  const input = page.getByRole("textbox", { name: "Size in mm" });
+  await expect(input).toBeFocused();
+  await page.getByRole("button", { name: "Use d1, 30 mm" }).click();
+  await expect(input).toHaveValue("d1");
+  await expect(input).toBeFocused();
+  await input.pressSequentially(" / 2");
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "15 mm", exact: true })).toBeVisible();
+
+  // Typing the name works too, and the linked size follows the one it uses.
+  await page.getByRole("button", { name: "30 mm", exact: true }).dblclick();
+  await expect(input).toBeFocused();
+  await input.fill("50");
+  await input.press("Enter");
+  await expect(page.getByRole("button", { name: "25 mm", exact: true })).toBeVisible();
+
+  // A ring of sizes is refused.
+  await page.getByRole("button", { name: "50 mm", exact: true }).dblclick();
+  await input.fill("d2 * 2");
+  await input.press("Enter");
+  await expect(page.getByText("d1 and d2 depend on each other, so that can't be its size")).toBeVisible();
+  await expect(page.getByRole("button", { name: "50 mm", exact: true })).toBeVisible();
+});
+
 test("an open shape asks before finishing", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));

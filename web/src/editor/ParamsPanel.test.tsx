@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { addParam, addPart, newDoc } from "../state/document";
+import { addParam, addPart, addSketch, newDoc, updateSketch, type ModelDoc } from "../state/document";
+import { drawRectangle } from "@bettercad/sketch";
 import { ParamsDialog } from "./ParamsPanel";
 
-function setup() {
-  const doc = addParam(addPart(newDoc(), "box", "a"), { name: "a_long_parameter_name", expression: "4 * 5", comment: "Wall" });
+function setup(base?: ModelDoc) {
+  const doc = base ?? addParam(addPart(newDoc(), "box", "a"), { name: "a_long_parameter_name", expression: "4 * 5", comment: "Wall" });
   const props = {
     doc,
     onAdd: vi.fn(),
@@ -57,5 +58,26 @@ describe("ParamsDialog", () => {
     const { onClose } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Close (Esc)" }));
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("names sketch sizes and renames them everywhere", () => {
+    let base = addSketch(newDoc(), { kind: "world", plane: "XY", offset: 0 }, "s");
+    base = updateSketch(base, "s", (s) => drawRectangle(s, [0, 0], [40, 20], { width: 40, height: 20 }).sketch);
+    base = updateSketch(base, "s", (s) => ({ ...s, dimensions: s.dimensions.map((x) => (x.name === "d2" ? { ...x, expression: "d1 / 2" } : x)) }));
+    const { doc, onEdit, say } = setup(base);
+    fireEvent.click(screen.getByRole("button", { name: /Sketch 1/ }));
+    const name = screen.getByRole("textbox", { name: /^Name of .* 1 of Sketch 1$/ });
+    expect(name).toHaveValue("d1");
+    fireEvent.change(name, { target: { value: "d2" } });
+    fireEvent.keyDown(name, { key: "Enter" });
+    expect(say).toHaveBeenCalledWith("There is already a size called d2", true);
+    fireEvent.change(name, { target: { value: "wide" } });
+    fireEvent.keyDown(name, { key: "Enter" });
+    const next = (onEdit.mock.calls[0]![1] as (d: ModelDoc) => ModelDoc)(doc);
+    const f = next.features[0]!;
+    expect(f.type === "sketch" && f.sketch.dimensions.map((x) => [x.name, x.expression])).toEqual([
+      ["wide", expect.any(String)],
+      ["d2", "wide / 2"],
+    ]);
   });
 });
