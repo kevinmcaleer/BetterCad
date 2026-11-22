@@ -26,7 +26,8 @@ test("the view doesn't tilt while sketching, and the view cube still turns it", 
   await expect(view).toHaveAttribute("data-view", "free");
 
   // Once the sketch is finished, arrows turn the view again.
-  await page.keyboard.press("Enter");
+  // Focus is on the cube's button now, so finish from the sketch tools rather than Enter.
+  await ed.sketchTools.getByRole("button", { name: "Finish sketch" }).click();
   await expect(ed.sketchTools).toHaveCount(0);
   await ed.view.preset("top");
   await view.focus();
