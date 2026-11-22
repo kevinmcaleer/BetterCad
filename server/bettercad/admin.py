@@ -7,6 +7,7 @@ read it. It shows names, dates and sizes, never the models themselves; a model's
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
+from . import chunks
 from .auth import CurrentUser, User, conn
 from .models import image
 from .settings import Settings
@@ -37,7 +38,7 @@ def router(settings: Settings) -> APIRouter:
         models: dict[int, list[dict]] = {}
         for m in db.execute(
             "SELECT m.id, m.user_id, m.name, m.version, m.created, m.modified, m.deleted_at, m.thumbnail IS NOT NULL AS pic,"
-            " (SELECT COALESCE(SUM(v.size), 0) FROM versions v WHERE v.model_id = m.id) AS bytes,"
+            f" {chunks.MODEL_BYTES} AS bytes,"
             " (SELECT COUNT(*) FROM versions v WHERE v.model_id = m.id) AS versions,"
             " EXISTS (SELECT 1 FROM shares s WHERE s.model_id = m.id) AS shared"
             " FROM models m ORDER BY m.modified DESC"

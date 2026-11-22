@@ -1,7 +1,8 @@
 """Saved models, their versions, share links and import blobs (#87, #92).
 
 Every save is a version. A model row holds the name, the latest version number and its thumbnail; each version
-holds the .bcad text, zlib-compressed. Another user's ids answer 404, never 403, so ids leak nothing.
+holds a manifest of the pieces its .bcad is cut into, which it shares with the account's other versions
+(chunks.py). Another user's ids answer 404, never 403, so ids leak nothing.
 """
 
 import base64
@@ -20,7 +21,7 @@ from typing import Annotated
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
-from . import where
+from . import chunks, where
 from .auth import CurrentUser, User, Writer, conn
 
 HASH = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -153,18 +154,15 @@ def router(settings) -> APIRouter:
             raise too_big()
 
     def used(db: sqlite3.Connection, user_id: int) -> int:
-        v = db.execute(
-            "SELECT COALESCE(SUM(v.size), 0) FROM versions v JOIN models m ON m.id = v.model_id WHERE m.user_id = ?",
-            (user_id,),
-        ).fetchone()[0]
         b = db.execute("SELECT COALESCE(SUM(size), 0) FROM blobs WHERE user_id = ?", (user_id,)).fetchone()[0]
-        return v + b
+        return chunks.used(db, user_id) + b
 
-    def write_check(db: sqlite3.Connection, user: User, adding: int) -> None:
+    def write_check(db: sqlite3.Connection, user: User, adding: int, storing: int | None = None) -> None:
+        """`adding` is the save's size, against the one-save limit; `storing` at most what it adds to the quota."""
         if adding > limit:
             raise too_big()
         limiter.check(user.id)
-        if used(db, user.id) + adding > quota:
+        if used(db, user.id) + (adding if storing is None else storing) > quota:
             raise HTTPException(
                 413, f"You've used your {settings.user_quota_mb} MB. Delete some models or old versions to save more."
             )
@@ -175,13 +173,15 @@ def router(settings) -> APIRouter:
             raise HTTPException(404, NOT_FOUND)
         return row
 
-    def add_version(db: sqlite3.Connection, model_id: str, number: int, bcad: str, note: str | None) -> str | None:
+    def add_version(db: sqlite3.Connection, user_id: int, model_id: str, number: int, bcad: str, note: str | None) -> str | None:
         raw = bcad.encode()
         thumb = thumbnail_of(bcad)
-        db.execute(
-            "INSERT INTO versions (model_id, number, bcad_json, size, thumbnail, note) VALUES (?, ?, ?, ?, ?, ?)",
-            (model_id, number, zlib.compress(raw, 6), len(raw), thumb, note),
+        cur = db.execute(
+            "INSERT INTO versions (model_id, number, bcad_json, size, thumbnail, note, chunked) VALUES (?, ?, ?, ?, ?, ?, 1)",
+            (model_id, number, b"", len(raw), thumb, note),
         )
+        manifest = chunks.store(db, user_id, cur.lastrowid, bcad, thumb)
+        db.execute("UPDATE versions SET bcad_json = ? WHERE id = ?", (manifest, cur.lastrowid))
         db.execute(
             "UPDATE models SET version = ?, thumbnail = ?, modified = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?",
             (number, thumb, model_id),
@@ -220,8 +220,15 @@ def router(settings) -> APIRouter:
             else None,
         }
 
-    def full(model: sqlite3.Row, v: sqlite3.Row) -> dict:
-        return {**summary(model), "bcad": zlib.decompress(v["bcad_json"]).decode(), "note": v["note"]}
+    def text(db: sqlite3.Connection, model: sqlite3.Row, v: sqlite3.Row) -> str:
+        return chunks.load(db, model["user_id"], v)
+
+    def full(db: sqlite3.Connection, model: sqlite3.Row, v: sqlite3.Row) -> dict:
+        return {**summary(model), "bcad": text(db, model, v), "note": v["note"]}
+
+    def saving(bcad: str) -> int:
+        """At most what a save adds to the quota: the whole of it, compressed. Pieces it shares cost nothing."""
+        return len(zlib.compress(bcad.encode(), 1))
 
     # --- Models -----------------------------------------------------------------------------------------------
 
@@ -257,19 +264,19 @@ def router(settings) -> APIRouter:
         order = "name COLLATE NOCASE ASC" if sort == "name" else "modified DESC"
         total = db.execute(f"SELECT COUNT(*) FROM models WHERE {where_}", args).fetchone()[0]
         rows = db.execute(
-            f"SELECT m.*, (SELECT COALESCE(SUM(v.size), 0) FROM versions v WHERE v.model_id = m.id) AS bytes,"
+            f"SELECT m.*, {chunks.MODEL_BYTES} AS bytes,"
             f" (SELECT COUNT(*) FROM versions v WHERE v.model_id = m.id) AS versions"
             f" FROM models m WHERE {where_} ORDER BY {order}, id LIMIT ? OFFSET ?",
             [*args, limit_, offset],
         )
-        # Size is what the model takes from the quota: every saved version, as /api/me/usage counts it.
+        # Size is what the model takes from the quota: the pieces its versions use, each once, as /api/me/usage counts.
         return {"models": [{**summary(x), "size": x["bytes"], "versions": x["versions"]} for x in rows], "total": total}
 
     @r.post("/models", status_code=201)
     def create(body: NewModel, request: Request, user: Writer) -> dict:
         check_size(request)
         db = conn(request)
-        write_check(db, user, len(body.bcad.encode()))
+        write_check(db, user, len(body.bcad.encode()), saving(body.bcad))
         folder_id, project_id = where.resolve(db, user.id, body.folder_id, body.project_id)
         model_id = secrets.token_urlsafe(9)
         with db:
@@ -277,7 +284,7 @@ def router(settings) -> APIRouter:
                 "INSERT INTO models (id, user_id, name, folder_id, project_id) VALUES (?, ?, ?, ?, ?)",
                 (model_id, user.id, body.name.strip(), folder_id, project_id),
             )
-            add_version(db, model_id, 1, body.bcad, body.note)
+            add_version(db, user.id, model_id, 1, body.bcad, body.note)
         return summary(own(db, user, model_id))
 
     # Several at once (the selection in My models). Registered before "/models/{model_id}/…" so "bulk" isn't an id.
@@ -322,7 +329,7 @@ def router(settings) -> APIRouter:
     def get_model(model_id: str, request: Request, user: CurrentUser) -> dict:
         db = conn(request)
         m = own(db, user, model_id)
-        return full(m, version_row(db, model_id, m["version"]))
+        return full(db, m, version_row(db, model_id, m["version"]))
 
     @r.put("/models/{model_id}")
     def save(
@@ -334,14 +341,14 @@ def router(settings) -> APIRouter:
     ) -> dict:
         check_size(request)
         db = conn(request)
-        write_check(db, user, len(body.bcad.encode()))
+        write_check(db, user, len(body.bcad.encode()), saving(body.bcad))
         with db:
             m = own(db, user, model_id)
             expected = (if_match or "").strip('"W/ ')
             if expected and expected != str(m["version"]):
                 raise HTTPException(409, {"message": "This model changed in another tab.", "version": m["version"]})
             n = m["version"] + 1
-            add_version(db, model_id, n, body.bcad, body.note)
+            add_version(db, user.id, model_id, n, body.bcad, body.note)
             if body.name:
                 db.execute("UPDATE models SET name = ? WHERE id = ?", (body.name.strip(), model_id))
         return {"version": n}
@@ -362,7 +369,9 @@ def router(settings) -> APIRouter:
         db = conn(request)
         m = own(db, user, model_id)
         v = version_row(db, model_id, m["version"])
-        write_check(db, user, v["size"])
+        bcad = text(db, m, v)
+        # The copy shares every piece with the original, so it costs only its manifest.
+        write_check(db, user, v["size"], len(v["bcad_json"]))
         copy = secrets.token_urlsafe(9)
         with db:
             # The copy sits beside the original.
@@ -370,23 +379,24 @@ def router(settings) -> APIRouter:
                 "INSERT INTO models (id, user_id, name, folder_id, project_id) VALUES (?, ?, ?, ?, ?)",
                 (copy, user.id, f"{m['name']} copy", m["folder_id"], m["project_id"]),
             )
-            db.execute(
-                "INSERT INTO versions (model_id, number, bcad_json, size, thumbnail, note) VALUES (?, 1, ?, ?, ?, ?)",
-                (copy, v["bcad_json"], v["size"], v["thumbnail"], f"Copied from {m['name']}"),
-            )
-            db.execute("UPDATE models SET version = 1, thumbnail = ? WHERE id = ?", (v["thumbnail"], copy))
+            add_version(db, user.id, copy, 1, bcad, f"Copied from {m['name']}")
+            # The rendered picture, which may have replaced the one in the file.
+            db.execute("UPDATE versions SET thumbnail = ? WHERE model_id = ? AND number = 1", (v["thumbnail"], copy))
+            db.execute("UPDATE models SET thumbnail = ? WHERE id = ?", (v["thumbnail"], copy))
         return summary(own(db, user, copy))
 
     @r.delete("/models/{model_id}")
     def delete(model_id: str, request: Request, user: Writer, forever: bool = False) -> dict:
         db = conn(request)
         own(db, user, model_id, binned=None)
-        with db:
-            if forever:
+        if forever:
+            with db:
                 db.execute("DELETE FROM models WHERE id = ?", (model_id,))
-            else:
-                db.execute("UPDATE models SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?", (model_id,))
-                db.execute("DELETE FROM shares WHERE model_id = ?", (model_id,))
+            chunks.sweep(db, user.id)
+            return {"ok": True}
+        with db:
+            db.execute("UPDATE models SET deleted_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?", (model_id,))
+            db.execute("DELETE FROM shares WHERE model_id = ?", (model_id,))
         return {"ok": True}
 
     @r.post("/models/{model_id}/restore")
@@ -431,7 +441,7 @@ def router(settings) -> APIRouter:
         db = conn(request)
         m = own(db, user, model_id)
         v = version_row(db, model_id, n)
-        return {**full(m, v), **version_info(model_id, v)}
+        return {**full(db, m, v), **version_info(model_id, v)}
 
     @r.patch("/models/{model_id}/versions/{n}")
     def note(model_id: str, n: int, body: Note, request: Request, user: Writer) -> dict:
@@ -447,10 +457,11 @@ def router(settings) -> APIRouter:
         db = conn(request)
         m = own(db, user, model_id)
         v = version_row(db, model_id, n)
-        write_check(db, user, v["size"])
+        # The restored version shares its pieces with the old one, so it costs about a manifest.
+        write_check(db, user, v["size"], len(v["bcad_json"]))
         latest = m["version"] + 1
         with db:
-            add_version(db, model_id, latest, zlib.decompress(v["bcad_json"]).decode(), f"Restored version {n}")
+            add_version(db, user.id, model_id, latest, text(db, m, v), f"Restored version {n}")
         return {"version": latest}
 
     @r.put("/models/{model_id}/versions/{n}/thumbnail")
@@ -518,7 +529,7 @@ def router(settings) -> APIRouter:
             "owner": m["owner"],
             "version": m["version"],
             "modified": m["modified"],
-            "bcad": zlib.decompress(v["bcad_json"]).decode(),
+            "bcad": text(db, m, v),
             "thumbnail": f"/api/shared/{token}/thumbnail" if m["thumbnail"] else None,
         }
 

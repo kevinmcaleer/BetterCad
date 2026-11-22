@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, accounts, admin, auth, db, jobs, models, places, printers, reports, stats
+from . import __version__, accounts, admin, auth, chunks, db, jobs, models, places, printers, reports, stats
 from .settings import Settings, get_settings
 
 log = logging.getLogger("bettercad")
@@ -76,6 +76,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if applied:
             log.info("applied migrations %s", applied)
         app.state.db = conn
+        converted = chunks.convert(conn)
+        if converted:
+            swept = chunks.sweep(conn)
+            log.info("versions now share their pieces: %d converted, %d pieces swept", converted, swept)
         aside = accounts.set_aside(conn, settings.blob_dir)
         if aside:
             log.warning("set aside %d accounts from the old sign-in: python -m bettercad.accounts", aside)

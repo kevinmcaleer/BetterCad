@@ -40,6 +40,9 @@ def _move(db: sqlite3.Connection, old: int, new: int) -> None:
     db.execute("UPDATE folders SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("UPDATE projects SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("UPDATE OR IGNORE blobs SET user_id = ? WHERE user_id = ?", (new, old))
+    # Saved pieces go with the models; ones the new account already has stay as they are there.
+    db.execute("UPDATE OR IGNORE chunks SET user_id = ? WHERE user_id = ?", (new, old))
+    db.execute("DELETE FROM chunks WHERE user_id = ?", (old,))
     db.execute("UPDATE OR IGNORE printer_profiles SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("DELETE FROM accounts WHERE id = ?", (old,))
 
