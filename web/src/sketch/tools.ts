@@ -53,6 +53,8 @@ export type SketchToolId =
   | "fillet"
   | "trim"
   | "extend"
+  | "break"
+  | "scale"
   | "offset"
   | "mirror"
   | "pattern"
@@ -201,13 +203,27 @@ export const SKETCH_TOOLS: SketchTool[] = [
   },
   {
     id: "extend",
-    label: "Trim",
-    icon: "crop",
+    label: "Extend",
+    icon: "arrowEnd",
     key: "",
     help: "Hover near the end of a line or arc to see it grow to the next shape, then click. The end joins what it meets.",
     fields: [],
-    modeOf: "trim",
-    mode: "Extend",
+  },
+  {
+    id: "break",
+    label: "Break",
+    icon: "unlink",
+    key: "",
+    help: "Hover a shape to see where the shapes crossing it will break it, then click. The pieces stay joined.",
+    fields: [],
+  },
+  {
+    id: "scale",
+    label: "Sketch scale",
+    icon: "resize",
+    key: "",
+    help: "Click the shapes to scale, then Base point and click the point to scale about. Set the scale in the bar.",
+    fields: [],
   },
   {
     id: "offset",
