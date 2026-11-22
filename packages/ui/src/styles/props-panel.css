@@ -196,6 +196,11 @@
   accent-color: var(--bc-color-accent);
   cursor: pointer;
 }
+/* Linetype in the sketch palette: normal and construction side by side, the one in use pressed. */
+.bc-sk-linetype {
+  display: inline-flex;
+  gap: var(--bc-space-1);
+}
 .bc-props-footer {
   position: sticky;
   bottom: calc(-1 * var(--bc-space-6));
