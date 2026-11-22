@@ -267,6 +267,8 @@ export function useSketch(d: SketchDeps) {
   const [dimEdit, setDimEdit] = useState<Id | null>(null);
   const [placing, setPlacing] = useState<Placing | null>(null);
   const [finishWarn, setFinishWarn] = useState(false);
+  /** Find open ends: markers on the gaps that keep a shape from closing, and their list in the palette. */
+  const [gapsOn, setGapsOn] = useState(false);
   const [camTick, setCamTick] = useState(0);
   const [solver, setSolver] = useState<Solver | null>(null);
   /** Parameter values (#75), for the sketch's size fields. */
@@ -859,6 +861,7 @@ export function useSketch(d: SketchDeps) {
     setHover(null);
     setDimEdit(null);
     setFinishWarn(false);
+    setGapsOn(false);
     setCursor(null);
     setTextEdit(null);
     if (name) say(`Finished ${name}`);
@@ -873,6 +876,7 @@ export function useSketch(d: SketchDeps) {
       const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction) || !!s.texts?.some((t) => !t.construction);
       if (!force && drawn && profiles(s).profiles.length === 0) {
         setFinishWarn(true);
+        setGapsOn(true);
         return;
       }
       end();
@@ -2178,6 +2182,15 @@ export function useSketch(d: SketchDeps) {
         keywords: "overlapping duplicate lines points tidy clean",
       },
       {
+        id: "sketch.findGaps",
+        scope: "sketch",
+        label: "Find open ends",
+        group: "Sketch",
+        icon: "search",
+        run: () => setGapsOn((on) => !on),
+        keywords: "gaps profile closed shape",
+      },
+      {
         id: "sketch.selectAll",
         scope: "sketch",
         label: "Select all in the sketch",
@@ -2303,6 +2316,9 @@ export function useSketch(d: SketchDeps) {
     scope,
     finishWarn,
     setFinishWarn,
+    gapsOn,
+    setGapsOn,
+    apply,
     finish,
     edit,
     startOnPlane,
