@@ -555,3 +555,72 @@
     height: 28px;
   }
 }
+/* The upload card: each file's progress, then the model it made or why it failed. Bottom right, over the page. */
+.bc-upload-card {
+  position: fixed;
+  right: var(--bc-space-8);
+  bottom: var(--bc-space-8);
+  z-index: 6;
+  display: grid;
+  gap: var(--bc-space-3);
+  width: min(340px, calc(100vw - 2 * var(--bc-space-8)));
+  max-height: min(420px, calc(100vh - 2 * var(--bc-space-8)));
+  padding: var(--bc-space-3) var(--bc-space-4);
+  overflow: auto;
+  color: var(--bc-color-ink);
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-float);
+}
+.bc-upload-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-3);
+  min-height: 28px;
+}
+.bc-upload-title {
+  font-weight: 600;
+}
+.bc-upload-rows {
+  display: grid;
+  gap: var(--bc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bc-upload-row {
+  display: grid;
+  gap: var(--bc-space-1);
+  min-width: 0;
+}
+.bc-upload-file {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-upload-stage {
+  color: var(--bc-color-muted);
+  font-size: 12px;
+}
+.bc-upload-why {
+  color: var(--bc-color-danger);
+  font-size: 12px;
+}
+.bc-upload-failed .bc-upload-file {
+  color: var(--bc-color-danger);
+}
+.bc-upload-done .bc-upload-file svg {
+  color: var(--bc-color-accent);
+}
+@media (max-width: 600px) {
+  .bc-upload-card {
+    right: var(--bc-space-4);
+    bottom: var(--bc-space-4);
+    width: calc(100vw - 2 * var(--bc-space-4));
+  }
+}

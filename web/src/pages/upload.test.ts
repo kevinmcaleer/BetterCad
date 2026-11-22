@@ -3,7 +3,7 @@ import { writeStl } from "@bettercad/kernel/mesh-files";
 import { loadBcad } from "@bettercad/kernel/bcad";
 import { createApi } from "../cloud/api";
 import { newDoc } from "../state/document";
-import { bcadModel, meshModel, stepModel, uploadModels, type Engine } from "./upload";
+import { bcadModel, meshModel, stepModel, uploadModels, type Engine, type UploadRow } from "./upload";
 import { saveBcad } from "@bettercad/kernel/bcad";
 
 /** One triangle, 10 mm on a side, as a binary STL. */
@@ -44,11 +44,17 @@ describe("uploading STL files to My models", () => {
       }
       return new Response("{}", { status: 404 });
     });
-    const said: string[] = [];
-    const r = await uploadModels(api, [fileOf("Arm.stl", stl()), fileOf("readme.md", new Uint8Array(1))], { project_id: "rover" }, (t) => said.push(t));
+    const said: UploadRow[][] = [];
+    const r = await uploadModels(api, [fileOf("Arm.stl", stl()), fileOf("readme.md", new Uint8Array(1))], { project_id: "rover" }, (rows) => said.push(rows));
     expect(r.made.map((m) => m.name)).toEqual(["Arm"]);
     expect(r.failed).toEqual(["readme.md isn't a BetterCad, STL, 3MF or STEP file."]);
-    expect(said).toEqual(["Uploading Arm.stl (1 of 2)"]);
+    // Each file's line goes from waiting, through its stages, to saved; the file it can't take fails at once.
+    expect(said[0]).toEqual([
+      { file: "Arm.stl", state: "waiting", stage: "Waiting" },
+      { file: "readme.md", state: "failed", stage: "BetterCad takes .bcad, STL, 3MF and STEP files." },
+    ]);
+    expect([...new Set(said.map((rows) => rows[0]!.stage))]).toEqual(["Waiting", "Reading the file", "Uploading the file", "Saving the model", "Arm"]);
+    expect(said.at(-1)![0]).toMatchObject({ state: "done", fraction: 1 });
     expect(blobs).toHaveLength(1);
     expect(posts[0]).toMatchObject({ name: "Arm", project_id: "rover" });
     const saved = loadBcad(posts[0]!.bcad);
@@ -80,6 +86,60 @@ describe("uploading STL files to My models", () => {
       throw new Error("That STEP file is damaged.");
     }) as unknown as Engine;
     await expect(stepModel("Bad.step", new Uint8Array(1), bad)).rejects.toThrow("Bad.step: That STEP file is damaged.");
+  });
+
+  it("says on the file's line why it failed: a damaged file, or a server that turned it away", async () => {
+    const json = (b: unknown) => new Response(JSON.stringify(b), { headers: { "content-type": "application/json" } });
+    // A proxy in front of the server refusing the file answers with its own HTML page.
+    const api = createApi("api/", async (_url, init) =>
+      init?.method === "HEAD" ? new Response(null, { status: 404 }) : init?.method === "PUT" ? new Response("<html>blocked</html>", { status: 403 }) : json({}),
+    );
+    let last: UploadRow[] = [];
+    const quiet = console.error;
+    console.error = () => undefined;
+    try {
+      const r = await uploadModels(
+        api,
+        [fileOf("broken.stl", new TextEncoder().encode("solid x\nendsolid x\n")), fileOf("Arm.stl", stl())],
+        {},
+        (rows) => (last = rows),
+      );
+      expect(r.made).toEqual([]);
+      expect(last.map((x) => [x.state, x.stage])).toEqual([
+        ["failed", "That STL file is damaged."],
+        ["failed", "The server turned the file away (HTTP 403). Try again, or report a problem if it keeps happening."],
+      ]);
+      expect(r.failed[0]).toBe("broken.stl: That STL file is damaged.");
+    } finally {
+      console.error = quiet;
+    }
+  });
+
+  it("shows a STEP file's engine start and read on its bar", async () => {
+    const engine = (async (_m: string, _p: unknown, progress?: (phase: "starting" | "working", f: number) => void) => {
+      progress?.("starting", 0.5);
+      progress?.("working", 0.5);
+      return { bodies: [{ name: "Horn", open: false }] };
+    }) as unknown as Engine;
+    const json = (b: unknown) => new Response(JSON.stringify(b), { headers: { "content-type": "application/json" } });
+    const api = createApi("api/", async (_url, init) => {
+      if (init?.method === "HEAD") return new Response(null, { status: 404 });
+      if (init?.method === "PUT") return json({ hash: "x", stored: true });
+      const body = JSON.parse(init!.body as string);
+      return json({ id: "m1", name: body.name, version: 1, created: "", modified: "", deleted_at: null, thumbnail: null });
+    });
+    const seen: [string, number | undefined][] = [];
+    await uploadModels(
+      api,
+      [fileOf("Servo.step", new TextEncoder().encode("ISO-10303-21;"))],
+      { project_id: "duck" },
+      (rows) => seen.push([rows[0]!.stage, rows[0]!.fraction]),
+      engine,
+    );
+    const at = (stage: string) => seen.find(([s]) => s === stage)?.[1];
+    expect(at("Starting the geometry engine")).toBeCloseTo(0.225);
+    expect(at("Finding the solids")).toBeCloseTo(0.6);
+    expect(seen.at(-1)).toEqual(["Servo", 1]);
   });
 
   it("takes a .bcad as it was saved, with its own picture", () => {
