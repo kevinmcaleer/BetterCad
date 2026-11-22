@@ -290,15 +290,19 @@ export function useFiles(d: FilesDeps) {
         if (!m.cloud) {
           const made = await api.create(current.name, text, o.note);
           m.cloud = { modelId: made.id, version: made.version };
-          // The address now names the model, so a reload opens it again (unless another model is open by now).
-          if (meta.current === m) setRoute(`#/edit/${made.id}`);
         } else {
           const r = await api.save(m.cloud.modelId, text, { note: o.note, name: current.name, ifMatch: o.force ? undefined : m.cloud.version });
           m.cloud = { ...m.cloud, version: r.version };
         }
         m.created ??= new Date().toISOString();
         m.savedAt = Date.now();
-        if (meta.current === m) setBaseline(current);
+        if (meta.current === m) {
+          setBaseline(current);
+          // Saved, even before the next render: a New model straight after this doesn't ask to save it again.
+          if (store.get() === current) dirtyNow.current = false;
+          // The address now names the model, so a reload opens it again (unless another model is open by now).
+          if (!modelId) setRoute(`#/edit/${m.cloud.modelId}`);
+        }
         await auto.markSaved(m.id, m.savedAt);
         // A new model (or another one) opened while this saved: it stays unlinked from the one just saved.
         if (meta.current === m) {
