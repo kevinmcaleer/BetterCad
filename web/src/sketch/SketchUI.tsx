@@ -777,7 +777,7 @@ const TOOLBARS_BOTTOM = 140;
 function SketchLoupe({ s, view }: { s: SketchSession; view: { width: number; height: number } }) {
   const l = s.loupe!;
   // Keep clear of the top bar and the sketch's tool bars, which float over the top of the view.
-  const box = loupeBox(l.why === "touch" ? l.pointer : l.anchor, { ...view, top: TOOLBARS_BOTTOM });
+  const box = loupeBox(l.anchor, { ...view, top: TOOLBARS_BOTTOM });
   return (
     <div className={cx("bc-loupe", box.below && "bc-below")} style={{ left: box.left, top: box.top }} aria-hidden="true">
       <canvas ref={s.loupeCanvas} />

@@ -31,7 +31,7 @@ import type { Engine, Mods, ScreenPoint } from "../viewport/engine";
 import { readPalette } from "../viewport/colours";
 import { isMac, isTyping } from "../state/commands";
 import { loupeAuto } from "../state/loupePref";
-import { CROWD_DWELL, LOUPE_REACH, LOUPE_SIZE, crowding, lensed, loupeZoom, type Loupe } from "../sketch/loupe";
+import { CROWD_DWELL, LOUPE_SIZE, crowding, follow, loupeZoom, type Loupe } from "../sketch/loupe";
 import { SnapMarks } from "./snapMarks";
 import { between, boxSnaps, facing, faceSnaps, nearSnaps, otherSide, wiggle, type SnapPoint, type V3 } from "./snapPoints";
 import { sharpCorners } from "./sharpCorners";
@@ -329,8 +329,7 @@ export function useJoint(d: JointDeps) {
      * can slide across the face to a hole without another face or part taking over.
      */
     let held = false;
-    // The loupe: while it is open the pointer moves at its own speed inside it, so in the view it moves `zoom` times
-    // slower, and picks reach only as far as the zoom allows.
+    // The loupe: while it is open it follows the pointer, magnifying what is under it.
     let lens: Loupe | null = null;
     let dwell: number | undefined;
     let last: { p: ScreenPoint; mods: Mods } | null = null;
@@ -373,15 +372,14 @@ export function useJoint(d: JointDeps) {
     const flipOver = () => changeRef.current({ flip: !(live.current.feature ?? live.current.draft).flip || undefined });
     const onScreen = () => (face ? face.snaps.map((s) => eng.project(s.point)) : []);
     const openAt = (p: ScreenPoint, why: Loupe["why"], gap?: number | null) =>
-      show({ anchor: p, pointer: p, zoom: loupeZoom(gap === undefined ? (crowding(onScreen(), p)?.gap ?? null) : gap), why });
+      show({ anchor: p, opened: p, zoom: loupeZoom(gap === undefined ? (crowding(onScreen(), p)?.gap ?? null) : gap), why });
     /** Opens, follows or closes the loupe as the pointer moves. */
     const watch = (p: ScreenPoint, mods: Mods) => {
       window.clearTimeout(dwell);
       if (lens) {
         if (lens.why === "alt" && !mods.alt) return show(null);
-        // Moving off the loupe's edge closes it, or with Alt held, moves it to the pointer.
-        if (Math.hypot(p.x - lens.anchor.x, p.y - lens.anchor.y) > LOUPE_REACH) return lens.why === "alt" ? openAt(p, "alt") : show(null);
-        return show({ ...lens, pointer: p });
+        // It follows the pointer; a crowd's closes once the pointer leaves the crowd.
+        return show(follow(lens, p));
       }
       if (mods.touch) return;
       if (mods.alt && !mods.shift) return openAt(p, "alt");
@@ -399,7 +397,7 @@ export function useJoint(d: JointDeps) {
       if (e.type === "keydown" && e.key === "Tab" && last && face && live.current.target) {
         // Tab: the next snap in reach under the pointer.
         e.preventDefault();
-        turn = { n: turn.n + 1, at: lensed(lens, last.p) };
+        turn = { n: turn.n + 1, at: last.p };
         return refresh();
       }
       if (e.type === "keydown" && !e.altKey && (e.key === "q" || e.key === "Q" || e.key === "w" || e.key === "W")) {
@@ -429,10 +427,10 @@ export function useJoint(d: JointDeps) {
       const near = nearSnaps(onScreen(), p, reach);
       return near.length ? near[turn.n % near.length]! : -1;
     };
-    /** The face and snap under a point (already lensed), and the edge there when no snap is in reach. */
+    /** The face and snap under a point, and the edge there when no snap is in reach. */
     const look = (p: ScreenPoint) => {
       const f = eng.pick(p.x, p.y, "face");
-      const reach = lens ? Math.max(2, SNAP_REACH / lens.zoom) : SNAP_REACH;
+      const reach = SNAP_REACH;
       if (held && face) {
         hot = cycled(p, Infinity);
         return { edge: null, face: { body: face.body, kind: "face" as const, index: face.index } };
@@ -490,9 +488,8 @@ export function useJoint(d: JointDeps) {
       if (!mods.shift || mods.touch) held = false;
       else if (face) held = true;
       if (!t) return clearMarks();
-      const q = lensed(lens, p);
-      if (t === "parent" && eng.constructAt(q.x, q.y, AXES)) return clearMarks();
-      const at = look(q);
+      if (t === "parent" && eng.constructAt(p.x, p.y, AXES)) return clearMarks();
+      const at = look(p);
       eng.showHover(at.edge ?? at.face);
       if (face) marks.show(face.snaps, hot, face.ghosts);
       else marks.hide();
@@ -507,10 +504,9 @@ export function useJoint(d: JointDeps) {
         if (pressed) return;
         hoverAt(p, mods);
       },
-      down: (p0, mods) => {
+      down: (p, mods) => {
         const t = live.current.target;
         if (!t) return false;
-        const p = lensed(lens, p0);
         if (t === "parent") {
           // An origin or construction axis in the view gives the axis as it is.
           const shape = eng.constructAt(p.x, p.y, AXES);
@@ -622,7 +618,7 @@ export function useJoint(d: JointDeps) {
     [engineOf, d.active],
   );
 
-  // The loupe redraws as the pointer moves in it: the view itself, magnified round where it opened.
+  // The loupe redraws as it follows the pointer: the view itself, magnified round the pointer.
   useEffect(() => {
     const cv = loupeCanvas.current;
     const eng = engineOf();
