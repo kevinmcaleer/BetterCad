@@ -136,4 +136,19 @@ describe("JointPanel (#172)", () => {
     await userEvent.click(screen.getByRole("button", { name: /^Base/ }));
     expect(x.pickParent).toHaveBeenCalledWith(null);
   });
+
+  it("says when the joint leaves a part under the floor, and offers to lift the assembly back onto it", async () => {
+    const lift = vi.fn();
+    render(<JointPanel x={session({ under: { by: 68.575, name: "Wheel", root: "L2" }, lift })} onCancel={() => {}} />);
+    const under = screen.getByRole("region", { name: "Under the floor" });
+    expect(under).toHaveTextContent("Wheel is 68.6 mm under the floor");
+    await userEvent.click(within(under).getByRole("button", { name: /Lift onto the floor/ }));
+    expect(lift).toHaveBeenCalled();
+  });
+
+  it("only warns when the assembly hangs from Base, which can't move", () => {
+    render(<JointPanel x={session({ under: { by: 5, name: "Wheel", root: null } })} onCancel={() => {}} />);
+    expect(screen.getByRole("region", { name: "Under the floor" })).toHaveTextContent("Wheel is 5 mm under the floor");
+    expect(screen.queryByRole("button", { name: /Lift onto the floor/ })).toBeNull();
+  });
 });

@@ -36,7 +36,7 @@ export {
   type CatalogueCategory,
 } from "./catalogue";
 import { JOINT_KINDS, JOINT_LIMITS, jointLinkProblem, limitUnit, type JointKind } from "./joints";
-import { clampJoint, jointMove, mat4Apply, mat4ApplyDir, mat4Mul, moveFrame, placeMatrix, placeOf, type Mat4, type Pose } from "./pose";
+import { clampJoint, jointMove, mat4Apply, mat4ApplyDir, mat4InvertRigid, mat4Mul, moveFrame, placeMatrix, placeOf, type Mat4, type Pose } from "./pose";
 import { driveMultiplier, driveProblem, driveTo, togetherMultiplier, togetherProblem, type DriveGear, type DriveKind, type PoseDrive } from "./drivelinks";
 import {
   FINISH_OPS,
@@ -946,6 +946,12 @@ export interface ToolPoint {
 }
 
 const ZERO: Vec3 = { x: 0, y: 0, z: 0 };
+/** A body's placement as a transform, or null when it isn't there. */
+function placeOfPart(p: Part | undefined): Mat4 | null {
+  if (!p) return null;
+  const r = p.rotation ?? ZERO;
+  return placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z]);
+}
 
 export const KIND_LABEL: Record<PartKind, string> = {
   box: "Box",
@@ -1211,6 +1217,49 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     if (gone.length) failed.set(f.id, gone.length === ids.length ? "The parts it changes are gone" : "Some of the parts it changes are gone");
     return gone;
   };
+  /**
+   * Moving a component carries the components jointed to it, and theirs, as Fusion's do: each goes by the same turn
+   * and slide as the body it hangs from, and so do the joints' origins and axes. Bodies the move names go where it
+   * puts them. `was` is where each moved body stood before the move.
+   */
+  const carryJointed = (was: Map<string, Mat4 | null>) => {
+    const by = new Map<string, Mat4>();
+    for (const [id, before] of was) {
+      const p = parts[find(id)];
+      if (!p?.link || !before || by.has(p.link)) continue;
+      by.set(p.link, mat4Mul(placeOfPart(p)!, mat4InvertRigid(before)));
+    }
+    if (!by.size) return;
+    // Each link that follows, with the move it follows: down the joints, and into the components nested in those.
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const j of joints) {
+        const m = j.parent !== null ? by.get(j.parent) : undefined;
+        if (m && !by.has(j.child)) grew = !!by.set(j.child, m);
+      }
+      for (const l of linkSteps) {
+        const m = l.parent ? by.get(l.parent) : undefined;
+        if (m && !by.has(l.id) && !was.has(l.id)) grew = !!by.set(l.id, m);
+      }
+    }
+    const direct = new Set([...was.keys()].map((id) => parts[find(id)]?.link).filter((l): l is string => !!l));
+    parts.forEach((p, i) => {
+      const m = p.link && !direct.has(p.link) && !was.has(p.id) ? by.get(p.link) : undefined;
+      if (!m) return;
+      const r = p.rotation ?? ZERO;
+      const at = placeOf(mat4Mul(m, placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z])));
+      const [x, y, z] = at.rotation;
+      parts[i] = {
+        ...p,
+        position: { x: at.position[0], y: at.position[1], z: at.position[2] },
+        ...(x || y || z || p.rotation ? { rotation: { x, y, z } } : {}),
+      };
+    });
+    joints.forEach((j, i) => {
+      const m = j.parent !== null ? by.get(j.parent) : undefined;
+      if (m) joints[i] = { ...j, origin: mat4Apply(m, j.origin), axis: mat4ApplyDir(m, j.axis) };
+    });
+  };
   /** A construction pick (#265) where it is now: an origin plane or axis, a built step, or a body's face or edge. */
   const refGeo = (r: ConstructRef): Geo | string => {
     if ("origin" in r) return originGeo(r.origin);
@@ -1449,6 +1498,8 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         const key = f.type === "move" ? "position" : "size";
         const change = f.type === "move" ? f.position : f.size;
+        // Where each moved body was, so the components jointed to it can follow (below).
+        const was = f.type === "move" && joints.length ? new Map(f.parts.map((id) => [id, placeOfPart(parts[find(id)])] as const)) : null;
         if (f.type === "move" && f.together) {
           const r = { ...ZERO, ...f.rotation };
           const by = placeMatrix([f.position.x ?? 0, f.position.y ?? 0, f.position.z ?? 0], [r.x, r.y, r.z]);
@@ -1465,14 +1516,15 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
               ...(x || y || z || p.rotation ? { rotation: { x, y, z } } : {}),
             };
           }
-          break;
+        } else {
+          for (const id of f.parts) {
+            const p = parts[find(id)];
+            if (!p || (f.type === "resize" && p.kind === "solid")) continue;
+            p[key] = { ...p[key], ...change };
+            if (f.type === "move" && f.rotation) p.rotation = { ...ZERO, ...p.rotation, ...f.rotation };
+          }
         }
-        for (const id of f.parts) {
-          const p = parts[find(id)];
-          if (!p || (f.type === "resize" && p.kind === "solid")) continue;
-          p[key] = { ...p[key], ...change };
-          if (f.type === "move" && f.rotation) p.rotation = { ...ZERO, ...p.rotation, ...f.rotation };
-        }
+        if (was) carryJointed(was);
         break;
       }
       case "link": {
@@ -2287,6 +2339,16 @@ export function changeParts(doc: ModelDoc, ids: string[], key: "position" | "siz
   const base = { id: newId("f"), name: nextFeatureName(doc, type), parts: [...ids] };
   if (type === "resize") return insert(doc, i, { ...base, type, size: change });
   return insert(doc, i, key === "rotation" ? { ...base, type, position: {}, rotation: change } : { ...base, type, position: change });
+}
+
+/**
+ * Lifts parts straight up as one, by `dz` mm: one Move step. Components jointed to them come too (see build), so a
+ * whole assembly that a joint left under the floor can sit back on it.
+ */
+export function liftParts(doc: ModelDoc, ids: string[], dz: number, at?: number): ModelDoc {
+  if (!ids.length || !dz) return doc;
+  const f: MoveFeature = { id: newId("f"), type: "move", name: nextFeatureName(doc, "move"), parts: [...ids], position: { z: dz }, together: true };
+  return insert(doc, clampAt(doc, at), f);
 }
 
 /** Places one part where the gizmo left it: one Move feature with its position and turn. */
