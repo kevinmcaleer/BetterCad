@@ -3623,21 +3623,22 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     { id: "about", label: "About BetterCad", icon: "info", onSelect: () => registry.run("help.about") },
   ];
   const saveTip = files.cloud && account ? "Save to your account" : files.inPlace ? "Save" : "Save (downloads a file)";
+  // The account entry sits by Save as, above the recent files: at the foot of a long menu it scrolled out of sight.
+  const accountEntry: MenuEntry = account
+    ? files.cloud
+      ? { id: "disk", label: "Save a copy to disk", icon: "save", onSelect: () => void files.saveToDisk() }
+      : { id: "cloud", label: "Save to your account…", icon: "cloud", onSelect: () => void files.saveCloud() }
+    : accountsOn
+      ? { id: "cloud", label: "Sign in to save to your account", icon: "cloud", onSelect: () => go("#/signin?next=%23%2F") }
+      : { id: "cloud", label: "Accounts can't be reached here", icon: "cloudOff", disabled: true, onSelect: () => {} };
   const saveEntries: MenuEntry[] = [
+    accountEntry,
     { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
     { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
     ...files.recentEntries,
-    { kind: "separator", id: "s1" },
-    account
-      ? files.cloud
-        ? { id: "disk", label: "Save a copy to disk", icon: "save", onSelect: () => void files.saveToDisk() }
-        : { id: "cloud", label: "Save to your account…", icon: "cloud", onSelect: () => void files.saveCloud() }
-      : accountsOn
-        ? { id: "cloud", label: "Sign in to save to your account", icon: "cloud", onSelect: () => go("#/signin?next=%23%2F") }
-        : { id: "cloud", label: "Accounts can't be reached here", icon: "cloudOff", disabled: true, onSelect: () => {} },
   ];
 
   const selectionText =
@@ -3743,7 +3744,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             {(problem.type === "fillet" || problem.type === "chamfer" || problem.type === "shell" || problem.type === "offsetFace") && (
               <Button size="dense" label="Re-pick" title="Pick the edges or faces again" onClick={() => repick(problem.id)} />
             )}
-            {editEntry && "onSelect" in editEntry && <Button size="dense" label="Edit" onClick={editEntry.onSelect} />}
+            {editEntry && "onSelect" in editEntry && <Button size="dense" label="Edit" onClick={() => editEntry.onSelect()} />}
             <Button size="dense" label={problem.suppressed ? "Unsuppress" : "Suppress"} onClick={() => suppressFeature(problem.id)} />
             <Button size="dense" variant="danger" label="Delete" onClick={() => deleteFeature(problem.id)} />
           </span>
