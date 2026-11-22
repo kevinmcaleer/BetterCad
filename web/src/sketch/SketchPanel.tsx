@@ -20,6 +20,10 @@ export function SketchPanel({ s }: { s: SketchSession }) {
   const conflicting = new Set(s.result?.conflicting ?? []);
   const redundant = new Set(s.result?.redundant ?? []);
   const plane = sk.plane.kind === "world" ? `${sk.plane.plane} plane` : sk.plane.kind === "construct" ? "A construction plane" : "A face";
+  // Linetype shows the picked curves' type when there are any, otherwise what you draw next.
+  const pickedCurves = [...sk.entities.filter((e) => e.kind !== "point"), ...(sk.texts ?? [])].filter((e) => s.sel.includes(e.id));
+  const picked = pickedCurves.length > 0;
+  const construction = picked ? pickedCurves.every((e) => e.construction) : s.drawConstruction;
   const state = conflicting.size > 0 ? "bad" : s.result?.dof === 0 ? "done" : "free";
   const sections: PropsSection[] = [
     {
@@ -71,6 +75,26 @@ export function SketchPanel({ s }: { s: SketchSession }) {
       title: "Options",
       content: (
         <>
+          <div className="bc-check-row">
+            <span>Linetype</span>
+            <span className="bc-sk-linetype" role="group" aria-label="Linetype">
+              <Button
+                icon="line"
+                size="dense"
+                on={!construction}
+                title={picked ? "Make the picked lines normal geometry" : "Draw normal lines, which make shapes"}
+                onClick={() => s.setLinetype(false)}
+              />
+              <Button
+                icon="dash"
+                size="dense"
+                on={construction}
+                title={picked ? "Make the picked lines construction geometry" : "Draw dashed construction lines, which guide without making shapes"}
+                shortcut="X"
+                onClick={() => s.setLinetype(true)}
+              />
+            </span>
+          </div>
           <div className="bc-check-row">
             <span>Look at</span>
             <Button icon="camera" size="dense" title="Look straight at the sketch" onClick={s.lookAtSketch} />

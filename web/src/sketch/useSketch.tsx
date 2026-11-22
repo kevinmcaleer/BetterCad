@@ -80,6 +80,7 @@ import {
   CONSTRAINT_TOOLS,
   SKETCH_TOOLS,
   addConstraints,
+  asConstruction,
   axisLine,
   commit,
   constraintToolById,
@@ -249,6 +250,10 @@ export function useSketch(d: SketchDeps) {
   const [hover, setHover] = useState<Id | null>(null);
   const [pickList, setPickList] = useState<PickList | null>(null);
   const [sides, setSides] = useState(6);
+  /** Linetype, as in Fusion: new curves go in as construction geometry while this is on. */
+  const [drawConstruction, setDrawConstruction] = useState(false);
+  // Each sketch starts drawing normal geometry.
+  useEffect(() => setDrawConstruction(false), [editingId]);
   const [options, setOptions] = useState<SketchOptions>(loadOptions);
   const setOption = useCallback((k: SketchOption, v: boolean) => {
     setOptions((o) => {
@@ -623,26 +628,35 @@ export function useSketch(d: SketchDeps) {
     setSel([]);
   }, [current, apply]);
 
-  const toggleConstruction = useCallback(() => {
-    const s = current();
-    if (!s) return;
-    const ids = new Set(live.current.sel);
-    const curves = s.entities.filter((e) => ids.has(e.id) && e.kind !== "point");
-    const texts = (s.texts ?? []).filter((t) => ids.has(t.id));
-    if (!curves.length && !texts.length) {
-      say("Pick lines, circles, arcs or text first");
-      return;
-    }
-    const on = ![...curves, ...texts].every((e) => e.construction);
-    apply(
-      {
-        ...s,
-        entities: s.entities.map((e) => (ids.has(e.id) && e.kind !== "point" ? { ...e, construction: on } : e)),
-        ...(s.texts ? { texts: s.texts.map((t) => (ids.has(t.id) ? { ...t, construction: on } : t)) } : {}),
-      },
-      on ? "Make construction" : "Make normal geometry",
-    );
-  }, [current, apply, say]);
+  /** Construction on or off for the picked curves, and for what you draw next; `to` sets it rather than flipping it. */
+  const toggleConstruction = useCallback(
+    (to?: boolean) => {
+      const s = current();
+      if (!s) return;
+      const ids = new Set(live.current.sel);
+      const curves = s.entities.filter((e) => ids.has(e.id) && e.kind !== "point");
+      const texts = (s.texts ?? []).filter((t) => ids.has(t.id));
+      if (!curves.length && !texts.length) {
+        // Nothing picked: X switches what you draw next, as the palette's Linetype does.
+        const next = !live.current.drawConstruction;
+        setDrawConstruction(next);
+        say(next ? "New lines go in as construction" : "New lines go in as normal geometry");
+        return;
+      }
+      const on = to ?? ![...curves, ...texts].every((e) => e.construction);
+      setDrawConstruction(on);
+      if ([...curves, ...texts].every((e) => !!e.construction === on)) return;
+      apply(
+        {
+          ...s,
+          entities: s.entities.map((e) => (ids.has(e.id) && e.kind !== "point" ? { ...e, construction: on } : e)),
+          ...(s.texts ? { texts: s.texts.map((t) => (ids.has(t.id) ? { ...t, construction: on } : t)) } : {}),
+        },
+        on ? "Make construction" : "Make normal geometry",
+      );
+    },
+    [current, apply, say],
+  );
 
   const setOffset = useCallback(
     (v: number) => {
@@ -657,11 +671,23 @@ export function useSketch(d: SketchDeps) {
     [current, store, engineOf],
   );
 
-  /** Turns the view to look straight at the sketch's plane, as Fusion's Look At does. */
+  /** Turns the view to look straight at the sketch's plane, as Fusion's Look At does, keeping the view's quarter turn. */
   const lookAtSketch = useCallback(() => {
     const f = live.current.frame;
-    if (f) engineOf()?.lookAt(f.origin, f.normal);
+    if (f) engineOf()?.lookAt(f.origin, f.normal, true, true);
   }, [engineOf]);
+
+  /** The palette's Linetype: normal or construction for the picked curves, and for the ones you draw next. */
+  const setLinetype = useCallback(
+    (construction: boolean) => {
+      const L = live.current;
+      const s = L.sketch;
+      const picked = !!s && (s.entities.some((e) => L.sel.includes(e.id) && e.kind !== "point") || !!s.texts?.some((t) => L.sel.includes(t.id)));
+      if (picked) toggleConstruction(construction);
+      else setDrawConstruction(construction);
+    },
+    [toggleConstruction],
+  );
 
   // ---------------------------------------------------------------- start and finish
 
@@ -942,6 +968,7 @@ export function useSketch(d: SketchDeps) {
     typed,
     sel,
     sides,
+    drawConstruction,
     gridSnap,
     solver,
     apply,
@@ -978,6 +1005,7 @@ export function useSketch(d: SketchDeps) {
     typed,
     sel,
     sides,
+    drawConstruction,
     gridSnap,
     solver,
     apply,
@@ -1328,7 +1356,7 @@ export function useSketch(d: SketchDeps) {
         setClicks([]);
         return;
       }
-      L.apply(c.sketch, c.label);
+      L.apply(L.drawConstruction ? asConstruction(s, c.sketch) : c.sketch, c.label);
       setTyped([]);
       eng.showHover(null);
       // The line tool chains from its last point, until it meets a point already there.
@@ -1977,7 +2005,7 @@ export function useSketch(d: SketchDeps) {
     const all = [...L.clicks, last];
     const c = commit(L.stool, L.sketch, all, typedNow ?? L.typed, L.sides);
     if (!c) return;
-    L.apply(c.sketch, c.label);
+    L.apply(L.drawConstruction ? asConstruction(L.sketch, c.sketch) : c.sketch, c.label);
     setTyped([]);
     // Back to the view, so the next key is a shortcut again rather than more typing.
     document.getElementById("bc-view")?.focus();
@@ -2144,6 +2172,8 @@ export function useSketch(d: SketchDeps) {
     options,
     setOption,
     lookAtSketch,
+    drawConstruction,
+    setLinetype,
     dimEdit,
     setDimEdit,
     setDimension,

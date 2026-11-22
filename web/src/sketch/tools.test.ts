@@ -1,12 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { Draft, SketchIndex, drawPolyline, drawRectangle, newSketch, profiles, type Sketch } from "@bettercad/sketch";
 import { Solver } from "@bettercad/sketch/solver";
-import { addConstraints, axisLine, commit, constraintsFor, toolById, levelOrUpright, newlyRedundant, picksReady, preview, resolveOrigin } from "./tools";
+import {
+  addConstraints,
+  asConstruction,
+  axisLine,
+  commit,
+  constraintsFor,
+  toolById,
+  levelOrUpright,
+  newlyRedundant,
+  picksReady,
+  preview,
+  resolveOrigin,
+} from "./tools";
 import { ORIGIN, middleOf, pickAt, pointPickAt, type Snap } from "./snap";
 
 const free = (x: number, y: number): Snap => ({ xy: [x, y], kind: "free", label: "" });
 
 describe("sketch tools", () => {
+  it("Linetype makes only the newly drawn curves construction", () => {
+    const first = commit("rectangle", newSketch(), [free(0, 0), free(40, 20)])!.sketch;
+    const next = commit("line", first, [free(0, 0), free(40, 20)])!.sketch;
+    const out = asConstruction(first, next);
+    const lines = out.entities.filter((e) => e.kind === "line");
+    expect(lines.filter((e) => e.construction)).toHaveLength(1);
+    expect(lines.filter((e) => !e.construction)).toHaveLength(4);
+    expect(out.entities.filter((e) => e.kind === "point").every((e) => !("construction" in e) || !e.construction)).toBe(true);
+  });
+
   it("previews a rectangle with its width and height", () => {
     const p = preview("rectangle", [[0, 0]], [30, -10]);
     expect(p.values).toEqual([30, 10]);
