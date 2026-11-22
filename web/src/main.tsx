@@ -8,6 +8,8 @@ import { listenForInstall } from "./pwa/install";
 
 registerServiceWorker();
 listenForInstall();
+// Pinches zoom the view, not the page. Loaded after first paint: the shell budget is full.
+void import("./editor/pageZoom").then((m) => m.guardPageZoom());
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

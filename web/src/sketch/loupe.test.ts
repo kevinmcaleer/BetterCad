@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { crowding, lensed, loupeBox, loupeZoom, LOUPE_SIZE } from "./loupe";
+import { crowding, follow, loupeBox, loupeZoom, LOUPE_REACH, LOUPE_SIZE } from "./loupe";
 
 describe("the magnifier loupe", () => {
   it("opens only when two or more points crowd the pointer", () => {
@@ -34,12 +34,13 @@ describe("the magnifier loupe", () => {
     expect(loupeZoom(null)).toBe(6);
   });
 
-  it("slows the pointer by the zoom around where it opened", () => {
-    const l = { anchor: { x: 100, y: 100 }, pointer: { x: 100, y: 100 }, zoom: 10, why: "crowd" as const };
-    expect(lensed(l, { x: 130, y: 80 })).toEqual({ x: 103, y: 98 });
-    expect(lensed(null, { x: 130, y: 80 })).toEqual({ x: 130, y: 80 });
-    // Under a finger the loupe only shows; the finger places where it is.
-    expect(lensed({ ...l, why: "touch" }, { x: 130, y: 80 })).toEqual({ x: 130, y: 80 });
+  it("follows the pointer, and a crowd's loupe closes once the pointer leaves the crowd", () => {
+    const l = { anchor: { x: 100, y: 100 }, opened: { x: 100, y: 100 }, zoom: 10, why: "crowd" as const };
+    expect(follow(l, { x: 130, y: 80 })).toEqual({ ...l, anchor: { x: 130, y: 80 } });
+    expect(follow(l, { x: 100 + LOUPE_REACH + 1, y: 100 })).toBeNull();
+    // Held down, it stays open for the drag; Alt's goes wherever the pointer goes.
+    expect(follow(l, { x: 400, y: 100 }, true)?.anchor).toEqual({ x: 400, y: 100 });
+    expect(follow({ ...l, why: "alt" }, { x: 400, y: 100 })?.anchor).toEqual({ x: 400, y: 100 });
   });
 
   it("sits above the pointer, or below it near the top, and stays in the view", () => {

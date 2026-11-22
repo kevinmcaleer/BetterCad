@@ -176,7 +176,7 @@ test("hold a face with Shift and snap to its corner from past its edge", async (
   await expect(panel.getByRole("region", { name: "Moves" }).getByRole("button", { name: /^15, 10, 20 mm/ })).toBeVisible();
 });
 
-/** The joint loupe (#385, #386): crowded snap points open it, the pointer is slower inside it, and Esc closes it. */
+/** The joint loupe (#385, #386): crowded snap points open it, it follows the pointer, and Esc closes it. */
 test("pick a crowded joint snap through the loupe", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
@@ -211,9 +211,12 @@ test("pick a crowded joint snap through the loupe", async ({ page }) => {
   await page.mouse.move(canvas.x + mid.x + 40, canvas.y + mid.y + 40, { steps: 2 });
   await page.mouse.move(canvas.x + mid.x, canvas.y + mid.y, { steps: 3 });
   await expect(loupe).toBeVisible();
-  const zoom = Number((await loupe.locator(".bc-loupe-zoom").textContent())!.replace("×", ""));
-  // Inside the loupe the pointer moves `zoom` times slower: going to where the corner shows in it picks the corner.
-  await page.mouse.move(canvas.x + mid.x + (corner.x - mid.x) * zoom, canvas.y + mid.y + (corner.y - mid.y) * zoom, { steps: 4 });
+  // It follows the pointer to the corner, magnifying what's under it, and a click there picks the corner.
+  const before = (await loupe.boundingBox())!;
+  await page.mouse.move(canvas.x + corner.x, canvas.y + corner.y, { steps: 4 });
+  await expect(loupe).toBeVisible();
+  const after = (await loupe.boundingBox())!;
+  expect(after.x - before.x).toBeCloseTo(corner.x - mid.x, -1);
   await page.mouse.down();
   await page.mouse.up();
   const panel = page.getByRole("group", { name: "Joint options" });
