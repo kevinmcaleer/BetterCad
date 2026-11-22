@@ -5,9 +5,11 @@ import "./app.css";
 import { App } from "./App";
 import { registerServiceWorker } from "./pwa/register";
 import { listenForInstall } from "./pwa/install";
+import { guardPageZoom } from "./editor/pageZoom";
 
 registerServiceWorker();
 listenForInstall();
+guardPageZoom();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

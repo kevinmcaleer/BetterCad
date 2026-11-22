@@ -5,6 +5,10 @@ body,
   height: 100%;
   margin: 0;
 }
+/* Fingers pan and scroll, never pinch-zoom the page: the 3D view zooms itself (see editor/pageZoom.ts). */
+html {
+  touch-action: pan-x pan-y;
+}
 body {
   background: var(--bc-color-stage);
   color: var(--bc-color-ink);
