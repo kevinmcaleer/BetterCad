@@ -7,6 +7,8 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from . import chunks
+
 log = logging.getLogger("bettercad.jobs")
 
 KEEP_DAYS = 30
@@ -79,6 +81,8 @@ def backup(db: sqlite3.Connection, blobs: Path, dest: Path, days: int = 14, now:
 
 def nightly(db: sqlite3.Connection, settings) -> dict:
     done = {"thinned": thin(db), "binned": empty_bin(db), "orphans": forget_orphan_blobs(db, settings.blob_dir)}
+    # Pieces only the thinned versions and emptied models used.
+    done["pieces"] = chunks.sweep(db)
     if settings.backup_dir:
         done["backup"] = str(backup(db, settings.blob_dir, Path(settings.backup_dir), settings.backup_days))
     return done

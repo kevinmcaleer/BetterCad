@@ -1,4 +1,5 @@
 import json
+import secrets
 
 from conftest import BCAD, sign_up
 
@@ -51,7 +52,7 @@ def test_create_get_and_list(user):
     assert [x["name"] for x in user.get("/api/models?q=alp").json()["models"]] == ["Alpha"]
     assert user.get("/api/models?q=%25").json()["total"] == 0
     box = next(x for x in listed["models"] if x["name"] == "Box")
-    assert box["versions"] == 1 and box["size"] == len(bcad().encode())
+    assert box["versions"] == 1 and box["size"] > 0
     page = user.get("/api/models?limit=1&offset=1").json()
     assert page["total"] == 2 and len(page["models"]) == 1
     thumb = user.get(m["thumbnail"])
@@ -99,7 +100,7 @@ def test_save_makes_versions_and_detects_other_tabs(user):
     versions = user.get(f"{url}/versions").json()["versions"]
     assert [v["number"] for v in versions] == [3, 2, 1]
     listed = user.get("/api/models").json()["models"][0]
-    assert listed["versions"] == 3 and listed["size"] == sum(v["size"] for v in versions)
+    assert listed["versions"] == 3 and listed["size"] > 0
     assert versions[1]["note"] == "Added a hole"
     v2 = user.get(f"{url}/versions/2").json()
     assert len(json.loads(v2["bcad"])["document"]["features"]) == 1
@@ -166,10 +167,16 @@ def test_upload_limit_and_quota(make_client):
         r = client.post("/api/models", json={"name": "Big", "bcad": big})
         assert r.status_code == 413 and "1 MB limit" in r.json()["detail"]
         assert client.put("/api/blobs/abcdef123456", content=b"x" * (1024 * 1024 + 1)).status_code == 413
-        half = bcad() + " " * (700 * 1024)
+
+        # Random text, so compressing it doesn't shrink it below the quota; each is a different model's.
+        def half() -> str:
+            data = json.loads(bcad())
+            data["document"]["features"] = [{"id": "f0", "noise": secrets.token_urlsafe(750 * 1024)}]
+            return json.dumps(data)
+
         for _ in range(2):
-            assert client.post("/api/models", json={"name": "Half", "bcad": half}).status_code == 201
-        r = client.post("/api/models", json={"name": "Over", "bcad": half})
+            assert client.post("/api/models", json={"name": "Half", "bcad": half()}).status_code == 201
+        r = client.post("/api/models", json={"name": "Over", "bcad": half()})
         assert r.status_code == 413 and "used your 2 MB" in r.json()["detail"]
         usage = client.get("/api/me/usage").json()
         assert usage["models"] == 2 and usage["quota"] == 2 * 1024 * 1024 and usage["bytes"] > 1400 * 1024
