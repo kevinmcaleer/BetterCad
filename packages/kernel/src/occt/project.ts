@@ -1,6 +1,25 @@
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import { elements } from "./shapes";
+import {
+  boxOf,
+  distanceTo,
+  dot,
+  endsOf,
+  pointsOn,
+  TAU,
+  turn,
+  viewAxes,
+  type ProjectedView,
+  type ProjectOptions,
+  type V2,
+  type V3,
+  type ViewCurve,
+  type ViewEdge,
+  type ViewEdgeType,
+  type ViewFrame,
+  type ViewRound,
+} from "../view";
 
 /**
  * Flat views for drawings (#555, spike #556): bodies seen from a direction, as 2D curves split into visible and hidden
@@ -13,82 +32,8 @@ import { elements } from "./shapes";
  *
  * Millimetres on the view plane: x to the right, y up, the eye looking down the view's own z.
  */
-export type V2 = [number, number];
-export type V3 = [number, number, number];
 
-/** Where the eye is and which way is up on the sheet. */
-export interface ViewFrame {
-  /** From the model towards the eye. Front is [0, -1, 0]: Z is up, so the front of a model faces -Y. */
-  toEye: V3;
-  /** What points up the sheet. */
-  up: V3;
-}
-
-/** The six standard views and an isometric, for a model with Z up and its front facing -Y. */
-export const VIEWS = {
-  front: { toEye: [0, -1, 0], up: [0, 0, 1] },
-  back: { toEye: [0, 1, 0], up: [0, 0, 1] },
-  left: { toEye: [-1, 0, 0], up: [0, 0, 1] },
-  right: { toEye: [1, 0, 0], up: [0, 0, 1] },
-  top: { toEye: [0, 0, 1], up: [0, 1, 0] },
-  bottom: { toEye: [0, 0, -1], up: [0, -1, 0] },
-  iso: { toEye: [1, -1, 1], up: [0, 0, 1] },
-} as const satisfies Record<string, ViewFrame>;
-
-/** A flat curve. Angles are in radians, anticlockwise from +x; an arc runs anticlockwise from `from` to `to`. */
-export type ViewCurve =
-  | { kind: "line"; a: V2; b: V2 }
-  | { kind: "circle"; c: V2; r: number }
-  | { kind: "arc"; c: V2; r: number; from: number; to: number }
-  /** `turn` is the angle of the long axis; `from` and `to` are the ellipse's own parameter, missing for a whole one. */
-  | { kind: "ellipse"; c: V2; rx: number; ry: number; turn: number; from?: number; to?: number }
-  /** Anything else (a spline, the outline of a torus), traced finely. */
-  | { kind: "poly"; pts: V2[] };
-
-/** `sharp`: a corner between two faces. `smooth`: a tangent edge, where a fillet meets a flat. `outline`: the limb of a round face. */
-export type ViewEdgeType = "sharp" | "smooth" | "outline";
-
-export interface ViewEdge {
-  curve: ViewCurve;
-  visible: boolean;
-  type: ViewEdgeType;
-  /** Which of the shapes given it came from, and its edge (or, for an outline, its face) in `elements` order. */
-  from?: { body: number; edge?: number; face?: number };
-}
-
-export interface ProjectOptions {
-  /** Work out hidden edges too. On by default. */
-  hidden?: boolean;
-  /** Keep tangent edges. On by default. */
-  smooth?: boolean;
-  /** Trace each curve back to the model. On by default; off is quicker, for a preview. */
-  trace?: boolean;
-}
-
-export interface ProjectedView {
-  edges: ViewEdge[];
-  /** The view's box on the view plane. */
-  box: { min: V2; max: V2 };
-  /** Time spent, in ms: OpenCascade's hidden-line pass, reading the curves out, and tracing them back. */
-  ms: { hide: number; read: number; trace: number };
-}
-
-const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-const dot = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const unit = (a: V3): V3 => {
-  const l = Math.hypot(...a) || 1;
-  // Adding 0 turns -0 into 0.
-  return [a[0] / l + 0, a[1] / l + 0, a[2] / l + 0];
-};
-const TAU = Math.PI * 2;
-const turn = (a: number) => ((a % TAU) + TAU) % TAU;
-
-/** The view's axes in the world: x to the right on the sheet, y up it, z towards the eye. */
-export function viewAxes(frame: ViewFrame): { x: V3; y: V3; z: V3 } {
-  const z = unit(frame.toEye);
-  const x = unit(cross(frame.up, z));
-  return { x, y: unit(cross(z, x)), z };
-}
+export * from "../view";
 
 /** How far a traced polyline may stray from its curve, mm. */
 const CHORD = 0.01;
@@ -197,96 +142,6 @@ function roundOf(pts: V2[]): ViewCurve | null {
   if (Math.min(turn(e - s), turn(s - e)) < 0.2) return null;
   // Anticlockwise from start to end if the middle lies on the way.
   return turn(m - s) < turn(e - s) ? { kind: "arc", c, r, from: turn(s), to: turn(e) } : { kind: "arc", c, r, from: turn(e), to: turn(s) };
-}
-
-/** Points along a curve at fractions of its length (near enough), for tracing and tests: by default its middle and near its quarters. */
-export function pointsOn(curve: ViewCurve, fr: number[] = [0.5, 0.23, 0.77]): V2[] {
-  switch (curve.kind) {
-    case "line":
-      return fr.map((f) => [curve.a[0] + (curve.b[0] - curve.a[0]) * f, curve.a[1] + (curve.b[1] - curve.a[1]) * f]);
-    case "circle":
-      return fr.map((f) => [curve.c[0] + curve.r * Math.cos(f * TAU), curve.c[1] + curve.r * Math.sin(f * TAU)]);
-    case "arc": {
-      const sweep = turn(curve.to - curve.from) || TAU;
-      return fr.map((f) => [curve.c[0] + curve.r * Math.cos(curve.from + sweep * f), curve.c[1] + curve.r * Math.sin(curve.from + sweep * f)]);
-    }
-    case "ellipse": {
-      const from = curve.from ?? 0;
-      const sweep = curve.from === undefined ? TAU : turn(curve.to! - curve.from) || TAU;
-      const [cs, sn] = [Math.cos(curve.turn), Math.sin(curve.turn)];
-      return fr.map((f) => {
-        const [u, v] = [curve.rx * Math.cos(from + sweep * f), curve.ry * Math.sin(from + sweep * f)];
-        return [curve.c[0] + u * cs - v * sn, curve.c[1] + u * sn + v * cs];
-      });
-    }
-    case "poly":
-      return fr.map((f) => curve.pts[Math.min(curve.pts.length - 1, Math.round((curve.pts.length - 1) * f))]!);
-  }
-}
-
-/** A point's place round an ellipse or circle, as the curve's own parameter. */
-function paramAt(curve: Extract<ViewCurve, { kind: "circle" | "arc" | "ellipse" }>, p: V2): number {
-  if (curve.kind !== "ellipse") return turn(Math.atan2(p[1] - curve.c[1], p[0] - curve.c[0]));
-  const [cs, sn] = [Math.cos(curve.turn), Math.sin(curve.turn)];
-  const [dx, dy] = [p[0] - curve.c[0], p[1] - curve.c[1]];
-  return turn(Math.atan2((-dx * sn + dy * cs) / curve.ry, (dx * cs + dy * sn) / curve.rx));
-}
-
-/** How far a point is from a curve, mm. Near enough for telling whether it lies on it. */
-export function distanceTo(curve: ViewCurve, p: V2): number {
-  const toSeg = (a: V2, b: V2) => {
-    const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
-    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
-    return Math.hypot(a[0] + dx * t - p[0], a[1] + dy * t - p[1]);
-  };
-  switch (curve.kind) {
-    case "line":
-      return toSeg(curve.a, curve.b);
-    case "poly": {
-      let best = Infinity;
-      for (let i = 1; i < curve.pts.length; i++) best = Math.min(best, toSeg(curve.pts[i - 1]!, curve.pts[i]!));
-      return best;
-    }
-    case "circle":
-      return Math.abs(Math.hypot(p[0] - curve.c[0], p[1] - curve.c[1]) - curve.r);
-    default: {
-      const t = paramAt(curve, p);
-      const whole = curve.from === undefined;
-      const sweep = whole ? TAU : turn(curve.to! - curve.from!) || TAU;
-      const inside = whole || turn(t - curve.from!) <= sweep + 1e-9;
-      const on = (u: number): V2 => {
-        if (curve.kind === "arc") return [curve.c[0] + curve.r * Math.cos(u), curve.c[1] + curve.r * Math.sin(u)];
-        const [cs, sn] = [Math.cos(curve.turn), Math.sin(curve.turn)];
-        const [x, y] = [curve.rx * Math.cos(u), curve.ry * Math.sin(u)];
-        return [curve.c[0] + x * cs - y * sn, curve.c[1] + x * sn + y * cs];
-      };
-      const d = (q: V2) => Math.hypot(q[0] - p[0], q[1] - p[1]);
-      return inside ? d(on(t)) : Math.min(d(on(curve.from!)), d(on(curve.to!)));
-    }
-  }
-}
-
-/** The ends of an open curve. */
-function endsOf(curve: ViewCurve): V2[] {
-  if (curve.kind === "line") return [curve.a, curve.b];
-  if (curve.kind === "poly") return [curve.pts[0]!, curve.pts.at(-1)!];
-  return [];
-}
-
-/** A curve's box, a little generous for round ones. */
-function boxOf(curve: ViewCurve): { min: V2; max: V2 } {
-  const pts: V2[] =
-    curve.kind === "line"
-      ? [curve.a, curve.b]
-      : curve.kind === "poly"
-        ? curve.pts
-        : ((r) => [[curve.c[0] - r, curve.c[1] - r] as V2, [curve.c[0] + r, curve.c[1] + r] as V2])(curve.kind === "ellipse" ? curve.rx : curve.r);
-  const out = { min: [Infinity, Infinity] as V2, max: [-Infinity, -Infinity] as V2 };
-  for (const p of pts) {
-    out.min = [Math.min(out.min[0], p[0]), Math.min(out.min[1], p[1])];
-    out.max = [Math.max(out.max[0], p[0]), Math.max(out.max[1], p[1])];
-  }
-  return out;
 }
 
 const r4 = (n: number) => (Math.round(n * 1e4) / 1e4 || 0).toFixed(4);
@@ -402,9 +257,22 @@ class Tracer {
   private grid = new Map<string, number[]>();
   /** Segments: x0, y0, depth0, x1, y1, depth1, then the body and edge. */
   private seg: number[] = [];
-  private faces: { body: number; face: number; shape: TopoDS_Shape; min: V2; max: V2 }[] = [];
+  /**
+   * Round faces: each one's box on the view plane and its depths, and for a cylinder or ball where its outline must
+   * lie (`limb`: a point on the view plane, the outline's direction or null for a ball, and how far out it is).
+   */
+  private faces: {
+    body: number;
+    face: number;
+    shape: TopoDS_Shape;
+    min: V2;
+    max: V2;
+    depth: [number, number];
+    limb?: { at: V2; along: V2 | null; r: number };
+  }[] = [];
   /** Seams, where a round face meets itself, and the face each is on. Not edges anyone drew. */
   private seams = new Map<string, number>();
+  rounds: ViewRound[] = [];
 
   constructor(
     private oc: OC,
@@ -442,17 +310,69 @@ class Tracer {
         }
         ex.delete();
         const s = new oc.BRepAdaptor_Surface(oc.TopoDS.Face(f), true);
-        const flat = s.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane;
+        const type = s.GetType();
+        const S = oc.GeomAbs_SurfaceType;
+        if (type === S.GeomAbs_Plane) {
+          s.delete();
+          return;
+        }
+        let limb: { at: V2; along: V2 | null; r: number } | undefined;
+        let endOn = false;
+        if (type === S.GeomAbs_Cylinder) {
+          const cyl = s.Cylinder();
+          const [o, d] = [cyl.Location(), cyl.Axis().Direction()];
+          const dir: V3 = [d.X(), d.Y(), d.Z()];
+          const along: V2 = [dot(dir, ax.x), dot(dir, ax.y)];
+          const l = Math.hypot(...along);
+          const centre: V3 = [o.X(), o.Y(), o.Z()];
+          const flat = (w: V3): V2 => [dot(w, ax.x), dot(w, ax.y)];
+          const round = {
+            body,
+            face,
+            r: cyl.Radius(),
+            hole: f.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED,
+            sweep: Math.min(TAU, s.LastUParameter() - s.FirstUParameter()),
+          };
+          if (l < 1e-6) this.rounds.push({ ...round, seen: "end", c: flat(centre) });
+          else if (Math.abs(dot(dir, ax.z)) < 1e-6) {
+            const end = (v: number): V3 => [centre[0] + dir[0] * v, centre[1] + dir[1] * v, centre[2] + dir[2] * v];
+            this.rounds.push({ ...round, seen: "side", a: flat(end(s.FirstVParameter())), b: flat(end(s.LastVParameter())) });
+          }
+          // Seen end on a cylinder has no outline: its rims are all there is.
+          if (l < 1e-6) endOn = true;
+          else
+            limb = {
+              at: [o.X() * ax.x[0] + o.Y() * ax.x[1] + o.Z() * ax.x[2], o.X() * ax.y[0] + o.Y() * ax.y[1] + o.Z() * ax.y[2]],
+              along: [along[0] / l, along[1] / l],
+              r: cyl.Radius(),
+            };
+          o.delete();
+          d.delete();
+          cyl.delete();
+        } else if (type === S.GeomAbs_Sphere) {
+          const ball = s.Sphere();
+          const o = ball.Location();
+          limb = {
+            at: [o.X() * ax.x[0] + o.Y() * ax.x[1] + o.Z() * ax.x[2], o.X() * ax.y[0] + o.Y() * ax.y[1] + o.Z() * ax.y[2]],
+            along: null,
+            r: ball.Radius(),
+          };
+          o.delete();
+          ball.delete();
+        }
         s.delete();
-        if (flat) return;
+        if (endOn) return;
         const box = new oc.Bnd_Box();
         oc.BRepBndLib.Add(f, box, false);
         const [lo, hi] = [box.CornerMin(), box.CornerMax()];
         const min: V2 = [Infinity, Infinity];
         const max: V2 = [-Infinity, -Infinity];
+        const depth: [number, number] = [Infinity, -Infinity];
         for (let k = 0; k < 8; k++) {
           const w: V3 = [k & 1 ? hi.X() : lo.X(), k & 2 ? hi.Y() : lo.Y(), k & 4 ? hi.Z() : lo.Z()];
           const [x, y] = [dot(w, ax.x), dot(w, ax.y)];
+          depth[0] = Math.min(depth[0], dot(w, ax.z));
+          depth[1] = Math.max(depth[1], dot(w, ax.z));
           min[0] = Math.min(min[0], x);
           min[1] = Math.min(min[1], y);
           max[0] = Math.max(max[0], x);
@@ -461,7 +381,7 @@ class Tracer {
         lo.delete();
         hi.delete();
         box.delete();
-        this.faces.push({ body, face, shape: f, min, max });
+        this.faces.push({ body, face, shape: f, min, max, depth, limb });
       });
     });
   }
@@ -527,13 +447,19 @@ class Tracer {
     const [p] = pointsOn(curve) as [V2];
     const { x, y, z } = this.ax;
     const at = (d: number) => new oc.gp_Pnt(p[0] * x[0] + p[1] * y[0] + d * z[0], p[0] * x[1] + p[1] * y[1] + d * z[1], p[0] * x[2] + p[1] * y[2] + d * z[2]);
-    const [a, b] = [at(-1e5), at(1e5)];
-    const mk = new oc.BRepBuilderAPI_MakeEdge(a, b);
-    const ray = mk.Edge();
     let best: { body: number; face: number; depth: number } | undefined;
     for (const f of this.faces) {
       if (p[0] < f.min[0] - NEAR || p[0] > f.max[0] + NEAR || p[1] < f.min[1] - NEAR || p[1] > f.max[1] + NEAR) continue;
-      const d = new oc.BRepExtrema_DistShapeShape(ray, f.shape);
+      if (f.limb) {
+        // A cylinder's outline runs along its axis one radius out, and a ball's is a circle of its radius: sums, no search.
+        const [dx, dy] = [p[0] - f.limb.at[0], p[1] - f.limb.at[1]];
+        const out = f.limb.along ? Math.abs(dx * f.limb.along[1] - dy * f.limb.along[0]) : Math.hypot(dx, dy);
+        if (Math.abs(out - f.limb.r) > NEAR) continue;
+      }
+      // The line of sight, only as long as the face is deep: the exact distance is slow on a long line.
+      const [a, b] = [at(f.depth[0] - 1), at(f.depth[1] + 1)];
+      const mk = new oc.BRepBuilderAPI_MakeEdge(a, b);
+      const d = new oc.BRepExtrema_DistShapeShape(mk.Edge(), f.shape);
       if (d.IsDone() && d.Value() < NEAR) {
         const q = d.PointOnShape2(1);
         const depth = q.X() * z[0] + q.Y() * z[1] + q.Z() * z[2];
@@ -541,10 +467,10 @@ class Tracer {
         if (!best || depth > best.depth) best = { body: f.body, face: f.face, depth };
       }
       d.delete();
+      mk.delete();
+      a.delete();
+      b.delete();
     }
-    mk.delete();
-    a.delete();
-    b.delete();
     return best && { body: best.body, face: best.face };
   }
 }
@@ -581,6 +507,7 @@ export function projectView(oc: OC, shapes: TopoDS_Shape[], frame: ViewFrame, op
     if (smooth) groups.push([to.Rg1LineHCompound(), false, "smooth"]);
   }
   let edges: ViewEdge[] = [];
+  let rounds: ViewRound[] = [];
   for (const [compound, visible, type] of groups) {
     // Nothing of a kind comes back as a null shape.
     if (compound.IsNull()) continue;
@@ -598,6 +525,7 @@ export function projectView(oc: OC, shapes: TopoDS_Shape[], frame: ViewFrame, op
     const all = edges.map((e) => boxOf(e.curve));
     const size = Math.max(...all.map((b) => b.max[0]), ...all.map((b) => b.max[1])) - Math.min(...all.map((b) => b.min[0]), ...all.map((b) => b.min[1]));
     const tracer = new Tracer(oc, shapes, ax, size);
+    rounds = tracer.rounds;
     // Visible curves first: a hidden curve straight behind one came from a different edge.
     const shown = edges.filter((e) => e.visible && e.type !== "outline");
     for (const e of shown) e.from = tracer.edge(e.curve);
@@ -626,5 +554,5 @@ export function projectView(oc: OC, shapes: TopoDS_Shape[], frame: ViewFrame, op
   const t3 = performance.now();
 
   for (const d of [to, algo, projector, cs, vx, n, origin]) d.delete();
-  return { edges, box, ms: { hide: t1 - t0, read: t2 - t1, trace: t3 - t2 } };
+  return { edges, box, rounds, ms: { hide: t1 - t0, read: t2 - t1, trace: t3 - t2 } };
 }

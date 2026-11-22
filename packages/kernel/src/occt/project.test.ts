@@ -5,7 +5,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { loadOCCT, type OC } from "./oc";
 import { boolean, box, cylinder, elements, fillet, place, type TopoDS_Shape } from "./shapes";
 import { ModelBuilder } from "./model";
-import { build } from "../document";
 import { SAMPLES } from "../samples";
 import { distanceTo, pointsOn, projectView, viewAxes, VIEWS, type ViewCurve, type ViewEdge } from "./project";
 
@@ -64,6 +63,24 @@ describe("projectView", () => {
     const s = new oc.BRepAdaptor_Surface(oc.TopoDS.Face(elements(oc, shape, "face")[wall]!), true);
     expect(s.GetType()).toBe(oc.GeomAbs_SurfaceType.GeomAbs_Cylinder);
     s.delete();
+  });
+
+  it("says where a hole's centre mark and centre line go", () => {
+    const shape = drilled();
+    const [end] = projectView(oc, [shape], VIEWS.top).rounds;
+    expect(end).toMatchObject({ seen: "end", c: [5, 3], r: 3, hole: true });
+    expect(end!.sweep).toBeCloseTo(Math.PI * 2);
+    const [side] = projectView(oc, [shape], VIEWS.front).rounds;
+    expect(side).toMatchObject({ seen: "side", r: 3, hole: true });
+    if (side!.seen !== "side") throw new Error("not side on");
+    // Its axis runs straight up the view at x = 5, the height of the block (the drill went 5 mm past each face).
+    expect(side.a[0]).toBeCloseTo(5);
+    expect(side.b[0]).toBeCloseTo(5);
+    expect(Math.abs(side.b[1] - side.a[1])).toBeGreaterThanOrEqual(10);
+    // Seen at a slant it has neither.
+    expect(projectView(oc, [shape], VIEWS.iso).rounds).toEqual([]);
+    // A pin is not a hole.
+    expect(projectView(oc, [cylinder(oc, { x: 6, y: 6, z: 20 })], VIEWS.top).rounds[0]).toMatchObject({ hole: false, r: 3 });
   });
 
   it("leaves hidden edges out when asked", () => {
@@ -166,36 +183,90 @@ describe("golden views", () => {
     }
   };
 
-  for (const name of ["front", "top", "right", "iso"] as const) {
-    it(`bracket, ${name}`, () => {
-      const builder = new ModelBuilder(oc);
-      const solids = build(SAMPLES.find((s) => s.id === "bracket")!.build()).parts.map((p) => builder.solid(p));
-      const view = projectView(
-        oc,
-        solids.map((s) => s.shape),
-        VIEWS[name],
-      );
-      const lines = view.edges
-        .map((e) => {
-          const names = solids[e.from?.body ?? 0]!.body.names;
-          const source = !e.from
-            ? "?"
-            : e.from.edge !== undefined
-              ? (names?.edges[e.from.edge] ?? `edge ${e.from.edge}`)
-              : (names?.faces[e.from.face!] ?? `face ${e.from.face}`);
-          return `${e.visible ? "visible" : "hidden"} ${e.type} ${flat(e.curve)} <- ${source}`;
-        })
-        .sort();
+  const builder = () => new ModelBuilder(oc);
+  const sample = (id: string) => SAMPLES.find((s) => s.id === id)!.build();
+  const cases: [string, string, keyof typeof VIEWS, boolean][] = [];
+  for (const model of ["bracket", "phone-stand"])
+    for (const v of Object.keys(VIEWS) as (keyof typeof VIEWS)[]) cases.push([`view-${model}-${v}`, model, v, true]);
+  cases.push(["view-bracket-front-visible", "bracket", "front", false], ["view-bracket-iso-visible", "bracket", "iso", false]);
+
+  for (const [file, model, name, hidden] of cases) {
+    it(`${model}, ${name}${hidden ? "" : ", visible edges only"}`, () => {
+      const view = builder().view(sample(model), undefined, { shows: { all: true }, frame: VIEWS[name], hidden }, projectView);
+      const lines = view.edges.map((e) => `${e.visible ? "visible" : "hidden"} ${e.type} ${flat(e.curve)} <- ${e.source?.name ?? "?"}`).sort();
       // Text, not arrays: the file then reads the same before and after Prettier.
       const got = { box: `${view.box.min.map(r).join(",")} to ${view.box.max.map(r).join(",")}`, curves: lines };
-      const file = join(DIR, `view-bracket-${name}.json`);
-      if (UPDATE || !existsSync(file)) {
-        if (!UPDATE && process.env.CI) throw new Error(`No golden file for view-bracket-${name}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);
+      const path = join(DIR, `${file}.json`);
+      if (UPDATE || !existsSync(path)) {
+        if (!UPDATE && process.env.CI) throw new Error(`No golden file for ${file}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);
         mkdirSync(DIR, { recursive: true });
-        writeFileSync(file, JSON.stringify(got, null, 2) + "\n");
+        writeFileSync(path, JSON.stringify(got, null, 2) + "\n");
         return;
       }
-      expect(got).toEqual(JSON.parse(readFileSync(file, "utf8")));
+      expect(got).toEqual(JSON.parse(readFileSync(path, "utf8")));
     });
   }
+});
+
+/** The view call the worker makes (#558). */
+describe("a view of a model", () => {
+  const bracket = () => SAMPLES.find((s) => s.id === "bracket")!.build();
+
+  it("names each curve's body and its edge or face", () => {
+    const view = new ModelBuilder(oc).view(bracket(), undefined, { shows: { all: true }, frame: VIEWS.top }, projectView);
+    expect(view.bodies).toHaveLength(1);
+    expect(view.edges.length).toBeGreaterThan(5);
+    for (const e of view.edges) {
+      expect(e.source).toMatchObject({ body: view.bodies[0], kind: e.type === "outline" ? "face" : "edge" });
+      expect(e.source!.name).toBeTruthy();
+    }
+    // The hole in the base, seen end on: its centre, size and the face to fix a centre mark to.
+    const hole = view.rounds.find((x) => x.seen === "end");
+    expect(hole).toMatchObject({ seen: "end", hole: true, r: 2.25, source: { kind: "face" } });
+    expect(view.ms).toBeGreaterThan(0);
+  });
+
+  it("keeps a view it has made, until a body it shows changes", () => {
+    const b = new ModelBuilder(oc);
+    const doc = bracket();
+    const req = { shows: { all: true as const }, frame: VIEWS.right };
+    const first = b.view(doc, undefined, req, projectView);
+    const again = b.view(doc, undefined, req, projectView);
+    expect(again.ms).toBe(0);
+    expect(again.edges).toBe(first.edges);
+    // Another direction, or hidden edges off, is another view.
+    expect(b.view(doc, undefined, { ...req, frame: VIEWS.top }, projectView).ms).toBeGreaterThan(0);
+    expect(b.view(doc, undefined, { ...req, hidden: false }, projectView).ms).toBeGreaterThan(0);
+    // Renaming the model changes nothing a view shows.
+    expect(b.view({ ...doc, name: "Other" }, undefined, req, projectView).ms).toBe(0);
+    // A wider bracket is a new view, wider.
+    const wide = { ...doc, params: doc.params!.map((p) => (p.name === "width" ? { ...p, expression: "50" } : p)) };
+    const wider = b.view(wide, undefined, req, projectView);
+    expect(wider.ms).toBeGreaterThan(0);
+    expect(wider.box.max[0] - wider.box.min[0]).toBeGreaterThan(first.box.max[0] - first.box.min[0]);
+  });
+
+  it("keeps a curve's name when the model changes size", () => {
+    const b = new ModelBuilder(oc);
+    const doc = bracket();
+    const req = { shows: { all: true as const }, frame: VIEWS.top };
+    const names = (d: typeof doc) =>
+      b
+        .view(d, undefined, req, projectView)
+        .edges.map((e) => `${e.type} ${e.curve.kind} ${e.source?.name}`)
+        .sort();
+    const wide = { ...doc, params: doc.params!.map((p) => (p.name === "width" ? { ...p, expression: "50" } : p)) };
+    expect(names(wide)).toEqual(names(doc));
+  });
+
+  it("draws only the bodies asked for, and leaves hidden ones out", () => {
+    const b = new ModelBuilder(oc);
+    const doc = SAMPLES.find((s) => s.id === "box-with-lid")!.build();
+    const all = b.view(doc, undefined, { shows: { all: true }, frame: VIEWS.front }, projectView);
+    expect(all.bodies.length).toBeGreaterThan(1);
+    const one = b.view(doc, undefined, { shows: { bodies: [all.bodies[0]!] }, frame: VIEWS.front }, projectView);
+    expect(one.bodies).toEqual([all.bodies[0]]);
+    expect(one.edges.every((e) => e.source?.body === all.bodies[0])).toBe(true);
+    expect(b.view(doc, undefined, { shows: { bodies: ["nope"] }, frame: VIEWS.front }, projectView)).toMatchObject({ edges: [], bodies: [] });
+  });
 });

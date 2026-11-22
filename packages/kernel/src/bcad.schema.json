@@ -60,6 +60,28 @@
           "type": "array",
           "items": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } } }
         },
+        "drawings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "name", "sheets"],
+            "properties": {
+              "sheets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["id", "size", "views", "marks", "dimensions"],
+                  "properties": {
+                    "size": { "enum": ["A4", "A3", "A2", "A1", "A0", "letter", "legal", "tabloid", "ansiC", "ansiD", "ansiE"] },
+                    "views": { "type": "array" },
+                    "marks": { "type": "array" },
+                    "dimensions": { "type": "array" }
+                  }
+                }
+              }
+            }
+          }
+        },
         "params": {
           "type": "array",
           "items": {

@@ -1,0 +1,27 @@
+{
+  "box": "-48.79,-28.169 to 48.79,72.26",
+  "curves": [
+    "hidden sharp line -3.536,-23.27 45.962,5.307 <- f5|f9:f0",
+    "hidden sharp line -48.79,-0.408 0.707,28.169 <- f0|f4",
+    "hidden sharp line 0.707,28.169 0.707,72.26 <- f0|f3",
+    "hidden sharp line 0.707,28.169 48.79,0.408 <- f3|f4",
+    "hidden sharp line 40.305,8.573 45.962,5.307 <- f3|f5",
+    "hidden sharp line 45.962,11.839 45.962,5.307 <- f3|f9:f0",
+    "visible sharp line -0.707,-18.371 -0.707,-28.169 <- f1|f2",
+    "visible sharp line -0.707,-18.371 -3.536,-16.738 <- f2|f9:f5",
+    "visible sharp line -0.707,-18.371 48.79,10.206 <- f1|f9:f5",
+    "visible sharp line -0.707,-28.169 -48.79,-0.408 <- f2|f4",
+    "visible sharp line -0.707,-28.169 48.79,0.408 <- f1|f4",
+    "visible sharp line -13.435,-17.555 -3.536,-23.27 <- f2|f5",
+    "visible sharp line -13.435,-17.555 -48.79,43.683 <- f2|f9:f1",
+    "visible sharp line -13.435,-17.555 36.062,11.023 <- f5|f9:f1",
+    "visible sharp line -3.536,-16.738 -3.536,-23.27 <- f2|f9:f0",
+    "visible sharp line -3.536,-16.738 45.962,11.839 <- f9:f0|f9:f5",
+    "visible sharp line -48.79,-0.408 -48.79,43.683 <- f0|f2",
+    "visible sharp line -48.79,43.683 0.707,72.26 <- f0|f9:f1",
+    "visible sharp line 0.707,72.26 36.062,11.023 <- f3|f9:f1",
+    "visible sharp line 36.062,11.023 40.305,8.573 <- f3|f5",
+    "visible sharp line 45.962,11.839 48.79,10.206 <- f3|f9:f5",
+    "visible sharp line 48.79,0.408 48.79,10.206 <- f1|f3"
+  ]
+}

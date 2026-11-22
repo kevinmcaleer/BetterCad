@@ -1,0 +1,22 @@
+{
+  "box": "-24.749,-14.289 to 24.749,46.949",
+  "curves": [
+    "visible sharp ellipse -11.314,24.495 2.25x1.299 @1.047 <- f12:f0#1|f12:f1",
+    "visible sharp ellipse 1.414,2.449 2.25x1.299 @0 <- f12:f0#2|f5",
+    "visible sharp line -0.707,15.922 -0.707,45.316 <- f12:f1|f3",
+    "visible sharp line -0.707,15.922 -21.92,3.674 <- f12:f1|f5",
+    "visible sharp line -0.707,15.922 24.749,1.225 <- f3|f5",
+    "visible sharp line -0.707,45.316 -21.92,33.068 <- f12:f1|f12:f5",
+    "visible sharp line -0.707,45.316 -3.536,46.949 <- f12:f5|f3",
+    "visible sharp line -21.92,3.674 -21.92,33.068 <- f12:f1|f2",
+    "visible sharp line -21.92,3.674 3.536,-11.023 <- f2|f5",
+    "visible sharp line -21.92,33.068 -24.749,34.701 <- f12:f5|f2",
+    "visible sharp line -24.749,2.041 -24.749,34.701 <- f0|f2",
+    "visible sharp line -24.749,2.041 3.536,-14.289 <- f2|f4",
+    "visible sharp line -24.749,34.701 -3.536,46.949 <- f0|f12:f5",
+    "visible sharp line 24.749,-2.041 24.749,1.225 <- f1|f3",
+    "visible sharp line 24.749,-2.041 3.536,-14.289 <- f1|f4",
+    "visible sharp line 24.749,1.225 3.536,-11.023 <- f1|f5",
+    "visible sharp line 3.536,-11.023 3.536,-14.289 <- f1|f2"
+  ]
+}

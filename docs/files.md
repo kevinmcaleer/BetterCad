@@ -29,6 +29,16 @@ holds geometry or meshes; opening a file rebuilds the model from its steps.
 - A file from a newer BetterCad opens with a warning. Steps this version doesn't know are kept and saved back
   unchanged; they show as problems on the timeline.
 
+## Drawings
+
+A model's drawings (#555) are saved in it, under `document.drawings`: each drawing's sheets, with the page size,
+standard and title block, where each view sits and what it shows, and the marks and dimensions with the names of the
+edges and faces they are fixed to. A view's lines are not saved; they are worked out from the model when the drawing
+opens. The types are in `packages/kernel/src/drawing.ts`.
+
+The schema number did not change for drawings: a file without any is exactly as it was, and a BetterCad from before
+drawings keeps the `drawings` list as it found it and saves it back, as it does any field it doesn't know.
+
 ## Saving
 
 In Chrome and Edge, Save writes back to the file you opened or last saved, without a dialog, and the file joins
