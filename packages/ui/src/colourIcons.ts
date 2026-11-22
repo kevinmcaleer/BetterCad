@@ -291,6 +291,11 @@ const DRAW: Record<string, () => string> = {
   "sk-mirror": () =>
     line("M12 2v20", HI, 1.6, dashed) +
     `<path d="M9 7 3 17h6z" fill="${TOP}" stroke="${EDGE}" stroke-width="1.4" stroke-linejoin="round"/><path d="M15 7l6 10h-6z" fill="none" stroke="${EDGE}" stroke-width="1.4" stroke-linejoin="round"${dashed}/>`,
+  "sk-pattern": () =>
+    `<rect x="2.5" y="8.5" width="5.5" height="5.5" rx="0.8" fill="${TOP}" stroke="${EDGE}" stroke-width="1.4"/>` +
+    `<rect x="9.25" y="8.5" width="5.5" height="5.5" rx="0.8" fill="none" stroke="${EDGE}" stroke-width="1.4"${dashed}/>` +
+    `<rect x="16" y="8.5" width="5.5" height="5.5" rx="0.8" fill="none" stroke="${EDGE}" stroke-width="1.4"${dashed}/>` +
+    hiLine("M5.25 17.5h13.5", 1.4),
   "sk-coincident": () => line("M3 19L12 12M12 12L21 16", EDGE, 1.6) + dot(12, 12, 2.6),
   "sk-horizontalVertical": () =>
     line("M4 7h16M17 4v16", EDGE, 1.6) + `<rect x="7" y="4.5" width="5" height="5" rx="1" fill="${HI}" stroke="${EDGE}" stroke-width="0.7"/>`,

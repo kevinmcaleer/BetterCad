@@ -3,6 +3,8 @@ import { add, cross, dist, dot, len, lineLine, norm, perp, scale, sub } from "./
 
 /** What a dimension measures on the geometry as it is now: mm, or degrees for angles. Driven dimensions show this. */
 export function measureDimension(sketch: Sketch, d: Pick<Dimension, "kind" | "refs" | "arms" | "edges">): number {
+  // A pattern's size is a number it holds, not a measure of the geometry.
+  if (d.kind === "pattern") return (d as Partial<Dimension>).value ?? 0;
   const idx = new SketchIndex(sketch);
   if (d.edges) {
     const g = edgeGap(idx, d);

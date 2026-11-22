@@ -7,6 +7,7 @@ import { newSketch, type Id, type Sketch } from "./model";
 import { Draft, drawArcCentre, drawArcTangent, drawCircle, drawEllipse, drawLine, drawPolygon, drawPolyline, drawRectangle, drawSlot } from "./draw";
 import { profiles } from "./profiles";
 import { mirrorShapes, offsetRegion } from "./edits";
+import { addSketchPattern, patternSize, setPatternValue } from "./pattern";
 
 /**
  * Golden sketches (#60): built through the model API, solved by the real planegcs in Node, and checked against
@@ -134,6 +135,42 @@ const CASES: Record<string, Case> = {
     },
     loops: 2,
     holes: 2,
+  },
+  "pattern-row-of-holes": {
+    about:
+      "A 60 × 20 plate with a ⌀4 hole 6 in and 10 up, patterned 4 along X 12 apart (sketch Pattern, rectangle): four holes. Then the spacing is 14, so the last hole is 48 in.",
+    build() {
+      const r = drawRectangle(newSketch(), [0, 0], [60, 20], { width: 60, height: 20 });
+      const d = new Draft(r.sketch);
+      fixFirst(d);
+      const hole = d.circle([6, 10], 2);
+      d.constrain({ type: "fix", p: (d.entities.find((e) => e.id === hole) as { c: Id }).c });
+      d.dimension("diameter", [hole], 4);
+      const p = addSketchPattern(d.done().sketch, "rect", [hole]);
+      if (typeof p === "string") throw new Error(p);
+      const s = setPatternValue(setPatternValue(p.sketch, p.id, "count1", 4), p.id, "spacing1", 12);
+      return { sketch: s, edit: patternSize(s, p.id, "spacing1")!.id, to: 14 };
+    },
+    loops: 1,
+    holes: 4,
+  },
+  "pattern-bolt-circle": {
+    about:
+      "A ⌀4 hole 15 right of a fixed centre, patterned 6 round it over 360° (sketch Pattern, circle): six holes 60° apart. Then the count is 8, 45° apart.",
+    build() {
+      const d = new Draft(newSketch());
+      const centre = d.point([0, 0]);
+      d.constrain({ type: "fix", p: centre });
+      const hole = d.circle([15, 0], 2);
+      d.constrain({ type: "fix", p: (d.entities.find((e) => e.id === hole) as { c: Id }).c });
+      d.dimension("diameter", [hole], 4);
+      const p = addSketchPattern(d.done().sketch, "circle", [hole], { centre });
+      if (typeof p === "string") throw new Error(p);
+      const s = setPatternValue(p.sketch, p.id, "count", 6);
+      return { sketch: s, edit: patternSize(s, p.id, "count")!.id, to: 8 };
+    },
+    loops: 6,
+    holes: 0,
   },
   "plate-with-holes": {
     about: "An 80 × 50 plate, four ⌀6 holes 60 apart across and 30 apart up, centred by two construction lines.",

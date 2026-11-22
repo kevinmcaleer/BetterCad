@@ -55,6 +55,7 @@ export type SketchToolId =
   | "extend"
   | "offset"
   | "mirror"
+  | "pattern"
   | "project";
 
 /** Tools that draw new shapes click by click (the rest pick existing geometry). */
@@ -222,6 +223,14 @@ export const SKETCH_TOOLS: SketchTool[] = [
     icon: "flipH",
     key: "m",
     help: "Click the shapes to mirror, then Mirror line and click a line or an axis. The copy follows the shapes.",
+    fields: [],
+  },
+  {
+    id: "pattern",
+    label: "Pattern",
+    icon: "distributeH",
+    key: "",
+    help: "Click the shapes to copy (a click takes a whole joined outline), then set the kind, count and spacing in the panel. The copies follow the shapes.",
     fields: [],
   },
   { id: "project", label: "Project", icon: "body", key: "j", help: "Click a face of a part to bring its edges into the sketch.", fields: [] },

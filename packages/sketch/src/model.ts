@@ -13,6 +13,13 @@ interface EntityBase {
   construction?: boolean;
   /** Projected from a body's face, edge or vertex (#54): fixed in place, and re-projected when the body changes. */
   projectedFrom?: ProjectedRef;
+  /** A copy a sketch pattern made: made again from its originals on every solve, so it follows them. */
+  copy?: PatternCopy;
+}
+/** Which pattern made a copy, and which place in the pattern it fills (1 and up; the originals are 0). */
+export interface PatternCopy {
+  pattern: Id;
+  n: number;
 }
 export interface Point extends EntityBase {
   kind: "point";
@@ -89,7 +96,10 @@ export type Constraint = ConstraintBase &
   );
 export type ConstraintType = Constraint["type"];
 
-export type DimensionKind = "length" | "distance" | "distanceX" | "distanceY" | "radius" | "diameter" | "angle";
+export type DimensionKind = "length" | "distance" | "distanceX" | "distanceY" | "radius" | "diameter" | "angle" | "pattern";
+
+/** Which number of a sketch pattern a `pattern` size holds. */
+export type PatternRole = "count1" | "spacing1" | "count2" | "spacing2" | "count" | "angle";
 
 /** A constraint with a number. Driving dimensions move geometry; driven ones only report. */
 export interface Dimension {
@@ -128,6 +138,34 @@ export interface Dimension {
    * the first is shown.
    */
   group?: Id;
+  /**
+   * Pattern sizes only (kind "pattern"): which of the pattern's numbers it is. `refs` is then the pattern's id, and the
+   * size measures no geometry: it is a named number (d1…) that other sizes and fields can use.
+   */
+  role?: PatternRole;
+}
+
+/**
+ * A sketch pattern: copies of shapes in rows (rect) or round a point (circle), like Fusion's Rectangular and Circular
+ * Pattern. Its counts, spacings and angle are `pattern` sizes in the sketch's dimensions, so they have names and can
+ * use parameters. The copies are kept as ordinary geometry tagged `copy`, so profiles and extrudes use them, and are
+ * made again from the originals on every solve.
+ */
+export interface SketchPattern {
+  id: Id;
+  kind: "rect" | "circle";
+  /** The shapes copied: curve, point and text ids. */
+  of: Id[];
+  /** Rect: a line whose direction (a to b) the first row runs along; the sketch's X axis when not set (Y with `alongY`). */
+  dir?: Id;
+  alongY?: boolean;
+  /** Rect: run the rows the other way. Circle (`flip1`): turn clockwise. */
+  flip1?: boolean;
+  flip2?: boolean;
+  /** Circle: the point the copies turn round. */
+  centre?: Id;
+  /** Places left empty (a copy deleted), counted from 1. */
+  skip?: number[];
 }
 
 export type WorldPlane = "XY" | "XZ" | "YZ";
@@ -196,6 +234,8 @@ export interface SketchText extends TextStyle {
   /** Closed outlines in mm, relative to the anchor, before the turn by `angle`. */
   loops: Vec2[][];
   construction?: boolean;
+  /** A pattern's copy of another text. */
+  copy?: PatternCopy;
 }
 
 export interface Sketch {
@@ -207,6 +247,8 @@ export interface Sketch {
   dimensions: Dimension[];
   /** Text, kept apart from the entities as it is outlines rather than solvable curves. Missing in older files. */
   texts?: SketchText[];
+  /** Sketch patterns (rect and circle copies). Missing when there are none. */
+  patterns?: SketchPattern[];
   /**
    * How far the view is turned while you look at it, in degrees: a quarter turn (90, 180 or −90) set with the view
    * cube's turn arrows, so the sketch opens the way you left it. Missing means upright.
@@ -450,10 +492,18 @@ export const CONSTRAINT_LABEL: Record<ConstraintType, string> = {
 };
 
 /** Dimension labels: "45 mm", "⌀ 8 mm", "R 2 mm", "30°"; driven ones in brackets. */
-export function formatDimension(d: Pick<Dimension, "kind" | "value" | "driving">): string {
+export function formatDimension(d: Pick<Dimension, "kind" | "value" | "driving" | "role">): string {
   const n = (v: number) => `${Math.round(v * 100) / 100}`;
-  const text =
-    d.kind === "angle" ? `${n(d.value)}°` : d.kind === "diameter" ? `⌀ ${n(d.value)} mm` : d.kind === "radius" ? `R ${n(d.value)} mm` : `${n(d.value)} mm`;
+  const count = d.kind === "pattern" && (d.role === "count1" || d.role === "count2" || d.role === "count");
+  const text = count
+    ? `${Math.round(d.value)}`
+    : d.kind === "angle" || (d.kind === "pattern" && d.role === "angle")
+      ? `${n(d.value)}°`
+      : d.kind === "diameter"
+        ? `⌀ ${n(d.value)} mm`
+        : d.kind === "radius"
+          ? `R ${n(d.value)} mm`
+          : `${n(d.value)} mm`;
   return d.driving ? text : `(${text})`;
 }
 

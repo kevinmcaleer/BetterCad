@@ -3,6 +3,7 @@ import { SketchIndex, constraintRefs, measuredRefs, type Constraint, type Dimens
 import { angleOf, cross, dot, scale, sub } from "./geom2d";
 import { freedom } from "./dof";
 import { measureDimension } from "./measure";
+import { applyPatterns } from "./pattern";
 
 /**
  * planegcs (FreeCAD's sketch solver, LGPL, WASM, shipped unmodified) behind one small interface (#58). The sketch model
@@ -66,6 +67,9 @@ export class Solver {
   private run(sketch: Sketch, extra: SketchPrimitive[]): SolveResult {
     const t0 = performance.now();
     const w = this.w;
+    // Pattern copies are made from where their originals are, held still while the rest solves, then made again
+    // from where the originals land.
+    sketch = applyPatterns(sketch);
     w.clear_data();
     w.push_primitives_and_params([...toPrimitives(sketch), ...extra]);
     let code = w.solve(Algorithm.DogLeg);
@@ -90,6 +94,7 @@ export class Solver {
           return e;
         }),
       };
+      solved = applyPatterns(solved);
       solved = { ...solved, dimensions: solved.dimensions.map((d) => (d.driving && !d.suppressed ? d : { ...d, value: measureDimension(solved, d) })) };
     }
     const f = freedom(solved);
@@ -101,6 +106,8 @@ export class Solver {
 export function toPrimitives(sketch: Sketch): SketchPrimitive[] {
   const idx = new SketchIndex(sketch);
   const fixed = new Set(sketch.constraints.filter((c) => c.type === "fix" && !c.suppressed).map((c) => (c as { p: Id }).p));
+  // A pattern's copies follow their originals, so the solver holds them where they are.
+  for (const e of sketch.entities) if (e.copy && e.kind === "point") fixed.add(e.id);
   const out: SketchPrimitive[] = [];
   for (const e of sketch.entities) {
     if (e.kind === "point") out.push({ id: e.id, type: "point", x: e.x, y: e.y, fixed: fixed.has(e.id) });
@@ -110,7 +117,7 @@ export function toPrimitives(sketch: Sketch): SketchPrimitive[] {
     else if (e.kind === "circle") {
       out.push({ id: e.id, type: "circle", c_id: e.c, radius: e.r });
       // A projected circle is the model's: its radius is held as well as its centre.
-      if (e.projectedFrom) out.push({ id: `${e.id}#held`, type: "circle_radius", c_id: e.id, radius: e.r });
+      if (e.projectedFrom || e.copy) out.push({ id: `${e.id}#held`, type: "circle_radius", c_id: e.id, radius: e.r });
     } else if (e.kind === "arc") {
       const c = idx.xy(e.c);
       const a0 = angleOf(sub(idx.xy(e.a), c));
@@ -119,9 +126,10 @@ export function toPrimitives(sketch: Sketch): SketchPrimitive[] {
       out.push({ id: e.id, type: "arc", c_id: e.c, start_id: e.a, end_id: e.b, start_angle: a0, end_angle: a1, radius: e.r });
       // A projected arc with its centre and ends all held needs no rules tying them (they would only repeat the
       // holds): its radius is held instead.
-      if (e.projectedFrom && fixed.has(e.c) && fixed.has(e.a) && fixed.has(e.b)) out.push({ id: `${e.id}#held`, type: "arc_radius", a_id: e.id, radius: e.r });
+      if ((e.projectedFrom || e.copy) && fixed.has(e.c) && fixed.has(e.a) && fixed.has(e.b))
+        out.push({ id: `${e.id}#held`, type: "arc_radius", a_id: e.id, radius: e.r });
       else out.push({ id: `${e.id}#rules`, type: "arc_rules", a_id: e.id });
-    } else if (e.kind === "ellipse") {
+    } else if (e.kind === "ellipse" && !e.copy) {
       // An ellipse is its axes: halved by the centre and square to each other.
       [e.ax1, e.ax2].forEach((ax, i) => {
         const l = idx.get(ax);
@@ -233,6 +241,8 @@ function endTurn(idx: SketchIndex, a: Id, b: Id, p: Id): number {
 }
 
 function dimensionPrimitives(d: Dimension, idx: SketchIndex): SketchPrimitive[] {
+  // A pattern's sizes are its numbers, which place the copies after the solve; they hold no geometry.
+  if (d.kind === "pattern") return [];
   const id = d.id;
   const [r0, r1] = d.refs as [Id, Id | undefined];
   const e0 = idx.get(r0);

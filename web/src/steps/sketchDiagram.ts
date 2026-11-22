@@ -38,7 +38,7 @@ export function fitDiagram(sketch: Sketch, width: number, height: number, margin
   for (const c of curves) for (const p of c.points) box.add(p);
   if (box.empty) return null;
   const idx = new SketchIndex(sketch);
-  const dims = sketch.dimensions.filter((d) => !d.suppressed);
+  const dims = sketch.dimensions.filter((d) => !d.suppressed && d.kind !== "pattern");
   const geo = { min: box.min, max: box.max };
   let fit: DiagramFit = { scale: 1, centre: [0, 0], art: [] };
   for (let pass = 0; pass < 3; pass++) {

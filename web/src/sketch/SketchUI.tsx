@@ -59,10 +59,11 @@ import {
   type SketchToolId,
 } from "./tools";
 import type { SketchSession } from "./useSketch";
+import { SketchPatternPanel } from "./SketchPatternPanel";
 import { findGaps, gapLabel, type Gap } from "@bettercad/sketch/gaps";
 
 /** Sketch tools whose line icon is also a model tool's: their colour icon is drawn flat. */
-const SKETCH_COLOUR: Partial<Record<SketchToolId, string>> = { fillet: "sk-fillet", mirror: "sk-mirror" };
+const SKETCH_COLOUR: Partial<Record<SketchToolId, string>> = { fillet: "sk-fillet", mirror: "sk-mirror", pattern: "sk-pattern" };
 
 /** The ribbon's Sketch tab (desktop): draw, change, constrain, then Finish sketch, each group with a drop-down. */
 export function SketchRibbon({ s }: { s: SketchSession }) {
@@ -76,7 +77,7 @@ export function SketchRibbon({ s }: { s: SketchSession }) {
       ["select", "line", "rectangle", "circle", "arc", "slot", "ellipse", "spline", "polygon", "point", "text"],
       ["line", "rectangle", "circle", "arc", "slot", "spline", "text"],
     ],
-    ["Change", ["fillet", "trim", "extend", "offset", "mirror", "project"], ["trim", "offset", "mirror", "project"]],
+    ["Change", ["fillet", "trim", "extend", "offset", "mirror", "pattern", "project"], ["trim", "offset", "mirror", "pattern", "project"]],
   ];
   const entry = (t: (typeof SKETCH_TOOLS)[number]): MenuEntry => ({
     id: t.id,
@@ -196,68 +197,72 @@ export function SketchBars({ s, ribbon }: { s: SketchSession; ribbon?: boolean }
           <Button kind="done" icon="finish" label="Finish sketch" title="Finish the sketch" shortcut="Enter" onClick={() => s.finish()} />
         </Toolbar>
       )}
-      <ArmedBar title={s.ctool ? constraintToolById(s.ctool).label : tool.label} icon={s.ctool ? "constraint" : tool.icon}>
-        {drawing && tool.fields.length > 0 && (
-          <span className="bc-sk-fields" onKeyDown={onFieldKey}>
-            {tool.fields.map((f, i) => (
-              <span key={`${s.stool}-${f}`} data-field={i}>
-                <NumberField
-                  key={`${s.stool}-${f}`}
-                  id={`bc-sk-field-${i}`}
-                  label={f}
-                  value={s.typed[i] ?? (s.clicks.length ? round(s.previewValues[i]) : null)}
-                  min={0.001}
-                  scope={s.scope}
-                  onCommit={(v) => s.setTyped((t) => Object.assign([...t], { [i]: v }))}
-                />
-              </span>
-            ))}
-          </span>
-        )}
-        {s.stool === "fillet" && <NumberField label="Radius" value={s.filletR} min={0.01} scope={s.scope} onCommit={(v) => s.setFilletR(v)} />}
-        {s.stool === "offset" && (
-          <>
-            <NumberField label="Distance" value={s.offsetD} min={0.01} scope={s.scope} onCommit={(v) => s.setOffsetD(v)} />
-            <Button label="Both sides" title="Copy to both sides at once" on={s.offsetBoth} onClick={() => s.setOffsetBoth((b) => !b)} />
-          </>
-        )}
-        {s.stool === "mirror" && (
-          <span className="bc-sk-modes" role="group" aria-label="Mirror picks">
+      {s.stool === "pattern" && !s.ctool ? (
+        <SketchPatternPanel s={s} />
+      ) : (
+        <ArmedBar title={s.ctool ? constraintToolById(s.ctool).label : tool.label} icon={s.ctool ? "constraint" : tool.icon}>
+          {drawing && tool.fields.length > 0 && (
+            <span className="bc-sk-fields" onKeyDown={onFieldKey}>
+              {tool.fields.map((f, i) => (
+                <span key={`${s.stool}-${f}`} data-field={i}>
+                  <NumberField
+                    key={`${s.stool}-${f}`}
+                    id={`bc-sk-field-${i}`}
+                    label={f}
+                    value={s.typed[i] ?? (s.clicks.length ? round(s.previewValues[i]) : null)}
+                    min={0.001}
+                    scope={s.scope}
+                    onCommit={(v) => s.setTyped((t) => Object.assign([...t], { [i]: v }))}
+                  />
+                </span>
+              ))}
+            </span>
+          )}
+          {s.stool === "fillet" && <NumberField label="Radius" value={s.filletR} min={0.01} scope={s.scope} onCommit={(v) => s.setFilletR(v)} />}
+          {s.stool === "offset" && (
+            <>
+              <NumberField label="Distance" value={s.offsetD} min={0.01} scope={s.scope} onCommit={(v) => s.setOffsetD(v)} />
+              <Button label="Both sides" title="Copy to both sides at once" on={s.offsetBoth} onClick={() => s.setOffsetBoth((b) => !b)} />
+            </>
+          )}
+          {s.stool === "mirror" && (
+            <span className="bc-sk-modes" role="group" aria-label="Mirror picks">
+              <Button
+                label={s.sel.length ? `Shapes (${s.sel.length})` : "Shapes"}
+                title="Click the shapes to mirror"
+                on={s.mirrorStage === "shapes"}
+                onClick={() => s.setMirrorStage("shapes")}
+              />
+              <Button
+                label="Mirror line"
+                title="Click a line or an axis to mirror the shapes across"
+                on={s.mirrorStage === "line"}
+                disabled={!s.sel.length}
+                onClick={() => s.setMirrorStage("line")}
+              />
+            </span>
+          )}
+          {s.stool === "project" && (
             <Button
-              label={s.sel.length ? `Shapes (${s.sel.length})` : "Shapes"}
-              title="Click the shapes to mirror"
-              on={s.mirrorStage === "shapes"}
-              onClick={() => s.setMirrorStage("shapes")}
+              label="As construction"
+              title="Projected edges guide the sketch without making shapes"
+              on={s.projectGuide}
+              onClick={() => s.setProjectGuide(!s.projectGuide)}
             />
-            <Button
-              label="Mirror line"
-              title="Click a line or an axis to mirror the shapes across"
-              on={s.mirrorStage === "line"}
-              disabled={!s.sel.length}
-              onClick={() => s.setMirrorStage("line")}
-            />
-          </span>
-        )}
-        {s.stool === "project" && (
-          <Button
-            label="As construction"
-            title="Projected edges guide the sketch without making shapes"
-            on={s.projectGuide}
-            onClick={() => s.setProjectGuide(!s.projectGuide)}
-          />
-        )}
-        {!s.ctool && (tool.modes ?? []).length > 1 && (
-          <span className="bc-sk-modes" role="group" aria-label={`${tool.label} kind`}>
-            {tool.modes!.map((m) => (
-              <Button key={m.id} label={m.mode ?? m.label} on={s.stool === m.id} onClick={() => s.stool !== m.id && s.pickTool(m.id)} />
-            ))}
-          </span>
-        )}
-        {s.stool === "polygon" && (
-          <NumberField label="Sides" unit="none" value={s.sides} min={3} max={12} step={1} precision={0} onCommit={(v) => s.setSides(Math.round(v))} />
-        )}
-        <span className="bc-armed-note">{s.status}</span>
-      </ArmedBar>
+          )}
+          {!s.ctool && (tool.modes ?? []).length > 1 && (
+            <span className="bc-sk-modes" role="group" aria-label={`${tool.label} kind`}>
+              {tool.modes!.map((m) => (
+                <Button key={m.id} label={m.mode ?? m.label} on={s.stool === m.id} onClick={() => s.stool !== m.id && s.pickTool(m.id)} />
+              ))}
+            </span>
+          )}
+          {s.stool === "polygon" && (
+            <NumberField label="Sides" unit="none" value={s.sides} min={3} max={12} step={1} precision={0} onCommit={(v) => s.setSides(Math.round(v))} />
+          )}
+          <span className="bc-armed-note">{s.status}</span>
+        </ArmedBar>
+      )}
     </>
   );
 }
@@ -280,6 +285,7 @@ export const DIM_LABEL: Record<Dimension["kind"], string> = {
   radius: "Radius",
   diameter: "Diameter",
   angle: "Angle",
+  pattern: "Pattern",
 };
 
 const round = (v: number | undefined) => (v === undefined ? null : Math.round(v * 100) / 100);
@@ -453,7 +459,9 @@ export function SketchLabels({ s }: { s: SketchSession }) {
   // An offset's sizes are one distance (#266): only the first of them shows.
   const firstOfGroup = new Map<Id, Id>();
   for (const d of s.sketch.dimensions) if (d.group && !firstOfGroup.has(d.group)) firstOfGroup.set(d.group, d.id);
+  // A pattern's sizes are its numbers, set in its panel, with nothing on the sketch to measure.
   const dims = s.sketch.dimensions
+    .filter((d) => d.kind !== "pattern")
     .filter((d) => !d.group || firstOfGroup.get(d.group) === d.id || s.dimEdit === d.id || s.sel.includes(d.id))
     .filter((d) => s.options.dimensions || s.dimEdit === d.id || s.sel.includes(d.id))
     .map((d) => ({ d, art: dimensionArt(idx, d, px, centre), on: s.sel.includes(d.id) || conflicting.has(d.id) }));

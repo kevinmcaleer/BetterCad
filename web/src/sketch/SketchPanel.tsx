@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Banner, Button, NumberField, PropRow, PropsPanel, type PropsSection } from "@bettercad/ui";
 import { CONSTRAINT_LABEL } from "@bettercad/sketch";
+import { ROLE_LABEL } from "@bettercad/sketch/pattern";
 import { formatCombo } from "../state/commands";
 import { OPTION_ROWS } from "./options";
 import { DIM_LABEL } from "./SketchUI";
@@ -150,9 +151,10 @@ export function SketchPanel({ s }: { s: SketchSession }) {
           {sk.dimensions.map((d, i) => (
             <NumberField
               key={d.id}
-              label={`${DIM_LABEL[d.kind]} ${i + 1}${d.name ? ` (${d.name})` : ""}`}
+              label={`${d.kind === "pattern" && d.role ? `Pattern ${ROLE_LABEL[d.role].toLowerCase()}` : DIM_LABEL[d.kind]} ${i + 1}${d.name ? ` (${d.name})` : ""}`}
               value={Math.round(d.value * 1000) / 1000}
-              unit={d.kind === "angle" ? "°" : "mm"}
+              unit={d.kind === "angle" || d.role === "angle" ? "°" : d.role?.startsWith("count") ? "none" : "mm"}
+              precision={d.role?.startsWith("count") ? 0 : undefined}
               locked={!d.driving}
               scope={s.scope}
               onCommit={(v, expr) => s.setDimension(d.id, expr ?? String(v))}
