@@ -1433,6 +1433,27 @@ export function useSketch(d: SketchDeps) {
       return eng.pick(p.x, p.y, "vertex", true) ?? eng.pick(p.x, p.y, "edge", true);
     };
 
+    /**
+     * While a single line, circle or arc's size is being placed with the Dimension tool: the geometry under the pointer
+     * that a click takes as the second pick (another curve, a point, the origin, an axis or, with auto project on, a
+     * model edge or corner, brought in when `take` is set). Null over empty space, the first pick itself or its own
+     * ends and centre, so a click there puts the size down.
+     */
+    const secondPick = (p: ScreenPoint, hit: { xy: Vec2; px: number }, take: boolean): Id | null => {
+      const L = live.current;
+      const refs = L.placing?.dim.refs;
+      const f = refs?.length === 1 && L.stool === "dimension" ? L.sketch?.entities.find((e) => e.id === refs[0]) : null;
+      if (!f || !(f.kind === "line" || f.kind === "circle" || f.kind === "arc")) return null;
+      // The first pick and its own ends and centre.
+      const own = new Set<Id>([f.id, ...(f.kind === "line" ? [f.a, f.b] : f.kind === "arc" ? [f.c, f.a, f.b] : [f.c])]);
+      const got = pickAt(hit.xy, L.sketch!, reach * hit.px, L.origin) ?? (take ? (mp(p) ?? L.projectAxis(p, hit.xy)) : null);
+      return got && !own.has(got) ? got : null;
+    };
+    const mp = (p: ScreenPoint) => {
+      const m = modelPick(p);
+      return m && live.current.projectModel(m);
+    };
+
     /** Takes a drawing tool's clicks so far, and draws the shape once it has them all. */
     const takeClicks = (all: Snap[], mods: Mods, px: number) => {
       const L = live.current;
@@ -1465,16 +1486,13 @@ export function useSketch(d: SketchDeps) {
         const hit = at(p);
         if (!hit || !L.sketch) return false;
         if (L.placing) {
-          // A line's size is following the pointer and another line is clicked: size the angle between them, as in
-          // Fusion (or the gap, if they are parallel). A circle or arc with another, or with a line: the distance from
-          // its centre.
-          const [first, more] = L.placing.dim.refs;
-          const kindOf = (id?: Id | false | null) => L.current()?.entities.find((e) => e.id === id)?.kind;
-          const sizes = (k?: string) => k === "line" || k === "circle" || k === "arc";
-          const other =
-            !more && sizes(kindOf(first)) && L.stool === "dimension" && (pickAt(hit.xy, L.sketch, reach * hit.px, L.origin) ?? L.projectAxis(p, hit.xy));
-          if (other !== first && sizes(kindOf(other)) && L.dimensionFor([first!, other as Id])) {
+          // A line, circle or arc's size is following the pointer and other geometry is clicked: it becomes the second
+          // pick, as in Fusion. Two lines size the angle between them (or the gap, if they are parallel); a point, a
+          // circle or an arc sizes the distance. Only a click on empty space puts the size down.
+          const other = secondPick(p, hit, true);
+          if (other && L.dimensionFor([L.placing.dim.refs[0]!, other])) {
             setPlacing((pl) => pl && { ...pl, dim: placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy, pl.dim.edges) });
+            setHover(null);
             return true;
           }
           if (mods.touch) {
@@ -1608,7 +1626,9 @@ export function useSketch(d: SketchDeps) {
           const pl = L.placing;
           const dim = placeAt(pl.sketch, pl.dim.kind, pl.dim.refs, hit.xy, pl.dim.edges);
           setPlacing({ ...pl, dim });
-          setHover(null);
+          // What a click would take as the second pick lights up, so it is clear a click sizes to it.
+          setHover(secondPick(p, hit, false));
+          eng.showHover(null);
           return;
         }
         if (pressed && hold) {
