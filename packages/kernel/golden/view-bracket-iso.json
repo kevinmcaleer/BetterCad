@@ -1,0 +1,40 @@
+{
+  "box": {
+    "min": [
+      -24.749,
+      -14.289
+    ],
+    "max": [
+      24.749,
+      46.949
+    ]
+  },
+  "curves": [
+    "hidden outline line -0.836,-0.816 -0.836,2.449 <- f12:f0#2",
+    "hidden outline line -10.189,26.443 -13.017,28.076 <- f12:f0#1",
+    "hidden outline line -12.439,22.546 -15.267,24.179 <- f12:f0#1",
+    "hidden outline line 3.664,-0.816 3.664,2.449 <- f12:f0#2",
+    "hidden sharp ellipse -14.142,26.128 2.25x1.299 @1.047 <- f0|f12:f0#1",
+    "hidden sharp ellipse 1.414,-0.816 2.25x1.299 @0 <- f12:f0#2|f4",
+    "hidden sharp line -24.749,2.041 -3.536,14.289 <- f0|f4",
+    "hidden sharp line -3.536,14.289 -3.536,46.949 <- f0|f3",
+    "hidden sharp line -3.536,14.289 24.749,-2.041 <- f3|f4",
+    "visible sharp ellipse -11.314,24.495 2.25x1.299 @1.047 <- f12:f0#1|f12:f1",
+    "visible sharp ellipse 1.414,2.449 2.25x1.299 @0 <- f12:f0#2|f5",
+    "visible sharp line -0.707,15.922 -0.707,45.316 <- f12:f1|f3",
+    "visible sharp line -0.707,15.922 -21.92,3.674 <- f12:f1|f5",
+    "visible sharp line -0.707,15.922 24.749,1.225 <- f3|f5",
+    "visible sharp line -0.707,45.316 -21.92,33.068 <- f12:f1|f12:f5",
+    "visible sharp line -0.707,45.316 -3.536,46.949 <- f12:f5|f3",
+    "visible sharp line -21.92,3.674 -21.92,33.068 <- f12:f1|f2",
+    "visible sharp line -21.92,3.674 3.536,-11.023 <- f2|f5",
+    "visible sharp line -21.92,33.068 -24.749,34.701 <- f12:f5|f2",
+    "visible sharp line -24.749,2.041 -24.749,34.701 <- f0|f2",
+    "visible sharp line -24.749,2.041 3.536,-14.289 <- f2|f4",
+    "visible sharp line -24.749,34.701 -3.536,46.949 <- f0|f12:f5",
+    "visible sharp line 24.749,-2.041 24.749,1.225 <- f1|f3",
+    "visible sharp line 24.749,-2.041 3.536,-14.289 <- f1|f4",
+    "visible sharp line 24.749,1.225 3.536,-11.023 <- f1|f5",
+    "visible sharp line 3.536,-11.023 3.536,-14.289 <- f1|f2"
+  ]
+}

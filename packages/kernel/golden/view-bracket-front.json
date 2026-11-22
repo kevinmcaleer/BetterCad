@@ -1,0 +1,24 @@
+{
+  "box": {
+    "min": [
+      -20,
+      0
+    ],
+    "max": [
+      20,
+      40
+    ]
+  },
+  "curves": [
+    "hidden outline line -0.25,0 -0.25,4 <- f12:f0#2",
+    "hidden outline line -16,19.75 -20,19.75 <- f12:f0#1",
+    "hidden outline line -16,24.25 -20,24.25 <- f12:f0#1",
+    "hidden outline line 4.25,0 4.25,4 <- f12:f0#2",
+    "visible sharp line -16,4 -16,40 <- f12:f1|f2",
+    "visible sharp line -16,4 20,4 <- f2|f5",
+    "visible sharp line -16,40 -20,40 <- f12:f5|f2",
+    "visible sharp line -20,0 -20,40 <- f0|f2",
+    "visible sharp line -20,0 20,0 <- f2|f4",
+    "visible sharp line 20,0 20,4 <- f1|f2"
+  ]
+}
