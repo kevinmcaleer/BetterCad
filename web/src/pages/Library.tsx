@@ -26,6 +26,8 @@ import { formatBytes } from "../export/format";
 import { Field, Page } from "./Page";
 import { SampleCards } from "../samples/SampleCards";
 import { Readme } from "./Readme";
+import { UploadCard } from "./UploadCard";
+import type { UploadRow } from "./upload";
 import { placesApi } from "./placesApi";
 import { ROOT_NAME, crumbs, foldersIn, hashOf, keyOf, placeName, placeOf, targets, within, type Here, type Tree } from "./places";
 
@@ -603,24 +605,51 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     }
   };
 
-  // Uploading .bcad, STL, 3MF and STEP files (each its own model, here): the code loads on first use.
-  const [uploading, setUploading] = useState(false);
+  // Uploading .bcad, STL, 3MF and STEP files (each its own model, here): the code loads on first use. The upload card
+  // shows each file's progress, then what it made or why it failed; files picked while others go up wait their turn.
+  const [uploads, setUploads] = useState<UploadRow[] | null>(null);
+  const queue = useRef<{ files: File[]; place: Place }[]>([]);
+  const running = useRef(false);
   const picker = useRef<HTMLInputElement>(null);
   const upload = async (files: File[]) => {
-    if (!files.length || uploading || bin) return;
-    setUploading(true);
+    if (!files.length || bin) return;
+    queue.current.push({ files, place: placeOf(tree, here) });
+    if (running.current) return;
+    setStatus("");
+    setUndo(null);
+    running.current = true;
+    let earlier: UploadRow[] = [];
     try {
       const u = await import("./upload");
-      const { made, failed } = await u.uploadModels(api, files, placeOf(tree, here), setStatus);
-      const done = made.length === 1 ? `Uploaded ${made[0]!.name}` : made.length ? `Uploaded ${made.length} models` : "";
-      setStatus([done, ...failed].filter(Boolean).join(". "));
-      if (made.length) await load();
+      for (let next = queue.current.shift(); next; next = queue.current.shift()) {
+        const before = earlier;
+        const { made, failed } = await u.uploadModels(api, next.files, next.place, (rows) => {
+          earlier = [...before, ...rows];
+          setUploads(earlier);
+        });
+        const done = made.length === 1 ? `Uploaded ${made[0]!.name}` : made.length ? `Uploaded ${made.length} models` : "";
+        setStatus(
+          [done, failed.length ? (failed.length === 1 ? "1 file didn't upload" : `${failed.length} files didn't upload`) : ""].filter(Boolean).join(". "),
+        );
+        if (made.length) await load();
+      }
     } catch (e) {
-      setStatus((e as Error).message);
+      // The upload code itself didn't load (usually an update since the page opened): say so on the card.
+      console.error("Upload failed:", e);
+      const why = `${(e as Error).message || "That didn't work."} Reload the page and try again.`;
+      setUploads([...earlier, ...queue.current.flatMap((q) => q.files).map((f) => ({ file: f.name, state: "failed" as const, stage: why }))]);
+      queue.current = [];
     } finally {
-      setUploading(false);
+      running.current = false;
     }
   };
+  // A card where every file went up closes itself after a few seconds; one with a failure stays until it's closed.
+  const allSaved = !!uploads?.length && uploads.every((r) => r.state === "done");
+  useEffect(() => {
+    if (!allSaved) return;
+    const t = setTimeout(() => setUploads(null), 6000);
+    return () => clearTimeout(t);
+  }, [allSaved, uploads]);
   const uploadRef = useRef(upload);
   uploadRef.current = upload;
 
@@ -890,7 +919,6 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
                 icon="upload"
                 label="Upload"
                 title="Upload BetterCad, STL, 3MF or STEP files, each as a model here. You can drop them on the page too"
-                busy={uploading}
                 onClick={() => picker.current?.click()}
               />
             )}
@@ -1256,6 +1284,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
           </p>
         </Dialog>
       )}
+      {uploads && <UploadCard rows={uploads} onClose={() => setUploads(null)} />}
       <footer className="bc-page-note bc-lib-foot">
         <a href="#/privacy">Privacy</a> · <a href="#/terms">Terms</a>
       </footer>
