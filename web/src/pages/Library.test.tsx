@@ -3,6 +3,12 @@ import { AccountProvider } from "../cloud/account";
 import { createApi } from "../cloud/api";
 import { Library } from "./Library";
 import { Readme } from "./Readme";
+import { writeStl } from "@bettercad/kernel/mesh-files";
+
+const stlFile = (name: string) => {
+  const bytes = writeStl("t", [{ name: "t", triangles: Float32Array.of(0, 0, 0, 10, 0, 0, 0, 10, 0) }]);
+  return { name, arrayBuffer: async () => bytes } as unknown as File;
+};
 
 /** A small in-memory server for the library's folder and project routes (#273, #274). */
 function server() {
@@ -34,7 +40,7 @@ function server() {
   });
   const api = createApi("api/", async (url, init) => {
     const method = init?.method ?? "GET";
-    const body = init?.body ? JSON.parse(init.body as string) : {};
+    const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
     calls.push(`${method} ${url}`);
     const u = new URL(url, "http://x/");
     if (url.startsWith("api/auth/session"))
@@ -83,6 +89,12 @@ function server() {
       m.project_id = body.folder_id ? (folders[body.folder_id]?.project_id ?? null) : (body.project_id ?? null);
       return json(summary(m));
     }
+    if (u.pathname === "/api/models" && method === "POST") {
+      const id = `m${Object.keys(models).length + 1}`;
+      models[id] = { id, name: body.name, folder_id: body.folder_id ?? null, project_id: body.project_id ?? null };
+      return json(summary(models[id]), 201);
+    }
+    if (u.pathname.startsWith("/api/blobs/")) return method === "HEAD" ? new Response(null, { status: 404 }) : json({ hash: "x", stored: true });
     if (u.pathname === "/api/folders" && method === "POST") {
       const id = `f${Object.keys(folders).length}`;
       folders[id] = { id, name: body.name, parent_id: body.parent_id ?? null, project_id: body.project_id ?? null };
@@ -160,6 +172,23 @@ describe("library folders and projects", () => {
     fireEvent.click(screen.getByRole("button", { name: "Make" }));
     expect(await screen.findByText("Made the folder Arm")).toBeVisible();
     expect(Object.values(s.folders).find((f) => f.name === "Arm")?.project_id).toBe("rover");
+  });
+
+  it("uploads STL files into the project on show, each as a model", async () => {
+    const s = mount({ project: "rover" });
+    await screen.findByRole("button", { name: "Upload STL" });
+    fireEvent.change(screen.getByLabelText("STL or 3MF files to upload"), { target: { files: [stlFile("Wheel hub.stl"), stlFile("Tyre.stl")] } });
+    expect(await screen.findByText("Uploaded 2 models")).toBeVisible();
+    const made = Object.values(s.models).filter((m) => m.name === "Wheel hub" || m.name === "Tyre");
+    expect(made.map((m) => m.project_id)).toEqual(["rover", "rover"]);
+  });
+
+  it("uploads STL files dropped on the page", async () => {
+    const s = mount({ folder: "parts" });
+    await screen.findByRole("button", { name: "Open Bolt" });
+    fireEvent.drop(window, { dataTransfer: { types: ["Files"], files: [stlFile("Nut.stl")] } });
+    expect(await screen.findByText("Uploaded Nut")).toBeVisible();
+    expect(Object.values(s.models).find((m) => m.name === "Nut")?.folder_id).toBe("parts");
   });
 
   it("searches every place and says where each result lives", async () => {
