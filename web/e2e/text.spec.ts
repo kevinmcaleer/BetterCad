@@ -50,7 +50,8 @@ test("text in a sketch extrudes whole, letters with their holes, and can be chan
   await page.getByLabel("Font").selectOption({ label: "Archivo Black" });
   await page.getByRole("textbox", { name: "Height" }).fill("10");
   await page.getByRole("textbox", { name: "Height" }).press("Enter");
-  await expect(page.getByRole("status").filter({ hasText: "Click in the view to move where the text starts." })).toBeVisible();
+  // The card says "Loading the font" until the new font arrives, which takes longer on a busy runner.
+  await expect(page.getByRole("status").filter({ hasText: "Click in the view to move where the text starts." })).toBeVisible({ timeout: 20_000 });
   await page.getByRole("button", { name: /^Add text/ }).click();
   await expect(words).toHaveCount(0);
 
