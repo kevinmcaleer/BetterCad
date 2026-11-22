@@ -27,6 +27,7 @@ function server() {
     m6: { id: "m6", name: "Mast", folder_id: null, project_id: "rover" },
   };
   const calls: string[] = [];
+  const binned = new Set<string>();
   // Set to make the models list fail the way a real one can: a sign-in that ran out, or a proxy with no server.
   const fail: { with: (() => Response) | null } = { with: null };
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -70,17 +71,30 @@ function server() {
       const p = u.searchParams.get("project");
       const top = u.searchParams.get("top");
       const list = Object.values(models).filter((m) =>
-        q
-          ? m.name.toLowerCase().includes(q.toLowerCase())
-          : f
-            ? m.folder_id === f
-            : p
-              ? m.project_id === p && !m.folder_id
-              : top
-                ? !m.folder_id && !m.project_id
-                : true,
+        binned.has(m.id) !== !!u.searchParams.get("bin")
+          ? false
+          : q
+            ? m.name.toLowerCase().includes(q.toLowerCase())
+            : f
+              ? m.folder_id === f
+              : p
+                ? m.project_id === p && !m.folder_id
+                : top
+                  ? !m.folder_id && !m.project_id
+                  : true,
       );
       return json({ models: list.map(summary), total: list.length });
+    }
+    const bulk = /^\/api\/models\/bulk\/(move|delete|restore)$/.exec(u.pathname);
+    if (bulk && method === "POST") {
+      for (const id of body.ids as string[]) {
+        const m = models[id]!;
+        if (bulk[1] === "move") {
+          m.folder_id = body.folder_id ?? null;
+          m.project_id = body.folder_id ? (folders[body.folder_id]?.project_id ?? null) : (body.project_id ?? null);
+        } else binned[bulk[1] === "delete" ? "add" : "delete"](id);
+      }
+      return json({ ok: true });
     }
     const move = /^\/api\/models\/(\w+)\/move$/.exec(u.pathname);
     if (move && method === "POST") {
@@ -102,7 +116,7 @@ function server() {
     }
     return json({ detail: "nope" }, 404);
   });
-  return { api, calls, models, folders, fail };
+  return { api, calls, models, folders, fail, binned };
 }
 
 function mount(props: Parameters<typeof Library>[0] = {}) {
@@ -199,6 +213,71 @@ describe("library folders and projects", () => {
     const results = screen.getByRole("list", { name: "Search results" });
     expect(within(results).getByText("Parts")).toBeVisible();
     await waitFor(() => expect(s.calls.some((c) => c.includes("q=bolt") && !c.includes("top="))).toBe(true));
+  });
+});
+
+describe("library right-click and picking several models", () => {
+  it("opens a model's menu with a right-click and renames it", async () => {
+    mount();
+    const card = (await screen.findByRole("button", { name: "Open Wheel" })).closest("li")!;
+    fireEvent.contextMenu(card, { clientX: 40, clientY: 40 });
+    const menu = screen.getByRole("menu", { name: "Wheel menu" });
+    expect(within(menu).getByRole("menuitem", { name: "Move to…" })).toBeVisible();
+    expect(within(menu).getByRole("menuitem", { name: "Delete…" })).toBeVisible();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Rename" }));
+    expect(screen.getByRole("textbox", { name: "New name" })).toHaveValue("Wheel");
+  });
+
+  it("opens a folder's menu with a right-click", async () => {
+    mount();
+    fireEvent.contextMenu((await screen.findByRole("button", { name: "Open folder Parts" })).closest("li")!);
+    expect(within(screen.getByRole("menu", { name: "Parts menu" })).getByRole("menuitem", { name: "Rename" })).toBeVisible();
+  });
+
+  it("picks models with Ctrl-click and Shift-click and moves them together", async () => {
+    const s = mount({ project: "rover" });
+    fireEvent.click(await screen.findByRole("button", { name: "Open Chassis" }), { ctrlKey: true });
+    const bar = screen.getByRole("toolbar", { name: "Selected models" });
+    expect(bar).toHaveTextContent("1 selected");
+    fireEvent.click(screen.getByRole("button", { name: "Open Gripper" }), { shiftKey: true });
+    expect(bar).toHaveTextContent("3 selected");
+    // While picking, a plain click picks too rather than opening.
+    fireEvent.click(screen.getByRole("button", { name: "Open Mast" }));
+    expect(bar).toHaveTextContent("4 selected");
+    expect(screen.getByRole("checkbox", { name: "Select Mast" })).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Mast" }));
+    expect(bar).toHaveTextContent("3 selected");
+    fireEvent.click(within(bar).getByRole("button", { name: "Move to…" }));
+    const dialog = screen.getByRole("dialog", { name: "Move 3 models" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: /Parts/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move here" }));
+    expect(await screen.findByText("Moved 3 models to Parts")).toBeVisible();
+    expect(["m3", "m4", "m5", "m6"].map((id) => s.models[id]!.folder_id)).toEqual(["parts", "parts", "parts", null]);
+    expect(screen.queryByRole("toolbar", { name: "Selected models" })).toBeNull();
+  });
+
+  it("deletes the picked models from a right-click, and Undo brings them back", async () => {
+    const s = mount({ project: "rover" });
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Arm" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Mast" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Open Arm" }).closest("li")!);
+    fireEvent.click(within(screen.getByRole("menu", { name: "2 selected menu" })).getByRole("menuitem", { name: "Delete 2 models…" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Delete 2 models?" })).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText("Moved 2 models to the bin")).toBeVisible();
+    expect([...s.binned].sort()).toEqual(["m4", "m6"]);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open Arm" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Restored 2 models")).toBeVisible();
+    expect(s.binned.size).toBe(0);
+    expect(await screen.findByRole("button", { name: "Open Arm" })).toBeVisible();
+  });
+
+  it("clears the selection with Esc", async () => {
+    mount({ project: "rover" });
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Select Arm" }));
+    expect(screen.getByRole("toolbar", { name: "Selected models" })).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("toolbar", { name: "Selected models" })).toBeNull();
   });
 });
 

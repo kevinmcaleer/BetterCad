@@ -86,6 +86,16 @@ class Move(BaseModel):
     project_id: str | None = None
 
 
+class Many(BaseModel):
+    """Several models at once (the selection in My models): at most a page of them."""
+
+    ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class MoveMany(Many, Move):
+    pass
+
+
 class Save(BaseModel):
     bcad: str
     note: str | None = Field(default=None, max_length=200)
@@ -269,6 +279,44 @@ def router(settings) -> APIRouter:
             )
             add_version(db, model_id, 1, body.bcad, body.note)
         return summary(own(db, user, model_id))
+
+    # Several at once (the selection in My models). Registered before "/models/{model_id}/…" so "bulk" isn't an id.
+    # All or nothing: one id that isn't yours, or is already in the bin, answers 404 and nothing changes.
+
+    def own_all(db: sqlite3.Connection, user: User, ids: list[str], binned: bool | None = False) -> list[str]:
+        unique = list(dict.fromkeys(ids))
+        for model_id in unique:
+            own(db, user, model_id, binned)
+        return unique
+
+    @r.post("/models/bulk/move")
+    def move_many(body: MoveMany, request: Request, user: Writer) -> dict:
+        db = conn(request)
+        ids = own_all(db, user, body.ids)
+        folder_id, project_id = where.resolve(db, user.id, body.folder_id, body.project_id)
+        with db:
+            db.execute(
+                f"UPDATE models SET folder_id = ?, project_id = ? WHERE id IN ({where.marks(ids)})", (folder_id, project_id, *ids)
+            )
+        return {"moved": len(ids)}
+
+    @r.post("/models/bulk/delete")
+    def delete_many(body: Many, request: Request, user: Writer) -> dict:
+        """Puts them in the bin, as one at a time does; restore brings them back."""
+        db = conn(request)
+        ids = own_all(db, user, body.ids)
+        with db:
+            db.execute(f"UPDATE models SET deleted_at = {where.NOW} WHERE id IN ({where.marks(ids)})", ids)
+            db.execute(f"DELETE FROM shares WHERE model_id IN ({where.marks(ids)})", ids)
+        return {"deleted": len(ids)}
+
+    @r.post("/models/bulk/restore")
+    def restore_many(body: Many, request: Request, user: Writer) -> dict:
+        db = conn(request)
+        ids = own_all(db, user, body.ids, binned=True)
+        for model_id in ids:
+            undelete(model_id, request, user)
+        return {"restored": len(ids)}
 
     @r.get("/models/{model_id}")
     def get_model(model_id: str, request: Request, user: CurrentUser) -> dict:

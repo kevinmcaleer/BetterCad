@@ -495,3 +495,63 @@
   flex-direction: column;
   min-width: 0;
 }
+/* Picking models: a tick box on hover or focus (and on every card once one is picked), a ringed card, a bar of actions. */
+.bc-card-pick {
+  position: absolute;
+  top: var(--bc-space-4);
+  left: var(--bc-space-4);
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--bc-color-accent);
+  cursor: pointer;
+  opacity: 0;
+}
+.bc-card:hover .bc-card-pick,
+.bc-card-pick:focus-visible,
+.bc-picking .bc-card-pick {
+  opacity: 1;
+}
+.bc-card.bc-picked {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: -1px;
+  background: var(--bc-color-accent-soft);
+}
+.bc-lib-grid .bc-card {
+  -webkit-touch-callout: none;
+}
+.bc-lib-status {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-4);
+  min-height: 32px;
+}
+.bc-lib-selbar {
+  position: fixed;
+  left: 50%;
+  bottom: var(--bc-space-8);
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bc-space-3);
+  max-width: calc(100vw - 2 * var(--bc-space-8));
+  padding: var(--bc-space-3) var(--bc-space-4) var(--bc-space-3) var(--bc-space-6);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-pop);
+}
+.bc-lib-selbar-count {
+  font-weight: 600;
+  margin-inline-end: var(--bc-space-3);
+}
+@media (pointer: coarse) {
+  .bc-card-pick {
+    width: 28px;
+    height: 28px;
+  }
+}
