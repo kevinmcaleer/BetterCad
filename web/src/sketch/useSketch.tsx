@@ -651,7 +651,10 @@ export function useSketch(d: SketchDeps) {
     const m = await import("@bettercad/sketch/dedupe");
     const s = current();
     if (!s) return;
-    const r = m.tidy(s, live.current.sel.filter((id) => id !== ORIGIN));
+    const r = m.tidy(
+      s,
+      live.current.sel.filter((id) => id !== ORIGIN),
+    );
     if (r.sketch && !apply(r.sketch, "Remove duplicates")) return;
     setSel((sel) => sel.filter((id) => !r.gone.has(id)));
     say(r.message);

@@ -121,7 +121,13 @@ export function removeDuplicates(s: Sketch, scope?: Id[], tol = DUPLICATE_TOL): 
     if (b.projectedFrom || dimmed.has(b.id) || axes.has(b.id) || drop.has(b.id)) continue;
     const pb = [after.xy(b.a), after.xy(b.b)] as const;
     const host = lines.find(
-      (a) => a !== b && !drop.has(a.id) && !axes.has(a.id) && !!a.construction === !!b.construction && longer(after, a, b) && pb.every((p) => onSegment(p, after.xy(a.a), after.xy(a.b), tol)),
+      (a) =>
+        a !== b &&
+        !drop.has(a.id) &&
+        !axes.has(a.id) &&
+        !!a.construction === !!b.construction &&
+        longer(after, a, b) &&
+        pb.every((p) => onSegment(p, after.xy(a.a), after.xy(a.b), tol)),
     );
     if (!host || !(inScope.has(b.id) || inScope.has(host.id))) continue;
     drop.set(b.id, host.id);
@@ -148,7 +154,8 @@ export function removeDuplicates(s: Sketch, scope?: Id[], tol = DUPLICATE_TOL): 
     if (!c || c.kind === "point") continue;
     for (const p of curvePoints(c)) {
       const q = mp(p);
-      const stillUsed = kept.some((e) => e.kind !== "point" && curvePoints(e).includes(q)) || (uses.get(q) ?? 0) > 0 || onLine.some((k) => k.type === "pointOn" && k.p === q);
+      const stillUsed =
+        kept.some((e) => e.kind !== "point" && curvePoints(e).includes(q)) || (uses.get(q) ?? 0) > 0 || onLine.some((k) => k.type === "pointOn" && k.p === q);
       if (!stillUsed) orphan.add(q);
     }
   }

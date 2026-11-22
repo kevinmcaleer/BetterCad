@@ -4708,10 +4708,12 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         onClose={() => setSketchMenuAt(null)}
         label="Sketch actions"
         title="Sketch"
-        entries={(sketchMenuAt ? ["sketch.removeDuplicates", ...(sketchMenuAt.ids.length ? ["sketch.construction", "sketch.delete"] : [])] : []).flatMap((id) => {
-          const c = commands.find((x) => x.id === id);
-          return c ? [{ id, label: c.label, icon: c.icon, keys: c.keys && formatCombo(c.keys[0]!), onSelect: () => registry.run(id) }] : [];
-        })}
+        entries={(sketchMenuAt ? ["sketch.removeDuplicates", ...(sketchMenuAt.ids.length ? ["sketch.construction", "sketch.delete"] : [])] : []).flatMap(
+          (id) => {
+            const c = commands.find((x) => x.id === id);
+            return c ? [{ id, label: c.label, icon: c.icon, keys: c.keys && formatCombo(c.keys[0]!), onSelect: () => registry.run(id) }] : [];
+          },
+        )}
       />
       <ContextMenu
         at={viewMenuAt?.at ?? null}

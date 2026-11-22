@@ -86,7 +86,10 @@ describe("removeDuplicates", () => {
     d.line([0, 0], [10, 0]);
     const s = d.done().sketch;
     expect(removeDuplicates(s).removed).toBe(0);
-    const proj: Sketch = { ...s, entities: s.entities.map((e) => (e.kind === "line" ? { ...e, construction: false, projectedFrom: { body: "b1", face: 0 } } : e)) };
+    const proj: Sketch = {
+      ...s,
+      entities: s.entities.map((e) => (e.kind === "line" ? { ...e, construction: false, projectedFrom: { body: "b1", face: 0 } } : e)),
+    };
     expect(removeDuplicates(proj).removed).toBe(0);
   });
 
