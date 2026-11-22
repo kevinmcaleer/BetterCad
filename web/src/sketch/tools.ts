@@ -577,6 +577,7 @@ export const CONSTRAINT_TOOLS: ConstraintTool[] = [
   { id: "horizontalVertical", label: "Horizontal/Vertical", hint: "Pick lines, or two points to line them up", picks: 1, tag: "H/V" },
   { id: "parallel", label: "Parallel", hint: "Pick two lines", picks: 2, tag: "Parallel" },
   { id: "perpendicular", label: "Perpendicular", hint: "Pick two lines", picks: 2, tag: "Perpendicular" },
+  { id: "collinear", label: "Collinear", hint: "Pick two lines to put them on one line", picks: 2, tag: "Collinear" },
   { id: "tangent", label: "Tangent", hint: "Pick a line and a curve, or two curves", picks: 2, tag: "Tangent" },
   { id: "equal", label: "Equal", hint: "Pick two lines, or two circles or arcs", picks: 2, tag: "Equal" },
   { id: "concentric", label: "Concentric", hint: "Pick two circles or arcs", picks: 2, tag: "Concentric" },
@@ -728,6 +729,12 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
       if (!fresh.length) return picked.length === 1 ? "That line is already horizontal or vertical" : "Those lines are already horizontal or vertical";
       return fresh.map((e) => ({ type: levelOrUpright(sketch, e)!, e }));
     }
+    case "collinear":
+      if (two && only(["line"]) && a !== b) {
+        const pair = (c: (typeof sketch.constraints)[number]) => c.type === "collinear" && ((c.a === a && c.b === b) || (c.a === b && c.b === a));
+        return sketch.constraints.some(pair) ? "Those lines are already collinear" : [{ type, a, b }];
+      }
+      return hint;
     case "parallel":
     case "perpendicular":
       return two && only(["line"]) ? [{ type, a, b }] : hint;

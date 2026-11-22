@@ -128,6 +128,10 @@ export function freedom(sketch: Sketch): Freedom {
           return (c.type === "parallel" ? d1[0] * d2[1] - d1[1] * d2[0] : d1[0] * d2[0] + d1[1] * d2[1]) / n;
         });
         return;
+      case "collinear":
+        // Both ends of b on a's line.
+        for (const p of ends(c.b)) add([...px(p), ...lineParams(c.a)], (v) => distToLine(v, p, c.a));
+        return;
       case "pointOn": {
         const e = idx.get(c.e)!;
         if (e.kind === "line") add([...px(c.p), ...lineParams(c.e)], (v) => distToLine(v, c.p, c.e));

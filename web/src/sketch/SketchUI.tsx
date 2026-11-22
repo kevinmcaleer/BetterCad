@@ -284,6 +284,7 @@ const GLYPH: Partial<Record<Constraint["type"], string>> = {
   vertical: "V",
   parallel: "∥",
   perpendicular: "⊥",
+  collinear: "⋯",
   tangent: "T",
   equal: "=",
   concentric: "◎",

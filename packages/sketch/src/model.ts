@@ -75,6 +75,8 @@ export type Constraint = ConstraintBase &
     | { type: "vertical"; e: Id; b?: Id }
     | { type: "parallel"; a: Id; b: Id }
     | { type: "perpendicular"; a: Id; b: Id }
+    /** Two lines on one infinite line: b's ends sit on a's line. */
+    | { type: "collinear"; a: Id; b: Id }
     | { type: "tangent"; a: Id; b: Id }
     /** Equal lengths (two lines) or radii (circles and arcs). */
     | { type: "equal"; a: Id; b: Id }
@@ -430,6 +432,7 @@ export const CONSTRAINT_LABEL: Record<ConstraintType, string> = {
   vertical: "Vertical",
   parallel: "Parallel",
   perpendicular: "Perpendicular",
+  collinear: "Collinear",
   tangent: "Tangent",
   equal: "Equal",
   concentric: "Concentric",

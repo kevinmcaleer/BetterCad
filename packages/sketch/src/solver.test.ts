@@ -100,6 +100,28 @@ describe("planegcs solver", () => {
     expect(dist).toBeCloseTo(C(c1).r, 6);
   });
 
+  it("collinear puts a second line on the first's line, taking two degrees of freedom", () => {
+    const d = new Draft(newSketch());
+    const a = d.line([0, 0], [10, 1], { auto: false });
+    const b = d.line([15, 4], [25, 6], { auto: false });
+    const free = solver.solve(d.done().sketch).dof;
+    d.constrain({ type: "collinear", a, b });
+    const r = solver.solve(d.done().sketch);
+    expect(r.status).toBe("ok");
+    expect(r.dof).toBe(free - 2);
+    const idx = new SketchIndex(r.sketch);
+    const ends = (id: string) => {
+      const l = idx.get(id) as { a: string; b: string };
+      return [idx.xy(l.a), idx.xy(l.b)] as const;
+    };
+    const [p, q] = ends(a);
+    const u = [q[0] - p[0], q[1] - p[1]];
+    for (const e of ends(b)) expect((u[0] * (e[1] - p[1]) - u[1] * (e[0] - p[0])) / Math.hypot(u[0]!, u[1]!)).toBeCloseTo(0, 6);
+    // Parallel on top of it adds nothing.
+    d.constrain({ type: "parallel", a, b });
+    expect(solver.solve(d.done().sketch).dof).toBe(free - 2);
+  });
+
   it("symmetric points about a construction line, and a midpoint", () => {
     const d = new Draft(newSketch());
     const axis = d.line([0, -10], [0, 10], { construction: true, auto: false });
