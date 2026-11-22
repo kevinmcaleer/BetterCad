@@ -38,6 +38,15 @@ describe("contrast", () => {
   }
 });
 
+describe("drawing sheet contrast", () => {
+  // Graphics need 3:1 (WCAG 1.4.11): the box round a selected view and the view being placed, on paper.
+  for (const theme of THEMES) {
+    it(`paper-pick on paper is at least 3:1 in ${theme.name}`, () => {
+      expect(contrast(colour("paper-pick", theme.id), colour("paper", theme.id))).toBeGreaterThanOrEqual(3);
+    });
+  }
+});
+
 describe("icon contrast", () => {
   // Graphics need 3:1 (WCAG 1.4.11): an icon's outline against the bars it sits on.
   for (const theme of THEMES) {

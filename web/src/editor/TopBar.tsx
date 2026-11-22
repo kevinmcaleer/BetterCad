@@ -94,6 +94,8 @@ export interface TopBarProps {
   ribbon?: (tab: Exclude<RibbonTab, "sketch">) => ReactNode;
   /** A sketch is open: the ribbon's Sketch tab takes over, and this draws its tools. */
   sketchRibbon?: ReactNode;
+  /** A drawing's sheet is open (#559): the ribbon's Drawing tab takes over the same way. */
+  drawingRibbon?: ReactNode;
 }
 
 const TABS: [Exclude<RibbonTab, "sketch">, string][] = [
@@ -176,7 +178,13 @@ export function TopBar(p: TopBarProps) {
   const [tab, setTab] = useState<Exclude<RibbonTab, "sketch">>("model");
   const [folded, setFolded] = useState(false);
   const ribbon = !p.shared && p.ribbon;
-  const sketching = !!p.sketchRibbon;
+  // A sketch or a drawing takes the ribbon over with its own tab; the model's tabs wait.
+  const over = p.sketchRibbon
+    ? { id: "sketch", label: "Sketch", tools: p.sketchRibbon }
+    : p.drawingRibbon
+      ? { id: "drawing", label: "Drawing", tools: p.drawingRibbon }
+      : null;
+  const sketching = !!over;
   const title = (
     <span className="bc-title">
       <Icon name="cube" size={18} />
@@ -197,8 +205,8 @@ export function TopBar(p: TopBarProps) {
           {modelsToggle(p)}
           <span className="bc-ribbon-tabs" role="tablist" aria-label="Tool tabs">
             {sketching && (
-              <button type="button" role="tab" id="bc-tab-sketch" className="bc-tab" aria-selected aria-controls="bc-ribbon-tools">
-                Sketch
+              <button type="button" role="tab" id={`bc-tab-${over.id}`} className="bc-tab" aria-selected aria-controls="bc-ribbon-tools">
+                {over.label}
               </button>
             )}
             {TABS.map(([id, label]) => (
@@ -225,9 +233,9 @@ export function TopBar(p: TopBarProps) {
           {rightSide(p)}
         </div>
         {!folded && (
-          <div className="bc-ribbon-tools" id="bc-ribbon-tools" role="tabpanel" aria-labelledby={`bc-tab-${sketching ? "sketch" : tab}`}>
-            <Toolbar label={sketching ? "Sketch tools" : "Model tools"} className="bc-ribbon-groups">
-              {sketching ? p.sketchRibbon : ribbon(tab)}
+          <div className="bc-ribbon-tools" id="bc-ribbon-tools" role="tabpanel" aria-labelledby={`bc-tab-${over ? over.id : tab}`}>
+            <Toolbar label={over ? `${over.label} tools` : "Model tools"} className="bc-ribbon-groups">
+              {over ? over.tools : ribbon(tab)}
             </Toolbar>
           </div>
         )}
