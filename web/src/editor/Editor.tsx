@@ -1282,7 +1282,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     // they want one; Revolve and Pattern keep the one they turn round. The browser's eyes keep the rest on show.
     const want = construct.active
       ? construct.slot
-      : (sketch.editing && (sketch.stool === "dimension" || sketch.stool === "mirror")) || revolve.pickingAxis || pattern.pickingAxis || jointAxis
+      : (sketch.editing && (sketch.stool === "dimension" || sketch.stool === "mirror" || sketch.pattern.pick === "dir")) ||
+          revolve.pickingAxis ||
+          pattern.pickingAxis ||
+          jointAxis
         ? "line"
         : null;
     const keep = new Set([revolve.axisShape, patternAxis, picked, ...originShown.filter((x) => (AXES as string[]).includes(x)).map((a) => `origin:${a}`)]);
@@ -1301,6 +1304,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     pattern.pickingAxis,
     patternAxis,
     mirrorStep,
+    sketch.pattern.pick,
     jointAxis,
     originShown,
     vp.ref,
@@ -4708,12 +4712,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         onClose={() => setSketchMenuAt(null)}
         label="Sketch actions"
         title="Sketch"
-        entries={(sketchMenuAt ? ["sketch.removeDuplicates", ...(sketchMenuAt.ids.length ? ["sketch.construction", "sketch.delete"] : [])] : []).flatMap(
-          (id) => {
-            const c = commands.find((x) => x.id === id);
-            return c ? [{ id, label: c.label, icon: c.icon, keys: c.keys && formatCombo(c.keys[0]!), onSelect: () => registry.run(id) }] : [];
-          },
-        )}
+        entries={(sketchMenuAt
+          ? [
+              "sketch.removeDuplicates",
+              ...(sketchMenuAt.ids.length ? ["sketch.construction", "sketch.delete"] : []),
+              ...(sketch.sketch && sketchMenuAt.ids.length && sketch.patternOf(sketchMenuAt.ids) ? ["sketch.editPattern"] : []),
+            ]
+          : []
+        ).flatMap((id) => {
+          const c = commands.find((x) => x.id === id);
+          return c ? [{ id, label: c.label, icon: c.icon, keys: c.keys && formatCombo(c.keys[0]!), onSelect: () => registry.run(id) }] : [];
+        })}
       />
       <ContextMenu
         at={viewMenuAt?.at ?? null}

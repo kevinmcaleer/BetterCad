@@ -143,14 +143,14 @@ export function featureParams(f: Feature): ModelParam[] {
     return f.sketch.dimensions
       .filter((d) => !d.suppressed)
       .map((d) => {
-        const kind = DIM_LABEL[d.kind] ?? "Size";
+        const kind = d.kind === "pattern" && d.role ? `Pattern ${d.role.replace(/\d$/, "")}` : (DIM_LABEL[d.kind] ?? "Size");
         count[kind] = (count[kind] ?? 0) + 1;
         return {
           path: `dim:${d.id}`,
           label: `${kind} ${count[kind]}`,
           expression: d.driving ? d.expression || fmt(d.value) : fmt(d.value),
           value: d.value,
-          unit: d.kind === "angle" ? "deg" : "mm",
+          unit: d.kind === "angle" || d.role === "angle" ? "deg" : d.role?.startsWith("count") ? "none" : "mm",
           readOnly: !d.driving || undefined,
           name: d.name,
         };
@@ -200,6 +200,8 @@ export function checkModelParam(f: Feature, path: string, expression: string, sc
   if (path.startsWith("dim:") && f.type === "sketch") {
     const d = f.sketch.dimensions.find((x) => `dim:${x.id}` === path);
     if (d?.kind === "angle" && v >= 180) return { problem: "Use an angle under 180°" };
+    if (d?.role === "angle" && v > 360) return { problem: "Use an angle up to 360°" };
+    if (d?.role?.startsWith("count") && (!Number.isInteger(v) || v < 1)) return { problem: "Use a whole number, 1 or more" };
   }
   return { value: v };
 }

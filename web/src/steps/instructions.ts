@@ -60,6 +60,7 @@ const DIMENSION: Record<DimensionKind, string> = {
   radius: "Radius",
   diameter: "Diameter",
   angle: "Angle",
+  pattern: "Pattern",
 };
 
 const round = (v: number) => Math.round(v * 100) / 100;
@@ -69,7 +70,8 @@ const plain = (expr: string) => /^\s*-?\d+(\.\d+)?\s*$/.test(expr);
 
 /** "Length 40 mm (`width`)", "Angle 30°". */
 export function dimensionText(d: Dimension): string {
-  const v = `${round(d.value)}${d.kind === "angle" ? "°" : " mm"}`;
+  const unit = d.kind === "pattern" ? (d.role === "angle" ? "°" : d.role?.startsWith("count") ? "" : " mm") : d.kind === "angle" ? "°" : " mm";
+  const v = `${round(d.value)}${unit}`;
   const expr = d.expression && !plain(d.expression) ? ` (\`${d.expression}\`)` : "";
   return `${DIMENSION[d.kind]} ${v}${expr}${d.driving ? "" : ", for reference"}`;
 }

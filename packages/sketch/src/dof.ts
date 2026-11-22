@@ -210,6 +210,7 @@ export function freedom(sketch: Sketch): Freedom {
   };
 
   const dimension = (d: Dimension) => {
+    if (d.kind === "pattern") return;
     const [r0, r1] = d.refs as [Id, Id | undefined];
     const e0 = idx.get(r0);
     const e1 = r1 ? idx.get(r1) : undefined;
@@ -255,6 +256,12 @@ export function freedom(sketch: Sketch): Freedom {
   };
 
   for (const c of sketch.constraints) if (!c.suppressed) constraint(c);
+  // A pattern's copies are held where their originals put them, as the solver holds them.
+  for (const e of sketch.entities) {
+    if (!e.copy) continue;
+    if (e.kind === "point") for (const i of px(e.id)) add([i], (v) => v[i]! - v0[i]!);
+    else if (e.kind === "circle" || e.kind === "arc") add([rr(e.id)], (v) => v[rr(e.id)]! - v0[rr(e.id)]!);
+  }
   // A projected circle's radius is held, as the solver holds it.
   for (const e of sketch.entities) if (e.kind === "circle" && e.projectedFrom) add([rr(e.id)], (v) => v[rr(e.id)]! - v0[rr(e.id)]!);
   for (const d of sketch.dimensions) if (d.driving && !d.suppressed) dimension(d);

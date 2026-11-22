@@ -59,6 +59,7 @@ import {
   type SketchFeature,
 } from "../state/document";
 import { loadSolver } from "./solver";
+import { loadPatternCore, patternFor, skipDeleted, useSketchPattern } from "./sketchPattern";
 import { DEFAULT_FONT, layOut } from "./text/fonts";
 import type { Command } from "../state/commands";
 import { caught } from "../report/errors";
@@ -104,6 +105,8 @@ export interface SketchDeps {
     get(): ModelDoc;
     edit(fn: (d: ModelDoc) => ModelDoc, label: string, coalesceKey?: string): void;
     seal(): void;
+    /** Takes back the open run of changes with this key (Cancel on the Pattern panel). */
+    discard(key: string): void;
   };
   record: (fn: (d: ModelDoc, at: number | undefined) => ModelDoc, label: string) => void;
   doc: ModelDoc;
@@ -170,6 +173,7 @@ const DIM_NAME: Record<DimensionKind, string> = {
   radius: "Radius",
   diameter: "Diameter",
   angle: "Angle",
+  pattern: "Pattern",
 };
 
 export type SketchSession = ReturnType<typeof useSketch>;
@@ -295,6 +299,7 @@ export function useSketch(d: SketchDeps) {
   // The editing tools are ready by the time one is picked.
   useEffect(() => {
     if (editingId && !lazy.edits) loadEdits();
+    if (editingId) void loadPatternCore();
   }, [editingId]);
   const result = useMemo<SolveResult | null>(() => {
     if (!sketch || !solver) return null;
@@ -442,6 +447,9 @@ export function useSketch(d: SketchDeps) {
     [current, apply, say],
   );
 
+  /** The Pattern tool: copies of shapes in rows, or round a point, that follow the originals. */
+  const pattern = useSketchPattern({ current, apply, store, say, setSel, origin: () => live.current.origin, close: () => setStool("select") }, !!editingId);
+
   /**
    * The dimension tool on a selection: one line, circle or arc, two points, a point and a line, two lines, or a circle or
    * arc with another, a line or a point.
@@ -537,7 +545,10 @@ export function useSketch(d: SketchDeps) {
         say("Type a size above 0", true);
         return;
       }
-      if (dm.kind === "angle" && (v <= 0 || v >= 180)) {
+      if (dm.kind === "pattern") {
+        if (dm.role === "angle" && v > 360) return say("Type an angle up to 360°", true);
+        if (dm.role?.startsWith("count")) v = Math.max(1, Math.round(v));
+      } else if (dm.kind === "angle" && (v <= 0 || v >= 180)) {
         say("Type an angle between 0° and 180°", true);
         return;
       }
@@ -649,9 +660,12 @@ export function useSketch(d: SketchDeps) {
     const ids = live.current.sel.filter((id) => id !== ORIGIN);
     if (!s || !ids.length) return;
     const gone = new Set(ids);
-    const next = removeEntities(
-      { ...s, constraints: s.constraints.filter((c) => !gone.has(c.id)), dimensions: s.dimensions.filter((x) => !gone.has(x.id)) },
-      ids.filter((id) => s.entities.some((e) => e.id === id) || s.texts?.some((t) => t.id === id)),
+    const next = skipDeleted(
+      s,
+      removeEntities(
+        { ...s, constraints: s.constraints.filter((c) => !gone.has(c.id)), dimensions: s.dimensions.filter((x) => !gone.has(x.id)) },
+        ids.filter((id) => s.entities.some((e) => e.id === id) || s.texts?.some((t) => t.id === id)),
+      ),
     );
     apply(next, ids.length === 1 ? "Delete from the sketch" : `Delete ${ids.length} items from the sketch`);
     setSel([]);
@@ -853,6 +867,7 @@ export function useSketch(d: SketchDeps) {
         store.edit((doc) => updateSketch(doc, id, (x) => ({ ...x, turn: turn || undefined })), "Turn the sketch view");
     }
     store.seal();
+    live.current.pattern.end();
     setEditingId(null);
     setStool("select");
     setSel([]);
@@ -866,8 +881,9 @@ export function useSketch(d: SketchDeps) {
 
   const finish = useCallback(
     (force = false) => {
-      // Enter with a spline under way ends the spline, not the sketch.
+      // Enter with a spline under way ends the spline, not the sketch; with a pattern open, it keeps the pattern.
       if (!force && endSpline.current()) return;
+      if (!force && live.current.pattern.id) return live.current.pattern.done();
       const s = current();
       if (!s) return end();
       const drawn = s.entities.some((e) => e.kind !== "point" && !e.construction) || !!s.texts?.some((t) => !t.construction);
@@ -1058,6 +1074,7 @@ export function useSketch(d: SketchDeps) {
     textEdit,
     openText,
     editText,
+    pattern,
   });
   live.current = {
     autoProject: options.autoProject,
@@ -1094,6 +1111,7 @@ export function useSketch(d: SketchDeps) {
     textEdit,
     openText,
     editText,
+    pattern,
   };
 
   // Picking a plane: the origin planes show, flat faces light up under the pointer.
@@ -1574,6 +1592,10 @@ export function useSketch(d: SketchDeps) {
         }
         if (L.stool === "fillet" || L.stool === "offset" || L.stool === "project") return editDown(p, hit, mods);
         if (L.stool === "mirror") return mirrorDown(p, hit);
+        if (L.stool === "pattern") {
+          const id = L.pattern.under(L.sketch, hit.xy, reach * hit.px, L.origin);
+          return L.pattern.click(id, L.pattern.pick === "dir" && !id ? L.axisAt(p, hit.xy) : null);
+        }
         if (L.stool === "text") {
           // A click on a text opens it; anywhere else places a new one there (or moves the one being set).
           const t = L.textEdit?.id ? null : textAt(L.sketch, hit.xy, reach * hit.px);
@@ -1724,6 +1746,7 @@ export function useSketch(d: SketchDeps) {
         if (L.stool === "extend" || (L.stool === "trim" && mods.alt)) return extendMove(hit);
         if (L.stool === "fillet" || L.stool === "trim" || L.stool === "offset" || L.stool === "project") return editMove(p, hit, mods);
         if (L.stool === "mirror") return mirrorMove(hit);
+        if (L.stool === "pattern") return setHover(L.pattern.under(L.sketch, hit.xy, reach * hit.px, L.origin));
         if (L.ctool) {
           // The Coincident tool snaps to the point, origin or midpoint under the pointer, and lets go further away.
           setPointer({ x: p.x, y: p.y });
@@ -2120,7 +2143,13 @@ export function useSketch(d: SketchDeps) {
     (t: SketchToolId) => {
       if (t === "dimension" && live.current.sel.length && dimensionFor(live.current.sel)) return;
       const next = live.current.stool === t && t !== "select" ? "select" : t;
+      // Another tool keeps a pattern that is open, as OK would.
+      if (live.current.pattern.id && next !== "pattern") live.current.pattern.done();
       setStool(next);
+      if (next === "pattern") {
+        const picked = live.current.sel.filter((id) => id !== ORIGIN);
+        void loadPatternCore().then(() => picked.length && live.current.pattern.start(picked));
+      }
       // Shapes already picked: Mirror goes straight to the line.
       const s = live.current.sketch;
       if (next === "mirror" && s && live.current.sel.some((id) => s.entities.some((e) => e.id === id))) setMirrorStage("line");
@@ -2141,7 +2170,7 @@ export function useSketch(d: SketchDeps) {
         label: t.label,
         group: "Sketch",
         icon: t.icon,
-        keys: [t.key],
+        keys: t.key ? [t.key] : undefined,
         run: () => h.current.pickTool(t.id),
       })),
       ...CONSTRAINT_TOOLS.map<Command>((t) => ({
@@ -2162,6 +2191,26 @@ export function useSketch(d: SketchDeps) {
         keys: ["delete", "backspace"],
         run: () => h.current.removeSelected(),
         when: has,
+      },
+      {
+        id: "sketch.editPattern",
+        scope: "sketch",
+        label: "Edit pattern",
+        group: "Sketch",
+        icon: "distributeH",
+        run: () => {
+          const sk = live.current.sketch;
+          const p = sk && patternFor(sk, live.current.sel);
+          if (!p) return;
+          h.current.pickTool("select");
+          setStool("pattern");
+          void loadPatternCore().then(() => live.current.pattern.edit(p.id));
+        },
+        when: () => {
+          const sk = live.current.sketch;
+          return !!sk && !!patternFor(sk, live.current.sel);
+        },
+        keywords: "pattern copies count spacing rectangular circular",
       },
       {
         id: "sketch.autoConstrain",
@@ -2215,7 +2264,7 @@ export function useSketch(d: SketchDeps) {
       },
       { id: "sketch.finish", scope: "sketch", label: "Finish sketch", group: "Sketch", icon: "finish", keys: ["enter"], run: () => h.current.finish() },
     ];
-  }, []);
+  }, [setStool]);
 
   const onCamera = useCallback(() => setCamTick((t) => t + 1), []);
 
@@ -2284,6 +2333,8 @@ export function useSketch(d: SketchDeps) {
     setOffsetBoth,
     mirrorStage,
     setMirrorStage,
+    pattern,
+    patternOf: (ids: Id[]) => (sketch ? patternFor(sketch, ids) : undefined),
     projectGuide,
     setProjectGuide,
     gridSnap,
