@@ -1724,6 +1724,8 @@ export function useSketch(d: SketchDeps) {
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
 
+    // The view stays square on to the sketch: turn it with the view cube.
+    eng.lockTilt(true);
     eng.setInput({
       down: (p, mods) => {
         const handled = input.down(lensed(lens, p), mods);
@@ -1758,6 +1760,7 @@ export function useSketch(d: SketchDeps) {
       closeLoupe.current = () => {};
       setLoupe(null);
       eng.setInput(null);
+      eng.lockTilt(false);
     };
   }, [editingId, engineOf, store, say]);
 
