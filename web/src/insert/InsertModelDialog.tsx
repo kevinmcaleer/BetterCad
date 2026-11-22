@@ -4,8 +4,12 @@ import { BCAD_EXT, BcadError, loadBcad, nameFromFile } from "@bettercad/kernel/b
 import type { Api, ModelSummary } from "../cloud/api";
 import { fillBlobs } from "../cloud/cloudDoc";
 import { insertModel } from "@bettercad/kernel/insert-model";
+import { importFormat } from "@bettercad/kernel";
 import { build, insertedId, type ModelDoc, type ModelSource } from "../state/document";
 import type { Placeable } from "../catalogue/usePlacePart";
+
+/** The files that go into the open model as they are, rather than as a model to place. */
+export const FILE_EXTS = ".stl,.step,.stp,.3mf";
 
 /** A model picked to insert: where it came from, and the model itself with its files. */
 export interface PickedModel {
@@ -41,14 +45,16 @@ export interface InsertModelDialogProps {
   /** The model open now, which can't go inside itself. */
   current?: string;
   onPick: (m: Placeable) => void;
+  /** STL, STEP or 3MF files picked: each goes into the open model as a component. */
+  onFiles?: (files: File[]) => void;
   onCancel: () => void;
 }
 
 /**
- * Insert model (#484): your saved models with their pictures and a search, or a .bcad file. Picking one reads it,
- * with its imported files, ready to place.
+ * Insert model (#484): your saved models with their pictures and a search, or a file from your computer. A saved model
+ * or a .bcad file is read, with its imported files, ready to place; an STL, STEP or 3MF file goes in as a component.
  */
-export function InsertModelDialog({ api, signedIn, current, onPick, onCancel }: InsertModelDialogProps) {
+export function InsertModelDialog({ api, signedIn, current, onPick, onFiles, onCancel }: InsertModelDialogProps) {
   const [q, setQ] = useState("");
   const [models, setModels] = useState<ModelSummary[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -95,6 +101,7 @@ export function InsertModelDialog({ api, signedIn, current, onPick, onCancel }: 
 
   const pickFile = async (f: File) => {
     setProblem(null);
+    if (importFormat(f.name)) return onFiles?.([f]);
     const doc = read(await f.text());
     const name = nameFromFile(f.name);
     if (doc) onPick(modelItem({ source: { kind: "file", name }, doc: { ...doc, name } }));
@@ -109,7 +116,12 @@ export function InsertModelDialog({ api, signedIn, current, onPick, onCancel }: 
       onCancel={onCancel}
       footer={
         <>
-          <Button label="From a file…" icon="upload" title={`Insert a ${BCAD_EXT} file from your computer`} onClick={() => file.current?.click()} />
+          <Button
+            label="From a file…"
+            icon="upload"
+            title={`Insert a ${BCAD_EXT}, STL, STEP or 3MF file from your computer`}
+            onClick={() => file.current?.click()}
+          />
           <span className="bc-grow" />
           <Button kind="cancel" label="Cancel" shortcut="Esc" onClick={onCancel} />
         </>
@@ -118,19 +130,23 @@ export function InsertModelDialog({ api, signedIn, current, onPick, onCancel }: 
       <input
         ref={file}
         type="file"
-        accept={`${BCAD_EXT},application/json`}
+        accept={onFiles ? `${BCAD_EXT},application/json,${FILE_EXTS}` : `${BCAD_EXT},application/json`}
         hidden
-        aria-label="BetterCad file to insert"
+        multiple={!!onFiles}
+        aria-label="File to insert"
         onChange={(e) => {
-          const f = e.target.files?.[0];
+          const list = [...(e.target.files ?? [])];
           e.target.value = "";
-          if (f) void pickFile(f);
+          // Several meshes or STEP files go in together; a .bcad goes in on its own, to place.
+          const files = list.filter((f) => importFormat(f.name));
+          if (files.length > 1 && onFiles) onFiles(files);
+          else if (list[0]) void pickFile(list[0]);
         }}
       />
       <p className="bc-note">Pick a model, then click a face or the ground to place it. It comes in as one component you can joint.</p>
       {problem && <Banner tone="danger">{problem}</Banner>}
       {!signedIn ? (
-        <p className="bc-note">Sign in to insert models from My models. You can still insert a {BCAD_EXT} file.</p>
+        <p className="bc-note">Sign in to insert models from My models. You can still insert a {BCAD_EXT}, STL, STEP or 3MF file.</p>
       ) : (
         <>
           <input

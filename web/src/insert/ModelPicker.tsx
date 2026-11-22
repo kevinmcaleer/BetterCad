@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Banner, Button, ContextMenu, IconButton, PartsTree, type ContextMenuState, type MenuEntry } from "@bettercad/ui";
 import type { Api, ModelSummary } from "../cloud/api";
 import { placesApi } from "../pages/placesApi";
 import type { Tree } from "../pages/places";
 import type { Placeable } from "../catalogue/usePlacePart";
-import { savedItem } from "./InsertModelDialog";
+import { FILE_EXTS, savedItem } from "./InsertModelDialog";
 import { filterItems, modelOfRow, pickerItems } from "./pickerTree";
 
 export interface ModelPickerProps {
@@ -14,6 +14,8 @@ export interface ModelPickerProps {
   current?: string;
   /** A model was read and is ready to place, as a linked component. */
   onInsert: (m: Placeable) => void;
+  /** STL, STEP or 3MF files from your computer, each to go into this model as a component. */
+  onFiles?: (files: File[]) => void;
   onClose: () => void;
 }
 
@@ -21,7 +23,8 @@ export interface ModelPickerProps {
  * The model picker (#480): your projects, folders and models in a tree beside the browser. Right-click a model (or
  * double-click it, or pick it and press Insert) to bring it into this model as a linked component.
  */
-export function ModelPicker({ api, signedIn, current, onInsert, onClose }: ModelPickerProps) {
+export function ModelPicker({ api, signedIn, current, onInsert, onFiles, onClose }: ModelPickerProps) {
+  const fileInput = useRef<HTMLInputElement>(null);
   const [tree, setTree] = useState<Tree | null>(null);
   const [models, setModels] = useState<ModelSummary[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -126,6 +129,31 @@ export function ModelPicker({ api, signedIn, current, onInsert, onClose }: Model
             title={picked ? `Insert ${nameOf(picked)} as a linked component` : "Pick a model to insert"}
             disabled={!picked || !!busy}
             onClick={() => picked && void insert(picked)}
+          />
+        </>
+      )}
+      {onFiles && (
+        <>
+          <input
+            ref={fileInput}
+            type="file"
+            hidden
+            multiple
+            accept={FILE_EXTS}
+            aria-label="File to insert from your computer"
+            onChange={(e) => {
+              const list = [...(e.target.files ?? [])];
+              e.target.value = "";
+              if (list.length) onFiles(list);
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="wide"
+            label="Insert a file…"
+            icon="upload"
+            title="Insert an STL, STEP or 3MF file from your computer as a component"
+            onClick={() => fileInput.current?.click()}
           />
         </>
       )}

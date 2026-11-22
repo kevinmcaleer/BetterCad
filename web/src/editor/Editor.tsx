@@ -177,7 +177,7 @@ import { useWhatsNew } from "../whatsnew/useWhatsNew";
 import { useTips } from "../tips/useTips";
 import { useStageNotice } from "../stage/useStageNotice";
 import { saveBcad } from "@bettercad/kernel/bcad";
-import type { BodyMass, Clash, ExportFormat, Mate } from "@bettercad/kernel";
+import { importFormat, type BodyMass, type Clash, type ExportFormat, type Mate } from "@bettercad/kernel";
 import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
@@ -1514,6 +1514,24 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     },
     [record, say, workIn, activate],
   );
+  // Insert a file: STL, STEP or 3MF files from your computer, each a component of the open model, inside the active one.
+  const insertFiles = useCallback(
+    (list: File[]) => {
+      const ok = list.filter((f) => importFormat(f.name));
+      if (ok.length < list.length) say("Insert takes .stl, .step and .3mf files. To insert a .bcad model, use Insert model.", true);
+      if (!ok.length) return;
+      void importFiles(ok, undefined, {
+        call: kernel.call,
+        record,
+        say,
+        select: setSelection,
+        component: { parent: workIn ?? undefined },
+        progress: imports.setProgress,
+        ready: imports.ready,
+      });
+    },
+    [kernel.call, record, say, workIn, imports.setProgress, imports.ready],
+  );
   // Rigid group (Fusion's): the picked bodies' components, and loose bodies, lock together and move as one.
   const makeRigid = useCallback(
     (ids: string[]) => {
@@ -1652,6 +1670,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   );
 
   const referenceInput = useRef<HTMLInputElement>(null);
+  const insertInput = useRef<HTMLInputElement>(null);
   /** Reference bodies (#185): shown to design around, never printed or exported. */
   const toggleReference = useCallback(
     (ids: string[]) => {
@@ -2027,6 +2046,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     toggleHole,
     toggleReference,
     importReference: () => {},
+    insertFile: () => {},
     pocket: (_id: string) => {},
     mateGear: (_id: string) => {},
     addRack: (_id: string) => {},
@@ -2139,6 +2159,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     insertModel: () => setInsertOpen(true),
     togglePicker: () => setPickerOpen((o) => !o),
     importReference: () => referenceInput.current?.click(),
+    insertFile: () => insertInput.current?.click(),
     confirm: () =>
       recogniseOk.current
         ? recogniseOk.current()
@@ -2219,6 +2240,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         icon: "upload",
         run: () => void h().open(),
         keywords: "open add mesh stl step stp 3mf",
+      },
+      {
+        id: "file.insert",
+        scope: "model",
+        label: "Insert a file…",
+        group: "File",
+        icon: "upload",
+        run: () => h().insertFile(),
+        keywords: "upload add stl step stp 3mf mesh component assembly place into this model",
       },
       {
         id: "file.importReference",
@@ -3643,6 +3673,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
+    { id: "insert-file", label: "Insert a file as a component…", icon: "upload", onSelect: () => insertInput.current?.click() },
     { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
     ...files.recentEntries,
   ];
@@ -3906,6 +3937,19 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   return (
     <>
       <input
+        ref={insertInput}
+        type="file"
+        hidden
+        multiple
+        accept=".stl,.step,.stp,.3mf"
+        aria-label="Insert a file"
+        onChange={(e) => {
+          const list = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (list.length) insertFiles(list);
+        }}
+      />
+      <input
         ref={referenceInput}
         type="file"
         hidden
@@ -4049,6 +4093,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                     setTool("select");
                     place.place(m);
                   }}
+                  onFiles={insertFiles}
                 />
               </Suspense>
             </aside>
@@ -4807,6 +4852,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               setInsertOpen(false);
               setTool("select");
               place.place(m);
+            }}
+            onFiles={(list) => {
+              setInsertOpen(false);
+              insertFiles(list);
             }}
           />
         </Suspense>
