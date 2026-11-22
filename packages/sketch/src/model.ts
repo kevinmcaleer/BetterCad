@@ -78,6 +78,8 @@ export type Constraint = ConstraintBase &
     /** Two lines on one infinite line: b's ends sit on a's line. */
     | { type: "collinear"; a: Id; b: Id }
     | { type: "tangent"; a: Id; b: Id }
+    /** Curvature continuous (G2): a spline (a) carries on from a line or arc (b) it shares an end with, bending as it does. */
+    | { type: "curvature"; a: Id; b: Id }
     /** Equal lengths (two lines) or radii (circles and arcs). */
     | { type: "equal"; a: Id; b: Id }
     | { type: "concentric"; a: Id; b: Id }
@@ -439,6 +441,7 @@ export const CONSTRAINT_LABEL: Record<ConstraintType, string> = {
   perpendicular: "Perpendicular",
   collinear: "Collinear",
   tangent: "Tangent",
+  curvature: "Curvature",
   equal: "Equal",
   concentric: "Concentric",
   midpoint: "Midpoint",

@@ -581,11 +581,40 @@ export function useSketch(d: SketchDeps) {
     [current, apply, say],
   );
 
+  /**
+   * AutoConstrain (no `picked`: the selection, or the whole sketch) or Polygon (a side picked): finds the constraints
+   * that already hold and adds those that take a degree of freedom away, in one undo step.
+   */
+  const addLazily = useCallback(
+    async (s: Sketch, picked?: Id[]) => {
+      const m = await import("@bettercad/sketch/auto");
+      if (!solver) return;
+      const p = picked ? m.polygonCandidates(s, picked[0]!) : { sketch: s, candidates: m.autoCandidates(s, live.current.sel) };
+      if (typeof p === "string") return say(p);
+      const r = m.keepUseful((x) => solver.solve(x), p.sketch, p.candidates);
+      if (r.added.length && !apply(r.sketch, picked ? "Add polygon constraint" : "AutoConstrain")) return;
+      say(m.describeAdded(r.added));
+    },
+    [solver, apply, say],
+  );
+
+  const autoConstrain = useCallback(() => {
+    const s = current();
+    if (s) void addLazily(s);
+  }, [current, addLazily]);
+
   /** Adds a constraint tool's output for some picks. Returns whether they fitted (true even if the solver said no). */
   const applyConstraint = useCallback(
     (type: ConstraintToolId, picked: Id[], quietHint = false): boolean => {
       const s = current();
       if (!s) return false;
+      if (type === "polygon") {
+        void addLazily(
+          s,
+          picked.map((id) => middleLine(id) ?? id),
+        );
+        return true;
+      }
       const out = addConstraints(type, s, picked, live.current.origin ?? undefined);
       if (typeof out === "string") {
         if (!quietHint) say(out);
@@ -594,7 +623,7 @@ export function useSketch(d: SketchDeps) {
       apply(out, `Add ${constraintToolById(type).label.toLowerCase()} constraint`, { strict: true });
       return true;
     },
-    [current, apply, say],
+    [current, apply, say, addLazily],
   );
 
   /**
@@ -2101,8 +2130,8 @@ export function useSketch(d: SketchDeps) {
 
   // ---------------------------------------------------------------- commands
 
-  const h = useRef({ pickTool, removeSelected, removeDuplicates, toggleConstruction, finish, constrain, lookAtSketch });
-  h.current = { pickTool, removeSelected, removeDuplicates, toggleConstruction, finish, constrain, lookAtSketch };
+  const h = useRef({ pickTool, removeSelected, removeDuplicates, autoConstrain, toggleConstruction, finish, constrain, lookAtSketch });
+  h.current = { pickTool, removeSelected, removeDuplicates, autoConstrain, toggleConstruction, finish, constrain, lookAtSketch };
   const commands = useMemo<Command[]>(() => {
     const has = () => live.current.sel.length > 0;
     return [
@@ -2133,6 +2162,15 @@ export function useSketch(d: SketchDeps) {
         keys: ["delete", "backspace"],
         run: () => h.current.removeSelected(),
         when: has,
+      },
+      {
+        id: "sketch.autoConstrain",
+        scope: "sketch",
+        label: "AutoConstrain",
+        group: "Sketch",
+        icon: "constraint",
+        run: () => h.current.autoConstrain(),
+        keywords: "constraints auto find add",
       },
       {
         id: "sketch.removeDuplicates",
@@ -2279,6 +2317,7 @@ export function useSketch(d: SketchDeps) {
     constrain,
     removeSelected,
     removeDuplicates,
+    autoConstrain,
     menuAt,
     setOffset,
     commands,
