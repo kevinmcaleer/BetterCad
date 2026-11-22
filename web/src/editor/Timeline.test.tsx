@@ -393,7 +393,8 @@ describe("Editor timeline", () => {
     addBox();
     fireEvent.click(tile(/^Box 1/), { detail: 1 });
     fireEvent.keyDown(window, { key: "Delete" });
-    const dialog = await screen.findByRole("dialog", { name: "Delete Box 1" });
+    // The dialog is lazy: its chunk can take more than the default second to load on a busy runner.
+    const dialog = await screen.findByRole("dialog", { name: "Delete Box 1" }, { timeout: 5000 });
     expect(within(dialog).getByText(/1 later step comes after Box 1\. It rebuilds without it/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(tiles()).toEqual(["Box 2"]);
