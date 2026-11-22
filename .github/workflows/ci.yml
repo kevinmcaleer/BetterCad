@@ -201,7 +201,7 @@ jobs:
           npx vite preview --port 4173 --strictPort --host 127.0.0.1 &
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:4173/ >/dev/null && break; sleep 1; done
           # Lighthouse sometimes fails to record the trace at all (NO_NAVSTART) before it measures anything. That run
-          # says nothing about the page, so try once more; a low score is judged by budgets.mjs, never retried.
+          # says nothing about the page, so try once more; a low score is never retried, and budgets.mjs only warns on it.
           export CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())")
           for attempt in 1 2; do
             npx -y lighthouse@11.7.1 http://127.0.0.1:4173/ --preset=desktop --only-categories=performance,pwa \
