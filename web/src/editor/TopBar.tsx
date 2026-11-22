@@ -84,7 +84,7 @@ export interface TopBarProps {
   onMirror?: () => void;
   /** New component (#171): an empty one to work in, inside the active one. From bodies is on their menu. */
   onNewComponent?: () => void;
-  /** Opens or folds the My models panel (#480). Its button shows only on narrow screens, where the edge tab is hidden. */
+  /** Opens or folds the My models panel (#480): a folder button beside the browser's, on both bars. */
   onModels?: () => void;
   modelsOpen?: boolean;
   /**
@@ -194,6 +194,7 @@ export function TopBar(p: TopBarProps) {
         <div className="bc-ribbon-bar">
           {title}
           {browserToggle(p)}
+          {modelsToggle(p)}
           <span className="bc-ribbon-tabs" role="tablist" aria-label="Tool tabs">
             {sketching && (
               <button type="button" role="tab" id="bc-tab-sketch" className="bc-tab" aria-selected aria-controls="bc-ribbon-tools">
@@ -237,9 +238,7 @@ export function TopBar(p: TopBarProps) {
     <header className="bc-top">
       {title}
       {browserToggle(p)}
-      {p.onModels && (
-        <IconButton className="bc-models-toggle" icon="folder" title={p.modelsOpen ? "Hide my models" : "My models"} on={!!p.modelsOpen} onClick={p.onModels} />
-      )}
+      {modelsToggle(p)}
       <Separator />
       {undoRedo(p)}
       {!p.shared && (
@@ -382,6 +381,20 @@ function rightSide(p: TopBarProps) {
         </div>
       </MenuButton>
     </>
+  );
+}
+
+function modelsToggle(p: TopBarProps) {
+  if (!p.onModels) return null;
+  return (
+    <IconButton
+      className="bc-models-toggle"
+      icon="folder"
+      title={p.modelsOpen ? "Hide my models" : "My models"}
+      on={!!p.modelsOpen}
+      aria-controls={p.modelsOpen ? "bc-models-side" : undefined}
+      onClick={p.onModels}
+    />
   );
 }
 

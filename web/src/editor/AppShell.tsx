@@ -11,7 +11,7 @@ export interface AppShellProps {
   /** The open rail panel, or null when it is folded away. */
   leftPanel: ReactNode | null;
   leftLabel?: string;
-  /** The model picker (#480) at the left edge: a slim tab, or the open panel, before the browser. */
+  /** The model picker (#480) at the left edge, before the browser, while it is open. Folded, it is only a top-bar button. */
   picker?: ReactNode;
   pickerOpen?: boolean;
   stageToolbar: ReactNode;

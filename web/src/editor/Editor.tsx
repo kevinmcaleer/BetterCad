@@ -4,7 +4,6 @@ import {
   Button,
   ContextMenu,
   ESC,
-  Icon,
   cx,
   TooltipLayer,
   useEscape,
@@ -4081,7 +4080,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         leftLabel={panel ? PANEL_TITLES[panel] : undefined}
         pickerOpen={pickerOpen}
         picker={
-          share ? undefined : pickerOpen ? (
+          !share && pickerOpen ? (
             <aside className="bc-side bc-models-side" id="bc-models-side" aria-label="My models">
               <Suspense fallback={<p className="bc-note">Loading…</p>}>
                 <ModelPicker
@@ -4097,12 +4096,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 />
               </Suspense>
             </aside>
-          ) : (
-            <button type="button" className="bc-picker-tab" aria-expanded="false" data-tip="Show my models" onClick={() => setPickerOpen(true)}>
-              <Icon name="folder" size={16} />
-              <span>My models</span>
-            </button>
-          )
+          ) : undefined
         }
         leftPanel={
           panel && (
