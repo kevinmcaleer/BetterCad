@@ -1,1 +1,5 @@
-{"about":"A 60 × 20 plate with a ⌀4 hole 6 in and 10 up, patterned 4 along X 12 apart (sketch Pattern, rectangle): four holes. Then the spacing is 14, so the last hole is 48 in.","solved":[[0,0],[60,0],[60,20],[0,20],[6,10],[2],[18,10],[2],[30,10],[2],[42,10],[2]],"edited":[[0,0],[60,0],[60,20],[0,20],[6,10],[2],[20,10],[2],[34,10],[2],[48,10],[2]]}
+{
+  "about": "A 60 × 20 plate with a ⌀4 hole 6 in and 10 up, patterned 4 along X 12 apart (sketch Pattern, rectangle): four holes. Then the spacing is 14, so the last hole is 48 in.",
+  "solved": [[0, 0], [60, 0], [60, 20], [0, 20], [6, 10], [2], [18, 10], [2], [30, 10], [2], [42, 10], [2]],
+  "edited": [[0, 0], [60, 0], [60, 20], [0, 20], [6, 10], [2], [20, 10], [2], [34, 10], [2], [48, 10], [2]]
+}
