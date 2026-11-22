@@ -5,11 +5,11 @@ import "./app.css";
 import { App } from "./App";
 import { registerServiceWorker } from "./pwa/register";
 import { listenForInstall } from "./pwa/install";
-import { guardPageZoom } from "./editor/pageZoom";
 
 registerServiceWorker();
 listenForInstall();
-guardPageZoom();
+// Pinches zoom the view, not the page. Loaded after first paint: the shell budget is full.
+void import("./editor/pageZoom").then((m) => m.guardPageZoom());
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
