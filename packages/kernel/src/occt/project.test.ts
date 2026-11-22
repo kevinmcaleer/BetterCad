@@ -186,7 +186,8 @@ describe("golden views", () => {
           return `${e.visible ? "visible" : "hidden"} ${e.type} ${flat(e.curve)} <- ${source}`;
         })
         .sort();
-      const got = { box: { min: view.box.min.map(r), max: view.box.max.map(r) }, curves: lines };
+      // Text, not arrays: the file then reads the same before and after Prettier.
+      const got = { box: `${view.box.min.map(r).join(",")} to ${view.box.max.map(r).join(",")}`, curves: lines };
       const file = join(DIR, `view-bracket-${name}.json`);
       if (UPDATE || !existsSync(file)) {
         if (!UPDATE && process.env.CI) throw new Error(`No golden file for view-bracket-${name}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);

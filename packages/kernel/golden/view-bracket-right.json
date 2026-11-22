@@ -1,14 +1,5 @@
 {
-  "box": {
-    "min": [
-      -15,
-      0
-    ],
-    "max": [
-      15,
-      40
-    ]
-  },
+  "box": "-15,0 to 15,40",
   "curves": [
     "hidden outline line -2.25,0 -2.25,4 <- f12:f0#2",
     "hidden outline line 2.25,0 2.25,4 <- f12:f0#2",
