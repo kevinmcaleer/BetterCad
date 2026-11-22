@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Draft, drawRectangle, drawCircle, drawLine, newSketch } from "@bettercad/sketch";
 import { ORIGIN, entityAt, middleOf, snap, snapStep } from "./snap";
-import { dropTarget, unsnap } from "./drop";
+import { dropTarget, entitiesAt, unsnap } from "./drop";
 
 const rect = drawRectangle(newSketch(), [0, 0], [40, 20]).sketch;
 
@@ -66,6 +66,24 @@ describe("snap", () => {
     const edge = entityAt([20, 0.2], rect, 1)!;
     expect(rect.entities.find((e) => e.id === edge)?.kind).toBe("line");
     expect(entityAt([20, 10], rect, 1)).toBeNull();
+  });
+
+  it("lists everything under a point for the long-press list, the one a click takes first", () => {
+    // A long line, and a shorter one drawn on top of it.
+    const one = drawLine(newSketch(), [0, 0], [40, 0]);
+    const two = drawLine(one.sketch, [10, 0], [30, 0]);
+    const s = two.sketch;
+    const [long] = one.ids.filter((id) => s.entities.find((e) => e.id === id)?.kind === "line");
+    const [short] = two.ids.filter((id) => s.entities.find((e) => e.id === id)?.kind === "line");
+    const under = entitiesAt([20, 0.2], s, 1);
+    expect(under).toEqual([short, long]);
+    expect(entityAt([20, 0.2], s, 1)).toBe(short);
+    // Points come first, nearest first; curves only leaves them out.
+    const end = entitiesAt([10.1, 0], s, 1);
+    expect(s.entities.find((e) => e.id === end[0])?.kind).toBe("point");
+    expect(end.slice(-2)).toEqual([short, long]);
+    expect(entitiesAt([10.1, 0], s, 1, true)).toEqual([short, long]);
+    expect(entitiesAt([20, 5], s, 1)).toEqual([]);
   });
 
   it("snaps to the origin first, reusing a point already on it", () => {

@@ -1,4 +1,22 @@
-import { SketchIndex, angleOf, closestOnSegment, dist, mid, newId, onArc, polar, sub, type Curve, type Id, type Sketch, type Vec2 } from "@bettercad/sketch";
+import {
+  SketchIndex,
+  angleOf,
+  closestOnSegment,
+  dist,
+  ellipseDistance,
+  ellipseGeo,
+  mid,
+  newId,
+  onArc,
+  polar,
+  splineGeo,
+  splineParam,
+  sub,
+  type Curve,
+  type Id,
+  type Sketch,
+  type Vec2,
+} from "@bettercad/sketch";
 import { ORIGIN, SNAP_LABEL, middleOf, type PointPick, type SnapKind } from "./snap";
 
 /* Loaded once a sketch is open (not with the shell): a point dragged before it arrives just moves. */
@@ -117,3 +135,37 @@ export function unsnap(sketch: Sketch, p: Id): { sketch: Sketch; point: Id } | n
 
 /** Double-click picks a whole outline: loaded with the rest of the sketch's drag and drop. */
 export { connectedCurves } from "@bettercad/sketch";
+
+/**
+ * Everything within `tol` mm of a spot, in the order a click takes them: points nearest first, then curves nearest
+ * first (the origin after the points). A long press lists them so a line hidden under another can be picked.
+ */
+export function entitiesAt(p: Vec2, sketch: Sketch, tol: number, curvesOnly = false, origin?: Vec2 | null): Id[] {
+  const idx = new SketchIndex(sketch);
+  const points: [Id, number][] = [];
+  const curves: [Id, number][] = [];
+  for (const e of sketch.entities) {
+    let d = Infinity;
+    if (e.kind === "point") d = curvesOnly ? Infinity : dist([e.x, e.y], p);
+    else if (e.kind === "line") d = dist(closestOnSegment(p, idx.xy(e.a), idx.xy(e.b)).p, p);
+    else if (e.kind === "circle") d = Math.abs(dist(idx.xy(e.c), p) - e.r);
+    else if (e.kind === "ellipse") d = ellipseDistance(ellipseGeo(idx, e), p);
+    else if (e.kind === "spline") d = splineParam(splineGeo(idx, e), p).d;
+    else if (e.kind === "arc") {
+      const c = idx.xy(e.c);
+      const ang = angleOf(sub(p, c));
+      d = onArc(ang, angleOf(sub(idx.xy(e.a), c)), angleOf(sub(idx.xy(e.b), c))) ? Math.abs(dist(c, p) - e.r) : Infinity;
+    }
+    if (d <= tol) (e.kind === "point" ? points : curves).push([e.id, d]);
+  }
+  // Nearest first; on a tie the later one (drawn on top) comes first, as a click has always picked it.
+  const order = (l: [Id, number][]) =>
+    l
+      .map((x, i) => [...x, i] as const)
+      .sort((a, b) => a[1] - b[1] || b[2] - a[2])
+      .map((x) => x[0]);
+  const out = [...order(points), ...order(curves)];
+  // The origin, after the sketch's own points as a click takes it.
+  if (origin && dist(p, origin) <= tol) out.splice(points.length, 0, ORIGIN);
+  return out;
+}

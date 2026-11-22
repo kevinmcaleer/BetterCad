@@ -25,7 +25,9 @@ export type MenuEntry =
       colour?: boolean | string;
       /** A pin at the row's end that toggles whether the tool shows on the ribbon. */
       pin?: { on: boolean; onToggle: () => void };
-      onSelect: () => void;
+      /** The pointer or focus is on the row (the long-press pick list lights the item it stands for). */
+      onHover?: () => void;
+      onSelect: (mods?: { shift: boolean }) => void;
     }
   | { kind: "separator"; id: string }
   | { kind: "title"; id: string; label: string };
@@ -44,13 +46,15 @@ export interface MenuProps {
   autoFocus?: boolean;
   /** A press inside this element (the menu's own trigger) does not count as outside. */
   ignore?: RefObject<HTMLElement | null>;
+  /** The pointer left the menu. */
+  onLeave?: () => void;
   children?: ReactNode;
 }
 
 const ITEM = '[role^="menuitem"]:not([disabled])';
 
 /** A popover list of actions. Arrow keys move, a letter jumps, Enter picks, Esc closes. */
-export function Menu({ open, onClose, entries, label, title, style, className, autoFocus = true, ignore, children }: MenuProps) {
+export function Menu({ open, onClose, entries, label, title, style, className, autoFocus = true, ignore, onLeave, children }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   useDismiss(ref, open, onClose, ignore);
   useEscape(open, onClose);
@@ -83,7 +87,7 @@ export function Menu({ open, onClose, entries, label, title, style, className, a
   };
 
   return (
-    <div ref={ref} role="menu" aria-label={label} className={cx("bc-menu", className)} style={style} onKeyDown={onKeyDown}>
+    <div ref={ref} role="menu" aria-label={label} className={cx("bc-menu", className)} style={style} onKeyDown={onKeyDown} onPointerLeave={onLeave}>
       {title && <div className="bc-menu-title">{title}</div>}
       {entries.map((en) => {
         if (en.kind === "separator") return <hr key={en.id} />;
@@ -103,9 +107,11 @@ export function Menu({ open, onClose, entries, label, title, style, className, a
             className={cx("bc-menu-item", en.danger && "bc-danger")}
             disabled={en.disabled}
             tabIndex={-1}
-            onClick={() => {
+            onPointerEnter={en.onHover}
+            onFocus={en.onHover}
+            onClick={(e) => {
               onClose();
-              en.onSelect();
+              en.onSelect({ shift: e.shiftKey || e.metaKey || e.ctrlKey });
             }}
           >
             <span className="bc-menu-icon">
