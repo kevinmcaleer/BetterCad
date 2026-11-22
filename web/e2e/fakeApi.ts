@@ -99,7 +99,10 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
     deleted_at: m.deleted_at,
     folder_id: m.folder_id ?? null,
     project_id: m.project_id ?? null,
-    thumbnail: m.versions.at(-1)!.bcad.includes('"thumbnail"') ? `/api/models/${m.id}/thumbnail?v=${m.versions.at(-1)!.number}` : null,
+    thumbnail:
+      m.versions.at(-1)!.thumbnail || m.versions.at(-1)!.bcad.includes('"thumbnail"')
+        ? `/api/models/${m.id}/thumbnail?v=${m.versions.at(-1)!.number}${m.versions.at(-1)!.thumbnail ? "r" : ""}`
+        : null,
   });
   const addVersion = (m: Model, bcad: string, note: string | null) => {
     m.versions.push({ number: (m.versions.at(-1)?.number ?? 0) + 1, bcad, note, created: now() });
