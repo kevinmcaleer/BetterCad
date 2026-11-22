@@ -615,6 +615,35 @@ export function useSketch(d: SketchDeps) {
     setSel([]);
   }, [current, apply]);
 
+  /** What sketch geometry is under a point on the page, for the right-click menu; set while the sketch takes input. */
+  const pickOnPage = useRef<(at: { x: number; y: number }, touch?: boolean) => Id | null>(() => null);
+
+  /**
+   * A right-click (or long press) in the sketch: the geometry under it is picked, unless it is already in what is
+   * picked, so the menu acts on the selection. Returns what the menu acts on.
+   */
+  const menuAt = useCallback((at: { x: number; y: number }, touch?: boolean): Id[] => {
+    const id = pickOnPage.current(at, touch);
+    const sel = live.current.sel;
+    if (!id || id === ORIGIN || sel.includes(id)) return sel;
+    setSel([id]);
+    return [id];
+  }, []);
+
+  /**
+   * Remove duplicates: lines, arcs, circles and points in the selection (or the whole sketch, with nothing picked)
+   * that sit on top of each other go down to one, in one undo step.
+   */
+  const removeDuplicates = useCallback(async () => {
+    const m = await import("@bettercad/sketch/dedupe");
+    const s = current();
+    if (!s) return;
+    const r = m.tidy(s, live.current.sel.filter((id) => id !== ORIGIN));
+    if (r.sketch && !apply(r.sketch, "Remove duplicates")) return;
+    setSel((sel) => sel.filter((id) => !r.gone.has(id)));
+    say(r.message);
+  }, [current, apply, say]);
+
   /** Construction on or off for the picked curves, and for what you draw next; `to` sets it rather than flipping it. */
   const toggleConstruction = useCallback(
     (to?: boolean) => {
@@ -1139,6 +1168,13 @@ export function useSketch(d: SketchDeps) {
       const w = eng.rayPlane(p.x, p.y, f.origin, f.normal);
       // With the loupe open, picks reach only as far as its zoom allows.
       return w ? { xy: toSketch(f, w), px: eng.pixelSize(f.origin) / zoomNow() } : null;
+    };
+    pickOnPage.current = (c, touch) => {
+      const r = eng.canvas.getBoundingClientRect();
+      const hit = at({ x: c.x - r.left, y: c.y - r.top });
+      const L = live.current;
+      if (!hit || !L.sketch) return null;
+      return pickAt(hit.xy, L.sketch, (touch ? 18 : 8) * hit.px, L.origin) ?? textAt(L.sketch, hit.xy, (touch ? 18 : 8) * hit.px)?.id ?? null;
     };
     /** The model's corners, centres and edge middles on the sketch plane, worked out again when the plane or model changes. */
     let targets: { key: string; frame: Frame; list: ModelTarget[] } | null = null;
@@ -1976,8 +2012,8 @@ export function useSketch(d: SketchDeps) {
 
   // ---------------------------------------------------------------- commands
 
-  const h = useRef({ pickTool, removeSelected, toggleConstruction, finish, constrain, lookAtSketch });
-  h.current = { pickTool, removeSelected, toggleConstruction, finish, constrain, lookAtSketch };
+  const h = useRef({ pickTool, removeSelected, removeDuplicates, toggleConstruction, finish, constrain, lookAtSketch });
+  h.current = { pickTool, removeSelected, removeDuplicates, toggleConstruction, finish, constrain, lookAtSketch };
   const commands = useMemo<Command[]>(() => {
     const has = () => live.current.sel.length > 0;
     return [
@@ -2008,6 +2044,15 @@ export function useSketch(d: SketchDeps) {
         keys: ["delete", "backspace"],
         run: () => h.current.removeSelected(),
         when: has,
+      },
+      {
+        id: "sketch.removeDuplicates",
+        scope: "sketch",
+        label: "Remove duplicates",
+        group: "Sketch",
+        icon: "copy",
+        run: () => void h.current.removeDuplicates(),
+        keywords: "overlapping duplicate lines points tidy clean",
       },
       {
         id: "sketch.selectAll",
@@ -2141,6 +2186,8 @@ export function useSketch(d: SketchDeps) {
     cancelRedefine,
     constrain,
     removeSelected,
+    removeDuplicates,
+    menuAt,
     setOffset,
     commands,
     onCamera,
