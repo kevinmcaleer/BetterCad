@@ -148,7 +148,7 @@ import { useDrop } from "../files/useDrop";
 import { Timeline, partIcon } from "./Timeline";
 import { useSketch } from "../sketch/useSketch";
 import { loadSolver } from "../sketch/solver";
-import type { Solver } from "@bettercad/sketch";
+import type { Sketch, Solver } from "@bettercad/sketch";
 import { useExtrude } from "../extrude/useExtrude";
 import { bedLabel, newProfileId, usePrinterProfiles } from "../print/profiles";
 import { NO_FIT, type FitChoice } from "../fit/FitMenu";
@@ -539,6 +539,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     renderCam.current = c;
   }, []);
   // Called straight from the click, before the picture is ready, so the browser still lets it ask where to save.
+  // A sketch's flat outlines for a cutter (Cricut, laser). The writer loads on click; the picker opens straight away.
+  const exportSketchDxf = (s: Sketch, name: string) => {
+    const dxf = import("@bettercad/sketch/dxf").then((m) => m.sketchDxf(s));
+    const data = dxf.then((d) => new TextEncoder().encode(d.text).buffer as ArrayBuffer);
+    files.store.saveFiles([{ name: `${name}.dxf`, data, mime: "image/vnd.dxf" }]).then(
+      (saved) => saved && dxf.then((d) => say(`Saved ${saved.names[0]}${d.note}`)),
+      () => say(`Couldn't export ${name}`),
+    );
+  };
   const saveRender = async (png: Promise<Blob>, size: SaveSize) => {
     const name = `${live.current.doc.name}${size === "view" ? "" : size === "double" ? " 2x" : " 4K"}.png`;
     const saved = await files.store.saveFiles([{ name, data: png.then((b) => b.arrayBuffer()), mime: "image/png" }]);
@@ -3244,6 +3253,13 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 moveMarker(i);
                 sketch.redefine(id, () => setMarker(back));
               },
+            },
+            {
+              id: "dxf",
+              label: "Export as DXF",
+              icon: "download" as const,
+              disabled: !f.sketch.entities.some((e) => e.kind !== "point" && !e.construction) && !f.sketch.texts?.some((t) => !t.construction),
+              onSelect: () => exportSketchDxf(f.sketch, f.name),
             },
           ]
         : []),
