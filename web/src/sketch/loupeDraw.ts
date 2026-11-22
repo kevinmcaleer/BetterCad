@@ -1,5 +1,4 @@
-import { Mesh, SRGBColorSpace, WebGLRenderTarget } from "three";
-import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { SRGBColorSpace, Vector4, WebGLRenderTarget } from "three";
 import type { Vec2 } from "@bettercad/sketch";
 import type { Engine, ScreenPoint } from "../viewport/engine";
 import { LOUPE_SIZE, type Loupe } from "./loupe";
@@ -31,15 +30,12 @@ export function magnify(eng: Engine, x: number, y: number, zoom: number, size = 
   const { target, px, canvas } = lens;
   const side = n / zoom;
   cam.setViewOffset(width * dpr, height * dpr, x * dpr - side / 2, y * dpr - side / 2, side, side);
-  // Screen-width lines measure their width against the picture they are drawn into.
-  const mats: LineMaterial[] = [];
-  scene.traverseVisible((o) => {
-    const m = (o as Mesh).material;
-    if (m instanceof LineMaterial) mats.push(m);
-  });
-  const res = mats.map((m) => m.resolution.clone());
-  for (const m of mats) m.resolution.set(size, size);
+  // Screen-width lines (three's fat lines) take their width from the renderer's viewport as they draw, not from the
+  // target they draw into: left at the view's size, a 1.5 px sketch line shrinks to a fraction of a pixel in the loupe
+  // and all but vanishes. So the viewport is the loupe's own size while it draws.
+  const viewport = r.getViewport(new Vector4());
   try {
+    r.setViewport(0, 0, size, size);
     r.setRenderTarget(target);
     r.clear();
     r.render(scene, cam);
@@ -54,8 +50,8 @@ export function magnify(eng: Engine, x: number, y: number, zoom: number, size = 
   } catch {
     return null;
   } finally {
-    mats.forEach((m, i) => m.resolution.copy(res[i]!));
     r.setRenderTarget(null);
+    r.setViewport(viewport);
     cam.clearViewOffset();
   }
 }
