@@ -10,6 +10,7 @@ import {
 } from "@bettercad/kernel/drawing";
 import type { ModelDoc } from "../state/document";
 import { today } from "./layout";
+import { flipAngle } from "./projected";
 import { rememberSheet, type SheetPick } from "./prefs";
 import type { SheetChoice } from "./SheetCard";
 
@@ -33,7 +34,8 @@ export function sheetChange(drawing: Drawing, choice: SheetChoice): Edit {
   return [
     (d) =>
       changeSheet(d, drawing.id, sheet.id, (s) => ({
-        ...s,
+        // First angle and third angle put projected views on opposite sides of their parent.
+        ...(choice.standard === s.standard ? s : flipAngle(s)),
         size: choice.size,
         landscape: choice.landscape,
         standard: choice.standard,

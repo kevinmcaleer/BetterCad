@@ -136,6 +136,82 @@ test("place a base view of the bracket, move it, change it and delete it", { tag
   await expect(front).toBeVisible();
 });
 
+test("project top and side views from a front view; they stay lined up and follow the standard", { tag: "@journey" }, async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A3");
+  await page.keyboard.press("b");
+  const base = page.getByRole("dialog", { name: "Base view" });
+  await expect(base.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await base.getByLabel("Scale").selectOption({ label: "1:1" });
+  await base.getByRole("button", { name: "Place" }).click();
+  const front = page.getByRole("button", { name: "Front view, 1:1" });
+  await expect(front.locator(".bc-view-visible")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+  const mid = async (l: typeof front) => {
+    const b = (await l.boundingBox())!;
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+  };
+  const f = await mid(front);
+
+  // P arms Projected view from the view that is selected. A3 is first angle: below is the top view, left the right.
+  await page.keyboard.press("p");
+  const card = page.getByRole("dialog", { name: "Projected view" });
+  await expect(card.getByLabel("From")).toHaveValue(/.+/);
+  await page.mouse.move(f.x + 6, f.y + 150);
+  await expect(card.getByLabel("Side")).toHaveValue("below");
+  await expect(card.getByRole("status")).toHaveText(/Move the pointer away/, { timeout: 30_000 });
+  await expect(page.locator(".bc-view-ghost path")).toHaveAttribute("d", /M/);
+  await page.mouse.click(f.x + 6, f.y + 150);
+  const top = page.getByRole("button", { name: "Top view, 1:1" });
+  await expect(top.locator(".bc-view-visible")).toHaveAttribute("d", /A/, { timeout: 30_000 });
+  await page.mouse.move(f.x - 180, f.y - 8);
+  await expect(card.getByLabel("Side")).toHaveValue("left");
+  await expect(card.getByRole("status")).toHaveText(/Move the pointer away/, { timeout: 30_000 });
+  await page.mouse.click(f.x - 180, f.y - 8);
+  const right = page.getByRole("button", { name: "Right view, 1:1" });
+  await expect(right.locator(".bc-view-visible")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+  await page.keyboard.press("Enter");
+  await expect(card).toHaveCount(0);
+  // In line with the front view, whatever the pointer was off by.
+  expect(Math.abs((await mid(top)).x - f.x)).toBeLessThan(1.5);
+  expect((await mid(top)).y).toBeGreaterThan(f.y + 100);
+  expect(Math.abs((await mid(right)).y - f.y)).toBeLessThan(1.5);
+  expect((await mid(right)).x).toBeLessThan(f.x - 100);
+
+  // The top view slides along its line only, and dragging the front view carries both.
+  const t = await mid(top);
+  await page.mouse.move(t.x, t.y);
+  await page.mouse.down();
+  await page.mouse.move(t.x + 60, t.y + 20, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await mid(top)).y - t.y)).toBe(20);
+  expect(Math.abs((await mid(top)).x - f.x)).toBeLessThan(1.5);
+  await page.mouse.move(f.x, f.y);
+  await page.mouse.down();
+  await page.mouse.move(f.x + 40, f.y - 30, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(async () => Math.round((await mid(front)).x - f.x)).toBe(40);
+  expect(Math.abs((await mid(top)).x - (f.x + 40))).toBeLessThan(1.5);
+  expect(Math.abs((await mid(right)).y - (f.y - 30))).toBeLessThan(1.5);
+
+  // Third angle swaps them over: the top view goes above the front, the right view to its right.
+  await page.getByRole("button", { name: "Sheet settings" }).first().click();
+  const settings = page.getByRole("dialog", { name: "Sheet settings" });
+  await settings.getByLabel("Standard").selectOption("asme");
+  await settings.getByRole("button", { name: "Done" }).click();
+  await expect.poll(async () => (await mid(top)).y < (await mid(front)).y).toBe(true);
+  expect((await mid(right)).x).toBeGreaterThan((await mid(front)).x);
+
+  // Deleting the front view asks first, and keeps the others.
+  await front.focus();
+  await page.keyboard.press("Delete");
+  await page.getByRole("dialog", { name: "Delete this view?" }).getByRole("button", { name: "Delete" }).click();
+  await expect(front).toHaveCount(0);
+  await expect(top).toBeVisible();
+  await expect(right).toBeVisible();
+});
+
 test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");

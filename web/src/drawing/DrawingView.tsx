@@ -9,12 +9,14 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { ArmedBar, Button, ESC, RibbonButton, RibbonGroup, useEscape } from "@bettercad/ui";
+import { ArmedBar, Button, Dialog, ESC, RibbonButton, RibbonGroup, useEscape } from "@bettercad/ui";
 import { removeView, scaleLabel, viewScale, type Drawing, type DrawingSheet, type DrawingView, type TitleBlock } from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newId, type ModelDoc } from "../state/document";
 import { BaseViewCard, type ShowOption } from "./BaseViewCard";
-import { sheetLayout, sizeName } from "./layout";
+import { sheetLayout, sizeName, TEXT } from "./layout";
+import { descendants, inheritedScale, placeProjected, projectedDirection, sideAt, spotAt, spotBeside, type Side } from "./projected";
+import { ProjectedViewCard } from "./ProjectedViewCard";
 import { SheetArt } from "./Sheet";
 import { useModelViews, type ViewCall, type ViewWanted } from "./useModelViews";
 import {
@@ -70,8 +72,8 @@ function artOf(view: ModelView, scale: number): ViewArt {
   return art;
 }
 
-/** The drawing tool that is armed: placing a base view (#561). */
-export type DrawingTool = "base";
+/** The drawing tool that is armed: placing a base view (#561), or views projected from one (#562). */
+export type DrawingTool = "base" | "projected";
 
 export interface DrawingApi {
   fit(): void;
@@ -189,13 +191,33 @@ export function DrawingPaper({
       setPointer(null);
     }
   }, [placing]);
+  // Projected views (#562): the view they are taken from and the side of it the next one goes on.
+  const projecting = tool === "projected" && !readOnly;
+  const [from, setFrom] = useState<string | null>(null);
+  const [side, setSide] = useState<Side>([1, 0]);
+  const picked = useRef(selected);
+  picked.current = selected;
+  useEffect(() => {
+    if (!projecting) return;
+    setChanging(null);
+    setPointer(null);
+    setSide([1, 0]);
+    // Start from the view that is selected, or the only one there is.
+    setFrom(sheet.views.find((v) => v.id === picked.current)?.id ?? (sheet.views.length === 1 ? sheet.views[0]!.id : null));
+    // Only when the tool is armed: views placed while it is up must not change what it projects from.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projecting]);
+  const parent = projecting && from ? sheet.views.find((v) => v.id === from) : undefined;
+  const angle = layout.angle;
+  const ghostDirection = useMemo(() => (parent ? projectedDirection(parent.direction, side, angle) : undefined), [parent, side, angle]);
   const wanted = useMemo<ViewWanted[]>(() => {
     const list = sheet.views.map((v) => ({ id: v.id, request: viewRequest(v) }));
     if (placing) list.push({ id: GHOST, request: viewRequest(choice, true) });
+    else if (parent && ghostDirection) list.push({ id: GHOST, request: viewRequest({ ...parent, direction: ghostDirection }, true) });
     return list;
-  }, [sheet.views, placing, choice]);
+  }, [sheet.views, placing, choice, parent, ghostDirection]);
   const got = useModelViews(wanted, doc ?? EMPTY_DOC, upTo, doc ? call : undefined);
-  const ghost = placing ? got.get(GHOST) : undefined;
+  const ghost = placing || parent ? got.get(GHOST) : undefined;
   const changed = changing ? sheet.views.find((v) => v.id === changing) : undefined;
   /** The picture Fit measures: the ghost while placing, the view itself while changing it. */
   const measured = placing ? ghost?.view : changing ? got.get(changing)?.view : undefined;
@@ -224,14 +246,62 @@ export function DrawingPaper({
   const startChange = (v: DrawingView) => {
     if (readOnly) return;
     onTool?.(null);
-    setChoice({ shows: v.shows, direction: v.direction, hidden: v.hidden, tangent: v.tangent, scale: viewScale(sheet, v) });
+    const next: ViewChoice = { shows: v.shows, direction: v.direction, hidden: v.hidden, tangent: v.tangent };
+    // A projected view has its parent's scale until it is given its own.
+    if (!v.parent || v.scale !== undefined) next.scale = viewScale(sheet, v);
+    setChoice(next);
     setChanging(v.id);
   };
   const doneChange = () => {
-    const scale = choice.scale ?? fitScaleNow;
+    const scale = choice.scale ?? (changed?.parent ? inheritedScale(sheet, changed) : fitScaleNow);
     if (changing && scale) onSheet?.((s) => editView(s, changing, choice, scale), "Edit view");
     setChanging(null);
   };
+
+  // Where the projected view being placed goes: by the pointer once it is clear of the parent, else just beside it.
+  const parentArt = parent && got.get(parent.id)?.view ? artOf(got.get(parent.id)!.view!, viewScale(sheet, parent)) : undefined;
+  const ghostArt = parent && ghost?.view && !emptyView(ghost.view) ? artOf(ghost.view, viewScale(sheet, parent)) : undefined;
+  const clearOf = (at: V2) =>
+    !!parent && (Math.abs(at[0] - parent.at[0]) > (parentArt?.w ?? 20) / 2 || Math.abs(at[1] - parent.at[1]) > (parentArt?.h ?? 20) / 2);
+  const projectedSpot =
+    parent && ghostArt
+      ? pointer && clearOf(pointer)
+        ? spotAt(parent.at, pointer, side)
+        : spotBeside({ at: parent.at, w: parentArt?.w ?? 20, h: parentArt?.h ?? 20 }, ghostArt, side)
+      : undefined;
+  const projectWait = !sheet.views.length
+    ? "Put a base view on the sheet first."
+    : !parent
+      ? "Click the view to project from."
+      : !call
+        ? "The geometry engine is starting."
+        : !ghostArt
+          ? "Working out the view."
+          : undefined;
+  const project = (at: V2 | undefined, s: Side = side) => {
+    if (!parent || !at || projectWait) return;
+    const id = newId("vw");
+    const parentId = parent.id;
+    onSheet?.((sh) => placeProjected(sh, id, parentId, s, angle, at), "Projected view");
+  };
+  // Enter finishes, wherever the keyboard is; Esc does too, through the card.
+  useEffect(() => {
+    if (!projecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || e.defaultPrevented || (e.target as Element).closest?.("button, select, input, textarea, [role=button]")) return;
+      e.preventDefault();
+      onTool?.(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [projecting, onTool]);
+  /** A view about to be deleted that has views projected from it: you are asked first. */
+  const [asking, setAsking] = useState<string | null>(null);
+  const remove = (v: DrawingView) => {
+    if (descendants(sheet, v.id).length) setAsking(v.id);
+    else onSheet?.((s) => removeView(s, v.id), "Delete view");
+  };
+  const kept = asking ? sheet.views.filter((v) => v.parent === asking).length : 0;
 
   // One finger or the mouse drags the sheet, or the view it is on; two fingers pinch the sheet.
   const touches = useRef(new Map<number, { x: number; y: number }>());
@@ -241,16 +311,24 @@ export function DrawingPaper({
     if (!root.current?.contains(e.target as Node) || (e.target as Element).closest?.("input")) return;
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.current.size !== 1) return;
-    const id = placing ? undefined : (e.target as Element).closest?.("[data-view]")?.getAttribute("data-view");
+    const id = placing || parent ? undefined : (e.target as Element).closest?.("[data-view]")?.getAttribute("data-view");
     const on = id ? sheet.views.find((v) => v.id === id) : undefined;
     press.current = { x: e.clientX, y: e.clientY, dragging: false, view: on };
-    if (!placing) setSelected(on?.id ?? null);
+    if (!placing && !projecting) setSelected(on?.id ?? null);
   };
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
     const was = touches.current.get(e.pointerId);
     if (!was) {
       // Nothing pressed: the view being placed follows the pointer.
-      if (placing && root.current?.contains(e.target as Node)) setPointer(sheetAt(e.clientX, e.clientY));
+      if ((placing || parent) && root.current?.contains(e.target as Node)) {
+        const at = sheetAt(e.clientX, e.clientY);
+        setPointer(at);
+        // The side follows the pointer once it is clear of the parent.
+        if (parent && at && clearOf(at)) {
+          const s = sideAt([at[0] - parent.at[0], at[1] - parent.at[1]]);
+          setSide((was) => (was[0] === s[0] && was[1] === s[1] ? was : s));
+        }
+      }
       return;
     }
     const now = { x: e.clientX, y: e.clientY };
@@ -275,7 +353,7 @@ export function DrawingPaper({
       el.setPointerCapture?.(e.pointerId);
     }
     touches.current.set(e.pointerId, now);
-    if (p.view && !readOnly && view) {
+    if (p.view && !readOnly && !projecting && view) {
       // Dragging a view: it moves by what the pointer has, in paper mm (y is up on the sheet).
       const at: V2 = [p.view.at[0] + (now.x - p.x) / view.k, p.view.at[1] - (now.y - p.y) / view.k];
       setMoving({ id: p.view.id, at });
@@ -298,6 +376,14 @@ export function DrawingPaper({
       return setMoving(null);
     }
     // A click, not a drag: it puts the view being placed down where it landed.
+    if (projecting) {
+      // The first click picks the view to project from; each one after puts a view down.
+      if (!parent) return p.view && setFrom(p.view.id);
+      const at = sheetAt(e.clientX, e.clientY);
+      if (!at || !clearOf(at)) return;
+      const s = sideAt([at[0] - parent.at[0], at[1] - parent.at[1]]);
+      return project(spotAt(parent.at, at, s), s);
+    }
     const at = placing ? sheetAt(e.clientX, e.clientY) : null;
     if (at) place(at);
   };
@@ -307,11 +393,14 @@ export function DrawingPaper({
     const by: Record<string, V2> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
     const d = by[e.key];
     if (d) onSheet?.((s) => moveView(s, v.id, [v.at[0] + d[0], v.at[1] + d[1]]), "Move view");
-    else if (e.key === "Delete" || e.key === "Backspace") onSheet?.((s) => removeView(s, v.id), "Delete view");
+    else if (e.key === "Delete" || e.key === "Backspace") remove(v);
     else if (e.key === "Enter") startChange(v);
     else return;
     e.preventDefault();
   };
+
+  /** The sheet as drawn: with the view being dragged, and the views it carries, where the drag has them. */
+  const shown = useMemo(() => (moving ? moveView(sheet, moving.id, moving.at) : sheet), [sheet, moving]);
 
   // Typing in a title block field: a text box over its cell. Enter or clicking away keeps it, Esc drops it, Tab
   // moves to the next field.
@@ -355,11 +444,11 @@ export function DrawingPaper({
         {view && (
           <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
             <SheetArt layout={layout} onEdit={readOnly || placing ? undefined : start} editing={editing} />
-            {sheet.views.map((v) => {
+            {shown.views.map((v) => {
               const g = got.get(v.id);
               const scale = viewScale(sheet, v);
               const art = g?.view ? artOf(g.view, scale) : undefined;
-              const [x, y] = toPage(moving?.id === v.id ? moving.at : v.at, ph);
+              const [x, y] = toPage(v.at, ph);
               const state = g?.error ? ", could not be drawn" : !art ? ", being worked out" : "";
               // A view with no picture yet still has something to point at.
               const w = Math.max(art?.w ?? 0, 20) + 4;
@@ -368,7 +457,7 @@ export function DrawingPaper({
                 <g
                   key={v.id}
                   data-view={v.id}
-                  className={selected === v.id ? "bc-view bc-view-on" : "bc-view"}
+                  className={parent?.id === v.id ? "bc-view bc-view-from" : selected === v.id ? "bc-view bc-view-on" : "bc-view"}
                   role="button"
                   aria-pressed={selected === v.id}
                   aria-label={`${viewName(v)}, ${scaleLabel(scale)}${state}`}
@@ -382,6 +471,11 @@ export function DrawingPaper({
                   <rect className={art ? "bc-view-hit" : "bc-view-hit bc-view-wait"} x={-w / 2} y={-h / 2} width={w} height={h} />
                   {art && <path className="bc-view-hidden" d={art.hidden} />}
                   {art && <path className="bc-view-visible" d={art.visible} />}
+                  {scale !== sheet.scale && (
+                    <text className="bc-view-scale" y={h / 2 + TEXT.value + 1} fontSize={TEXT.value}>
+                      {`Scale ${scaleLabel(scale)}`}
+                    </text>
+                  )}
                 </g>
               );
             })}
@@ -390,18 +484,64 @@ export function DrawingPaper({
                 <path className="bc-view-visible" d={artOf(ghost.view, choice.scale ?? fitScaleNow).visible} />
               </g>
             )}
+            {parent && ghostArt && projectedSpot && (
+              <g className="bc-view-ghost" aria-hidden="true" transform={`translate(${toPage(projectedSpot, ph).join(" ")})`}>
+                <path className="bc-view-visible" d={ghostArt.visible} />
+              </g>
+            )}
           </g>
         )}
       </svg>
+      {projecting && (
+        <ProjectedViewCard
+          views={sheet.views.map((v) => ({ id: v.id, name: `${viewName(v)}, ${scaleLabel(viewScale(sheet, v))}` }))}
+          from={parent?.id ?? null}
+          onFrom={(id) => {
+            setFrom(id);
+            setPointer(null);
+          }}
+          side={side}
+          onSide={(s) => {
+            setSide(s);
+            setPointer(null);
+          }}
+          wait={projectWait}
+          onPlace={() => project(parent && ghostArt ? spotBeside({ at: parent.at, w: parentArt?.w ?? 20, h: parentArt?.h ?? 20 }, ghostArt, side) : undefined)}
+          onFinish={() => onTool?.(null)}
+        />
+      )}
+      {asking && (
+        <Dialog
+          open
+          modal
+          title="Delete this view?"
+          icon="drawing"
+          width={340}
+          onCancel={() => setAsking(null)}
+          onDone={() => {
+            const id = asking;
+            setAsking(null);
+            onSheet?.((s) => removeView(s, id), "Delete view");
+          }}
+          doneLabel="Delete"
+        >
+          <p className="bc-note">
+            {kept === 1
+              ? "The view projected from it stays on the sheet as a base view."
+              : `The ${kept} views projected from it stay on the sheet as base views.`}
+          </p>
+        </Dialog>
+      )}
       {(placing || changed) && (
         <BaseViewCard
           editing={!!changed}
+          projected={!!changed?.parent}
           choice={choice}
           onChoice={setChoice}
           components={components}
           bodies={bodies}
-          fit={fitScaleNow}
-          wait={wait}
+          fit={changed?.parent ? inheritedScale(sheet, changed) : fitScaleNow}
+          wait={changed?.parent ? undefined : wait}
           onCancel={() => (changed ? setChanging(null) : onTool?.(null))}
           onDone={() => (changed ? doneChange() : place(defaultSpot(layout)))}
         />
@@ -448,16 +588,22 @@ export interface DrawingBarProps {
   /** Arms Base view (#561), and whether it is armed. */
   onBaseView?: () => void;
   baseView?: boolean;
+  /** Arms Projected view (#562), and whether it is armed. */
+  onProjectedView?: () => void;
+  projectedView?: boolean;
   onSettings: () => void;
   onFit: () => void;
   onFinish: () => void;
 }
 
 /** The strip over the sheet while a drawing is open: its name, Sheet settings, Fit sheet and Finish drawing. */
-export function DrawingBar({ name, readOnly, onBaseView, baseView, onSettings, onFit, onFinish }: DrawingBarProps) {
+export function DrawingBar({ name, readOnly, onBaseView, baseView, onProjectedView, projectedView, onSettings, onFit, onFinish }: DrawingBarProps) {
   return (
     <ArmedBar title={name} icon="drawing">
       {!readOnly && onBaseView && <Button icon="drawing" label="Base view" title="Put a view of the model on the sheet" on={!!baseView} onClick={onBaseView} />}
+      {!readOnly && onProjectedView && (
+        <Button icon="drawing" label="Projected view" title="Views from the sides of a view, lined up with it" on={!!projectedView} onClick={onProjectedView} />
+      )}
       {!readOnly && <Button icon="settings" label="Sheet settings" title="Page size, standard and title block" onClick={onSettings} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
       <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
@@ -466,12 +612,13 @@ export function DrawingBar({ name, readOnly, onBaseView, baseView, onSettings, o
 }
 
 /** The ribbon's Drawing tab (desktop), in Fusion's order: Create, then the sheet, then Finish drawing. */
-export function DrawingRibbon({ readOnly, onBaseView, baseView, onSettings, onFit, onFinish }: Omit<DrawingBarProps, "name">) {
+export function DrawingRibbon({ readOnly, onBaseView, baseView, onProjectedView, projectedView, onSettings, onFit, onFinish }: Omit<DrawingBarProps, "name">) {
   return (
     <>
       {!readOnly && (
         <RibbonGroup label="Create" entries={[]}>
           <RibbonButton icon="drawing" colour="drawing" label="Base view" pressed={!!baseView} onPress={onBaseView} />
+          <RibbonButton icon="drawing" colour="drawing" label="Projected view" short="Projected" pressed={!!projectedView} onPress={onProjectedView} />
         </RibbonGroup>
       )}
       <RibbonGroup label="Sheet" entries={[]}>

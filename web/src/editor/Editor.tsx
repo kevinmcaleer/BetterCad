@@ -563,6 +563,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const drawingBar = {
     baseView: drawingTool === "base",
     onBaseView: () => setDrawingTool((t) => (t === "base" ? null : "base")),
+    projectedView: drawingTool === "projected",
+    onProjectedView: () => setDrawingTool((t) => (t === "projected" ? null : "projected")),
     onSettings: () => setSheetCard("settings"),
     onFit: () => drawingApi.current?.fit(),
     onFinish: () => setDrawing(null),
@@ -2080,7 +2082,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit" | "base") => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit" | "base" | "projected") => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2177,8 +2179,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     drawing: (act) =>
-      act === "base"
-        ? setDrawingTool("base")
+      act === "base" || act === "projected"
+        ? setDrawingTool(act)
         : act === "fit"
           ? drawingApi.current?.fit()
           : act === "finish"
@@ -2866,6 +2868,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keys: ["b"],
         run: () => h().drawing("base"),
         keywords: "front top side isometric place",
+      },
+      {
+        id: "drawing.projectedView",
+        scope: "drawing",
+        label: "Projected view",
+        group: "Tools",
+        icon: "drawing",
+        keys: ["p"],
+        run: () => h().drawing("projected"),
+        keywords: "orthographic top side isometric first third angle",
       },
       { id: "drawing.fit", scope: "drawing", label: "Fit the sheet in the view", group: "View", icon: "frame", keys: ["f"], run: () => h().drawing("fit") },
       {

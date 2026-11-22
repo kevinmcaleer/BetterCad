@@ -1,6 +1,7 @@
 import { fitScale, frameOf, viewScale, type DrawingSheet, type DrawingView, type ViewDirection } from "@bettercad/kernel/drawing";
 import { TAU, turn, type ModelView, type ModelViewRequest, type V2, type ViewCurve } from "@bettercad/kernel/view";
 import type { Box, SheetLayout } from "./layout";
+import { followParent, inheritedScale, moveWithChildren } from "./projected";
 
 /**
  * Views on a sheet (#561): which way each looks, how the kernel's flat curves become lines on paper, and where a view
@@ -30,7 +31,9 @@ export function directionOf(d: ViewDirection) {
 
 /** "Front view", "Isometric view", or "View" for a direction of its own. */
 export function viewName(view: Pick<DrawingView, "direction">): string {
-  const d = directionOf(view.direction);
+  // A top view turned on the sheet is still a top view: only where it looks from names it.
+  const eye = frameOf(view.direction).toEye;
+  const d = directionOf(view.direction) ?? DIRECTIONS.find((x) => frameOf(x.direction).toEye.every((v, i) => v === eye[i]));
   return d ? `${d.label.replace(/,.*/, "")} view` : "View";
 }
 
@@ -148,24 +151,21 @@ export function placeView(sheet: DrawingSheet, id: string, choice: ViewChoice, s
   return { ...sheet, scale: first ? scale : sheet.scale, views: [...sheet.views, view] };
 }
 
-/** Changes a placed view from its card. The view that set the sheet's scale changes the sheet's with its own. */
+/**
+ * Changes a placed view from its card. The view that set the sheet's scale changes the sheet's with its own; any
+ * other keeps a scale only when it differs from the one it would have anyway. The views projected from it follow.
+ */
 export function editView(sheet: DrawingSheet, id: string, choice: ViewChoice, scale: number): DrawingSheet {
-  const leads = sheet.views[0]?.id === id && sheet.views[0].scale === undefined;
-  return {
-    ...sheet,
-    scale: leads ? scale : sheet.scale,
-    views: sheet.views.map((v) => {
-      if (v.id !== id) return v;
-      const next: DrawingView = { ...v, shows: choice.shows, direction: choice.direction, hidden: choice.hidden, tangent: choice.tangent };
-      if (leads || scale === sheet.scale) delete next.scale;
-      else next.scale = scale;
-      return next;
-    }),
-  };
+  const before = sheet.views.find((v) => v.id === id);
+  if (!before) return sheet;
+  const leads = sheet.views[0]?.id === id && before.scale === undefined && !before.parent;
+  const next: DrawingView = { ...before, shows: choice.shows, direction: choice.direction, hidden: choice.hidden, tangent: choice.tangent };
+  if (leads || scale === inheritedScale(sheet, before)) delete next.scale;
+  else next.scale = scale;
+  return followParent({ ...sheet, scale: leads ? scale : sheet.scale, views: sheet.views.map((v) => (v.id === id ? next : v)) }, before);
 }
 
-export function moveView(sheet: DrawingSheet, id: string, at: V2): DrawingSheet {
-  return { ...sheet, views: sheet.views.map((v) => (v.id === id ? { ...v, at } : v)) };
-}
+/** Moves a view. A projected view stays in line with its parent, and the views projected from it come too. */
+export const moveView = moveWithChildren;
 
 export { viewScale };

@@ -157,3 +157,22 @@
 .bc-drawing:has(.bc-view-ghost) {
   cursor: crosshair;
 }
+
+/* The Projected view card's Place button, and the scale written under a view that has its own. */
+.bc-view-card-place {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+.bc-view-scale {
+  fill: var(--bc-color-paper-ink);
+  font-family: var(--bc-font-sans);
+  text-anchor: middle;
+  pointer-events: none;
+}
+/* The view a projected view is being taken from. */
+.bc-view-from > .bc-view-hit {
+  stroke: var(--bc-color-paper-pick);
+  stroke-width: 0.35px;
+  stroke-dasharray: none;
+}
