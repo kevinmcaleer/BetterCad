@@ -277,11 +277,12 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
     [parts, meshes, props.warn, props.clash, props.faded],
   );
 
-  // Frame the model when the first part arrives (a new model, an opened file).
+  // Frame the model when the first part arrives (a new model, an opened file). A lone first part leaves room round it
+  // for the next one; Fit frames it tightly.
   const hadBodies = useRef(false);
   useEffect(() => {
     engine.current?.setBodies(bodies);
-    if (bodies.length && !hadBodies.current) engine.current?.fit();
+    if (bodies.length && !hadBodies.current) engine.current?.fit(undefined, bodies.length === 1 ? 0.25 : undefined);
     hadBodies.current = bodies.length > 0;
   }, [bodies]);
   useEffect(() => engine.current?.setSelection(picks), [picks]);

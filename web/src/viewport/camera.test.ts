@@ -3,7 +3,6 @@ import {
   DEFAULT_CAMERA,
   cameraBasis,
   facing,
-  fit,
   PRESETS,
   boxCorners,
   dot,
@@ -24,6 +23,7 @@ import {
   viewDir,
   zoom,
 } from "./camera";
+import { fit } from "./fitSphere";
 import { frameY, squareFrame, type Vec3 } from "@bettercad/sketch";
 import { FACE_ONLY, decodeId, encodeId, findPick } from "./ids";
 

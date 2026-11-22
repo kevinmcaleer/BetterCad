@@ -97,7 +97,7 @@ export function viewRotation(c: Pick<CameraState, "azimuth" | "elevation" | "rol
 /** Half the height of world the view shows at the target, in mm. */
 export const halfHeight = (c: Pick<CameraState, "distance">) => c.distance * Math.tan((FOV / 2) * RAD);
 
-const clampDistance = (d: number) => Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, d));
+export const clampDistance = (d: number) => Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, d));
 const wrap = (deg: number) => ((((deg + 180) % 360) + 360) % 360) - 180;
 
 /**
@@ -181,16 +181,6 @@ export function presetOf(c: CameraState): Preset | null {
   return null;
 }
 
-/** Frames a sphere (centre, radius) so it fills most of a view `aspect` wide. */
-export function fit(c: CameraState, centre: V3, radius: number, aspect = 1): CameraState {
-  const r = Math.max(radius, 1);
-  const half = (FOV / 2) * RAD;
-  // Fit the narrower of the two directions, with a margin.
-  const vertical = r / Math.sin(half);
-  const horizontal = r / Math.sin(Math.atan(Math.tan(half) * Math.max(aspect, 0.01)));
-  return { ...c, target: centre, distance: clampDistance(Math.max(vertical, horizontal) * 1.15) };
-}
-
 /** A rectangle of the view in CSS px from its top left: the part no floating panel covers. */
 export interface ViewRect {
   left: number;
@@ -204,79 +194,50 @@ export const FIT_MARGIN = 0.06;
 
 /**
  * Frames a set of world points (a model's corners or vertices) so they fill `rect` of a view `width` × `height` px,
- * less a small margin, as tightly as they can: the view keeps its direction and roll and only moves and zooms. In
- * perspective the camera stands where the points' outermost rays just touch the clear area's edges; in orthographic
- * the scale fits their spread on screen. Without a usable rect it fills the whole view. The target lands in the middle
- * of the points' depth, so turning afterwards turns round the model.
+ * less a small margin, as tightly as they can: the view keeps its direction and roll and only moves and zooms. Without
+ * a usable rect it fills the whole view. The target lands in the middle of the points' depth, so turning afterwards
+ * turns round the model.
+ *
+ * On each screen axis a point is inside the clear area while lo ≤ (u − U) / (w − W) ≤ hi, for a camera at (U, W) and a
+ * point at (u, w), w into the screen: two planes through the camera. They just touch the points when the camera stands
+ * at W = (B − A) / (hi − lo), with A and B the points' extremes below. The camera takes the further back of the two
+ * axes and centres on the looser one. Orthographic is the same sum with every point at w = 0 and −W as the distance.
  */
 export function fitPoints(c: CameraState, points: readonly V3[], width: number, height: number, rect?: ViewRect | null, margin = FIT_MARGIN): CameraState {
   if (!points.length) return c;
   const W = Math.max(width, 1);
   const H = Math.max(height, 1);
   const r = rect && rect.width >= 80 && rect.height >= 80 ? rect : { left: 0, top: 0, width: W, height: H };
-  // The clear area less the margin, in normalised screen coordinates (−1…1, y up).
-  const mx = r.width * margin;
-  const my = r.height * margin;
-  const l = (2 * (r.left + mx)) / W - 1;
-  const rt = (2 * (r.left + r.width - mx)) / W - 1;
-  const t = 1 - (2 * (r.top + my)) / H;
-  const b = 1 - (2 * (r.top + r.height - my)) / H;
-  const aspect = W / H;
   const { right, up, back } = cameraBasis(c);
-  // Each point along the camera's right, up and forward (into the screen).
-  let uMin = Infinity,
-    uMax = -Infinity,
-    vMin = Infinity,
-    vMax = -Infinity,
-    wMin = Infinity,
-    wMax = -Infinity;
-  const pts = points.map((p) => {
-    const u = dot(p, right),
-      v = dot(p, up),
-      w = -dot(p, back);
-    uMin = Math.min(uMin, u);
-    uMax = Math.max(uMax, u);
-    vMin = Math.min(vMin, v);
-    vMax = Math.max(vMax, v);
+  const tanH = Math.tan((FOV / 2) * RAD);
+  let wMin = Infinity;
+  let wMax = -Infinity;
+  const depth = points.map((p) => {
+    const w = -dot(p, back);
     wMin = Math.min(wMin, w);
     wMax = Math.max(wMax, w);
-    return [u, v, w] as const;
+    return c.ortho ? 0 : w;
   });
-  // Too small to frame (a point, a flat line seen edge on): treat it as 2 mm across.
-  const pad = (lo: number, hi: number) => (hi - lo < 2 ? [(lo + hi) / 2 - 1, (lo + hi) / 2 + 1] : [lo, hi]);
-  [uMin, uMax] = pad(uMin, uMax);
-  [vMin, vMax] = pad(vMin, vMax);
-  const tanH = Math.tan((FOV / 2) * RAD);
   const wMid = (wMin + wMax) / 2;
-  let U: number, V: number, Wc: number, distance: number;
-  if (c.ortho) {
-    // The half height the view must show so the spread fits the clear area's width and height.
-    const hh = Math.max((uMax - uMin) / ((rt - l) * aspect), (vMax - vMin) / (t - b));
-    U = (uMin + uMax) / 2 - ((l + rt) / 2) * hh * aspect;
-    V = (vMin + vMax) / 2 - ((t + b) / 2) * hh;
-    distance = clampDistance(hh / tanH);
-    Wc = wMid - distance;
-  } else {
-    // A point is inside the clear area while lo ≤ (u − U) / (w − W) ≤ hi, a pair of planes through the camera on each
-    // axis. Each pair meets the points at the depth where both just touch; the camera takes the further back.
-    const axis = (i: 0 | 1, lo: number, hi: number) => {
-      let A = -Infinity,
-        B = Infinity;
-      for (const p of pts) {
-        A = Math.max(A, p[i] - hi * p[2]);
-        B = Math.min(B, p[i] - lo * p[2]);
-      }
-      return { A, B, W: (B - A) / (hi - lo) };
-    };
-    const x = axis(0, l * tanH * aspect, rt * tanH * aspect);
-    const y = axis(1, b * tanH, t * tanH);
-    Wc = Math.min(x.W, y.W);
-    // The looser axis has room to spare: sit in the middle of it.
-    U = (x.A + rt * tanH * aspect * Wc + x.B + l * tanH * aspect * Wc) / 2;
-    V = (y.A + t * tanH * Wc + y.B + b * tanH * Wc) / 2;
-    distance = clampDistance(Math.max(wMid - Wc, 1));
-  }
-  const eye = add(add(right.map((k) => k * U) as V3, up, V), back, -Wc);
+  // The clear area less the margin, as slopes from the line of sight: right / up per mm into the screen.
+  const axis = (dir: V3, lo: number, hi: number) => {
+    let A = -Infinity;
+    let B = Infinity;
+    points.forEach((p, i) => {
+      A = Math.max(A, dot(p, dir) - hi * depth[i]!);
+      B = Math.min(B, dot(p, dir) - lo * depth[i]!);
+    });
+    return { A, B, lo, hi, W: (B - A) / (hi - lo) };
+  };
+  const s = (2 * tanH) / H;
+  const mx = r.width * margin;
+  const my = r.height * margin;
+  const x = axis(right, (r.left + mx - W / 2) * s, (r.left + r.width - mx - W / 2) * s);
+  const y = axis(up, (H / 2 - r.top - r.height + my) * s, (H / 2 - r.top - my) * s);
+  const Wc = Math.min(x.W, y.W);
+  const mid = (a: typeof x) => (a.A + a.B + (a.hi + a.lo) * Wc) / 2;
+  const distance = clampDistance(c.ortho ? -Wc : wMid - Wc);
+  const eye = add(add(right.map((k) => k * mid(x)) as V3, up, mid(y)), back, distance - wMid);
   return { ...c, target: add(eye, back, -distance), distance };
 }
 

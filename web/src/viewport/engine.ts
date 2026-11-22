@@ -732,16 +732,16 @@ export class Engine {
 
   /**
    * Frames the given bodies (all when empty) as tightly as their shape allows in the part of the view the panels leave
-   * clear, keeping the view's direction and roll.
+   * clear, keeping the view's direction and roll. `margin` is the share of the clear area left empty on each side.
    */
-  fit(ids?: string[]): void {
+  fit(ids?: string[], margin?: number): void {
     const base = this.tween?.to ?? this.cam;
     const points = this.fitPointsOf(ids?.length ? ids : undefined);
     if (!points.length) {
       this.setCamera({ ...base, target: [0, 0, 10], distance: DEFAULT_CAMERA.distance }, true);
       return;
     }
-    this.setCamera(fitPoints(base, points, this.width, this.height, this.safeArea?.()), true);
+    this.setCamera(fitPoints(base, points, this.width, this.height, this.safeArea?.(), margin), true);
   }
 
   /** The bodies' vertices in world space, every nth on a big mesh so Fit stays quick. */
