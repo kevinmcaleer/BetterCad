@@ -1772,6 +1772,8 @@ export function useSketch(d: SketchDeps) {
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
 
+    // The view stays square on to the sketch: turn it with the view cube.
+    eng.lockTilt(true);
     eng.setInput({
       down: (p, mods) => {
         pagePress = p;
@@ -1809,6 +1811,7 @@ export function useSketch(d: SketchDeps) {
       dropHold();
       setPickList(null);
       eng.setInput(null);
+      eng.lockTilt(false);
     };
   }, [editingId, engineOf, store, say]);
   // A new tool closes a long-press list left open.

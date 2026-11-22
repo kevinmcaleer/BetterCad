@@ -327,6 +327,8 @@ export class Engine {
   private pickBuffer = new Uint8Array(PICK_SIZE * PICK_SIZE * 4);
   /** The last press came from a finger: picks look further around the point. */
   private touchPick = false;
+  /** While editing a sketch the view stays square on: drags, swipes and arrows pan instead of tilting. */
+  private tiltLocked = false;
   private dirty = true;
   private frame = 0;
   private disposed = false;
@@ -664,6 +666,14 @@ export class Engine {
   /** Rolls the view a quarter turn about the line of sight (the view cube's turn arrows): 1 clockwise, −1 anticlockwise. */
   roll(dir: 1 | -1): void {
     this.setCamera(rollBy(this.tween?.to ?? this.cam, dir), true);
+  }
+
+  /**
+   * Keeps the view from tilting while a sketch is open: mouse, touch, trackpad and arrow orbits pan instead. The view
+   * cube, its turn arrows and Look at still turn it.
+   */
+  lockTilt(on: boolean): void {
+    this.tiltLocked = on;
   }
 
   /** Turns the view by a drag on the view cube, in pixels; stops any glide. */
@@ -2450,7 +2460,8 @@ export class Engine {
         }
         press.dragged = true;
         this.setHover(null);
-        if (press.button === 2 || press.button === 1 || (press.button === 0 && press.shift && e.altKey)) this.setCamera(pan(this.cam, dx, dy, this.height));
+        if (this.tiltLocked || press.button === 2 || press.button === 1 || (press.button === 0 && press.shift && e.altKey))
+          this.setCamera(pan(this.cam, dx, dy, this.height));
         else this.setCamera(orbit(this.cam, -dx * 0.4, dy * 0.4));
         return;
       }
@@ -2520,7 +2531,7 @@ export class Engine {
         // A two-finger swipe on a trackpad scrolls in small, smooth steps (often sideways too): it orbits, Shift pans.
         const trackpad = e.deltaMode === 0 && (e.deltaX !== 0 || !Number.isInteger(e.deltaY)) && Math.abs(e.deltaY) < 50;
         if (trackpad) {
-          if (e.shiftKey) this.setCamera(pan(this.cam, -e.deltaX, -e.deltaY, this.height));
+          if (e.shiftKey || this.tiltLocked) this.setCamera(pan(this.cam, -e.deltaX, -e.deltaY, this.height));
           else this.setCamera(orbit(this.cam, e.deltaX * 0.3, -e.deltaY * 0.3));
           return;
         }
@@ -2535,7 +2546,7 @@ export class Engine {
     const step = 15;
     const k = e.key;
     let c: CameraState | null = null;
-    if (e.shiftKey && k.startsWith("Arrow")) {
+    if ((e.shiftKey || this.tiltLocked) && k.startsWith("Arrow")) {
       const d = 40;
       c = pan(this.cam, k === "ArrowLeft" ? d : k === "ArrowRight" ? -d : 0, k === "ArrowUp" ? d : k === "ArrowDown" ? -d : 0, this.height);
     } else if (k === "ArrowLeft") c = orbit(this.cam, -step, 0);
