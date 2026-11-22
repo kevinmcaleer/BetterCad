@@ -30,6 +30,8 @@ export interface ExportDialogProps {
   onGroup: (ids: string[]) => void;
   /** Open on this format instead of the last one chosen (Render offers glTF). */
   format?: ExportFormat;
+  /** Export just these bodies, from their right-click menu: the What row and URDF go. */
+  bodies?: string[];
 }
 
 type What = "all" | "selected" | "each";
@@ -98,7 +100,13 @@ export function ExportDialog(p: ExportDialogProps) {
   const [busy, setBusy] = useState(false);
   const running = useRef<Call<unknown> | null>(null);
 
-  const what: What = c.what === "selected" && !p.selection.length ? "all" : c.what;
+  const pinned = p.bodies?.length ? p.bodies : null;
+  const picked = pinned ?? p.selection;
+  // One file or one each, for this export only: the whole-model choice stays as it was.
+  const [pinnedEach, setPinnedEach] = useState(false);
+  const what: What = pinned ? (pinnedEach && pinned.length > 1 ? "each" : "selected") : c.what === "selected" && !p.selection.length ? "all" : c.what;
+  // URDF is the whole robot, so a body's own export falls back to STL.
+  const format: ExportFormat = pinned && c.format === "urdf" ? "stl" : c.format;
   const named = p.doc.poses ?? [];
   const hasPose = (!!p.doc.pose && Object.keys(p.doc.pose).length > 0) || named.length > 0;
   // Which pose to export in (#177): the one now (null) or a named pose.
@@ -112,15 +120,15 @@ export function ExportDialog(p: ExportDialogProps) {
     () => ({
       doc: posedDoc,
       upTo: p.upTo,
-      bodies: what === "selected" ? p.selection : null,
-      format: c.format,
+      bodies: what === "selected" || pinned ? picked : null,
+      format,
       deflection,
       separate: what === "each",
       keepPosition: c.keepPosition,
       posed: hasPose && c.posed,
       rosPackage: c.rosPackage,
     }),
-    [posedDoc, p.upTo, p.selection, what, c.format, deflection, c.keepPosition, hasPose, c.posed, c.rosPackage],
+    [posedDoc, p.upTo, picked, pinned, what, format, deflection, c.keepPosition, hasPose, c.posed, c.rosPackage],
   );
 
   // The estimate follows the choices; its triangles are kept for the export.
@@ -137,8 +145,9 @@ export function ExportDialog(p: ExportDialogProps) {
     return () => k.cancel();
   }, [open, call, req]);
 
-  const chosen = what === "selected" ? p.parts.filter((x) => p.selection.includes(x.id)) : p.parts;
-  const name = p.doc.name;
+  const chosen = what === "selected" || pinned ? p.parts.filter((x) => picked.includes(x.id)) : p.parts;
+  // A single body's files are named after the body.
+  const name = pinned?.length === 1 ? (chosen[0]?.name ?? p.doc.name) : p.doc.name;
 
   const run = async () => {
     const k = p.call("export", { ...req, name });
@@ -174,13 +183,14 @@ export function ExportDialog(p: ExportDialogProps) {
 
   if (!p.open) return null;
   const est = estimate && !("error" in estimate) ? estimate : null;
-  const step = c.format === "step";
-  const urdf = c.format === "urdf";
+  const step = format === "step";
+  const urdf = format === "urdf";
+  const formats = pinned ? FORMATS.filter((f) => f.id !== "urdf") : FORMATS;
   return (
     <Dialog
       open
       modal
-      title="Export"
+      title={pinned ? (pinned.length === 1 && chosen[0] ? `Export ${chosen[0].name}` : `Export ${pinned.length} bodies`) : "Export"}
       icon="download"
       onCancel={cancel}
       width={460}
@@ -198,8 +208,8 @@ export function ExportDialog(p: ExportDialogProps) {
           Format
         </span>
         <span role="group" aria-labelledby="bc-ex-format" className="bc-segmented">
-          {FORMATS.map((f) => (
-            <Button key={f.id} label={f.label} title={f.title} on={c.format === f.id} onClick={() => set({ format: f.id })} />
+          {formats.map((f) => (
+            <Button key={f.id} label={f.label} title={f.title} on={format === f.id} onClick={() => set({ format: f.id })} />
           ))}
         </span>
         {urdf ? (
@@ -210,6 +220,18 @@ export function ExportDialog(p: ExportDialogProps) {
               <span>Paths for a ROS package (package://)</span>
             </label>
           </>
+        ) : pinned ? (
+          pinned.length > 1 && (
+            <>
+              <span className="bc-field-label" id="bc-ex-what">
+                Files
+              </span>
+              <span role="group" aria-labelledby="bc-ex-what" className="bc-segmented">
+                <Button label="One file" title="All these bodies in one file" on={what !== "each"} onClick={() => setPinnedEach(false)} />
+                <Button label="Each on its own" title="One file per body" on={what === "each"} onClick={() => setPinnedEach(true)} />
+              </span>
+            </>
+          )
         ) : (
           <>
             <span className="bc-field-label" id="bc-ex-what">

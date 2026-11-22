@@ -401,6 +401,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [exportOpen, setExportOpen] = useState(false);
   /** The format the Export dialog opens on, when something other than your last choice asks (Render's glTF offer). */
   const [exportFormat, setExportFormat] = useState<ExportFormat | undefined>();
+  /** Bodies exported from their right-click menu, or null for the whole model. */
+  const [exportBodies, setExportBodies] = useState<string[] | null>(null);
   // Render (#197): the session while the Render view is open, and where its camera got to.
   const [render, setRender] = useState<RenderSession | null>(null);
   const renderCam = useRef<CameraState | null>(null);
@@ -3585,6 +3587,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         onSelect: () => toggle(ids, "hidden"),
       },
       ...isolateEntries(ids),
+      {
+        id: "export",
+        label: "Export…",
+        icon: "download",
+        disabled: !chosen.length,
+        onSelect: () => {
+          setExportBodies(chosen.map((p) => p.id));
+          setExportOpen(true);
+        },
+      },
       { kind: "separator", id: "s1" },
       ...insertedModels(ids).map((f) => ({
         id: `remove-${f.id}`,
@@ -4743,7 +4755,9 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onClose={() => {
               setExportOpen(false);
               setExportFormat(undefined);
+              setExportBodies(null);
             }}
+            bodies={exportBodies ?? undefined}
             onExported={tour.onExported}
             printer={printer.id === "custom" ? "your printer" : `a ${printer.name}`}
             fitProblem={fitProblem}
