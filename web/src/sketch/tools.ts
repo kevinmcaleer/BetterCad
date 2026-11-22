@@ -83,7 +83,7 @@ export const SKETCH_TOOLS: SketchTool[] = [
     label: "Select",
     icon: "arrow",
     key: "v",
-    help: "Click to pick. Drag a point or line to move it; drop a point on another to join them, Shift-drag to pull it free. Enter finishes the sketch.",
+    help: "Click to pick, double-click a line to pick everything joined to it. Drag a point or line to move it; drop a point on another to join them, Shift-drag to pull it free. Enter finishes the sketch.",
     fields: [],
   },
   {

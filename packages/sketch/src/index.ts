@@ -5,6 +5,7 @@
 export * from "./model";
 export * from "./geom2d";
 export * from "./profiles";
+export * from "./chain";
 export * from "./measure";
 export * from "./draw";
 export * from "./dof";
