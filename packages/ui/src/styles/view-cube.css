@@ -39,20 +39,6 @@
   right: -8px;
   bottom: -6px;
 }
-/* The turn arrows sit by the top right corner, as in Fusion. */
-.bc-viewcube .bc-cube-roll {
-  top: -6px;
-  width: 20px;
-  height: 20px;
-}
-.bc-viewcube .bc-cube-roll-ccw {
-  right: 14px;
-}
-.bc-viewcube .bc-cube-roll-cw {
-  right: -8px;
-}
-/* Square on to a face the arrows always show, since that is when you want them. */
-.bc-viewcube-square .bc-cube-roll,
 .bc-viewcube:hover .bc-cube-btn,
 .bc-viewcube:focus-within .bc-cube-btn,
 .bc-viewcube .bc-cube-btn[aria-expanded="true"] {
@@ -138,4 +124,60 @@
 }
 .bc-axis-line-z {
   stroke: var(--bc-color-axis-z);
+}
+/* The turn arrows: two thin curves round the top right corner, as in Fusion. They show while the pointer is over the
+   cube or the arrows (both inside .bc-viewcube), and fade a moment after it leaves, so crossing the gap keeps them. */
+.bc-cube-rolls {
+  position: absolute;
+  inset: -10px;
+  width: calc(100% + 20px);
+  height: calc(100% + 20px);
+  overflow: visible;
+  pointer-events: none;
+}
+.bc-cube-roll {
+  opacity: 0;
+  transition: opacity 0.15s ease 0.4s;
+  cursor: pointer;
+  outline: none;
+}
+.bc-viewcube:hover .bc-cube-roll,
+.bc-cube-roll:focus-visible {
+  opacity: 1;
+  transition-delay: 0s;
+}
+/* A wide invisible stroke takes the pointer, so a thin arrow is easy to hit. */
+.bc-cube-roll-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+}
+.bc-cube-roll-arrow {
+  fill: none;
+  stroke: var(--bc-color-muted);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.bc-cube-roll:hover .bc-cube-roll-arrow,
+.bc-cube-roll:focus-visible .bc-cube-roll-arrow {
+  stroke: var(--bc-color-accent);
+  stroke-width: 2.2;
+}
+/* No hover on a touch screen, so the arrows always show there, as the cube's buttons do. */
+@media (hover: none) {
+  .bc-cube-roll {
+    opacity: 1;
+  }
+}
+/* A finger needs more to aim at. */
+@media (pointer: coarse) {
+  .bc-cube-roll-hit {
+    stroke-width: 22;
+  }
+  .bc-cube-roll-arrow {
+    stroke-width: 2.2;
+  }
 }

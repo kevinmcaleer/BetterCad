@@ -30,6 +30,8 @@ test("insert a saved model from My models, place it, and joint-ready as one comp
   await page.getByLabel("Name", { exact: true }).fill("Horn");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
   await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
+  // The address changes before the save finishes; until then the model counts as unsaved and Ctrl+N would ask first.
+  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
 
   // A new model with a box, then the horn inserted on the ground beside it.
   await page.keyboard.press("ControlOrMeta+n");
@@ -81,6 +83,8 @@ test("the My models panel lists saved models and right-click inserts one", async
   await page.getByLabel("Name", { exact: true }).fill("Horn");
   await page.getByRole("button", { name: "Save", exact: true }).last().click();
   await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
+  // The address changes before the save finishes; until then the model counts as unsaved and Ctrl+N would ask first.
+  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
   await page.keyboard.press("ControlOrMeta+n");
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toHaveCount(0);
 

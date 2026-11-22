@@ -176,8 +176,8 @@ describe("library folders and projects", () => {
 
   it("uploads STL files into the project on show, each as a model", async () => {
     const s = mount({ project: "rover" });
-    await screen.findByRole("button", { name: "Upload STL" });
-    fireEvent.change(screen.getByLabelText("STL or 3MF files to upload"), { target: { files: [stlFile("Wheel hub.stl"), stlFile("Tyre.stl")] } });
+    await screen.findByRole("button", { name: "Upload" });
+    fireEvent.change(screen.getByLabelText("Files to upload"), { target: { files: [stlFile("Wheel hub.stl"), stlFile("Tyre.stl")] } });
     expect(await screen.findByText("Uploaded 2 models")).toBeVisible();
     const made = Object.values(s.models).filter((m) => m.name === "Wheel hub" || m.name === "Tyre");
     expect(made.map((m) => m.project_id)).toEqual(["rover", "rover"]);
