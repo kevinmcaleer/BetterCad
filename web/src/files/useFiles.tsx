@@ -298,11 +298,10 @@ export function useFiles(d: FilesDeps) {
         }
         m.created ??= new Date().toISOString();
         m.savedAt = Date.now();
+        if (meta.current === m) setBaseline(current);
         await auto.markSaved(m.id, m.savedAt);
         // A new model (or another one) opened while this saved: it stays unlinked from the one just saved.
-        const still = meta.current === m;
-        if (still) {
-          setBaseline(current);
+        if (meta.current === m) {
           setCloud({ modelId: m.cloud.modelId, state: "saved" });
           renderCloudThumb(m.cloud.modelId, m.cloud.version);
         }
