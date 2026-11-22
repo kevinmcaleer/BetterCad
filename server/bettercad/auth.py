@@ -231,6 +231,7 @@ def install(app: FastAPI, settings: Settings) -> None:
         db = conn(request)
         with db:
             db.execute("DELETE FROM accounts WHERE id = ?", (user.id,))
+            db.execute("DELETE FROM chunks WHERE user_id = ?", (user.id,))
         request.app.state.blobs.forget_user(user.id)
         return {"ok": True}
 
