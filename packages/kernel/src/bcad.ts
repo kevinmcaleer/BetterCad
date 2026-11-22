@@ -6,6 +6,9 @@ import schemaJson from "./bcad.schema.json";
 import { MIGRATIONS } from "./migrations";
 import { upgradeDoc, type FeatureType, type ModelDoc } from "./document";
 
+/** A thumbnail the file can carry: the editor's PNG, or the rendered JPEG (or WebP) cloud versions keep. */
+const THUMBNAIL = new RegExp(schemaJson.properties.thumbnail.pattern);
+
 export const BCAD_SCHEMA = 3;
 export const BCAD_MIME = "application/vnd.bettercad+json";
 export const BCAD_EXT = ".bcad";
@@ -121,6 +124,11 @@ export function loadBcad(text: string): BcadFile | BcadError {
   if (file.document && typeof file.document === "object") {
     const doc = file.document as Record<string, unknown>;
     if (doc.version === 1 && Array.isArray(doc.parts)) file = { ...file, document: upgradeDoc(doc) };
+  }
+  // The picture is only a preview: one we can't show never stops the model opening.
+  if ("thumbnail" in file && !(typeof file.thumbnail === "string" && THUMBNAIL.test(file.thumbnail))) {
+    file = { ...file };
+    delete file.thumbnail;
   }
   const problem = validate(schemaJson as Schema, file, "");
   if (problem) return new BcadError(`That file is damaged: ${problem}.`);
