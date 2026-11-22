@@ -534,7 +534,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
     }
   };
 
-  // Uploading STL and 3MF files (each its own model, here): the code loads on first use.
+  // Uploading .bcad, STL, 3MF and STEP files (each its own model, here): the code loads on first use.
   const [uploading, setUploading] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const upload = async (files: File[]) => {
@@ -760,8 +760,8 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
             {!bin && (
               <Button
                 icon="upload"
-                label="Upload STL"
-                title="Upload STL or 3MF files, each as a model here. You can drop them on the page too"
+                label="Upload"
+                title="Upload BetterCad, STL, 3MF or STEP files, each as a model here. You can drop them on the page too"
                 busy={uploading}
                 onClick={() => picker.current?.click()}
               />
@@ -770,10 +770,10 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
               <input
                 ref={picker}
                 type="file"
-                accept=".stl,.3mf"
+                accept=".bcad,.stl,.3mf,.step,.stp"
                 multiple
                 hidden
-                aria-label="STL or 3MF files to upload"
+                aria-label="Files to upload"
                 onChange={(e) => {
                   const files = [...(e.target.files ?? [])];
                   e.target.value = "";
@@ -881,7 +881,7 @@ export function Library({ bin = false, folder, project }: { bin?: boolean; folde
                         : "No models yet"}
               </p>
               {!bin && !q && <Button variant="primary" icon="plus" label="New model" onClick={() => void create()} />}
-              {!bin && !q && <p className="bc-page-note">Or drop STL files here to upload them.</p>}
+              {!bin && !q && <p className="bc-page-note">Or drop BetterCad, STL, 3MF or STEP files here to upload them.</p>}
               {!bin && !q && here.kind === "root" && <SampleCards onOpen={(id) => go(`#/sample/${id}`)} title="Or start from a sample" />}
             </div>
           )}

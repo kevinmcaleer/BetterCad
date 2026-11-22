@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { writeStl } from "@bettercad/kernel/mesh-files";
 import { loadBcad } from "@bettercad/kernel/bcad";
 import { createApi } from "../cloud/api";
-import { meshModel, uploadModels } from "./upload";
+import { newDoc } from "../state/document";
+import { bcadModel, meshModel, stepModel, uploadModels, type Engine } from "./upload";
+import { saveBcad } from "@bettercad/kernel/bcad";
 
 /** One triangle, 10 mm on a side, as a binary STL. */
 const stl = () => new Uint8Array(writeStl("t", [{ name: "t", triangles: Float32Array.of(0, 0, 0, 10, 0, 0, 0, 10, 0) }]));
@@ -17,7 +19,7 @@ describe("uploading STL files to My models", () => {
     expect(f).toMatchObject({ type: "import", format: "stl", file: "Bracket.stl" });
     expect(f!.bodies.map((b) => b.name)).toEqual(["Bracket"]);
     expect(m.doc.blobs?.[f!.blob]).toBeTruthy();
-    expect(m.meshes[0]).toHaveLength(9);
+    expect(m.picture.meshes[0]).toHaveLength(9);
   });
 
   it("refuses a file that isn't a mesh, or is damaged", () => {
@@ -45,7 +47,7 @@ describe("uploading STL files to My models", () => {
     const said: string[] = [];
     const r = await uploadModels(api, [fileOf("Arm.stl", stl()), fileOf("readme.md", new Uint8Array(1))], { project_id: "rover" }, (t) => said.push(t));
     expect(r.made.map((m) => m.name)).toEqual(["Arm"]);
-    expect(r.failed).toEqual(["readme.md isn't an STL or 3MF file."]);
+    expect(r.failed).toEqual(["readme.md isn't a BetterCad, STL, 3MF or STEP file."]);
     expect(said).toEqual(["Uploading Arm.stl (1 of 2)"]);
     expect(blobs).toHaveLength(1);
     expect(posts[0]).toMatchObject({ name: "Arm", project_id: "rover" });
@@ -53,5 +55,40 @@ describe("uploading STL files to My models", () => {
     if (saved instanceof Error) throw saved;
     // The bytes went up on their own; the saved model only names them.
     expect(Object.values(saved.doc.blobs ?? {})).toEqual([""]);
+  });
+
+  it("reads a STEP file's bodies with the geometry engine", async () => {
+    const asked: string[] = [];
+    const engine = (async (method: string, params: { name: string }) => {
+      asked.push(`${method} ${params.name}`);
+      return {
+        bodies: [
+          { name: "Base", open: false },
+          { name: "", open: false },
+        ],
+      };
+    }) as unknown as Engine;
+    const m = await stepModel("Gearbox.step", new TextEncoder().encode("ISO-10303-21;"), engine);
+    expect(asked).toEqual(["inspect Gearbox.step"]);
+    const [f] = m.doc.features as unknown as { format: string; bodies: { name: string }[] }[];
+    expect(f!.format).toBe("step");
+    expect(f!.bodies.map((b) => b.name)).toEqual(["Base", "Gearbox"]);
+    expect(m.picture).toEqual({ doc: m.doc });
+    const none = (async () => ({ bodies: [] })) as unknown as Engine;
+    await expect(stepModel("Empty.stp", new Uint8Array(1), none)).rejects.toThrow("Empty.stp has no solids in it.");
+    const bad = (async () => {
+      throw new Error("That STEP file is damaged.");
+    }) as unknown as Engine;
+    await expect(stepModel("Bad.step", new Uint8Array(1), bad)).rejects.toThrow("Bad.step: That STEP file is damaged.");
+  });
+
+  it("takes a .bcad as it was saved, with its own picture", () => {
+    const text = saveBcad(newDoc("Rover chassis"), { thumbnail: "data:image/png;base64,AAAA" });
+    const m = bcadModel("chassis.bcad", text);
+    expect(m.name).toBe("Rover chassis");
+    expect(m.thumbnail).toBe("data:image/png;base64,AAAA");
+    expect(m.picture).toBeNull();
+    expect(bcadModel("bare.bcad", saveBcad(newDoc("Bare"))).picture).toEqual({ doc: expect.objectContaining({ name: "Bare" }) });
+    expect(() => bcadModel("junk.bcad", "{")).toThrow("junk.bcad: That file is not a BetterCad model");
   });
 });
