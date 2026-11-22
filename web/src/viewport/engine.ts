@@ -53,6 +53,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import type { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { faceCount, type BodyMesh } from "@bettercad/kernel";
+import { fitInRect } from "./fitSphere";
 import {
   DEFAULT_CAMERA,
   FOV,
@@ -732,16 +733,24 @@ export class Engine {
 
   /**
    * Frames the given bodies (all when empty) as tightly as their shape allows in the part of the view the panels leave
-   * clear, keeping the view's direction and roll. `margin` is the share of the clear area left empty on each side.
+   * clear, keeping the view's direction and roll. `loose` frames a new model's first part as it always has, with room
+   * round it for the next.
    */
-  fit(ids?: string[], margin?: number): void {
+  fit(ids?: string[], loose = false): void {
     const base = this.tween?.to ?? this.cam;
     const points = this.fitPointsOf(ids?.length ? ids : undefined);
-    if (!points.length) {
+    const s = this.bounds(ids?.length ? ids : undefined);
+    if (!points.length || !s) {
       this.setCamera({ ...base, target: [0, 0, 10], distance: DEFAULT_CAMERA.distance }, true);
       return;
     }
-    this.setCamera(fitPoints(base, points, this.width, this.height, this.safeArea?.(), margin), true);
+    const rect = this.safeArea?.();
+    this.setCamera(
+      loose
+        ? fitInRect(base, [s.center.x, s.center.y, s.center.z], s.radius, this.width, this.height, rect)
+        : fitPoints(base, points, this.width, this.height, rect),
+      true,
+    );
   }
 
   /** The bodies' vertices in world space, every nth on a big mesh so Fit stays quick. */
