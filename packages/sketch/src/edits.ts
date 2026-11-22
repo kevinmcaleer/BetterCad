@@ -225,3 +225,4 @@ export function offsetRegion(sketch: Sketch, at: Vec2, d: number, both = false):
   return out;
 }
 export { filletAt, filletLines, offsetChain, trimAt, trimPiece } from "./cut";
+export { breakAt, breakPreview, scaleShapes } from "./breakScale";
