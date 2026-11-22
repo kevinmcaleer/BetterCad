@@ -116,6 +116,22 @@ describe(".bcad files (#79)", () => {
     expect(validate(schema as never, { ...JSON.parse(saveBcad(bracket())), thumbnail: "x" }, "")).toBe("thumbnail is not in the right form");
   });
 
+  it("opens a model whose picture is the rendered JPEG a cloud version keeps", () => {
+    const jpeg = "data:image/jpeg;base64,/9j/4AAQ";
+    const r = loadBcad(JSON.stringify({ ...JSON.parse(saveBcad(bracket(), { thumbnail: PNG })), thumbnail: jpeg }));
+    if (r instanceof BcadError) throw r;
+    expect(r.meta.thumbnail).toBe(jpeg);
+  });
+
+  it("opens a model with a picture it can't use, and drops the picture", () => {
+    for (const thumbnail of ["x", null, 42]) {
+      const r = loadBcad(JSON.stringify({ ...JSON.parse(saveBcad(bracket())), thumbnail }));
+      if (r instanceof BcadError) throw r;
+      expect(r.meta.thumbnail).toBeUndefined();
+      expect(r.doc.features.length).toBeGreaterThan(0);
+    }
+  });
+
   it("names files from the model and models from files", () => {
     expect(fileName("Bracket v2")).toBe("Bracket v2.bcad");
     expect(fileName('a/b:c*"')).toBe("abc.bcad");

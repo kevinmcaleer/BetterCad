@@ -13,7 +13,7 @@
     "created": { "type": "string" },
     "modified": { "type": "string" },
     "name": { "type": "string" },
-    "thumbnail": { "type": "string", "pattern": "^data:image/png;base64," },
+    "thumbnail": { "type": "string", "pattern": "^data:image/(png|jpeg|webp);base64," },
     "document": {
       "type": "object",
       "required": ["format", "version", "name", "features", "looks"],

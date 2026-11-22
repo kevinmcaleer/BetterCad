@@ -1,0 +1,15 @@
+{
+  "box": "-20,-15 to 20,15",
+  "curves": [
+    "hidden outline line -16,-2.25 -20,-2.25 <- f12:f0#1",
+    "hidden outline line -16,2.25 -20,2.25 <- f12:f0#1",
+    "visible sharp circle 2,0 r2.25 <- f12:f0#2|f5",
+    "visible sharp line -16,-15 -16,15 <- f12:f1|f12:f5",
+    "visible sharp line -16,-15 -20,-15 <- f12:f5|f2",
+    "visible sharp line -16,-15 20,-15 <- f2|f5",
+    "visible sharp line -16,15 -20,15 <- f12:f5|f3",
+    "visible sharp line -16,15 20,15 <- f3|f5",
+    "visible sharp line -20,-15 -20,15 <- f0|f12:f5",
+    "visible sharp line 20,-15 20,15 <- f1|f5"
+  ]
+}
