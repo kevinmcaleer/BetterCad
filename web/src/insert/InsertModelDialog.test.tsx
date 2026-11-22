@@ -52,4 +52,24 @@ describe("Insert model picker (#484)", () => {
     expect(screen.getByRole("button", { name: /From a file/ })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Your models" })).toBeNull();
   });
+
+  it("hands STL, STEP and 3MF files over to go in as components, and keeps a .bcad to place", async () => {
+    const files: File[][] = [];
+    const picked: Placeable[] = [];
+    render(<InsertModelDialog api={api()} signedIn={false} onPick={(m) => picked.push(m)} onFiles={(f) => files.push(f)} onCancel={() => undefined} />);
+    const input = screen.getByLabelText("File to insert");
+    const stl = new File(["solid x\nendsolid x\n"], "bracket.stl");
+    const step = new File(["ISO-10303-21;"], "servo.step");
+    fireEvent.change(input, { target: { files: [stl, step] } });
+    expect(files).toEqual([[stl, step]]);
+    fireEvent.change(input, { target: { files: [stl] } });
+    await waitFor(() => expect(files).toHaveLength(2));
+    expect(files[1]).toEqual([stl]);
+    const text = saveBcad(addPart(newDoc("Wheel"), "cylinder", "w"));
+    // jsdom's File has no text().
+    const wheel = Object.assign(new File([text], "Wheel.bcad"), { text: async () => text });
+    fireEvent.change(input, { target: { files: [wheel] } });
+    await waitFor(() => expect(picked).toHaveLength(1));
+    expect(picked[0]!.name).toBe("Wheel");
+  });
 });

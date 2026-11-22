@@ -128,3 +128,41 @@ describe("quickMesh", () => {
     expect(Math.min(...zs)).toBe(20);
   });
 });
+
+describe("inserting a file as a component", () => {
+  it("puts an STL's bodies in a new component named after the file, inside the active one", async () => {
+    const k = setup();
+    k.ctx.component = { parent: "f-arm" };
+    const done = importFiles([fileOf("servo horn.stl", writeStl("horn", [{ name: "horn", triangles: cube() }]))], undefined, k.ctx);
+    await tick();
+    const [imp, link] = k.doc().features;
+    expect(imp).toMatchObject({ type: "import", file: "servo horn.stl" });
+    expect(link).toMatchObject({ type: "link", name: "servo horn", parent: "f-arm" });
+    expect(link?.type === "link" && link.parts).toEqual(imp?.type === "import" ? imp.bodies.map((b) => b.id) : []);
+    k.finish({ bodies: [{ name: "horn", open: false, triangles: 12 }] });
+    await tick();
+    k.release();
+    await done;
+    expect(k.ctx.say).toHaveBeenCalledWith("Inserted servo horn.stl as a component. Use Move or Joint to put it in place.", false, true);
+  });
+
+  it("adds the component after the import when the marker is back on the timeline", async () => {
+    const k = setup();
+    k.ctx.component = {};
+    let docs = 0;
+    const record = k.ctx.record;
+    k.ctx.record = (fn, label) => {
+      docs++;
+      expect(label).toBe("Insert cube.stl");
+      record((d) => fn(d, 0), label);
+    };
+    const done = importFiles([fileOf("cube.stl", writeStl("cube", [{ name: "cube", triangles: cube() }]))], undefined, k.ctx);
+    await tick();
+    expect(docs).toBe(1);
+    expect(k.doc().features.map((f) => f.type)).toEqual(["import", "link"]);
+    k.finish({ bodies: [{ name: "cube", open: false, triangles: 12 }] });
+    await tick();
+    k.release();
+    await done;
+  });
+});

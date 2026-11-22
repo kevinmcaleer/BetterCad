@@ -1,6 +1,6 @@
 import { baseName, blobHash, importFormat, meshName, toBase64, type BodyMesh, type Call, type Methods } from "@bettercad/kernel";
 import { read3mf, readStl, type MeshBody } from "@bettercad/kernel/mesh-files";
-import { addImport, newId, setLook, type ModelDoc, type Vec3 } from "../state/document";
+import { addImport, makeComponent, newId, setLook, type ModelDoc, type Vec3 } from "../state/document";
 import { quickKey, quickMeshes } from "../viewport/quickMeshes";
 
 /**
@@ -17,6 +17,11 @@ export interface ImportContext {
   select: (ids: string[]) => void;
   /** Bring the bodies in as reference bodies (#185): to design around, never printed. */
   reference?: boolean;
+  /**
+   * Insert a file: each file comes in as its own component, named after the file, so it moves and joints as one part.
+   * `parent` is the component it goes inside (the active one), if any.
+   */
+  component?: { parent?: string };
   /** How far the import has got, for the progress toast; null once it's done. */
   progress?: (p: ImportProgress | null) => void;
   /** Resolves once the kernel's mesh for every one of `ids` is on show, or the step failed or was taken away. */
@@ -71,6 +76,7 @@ export async function importFiles(files: File[], at: Vec3 | undefined, ctx: Impo
       if (!call) return ctx.say("The geometry engine is off, so files can't be imported.", true);
       show(stage, READ);
       const feature = newId("f");
+      const link = newId("f");
       // Several files dropped together stand side by side.
       const p = at ?? { x: 0, y: 0, z: 0 };
       const position = { x: p.x + i * 10, y: p.y, z: p.z };
@@ -78,10 +84,11 @@ export async function importFiles(files: File[], at: Vec3 | undefined, ctx: Impo
         const ids = bodies.map((b) => b.id);
         ctx.record(
           (d, m) => {
-            const added = addImport(d, { file: file.name, format, blob, data, bodies, position }, feature, m);
+            let added = addImport(d, { file: file.name, format, blob, data, bodies, position }, feature, m);
+            if (ctx.component) added = makeComponent(added, ids, link, m === undefined ? undefined : m + 1, ctx.component.parent, base);
             return ctx.reference ? setLook(added, ids, () => ({ reference: true })) : added;
           },
-          ctx.reference ? `Import ${file.name} as a reference` : `Import ${file.name}`,
+          ctx.reference ? `Import ${file.name} as a reference` : ctx.component ? `Insert ${file.name}` : `Import ${file.name}`,
         );
         return ids;
       };
@@ -119,6 +126,10 @@ export async function importFiles(files: File[], at: Vec3 | undefined, ctx: Impo
   if (!made.length) return;
   ctx.select(made);
   if (notes.length) return ctx.say(notes.join(" "));
+  if (ctx.component) {
+    const one = files.length === 1 ? `${files[0]!.name} as a component` : `${files.length} files as components`;
+    return ctx.say(`Inserted ${one}. Use Move or Joint to put ${files.length === 1 ? "it" : "them"} in place.`, false, true);
+  }
   const what = `${made.length === 1 ? "1 body" : `${made.length} bodies`} from ${files.length === 1 ? files[0]!.name : `${files.length} files`}`;
   // A mesh's holes can be made editable (#446): say where to find it, once the import has nothing else to say.
   if (meshFiles && !ctx.reference) return ctx.say(`Imported ${what}. To change its holes, right-click it and choose Recognise features`);
