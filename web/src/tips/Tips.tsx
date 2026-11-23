@@ -24,6 +24,16 @@ export function tips(): Tip[] {
       title: "Join parts together",
       text: "Make a component to work in, or one from bodies, then use the Joint tool to hang each from another.",
     },
+    {
+      id: "drawing",
+      title: "Make a drawing",
+      text: "Choose New drawing from the view style menu. Press B to place a view, then Auto dimension adds the sizes for you.",
+    },
+    {
+      id: "drawing-sizes",
+      title: "Tidy a drawing's sizes",
+      text: "Right-click a view and choose Arrange dimensions: the shortest size goes nearest the part.",
+    },
     { id: "find", title: "Find any command", text: `Press ${formatCombo("mod+k")} to find a command by name, or ? to see every shortcut.` },
   ];
 }

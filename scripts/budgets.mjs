@@ -46,6 +46,13 @@ if (existsSync(join(dist, "index.html"))) {
     sum((x) => x.f.startsWith("browser-")),
     b.kernelClient,
   );
+  // The Drawing workspace (#555): one chunk, fetched the first time a drawing opens.
+  if (b.drawing !== undefined)
+    check(
+      "Drawing workspace",
+      sum((x) => x.f.startsWith("DrawingView-")),
+      b.drawing,
+    );
   check(
     "All JavaScript",
     sum(() => true),

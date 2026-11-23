@@ -1,5 +1,6 @@
 import {
   frameOf,
+  viewScale,
   type AutoRecipe,
   type DatumCorner,
   type DrawingDimension,
@@ -9,7 +10,7 @@ import {
 } from "@bettercad/kernel/drawing";
 import { viewAxes, type ModelView, type V2 } from "@bettercad/kernel/view";
 import { arrangeSheet } from "./arrange";
-import { isIso, pickKey } from "./dimensions";
+import { defaultSpot, isIso, measured, pickKey } from "./dimensions";
 import { autoMarks, offered, refTo, targets, type Target } from "./marks";
 
 /**
@@ -222,7 +223,14 @@ export function autoDimension(
       if (model && !isIso(frameOf(v.direction).toEye)) marks.push(...autoMarks(model, v.id, marks, () => id("mk")));
     }
   }
-  const added: DrawingDimension[] = list.slice(0, count).map((c) => ({ ...c.dim, id: id("dm"), at: [0, 0] }));
+  const added: DrawingDimension[] = list.slice(0, count).map((c) => {
+    // Rows are for lengths and leaders; an angle goes a little out from its corner.
+    const v = c.dim.kind === "angle" ? sheet.views.find((x) => x.id === c.dim.view) : undefined;
+    const model = v && viewOf(v.id);
+    const m = model && measured(c.dim.refs, targets(model));
+    const at: V2 = m && model && v ? (defaultSpot(m, model, viewScale(sheet, v)).at.map((n) => Math.round(n * 1e3) / 1e3 + 0) as V2) : [0, 0];
+    return { ...c.dim, id: id("dm"), at };
+  });
   const next: DrawingSheet = {
     ...sheet,
     marks: marks.length === sheet.marks.length ? sheet.marks : marks,

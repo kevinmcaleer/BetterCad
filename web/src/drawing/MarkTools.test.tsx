@@ -78,7 +78,9 @@ describe("Centre mark", () => {
     expect(screen.queryByRole("button", { name: /^Edge/ })).toBeNull();
     await userEvent.click(all[0]!);
     await userEvent.click(all[0]!);
-    expect(sheetNow().marks).toMatchObject([{ id: expect.any(String), kind: "centre-mark", on: { view: "v1", body: "b1", kind: "face", index: 10, name: "hole0" } }]);
+    expect(sheetNow().marks).toMatchObject([
+      { id: expect.any(String), kind: "centre-mark", on: { view: "v1", body: "b1", kind: "face", index: 10, name: "hole0" } },
+    ]);
     // The mark is drawn: a short cross and four lines out past the rim.
     const mark = screen.getByRole("button", { name: "Centre mark" });
     expect(mark.querySelector(".bc-mark-line")!.getAttribute("d")!.match(/M/g)).toHaveLength(6);
@@ -164,7 +166,9 @@ describe("Centre line and Edge extension", () => {
   it("a hole seen from the side gets its axis in one click", async () => {
     render(<Harness tool="centre-line" />);
     await userEvent.click(await screen.findByRole("button", { name: "Axis of a hole, 3 mm across" }));
-    expect(sheetNow().marks).toMatchObject([{ id: expect.any(String), kind: "centre-line", a: { view: "v1", body: "b1", kind: "face", index: 22, name: "cross" } }]);
+    expect(sheetNow().marks).toMatchObject([
+      { id: expect.any(String), kind: "centre-line", a: { view: "v1", body: "b1", kind: "face", index: 22, name: "cross" } },
+    ]);
   });
 
   it("two edges get the line midway between them", async () => {

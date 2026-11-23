@@ -668,3 +668,37 @@ test("change the model and the drawing's sizes follow it @journey", async ({ pag
   await expect(page.locator(".bc-lost")).toHaveCount(0);
   await expect.poll(async () => Math.abs((await under("Dimension, 60 mm")) - gap)).toBeLessThan(2);
 });
+
+test("an ASME sheet of the phone stand, dimensioned for you @visual", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the phone stand sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  // A US page size starts the sheet to ASME: third angle, and sizes that read level.
+  await newDrawing(page, "tabloid");
+  await page.keyboard.press("b");
+  const base = page.getByRole("dialog", { name: "Base view" });
+  await expect(base.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await base.getByRole("button", { name: "Place" }).click();
+  const front = page.getByRole("button", { name: /^Front view, / });
+  await expect(front.locator(".bc-view-visible")).toHaveAttribute("d", /L/, { timeout: 30_000 });
+  await page
+    .getByRole("button", { name: /^Auto dimension/ })
+    .first()
+    .click();
+  const card = page.getByRole("dialog", { name: "Auto dimension" });
+  await card.getByRole("slider", { name: "How many sizes" }).focus();
+  await page.keyboard.press("End");
+  await card.getByRole("radio", { name: /^Chain\s*\d/ }).check();
+  await card.getByRole("button", { name: "OK" }).click();
+  await expect(page.getByRole("button", { name: "Dimension, 45°" })).toBeVisible();
+  await expect(page.locator(".bc-lost")).toHaveCount(0);
+
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-phone-stand-asme.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date: / })],
+    timeout: 30_000,
+  });
+});

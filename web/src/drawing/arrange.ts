@@ -22,6 +22,7 @@ type Side = "below" | "above" | "left" | "right";
 export type Spot = Pick<DrawingDimension, "at" | "across">;
 
 const EPS = 1e-6;
+const r3 = (v: number) => Math.round(v * 1e3) / 1e3 + 0;
 /** Clear paper between neighbouring texts in a row, and between a line's end and text moved outside it. */
 const CLEAR = 1.5;
 
@@ -173,7 +174,8 @@ export function arrangeSheet(
     const ctx = model && contextOf(sheet, v.id, model, decimals);
     if (!ctx) continue;
     const mine = sheet.dimensions.filter((d) => d.view === v.id && (!only?.dimensions || only.dimensions(d)));
-    for (const [id, spot] of arrange(mine, ctx, sheetRows(sheet))) spots.set(id, spot);
+    // To a thousandth of a millimetre, so a saved sheet is the same on every machine.
+    for (const [id, spot] of arrange(mine, ctx, sheetRows(sheet))) spots.set(id, { ...spot, at: [r3(spot.at[0]), r3(spot.at[1])] });
   }
   let changed = false;
   const dimensions = sheet.dimensions.map((d) => {
