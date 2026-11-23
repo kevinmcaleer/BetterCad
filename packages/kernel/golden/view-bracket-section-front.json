@@ -21,7 +21,5 @@
     "visible sharp line 4.25,0 4.25,4 <- f12:f0#2"
   ],
   "cut": "at 0,0,20",
-  "cutFaces": [
-    "base: 14 pieces, 320.376 mm"
-  ]
+  "cutFaces": ["base: 14 pieces, 320.376 mm"]
 }

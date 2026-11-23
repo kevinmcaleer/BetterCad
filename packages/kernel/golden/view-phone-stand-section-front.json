@@ -10,7 +10,5 @@
     "visible sharp line 34,0 34,12 <- f1"
   ],
   "cut": "at 0,0,27",
-  "cutFaces": [
-    "stand: 7 pieces, 455.544 mm"
-  ]
+  "cutFaces": ["stand: 7 pieces, 455.544 mm"]
 }
