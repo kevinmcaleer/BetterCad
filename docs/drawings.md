@@ -30,6 +30,30 @@ rows of dimensions. US pages (Letter to ANSI E) start it to ASME: third angle, s
 **Sheet settings** switches either, and sets the scale, the border and the row spacing. The title block is at the
 bottom right; double-click a field to type in it.
 
+## Your own title block and templates
+
+**Sheet settings** adds to the title block (#575):
+
+- **Logo**: choose a picture. It is brought down to 480 pixels on its longest side, put on white and kept in the model
+  file as a JPEG, so it travels with the drawing and goes into a PDF as it is.
+- **Your own fields**: up to 8, each a name and a value (Material, Finish, Project). They sit four to a row above the
+  standard's rows, with the logo first, and the block grows upward to hold them. Views, the parts list and export all
+  read the same layout, so nothing overlaps.
+
+The logo and your fields belong to the drawing, so every sheet of it shows them. SVG, PDF and PNG exports carry the
+logo; DXF has no pictures, so there the logo's cell is an empty box.
+
+**Save as a template** in Sheet settings keeps the page size, which way up, the standard, the border, the title block
+(all but the title and the date, which are each drawing's own), the logo, your fields, and whether a new drawing starts
+with views. **New drawing** then has a **Template** list: pick one and Create. **First views** set to "Front, top,
+side and isometric" lays the four out on the first sheet where the standard puts them, at the largest standard scale
+that fits, as Make drawings of every part does. Tick **Start new drawings from this** and the card opens on that
+template every time; untick it to go back to the page you last used. You can keep 20 templates.
+
+Templates live in this browser (`bettercad.drawingTemplates`) and, when you are signed in, in your account
+(`/api/templates`, `server/bettercad/templates.py`), the same way printer profiles do: the account's copy wins, and
+ones made offline go up when you sign in. Your default is part of the template, so it follows you too.
+
 ## Sheets
 
 A drawing can have more than one sheet. The strip under the page has a tab for each, with a small picture of it, and a
@@ -181,10 +205,11 @@ format is written from one picture of the sheet, `sheetScene` in `web/src/drawin
   Each has a golden list of what Auto dimension offers, in `*.auto.txt`. After a deliberate change, run
   `UPDATE_GOLDEN=1 npm run test:golden` and read the diff. The nightly run also writes each sheet to SVG, PDF and DXF
   and checks nothing was dropped.
+- `server/tests/test_templates.py`: the account's templates.
 - `web/e2e/drawing.spec.ts`: the journeys, axe in all three themes, and pictures of an ISO and an ASME sheet.
 - `budgets.json` has a line for the drawing chunk, and the kernel bench times a projected view.
 
 ## Not yet
 
-Templates with a logo are release 2 (#575). Exploded views wait for the model to save one. Stepped, slanted and half
+Exploded views wait for the model to save one. Stepped, slanted and half
 sections are not planned yet. Ordinate dimensions are not planned yet. Weld symbols and a hole table are not here.

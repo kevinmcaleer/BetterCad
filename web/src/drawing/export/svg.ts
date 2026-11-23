@@ -36,6 +36,8 @@ export function sceneSvg(scene: Scene, o: SvgOptions = {}): string {
   const size = o.pixels ? `width="${o.pixels.w}" height="${o.pixels.h}"` : `width="${n(w)}mm" height="${n(h)}mm"`;
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="0 0 ${n(w)} ${n(h)}">`);
   out.push(`<rect width="${n(w)}" height="${n(h)}" fill="white"/>`);
+  for (const i of scene.images ?? [])
+    out.push(`<image href="${esc(i.data)}" x="${n(i.at[0])}" y="${n(h - i.at[1] - i.h)}" width="${n(i.w)}" height="${n(i.h)}"/>`);
   out.push(`<g fill="none" stroke="black" stroke-linejoin="round">`);
   for (const g of grouped(scene.strokes)) {
     const d = g.strokes.map((s) => curvePath(s.curve, 1, [0, h])).join("");

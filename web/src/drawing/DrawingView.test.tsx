@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { newSheet, type Drawing, type DrawingSheet } from "@bettercad/kernel/drawing";
-import { DrawingBar, DrawingPaper, SheetCard, type DrawingApi } from "./DrawingView";
+import { DrawingBar, DrawingPaper, type DrawingApi } from "./DrawingView";
+import SheetCard from "./SheetCard";
 
 const drawing = (o: Partial<DrawingSheet> = {}): Drawing => ({
   id: "dr1",

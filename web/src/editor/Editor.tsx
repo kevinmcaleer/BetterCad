@@ -284,7 +284,7 @@ const drawingCode = () => import("../drawing/DrawingView");
 const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingPaper })));
 const DrawingBar = lazy(() => drawingCode().then((m) => ({ default: m.DrawingBar })));
 const DrawingRibbon = lazy(() => drawingCode().then((m) => ({ default: m.DrawingRibbon })));
-const SheetCard = lazy(() => drawingCode().then((m) => ({ default: m.SheetCard })));
+const SheetCard = lazy(() => import("../drawing/SheetCard"));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 /** Importing a mesh or STEP file loads its code when you first do it (#320). */
@@ -625,9 +625,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setSheetCard(null);
     void drawingCode().then((m) => {
       if (!making) return shownDrawing && store.edit(...m.sheetChange(shownDrawing, choice, drawingSheet));
-      const made = m.makeDrawing(store.get(), choice, account?.name);
-      store.edit(() => made.doc, "New drawing");
-      enterDrawing(made.id);
+      void m.startDrawing(store, choice, account?.name, viewCall, at).then(enterDrawing);
     });
   };
   /** Make drawings of every part (#574): one for each row of the parts list that has none of its name yet. */
@@ -5198,6 +5196,9 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         <Suspense fallback={null}>
           <SheetCard
             sheet={sheetCard === "settings" ? (shownDrawing?.sheets.find((s) => s.id === drawingSheet) ?? shownDrawing?.sheets[0]) : undefined}
+            drawing={shownDrawing}
+            api={api}
+            signedIn={!!account}
             onCancel={() => setSheetCard(null)}
             onDone={sheetChosen}
           />

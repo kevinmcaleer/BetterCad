@@ -1,8 +1,10 @@
 import { SCALES, type DrawingSheet, type DrawingView, type ViewDirection } from "@bettercad/kernel/drawing";
 import type { ModelView } from "@bettercad/kernel/view";
+import type { ModelDoc } from "../state/document";
 import type { SheetLayout } from "./layout";
+import type { ViewCall } from "./useModelViews";
 import { GAP, placeProjected, projectedDirection, type Side } from "./projected";
-import { emptyView, freeSpace, fromPage, placeView } from "./views";
+import { emptyView, freeSpace, fromPage, placeView, viewRequest } from "./views";
 
 /**
  * A finished first sheet (#574, #575): a front view with the views above or below it, beside it and an isometric,
@@ -64,4 +66,28 @@ export function standardViews(
   next = placeProjected(next, iso, front, sides.iso, l.angle, [x1, y1]);
   // An isometric reads better without its hidden edges.
   return { ...next, views: next.views.map((v) => (v.id === iso ? { ...v, hidden: false } : v)) };
+}
+
+/**
+ * The kernel's pictures of the four, from the model without its drawings. Sizes are all that is needed to lay them
+ * out, so the quick picture will do. Nothing when the kernel can't be asked or there is nothing to see.
+ */
+export async function firstPictures(
+  model: ModelDoc,
+  shows: DrawingView["shows"],
+  angle: "first" | "third",
+  call: ViewCall,
+  upTo: number | undefined,
+): Promise<Record<FirstView, ModelView> | undefined> {
+  const ways = firstDirections(angle);
+  const pics = {} as Record<FirstView, ModelView>;
+  let ready = true;
+  await Promise.all(
+    (Object.keys(ways) as FirstView[]).map(async (k) => {
+      const p = call({ doc: model, upTo, ...viewRequest({ shows, direction: ways[k], hidden: false, tangent: false }, true) });
+      if (!p) ready = false;
+      else pics[k] = await p;
+    }),
+  );
+  return ready && !emptyView(pics.front) ? pics : undefined;
 }

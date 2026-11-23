@@ -89,11 +89,11 @@ import {
   type ViewChoice,
 } from "./views";
 
-export { SheetCard, type SheetChoice } from "./SheetCard";
+export type { SheetChoice } from "./SheetCard";
 export type { ViewCall } from "./useModelViews";
 export type { ShowOption } from "./BaseViewCard";
 export type { DrawingFile } from "./ExportCard";
-export { decimalsChange, drawingChange, drawingEdit, makeDrawing, sheetChange, sheetEdit, sheetOf, titleChange } from "./ops";
+export { decimalsChange, drawingChange, drawingEdit, makeDrawing, sheetChange, sheetEdit, sheetOf, startDrawing, titleChange } from "./ops";
 
 /** Export (#569) and its PDF, SVG and DXF writers load when the card first opens. */
 const ExportCard = lazy(() => import("./ExportCard").then((m) => ({ default: m.ExportCard })));
@@ -245,7 +245,10 @@ function Paper({
 }: DrawingPaperProps & { strip?: boolean }) {
   const sheet = sheetOf(drawing, sheetId);
   const sheetNumber = drawing.sheets.indexOf(sheet) + 1;
-  const layout = useMemo(() => sheetLayout(sheet, { index: sheetNumber, count: drawing.sheets.length }), [sheet, sheetNumber, drawing.sheets.length]);
+  const layout = useMemo(
+    () => sheetLayout(sheet, { index: sheetNumber, count: drawing.sheets.length, logo: drawing.logo, fields: drawing.fields }),
+    [sheet, sheetNumber, drawing.sheets.length, drawing.logo, drawing.fields],
+  );
   const root = useRef<HTMLDivElement>(null);
   const clear = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View | null>(null);

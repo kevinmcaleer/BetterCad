@@ -1,4 +1,13 @@
-import { SHEET_SIZES, scaleLabel, sheetBox, type DrawingSheet, type TitleBlock } from "@bettercad/kernel/drawing";
+import {
+  MAX_TITLE_FIELDS,
+  SHEET_SIZES,
+  scaleLabel,
+  sheetBox,
+  type DrawingSheet,
+  type TitleBlock,
+  type TitleField,
+  type TitleLogo,
+} from "@bettercad/kernel/drawing";
 
 /**
  * Where everything printed round a drawing goes: the frame, the zone grid, the centring marks and the title block
@@ -24,7 +33,8 @@ export interface ZoneLabel {
 }
 export type TitleKey = keyof TitleBlock | "scale" | "size" | "sheet" | "units" | "projection";
 export interface TitleCell extends Box {
-  key: TitleKey;
+  /** A field of your own is `field-0`, `field-1`…; the logo's cell is `logo` (#575). */
+  key: TitleKey | "logo" | `field-${number}`;
   label: string;
   /** What the cell shows; the projection cell shows its symbol instead. */
   value: string;
@@ -32,6 +42,8 @@ export interface TitleCell extends Box {
   size: number;
   /** The title block field you type into; the rest are worked out for you. */
   edit?: keyof TitleBlock;
+  /** The logo's cell: its picture, and where it sits in the cell at its own shape. */
+  image?: { logo: TitleLogo; box: Box };
 }
 export interface SheetLayout {
   page: { w: number; h: number };
@@ -172,6 +184,53 @@ export interface SheetInfo {
   /** This sheet's place in its drawing, from 1, and how many sheets there are. */
   index?: number;
   count?: number;
+  /** The drawing's logo and fields of its own (#575), in rows above the standard's. */
+  logo?: TitleLogo;
+  fields?: readonly TitleField[];
+}
+
+/** A long value's letter height, shrunk until it fits a cell this wide. */
+const fitted = (value: string, w: number, size: number) =>
+  widthOf(value, size) > w - 3 ? Math.max(TEXT.label, Math.floor(((w - 3) / (value.length * 0.62)) * 10) / 10) : size;
+
+/** Cells to a row of your own fields, and how tall a row is with and without the logo in it. */
+const OWN = { across: 4, h: 12, logo: 16 } as const;
+
+/** The fields that are shown: those with a name or something to say, up to the most a block holds. */
+export const shownFields = (fields: readonly TitleField[] = []) => fields.filter((f) => f.label.trim() || f.value.trim()).slice(0, MAX_TITLE_FIELDS);
+
+/** How tall the rows of the logo and your own fields are, mm. */
+function ownHeight(info: SheetInfo): number {
+  const n = shownFields(info.fields).length + (info.logo ? 1 : 0);
+  return n ? (info.logo ? OWN.logo : OWN.h) + (Math.ceil(n / OWN.across) - 1) * OWN.h : 0;
+}
+
+/** The logo and your own fields, four to a row from the block's top left corner. The last cell of a row takes what is left. */
+function ownCells(block: Box, info: SheetInfo): TitleCell[] {
+  type Item = { logo: TitleLogo } | { field: TitleField; i: number };
+  const items: Item[] = [...(info.logo ? [{ logo: info.logo }] : []), ...shownFields(info.fields).map((field, i) => ({ field, i }))];
+  const cells: TitleCell[] = [];
+  let y = block.y;
+  for (let r = 0; r * OWN.across < items.length; r++) {
+    const row = items.slice(r * OWN.across, (r + 1) * OWN.across);
+    const h = r === 0 && info.logo ? OWN.logo : OWN.h;
+    const each = block.w / OWN.across;
+    row.forEach((item, c) => {
+      const x = block.x + c * each;
+      const w = c === row.length - 1 ? block.x + block.w - x : each;
+      if ("logo" in item) {
+        // The picture keeps its shape, 1 mm clear of the cell's lines.
+        const k = Math.min((w - 2) / item.logo.w, (h - 2) / item.logo.h);
+        const box: Box = { x: x + (w - item.logo.w * k) / 2, y: y + (h - item.logo.h * k) / 2, w: item.logo.w * k, h: item.logo.h * k };
+        cells.push({ key: "logo", label: "Logo", value: "", size: TEXT.value, x, y, w, h, image: { logo: item.logo, box } });
+      } else {
+        const value = item.field.value.trim();
+        cells.push({ key: `field-${item.i}`, label: item.field.label.trim(), value, size: fitted(value, w, TEXT.value), x, y, w, h });
+      }
+    });
+    y += h;
+  }
+  return cells;
 }
 
 /** The title block's cells, laid out from the block's top left corner. */
@@ -199,9 +258,7 @@ function titleCells(sheet: DrawingSheet, block: Box, rows: Row[], info: SheetInf
     for (const [key, w, span = 1] of row.cells) {
       const h = rows.slice(r, r + span).reduce((s, x) => s + x.h, 0);
       const value = values[key];
-      let size: number = key === "title" ? TEXT.title : TEXT.value;
-      const room = w - 3;
-      if (widthOf(value, size) > room) size = Math.max(TEXT.label, Math.floor((room / (value.length * 0.62)) * 10) / 10);
+      const size = fitted(value, w, key === "title" ? TEXT.title : TEXT.value);
       const cell: TitleCell = { key, label: LABELS[sheet.standard][key], value, size, x, y, w, h };
       if (EDITABLE.has(key)) cell.edit = key as keyof TitleBlock;
       cells.push(cell);
@@ -264,9 +321,11 @@ export function sheetLayout(sheet: DrawingSheet, info: SheetInfo = {}): SheetLay
 
   const rows = iso ? ISO_ROWS : ASME_ROWS;
   const w = rows[0]!.cells.reduce((s, c) => s + c[1], 0);
-  const h = rows.reduce((s, r) => s + r.h, 0);
+  const own = ownHeight(info);
+  const h = rows.reduce((s, r) => s + r.h, 0) + own;
   const block: Box = { x: frame.x + frame.w - w, y: frame.y + frame.h - h, w, h };
-  return { page, frame, border: sheet.border, ticks, labels, centring, block, cells: titleCells(sheet, block, rows, info), angle: iso ? "first" : "third" };
+  const cells = [...ownCells(block, info), ...titleCells(sheet, { ...block, y: block.y + own, h: h - own }, rows, info)];
+  return { page, frame, border: sheet.border, ticks, labels, centring, block, cells, angle: iso ? "first" : "third" };
 }
 
 /** Today as the title block writes it: 2026-11-22. */

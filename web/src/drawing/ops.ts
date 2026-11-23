@@ -9,12 +9,13 @@ import {
   type DrawingSheet,
   type TitleBlock,
 } from "@bettercad/kernel/drawing";
-import type { ModelDoc } from "../state/document";
-import { today } from "./layout";
+import { newId, type ModelDoc } from "../state/document";
+import { sheetLayout, today } from "./layout";
 import { flipAngle } from "./projected";
 import { rememberSheet, type SheetPick } from "./prefs";
 import type { SheetChoice } from "./SheetCard";
 import { shareTitle } from "./sheets";
+import type { ViewCall } from "./useModelViews";
 
 /** A change to the model and its name in Undo, as the editor's history takes them. */
 type Edit = [(d: ModelDoc) => ModelDoc, string];
@@ -27,7 +28,50 @@ export function makeDrawing(doc: ModelDoc, choice: SheetChoice, author?: string)
   const pick: SheetPick = { size: choice.size, landscape: choice.landscape, border: choice.border };
   if (choice.standard !== standardFor(choice.size)) pick.standard = choice.standard;
   rememberSheet(pick);
-  return addDrawing(doc, { ...pick, standard: choice.standard, author, date: today() });
+  // A template's Created by is one you typed, so it stands over the account's name.
+  const who = choice.block?.author ?? author;
+  return addDrawing(doc, {
+    ...pick,
+    standard: choice.standard,
+    date: today(),
+    ...(who ? { author: who } : {}),
+    ...(choice.block ? { block: choice.block } : {}),
+    ...(choice.logo ? { logo: choice.logo } : {}),
+    ...(choice.fields?.length ? { fields: choice.fields } : {}),
+  });
+}
+
+/**
+ * New drawing as the editor runs it (#575): makes the drawing and, when the card asked for first views, lays a front
+ * view, the views beside it and an isometric of the whole model on its sheet. One step in Undo; the model may change
+ * while the views are worked out, so only the new drawing is added. Hands back the drawing's id, to open it.
+ */
+export async function startDrawing(
+  store: { get(): ModelDoc; edit(change: (d: ModelDoc) => ModelDoc, label: string): void },
+  choice: SheetChoice,
+  author?: string,
+  call?: ViewCall,
+  upTo?: number,
+): Promise<string> {
+  const from = store.get();
+  const made = makeDrawing(from, choice, author);
+  let drawing = (made.doc.drawings ?? []).find((d) => d.id === made.id)!;
+  if (choice.views === "four" && call) {
+    try {
+      const sheet = drawing.sheets[0]!;
+      const l = sheetLayout(sheet, drawing);
+      const model = { ...from };
+      delete model.drawings;
+      const { firstPictures, standardViews } = await import("./firstViews");
+      const pics = await firstPictures(model, { all: true }, l.angle, call, upTo);
+      if (pics) drawing = { ...drawing, sheets: [standardViews(sheet, l, { all: true }, pics, () => newId("vw"))] };
+    } catch {
+      // The views couldn't be worked out: the sheet starts empty, as it does without a template.
+    }
+  }
+  const mine = drawing;
+  store.edit((d) => ({ ...d, drawings: [...(d.drawings ?? []), mine] }), "New drawing");
+  return mine.id;
 }
 
 /** Sheet settings' Done: the page, the scale and the title block in one step. */
@@ -53,7 +97,19 @@ export function sheetChange(drawing: Drawing, choice: SheetChoice, sheetId?: str
       });
       // The title block is the drawing's: its other sheets take what was typed here (#572).
       const title = choice.title;
-      return title ? changeDrawing(next, drawing.id, (x) => (x.sheets.length > 1 ? { ...x, sheets: x.sheets.map((s) => ({ ...s, title })) } : x)) : next;
+      if (!title) return next;
+      return changeDrawing(next, drawing.id, (x) => {
+        // The logo and your own fields are the drawing's too (#575); gone from the card, they leave the file.
+        const fields = choice.fields ?? [];
+        const same = x.logo?.data === choice.logo?.data && JSON.stringify(x.fields ?? []) === JSON.stringify(fields);
+        if (same && x.sheets.length < 2) return x;
+        const y: Drawing = { ...x, sheets: x.sheets.length > 1 ? x.sheets.map((s) => ({ ...s, title })) : x.sheets };
+        if (choice.logo) y.logo = choice.logo;
+        else delete y.logo;
+        if (fields.length) y.fields = fields;
+        else delete y.fields;
+        return y;
+      });
     },
     "Sheet settings",
   ];

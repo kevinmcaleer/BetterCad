@@ -173,6 +173,20 @@ export interface TitleBlock {
   status?: string;
 }
 
+/** A picture in the title block (#575): a JPEG as a data URL, small enough to travel in the file, and its size in pixels. */
+export interface TitleLogo {
+  data: string;
+  w: number;
+  h: number;
+}
+/** A title block field of your own (#575): what it is called and what it says. */
+export interface TitleField {
+  label: string;
+  value: string;
+}
+/** How many fields of your own a title block holds. */
+export const MAX_TITLE_FIELDS = 8;
+
 export type AutoRecipe = "baseline" | "chain" | "centre-baseline" | "centre-chain";
 export type DatumCorner = "bottom-left" | "bottom-right" | "top-left" | "top-right" | "centre";
 
@@ -210,6 +224,10 @@ export interface Drawing {
   sheets: DrawingSheet[];
   /** Decimal places on dimensions (0 to 3). */
   decimals: number;
+  /** A logo in the title block of every sheet (#575). */
+  logo?: TitleLogo;
+  /** Fields of your own, in a row above the title block's (#575). */
+  fields?: TitleField[];
 }
 
 /** A sheet's width and height on screen and paper, mm. */
@@ -242,12 +260,16 @@ export interface NewDrawing {
   author?: string;
   /** Today, ISO, for the title block. */
   date?: string;
+  /** Title block fields to start from (#575): a template's. The title, author and date above still win. */
+  block?: TitleBlock;
+  logo?: TitleLogo;
+  fields?: TitleField[];
 }
 
 /** A sheet with nothing on it. The standard follows the page size unless one is given. */
 export function newSheet(name: string, o: NewDrawing & { title?: string } = {}): DrawingSheet {
   const size = o.size ?? "A4";
-  const title: TitleBlock = { revision: "A", type: "Part drawing" };
+  const title: TitleBlock = { revision: "A", type: "Part drawing", ...o.block };
   if (o.title) title.title = o.title;
   if (o.author) title.author = o.author;
   if (o.date) title.date = o.date;
@@ -275,6 +297,8 @@ const nextName = (doc: ModelDoc) => {
 /** Adds a drawing with one empty sheet, titled with the model's name. */
 export function addDrawing(doc: ModelDoc, o: NewDrawing = {}): { doc: ModelDoc; id: string } {
   const drawing: Drawing = { id: newId("dr"), name: nextName(doc), sheets: [newSheet("Sheet 1", { ...o, title: doc.name })], decimals: 2 };
+  if (o.logo) drawing.logo = o.logo;
+  if (o.fields?.length) drawing.fields = o.fields;
   return { doc: { ...doc, drawings: [...(doc.drawings ?? []), drawing] }, id: drawing.id };
 }
 

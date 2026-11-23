@@ -47,6 +47,16 @@ export interface Scene {
   labels: Label[];
   /** Left out when there is nothing filled. */
   fills?: Fill[];
+  /** Pictures (#575): the title block's logo. Left out when there are none. */
+  images?: SceneImage[];
+}
+/** A JPEG on the page: its data URL, its size in pixels, and the box it fills, from the box's bottom left corner. */
+export interface SceneImage {
+  data: string;
+  px: { w: number; h: number };
+  at: V2;
+  w: number;
+  h: number;
 }
 
 /** A cutting line's long dash, gap, dot and gap, mm: that of `drawing.css`. */
@@ -152,8 +162,14 @@ export function sheetScene(
   }
 
   strokes.push({ layer: "title", width: WEIGHT.thick, curve: box(l.block.x, up(l.block.y + l.block.h), l.block.w, l.block.h) });
+  const images: SceneImage[] = [];
   for (const c of l.cells) {
     strokes.push({ layer: "title", width: WEIGHT.thin, curve: box(c.x, up(c.y + c.h), c.w, c.h) });
+    if (c.image) {
+      const b = c.image.box;
+      images.push({ data: c.image.logo.data, px: { w: c.image.logo.w, h: c.image.logo.h }, at: [b.x, up(b.y + b.h)], w: b.w, h: b.h });
+      continue;
+    }
     labels.push({ layer: "title", at: [c.x + 1, up(c.y + 2)], size: TEXT.label, anchor: "start", baseline: "central", text: c.label });
     const cy = up(c.y + c.h / 2 + 1.2);
     const cx = c.x + c.w / 2;
@@ -286,6 +302,7 @@ export function sheetScene(
   }
   const scene: Scene = { w: l.page.w, h: l.page.h, strokes, labels };
   if (fills.length) scene.fills = fills;
+  if (images.length) scene.images = images;
   return scene;
 }
 

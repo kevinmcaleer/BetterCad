@@ -112,6 +112,28 @@
 .bc-sheet-card-date .bc-btn {
   flex: none;
 }
+/* Templates, the logo and your own fields (#575). */
+.bc-sheet-card-row,
+.bc-sheet-card-own {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-3);
+}
+.bc-sheet-card-own .bc-text {
+  flex: 1 1 0;
+}
+.bc-sheet-card-own .bc-btn {
+  flex: none;
+}
+.bc-sheet-card-logo {
+  height: 32px;
+  max-width: 96px;
+  object-fit: contain;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+}
 /* Views on the sheet (#561). Line widths are a printed drawing's: thick for edges you see, thin dashes for hidden. */
 .bc-view {
   cursor: move;

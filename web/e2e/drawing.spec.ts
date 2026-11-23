@@ -963,3 +963,60 @@ test("add a parts list and balloons, then make a drawing of every part @journey 
   await expect(page.getByRole("button", { name: /^Top view, / })).toBeVisible();
   await expect(page.locator(".bc-view .bc-view-visible").first()).toHaveAttribute("d", /M/, { timeout: 30_000 });
 });
+
+test("give the title block a logo and a field, save a template and start the next drawing from it @journey @visual", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A4");
+
+  // Sheet settings: a logo, a field of your own, and the lot saved as the template new drawings start from.
+  await page.getByRole("button", { name: "Sheet settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Sheet settings" });
+  const logo = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="100"><rect width="300" height="100" fill="#fff"/><circle cx="50" cy="50" r="36" fill="#222"/><rect x="110" y="30" width="170" height="40" fill="#222"/></svg>`;
+  await settings.getByLabel("Logo picture").setInputFiles({ name: "logo.svg", mimeType: "image/svg+xml", buffer: Buffer.from(logo) });
+  await expect(settings.getByRole("img", { name: "The logo in the title block" })).toBeVisible();
+  await settings.getByRole("button", { name: "Add a field" }).click();
+  await settings.getByRole("textbox", { name: "Field 1 name" }).fill("Material");
+  await settings.getByRole("textbox", { name: "Field 1 value" }).fill("PETG");
+  await settings.getByRole("textbox", { name: "Approved by" }).fill("Kev");
+  await settings.getByRole("textbox", { name: "Template name" }).fill("Workshop");
+  await settings.getByRole("checkbox", { name: "Start with front, top, side and isometric views" }).check();
+  await settings.getByRole("button", { name: "Save template" }).click();
+  await expect(settings.getByRole("status")).toHaveText("Saved as Workshop. Pick it under Template when you make a new drawing.");
+  await settings.getByRole("button", { name: "Done" }).click();
+  const block = page.getByRole("group", { name: "Title block" });
+  await expect(block.getByRole("img", { name: "Logo: a picture" })).toBeVisible();
+  await expect(block.getByRole("img", { name: "Material: PETG" })).toBeVisible();
+
+  // The next New drawing: pick the template, and the first sheet comes finished.
+  await page.getByRole("button", { name: "Finish drawing" }).click();
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await page.getByRole("menuitem", { name: "New drawing" }).click();
+  const card = page.getByRole("dialog", { name: "New drawing" });
+  await card.getByLabel("Template").selectOption({ label: "Workshop" });
+  await expect(card.getByLabel("First views")).toHaveValue("four");
+  await card.getByRole("checkbox", { name: "Start new drawings from this" }).check();
+  await card.getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("region", { name: "Drawing: Drawing 2" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".bc-view")).toHaveCount(4);
+  await expect(block.getByRole("img", { name: "Logo: a picture" })).toBeVisible();
+  await expect(block.getByRole("button", { name: "Approved by: Kev" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Front view, / }).locator(".bc-view-visible")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /^View, / }).locator(".bc-view-visible")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+
+  await steady(page);
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-template.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    timeout: 30_000,
+  });
+
+  // It is your default now: the card opens on it.
+  await page.getByRole("button", { name: "Finish drawing" }).click();
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await page.getByRole("menuitem", { name: "New drawing" }).click();
+  await expect(card.getByLabel("Template")).toHaveValue(/^dt_/);
+  await expect(card.getByLabel("Page size")).toHaveValue("A4");
+});

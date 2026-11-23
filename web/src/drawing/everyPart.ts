@@ -1,12 +1,10 @@
 import { newSheet, standardFor, type Drawing } from "@bettercad/kernel/drawing";
-import type { ModelView } from "@bettercad/kernel/view";
 import { newId, type ModelDoc } from "../state/document";
-import { firstDirections, standardViews, type FirstView } from "./firstViews";
+import { firstPictures, standardViews } from "./firstViews";
 import { sheetLayout, today } from "./layout";
 import { modelParts, type ListedBody, type ListedComponent, type PartsRow } from "./parts";
 import { lastSheet } from "./prefs";
 import type { ViewCall } from "./useModelViews";
-import { emptyView, viewRequest } from "./views";
 
 /**
  * Make drawings of every part (#574): a drawing for each row of the parts list, named for its part, on the page you
@@ -39,18 +37,8 @@ export async function partDrawings(
       ...(o.author ? { author: o.author } : {}),
     });
     const l = sheetLayout(sheet);
-    const ways = firstDirections(l.angle);
-    const pics = {} as Record<FirstView, ModelView>;
-    let ready = true;
-    await Promise.all(
-      (Object.keys(ways) as FirstView[]).map(async (k) => {
-        // Sizes are all that is needed here, so the quick picture will do.
-        const p = call({ doc: model, upTo, ...viewRequest({ shows: row.shows, direction: ways[k], hidden: false, tangent: false }, true) });
-        if (!p) ready = false;
-        else pics[k] = await p;
-      }),
-    );
-    if (!ready || emptyView(pics.front)) {
+    const pics = await firstPictures(model, row.shows, l.angle, call, upTo);
+    if (!pics) {
       skipped++;
       continue;
     }

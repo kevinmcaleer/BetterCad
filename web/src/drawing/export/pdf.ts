@@ -24,6 +24,8 @@ const str = (s: string) =>
 /** The page's drawing instructions, in millimetres (the page is scaled once at the start). */
 export function pdfContent(scene: Scene, outlines: PathCommand[]): string {
   const out: string[] = [`q ${n(PT)} 0 0 ${n(PT)} 0 0 cm`, "0 G 0 g 1 j"];
+  // A picture fills the unit square, so it is stretched to its box and named by its place in the scene's list.
+  (scene.images ?? []).forEach((i, k) => out.push(`q ${n(i.w)} 0 0 ${n(i.h)} ${p(i.at)} cm /Im${k} Do Q`));
   for (const g of grouped(scene.strokes)) {
     // Dashes end square, as hidden lines are drawn on the sheet; solid lines end round.
     out.push(`${n(g.width)} w ${g.dash ? `0 J [${g.dash.map(n).join(" ")}] 0 d` : "1 J [] 0 d"}`);
@@ -109,9 +111,20 @@ export function scenePdf(scene: Scene, outlines: PathCommand[], info: PdfInfo = 
   return pagesPdf([{ scene, outlines, packed }], info);
 }
 
+/** A JPEG's bytes out of its data URL; nothing when it is some other kind of picture. */
+export function jpegBytes(data: string): Uint8Array | undefined {
+  const m = /^data:image\/jpeg;base64,(.+)$/.exec(data);
+  if (!m) return undefined;
+  try {
+    return Uint8Array.from(atob(m[1]!), (c) => c.charCodeAt(0));
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * The whole file, a page for each scene at its own size (#572). Everything but a squeezed stream is ASCII, so offsets
- * in the cross-reference table are byte counts.
+ * The whole file, a page for each scene at its own size (#572). Everything but a squeezed stream and a picture is
+ * ASCII, and offsets in the cross-reference table are counted in bytes.
  */
 export function pagesPdf(pages: PdfPage[], info: PdfInfo = {}): Uint8Array {
   const enc = new TextEncoder();
@@ -123,14 +136,33 @@ export function pagesPdf(pages: PdfPage[], info: PdfInfo = {}): Uint8Array {
     [`<< /Type /Catalog /Pages 2 0 R >>`],
     [`<< /Type /Pages /Kids [${pages.map((_, i) => `${3 + i * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`],
   ];
+  // Pictures come after the pages, each written once however many sheets show it. A JPEG goes in as it is.
+  const pictures: (string | Uint8Array)[][] = [];
+  const numbers = new Map<string, number>();
+  const first = 3 + pages.length * 2;
   pages.forEach(({ scene, outlines, packed }, i) => {
     const stream = packed ?? enc.encode(pdfContent(scene, outlines));
     const box = `[0 0 ${n(scene.w * PT)} ${n(scene.h * PT)}]`;
+    const used = (scene.images ?? []).map((im, k) => {
+      let at = numbers.get(im.data);
+      if (at === undefined) {
+        const bytes = jpegBytes(im.data) ?? new Uint8Array();
+        numbers.set(im.data, (at = first + pictures.length));
+        pictures.push([
+          `<< /Type /XObject /Subtype /Image /Width ${im.px.w} /Height ${im.px.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`,
+          bytes,
+          `\nendstream`,
+        ]);
+      }
+      return `/Im${k} ${at} 0 R`;
+    });
+    const resources = used.length ? `<< /XObject << ${used.join(" ")} >> >>` : `<< >>`;
     objects.push(
-      [`<< /Type /Page /Parent 2 0 R /MediaBox ${box} /Contents ${4 + i * 2} 0 R /Resources << >> >>`],
+      [`<< /Type /Page /Parent 2 0 R /MediaBox ${box} /Contents ${4 + i * 2} 0 R /Resources ${resources} >>`],
       [`<< /Length ${stream.length}${packed ? " /Filter /FlateDecode" : ""} >>\nstream\n`, stream, `${packed ? "\n" : ""}endstream`],
     );
   });
+  objects.push(...pictures);
   objects.push([`<< ${meta} >>`]);
   const parts: Uint8Array[] = [];
   let at = 0;

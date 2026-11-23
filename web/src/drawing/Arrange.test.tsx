@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { newSheet, type Drawing, type DrawingDimension, type DrawingRef, type DrawingSheet, type DrawingView } from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newDoc } from "../state/document";
-import { DrawingPaper, DrawingRibbon, SheetCard, sheetChange, type DrawingApi, type ViewCall } from "./DrawingView";
+import { DrawingPaper, DrawingRibbon, sheetChange, type DrawingApi, type ViewCall } from "./DrawingView";
+import SheetCard from "./SheetCard";
 
 const edge = (index: number) => ({ body: "b1", kind: "edge" as const, index });
 const line = (index: number, a: V2, b: V2) => ({ curve: { kind: "line", a, b }, visible: true, type: "sharp", source: edge(index) });

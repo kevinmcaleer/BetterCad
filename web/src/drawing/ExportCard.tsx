@@ -127,7 +127,13 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
       drawing.sheets.map(async (s, i) => {
         if (s.id === sheet.id) return sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts });
         const of = await viewsOf!(s);
-        return sheetScene(follow(s, of, drawing.decimals), sheetLayout(s, { index: i + 1, count }), of, drawing.decimals, { features, parts });
+        return sheetScene(
+          follow(s, of, drawing.decimals),
+          sheetLayout(s, { index: i + 1, count, logo: drawing.logo, fields: drawing.fields }),
+          of,
+          drawing.decimals,
+          { features, parts },
+        );
       }),
     );
   const waiting = sheet.views.some((v) => !viewOf(v.id));
