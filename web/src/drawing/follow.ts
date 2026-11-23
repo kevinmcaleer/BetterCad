@@ -3,6 +3,7 @@ import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { arrangeSheet, contextOf, rowAxis, sheetRows } from "./arrange";
 import { dimArt, type DimContext } from "./dimensions";
 import { markArt, markStyle, markView, targets } from "./marks";
+import { noteArt } from "./notes";
 import { emptyView } from "./views";
 
 /**
@@ -105,7 +106,7 @@ export function follow(sheet: DrawingSheet, viewOf: ViewOf, decimals: number): D
 
 /** Something on a sheet that lost what it was fixed to, or a view with nothing left to show. */
 export interface Problem {
-  kind: "dimension" | "mark" | "view";
+  kind: "dimension" | "mark" | "note" | "view";
   id: string;
   view: string;
   /** Where its warning goes, from the middle of its view in paper mm, y up. */
@@ -133,6 +134,9 @@ export function problems(sheet: DrawingSheet, viewOf: ViewOf, decimals: number, 
       if (markView(m) !== v.id || markArt(m, model, ctx.scale, markStyle(sheet.standard), ctx.all)) continue;
       out.push({ kind: "mark", id: m.id, view: v.id, at: m.was ?? corner });
     }
+    for (const n of sheet.notes ?? []) {
+      if (n.on?.view === v.id && !noteArt(n, { view: model, scale: ctx.scale, all: ctx.all })) out.push({ kind: "note", id: n.id, view: v.id, at: n.at });
+    }
   }
   return out;
 }
@@ -144,6 +148,7 @@ export const problemCount = (n: number) => `${n} ${n === 1 ? "problem" : "proble
 export const lostName = (p: Problem, sheet: DrawingSheet): string => {
   if (p.kind === "view") return "Nothing to show";
   if (p.kind === "dimension") return "Lost dimension";
+  if (p.kind === "note") return "Lost note";
   const m = sheet.marks.find((x) => x.id === p.id);
   return `Lost ${m?.kind === "centre-line" ? "centre line" : m?.kind === "extension" ? "edge extension" : m?.kind === "centre-pattern" ? "centre mark pattern" : "centre mark"}`;
 };

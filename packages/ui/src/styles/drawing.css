@@ -517,3 +517,49 @@ circle.bc-size-point.bc-size-picked {
 .bc-drawing:has(.bc-cut-ghost) {
   cursor: crosshair;
 }
+/* Notes (#573): thin leaders and symbols, filled arrowheads and text, with the text's box to point at and drag by. */
+.bc-sheet-note {
+  cursor: move;
+  outline: none;
+}
+.bc-sheet-note-grip {
+  fill: transparent;
+  pointer-events: all;
+}
+.bc-sheet-note-line {
+  fill: none;
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.25px;
+  pointer-events: none;
+}
+.bc-sheet-note-fill {
+  fill: var(--bc-color-paper-ink);
+  stroke: none;
+  pointer-events: none;
+}
+.bc-sheet-note-text {
+  fill: var(--bc-color-paper-ink);
+  pointer-events: none;
+  user-select: none;
+}
+.bc-sheet-note:hover > .bc-sheet-note-line,
+.bc-sheet-note:focus-visible > .bc-sheet-note-line,
+.bc-note-on > .bc-sheet-note-line {
+  stroke: var(--bc-color-paper-pick);
+  stroke-width: 0.4px;
+}
+.bc-sheet-note:hover > .bc-sheet-note-fill,
+.bc-sheet-note:hover > .bc-sheet-note-text,
+.bc-sheet-note:focus-visible > .bc-sheet-note-fill,
+.bc-sheet-note:focus-visible > .bc-sheet-note-text,
+.bc-note-on > .bc-sheet-note-fill,
+.bc-note-on > .bc-sheet-note-text {
+  fill: var(--bc-color-paper-pick);
+}
+/* A note's words in its card: a few lines, sized by hand. */
+textarea.bc-text {
+  height: auto;
+  min-height: calc(var(--bc-control) * 2);
+  padding-block: var(--bc-space-2);
+  resize: vertical;
+}

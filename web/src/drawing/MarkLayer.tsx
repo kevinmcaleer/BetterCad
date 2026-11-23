@@ -36,6 +36,8 @@ export interface MarkLayerProps {
   marks: DrawingMark[];
   /** The armed tool: the things it can be put on are drawn to point at, tab to and press. */
   tool?: MarkTool | null;
+  /** What can be picked when it is not a mark tool that is armed: a note tool's edges and holes (#573). */
+  pick?: (target: Target) => boolean;
   /** Keys (`refKey`) of what has been picked so far, lit up. */
   picked?: ReadonlySet<string>;
   onPick?: (target: Target) => void;
@@ -49,7 +51,8 @@ export interface MarkLayerProps {
  * A view's marks, and while a mark tool is armed the holes and edges it can go on. Inside the view's own group:
  * paper millimetres from the middle of the view, y down as SVG draws.
  */
-export function MarkLayer({ viewId, model, scale, style, marks, tool, picked, onPick, selected, onSelect, onDelete }: MarkLayerProps) {
+export function MarkLayer({ viewId, model, scale, style, marks, tool, pick, picked, onPick, selected, onSelect, onDelete }: MarkLayerProps) {
+  const can = pick ?? (tool ? PICKS[tool] : undefined);
   const all = targets(model);
   const mid: V2 = [(model.box.min[0] + model.box.max[0]) / 2, (model.box.min[1] + model.box.max[1]) / 2];
   const P = (q: V2): V2 => [(q[0] - mid[0]) * scale, (mid[1] - q[1]) * scale];
@@ -94,10 +97,10 @@ export function MarkLayer({ viewId, model, scale, style, marks, tool, picked, on
           </g>
         );
       })}
-      {tool &&
+      {can &&
         onPick &&
         offered(all)
-          .filter(PICKS[tool])
+          .filter(can)
           .map((t) => {
             const key = refKey(refTo(viewId, t));
             const on = picked?.has(key);

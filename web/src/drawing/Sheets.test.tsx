@@ -165,7 +165,7 @@ describe("the strip of sheets", () => {
   it("exports every sheet as one PDF, a page each", async () => {
     render(<Harness sheets={[one, two]} tool="export" />);
     await screen.findByRole("button", { name: "Front view, 1:1" });
-    const card = within(screen.getByRole("dialog", { name: "Export drawing" }));
+    const card = within(await screen.findByRole("dialog", { name: "Export drawing" }));
     await userEvent.click(card.getByRole("button", { name: "PDF" }));
     await userEvent.selectOptions(card.getByRole("combobox", { name: "Sheets" }), "All 2 sheets, one page each");
     expect(card.getByRole("status").textContent).toBe("2 pages, each at its sheet's size. Black on white, whatever the theme.");

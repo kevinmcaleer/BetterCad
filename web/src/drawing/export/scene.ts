@@ -4,6 +4,8 @@ import { TEXT, WEIGHT, type SheetLayout } from "../layout";
 import { dimArt, dimStyle, isIso } from "../dimensions";
 import { CENTRE_DASH, markArt, markStyle, markView, targets } from "../marks";
 import { cutArt, type Picture } from "../cuts";
+import { NOTE_TEXT, noteArt, type NoteContext } from "../notes";
+import type { Feature } from "../../state/document";
 
 /**
  * A sheet as plain lines and text, for export (#569). Millimetres from the page's bottom left corner with y up, the
@@ -122,7 +124,14 @@ const box = (x: number, y: number, w: number, h: number): ViewCurve => ({
 });
 
 /** Everything on a sheet: the frame, zones and title block, and each view's lines from the kernel's picture of it. */
-export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: string) => ModelView | undefined, decimals?: number): Scene {
+export function sheetScene(
+  sheet: DrawingSheet,
+  l: SheetLayout,
+  viewOf: (id: string) => ModelView | undefined,
+  decimals?: number,
+  /** The model's steps, which hole notes read (#573). */
+  features?: readonly Feature[],
+): Scene {
   const H = l.page.h;
   // The layout counts down from the top of the page; the scene counts up from the bottom.
   const up = (y: number) => H - y;
@@ -169,6 +178,24 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
       labels.push({ layer: "title", at: [cx, cy], size: c.size, anchor: "middle", baseline: "central", text: c.value });
     }
   }
+
+  // Notes (#573): thin lines, filled arrowheads and text, about the middle of their view or, loose, from the page's corner.
+  const notes = (ox: number, oy: number, mine: NonNullable<DrawingSheet["notes"]>, ctx?: NoteContext) => {
+    const here = (q: V2): V2 => [ox + q[0], oy + q[1]];
+    for (const n of mine) {
+      const art = noteArt(n, ctx);
+      if (!art) continue;
+      for (const [a, b] of art.lines) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: { kind: "line", a: here(a), b: here(b) } });
+      for (const c of art.curves) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: placed(c, 1, ox, oy) });
+      for (const f of art.fills) fills.push({ layer: "dimension", pts: f.map(here) });
+      for (const t of art.texts) labels.push({ layer: "dimension", at: here(t.at), size: NOTE_TEXT, anchor: t.anchor, baseline: "central", text: t.text });
+    }
+  };
+  notes(
+    0,
+    0,
+    (sheet.notes ?? []).filter((n) => !n.on),
+  );
 
   for (const v of sheet.views) {
     const view = viewOf(v.id);
@@ -224,6 +251,8 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
         labels.push(label);
       }
     }
+    const pointing = (sheet.notes ?? []).filter((n) => n.on?.view === v.id);
+    if (pointing.length) notes(v.at[0], v.at[1], pointing, { view, scale: s, frame: frameOf(v.direction), ...(features ? { features } : {}) });
     if (s !== sheet.scale) {
       // As on the sheet: under the view's box, which has 2 mm of room round the lines.
       const h = Math.max((max[1] - min[1]) * s, 20) + 4;

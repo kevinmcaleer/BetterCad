@@ -180,7 +180,7 @@ import { importFormat, type BodyMass, type Clash, type ExportFormat, type Mate }
 import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
-import type { DrawingApi, DrawingTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
+import type { DrawingApi, DrawingTool, NoteTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
@@ -564,6 +564,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const kernelView = kernel.call;
   const viewCall = useCallback<ViewCall>((p) => kernelView("view", p), [kernelView]);
   // The Drawing tab and the drawing's bar share their buttons.
+  const isNote = (t: DrawingTool): t is NoteTool => t.startsWith("note-");
   const drawingBar = {
     baseView: drawingTool === "base",
     onBaseView: () => setDrawingTool((t) => (t === "base" ? null : "base")),
@@ -581,9 +582,12 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       drawingTool !== "auto" &&
       drawingTool !== "section" &&
       drawingTool !== "detail" &&
-      drawingTool !== "break"
+      drawingTool !== "break" &&
+      !isNote(drawingTool)
         ? drawingTool
         : null,
+    note: drawingTool && isNote(drawingTool) ? drawingTool : null,
+    onNote: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     cut: drawingTool === "section" || drawingTool === "detail" || drawingTool === "break" ? drawingTool : null,
     onCut: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
@@ -2952,6 +2956,60 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         icon: "drawing",
         run: () => h().drawing("break"),
         keywords: "broken view shorten long part break lines",
+      },
+      {
+        id: "drawing.noteText",
+        scope: "drawing",
+        label: "Text",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("note-text"),
+        keywords: "note words label general",
+      },
+      {
+        id: "drawing.noteLeader",
+        scope: "drawing",
+        label: "Leader",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("note-leader"),
+        keywords: "note arrow callout point",
+      },
+      {
+        id: "drawing.noteHole",
+        scope: "drawing",
+        label: "Hole note",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("note-hole"),
+        keywords: "callout thread tapped counterbore countersink depth diameter",
+      },
+      {
+        id: "drawing.noteFinish",
+        scope: "drawing",
+        label: "Surface finish",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("note-finish"),
+        keywords: "roughness ra texture symbol",
+      },
+      {
+        id: "drawing.noteDatum",
+        scope: "drawing",
+        label: "Datum",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("note-datum"),
+        keywords: "reference letter gd&t symbol",
+      },
+      {
+        id: "drawing.noteFrame",
+        scope: "drawing",
+        label: "Feature control frame",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("note-frame"),
+        keywords: "tolerance gd&t position flatness geometric symbol",
       },
       {
         id: "drawing.dimension",

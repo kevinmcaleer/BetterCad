@@ -141,7 +141,7 @@ describe("Export on the sheet", () => {
     render(
       <DrawingPaper drawing={drawing} onTitle={vi.fn()} doc={{ ...newDoc(), name: "Bracket" }} call={call} tool="export" onTool={onTool} onSave={vi.fn()} />,
     );
-    const dialog = within(screen.getByRole("dialog", { name: "Export drawing" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Export drawing" }));
     await waitFor(() => expect(dialog.getByRole("status").textContent).toMatch(/A3 landscape/));
     await userEvent.click(dialog.getByRole("button", { name: "Cancel" }));
     expect(onTool).toHaveBeenCalledWith(null);

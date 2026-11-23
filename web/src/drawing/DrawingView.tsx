@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -20,21 +22,22 @@ import {
   type Drawing,
   type DrawingDimension,
   type DrawingMark,
+  type DrawingNote,
   type DrawingRef,
   type DrawingSheet,
   type DrawingView,
   type TitleBlock,
 } from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
-import { newId, type ModelDoc } from "../state/document";
+import { fitGap, newId, type ModelDoc } from "../state/document";
 import { arrangeSheet, contextOf, crowded, sheetRows, snapRow, type Crowded } from "./arrange";
 import { AUTO_START, autoDimension, RECIPES, type AutoOptions, type AutoResult } from "./auto";
 import { AutoCard } from "./AutoCard";
 import { BaseViewCard, type ShowOption } from "./BaseViewCard";
 import { DimensionCard } from "./DimensionCard";
 import { DimensionLayer } from "./DimensionLayer";
-import { addPick, dimStyle, draftOf, isIso, pickKey, type DimPick, type Pending } from "./dimensions";
-import { ExportCard, type DrawingFile } from "./ExportCard";
+import { addPick, dimArt, dimStyle, draftOf, isIso, pickKey, sizeText, type DimPick, type Pending } from "./dimensions";
+import type { DrawingFile } from "./ExportCard";
 import { follow, lostName, problemCount, problems, stamp, type Problem } from "./follow";
 import { LostLayer, Warning } from "./LostLayer";
 import { sheetOf } from "./ops";
@@ -50,6 +53,9 @@ import { SheetArt } from "./Sheet";
 import { useModelViews, type ViewCall, type ViewWanted } from "./useModelViews";
 import { CutCard, CUT_NAMES, isCutTool, type CutTool } from "./CutCard";
 import { CutLayer, type CutGhost } from "./CutLayer";
+import { isNoteTool, NoteCard, noteKindOf, type NoteTool } from "./NoteCard";
+import { NoteLayer } from "./NoteLayer";
+import { draftOfNote, firstDraft, nextDatum, noteKindName, notePicks, noteSpot, noteWords, type NoteDraft } from "./notes";
 import {
   addBreak,
   cutArt,
@@ -86,6 +92,11 @@ export type { ViewCall } from "./useModelViews";
 export type { ShowOption } from "./BaseViewCard";
 export type { DrawingFile } from "./ExportCard";
 export { decimalsChange, drawingChange, drawingEdit, makeDrawing, sheetChange, sheetEdit, sheetOf, titleChange } from "./ops";
+
+/** Export (#569) and its PDF, SVG and DXF writers load when the card first opens. */
+const ExportCard = lazy(() => import("./ExportCard").then((m) => ({ default: m.ExportCard })));
+/** A size's tolerance card (#573) loads when it is first asked for. */
+const ToleranceCard = lazy(() => import("./ToleranceCard").then((m) => ({ default: m.ToleranceCard })));
 
 /** Where the sheet sits in the view: screen pixels per paper millimetre, and the page's top left corner. */
 interface View {
@@ -132,7 +143,8 @@ function artOf(view: ModelView, scale: number): ViewArt {
 }
 
 /** The drawing tool that is armed: placing a base view (#561) or views projected from one (#562), or Export (#569). */
-export type DrawingTool = "base" | "projected" | "export" | "dimension" | "auto" | MarkTool | CutTool;
+export type DrawingTool = "base" | "projected" | "export" | "dimension" | "auto" | MarkTool | CutTool | NoteTool;
+export { isNoteTool, type NoteTool } from "./NoteCard";
 export { isCutTool, type CutTool } from "./CutCard";
 export { isMarkTool, type MarkTool } from "./MarkLayer";
 
@@ -392,14 +404,12 @@ function Paper({
     if (!tool) setReplacing(null);
   }, [tool]);
   const removeLost = (p: Problem) =>
-    onSheet?.(
-      (s) => (p.kind === "dimension" ? { ...s, dimensions: s.dimensions.filter((d) => d.id !== p.id) } : { ...s, marks: s.marks.filter((m) => m.id !== p.id) }),
-      p.kind === "dimension" ? "Delete dimension" : "Delete mark",
-    );
+    onSheet?.((s) => swapped(s, p), p.kind === "dimension" ? "Delete dimension" : p.kind === "note" ? "Delete note" : "Delete mark");
   const pickAgain = (p: Problem) => {
     const mark = p.kind === "mark" ? sheet.marks.find((m) => m.id === p.id) : undefined;
+    const note = p.kind === "note" ? sheet.notes?.find((n) => n.id === p.id) : undefined;
     setReplacing(p);
-    onTool?.(mark ? mark.kind : "dimension");
+    onTool?.(note ? `note-${note.kind}` : mark ? mark.kind : "dimension");
   };
   /** The sheet without what is being replaced, once its replacement is in. */
   const swapped = (s: DrawingSheet, gone: Problem | null): DrawingSheet =>
@@ -407,7 +417,9 @@ function Paper({
       ? s
       : gone.kind === "dimension"
         ? { ...s, dimensions: s.dimensions.filter((d) => d.id !== gone.id) }
-        : { ...s, marks: s.marks.filter((m) => m.id !== gone.id) };
+        : gone.kind === "note"
+          ? { ...s, notes: (s.notes ?? []).filter((n) => n.id !== gone.id) }
+          : { ...s, marks: s.marks.filter((m) => m.id !== gone.id) };
   const ghost = placing || parent ? got.get(GHOST) : undefined;
   const changed = changing ? sheet.views.find((v) => v.id === changing) : undefined;
   /** The picture Fit measures: the ghost while placing, the view itself while changing it. */
@@ -690,6 +702,7 @@ function Paper({
           const next = { ...d, ...change };
           delete next.auto;
           if (next.decimals === undefined) delete next.decimals;
+          if (next.tolerance === undefined) delete next.tolerance;
           return next;
         }),
       }),
@@ -697,6 +710,63 @@ function Paper({
     );
   const removeDim = (id: string) => onSheet?.((s) => ({ ...s, dimensions: s.dimensions.filter((d) => d.id !== id) }), "Delete dimension");
   const menuDim = dimMenu ? sheet.dimensions.find((d) => d.id === dimMenu.id) : undefined;
+  // Tolerances (#573): the size whose tolerance card is up.
+  const [tolerating, setTolerating] = useState<string | null>(null);
+  const toleranced = tolerating ? sheet.dimensions.find((d) => d.id === tolerating) : undefined;
+  const tolerancedSize = (() => {
+    const model = toleranced && got.get(toleranced.view)?.view;
+    const ctx = model && contextOf(sheet, toleranced.view, model, drawing.decimals);
+    const art = ctx && dimArt(toleranced, ctx);
+    return art ? `${sizeText(art.value, toleranced.decimals ?? drawing.decimals)}${art.unit === "mm" ? " mm" : "°"}` : "this size";
+  })();
+  // Notes (#573): the armed note tool's words, the note that is selected and the one whose words are being changed.
+  const noteKind = isNoteTool(tool) && !readOnly ? noteKindOf(tool) : null;
+  const [noteDraft, setNoteDraft] = useState<NoteDraft>(() => firstDraft("text", sheet));
+  const [selectedNote, setSelectedNote] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!noteKind) return;
+    setChanging(null);
+    setEditingNote(null);
+    // Pick again starts from what the lost note said.
+    const was = replacing?.kind === "note" ? sheet.notes?.find((n) => n.id === replacing.id) : undefined;
+    setNoteDraft(was && was.kind === noteKind ? draftOfNote(was) : firstDraft(noteKind, sheet));
+    // Only when a note tool is armed or its kind changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteKind]);
+  const addNote = (on: DrawingRef | undefined, at: V2) => {
+    if (!noteKind) return;
+    const words = noteWords(noteKind, noteDraft);
+    if (!words) return say?.(noteKind === "datum" ? "Type the datum's letter first." : "Type what the note says first.");
+    const note: DrawingNote = { id: newId("nt"), kind: noteKind, ...words, ...(on ? { on } : {}), at };
+    const gone = replacing;
+    onSheet?.((s) => swapped({ ...s, notes: [...(s.notes ?? []), note] }, gone), noteKindName(noteKind));
+    setReplacing(null);
+    setSelectedNote(note.id);
+    // The next datum gets the next letter.
+    if (noteKind === "datum") setNoteDraft((d) => ({ ...d, text: nextDatum({ ...sheet, notes: [...(sheet.notes ?? []), note] }) }));
+  };
+  const pickNote = (viewId: string, t: Target) => {
+    const v = sheet.views.find((x) => x.id === viewId);
+    const model = got.get(viewId)?.view;
+    if (v && model) addNote(refTo(viewId, t), noteSpot(t, model, viewScale(sheet, v)));
+  };
+  const changeNote = (id: string, change: Partial<DrawingNote>, label: string) =>
+    onSheet?.((s) => ({ ...s, notes: (s.notes ?? []).map((n) => (n.id === id ? { ...n, ...change } : n)) }), label);
+  const removeNote = (id: string) => onSheet?.((s) => ({ ...s, notes: (s.notes ?? []).filter((n) => n.id !== id) }), "Delete note");
+  const editedNote = editingNote ? sheet.notes?.find((n) => n.id === editingNote) : undefined;
+  const startNoteEdit = (id: string) => {
+    const n = sheet.notes?.find((x) => x.id === id);
+    if (!n || readOnly) return;
+    onTool?.(null);
+    setNoteDraft(draftOfNote(n));
+    setEditingNote(id);
+  };
+  const doneNoteEdit = () => {
+    const words = editedNote && noteWords(editedNote.kind, noteDraft);
+    if (editedNote && words) changeNote(editedNote.id, words, "Change note");
+    setEditingNote(null);
+  };
   // Arrange dimensions (#565): sizes into rows, and a neighbouring view they then run into is offered a move.
   const [crowd, setCrowd] = useState<Crowded | null>(null);
   const arrangeViews = (ids: string[]) => {
@@ -774,6 +844,7 @@ function Paper({
     const on = id ? sheet.views.find((v) => v.id === id) : undefined;
     press.current = { x: e.clientX, y: e.clientY, dragging: false, view: on };
     if (!placing && !projecting) setSelected(on?.id ?? null);
+    setSelectedNote(null);
   };
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
     const was = touches.current.get(e.pointerId);
@@ -849,6 +920,11 @@ function Paper({
       const at = sheetAt(e.clientX, e.clientY);
       return at ? cutAt([at[0] - cutParent.at[0], at[1] - cutParent.at[1]]) : undefined;
     }
+    if (noteKind) {
+      // Loose text goes where you click; every other note is put on the edge or hole it points at.
+      const at = noteKind === "text" ? sheetAt(e.clientX, e.clientY) : null;
+      return at ? addNote(undefined, at) : undefined;
+    }
     if (dimensioning) {
       // A click on an edge or point picks it; a click anywhere else puts the size down there.
       if ((e.target as Element).closest?.(".bc-size-pick")) return;
@@ -871,6 +947,12 @@ function Paper({
     e.preventDefault();
   };
 
+  const noteLayer = {
+    zoom: view?.k ?? 1,
+    selected: selectedNote,
+    onSelect: setSelectedNote,
+    ...(readOnly || autoing ? {} : { onMove: (id: string, at: V2) => changeNote(id, { at }, "Move note"), onDelete: removeNote, onEdit: startNoteEdit }),
+  };
   /** The sheet as drawn: with the view being dragged, and the views it carries, where the drag has them. */
   const shown = useMemo(() => (moving ? moveView(sheet, moving.id, moving.at) : sheet), [sheet, moving]);
 
@@ -961,8 +1043,9 @@ function Paper({
                       style={style}
                       marks={live.marks.filter((m) => markView(m) === v.id)}
                       tool={markTool}
+                      pick={noteKind && noteKind !== "text" ? (t) => notePicks(noteKind, t) : undefined}
                       picked={picks.view === v.id ? pickedKeys : undefined}
-                      onPick={(t) => pick(v.id, t)}
+                      onPick={(t) => (noteKind ? pickNote(v.id, t) : pick(v.id, t))}
                       selected={selectedMark}
                       onSelect={setSelectedMark}
                       onDelete={
@@ -996,6 +1079,13 @@ function Paper({
                       onMenu={readOnly || autoing ? undefined : (id, x, y) => setDimMenu({ at: { x, y }, id })}
                     />
                   )}
+                  {g?.view && live.notes?.some((n) => n.on?.view === v.id) && (
+                    <NoteLayer
+                      notes={live.notes.filter((n) => n.on?.view === v.id)}
+                      ctx={{ view: g.view, scale, frame: frameOf(v.direction), ...(doc ? { features: doc.features } : {}) }}
+                      {...noteLayer}
+                    />
+                  )}
                   {gone && (
                     <g className="bc-view-lost">
                       <Warning />
@@ -1019,6 +1109,11 @@ function Paper({
                 </g>
               );
             })}
+            {live.notes?.some((n) => !n.on) && (
+              <g transform={`translate(0 ${ph})`}>
+                <NoteLayer notes={live.notes.filter((n) => !n.on)} {...noteLayer} />
+              </g>
+            )}
             {placing && ghost?.view && fitScaleNow && (
               <g className="bc-view-ghost" aria-hidden="true" transform={`translate(${toPage(pointer ?? defaultSpot(layout), ph).join(" ")})`}>
                 <path className="bc-view-visible" d={artOf(ghost.view, choice.scale ?? fitScaleNow).visible} />
@@ -1088,6 +1183,32 @@ function Paper({
           onFinish={() => onTool?.(null)}
         />
       )}
+      {(noteKind || editedNote) && (
+        <NoteCard
+          kind={editedNote?.kind ?? noteKind!}
+          onKind={editedNote ? undefined : (k) => onTool?.(`note-${k}`)}
+          draft={noteDraft}
+          onDraft={setNoteDraft}
+          editing={!!editedNote}
+          onPlace={!editedNote && noteKind === "text" ? () => addNote(undefined, defaultSpot(layout)) : undefined}
+          onDone={() => (editedNote ? doneNoteEdit() : onTool?.(null))}
+          onCancel={() => (editedNote ? setEditingNote(null) : onTool?.(null))}
+        />
+      )}
+      {toleranced && (
+        <Suspense fallback={null}>
+          <ToleranceCard
+            size={tolerancedSize}
+            tolerance={toleranced.tolerance}
+            gapOf={(fit) => fitGap(fit, doc?.print?.fits)}
+            onCancel={() => setTolerating(null)}
+            onDone={(tolerance) => {
+              changeDim(toleranced.id, { tolerance }, "Tolerance");
+              setTolerating(null);
+            }}
+          />
+        </Suspense>
+      )}
       {autoing && autoRuns && (
         <AutoCard
           options={autoOptions}
@@ -1128,6 +1249,8 @@ function Paper({
                   checked: menuDim.decimals === places,
                   onSelect: () => changeDim(menuDim.id, { decimals: places }, "Decimal places"),
                 })),
+                { kind: "separator" as const, id: "t" },
+                { id: "tolerance", label: "Tolerance…", icon: "dimension" as const, onSelect: () => setTolerating(menuDim.id) },
                 { kind: "separator" as const, id: "s" },
                 { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => removeDim(menuDim.id) },
               ]
@@ -1200,31 +1323,34 @@ function Paper({
         }
       />
       {tool === "export" && onSave && (
-        <ExportCard
-          drawing={drawing}
-          sheet={followed}
-          layout={layout}
-          viewOf={(id) => got.get(id)?.view}
-          viewsOf={
-            doc && call
-              ? async (other) => {
-                  const model = { ...doc };
-                  delete model.drawings;
-                  const pictures = new Map<string, ModelView>();
-                  await Promise.all(
-                    other.views.map(async (v) => {
-                      const p = call({ doc: model, upTo, ...viewRequest(v) });
-                      if (p) pictures.set(v.id, await p);
-                    }),
-                  );
-                  return picturesOf(other, (id) => pictures.get(id));
-                }
-              : undefined
-          }
-          onSave={onSave}
-          say={say ?? (() => {})}
-          onClose={() => onTool?.(null)}
-        />
+        <Suspense fallback={null}>
+          <ExportCard
+            features={doc?.features}
+            drawing={drawing}
+            sheet={followed}
+            layout={layout}
+            viewOf={(id) => got.get(id)?.view}
+            viewsOf={
+              doc && call
+                ? async (other) => {
+                    const model = { ...doc };
+                    delete model.drawings;
+                    const pictures = new Map<string, ModelView>();
+                    await Promise.all(
+                      other.views.map(async (v) => {
+                        const p = call({ doc: model, upTo, ...viewRequest(v) });
+                        if (p) pictures.set(v.id, await p);
+                      }),
+                    );
+                    return picturesOf(other, (id) => pictures.get(id));
+                  }
+                : undefined
+            }
+            onSave={onSave}
+            say={say ?? (() => {})}
+            onClose={() => onTool?.(null)}
+          />
+        </Suspense>
       )}
       {crowd && crowdNames[0] && crowdNames[1] && (
         <Dialog
@@ -1331,6 +1457,9 @@ export interface DrawingBarProps {
   /** Arms Section view, Detail view or Break (#571), and the one that is armed. */
   onCut?: (tool: CutTool) => void;
   cut?: CutTool | null;
+  /** Arms a note tool (#573), and the one that is armed. */
+  onNote?: (tool: NoteTool) => void;
+  note?: NoteTool | null;
   /** Arms Dimension (#564). */
   onDimension?: () => void;
   dimension?: boolean;
@@ -1362,6 +1491,8 @@ export function DrawingBar({
   projectedView,
   onCut,
   cut,
+  onNote,
+  note,
   onDimension,
   dimension,
   onAuto,
@@ -1430,6 +1561,9 @@ export function DrawingBar({
         <Button icon="dimension" label="Dimension" title="Show a size from the model on a view" shortcut="D" on={!!dimension} onClick={onDimension} />
       )}
       {!readOnly && onAuto && <Button icon="dimension" label="Auto dimension" title="Dimension the views for you" on={!!auto} onClick={onAuto} />}
+      {!readOnly && onNote && (
+        <Button icon="drawing" label="Note" title="Text, a leader, a hole note or a symbol" on={!!note} onClick={() => onNote(note ?? "note-leader")} />
+      )}
       {onExport && <Button icon="download" label="Export" title="Save the sheet as a PDF, SVG, DXF or PNG, or print it" onClick={onExport} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
       <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
@@ -1446,6 +1580,8 @@ export function DrawingRibbon({
   projectedView,
   onCut,
   cut,
+  onNote,
+  note,
   onDimension,
   dimension,
   onArrange,
@@ -1509,6 +1645,30 @@ export function DrawingRibbon({
           <RibbonButton icon="dimension" colour="dimension" label="Dimension" shortcut="D" pressed={!!dimension} onPress={onDimension} />
           {onAuto && <RibbonButton icon="dimension" colour="sk-auto" label="Auto dimension" short="Auto" pressed={!!auto} onPress={onAuto} />}
           {onArrange && <RibbonButton icon="dimension" colour="sk-pattern" label="Arrange dimensions" short="Arrange" onPress={onArrange} />}
+        </RibbonGroup>
+      )}
+      {!readOnly && onNote && (
+        <RibbonGroup label="Text" entries={[]}>
+          <RibbonButton icon="drawing" colour="text" label="Text" pressed={note === "note-text"} onPress={() => onNote("note-text")} />
+          <RibbonButton icon="drawing" colour="arrow" label="Leader" pressed={note === "note-leader"} onPress={() => onNote("note-leader")} />
+          <RibbonButton icon="drawing" colour="hole" label="Hole note" short="Hole" pressed={note === "note-hole"} onPress={() => onNote("note-hole")} />
+          <RibbonButton
+            icon="drawing"
+            colour="sk-tangent"
+            label="Surface finish"
+            short="Surface"
+            pressed={note === "note-finish"}
+            onPress={() => onNote("note-finish")}
+          />
+          <RibbonButton icon="drawing" colour="sk-fix" label="Datum" pressed={note === "note-datum"} onPress={() => onNote("note-datum")} />
+          <RibbonButton
+            icon="drawing"
+            colour="constraint"
+            label="Feature control frame"
+            short="Frame"
+            pressed={note === "note-frame"}
+            onPress={() => onNote("note-frame")}
+          />
         </RibbonGroup>
       )}
       <RibbonGroup label="Sheet" entries={[]}>

@@ -418,6 +418,12 @@ test("arrange a view's dimensions into rows @journey @visual", async ({ page }) 
   const card = page.getByRole("dialog", { name: "Dimension" });
   const box = (await top.locator(".bc-view-hit").boundingBox())!;
   const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
+  // On a window this size the card floats over the right of the view: drag it clear by its title.
+  const head = (await card.locator(".bc-dialog-head").boundingBox())!;
+  await page.mouse.move(head.x + 60, head.y + head.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(head.x + 160, head.y + head.height / 2, { steps: 4 });
+  await page.mouse.up();
   // Sizes put down anywhere: the overall length nearest the part, the short ones further out.
   await page.getByRole("button", { name: "Point at -20, -15 mm" }).click();
   await page.getByRole("button", { name: "Point at 20, -15 mm" }).click();
@@ -829,6 +835,81 @@ test("cut a section through a view, enlarge a detail and break a long view @jour
   await steady(page);
   await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-section-detail.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    timeout: 30_000,
+  });
+});
+
+/** Notes and tolerances (#573): a hole note read from the model, a leader, loose text, and a size with a tolerance. */
+test("write a hole note, a leader and loose text, and give a size a tolerance @journey @visual", async ({ page }) => {
+  await topViewOnA3(page);
+  const top = page.getByRole("button", { name: /^Top view, / });
+
+  // A hole note reads the hole: click it and its size is written beside it on a leader.
+  // The bar's Note button arms a leader; the card's Kind switches between the note tools.
+  await page.getByRole("button", { name: "Note", exact: true }).click();
+  await page.getByRole("dialog", { name: "Leader" }).getByLabel("Kind").selectOption({ label: "Hole note" });
+  const card = page.getByRole("dialog", { name: "Hole note" });
+  await expect(card.getByRole("status")).toHaveText(/Click a hole/);
+  await expect(page.getByRole("button", { name: /^Edge, / })).toHaveCount(0);
+  await page.getByRole("button", { name: "Hole, 4.5 mm across", exact: true }).click({ position: { x: 1, y: 5 } });
+  const holeNote = page.getByRole("button", { name: /^Hole note, .*Ø4\.5/ });
+  await expect(holeNote).toBeVisible();
+
+  // A leader needs its words before it can point at an edge.
+  await card.getByLabel("Kind").selectOption({ label: "Leader" });
+  const leader = page.getByRole("dialog", { name: "Leader" });
+  await leader.getByLabel("Text").fill("Deburr");
+  await page.getByRole("button", { name: "Edge, 36 mm long" }).last().click({ force: true });
+  await expect(page.getByRole("button", { name: "Note, Deburr" })).toBeVisible();
+
+  // Loose text goes in the middle of the sheet from the card.
+  await leader.getByLabel("Kind").selectOption({ label: "Text" });
+  const text = page.getByRole("dialog", { name: "Text" });
+  await text.getByLabel("Text").fill("Print in PETG");
+  await text.getByRole("button", { name: "Put it in the middle" }).click();
+  const loose = page.getByRole("button", { name: "Note, Print in PETG" });
+  await expect(loose).toBeVisible();
+  await text.getByRole("button", { name: "Finish" }).click();
+  await expect(text).toHaveCount(0);
+
+  // Dragging a note by its text moves it; the view stays where it was.
+  const box = (await top.locator(".bc-view-hit").boundingBox())!;
+  const before = (await loose.locator("text").boundingBox())!;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 + 40, { steps: 3 });
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 + 80, { steps: 3 });
+  await page.mouse.up();
+  await expect.poll(async () => (await loose.locator("text").boundingBox())!.y - before.y).toBeGreaterThan(70);
+  expect((await top.locator(".bc-view-hit").boundingBox())!.y).toBeCloseTo(box.y, 0);
+
+  // Enter on a note changes its words.
+  await page.getByRole("button", { name: "Note, Deburr" }).focus();
+  await page.keyboard.press("Enter");
+  const change = page.getByRole("dialog", { name: "Change leader" });
+  await change.getByLabel("Text").fill("Sand smooth");
+  await change.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("button", { name: "Note, Sand smooth" })).toBeVisible();
+
+  // A size takes a tolerance from its menu.
+  await page.keyboard.press("d");
+  const dim = page.getByRole("dialog", { name: "Dimension" });
+  await page.getByRole("button", { name: "Edge, 36 mm long" }).last().click();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height + 30);
+  await dim.getByRole("button", { name: "Finish" }).click();
+  await page.getByRole("button", { name: "Dimension, 36 mm" }).locator("text").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Tolerance…" }).click();
+  const tol = page.getByRole("dialog", { name: "Tolerance on 36 mm" });
+  await tol.getByLabel("Tolerance").selectOption({ label: "Plus and minus" });
+  await tol.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("button", { name: "Dimension, 36 ±0.1 mm" })).toBeVisible();
+
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-notes.png", {
     maxDiffPixelRatio: 0.01,
     mask: [page.getByRole("button", { name: /^Date of issue/ })],
     timeout: 30_000,

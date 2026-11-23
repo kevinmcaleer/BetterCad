@@ -64,6 +64,33 @@ A section or detail whose parent is deleted stays as it is, without its mark on 
 in `web/src/drawing/cuts.ts` from the kernel's picture, and written by every export from the same lines (DXF layer
 `SECTION`).
 
+## Notes, symbols and tolerances
+
+The **Text** group of the Drawing tab (one **Note** button on the narrow bar, with the kind on its card) writes on the
+sheet:
+
+- **Text** is loose: type it and click the sheet. It sits where you put it, from the page's bottom left corner.
+- **Leader** points your words at an edge or hole.
+- **Hole note** reads the hole you click. A hole made by a Hole step says what the step says: how many, its
+  diameter, its depth or "through", a tapped hole's thread ("M3 × 0.5") and its counterbore or countersink. Any other
+  hole gives its diameter and how many like it the view shows. The note is worked out each time it is drawn, so it
+  follows the model.
+- **Surface finish**, **Datum** and **Feature control frame** draw the symbol on a leader: a tick with its roughness,
+  a boxed letter with a filled triangle (letters go A, B, C; never I, O or Q), and a frame with its characteristic,
+  tolerance and datums.
+
+Every note is a button named for what it says. Drag it by its text, nudge it with the arrow keys, press Enter or
+double-click to change its words, Delete to remove it. A note pointing into a view moves with the view, goes with it
+to another sheet, and is deleted with it. One whose edge has gone from the model shows as a lost note, with Pick
+again, like a lost dimension.
+
+Right-click a dimension for **Tolerance…**: plus and minus ("40 ±0.1", or "40 +0.2/-0.05"), limits
+("40.2 / 39.9"), or one of the printer's fits, written with the gap from the model's print settings
+("10 sliding fit, 0.25 gap"). The tolerance only changes what the size says; the model is not changed.
+
+Notes are worked out in `web/src/drawing/notes.ts` as lines and text, and every export writes the same ones (DXF
+layer `DIMENSIONS`).
+
 ## Dimensions
 
 A dimension is fixed to the edges and faces it measures by their names (`docs/topological-naming.md`), not to where
@@ -131,5 +158,5 @@ format is written from one picture of the sheet, `sheetScene` in `web/src/drawin
 
 ## Not yet
 
-Notes and symbols, a parts list with balloons, and templates with a logo are release 2 (#573 to #575). Stepped,
-slanted and half sections are not planned yet. Ordinate dimensions and tolerances are not planned yet.
+A parts list with balloons, and templates with a logo are release 2 (#574, #575). Stepped, slanted and half
+sections are not planned yet. Ordinate dimensions are not planned yet. Weld symbols and a hole table are not here.

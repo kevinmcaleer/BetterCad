@@ -123,6 +123,40 @@ export interface DrawingDimension {
   auto?: boolean;
   /** Decimal places, when not the drawing's. */
   decimals?: number;
+  /** A tolerance written after the size (#573). */
+  tolerance?: DimTolerance;
+}
+
+/**
+ * How far a size may be off. `plus` and `minus` are both given as positive millimetres (or degrees): equal, they are
+ * written "±0.1", unequal "+0.2/-0.1", and as `limits` the largest and smallest sizes are written out instead. A
+ * `fit` is one of the printer's named fits (`docs/fits.md`), written with the gap each side it had when it was chosen
+ * (as a fitted cut keeps its gap, #183).
+ */
+export type DimTolerance = { plus: number; minus: number; limits?: boolean } | { fit: "press" | "sliding" | "loose"; gap: number };
+
+/** What a feature control frame says of a face or edge. */
+export type FrameSymbol = "position" | "flatness" | "perpendicular" | "parallel" | "circular" | "straight" | "concentric";
+
+/**
+ * A note on a sheet (#573). `text` is free writing; `leader` the same with an arrow to an edge or hole; `hole` reads
+ * the hole it points at from the model each time; `finish` is a surface finish mark, `datum` a datum letter and
+ * `frame` a feature control frame, each on the edge or hole it is about.
+ */
+export interface DrawingNote {
+  id: string;
+  kind: "text" | "leader" | "hole" | "finish" | "datum" | "frame";
+  /**
+   * What it says, lines parted by "\n". A hole note's is left empty: it is read from the model. A finish's is its
+   * roughness ("Ra 3.2"), a datum's its letter, and a frame's its tolerance then its datums, parted by "|".
+   */
+  text: string;
+  /** A frame's characteristic. */
+  symbol?: FrameSymbol;
+  /** What it points at. Left out, the note is loose on the sheet. */
+  on?: DrawingRef;
+  /** Where its text starts: from the middle of the view it points into, or (loose) from the sheet's bottom left. */
+  at: V2;
 }
 
 /** The document information box, bottom right. Missing fields show blank. */
@@ -160,6 +194,8 @@ export interface DrawingSheet {
    * this much further out (#565). Left out, the standard's own spacing.
    */
   rows?: { first: number; next: number };
+  /** Text, leaders, hole notes and symbols (#573). */
+  notes?: DrawingNote[];
   /** What Auto dimension was last run with, so Run again does the same. `density` is 0 (fewest) to 1 (all). */
   auto?: { recipe: AutoRecipe; datum: DatumCorner; density: number };
 }
@@ -304,5 +340,6 @@ export function removeView(sheet: DrawingSheet, id: string): DrawingSheet {
       }),
     marks: sheet.marks.filter((m) => !(m.kind === "centre-pattern" ? m.on.some(on) : m.kind === "centre-mark" ? on(m.on) : on(m.a) || (m.b ? on(m.b) : false))),
     dimensions: sheet.dimensions.filter((d) => d.view !== id),
+    ...(sheet.notes ? { notes: sheet.notes.filter((n) => n.on?.view !== id) } : {}),
   };
 }

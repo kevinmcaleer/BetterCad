@@ -1,4 +1,4 @@
-import type { DrawingDimension, DrawingRef, DrawingStandard } from "@bettercad/kernel/drawing";
+import type { DimTolerance, DrawingDimension, DrawingRef, DrawingStandard } from "@bettercad/kernel/drawing";
 import { turn, type ModelView, type V2, type ViewCurve } from "@bettercad/kernel/view";
 import { offered, refKey, refTo, resolve, targets, type Target } from "./marks";
 
@@ -167,6 +167,20 @@ export function directionAt(p: V2, q: V2, at: V2): "x" | "y" | "aligned" {
 /** A number as a dimension writes it: to so many places, without trailing zeros. */
 export const sizeText = (value: number, decimals: number) => String(Number(value.toFixed(Math.max(0, Math.min(3, decimals)))) + 0);
 
+/**
+ * A size as a dimension writes it, with its tolerance (#573): "40 ±0.1", "40 +0.2/-0.1", "40.2 / 39.9" as limits,
+ * or "10 sliding fit, 0.25 gap". `before` and `after` go round each number: "Ø", "4× Ø", "°".
+ */
+export function sizeWith(value: number, places: number, tol: DimTolerance | undefined, before = "", after = ""): string {
+  const base = `${before}${sizeText(value, places)}${after}`;
+  if (!tol) return base;
+  if ("fit" in tol) return `${base} ${tol.fit} fit, ${sizeText(tol.gap, 3)} gap`;
+  const fine = Math.max(places, 3);
+  if (tol.limits) return `${before}${sizeText(value + tol.plus, fine)}${after} / ${sizeText(value - tol.minus, fine)}${after}`;
+  if (Math.abs(tol.plus - tol.minus) < 1e-9) return tol.plus > 0 ? `${base} ±${sizeText(tol.plus, fine)}` : base;
+  return `${base} +${sizeText(tol.plus, fine)}/-${sizeText(tol.minus, fine)}`;
+}
+
 /** The lines a dimension draws, in paper millimetres from the middle of its view with y up. */
 export interface DimArt {
   /** Thin solid lines: extension lines, the dimension line, a leader. */
@@ -201,7 +215,7 @@ export interface DimContext {
 }
 
 /** What a dimension draws, or nothing when what it was fixed to has gone from the model. */
-export function dimArt(dim: Pick<DrawingDimension, "refs" | "across" | "at" | "decimals">, ctx: DimContext): DimArt | undefined {
+export function dimArt(dim: Pick<DrawingDimension, "refs" | "across" | "at" | "decimals" | "tolerance">, ctx: DimContext): DimArt | undefined {
   const { view, scale, style: s } = ctx;
   const all = ctx.all ?? targets(view);
   const m = measured(dim.refs, all);
@@ -224,7 +238,7 @@ export function dimArt(dim: Pick<DrawingDimension, "refs" | "across" | "at" | "d
     // Across a break (#571) the two ends are drawn closer than they are: the size is between where they truly are.
     const real = (view as { real?: (p: V2) => V2 }).real;
     const value = Math.abs(dot(real ? sub(real(m.q), real(m.p)) : sub(m.q, m.p), u));
-    const text = sizeText(value, places);
+    const text = sizeWith(value, places, dim.tolerance);
     const width = textWidth(text, s.text);
     const [s1, s2] = [dot(sub(p, T), u), dot(sub(q, T), u)];
     const [e1, e2] = [add(T, u, s1), add(T, u, s2)];
@@ -274,7 +288,7 @@ export function dimArt(dim: Pick<DrawingDimension, "refs" | "across" | "at" | "d
     if (turn(to - from) > Math.PI) [from, to] = [to, from];
     const sweep = turn(to - from);
     const value = (sweep * 180) / Math.PI;
-    const text = `${sizeText(value, places)}°`;
+    const text = sizeWith(value, places, dim.tolerance, "", "°");
     const width = textWidth(text, s.text);
     const on = (t: number): V2 => [v[0] + R * Math.cos(t), v[1] + R * Math.sin(t)];
     // Where an arm's edge stops short of the arc, an extension line carries it there.
@@ -309,7 +323,7 @@ export function dimArt(dim: Pick<DrawingDimension, "refs" | "across" | "at" | "d
   if (m.kind === "diameter" && m.hole) {
     count = offered(all).filter((t) => t.kind === "round" && t.hole && t.whole && Math.abs(t.r - m.r) < 1e-6).length;
   }
-  const text = `${count > 1 ? `${count}× ` : ""}${m.kind === "diameter" ? "Ø" : "R"}${sizeText(value, places)}`;
+  const text = sizeWith(value, places, dim.tolerance, `${count > 1 ? `${count}× ` : ""}${m.kind === "diameter" ? "Ø" : "R"}`);
   const width = textWidth(text, s.text);
   const w = sub(T, c);
   const d = len(w) < 1e-9 ? ([Math.SQRT1_2, Math.SQRT1_2] as V2) : unit(w);
@@ -335,7 +349,8 @@ export function dimArt(dim: Pick<DrawingDimension, "refs" | "across" | "at" | "d
 }
 
 /** What a dimension is called: "Dimension, 60 mm", "Dimension, Ø6 mm", "Dimension, 45°". */
-export const dimName = (art: DimArt) => `Dimension, ${art.text.text}${art.unit === "mm" ? " mm" : ""}`;
+/** "Dimension, 40 ±0.1 mm". A fit already reads as a sentence, so it takes no unit after it. */
+export const dimName = (art: DimArt) => `Dimension, ${art.text.text}${art.unit === "mm" && !art.text.text.includes(" fit, ") ? " mm" : ""}`;
 
 /** The kind a set of refs is saved as. */
 export const kindOf = (m: Measured): DrawingDimension["kind"] => m.kind;

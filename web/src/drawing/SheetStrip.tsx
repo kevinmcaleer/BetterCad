@@ -11,7 +11,7 @@ export interface SheetStripProps {
   onOpen: (id: string) => void;
   /** A change to the drawing's sheets. Left out, the strip only switches sheets. */
   onChange?: (change: (d: Drawing) => Drawing, label: string) => void;
-  newId: (kind: "sh" | "vw" | "mk" | "dm") => string;
+  newId: (kind: "sh" | "vw" | "mk" | "dm" | "nt") => string;
   say?: (text: string) => void;
 }
 

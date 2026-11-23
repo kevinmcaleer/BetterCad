@@ -56,7 +56,7 @@ const reMark = (m: DrawingMark, id: string, ids: Map<string, string>): DrawingMa
         : { ...m, id, a: reRef(m.a, ids), b: reRef(m.b, ids) };
 
 /** A copy of a sheet straight after it, everything on it included, under ids of its own from `newId`. */
-export function duplicateSheet(drawing: Drawing, sheet: string, newId: (kind: "sh" | "vw" | "mk" | "dm") => string): Drawing {
+export function duplicateSheet(drawing: Drawing, sheet: string, newId: (kind: "sh" | "vw" | "mk" | "dm" | "nt") => string): Drawing {
   const at = drawing.sheets.findIndex((s) => s.id === sheet);
   const from = drawing.sheets[at];
   if (!from) return drawing;
@@ -77,6 +77,7 @@ export function duplicateSheet(drawing: Drawing, sheet: string, newId: (kind: "s
     marks: from.marks.map((m) => reMark(m, newId("mk"), ids)),
     dimensions: from.dimensions.map((d) => ({ ...d, id: newId("dm"), view: ids.get(d.view) ?? d.view, refs: d.refs.map((r) => reRef(r, ids)) })),
   };
+  if (from.notes) copy.notes = from.notes.map((n) => ({ ...n, id: newId("nt"), ...(n.on ? { on: reRef(n.on, ids) } : {}) }));
   const sheets = [...drawing.sheets];
   sheets.splice(at + 1, 0, copy);
   return { ...drawing, sheets };
@@ -144,6 +145,9 @@ export function moveViewToSheet(drawing: Drawing, view: string, from: string, to
       return next;
     });
   const arrived: DrawingSheet = { ...dst, views: [...dst.views, ...views], marks: [...dst.marks, ...marks], dimensions: [...dst.dimensions, ...dimensions] };
+  // Notes pointing into a view that went go with it (#573); loose text stays on its sheet.
+  const notes = (src.notes ?? []).filter((n) => n.on && going.has(n.on.view));
+  if (notes.length) arrived.notes = [...(dst.notes ?? []), ...notes];
   return { ...drawing, sheets: drawing.sheets.map((s) => (s.id === from ? left : s.id === to ? arrived : s)) };
 }
 
