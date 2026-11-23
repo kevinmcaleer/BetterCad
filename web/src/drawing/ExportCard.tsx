@@ -103,7 +103,7 @@ export function ExportCard({ drawing, sheet, layout, viewOf, onSave, say, onClos
 
   const scene = (): Scene => {
     const view = single && viewOf(single.id);
-    return view ? viewScene(view, false) : sheetScene(sheet, layout, viewOf);
+    return view ? viewScene(view, false) : sheetScene(sheet, layout, viewOf, drawing.decimals);
   };
   const run = async () => {
     const f = FORMATS.find((x) => x.id === c.format)!;
@@ -123,7 +123,7 @@ export function ExportCard({ drawing, sheet, layout, viewOf, onSave, say, onClos
   const print = async () => {
     setBusy(true);
     try {
-      const s = sheetScene(sheet, layout, viewOf);
+      const s = sheetScene(sheet, layout, viewOf, drawing.decimals);
       const [{ sceneSvg }, { outlines }, { printSvg }] = await Promise.all([import("./export/svg"), import("./export/outline"), import("./export/browser")]);
       printSvg(sceneSvg(s, { outlines: outlines(s.labels, await font()) }), layout.page, base);
       onClose();

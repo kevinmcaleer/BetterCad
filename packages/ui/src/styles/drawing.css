@@ -224,3 +224,90 @@ circle.bc-mark-pick:focus-visible,
 circle.bc-mark-picked {
   stroke-opacity: 1;
 }
+/* Dimensions (#564): thin lines, filled arrowheads and the size, with a wider band and the text to point at. */
+.bc-size {
+  cursor: move;
+  outline: none;
+}
+.bc-size-line {
+  fill: none;
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.25px;
+  pointer-events: none;
+}
+.bc-size-arrow {
+  fill: var(--bc-color-paper-ink);
+  stroke: none;
+  pointer-events: none;
+}
+.bc-size-text {
+  fill: var(--bc-color-paper-ink);
+  pointer-events: none;
+  user-select: none;
+}
+.bc-size-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 2.5px;
+  pointer-events: stroke;
+}
+.bc-size-grip {
+  fill: transparent;
+  pointer-events: all;
+}
+.bc-size:hover > .bc-size-line,
+.bc-size:focus-visible > .bc-size-line,
+.bc-size-on > .bc-size-line {
+  stroke: var(--bc-color-paper-pick);
+  stroke-width: 0.4px;
+}
+.bc-size:hover > .bc-size-arrow,
+.bc-size:hover > .bc-size-text,
+.bc-size:focus-visible > .bc-size-arrow,
+.bc-size:focus-visible > .bc-size-text,
+.bc-size-on > .bc-size-arrow,
+.bc-size-on > .bc-size-text {
+  fill: var(--bc-color-paper-pick);
+}
+/* The size being placed follows the pointer and takes no clicks. */
+.bc-size-ghost {
+  pointer-events: none;
+  opacity: 0.6;
+}
+/* While the Dimension tool is armed: the edges, circles and points it can size. */
+.bc-size-pick {
+  fill: transparent;
+  stroke: none;
+  cursor: crosshair;
+  outline: none;
+  pointer-events: all;
+}
+circle.bc-size-pick {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 1.2px;
+  pointer-events: stroke;
+}
+circle.bc-size-point {
+  fill: var(--bc-color-paper-pick);
+  fill-opacity: 0.35;
+  stroke-width: 1.6px;
+  pointer-events: all;
+}
+polygon.bc-size-pick:hover,
+polygon.bc-size-pick:focus-visible,
+polygon.bc-size-picked {
+  fill: var(--bc-color-paper-pick);
+  fill-opacity: 0.45;
+}
+circle.bc-size-pick:hover,
+circle.bc-size-pick:focus-visible,
+circle.bc-size-picked {
+  stroke: var(--bc-color-paper-pick);
+  stroke-opacity: 0.45;
+}
+circle.bc-size-point:hover,
+circle.bc-size-point:focus-visible,
+circle.bc-size-point.bc-size-picked {
+  fill-opacity: 1;
+}

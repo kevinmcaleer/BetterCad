@@ -565,8 +565,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     onBaseView: () => setDrawingTool((t) => (t === "base" ? null : "base")),
     projectedView: drawingTool === "projected",
     onProjectedView: () => setDrawingTool((t) => (t === "projected" ? null : "projected")),
+    dimension: drawingTool === "dimension",
+    onDimension: () => setDrawingTool((t) => (t === "dimension" ? null : "dimension")),
     onExport: () => setDrawingTool("export"),
-    mark: drawingTool && drawingTool !== "base" && drawingTool !== "projected" && drawingTool !== "export" ? drawingTool : null,
+    mark: drawingTool && drawingTool !== "base" && drawingTool !== "projected" && drawingTool !== "export" && drawingTool !== "dimension" ? drawingTool : null,
     onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onAutoMarks: () => drawingApi.current?.autoMarks(),
     onSettings: () => setSheetCard("settings"),
@@ -2903,6 +2905,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keywords: "orthographic top side isometric first third angle",
       },
       {
+        id: "drawing.dimension",
+        scope: "drawing",
+        label: "Dimension",
+        group: "Tools",
+        icon: "dimension",
+        keys: ["d"],
+        run: () => h().drawing("dimension"),
+        keywords: "size length distance angle radius diameter measure",
+      },
+      {
         id: "drawing.centreMark",
         scope: "drawing",
         label: "Centre mark",
@@ -4728,6 +4740,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   components={built.components}
                   bodies={parts}
                   onTitle={(field, value) => void drawingCode().then((m) => store.edit(...m.titleChange(shownDrawing, field, value)))}
+                  onDecimals={(places) => void drawingCode().then((m) => store.edit(...m.decimalsChange(shownDrawing, places)))}
                 />
               </Suspense>
             )}

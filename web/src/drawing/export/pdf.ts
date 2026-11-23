@@ -44,6 +44,7 @@ export function pdfContent(scene: Scene, outlines: PathCommand[]): string {
       }
     }
   }
+  for (const f of scene.fills ?? []) out.push(`${f.pts.map((q, i) => `${p(q)} ${i ? "l" : "m"}`).join(" ")} h f`);
   if (outlines.length) {
     let at: V2 = [0, 0];
     const text: string[] = [];

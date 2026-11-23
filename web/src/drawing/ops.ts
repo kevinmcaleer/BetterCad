@@ -1,5 +1,6 @@
 import {
   addDrawing,
+  changeDrawing,
   changeSheet,
   removeDrawing,
   renameDrawing,
@@ -69,4 +70,10 @@ export function drawingChange(id: string, act: "rename" | "delete", name?: strin
 /** A change to the open sheet's views: one placed, moved, edited or deleted. */
 export function sheetEdit(drawing: Drawing, change: (s: DrawingSheet) => DrawingSheet, label: string): Edit {
   return [(d) => changeSheet(d, drawing.id, drawing.sheets[0]!.id, change), label];
+}
+
+/** How many decimal places the drawing's dimensions show (0 to 3). */
+export function decimalsChange(drawing: Drawing, places: number): Edit {
+  const decimals = Math.max(0, Math.min(3, Math.round(places)));
+  return [(d) => changeDrawing(d, drawing.id, (x) => (x.decimals === decimals ? x : { ...x, decimals })), "Decimal places"];
 }

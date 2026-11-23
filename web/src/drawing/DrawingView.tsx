@@ -11,10 +11,12 @@ import {
 } from "react";
 import { ArmedBar, Button, ContextMenu, Dialog, ESC, RibbonButton, RibbonGroup, useEscape, type ContextMenuState } from "@bettercad/ui";
 import {
+  frameOf,
   removeView,
   scaleLabel,
   viewScale,
   type Drawing,
+  type DrawingDimension,
   type DrawingMark,
   type DrawingRef,
   type DrawingSheet,
@@ -24,6 +26,9 @@ import {
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newId, type ModelDoc } from "../state/document";
 import { BaseViewCard, type ShowOption } from "./BaseViewCard";
+import { DimensionCard } from "./DimensionCard";
+import { DimensionLayer } from "./DimensionLayer";
+import { addPick, dimStyle, draftOf, isIso, pickKey, type DimPick, type Pending } from "./dimensions";
 import { ExportCard, type DrawingFile } from "./ExportCard";
 import { sheetLayout, sizeName, TEXT } from "./layout";
 import { MarkCard } from "./MarkCard";
@@ -53,7 +58,7 @@ export { SheetCard, type SheetChoice } from "./SheetCard";
 export type { ViewCall } from "./useModelViews";
 export type { ShowOption } from "./BaseViewCard";
 export type { DrawingFile } from "./ExportCard";
-export { drawingChange, makeDrawing, sheetChange, sheetEdit, titleChange } from "./ops";
+export { decimalsChange, drawingChange, makeDrawing, sheetChange, sheetEdit, titleChange } from "./ops";
 
 /** Where the sheet sits in the view: screen pixels per paper millimetre, and the page's top left corner. */
 interface View {
@@ -100,7 +105,7 @@ function artOf(view: ModelView, scale: number): ViewArt {
 }
 
 /** The drawing tool that is armed: placing a base view (#561) or views projected from one (#562), or Export (#569). */
-export type DrawingTool = "base" | "projected" | "export" | MarkTool;
+export type DrawingTool = "base" | "projected" | "export" | "dimension" | MarkTool;
 export { isMarkTool, type MarkTool } from "./MarkLayer";
 
 export interface DrawingApi {
@@ -132,6 +137,8 @@ export interface DrawingPaperProps {
   /** Saves an exported file (#569), and says how it went. */
   onSave?: (file: DrawingFile) => Promise<string | undefined>;
   say?: (text: string, bad?: boolean) => void;
+  /** The drawing's decimal places were changed, from the Dimension card (#564). */
+  onDecimals?: (places: number) => void;
 }
 
 /**
@@ -154,6 +161,7 @@ export function DrawingPaper({
   bodies = [],
   onSave,
   say,
+  onDecimals,
 }: DrawingPaperProps) {
   const sheet = drawing.sheets[0]!;
   const layout = useMemo(() => sheetLayout(sheet, { index: 1, count: drawing.sheets.length }), [sheet, drawing.sheets.length]);
@@ -413,6 +421,57 @@ export function DrawingPaper({
     if (ids.length) markAll(ids);
     else say?.("Put a view on the sheet first.");
   };
+  // Dimensions (#564): what the tool has picked so far (in one view), and the size that is selected.
+  const dimensioning = tool === "dimension" && !readOnly;
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [selectedDim, setSelectedDim] = useState<string | null>(null);
+  const [dimMenu, setDimMenu] = useState<{ at: ContextMenuState; id: string } | null>(null);
+  useEffect(() => {
+    setPending(null);
+    if (dimensioning) {
+      setChanging(null);
+      setPointer(null);
+    }
+  }, [dimensioning]);
+  const sizeStyle = useMemo(() => dimStyle(sheet.standard), [sheet.standard]);
+  const pendingView = pending ? sheet.views.find((v) => v.id === pending.view) : undefined;
+  const pendingModel = pendingView ? got.get(pendingView.id)?.view : undefined;
+  /** The size the picks make, with its text at a place from the middle of its view, or just clear of the view. */
+  const sizeAt = (at: V2 | null) =>
+    pendingView && pendingModel
+      ? draftOf(pending, targets(pendingModel), at, pendingModel, viewScale(sheet, pendingView), isIso(frameOf(pendingView.direction).toEye))
+      : undefined;
+  const dimReady = !!sizeAt(null);
+  const dimGhost = dimensioning && pendingView && pointer ? sizeAt([pointer[0] - pendingView.at[0], pointer[1] - pendingView.at[1]]) : undefined;
+  const placeDim = (at: V2 | null) => {
+    const d = sizeAt(at);
+    if (!d) return;
+    const id = newId("dm");
+    onSheet?.((s) => ({ ...s, dimensions: [...s.dimensions, { ...d, id }] }), "Dimension");
+    setPending(null);
+  };
+  const pickDim = (viewId: string, p: DimPick) => {
+    const model = got.get(viewId)?.view;
+    if (model) setPending((was) => addPick(was, viewId, p.ref, targets(model)));
+  };
+  const pendingKeys = useMemo(() => new Set(pending?.refs.map(pickKey) ?? []), [pending]);
+  /** A size moved or edited by hand is no longer Auto dimension's to replace. */
+  const changeDim = (id: string, change: Partial<DrawingDimension>, label: string) =>
+    onSheet?.(
+      (s) => ({
+        ...s,
+        dimensions: s.dimensions.map((d) => {
+          if (d.id !== id) return d;
+          const next = { ...d, ...change };
+          delete next.auto;
+          if (next.decimals === undefined) delete next.decimals;
+          return next;
+        }),
+      }),
+      label,
+    );
+  const removeDim = (id: string) => onSheet?.((s) => ({ ...s, dimensions: s.dimensions.filter((d) => d.id !== id) }), "Delete dimension");
+  const menuDim = dimMenu ? sheet.dimensions.find((d) => d.id === dimMenu.id) : undefined;
   /** A view's right-click menu. */
   const [menu, setMenu] = useState<{ at: ContextMenuState; view: string } | null>(null);
   const menuView = menu ? sheet.views.find((v) => v.id === menu.view) : undefined;
@@ -433,7 +492,7 @@ export function DrawingPaper({
     if (!root.current?.contains(e.target as Node) || (e.target as Element).closest?.("input")) return;
     touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (touches.current.size !== 1) return;
-    const id = placing || parent ? undefined : (e.target as Element).closest?.("[data-view]")?.getAttribute("data-view");
+    const id = placing || parent || dimensioning ? undefined : (e.target as Element).closest?.("[data-view]")?.getAttribute("data-view");
     const on = id ? sheet.views.find((v) => v.id === id) : undefined;
     press.current = { x: e.clientX, y: e.clientY, dragging: false, view: on };
     if (!placing && !projecting) setSelected(on?.id ?? null);
@@ -442,7 +501,7 @@ export function DrawingPaper({
     const was = touches.current.get(e.pointerId);
     if (!was) {
       // Nothing pressed: the view being placed follows the pointer.
-      if ((placing || parent) && root.current?.contains(e.target as Node)) {
+      if ((placing || parent || dimensioning) && root.current?.contains(e.target as Node)) {
         const at = sheetAt(e.clientX, e.clientY);
         setPointer(at);
         // The side follows the pointer once it is clear of the parent.
@@ -505,6 +564,13 @@ export function DrawingPaper({
       if (!at || !clearOf(at)) return;
       const s = sideAt([at[0] - parent.at[0], at[1] - parent.at[1]]);
       return project(spotAt(parent.at, at, s), s);
+    }
+    if (dimensioning) {
+      // A click on an edge or point picks it; a click anywhere else puts the size down there.
+      if ((e.target as Element).closest?.(".bc-size-pick")) return;
+      const at = sheetAt(e.clientX, e.clientY);
+      if (at && pendingView) placeDim([at[0] - pendingView.at[0], at[1] - pendingView.at[1]]);
+      return;
     }
     const at = placing ? sheetAt(e.clientX, e.clientY) : null;
     if (at) place(at);
@@ -614,6 +680,28 @@ export function DrawingPaper({
                       onDelete={readOnly ? undefined : (id) => onSheet?.((s) => ({ ...s, marks: s.marks.filter((m) => m.id !== id) }), "Delete mark")}
                     />
                   )}
+                  {g?.view && view && (
+                    <DimensionLayer
+                      viewId={v.id}
+                      model={g.view}
+                      scale={scale}
+                      style={sizeStyle}
+                      decimals={drawing.decimals}
+                      iso={isIso(frameOf(v.direction).toEye)}
+                      dimensions={sheet.dimensions.filter((d) => d.view === v.id)}
+                      zoom={view.k}
+                      picking={dimensioning}
+                      picked={pending?.view === v.id ? pendingKeys : undefined}
+                      started={!!pending}
+                      onPick={(p) => pickDim(v.id, p)}
+                      ghost={pending?.view === v.id ? dimGhost : undefined}
+                      selected={selectedDim}
+                      onSelect={setSelectedDim}
+                      onMove={readOnly ? undefined : (id, at) => changeDim(id, { at }, "Move dimension")}
+                      onDelete={readOnly ? undefined : removeDim}
+                      onMenu={readOnly ? undefined : (id, x, y) => setDimMenu({ at: { x, y }, id })}
+                    />
+                  )}
                   {scale !== sheet.scale && (
                     <text className="bc-view-scale" y={h / 2 + TEXT.value + 1} fontSize={TEXT.value}>
                       {`Scale ${scaleLabel(scale)}`}
@@ -664,6 +752,42 @@ export function DrawingPaper({
           onFinish={() => onTool?.(null)}
         />
       )}
+      {dimensioning && (
+        <DimensionCard
+          picked={pending?.refs.length ?? 0}
+          ready={dimReady}
+          decimals={drawing.decimals}
+          onDecimals={(places) => onDecimals?.(places)}
+          onPlace={() => placeDim(null)}
+          onBack={() => setPending(null)}
+          onFinish={() => onTool?.(null)}
+        />
+      )}
+      <ContextMenu
+        at={menuDim ? dimMenu!.at : null}
+        onClose={() => setDimMenu(null)}
+        label="Dimension actions"
+        title="Dimension"
+        entries={
+          menuDim
+            ? [
+                ...[undefined, 0, 1, 2, 3].map((places) => ({
+                  id: `places-${places ?? "drawing"}`,
+                  label:
+                    places === undefined
+                      ? "Decimal places as the drawing"
+                      : places === 0
+                        ? "No decimal places"
+                        : `${places} decimal ${places === 1 ? "place" : "places"}`,
+                  checked: menuDim.decimals === places,
+                  onSelect: () => changeDim(menuDim.id, { decimals: places }, "Decimal places"),
+                })),
+                { kind: "separator" as const, id: "s" },
+                { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => removeDim(menuDim.id) },
+              ]
+            : []
+        }
+      />
       <ContextMenu
         at={menuView ? menu!.at : null}
         onClose={() => setMenu(null)}
@@ -772,6 +896,9 @@ export interface DrawingBarProps {
   /** Arms Projected view (#562), and whether it is armed. */
   onProjectedView?: () => void;
   projectedView?: boolean;
+  /** Arms Dimension (#564). */
+  onDimension?: () => void;
+  dimension?: boolean;
   /** Opens Export (#569). */
   onExport?: () => void;
   /** Arms a mark tool (#563), the one that is armed, and Add centre marks. */
@@ -793,6 +920,8 @@ export function DrawingBar({
   baseView,
   onProjectedView,
   projectedView,
+  onDimension,
+  dimension,
   onExport,
   onMark,
   mark,
@@ -840,6 +969,9 @@ export function DrawingBar({
           onClick={() => onMark("centre-mark")}
         />
       )}
+      {!readOnly && onDimension && (
+        <Button icon="dimension" label="Dimension" title="Show a size from the model on a view" shortcut="D" on={!!dimension} onClick={onDimension} />
+      )}
       {onExport && <Button icon="download" label="Export" title="Save the sheet as a PDF, SVG, DXF or PNG, or print it" onClick={onExport} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
       <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
@@ -854,6 +986,8 @@ export function DrawingRibbon({
   baseView,
   onProjectedView,
   projectedView,
+  onDimension,
+  dimension,
   onExport,
   onMark,
   mark,
@@ -891,6 +1025,11 @@ export function DrawingRibbon({
             onPress={() => onMark("extension")}
           />
           {onAutoMarks && <RibbonButton icon="drawing" colour="sk-auto" label="Add centre marks" short="Auto marks" onPress={onAutoMarks} />}
+        </RibbonGroup>
+      )}
+      {!readOnly && onDimension && (
+        <RibbonGroup label="Dimensions" entries={[]}>
+          <RibbonButton icon="dimension" colour="dimension" label="Dimension" shortcut="D" pressed={!!dimension} onPress={onDimension} />
         </RibbonGroup>
       )}
       <RibbonGroup label="Sheet" entries={[]}>

@@ -23,7 +23,25 @@ export function outline(label: Label, font: GlyphFont): PathCommand[] {
     }
     x += advances[i]! * k;
   });
-  return out;
+  if (!label.turn) return out;
+  // Turned about where it is anchored.
+  const [cs, sn] = [Math.cos(label.turn), Math.sin(label.turn)];
+  const [ax, ay] = label.at;
+  const spin = (px: number, py: number): [number, number] => [ax + (px - ax) * cs - (py - ay) * sn, ay + (px - ax) * sn + (py - ay) * cs];
+  return out.map((c) => {
+    if (c.type === "Z") return c;
+    const [px, py] = spin(c.x, c.y);
+    if (c.type === "Q") {
+      const [x1, y1] = spin(c.x1, c.y1);
+      return { type: "Q", x1, y1, x: px, y: py };
+    }
+    if (c.type === "C") {
+      const [x1, y1] = spin(c.x1, c.y1);
+      const [x2, y2] = spin(c.x2, c.y2);
+      return { type: "C", x1, y1, x2, y2, x: px, y: py };
+    }
+    return { type: c.type, x: px, y: py };
+  });
 }
 
 /** Every label of a scene as one run of outlines. */

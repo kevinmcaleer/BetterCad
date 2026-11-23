@@ -1,6 +1,7 @@
-import { scaleLabel, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
+import { frameOf, scaleLabel, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
 import { TAU, turn, type ModelView, type V2, type ViewCurve } from "@bettercad/kernel/view";
 import { TEXT, WEIGHT, type SheetLayout } from "../layout";
+import { dimArt, dimStyle, isIso } from "../dimensions";
 import { CENTRE_DASH, markArt, markStyle, markView, targets } from "../marks";
 
 /**
@@ -8,7 +9,7 @@ import { CENTRE_DASH, markArt, markStyle, markView, targets } from "../marks";
  * way PDF and DXF count, so each writer only has to spell the same shapes its own way. No DOM, no colours: an
  * export is black on white whatever the theme.
  */
-export type Layer = "visible" | "hidden" | "centre" | "border" | "title";
+export type Layer = "visible" | "hidden" | "centre" | "dimension" | "border" | "title";
 
 export interface Stroke {
   layer: Layer;
@@ -27,12 +28,21 @@ export interface Label {
   anchor: "start" | "middle";
   baseline: "central" | "alphabetic";
   text: string;
+  /** Turned anticlockwise about `at`, radians: a dimension's size along its line. */
+  turn?: number;
+}
+/** A filled shape: an arrowhead. */
+export interface Fill {
+  layer: Layer;
+  pts: V2[];
 }
 export interface Scene {
   w: number;
   h: number;
   strokes: Stroke[];
   labels: Label[];
+  /** Left out when there is nothing filled. */
+  fills?: Fill[];
 }
 
 /** Line widths and dashes on paper, mm: those of `drawing.css`. */
@@ -108,12 +118,13 @@ const box = (x: number, y: number, w: number, h: number): ViewCurve => ({
 });
 
 /** Everything on a sheet: the frame, zones and title block, and each view's lines from the kernel's picture of it. */
-export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: string) => ModelView | undefined): Scene {
+export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: string) => ModelView | undefined, decimals?: number): Scene {
   const H = l.page.h;
   // The layout counts down from the top of the page; the scene counts up from the bottom.
   const up = (y: number) => H - y;
   const strokes: Stroke[] = [];
   const labels: Label[] = [];
+  const fills: Fill[] = [];
   const line = (layer: Layer, width: number, s: { x1: number; y1: number; x2: number; y2: number }) =>
     strokes.push({ layer, width, curve: { kind: "line", a: [s.x1, up(s.y1)], b: [s.x2, up(s.y2)] } });
 
@@ -183,6 +194,22 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
         for (const c of art.curves) strokes.push({ layer: "centre", width: WEIGHT.thin, dash: CENTRE_DASH, curve: placed(c, 1, v.at[0], v.at[1]) });
       }
     }
+    // Dimensions (#564): thin lines, filled arrowheads and the size.
+    const sizes = sheet.dimensions.filter((d) => d.view === v.id);
+    if (sizes.length) {
+      const ctx = { view, scale: s, style: dimStyle(sheet.standard), decimals: decimals ?? 2, iso: isIso(frameOf(v.direction).toEye), all: targets(view) };
+      const here = (q: V2): V2 => [v.at[0] + q[0], v.at[1] + q[1]];
+      for (const d of sizes) {
+        const art = dimArt(d, ctx);
+        if (!art) continue;
+        for (const [a, b] of art.lines) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: { kind: "line", a: here(a), b: here(b) } });
+        for (const c of art.arcs) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: placed(c, 1, v.at[0], v.at[1]) });
+        for (const a of art.arrows) fills.push({ layer: "dimension", pts: a.map(here) });
+        const label: Label = { layer: "dimension", at: here(art.text.at), size: ctx.style.text, anchor: "middle", baseline: "central", text: art.text.text };
+        if (art.text.turn) label.turn = art.text.turn;
+        labels.push(label);
+      }
+    }
     if (s !== sheet.scale) {
       // As on the sheet: under the view's box, which has 2 mm of room round the lines.
       const h = Math.max((max[1] - min[1]) * s, 20) + 4;
@@ -196,7 +223,9 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
       });
     }
   }
-  return { w: l.page.w, h: l.page.h, strokes, labels };
+  const scene: Scene = { w: l.page.w, h: l.page.h, strokes, labels };
+  if (fills.length) scene.fills = fills;
+  return scene;
 }
 
 /**

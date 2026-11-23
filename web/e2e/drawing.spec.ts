@@ -12,6 +12,21 @@ async function newDrawing(page: Page, size: string) {
   await expect(page.getByRole("region", { name: "Drawing: Drawing 1" })).toBeVisible();
 }
 
+/** The bracket sample with a new A3 drawing and its top view placed. */
+async function topViewOnA3(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A3");
+  await page.keyboard.press("b");
+  const base = page.getByRole("dialog", { name: "Base view" });
+  await expect(base.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await base.getByLabel("Direction").selectOption({ label: "Top" });
+  await expect(base.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await base.getByRole("button", { name: "Place" }).click();
+  await expect(page.getByRole("button", { name: /^Top view, / }).locator(".bc-view-visible")).toHaveAttribute("d", /A/, { timeout: 30_000 });
+}
+
 /** Where the page sat over half a second of frames, with the height its bar said it had: one entry once it has settled. */
 const sheetBoxes = (page: Page) =>
   page.evaluate(async () => {
@@ -340,6 +355,51 @@ test("mark the centre of a hole, delete the mark, and mark every hole in a view"
   await expect(mark).toHaveCount(1);
 });
 
+/** Dimensions (#564): pick, the size follows the pointer, a click places it; then it is dragged and deleted. */
+test("dimension an edge and a hole, drag a size by its text and delete it", { tag: "@journey" }, async ({ page }) => {
+  await topViewOnA3(page);
+  const top = page.getByRole("button", { name: /^Top view, / });
+
+  // D arms Dimension. An edge gives its length, which follows the pointer until a click puts it down.
+  await page.keyboard.press("d");
+  const card = page.getByRole("dialog", { name: "Dimension" });
+  await expect(card.getByRole("status")).toHaveText(/^Click an edge for its length/);
+  const box = (await top.locator(".bc-view-hit").boundingBox())!;
+  const cx = box.x + box.width / 2;
+  await page.getByRole("button", { name: "Edge, 36 mm long" }).last().click();
+  await expect(card.getByRole("status")).toHaveText(/^Click the sheet to place the size/);
+  await page.mouse.move(cx, box.y + box.height + 30);
+  await expect(page.locator(".bc-size-ghost text")).toHaveText("36");
+  await page.mouse.click(cx, box.y + box.height + 30);
+  const length = page.getByRole("button", { name: "Dimension, 36 mm" });
+  await expect(length).toBeVisible();
+
+  // A hole gives its diameter on a leader, wherever the text is put.
+  await page.getByRole("button", { name: "Hole, 4.5 mm across", exact: true }).click({ position: { x: 1, y: 5 } });
+  await page.mouse.click(cx - 30, box.y - 25);
+  await expect(page.getByRole("button", { name: "Dimension, Ø4.5 mm" })).toBeVisible();
+  await card.getByRole("button", { name: "Finish" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edge, 36 mm long" })).toHaveCount(0);
+
+  // Dragging the text moves the size; the view stays where it was.
+  const text = length.locator("text");
+  const before = (await text.boundingBox())!;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 + 12, { steps: 3 });
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 + 24, { steps: 3 });
+  await page.mouse.up();
+  await expect.poll(async () => (await text.boundingBox())!.y - before.y).toBeGreaterThan(20);
+  expect((await top.locator(".bc-view-hit").boundingBox())!.y).toBeCloseTo(box.y, 0);
+
+  // Delete takes a size away.
+  await length.focus();
+  await page.keyboard.press("Delete");
+  await expect(length).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Dimension, Ø4.5 mm" })).toBeVisible();
+});
+
 test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
@@ -387,6 +447,31 @@ test("a top view of the bracket with its hole marked @visual", async ({ page }) 
     maxDiffPixelRatio: 0.01,
     mask: [page.getByRole("button", { name: /^Date of issue/ })],
     // A first picture is taken twice to see that it holds still, which is slow on a runner with no graphics card.
+    timeout: 30_000,
+  });
+});
+
+test("a top view of the bracket with its sizes @visual", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await topViewOnA3(page);
+  const top = page.getByRole("button", { name: /^Top view, / });
+  await page.keyboard.press("d");
+  const card = page.getByRole("dialog", { name: "Dimension" });
+  const box = (await top.locator(".bc-view-hit").boundingBox())!;
+  const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
+  await page.getByRole("button", { name: "Edge, 36 mm long" }).last().click();
+  await page.mouse.click(cx, box.y + box.height + 30);
+  await page.getByRole("button", { name: "Edge, 30 mm long" }).first().click();
+  await page.mouse.click(box.x - 30, cy);
+  await page.getByRole("button", { name: "Hole, 4.5 mm across", exact: true }).click({ position: { x: 1, y: 5 } });
+  await page.mouse.click(cx - 30, box.y - 25);
+  await card.getByRole("button", { name: "Finish" }).click();
+  await expect(page.locator(".bc-size")).toHaveCount(3);
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-sizes.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
     timeout: 30_000,
   });
 });

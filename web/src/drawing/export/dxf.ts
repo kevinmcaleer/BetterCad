@@ -7,7 +7,7 @@ import { roundAt, roundOf, type Layer, type Scene } from "./scene";
  * ellipses and traced curves go as fine polylines, since this plain DXF has no ellipse. Text goes as text.
  * Layers are there for the marks and dimensions to come, so a template made now keeps working.
  */
-const NAME: Record<Layer, string> = { visible: "VISIBLE", hidden: "HIDDEN", centre: "CENTRE", border: "BORDER", title: "TITLE" };
+const NAME: Record<Layer, string> = { visible: "VISIBLE", hidden: "HIDDEN", centre: "CENTRE", dimension: "DIMENSIONS", border: "BORDER", title: "TITLE" };
 const LAYERS: DxfLayer[] = [
   { name: "VISIBLE", colour: 7 },
   { name: "HIDDEN", colour: 8, ltype: "HIDDEN" },
@@ -87,10 +87,20 @@ export function sceneDxf(scene: Scene): string {
     point(10, l.at);
     w.pair(40, l.size * CAP);
     w.pair(1, l.text);
+    if (l.turn) w.pair(50, l.turn * DEG);
     // 72: left or centre. 73: on the baseline or about the middle. The second point is the one they are measured from.
     w.pair(72, l.anchor === "middle" ? 1 : 0);
     w.pair(73, l.baseline === "central" ? 2 : 0);
     point(11, l.at);
+  }
+  // Arrowheads: a filled triangle is a SOLID with its last corner given twice.
+  for (const f of scene.fills ?? []) {
+    if (f.pts.length < 3) continue;
+    start("SOLID", NAME[f.layer]);
+    point(10, f.pts[0]!);
+    point(11, f.pts[1]!);
+    point(12, f.pts[2]!);
+    point(13, f.pts[3] ?? f.pts[2]!);
   }
   return dxfFile(w, { min: [0, 0], max: [scene.w, scene.h] }, LAYERS, LTYPES);
 }
