@@ -54,6 +54,16 @@ describe("sketch palette options", () => {
 });
 
 describe("sketch view", () => {
+  it("shades a shape whose ends touch without being joined, as Extrude can use it", () => {
+    const d = new Draft(newSketch());
+    d.line([0, 0], [20, 0], { auto: false });
+    d.line([20, 0], [20, 10], { auto: false });
+    d.line([20, 10], [0, 10], { auto: false });
+    d.line([0, 10], [0, 0], { auto: false });
+    const v = sketchView(d.done().sketch, WORLD_FRAMES.XY, null, [], null, [], null, undefined, undefined, null, ALL);
+    expect(v.fills).toHaveLength(1);
+  });
+
   it("shades the closed shapes faintly while Profile is on", () => {
     const s = drawRectangle(newSketch(), [0, 0], [30, 20]).sketch;
     const on = sketchView(s, WORLD_FRAMES.XY, null, [], null, [], null, undefined, undefined, null, ALL);

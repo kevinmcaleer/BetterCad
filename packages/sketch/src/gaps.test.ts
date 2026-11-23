@@ -85,4 +85,23 @@ describe("findGaps", () => {
     d.line([0, 0], [10, 0], { construction: true });
     expect(findGaps(d.done().sketch).gaps).toEqual([]);
   });
+
+  it("ends that touch without being joined still close a shape, and are listed as loose joins", () => {
+    // A 110 mm circle with a notch cut in its side: an arc and three lines, each with its own end points.
+    const d = new Draft(newSketch());
+    const [y, x] = [28, Math.sqrt(55 ** 2 - 28 ** 2)];
+    d.arc([0, 0], [x, y], [x, -y]);
+    d.line([x, -y], [x - 8, -y], { auto: false });
+    d.line([x - 8, -y], [x - 8, y], { auto: false });
+    d.line([x - 8, y], [x, y], { auto: false });
+    const s = d.done().sketch;
+    const r = findGaps(s);
+    expect(r.openEnds).toBe(0);
+    expect(r.shapes).toBe(1);
+    expect(r.gaps.map((g) => g.kind)).toEqual(["touch", "touch", "touch", "touch"]);
+    expect(gapSummary(r)).toBe("4 loose joins");
+    const joined = joinAll(s, r.gaps);
+    expect(profiles(joined).profiles).toHaveLength(1);
+    expect(findGaps(joined).gaps).toEqual([]);
+  });
 });
