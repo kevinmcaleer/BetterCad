@@ -9,13 +9,26 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { ArmedBar, Button, Dialog, ESC, RibbonButton, RibbonGroup, useEscape } from "@bettercad/ui";
-import { removeView, scaleLabel, viewScale, type Drawing, type DrawingSheet, type DrawingView, type TitleBlock } from "@bettercad/kernel/drawing";
+import { ArmedBar, Button, ContextMenu, Dialog, ESC, RibbonButton, RibbonGroup, useEscape, type ContextMenuState } from "@bettercad/ui";
+import {
+  removeView,
+  scaleLabel,
+  viewScale,
+  type Drawing,
+  type DrawingMark,
+  type DrawingRef,
+  type DrawingSheet,
+  type DrawingView,
+  type TitleBlock,
+} from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newId, type ModelDoc } from "../state/document";
 import { BaseViewCard, type ShowOption } from "./BaseViewCard";
 import { ExportCard, type DrawingFile } from "./ExportCard";
 import { sheetLayout, sizeName, TEXT } from "./layout";
+import { MarkCard } from "./MarkCard";
+import { isMarkTool, MarkLayer, type MarkTool } from "./MarkLayer";
+import { autoMarks, MARK_NAMES, markKey, markStyle, markView, pitchCircle, refKey, refTo, targets, type Target } from "./marks";
 import { descendants, inheritedScale, placeProjected, projectedDirection, sideAt, spotAt, spotBeside, type Side } from "./projected";
 import { ProjectedViewCard } from "./ProjectedViewCard";
 import { SheetArt } from "./Sheet";
@@ -87,10 +100,13 @@ function artOf(view: ModelView, scale: number): ViewArt {
 }
 
 /** The drawing tool that is armed: placing a base view (#561) or views projected from one (#562), or Export (#569). */
-export type DrawingTool = "base" | "projected" | "export";
+export type DrawingTool = "base" | "projected" | "export" | MarkTool;
+export { isMarkTool, type MarkTool } from "./MarkLayer";
 
 export interface DrawingApi {
   fit(): void;
+  /** Add centre marks to the selected view, or to every view when none is (#563). */
+  autoMarks(): void;
 }
 
 export interface DrawingPaperProps {
@@ -161,8 +177,9 @@ export function DrawingPaper({
 
   // Fit when the drawing opens and when its page changes size or turns.
   useLayoutEffect(fit, [fit]);
+  const autoRef = useRef<() => void>(() => {});
   useEffect(() => {
-    if (api) api.current = { fit };
+    if (api) api.current = { fit, autoMarks: () => autoRef.current() };
     return () => {
       if (api) api.current = null;
     };
@@ -319,6 +336,87 @@ export function DrawingPaper({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [projecting, onTool]);
+  // Marks (#563): the armed tool, what it has picked so far (in one view), and the mark that is selected.
+  const markTool = isMarkTool(tool) && !readOnly ? tool : null;
+  const [picks, setPicks] = useState<{ view: string; refs: DrawingRef[] }>({ view: "", refs: [] });
+  const [join, setJoin] = useState<"circle" | "lines">("circle");
+  const [selectedMark, setSelectedMark] = useState<string | null>(null);
+  useEffect(() => {
+    setPicks({ view: "", refs: [] });
+    setJoin("circle");
+    if (markTool) setChanging(null);
+  }, [markTool]);
+  const style = useMemo(() => markStyle(sheet.standard), [sheet.standard]);
+  const addMark = (mark: DrawingMark) =>
+    onSheet?.(
+      (s) => (s.marks.some((m) => markKey(m) === markKey(mark) && markView(m) === markView(mark)) ? s : { ...s, marks: [...s.marks, mark] }),
+      MARK_NAMES[mark.kind],
+    );
+  /** The centres of a pattern's picked holes, to see whether a pitch circle fits them. */
+  const pickedCentres = (viewId: string, refs: DrawingRef[]): V2[] => {
+    const model = got.get(viewId)?.view;
+    if (!model) return [];
+    const all = targets(model);
+    return refs.flatMap((r) => {
+      const t = all.find((x) => refKey(refTo(viewId, x)) === refKey(r));
+      return t?.kind === "round" ? [t.c] : [];
+    });
+  };
+  const pick = (viewId: string, t: Target) => {
+    if (!markTool) return;
+    const ref = refTo(viewId, t);
+    if (markTool === "centre-mark") return addMark({ id: newId("mk"), kind: "centre-mark", on: ref });
+    if (markTool === "centre-line" && t.kind === "axis") return addMark({ id: newId("mk"), kind: "centre-line", a: ref });
+    const mine = picks.view === viewId ? picks.refs : [];
+    if (markTool === "centre-pattern") {
+      if (mine.some((r) => refKey(r) === refKey(ref))) return setPicks({ view: viewId, refs: mine.filter((r) => refKey(r) !== refKey(ref)) });
+      if (!mine.length && t.kind === "round") {
+        // The first hole brings the others like it, when together they make a bolt circle or a row.
+        const model = got.get(viewId)?.view;
+        const like = (model ? targets(model) : []).filter(
+          (x): x is Extract<Target, { kind: "round" }> =>
+            x.kind === "round" && x.whole && x.source.kind === t.source.kind && x.hole === t.hole && Math.abs(x.r - t.r) < 1e-6,
+        );
+        const o = like[0]?.c ?? [0, 0];
+        const d = like[1] ? [like[1].c[0] - o[0], like[1].c[1] - o[1]] : [0, 0];
+        const inRow = like.every((x) => Math.abs((x.c[0] - o[0]) * d[1]! - (x.c[1] - o[1]) * d[0]!) < 1e-6);
+        if (like.length >= 3 && (inRow || pitchCircle(like.map((x) => x.c)))) return setPicks({ view: viewId, refs: like.map((x) => refTo(viewId, x)) });
+      }
+      return setPicks({ view: viewId, refs: [...mine, ref] });
+    }
+    // Two edges: a centre line between them, or their extension to a corner.
+    if (!mine.length || refKey(mine[0]!) === refKey(ref)) return setPicks({ view: viewId, refs: [ref] });
+    addMark(
+      markTool === "extension" ? { id: newId("mk"), kind: "extension", a: mine[0]!, b: ref } : { id: newId("mk"), kind: "centre-line", a: mine[0]!, b: ref },
+    );
+    setPicks({ view: "", refs: [] });
+  };
+  const onCircle = markTool === "centre-pattern" && !!pitchCircle(pickedCentres(picks.view, picks.refs));
+  const addPattern = () => {
+    if (picks.refs.length < 2) return;
+    addMark({ id: newId("mk"), kind: "centre-pattern", on: picks.refs, join: onCircle ? join : "lines" });
+    setPicks({ view: "", refs: [] });
+  };
+  const pickedKeys = useMemo(() => new Set(picks.refs.map(refKey)), [picks]);
+  /** Add centre marks to this view: every hole seen end on, and an axis on every round feature seen from the side. */
+  const markAll = (ids: string[]) => {
+    const add = ids.flatMap((id) => {
+      const model = got.get(id)?.view;
+      return model ? autoMarks(model, id, sheet.marks, () => newId("mk")) : [];
+    });
+    if (add.length) onSheet?.((s) => ({ ...s, marks: [...s.marks, ...add] }), "Centre marks");
+    say?.(add.length ? `Added ${add.length} ${add.length === 1 ? "mark" : "marks"}.` : "There are no holes or round features left to mark here.");
+  };
+  autoRef.current = () => {
+    if (readOnly) return;
+    const ids = selected && sheet.views.some((v) => v.id === selected) ? [selected] : sheet.views.map((v) => v.id);
+    if (ids.length) markAll(ids);
+    else say?.("Put a view on the sheet first.");
+  };
+  /** A view's right-click menu. */
+  const [menu, setMenu] = useState<{ at: ContextMenuState; view: string } | null>(null);
+  const menuView = menu ? sheet.views.find((v) => v.id === menu.view) : undefined;
+
   /** A view about to be deleted that has views projected from it: you are asked first. */
   const [asking, setAsking] = useState<string | null>(null);
   const remove = (v: DrawingView) => {
@@ -491,10 +589,31 @@ export function DrawingPaper({
                   onFocus={() => setSelected(v.id)}
                   onDoubleClick={() => startChange(v)}
                   onKeyDown={(e) => viewKey(e, v)}
+                  onContextMenu={(e) => {
+                    if (readOnly || placing || projecting) return;
+                    e.preventDefault();
+                    setSelected(v.id);
+                    setMenu({ at: { x: e.clientX, y: e.clientY }, view: v.id });
+                  }}
                 >
                   <rect className={art ? "bc-view-hit" : "bc-view-hit bc-view-wait"} x={-w / 2} y={-h / 2} width={w} height={h} />
                   {art && <path className="bc-view-hidden" d={art.hidden} />}
                   {art && <path className="bc-view-visible" d={art.visible} />}
+                  {g?.view && (
+                    <MarkLayer
+                      viewId={v.id}
+                      model={g.view}
+                      scale={scale}
+                      style={style}
+                      marks={sheet.marks.filter((m) => markView(m) === v.id)}
+                      tool={markTool}
+                      picked={picks.view === v.id ? pickedKeys : undefined}
+                      onPick={(t) => pick(v.id, t)}
+                      selected={selectedMark}
+                      onSelect={setSelectedMark}
+                      onDelete={readOnly ? undefined : (id) => onSheet?.((s) => ({ ...s, marks: s.marks.filter((m) => m.id !== id) }), "Delete mark")}
+                    />
+                  )}
                   {scale !== sheet.scale && (
                     <text className="bc-view-scale" y={h / 2 + TEXT.value + 1} fontSize={TEXT.value}>
                       {`Scale ${scaleLabel(scale)}`}
@@ -534,6 +653,33 @@ export function DrawingPaper({
           onFinish={() => onTool?.(null)}
         />
       )}
+      {markTool && (
+        <MarkCard
+          tool={markTool}
+          picked={picks.refs.length}
+          onCircle={onCircle}
+          join={join}
+          onJoin={setJoin}
+          onAdd={addPattern}
+          onFinish={() => onTool?.(null)}
+        />
+      )}
+      <ContextMenu
+        at={menuView ? menu!.at : null}
+        onClose={() => setMenu(null)}
+        label="View actions"
+        title={menuView ? viewName(menuView) : undefined}
+        entries={
+          menuView
+            ? [
+                { id: "marks", label: "Add centre marks to this view", icon: "drawing", onSelect: () => markAll([menuView.id]) },
+                { id: "edit", label: "Change this view", icon: "settings", onSelect: () => startChange(menuView) },
+                { kind: "separator", id: "s" },
+                { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => remove(menuView) },
+              ]
+            : []
+        }
+      />
       {tool === "export" && onSave && (
         <ExportCard
           drawing={drawing}
@@ -628,6 +774,10 @@ export interface DrawingBarProps {
   projectedView?: boolean;
   /** Opens Export (#569). */
   onExport?: () => void;
+  /** Arms a mark tool (#563), the one that is armed, and Add centre marks. */
+  onMark?: (tool: MarkTool) => void;
+  mark?: MarkTool | null;
+  onAutoMarks?: () => void;
   onSettings: () => void;
   onFit: () => void;
   onFinish: () => void;
@@ -644,6 +794,8 @@ export function DrawingBar({
   onProjectedView,
   projectedView,
   onExport,
+  onMark,
+  mark,
   onSettings,
   onFit,
   onFinish,
@@ -678,6 +830,16 @@ export function DrawingBar({
         <Button icon="drawing" label="Projected view" title="Views from the sides of a view, lined up with it" on={!!projectedView} onClick={onProjectedView} />
       )}
       {!readOnly && <Button icon="settings" label="Sheet settings" title="Page size, standard and title block" onClick={onSettings} />}
+      {!readOnly && onMark && (
+        <Button
+          icon="drawing"
+          label="Centre mark"
+          title="A cross at the centre of a hole or round edge"
+          shortcut="C"
+          on={mark === "centre-mark"}
+          onClick={() => onMark("centre-mark")}
+        />
+      )}
       {onExport && <Button icon="download" label="Export" title="Save the sheet as a PDF, SVG, DXF or PNG, or print it" onClick={onExport} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
       <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
@@ -693,6 +855,9 @@ export function DrawingRibbon({
   onProjectedView,
   projectedView,
   onExport,
+  onMark,
+  mark,
+  onAutoMarks,
   onSettings,
   onFit,
   onFinish,
@@ -703,6 +868,29 @@ export function DrawingRibbon({
         <RibbonGroup label="Create" entries={[]}>
           <RibbonButton icon="drawing" colour="drawing" label="Base view" pressed={!!baseView} onPress={onBaseView} />
           <RibbonButton icon="drawing" colour="drawing" label="Projected view" short="Projected" pressed={!!projectedView} onPress={onProjectedView} />
+        </RibbonGroup>
+      )}
+      {!readOnly && onMark && (
+        <RibbonGroup label="Geometry" entries={[]}>
+          <RibbonButton icon="drawing" colour="point" label="Centre mark" shortcut="C" pressed={mark === "centre-mark"} onPress={() => onMark("centre-mark")} />
+          <RibbonButton
+            icon="drawing"
+            colour="sk-pattern"
+            label="Centre mark pattern"
+            short="Pattern"
+            pressed={mark === "centre-pattern"}
+            onPress={() => onMark("centre-pattern")}
+          />
+          <RibbonButton icon="drawing" colour="axis" label="Centre line" pressed={mark === "centre-line"} onPress={() => onMark("centre-line")} />
+          <RibbonButton
+            icon="drawing"
+            colour="sk-extend"
+            label="Edge extension"
+            short="Extension"
+            pressed={mark === "extension"}
+            onPress={() => onMark("extension")}
+          />
+          {onAutoMarks && <RibbonButton icon="drawing" colour="sk-auto" label="Add centre marks" short="Auto marks" onPress={onAutoMarks} />}
         </RibbonGroup>
       )}
       <RibbonGroup label="Sheet" entries={[]}>

@@ -1,13 +1,14 @@
 import { scaleLabel, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
 import { TAU, turn, type ModelView, type V2, type ViewCurve } from "@bettercad/kernel/view";
 import { TEXT, WEIGHT, type SheetLayout } from "../layout";
+import { CENTRE_DASH, markArt, markStyle, markView, targets } from "../marks";
 
 /**
  * A sheet as plain lines and text, for export (#569). Millimetres from the page's bottom left corner with y up, the
  * way PDF and DXF count, so each writer only has to spell the same shapes its own way. No DOM, no colours: an
  * export is black on white whatever the theme.
  */
-export type Layer = "visible" | "hidden" | "border" | "title";
+export type Layer = "visible" | "hidden" | "centre" | "border" | "title";
 
 export interface Stroke {
   layer: Layer;
@@ -164,6 +165,24 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
     // Hidden lines first, so the edges you see are drawn over them.
     for (const e of view.edges) if (!e.visible) strokes.push({ layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve: placed(e.curve, s, ox, oy) });
     for (const e of view.edges) if (e.visible) strokes.push({ layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) });
+    // Centre marks and centre lines (#563), thin, about the middle of the view.
+    const mine = sheet.marks.filter((m) => markView(m) === v.id);
+    if (mine.length) {
+      const all = targets(view);
+      const style = markStyle(sheet.standard);
+      for (const m of mine) {
+        const art = markArt(m, view, s, style, all);
+        if (!art) continue;
+        for (const [a, b] of art.lines) {
+          strokes.push({
+            layer: "centre",
+            width: WEIGHT.thin,
+            curve: { kind: "line", a: [v.at[0] + a[0], v.at[1] + a[1]], b: [v.at[0] + b[0], v.at[1] + b[1]] },
+          });
+        }
+        for (const c of art.curves) strokes.push({ layer: "centre", width: WEIGHT.thin, dash: CENTRE_DASH, curve: placed(c, 1, v.at[0], v.at[1]) });
+      }
+    }
     if (s !== sheet.scale) {
       // As on the sheet: under the view's box, which has 2 mm of room round the lines.
       const h = Math.max((max[1] - min[1]) * s, 20) + 4;

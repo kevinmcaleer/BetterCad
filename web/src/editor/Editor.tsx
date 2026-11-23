@@ -566,6 +566,9 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     projectedView: drawingTool === "projected",
     onProjectedView: () => setDrawingTool((t) => (t === "projected" ? null : "projected")),
     onExport: () => setDrawingTool("export"),
+    mark: drawingTool && drawingTool !== "base" && drawingTool !== "projected" && drawingTool !== "export" ? drawingTool : null,
+    onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
+    onAutoMarks: () => drawingApi.current?.autoMarks(),
     onSettings: () => setSheetCard("settings"),
     onFit: () => drawingApi.current?.fit(),
     onFinish: () => setDrawing(null),
@@ -2100,7 +2103,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit" | "base" | "projected" | "export") => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit" | "autoMarks" | DrawingTool) => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2197,15 +2200,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     drawing: (act) =>
-      act === "base" || act === "projected" || act === "export"
-        ? setDrawingTool(act)
+      act === "autoMarks"
+        ? drawingApi.current?.autoMarks()
         : act === "fit"
           ? drawingApi.current?.fit()
           : act === "finish"
             ? setDrawing(null)
             : act === "new"
               ? onDrawing("new")
-              : setSheetCard("settings"),
+              : act === "settings"
+                ? setSheetCard("settings")
+                : setDrawingTool(act),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -2896,6 +2901,52 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keys: ["p"],
         run: () => h().drawing("projected"),
         keywords: "orthographic top side isometric first third angle",
+      },
+      {
+        id: "drawing.centreMark",
+        scope: "drawing",
+        label: "Centre mark",
+        group: "Tools",
+        icon: "drawing",
+        keys: ["c"],
+        run: () => h().drawing("centre-mark"),
+        keywords: "center cross hole",
+      },
+      {
+        id: "drawing.centrePattern",
+        scope: "drawing",
+        label: "Centre mark pattern",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("centre-pattern"),
+        keywords: "center bolt pitch circle holes",
+      },
+      {
+        id: "drawing.centreLine",
+        scope: "drawing",
+        label: "Centre line",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("centre-line"),
+        keywords: "center axis midway",
+      },
+      {
+        id: "drawing.extension",
+        scope: "drawing",
+        label: "Edge extension",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("extension"),
+        keywords: "corner meet",
+      },
+      {
+        id: "drawing.autoMarks",
+        scope: "drawing",
+        label: "Add centre marks to this view",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("autoMarks"),
+        keywords: "center holes axes all",
       },
       {
         id: "drawing.export",

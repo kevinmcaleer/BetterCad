@@ -177,3 +177,50 @@
   stroke-width: 0.35px;
   stroke-dasharray: none;
 }
+
+/* Centre marks, centre lines and edge extensions (#563): thin lines, with a wider band to point at. */
+.bc-mark {
+  cursor: pointer;
+  outline: none;
+}
+.bc-mark-line {
+  fill: none;
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.25px;
+  pointer-events: none;
+}
+.bc-mark-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 2.5px;
+  pointer-events: stroke;
+}
+.bc-mark:hover > .bc-mark-line,
+.bc-mark:focus-visible > .bc-mark-line,
+.bc-mark-on > .bc-mark-line {
+  stroke: var(--bc-color-paper-pick);
+  stroke-width: 0.4px;
+}
+/* While a mark tool is armed: the holes and edges it can go on. */
+.bc-mark-pick {
+  fill: transparent;
+  stroke: transparent;
+  stroke-linecap: round;
+  cursor: crosshair;
+  outline: none;
+  pointer-events: all;
+}
+circle.bc-mark-pick {
+  stroke-width: 0.6px;
+}
+.bc-mark-pick:hover,
+.bc-mark-pick:focus-visible,
+.bc-mark-picked {
+  stroke: var(--bc-color-paper-pick);
+  stroke-opacity: 0.45;
+}
+circle.bc-mark-pick:hover,
+circle.bc-mark-pick:focus-visible,
+circle.bc-mark-picked {
+  stroke-opacity: 1;
+}

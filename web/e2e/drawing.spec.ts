@@ -12,6 +12,21 @@ async function newDrawing(page: Page, size: string) {
   await expect(page.getByRole("region", { name: "Drawing: Drawing 1" })).toBeVisible();
 }
 
+/** Where the page sat over half a second of frames, with the height its bar said it had: one entry once it has settled. */
+const sheetBoxes = (page: Page) =>
+  page.evaluate(async () => {
+    const paper = document.querySelector(".bc-sheet-paper")!;
+    const seen = new Set<string>();
+    for (let i = 0; i < 30; i++) {
+      await new Promise(requestAnimationFrame);
+      const b = paper.getBoundingClientRect();
+      seen.add(
+        [b.x, b.y, b.width, b.height].map((n) => n.toFixed(1)).join(" ") + " bar " + document.documentElement.style.getPropertyValue("--bc-drawing-bar"),
+      );
+    }
+    return [...seen];
+  });
+
 /** Drawings (#555): a sheet in place of the 3D view, with its title block, kept in the model. */
 test("make a drawing, fill in its title block, leave it and open it again", { tag: "@journey" }, async ({ page }) => {
   await page.goto("/");
@@ -281,6 +296,50 @@ test("export a drawing as PDF, SVG, DXF and PNG", { tag: "@journey" }, async ({ 
   expect(png.bytes.length).toBeGreaterThan(20_000);
 });
 
+/** Centre marks (#563): a click on a hole, or every hole in a view in one step; a mark is deleted like a view. */
+test("mark the centre of a hole, delete the mark, and mark every hole in a view", { tag: "@journey" }, async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A4");
+  await page.keyboard.press("b");
+  const base = page.getByRole("dialog", { name: "Base view" });
+  await expect(base.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await base.getByLabel("Direction").selectOption({ label: "Top" });
+  await expect(base.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await base.getByRole("button", { name: "Place" }).click();
+  const top = page.getByRole("button", { name: /^Top view, / });
+  await expect(top.locator(".bc-view-visible")).toHaveAttribute("d", /A/, { timeout: 30_000 });
+
+  // C arms Centre mark: the hole is offered once, and a click puts the cross on it.
+  await page.keyboard.press("c");
+  const card = page.getByRole("dialog", { name: "Centre mark" });
+  await expect(card.getByRole("status")).toHaveText(/Click a hole or a round edge/);
+  const hole = page.getByRole("button", { name: "Hole, 4.5 mm across" });
+  await expect(hole).toHaveCount(1);
+  await hole.click();
+  const mark = page.getByRole("button", { name: "Centre mark", exact: true }).and(page.locator(".bc-mark"));
+  await expect(mark).toHaveCount(1);
+  await card.getByRole("button", { name: "Finish" }).click();
+  await expect(card).toHaveCount(0);
+  await expect(hole).toHaveCount(0);
+
+  // Delete takes the mark away; the view stays.
+  await mark.focus();
+  await page.keyboard.press("Delete");
+  await expect(mark).toHaveCount(0);
+  await expect(top).toBeVisible();
+
+  // The view's menu marks everything in it, and says when there is nothing left.
+  await top.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Add centre marks to this view" }).click();
+  await expect(mark).toHaveCount(1);
+  await top.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Add centre marks to this view" }).click();
+  await expect(page.getByText("There are no holes or round features left to mark here.")).toBeVisible();
+  await expect(mark).toHaveCount(1);
+});
+
 test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
@@ -294,8 +353,35 @@ test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Front view, / }).locator(".bc-view-hidden")).toHaveAttribute("d", /M/, { timeout: 30_000 });
   // Nothing selected, so the picture is the sheet as it prints.
   await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   // Just the page, which the cards keep clear of at this size, with the date (today's) covered.
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-front.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+  });
+});
+
+test("a top view of the bracket with its hole marked @visual", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A4");
+  await page.keyboard.press("b");
+  const card = page.getByRole("dialog", { name: "Base view" });
+  await expect(card.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await card.getByLabel("Direction").selectOption({ label: "Top" });
+  await expect(card.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await card.getByRole("button", { name: "Place" }).click();
+  const top = page.getByRole("button", { name: /^Top view, / });
+  await expect(top.locator(".bc-view-visible")).toHaveAttribute("d", /A/, { timeout: 30_000 });
+  await top.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Add centre marks to this view" }).click();
+  // The hole seen end on gets a centre mark, and the one through the upright, seen from the side, its centre line.
+  await expect(page.locator(".bc-mark")).toHaveCount(2);
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-marked.png", {
     maxDiffPixelRatio: 0.01,
     mask: [page.getByRole("button", { name: /^Date of issue/ })],
   });
