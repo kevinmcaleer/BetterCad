@@ -416,6 +416,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const renderCam = useRef<CameraState | null>(null);
   // The drawing whose sheet covers the view (#559), and its set-up card: for a new drawing, or the open one's sheet.
   const [drawing, setDrawing] = useState<string | null>(null);
+  /** How many marks, dimensions and views on the open drawing have lost what they show (#568). */
+  const [drawingProblems, setDrawingProblems] = useState(0);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
@@ -4410,7 +4412,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               construct={browserConstruct}
               decals={browserDecals}
               canvases={{ list: doc.canvases?.map((c) => ({ id: c.id, name: c.name, hidden: c.hidden })), on: onCanvas }}
-              drawings={{ list: doc.drawings?.map((d) => ({ id: d.id, name: d.name })), open: drawing, on: onDrawing }}
+              drawings={{
+                list: doc.drawings?.map((d) => ({ id: d.id, name: d.name, ...(d.id === drawing && drawingProblems ? { problems: drawingProblems } : {}) })),
+                open: drawing,
+                on: onDrawing,
+              }}
               onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
@@ -4762,6 +4768,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   onTool={setDrawingTool}
                   onSave={(f) => files.store.saveFiles([f]).then((saved) => saved?.names[0])}
                   say={say}
+                  onProblems={setDrawingProblems}
                   onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label)))}
                   components={built.components}
                   bodies={parts}

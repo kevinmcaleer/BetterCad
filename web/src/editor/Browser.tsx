@@ -98,7 +98,7 @@ export interface BrowserModel {
   /** Canvases (#248): pictures on planes to trace over, under Canvases. */
   canvases?: { id: string; name: string; hidden?: boolean }[];
   /** Drawings (#555), under Drawings; `drawing` is the one whose sheet is open. */
-  drawings?: { id: string; name: string }[];
+  drawings?: { id: string; name: string; problems?: number }[];
   drawing?: string | null;
 }
 
@@ -254,7 +254,8 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         drag: false,
         rename: !m.readOnly,
         toggles: [],
-        note: x.id === m.drawing ? "Open" : undefined,
+        note: x.id === m.drawing ? (x.problems ? `Open, ${x.problems} ${x.problems === 1 ? "problem" : "problems"}` : "Open") : undefined,
+        ...(x.problems ? { warning: "Something on this drawing lost what it was fixed to. Right-click its warning to pick again or delete it." } : {}),
       });
   }
   // Then the model's own folders and components, and each component's, inside out (#171).

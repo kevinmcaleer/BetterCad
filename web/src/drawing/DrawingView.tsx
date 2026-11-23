@@ -34,6 +34,8 @@ import { DimensionCard } from "./DimensionCard";
 import { DimensionLayer } from "./DimensionLayer";
 import { addPick, dimStyle, draftOf, isIso, pickKey, type DimPick, type Pending } from "./dimensions";
 import { ExportCard, type DrawingFile } from "./ExportCard";
+import { follow, lostName, problemCount, problems, stamp, type Problem } from "./follow";
+import { LostLayer, Warning } from "./LostLayer";
 import { sheetLayout, sizeName, TEXT } from "./layout";
 import { MarkCard } from "./MarkCard";
 import { isMarkTool, MarkLayer, type MarkTool } from "./MarkLayer";
@@ -137,6 +139,8 @@ export interface DrawingPaperProps {
   onTool?: (tool: DrawingTool | null) => void;
   /** A change to the sheet: a view placed, moved, edited or deleted. */
   onSheet?: (change: (s: DrawingSheet) => DrawingSheet, label: string) => void;
+  /** How many things on the sheet have lost what they were fixed to (#568), as that changes. */
+  onProblems?: (count: number) => void;
   /** What a view can show besides the whole model. */
   components?: ShowOption[];
   bodies?: ShowOption[];
@@ -162,7 +166,8 @@ export function DrawingPaper({
   call,
   tool = null,
   onTool,
-  onSheet,
+  onSheet: write,
+  onProblems,
   components = [],
   bodies = [],
   onSave,
@@ -273,6 +278,49 @@ export function DrawingPaper({
     return list;
   }, [sheet.views, placing, choice, parent, ghostDirection]);
   const got = useModelViews(wanted, doc ?? EMPTY_DOC, upTo, doc ? call : undefined);
+  // The drawing follows the model (#568). What is drawn is the sheet with its rows stacked again where the model
+  // changed sizes; your next change writes that down with it, so undo takes both back together.
+  const pictureOf = useCallback((id: string) => got.get(id)?.view, [got]);
+  const followed = useMemo(() => follow(sheet, pictureOf, drawing.decimals), [sheet, pictureOf, drawing.decimals]);
+  const onSheet = write
+    ? (change: (s: DrawingSheet) => DrawingSheet, label: string) =>
+        write((s) => stamp(change(follow(s, pictureOf, drawing.decimals)), pictureOf, drawing.decimals), label)
+    : undefined;
+  const wrong = useMemo(
+    () => problems(followed, pictureOf, drawing.decimals, (id) => !!got.get(id)?.error && !got.get(id)?.busy),
+    [followed, pictureOf, drawing.decimals, got],
+  );
+  const wrongCount = wrong.length;
+  useEffect(() => {
+    onProblems?.(wrongCount);
+    if (wrongCount) say?.(`${problemCount(wrongCount)} on this sheet. Right-click a warning to pick again or delete it.`);
+    // Said when the count changes, not each time the sheet is drawn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wrongCount]);
+  useEffect(() => () => onProblems?.(0), []); // eslint-disable-line react-hooks/exhaustive-deps
+  /** The lost thing Pick again is replacing: it goes when its replacement is placed. */
+  const [replacing, setReplacing] = useState<Problem | null>(null);
+  const [lostMenu, setLostMenu] = useState<{ at: ContextMenuState; problem: Problem } | null>(null);
+  useEffect(() => {
+    if (!tool) setReplacing(null);
+  }, [tool]);
+  const removeLost = (p: Problem) =>
+    onSheet?.(
+      (s) => (p.kind === "dimension" ? { ...s, dimensions: s.dimensions.filter((d) => d.id !== p.id) } : { ...s, marks: s.marks.filter((m) => m.id !== p.id) }),
+      p.kind === "dimension" ? "Delete dimension" : "Delete mark",
+    );
+  const pickAgain = (p: Problem) => {
+    const mark = p.kind === "mark" ? sheet.marks.find((m) => m.id === p.id) : undefined;
+    setReplacing(p);
+    onTool?.(mark ? mark.kind : "dimension");
+  };
+  /** The sheet without what is being replaced, once its replacement is in. */
+  const swapped = (s: DrawingSheet, gone: Problem | null): DrawingSheet =>
+    !gone
+      ? s
+      : gone.kind === "dimension"
+        ? { ...s, dimensions: s.dimensions.filter((d) => d.id !== gone.id) }
+        : { ...s, marks: s.marks.filter((m) => m.id !== gone.id) };
   const ghost = placing || parent ? got.get(GHOST) : undefined;
   const changed = changing ? sheet.views.find((v) => v.id === changing) : undefined;
   /** The picture Fit measures: the ghost while placing, the view itself while changing it. */
@@ -362,11 +410,14 @@ export function DrawingPaper({
     if (markTool) setChanging(null);
   }, [markTool]);
   const style = useMemo(() => markStyle(sheet.standard), [sheet.standard]);
-  const addMark = (mark: DrawingMark) =>
+  const addMark = (mark: DrawingMark) => {
+    const gone = replacing;
     onSheet?.(
-      (s) => (s.marks.some((m) => markKey(m) === markKey(mark) && markView(m) === markView(mark)) ? s : { ...s, marks: [...s.marks, mark] }),
+      (s) => (s.marks.some((m) => markKey(m) === markKey(mark) && markView(m) === markView(mark)) ? s : swapped({ ...s, marks: [...s.marks, mark] }, gone)),
       MARK_NAMES[mark.kind],
     );
+    setReplacing(null);
+  };
   /** The centres of a pattern's picked holes, to see whether a pitch circle fits them. */
   const pickedCentres = (viewId: string, refs: DrawingRef[]): V2[] => {
     const model = got.get(viewId)?.view;
@@ -454,7 +505,9 @@ export function DrawingPaper({
     const d = sizeAt(at);
     if (!d) return;
     const id = newId("dm");
-    onSheet?.((s) => ({ ...s, dimensions: [...s.dimensions, { ...d, id }] }), "Dimension");
+    const gone = replacing;
+    onSheet?.((s) => swapped({ ...s, dimensions: [...s.dimensions, { ...d, id }] }, gone), "Dimension");
+    setReplacing(null);
     setPending(null);
   };
   const pickDim = (viewId: string, p: DimPick) => {
@@ -514,7 +567,7 @@ export function DrawingPaper({
     return { shown, counts };
   }, [autoing, sheet, got, drawing.decimals, autoOptions]);
   /** The sheet as drawn: with Auto dimension's sizes while its card is up. */
-  const live = autoRuns?.shown.sheet ?? sheet;
+  const live = autoRuns?.shown.sheet ?? followed;
   const keepAuto = () => {
     const viewOf = (id: string) => got.get(id)?.view;
     const count = autoRuns?.shown.count ?? 0;
@@ -522,6 +575,14 @@ export function DrawingPaper({
     say?.(count ? `Added ${count} ${count === 1 ? "size" : "sizes"}.` : "There was nothing to dimension.");
     if (autoRuns) setCrowd(crowded(autoRuns.shown.sheet, viewOf, drawing.decimals)[0] ?? null);
     onTool?.(null);
+  };
+  /** Auto dimension again with what it was last set to: its own sizes are replaced, yours stay. */
+  const runAgain = () => {
+    const o = sheet.auto;
+    if (!o) return;
+    const count = autoDimension(followed, pictureOf, drawing.decimals, o, (kind) => `x-${kind}`).count;
+    onSheet?.((s) => autoDimension(s, pictureOf, drawing.decimals, o, (kind) => newId(kind)).sheet, "Auto dimension");
+    say?.(count ? `Auto dimension ran again: ${count} ${count === 1 ? "size" : "sizes"}.` : "There was nothing to dimension.");
   };
   const crowdNames = crowd ? [sheet.views.find((v) => v.id === crowd.view), sheet.views.find((v) => v.id === crowd.into)] : [];
   /** A view's right-click menu. */
@@ -689,7 +750,9 @@ export function DrawingPaper({
               const scale = viewScale(sheet, v);
               const art = g?.view ? artOf(g.view, scale) : undefined;
               const [x, y] = toPage(v.at, ph);
-              const state = g?.error ? ", could not be drawn" : !art ? ", being worked out" : "";
+              const gone = wrong.some((p) => p.kind === "view" && p.id === v.id);
+              const state = g?.error ? ", could not be drawn" : !art ? ", being worked out" : gone ? ", nothing to show" : "";
+              const lost = wrong.filter((p) => p.kind !== "view" && p.view === v.id).map((problem) => ({ problem, name: lostName(problem, sheet) }));
               // A view with no picture yet still has something to point at.
               const w = Math.max(art?.w ?? 0, 20) + 4;
               const h = Math.max(art?.h ?? 0, 20) + 4;
@@ -758,6 +821,21 @@ export function DrawingPaper({
                       onMove={readOnly || autoing ? undefined : (id, at) => changeDim(id, { at }, "Move dimension")}
                       onDelete={readOnly || autoing ? undefined : removeDim}
                       onMenu={readOnly || autoing ? undefined : (id, x, y) => setDimMenu({ at: { x, y }, id })}
+                    />
+                  )}
+                  {gone && (
+                    <g className="bc-view-lost">
+                      <Warning />
+                      <text y={7.5} fontSize={TEXT.label}>
+                        {g?.error ? "Could not be drawn" : "Nothing to show"}
+                      </text>
+                    </g>
+                  )}
+                  {lost.length > 0 && (
+                    <LostLayer
+                      lost={lost}
+                      onMenu={readOnly || autoing ? undefined : (problem, x, y) => setLostMenu({ at: { x, y }, problem })}
+                      onDelete={readOnly || autoing ? undefined : removeLost}
                     />
                   )}
                   {scale !== sheet.scale && (
@@ -857,6 +935,21 @@ export function DrawingPaper({
         }
       />
       <ContextMenu
+        at={lostMenu?.at ?? null}
+        onClose={() => setLostMenu(null)}
+        label="Warning actions"
+        title={lostMenu ? lostName(lostMenu.problem, sheet) : undefined}
+        entries={
+          lostMenu
+            ? [
+                { id: "again", label: "Pick again", icon: "dimension", onSelect: () => pickAgain(lostMenu.problem) },
+                { kind: "separator", id: "s" },
+                { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => removeLost(lostMenu.problem) },
+              ]
+            : []
+        }
+      />
+      <ContextMenu
         at={menuView ? menu!.at : null}
         onClose={() => setMenu(null)}
         label="View actions"
@@ -866,6 +959,7 @@ export function DrawingPaper({
             ? [
                 { id: "marks", label: "Add centre marks to this view", icon: "drawing", onSelect: () => markAll([menuView.id]) },
                 { id: "arrange", label: "Arrange dimensions", icon: "dimension", onSelect: () => arrangeViews([menuView.id]) },
+                ...(sheet.auto ? [{ id: "again", label: "Run Auto dimension again", icon: "dimension" as const, onSelect: runAgain }] : []),
                 { id: "edit", label: "Change this view", icon: "settings", onSelect: () => startChange(menuView) },
                 { kind: "separator", id: "s" },
                 { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => remove(menuView) },
@@ -876,7 +970,7 @@ export function DrawingPaper({
       {tool === "export" && onSave && (
         <ExportCard
           drawing={drawing}
-          sheet={sheet}
+          sheet={followed}
           layout={layout}
           viewOf={(id) => got.get(id)?.view}
           onSave={onSave}

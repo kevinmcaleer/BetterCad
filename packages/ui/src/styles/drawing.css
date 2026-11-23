@@ -351,3 +351,36 @@ circle.bc-size-point.bc-size-picked {
   font-size: 11px;
   color: var(--bc-color-muted);
 }
+
+/* Something lost what it was fixed to (#568): a warning triangle where it was, outlined in ink so it reads on paper. */
+.bc-lost {
+  cursor: pointer;
+  outline: none;
+}
+.bc-lost-hit {
+  fill: transparent;
+}
+.bc-lost-sign {
+  fill: var(--bc-color-warn-soft);
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.35px;
+  stroke-linejoin: round;
+}
+.bc-lost-mark {
+  fill: none;
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.7px;
+  stroke-linecap: round;
+}
+.bc-lost:hover > .bc-lost-sign,
+.bc-lost:focus-visible > .bc-lost-sign {
+  stroke: var(--bc-color-paper-pick);
+  stroke-width: 0.6px;
+}
+.bc-view-lost {
+  pointer-events: none;
+}
+.bc-view-lost > text {
+  fill: var(--bc-color-paper-ink);
+  text-anchor: middle;
+}

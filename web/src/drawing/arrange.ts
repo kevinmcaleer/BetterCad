@@ -187,6 +187,16 @@ export function arrangeSheet(
   return changed ? { ...sheet, dimensions } : sheet;
 }
 
+/** Which way a size's rows step out from the view: 1 for a level size (up and down), 0 for an upright one. */
+export function rowAxis(dim: Pick<DrawingDimension, "refs" | "across">, ctx: DimContext): 0 | 1 | undefined {
+  const m = measured(dim.refs, ctx.all ?? targets(ctx.view));
+  if (!m || m.kind !== "linear") return undefined;
+  const way = !m.free || ctx.iso ? "aligned" : (dim.across ?? "aligned");
+  if (way === "x" || (way === "aligned" && Math.abs(m.p[1] - m.q[1]) < EPS)) return 1;
+  if (way === "y" || (way === "aligned" && Math.abs(m.p[0] - m.q[0]) < EPS)) return 0;
+  return undefined;
+}
+
 /** How near a row a dragged size has to be to drop into it, mm. */
 const SNAP = 2;
 
@@ -195,14 +205,10 @@ const SNAP = 2;
  * and over the view, an upright one across to the rows beside it. Anything else goes where it is put.
  */
 export function snapRow(dim: Pick<DrawingDimension, "refs" | "across">, at: V2, ctx: DimContext, rows: Rows): V2 {
-  const m = measured(dim.refs, ctx.all ?? targets(ctx.view));
-  if (!m || m.kind !== "linear") return at;
+  const j = rowAxis(dim, ctx);
+  if (j === undefined) return at;
+  const level = j === 1;
   const { min, max } = ctx.view.box;
-  const way = !m.free || ctx.iso ? "aligned" : (dim.across ?? "aligned");
-  const level = way === "x" || (way === "aligned" && Math.abs(m.p[1] - m.q[1]) < EPS);
-  const upright = way === "y" || (way === "aligned" && Math.abs(m.p[0] - m.q[0]) < EPS);
-  if (!level && !upright) return at;
-  const j = level ? 1 : 0;
   const edge = ((max[j]! - min[j]!) * ctx.scale) / 2;
   const out = Math.abs(at[j]!) - edge - rows.first;
   const k = Math.max(0, Math.round(out / rows.next));

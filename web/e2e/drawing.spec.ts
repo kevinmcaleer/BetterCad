@@ -626,3 +626,45 @@ test("auto dimension a view, turn the slider up and keep the sizes @journey @vis
     timeout: 30_000,
   });
 });
+
+test("change the model and the drawing's sizes follow it @journey", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await topViewOnA3(page);
+  await page
+    .getByRole("button", { name: /^Auto dimension/ })
+    .first()
+    .click();
+  const card = page.getByRole("dialog", { name: "Auto dimension" });
+  await card.getByRole("slider", { name: "How many sizes" }).focus();
+  await page.keyboard.press("End");
+  await card.getByRole("button", { name: "OK" }).click();
+  await expect(page.getByRole("button", { name: "Dimension, 40 mm" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dimension, Ø4.5 mm" })).toBeVisible();
+  const count = await page.locator(".bc-size").count();
+  const top = page.getByRole("button", { name: /^Top view, / });
+  const under = async (name: string) => {
+    const view = (await top.locator(".bc-view-visible").boundingBox())!;
+    const text = (await page.getByRole("button", { name }).locator("text").boundingBox())!;
+    return text.y - (view.y + view.height);
+  };
+  const gap = await under("Dimension, 40 mm");
+  expect(gap).toBeGreaterThan(0);
+
+  // A longer leg and a bigger hole, from Parameters.
+  await page.getByRole("banner").getByRole("button", { name: "Parameters", exact: true }).click();
+  const leg = page.getByRole("textbox", { name: "Expression for leg" });
+  await leg.fill("60");
+  await page.keyboard.press("Enter");
+  const hole = page.getByRole("textbox", { name: "Expression for hole" });
+  await hole.fill("6");
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Value of hole")).toHaveText("6 mm");
+
+  // The same sizes read the new model, nothing is lost, and the length is still its row's distance under the view.
+  await expect(page.getByRole("button", { name: "Dimension, 60 mm" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Dimension, Ø6 mm" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dimension, 40 mm" })).toHaveCount(0);
+  await expect(page.locator(".bc-size")).toHaveCount(count);
+  await expect(page.locator(".bc-lost")).toHaveCount(0);
+  await expect.poll(async () => Math.abs((await under("Dimension, 60 mm")) - gap)).toBeLessThan(2);
+});

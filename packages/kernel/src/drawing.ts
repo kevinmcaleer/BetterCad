@@ -60,6 +60,11 @@ export interface DrawingView {
   tangent: boolean;
   /** Where the middle of the view's box sits on the sheet. */
   at: V2;
+  /**
+   * The view as its marks and dimensions were last laid out (#568): its size on paper and what each dimension read.
+   * When the model changes these, the rows are stacked again.
+   */
+  laid?: { w: number; h: number; sizes: string };
 }
 
 /**
@@ -75,15 +80,18 @@ export interface DrawingRef {
   at?: "start" | "end" | "middle" | "centre";
 }
 
-export type DrawingMark =
-  /** A cross at the centre of a circle or arc. */
-  | { id: string; kind: "centre-mark"; on: DrawingRef }
-  /** Centre marks on a set of holes, with the pitch circle or the lines that join them. */
+export type DrawingMark = (
+  | /** A cross at the centre of a circle or arc. */ { id: string; kind: "centre-mark"; on: DrawingRef }
+    /** Centre marks on a set of holes, with the pitch circle or the lines that join them. */
   | { id: string; kind: "centre-pattern"; on: DrawingRef[]; join: "circle" | "lines" }
   /** The line midway between two edges, or the axis of one round face seen from the side. */
   | { id: string; kind: "centre-line"; a: DrawingRef; b?: DrawingRef }
   /** Two edges carried on to where they would meet. */
-  | { id: string; kind: "extension"; a: DrawingRef; b: DrawingRef };
+  | { id: string; kind: "extension"; a: DrawingRef; b: DrawingRef }
+) & {
+  /** Where it was last drawn, from the middle of its view in paper mm: where its warning goes when it is lost (#568). */
+  was?: V2;
+};
 
 export interface DrawingDimension {
   id: string;
