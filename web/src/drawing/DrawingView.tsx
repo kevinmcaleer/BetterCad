@@ -14,6 +14,7 @@ import { removeView, scaleLabel, viewScale, type Drawing, type DrawingSheet, typ
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newId, type ModelDoc } from "../state/document";
 import { BaseViewCard, type ShowOption } from "./BaseViewCard";
+import { ExportCard, type DrawingFile } from "./ExportCard";
 import { sheetLayout, sizeName, TEXT } from "./layout";
 import { descendants, inheritedScale, placeProjected, projectedDirection, sideAt, spotAt, spotBeside, type Side } from "./projected";
 import { ProjectedViewCard } from "./ProjectedViewCard";
@@ -38,6 +39,7 @@ import {
 export { SheetCard, type SheetChoice } from "./SheetCard";
 export type { ViewCall } from "./useModelViews";
 export type { ShowOption } from "./BaseViewCard";
+export type { DrawingFile } from "./ExportCard";
 export { drawingChange, makeDrawing, sheetChange, sheetEdit, titleChange } from "./ops";
 
 /** Where the sheet sits in the view: screen pixels per paper millimetre, and the page's top left corner. */
@@ -62,6 +64,18 @@ const GHOST = "ghost";
 /** How far an arrow key moves a selected view, mm; ten times that with Shift. */
 const NUDGE = 1;
 
+/**
+ * The drawing's bar wraps onto more rows on a narrow window, so it says how tall it is: the sheet is fitted above it,
+ * and fitted again when that changes.
+ */
+const barWatchers = new Set<() => void>();
+function barHeight(px: number | null) {
+  const style = document.documentElement.style;
+  if (px === null) style.removeProperty("--bc-drawing-bar");
+  else style.setProperty("--bc-drawing-bar", `${Math.ceil(px)}px`);
+  for (const f of barWatchers) f();
+}
+
 /** A view's lines at a scale, worked out once per picture. */
 const arts = new WeakMap<ModelView, Map<number, ViewArt>>();
 function artOf(view: ModelView, scale: number): ViewArt {
@@ -72,8 +86,8 @@ function artOf(view: ModelView, scale: number): ViewArt {
   return art;
 }
 
-/** The drawing tool that is armed: placing a base view (#561), or views projected from one (#562). */
-export type DrawingTool = "base" | "projected";
+/** The drawing tool that is armed: placing a base view (#561) or views projected from one (#562), or Export (#569). */
+export type DrawingTool = "base" | "projected" | "export";
 
 export interface DrawingApi {
   fit(): void;
@@ -99,6 +113,9 @@ export interface DrawingPaperProps {
   /** What a view can show besides the whole model. */
   components?: ShowOption[];
   bodies?: ShowOption[];
+  /** Saves an exported file (#569), and says how it went. */
+  onSave?: (file: DrawingFile) => Promise<string | undefined>;
+  say?: (text: string, bad?: boolean) => void;
 }
 
 /**
@@ -119,6 +136,8 @@ export function DrawingPaper({
   onSheet,
   components = [],
   bodies = [],
+  onSave,
+  say,
 }: DrawingPaperProps) {
   const sheet = drawing.sheets[0]!;
   const layout = useMemo(() => sheetLayout(sheet, { index: 1, count: drawing.sheets.length }), [sheet, drawing.sheets.length]);
@@ -153,6 +172,11 @@ export function DrawingPaper({
     const ro = new ResizeObserver(() => !loose.current && fit());
     ro.observe(root.current);
     return () => ro.disconnect();
+  }, [fit]);
+  useEffect(() => {
+    const refit = () => !loose.current && fit();
+    barWatchers.add(refit);
+    return () => void barWatchers.delete(refit);
   }, [fit]);
 
   const zoomAt = useCallback((px: number, py: number, by: number) => {
@@ -510,6 +534,17 @@ export function DrawingPaper({
           onFinish={() => onTool?.(null)}
         />
       )}
+      {tool === "export" && onSave && (
+        <ExportCard
+          drawing={drawing}
+          sheet={sheet}
+          layout={layout}
+          viewOf={(id) => got.get(id)?.view}
+          onSave={onSave}
+          say={say ?? (() => {})}
+          onClose={() => onTool?.(null)}
+        />
+      )}
       {asking && (
         <Dialog
           open
@@ -591,20 +626,59 @@ export interface DrawingBarProps {
   /** Arms Projected view (#562), and whether it is armed. */
   onProjectedView?: () => void;
   projectedView?: boolean;
+  /** Opens Export (#569). */
+  onExport?: () => void;
   onSettings: () => void;
   onFit: () => void;
   onFinish: () => void;
+  /** The Drawing tab is showing (desktop), with the tools on it: the bar keeps only what is handy under the sheet. */
+  ribbon?: boolean;
 }
 
 /** The strip over the sheet while a drawing is open: its name, Sheet settings, Fit sheet and Finish drawing. */
-export function DrawingBar({ name, readOnly, onBaseView, baseView, onProjectedView, projectedView, onSettings, onFit, onFinish }: DrawingBarProps) {
+export function DrawingBar({
+  name,
+  readOnly,
+  onBaseView,
+  baseView,
+  onProjectedView,
+  projectedView,
+  onExport,
+  onSettings,
+  onFit,
+  onFinish,
+  ribbon,
+}: DrawingBarProps) {
+  const row = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const bar = row.current?.closest<HTMLElement>(".bc-armed");
+    if (!bar) return;
+    barHeight(bar.getBoundingClientRect().height);
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => barHeight(bar.getBoundingClientRect().height));
+    ro?.observe(bar);
+    return () => {
+      ro?.disconnect();
+      barHeight(null);
+    };
+  }, []);
+  if (ribbon) {
+    return (
+      <ArmedBar title={name} icon="drawing">
+        <span ref={row} hidden />
+        <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
+        <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
+      </ArmedBar>
+    );
+  }
   return (
     <ArmedBar title={name} icon="drawing">
+      <span ref={row} hidden />
       {!readOnly && onBaseView && <Button icon="drawing" label="Base view" title="Put a view of the model on the sheet" on={!!baseView} onClick={onBaseView} />}
       {!readOnly && onProjectedView && (
         <Button icon="drawing" label="Projected view" title="Views from the sides of a view, lined up with it" on={!!projectedView} onClick={onProjectedView} />
       )}
       {!readOnly && <Button icon="settings" label="Sheet settings" title="Page size, standard and title block" onClick={onSettings} />}
+      {onExport && <Button icon="download" label="Export" title="Save the sheet as a PDF, SVG, DXF or PNG, or print it" onClick={onExport} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
       <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
     </ArmedBar>
@@ -612,7 +686,17 @@ export function DrawingBar({ name, readOnly, onBaseView, baseView, onProjectedVi
 }
 
 /** The ribbon's Drawing tab (desktop), in Fusion's order: Create, then the sheet, then Finish drawing. */
-export function DrawingRibbon({ readOnly, onBaseView, baseView, onProjectedView, projectedView, onSettings, onFit, onFinish }: Omit<DrawingBarProps, "name">) {
+export function DrawingRibbon({
+  readOnly,
+  onBaseView,
+  baseView,
+  onProjectedView,
+  projectedView,
+  onExport,
+  onSettings,
+  onFit,
+  onFinish,
+}: Omit<DrawingBarProps, "name">) {
   return (
     <>
       {!readOnly && (
@@ -625,6 +709,11 @@ export function DrawingRibbon({ readOnly, onBaseView, baseView, onProjectedView,
         {!readOnly && <RibbonButton icon="settings" colour="sliders" label="Sheet settings" short="Settings" onPress={onSettings} />}
         <RibbonButton icon="frame" colour={false} label="Fit sheet" short="Fit" shortcut="F" onPress={onFit} />
       </RibbonGroup>
+      {onExport && (
+        <RibbonGroup label="Output" entries={[]}>
+          <RibbonButton icon="download" colour="printer" label="Export" onPress={onExport} />
+        </RibbonGroup>
+      )}
       <RibbonGroup label="Finish" entries={[]}>
         <RibbonButton icon="finish" colour={false} label="Finish drawing" short="Finish" shortcut="Esc" done onPress={onFinish} />
       </RibbonGroup>

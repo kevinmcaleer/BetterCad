@@ -11,6 +11,7 @@ import { ellipseGeo, sampleEllipse, SketchIndex, type Id, type Sketch, type Vec2
 import { angleOf, sampleArc, sub, sweep } from "./geom2d";
 import { profiles, type Loop } from "./profiles";
 import { sampleSpline, splineGeo } from "./spline";
+import { DxfWriter as Writer, dxfFile } from "./dxfWriter";
 
 export interface SketchDxf {
   /** The DXF file's text. */
@@ -28,21 +29,6 @@ type Vertex = { p: Vec2; bulge: number };
 
 const TOL = 1e-6;
 const same = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-4;
-const num = (n: number) => {
-  const r = Math.round(n * 1e6) / 1e6;
-  return Object.is(r, -0) ? "0" : String(r);
-};
-
-class Writer {
-  private out: string[] = [];
-  pair(code: number, value: string | number): void {
-    this.out.push(String(code).padStart(3), typeof value === "number" ? num(value) : value);
-  }
-  text(): string {
-    return this.out.length ? `${this.out.join("\r\n")}\r\n` : "";
-  }
-}
-
 /**
  * A loop as exact lines and arcs, when it is made only of whole lines and arcs that meet end to end; null when it has
  * an ellipse, a spline, text or a cut piece, which go as traced points instead.
@@ -199,66 +185,14 @@ export function sketchDxf(sketch: Sketch): SketchDxf {
   }
 
   if (!(box.min[0] <= box.max[0])) box.min = box.max = [0, 0];
-  const w = new Writer();
-  w.pair(0, "SECTION");
-  w.pair(2, "HEADER");
-  w.pair(9, "$ACADVER");
-  w.pair(1, "AC1009");
-  // 4: millimetres. $MEASUREMENT 1: metric.
-  w.pair(9, "$INSUNITS");
-  w.pair(70, 4);
-  w.pair(9, "$MEASUREMENT");
-  w.pair(70, 1);
-  w.pair(9, "$EXTMIN");
-  w.pair(10, box.min[0]);
-  w.pair(20, box.min[1]);
-  w.pair(30, 0);
-  w.pair(9, "$EXTMAX");
-  w.pair(10, box.max[0]);
-  w.pair(20, box.max[1]);
-  w.pair(30, 0);
-  w.pair(0, "ENDSEC");
-
-  w.pair(0, "SECTION");
-  w.pair(2, "TABLES");
-  w.pair(0, "TABLE");
-  w.pair(2, "LTYPE");
-  w.pair(70, 1);
-  w.pair(0, "LTYPE");
-  w.pair(2, "CONTINUOUS");
-  w.pair(70, 0);
-  w.pair(3, "Solid line");
-  w.pair(72, 65);
-  w.pair(73, 0);
-  w.pair(40, 0);
-  w.pair(0, "ENDTAB");
-  w.pair(0, "TABLE");
-  w.pair(2, "LAYER");
-  w.pair(70, 3);
-  for (const [name, colour] of [
-    ["0", 7],
-    ["OUTLINE", 7],
-    ["OPEN", 1],
-  ] as const) {
-    w.pair(0, "LAYER");
-    w.pair(2, name);
-    w.pair(70, 0);
-    w.pair(62, colour);
-    w.pair(6, "CONTINUOUS");
-  }
-  w.pair(0, "ENDTAB");
-  w.pair(0, "ENDSEC");
-
-  w.pair(0, "SECTION");
-  w.pair(2, "ENTITIES");
-  const body = ents.text();
-  const tail = new Writer();
-  tail.pair(0, "ENDSEC");
-  tail.pair(0, "EOF");
+  const text = dxfFile(ents, box, [
+    { name: "OUTLINE", colour: 7 },
+    { name: "OPEN", colour: 1 },
+  ]);
   const note = !open
     ? ""
     : open === 1
       ? ". 1 curve doesn't close a shape, so a cutter treats it as a line."
       : `. ${open} curves don't close a shape, so a cutter treats them as lines.`;
-  return { text: w.text() + body + tail.text(), shapes, open, note };
+  return { text, shapes, open, note };
 }

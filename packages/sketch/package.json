@@ -10,6 +10,7 @@
     "./solver": "./src/solver.ts",
     "./edits": "./src/edits.ts",
     "./dxf": "./src/dxf.ts",
+    "./dxfWriter": "./src/dxfWriter.ts",
     "./dedupe": "./src/dedupe.ts",
     "./auto": "./src/auto.ts",
     "./pattern": "./src/pattern.ts",

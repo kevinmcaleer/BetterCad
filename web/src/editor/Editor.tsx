@@ -565,6 +565,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     onBaseView: () => setDrawingTool((t) => (t === "base" ? null : "base")),
     projectedView: drawingTool === "projected",
     onProjectedView: () => setDrawingTool((t) => (t === "projected" ? null : "projected")),
+    onExport: () => setDrawingTool("export"),
     onSettings: () => setSheetCard("settings"),
     onFit: () => drawingApi.current?.fit(),
     onFinish: () => setDrawing(null),
@@ -2099,7 +2100,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit" | "base" | "projected") => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit" | "base" | "projected" | "export") => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2196,7 +2197,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     drawing: (act) =>
-      act === "base" || act === "projected"
+      act === "base" || act === "projected" || act === "export"
         ? setDrawingTool(act)
         : act === "fit"
           ? drawingApi.current?.fit()
@@ -2895,6 +2896,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keys: ["p"],
         run: () => h().drawing("projected"),
         keywords: "orthographic top side isometric first third angle",
+      },
+      {
+        id: "drawing.export",
+        scope: "drawing",
+        label: "Export drawing",
+        group: "File",
+        icon: "download",
+        run: () => h().drawing("export"),
+        keywords: "pdf svg dxf png print save",
       },
       { id: "drawing.fit", scope: "drawing", label: "Fit the sheet in the view", group: "View", icon: "frame", keys: ["f"], run: () => h().drawing("fit") },
       {
@@ -4344,7 +4354,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               {!emptyState && files.banners}
               {shownDrawing ? (
                 <Suspense fallback={null}>
-                  <DrawingBar name={shownDrawing.name} readOnly={!!files.shared} {...drawingBar} />
+                  <DrawingBar name={shownDrawing.name} readOnly={!!files.shared} ribbon={ribbonOn} {...drawingBar} />
                 </Suspense>
               ) : render ? (
                 <Suspense
@@ -4661,6 +4671,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   call={viewCall}
                   tool={drawingTool}
                   onTool={setDrawingTool}
+                  onSave={(f) => files.store.saveFiles([f]).then((saved) => saved?.names[0])}
+                  say={say}
                   onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label)))}
                   components={built.components}
                   bodies={parts}
