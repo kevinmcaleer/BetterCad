@@ -195,8 +195,10 @@ export function SketchPanel({ s }: { s: SketchSession }) {
 function gapSection(s: SketchSession): PropsSection {
   const sk = s.sketch!;
   const report = findGaps(sk);
-  const joinable = report.gaps.filter((g) => (g.kind === "ends" || g.kind === "curve") && g.join);
-  const pick = (g: Gap) => s.setSel(g.kind === "overlap" ? [...g.curves] : g.kind === "curve" ? [g.a, g.curve] : g.kind === "ends" ? [g.a, g.b] : [g.a]);
+  const joinable = report.gaps.filter((g) => ((g.kind === "ends" || g.kind === "curve") && g.join) || g.kind === "touch");
+  const pick = (g: Gap) =>
+    s.setSel(g.kind === "overlap" ? [...g.curves] : g.kind === "curve" ? [g.a, g.curve] : g.kind === "ends" || g.kind === "touch" ? [g.a, g.b] : [g.a]);
+  const onlyLoose = report.gaps.length > 0 && report.gaps.every((g) => g.kind === "touch");
   return {
     id: "sketch-gaps",
     title: "Open ends",
@@ -205,28 +207,37 @@ function gapSection(s: SketchSession): PropsSection {
         <p className="bc-note" role="status">
           {gapSummary(report)}
         </p>
-        {report.gaps.length === 0 && <p className="bc-note">Every end meets another curve.</p>}
+        {report.gaps.length === 0 && (
+          <p className="bc-note">
+            {report.shapes
+              ? `Every end meets another curve, and there ${report.shapes === 1 ? "is 1 closed shape" : `are ${report.shapes} closed shapes`} to extrude.`
+              : "Every end meets another curve, but nothing encloses an area yet."}
+          </p>
+        )}
+        {onlyLoose && report.shapes > 0 && (
+          <p className="bc-note">The shape closes, but some ends only touch. Join them so they stay together when you drag.</p>
+        )}
         {joinable.length > 1 && (
           <Button
             icon="check"
-            label={`Join all ${joinable.length} near gaps`}
+            label={`Join all ${joinable.length}`}
             variant="secondary"
-            title={`Join every gap under ${report.joinTol} mm, moving the ends together`}
+            title={`Join ends that touch and every gap under ${report.joinTol} mm, moving the ends together`}
             onClick={() => s.apply(joinAll(sk, joinable), "Join ends")}
           />
         )}
         {report.gaps.length > 0 && (
           <ul className="bc-sk-list" aria-label="Open ends">
             {report.gaps.map((g, i) => (
-              <li key={i} className="bc-bad">
+              <li key={i} className={g.kind === "touch" ? undefined : "bc-bad"}>
                 <button type="button" className="bc-sk-item" onClick={() => pick(g)}>
                   {gapLabel(g)}
                 </button>
-                {(g.kind === "ends" || g.kind === "curve") && g.join && (
+                {(((g.kind === "ends" || g.kind === "curve") && g.join) || g.kind === "touch") && (
                   <Button
                     icon="check"
                     size="dense"
-                    title={g.kind === "ends" ? "Join the two ends" : "Put the end on the curve"}
+                    title={g.kind === "curve" ? "Put the end on the curve" : "Join the two ends"}
                     onClick={() => s.apply(joinGap(sk, g), "Join ends")}
                   />
                 )}

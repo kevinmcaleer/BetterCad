@@ -683,7 +683,7 @@ function GapMarks({ gaps, at }: { gaps: Gap[]; at: (xy: Vec2) => { x: number; y:
             const q = at(g.to);
             return <line key={i} className="bc-gap-overlap" x1={p.x} y1={p.y} x2={q.x} y2={q.y} />;
           }
-          const q = g.kind === "open" ? null : at(g.to);
+          const q = g.kind === "open" || g.kind === "touch" ? null : at(g.to);
           return (
             <g key={i}>
               <circle cx={p.x} cy={p.y} r={9} />
@@ -695,7 +695,7 @@ function GapMarks({ gaps, at }: { gaps: Gap[]; at: (xy: Vec2) => { x: number; y:
       </svg>
       {gaps.map((g, i) => {
         const p = at(g.from);
-        const q = g.kind === "open" ? p : at(g.to);
+        const q = g.kind === "open" || g.kind === "touch" ? p : at(g.to);
         return (
           <span key={i} className="bc-gap-label" style={{ left: (p.x + q.x) / 2, top: Math.min(p.y, q.y) }}>
             {gapLabel(g)}

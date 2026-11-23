@@ -719,6 +719,23 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     onConstructHover: (id) => setConstructHover(id),
   });
   live.current.sketching = sketch.editing;
+  // While a sketch is open the model rolls back to just after it, as in Fusion: later steps (made from it) hide, so
+  // their edges can't be projected into it or picked, and they rebuild when it finishes.
+  const rolledFor = useRef<{ id: string; back: number | null } | null>(null);
+  useEffect(() => {
+    const id = sketch.editingId;
+    if (id && rolledFor.current?.id !== id) {
+      const fs = store.get().features;
+      const i = fs.findIndex((f) => f.id === id);
+      const now = live.current.marker;
+      rolledFor.current = { id, back: rolledFor.current?.back ?? now };
+      if (i >= 0 && i + 1 < (now ?? fs.length)) setMarker(i + 1);
+    } else if (!id && rolledFor.current) {
+      const back = rolledFor.current.back;
+      rolledFor.current = null;
+      setMarker(back);
+    }
+  }, [sketch.editingId, store]);
   useEffect(() => registry.register(sketch.commands), [registry, sketch.commands]);
 
   /** The built bodies' boxes, for the bodies an extrude cut touches. */
