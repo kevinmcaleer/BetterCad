@@ -575,3 +575,54 @@ for (const theme of ["light", "dark", "holoroom"] as const) {
     await check();
   });
 }
+
+test("auto dimension a view, turn the slider up and keep the sizes @journey @visual", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await topViewOnA3(page);
+  const top = page.getByRole("button", { name: /^Top view, / });
+  await page
+    .getByRole("button", { name: /^Auto dimension/ })
+    .first()
+    .click();
+  const card = page.getByRole("dialog", { name: "Auto dimension" });
+  const status = card.getByRole("status");
+  await expect(status).toHaveText(/^\d+ of \d+ dimensions$/);
+  const total = Number((await status.textContent())!.split(" ")[2]);
+  // The sheet shows the sizes as you choose. All the way down leaves the two overall sizes.
+  const slider = card.getByRole("slider", { name: "How many sizes" });
+  await slider.focus();
+  await page.keyboard.press("Home");
+  await expect(status).toHaveText(`2 of ${total} dimensions`);
+  await expect(page.locator(".bc-size")).toHaveCount(2);
+  await page.keyboard.press("End");
+  await expect(status).toHaveText(`${total} of ${total} dimensions`);
+  await expect(page.locator(".bc-size")).toHaveCount(total);
+  // Chain with centre marks measures one after another and marks the holes.
+  await card.getByRole("radio", { name: /^Chain with centre marks/ }).check();
+  await expect(page.locator(".bc-mark")).not.toHaveCount(0);
+  await card.getByRole("radio", { name: /^Baseline with centre marks/ }).check();
+  await expect(status).toHaveText(`${total} of ${total} dimensions`);
+  await card.getByRole("button", { name: "OK" }).click();
+  await expect(card).toBeHidden();
+  await expect(page.locator(".bc-size")).toHaveCount(total);
+  // The overall length is under the view, outside the shorter sizes.
+  const box = (await top.locator(".bc-view-hit").boundingBox())!;
+  const length = (await page.getByRole("button", { name: "Dimension, 40 mm" }).locator("text").boundingBox())!;
+  const short = (await page.getByRole("button", { name: "Dimension, 4 mm" }).locator("text").boundingBox())!;
+  expect(short.y).toBeGreaterThan(box.y + box.height);
+  expect(length.y).toBeGreaterThan(short.y + 10);
+
+  // Undo takes them all off in one go.
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.locator(".bc-size")).toHaveCount(0);
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  await expect(page.locator(".bc-size")).toHaveCount(total);
+
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-auto.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    timeout: 30_000,
+  });
+});

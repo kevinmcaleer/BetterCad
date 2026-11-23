@@ -311,3 +311,43 @@ circle.bc-size-point:focus-visible,
 circle.bc-size-point.bc-size-picked {
   fill-opacity: 1;
 }
+/* Auto dimension (#566): the recipes, each with a glance of what it gives. */
+.bc-auto-recipes {
+  display: grid;
+  gap: var(--bc-space-2);
+}
+.bc-auto-recipe {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  padding: var(--bc-space-2) var(--bc-space-3);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  cursor: pointer;
+}
+.bc-auto-recipe-on {
+  border-color: var(--bc-color-accent);
+}
+.bc-auto-recipe:focus-within {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+.bc-auto-glance {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  color: var(--bc-color-muted);
+}
+.bc-auto-recipe-on .bc-auto-glance {
+  color: var(--bc-color-accent);
+}
+.bc-auto-name {
+  display: grid;
+  font-size: 13px;
+  color: var(--bc-color-ink);
+}
+.bc-auto-name small {
+  font-size: 11px;
+  color: var(--bc-color-muted);
+}

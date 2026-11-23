@@ -568,10 +568,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     dimension: drawingTool === "dimension",
     onDimension: () => setDrawingTool((t) => (t === "dimension" ? null : "dimension")),
     onExport: () => setDrawingTool("export"),
-    mark: drawingTool && drawingTool !== "base" && drawingTool !== "projected" && drawingTool !== "export" && drawingTool !== "dimension" ? drawingTool : null,
+    mark:
+      drawingTool && drawingTool !== "base" && drawingTool !== "projected" && drawingTool !== "export" && drawingTool !== "dimension" && drawingTool !== "auto"
+        ? drawingTool
+        : null,
     onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onAutoMarks: () => drawingApi.current?.autoMarks(),
     onArrange: () => drawingApi.current?.arrange(),
+    auto: drawingTool === "auto",
+    onAuto: () => setDrawingTool((t) => (t === "auto" ? null : "auto")),
     onSettings: () => setSheetCard("settings"),
     onFit: () => drawingApi.current?.fit(),
     onFinish: () => setDrawing(null),
@@ -2916,6 +2921,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keys: ["d"],
         run: () => h().drawing("dimension"),
         keywords: "size length distance angle radius diameter measure",
+      },
+      {
+        id: "drawing.autoDimension",
+        scope: "drawing",
+        label: "Auto dimension",
+        group: "Tools",
+        icon: "dimension",
+        run: () => h().drawing("auto"),
+        keywords: "automatic sizes baseline chain datum density recipe",
       },
       {
         id: "drawing.arrange",

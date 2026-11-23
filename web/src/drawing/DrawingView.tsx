@@ -13,6 +13,7 @@ import { ArmedBar, Button, ContextMenu, Dialog, ESC, RibbonButton, RibbonGroup, 
 import {
   frameOf,
   removeView,
+  type AutoRecipe,
   scaleLabel,
   viewScale,
   type Drawing,
@@ -26,6 +27,8 @@ import {
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newId, type ModelDoc } from "../state/document";
 import { arrangeSheet, contextOf, crowded, sheetRows, snapRow, type Crowded } from "./arrange";
+import { AUTO_START, autoDimension, RECIPES, type AutoOptions, type AutoResult } from "./auto";
+import { AutoCard } from "./AutoCard";
 import { BaseViewCard, type ShowOption } from "./BaseViewCard";
 import { DimensionCard } from "./DimensionCard";
 import { DimensionLayer } from "./DimensionLayer";
@@ -106,7 +109,7 @@ function artOf(view: ModelView, scale: number): ViewArt {
 }
 
 /** The drawing tool that is armed: placing a base view (#561) or views projected from one (#562), or Export (#569). */
-export type DrawingTool = "base" | "projected" | "export" | "dimension" | MarkTool;
+export type DrawingTool = "base" | "projected" | "export" | "dimension" | "auto" | MarkTool;
 export { isMarkTool, type MarkTool } from "./MarkLayer";
 
 export interface DrawingApi {
@@ -491,6 +494,35 @@ export function DrawingPaper({
     if (readOnly) return;
     arrangeViews(selected && sheet.views.some((v) => v.id === selected) ? [selected] : sheet.views.map((v) => v.id));
   };
+  // Auto dimension (#566): what it is set to. The sheet shows the result as you choose, and OK keeps it.
+  const autoing = tool === "auto" && !readOnly;
+  const [autoOptions, setAutoOptions] = useState<AutoOptions>(AUTO_START);
+  useEffect(() => {
+    if (!autoing) return;
+    setAutoOptions(sheet.auto ?? AUTO_START);
+    setChanging(null);
+    // Only when the tool is armed: it starts from what it was last run with.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoing]);
+  const autoRuns = useMemo(() => {
+    if (!autoing) return null;
+    const viewOf = (id: string) => got.get(id)?.view;
+    let n = 0;
+    const run = (recipe: AutoRecipe) => autoDimension(sheet, viewOf, drawing.decimals, { ...autoOptions, recipe }, (kind) => `auto-${kind}-${n++}`);
+    const shown = run(autoOptions.recipe);
+    const counts = Object.fromEntries(RECIPES.map((r) => [r.id, r.id === autoOptions.recipe ? shown : run(r.id)])) as Record<AutoRecipe, AutoResult>;
+    return { shown, counts };
+  }, [autoing, sheet, got, drawing.decimals, autoOptions]);
+  /** The sheet as drawn: with Auto dimension's sizes while its card is up. */
+  const live = autoRuns?.shown.sheet ?? sheet;
+  const keepAuto = () => {
+    const viewOf = (id: string) => got.get(id)?.view;
+    const count = autoRuns?.shown.count ?? 0;
+    if (count) onSheet?.((s) => autoDimension(s, viewOf, drawing.decimals, autoOptions, (kind) => newId(kind)).sheet, "Auto dimension");
+    say?.(count ? `Added ${count} ${count === 1 ? "size" : "sizes"}.` : "There was nothing to dimension.");
+    if (autoRuns) setCrowd(crowded(autoRuns.shown.sheet, viewOf, drawing.decimals)[0] ?? null);
+    onTool?.(null);
+  };
   const crowdNames = crowd ? [sheet.views.find((v) => v.id === crowd.view), sheet.views.find((v) => v.id === crowd.into)] : [];
   /** A view's right-click menu. */
   const [menu, setMenu] = useState<{ at: ContextMenuState; view: string } | null>(null);
@@ -691,13 +723,15 @@ export function DrawingPaper({
                       model={g.view}
                       scale={scale}
                       style={style}
-                      marks={sheet.marks.filter((m) => markView(m) === v.id)}
+                      marks={live.marks.filter((m) => markView(m) === v.id)}
                       tool={markTool}
                       picked={picks.view === v.id ? pickedKeys : undefined}
                       onPick={(t) => pick(v.id, t)}
                       selected={selectedMark}
                       onSelect={setSelectedMark}
-                      onDelete={readOnly ? undefined : (id) => onSheet?.((s) => ({ ...s, marks: s.marks.filter((m) => m.id !== id) }), "Delete mark")}
+                      onDelete={
+                        readOnly || autoing ? undefined : (id) => onSheet?.((s) => ({ ...s, marks: s.marks.filter((m) => m.id !== id) }), "Delete mark")
+                      }
                     />
                   )}
                   {g?.view && view && (
@@ -708,7 +742,7 @@ export function DrawingPaper({
                       style={sizeStyle}
                       decimals={drawing.decimals}
                       iso={isIso(frameOf(v.direction).toEye)}
-                      dimensions={sheet.dimensions.filter((d) => d.view === v.id)}
+                      dimensions={live.dimensions.filter((d) => d.view === v.id)}
                       zoom={view.k}
                       picking={dimensioning}
                       picked={pending?.view === v.id ? pendingKeys : undefined}
@@ -721,9 +755,9 @@ export function DrawingPaper({
                         const ctx = contextOf(sheet, v.id, g.view!, drawing.decimals);
                         return ctx ? snapRow(d, at, ctx, sheetRows(sheet)) : at;
                       }}
-                      onMove={readOnly ? undefined : (id, at) => changeDim(id, { at }, "Move dimension")}
-                      onDelete={readOnly ? undefined : removeDim}
-                      onMenu={readOnly ? undefined : (id, x, y) => setDimMenu({ at: { x, y }, id })}
+                      onMove={readOnly || autoing ? undefined : (id, at) => changeDim(id, { at }, "Move dimension")}
+                      onDelete={readOnly || autoing ? undefined : removeDim}
+                      onMenu={readOnly || autoing ? undefined : (id, x, y) => setDimMenu({ at: { x, y }, id })}
                     />
                   )}
                   {scale !== sheet.scale && (
@@ -774,6 +808,16 @@ export function DrawingPaper({
           onJoin={setJoin}
           onAdd={addPattern}
           onFinish={() => onTool?.(null)}
+        />
+      )}
+      {autoing && autoRuns && (
+        <AutoCard
+          options={autoOptions}
+          onOptions={setAutoOptions}
+          counts={autoRuns.counts}
+          wait={!sheet.views.length ? "Put a view on the sheet first." : sheet.views.some((v) => !got.get(v.id)?.view) ? "Working out the views." : undefined}
+          onDone={keepAuto}
+          onCancel={() => onTool?.(null)}
         />
       )}
       {dimensioning && (
@@ -947,6 +991,9 @@ export interface DrawingBarProps {
   dimension?: boolean;
   /** Arrange dimensions (#565). */
   onArrange?: () => void;
+  /** Opens Auto dimension (#566). */
+  onAuto?: () => void;
+  auto?: boolean;
   /** Opens Export (#569). */
   onExport?: () => void;
   /** Arms a mark tool (#563), the one that is armed, and Add centre marks. */
@@ -970,6 +1017,8 @@ export function DrawingBar({
   projectedView,
   onDimension,
   dimension,
+  onAuto,
+  auto,
   onExport,
   onMark,
   mark,
@@ -1020,6 +1069,7 @@ export function DrawingBar({
       {!readOnly && onDimension && (
         <Button icon="dimension" label="Dimension" title="Show a size from the model on a view" shortcut="D" on={!!dimension} onClick={onDimension} />
       )}
+      {!readOnly && onAuto && <Button icon="dimension" label="Auto dimension" title="Dimension the views for you" on={!!auto} onClick={onAuto} />}
       {onExport && <Button icon="download" label="Export" title="Save the sheet as a PDF, SVG, DXF or PNG, or print it" onClick={onExport} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
       <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
@@ -1037,6 +1087,8 @@ export function DrawingRibbon({
   onDimension,
   dimension,
   onArrange,
+  onAuto,
+  auto,
   onExport,
   onMark,
   mark,
@@ -1079,7 +1131,8 @@ export function DrawingRibbon({
       {!readOnly && onDimension && (
         <RibbonGroup label="Dimensions" entries={[]}>
           <RibbonButton icon="dimension" colour="dimension" label="Dimension" shortcut="D" pressed={!!dimension} onPress={onDimension} />
-          {onArrange && <RibbonButton icon="dimension" colour="sk-auto" label="Arrange dimensions" short="Arrange" onPress={onArrange} />}
+          {onAuto && <RibbonButton icon="dimension" colour="sk-auto" label="Auto dimension" short="Auto" pressed={!!auto} onPress={onAuto} />}
+          {onArrange && <RibbonButton icon="dimension" colour="sk-pattern" label="Arrange dimensions" short="Arrange" onPress={onArrange} />}
         </RibbonGroup>
       )}
       <RibbonGroup label="Sheet" entries={[]}>
