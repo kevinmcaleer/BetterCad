@@ -573,9 +573,19 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     onDimension: () => setDrawingTool((t) => (t === "dimension" ? null : "dimension")),
     onExport: () => setDrawingTool("export"),
     mark:
-      drawingTool && drawingTool !== "base" && drawingTool !== "projected" && drawingTool !== "export" && drawingTool !== "dimension" && drawingTool !== "auto"
+      drawingTool &&
+      drawingTool !== "base" &&
+      drawingTool !== "projected" &&
+      drawingTool !== "export" &&
+      drawingTool !== "dimension" &&
+      drawingTool !== "auto" &&
+      drawingTool !== "section" &&
+      drawingTool !== "detail" &&
+      drawingTool !== "break"
         ? drawingTool
         : null,
+    cut: drawingTool === "section" || drawingTool === "detail" || drawingTool === "break" ? drawingTool : null,
+    onCut: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onAutoMarks: () => drawingApi.current?.autoMarks(),
     onArrange: () => drawingApi.current?.arrange(),
@@ -2915,6 +2925,33 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keys: ["p"],
         run: () => h().drawing("projected"),
         keywords: "orthographic top side isometric first third angle",
+      },
+      {
+        id: "drawing.sectionView",
+        scope: "drawing",
+        label: "Section view",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("section"),
+        keywords: "cut cutting line plane hatch inside cross a-a",
+      },
+      {
+        id: "drawing.detailView",
+        scope: "drawing",
+        label: "Detail view",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("detail"),
+        keywords: "enlarge circle zoom larger scale",
+      },
+      {
+        id: "drawing.break",
+        scope: "drawing",
+        label: "Break",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("break"),
+        keywords: "broken view shorten long part break lines",
       },
       {
         id: "drawing.dimension",

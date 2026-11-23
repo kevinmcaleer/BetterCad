@@ -475,3 +475,45 @@ circle.bc-size-point.bc-size-picked {
   background: var(--bc-color-hover);
   color: var(--bc-color-ink);
 }
+
+/* Section, detail and broken views (#571): hatching and break lines thin, cutting lines chain with thick ends. */
+.bc-view-thin,
+.bc-cut-chain,
+.bc-cut-thick,
+.bc-cut-ring {
+  fill: none;
+  stroke: var(--bc-color-paper-ink);
+  stroke-width: 0.25px;
+  pointer-events: none;
+}
+.bc-cut-chain {
+  stroke-dasharray: 8 1.5 1 1.5;
+}
+.bc-cut-thick {
+  stroke-width: 0.7px;
+}
+.bc-cut-arrow {
+  fill: var(--bc-color-paper-ink);
+  stroke: none;
+  pointer-events: none;
+}
+.bc-cut-text {
+  fill: var(--bc-color-paper-ink);
+  font-family: var(--bc-font-sans);
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+.bc-cut-ghost {
+  fill: none;
+  stroke: var(--bc-color-paper-pick);
+  stroke-width: 0.4px;
+  pointer-events: none;
+}
+.bc-cut-band {
+  fill: var(--bc-color-paper-pick);
+  fill-opacity: 0.15;
+}
+.bc-drawing:has(.bc-cut-ghost) {
+  cursor: crosshair;
+}

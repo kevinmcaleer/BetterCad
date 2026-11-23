@@ -5,7 +5,7 @@ import type { Layer, Scene, Stroke } from "./scene";
 const n = (v: number) => String(Math.round(v * 1000) / 1000);
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Layers in the order they are drawn: hidden lines under the edges you see. */
-export const LAYERS: Layer[] = ["border", "title", "hidden", "visible", "centre", "dimension"];
+export const LAYERS: Layer[] = ["border", "title", "section", "hidden", "visible", "centre", "dimension"];
 
 /** Strokes that share a layer, width and dash, so each kind is written once. */
 export function grouped(strokes: Stroke[]): { layer: Layer; width: number; dash?: readonly number[]; strokes: Stroke[] }[] {

@@ -15,6 +15,7 @@ import {
   removeView,
   type AutoRecipe,
   scaleLabel,
+  SCALES,
   viewScale,
   type Drawing,
   type DrawingDimension,
@@ -43,10 +44,27 @@ import { sheetLayout, sizeName, TEXT } from "./layout";
 import { MarkCard } from "./MarkCard";
 import { isMarkTool, MarkLayer, type MarkTool } from "./MarkLayer";
 import { autoMarks, MARK_NAMES, markKey, markStyle, markView, pitchCircle, refKey, refTo, targets, type Target } from "./marks";
-import { descendants, inheritedScale, placeProjected, projectedDirection, sideAt, spotAt, spotBeside, type Side } from "./projected";
+import { descendants, GAP, inheritedScale, placeProjected, projectedDirection, sideAt, spotAt, spotBeside, type Side } from "./projected";
 import { ProjectedViewCard } from "./ProjectedViewCard";
 import { SheetArt } from "./Sheet";
 import { useModelViews, type ViewCall, type ViewWanted } from "./useModelViews";
+import { CutCard, CUT_NAMES, isCutTool, type CutTool } from "./CutCard";
+import { CutLayer, type CutGhost } from "./CutLayer";
+import {
+  addBreak,
+  cutArt,
+  cutSide,
+  flipSection,
+  onPaper,
+  picturesOf,
+  pictured,
+  placeDetail,
+  placeSection,
+  removeBreaks,
+  snapPoint,
+  viewPoint,
+  type CutWay,
+} from "./cuts";
 import {
   defaultSpot,
   editView,
@@ -114,7 +132,8 @@ function artOf(view: ModelView, scale: number): ViewArt {
 }
 
 /** The drawing tool that is armed: placing a base view (#561) or views projected from one (#562), or Export (#569). */
-export type DrawingTool = "base" | "projected" | "export" | "dimension" | "auto" | MarkTool;
+export type DrawingTool = "base" | "projected" | "export" | "dimension" | "auto" | MarkTool | CutTool;
+export { isCutTool, type CutTool } from "./CutCard";
 export { isMarkTool, type MarkTool } from "./MarkLayer";
 
 export interface DrawingApi {
@@ -303,6 +322,26 @@ function Paper({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projecting]);
   const parent = projecting && from ? sheet.views.find((v) => v.id === from) : undefined;
+  // Section, detail and break (#571): the view being cut, and how.
+  const cutting: CutTool | null = isCutTool(tool) && !readOnly ? tool : null;
+  const [way, setWay] = useState<CutWay>("across");
+  const [flip, setFlip] = useState(false);
+  const [radius, setRadius] = useState<number | null>(null);
+  const [detailScale, setDetailScale] = useState<number | null>(null);
+  const [breakStart, setBreakStart] = useState<number | null>(null);
+  useEffect(() => {
+    if (!cutting) return;
+    setChanging(null);
+    setPointer(null);
+    setBreakStart(null);
+    setRadius(null);
+    setDetailScale(null);
+    setWay(cutting === "break" ? "up" : "across");
+    setFrom(sheet.views.find((v) => v.id === picked.current)?.id ?? (sheet.views.length === 1 ? sheet.views[0]!.id : null));
+    // Only when a tool is armed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cutting]);
+  const cutParent = cutting && from ? sheet.views.find((v) => v.id === from) : undefined;
   const angle = layout.angle;
   const ghostDirection = useMemo(() => (parent ? projectedDirection(parent.direction, side, angle) : undefined), [parent, side, angle]);
   const wanted = useMemo<ViewWanted[]>(() => {
@@ -311,7 +350,21 @@ function Paper({
     else if (parent && ghostDirection) list.push({ id: GHOST, request: viewRequest({ ...parent, direction: ghostDirection }, true) });
     return list;
   }, [sheet.views, placing, choice, parent, ghostDirection]);
-  const got = useModelViews(wanted, doc ?? EMPTY_DOC, upTo, doc ? call : undefined);
+  const rawGot = useModelViews(wanted, doc ?? EMPTY_DOC, upTo, doc ? call : undefined);
+  // Each view's picture as it is drawn (#571): hatched where it is cut, a detail cut down to its circle, a broken
+  // view closed up. Everything below works from these.
+  const got = useMemo(() => {
+    const out = new Map(rawGot);
+    for (const v of sheet.views) {
+      const g = rawGot.get(v.id);
+      if (!g?.view) continue;
+      const view = pictured(g.view, v, viewScale(sheet, v));
+      if (view !== g.view) out.set(v.id, { ...g, view });
+    }
+    return out;
+    // The views and the sheet's scale are all of the sheet a picture depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawGot, sheet.views, sheet.scale]);
   // The drawing follows the model (#568). What is drawn is the sheet with its rows stacked again where the model
   // changed sizes; your next change writes that down with it, so undo takes both back together.
   const pictureOf = useCallback((id: string) => got.get(id)?.view, [got]);
@@ -422,6 +475,84 @@ function Paper({
     const parentId = parent.id;
     onSheet?.((sh) => placeProjected(sh, id, parentId, s, angle, at), "Projected view");
   };
+  // What the armed cut tool works on: the view's picture as drawn, and as the kernel gave it (for snapping).
+  const cutPic = cutParent ? got.get(cutParent.id)?.view : undefined;
+  const cutRaw = cutParent ? rawGot.get(cutParent.id)?.view : undefined;
+  const cutScale = cutParent ? viewScale(sheet, cutParent) : 1;
+  const cutBox = cutRaw && !emptyView(cutRaw) ? cutRaw.box : undefined;
+  /** A detail's circle starts at a sixth of the view, as a round number, at twice the view's scale. */
+  const radiusNow = radius ?? (cutBox ? Math.max(1, Math.round(Math.min(cutBox.max[0] - cutBox.min[0], cutBox.max[1] - cutBox.min[1]) / 6)) : 5);
+  const detailScaleNow = detailScale ?? SCALES.find((k) => k >= cutScale * 2 - 1e-9) ?? cutScale * 2;
+  const cutWait = !sheet.views.length
+    ? "Put a base view on the sheet first."
+    : !cutParent
+      ? "Click the view to cut."
+      : !call
+        ? "The geometry engine is starting."
+        : !cutPic || !cutBox
+          ? "Working out the view."
+          : cutting === "section" && isIso(frameOf(cutParent.direction).toEye)
+            ? "A section is cut from a flat view. Pick a front, top or side view."
+            : undefined;
+  /** Where in the model the view shows a place on it is (paper mm from its middle), snapped for a section or detail. */
+  const cutPoint = (rel: V2 | null): V2 | undefined => {
+    if (!cutPic || !cutBox) return undefined;
+    if (!rel) return [(cutBox.min[0] + cutBox.max[0]) / 2, (cutBox.min[1] + cutBox.max[1]) / 2];
+    const p = viewPoint(cutPic, cutScale, rel);
+    return cutting === "break" || !cutRaw ? p : snapPoint(cutRaw, p, 2 / cutScale);
+  };
+  /** Does what the armed cut tool does at a place on its view, or through the middle with no place given. */
+  const cutAt = (rel: V2 | null) => {
+    const p = cutPoint(rel);
+    if (!cutParent || !cutPic || !cutBox || !p || cutWait || !cutting) return;
+    const parentId = cutParent.id;
+    const art = artOf(cutPic, cutScale);
+    if (cutting === "section") {
+      const id = newId("vw");
+      onSheet?.((s) => placeSection(s, id, parentId, p, way, flip, angle, { w: Math.max(art.w, 20), h: Math.max(art.h, 20) }), "Section view");
+      setSelected(id);
+      return onTool?.(null);
+    }
+    if (cutting === "detail") {
+      const id = newId("vw");
+      const at: V2 = [cutParent.at[0] + art.w / 2 + GAP + radiusNow * detailScaleNow, cutParent.at[1]];
+      onSheet?.((s) => placeDetail(s, id, parentId, p, radiusNow, detailScaleNow, at), "Detail view");
+      setSelected(id);
+      return onTool?.(null);
+    }
+    const axis = way === "up" ? 0 : 1;
+    if (!rel) {
+      const [lo, hi] = [cutBox.min[axis], cutBox.max[axis]];
+      onSheet?.((s) => addBreak(s, parentId, axis ? "y" : "x", lo + (hi - lo) / 3, lo + ((hi - lo) * 2) / 3), "Break");
+      return onTool?.(null);
+    }
+    if (breakStart === null) return setBreakStart(p[axis]);
+    const start = breakStart;
+    onSheet?.((s) => addBreak(s, parentId, axis ? "y" : "x", start, p[axis]), "Break");
+    setBreakStart(null);
+    onTool?.(null);
+  };
+  /** What the armed cut tool would do where the pointer is, drawn on its view. */
+  const cutGhost = ((): CutGhost | undefined => {
+    if (!cutParent || !cutPic || cutWait || !pointer) return undefined;
+    const p = cutPoint([pointer[0] - cutParent.at[0], pointer[1] - cutParent.at[1]]);
+    if (!p) return undefined;
+    const P = onPaper(cutPic, cutScale);
+    const at = P(p);
+    const art = artOf(cutPic, cutScale);
+    const [w, h] = [art.w / 2 + 6, art.h / 2 + 6];
+    if (cutting === "section") {
+      const side = cutSide(way, flip);
+      return way === "across"
+        ? { kind: "line", a: [-w, at[1]], b: [w, at[1]], side: [side[0], side[1]] }
+        : { kind: "line", a: [at[0], -h], b: [at[0], h], side: [side[0], side[1]] };
+    }
+    if (cutting === "detail") return { kind: "ring", c: at, r: radiusNow * cutScale };
+    const axis = way === "up" ? 0 : 1;
+    const from = breakStart === null ? at[axis] : P(axis ? [p[0], breakStart] : [breakStart, p[1]])[axis];
+    const [lo, hi] = [Math.min(from, at[axis]), Math.max(from, at[axis])];
+    return axis ? { kind: "band", x: -w, y: lo, w: w * 2, h: Math.max(hi - lo, 0.3) } : { kind: "band", x: lo, y: -h, w: Math.max(hi - lo, 0.3), h: h * 2 };
+  })();
   // Enter finishes, wherever the keyboard is; Esc does too, through the card.
   useEffect(() => {
     if (!projecting) return;
@@ -648,7 +779,7 @@ function Paper({
     const was = touches.current.get(e.pointerId);
     if (!was) {
       // Nothing pressed: the view being placed follows the pointer.
-      if ((placing || parent || dimensioning) && root.current?.contains(e.target as Node)) {
+      if ((placing || parent || dimensioning || cutParent) && root.current?.contains(e.target as Node)) {
         const at = sheetAt(e.clientX, e.clientY);
         setPointer(at);
         // The side follows the pointer once it is clear of the parent.
@@ -681,7 +812,7 @@ function Paper({
       el.setPointerCapture?.(e.pointerId);
     }
     touches.current.set(e.pointerId, now);
-    if (p.view && !readOnly && !projecting && view) {
+    if (p.view && !readOnly && !projecting && !cutting && view) {
       // Dragging a view: it moves by what the pointer has, in paper mm (y is up on the sheet).
       const at: V2 = [p.view.at[0] + (now.x - p.x) / view.k, p.view.at[1] - (now.y - p.y) / view.k];
       setMoving({ id: p.view.id, at });
@@ -711,6 +842,12 @@ function Paper({
       if (!at || !clearOf(at)) return;
       const s = sideAt([at[0] - parent.at[0], at[1] - parent.at[1]]);
       return project(spotAt(parent.at, at, s), s);
+    }
+    if (cutting) {
+      // The first click picks the view to cut, and so does a click on another view; a click on it cuts there.
+      if (!cutParent || (p.view && p.view.id !== cutParent.id)) return p.view && setFrom(p.view.id);
+      const at = sheetAt(e.clientX, e.clientY);
+      return at ? cutAt([at[0] - cutParent.at[0], at[1] - cutParent.at[1]]) : undefined;
     }
     if (dimensioning) {
       // A click on an edge or point picks it; a click anywhere else puts the size down there.
@@ -794,7 +931,7 @@ function Paper({
                 <g
                   key={v.id}
                   data-view={v.id}
-                  className={parent?.id === v.id ? "bc-view bc-view-from" : selected === v.id ? "bc-view bc-view-on" : "bc-view"}
+                  className={(parent ?? cutParent)?.id === v.id ? "bc-view bc-view-from" : selected === v.id ? "bc-view bc-view-on" : "bc-view"}
                   role="button"
                   aria-pressed={selected === v.id}
                   aria-label={`${viewName(v)}, ${scaleLabel(scale)}${state}`}
@@ -805,15 +942,17 @@ function Paper({
                   onDoubleClick={() => startChange(v)}
                   onKeyDown={(e) => viewKey(e, v)}
                   onContextMenu={(e) => {
-                    if (readOnly || placing || projecting) return;
+                    if (readOnly || placing || projecting || cutting) return;
                     e.preventDefault();
                     setSelected(v.id);
                     setMenu({ at: { x: e.clientX, y: e.clientY }, view: v.id });
                   }}
                 >
                   <rect className={art ? "bc-view-hit" : "bc-view-hit bc-view-wait"} x={-w / 2} y={-h / 2} width={w} height={h} />
+                  {art?.thin && <path className="bc-view-thin" d={art.thin} />}
                   {art && <path className="bc-view-hidden" d={art.hidden} />}
                   {art && <path className="bc-view-visible" d={art.visible} />}
+                  {g?.view && <CutLayer art={cutArt(shown, v, pictureOf)} ghost={cutParent?.id === v.id ? cutGhost : undefined} />}
                   {g?.view && (
                     <MarkLayer
                       viewId={v.id}
@@ -911,6 +1050,33 @@ function Paper({
           onFinish={() => onTool?.(null)}
         />
       )}
+      {cutting && (
+        <CutCard
+          tool={cutting}
+          views={sheet.views.map((v) => ({ id: v.id, name: `${viewName(v)}, ${scaleLabel(viewScale(sheet, v))}` }))}
+          from={cutParent?.id ?? null}
+          onFrom={(id) => {
+            setFrom(id);
+            setPointer(null);
+            setBreakStart(null);
+          }}
+          way={way}
+          onWay={(w) => {
+            setWay(w);
+            setBreakStart(null);
+          }}
+          flip={flip}
+          onFlip={setFlip}
+          radius={radiusNow}
+          onRadius={setRadius}
+          scale={detailScaleNow}
+          onScale={setDetailScale}
+          started={breakStart !== null}
+          wait={cutWait}
+          onPlace={() => cutAt(null)}
+          onFinish={() => onTool?.(null)}
+        />
+      )}
       {markTool && (
         <MarkCard
           tool={markTool}
@@ -995,6 +1161,26 @@ function Paper({
                 { id: "arrange", label: "Arrange dimensions", icon: "dimension", onSelect: () => arrangeViews([menuView.id]) },
                 ...(sheet.auto ? [{ id: "again", label: "Run Auto dimension again", icon: "dimension" as const, onSelect: runAgain }] : []),
                 { id: "edit", label: "Change this view", icon: "settings", onSelect: () => startChange(menuView) },
+                ...(menuView.kind === "section" && menuView.section
+                  ? [
+                      {
+                        id: "flip",
+                        label: "Look from the other side",
+                        icon: "drawing" as const,
+                        onSelect: () => onSheet?.((s) => flipSection(s, menuView.id), "Flip section"),
+                      },
+                    ]
+                  : []),
+                ...(menuView.breaks?.length
+                  ? [
+                      {
+                        id: "unbreak",
+                        label: "Remove breaks",
+                        icon: "drawing" as const,
+                        onSelect: () => onSheet?.((s) => removeBreaks(s, menuView.id), "Remove breaks"),
+                      },
+                    ]
+                  : []),
                 ...(onDrawing
                   ? drawing.sheets
                       .filter((s) => s.id !== sheet.id)
@@ -1031,7 +1217,7 @@ function Paper({
                       if (p) pictures.set(v.id, await p);
                     }),
                   );
-                  return (id) => pictures.get(id);
+                  return picturesOf(other, (id) => pictures.get(id));
                 }
               : undefined
           }
@@ -1142,6 +1328,9 @@ export interface DrawingBarProps {
   /** Arms Projected view (#562), and whether it is armed. */
   onProjectedView?: () => void;
   projectedView?: boolean;
+  /** Arms Section view, Detail view or Break (#571), and the one that is armed. */
+  onCut?: (tool: CutTool) => void;
+  cut?: CutTool | null;
   /** Arms Dimension (#564). */
   onDimension?: () => void;
   dimension?: boolean;
@@ -1171,6 +1360,8 @@ export function DrawingBar({
   baseView,
   onProjectedView,
   projectedView,
+  onCut,
+  cut,
   onDimension,
   dimension,
   onAuto,
@@ -1211,6 +1402,19 @@ export function DrawingBar({
       {!readOnly && onProjectedView && (
         <Button icon="drawing" label="Projected view" title="Views from the sides of a view, lined up with it" on={!!projectedView} onClick={onProjectedView} />
       )}
+      {!readOnly && onCut && (
+        <>
+          <Button
+            icon="drawing"
+            label={CUT_NAMES.section}
+            title="Cut a view on a line and show what is inside"
+            on={cut === "section"}
+            onClick={() => onCut("section")}
+          />
+          <Button icon="drawing" label={CUT_NAMES.detail} title="A circle of a view, drawn larger" on={cut === "detail"} onClick={() => onCut("detail")} />
+          <Button icon="drawing" label={CUT_NAMES.break} title="Leave out a stretch of a long part" on={cut === "break"} onClick={() => onCut("break")} />
+        </>
+      )}
       {!readOnly && <Button icon="settings" label="Sheet settings" title="Page size, standard and title block" onClick={onSettings} />}
       {!readOnly && onMark && (
         <Button
@@ -1240,6 +1444,8 @@ export function DrawingRibbon({
   baseView,
   onProjectedView,
   projectedView,
+  onCut,
+  cut,
   onDimension,
   dimension,
   onArrange,
@@ -1259,6 +1465,20 @@ export function DrawingRibbon({
         <RibbonGroup label="Create" entries={[]}>
           <RibbonButton icon="drawing" colour="drawing" label="Base view" pressed={!!baseView} onPress={onBaseView} />
           <RibbonButton icon="drawing" colour="drawing" label="Projected view" short="Projected" pressed={!!projectedView} onPress={onProjectedView} />
+          {onCut && (
+            <>
+              <RibbonButton
+                icon="drawing"
+                colour="section"
+                label={CUT_NAMES.section}
+                short="Section"
+                pressed={cut === "section"}
+                onPress={() => onCut("section")}
+              />
+              <RibbonButton icon="drawing" colour="circle" label={CUT_NAMES.detail} short="Detail" pressed={cut === "detail"} onPress={() => onCut("detail")} />
+              <RibbonButton icon="drawing" colour="sk-break" label={CUT_NAMES.break} pressed={cut === "break"} onPress={() => onCut("break")} />
+            </>
+          )}
         </RibbonGroup>
       )}
       {!readOnly && onMark && (

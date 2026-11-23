@@ -7,7 +7,15 @@ import { roundAt, roundOf, type Layer, type Scene } from "./scene";
  * ellipses and traced curves go as fine polylines, since this plain DXF has no ellipse. Text goes as text.
  * Layers are there for the marks and dimensions to come, so a template made now keeps working.
  */
-const NAME: Record<Layer, string> = { visible: "VISIBLE", hidden: "HIDDEN", centre: "CENTRE", dimension: "DIMENSIONS", border: "BORDER", title: "TITLE" };
+const NAME: Record<Layer, string> = {
+  visible: "VISIBLE",
+  hidden: "HIDDEN",
+  centre: "CENTRE",
+  dimension: "DIMENSIONS",
+  border: "BORDER",
+  title: "TITLE",
+  section: "SECTION",
+};
 const LAYERS: DxfLayer[] = [
   { name: "VISIBLE", colour: 7 },
   { name: "HIDDEN", colour: 8, ltype: "HIDDEN" },
@@ -15,6 +23,7 @@ const LAYERS: DxfLayer[] = [
   { name: "DIMENSIONS", colour: 5 },
   { name: "BORDER", colour: 7 },
   { name: "TITLE", colour: 7 },
+  { name: "SECTION", colour: 7 },
 ];
 const LTYPES = [
   { name: "HIDDEN", description: "Hidden __ __ __ __", pattern: [2, -1] },

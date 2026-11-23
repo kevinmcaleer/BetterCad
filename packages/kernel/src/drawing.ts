@@ -1,6 +1,6 @@
 import type { ModelDoc } from "./document";
 import { newId } from "./document";
-import type { ModelViewRequest, V2, V3, ViewFrame } from "./view";
+import type { ModelViewRequest, V2, V3, ViewCut, ViewFrame } from "./view";
 import { VIEWS } from "./view";
 
 /**
@@ -47,9 +47,25 @@ export type ViewShows = ModelViewRequest["shows"];
 
 export interface DrawingView {
   id: string;
-  kind: "base" | "projected";
-  /** A projected view's parent. It stays lined up with it, and takes its scale and style unless it has its own. */
+  /**
+   * `section` (#571): the model cut on a plane, seen from the side taken away. `detail`: a circle of its parent,
+   * larger. Both are lettered, and marked on the parent.
+   */
+  kind: "base" | "projected" | "section" | "detail";
+  /**
+   * The view this one was taken from. A projected or section view stays lined up with it, and takes its scale and
+   * style unless it has its own.
+   */
   parent?: string;
+  /** A section view's cut, in the model's own millimetres, and its letter. A detail of a section view has it too. */
+  section?: ViewCut & { label: string };
+  /** A detail view's circle, in its parent's view millimetres, and its letter. */
+  detail?: { c: V2; r: number; label: string };
+  /**
+   * Breaks: stretches of a long part left out, in the view's millimetres. `x` takes a band out across the sheet,
+   * `y` one up it. What is past a break is drawn closer; dimensions still read the true size.
+   */
+  breaks?: { axis: "x" | "y"; from: number; to: number }[];
   shows: ViewShows;
   direction: ViewDirection;
   /** Paper size over real size (0.5 is 1:2). Missing: the parent's, or the sheet's. */
@@ -269,7 +285,7 @@ export function viewScale(sheet: DrawingSheet, view: DrawingView): number {
 
 /**
  * Takes a view off a sheet, with the marks and dimensions fixed to it. Its projected views stay, as base views (they
- * keep the scale they had).
+ * keep the scale they had), and so do its sections and details.
  */
 export function removeView(sheet: DrawingSheet, id: string): DrawingSheet {
   const gone = sheet.views.find((v) => v.id === id);
@@ -281,7 +297,8 @@ export function removeView(sheet: DrawingSheet, id: string): DrawingSheet {
       .filter((v) => v.id !== id)
       .map((v) => {
         if (v.parent !== id) return v;
-        const base: DrawingView = { ...v, kind: "base", scale: v.scale ?? viewScale(sheet, gone) };
+        // A section or detail is still one without the view it was taken from; it is only no longer marked there.
+        const base: DrawingView = { ...v, kind: v.kind === "projected" ? "base" : v.kind, scale: v.scale ?? viewScale(sheet, gone) };
         delete base.parent;
         return base;
       }),

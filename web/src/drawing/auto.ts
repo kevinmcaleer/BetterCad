@@ -87,6 +87,9 @@ function viewCandidates(viewId: string, model: ModelView, toEye: readonly number
       points.push({ p: t.a, ref: { ...refTo(viewId, t), at: "start" }, hole: false }, { p: t.b, ref: { ...refTo(viewId, t), at: "end" }, hole: false });
     } else if (t.kind === "round" && t.whole && t.source.kind === "face") points.push({ p: t.c, ref: { ...refTo(viewId, t), at: "centre" }, hole: true });
   }
+  // In a broken view (#571) places are where they truly are, not where they are drawn.
+  const real = (model as { real?: (p: V2) => V2 }).real;
+  if (real) for (const pt of points) pt.p = real(pt.p);
   const out: Candidate[] = [];
   const axes = viewAxes(frame);
   const centre: V2 = [(model.box.min[0] + model.box.max[0]) / 2, (model.box.min[1] + model.box.max[1]) / 2];
@@ -165,7 +168,8 @@ export function candidates(sheet: DrawingSheet, viewOf: (id: string) => ModelVie
   const known = new Map<number, Set<number>>();
   for (const v of sheet.views) {
     const model = viewOf(v.id);
-    if (!model) continue;
+    // A detail view shows again what its parent has.
+    if (!model || v.kind === "detail") continue;
     const frame = frameOf(v.direction);
     const mine = viewCandidates(v.id, model, frame.toEye, frame, o);
     // A length between two places an earlier view has already shown adds nothing here, however it is measured.

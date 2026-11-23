@@ -48,7 +48,8 @@ export function targets(view: ModelView): Target[] {
     if (seen.seen === "end") put({ kind: "round", source: r.source, c: seen.c, r: r.r, hole: r.hole, whole });
     else put({ kind: "axis", source: r.source, a: seen.a, b: seen.b, r: r.r, hole: r.hole, whole });
   }
-  for (const e of view.edges) {
+  // A detail or broken view draws pieces of its edges; marks and sizes are fixed to the whole ones (#571).
+  for (const e of (view as { whole?: ModelView["edges"] }).whole ?? view.edges) {
     if (!e.source) continue;
     const c = e.curve;
     if (c.kind === "circle") put({ kind: "round", source: e.source, c: c.c, r: c.r, hole: false, whole: true });

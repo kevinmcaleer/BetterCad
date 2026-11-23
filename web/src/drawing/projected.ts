@@ -166,11 +166,12 @@ export function followParent(sheet: DrawingSheet, before: DrawingView): DrawingS
     const old = was.get(id)!;
     for (const v of sheet.views) {
       if (v.parent !== id) continue;
-      const from = relationOf(old.direction, v.direction);
+      // A section keeps its cut and where it looks from; a detail looks the way its parent does.
+      const from = v.kind === "section" ? undefined : relationOf(old.direction, v.direction);
       views.set(v.id, {
         ...v,
         shows: parent.shows,
-        direction: from ? directionFor(frameFrom(frameOf(parent.direction), from)) : v.direction,
+        direction: v.kind === "detail" ? parent.direction : from ? directionFor(frameFrom(frameOf(parent.direction), from)) : v.direction,
         hidden: v.hidden === old.hidden ? parent.hidden : v.hidden,
         tangent: v.tangent === old.tangent ? parent.tangent : v.tangent,
       });

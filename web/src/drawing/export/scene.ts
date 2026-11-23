@@ -3,13 +3,14 @@ import { TAU, turn, type ModelView, type V2, type ViewCurve } from "@bettercad/k
 import { TEXT, WEIGHT, type SheetLayout } from "../layout";
 import { dimArt, dimStyle, isIso } from "../dimensions";
 import { CENTRE_DASH, markArt, markStyle, markView, targets } from "../marks";
+import { cutArt, type Picture } from "../cuts";
 
 /**
  * A sheet as plain lines and text, for export (#569). Millimetres from the page's bottom left corner with y up, the
  * way PDF and DXF count, so each writer only has to spell the same shapes its own way. No DOM, no colours: an
  * export is black on white whatever the theme.
  */
-export type Layer = "visible" | "hidden" | "centre" | "dimension" | "border" | "title";
+export type Layer = "visible" | "hidden" | "centre" | "dimension" | "border" | "title" | "section";
 
 export interface Stroke {
   layer: Layer;
@@ -44,6 +45,9 @@ export interface Scene {
   /** Left out when there is nothing filled. */
   fills?: Fill[];
 }
+
+/** A cutting line's long dash, gap, dot and gap, mm: that of `drawing.css`. */
+export const CUT_DASH = [8, 1.5, 1, 1.5] as const;
 
 /** Line widths and dashes on paper, mm: those of `drawing.css`. */
 export const LINES = { visible: 0.5, hidden: 0.25, dash: [2, 1] } as const;
@@ -173,9 +177,19 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
     const { min, max } = view.box;
     const ox = v.at[0] - ((min[0] + max[0]) / 2) * s;
     const oy = v.at[1] - ((min[1] + max[1]) / 2) * s;
+    // Hatching, break lines and a detail's edge (#571), thin, under the view's own lines.
+    for (const c of (view as Picture).thin ?? []) strokes.push({ layer: "section", width: WEIGHT.thin, curve: placed(c, s, ox, oy) });
     // Hidden lines first, so the edges you see are drawn over them.
     for (const e of view.edges) if (!e.visible) strokes.push({ layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve: placed(e.curve, s, ox, oy) });
     for (const e of view.edges) if (e.visible) strokes.push({ layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) });
+    // Cutting lines, detail circles and letters (#571), about the middle of the view.
+    const cuts = cutArt(sheet, v, viewOf);
+    const here2 = (q: V2): V2 => [v.at[0] + q[0], v.at[1] + q[1]];
+    for (const [a, b] of cuts.chain) strokes.push({ layer: "section", width: WEIGHT.thin, dash: CUT_DASH, curve: { kind: "line", a: here2(a), b: here2(b) } });
+    for (const [a, b] of cuts.thick) strokes.push({ layer: "section", width: WEIGHT.thick, curve: { kind: "line", a: here2(a), b: here2(b) } });
+    for (const a of cuts.arrows) fills.push({ layer: "section", pts: a.map(here2) });
+    for (const r of cuts.rings) strokes.push({ layer: "section", width: WEIGHT.thin, curve: { kind: "circle", c: here2(r.c), r: r.r } });
+    for (const l of cuts.labels) labels.push({ layer: "section", at: here2(l.at), size: l.size, anchor: "middle", baseline: "central", text: l.text });
     // Centre marks and centre lines (#563), thin, about the middle of the view.
     const mine = sheet.marks.filter((m) => markView(m) === v.id);
     if (mine.length) {

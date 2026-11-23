@@ -39,6 +39,31 @@ has Duplicate. Each sheet has its own page size; the title block is the drawing'
 them all, and the sheet count ("2/3") fills itself in. Right-click a view for **Move to** another sheet: its projected
 views, marks and dimensions go with it. Export has **All sheets** for PDF, one page each at its own size.
 
+## Section, detail and broken views
+
+**Section view** cuts a view on a line and shows what is inside. Pick the view, choose a line across it or up it, and
+click where the cut goes; it snaps to a hole's centre and to the middle. The section sits in line with its parent, on
+the side the standard's projection puts it, and can be dragged along that line. The parent gets the cutting line, its
+arrows and letters (A, B, C; never I, O or Q), and the section is captioned "A-A" (ISO) or "SECTION A-A" (ASME). Cut
+faces are hatched at 45°, 2.5 mm apart on paper, each body its own way. Right-click a section for **Look from the
+other side**. A cutting line is straight and level or upright: stepped and slanted cuts are not here yet.
+
+The kernel does the cut (`projectView` with `cut`), so a section's lines are the model's own. Edges behind the cut keep
+their names; each piece of the cut face's outline is named for the face the cut goes through. So a dimension or
+centre mark on a section follows the model like any other, and Auto dimension sizes what the cut shows: a blind hole's
+floor, a counterbore's step. Hidden edges are never dimensioned, so a section is how the inside gets its sizes.
+
+**Detail view** draws a circle of a view larger. Click the centre, or set the radius and scale on the card. The parent
+gets the circle and its letter; the detail is captioned "B (5:1)" or "DETAIL B, SCALE 5:1". A dimension on a detail
+reads the whole edge, not the piece inside the circle. Auto dimension leaves details alone: their parent has the sizes.
+
+**Break** leaves a stretch of a long part out, between two clicks, and draws what is past it closer, with two break
+lines 4 mm apart. A dimension across a break still reads the true size. Right-click the view for **Remove breaks**.
+
+A section or detail whose parent is deleted stays as it is, without its mark on the parent. All three are worked out
+in `web/src/drawing/cuts.ts` from the kernel's picture, and written by every export from the same lines (DXF layer
+`SECTION`).
+
 ## Dimensions
 
 A dimension is fixed to the edges and faces it measures by their names (`docs/topological-naming.md`), not to where
@@ -106,5 +131,5 @@ format is written from one picture of the sheet, `sheetScene` in `web/src/drawin
 
 ## Not yet
 
-Section, detail and break views, notes and symbols, a parts list with balloons, and templates
-with a logo are release 2 (#571, #573 to #575). Ordinate dimensions and tolerances are not planned yet.
+Notes and symbols, a parts list with balloons, and templates with a logo are release 2 (#573 to #575). Stepped,
+slanted and half sections are not planned yet. Ordinate dimensions and tolerances are not planned yet.

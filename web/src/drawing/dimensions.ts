@@ -221,7 +221,9 @@ export function dimArt(dim: Pick<DrawingDimension, "refs" | "across" | "at" | "d
     let u: V2 = way === "x" ? [1, 0] : way === "y" ? [0, 1] : unit(sub(q, p));
     if (u[0] < -1e-9 || (Math.abs(u[0]) < 1e-9 && u[1] < 0)) u = [-u[0], -u[1]];
     const n = perp(u);
-    const value = Math.abs(dot(sub(m.q, m.p), u));
+    // Across a break (#571) the two ends are drawn closer than they are: the size is between where they truly are.
+    const real = (view as { real?: (p: V2) => V2 }).real;
+    const value = Math.abs(dot(real ? sub(real(m.q), real(m.p)) : sub(m.q, m.p), u));
     const text = sizeText(value, places);
     const width = textWidth(text, s.text);
     const [s1, s2] = [dot(sub(p, T), u), dot(sub(q, T), u)];

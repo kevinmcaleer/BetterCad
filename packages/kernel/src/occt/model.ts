@@ -668,7 +668,14 @@ export class ModelBuilder {
     for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
     const shown = parts.filter((p) => !p.hole && !p.hidden && wanted(p.id));
     const moves = shown.map((p) => byLink.get(linkOf.get(p.id) ?? ""));
-    const key = canonical([shown.map((p, i) => [partKey(p, "fast"), moves[i] ?? null]), req.frame, req.hidden ?? true, req.smooth ?? true, req.trace ?? true]);
+    const key = canonical([
+      shown.map((p, i) => [partKey(p, "fast"), moves[i] ?? null]),
+      req.frame,
+      req.hidden ?? true,
+      req.smooth ?? true,
+      req.trace ?? true,
+      req.cut ?? null,
+    ]);
     const had = this.views.get(key);
     if (had) {
       // Used again: move it to the fresh end.
@@ -708,6 +715,7 @@ export class ModelBuilder {
       bodies: ids,
       ms: performance.now() - t0,
     };
+    if (flat.cuts) view.cuts = flat.cuts.map((c) => ({ body: ids[c.body]!, outline: c.outline }));
     this.views.set(key, view);
     while (this.views.size > VIEWS_KEPT) this.views.delete(this.views.keys().next().value!);
     return view;

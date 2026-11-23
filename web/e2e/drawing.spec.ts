@@ -196,7 +196,7 @@ test("project top and side views from a front view; they stay lined up and follo
   // P arms Projected view from the view that is selected. A3 is first angle: below is the top view, left the right.
   await page.keyboard.press("p");
   const card = page.getByRole("dialog", { name: "Projected view" });
-  await expect(card.getByLabel("From")).toHaveValue(/.+/);
+  await expect(card.getByLabel("From", { exact: true })).toHaveValue(/.+/);
   await page.mouse.move(f.x + 6, f.y + 150);
   await expect(card.getByLabel("Side")).toHaveValue("below");
   await expect(card.getByRole("status")).toHaveText(/Move the pointer away/, { timeout: 30_000 });
@@ -772,4 +772,65 @@ test("add a sheet, move a view to it and export both as one PDF @journey", async
   await expect(tabs.getByRole("tab")).toHaveCount(1);
   await page.keyboard.press("ControlOrMeta+z");
   await expect(tabs.getByRole("tab")).toHaveCount(2);
+});
+
+test("cut a section through a view, enlarge a detail and break a long view @journey @visual", async ({ page }) => {
+  await topViewOnA3(page);
+  const top = page.getByRole("button", { name: /^Top view, / });
+
+  // A section through the middle of the top view, looking from above it: the hole shows as two walls, hatched round.
+  await page.getByRole("button", { name: "Section view", exact: true }).click();
+  const card = page.getByRole("dialog", { name: "Section view" });
+  await expect(card.getByLabel("From", { exact: true })).toHaveValue(/.+/);
+  await expect(card.getByRole("status")).toHaveText(/Click the view where the cut goes/, { timeout: 30_000 });
+  await card.getByRole("button", { name: "Cut through the middle" }).click();
+  await expect(card).toHaveCount(0);
+  const section = page.getByRole("button", { name: /^Section A-A, / });
+  await expect(section.locator(".bc-view-visible")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+  await expect(section.locator(".bc-view-thin")).toHaveAttribute("d", /M/);
+  await expect(section.locator(".bc-view-hidden")).toHaveAttribute("d", "");
+  // The parent carries the cutting line and both letters; the section has its caption.
+  await expect(top.locator(".bc-cut-text")).toHaveText(["A", "A"]);
+  await expect(section.locator(".bc-cut-text")).toHaveText("A-A");
+  // It sits in line with its parent.
+  const [tb, sb] = [(await top.locator(".bc-view-hit").boundingBox())!, (await section.locator(".bc-view-hit").boundingBox())!];
+  expect(Math.abs(tb.x + tb.width / 2 - (sb.x + sb.width / 2))).toBeLessThan(1);
+
+  // Look from the other side: the view swaps sides of its parent.
+  await section.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Look from the other side" }).click();
+  await expect.poll(async () => Math.sign((await section.locator(".bc-view-hit").boundingBox())!.y - tb.y)).toBe(-Math.sign(sb.y - tb.y));
+  await page.keyboard.press("Control+z");
+
+  // A detail of the middle of the top view, at twice the size, lettered B.
+  await top.click();
+  await page.getByRole("button", { name: "Detail view", exact: true }).click();
+  const detailCard = page.getByRole("dialog", { name: "Detail view" });
+  await expect(detailCard.getByRole("status")).toHaveText(/Click the view where the detail's circle goes/);
+  await expect(detailCard.getByLabel("Scale")).toHaveValue("5");
+  await detailCard.getByRole("button", { name: "Circle the middle" }).click();
+  const detail = page.getByRole("button", { name: /^Detail B, 5:1/ });
+  await expect(detail.locator(".bc-view-visible")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+  await expect(detail.locator(".bc-cut-text")).toHaveText("B (5:1)");
+  await expect(top.locator(".bc-cut-text")).toHaveText(["A", "A", "B"]);
+
+  // Break the top view: it gets narrower, and takes its break off again from the menu.
+  const wide = (await top.locator(".bc-view-hit").boundingBox())!.width;
+  await top.click();
+  await page.getByRole("button", { name: "Break", exact: true }).click();
+  const breakCard = page.getByRole("dialog", { name: "Break" });
+  await breakCard.getByRole("button", { name: "Leave out the middle third" }).click();
+  await expect.poll(async () => (await top.locator(".bc-view-hit").boundingBox())!.width).toBeLessThan(wide * 0.8);
+  await top.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Remove breaks" }).click();
+  await expect.poll(async () => (await top.locator(".bc-view-hit").boundingBox())!.width).toBeCloseTo(wide, 0);
+
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-section-detail.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    timeout: 30_000,
+  });
 });

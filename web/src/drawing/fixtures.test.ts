@@ -17,6 +17,7 @@ import { sheetScene } from "./export/scene";
 import { sceneSvg } from "./export/svg";
 import { follow, problems, stamp } from "./follow";
 import { sheetLayout } from "./layout";
+import { picturesOf, placeSection } from "./cuts";
 import { viewRequest } from "./views";
 
 /**
@@ -105,7 +106,7 @@ const viewsOf = (doc: ModelDoc, sheet: DrawingSheet) => {
   const model = { ...doc };
   delete model.drawings;
   const got = new Map<string, ModelView>(sheet.views.map((v) => [v.id, builder.view(model, undefined, viewRequest(v), projectView)]));
-  return (id: string) => got.get(id);
+  return picturesOf(sheet, (id: string) => got.get(id));
 };
 const counter = () => {
   let n = 0;
@@ -207,4 +208,70 @@ describe.each(FIXTURES.map((f) => [f.file, f] as const))("fixture drawing: %s", 
     },
     60_000,
   );
+});
+
+/** Section views (#571), with the real kernel: a 40 × 30 × 20 block with a 10 mm hole 12 mm deep in its top. */
+describe("a section through a blind hole", () => {
+  function block(): ModelDoc {
+    const doc = newDoc("Block");
+    let n = 0;
+    const push = (f: Record<string, unknown>) => doc.features.push({ ...f, id: `f${++n}` } as Feature);
+    const part = (id: string, kind: "box" | "cylinder", size: [number, number, number], z: number) => {
+      push({ type: "add", name: `Add ${id}`, part: { id, name: id, kind, position: { x: 0, y: 0, z: 0 }, size: { x: 10, y: 10, z: 10 } } });
+      push({ type: "resize", name: `Size ${id}`, parts: [id], size: { x: size[0], y: size[1], z: size[2] } });
+      if (z) push({ type: "move", name: `Place ${id}`, parts: [id], position: { x: 0, y: 0, z } });
+    };
+    part("block", "box", [40, 30, 20], 0);
+    part("hole", "cylinder", [10, 10, 13], 8);
+    doc.looks.hole = { ...doc.looks.hole, hole: true };
+    push({ type: "combine", name: "Block with hole", mode: "group", target: "block", tools: [{ id: "hole", op: "cut" }] });
+    return doc;
+  }
+  const front: DrawingView = { id: "v1", kind: "base", shows: { all: true }, direction: "front", hidden: true, tangent: false, at: [140, 150] };
+  const sheetOf = () => {
+    const blank: DrawingSheet = { ...newSheet("Sheet 1", { size: "A3", date: "2026-11-23" }), id: "sh1", views: [front] };
+    const whole = viewsOf(block(), blank)("v1")!;
+    const mid: [number, number] = [(whole.box.min[0] + whole.box.max[0]) / 2, (whole.box.min[1] + whole.box.max[1]) / 2];
+    return placeSection(blank, "v2", "v1", mid, "up", false, "first", { w: 40, h: 20 });
+  };
+  const text = (sheet: DrawingSheet, viewOf: (id: string) => ModelView | undefined, view: string) =>
+    candidates(sheet, viewOf, { ...AUTO_START, density: 1 })
+      .filter((c) => c.dim.view === view)
+      .map((c) => dimArt({ ...c.dim, at: [0, -200] }, contextOf(sheet, view, viewOf(view)!, 2)!)?.text.text);
+
+  it("shows the hole's walls and floor as edges you can see, with the cut faces hatched round it", () => {
+    const sheet = sheetOf();
+    const viewOf = viewsOf(block(), sheet);
+    const [whole, cut] = [viewOf("v1")!, viewOf("v2")!];
+    // From the front the hole is all hidden lines.
+    expect(whole.edges.filter((e) => !e.visible).length).toBeGreaterThan(1);
+    expect(cut.edges.filter((e) => !e.visible)).toHaveLength(0);
+    expect(cut.cuts).toHaveLength(1);
+    // 30 wide and 20 tall, seen from the right.
+    expect(cut.box.max[0] - cut.box.min[0]).toBeCloseTo(30);
+    expect(cut.box.max[1] - cut.box.min[1]).toBeCloseTo(20);
+    const thin = (cut as { thin?: unknown[] }).thin!;
+    expect(thin.length).toBeGreaterThan(10);
+    // No hatching inside the hole: 5 mm each side of the middle, from 8 mm up.
+    const mid = (cut.box.min[0] + cut.box.max[0]) / 2;
+    for (const l of thin as { a: [number, number]; b: [number, number] }[]) {
+      const m = [(l.a[0] + l.b[0]) / 2, (l.a[1] + l.b[1]) / 2];
+      expect(Math.abs(m[0]! - mid) < 4.9 && m[1]! > cut.box.min[1] + 8.1).toBe(false);
+    }
+  }, 60_000);
+
+  it("gives Auto dimension where the hole's floor is, which no outside view can", () => {
+    const sheet = sheetOf();
+    const viewOf = viewsOf(block(), sheet);
+    // The floor is 8 mm up from the bottom; the cut edges are named for the faces the cut goes through.
+    expect(text(sheet, viewOf, "v2")).toContain("8");
+    expect(text(sheet, viewOf, "v1")).not.toContain("8");
+    expect(viewOf("v2")!.edges.every((e) => e.source?.name)).toBe(true);
+    const done = stamp(autoDimension(sheet, viewOf, 2, { ...AUTO_START, density: 1 }, counter()).sheet, viewOf, 2);
+    expect(done.dimensions.some((d) => d.view === "v2")).toBe(true);
+    expect(problems(done, viewOf, 2)).toEqual([]);
+    const scene = sheetScene(done, sheetLayout(done, { index: 1, count: 1 }), viewOf, 2);
+    expect(scene.labels.filter((l) => l.layer === "section").map((l) => l.text)).toEqual(["A", "A", "A-A"]);
+    expect(sceneDxf(scene)).toContain("SECTION");
+  }, 60_000);
 });
