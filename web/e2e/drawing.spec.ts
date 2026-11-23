@@ -27,6 +27,15 @@ async function topViewOnA3(page: Page) {
   await expect(page.getByRole("button", { name: /^Top view, / }).locator(".bc-view-visible")).toHaveAttribute("d", /A/, { timeout: 30_000 });
 }
 
+/**
+ * Pins the room the sheet is fitted in, then fits it, so a picture's size does not change when the bars around the
+ * view gain a button or a row.
+ */
+async function steady(page: Page) {
+  await page.addStyleTag({ content: ".bc-drawing-clear{inset:70px 320px 240px 320px !important}" });
+  await page.keyboard.press("f");
+}
+
 /** Where the page sat over half a second of frames, with the height its bar said it had: one entry once it has settled. */
 const sheetBoxes = (page: Page) =>
   page.evaluate(async () => {
@@ -439,6 +448,7 @@ test("arrange a view's dimensions into rows @journey @visual", async ({ page }) 
   expect(leader.x > box.x + box.width || leader.y + leader.height < box.y).toBe(true);
 
   await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
   await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-stacked.png", {
     maxDiffPixelRatio: 0.01,
@@ -460,6 +470,7 @@ test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^Front view, / }).locator(".bc-view-hidden")).toHaveAttribute("d", /M/, { timeout: 30_000 });
   // Nothing selected, so the picture is the sheet as it prints.
   await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
   await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   // Just the page, which the cards keep clear of at this size, with the date (today's) covered.
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-front.png", {
@@ -489,6 +500,7 @@ test("a top view of the bracket with its hole marked @visual", async ({ page }) 
   // The hole seen end on gets a centre mark, and the one through the upright, seen from the side, its centre line.
   await expect(page.locator(".bc-mark")).toHaveCount(2);
   await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
   await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-marked.png", {
     maxDiffPixelRatio: 0.01,
@@ -515,6 +527,7 @@ test("a top view of the bracket with its sizes @visual", async ({ page }) => {
   await card.getByRole("button", { name: "Finish" }).click();
   await expect(page.locator(".bc-size")).toHaveCount(3);
   await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
   await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-sizes.png", {
     maxDiffPixelRatio: 0.01,
@@ -619,6 +632,7 @@ test("auto dimension a view, turn the slider up and keep the sizes @journey @vis
   await expect(page.locator(".bc-size")).toHaveCount(total);
 
   await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
   await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-auto.png", {
     maxDiffPixelRatio: 0.01,
@@ -695,6 +709,7 @@ test("an ASME sheet of the phone stand, dimensioned for you @visual", async ({ p
   await expect(page.locator(".bc-lost")).toHaveCount(0);
 
   await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
   await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-phone-stand-asme.png", {
     maxDiffPixelRatio: 0.01,
