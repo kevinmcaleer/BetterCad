@@ -358,6 +358,8 @@ test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-front.png", {
     maxDiffPixelRatio: 0.01,
     mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    // A first picture is taken twice to see that it holds still, which is slow on a runner with no graphics card.
+    timeout: 30_000,
   });
 });
 
@@ -384,6 +386,8 @@ test("a top view of the bracket with its hole marked @visual", async ({ page }) 
   await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-marked.png", {
     maxDiffPixelRatio: 0.01,
     mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    // A first picture is taken twice to see that it holds still, which is slow on a runner with no graphics card.
+    timeout: 30_000,
   });
 });
 
