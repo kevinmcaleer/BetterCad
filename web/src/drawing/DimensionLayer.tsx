@@ -61,6 +61,8 @@ export interface DimensionLayerProps {
   ghost?: Pick<DrawingDimension, "refs" | "across" | "at" | "decimals">;
   selected?: string | null;
   onSelect?: (id: string | null) => void;
+  /** Where a dragged size's text settles: into a row when it is near one (#565). */
+  snap?: (dim: DrawingDimension, at: V2) => V2;
   /** A size's text moved, by a drag or the arrow keys. Left out, sizes are only drawn. */
   onMove?: (id: string, at: V2) => void;
   onDelete?: (id: string) => void;
@@ -87,6 +89,7 @@ export function DimensionLayer({
   ghost,
   selected,
   onSelect,
+  snap,
   onMove,
   onDelete,
   onMenu,
@@ -95,12 +98,12 @@ export function DimensionLayer({
   const mid: V2 = [(model.box.min[0] + model.box.max[0]) / 2, (model.box.min[1] + model.box.max[1]) / 2];
   const P = (q: V2): V2 => [(q[0] - mid[0]) * scale, (mid[1] - q[1]) * scale];
   const [drag, setDrag] = useState<{ id: string; at: V2 } | null>(null);
-  const press = useRef<{ id: string; x: number; y: number; at: V2; moved: boolean } | null>(null);
+  const press = useRef<{ dim: DrawingDimension; x: number; y: number; moved: boolean } | null>(null);
   const down = (e: PointerEvent<SVGGElement>, d: DrawingDimension) => {
     // A press on a size is its own: the sheet under it must not start to move.
     e.stopPropagation();
     if (!onMove || e.button !== 0) return;
-    press.current = { id: d.id, x: e.clientX, y: e.clientY, at: d.at, moved: false };
+    press.current = { dim: d, x: e.clientX, y: e.clientY, moved: false };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const move = (e: PointerEvent<SVGGElement>) => {
@@ -109,7 +112,8 @@ export function DimensionLayer({
     const [dx, dy] = [e.clientX - p.x, e.clientY - p.y];
     if (!p.moved && Math.hypot(dx, dy) < 3) return;
     p.moved = true;
-    setDrag({ id: p.id, at: [p.at[0] + dx / zoom, p.at[1] - dy / zoom] });
+    const at: V2 = [p.dim.at[0] + dx / zoom, p.dim.at[1] - dy / zoom];
+    setDrag({ id: p.dim.id, at: snap ? snap(p.dim, at) : at });
   };
   const up = (e: PointerEvent<SVGGElement>) => {
     const p = press.current;

@@ -131,6 +131,11 @@ export interface DrawingSheet {
   views: DrawingView[];
   marks: DrawingMark[];
   dimensions: DrawingDimension[];
+  /**
+   * Where rows of dimensions sit, mm on paper: the first row this far from a view's outline and each further row
+   * this much further out (#565). Left out, the standard's own spacing.
+   */
+  rows?: { first: number; next: number };
   /** What Auto dimension was last run with, so Run again does the same. `density` is 0 (fewest) to 1 (all). */
   auto?: { recipe: AutoRecipe; datum: DatumCorner; density: number };
 }

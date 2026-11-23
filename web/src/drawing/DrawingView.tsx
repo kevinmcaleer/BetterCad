@@ -25,6 +25,7 @@ import {
 } from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newId, type ModelDoc } from "../state/document";
+import { arrangeSheet, contextOf, crowded, sheetRows, snapRow, type Crowded } from "./arrange";
 import { BaseViewCard, type ShowOption } from "./BaseViewCard";
 import { DimensionCard } from "./DimensionCard";
 import { DimensionLayer } from "./DimensionLayer";
@@ -112,6 +113,8 @@ export interface DrawingApi {
   fit(): void;
   /** Add centre marks to the selected view, or to every view when none is (#563). */
   autoMarks(): void;
+  /** Arrange dimensions on the selected view, or on every view when none is (#565). */
+  arrange(): void;
 }
 
 export interface DrawingPaperProps {
@@ -186,8 +189,9 @@ export function DrawingPaper({
   // Fit when the drawing opens and when its page changes size or turns.
   useLayoutEffect(fit, [fit]);
   const autoRef = useRef<() => void>(() => {});
+  const arrangeRef = useRef<() => void>(() => {});
   useEffect(() => {
-    if (api) api.current = { fit, autoMarks: () => autoRef.current() };
+    if (api) api.current = { fit, autoMarks: () => autoRef.current(), arrange: () => arrangeRef.current() };
     return () => {
       if (api) api.current = null;
     };
@@ -472,6 +476,22 @@ export function DrawingPaper({
     );
   const removeDim = (id: string) => onSheet?.((s) => ({ ...s, dimensions: s.dimensions.filter((d) => d.id !== id) }), "Delete dimension");
   const menuDim = dimMenu ? sheet.dimensions.find((d) => d.id === dimMenu.id) : undefined;
+  // Arrange dimensions (#565): sizes into rows, and a neighbouring view they then run into is offered a move.
+  const [crowd, setCrowd] = useState<Crowded | null>(null);
+  const arrangeViews = (ids: string[]) => {
+    const viewOf = (id: string) => got.get(id)?.view;
+    const count = sheet.dimensions.filter((d) => ids.includes(d.view)).length;
+    if (!count) return say?.("There are no sizes to arrange here.");
+    const next = arrangeSheet(sheet, viewOf, drawing.decimals, { views: ids });
+    if (next !== sheet) onSheet?.((s) => arrangeSheet(s, viewOf, drawing.decimals, { views: ids }), "Arrange dimensions");
+    say?.(`Arranged ${count} ${count === 1 ? "size" : "sizes"}.`);
+    setCrowd(crowded(next, viewOf, drawing.decimals).find((c) => ids.includes(c.view)) ?? null);
+  };
+  arrangeRef.current = () => {
+    if (readOnly) return;
+    arrangeViews(selected && sheet.views.some((v) => v.id === selected) ? [selected] : sheet.views.map((v) => v.id));
+  };
+  const crowdNames = crowd ? [sheet.views.find((v) => v.id === crowd.view), sheet.views.find((v) => v.id === crowd.into)] : [];
   /** A view's right-click menu. */
   const [menu, setMenu] = useState<{ at: ContextMenuState; view: string } | null>(null);
   const menuView = menu ? sheet.views.find((v) => v.id === menu.view) : undefined;
@@ -697,6 +717,10 @@ export function DrawingPaper({
                       ghost={pending?.view === v.id ? dimGhost : undefined}
                       selected={selectedDim}
                       onSelect={setSelectedDim}
+                      snap={(d, at) => {
+                        const ctx = contextOf(sheet, v.id, g.view!, drawing.decimals);
+                        return ctx ? snapRow(d, at, ctx, sheetRows(sheet)) : at;
+                      }}
                       onMove={readOnly ? undefined : (id, at) => changeDim(id, { at }, "Move dimension")}
                       onDelete={readOnly ? undefined : removeDim}
                       onMenu={readOnly ? undefined : (id, x, y) => setDimMenu({ at: { x, y }, id })}
@@ -797,6 +821,7 @@ export function DrawingPaper({
           menuView
             ? [
                 { id: "marks", label: "Add centre marks to this view", icon: "drawing", onSelect: () => markAll([menuView.id]) },
+                { id: "arrange", label: "Arrange dimensions", icon: "dimension", onSelect: () => arrangeViews([menuView.id]) },
                 { id: "edit", label: "Change this view", icon: "settings", onSelect: () => startChange(menuView) },
                 { kind: "separator", id: "s" },
                 { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => remove(menuView) },
@@ -814,6 +839,27 @@ export function DrawingPaper({
           say={say ?? (() => {})}
           onClose={() => onTool?.(null)}
         />
+      )}
+      {crowd && crowdNames[0] && crowdNames[1] && (
+        <Dialog
+          open
+          modal
+          title="Make room for the sizes?"
+          icon="drawing"
+          width={340}
+          onCancel={() => setCrowd(null)}
+          onDone={() => {
+            const { into, by } = crowd;
+            setCrowd(null);
+            onSheet?.((s) => {
+              const v = s.views.find((x) => x.id === into);
+              return v ? moveView(s, into, [v.at[0] + by[0], v.at[1] + by[1]]) : s;
+            }, "Move view");
+          }}
+          doneLabel="Move it"
+        >
+          <p className="bc-note">{`The sizes on the ${viewName(crowdNames[0]).toLowerCase()} run into the ${viewName(crowdNames[1]).toLowerCase()}. It can move out of their way.`}</p>
+        </Dialog>
       )}
       {asking && (
         <Dialog
@@ -899,6 +945,8 @@ export interface DrawingBarProps {
   /** Arms Dimension (#564). */
   onDimension?: () => void;
   dimension?: boolean;
+  /** Arrange dimensions (#565). */
+  onArrange?: () => void;
   /** Opens Export (#569). */
   onExport?: () => void;
   /** Arms a mark tool (#563), the one that is armed, and Add centre marks. */
@@ -988,6 +1036,7 @@ export function DrawingRibbon({
   projectedView,
   onDimension,
   dimension,
+  onArrange,
   onExport,
   onMark,
   mark,
@@ -1030,6 +1079,7 @@ export function DrawingRibbon({
       {!readOnly && onDimension && (
         <RibbonGroup label="Dimensions" entries={[]}>
           <RibbonButton icon="dimension" colour="dimension" label="Dimension" shortcut="D" pressed={!!dimension} onPress={onDimension} />
+          {onArrange && <RibbonButton icon="dimension" colour="sk-auto" label="Arrange dimensions" short="Arrange" onPress={onArrange} />}
         </RibbonGroup>
       )}
       <RibbonGroup label="Sheet" entries={[]}>

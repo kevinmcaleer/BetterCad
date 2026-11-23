@@ -34,16 +34,22 @@ export function sheetChange(drawing: Drawing, choice: SheetChoice): Edit {
   const sheet = drawing.sheets[0]!;
   return [
     (d) =>
-      changeSheet(d, drawing.id, sheet.id, (s) => ({
-        // First angle and third angle put projected views on opposite sides of their parent.
-        ...(choice.standard === s.standard ? s : flipAngle(s)),
-        size: choice.size,
-        landscape: choice.landscape,
-        standard: choice.standard,
-        border: choice.border,
-        scale: choice.scale ?? s.scale,
-        title: choice.title ?? s.title,
-      })),
+      changeSheet(d, drawing.id, sheet.id, (s) => {
+        const next: DrawingSheet = {
+          // First angle and third angle put projected views on opposite sides of their parent.
+          ...(choice.standard === s.standard ? s : flipAngle(s)),
+          size: choice.size,
+          landscape: choice.landscape,
+          standard: choice.standard,
+          border: choice.border,
+          scale: choice.scale ?? s.scale,
+          title: choice.title ?? s.title,
+        };
+        // Rows of dimensions the same as the standard's are left out of the file.
+        if (choice.rows) next.rows = choice.rows;
+        else delete next.rows;
+        return next;
+      }),
     "Sheet settings",
   ];
 }

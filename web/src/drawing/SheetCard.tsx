@@ -11,6 +11,7 @@ import {
   type TitleBlock,
 } from "@bettercad/kernel/drawing";
 import { today } from "./layout";
+import { rowsFor, type Rows } from "./arrange";
 import { lastSheet, type SheetPick } from "./prefs";
 
 const SIZES = Object.keys(SHEET_SIZES) as SheetSize[];
@@ -33,6 +34,8 @@ export interface SheetChoice extends SheetPick {
   standard: DrawingStandard;
   scale?: number;
   title?: TitleBlock;
+  /** Where rows of dimensions sit (#565); left out when they are the standard's. */
+  rows?: Rows;
 }
 
 export interface SheetCardProps {
@@ -57,6 +60,9 @@ export function SheetCard({ sheet, onCancel, onDone }: SheetCardProps) {
   const [scale, setScale] = useState(sheet?.scale ?? 1);
   const [title, setTitle] = useState<TitleBlock>(sheet?.title ?? {});
   const shown = standard ?? standardFor(size);
+  // Rows of dimensions follow the standard until you set them yourself.
+  const [rows, setRows] = useState<Rows | undefined>(sheet?.rows);
+  const rowsNow = rows ?? rowsFor(shown);
 
   const done = () => {
     const choice: SheetChoice = { size, landscape, border, standard: shown };
@@ -64,6 +70,8 @@ export function SheetCard({ sheet, onCancel, onDone }: SheetCardProps) {
       choice.scale = scale;
       // Blank fields are left out of the file.
       choice.title = Object.fromEntries(Object.entries(title).filter(([, v]) => v?.trim())) as TitleBlock;
+      const usual = rowsFor(shown);
+      if (rows && (rows.first !== usual.first || rows.next !== usual.next)) choice.rows = rows;
     }
     onDone(choice);
   };
@@ -135,6 +143,28 @@ export function SheetCard({ sheet, onCancel, onDone }: SheetCardProps) {
                   {scaleLabel(s)}
                 </option>
               ))}
+            </select>
+
+            <h3 className="bc-sheet-card-head">Rows of dimensions</h3>
+            <label className="bc-field-label" htmlFor={`${id}-first`}>
+              First row from the view
+            </label>
+            <select id={`${id}-first`} className="bc-select" value={rowsNow.first} onChange={(e) => setRows({ ...rowsNow, first: Number(e.target.value) })}>
+              {[...new Set([6, 8, 10, 12, 15, rowsNow.first])]
+                .sort((a, b) => a - b)
+                .map((mm) => (
+                  <option key={mm} value={mm}>{`${mm} mm`}</option>
+                ))}
+            </select>
+            <label className="bc-field-label" htmlFor={`${id}-next`}>
+              Between rows
+            </label>
+            <select id={`${id}-next`} className="bc-select" value={rowsNow.next} onChange={(e) => setRows({ ...rowsNow, next: Number(e.target.value) })}>
+              {[...new Set([6, 7, 8, 10, 12, rowsNow.next])]
+                .sort((a, b) => a - b)
+                .map((mm) => (
+                  <option key={mm} value={mm}>{`${mm} mm`}</option>
+                ))}
             </select>
 
             <h3 className="bc-sheet-card-head">Title block</h3>

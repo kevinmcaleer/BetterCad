@@ -400,6 +400,53 @@ test("dimension an edge and a hole, drag a size by its text and delete it", { ta
   await expect(page.getByRole("button", { name: "Dimension, Ø4.5 mm" })).toBeVisible();
 });
 
+/** Stacking (#565): Arrange dimensions sorts a view's sizes into rows, the shortest nearest the part. */
+test("arrange a view's dimensions into rows @journey @visual", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await topViewOnA3(page);
+  const top = page.getByRole("button", { name: /^Top view, / });
+  await page.keyboard.press("d");
+  const card = page.getByRole("dialog", { name: "Dimension" });
+  const box = (await top.locator(".bc-view-hit").boundingBox())!;
+  const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
+  // Sizes put down anywhere: the overall length nearest the part, the short ones further out.
+  await page.getByRole("button", { name: "Point at -20, -15 mm" }).click();
+  await page.getByRole("button", { name: "Point at 20, -15 mm" }).click();
+  await page.mouse.click(cx + 10, box.y + box.height + 12);
+  await page.getByRole("button", { name: "Edge, 36 mm long" }).first().click();
+  await page.mouse.click(cx - 20, box.y + box.height + 50);
+  await page.getByRole("button", { name: "Edge, 4 mm long" }).first().click();
+  await page.mouse.click(box.x - 20, box.y + box.height + 70);
+  await page.getByRole("button", { name: "Edge, 30 mm long" }).first().click();
+  await page.mouse.click(box.x - 60, cy + 20);
+  await page.getByRole("button", { name: "Hole, 4.5 mm across", exact: true }).click({ position: { x: 1, y: 5 } });
+  await page.mouse.click(cx - 30, cy + 20);
+  await card.getByRole("button", { name: "Finish" }).click();
+  await expect(page.locator(".bc-size")).toHaveCount(5);
+
+  await top.locator(".bc-view-hit").click({ button: "right", position: { x: box.width / 2 + 40, y: 20 } });
+  await page.getByRole("menuitem", { name: "Arrange dimensions" }).click();
+  const y = async (name: string) => {
+    const b = (await page.getByRole("button", { name }).locator("text").boundingBox())!;
+    return b.y + b.height / 2;
+  };
+  // The two that meet end to end share the first row; the overall length is outside them.
+  await expect.poll(async () => Math.abs((await y("Dimension, 36 mm")) - (await y("Dimension, 4 mm")))).toBeLessThan(1);
+  expect((await y("Dimension, 40 mm")) - (await y("Dimension, 36 mm"))).toBeGreaterThan(10);
+  expect(await y("Dimension, 36 mm")).toBeGreaterThan(box.y + box.height);
+  // The hole's size is on a leader outside the view.
+  const leader = (await page.getByRole("button", { name: "Dimension, Ø4.5 mm" }).locator("text").boundingBox())!;
+  expect(leader.x > box.x + box.width || leader.y + leader.height < box.y).toBe(true);
+
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-top-stacked.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    timeout: 30_000,
+  });
+});
+
 test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");

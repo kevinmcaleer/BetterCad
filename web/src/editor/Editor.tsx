@@ -571,6 +571,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     mark: drawingTool && drawingTool !== "base" && drawingTool !== "projected" && drawingTool !== "export" && drawingTool !== "dimension" ? drawingTool : null,
     onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onAutoMarks: () => drawingApi.current?.autoMarks(),
+    onArrange: () => drawingApi.current?.arrange(),
     onSettings: () => setSheetCard("settings"),
     onFit: () => drawingApi.current?.fit(),
     onFinish: () => setDrawing(null),
@@ -2105,7 +2106,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit" | "autoMarks" | DrawingTool) => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit" | "autoMarks" | "arrange" | DrawingTool) => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2204,15 +2205,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     drawing: (act) =>
       act === "autoMarks"
         ? drawingApi.current?.autoMarks()
-        : act === "fit"
-          ? drawingApi.current?.fit()
-          : act === "finish"
-            ? setDrawing(null)
-            : act === "new"
-              ? onDrawing("new")
-              : act === "settings"
-                ? setSheetCard("settings")
-                : setDrawingTool(act),
+        : act === "arrange"
+          ? drawingApi.current?.arrange()
+          : act === "fit"
+            ? drawingApi.current?.fit()
+            : act === "finish"
+              ? setDrawing(null)
+              : act === "new"
+                ? onDrawing("new")
+                : act === "settings"
+                  ? setSheetCard("settings")
+                  : setDrawingTool(act),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -2913,6 +2916,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keys: ["d"],
         run: () => h().drawing("dimension"),
         keywords: "size length distance angle radius diameter measure",
+      },
+      {
+        id: "drawing.arrange",
+        scope: "drawing",
+        label: "Arrange dimensions",
+        group: "Tools",
+        icon: "dimension",
+        run: () => h().drawing("arrange"),
+        keywords: "tidy stack rows sizes sort space",
       },
       {
         id: "drawing.centreMark",
