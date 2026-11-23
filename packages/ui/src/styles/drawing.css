@@ -14,7 +14,8 @@
 /* The part of the view the cards leave clear: Fit sheet centres the page in it, above the drawing's own bar. */
 .bc-drawing-clear {
   position: absolute;
-  inset: var(--bc-view-top, 0px) var(--bc-view-right, 0px) calc(var(--bc-view-bottom, 0px) + var(--bc-bars-room, 0px)) var(--bc-view-left, 0px);
+  inset: var(--bc-view-top, 0px) var(--bc-view-right, 0px)
+    calc(var(--bc-view-bottom, 0px) + var(--bc-drawing-bar, var(--bc-bars-room, 0px)) + var(--bc-space-2)) var(--bc-view-left, 0px);
   visibility: hidden;
   pointer-events: none;
 }

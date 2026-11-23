@@ -212,6 +212,75 @@ test("project top and side views from a front view; they stay lined up and follo
   await expect(right).toBeVisible();
 });
 
+test("export a drawing as PDF, SVG, DXF and PNG", { tag: "@journey" }, async ({ page }) => {
+  // No save picker here, so each file comes as a download.
+  await page.addInitScript(() => {
+    delete (window as unknown as Record<string, unknown>).showSaveFilePicker;
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await newDrawing(page, "A4");
+  await page.keyboard.press("b");
+  const base = page.getByRole("dialog", { name: "Base view" });
+  await expect(base.getByRole("status")).toHaveText(/Click the sheet/, { timeout: 30_000 });
+  await base.getByRole("button", { name: "Place" }).click();
+  await expect(page.getByRole("button", { name: /^Front view, / }).locator(".bc-view-hidden")).toHaveAttribute("d", /M/, { timeout: 30_000 });
+
+  const card = page.getByRole("dialog", { name: "Export drawing" });
+  const save = async (format: string, more?: () => Promise<void>) => {
+    await page.getByRole("group", { name: "Drawing 1 options" }).getByRole("button", { name: "Export" }).click();
+    await card.getByRole("button", { name: format, exact: true }).click();
+    await more?.();
+    const download = page.waitForEvent("download");
+    await card.getByRole("button", { name: "Export" }).click();
+    const file = await download;
+    await expect(card).toHaveCount(0);
+    const chunks: Buffer[] = [];
+    for await (const c of (await file.createReadStream())!) chunks.push(c as Buffer);
+    return { name: file.suggestedFilename(), bytes: Buffer.concat(chunks) };
+  };
+
+  // PDF: one A4 landscape page, 297 × 210 mm in points, squeezed.
+  const pdf = await save("PDF");
+  expect(pdf.name).toBe("Bracket rev A.pdf");
+  const head = pdf.bytes.toString("latin1");
+  expect(head.startsWith("%PDF-1.4")).toBe(true);
+  const box = /\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(head)!;
+  expect(Math.abs((Number(box[1]) / 72) * 25.4 - 297)).toBeLessThan(0.1);
+  expect(Math.abs((Number(box[2]) / 72) * 25.4 - 210)).toBeLessThan(0.1);
+  expect(head).toContain("/Filter /FlateDecode");
+  expect(head.trimEnd().endsWith("%%EOF")).toBe(true);
+
+  // SVG: the page in millimetres with the view's lines and the title block's text.
+  const svg = (await save("SVG")).bytes.toString("utf8");
+  expect(svg).toContain('width="297mm" height="210mm"');
+  expect(svg).toMatch(/<path class="visible" stroke-width="0.5"[^>]* d="M[^"]{40,}"/);
+  expect(svg).toMatch(/<path class="hidden" stroke-width="0.25" stroke-dasharray="2 1"/);
+  expect(svg).toContain(">Bracket</text>");
+
+  // DXF: the sheet on layers, then the front view alone at full size.
+  const dxf = (await save("DXF")).bytes.toString("utf8");
+  for (const layer of ["VISIBLE", "HIDDEN", "BORDER", "TITLE"]) expect(dxf).toContain(`\r\n  8\r\n${layer}\r\n`);
+  const one = await save("DXF", () =>
+    card
+      .getByLabel("What")
+      .selectOption({ label: "Front view only, at full size" })
+      .then(() => {}),
+  );
+  expect(one.name).toBe("Bracket rev A front view.dxf");
+  expect(one.bytes.toString("utf8")).not.toContain("TITLE\r\n 10");
+
+  // PNG: A4 at 150 dpi, drawn by the browser from the same lines with the text as outlines.
+  const png = await save("PNG", async () => {
+    await card.getByRole("button", { name: "150 dpi" }).click();
+    await expect(card.getByRole("status")).toHaveText(/1754 × 1240 pixels/);
+  });
+  expect(png.bytes.subarray(1, 4).toString("latin1")).toBe("PNG");
+  expect([png.bytes.readUInt32BE(16), png.bytes.readUInt32BE(20)]).toEqual([1754, 1240]);
+  expect(png.bytes.length).toBeGreaterThan(20_000);
+});
+
 test("a sheet with a front view of the bracket @visual", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");

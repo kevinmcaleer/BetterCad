@@ -1,0 +1,196 @@
+import { scaleLabel, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
+import { TAU, turn, type ModelView, type V2, type ViewCurve } from "@bettercad/kernel/view";
+import { TEXT, WEIGHT, type SheetLayout } from "../layout";
+
+/**
+ * A sheet as plain lines and text, for export (#569). Millimetres from the page's bottom left corner with y up, the
+ * way PDF and DXF count, so each writer only has to spell the same shapes its own way. No DOM, no colours: an
+ * export is black on white whatever the theme.
+ */
+export type Layer = "visible" | "hidden" | "border" | "title";
+
+export interface Stroke {
+  layer: Layer;
+  /** Line width on paper, mm. */
+  width: number;
+  /** Dash and gap lengths, mm. */
+  dash?: readonly number[];
+  curve: ViewCurve;
+}
+export interface Label {
+  layer: Layer;
+  /** Where the text is anchored: its start or middle across, its middle or baseline up. */
+  at: V2;
+  /** Letter height, mm (the font size). */
+  size: number;
+  anchor: "start" | "middle";
+  baseline: "central" | "alphabetic";
+  text: string;
+}
+export interface Scene {
+  w: number;
+  h: number;
+  strokes: Stroke[];
+  labels: Label[];
+}
+
+/** Line widths and dashes on paper, mm: those of `drawing.css`. */
+export const LINES = { visible: 0.5, hidden: 0.25, dash: [2, 1] } as const;
+
+/** A curve scaled by `s` and moved by (`ox`, `oy`). Angles stay as they are. */
+export function placed(c: ViewCurve, s: number, ox: number, oy: number): ViewCurve {
+  const p = (q: V2): V2 => [ox + q[0] * s, oy + q[1] * s];
+  switch (c.kind) {
+    case "line":
+      return { kind: "line", a: p(c.a), b: p(c.b) };
+    case "poly":
+      return { kind: "poly", pts: c.pts.map(p) };
+    case "circle":
+      return { kind: "circle", c: p(c.c), r: c.r * s };
+    case "arc":
+      return { ...c, c: p(c.c), r: c.r * s };
+    case "ellipse":
+      return { ...c, c: p(c.c), rx: c.rx * s, ry: c.ry * s };
+  }
+}
+
+/** A round curve as centre, radii, tilt and the parameter it runs over; a whole one sweeps a full turn. */
+export interface Round {
+  c: V2;
+  rx: number;
+  ry: number;
+  tilt: number;
+  from: number;
+  sweep: number;
+}
+export function roundOf(c: Extract<ViewCurve, { kind: "circle" | "arc" | "ellipse" }>): Round {
+  if (c.kind === "circle") return { c: c.c, rx: c.r, ry: c.r, tilt: 0, from: 0, sweep: TAU };
+  if (c.kind === "arc") return { c: c.c, rx: c.r, ry: c.r, tilt: 0, from: c.from, sweep: turn(c.to - c.from) || TAU };
+  const whole = c.from === undefined || c.to === undefined;
+  return { c: c.c, rx: c.rx, ry: c.ry, tilt: c.turn, from: whole ? 0 : c.from!, sweep: whole ? TAU : turn(c.to! - c.from!) || TAU };
+}
+/** The point of a round curve at a parameter, and how fast it moves there. */
+export function roundAt(r: Round, t: number): { p: V2; d: V2 } {
+  const [cs, sn] = [Math.cos(r.tilt), Math.sin(r.tilt)];
+  const [u, v] = [r.rx * Math.cos(t), r.ry * Math.sin(t)];
+  const [du, dv] = [-r.rx * Math.sin(t), r.ry * Math.cos(t)];
+  return { p: [r.c[0] + u * cs - v * sn, r.c[1] + u * sn + v * cs], d: [du * cs - dv * sn, du * sn + dv * cs] };
+}
+
+/** A cubic Bézier piece: two control points and where it ends. */
+export type Cubic = [V2, V2, V2];
+/** A round curve as cubic Béziers of a quarter turn at most, which are within a hair of the true curve. */
+export function cubics(r: Round): { start: V2; pieces: Cubic[] } {
+  const n = Math.max(1, Math.ceil(r.sweep / (Math.PI / 2) - 1e-9));
+  const step = r.sweep / n;
+  const k = (4 / 3) * Math.tan(step / 4);
+  const pieces: Cubic[] = [];
+  let a = roundAt(r, r.from);
+  const start = a.p;
+  for (let i = 1; i <= n; i++) {
+    const b = roundAt(r, r.from + step * i);
+    pieces.push([[a.p[0] + a.d[0] * k, a.p[1] + a.d[1] * k], [b.p[0] - b.d[0] * k, b.p[1] - b.d[1] * k], b.p]);
+    a = b;
+  }
+  return { start, pieces };
+}
+
+const box = (x: number, y: number, w: number, h: number): ViewCurve => ({
+  kind: "poly",
+  pts: [
+    [x, y],
+    [x + w, y],
+    [x + w, y + h],
+    [x, y + h],
+    [x, y],
+  ],
+});
+
+/** Everything on a sheet: the frame, zones and title block, and each view's lines from the kernel's picture of it. */
+export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: string) => ModelView | undefined): Scene {
+  const H = l.page.h;
+  // The layout counts down from the top of the page; the scene counts up from the bottom.
+  const up = (y: number) => H - y;
+  const strokes: Stroke[] = [];
+  const labels: Label[] = [];
+  const line = (layer: Layer, width: number, s: { x1: number; y1: number; x2: number; y2: number }) =>
+    strokes.push({ layer, width, curve: { kind: "line", a: [s.x1, up(s.y1)], b: [s.x2, up(s.y2)] } });
+
+  if (l.border) {
+    const f = l.frame;
+    strokes.push({ layer: "border", width: WEIGHT.thick, curve: box(f.x, up(f.y + f.h), f.w, f.h) });
+    for (const t of l.ticks) line("border", WEIGHT.thin, t);
+    for (const c of l.centring) line("border", WEIGHT.thick, c);
+    for (const z of l.labels) labels.push({ layer: "border", at: [z.x, up(z.y)], size: TEXT.zone, anchor: "middle", baseline: "central", text: z.text });
+  }
+
+  strokes.push({ layer: "title", width: WEIGHT.thick, curve: box(l.block.x, up(l.block.y + l.block.h), l.block.w, l.block.h) });
+  for (const c of l.cells) {
+    strokes.push({ layer: "title", width: WEIGHT.thin, curve: box(c.x, up(c.y + c.h), c.w, c.h) });
+    labels.push({ layer: "title", at: [c.x + 1, up(c.y + 2)], size: TEXT.label, anchor: "start", baseline: "central", text: c.label });
+    const cy = up(c.y + c.h / 2 + 1.2);
+    const cx = c.x + c.w / 2;
+    if (c.key === "projection") {
+      // The cone from the side and from its small end, as `Sheet.tsx` draws them.
+      const cone = l.angle === "first" ? cx - 6.4 : cx + 0.4;
+      const rings = l.angle === "first" ? cx + 3.9 : cx - 3.9;
+      strokes.push({
+        layer: "title",
+        width: WEIGHT.thin,
+        curve: {
+          kind: "poly",
+          pts: [
+            [cone, cy + 1.3],
+            [cone + 6, cy + 2.5],
+            [cone + 6, cy - 2.5],
+            [cone, cy - 1.3],
+            [cone, cy + 1.3],
+          ],
+        },
+      });
+      for (const r of [2.5, 1.3]) strokes.push({ layer: "title", width: WEIGHT.thin, curve: { kind: "circle", c: [rings, cy], r } });
+    } else if (c.value) {
+      labels.push({ layer: "title", at: [cx, cy], size: c.size, anchor: "middle", baseline: "central", text: c.value });
+    }
+  }
+
+  for (const v of sheet.views) {
+    const view = viewOf(v.id);
+    if (!view) continue;
+    const s = viewScale(sheet, v);
+    const { min, max } = view.box;
+    const ox = v.at[0] - ((min[0] + max[0]) / 2) * s;
+    const oy = v.at[1] - ((min[1] + max[1]) / 2) * s;
+    // Hidden lines first, so the edges you see are drawn over them.
+    for (const e of view.edges) if (!e.visible) strokes.push({ layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve: placed(e.curve, s, ox, oy) });
+    for (const e of view.edges) if (e.visible) strokes.push({ layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) });
+    if (s !== sheet.scale) {
+      // As on the sheet: under the view's box, which has 2 mm of room round the lines.
+      const h = Math.max((max[1] - min[1]) * s, 20) + 4;
+      labels.push({
+        layer: "visible",
+        at: [v.at[0], v.at[1] - h / 2 - TEXT.value - 1],
+        size: TEXT.value,
+        anchor: "middle",
+        baseline: "alphabetic",
+        text: `Scale ${scaleLabel(s)}`,
+      });
+    }
+  }
+  return { w: l.page.w, h: l.page.h, strokes, labels };
+}
+
+/**
+ * One view on its own at full size, for a laser cutter: just its lines in the model's millimetres, from the bottom
+ * left corner of its box. Hidden edges go only when asked for.
+ */
+export function viewScene(view: ModelView, hidden: boolean): Scene {
+  const { min, max } = view.box;
+  const strokes: Stroke[] = [];
+  for (const e of view.edges) {
+    if (!e.visible && !hidden) continue;
+    const curve = placed(e.curve, 1, -min[0], -min[1]);
+    strokes.push(e.visible ? { layer: "visible", width: LINES.visible, curve } : { layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve });
+  }
+  return { w: Math.max(0, max[0] - min[0]), h: Math.max(0, max[1] - min[1]), strokes, labels: [] };
+}
