@@ -452,6 +452,42 @@ describe("sketch tools", () => {
   });
 });
 
+describe("a new size that repeats nothing", () => {
+  it("goes on as a driving size when it takes away a degree of freedom, whatever old repeats planegcs names", () => {
+    // Kev's sketch (2026-11-23): a size between two circle centres, which nothing else set, came out as a reference
+    // because planegcs named a different set of the sketch's old repeats once the size went in.
+    const before = { status: "redundant" as const, redundant: ["h1"], dof: 4 };
+    const after = { status: "redundant" as const, redundant: ["h1", "v2"], dof: 3 };
+    expect(newlyRedundant(before, after).length).toBeGreaterThan(0);
+    expect(newlyRedundant(before, after, true)).toEqual([]);
+    // A size that only says again what is held leaves the freedom as it was, and is still a repeat.
+    const repeat = { status: "redundant" as const, redundant: ["h1", "d1"], dof: 4 };
+    expect(newlyRedundant(before, repeat, true)).toEqual(["d1"]);
+  });
+
+  it("a real repeated size is still refused by the solver check", async () => {
+    const solver = await Solver.load();
+    const d = new Draft(newSketch());
+    const a = d.point([0, 0]);
+    d.constrain({ type: "fix", p: a });
+    const b = d.point([0, 40]);
+    const l = d.line(a, b, { auto: false });
+    d.constrain({ type: "vertical", e: l });
+    d.dimension("length", [l], 40);
+    const base = d.done().sketch;
+    const before = solver.solve(base);
+    expect(before.dof).toBe(0);
+    const dd = new Draft(base);
+    dd.dimension("distanceY", [l]);
+    expect(newlyRedundant(before, solver.solve(dd.done().sketch), true).length).toBeGreaterThan(0);
+    // The same size on an unsized line fixes its length and goes on.
+    const free = new Draft({ ...base, dimensions: [] });
+    free.dimension("distanceY", [l]);
+    const open = solver.solve({ ...base, dimensions: [] });
+    expect(newlyRedundant(open, solver.solve(free.done().sketch), true)).toEqual([]);
+  });
+});
+
 describe("an axis as a line to measure from", () => {
   it("comes in as a fixed construction line through the axis, past the pick, and is reused", () => {
     const s = newSketch();

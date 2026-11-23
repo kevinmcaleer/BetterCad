@@ -384,7 +384,7 @@ export function useSketch(d: SketchDeps) {
    * one that only repeats it (adding a constraint or a size).
    */
   const apply = useCallback(
-    (next: Sketch, label: string, opts: { key?: string; strict?: boolean; quiet?: boolean } = {}): boolean => {
+    (next: Sketch, label: string, opts: { key?: string; strict?: boolean | "size"; quiet?: boolean } = {}): boolean => {
       const id = live.current.editingId;
       if (!id) return false;
       // Sizes that use other sizes (d2 = d1 / 2) follow before the solve.
@@ -401,7 +401,7 @@ export function useSketch(d: SketchDeps) {
           return false;
         }
         const was = opts.strict && r.status === "redundant" ? current() : null;
-        const bad = r.status === "conflicting" ? r.conflicting : opts.strict ? newlyRedundant(was && solver.solve(was), r) : [];
+        const bad = r.status === "conflicting" ? r.conflicting : opts.strict ? newlyRedundant(was && solver.solve(was), r, opts.strict === "size") : [];
         if (bad.length) {
           if (!opts.quiet) {
             const names = [...new Set(bad.map((x) => describe(next, x)))].slice(0, 3).join(" and ");
@@ -438,7 +438,7 @@ export function useSketch(d: SketchDeps) {
       const dr = new Draft(s);
       const id = dr.dimension(kind, refs, undefined, extra);
       const withDim = dr.done().sketch;
-      if (apply(withDim, "Add a dimension", { strict: true, quiet: true })) {
+      if (apply(withDim, "Add a dimension", { strict: "size", quiet: true })) {
         setDimEdit(id);
       } else {
         // Already set by other constraints: it shows as a reference size instead.
@@ -563,7 +563,7 @@ export function useSketch(d: SketchDeps) {
       if (dm.driving && Math.abs(v - dm.value) < 1e-9 && text === dm.expression) return;
       // An offset's distance (#266) is one number: setting one of its sizes sets them all.
       const next = setGroupedSize(s, id, v, text.trim());
-      apply(next, `Set ${DIM_NAME[dm.kind].toLowerCase()} to ${formatDimension({ ...dm, value: v, driving: true })}`, { strict: !dm.driving });
+      apply(next, `Set ${DIM_NAME[dm.kind].toLowerCase()} to ${formatDimension({ ...dm, value: v, driving: true })}`, { strict: !dm.driving && "size" });
     },
     [current, apply, say, store],
   );

@@ -834,10 +834,17 @@ export function constraintsFor(type: ConstraintToolId, sketch: Sketch, picked: I
 
 /**
  * The redundant constraints a strict change adds: none when the sketch was already this redundant before it (a fixed
- * line that is also horizontal, say), so old redundancy never blocks a new constraint.
+ * line that is also horizontal, say), so old redundancy never blocks a new constraint. For a single size (`size`), a
+ * drop in degrees of freedom settles it: planegcs can name a different set of old repeats once a size goes in, which
+ * read as the new size repeating something when it fixes a number nothing else held.
  */
-export function newlyRedundant(before: Pick<SolveResult, "status" | "redundant"> | null, after: Pick<SolveResult, "status" | "redundant">): Id[] {
+export function newlyRedundant(
+  before: Pick<SolveResult, "status" | "redundant" | "dof"> | null,
+  after: Pick<SolveResult, "status" | "redundant" | "dof">,
+  size = false,
+): Id[] {
   if (after.status !== "redundant") return [];
+  if (size && before && after.dof < before.dof) return [];
   const old = new Set(before?.status === "redundant" ? before.redundant : []);
   if (after.redundant.length <= old.size) return [];
   const fresh = after.redundant.filter((id) => !old.has(id));
