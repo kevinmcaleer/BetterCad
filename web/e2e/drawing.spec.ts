@@ -717,3 +717,59 @@ test("an ASME sheet of the phone stand, dimensioned for you @visual", async ({ p
     timeout: 30_000,
   });
 });
+
+test("add a sheet, move a view to it and export both as one PDF @journey", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  // No save picker here, so the file comes as a download.
+  await page.addInitScript(() => {
+    delete (window as unknown as Record<string, unknown>).showSaveFilePicker;
+  });
+  await topViewOnA3(page);
+  const tabs = page.getByRole("tablist", { name: "Sheets" });
+  await expect(tabs.getByRole("tab")).toHaveCount(1);
+  // The whole page still shows above the strip.
+  const paper = (await page.locator(".bc-sheet-paper").boundingBox())!;
+  const strip = (await page.locator(".bc-sheet-strip").boundingBox())!;
+  expect(paper.y + paper.height).toBeLessThanOrEqual(strip.y + 1);
+
+  await page.getByRole("button", { name: "Add sheet" }).click();
+  await expect(tabs.getByRole("tab", { name: "Sheet 2, A3, sheet 2 of 2" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("img", { name: "Sheet: 2/2" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Top view, / })).toHaveCount(0);
+
+  // Back to the first sheet with the keyboard, and send its view to the second.
+  await tabs.getByRole("tab", { name: /^Sheet 2/ }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("img", { name: "Sheet: 1/2" })).toBeVisible();
+  const top = page.getByRole("button", { name: /^Top view, / });
+  await top.locator(".bc-view-hit").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Move to Sheet 2" }).click();
+  await expect(top).toHaveCount(0);
+  await tabs.getByRole("tab", { name: /^Sheet 2/ }).click();
+  await expect(top.locator(".bc-view-visible")).toHaveAttribute("d", /A/, { timeout: 30_000 });
+
+  // Rename the first sheet, then export every sheet as one file.
+  await tabs.getByRole("tab", { name: /^Sheet 1/ }).dblclick();
+  await page.getByRole("textbox", { name: "Sheet name" }).fill("Cover");
+  await page.keyboard.press("Enter");
+  await expect(tabs.getByRole("tab", { name: "Cover, A3, sheet 1 of 2" })).toBeVisible();
+  await page.getByRole("group", { name: "Drawing 1 options" }).getByRole("button", { name: "Export" }).click();
+  const card = page.getByRole("dialog", { name: "Export drawing" });
+  await card.getByRole("button", { name: "PDF", exact: true }).click();
+  await card.getByLabel("Sheets").selectOption({ label: "All 2 sheets, one page each" });
+  const download = page.waitForEvent("download");
+  await card.getByRole("button", { name: "Export" }).click();
+  const file = await download;
+  const chunks: Buffer[] = [];
+  for await (const c of (await file.createReadStream())!) chunks.push(c as Buffer);
+  const pdf = Buffer.concat(chunks).toString("latin1");
+  expect(pdf).toContain("/Count 2");
+  expect(pdf.match(/\/Type \/Page /g)).toHaveLength(2);
+
+  // Deleting the second sheet takes its view with it, and undo brings both back.
+  await tabs.getByRole("tab", { name: /^Sheet 2/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /^Delete/ }).click();
+  await expect(tabs.getByRole("tab")).toHaveCount(1);
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(tabs.getByRole("tab")).toHaveCount(2);
+});

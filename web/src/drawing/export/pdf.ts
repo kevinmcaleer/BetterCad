@@ -96,24 +96,42 @@ export async function deflated(content: string): Promise<Uint8Array | undefined>
   return out;
 }
 
-/**
- * The whole file. Everything but a squeezed stream is ASCII, so offsets in the cross-reference table are byte counts.
- * `packed` is `deflated(pdfContent(scene, outlines))`; left out, the stream is written as it is.
- */
+/** One page of a file: its scene, its text as outlines, and (when the browser can) its instructions squeezed. */
+export interface PdfPage {
+  scene: Scene;
+  outlines: PathCommand[];
+  /** `deflated(pdfContent(scene, outlines))`; left out, the stream is written as it is. */
+  packed?: Uint8Array;
+}
+
+/** One sheet as a one-page file. */
 export function scenePdf(scene: Scene, outlines: PathCommand[], info: PdfInfo = {}, packed?: Uint8Array): Uint8Array {
+  return pagesPdf([{ scene, outlines, packed }], info);
+}
+
+/**
+ * The whole file, a page for each scene at its own size (#572). Everything but a squeezed stream is ASCII, so offsets
+ * in the cross-reference table are byte counts.
+ */
+export function pagesPdf(pages: PdfPage[], info: PdfInfo = {}): Uint8Array {
   const enc = new TextEncoder();
-  const stream = packed ?? enc.encode(pdfContent(scene, outlines));
-  const box = `[0 0 ${n(scene.w * PT)} ${n(scene.h * PT)}]`;
   const meta = [`/Producer (BetterCad)`, info.title ? `/Title ${str(info.title)}` : "", info.author ? `/Author ${str(info.author)}` : ""]
     .filter(Boolean)
     .join(" ");
+  // Objects: the catalogue, the list of pages, then each page with its instructions after it, and the file's details last.
   const objects: (string | Uint8Array)[][] = [
     [`<< /Type /Catalog /Pages 2 0 R >>`],
-    [`<< /Type /Pages /Kids [3 0 R] /Count 1 >>`],
-    [`<< /Type /Page /Parent 2 0 R /MediaBox ${box} /Contents 4 0 R /Resources << >> >>`],
-    [`<< /Length ${stream.length}${packed ? " /Filter /FlateDecode" : ""} >>\nstream\n`, stream, `${packed ? "\n" : ""}endstream`],
-    [`<< ${meta} >>`],
+    [`<< /Type /Pages /Kids [${pages.map((_, i) => `${3 + i * 2} 0 R`).join(" ")}] /Count ${pages.length} >>`],
   ];
+  pages.forEach(({ scene, outlines, packed }, i) => {
+    const stream = packed ?? enc.encode(pdfContent(scene, outlines));
+    const box = `[0 0 ${n(scene.w * PT)} ${n(scene.h * PT)}]`;
+    objects.push(
+      [`<< /Type /Page /Parent 2 0 R /MediaBox ${box} /Contents ${4 + i * 2} 0 R /Resources << >> >>`],
+      [`<< /Length ${stream.length}${packed ? " /Filter /FlateDecode" : ""} >>\nstream\n`, stream, `${packed ? "\n" : ""}endstream`],
+    );
+  });
+  objects.push([`<< ${meta} >>`]);
   const parts: Uint8Array[] = [];
   let at = 0;
   const put = (piece: string | Uint8Array) => {
@@ -131,7 +149,7 @@ export function scenePdf(scene: Scene, outlines: PathCommand[], info: PdfInfo = 
   });
   const xref = at;
   put(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`);
-  put(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 5 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+  put(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info ${objects.length} 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
   const file = new Uint8Array(at);
   let o = 0;
   for (const b of parts) {

@@ -2,7 +2,8 @@ import { useId, useState } from "react";
 import { Button, Dialog } from "@bettercad/ui";
 import { scaleLabel, viewScale, type Drawing, type DrawingSheet } from "@bettercad/kernel/drawing";
 import type { ModelView } from "@bettercad/kernel/view";
-import { sizeName, type SheetLayout } from "./layout";
+import { follow } from "./follow";
+import { sheetLayout, sizeName, type SheetLayout } from "./layout";
 import { pixels } from "./export/browser";
 import { sheetScene, viewScene, type Scene } from "./export/scene";
 import { viewName } from "./views";
@@ -22,6 +23,8 @@ export interface ExportCardProps {
   layout: SheetLayout;
   /** The kernel's picture of a view, once it has one. */
   viewOf: (id: string) => ModelView | undefined;
+  /** The pictures of another sheet's views (#572), for all the sheets in one PDF. Left out, only this sheet exports. */
+  viewsOf?: (sheet: DrawingSheet) => Promise<(id: string) => ModelView | undefined>;
   /** Asks where to save and writes the file; the name it was saved under, or nothing when the person backed out. */
   onSave: (file: DrawingFile) => Promise<string | undefined>;
   say: (text: string, bad?: boolean) => void;
@@ -75,11 +78,24 @@ export async function exportBytes(scene: Scene, format: DrawingFormat, o: { dpi?
   return (await svgPng(sceneSvg(scene, { outlines: text, pixels: size }), size)).arrayBuffer();
 }
 
+/** Several scenes as the pages of one PDF, each at its own size. */
+export async function exportPdfPages(scenes: Scene[], o: { title?: string; author?: string } = {}): Promise<ArrayBuffer> {
+  const [{ outlines }, { deflated, pdfContent, pagesPdf }, glyphs] = await Promise.all([import("./export/outline"), import("./export/pdf"), font()]);
+  const pages = await Promise.all(
+    scenes.map(async (scene) => {
+      const text = outlines(scene.labels, glyphs);
+      return { scene, outlines: text, packed: await deflated(pdfContent(scene, text)) };
+    }),
+  );
+  const pdf = pagesPdf(pages, o);
+  return pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer;
+}
+
 /**
  * Export (#569): the sheet as a PDF, SVG, DXF or PNG, or straight to the printer. A DXF can instead be one view at
  * full size, which is what a laser cutter wants.
  */
-export function ExportCard({ drawing, sheet, layout, viewOf, onSave, say, onClose }: ExportCardProps) {
+export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, onSave, say, onClose }: ExportCardProps) {
   const id = useId();
   const [c, setC] = useState(load);
   const set = (change: Partial<Choices>) =>
@@ -95,6 +111,19 @@ export function ExportCard({ drawing, sheet, layout, viewOf, onSave, say, onClos
   /** For DXF: the whole sheet ("") or one view at full size. */
   const [one, setOne] = useState("");
   const [busy, setBusy] = useState(false);
+  /** For PDF: every sheet of the drawing as one file. */
+  const [every, setEvery] = useState(false);
+  const count = drawing.sheets.length;
+  const all = c.format === "pdf" && every && count > 1 && !!viewsOf;
+  /** Each sheet as it is drawn, in order: this one from what is on screen, the others from the kernel. */
+  const allScenes = async (): Promise<Scene[]> =>
+    Promise.all(
+      drawing.sheets.map(async (s, i) => {
+        if (s.id === sheet.id) return sheetScene(sheet, layout, viewOf, drawing.decimals);
+        const of = await viewsOf!(s);
+        return sheetScene(follow(s, of, drawing.decimals), sheetLayout(s, { index: i + 1, count }), of, drawing.decimals);
+      }),
+    );
   const waiting = sheet.views.some((v) => !viewOf(v.id));
   const single = c.format === "dxf" ? sheet.views.find((v) => v.id === one) : undefined;
   const base = exportName(drawing, sheet);
@@ -110,7 +139,12 @@ export function ExportCard({ drawing, sheet, layout, viewOf, onSave, say, onClos
     const name = `${single ? `${base} ${viewName(single).toLowerCase()}` : base}.${f.id}`;
     setBusy(true);
     try {
-      const saved = await onSave({ name, mime: f.mime, data: exportBytes(scene(), c.format, { dpi: c.dpi, title: base, author: sheet.title.author }) });
+      const o = { dpi: c.dpi, title: base, author: sheet.title.author };
+      const saved = await onSave({
+        name,
+        mime: f.mime,
+        data: all ? allScenes().then((scenes) => exportPdfPages(scenes, o)) : exportBytes(scene(), c.format, o),
+      });
       if (!saved) return;
       say(`Exported ${saved}`);
       onClose();
@@ -174,6 +208,17 @@ export function ExportCard({ drawing, sheet, layout, viewOf, onSave, say, onClos
             </select>
           </>
         )}
+        {c.format === "pdf" && count > 1 && viewsOf && (
+          <>
+            <label className="bc-field-label" htmlFor={`${id}-sheets`}>
+              Sheets
+            </label>
+            <select id={`${id}-sheets`} className="bc-select" value={every ? "all" : "one"} onChange={(e) => setEvery(e.target.value === "all")}>
+              <option value="one">{`This sheet (${sheet.name})`}</option>
+              <option value="all">{`All ${count} sheets, one page each`}</option>
+            </select>
+          </>
+        )}
         {c.format === "png" && (
           <>
             <span className="bc-field-label" id={`${id}-dpi`}>
@@ -192,7 +237,9 @@ export function ExportCard({ drawing, sheet, layout, viewOf, onSave, say, onClos
               ? `Just the edges you see, in the model's own millimetres (the sheet shows it at ${scaleLabel(viewScale(sheet, single))}).`
               : c.format === "png"
                 ? `${page}: ${px.w} × ${px.h} pixels.`
-                : `${page}. Black on white, whatever the theme.`}
+                : all
+                  ? `${count} pages, each at its sheet's size. Black on white, whatever the theme.`
+                  : `${page}. Black on white, whatever the theme.`}
         </p>
       </div>
     </Dialog>

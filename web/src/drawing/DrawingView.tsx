@@ -36,6 +36,9 @@ import { addPick, dimStyle, draftOf, isIso, pickKey, type DimPick, type Pending 
 import { ExportCard, type DrawingFile } from "./ExportCard";
 import { follow, lostName, problemCount, problems, stamp, type Problem } from "./follow";
 import { LostLayer, Warning } from "./LostLayer";
+import { sheetOf } from "./ops";
+import { moveViewToSheet } from "./sheets";
+import { SheetStrip } from "./SheetStrip";
 import { sheetLayout, sizeName, TEXT } from "./layout";
 import { MarkCard } from "./MarkCard";
 import { isMarkTool, MarkLayer, type MarkTool } from "./MarkLayer";
@@ -64,7 +67,7 @@ export { SheetCard, type SheetChoice } from "./SheetCard";
 export type { ViewCall } from "./useModelViews";
 export type { ShowOption } from "./BaseViewCard";
 export type { DrawingFile } from "./ExportCard";
-export { decimalsChange, drawingChange, makeDrawing, sheetChange, sheetEdit, titleChange } from "./ops";
+export { decimalsChange, drawingChange, drawingEdit, makeDrawing, sheetChange, sheetEdit, sheetOf, titleChange } from "./ops";
 
 /** Where the sheet sits in the view: screen pixels per paper millimetre, and the page's top left corner. */
 interface View {
@@ -139,6 +142,11 @@ export interface DrawingPaperProps {
   onTool?: (tool: DrawingTool | null) => void;
   /** A change to the sheet: a view placed, moved, edited or deleted. */
   onSheet?: (change: (s: DrawingSheet) => DrawingSheet, label: string) => void;
+  /** The sheet that is open (#572): the first when left out. Picking another in the strip asks for it here. */
+  sheetId?: string | null;
+  onSheetId?: (id: string) => void;
+  /** A change to the drawing's sheets, or a view moved between two. Left out, sheets can only be switched. */
+  onDrawing?: (change: (d: Drawing) => Drawing, label: string) => void;
   /** How many things on the sheet have lost what they were fixed to (#568), as that changes. */
   onProblems?: (count: number) => void;
   /** What a view can show besides the whole model. */
@@ -156,8 +164,33 @@ export interface DrawingPaperProps {
  * wheel or a pinch zooms, and a double-click on a title block field types in it. Drawn as SVG in paper millimetres,
  * so it stays sharp at any zoom and reads to tests and screen readers.
  */
-export function DrawingPaper({
+export function DrawingPaper(props: DrawingPaperProps) {
+  const { drawing, readOnly, onDrawing, onSheetId, say } = props;
+  const sheet = sheetOf(drawing, props.sheetId);
+  const strip = drawing.sheets.length > 1 || (!!onDrawing && !readOnly);
+  return (
+    <>
+      {/* A sheet's own state (what is selected, the armed tool's picks, where it is scrolled to) starts again with each sheet. */}
+      <Paper key={sheet.id} {...props} sheetId={sheet.id} strip={strip} />
+      {strip && (
+        <SheetStrip
+          drawing={drawing}
+          open={sheet.id}
+          onOpen={(id) => onSheetId?.(id)}
+          onChange={readOnly ? undefined : onDrawing}
+          newId={(kind) => newId(kind)}
+          say={say}
+        />
+      )}
+    </>
+  );
+}
+
+function Paper({
   drawing,
+  sheetId,
+  onDrawing,
+  strip,
   readOnly,
   onTitle,
   api,
@@ -173,9 +206,10 @@ export function DrawingPaper({
   onSave,
   say,
   onDecimals,
-}: DrawingPaperProps) {
-  const sheet = drawing.sheets[0]!;
-  const layout = useMemo(() => sheetLayout(sheet, { index: 1, count: drawing.sheets.length }), [sheet, drawing.sheets.length]);
+}: DrawingPaperProps & { strip?: boolean }) {
+  const sheet = sheetOf(drawing, sheetId);
+  const sheetNumber = drawing.sheets.indexOf(sheet) + 1;
+  const layout = useMemo(() => sheetLayout(sheet, { index: sheetNumber, count: drawing.sheets.length }), [sheet, sheetNumber, drawing.sheets.length]);
   const root = useRef<HTMLDivElement>(null);
   const clear = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View | null>(null);
@@ -740,7 +774,7 @@ export function DrawingPaper({
       onPointerUp={up}
       onPointerCancel={up}
     >
-      <div ref={clear} className="bc-drawing-clear" aria-hidden="true" />
+      <div ref={clear} className={strip ? "bc-drawing-clear bc-drawing-clear-strip" : "bc-drawing-clear"} aria-hidden="true" />
       <svg className="bc-drawing-svg" role="group" aria-label={`${sheet.name}: ${sizeName(sheet.size)}, ${sheet.landscape ? "landscape" : "portrait"}`}>
         {view && (
           <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
@@ -961,6 +995,18 @@ export function DrawingPaper({
                 { id: "arrange", label: "Arrange dimensions", icon: "dimension", onSelect: () => arrangeViews([menuView.id]) },
                 ...(sheet.auto ? [{ id: "again", label: "Run Auto dimension again", icon: "dimension" as const, onSelect: runAgain }] : []),
                 { id: "edit", label: "Change this view", icon: "settings", onSelect: () => startChange(menuView) },
+                ...(onDrawing
+                  ? drawing.sheets
+                      .filter((s) => s.id !== sheet.id)
+                      .map((s) => ({
+                        id: `to-${s.id}`,
+                        label: `Move to ${s.name}`,
+                        onSelect: () => {
+                          onDrawing((d) => moveViewToSheet(d, menuView.id, sheet.id, s.id), "Move view to another sheet");
+                          say?.(`Moved the ${viewName(menuView).toLowerCase()} to ${s.name}.`);
+                        },
+                      }))
+                  : []),
                 { kind: "separator", id: "s" },
                 { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => remove(menuView) },
               ]
@@ -973,6 +1019,22 @@ export function DrawingPaper({
           sheet={followed}
           layout={layout}
           viewOf={(id) => got.get(id)?.view}
+          viewsOf={
+            doc && call
+              ? async (other) => {
+                  const model = { ...doc };
+                  delete model.drawings;
+                  const pictures = new Map<string, ModelView>();
+                  await Promise.all(
+                    other.views.map(async (v) => {
+                      const p = call({ doc: model, upTo, ...viewRequest(v) });
+                      if (p) pictures.set(v.id, await p);
+                    }),
+                  );
+                  return (id) => pictures.get(id);
+                }
+              : undefined
+          }
           onSave={onSave}
           say={say ?? (() => {})}
           onClose={() => onTool?.(null)}

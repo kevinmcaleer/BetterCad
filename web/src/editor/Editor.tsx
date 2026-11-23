@@ -418,6 +418,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [drawing, setDrawing] = useState<string | null>(null);
   /** How many marks, dimensions and views on the open drawing have lost what they show (#568). */
   const [drawingProblems, setDrawingProblems] = useState(0);
+  /** The sheet of the open drawing that is showing (#572); the first when it is none of them. */
+  const [drawingSheet, setDrawingSheet] = useState<string | null>(null);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
@@ -605,7 +607,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const making = sheetCard === "new";
     setSheetCard(null);
     void drawingCode().then((m) => {
-      if (!making) return shownDrawing && store.edit(...m.sheetChange(shownDrawing, choice));
+      if (!making) return shownDrawing && store.edit(...m.sheetChange(shownDrawing, choice, drawingSheet));
       const made = m.makeDrawing(store.get(), choice, account?.name);
       store.edit(() => made.doc, "New drawing");
       enterDrawing(made.id);
@@ -4769,7 +4771,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   onSave={(f) => files.store.saveFiles([f]).then((saved) => saved?.names[0])}
                   say={say}
                   onProblems={setDrawingProblems}
-                  onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label)))}
+                  sheetId={drawingSheet}
+                  onSheetId={setDrawingSheet}
+                  onDrawing={(change, label) => void drawingCode().then((m) => store.edit(...m.drawingEdit(shownDrawing, change, label)))}
+                  onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label, drawingSheet)))}
                   components={built.components}
                   bodies={parts}
                   onTitle={(field, value) => void drawingCode().then((m) => store.edit(...m.titleChange(shownDrawing, field, value)))}
@@ -5088,7 +5093,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       )}
       {sheetCard && (
         <Suspense fallback={null}>
-          <SheetCard sheet={sheetCard === "settings" ? shownDrawing?.sheets[0] : undefined} onCancel={() => setSheetCard(null)} onDone={sheetChosen} />
+          <SheetCard
+            sheet={sheetCard === "settings" ? (shownDrawing?.sheets.find((s) => s.id === drawingSheet) ?? shownDrawing?.sheets[0]) : undefined}
+            onCancel={() => setSheetCard(null)}
+            onDone={sheetChosen}
+          />
         </Suspense>
       )}
       {exportOpen && (

@@ -30,6 +30,15 @@ rows of dimensions. US pages (Letter to ANSI E) start it to ASME: third angle, s
 **Sheet settings** switches either, and sets the scale, the border and the row spacing. The title block is at the
 bottom right; double-click a field to type in it.
 
+## Sheets
+
+A drawing can have more than one sheet. The strip under the page has a tab for each, with a small picture of it, and a
+plus to add one. A new sheet takes the open sheet's page, standard, scale and title block. Arrow keys go from sheet to
+sheet, F2 renames, Delete deletes (a drawing keeps at least one), Alt with an arrow moves a sheet along, and right-click
+has Duplicate. Each sheet has its own page size; the title block is the drawing's, so a field typed on one sheet is on
+them all, and the sheet count ("2/3") fills itself in. Right-click a view for **Move to** another sheet: its projected
+views, marks and dimensions go with it. Export has **All sheets** for PDF, one page each at its own size.
+
 ## Dimensions
 
 A dimension is fixed to the edges and faces it measures by their names (`docs/topological-naming.md`), not to where
@@ -97,5 +106,5 @@ format is written from one picture of the sheet, `sheetScene` in `web/src/drawin
 
 ## Not yet
 
-Section, detail and break views, more than one sheet, notes and symbols, a parts list with balloons, and templates
-with a logo are release 2 (#571 to #575). Ordinate dimensions and tolerances are not planned yet.
+Section, detail and break views, notes and symbols, a parts list with balloons, and templates
+with a logo are release 2 (#571, #573 to #575). Ordinate dimensions and tolerances are not planned yet.
