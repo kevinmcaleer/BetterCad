@@ -141,11 +141,12 @@ export type FrameSymbol = "position" | "flatness" | "perpendicular" | "parallel"
 /**
  * A note on a sheet (#573). `text` is free writing; `leader` the same with an arrow to an edge or hole; `hole` reads
  * the hole it points at from the model each time; `finish` is a surface finish mark, `datum` a datum letter and
- * `frame` a feature control frame, each on the edge or hole it is about.
+ * `frame` a feature control frame, each on the edge or hole it is about. A `balloon` (#574) is a part's item number
+ * in a circle, read from the parts list each time.
  */
 export interface DrawingNote {
   id: string;
-  kind: "text" | "leader" | "hole" | "finish" | "datum" | "frame";
+  kind: "text" | "leader" | "hole" | "finish" | "datum" | "frame" | "balloon";
   /**
    * What it says, lines parted by "\n". A hole note's is left empty: it is read from the model. A finish's is its
    * roughness ("Ra 3.2"), a datum's its letter, and a frame's its tolerance then its datums, parted by "|".
@@ -196,6 +197,8 @@ export interface DrawingSheet {
   rows?: { first: number; next: number };
   /** Text, leaders, hole notes and symbols (#573). */
   notes?: DrawingNote[];
+  /** A parts list above the title block (#574): the model's components and loose bodies, counted each time it is drawn. */
+  partsList?: boolean;
   /** What Auto dimension was last run with, so Run again does the same. `density` is 0 (fewest) to 1 (all). */
   auto?: { recipe: AutoRecipe; datum: DatumCorner; density: number };
 }

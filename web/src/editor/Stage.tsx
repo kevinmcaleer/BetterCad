@@ -18,12 +18,14 @@ export interface StageBarsProps {
   onRender?: (style: RenderStyle) => void;
   /** Starts a new drawing (#555). */
   onDrawing?: () => void;
+  /** Make drawings of every part (#574). */
+  onEveryPart?: () => void;
   /** Shows the Full screen button (phones and tablets), with where it says why there is none. */
   say?: Say;
 }
 
 /** The view bar floating over the viewport (the tools live on the top bar), and the armed tool's options strip. */
-export function StageBars({ tool, onArmTool, vp, onePart, onRender, onDrawing, say }: StageBarsProps) {
+export function StageBars({ tool, onArmTool, vp, onePart, onRender, onDrawing, onEveryPart, say }: StageBarsProps) {
   const filter = FILTERS.find((f) => f.id === vp.filter)!;
   return (
     <>
@@ -59,6 +61,7 @@ export function StageBars({ tool, onArmTool, vp, onePart, onRender, onDrawing, s
                 ] as MenuEntry[])
               : []),
             ...(onDrawing ? ([{ id: "drawing", label: "New drawing", icon: "drawing", onSelect: onDrawing }] as MenuEntry[]) : []),
+            ...(onEveryPart ? ([{ id: "drawings", label: "Make drawings of every part", icon: "drawing", onSelect: onEveryPart }] as MenuEntry[]) : []),
           ]}
           trigger={(p) => (
             <Button {...p} icon="paint" label={vp.style === "lineart" ? "Line art" : "Shaded"} title="How the view draws the model, or a rendered picture" />

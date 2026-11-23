@@ -6,6 +6,7 @@ import { CENTRE_DASH, markArt, markStyle, markView, targets } from "../marks";
 import { cutArt, type Picture } from "../cuts";
 import { NOTE_TEXT, noteArt, type NoteContext } from "../notes";
 import type { Feature } from "../../state/document";
+import { itemOf, partsTable, type PartsRow } from "../parts";
 
 /**
  * A sheet as plain lines and text, for export (#569). Millimetres from the page's bottom left corner with y up, the
@@ -129,9 +130,10 @@ export function sheetScene(
   l: SheetLayout,
   viewOf: (id: string) => ModelView | undefined,
   decimals?: number,
-  /** The model's steps, which hole notes read (#573). */
-  features?: readonly Feature[],
+  /** The model's steps, which hole notes read (#573), and its parts list, for the table and balloons (#574). */
+  model: { features?: readonly Feature[] | undefined; parts?: readonly PartsRow[] | undefined } = {},
 ): Scene {
+  const { features, parts } = model;
   const H = l.page.h;
   // The layout counts down from the top of the page; the scene counts up from the bottom.
   const up = (y: number) => H - y;
@@ -177,6 +179,15 @@ export function sheetScene(
     } else if (c.value) {
       labels.push({ layer: "title", at: [cx, cy], size: c.size, anchor: "middle", baseline: "central", text: c.value });
     }
+  }
+
+  // The parts list (#574), above the title block.
+  if (sheet.partsList) {
+    const t = partsTable(parts ?? [], l);
+    strokes.push({ layer: "title", width: WEIGHT.thick, curve: box(t.box.x, up(t.box.y + t.box.h), t.box.w, t.box.h) });
+    for (const s of t.lines) line("title", WEIGHT.thin, s);
+    for (const r of t.rows)
+      for (const c of r.cells) labels.push({ layer: "title", at: [c.x, up(c.y)], size: t.size, anchor: c.anchor, baseline: "central", text: c.text });
   }
 
   // Notes (#573): thin lines, filled arrowheads and text, about the middle of their view or, loose, from the page's corner.
@@ -252,7 +263,14 @@ export function sheetScene(
       }
     }
     const pointing = (sheet.notes ?? []).filter((n) => n.on?.view === v.id);
-    if (pointing.length) notes(v.at[0], v.at[1], pointing, { view, scale: s, frame: frameOf(v.direction), ...(features ? { features } : {}) });
+    if (pointing.length)
+      notes(v.at[0], v.at[1], pointing, {
+        view,
+        scale: s,
+        frame: frameOf(v.direction),
+        ...(features ? { features } : {}),
+        ...(parts ? { itemOf: (body: string) => itemOf(parts, body) } : {}),
+      });
     if (s !== sheet.scale) {
       // As on the sheet: under the view's box, which has 2 mm of room round the lines.
       const h = Math.max((max[1] - min[1]) * s, 20) + 4;

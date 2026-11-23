@@ -199,7 +199,7 @@ describe("notes on a sheet", () => {
   });
 
   it("export as thin lines, a filled arrowhead and text where the sheet draws them", () => {
-    const scene = sheetScene(sheet, sheetLayout(sheet), () => plate, 2, holes({}));
+    const scene = sheetScene(sheet, sheetLayout(sheet), () => plate, 2, { features: holes({}) });
     const texts = scene.labels.filter((l) => l.layer === "dimension").map((l) => l.text);
     expect(texts).toEqual(["Print in PETG", "Ø10"]);
     const loose = scene.labels.find((l) => l.text === "Print in PETG")!;

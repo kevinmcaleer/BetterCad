@@ -18,6 +18,7 @@ export const NOTE_KINDS: { id: NoteKind; label: string }[] = [
   { id: "finish", label: "Surface finish" },
   { id: "datum", label: "Datum" },
   { id: "frame", label: "Feature control frame" },
+  { id: "balloon", label: "Balloon" },
 ];
 export const noteKindName = (k: NoteKind) => NOTE_KINDS.find((x) => x.id === k)!.label;
 
@@ -36,6 +37,8 @@ export const NOTE_TEXT = 3.5;
 const CELL = 7;
 const PAD = 1.2;
 const LINE = NOTE_TEXT * 1.5;
+/** A balloon's radius, mm on paper. */
+const BALLOON_R = 4;
 const ARROW = 3;
 
 /** What a note tool can point at: a hole note at holes, a datum or finish at edges and round faces, a leader at anything. */
@@ -107,6 +110,8 @@ export interface NoteContext {
   all?: Target[];
   /** The model's steps, for hole notes. */
   features?: readonly Feature[];
+  /** A body's item number in the parts list, for balloons (#574). */
+  itemOf?: (body: string) => number | undefined;
 }
 
 const sub = (a: V2, b: V2): V2 => [a[0] - b[0], a[1] - b[1]];
@@ -217,6 +222,28 @@ export function noteArt(note: Pick<DrawingNote, "kind" | "text" | "symbol" | "on
 
   let w: number;
   let h: number;
+  if (note.kind === "balloon") {
+    // A part's item number in a circle (#574), read from the parts list; "?" when its part is not in the list.
+    const item = target ? ctx.itemOf?.(target.source.body) : undefined;
+    const r = BALLOON_R;
+    const c: V2 = [T[0] + r, T[1] + r];
+    art.curves.push({ kind: "circle", c, r });
+    art.texts.push({ at: c, text: item === undefined ? "?" : String(item), anchor: "middle" });
+    art.says = item === undefined ? "?" : String(item);
+    art.box = { min: [T[0] - 0.5, T[1] - 0.5], max: [T[0] + r * 2 + 0.5, T[1] + r * 2 + 0.5] };
+    if (target) {
+      // Straight from the circle's edge to the part, with an arrowhead.
+      const end = leaderEnd(target, P, scale, c);
+      const d = unit(sub(end, c));
+      if (len(sub(end, c)) > r + 1e-6) {
+        art.lines.push([add(c, d, r), end]);
+        const n: V2 = [-d[1], d[0]];
+        const back = add(end, d, -ARROW);
+        art.fills.push([end, add(back, n, 0.5), add(back, n, -0.5)]);
+      }
+    }
+    return art;
+  }
   if (note.kind === "frame") {
     const widths = cells.map((c) => Math.max(CELL, textWidth(c, NOTE_TEXT) + PAD * 2));
     w = CELL + widths.reduce((a, b) => a + b, 0);
@@ -313,7 +340,8 @@ export function noteArt(note: Pick<DrawingNote, "kind" | "text" | "symbol" | "on
 }
 
 /** "Note, 4× Ø3.4 through": what a note is called. */
-export const noteName = (note: Pick<DrawingNote, "kind">, art: NoteArt) => `${note.kind === "hole" ? "Hole note" : "Note"}, ${art.says}`;
+export const noteName = (note: Pick<DrawingNote, "kind">, art: NoteArt) =>
+  note.kind === "balloon" ? `Balloon ${art.says}` : `${note.kind === "hole" ? "Hole note" : "Note"}, ${art.says}`;
 
 /** Datum letters skip I, O and Q; the next one a sheet has not used. */
 export function nextDatum(sheet: DrawingSheet): string {
@@ -354,7 +382,7 @@ export function draftOfNote(note: Pick<DrawingNote, "kind" | "text" | "symbol">)
 
 /** What a note of a kind keeps of its card, or nothing when there is nothing to say yet. A hole note reads the model instead. */
 export function noteWords(kind: NoteKind, draft: NoteDraft): { text: string; symbol?: FrameSymbol } | undefined {
-  if (kind === "hole") return { text: "" };
+  if (kind === "hole" || kind === "balloon") return { text: "" };
   const text = draft.text.trim();
   if (!text) return undefined;
   if (kind === "datum") return { text: text.toUpperCase() };

@@ -62,7 +62,7 @@ export function NoteLayer({ notes, ctx, zoom, selected, onSelect, onMove, onDele
     const go = by[e.key];
     if (go && onMove) onMove(note.id, [note.at[0] + go[0], note.at[1] + go[1]]);
     else if (onDelete && (e.key === "Delete" || e.key === "Backspace")) onDelete(note.id);
-    else if (onEdit && e.key === "Enter" && note.kind !== "hole") onEdit(note.id);
+    else if (onEdit && e.key === "Enter" && note.kind !== "hole" && note.kind !== "balloon") onEdit(note.id);
     else return;
     e.preventDefault();
   };
@@ -90,7 +90,7 @@ export function NoteLayer({ notes, ctx, zoom, selected, onSelect, onMove, onDele
             onPointerCancel={up}
             onDoubleClick={(e) => {
               e.stopPropagation();
-              if (note.kind !== "hole") onEdit?.(note.id);
+              if (note.kind !== "hole" && note.kind !== "balloon") onEdit?.(note.id);
             }}
             onKeyDown={(e) => key(e, note)}
           >

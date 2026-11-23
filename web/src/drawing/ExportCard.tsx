@@ -3,6 +3,7 @@ import { Button, Dialog } from "@bettercad/ui";
 import { scaleLabel, viewScale, type Drawing, type DrawingSheet } from "@bettercad/kernel/drawing";
 import type { ModelView } from "@bettercad/kernel/view";
 import type { Feature } from "../state/document";
+import type { PartsRow } from "./parts";
 import { follow } from "./follow";
 import { sheetLayout, sizeName, type SheetLayout } from "./layout";
 import { pixels } from "./export/browser";
@@ -28,6 +29,8 @@ export interface ExportCardProps {
   viewsOf?: (sheet: DrawingSheet) => Promise<(id: string) => ModelView | undefined>;
   /** The model's steps, which hole notes read (#573). */
   features?: readonly Feature[];
+  /** The model's parts list (#574), for a sheet that shows it and for balloons. */
+  parts?: readonly PartsRow[];
   /** Asks where to save and writes the file; the name it was saved under, or nothing when the person backed out. */
   onSave: (file: DrawingFile) => Promise<string | undefined>;
   say: (text: string, bad?: boolean) => void;
@@ -98,7 +101,7 @@ export async function exportPdfPages(scenes: Scene[], o: { title?: string; autho
  * Export (#569): the sheet as a PDF, SVG, DXF or PNG, or straight to the printer. A DXF can instead be one view at
  * full size, which is what a laser cutter wants.
  */
-export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, onSave, say, onClose }: ExportCardProps) {
+export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, parts, onSave, say, onClose }: ExportCardProps) {
   const id = useId();
   const [c, setC] = useState(load);
   const set = (change: Partial<Choices>) =>
@@ -122,9 +125,9 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
   const allScenes = async (): Promise<Scene[]> =>
     Promise.all(
       drawing.sheets.map(async (s, i) => {
-        if (s.id === sheet.id) return sheetScene(sheet, layout, viewOf, drawing.decimals, features);
+        if (s.id === sheet.id) return sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts });
         const of = await viewsOf!(s);
-        return sheetScene(follow(s, of, drawing.decimals), sheetLayout(s, { index: i + 1, count }), of, drawing.decimals, features);
+        return sheetScene(follow(s, of, drawing.decimals), sheetLayout(s, { index: i + 1, count }), of, drawing.decimals, { features, parts });
       }),
     );
   const waiting = sheet.views.some((v) => !viewOf(v.id));
@@ -135,7 +138,7 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
 
   const scene = (): Scene => {
     const view = single && viewOf(single.id);
-    return view ? viewScene(view, false) : sheetScene(sheet, layout, viewOf, drawing.decimals, features);
+    return view ? viewScene(view, false) : sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts });
   };
   const run = async () => {
     const f = FORMATS.find((x) => x.id === c.format)!;
@@ -160,7 +163,7 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
   const print = async () => {
     setBusy(true);
     try {
-      const s = sheetScene(sheet, layout, viewOf, drawing.decimals, features);
+      const s = sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts });
       const [{ sceneSvg }, { outlines }, { printSvg }] = await Promise.all([import("./export/svg"), import("./export/outline"), import("./export/browser")]);
       printSvg(sceneSvg(s, { outlines: outlines(s.labels, await font()) }), layout.page, base);
       onClose();

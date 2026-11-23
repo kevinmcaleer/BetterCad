@@ -33,7 +33,7 @@ import { fitGap, newId, type ModelDoc } from "../state/document";
 import { arrangeSheet, contextOf, crowded, sheetRows, snapRow, type Crowded } from "./arrange";
 import { AUTO_START, autoDimension, RECIPES, type AutoOptions, type AutoResult } from "./auto";
 import { AutoCard } from "./AutoCard";
-import { BaseViewCard, type ShowOption } from "./BaseViewCard";
+import { BaseViewCard } from "./BaseViewCard";
 import { DimensionCard } from "./DimensionCard";
 import { DimensionLayer } from "./DimensionLayer";
 import { addPick, dimArt, dimStyle, draftOf, isIso, pickKey, sizeText, type DimPick, type Pending } from "./dimensions";
@@ -48,6 +48,8 @@ import { MarkCard } from "./MarkCard";
 import { isMarkTool, MarkLayer, type MarkTool } from "./MarkLayer";
 import { autoMarks, MARK_NAMES, markKey, markStyle, markView, pitchCircle, refKey, refTo, targets, type Target } from "./marks";
 import { descendants, GAP, inheritedScale, placeProjected, projectedDirection, sideAt, spotAt, spotBeside, type Side } from "./projected";
+import { autoBalloons, itemOf, modelParts, partsTable, setPartsList, type ListedBody, type ListedComponent } from "./parts";
+import { PartsList } from "./PartsList";
 import { ProjectedViewCard } from "./ProjectedViewCard";
 import { SheetArt } from "./Sheet";
 import { useModelViews, type ViewCall, type ViewWanted } from "./useModelViews";
@@ -154,6 +156,9 @@ export interface DrawingApi {
   autoMarks(): void;
   /** Arrange dimensions on the selected view, or on every view when none is (#565). */
   arrange(): void;
+  /** Balloons on the selected view, or on every view when none is, and the parts list on or off (#574). */
+  autoBalloons(): void;
+  partsList(): void;
 }
 
 export interface DrawingPaperProps {
@@ -180,9 +185,9 @@ export interface DrawingPaperProps {
   onDrawing?: (change: (d: Drawing) => Drawing, label: string) => void;
   /** How many things on the sheet have lost what they were fixed to (#568), as that changes. */
   onProblems?: (count: number) => void;
-  /** What a view can show besides the whole model. */
-  components?: ShowOption[];
-  bodies?: ShowOption[];
+  /** What a view can show besides the whole model: the model's components and bodies, which the parts list counts (#574). */
+  components?: ListedComponent[];
+  bodies?: ListedBody[];
   /** Saves an exported file (#569), and says how it went. */
   onSave?: (file: DrawingFile) => Promise<string | undefined>;
   say?: (text: string, bad?: boolean) => void;
@@ -263,8 +268,17 @@ function Paper({
   useLayoutEffect(fit, [fit]);
   const autoRef = useRef<() => void>(() => {});
   const arrangeRef = useRef<() => void>(() => {});
+  const balloonRef = useRef<() => void>(() => {});
+  const listRef = useRef<() => void>(() => {});
   useEffect(() => {
-    if (api) api.current = { fit, autoMarks: () => autoRef.current(), arrange: () => arrangeRef.current() };
+    if (api)
+      api.current = {
+        fit,
+        autoMarks: () => autoRef.current(),
+        arrange: () => arrangeRef.current(),
+        autoBalloons: () => balloonRef.current(),
+        partsList: () => listRef.current(),
+      };
     return () => {
       if (api) api.current = null;
     };
@@ -947,6 +961,36 @@ function Paper({
     e.preventDefault();
   };
 
+  // The parts list and balloons (#574): the model's components and loose bodies, counted each time.
+  const partRows = useMemo(() => modelParts(doc, bodies, components), [doc, bodies, components]);
+  const itemFor = useCallback((body: string) => itemOf(partRows, body), [partRows]);
+  const [listMenu, setListMenu] = useState<ContextMenuState | null>(null);
+  const toggleList = (on: boolean) => {
+    onSheet?.((s) => setPartsList(s, on), on ? "Parts list" : "Remove parts list");
+    say?.(
+      on
+        ? partRows.length
+          ? "The parts list is above the title block."
+          : "The parts list is on. It fills in when the model has a body."
+        : "The parts list is off the sheet.",
+    );
+  };
+  listRef.current = () => !readOnly && toggleList(!sheet.partsList);
+  const balloonViews = (ids: string[]) => {
+    const add = ids.flatMap((id) => {
+      const v = sheet.views.find((x) => x.id === id);
+      const model = got.get(id)?.view;
+      return v && model ? autoBalloons(model, id, viewScale(sheet, v), partRows, sheet.notes ?? [], () => newId("nt")) : [];
+    });
+    if (add.length) onSheet?.((s) => ({ ...s, notes: [...(s.notes ?? []), ...add] }), "Balloons");
+    say?.(add.length ? `Added ${add.length} ${add.length === 1 ? "balloon" : "balloons"}.` : "Every part here has its balloon.");
+  };
+  balloonRef.current = () => {
+    if (readOnly) return;
+    const ids = selected && sheet.views.some((v) => v.id === selected) ? [selected] : sheet.views.map((v) => v.id);
+    if (ids.length) balloonViews(ids);
+    else say?.("Put a view on the sheet first.");
+  };
   const noteLayer = {
     zoom: view?.k ?? 1,
     selected: selectedNote,
@@ -1082,7 +1126,7 @@ function Paper({
                   {g?.view && live.notes?.some((n) => n.on?.view === v.id) && (
                     <NoteLayer
                       notes={live.notes.filter((n) => n.on?.view === v.id)}
-                      ctx={{ view: g.view, scale, frame: frameOf(v.direction), ...(doc ? { features: doc.features } : {}) }}
+                      ctx={{ view: g.view, scale, frame: frameOf(v.direction), itemOf: itemFor, ...(doc ? { features: doc.features } : {}) }}
                       {...noteLayer}
                     />
                   )}
@@ -1109,6 +1153,13 @@ function Paper({
                 </g>
               );
             })}
+            {sheet.partsList && (
+              <PartsList
+                table={partsTable(partRows, layout)}
+                onMenu={readOnly ? undefined : (x, y) => setListMenu({ x, y })}
+                onDelete={readOnly ? undefined : () => toggleList(false)}
+              />
+            )}
             {live.notes?.some((n) => !n.on) && (
               <g transform={`translate(0 ${ph})`}>
                 <NoteLayer notes={live.notes.filter((n) => !n.on)} {...noteLayer} />
@@ -1258,6 +1309,13 @@ function Paper({
         }
       />
       <ContextMenu
+        at={listMenu}
+        onClose={() => setListMenu(null)}
+        label="Parts list actions"
+        title="Parts list"
+        entries={[{ id: "remove", label: "Remove parts list", danger: true, keys: "Del", onSelect: () => toggleList(false) }]}
+      />
+      <ContextMenu
         at={lostMenu?.at ?? null}
         onClose={() => setLostMenu(null)}
         label="Warning actions"
@@ -1282,6 +1340,7 @@ function Paper({
             ? [
                 { id: "marks", label: "Add centre marks to this view", icon: "drawing", onSelect: () => markAll([menuView.id]) },
                 { id: "arrange", label: "Arrange dimensions", icon: "dimension", onSelect: () => arrangeViews([menuView.id]) },
+                { id: "balloons", label: "Add balloons to this view", icon: "drawing", onSelect: () => balloonViews([menuView.id]) },
                 ...(sheet.auto ? [{ id: "again", label: "Run Auto dimension again", icon: "dimension" as const, onSelect: runAgain }] : []),
                 { id: "edit", label: "Change this view", icon: "settings", onSelect: () => startChange(menuView) },
                 ...(menuView.kind === "section" && menuView.section
@@ -1326,6 +1385,7 @@ function Paper({
         <Suspense fallback={null}>
           <ExportCard
             features={doc?.features}
+            parts={partRows}
             drawing={drawing}
             sheet={followed}
             layout={layout}
@@ -1460,6 +1520,9 @@ export interface DrawingBarProps {
   /** Arms a note tool (#573), and the one that is armed. */
   onNote?: (tool: NoteTool) => void;
   note?: NoteTool | null;
+  /** The parts list on or off, and balloons for the views (#574). */
+  onPartsList?: () => void;
+  onBalloons?: () => void;
   /** Arms Dimension (#564). */
   onDimension?: () => void;
   dimension?: boolean;
@@ -1493,6 +1556,7 @@ export function DrawingBar({
   cut,
   onNote,
   note,
+  onPartsList,
   onDimension,
   dimension,
   onAuto,
@@ -1564,6 +1628,9 @@ export function DrawingBar({
       {!readOnly && onNote && (
         <Button icon="drawing" label="Note" title="Text, a leader, a hole note or a symbol" on={!!note} onClick={() => onNote(note ?? "note-leader")} />
       )}
+      {!readOnly && onPartsList && (
+        <Button icon="drawing" label="Parts list" title="A table of the model's parts above the title block" onClick={onPartsList} />
+      )}
       {onExport && <Button icon="download" label="Export" title="Save the sheet as a PDF, SVG, DXF or PNG, or print it" onClick={onExport} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
       <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
@@ -1582,6 +1649,8 @@ export function DrawingRibbon({
   cut,
   onNote,
   note,
+  onPartsList,
+  onBalloons,
   onDimension,
   dimension,
   onArrange,
@@ -1669,6 +1738,13 @@ export function DrawingRibbon({
             pressed={note === "note-frame"}
             onPress={() => onNote("note-frame")}
           />
+        </RibbonGroup>
+      )}
+      {!readOnly && onPartsList && (
+        <RibbonGroup label="Tables" entries={[]}>
+          <RibbonButton icon="drawing" colour="rect" label="Parts list" onPress={onPartsList} />
+          {onNote && <RibbonButton icon="drawing" colour="circle" label="Balloon" pressed={note === "note-balloon"} onPress={() => onNote("note-balloon")} />}
+          {onBalloons && <RibbonButton icon="drawing" colour="sk-auto" label="Add balloons" short="Auto balloons" onPress={onBalloons} />}
         </RibbonGroup>
       )}
       <RibbonGroup label="Sheet" entries={[]}>

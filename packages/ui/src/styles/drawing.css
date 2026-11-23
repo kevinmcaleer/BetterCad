@@ -563,3 +563,10 @@ textarea.bc-text {
   padding-block: var(--bc-space-2);
   resize: vertical;
 }
+/* The parts list (#574): a table above the title block. */
+.bc-parts {
+  outline: none;
+}
+.bc-parts:focus-visible > rect {
+  stroke: var(--bc-color-paper-pick);
+}

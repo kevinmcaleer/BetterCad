@@ -915,3 +915,51 @@ test("write a hole note, a leader and loose text, and give a size a tolerance @j
     timeout: 30_000,
   });
 });
+
+/** The parts list and balloons (#574), and a drawing of every part from one command. */
+test("add a parts list and balloons, then make a drawing of every part @journey @visual", async ({ page }) => {
+  await topViewOnA3(page);
+  const top = page.getByRole("button", { name: /^Top view, / });
+
+  // The parts list reads the model: the bracket is one printed part.
+  await page.getByRole("button", { name: "Parts list", exact: true }).click();
+  const table = page.getByRole("table", { name: "Parts list" });
+  await expect(table.getByRole("columnheader")).toHaveText(["Item", "Part", "Qty", "Material"]);
+  await expect(table.getByRole("cell")).toHaveText(["1", "Bracket", "1", "PLA"]);
+
+  // Balloons for a view come from its menu, one for each part it shows.
+  await top.locator(".bc-view-hit").click({ button: "right", position: { x: 6, y: 6 } });
+  await page.getByRole("menuitem", { name: "Add balloons to this view" }).click();
+  const balloon = page.getByRole("button", { name: "Balloon 1" });
+  await expect(balloon).toBeVisible();
+  // It sits clear of the view.
+  const [vb, bb] = [(await top.locator(".bc-view-hit").boundingBox())!, (await balloon.locator(".bc-sheet-note-grip").boundingBox())!];
+  const apart = bb.x >= vb.x + vb.width || bb.x + bb.width <= vb.x || bb.y >= vb.y + vb.height || bb.y + bb.height <= vb.y;
+  expect(apart).toBe(true);
+
+  await page.locator(".bc-sheet-paper").click({ position: { x: 5, y: 5 } });
+  await steady(page);
+  await expect.poll(() => sheetBoxes(page), { timeout: 15_000 }).toHaveLength(1);
+  await expect(page.locator(".bc-sheet-paper")).toHaveScreenshot("sheet-bracket-parts.png", {
+    maxDiffPixelRatio: 0.01,
+    mask: [page.getByRole("button", { name: /^Date of issue/ })],
+    timeout: 30_000,
+  });
+
+  // Back in the model, one command makes a drawing of each part, with four views set out for you.
+  await page.getByRole("button", { name: "Finish drawing" }).click();
+  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await page.getByRole("menuitem", { name: "Make drawings of every part" }).click();
+  await expect(page.getByRole("status").filter({ hasText: /^Made 1 drawing/ })).toBeVisible({ timeout: 30_000 });
+  // The browser lists it under Drawings, above the body of the same name.
+  await expect(page.getByRole("treeitem", { name: /^Bracket/ })).toHaveCount(2);
+  await page
+    .getByRole("treeitem", { name: /^Bracket/ })
+    .first()
+    .dblclick();
+  await expect(page.getByRole("region", { name: "Drawing: Bracket" })).toBeVisible();
+  await expect(page.locator(".bc-view")).toHaveCount(4);
+  await expect(page.getByRole("button", { name: /^Front view, / })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Top view, / })).toBeVisible();
+  await expect(page.locator(".bc-view .bc-view-visible").first()).toHaveAttribute("d", /M/, { timeout: 30_000 });
+});

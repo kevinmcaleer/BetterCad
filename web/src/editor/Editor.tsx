@@ -592,6 +592,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     onCut: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
     onAutoMarks: () => drawingApi.current?.autoMarks(),
+    onPartsList: () => drawingApi.current?.partsList(),
+    onBalloons: () => drawingApi.current?.autoBalloons(),
     onArrange: () => drawingApi.current?.arrange(),
     auto: drawingTool === "auto",
     onAuto: () => setDrawingTool((t) => (t === "auto" ? null : "auto")),
@@ -605,9 +607,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setSelection([]);
     setDrawing(id);
   };
-  const onDrawing = (act: "new" | "open" | "settings" | "rename" | "delete", id?: string, name?: string) => {
+  const onDrawing = (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart", id?: string, name?: string) => {
     if (live.current.sketching) return say("Finish the sketch first.");
     if (act === "new") return setSheetCard("new");
+    if (act === "everyPart") return everyPart();
     if (!id) return;
     if (act === "open" || act === "settings") {
       enterDrawing(id);
@@ -626,6 +629,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       store.edit(() => made.doc, "New drawing");
       enterDrawing(made.id);
     });
+  };
+  /** Make drawings of every part (#574): one for each row of the parts list that has none of its name yet. */
+  const everyPart = () => {
+    if (live.current.sketching) return say("Finish the sketch first.");
+    if (!files.shared) void import("../drawing/everyPart").then((m) => m.makeEveryPart(store, parts, built.components, viewCall, at, say, account?.name));
   };
   const onRenderCamera = useCallback((c: CameraState) => {
     renderCam.current = c;
@@ -2129,7 +2137,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit" | "autoMarks" | "arrange" | DrawingTool) => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit" | "autoMarks" | "arrange" | "partsList" | "balloons" | "everyPart" | DrawingTool) => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2226,19 +2234,25 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     drawing: (act) =>
-      act === "autoMarks"
-        ? drawingApi.current?.autoMarks()
-        : act === "arrange"
-          ? drawingApi.current?.arrange()
-          : act === "fit"
-            ? drawingApi.current?.fit()
-            : act === "finish"
-              ? setDrawing(null)
-              : act === "new"
-                ? onDrawing("new")
-                : act === "settings"
-                  ? setSheetCard("settings")
-                  : setDrawingTool(act),
+      act === "everyPart"
+        ? everyPart()
+        : act === "partsList"
+          ? drawingApi.current?.partsList()
+          : act === "balloons"
+            ? drawingApi.current?.autoBalloons()
+            : act === "autoMarks"
+              ? drawingApi.current?.autoMarks()
+              : act === "arrange"
+                ? drawingApi.current?.arrange()
+                : act === "fit"
+                  ? drawingApi.current?.fit()
+                  : act === "finish"
+                    ? setDrawing(null)
+                    : act === "new"
+                      ? onDrawing("new")
+                      : act === "settings"
+                        ? setSheetCard("settings")
+                        : setDrawingTool(act),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -2911,6 +2925,33 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keywords: "2d sheet page paper technical views dimensions",
       },
       {
+        id: "drawing.everyPart",
+        scope: "model",
+        label: "Make drawings of every part",
+        group: "File",
+        icon: "drawing",
+        run: () => h().drawing("everyPart"),
+        keywords: "2d sheets all components bodies each part drawing batch",
+      },
+      {
+        id: "drawing.partsList",
+        scope: "drawing",
+        label: "Parts list",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("partsList"),
+        keywords: "bill of materials bom table items count quantity",
+      },
+      {
+        id: "drawing.balloons",
+        scope: "drawing",
+        label: "Add balloons",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("balloons"),
+        keywords: "item numbers callouts parts list automatic bubbles",
+      },
+      {
         id: "drawing.baseView",
         scope: "drawing",
         label: "Base view",
@@ -2957,60 +2998,26 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         run: () => h().drawing("break"),
         keywords: "broken view shorten long part break lines",
       },
-      {
-        id: "drawing.noteText",
+      // The note tools (#573) and Balloon (#574): label, kind and what else finds them.
+      ...(
+        [
+          ["Text", "text", "note words label general"],
+          ["Leader", "leader", "note arrow callout point"],
+          ["Hole note", "hole", "callout thread tapped counterbore countersink depth diameter"],
+          ["Surface finish", "finish", "roughness ra texture symbol"],
+          ["Datum", "datum", "reference letter gd&t symbol"],
+          ["Feature control frame", "frame", "tolerance gd&t position flatness geometric symbol"],
+          ["Balloon", "balloon", "item number callout parts list bubble"],
+        ] as const
+      ).map(([label, kind, keywords]): Command => ({
+        id: `drawing.note-${kind}`,
         scope: "drawing",
-        label: "Text",
+        label,
         group: "Tools",
         icon: "drawing",
-        run: () => h().drawing("note-text"),
-        keywords: "note words label general",
-      },
-      {
-        id: "drawing.noteLeader",
-        scope: "drawing",
-        label: "Leader",
-        group: "Tools",
-        icon: "drawing",
-        run: () => h().drawing("note-leader"),
-        keywords: "note arrow callout point",
-      },
-      {
-        id: "drawing.noteHole",
-        scope: "drawing",
-        label: "Hole note",
-        group: "Tools",
-        icon: "drawing",
-        run: () => h().drawing("note-hole"),
-        keywords: "callout thread tapped counterbore countersink depth diameter",
-      },
-      {
-        id: "drawing.noteFinish",
-        scope: "drawing",
-        label: "Surface finish",
-        group: "Tools",
-        icon: "drawing",
-        run: () => h().drawing("note-finish"),
-        keywords: "roughness ra texture symbol",
-      },
-      {
-        id: "drawing.noteDatum",
-        scope: "drawing",
-        label: "Datum",
-        group: "Tools",
-        icon: "drawing",
-        run: () => h().drawing("note-datum"),
-        keywords: "reference letter gd&t symbol",
-      },
-      {
-        id: "drawing.noteFrame",
-        scope: "drawing",
-        label: "Feature control frame",
-        group: "Tools",
-        icon: "drawing",
-        run: () => h().drawing("note-frame"),
-        keywords: "tolerance gd&t position flatness geometric symbol",
-      },
+        run: () => h().drawing(`note-${kind}`),
+        keywords,
+      })),
       {
         id: "drawing.dimension",
         scope: "drawing",
@@ -4577,6 +4584,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   onePart={selection.length === 1}
                   onRender={openRender}
                   onDrawing={files.shared ? undefined : () => onDrawing("new")}
+                  onEveryPart={files.shared ? undefined : everyPart}
                   say={window.matchMedia?.("(pointer: coarse)").matches ? say : undefined}
                 />
               )}

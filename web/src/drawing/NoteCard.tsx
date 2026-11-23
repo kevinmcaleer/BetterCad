@@ -29,6 +29,7 @@ const HOW: Record<NoteKind, string> = {
   finish: "Click the edge or face the finish is for.",
   datum: "Click the edge the datum is on.",
   frame: "Click the edge or hole the tolerance is for.",
+  balloon: "Click a part. The balloon takes its number from the parts list.",
 };
 const FIELD: Partial<Record<NoteKind, string>> = { text: "Text", leader: "Text", finish: "Roughness", datum: "Letter", frame: "Tolerance" };
 

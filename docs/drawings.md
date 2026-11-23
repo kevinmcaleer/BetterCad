@@ -91,6 +91,34 @@ Right-click a dimension for **Tolerance…**: plus and minus ("40 ±0.1", or "40
 Notes are worked out in `web/src/drawing/notes.ts` as lines and text, and every export writes the same ones (DXF
 layer `DIMENSIONS`).
 
+## Parts list and balloons
+
+**Parts list** puts a table above the title block: item number, part, quantity and material. It is worked out from
+the model each time it is drawn (`web/src/drawing/parts.ts`), so it never goes stale:
+
+- a row for each top-level component (with everything inside it) and each body outside one, in build order;
+- two inserts of the same model are one row with a count of 2, and so is a body with its patterned copies. A mirrored
+  copy is a part of its own;
+- printed parts take the model's print material; catalogue parts and reference bodies say "Bought";
+- holes and hidden bodies are left out, as they are from views.
+
+Click the button again, press Delete on the table or right-click it to take it off the sheet.
+
+A **Balloon** is a part's item number in a circle with an arrow to the part. The Balloon tool (in the Note card's
+Kind list, or the Tables group of the Drawing tab) numbers the part whose edge you click. **Add balloons** on a
+view's menu gives every part the view shows a balloon, set out round the view on the side its part is on, and skips
+parts that have one. A balloon reads its number from the list each time, so the two always agree. It is a note, so
+it drags, deletes, exports and follows its view like one.
+
+**Make drawings of every part** (the view style menu, the Drawings menu in the browser, or Ctrl+K) makes a drawing
+for each row of the parts list, named for its part, on the page you last set up: a front view, the views above or
+below and beside it where the standard puts them, and an isometric, at the largest standard scale that fits
+(`firstViews.ts`, `everyPart.ts`). A part that already has a drawing of its name is skipped, so running it again
+only adds what is new. It is one step in Undo.
+
+Exploded views wait for the model to be able to save one. The fuller parts list for printing and buying (weights,
+print times, a CSV) is #494; it can start from `partsRows`.
+
 ## Dimensions
 
 A dimension is fixed to the edges and faces it measures by their names (`docs/topological-naming.md`), not to where
@@ -158,5 +186,5 @@ format is written from one picture of the sheet, `sheetScene` in `web/src/drawin
 
 ## Not yet
 
-A parts list with balloons, and templates with a logo are release 2 (#574, #575). Stepped, slanted and half
+Templates with a logo are release 2 (#575). Exploded views wait for the model to save one. Stepped, slanted and half
 sections are not planned yet. Ordinate dimensions are not planned yet. Weld symbols and a hole table are not here.
