@@ -37,8 +37,8 @@ export const RULES: Rule[] = [
   { id: "net-two-names", label: "A net has two names", level: "warning" },
 ];
 
-export interface CheckResult {
-  rule: RuleId;
+export interface CheckResult<R extends string = RuleId> {
+  rule: R;
   level: Exclude<CheckLevel, "ignore">;
   /** Stable while the spot stays as it is: the rule and the pins, parts or names it is about. A waiver hangs on it. */
   key: string;
@@ -49,13 +49,15 @@ export interface CheckResult {
   /** Where to look, when it has a place on a sheet. */
   sheet?: Id;
   at?: P2;
+  /** True when `at` is a place on the board, not on a sheet. */
+  board?: true;
   /** The parts it is about, to select them. */
   parts: Id[];
   /** The note it was waived with. Waived results are still listed, but not counted. */
   waived?: string;
 }
 
-export const levelOf = (d: ElectronicsDesign, rule: Rule): CheckLevel => d.checks?.levels?.[rule.id] ?? rule.level;
+export const levelOf = (d: ElectronicsDesign, rule: { id: string; level: CheckLevel }): CheckLevel => d.checks?.levels?.[rule.id] ?? rule.level;
 
 const pinName = (p: NetPin): string => (p.name && p.name !== p.pin && p.name !== "~" ? `${p.ref} pin ${p.pin} (${p.name})` : `${p.ref} pin ${p.pin}`);
 const DRIVES = new Set<PinType>(["output", "bidirectional", "tristate", "passive", "power_out", "open_collector", "open_emitter", "unspecified"]);
@@ -195,7 +197,7 @@ function list(items: string[]): string {
 }
 
 /** How many results count, by level. Waived ones are counted apart. */
-export function tally(results: CheckResult[]): { errors: number; warnings: number; waived: number } {
+export function tally(results: CheckResult<string>[]): { errors: number; warnings: number; waived: number } {
   const live = results.filter((r) => r.waived === undefined);
   return {
     errors: live.filter((r) => r.level === "error").length,
@@ -211,17 +213,32 @@ export function tallyText(t: { errors: number; warnings: number }): string {
 }
 
 /** Sets how serious a rule is. Its usual level is not kept, so the file stays small. */
-export function setLevel(d: ElectronicsDesign, rule: RuleId, level: CheckLevel): ElectronicsDesign {
+export function setLevel(d: ElectronicsDesign, rule: string, level: CheckLevel, rules: { id: string; level: CheckLevel }[] = RULES): ElectronicsDesign {
   const levels = { ...d.checks?.levels };
-  if (RULES.find((r) => r.id === rule)?.level === level) delete levels[rule];
+  if (rules.find((r) => r.id === rule)?.level === level) delete levels[rule];
   else levels[rule] = level;
   return { ...d, checks: { ...d.checks, levels } };
 }
 
-/** Waives one result with a note, or (no note) takes the waiver back. Waivers for spots that have changed are dropped. */
-export function waive(d: ElectronicsDesign, key: string, note?: string): ElectronicsDesign {
-  const now = new Set(check({ ...d, checks: { ...d.checks, waived: {} } }).map((r) => r.key));
-  const waived = Object.fromEntries(Object.entries(d.checks?.waived ?? {}).filter(([k]) => now.has(k) && k !== key));
+/**
+ * Waives one result with a note, or (no note) takes the waiver back. `live` is every key the checker that owns `rules`
+ * finds now: its waivers for spots that have changed are dropped, and another checker's waivers are left alone.
+ */
+export function waiveIn(d: ElectronicsDesign, key: string, note: string | undefined, rules: { id: string }[], live: Iterable<string>): ElectronicsDesign {
+  const now = new Set(live);
+  const mine = (k: string) => rules.some((r) => k.startsWith(`${r.id}:`));
+  const waived = Object.fromEntries(Object.entries(d.checks?.waived ?? {}).filter(([k]) => k !== key && (!mine(k) || now.has(k))));
   if (note !== undefined) waived[key] = note.trim();
   return { ...d, checks: { ...d.checks, waived } };
+}
+
+/** Waives a schematic result with a note, or (no note) takes the waiver back. */
+export function waive(d: ElectronicsDesign, key: string, note?: string): ElectronicsDesign {
+  return waiveIn(
+    d,
+    key,
+    note,
+    RULES,
+    check({ ...d, checks: { ...d.checks, waived: {} } }).map((r) => r.key),
+  );
 }

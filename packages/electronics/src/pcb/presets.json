@@ -1,0 +1,61 @@
+{
+  "$comment": "Board house limits for a 2-layer, 1 oz board, in mm, read from each house's own capabilities page on the date given. Fields listed under `ours` are BetterCad's working values, chosen above the house's minimum; the rest are the house's limits. Check the page again before changing a number, and update `checked`.",
+  "presets": [
+    {
+      "id": "jlcpcb-2layer",
+      "name": "JLCPCB, 2 layers",
+      "source": "https://jlcpcb.com/capabilities/pcb-capabilities",
+      "checked": "2026-11-24",
+      "rules": {
+        "clearance": 0.15,
+        "trackWidth": 0.25,
+        "minTrackWidth": 0.1,
+        "viaDiameter": 0.6,
+        "viaDrill": 0.3,
+        "minDrill": 0.15,
+        "minRing": 0.2,
+        "minViaRing": 0.075,
+        "holeToHole": 0.45,
+        "copperToEdge": 0.2,
+        "minSilkWidth": 0.15,
+        "minSilkHeight": 1,
+        "maskMargin": 0
+      },
+      "ours": ["clearance", "trackWidth", "viaDiameter", "viaDrill"],
+      "notes": [
+        "Track and gap: 0.10 mm each at the least on 1 and 2 layer boards.",
+        "Smallest via: 0.15 mm hole in a 0.25 mm pad; the pad should be 0.15 mm wider than the hole.",
+        "Ring round a plated hole: 0.20 mm or more, 0.25 mm recommended.",
+        "Holes: 0.45 mm apart for pads, 0.2 mm for vias. The check uses the larger.",
+        "Solder mask opens 1:1 with the pad."
+      ]
+    },
+    {
+      "id": "pcbway-2layer",
+      "name": "PCBWay, standard",
+      "source": "https://www.pcbway.com/capabilities.html",
+      "checked": "2026-11-24",
+      "rules": {
+        "clearance": 0.15,
+        "trackWidth": 0.25,
+        "minTrackWidth": 0.1,
+        "viaDiameter": 0.6,
+        "viaDrill": 0.3,
+        "minDrill": 0.2,
+        "minRing": 0.15,
+        "holeToHole": 0.41,
+        "copperToEdge": 0.25,
+        "minSilkWidth": 0.15,
+        "minSilkHeight": 0.8,
+        "maskMargin": 0.05
+      },
+      "ours": ["clearance", "trackWidth", "viaDiameter", "viaDrill"],
+      "notes": [
+        "Track and gap: 0.1 mm each at the least.",
+        "Holes from 0.15 mm, but anything under 0.2 mm costs extra, so the check asks for 0.2 mm.",
+        "Ring round a hole: 0.15 mm or more.",
+        "Hole spacing (16 mil) and edge distance (0.25 mm) are from the page's advanced table; the standard table gives none."
+      ]
+    }
+  ]
+}

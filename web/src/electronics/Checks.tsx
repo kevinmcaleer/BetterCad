@@ -1,14 +1,21 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import type { CheckLevel, ElectronicsDesign } from "@bettercad/electronics";
 import { RULES, check, levelOf, setLevel, tally, tallyText, waive, type CheckResult } from "@bettercad/electronics/erc";
+import type { ReactNode } from "react";
 import { Button, ESC, FeaturePanel, PanelNote, cx, useEscape } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { eui } from "./ui";
 
 let shown = 0;
 
+type Result = CheckResult<string>;
+
 /** Goes to a result: its sheet, its parts picked, its spot ringed in the middle of the view. */
-export function showResult(design: ElectronicsDesign, r: CheckResult): void {
+export function showResult(design: ElectronicsDesign, r: Result): void {
+  if (r.board || eui.get().view === "pcb") {
+    eui.set({ selected: r.parts, net: null, spot: r.at ? { sheet: "board", at: r.at, n: (shown += 1) } : null });
+    return;
+  }
   const parts = new Set(r.parts);
   const sheet = design.sheets.find((s) => s.id === r.sheet) ?? design.sheets.find((s) => s.symbols.some((y) => parts.has(y.part)));
   eui.set({
@@ -24,13 +31,41 @@ const LEVELS: { id: CheckLevel; label: string }[] = [
   { id: "ignore", label: "Ignore" },
 ];
 
+export interface ChecksPanelProps {
+  design: ElectronicsDesign;
+  edit: EEdit;
+  readOnly?: boolean;
+  onClose: () => void;
+  title: string;
+  results: Result[];
+  rules: { id: string; label: string; level: Exclude<CheckLevel, "ignore"> }[];
+  /** What to say when nothing is found. */
+  clean: string;
+  onWaive: (d: ElectronicsDesign, key: string, note?: string) => ElectronicsDesign;
+  children?: ReactNode;
+}
+
 /**
  * The rules check (#634): what is wrong with the schematic, each with what to do about it. Click one to go to it.
  * A result can be waived with a note, and each rule can be made an error, a warning or left out.
  */
-export default function ChecksCard({ design, edit, readOnly, onClose }: { design: ElectronicsDesign; edit: EEdit; readOnly?: boolean; onClose: () => void }) {
+export default function ChecksCard(p: { design: ElectronicsDesign; edit: EEdit; readOnly?: boolean; onClose: () => void }) {
+  const results = useMemo(() => check(p.design), [p.design]);
+  return (
+    <ChecksPanel
+      {...p}
+      title="Rules check"
+      results={results}
+      rules={RULES}
+      clean={p.design.parts.length ? "No problems found." : "Nothing to check yet. Place some parts first."}
+      onWaive={waive}
+    />
+  );
+}
+
+/** The card both checks share: the schematic's rules and the board's (#644) list, waive and set levels the same way. */
+export function ChecksPanel({ design, edit, readOnly, onClose, title, results, rules: ruleList, clean, onWaive, children }: ChecksPanelProps) {
   const id = useId();
-  const results = useMemo(() => check(design), [design]);
   const live = results.filter((r) => r.waived === undefined);
   const waived = results.filter((r) => r.waived !== undefined);
   const count = tally(results);
@@ -46,7 +81,7 @@ export default function ChecksCard({ design, edit, readOnly, onClose }: { design
   // The spot's ring goes when the card does, however it is closed.
   useEffect(() => () => eui.set({ spot: null }), []);
 
-  const go = (r: CheckResult) => {
+  const go = (r: Result) => {
     setAt(r.key);
     showResult(design, r);
   };
@@ -56,7 +91,7 @@ export default function ChecksCard({ design, edit, readOnly, onClose }: { design
     go(live[(i < 0 ? (by > 0 ? 0 : live.length - 1) : i + by + live.length) % live.length]!);
   };
 
-  const row = (r: CheckResult) => (
+  const row = (r: Result) => (
     <li key={r.key} className={cx(`bc-ec-check-${r.waived !== undefined ? "waived" : r.level}`, at === r.key && "bc-on")}>
       <button type="button" className="bc-ec-check-go" aria-current={at === r.key || undefined} onClick={() => go(r)}>
         <span className="bc-ec-check-level">{r.waived !== undefined ? "Waived" : r.level === "error" ? "Error" : "Warning"}</span>
@@ -70,14 +105,14 @@ export default function ChecksCard({ design, edit, readOnly, onClose }: { design
             variant="secondary"
             label="Bring back"
             title="Count this result again"
-            onClick={() => edit((d) => waive(d, r.key), "Bring a check back")}
+            onClick={() => edit((d) => onWaive(d, r.key), "Bring a check back")}
           />
         ) : waiving === r.key ? (
           <form
             className="bc-ec-check-waive"
             onSubmit={(e) => {
               e.preventDefault();
-              edit((d) => waive(d, r.key, note), "Waive a check");
+              edit((d) => onWaive(d, r.key, note), "Waive a check");
               setWaiving(null);
             }}
           >
@@ -109,13 +144,13 @@ export default function ChecksCard({ design, edit, readOnly, onClose }: { design
 
   return (
     <FeaturePanel
-      title="Rules check"
+      title={title}
       icon="rulesCheck"
       className="bc-ec-card bc-ec-checks"
       cancel={{ label: "Close", title: "Close the rules check (Esc)", onClick: close }}
     >
       <p className="bc-ec-check-sum" role="status">
-        {live.length ? `${tallyText(count)} to look at.` : design.parts.length ? "No problems found." : "Nothing to check yet. Place some parts first."}
+        {live.length ? `${tallyText(count)} to look at.` : clean}
         {count.waived > 0 && ` ${count.waived} waived.`}
       </p>
       {live.length > 1 && (
@@ -124,6 +159,7 @@ export default function ChecksCard({ design, edit, readOnly, onClose }: { design
           <Button size="dense" variant="secondary" label="Next" title="Go to the next result" onClick={() => step(1)} />
         </div>
       )}
+      {children}
       {results.length > 0 && (
         <ul className="bc-ec-check-list" aria-label="Results">
           {live.map(row)}
@@ -135,14 +171,14 @@ export default function ChecksCard({ design, edit, readOnly, onClose }: { design
       </button>
       {rules && (
         <div id={`${id}r`} className="bc-ec-rule-list">
-          {RULES.map((r) => (
+          {ruleList.map((r) => (
             <label key={r.id}>
               <span>{r.label}</span>
               <select
                 className="bc-select"
                 value={levelOf(design, r)}
                 disabled={readOnly}
-                onChange={(e) => edit((d) => setLevel(d, r.id, e.target.value as CheckLevel), "Change a rule")}
+                onChange={(e) => edit((d) => setLevel(d, r.id, e.target.value as CheckLevel, ruleList), "Change a rule")}
               >
                 {LEVELS.map((l) => (
                   <option key={l.id} value={l.id}>
