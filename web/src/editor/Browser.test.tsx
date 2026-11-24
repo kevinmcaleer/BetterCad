@@ -244,7 +244,7 @@ describe("components (#171)", () => {
   it("shows an empty component, and the active one's radio on", () => {
     const m = nested({ links: [...nested().links!, { id: "L3", name: "Component 3", parts: [] }], active: "L3" });
     const items = browserItems(m);
-    expect(items.find((i) => i.id === "L3")).toMatchObject({ active: true, toggles: ["hidden", "active"], hidden: false });
+    expect(items.find((i) => i.id === "L3")).toMatchObject({ active: true, toggles: ["hidden", "ghost", "active"], hidden: false, ghost: false });
     expect(items.find((i) => i.id === "L1")).toMatchObject({ active: false });
     expect(items[0]).toMatchObject({ toggles: ["active"], active: false });
     expect(browserItems(nested({ readOnly: true })).find((i) => i.id === "L1")).toMatchObject({ toggles: ["hidden"] });
@@ -339,6 +339,49 @@ describe("components (#171)", () => {
     fireEvent.contextMenu(screen.getAllByText("Component 1")[0]!);
     await userEvent.click(screen.getByRole("menuitem", { name: "Unhide all" }));
     expect(isolate).toHaveBeenLastCalledWith(null);
+  });
+
+  it("ghosts a component's bodies, nested too, and offers its reference entries", async () => {
+    const onBodiesGhost = vi.fn();
+    const reference = vi.fn();
+    const props = {
+      selection: [],
+      onSelect: () => {},
+      onAdd: () => {},
+      onToggle: () => {},
+      onBodiesHidden: () => {},
+      onSketchesHidden: () => {},
+      onBodiesGhost,
+      referenceMenu: (keep: string[], name?: string) => [
+        { id: "ghost-others", label: "Show others as references", onSelect: () => reference(keep, name) },
+        { id: "clear-ghosts", label: "Clear references", onSelect: () => reference(null) },
+      ],
+      onOrigin: () => {},
+      onPicked: () => {},
+      onSelectSketch: () => {},
+      onRename: () => {},
+      onRenameModel: () => {},
+      onRenameSketch: () => {},
+      onReorder: () => {},
+      onSketchOn: () => {},
+      partMenu: () => [],
+      sketchMenu: () => [],
+      renameId: null,
+      onRenameIdChange: () => {},
+    };
+    const { rerender } = render(<BrowserPanel model={nested()} {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "Show as a reference Component 1" }));
+    expect(onBodiesGhost).toHaveBeenLastCalledWith(["a", "b", "d"], true, "Component 1");
+    const all = nested();
+    rerender(<BrowserPanel model={{ ...all, parts: all.parts.map((p) => ({ ...p, ghost: p.id !== "c" })) }} {...props} />);
+    await userEvent.click(screen.getByRole("button", { name: "Stop showing as a reference Component 2" }));
+    expect(onBodiesGhost).toHaveBeenLastCalledWith(["d"], false, "Component 2");
+    fireEvent.contextMenu(screen.getAllByText("Component 2")[0]!);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Show others as references" }));
+    expect(reference).toHaveBeenLastCalledWith(["d", "s1"], "Component 2");
+    fireEvent.contextMenu(screen.getAllByText("Component 1")[0]!);
+    await userEvent.click(screen.getByRole("menuitem", { name: "Clear references" }));
+    expect(reference).toHaveBeenLastCalledWith(null);
   });
 
   it("offers Remove on an inserted model's component, but not in a shared model", async () => {
