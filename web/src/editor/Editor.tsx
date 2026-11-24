@@ -399,6 +399,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   }, []);
 
   const narrow = useMedia(NARROW);
+  const phone = useMedia("(max-width: 520px)");
   const ribbonOn = useRibbon();
   const [selection, setSelection] = useState<string[]>([]);
   // The browser's origin planes on show, and its sketch or plane pick: view state, like the marker.
@@ -4133,7 +4134,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     { id: "tour", label: "Take the tour", icon: "info", onSelect: () => registry.run("help.tour") },
     { id: "tips", label: "Tips", icon: "bulb", onSelect: () => registry.run("help.tips") },
     { id: "learn", label: "Learn BetterCad", icon: "link", onSelect: () => registry.run("help.learn") },
-    { kind: "separator", id: "s1" },
+    { kind: "separator", id: "s-help" },
     { id: "report", label: "Report a problem…", icon: "warning", onSelect: () => registry.run("help.report") },
     { id: "whatsNew", label: "What's new", icon: "star", onSelect: () => registry.run("help.whatsNew") },
     { id: "about", label: "About BetterCad", icon: "info", onSelect: () => registry.run("help.about") },
@@ -4550,6 +4551,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             // A run-out sign-in: Save logs in again, and the save that waits goes once you're back.
             onSave={() => void (files.cloud?.state === "signin" ? logInAgain(api, window.location.hash || "#/") : save())}
             helpEntries={helpEntries}
+            phone={phone}
             account={account ? { name: account.name, admin: account.admin } : null}
             accountsOn={accountReady && accountsOn}
             cloud={files.cloud?.state ?? null}

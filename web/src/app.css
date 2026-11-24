@@ -53,6 +53,9 @@ body {
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
+  /* Clip, not hide: a hidden box can still be scrolled (focus, a too-wide bar), which slid the whole editor sideways
+     on phones and cut the logo off. A clipped one never scrolls. */
+  overflow: clip;
 }
 /* The desktop ribbon is a taller top bar: its tab row, then its tools. Folded, only the tab row shows. */
 .bc-app:has(.bc-top-ribbon) {
@@ -1778,10 +1781,12 @@ kbd {
 .bc-frame-graph-60 {
   stroke: var(--bc-color-line);
 }
-/* A phone's top bar holds the logo, browser and My models, undo and redo, properties, parameters, Save, Help and the
-   account: Save keeps its icon (its name stays for screen readers) and the separators close up, so the account fits. */
-@media (max-width: 480px) {
-  .bc-app .bc-top .bc-split > .bc-btn:first-child > span {
+/* A phone's top bar holds the logo, browser and My models, undo and redo, properties, Save and the account menu
+   (Parameters and Help fold into it). Buttons keep their icons (their names stay for screen readers) and the gaps
+   close up, so the bar fits a 360 px screen. */
+@media (max-width: 520px) {
+  .bc-app .bc-top .bc-split > .bc-btn:first-child > span,
+  .bc-app .bc-top > .bc-btn > span:not([class]):not([role]) {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1791,8 +1796,25 @@ kbd {
   }
   .bc-app .bc-top {
     gap: var(--bc-space-1);
+    padding-left: var(--bc-space-2);
+    padding-right: var(--bc-space-2);
   }
   .bc-app .bc-top > .bc-sep {
     margin: 0;
+  }
+  .bc-app .bc-top > .bc-title {
+    gap: var(--bc-space-2);
+    padding: 0;
+  }
+  .bc-app .bc-top .bc-owner {
+    display: none;
+  }
+  /* The background renders' wheel hangs just under the bar's right end, so it never pushes the account off. */
+  .bc-app .bc-top > .bc-render-wheel {
+    position: absolute;
+    top: calc(100% + var(--bc-space-2));
+    right: var(--bc-space-2);
+    background: var(--bc-color-bar);
+    box-shadow: var(--bc-shadow-float);
   }
 }
