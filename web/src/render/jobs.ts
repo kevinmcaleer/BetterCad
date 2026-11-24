@@ -82,10 +82,11 @@ const testMax = () => (typeof window === "undefined" ? undefined : (window as un
 const testFake = () => typeof window !== "undefined" && !!(window as unknown as { __bcFakeRenderJobs?: boolean }).__bcFakeRenderJobs;
 
 async function fakeRender(shot: RenderShot, progress: (f: number) => void, wait: () => Promise<unknown>, signal: AbortSignal): Promise<Blob> {
-  const steps = 40;
+  // Timers rather than frames: a busy software GPU can hold frames back for seconds.
+  await wait();
+  const steps = 30;
   for (let i = 1; i <= steps; i++) {
     if (signal.aborted) throw new Error("Stopped");
-    await wait();
     await new Promise((r) => setTimeout(r, 100));
     progress(i / steps);
   }

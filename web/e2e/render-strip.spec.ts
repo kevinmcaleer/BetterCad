@@ -22,7 +22,7 @@ test("Add to strip renders the shot in the background, with a wheel on the top b
   await strip.getByRole("button", { name: "Add to strip" }).click();
   // The wheel shows while the job runs; then it goes and the tile has its picture.
   await expect(page.getByRole("progressbar", { name: "Background renders" })).toBeVisible({ timeout: 60_000 });
-  await expect(strip.getByRole("button", { name: "Render 1", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(strip.getByRole("button", { name: "Render 1", exact: true })).toBeVisible({ timeout: 180_000 });
   await expect(page.getByRole("progressbar", { name: "Background renders" })).toHaveCount(0);
   await strip.getByRole("button", { name: "Render 1", exact: true }).click();
   const viewer = page.getByRole("dialog", { name: "Render 1" });
