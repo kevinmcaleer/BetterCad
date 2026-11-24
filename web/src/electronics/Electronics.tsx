@@ -214,7 +214,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         group: "Sync",
         label: "Export",
         icon: "download",
-        tip: "Save the schematic as a PDF, an SVG or a netlist",
+        tip: "Save the schematic as a PDF, an SVG or a netlist, or the whole design as a KiCad project",
         on: ui.card === "export",
         run: toggle("export"),
       },

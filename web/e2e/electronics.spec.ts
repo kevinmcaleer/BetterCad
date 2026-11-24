@@ -148,7 +148,7 @@ test.describe("on a wide screen", () => {
     await axe(page);
     await page.keyboard.press("Escape");
 
-    // Export: an SVG whose text is text, and a netlist KiCad reads.
+    // Export: an SVG whose text is text, a netlist KiCad reads, and a whole KiCad project.
     const exported = async (format: string) => {
       await tools(page).getByRole("button", { name: "Export" }).click();
       const dialog = page.getByRole("dialog", { name: "Export schematic" });
@@ -168,6 +168,11 @@ test.describe("on a wide screen", () => {
     expect(net.text).toContain('(comp (ref "R2")\n      (value "4.7 kΩ")');
     const pdf = await exported("PDF");
     expect(pdf.text.slice(0, 5)).toBe("%PDF-");
+    // The whole design as a KiCad project: a zip that holds the schematic and the library of its parts.
+    const kicad = await exported("KiCad");
+    expect(kicad.name).toBe("Untitled model KiCad.zip");
+    expect(kicad.text.slice(0, 2)).toBe("PK");
+    for (const file of ["Untitled_model.kicad_sch", "Untitled_model.kicad_sym", "Untitled_model.kicad_pro", "CREDITS.md"]) expect(kicad.text).toContain(file);
   });
 
   test("lay out a board: place by numbers, route a track, add a hole and text, and check it", async ({ page }) => {

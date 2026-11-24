@@ -75,15 +75,26 @@ export const num = (n: Node[] | undefined, at = 1, or = 0): number => {
 export const flag = (n: Node[] | undefined, name: string): boolean =>
   !!n && (n.some((c) => c === name) || text(child(n, name)) === "yes" || (child(n, name) !== undefined && child(n, name)!.length === 1));
 
-/** Writes a tree back as text, for the exporters (#664). Lists with lists inside go one per line. */
+/**
+ * Writes a tree back as text, for the exporters (#664). A list with lists inside puts each of them on a line of its
+ * own. The order is kept as given: KiCad reads some lists by position.
+ */
 export function writeSexpr(node: Node, indent = 0): string {
-  if (!isList(node)) return node instanceof Str ? `"${String(node).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"` : node;
-  const pad = "\t".repeat(indent);
+  if (!isList(node)) {
+    if (!(node instanceof Str)) return node;
+    return `"${String(node).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
+  }
   if (!node.some(isList)) return `(${node.map((c) => writeSexpr(c)).join(" ")})`;
-  const flat: string[] = [];
-  const nested: string[] = [];
-  for (const c of node) (isList(c) ? nested : flat).push(isList(c) ? `${pad}\t${writeSexpr(c, indent + 1)}` : writeSexpr(c));
-  return `(${flat.join(" ")}\n${nested.join("\n")}\n${pad})`;
+  const pad = "\t".repeat(indent);
+  let out = "(";
+  let broke = false;
+  node.forEach((c, i) => {
+    if (isList(c)) {
+      out += `\n${pad}\t${writeSexpr(c, indent + 1)}`;
+      broke = true;
+    } else out += broke ? `\n${pad}\t${writeSexpr(c)}` : `${i ? " " : ""}${writeSexpr(c)}`;
+  });
+  return `${out}\n${pad})`;
 }
 
 /** Three points on an arc, as its centre, radius and the angles it runs between anticlockwise (y up). */

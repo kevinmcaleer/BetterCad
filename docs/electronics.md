@@ -357,3 +357,33 @@ model, and takes it as far as the preview of the files.
 What it is not, yet: the issue asked for a motor driver, a Qwiic connector and a power switch. Those parts are not in
 the starter library, so the sample keeps to parts that are. Its order pack has been read back by our own reader and
 by nothing else: nobody has uploaded it to a board house's quote page.
+
+## Out to KiCad (#664)
+
+Export, in the schematic, has a KiCad format: the whole design as a KiCad project in a zip
+(`packages/electronics/src/kicad/export.ts`, `kicadProject`). It holds the schematic (one file a sheet), the board, a
+symbol library and a footprint library with every part the design uses, the two tables that tell KiCad where the
+libraries are, the project file with the board's rules and net classes, and `CREDITS.md`, which says where each part
+came from. The files are KiCad 7's formats, which KiCad 7, 8 and 9 open.
+
+What changes on the way out:
+
+- KiCad's schematic and board run y down, so both are turned over; parts on the bottom are flipped the way KiCad
+  flips them (top to bottom, half a turn from ours).
+- A wire that something joins in its middle is cut there and gets a dot: KiCad joins wires only at their ends.
+- With more than one sheet, the first is the root and the others hang off it as sheet boxes; labels go out as global
+  labels, so nets with one name still join between sheets.
+- A power symbol carries its net's name on its hidden pin, where KiCad 7 reads it, and as its value, where KiCad 8
+  and 9 do.
+- Pours go out as zone outlines. KiCad fills them itself (Edit, Fill all zones). Keep-outs go out as rule areas.
+- Ids are made from the design's own, so the same design always writes the same files.
+
+How it is checked: `export.test.ts` reads the libraries back with our own KiCad readers and holds the sample's
+schematic and board to goldens. `kicadCli.test.ts` goes further where KiCad is installed (`kicad-cli`, KiCad 7 or
+later; CI has none, so it is skipped there): KiCad reads the exported schematic and writes its netlist, which must
+have our nets, pin for pin and name for name; it plots the board's copper, which must lie where ours does on both
+sides; and it writes the drill files, which must have our holes. Both the sample and a design made to turn
+everything every way (`kicad/fixture.ts`: mirrored and turned symbols, a part with two units, power symbols, wires
+that join every way, two sheets, parts on both sides at odd angles) pass against KiCad 7.0.11. Nobody has opened the
+files in KiCad 8 or 9 yet, or looked at them on screen: the checks are on nets, copper and holes, not on how the
+drawing looks.
