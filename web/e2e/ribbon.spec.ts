@@ -30,6 +30,12 @@ test("wide screens with a mouse get the ribbon: tabs, big tools and a drop-down 
 
   await bar.getByRole("tab", { name: "Assemble" }).click();
   await expect(bar.getByRole("tabpanel").getByRole("button", { name: "Joint", exact: true })).toBeVisible();
+
+  // Drawings have their own tab: start one, and its own Drawing tab takes the model's place.
+  await bar.getByRole("tab", { name: "Drawing" }).click();
+  await expect(bar.getByRole("button", { name: "Open drawing: this model has none yet" })).toBeDisabled();
+  await bar.getByRole("tabpanel").getByRole("button", { name: "New drawing" }).click();
+  await expect(page.getByRole("dialog", { name: "New drawing" })).toBeVisible();
 });
 
 test("the Sketch tab takes over while sketching, and Finish sketch closes it", async ({ page }) => {
