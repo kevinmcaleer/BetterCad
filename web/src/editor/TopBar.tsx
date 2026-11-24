@@ -402,9 +402,7 @@ function rightSide(p: TopBarProps) {
           ...(p.shared ? [] : [{ id: "print", label: "Print settings", icon: "printer" as const, onSelect: () => p.onPanel("print") }]),
           { id: "settings", label: "Settings", icon: "settings" as const, onSelect: () => p.onPanel("settings") },
           ...(p.onInstall ? [{ id: "install", label: "Install BetterCad", icon: "download" as const, onSelect: p.onInstall }] : []),
-          ...(p.phone && p.helpEntries
-            ? [{ kind: "title" as const, id: "help", label: "Help" }, ...p.helpEntries]
-            : []),
+          ...(p.phone && p.helpEntries ? [{ kind: "title" as const, id: "help", label: "Help" }, ...p.helpEntries] : []),
           { kind: "title", id: "t", label: "Theme" },
         ]}
         trigger={(t) =>
