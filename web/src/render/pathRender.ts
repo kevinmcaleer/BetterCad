@@ -399,7 +399,15 @@ export class PathRender {
    * rendered and only adds any samples still missing; at another size it renders afresh, then puts the view back.
    * `progress` hears how far it has got (0 to 1); `signal` stops it early, and the promise then rejects.
    */
-  async snapshot(width: number, height: number, samples: number, progress?: (f: number) => void, signal?: AbortSignal): Promise<Blob> {
+  async snapshot(
+    width: number,
+    height: number,
+    samples: number,
+    progress?: (f: number) => void,
+    signal?: AbortSignal,
+    /** Between samples: a background render waits here, for a free frame or for you to stop dragging. */
+    wait: () => Promise<unknown> = () => new Promise((r) => setTimeout(r, 0)),
+  ): Promise<Blob> {
     const same = width === this.canvas.width && height === this.canvas.height;
     this.stopLoop();
     const pr = this.renderer.getPixelRatio();
@@ -415,7 +423,7 @@ export class PathRender {
         this.tracer.renderSample();
         progress?.(this.samples / samples);
         if (same) this.opts.onSample?.(this.samples);
-        await new Promise((r) => setTimeout(r, 0));
+        await wait();
       }
       return await new Promise<Blob>((resolve, reject) => this.canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("No image"))), "image/png"));
     } finally {

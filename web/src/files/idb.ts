@@ -11,15 +11,15 @@ export interface KV<T> {
 }
 
 const DB = "bettercad";
-// Version 2 adds the cloud's offline queue and cache (#96).
-const STORES = ["recent", "autosave", "discarded", "cloudQueue", "cloudCache"] as const;
+// Version 2 adds the cloud's offline queue and cache (#96); version 3 the render film strip's pictures.
+const STORES = ["recent", "autosave", "discarded", "cloudQueue", "cloudCache", "renders"] as const;
 export type StoreName = (typeof STORES)[number];
 
 let opening: Promise<IDBDatabase> | null = null;
 
 function db(): Promise<IDBDatabase> {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
-    const r = indexedDB.open(DB, 2);
+    const r = indexedDB.open(DB, 3);
     r.onupgradeneeded = () => {
       for (const s of STORES) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s);
     };

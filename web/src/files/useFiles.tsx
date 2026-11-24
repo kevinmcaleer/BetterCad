@@ -56,6 +56,8 @@ export interface FilesDeps {
   onImport: (files: File[], at?: Vec3) => Promise<void>;
   /** The bodies as the path tracer draws them, for a rendered thumbnail after a save to the account. */
   renderBodies?: () => RenderBody[];
+  /** You saved the model (not an autosave): the render film strip updates the renders that follow saves. */
+  onSaved?: (doc: ModelDoc) => void;
   /** For tests. */
   fileStore?: FileStore;
   autosave?: Autosave;
@@ -255,6 +257,7 @@ export function useFiles(d: FilesDeps) {
         await auto.markSaved(m.id, m.savedAt, saved.name);
         if (saved.handle) await files.remember(saved.handle, { name: saved.name, thumbnail: thumb }).catch(() => undefined);
         refreshRecent();
+        deps.current.onSaved?.(current);
         if (saved.inPlace) deps.current.say(`Saved to ${saved.name}`, false, true);
         else deps.current.say(`Downloaded ${saved.name}. Your browser can't save in place.`);
         return true;
@@ -309,7 +312,10 @@ export function useFiles(d: FilesDeps) {
           setCloud({ modelId: m.cloud.modelId, state: "saved" });
           renderCloudThumb(m.cloud.modelId, m.cloud.version);
         }
-        if (o.note !== "autosave") deps.current.say(`Saved ${current.name} to your account`, false, true);
+        if (o.note !== "autosave") {
+          deps.current.say(`Saved ${current.name} to your account`, false, true);
+          if (meta.current === m) deps.current.onSaved?.(current);
+        }
         return true;
       } catch (e) {
         const err = e as ApiError;
