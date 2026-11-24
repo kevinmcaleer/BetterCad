@@ -379,6 +379,7 @@ export function browserItems(m: BrowserModel): TreeItem[] {
     for (const k of o.comps.filter((x) => o.parentOf(x) === c)) {
       // Its eye is shut once its bodies are hidden; sketches and construction planes keep their own eyes.
       const all = o.eyed(k.id);
+      const ghosts = o.held(k.id).parts;
       items.push({
         id: k.id,
         name: k.name,
@@ -388,8 +389,10 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         drag: false,
         move,
         into: move,
-        toggles: m.readOnly ? ["hidden"] : ["hidden", "active"],
+        toggles: m.readOnly ? ["hidden"] : ["hidden", "ghost", "active"],
         hidden: all.length > 0 && all.every((x) => x.hidden),
+        // Its ghost is on once every body in it, and in the components inside it, shows as a reference.
+        ghost: ghosts.length > 0 && ghosts.every((x) => x.ghost),
         active: m.active === k.id,
       });
       contents(k.id, k.id);
@@ -467,6 +470,10 @@ export interface BrowserPanelProps {
   onSketchesHidden: (ids: string[], hidden: boolean, name?: string) => void;
   /** Hide others and Unhide all for a component (#335): `keep` stays shown, `name` names the step. */
   isolateMenu?: (keep: string[], name?: string) => MenuEntry[];
+  /** A component's ghost: shows its bodies (and those of the components inside it) as references, or stops. */
+  onBodiesGhost?: (ids: string[], ghost: boolean, name?: string) => void;
+  /** Show as a reference, Show others as references and Clear references for a component: `keep` is what it holds. */
+  referenceMenu?: (keep: string[], name?: string) => MenuEntry[];
   onOrigin: (shown: OriginItem[]) => void;
   /** The sketch, plane, axis or origin point picked in the browser, for the view to mark. */
   onPicked: (id: string | null) => void;
@@ -562,6 +569,14 @@ export function BrowserPanel(p: BrowserPanelProps) {
     // A component's eye: its bodies, and those in the components inside it, as one step. Its sketches and
     // construction planes stay as you left them, so one you hid stays hidden when you show the component again.
     const comp = model.links?.find((l) => l.id === id);
+    if (comp && what === "ghost") {
+      const ps = owners(model).held(id).parts;
+      return p.onBodiesGhost?.(
+        ps.map((x) => x.id),
+        ps.some((x) => !x.ghost),
+        comp.name,
+      );
+    }
     if (comp) {
       const all = owners(model).eyed(id);
       return p.onBodiesHidden(
@@ -821,6 +836,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
           { id: "select", label: "Select its bodies", icon: "component", onSelect: () => select([id]) },
           { id: "show", label: componentShown(id) ? "Hide" : "Show", icon: componentShown(id) ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") },
           ...(p.isolateMenu?.(heldIds(id), link.name) ?? []),
+          ...(model.readOnly ? [] : (p.referenceMenu?.(heldIds(id), link.name) ?? [])),
           { id: "rename", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => p.onRenameIdChange(id) },
           ...(model.readOnly ? [] : (p.componentRemove?.(id) ?? [])),
         ],
