@@ -18,6 +18,8 @@ export interface RenderStripProps {
   onChange: (s: RenderShot) => void;
   onDelete: (s: RenderShot) => void;
   onSave: (s: RenderShot) => void;
+  /** Moves a shot to this place on the strip: renders still waiting go in the strip's order. */
+  onMove?: (id: string, to: number) => void;
   /** A shared model: look, don't change. */
   readOnly?: boolean;
 }
@@ -47,8 +49,11 @@ function jobText(j: Job | undefined): string | null {
  * The render film strip: one tile per shot along the bottom of the Render view, each its latest picture. A shot
  * still rendering shows how far it has got; one made before the model changed says it is out of date.
  */
-export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onChange, onDelete, onSave, readOnly }: RenderStripProps) {
+export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onChange, onDelete, onSave, onMove, readOnly }: RenderStripProps) {
   const state = useJobs(jobs);
+  const movable = !!onMove && !readOnly;
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<number | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [menu, setMenu] = useState<(ContextMenuState & { id: string }) | null>(null);
   const shown = shots.find((s) => s.id === open);
@@ -65,6 +70,22 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
               : { id: "again", label: "Render again", icon: "camera", onSelect: () => onRerender(s) },
             ...(onUse ? [{ id: "use", label: "Use this view", icon: "eye", onSelect: () => onUse(s) }] : []),
             { id: "auto", label: "Update when I save", checked: s.auto, onSelect: () => onChange({ ...s, auto: !s.auto }) },
+            ...(movable && shots.length > 1
+              ? [
+                  {
+                    id: "earlier",
+                    label: "Move earlier",
+                    disabled: shots[0]?.id === s.id,
+                    onSelect: () => onMove!(s.id, shots.findIndex((x) => x.id === s.id) - 1),
+                  },
+                  {
+                    id: "later",
+                    label: "Move later",
+                    disabled: shots.at(-1)?.id === s.id,
+                    onSelect: () => onMove!(s.id, shots.findIndex((x) => x.id === s.id) + 1),
+                  },
+                ]
+              : []),
             { kind: "separator", id: "s1" },
             { id: "delete", label: "Delete", icon: "trash", onSelect: () => onDelete(s) },
           ] as MenuEntry[])),
@@ -73,18 +94,44 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
   return (
     <section className="bc-render-strip" aria-label="Renders">
       <ul className="bc-render-tiles">
-        {shots.map((s) => {
+        {shots.map((s, i) => {
           const pic = state.pictures[s.id];
           const job = state.jobs.find((j) => j.shot === s.id);
-          const stale = !!pic && !job && pic.key !== keyOf(s);
-          const note = jobText(job) ?? (stale ? "Out of date" : pic ? null : "Not rendered yet");
+          // A first look (key "") is the Render view's picture from when the shot was added, not a render of it.
+          const first = !!pic && pic.key === "";
+          const stale = !!pic && !first && !job && pic.key !== keyOf(s);
+          const note = jobText(job) ?? (stale ? "Out of date" : pic && !first ? null : "Not rendered yet");
           return (
-            <li key={s.id}>
+            <li
+              key={s.id}
+              className={over === i && dragging && dragging !== s.id ? "bc-render-drop" : undefined}
+              draggable={movable}
+              onDragStart={(e) => {
+                setDragging(s.id);
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", s.id);
+              }}
+              onDragOver={(e) => {
+                if (!dragging) return;
+                e.preventDefault();
+                setOver(i);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragging && dragging !== s.id) onMove?.(dragging, i);
+                setDragging(null);
+                setOver(null);
+              }}
+              onDragEnd={() => {
+                setDragging(null);
+                setOver(null);
+              }}
+            >
               <button
                 type="button"
                 className="bc-render-tile"
                 aria-label={`${s.name}${note ? `, ${note.toLowerCase()}` : ""}`}
-                title={`${s.name}${s.auto ? ". Updates when you save" : ""}`}
+                title={`${s.name}${s.auto ? ". Updates when you save" : ""}${movable ? ". Drag to change the order" : ""}`}
                 onClick={() => setOpen(s.id)}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -95,7 +142,7 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
                   {job?.preview ? (
                     <img src={job.preview} alt="" draggable={false} data-preview="" />
                   ) : pic ? (
-                    <img src={pic.url} alt="" draggable={false} />
+                    <img src={pic.url} alt="" draggable={false} data-first={first || undefined} />
                   ) : (
                     <span className="bc-render-tile-empty" />
                   )}
@@ -138,7 +185,7 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
           shot={shown}
           url={state.pictures[shown.id]?.url}
           note={jobText(state.jobs.find((j) => j.shot === shown.id)) ?? (state.pictures[shown.id] ? null : "Not rendered yet")}
-          stale={!!state.pictures[shown.id] && state.pictures[shown.id].key !== keyOf(shown)}
+          stale={!!state.pictures[shown.id] && state.pictures[shown.id].key !== "" && state.pictures[shown.id].key !== keyOf(shown)}
           readOnly={readOnly}
           onClose={() => setOpen(null)}
           onSave={() => onSave(shown)}

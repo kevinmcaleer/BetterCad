@@ -282,6 +282,22 @@ export class RenderJobs {
     void this.next();
   }
 
+  /**
+   * A first look at a shot not rendered yet: the Render view's picture as it was when the shot was added, so a tile
+   * waiting its turn shows what it will be. It stays until the render replaces it, and is never sent to the account.
+   */
+  async seed(shot: string, image: Blob): Promise<void> {
+    if (this.state.pictures[shot]) return;
+    await this.keep(shot, image, "", null);
+  }
+
+  /** Puts the waiting jobs in this order of shots (the strip's order after a drag); the running one carries on. */
+  order(ids: string[]): void {
+    const at = new Map(ids.map((id, i) => [id, i]));
+    this.queue = [...this.queue].sort((a, b) => (at.get(a.shot.id) ?? ids.length) - (at.get(b.shot.id) ?? ids.length));
+    this.publish();
+  }
+
   /** Stops a shot's job, waiting or running. */
   cancel(id: string): void {
     this.queue = this.queue.filter((q) => q.shot.id !== id);

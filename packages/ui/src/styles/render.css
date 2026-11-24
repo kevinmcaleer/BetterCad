@@ -181,6 +181,12 @@
   outline: 2px solid var(--bc-color-accent);
   outline-offset: 1px;
 }
+.bc-render-drop .bc-render-tile {
+  box-shadow: inset 3px 0 0 var(--bc-color-accent);
+}
+.bc-render-tile-pic img[data-first] {
+  opacity: 0.7;
+}
 .bc-render-tile-pic {
   position: relative;
   display: grid;
@@ -262,4 +268,22 @@
   inset: auto var(--bc-space-1) var(--bc-space-1) auto;
   padding: 2px;
   border-radius: 50%;
+}
+/*
+ * Start and stop the Render view's picture: a small round button, green (the dimension green) to start, red to stop,
+ * so background renders on the strip can have the GPU.
+ */
+.bc-icon-btn.bc-render-go {
+  border-radius: 50%;
+  background: var(--bc-color-dimension);
+  color: var(--bc-color-bar);
+}
+.bc-icon-btn.bc-render-go.bc-render-stop {
+  background: var(--bc-color-danger);
+}
+.bc-icon-btn.bc-render-go:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+.bc-icon-btn.bc-render-go:disabled {
+  opacity: 0.4;
 }

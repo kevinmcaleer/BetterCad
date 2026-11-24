@@ -61,6 +61,26 @@ describe("RenderStrip", () => {
     jobs.dispose();
   });
 
+  it("shows a waiting shot's first look, and moves shots by drag or menu", async () => {
+    const jobs = new RenderJobs({ store: memoryKV(), render: never });
+    await jobs.seed("b", new Blob(["look"]));
+    const onMove = vi.fn();
+    strip(jobs, [shot("a", "Front"), shot("b", "Top")], { onMove });
+    const top = screen.getByRole("button", { name: "Top, not rendered yet" });
+    expect(top.querySelector("img[data-first]")).not.toBeNull();
+    const data = { setData: () => {}, effectAllowed: "" };
+    fireEvent.dragStart(top.closest("li")!, { dataTransfer: data });
+    const front = screen.getByRole("button", { name: "Front, not rendered yet" }).closest("li")!;
+    fireEvent.dragOver(front, { dataTransfer: data });
+    fireEvent.drop(front, { dataTransfer: data });
+    expect(onMove).toHaveBeenCalledWith("b", 0);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Front, not rendered yet" }));
+    expect(screen.getByRole("menuitem", { name: "Move earlier" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move later" }));
+    expect(onMove).toHaveBeenCalledWith("a", 1);
+    jobs.dispose();
+  });
+
   it("opens a render with Save image, Render again, Use this view and its save switch", async () => {
     const store = memoryKV<{ key: string; blob: Blob; date: number }>();
     await store.set("a", { key: "now", blob: new Blob(["x"]), date: 1 });

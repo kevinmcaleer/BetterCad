@@ -106,6 +106,8 @@ export class PathRender {
   /** Paper: an off-white, very rough surface with a soft sheen at grazing angles, the way card catches light. */
   private paper = new MeshPhysicalMaterial({ color: 0xf3efe6, roughness: 0.95, metalness: 0, sheen: 0.5, sheenRoughness: 0.9, sheenColor: 0xffffff });
   private paused = false;
+  /** Stopped with the Render view's stop button: no more samples, past the first that shows a moved camera. */
+  private held = false;
   private stopped = false;
   private max = 512;
   /** Stop adding samples here. Raising it past the count so far starts the picture clearing again. */
@@ -377,6 +379,11 @@ export class PathRender {
     return Math.floor(this.tracer.samples);
   }
 
+  /** Stops adding samples, keeping the picture so far (the Render view's stop button), or carries on. */
+  hold(on: boolean): void {
+    this.held = on;
+  }
+
   /** While orbiting: draw the plain preview and add no samples. */
   pause(on: boolean): void {
     this.paused = on;
@@ -398,7 +405,7 @@ export class PathRender {
     let last = performance.now();
     const sample = () => {
       last = performance.now();
-      if (this.stopped || document.hidden) return;
+      if (this.stopped || document.hidden || (this.held && this.samples >= 1)) return;
       this.tracer.renderSample();
       const n = this.samples;
       this.opts.onSample?.(n);
