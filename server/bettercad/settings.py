@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     # Admin console: the accounts (comma-separated emails) that can see every user and their models at #/admin.
     # Blank falls back to STATS_EMAILS.
     admin_emails: str = ""
+    # Admin console by kevsrobots.com username as well (comma-separated). Kev's own account is an admin out of the box.
+    admin_users: str = "kev"
 
     @field_validator("database_path", "backup_dir", mode="before")
     @classmethod

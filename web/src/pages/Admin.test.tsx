@@ -6,11 +6,31 @@ import { AdminPage } from "./Admin";
 const ada: AdminUser = {
   id: 101,
   username: "ada",
+  email: "ada@example.com",
   joined: "2026-11-01 10:00:00",
+  last_active: null,
+  visits: [
+    { started: "2026-11-08 12:00:00", ended: "2026-11-08 13:20:00" },
+    { started: "2026-11-07 09:00:00", ended: "2026-11-07 09:01:00" },
+  ],
+  visits_month: 2,
   last_seen: "2026-11-08",
   set_aside: false,
   last_saved: "2026-11-08 12:00:00",
   size: 3072,
+  projects: [
+    {
+      id: "p1",
+      name: "Rover",
+      created: "2026-11-02 10:00:00",
+      modified: "2026-11-08 12:00:00",
+      deleted_at: null,
+      models: 1,
+      size: 2048,
+      cover: null,
+      thumbnail: "/api/admin/models/m1/thumbnail?v=3",
+    },
+  ],
   models: [
     {
       id: "m1",
@@ -22,6 +42,7 @@ const ada: AdminUser = {
       modified: "2026-11-08 12:00:00",
       deleted_at: null,
       shared: true,
+      project_id: "p1",
       thumbnail: "/api/admin/models/m1/thumbnail?v=3",
     },
     {
@@ -34,11 +55,12 @@ const ada: AdminUser = {
       modified: "2026-11-03 12:00:00",
       deleted_at: "2026-11-04 12:00:00",
       shared: false,
+      project_id: null,
       thumbnail: null,
     },
   ],
 };
-const bob: AdminUser = { ...ada, id: 102, username: "bob", size: 0, models: [], last_seen: null };
+const bob: AdminUser = { ...ada, id: 102, username: "bob", email: null, size: 0, projects: [], models: [], visits: [], visits_month: 0, last_seen: null };
 
 function mount(admin: boolean) {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -60,23 +82,33 @@ describe("admin console", () => {
   it("lists every user with the models they've saved", async () => {
     mount(true);
     const users = await screen.findByRole("list", { name: "Users" });
-    expect(screen.getByRole("status")).toHaveTextContent("2 users, 2 models saved");
+    expect(screen.getByRole("status")).toHaveTextContent("2 users, 1 project, 2 models saved");
     expect(users).toHaveTextContent("ada");
-    expect(users).toHaveTextContent("1 model, 1 in the bin");
-    expect(users).toHaveTextContent("Last seen not recorded");
+    expect(users).toHaveTextContent("1 project, 1 model, 1 in the bin");
+    expect(users).toHaveTextContent("ada@example.com");
+    expect(users).toHaveTextContent("2 visits in 30 days");
+    expect(users).toHaveTextContent("Last signed in not recorded");
     const models = screen.getByRole("list", { name: "ada's models" });
     expect(models).toHaveTextContent("Rover chassis");
     expect(models).toHaveTextContent("3 versions");
     expect(models).toHaveTextContent("Shared");
     expect(models).toHaveTextContent("In the bin");
+    expect(models).toHaveTextContent("In Rover");
+    const projects = screen.getByRole("list", { name: "ada's projects" });
+    expect(projects).toHaveTextContent("Rover");
+    expect(projects).toHaveTextContent("1 model · 2 KB");
+    const signIns = screen.getByRole("list", { name: "ada's sign-ins" });
+    expect(signIns).toHaveTextContent("1 h 20 min");
+    expect(signIns).toHaveTextContent("a few minutes");
   });
 
   it("finds a user by one of their models", async () => {
     mount(true);
     await screen.findByRole("list", { name: "Users" });
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search users and models" }), { target: { value: "rover" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search users, projects and models" }), { target: { value: "rover" } });
+    expect(screen.getByRole("list", { name: "Users" })).toHaveTextContent("ada");
     expect(screen.getByRole("list", { name: "Users" })).not.toHaveTextContent("bob");
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search users and models" }), { target: { value: "zzz" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search users, projects and models" }), { target: { value: "zzz" } });
     expect(screen.getByText("Nobody matches ‘zzz’.")).toBeInTheDocument();
   });
 
