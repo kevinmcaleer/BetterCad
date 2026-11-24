@@ -134,7 +134,6 @@ import { AppShell } from "./AppShell";
 import { TopBar } from "./TopBar";
 import { useRibbon } from "./ribbonPrefs";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
-import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
 import { View3D, type ViewDecal } from "../viewport/View3D";
 import { useStatus } from "./useStatus";
@@ -195,6 +194,8 @@ import type { IkProblem } from "../state/ik";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
+// The armed tool's options strip: only Section, Move and Turn draw one, so it loads when first needed.
+const StageBars = lazy(() => import("./Stage").then((m) => ({ default: m.StageBars })));
 const DeleteStepDialog = lazy(() => import("./DeleteStep").then((m) => ({ default: m.DeleteStepDialog })));
 const EmptyState = lazy(() => import("./EmptyState").then((m) => ({ default: m.EmptyState })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
@@ -4774,7 +4775,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   />
                 </Suspense>
               ) : (
-                <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
+                activeTool.id !== "select" && (
+                  <Suspense fallback={null}>
+                    <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
+                  </Suspense>
+                )
               )}
               {place.part && (
                 <Suspense fallback={null}>
