@@ -446,8 +446,8 @@ export interface BrowserPanelProps {
   /** Starts a sketch on a construction plane (#265). */
   onSketchOnStep?: (id: string) => void;
   partMenu: (ids: string[]) => MenuEntry[];
-  /** A component's Remove entry, when it is an inserted model (#480). */
-  componentRemove?: (id: string) => MenuEntry[];
+  /** A component's own entries: Make external for one made here, Remove for an inserted model (#480). */
+  componentMenu?: (id: string) => MenuEntry[];
   sketchMenu: (id: string) => MenuEntry[];
   renameId: string | null;
   onRenameIdChange: (id: string | null) => void;
@@ -743,7 +743,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
           { id: "show", label: componentShown(id) ? "Hide" : "Show", icon: componentShown(id) ? "eyeOff" : "eye", onSelect: () => toggle(id, "hidden") },
           ...(p.isolateMenu?.(heldIds(id), link.name) ?? []),
           { id: "rename", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => p.onRenameIdChange(id) },
-          ...(model.readOnly ? [] : (p.componentRemove?.(id) ?? [])),
+          ...(model.readOnly ? [] : (p.componentMenu?.(id) ?? [])),
         ],
       };
     if (id === ROW.root && model.active && !model.readOnly)
