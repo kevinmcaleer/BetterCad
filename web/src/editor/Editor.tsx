@@ -2020,6 +2020,12 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   pickedStepRef.current = pickedStep;
   /** A step being changed: its tool is open for it. Sketches use sketch.editingId instead. */
   const [editingStep, setEditingStep] = useState<string | null>(null);
+  // Editing the model leaves a drawing's sheet for the 3D view, the way Finish drawing does: double-clicking a sketch
+  // or a step (browser or timeline), Edit sketch, Sketch on, re-picking a fillet or opening a step's tool.
+  const editingModel = sketch.editing || editingStep !== null || tool !== "select" || driveDialog !== null;
+  useEffect(() => {
+    if (editingModel) setDrawing(null);
+  }, [editingModel]);
   const renameFeature = useCallback(
     (id: string, name: string) => {
       const f = store.get().features.find((x) => x.id === id);
