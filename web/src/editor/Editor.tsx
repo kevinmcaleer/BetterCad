@@ -180,7 +180,7 @@ import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
 import type { StripController, StripDeps } from "../render/strip";
-import type { DrawingApi, DrawingTool, NoteTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
+import type { DrawingApi, DrawingTool, NoteTool, SelectedSize, SheetChoice, ViewCall } from "../drawing/DrawingView";
 import type { DrawingSheet } from "@bettercad/kernel/drawing";
 import { eui } from "../electronics/ui";
 import { showView, type EEdit } from "../electronics/actions";
@@ -304,6 +304,7 @@ const ElectronicsView = lazy(electronicsCode);
 const ElectronicsRibbon = lazy(() => electronicsCode().then((m) => ({ default: m.ElectronicsRibbon })));
 const ElectronicsProps = lazy(() => electronicsCode().then((m) => ({ default: m.ElectronicsProps })));
 const ViewProps = lazy(() => import("../drawing/ViewProps").then((m) => ({ default: m.ViewProps })));
+const SizeProps = lazy(() => import("../drawing/SizeProps"));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 /** Importing a mesh or STEP file loads its code when you first do it (#320). */
@@ -443,6 +444,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [drawingSheet, setDrawingSheet] = useState<string | null>(null);
   /** The view selected on the open sheet, whose style the properties panel shows. */
   const [drawingView, setDrawingView] = useState<string | null>(null);
+  const [drawingSize, setDrawingSize] = useState<SelectedSize | null>(null);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
   // Electronics (#617): the schematic or the board covers the view the way a drawing's sheet does.
@@ -4197,6 +4199,13 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
    * its tool on the step, fillet, chamfer and shell open to pick again, and the rest select their parts for Properties.
    * A step past the marker is rolled forward to first, so it is built while you change it.
    */
+  /** Edit in model from a drawing's size (#564): the step that sets it opens, and its sketch dimension for typing. */
+  const editInModel = (feature: string, dimension?: string) => {
+    const f = store.get().features.find((x) => x.id === feature);
+    if (!f) return;
+    editStep(f);
+    if (dimension) sketch.setDimEdit(dimension);
+  };
   const editStep = (f: Feature) => {
     const i = store.get().features.findIndex((x) => x.id === f.id);
     if (i < 0) return;
@@ -5095,6 +5104,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   components={built.components}
                   pictures={{ meshes: kernel.bodies, parts, built, pose: doc.pose }}
                   onSelectView={setDrawingView}
+                  onSelectSize={setDrawingSize}
+                  onEditModel={files.shared ? undefined : editInModel}
                   bodies={parts}
                   onTitle={(field, value) => void drawingCode().then((m) => store.edit(...m.titleChange(shownDrawing, field, value)))}
                   onDecimals={(places) => void drawingCode().then((m) => store.edit(...m.decimalsChange(shownDrawing, places)))}
@@ -5216,6 +5227,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
           ) : eview ? (
             <Suspense fallback={null}>
               <ElectronicsProps design={doc.electronics} edit={editDesign} readOnly={!!files.shared} />
+            </Suspense>
+          ) : shownDrawing && drawingSize && !files.shared ? (
+            <Suspense fallback={null}>
+              <SizeProps
+                drawing={shownDrawing}
+                sheet={shownDrawing.sheets.find((x) => x.id === drawingSheet) ?? shownDrawing.sheets[0]!}
+                size={drawingSize}
+                doc={doc}
+                onSheet={onDrawingSheet}
+                onEditModel={editInModel}
+              />
             </Suspense>
           ) : shownDrawing && drawingView && !files.shared ? (
             <Suspense fallback={null}>

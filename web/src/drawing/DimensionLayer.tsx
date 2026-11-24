@@ -67,6 +67,8 @@ export interface DimensionLayerProps {
   onMove?: (id: string, at: V2) => void;
   onDelete?: (id: string) => void;
   onMenu?: (id: string, x: number, y: number) => void;
+  /** A double-click or Enter on a size: go to where the model sets it. */
+  onOpen?: (id: string) => void;
 }
 
 /**
@@ -93,6 +95,7 @@ export function DimensionLayer({
   onMove,
   onDelete,
   onMenu,
+  onOpen,
 }: DimensionLayerProps) {
   const ctx: DimContext = { view: model, scale, style, decimals, iso, all: targets(model) };
   const mid: V2 = [(model.box.min[0] + model.box.max[0]) / 2, (model.box.min[1] + model.box.max[1]) / 2];
@@ -159,8 +162,17 @@ export function DimensionLayer({
             onPointerMove={move}
             onPointerUp={up}
             onPointerCancel={up}
-            onDoubleClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => key(e, d)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              onOpen?.(d.id);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && onOpen) {
+                e.preventDefault();
+                e.stopPropagation();
+                onOpen(d.id);
+              } else key(e, d);
+            }}
             onContextMenu={(e) => {
               if (!onMenu) return;
               e.preventDefault();

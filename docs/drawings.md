@@ -165,6 +165,17 @@ A dimension is fixed to the edges and faces it measures by their names (`docs/to
 they were. It always reads the model: you cannot type a different number over it. Right-click one for its decimal
 places or to delete it; drag its text to move it, and it drops into a row when you let go near one.
 
+**Edit in model.** Double-click a size (or press Enter on it, or use its right-click menu) and BetterCad leaves the
+drawing for the thing that sets it: the sketch opens with that sketch dimension ready to type in, or the Extrude or
+Hole step opens when the size is how far a shape was pushed or a hole's size. Change it, finish, open the drawing
+again and the size has followed. It works where one thing sets the size. An edge's name says which sketch curve swept
+it (`side(l3)`), so `web/src/drawing/source.ts` looks in that step's sketch for a driving dimension on that curve with
+the same value. A size between things made by different steps, a primitive's size and sizes on imports have no one
+source, and the app says so.
+
+Select a size and the properties panel (the i button) shows what it measures, its own **Decimal places** (or the
+drawing's) and where the model sets it, with an **Edit in model** button.
+
 **Arrange dimensions** (right-click a view) stacks a view's sizes in rows: the shortest nearest the part, each longer
 one outside it, the overall size outermost. Sizes that don't overlap share a row. Hole sizes go on leaders outside the
 view. If the rows run into a neighbouring view, you're asked whether to move that view out of the way.
