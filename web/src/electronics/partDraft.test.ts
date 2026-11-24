@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkPinMap, inflate, type LibraryPack } from "@bettercad/electronics";
-import { build, draftFrom, newDraft } from "./partDraft";
+import { build, draftFrom, newDraft, tableOf } from "./partDraft";
 
 const starter = JSON.parse(readFileSync(join(__dirname, "../../../packages/electronics/library/starter.json"), "utf8")) as LibraryPack;
 const part = (id: string) =>
@@ -80,7 +80,22 @@ describe("a copy of a library part", () => {
       licence: "CC-BY-SA 4.0 with exception",
       url: "https://www.kicad.org/libraries/license/",
     });
-    expect(made.notes).toEqual(["Pin 4 is not on the drawing. Turn on Draw as a box to add pins."]);
+    expect(made.notes).toEqual(["Pin 4 is not on the drawing. Choose a box from a pin list, or draw it by hand, to add pins."]);
+  });
+
+  it("uses a symbol drawn by hand as it is, checks it, and gives the pin table back when you stop", () => {
+    const start = build(newDraft()).symbol;
+    const drawn = { ...start, pins: start.pins.map((p) => (p.number === "4" ? { ...p, name: "0V" } : p)) };
+    const made = build({ ...newDraft(), name: "Hand", drawn });
+    expect(made.def!.symbol).toEqual({ ...drawn, name: "Hand" });
+    expect(tableOf(drawn).split("\n")[3]).toBe("4\t0V\tpower in");
+    // A pin the footprint has no pad for still stops the save, and so does a drawing with no pins.
+    const five = { ...drawn, pins: [...drawn.pins, { ...drawn.pins[0]!, number: "5", y: 12.7 }] };
+    expect(build({ ...newDraft(), name: "Hand", drawn: five }).problems).toEqual(["Hand SO-4 has no pad for pin 5. Change the pin numbers or the footprint."]);
+    expect(build({ ...newDraft(), drawn: { ...drawn, pins: [] }, pins: "junk" }).problems).toEqual([
+      "Give the part a name.",
+      "Add at least one pin to the symbol.",
+    ]);
   });
 
   it("redraws as a box when asked, with the same pins", () => {

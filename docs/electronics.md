@@ -477,8 +477,15 @@ crossing wires, a curved edge and track, pours, restrict areas and holes. `eagle
 parts, pads, copper, rules and notes. `eagle/kicadReads.test.ts` is a second opinion where KiCad is installed (CI has
 none, so it is skipped there): KiCad's own Eagle reader opens the same board, and every pad must be where ours is,
 the same size, on the same side and net. That confirms the turns and mirrors on the board; the schematic's follow the
-same rule and are held to Eagle's own net list. No file made by Eagle or Fusion itself, and no SparkFun or Adafruit
-board, has been opened yet: the session that wrote this could not download any. Try a real one before leaning on it.
+same rule and are held to Eagle's own net list.
+
+One real file has been opened: a schematic saved by Fusion Electronics (file version 9.7.0, 2026-11-24), a Pico W
+robot board with ten parts from four libraries. Its nets matched Eagle's own list pin for pin, and the parts list came
+out with the same lines, references, values and packages as Fusion's own BOM export. It showed two things the test
+file had not, both now in `eagle/project.test.ts`: Fusion writes a net's name just past the end of a short wire,
+joined to nothing, so such a name is moved onto the wire's free end; and a part with no value of its own shows its
+device's name, unless the device says the value is yours to give. No board saved by Eagle or Fusion, and no SparkFun
+or Adafruit project, has been opened yet.
 
 ## Tests and help (#667, #668)
 
@@ -505,7 +512,7 @@ board, has been opened yet: the session that wrote this could not download any. 
   and more (#648), panels and IPC-2581 (#662).
 - Parts: custom pin shapes and per-pad mask and paste (#626, #627), STEP or BetterCad models as a part's body (#628),
   sharing a library (#629), the server's shared catalogue (#625), live stock and prices (#661).
-- Eagle and Fusion files (#665): read, but not yet tried on a file Eagle or Fusion wrote.
+- Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.
 - A first real order: the order pack reads back in our own preview, and its copper and holes agree with what KiCad
   plots from the same board, but no board has been ordered with it.

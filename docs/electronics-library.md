@@ -91,10 +91,14 @@ catalogue's review flow (#190).
 
 New part, Edit and Edit a copy open the part editor (`web/src/electronics/PartTools.tsx`, logic in `partDraft.ts`):
 
-- **Symbol** (#626): a pin table, one pin a line as number, name, what it does and optionally a side. Paste it from a
-  spreadsheet or a datasheet; plain words work ("power in", "io", "nc"). The symbol is drawn as a box with the pins set
-  out like the package. A copy of a library part keeps its drawing unless you ask for a box; you can still rename its
-  pins and change what they do.
+- **Symbol** (#626): three ways. **A box from a pin list**: one pin a line as number, name, what it does and
+  optionally a side. Paste it from a spreadsheet or a datasheet; plain words work ("power in", "io", "nc"). **Kept as
+  it came**, for a copy of a library part: you can still rename its pins and change what they do. **Drawn by hand**
+  (`SymbolEditor.tsx`, edits in `symbolEdit.ts`): lines, rectangles, circles, arcs and text on a 1.27 mm grid, and
+  pins on the 2.54 mm grid with a number, a name, what they do, a side and a length. It starts from whatever the
+  symbol was, so a box or a library drawing can be finished by hand. A symbol can have up to 26 units, each with its
+  own drawing and pins (Copy unit A's drawing here saves drawing a gate four times). Undo and redo are the editor's
+  own, and Esc puts down the shape, then the tool, before it closes the editor.
 - **Footprint** (#627): pick a package family and type the sizes from the datasheet's land pattern, in mm. The families
   are two-pad chip, two rows (SOIC, SOP, TSSOP), four sides (QFP, QFN with a centre pad), DIP, pin header and ball grid
   (`packages/electronics/src/library/wizards.ts`). Each gets a fabrication outline, courtyard, silkscreen and a pin 1
@@ -103,8 +107,7 @@ New part, Edit and Edit a copy open the part editor (`web/src/electronics/PartTo
 - **Checks**, as you type: every pin has a pad (this one stops a save), pads closer than 0.2 mm, no courtyard, nothing
   on the silkscreen to show pin 1, a hole that leaves no copper, pin lines that could not be read.
 
-Not built yet: drawing a symbol's lines and arcs by hand, symbols with several units, editing pads one at a time with
-per-pad mask and paste (#626, #627), and attaching a STEP file or a BetterCad model as the body (#628, with the 3D
+Not built yet: editing pads one at a time with per-pad mask and paste (#627), and attaching a STEP file or a BetterCad model as the body (#628, with the 3D
 board).
 
 ### Importing KiCad files

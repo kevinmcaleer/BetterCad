@@ -19,6 +19,7 @@ import {
   type HeaderSizes,
   type QuadSizes,
 } from "@bettercad/electronics/tools";
+import { checkSymbol } from "./symbolEdit";
 
 /** The package families the footprint wizard makes. "keep" leaves the footprints of the part being edited alone. */
 export type Family = "keep" | "chip" | "dual" | "quad" | "dip" | "header" | "bga";
@@ -56,6 +57,8 @@ export interface Draft {
   pins: string;
   /** Draw the symbol as a box from the pin table, not the drawing it came with. */
   box: boolean;
+  /** The symbol drawn by hand (#626). While it is set it is the symbol, pins and all, and the pin table rests. */
+  drawn?: SymbolDef;
   family: Family;
   sizes: Sizes;
   body: BodyKind;
@@ -226,6 +229,17 @@ export function draftFrom(def: ComponentDef, opts: { id?: string; shelf?: string
   };
 }
 
+/** A symbol's pins as the pin table's text, a pin a line, in number order. */
+export function tableOf(symbol: SymbolDef): string {
+  const seen = new Set<string>();
+  return formatPinTable(
+    symbol.pins
+      .filter((p) => !seen.has(p.number) && seen.add(p.number))
+      .map((p) => ({ number: p.number, name: p.name, type: p.type }))
+      .sort((x, y) => x.number.localeCompare(y.number, undefined, { numeric: true })),
+  );
+}
+
 export interface Built {
   /** The component, or nothing while something stops it being whole. */
   def: ComponentDef | null;
@@ -284,7 +298,15 @@ export function build(d: Draft): Built {
   if (twice.length) problems.push(`Pin ${[...new Set(twice)].join(", ")} is in the list more than once.`);
 
   let symbol: SymbolDef;
-  if (d.base && !d.box) {
+  if (d.drawn) {
+    symbol = { ...d.drawn, name: name || d.drawn.name };
+    const found = checkSymbol(symbol);
+    // The table's own complaints are about a list nobody is using.
+    problems.splice(name ? 0 : 1);
+    notes.length = 0;
+    problems.push(...found.problems);
+    notes.push(...found.notes);
+  } else if (d.base && !d.box) {
     const by = new Map(table.pins.map((p) => [p.number, p]));
     symbol = {
       ...d.base.symbol,
@@ -293,7 +315,7 @@ export function build(d: Draft): Built {
     };
     const drawn = new Set(d.base.symbol.pins.map((p) => p.number));
     const extra = table.pins.filter((p) => !drawn.has(p.number)).map((p) => p.number);
-    if (extra.length) notes.push(`Pin ${extra.join(", ")} is not on the drawing. Turn on Draw as a box to add pins.`);
+    if (extra.length) notes.push(`Pin ${extra.join(", ")} is not on the drawing. Choose a box from a pin list, or draw it by hand, to add pins.`);
   } else {
     if (table.pins.length === 0) problems.push("List at least one pin.");
     symbol = icSymbol(name || "Part", table.pins);

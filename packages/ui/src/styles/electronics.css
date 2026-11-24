@@ -543,6 +543,38 @@ button.bc-ec-pill {
   flex: 1 0 auto;
   justify-content: center;
 }
+/* Drawing a symbol by hand (#626): tools, the canvas, then what is picked. */
+.bc-ec-symed {
+  display: grid;
+  gap: var(--bc-space-3);
+  min-width: 0;
+}
+.bc-ec-symed-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-2);
+}
+.bc-ec-symed-canvas {
+  position: relative;
+  height: min(320px, 44dvh);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  background: var(--bc-color-viewport);
+  overflow: hidden;
+}
+.bc-ec-symed-props {
+  display: grid;
+  gap: var(--bc-space-3);
+  margin: 0;
+  padding: var(--bc-space-4);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  min-width: 0;
+}
+.bc-ec-symed-props legend {
+  padding: 0 var(--bc-space-2);
+  font-weight: 600;
+}
 .bc-ec-editor-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
