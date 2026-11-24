@@ -207,6 +207,8 @@ const SketchPickBar = lazy(() => loadSketchUI().then((m) => ({ default: m.Sketch
 const SketchRibbon = lazy(() => loadSketchUI().then((m) => ({ default: m.SketchRibbon })));
 // The desktop ribbon's tools load after first paint; the top bar draws its tabs meanwhile.
 const RibbonTools = lazy(() => import("./Ribbon").then((m) => ({ default: m.RibbonTools })));
+// More tools: the ribbon as a sheet on the compact bar, loaded when it opens.
+const MoreTools = lazy(() => import("./MoreTools").then((m) => ({ default: m.MoreTools })));
 const ExtrudeBar = lazy(() => loadExtrudeBar().then((m) => ({ default: m.ExtrudeBar })));
 /** Tools that work on the model as posed (see poseOn). */
 const POSED_TOOLS = new Set(["select", "sketch", "extrude", "revolve"]);
@@ -408,6 +410,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [keepTools, setKeepTools] = useState(false);
   const [combineFit, setCombineFit] = useState<FitChoice>(NO_FIT);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const whatsNew = useWhatsNew();
@@ -4450,6 +4453,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onSignOut={signOut}
             onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}
+            onMoreTools={ribbonOn || sketch.editing || shownDrawing ? undefined : () => setMoreOpen(true)}
             theme={theme}
             onTheme={setTheme}
             onProps={() => registry.run("view.props")}
@@ -5207,6 +5211,20 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       {pendingDelete && (
         <Suspense fallback={null}>
           <DeleteStepDialog doc={doc} id={pendingDelete} onCancel={() => setPendingDelete(null)} onDelete={(all) => deleteNow(pendingDelete, all)} />
+        </Suspense>
+      )}
+      {moreOpen && (
+        <Suspense fallback={null}>
+          <MoreTools
+            registry={registry}
+            tool={tool}
+            mirrorOn={mirrorOn}
+            panel={panel}
+            drawings={doc.drawings?.map((d) => ({ id: d.id, name: d.name })) ?? []}
+            onOpenDrawing={(id) => onDrawing("open", id)}
+            onFind={() => setPaletteOpen(true)}
+            onClose={() => setMoreOpen(false)}
+          />
         </Suspense>
       )}
       {paletteOpen && (
