@@ -1745,19 +1745,57 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   );
 
   /** Hide others (keep: what stays shown, `name` names the step) or Unhide all (null): bodies only, one undo step.
-   *  Sketches and construction planes keep their own eyes, so one you hid stays hidden. */
-  const isolate = (keep: string[] | null, name?: string) => {
+   *  Sketches and construction planes keep their own eyes, so one you hid stays hidden. With `ghost`, Show others as
+   *  references (this one solid) or Clear references, as a body's ghost: see-through and left out of picking. */
+  const isolate = (keep: string[] | null, name?: string, what: "hidden" | "ghost" = "hidden", ids = parts.map((p) => p.id), on?: boolean) => {
     const looks = live.current.doc.looks;
-    const ids = parts.map((p) => p.id);
-    const want = (id: string) => !!keep && !keep.includes(id);
-    const change = ids.filter((id) => !!looks[id]?.hidden !== want(id));
+    const want = (id: string) => on ?? (!!keep && !keep.includes(id));
+    const change = ids.filter((id) => !!looks[id]?.[what] !== want(id));
     if (!change.length) return;
+    const who = name ?? (keep?.length === 1 ? (parts.find((p) => p.id === keep[0])?.name ?? "1 item") : `${keep?.length} items`);
     store.edit(
-      (d) => setLook(d, change, (id) => ({ hidden: want(id) })),
-      keep ? `Hide all but ${name ?? (keep.length === 1 ? (parts.find((p) => p.id === keep[0])?.name ?? "1 item") : `${keep.length} items`)}` : "Unhide all",
+      (d) => setLook(d, change, (id) => ({ [what]: want(id) })),
+      what === "hidden"
+        ? keep
+          ? `Hide all but ${who}`
+          : "Unhide all"
+        : on !== undefined
+          ? `${on ? "Show" : "Stop showing"} ${who} as a reference`
+          : keep
+            ? `Show all but ${who} as references`
+            : "Clear references",
     );
   };
   const anyHidden = parts.some((x) => x.hidden);
+  /** A component's ghost (`keep`: its bodies) and its right-click reference entries (`keep`: what it holds). */
+  const ghostBodies = (ids: string[], on: boolean, name?: string) => isolate(ids, name, "ghost", ids, on);
+  const referenceEntries = (keep: string[], name?: string): MenuEntry[] => {
+    const mine = parts.filter((p) => keep.includes(p.id)).map((p) => p.id);
+    const all = mine.length > 0 && mine.every((id) => doc.looks[id]?.ghost);
+    return [
+      {
+        id: "ghost",
+        label: all ? "Stop showing as a reference" : "Show as a reference",
+        icon: "ghost",
+        disabled: !mine.length,
+        onSelect: () => ghostBodies(mine, !all, name),
+      },
+      {
+        id: "ghost-others",
+        label: "Show others as references",
+        icon: "ghost",
+        disabled: mine.length === parts.length,
+        onSelect: () => isolate(keep, name, "ghost"),
+      },
+      {
+        id: "clear-ghosts",
+        label: "Clear references",
+        icon: "ghost",
+        disabled: !parts.some((p) => doc.looks[p.id]?.ghost),
+        onSelect: () => isolate(null, name, "ghost"),
+      },
+    ];
+  };
   const isolateEntries = (keep: string[], name?: string): MenuEntry[] => [
     { id: "hide-others", label: "Hide others", icon: "eyeOff", onSelect: () => isolate(keep, name) },
     { id: "unhide-all", label: "Unhide all", icon: "eye", disabled: !anyHidden, onSelect: () => isolate(null) },
@@ -4643,6 +4681,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               onBodiesHidden={(ids, hidden, name) => setHidden(ids, hidden, "parts", name)}
               onSketchesHidden={(ids, hidden, name) => setHidden(ids, hidden, "sketches", name)}
               isolateMenu={isolateEntries}
+              onBodiesGhost={ghostBodies}
+              referenceMenu={referenceEntries}
               componentRemove={(id) => {
                 const f = doc.features.find((x) => x.id === id && x.type === "model");
                 return f
