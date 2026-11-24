@@ -54,7 +54,8 @@ bottom right; double-click a field to type in it.
   file as a JPEG, so it travels with the drawing and goes into a PDF as it is.
 - **Your own fields**: up to 8, each a name and a value (Material, Finish, Project). They sit four to a row above the
   standard's rows, with the logo first, and the block grows upward to hold them. Views, the parts list and export all
-  read the same layout, so nothing overlaps.
+  read the same layout, so nothing overlaps. Double-click a field's cell on the sheet to type its value, as with the
+  standard's fields; its name is changed in Sheet settings.
 
 The logo and your fields belong to the drawing, so every sheet of it shows them. SVG, PDF and PNG exports carry the
 logo; DXF has no pictures, so there the logo's cell is an empty box.

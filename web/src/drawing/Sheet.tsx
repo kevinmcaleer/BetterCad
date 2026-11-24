@@ -1,6 +1,5 @@
 import type { KeyboardEvent } from "react";
-import type { TitleBlock } from "@bettercad/kernel/drawing";
-import { TEXT, type SheetLayout, type TitleCell } from "./layout";
+import { TEXT, type SheetLayout, type TitleCell, type TitleEdit } from "./layout";
 
 const line = (s: { x1: number; y1: number; x2: number; y2: number }, i: number) => <line key={i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} />;
 
@@ -26,9 +25,9 @@ function Projection({ cell, angle }: { cell: TitleCell; angle: "first" | "third"
 export interface SheetArtProps {
   layout: SheetLayout;
   /** Opens a title block field for typing. Left out, the block is only drawn (a read-only model, an export). */
-  onEdit?: (field: keyof TitleBlock) => void;
+  onEdit?: (field: TitleEdit) => void;
   /** The field being typed in: its drawn value steps aside for the box over it. */
-  editing?: keyof TitleBlock | null;
+  editing?: TitleEdit | null;
 }
 
 /** Everything printed round a drawing, in page millimetres: the paper, frame, zones, centring marks and title block. */

@@ -32,6 +32,9 @@ export interface ZoneLabel {
   y: number;
 }
 export type TitleKey = keyof TitleBlock | "scale" | "size" | "sheet" | "units" | "projection";
+/** What you can type into on the sheet: a title block field, or the value of a field of your own by its place in the drawing's list. */
+export type TitleEdit = keyof TitleBlock | `field-${number}`;
+export const isOwnField = (field: TitleEdit): field is `field-${number}` => field.startsWith("field-");
 export interface TitleCell extends Box {
   /** A field of your own is `field-0`, `field-1`…; the logo's cell is `logo` (#575). */
   key: TitleKey | "logo" | `field-${number}`;
@@ -40,8 +43,8 @@ export interface TitleCell extends Box {
   value: string;
   /** The value's letter height, shrunk until a long value fits its cell. */
   size: number;
-  /** The title block field you type into; the rest are worked out for you. */
-  edit?: keyof TitleBlock;
+  /** The title block field you type into; the rest are worked out for you. A field of your own is typed into too. */
+  edit?: TitleEdit;
   /** The logo's cell: its picture, and where it sits in the cell at its own shape. */
   image?: { logo: TitleLogo; box: Box };
 }
@@ -207,8 +210,10 @@ function ownHeight(info: SheetInfo): number {
 
 /** The logo and your own fields, four to a row from the block's top left corner. The last cell of a row takes what is left. */
 function ownCells(block: Box, info: SheetInfo): TitleCell[] {
-  type Item = { logo: TitleLogo } | { field: TitleField; i: number };
-  const items: Item[] = [...(info.logo ? [{ logo: info.logo }] : []), ...shownFields(info.fields).map((field, i) => ({ field, i }))];
+  type Item = { logo: TitleLogo } | { field: TitleField; i: number; at: number };
+  const shown = shownFields(info.fields);
+  // Where each shown field is in the drawing's own list, for typing into it.
+  const items: Item[] = [...(info.logo ? [{ logo: info.logo }] : []), ...shown.map((field, i) => ({ field, i, at: (info.fields ?? []).indexOf(field) }))];
   const cells: TitleCell[] = [];
   let y = block.y;
   for (let r = 0; r * OWN.across < items.length; r++) {
@@ -225,7 +230,7 @@ function ownCells(block: Box, info: SheetInfo): TitleCell[] {
         cells.push({ key: "logo", label: "Logo", value: "", size: TEXT.value, x, y, w, h, image: { logo: item.logo, box } });
       } else {
         const value = item.field.value.trim();
-        cells.push({ key: `field-${item.i}`, label: item.field.label.trim(), value, size: fitted(value, w, TEXT.value), x, y, w, h });
+        cells.push({ key: `field-${item.i}`, label: item.field.label.trim(), value, size: fitted(value, w, TEXT.value), x, y, w, h, edit: `field-${item.at}` });
       }
     });
     y += h;

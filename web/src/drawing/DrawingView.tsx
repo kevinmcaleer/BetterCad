@@ -27,7 +27,6 @@ import {
   type DrawingRef,
   type DrawingSheet,
   type DrawingView,
-  type TitleBlock,
 } from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { fitGap, newId, type ModelDoc } from "../state/document";
@@ -44,7 +43,7 @@ import { LostLayer, Warning } from "./LostLayer";
 import { sheetOf } from "./ops";
 import { moveViewToSheet } from "./sheets";
 import { SheetStrip } from "./SheetStrip";
-import { sheetLayout, sizeName, TEXT } from "./layout";
+import { isOwnField, sheetLayout, sizeName, TEXT, type TitleEdit } from "./layout";
 import { MarkCard } from "./MarkCard";
 import { isMarkTool, MarkLayer, type MarkTool } from "./MarkLayer";
 import { autoMarks, MARK_NAMES, markKey, markStyle, markView, pitchCircle, refKey, refTo, targets, type Target } from "./marks";
@@ -175,7 +174,8 @@ export interface DrawingPaperProps {
   /** A model you can look at but not change: the title block is only drawn. */
   readOnly?: boolean;
   /** A title block field was typed in. */
-  onTitle: (field: keyof TitleBlock, value: string) => void;
+  /** A title block field typed into on the sheet; `field-2` is the value of the third field of your own. */
+  onTitle: (field: TitleEdit, value: string) => void;
   /** Fit, for the F key and the bar's button. */
   api?: MutableRefObject<DrawingApi | null>;
   /** The model the views are of, and how far its timeline is rolled. */
@@ -1079,12 +1079,13 @@ function Paper({
 
   // Typing in a title block field: a text box over its cell. Enter or clicking away keeps it, Esc drops it, Tab
   // moves to the next field.
-  const [editing, setEditing] = useState<keyof TitleBlock | null>(null);
+  const [editing, setEditing] = useState<TitleEdit | null>(null);
+  const titleText = (field: TitleEdit) => (isOwnField(field) ? (drawing.fields?.[Number(field.slice(6))]?.value ?? "") : (sheet.title[field] ?? ""));
   const [draft, setDraft] = useState("");
-  const open = useRef<{ field: keyof TitleBlock; text: string } | null>(null);
+  const open = useRef<{ field: TitleEdit; text: string } | null>(null);
   const fields = useMemo(() => layout.cells.filter((c) => c.edit), [layout]);
-  const start = (field: keyof TitleBlock) => {
-    const text = sheet.title[field] ?? "";
+  const start = (field: TitleEdit) => {
+    const text = titleText(field);
     open.current = { field, text };
     setDraft(text);
     setEditing(field);
@@ -1094,7 +1095,7 @@ function Paper({
     if (!o) return;
     open.current = null;
     setEditing(null);
-    if (o.text.trim() !== (sheet.title[o.field] ?? "")) onTitle(o.field, o.text.trim());
+    if (o.text.trim() !== titleText(o.field)) onTitle(o.field, o.text.trim());
   };
   const drop = () => {
     open.current = null;
