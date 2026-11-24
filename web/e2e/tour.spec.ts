@@ -124,6 +124,8 @@ test("Esc skips the tour, Help > Take the tour runs it again, and Back goes back
   await expect(tour).toHaveCount(0);
 
   await page.keyboard.press("ControlOrMeta+k");
+  // Typing before the palette has focus loses the first keys on a busy runner.
+  await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
   await page.keyboard.type("Take the tour");
   await page.getByRole("option", { name: /Take the tour/ }).click();
   await expect(tour).toHaveAccessibleName("Look around");
