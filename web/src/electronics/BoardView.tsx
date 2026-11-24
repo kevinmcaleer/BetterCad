@@ -4,7 +4,7 @@ import { Icon, cx } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { BoardCanvas } from "./BoardCanvas";
 import { LAYERS } from "./drawBoard";
-import { eui } from "./ui";
+import { BOARD_GRIDS, eui } from "./ui";
 import { useEui } from "./useEui";
 
 function LayersCard() {
@@ -46,6 +46,16 @@ function LayersCard() {
           </li>
         ))}
       </ul>
+      <label className="bc-ec-grid">
+        Grid
+        <select className="bc-select" value={ui.grid} onChange={(e) => eui.set({ grid: Number(e.target.value) })}>
+          {BOARD_GRIDS.map((g) => (
+            <option key={g} value={g}>
+              {g} mm
+            </option>
+          ))}
+        </select>
+      </label>
     </section>
   );
 }

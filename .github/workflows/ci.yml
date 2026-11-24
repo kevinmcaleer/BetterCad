@@ -72,11 +72,13 @@ jobs:
   # suite. Each shard builds the gallery preview itself (Playwright's webServer) while the web job lints and tests.
   # The shards always start, so their checks keep their names; on a docs, server or Markdown only pull request every
   # step is skipped and the shard passes in seconds.
+  # A shard takes about 5 minutes, but the split is by position, so the five render tests (1 to 3 minutes each on a
+  # runner without a GPU) can all land in one shard, which then takes about 10: the limit leaves room for that.
   e2e:
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:

@@ -3,14 +3,12 @@ import {
   applyChanges,
   blocks,
   boardChanges,
-  boardPads,
   boardSize,
   changePart,
   describeChange,
   emptyDesign,
   isPower,
   netlist,
-  ratsnest,
   realParts,
   tidyValue,
   type ElectronicsDesign,
@@ -20,7 +18,7 @@ import { Button, ESC, FeaturePanel, PanelNote, PropsPanel, RibbonButton, RibbonG
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
-import { eui, type EView, type SchTool } from "./ui";
+import { eui, type EView, type PcbTool, type SchTool } from "./ui";
 import { useEui } from "./useEui";
 
 export { onDesign } from "./design";
@@ -33,6 +31,10 @@ const BoardView = lazy(() => import("./BoardView"));
 const ChecksCard = lazy(() => import("./Checks"));
 const PartsTable = lazy(() => import("./PartsTable"));
 const ExportSchematic = lazy(() => import("./ExportSchematic"));
+// The board's own cards: its check, its setup and the numbers of whatever is picked on it.
+const BoardChecks = lazy(() => import("./BoardChecks"));
+const BoardSetup = lazy(() => import("./BoardSetup"));
+const BoardProps = lazy(() => import("./BoardProps"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -52,6 +54,7 @@ interface Tool {
 }
 
 const arm = (t: SchTool) => () => eui.set({ schTool: eui.get().schTool === t ? "select" : t, placing: null, card: null });
+const armPcb = (t: PcbTool) => () => eui.set({ pcbTool: eui.get().pcbTool === t ? "select" : t, card: null });
 
 /** Components: opens the list of parts, or lets go of the part being placed (the way out on a touch screen). */
 const pickPart = () => {
@@ -215,7 +218,33 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       },
       { id: "fit", group: "View", label: "Fit", icon: "frame", key: "F", tip: "Fit the schematic in the view", run: () => eactions.current?.fit() },
     ];
+  const draw = (id: PcbTool, label: string, icon: IconName, key: string, tip: string): Tool => ({
+    id,
+    group: "Route",
+    label,
+    icon,
+    key,
+    tip,
+    on: ui.pcbTool === id,
+    disabled: readOnly,
+    run: armPcb(id),
+  });
   return [
+    draw("route", "Route", "route", "W", "Lay a track from a pad, bending at 45°"),
+    draw("via", "Via", "via", "V", "Join the top and bottom copper with a plated hole"),
+    {
+      id: "layer",
+      group: "Route",
+      label: "Swap side",
+      short: "Side",
+      icon: "layers",
+      key: "L",
+      tip: "Work on the other copper layer. While routing, this drops a via",
+      disabled: readOnly,
+      run: () => eactions.current?.layer?.(),
+    },
+    { ...draw("hole", "Hole", "hole", "H", "Add a mounting hole for a screw"), group: "Add" },
+    { ...draw("text", "Text", "text", "T", "Write on the silkscreen"), group: "Add" },
     {
       id: "rotate",
       group: "Place",
@@ -237,14 +266,46 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       run: () => eactions.current?.mirror(),
     },
     {
+      id: "lock",
+      group: "Place",
+      label: "Lock",
+      icon: "lock",
+      key: "K",
+      tip: "Lock the selected parts in place, or free them",
+      disabled: readOnly || none,
+      run: () => eactions.current?.lock?.(),
+    },
+    {
       id: "delete",
       group: "Place",
       label: "Delete",
       icon: "trash",
       key: "Del",
-      tip: "Delete the selected tracks and holes",
+      tip: "Delete the selected tracks, vias, holes and text",
       disabled: readOnly || none,
       run: () => eactions.current?.remove(),
+    },
+    {
+      id: "board",
+      group: "Board",
+      label: "Board setup",
+      short: "Setup",
+      icon: "settings",
+      key: "B",
+      tip: "Set the board's size, its rules and net classes",
+      on: ui.card === "board",
+      run: toggle("board"),
+    },
+    {
+      id: "checks",
+      group: "Board",
+      label: "Board check",
+      short: "Check",
+      icon: "rulesCheck",
+      key: "E",
+      tip: "Look for shorts, tight gaps and connections left to route",
+      on: ui.card === "checks",
+      run: toggle("checks"),
     },
     {
       id: "push",
@@ -264,6 +325,13 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
 /** The keys and palette entries that only make sense while a view is open. They load, and go, with the view. */
 function commands(design: () => ElectronicsDesign): Command[] {
   const schematic = () => eui.get().view === "schematic";
+  const pcb = () => eui.get().view === "pcb";
+  const board: [PcbTool, string, string, IconName, string][] = [
+    ["route", "Route a track", "w", "route", "trace wire copper"],
+    ["via", "Via", "v", "via", "hole layer"],
+    ["hole", "Mounting hole", "h", "hole", "screw drill"],
+    ["text", "Silkscreen text", "t", "text", "label legend"],
+  ];
   const views = [
     ["schematic", "Show the schematic", "1", "schematic"],
     ["pcb", "Show the PCB", "2", "pcb"],
@@ -296,6 +364,61 @@ function commands(design: () => ElectronicsDesign): Command[] {
       when: schematic,
       run: arm(t),
     })),
+    ...board.map(([t, label, key, icon, keywords]): Command => ({
+      ...e,
+      id: `electronics.pcb.${t}`,
+      label,
+      group: "Tools",
+      icon,
+      keys: [key],
+      when: pcb,
+      run: armPcb(t),
+      keywords,
+    })),
+    {
+      ...e,
+      id: "electronics.pcb.layer",
+      label: "Swap copper side",
+      group: "Tools",
+      icon: "layers",
+      keys: ["l"],
+      when: pcb,
+      run: () => eactions.current?.layer?.(),
+      keywords: "layer top bottom via",
+    },
+    { ...e, id: "electronics.pcb.bend", label: "Bend the track the other way", group: "Tools", keys: ["/"], when: pcb, run: () => eactions.current?.bend?.() },
+    {
+      ...e,
+      id: "electronics.pcb.lock",
+      label: "Lock or unlock parts",
+      group: "Edit",
+      icon: "lock",
+      keys: ["k"],
+      when: pcb,
+      run: () => eactions.current?.lock?.(),
+    },
+    {
+      ...e,
+      id: "electronics.pcb.board",
+      label: "Board setup",
+      group: "Tools",
+      icon: "settings",
+      keys: ["b"],
+      when: pcb,
+      run: toggle("board"),
+      keywords: "size outline rules jlcpcb pcbway net class thickness",
+    },
+    {
+      ...e,
+      id: "electronics.pcb.checks",
+      label: "Board check",
+      group: "Tools",
+      icon: "rulesCheck",
+      keys: ["e"],
+      when: pcb,
+      run: toggle("checks"),
+      keywords: "drc design rules clearance short unrouted",
+    },
     {
       ...e,
       id: "electronics.components",
@@ -510,7 +633,7 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
   const nl = useMemo(() => netlist(design), [design]);
   const changes = useMemo(() => boardChanges(design, nl), [design, nl]);
   const behind = design.board ? changes.length : 0;
-  const left = useMemo(() => (design.board ? ratsnest(boardPads(design, nl)).length : 0), [design, nl]);
+  const left = ui.unrouted ?? 0;
   const [ask, setAsk] = useState<{ at: P2; screen: P2; id?: string; name?: string } | null>(null);
   const [text, setText] = useState("");
   useEffect(() => setText(ask?.name ?? ""), [ask]);
@@ -584,6 +707,12 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           {ui.card === "export" && <ExportSchematic design={design} sheet={sheet} name={name || "Schematic"} onClose={() => eui.set({ card: null })} />}
         </Suspense>
       )}
+      {view === "pcb" && design.board && (
+        <Suspense fallback={null}>
+          {ui.card === "checks" && <BoardChecks design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "board" && <BoardSetup design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+        </Suspense>
+      )}
 
       {ask && (
         <form
@@ -639,15 +768,21 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           </>
         ) : (
           <>
-            <span className={cx("bc-ec-pill", left ? "bc-warn" : "bc-ok")}>
+            <button
+              type="button"
+              className={cx("bc-ec-pill", left ? "bc-warn" : "bc-ok")}
+              data-tip="Open the board check (E)"
+              disabled={!design.board}
+              onClick={() => eui.set({ card: "checks" })}
+            >
               {left ? `${left} ${left === 1 ? "connection" : "connections"} left to route` : design.board ? "Every connection is routed" : "No board yet"}
-            </span>
+            </button>
             {behind > 0 && !readOnly && (
               <button type="button" className="bc-ec-pill bc-warn" onClick={() => eui.set({ card: "changes" })}>
                 {behind} {behind === 1 ? "change" : "changes"} from the schematic
               </button>
             )}
-            <span className="bc-ec-status-far">{size ? `Board ${size.w} × ${size.h} mm · Grid 0.5 mm` : ""}</span>
+            <span className="bc-ec-status-far">{size ? `Board ${size.w} × ${size.h} mm · Grid ${ui.grid} mm` : ""}</span>
           </>
         )}
       </div>
@@ -763,13 +898,18 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
                     {part.fitted === false && (
                       <p className="bc-note">Stays on the schematic and the board, but is left off the parts list and assembly files.</p>
                     )}
-                    {at && (
+                    {at && ui.view !== "pcb" && (
                       <dl className="bc-facts">
                         <dt>On the board</dt>
                         <dd>
                           X {at.x} mm, Y {at.y} mm, {at.rot}°, {at.side} side
                         </dd>
                       </dl>
+                    )}
+                    {ui.view === "pcb" && (
+                      <Suspense fallback={null}>
+                        <BoardProps design={design} edit={edit} readOnly={readOnly} part={part.id} selected={ui.selected} />
+                      </Suspense>
                     )}
                   </>
                 )}
@@ -812,7 +952,13 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
           title: ui.selected.length > 1 ? `${ui.selected.length} selected` : "Electronics",
           content: (
             <>
-              <p className="bc-note">{ui.selected.length > 1 ? "Drag to move them together." : "Select a part to see its value, package and pins."}</p>
+              {ui.view === "pcb" && ui.selected.length > 0 ? (
+                <Suspense fallback={null}>
+                  <BoardProps design={design} edit={edit} readOnly={readOnly} selected={ui.selected} />
+                </Suspense>
+              ) : (
+                <p className="bc-note">{ui.selected.length > 1 ? "Drag to move them together." : "Select a part to see its value, package and pins."}</p>
+              )}
               <dl className="bc-facts">
                 <dt>Parts</dt>
                 <dd>{realParts(design).length}</dd>

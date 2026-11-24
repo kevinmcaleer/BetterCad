@@ -325,6 +325,8 @@ export interface Rules {
   minDrill: number;
   /** Narrowest copper ring round a hole. */
   minRing: number;
+  /** Narrowest ring round a via's hole, where the board house allows less than for a pad. None: `minRing`. */
+  minViaRing?: number;
   holeToHole: number;
   copperToEdge: number;
   minSilkWidth: number;
