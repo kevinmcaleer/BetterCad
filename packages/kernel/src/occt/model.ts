@@ -679,6 +679,7 @@ export class ModelBuilder {
       req.smooth ?? true,
       req.trace ?? true,
       req.cut ?? null,
+      req.explode || 0,
     ]);
     const had = this.views.get(key);
     if (had) {
@@ -699,6 +700,33 @@ export class ModelBuilder {
         // A body that can't build has nothing to draw; the timeline already says why.
       }
     });
+    if (req.explode && req.explode > 0 && solids.length > 1) {
+      // Exploded (#574): every group of bodies moves out from the middle of them all, as one.
+      const held = new Map<string, string>();
+      for (const c of components) for (const id of c.parts) held.set(id, c.id);
+      let groups = ids.map((id) => held.get(id) ?? `body ${id}`);
+      if (new Set(groups).size < 2) groups = ids.map((id) => `body ${id}`);
+      const boxes = solids.map((s) => boundingBox(this.oc, s.shape));
+      const round = (list: typeof boxes) => {
+        const lo = [0, 1, 2].map((k) => Math.min(...list.map((b) => b.min[k]!)));
+        const hi = [0, 1, 2].map((k) => Math.max(...list.map((b) => b.max[k]!)));
+        return lo.map((v, k) => (v + hi[k]!) / 2);
+      };
+      const middle = round(boxes);
+      const by = new Map<string, number[]>();
+      for (const g of new Set(groups)) {
+        const c = round(boxes.filter((_, i) => groups[i] === g));
+        by.set(
+          g,
+          c.map((v, k) => (v - middle[k]!) * req.explode!),
+        );
+      }
+      solids.forEach((s, i) => {
+        const d = by.get(groups[i]!)!;
+        if (d.some((v) => Math.abs(v) > 1e-9))
+          solids[i] = { ...s, shape: moved(this.oc, s.shape, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, d[0]!, d[1]!, d[2]!, 1]) };
+      });
+    }
     const flat = project(
       this.oc,
       solids.map((s) => s.shape),
