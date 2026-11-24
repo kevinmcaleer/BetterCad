@@ -3311,11 +3311,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setShowBedState(on);
     keep("bettercad.showBed", on ? "1" : "0");
   }, []);
+  const coarse = !!window.matchMedia?.("(pointer: coarse)").matches;
   const cubeMenu: MenuEntry[] = [
     ...vp.cubeMenu,
     { kind: "separator", id: "s-bed" },
     { id: "bed", label: "Show build volume", checked: showBed, multiple: true, onSelect: () => setShowBed(!showBed) },
     ...(anyHidden ? [{ id: "unhide-all", label: "Unhide all", icon: "eye" as const, onSelect: () => isolate(null) }] : []),
+    // Phones and tablets: the view bar's Full screen button lives here now.
+    ...(coarse
+      ? [{ id: "fullscreen", label: "Full screen", icon: "expand" as const, onSelect: () => void import("./fullscreen").then((m) => m.switchFullscreen(say)) }]
+      : []),
   ];
   /** The bodies that print: shown, not holes, and measured by the kernel. */
   const printBoxes = useMemo(() => {
@@ -4627,6 +4632,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               onMoveInto={moveIn}
               joints={browserJoints}
               poses={posesProps}
+              views={vp.namedViews}
               sections={{
                 sections: vp.sectionList,
                 section: vp.appliedSection,
@@ -4728,16 +4734,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   />
                 </Suspense>
               ) : (
-                <StageBars
-                  tool={activeTool}
-                  onArmTool={armTool}
-                  vp={vp}
-                  onePart={selection.length === 1}
-                  onRender={openRender}
-                  onDrawing={files.shared ? undefined : () => onDrawing("new")}
-                  onEveryPart={files.shared ? undefined : everyPart}
-                  say={window.matchMedia?.("(pointer: coarse)").matches ? say : undefined}
-                />
+                <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
               )}
               {place.part && (
                 <Suspense fallback={null}>
@@ -4994,6 +4991,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               setViewMenuAt({ ids, at });
             }}
             onHome={vp.goHome}
+            onFit={vp.fit}
             cubeMenu={cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
             warn={offBed}

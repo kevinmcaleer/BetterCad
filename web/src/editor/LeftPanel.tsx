@@ -82,6 +82,8 @@ export interface LeftPanelProps {
   /** Named poses (#177) and what to do with them, under Joints in the browser. */
   poses?: Pick<BrowserModel, "poses" | "atPose"> &
     Required<Pick<BrowserPanelProps, "onPose" | "onSavePose" | "onUpdatePose" | "onRenamePose" | "onDeletePose">>;
+  /** Named views (#40) in the browser: the saved ones, the standard view the camera is in, and what the rows do. */
+  views?: { list: BrowserModel["views"]; at: string | null; homeSet: boolean; act: NonNullable<BrowserPanelProps["onView"]> };
   /** Section analyses, under Analysis in the browser, and what to do with them. */
   sections?: Pick<BrowserModel, "sections" | "section"> &
     Required<Pick<BrowserPanelProps, "onApplySection" | "onEditSection" | "onRenameSection" | "onDeleteSection">>;
@@ -186,6 +188,9 @@ function PartsPanel(p: LeftPanelProps) {
         drawings: p.drawings?.list,
         drawing: p.drawings?.open,
         electronics: p.electronics?.summary,
+        views: p.views?.list,
+        atView: p.views?.at,
+        homeSet: p.views?.homeSet,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
         sections: p.sections?.sections,
@@ -218,6 +223,7 @@ function PartsPanel(p: LeftPanelProps) {
       sketchMenu={p.featureMenu}
       renameId={p.renameId}
       onRenameIdChange={p.onRenameIdChange}
+      onView={p.views?.act}
       onPose={p.poses?.onPose}
       onSavePose={p.poses?.onSavePose}
       onUpdatePose={p.poses?.onUpdatePose}

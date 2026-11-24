@@ -12,7 +12,7 @@ test("Add to strip renders the shot in the background, with a wheel on the top b
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+  await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
 
   await page.keyboard.press("Shift+R");
   const bar = page.getByRole("group", { name: "Render options" });

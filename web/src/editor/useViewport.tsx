@@ -27,6 +27,9 @@ import type { Pick, SelectFilter } from "../viewport/ids";
 import type { View3DHandle, ViewMode } from "../viewport/View3D";
 import type { ToolId, ViewId } from "./tools";
 
+/** What a named view row in the browser asks for. */
+export type ViewAct = "look" | "save" | "update" | "rename" | "delete" | "setHome" | "resetHome";
+
 export const FILTERS: { id: SelectFilter; label: string; key: string }[] = [
   { id: "body", label: "Bodies", key: "shift+1" },
   { id: "face", label: "Faces", key: "shift+2" },
@@ -100,7 +103,6 @@ export function useViewport(d: ViewportDeps) {
   const [stats, setStats] = useState(() => typeof location !== "undefined" && new URLSearchParams(location.search).has("perf"));
   const [view, setView] = useState<ViewId | null>("iso");
   const [naming, setNaming] = useState<{ id: string | null; name: string } | null>(null);
-  const [lastView, setLastView] = useState<string | null>(null);
   const anchor = useRef<string | null>(null);
   const live = useRef(d);
   live.current = d;
@@ -118,6 +120,7 @@ export function useViewport(d: ViewportDeps) {
   const setFilter = useCallback((f: SelectFilter) => {
     setFilterState(f);
     setElements([]);
+    live.current.say(`A click picks ${FILTERS.find((x) => x.id === f)!.label.toLowerCase()}`);
   }, []);
 
   const picks = useMemo<Pick[]>(() => [...d.selection.map((id) => ({ body: id, kind: "body" as const, index: 0 })), ...elements], [d.selection, elements]);
@@ -210,20 +213,9 @@ export function useViewport(d: ViewportDeps) {
     live.current.say(on ? "Orthographic: parallel lines stay parallel" : "Perspective: far things look smaller");
   }, []);
 
-  const cubeMenu: MenuEntry[] = [
-    { id: "home", label: "Go home", icon: "home", keys: formatCombo("home"), onSelect: goHome },
-    { kind: "separator", id: "s1" },
-    { id: "persp", label: "Perspective", checked: !ortho, onSelect: () => switchOrtho(false) },
-    { id: "ortho", label: "Orthographic", checked: ortho, onSelect: () => switchOrtho(true) },
-    { kind: "separator", id: "s2" },
-    { id: "set-home", label: "Set this view as home", onSelect: setHomeHere },
-    { id: "reset-home", label: "Reset home", disabled: !d.doc.home, onSelect: resetHome },
-  ];
-
-  // ---- named views
+  // ---- named views: Home, Front, Side and Top, then the saved ones, in the browser's Named views folder
   const lookFrom = useCallback((v: NamedView) => {
     view3d.current?.setCamera(v.camera, true);
-    setLastView(v.id);
     setOrtho(v.camera.ortho);
     live.current.say(`Looking from ${v.name}`);
   }, []);
@@ -239,7 +231,6 @@ export function useViewport(d: ViewportDeps) {
       if (camera) {
         const id = newId("v");
         live.current.editDoc((doc) => saveView(doc, { id, name, camera }), `Save view ${name}`);
-        setLastView(id);
         live.current.say(`Saved the view as ${name}`);
       }
     }
@@ -253,29 +244,34 @@ export function useViewport(d: ViewportDeps) {
   }, []);
   const deleteView = useCallback((v: NamedView) => {
     live.current.editDoc((doc) => removeView(doc, v.id), `Delete view ${v.name}`);
-    setLastView((l) => (l === v.id ? null : l));
   }, []);
 
   const views = d.doc.views ?? [];
-  const current = views.find((v) => v.id === lastView);
-  const viewEntries: MenuEntry[] = [
-    { id: "save", label: "Save this view…", icon: "camera", onSelect: startSaveView },
-    ...(views.length
-      ? [
-          { kind: "separator" as const, id: "s1" },
-          { kind: "title" as const, id: "t1", label: "Your views" },
-        ]
-      : []),
-    ...views.map<MenuEntry>((v) => ({ id: `use-${v.id}`, label: v.name, icon: "eye", checked: v.id === lastView, onSelect: () => lookFrom(v) })),
-    ...(current
-      ? [
-          { kind: "separator" as const, id: "s2" },
-          { id: "update", label: `Update ${current.name} to this view`, icon: "redo" as const, onSelect: () => updateView(current) },
-          { id: "rename", label: `Rename ${current.name}…`, icon: "pencil" as const, onSelect: () => setNaming({ id: current.id, name: current.name }) },
-          { id: "delete", label: `Delete ${current.name}`, icon: "trash" as const, danger: true, onSelect: () => deleteView(current) },
-        ]
-      : []),
-  ];
+  /** What the browser's Named views rows do: `id` is a saved view's id, or "home", "front", "side" or "top". */
+  const viewAct = useCallback(
+    (act: ViewAct, id?: string, name?: string) => {
+      if (act === "save") return startSaveView();
+      if (act === "setHome") return setHomeHere();
+      if (act === "resetHome") return resetHome();
+      if (act === "look" && id === "home") return goHome();
+      if (act === "look" && (id === "front" || id === "side" || id === "top")) return view3d.current?.preset(id);
+      const v = (live.current.doc.views ?? []).find((x) => x.id === id);
+      if (!v) return;
+      if (act === "look") return lookFrom(v);
+      if (act === "update") return updateView(v);
+      if (act === "delete") return deleteView(v);
+      const n = name?.trim();
+      if (act === "rename" && n && n !== v.name) live.current.editDoc((doc) => saveView(doc, { ...v, name: n }), `Rename view ${v.name}`);
+    },
+    [startSaveView, setHomeHere, resetHome, goHome, lookFrom, updateView, deleteView],
+  );
+  const namedViews = {
+    list: views.map((v) => ({ id: v.id, name: v.name })),
+    /** The standard view the camera is in now, if it is one. */
+    at: view,
+    homeSet: !!d.doc.home,
+    act: viewAct,
+  };
 
   const filterEntries: MenuEntry[] = FILTERS.map((f) => ({ id: f.id, label: f.label, checked: filter === f.id, onSelect: () => setFilter(f.id) }));
 
@@ -315,6 +311,37 @@ export function useViewport(d: ViewportDeps) {
       return !on;
     });
   }, []);
+
+  /**
+   * The view menu: under the view cube's arrow, and on a right-click in empty space. With the view bar gone it holds
+   * the camera, how the view draws the model, and what a click picks.
+   */
+  const cubeMenu: MenuEntry[] = [
+    { id: "home", label: "Go home", icon: "home", keys: formatCombo("home"), onSelect: goHome },
+    { id: "fit", label: "Fit", icon: "frame", keys: "F", onSelect: fit },
+    { id: "save-view", label: "Save this view…", icon: "camera", onSelect: startSaveView },
+    { kind: "separator", id: "s1" },
+    { id: "persp", label: "Perspective", checked: !ortho, onSelect: () => switchOrtho(false) },
+    { id: "ortho", label: "Orthographic", checked: ortho, onSelect: () => switchOrtho(true) },
+    { kind: "separator", id: "s-pick" },
+    { kind: "title", id: "t-pick", label: "Pick" },
+    ...FILTERS.map<MenuEntry>((f) => ({
+      id: `pick-${f.id}`,
+      label: f.label,
+      keys: formatCombo(f.key),
+      checked: filter === f.id,
+      onSelect: () => setFilter(f.id),
+    })),
+    { kind: "separator", id: "s-style" },
+    { kind: "title", id: "t-style", label: "Display" },
+    { id: "shaded", label: "Shaded", checked: style === "shaded", onSelect: () => setStyle("shaded") },
+    { id: "lineart", label: "Line art", keys: "L", checked: style === "lineart", onSelect: () => setStyle("lineart") },
+    { id: "grid", label: "Floor grid", checked: grid, multiple: true, onSelect: toggleGrid },
+    { id: "cycle", label: "Colour cycle", keys: formatCombo("shift+n"), checked: colourCycle, multiple: true, onSelect: toggleColourCycle },
+    { kind: "separator", id: "s2" },
+    { id: "set-home", label: "Set this view as home", onSelect: setHomeHere },
+    { id: "reset-home", label: "Reset home", disabled: !d.doc.home, onSelect: resetHome },
+  ];
 
   const sectionRef = useRef(section);
   sectionRef.current = section;
@@ -529,7 +556,7 @@ export function useViewport(d: ViewportDeps) {
     view,
     preset,
     fit,
-    viewEntries,
+    namedViews,
     goHome,
     setHomeTo,
     resetHome,

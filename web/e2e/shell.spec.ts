@@ -5,7 +5,9 @@ test("the editor shell loads with its slots", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveTitle("Untitled model · BetterCad");
   await expect(page.getByRole("banner").getByRole("toolbar", { name: "Model tools" })).toBeVisible();
-  await expect(page.getByRole("toolbar", { name: "View tools" })).toBeVisible();
+  // No view bar: Fit and Go home sit by the view cube, the rest is in its menu and the browser.
+  await expect(page.getByRole("toolbar", { name: "View tools" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeAttached();
   await expect(modelRow(page)).toContainText("Untitled model");
   await expect(page.getByRole("application", { name: /3D view/ })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "Properties" })).toBeVisible();

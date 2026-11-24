@@ -167,3 +167,21 @@ export async function savedFile(page: Page, name: string): Promise<Uint8Array> {
   if (!bytes) throw new Error(`Nothing was saved as ${name}`);
   return new Uint8Array(bytes);
 }
+
+/** Runs a command from Find a command (Ctrl+K), by its label. */
+export async function runCommand(page: Page, label: string) {
+  await page.keyboard.press("ControlOrMeta+k");
+  await expect(page.getByRole("combobox", { name: "Command" })).toBeFocused();
+  await page.keyboard.type(label);
+  await page
+    .getByRole("option", { name: new RegExp(`^${label}`) })
+    .first()
+    .click();
+}
+
+/** Opens the view menu: the view cube's arrow, also a right-click in empty space. */
+export async function openViewMenu(page: Page) {
+  const cube = page.getByRole("group", { name: "View cube" });
+  await cube.hover();
+  await cube.getByRole("button", { name: "View cube options" }).click();
+}

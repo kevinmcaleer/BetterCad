@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { runCommand } from "./pages/editor";
 
 /** Drawing view styles (Kev, 2026-11-24): a view's Style in the properties panel, drawn on the sheet. */
 test("change a drawing view to shaded, rendered and wireframe from the properties panel", { tag: "@journey" }, async ({ page }) => {
@@ -6,8 +7,7 @@ test("change a drawing view to shaded, rendered and wireframe from the propertie
   await page.goto("/");
   await page.getByRole("button", { name: "Open the bracket sample" }).click();
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-  await page.getByRole("menuitem", { name: "New drawing" }).click();
+  await runCommand(page, "New drawing");
   const card = page.getByRole("dialog", { name: "New drawing" });
   await card.getByLabel("Page size").selectOption("A3");
   await card.getByRole("button", { name: "Create" }).click();

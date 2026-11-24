@@ -135,14 +135,15 @@ test("sketch a line with taps", async ({ page }) => {
   await expect(page.locator(".bc-help")).toContainText("3 degrees of freedom");
 });
 
-test("the view bar's Full screen button hides the browser's bars and brings them back", async ({ page }) => {
+test("Full screen in the view menu hides the browser's bars and brings them back", async ({ page }) => {
   await page.goto("/");
-  const full = page.getByRole("toolbar", { name: "View tools" }).getByRole("button", { name: "Full screen" });
-  await expect(full).toHaveAttribute("aria-pressed", "false");
-  await full.click();
+  const cube = page.getByRole("group", { name: "View cube" });
+  // No hover on a touch screen, so Fit shows by the cube all the time.
+  await expect(cube.getByRole("button", { name: "Fit", exact: true })).toBeVisible();
+  await cube.getByRole("button", { name: "View cube options" }).click();
+  await page.getByRole("menuitem", { name: "Full screen" }).click();
   await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true);
-  await expect(full).toHaveAttribute("aria-pressed", "true");
-  await full.click();
+  await cube.getByRole("button", { name: "View cube options" }).click();
+  await page.getByRole("menuitem", { name: "Full screen" }).click();
   await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(false);
-  await expect(full).toHaveAttribute("aria-pressed", "false");
 });

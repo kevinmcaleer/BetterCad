@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
-import { Button } from "@bettercad/ui";
 
 /**
  * Full screen for phones and tablets: hides the browser's own bars so the view gets the whole screen. Uses the
  * Fullscreen API, with Safari's webkit names (iPadOS Safari has element full screen under the prefix). iPhone Safari
  * has none, so there the button explains Add to Home Screen instead; the installed app opens without browser bars
- * (manifest display "standalone"). Esc, the system back gesture and the button all leave it. Loaded lazily: the
+ * (manifest display "standalone"). Esc, the system back gesture and the view menu's Full screen all leave it. Loaded lazily: the
  * start-up bundle only holds the import.
  */
 const d = document as Document & Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -43,11 +42,4 @@ export function useFullscreen(): boolean {
     return () => names.forEach((n) => d.removeEventListener(n, sync));
   }, []);
   return on;
-}
-
-/** The view bar's button. Left out where there is neither full screen nor a Home Screen to install to. */
-export default function FullscreenButton({ say }: { say: Say }) {
-  const on = useFullscreen();
-  if (!canFullscreen() && window.matchMedia?.("(display-mode: standalone)").matches) return null;
-  return <Button icon={on ? "shrink" : "expand"} title="Full screen" on={on} onClick={() => void switchFullscreen(say)} />;
 }

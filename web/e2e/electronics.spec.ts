@@ -17,7 +17,7 @@ test.describe("on a wide screen", () => {
 
   test("draw a schematic, push it to a PCB and come back to the model", { tag: "@journey" }, async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "Schematic", exact: true }).click();
 
@@ -25,7 +25,7 @@ test.describe("on a wide screen", () => {
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 0 parts, 0 nets" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Schematic" })).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("Start with a part.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeHidden();
+    await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeHidden();
 
     await ledCircuit(page);
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 2 parts, 1 net" })).toBeVisible();
@@ -70,7 +70,7 @@ test.describe("on a wide screen", () => {
 
     // 3 goes back to the model, with its own tools; undo takes the last change away without leaving it.
     await page.keyboard.press("3");
-    await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeVisible();
+    await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeVisible();
     await expect(page.getByRole("img", { name: /^PCB/ })).toBeHidden();
     await tree.getByRole("button", { name: /^Schematic/ }).dblclick();
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 3 parts, 1 net" })).toBeVisible();
