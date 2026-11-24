@@ -183,6 +183,8 @@ import type { RenderBody } from "../render/pathRender";
 import type { StripController, StripDeps } from "../render/strip";
 import type { DrawingApi, DrawingTool, NoteTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
 import type { DrawingSheet } from "@bettercad/kernel/drawing";
+import { eui } from "../electronics/ui";
+import { showView, type EEdit } from "../electronics/actions";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
@@ -292,6 +294,12 @@ const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingP
 const DrawingBar = lazy(() => drawingCode().then((m) => ({ default: m.DrawingBar })));
 const DrawingRibbon = lazy(() => drawingCode().then((m) => ({ default: m.DrawingRibbon })));
 const SheetCard = lazy(() => import("../drawing/SheetCard"));
+// Electronics (#606): the schematic, the board and their cards load the first time a view opens. The shell keeps only
+// the small view-state store, so the browser, the commands and the tabs can ask for a view.
+const electronicsCode = () => import("../electronics/Electronics");
+const ElectronicsView = lazy(electronicsCode);
+const ElectronicsRibbon = lazy(() => electronicsCode().then((m) => ({ default: m.ElectronicsRibbon })));
+const ElectronicsProps = lazy(() => electronicsCode().then((m) => ({ default: m.ElectronicsProps })));
 const ViewProps = lazy(() => import("../drawing/ViewProps").then((m) => ({ default: m.ViewProps })));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
@@ -433,6 +441,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [drawingView, setDrawingView] = useState<string | null>(null);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
+  // Electronics (#617): the schematic or the board covers the view the way a drawing's sheet does.
+  const eview = useSyncExternalStore(eui.subscribe, () => eui.get().view);
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
@@ -453,7 +463,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   activeRef.current = active;
   // The registry reads the latest state through a ref, so commands are registered once.
   const measuresRef = useRef(new Map<string, { area: number; bbox: Box3 }>());
-  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, drawing: false, sketching: false, placing: false });
+  const live = useRef({ doc, parts, marker, at, selection, tool, dialogOpen: false, drawing: false, electronics: false, sketching: false, placing: false });
   live.current = {
     doc,
     parts,
@@ -463,6 +473,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     tool,
     dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null || sheetCard !== null,
     drawing: drawing !== null,
+    electronics: eview !== null,
     sketching: live.current.sketching,
     placing: live.current.placing,
   };
@@ -475,6 +486,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       canRedo: store.canRedo(),
       dialogOpen: live.current.dialogOpen,
       inDrawing: live.current.drawing,
+      inElectronics: live.current.electronics,
     })),
   );
   // Re-render when commands are added or run, so enabled states stay fresh.
@@ -574,6 +586,23 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   }, [drawing, shownDrawing]);
   const kernelView = kernel.call;
   const viewCall = useCallback<ViewCall>((p) => kernelView("view", p), [kernelView]);
+  // One view over the model at a time: opening the schematic or the board finishes a drawing, and the other way round.
+  useEffect(() => {
+    if (eview) setDrawing(null);
+  }, [eview]);
+  useEffect(() => {
+    if (drawing) showView(null);
+  }, [drawing]);
+  // Another model opened under the view: go back to its 3D view. A model that has just opened has nothing to undo.
+  const lastDoc = useRef(doc);
+  useEffect(() => {
+    if (lastDoc.current !== doc && !store.canUndo() && !store.canRedo()) eui.reset();
+    lastDoc.current = doc;
+  }, [doc, store]);
+  useEffect(() => () => eui.reset(), []);
+  const editDesign: EEdit = (change, label, key) =>
+    // Loaded by now, since only the open view edits; the wait keeps the design's code out of the shell.
+    void electronicsCode().then((m) => store.edit(m.onDesign(change), label, key));
   const onDrawingSheet = (change: (s: DrawingSheet) => DrawingSheet, label: string) =>
     void drawingCode().then((m) => shownDrawing && store.edit(...m.sheetEdit(shownDrawing, change, label, drawingSheet)));
   // The Drawing tab and the drawing's bar share their buttons.
@@ -1896,6 +1925,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const armTool = useCallback((id: ToolId) => {
     // A modelling tool picked from the compact bar leaves a drawing's sheet for the model.
     setDrawing(null);
+    showView(null);
     setTool((t) => (t === id && id !== "select" ? "select" : id));
   }, []);
 
@@ -2072,7 +2102,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   // or a step (browser or timeline), Edit sketch, Sketch on, re-picking a fillet or opening a step's tool.
   const editingModel = sketch.editing || editingStep !== null || tool !== "select" || driveDialog !== null;
   useEffect(() => {
-    if (editingModel) setDrawing(null);
+    if (editingModel) {
+      setDrawing(null);
+      showView(null);
+    }
   }, [editingModel]);
   const renameFeature = useCallback(
     (id: string, name: string) => {
@@ -3165,6 +3198,24 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       },
       { id: "drawing.finish", scope: "drawing", label: "Finish drawing", group: "File", icon: "finish", run: () => h().drawing("finish") },
       {
+        id: "electronics.schematic",
+        scope: "model",
+        label: "Schematic",
+        group: "Tools",
+        icon: "schematic",
+        run: () => showView("schematic", live.current.doc.electronics),
+        keywords: "electronics circuit diagram pcb board eagle kicad wire symbol",
+      },
+      {
+        id: "electronics.pcb",
+        scope: "model",
+        label: "PCB",
+        group: "Tools",
+        icon: "pcb",
+        run: () => showView("pcb", live.current.doc.electronics),
+        keywords: "electronics circuit board layout footprint copper track eagle kicad",
+      },
+      {
         id: "view.fullscreen",
         label: "Full screen",
         group: "View",
@@ -4204,51 +4255,54 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       />
     ) : null;
 
-  const helpText = drawing
-    ? "Drag to move the sheet, scroll to zoom. Double-click a title block field to fill it in. Esc goes back to the model."
-    : render
-      ? "Drag to turn the picture, right-drag to pan, scroll to zoom. Esc goes back to modelling."
-      : sketch.help
-        ? sketch.help
-        : place.help
-          ? place.help
-          : extrude.help ||
-              revolve.help ||
-              loftHelp ||
-              sweepHelp ||
-              splitHelp ||
-              pushpull.help ||
-              hole.help ||
-              mount.help ||
-              (tool === "gear" && gearUiHelp) ||
-              (tool === "decal" && decalUiHelp) ||
-              (tool === "canvas" && canvasUiHelp) ||
-              jointHelp ||
-              pattern.help ||
-              measure.help ||
-              construct.help
-            ? extrude.help ||
-              revolve.help ||
-              loftHelp ||
-              sweepHelp ||
-              splitHelp ||
-              pushpull.help ||
-              hole.help ||
-              mount.help ||
-              (tool === "gear" && gearUiHelp) ||
-              (tool === "decal" && decalUiHelp) ||
-              (tool === "canvas" && canvasUiHelp) ||
-              jointHelp ||
-              pattern.help ||
-              measure.help ||
-              construct.help
-            : finish.help
-              ? finish.help
-              : vp.elementText
-                ? `${vp.elementText} Esc clears it.`
-                : tool === "select" && selectedParts.length
-                  ? `${selectionText} Esc clears the selection.`
-                  : activeTool.help;
+  // The schematic and the board say what to do on their own status strip.
+  const helpText = eview
+    ? ""
+    : drawing
+      ? "Drag to move the sheet, scroll to zoom. Double-click a title block field to fill it in. Esc goes back to the model."
+      : render
+        ? "Drag to turn the picture, right-drag to pan, scroll to zoom. Esc goes back to modelling."
+        : sketch.help
+          ? sketch.help
+          : place.help
+            ? place.help
+            : extrude.help ||
+                revolve.help ||
+                loftHelp ||
+                sweepHelp ||
+                splitHelp ||
+                pushpull.help ||
+                hole.help ||
+                mount.help ||
+                (tool === "gear" && gearUiHelp) ||
+                (tool === "decal" && decalUiHelp) ||
+                (tool === "canvas" && canvasUiHelp) ||
+                jointHelp ||
+                pattern.help ||
+                measure.help ||
+                construct.help
+              ? extrude.help ||
+                revolve.help ||
+                loftHelp ||
+                sweepHelp ||
+                splitHelp ||
+                pushpull.help ||
+                hole.help ||
+                mount.help ||
+                (tool === "gear" && gearUiHelp) ||
+                (tool === "decal" && decalUiHelp) ||
+                (tool === "canvas" && canvasUiHelp) ||
+                jointHelp ||
+                pattern.help ||
+                measure.help ||
+                construct.help
+              : finish.help
+                ? finish.help
+                : vp.elementText
+                  ? `${vp.elementText} Esc clears it.`
+                  : tool === "select" && selectedParts.length
+                    ? `${selectionText} Esc clears the selection.`
+                    : activeTool.help;
 
   const onPropChange = (key: "position" | "size" | "rotation", axis: keyof Vec3, value: number) => {
     const ids = selection;
@@ -4418,6 +4472,13 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 </Suspense>
               ) : undefined
             }
+            electronicsRibbon={
+              ribbonOn && eview ? (
+                <Suspense fallback={null}>
+                  <ElectronicsRibbon readOnly={!!files.shared} />
+                </Suspense>
+              ) : undefined
+            }
             sketchRibbon={
               ribbonOn && sketch.editing ? (
                 <Suspense fallback={null}>
@@ -4453,7 +4514,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onSignOut={signOut}
             onInstall={installable && !share ? installApp : undefined}
             onPalette={() => setPaletteOpen(true)}
-            onMoreTools={ribbonOn || sketch.editing || shownDrawing ? undefined : () => setMoreOpen(true)}
+            onMoreTools={ribbonOn || sketch.editing || shownDrawing || eview ? undefined : () => setMoreOpen(true)}
             theme={theme}
             onTheme={setTheme}
             onProps={() => registry.run("view.props")}
@@ -4589,6 +4650,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 open: drawing,
                 on: onDrawing,
               }}
+              electronics={
+                doc.electronics || eview
+                  ? {
+                      summary: { parts: doc.electronics?.parts.length ?? 0, board: !!doc.electronics?.board, view: eview },
+                      on: (v) => showView(v, doc.electronics),
+                    }
+                  : undefined
+              }
               onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
@@ -4619,7 +4688,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             <>
               {/* On the empty editor the recover notice sits above the start card instead, so the two never overlap. */}
               {!emptyState && files.banners}
-              {shownDrawing ? (
+              {eview ? null : shownDrawing ? (
                 <Suspense fallback={null}>
                   <DrawingBar name={shownDrawing.name} readOnly={!!files.shared} ribbon={ribbonOn} {...drawingBar} />
                 </Suspense>
@@ -4928,6 +4997,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 <SketchLabels s={sketch} />
               </Suspense>
             )}
+            {eview && (
+              <Suspense fallback={null}>
+                <ElectronicsView design={doc.electronics} edit={editDesign} readOnly={!!files.shared} ribbon={ribbonOn} registry={registry} />
+              </Suspense>
+            )}
             {shownDrawing && (
               <Suspense fallback={null}>
                 <DrawingPaper
@@ -5011,7 +5085,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   />
                 </Suspense>
               )
-            : timelineShown && (
+            : timelineShown &&
+              !eview && (
                 <Timeline
                   features={doc.features}
                   at={at}
@@ -5065,6 +5140,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
           sketch.editing ? (
             <Suspense fallback={null}>
               <SketchPanel s={sketch} />
+            </Suspense>
+          ) : eview ? (
+            <Suspense fallback={null}>
+              <ElectronicsProps design={doc.electronics} edit={editDesign} readOnly={!!files.shared} />
             </Suspense>
           ) : shownDrawing && drawingView && !files.shared ? (
             <Suspense fallback={null}>

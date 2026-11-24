@@ -1,0 +1,15 @@
+{
+  "name": "@bettercad/electronics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Electronics: the schematic, board and component model, nets, the rules checks and the manufacturing writers. No DOM.",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "types": "dist/index.d.ts"
+}

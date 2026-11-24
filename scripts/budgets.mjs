@@ -48,7 +48,9 @@ if (existsSync(join(dist, "index.html"))) {
   );
   // The Drawing workspace (#555): its chunk and every chunk that one imports outright (and those import), less what
   // the shell already brought. That is what is fetched the first time a drawing opens; cards that load later are not.
-  if (b.drawing !== undefined) {
+  // The Electronics workspace (#606) is counted the same way: what is fetched the first time the schematic opens.
+  const workspace = (name, prefix, budget) => {
+    if (budget === undefined) return;
     const loaded = new Set();
     const walk = (f) => {
       if (loaded.has(f) || first.has(`assets/${f}`)) return;
@@ -56,13 +58,15 @@ if (existsSync(join(dist, "index.html"))) {
       const src = readFileSync(join(dist, "assets", f), "utf8");
       for (const m of src.matchAll(/(?:from|import)\s*"\.\/([^"]+\.js)"/g)) walk(m[1]);
     };
-    for (const x of js) if (x.f.startsWith("DrawingView-")) walk(x.f);
+    for (const x of js) if (x.f.startsWith(prefix)) walk(x.f);
     check(
-      "Drawing workspace",
+      name,
       sum((x) => loaded.has(x.f)),
-      b.drawing,
+      budget,
     );
-  }
+  };
+  workspace("Drawing workspace", "DrawingView-", b.drawing);
+  workspace("Electronics workspace", "Electronics-", b.electronics);
   check(
     "All JavaScript",
     sum(() => true),

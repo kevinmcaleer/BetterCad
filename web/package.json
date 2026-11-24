@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@bettercad/kernel": "*",
+    "@bettercad/electronics": "*",
     "@bettercad/sketch": "*",
     "@bettercad/ui": "*",
     "@fontsource/allerta-stencil": "^5.3.0",

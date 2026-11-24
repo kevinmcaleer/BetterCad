@@ -103,6 +103,6 @@ export default defineConfig({
   },
   preview: { port: 4173, headers: isolation, proxy: process.env.API_URL ? apiProxy : {} },
   // WASM binaries are loaded as files, never pre-bundled.
-  optimizeDeps: { exclude: ["@bettercad/kernel", "@bettercad/sketch"] },
+  optimizeDeps: { exclude: ["@bettercad/kernel", "@bettercad/sketch", "@bettercad/electronics"] },
   build: { outDir: "dist", sourcemap: true, target: "es2022" },
 });

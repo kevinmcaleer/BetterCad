@@ -10,6 +10,7 @@
   },
   "types": "dist/index.d.ts",
   "dependencies": {
+    "@bettercad/electronics": "*",
     "@bettercad/sketch": "*",
     "@bettercad/ui": "*",
     "replicad-opencascadejs": "1.2.1"

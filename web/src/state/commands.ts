@@ -10,6 +10,8 @@ export interface CommandContext {
   dialogOpen: boolean;
   /** A drawing's sheet covers the view (#559). */
   inDrawing?: boolean;
+  /** The schematic or the board covers the view (#617). */
+  inElectronics?: boolean;
 }
 
 export type CommandGroup = "File" | "Edit" | "Tools" | "Sketch" | "Timeline" | "View" | "Panels" | "Theme" | "Help";
@@ -30,8 +32,9 @@ export interface Command {
    * Where it applies: "sketch" while a sketch is open, "model" otherwise, both when unset. Commands in different
    * scopes may share a key (L is line art in the model and Line in a sketch). "drawing" is while a drawing's sheet
    * is open: then only those, files, themes, help and undo apply, since the model is out of sight under the sheet.
+   * "electronics" is the same while the schematic or the board is open.
    */
-  scope?: "model" | "sketch" | "drawing";
+  scope?: "model" | "sketch" | "drawing" | "electronics";
   run: (ctx: CommandContext) => void;
 }
 
@@ -100,11 +103,18 @@ export function createRegistry(getContext: () => CommandContext) {
     listeners.forEach((l) => l());
   };
 
+  // A drawing or an electronics view takes the keyboard over: only its own commands and the ones that always apply
+  // are live with it, so it may reuse the model's keys (1 is the home view in the model and the schematic there).
+  const takesOver = (c: Command) => c.scope === "drawing" || c.scope === "electronics";
+  const always = (c: Command) => !c.scope && (c.group === "File" || c.group === "Theme" || c.group === "Help" || c.id === "edit.undo" || c.id === "edit.redo");
+  /** Can both be live at once, so that they must not share a key? */
+  const together = (a: Command, b: Command) => a.scope === b.scope || (takesOver(a) ? always(b) : takesOver(b) ? always(a) : !a.scope || !b.scope);
+
   function register(list: Command | Command[]): () => void {
     const added = Array.isArray(list) ? list : [list];
     for (const c of added) {
       for (const k of c.keys ?? []) {
-        const clash = [...commands.values()].find((o) => o.id !== c.id && o.keys?.includes(k) && (!o.scope || !c.scope || o.scope === c.scope));
+        const clash = [...commands.values()].find((o) => o.id !== c.id && o.keys?.includes(k) && together(o, c));
         if (clash && dev) throw new Error(`Shortcut ${k} is already used by ${clash.id}; ${c.id} cannot take it.`);
       }
       commands.set(c.id, c);
@@ -116,10 +126,10 @@ export function createRegistry(getContext: () => CommandContext) {
     };
   }
 
-  const inScope = (c: Command, ctx: CommandContext) =>
-    ctx.inDrawing
-      ? c.scope === "drawing" || (!c.scope && (c.group === "File" || c.group === "Theme" || c.group === "Help" || c.id === "edit.undo" || c.id === "edit.redo"))
-      : c.scope !== "drawing" && (!c.scope || (c.scope === "sketch") === ctx.inSketch);
+  const inScope = (c: Command, ctx: CommandContext) => {
+    const over = ctx.inDrawing ? "drawing" : ctx.inElectronics ? "electronics" : null;
+    return over ? c.scope === over || always(c) : c.scope !== "drawing" && c.scope !== "electronics" && (!c.scope || (c.scope === "sketch") === ctx.inSketch);
+  };
   const enabled = (c: Command, ctx = getContext()) => inScope(c, ctx) && (!c.when || c.when(ctx));
 
   function run(id: string): boolean {

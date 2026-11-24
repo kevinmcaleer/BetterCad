@@ -168,6 +168,23 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       pins: ["drawing.new", "drawing.everyPart"],
     },
   ],
+  // The electronics workspace (#606). Inside a view the tab shows that view's tools instead.
+  electronics: [
+    {
+      id: "design",
+      label: "Design",
+      sections: [
+        [
+          "",
+          [
+            { id: "electronics.schematic", short: "Schematic", colour: "schematic" },
+            { id: "electronics.pcb", short: "PCB", colour: "pcb" },
+          ],
+        ],
+      ],
+      pins: ["electronics.schematic", "electronics.pcb"],
+    },
+  ],
 };
 
 export const SHORT: Record<string, string> = { "construct.offset": "Plane", "panel.library": "Library", "tool.measure": "Measure" };

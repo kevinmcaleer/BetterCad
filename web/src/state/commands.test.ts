@@ -121,3 +121,25 @@ describe("the drawing scope", () => {
     expect(ran).toEqual(["view.fit"]);
   });
 });
+
+describe("the electronics scope", () => {
+  it("with the schematic open, its commands take the keys the model uses", () => {
+    const { reg, ran, cmd } = setup({ inElectronics: true });
+    // 1 is the home view while modelling and the schematic here; both can be registered.
+    reg.register([cmd("view.iso", ["1"]), cmd("electronics.show.schematic", ["1"], { scope: "electronics" }), cmd("file.save", ["mod+s"], { group: "File" })]);
+    expect(["view.iso", "electronics.show.schematic", "file.save"].map((id) => reg.enabled(id))).toEqual([false, true, true]);
+    reg.dispatch(ev("1"));
+    expect(ran).toEqual(["electronics.show.schematic"]);
+  });
+
+  it("its commands sleep while modelling and in a drawing", () => {
+    const model = setup();
+    model.reg.register([model.cmd("view.iso", ["1"]), model.cmd("electronics.show.schematic", ["1"], { scope: "electronics" })]);
+    model.reg.dispatch(ev("1"));
+    expect(model.ran).toEqual(["view.iso"]);
+    const drawing = setup({ inDrawing: true });
+    drawing.reg.register([drawing.cmd("electronics.fit", ["f"], { scope: "electronics" }), drawing.cmd("drawing.fit", ["f"], { scope: "drawing" })]);
+    drawing.reg.dispatch(ev("f"));
+    expect(drawing.ran).toEqual(["drawing.fit"]);
+  });
+});

@@ -60,6 +60,55 @@
           "type": "array",
           "items": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } } }
         },
+        "electronics": {
+          "type": "object",
+          "required": ["defs", "parts", "sheets"],
+          "properties": {
+            "defs": { "type": "object" },
+            "parts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "def", "ref", "value", "pkg"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "def": { "type": "string" },
+                  "ref": { "type": "string" },
+                  "value": { "type": "string" },
+                  "pkg": { "type": "integer" }
+                }
+              }
+            },
+            "sheets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "name", "symbols", "wires", "junctions", "labels", "noConnects"],
+                "properties": {
+                  "symbols": { "type": "array" },
+                  "wires": { "type": "array" },
+                  "junctions": { "type": "array" },
+                  "labels": { "type": "array" },
+                  "noConnects": { "type": "array" }
+                }
+              }
+            },
+            "board": {
+              "type": "object",
+              "required": ["outline", "thickness", "placements", "tracks", "vias", "pours", "holes", "rules"],
+              "properties": {
+                "outline": { "type": "array" },
+                "thickness": { "type": "number" },
+                "placements": { "type": "array" },
+                "tracks": { "type": "array" },
+                "vias": { "type": "array" },
+                "pours": { "type": "array" },
+                "holes": { "type": "array" },
+                "rules": { "type": "object" }
+              }
+            }
+          }
+        },
         "drawings": {
           "type": "array",
           "items": {
