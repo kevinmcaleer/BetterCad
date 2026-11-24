@@ -5007,6 +5007,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                     onChange={strip.change}
                     onDelete={strip.remove}
                     onSave={strip.save}
+                    onMove={strip.move}
                   />
                 </Suspense>
               )

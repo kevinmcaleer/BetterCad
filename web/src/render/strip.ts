@@ -8,7 +8,7 @@ import type { createApi } from "../cloud/api";
 import type { OutFile } from "../files/fileStore";
 import { idbKV } from "../files/idb";
 import type { CameraState } from "../viewport/camera";
-import { dataUrl, RenderJobs, shotKey, type CloudPictures } from "./jobs";
+import { dataUrl, previewOf, RenderJobs, shotKey, type CloudPictures } from "./jobs";
 import type { RenderBody } from "./pathRender";
 import type { RenderSession } from "./session";
 
@@ -58,7 +58,8 @@ export class StripController {
     await this.jobs.load(shots);
     if (!start) return;
     const { pictures, jobs } = this.jobs.get();
-    for (const s of shots) if (!pictures[s.id] && !jobs.some((j) => j.shot === s.id)) this.render(s);
+    // A first look (key "") is only the Render view's picture from when the shot was added: it still needs rendering.
+    for (const s of shots) if (!pictures[s.id]?.key && !jobs.some((j) => j.shot === s.id)) this.render(s);
   }
 
   /** After a save: each shot that follows saves renders again, unless its picture already shows this model. */
@@ -105,6 +106,9 @@ export class StripController {
       auto: true,
     };
     this.shots((l) => [...l, shot], "Add render");
+    // Its tile shows the Render view's picture as it is now, while it waits its turn.
+    const canvas = session.canvas?.();
+    if (canvas) previewOf(canvas, (b) => void this.jobs.seed(shot.id, b));
     this.render(shot);
     say(`Added ${shot.name}. It renders in the background.`);
   }
@@ -114,6 +118,17 @@ export class StripController {
     session.set({ preset: s.preset, style: s.style, background: s.background, focus: s.focus, quality: s.quality });
     session.look?.({ ...s.camera, ortho: false });
   }
+
+  /** Moves a shot along the strip; waiting renders take the new order. */
+  move = (id: string, to: number): void => {
+    const list = [...(this.deps().doc.renders ?? [])];
+    const from = list.findIndex((s) => s.id === id);
+    if (from < 0) return;
+    const [s] = list.splice(from, 1);
+    list.splice(Math.max(0, Math.min(list.length, to)), 0, s!);
+    this.shots(() => list, "Move render");
+    this.jobs.order(list.map((x) => x.id));
+  };
 
   change = (s: RenderShot): void =>
     this.shots((list) => list.map((x) => (x.id === s.id ? s : x)), s.auto ? "Update render when saved" : "Stop updating render");

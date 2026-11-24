@@ -22,6 +22,20 @@ describe("the Render view's options (#197)", () => {
     expect(s.get().style).toBe("paper");
   });
 
+  it("stops and starts the picture with a round button, so background renders get the GPU", async () => {
+    const s = renderSession();
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    s.set({ loading: false, samples: 40 });
+    await userEvent.click(await screen.findByRole("button", { name: "Stop rendering" }));
+    expect(s.get().stopped).toBe(true);
+    expect(screen.getByRole("status")).toHaveTextContent("Stopped at 40 of 512 samples");
+    await userEvent.click(screen.getByRole("button", { name: "Start rendering" }));
+    expect(s.get().stopped).toBe(false);
+    // Finished: nothing left to start until the quality goes up.
+    s.set({ samples: 512 });
+    expect(await screen.findByRole("button", { name: "Finished: raise the quality to keep going" })).toBeDisabled();
+  });
+
   it("picks a background apart from the lighting", async () => {
     const s = renderSession();
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
