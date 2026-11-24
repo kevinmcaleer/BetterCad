@@ -31,6 +31,8 @@ def kevsrobots():
 @pytest.fixture
 def make_client(tmp_path, kevsrobots):
     def make(**overrides) -> TestClient:
+        # Tests sign in as "Kev"; keep the out-of-the-box ADMIN_USERS=kev from making every test an admin.
+        overrides.setdefault("admin_users", "")
         settings = Settings(data_dir=tmp_path, version="test", jobs=False, **overrides)
         app = create_app(settings)
         app.state.identify = kevsrobots.identify

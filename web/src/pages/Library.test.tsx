@@ -61,7 +61,15 @@ function server() {
                 models: Object.values(models).filter((m) => m.folder_id === f.id).length,
                 folders: 0,
               })),
-              projects: Object.values(projects).map((p) => ({ ...p, cover: null, created: "", modified: "", deleted_at: null, models: 0 })),
+              projects: Object.values(projects).map((p) => ({
+                ...p,
+                cover: null,
+                created: "",
+                modified: "",
+                deleted_at: null,
+                models: 0,
+                size: p.id === "rover" ? 2_500_000 : 0,
+              })),
             },
       );
     if (u.pathname === "/api/models" && method === "GET") {
@@ -134,6 +142,7 @@ describe("library folders and projects", () => {
     mount();
     expect(await screen.findByRole("button", { name: "Open project Rover" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Open folder Parts" })).toHaveTextContent("1 model");
+    expect(screen.getByText("2.4 MB")).toHaveAttribute("title", "2.4 MB for every model and version in it");
     const models = screen.getByRole("list", { name: "Your models" });
     expect(within(models).getByRole("button", { name: "Open Wheel" })).toBeVisible();
     expect(within(models).queryByRole("button", { name: "Open Bolt" })).toBeNull();

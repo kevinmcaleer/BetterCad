@@ -251,3 +251,20 @@ def test_another_persons_models_cant_be_moved_or_binned_in_bulk(make_client):
         assert theirs.post("/api/models/bulk/delete", json={"ids": [m["id"]]}).status_code == 404
         assert theirs.post("/api/models/bulk/move", json={"ids": [m["id"]]}).status_code == 404
         assert names(mine) == ["Wheel"]
+
+
+def test_a_project_shows_what_its_models_take(user):
+    rover = project(user)
+    assert places(user)["projects"][0]["size"] == 0
+    arm = folder(user, "Arm", project_id=rover["id"])
+    a = create(user, "Chassis", project_id=rover["id"])
+    create(user, "Wheel", folder_id=arm["id"])
+    create(user, "Loose")
+    sizes = {m["name"]: m["size"] for m in user.get("/api/models").json()["models"]}
+    listed = places(user)["projects"][0]
+    # Models anywhere in it count, others don't; pieces two models share count once.
+    assert 0 < listed["size"] <= sizes["Chassis"] + sizes["Wheel"]
+    assert listed["size"] > max(sizes["Chassis"], sizes["Wheel"])
+    assert user.get(f"/api/projects/{rover['id']}").json()["size"] == listed["size"]
+    assert user.delete(f"/api/models/{a['id']}").status_code == 200
+    assert places(user)["projects"][0]["size"] < listed["size"]
