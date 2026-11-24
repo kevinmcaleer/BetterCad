@@ -180,6 +180,7 @@ import { importFormat, type BodyMass, type Clash, type ExportFormat, type Mate }
 import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
+import type { StripController, StripDeps } from "../render/strip";
 import type { DrawingApi, DrawingTool, NoteTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
@@ -281,6 +282,9 @@ const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ 
 /** The Render view and its path tracer load on first Render (#197). */
 const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
 const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
+/** The render film strip and the top bar's wheel for background renders load with the strip's first shot. */
+const RenderStrip = lazy(() => import("../render/RenderStrip").then((m) => ({ default: m.RenderStrip })));
+const RenderWheel = lazy(() => import("../render/RenderStrip").then((m) => ({ default: m.RenderWheel })));
 // Drawings (#555): the sheet, its bar and its set-up card load the first time a drawing opens.
 const drawingCode = () => import("../drawing/DrawingView");
 const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingPaper })));
@@ -1889,6 +1893,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setTool((t) => (t === id && id !== "select" ? "select" : id));
   }, []);
 
+  // The render film strip hears about saves, to render again the shots that follow them.
+  const stripSaved = useRef<(d: ModelDoc) => void>(() => {});
   // What a rendered thumbnail draws: the shown bodies, read when a save finishes.
   const thumbBodies = useRef<() => RenderBody[]>(() => []);
   thumbBodies.current = () =>
@@ -1906,6 +1912,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     onImport: (list, at) =>
       importFiles(list, at, { call: kernel.call, record, say, select: setSelection, progress: imports.setProgress, ready: imports.ready }),
     renderBodies: () => thumbBodies.current(),
+    onSaved: (saved) => stripSaved.current(saved),
     onSwitched: () => {
       setMarker(null);
       setSelection([]);
@@ -1919,6 +1926,37 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
 
   // Accounts (#88, #90): open "#/edit/<id>" once we know who is signed in.
   const { api, account, ready: accountReady, available: accountsOn, setAccount } = useAccount();
+
+  // The render film strip: shots kept with the model, rendered in the background in this browser. Its controller
+  // loads with the first shot, or when the Render view opens.
+  const [strip, setStrip] = useState<StripController | null>(null);
+  const stripLoading = useRef(false);
+  const stripDeps = useRef<StripDeps | null>(null);
+  stripDeps.current = {
+    api,
+    cloudModel: files.shared || !account ? null : (files.cloud?.modelId ?? null),
+    doc,
+    bodies: () => thumbBodies.current(),
+    edit: (change, label) => store.edit(change, label),
+    say,
+    saveFiles: (f) => files.store.saveFiles(f),
+    newId,
+  };
+  const shots = useMemo(() => doc.renders ?? [], [doc.renders]);
+  useEffect(() => {
+    if (strip || stripLoading.current || (!render && !shots.length)) return;
+    stripLoading.current = true;
+    void import("../render/strip").then((m) => setStrip(new m.StripController(() => stripDeps.current!)));
+  }, [strip, render, shots.length]);
+  useEffect(() => () => strip?.dispose(), [strip]);
+  // Each model's pictures, from this browser or the account; in the Render view, shots never rendered start now.
+  const shotIds = shots.map((s) => s.id).join(" ");
+  useEffect(() => {
+    if (strip && shots.length) void strip.load(shots, !!render && !files.shared);
+    // Shots are read when the list of ids changes, not on each edit of one.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strip, shotIds, !!render, files.cloud?.modelId]);
+  stripSaved.current = (saved) => strip?.saved(saved);
   const openCloud = useRef(files.openCloud);
   openCloud.current = files.openCloud;
   useEffect(() => {
@@ -4332,6 +4370,13 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         }
         topBar={
           <TopBar
+            background={
+              strip && (
+                <Suspense fallback={null}>
+                  <RenderWheel jobs={strip.jobs} onOpen={() => !render && openRender()} />
+                </Suspense>
+              )
+            }
             paramsOpen={paramsOpen}
             onParams={() => setParamsOpen(!paramsOpen)}
             tool={tool}
@@ -4940,45 +4985,62 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
           </View3D>
         }
         timeline={
-          timelineShown && (
-            <Timeline
-              features={doc.features}
-              at={at}
-              onMarker={moveMarker}
-              failed={failed}
-              activeId={pickedStep ?? activeFeatureId}
-              summary={summary}
-              onSelect={pickStep}
-              warning={timelineWarning}
-              onReorder={moveFeature}
-              moveProblem={(id, beforeId) => moveProblem(doc, id, beforeId)}
-              onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
-              onEdit={editStep}
-              onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
-              historyOpen={panel === "history"}
-              marked={marked}
-              bands={bands}
-              focus={
-                workIn && compSteps?.id === workIn
-                  ? {
-                      name: workInName,
-                      ids: compSteps.ids,
-                      only: allStepsFor !== workIn,
-                      onToggle: () => setAllStepsFor(allStepsFor === workIn ? null : workIn),
-                    }
-                  : null
-              }
-              picking={
-                tool === "pattern" && pattern.of === "features" && !pattern.pickingPlane && !pattern.pickingAxis
-                  ? {
-                      can: (id) => pattern.mirrorable.some((m) => m.id === id),
-                      picked: pattern.feature?.features ?? [],
-                      onPick: (f) => pattern.toggleFeature(f.id),
-                    }
-                  : null
-              }
-            />
-          )
+          render
+            ? strip && (
+                <Suspense fallback={null}>
+                  <RenderStrip
+                    jobs={strip.jobs}
+                    shots={shots}
+                    keyOf={strip.keyOf}
+                    readOnly={!!files.shared}
+                    onAdd={() => renderCam.current && strip.add(render, renderCam.current)}
+                    onRerender={strip.render}
+                    onUse={(s) => strip.use(render, s)}
+                    onChange={strip.change}
+                    onDelete={strip.remove}
+                    onSave={strip.save}
+                  />
+                </Suspense>
+              )
+            : timelineShown && (
+                <Timeline
+                  features={doc.features}
+                  at={at}
+                  onMarker={moveMarker}
+                  failed={failed}
+                  activeId={pickedStep ?? activeFeatureId}
+                  summary={summary}
+                  onSelect={pickStep}
+                  warning={timelineWarning}
+                  onReorder={moveFeature}
+                  moveProblem={(id, beforeId) => moveProblem(doc, id, beforeId)}
+                  onMenu={(f, p) => setFeatureMenuAt({ id: f.id, at: p })}
+                  onEdit={editStep}
+                  onHistory={() => showPanel(panel === "history" ? "parts" : "history")}
+                  historyOpen={panel === "history"}
+                  marked={marked}
+                  bands={bands}
+                  focus={
+                    workIn && compSteps?.id === workIn
+                      ? {
+                          name: workInName,
+                          ids: compSteps.ids,
+                          only: allStepsFor !== workIn,
+                          onToggle: () => setAllStepsFor(allStepsFor === workIn ? null : workIn),
+                        }
+                      : null
+                  }
+                  picking={
+                    tool === "pattern" && pattern.of === "features" && !pattern.pickingPlane && !pattern.pickingAxis
+                      ? {
+                          can: (id) => pattern.mirrorable.some((m) => m.id === id),
+                          picked: pattern.feature?.features ?? [],
+                          onPick: (f) => pattern.toggleFeature(f.id),
+                        }
+                      : null
+                  }
+                />
+              )
         }
         helpLine={
           problemsButton ? (

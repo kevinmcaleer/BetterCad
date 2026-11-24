@@ -23,6 +23,8 @@ const CLOUD_TEXT: Record<CloudState, string> = {
 };
 
 export interface TopBarProps {
+  /** Work going on in the background (renders for the film strip): a progress wheel, gone when there is none. */
+  background?: ReactNode;
   /** The armed tool, and arming one. Read-only shares have no tools. */
   tool: ToolId;
   onArmTool: (t: ToolId) => void;
@@ -335,6 +337,7 @@ function undoRedo(p: TopBarProps) {
 function rightSide(p: TopBarProps) {
   return (
     <>
+      {p.background}
       <IconButton className="bc-find" icon="search" title={`Find a command (/ or ${formatCombo("mod+k")})`} onClick={p.onPalette} />
       <IconButton className="bc-props-toggle" icon="info" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
       {!p.shared && <IconButton icon="sliders" title="Parameters" on={!!p.paramsOpen} onClick={p.onParams} />}

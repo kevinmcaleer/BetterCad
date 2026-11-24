@@ -29,6 +29,8 @@ THUMB = re.compile(r"^data:(image/(?:png|jpeg|webp));base64,(.+)$", re.S)
 WRITES_PER_MINUTE = 60
 NOT_FOUND = "That model isn't here. It may have been deleted."
 THUMB_BYTES = 256 * 1024
+RENDER_BYTES = 4 * 1024 * 1024
+SHOT = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def tag(thumb: str) -> str:
@@ -109,6 +111,11 @@ class Rename(BaseModel):
 
 class Thumbnail(BaseModel):
     thumbnail: str = Field(max_length=THUMB_BYTES)
+
+
+class RenderPicture(BaseModel):
+    image: str = Field(max_length=RENDER_BYTES)
+    key: str = Field(max_length=128)
 
 
 class Note(BaseModel):
@@ -426,6 +433,58 @@ def router(settings) -> APIRouter:
     def thumbnail(model_id: str, request: Request, user: CurrentUser) -> Response:
         m = own(conn(request), user, model_id, binned=None)
         return image(m["thumbnail"], "private, max-age=86400")
+
+    # --- Renders (the film strip) -----------------------------------------------------------------------------
+
+    def shot(shot_id: str) -> str:
+        if not SHOT.match(shot_id):
+            raise HTTPException(404, "There's no render with that name.")
+        return shot_id
+
+    @r.get("/models/{model_id}/renders")
+    def renders(model_id: str, request: Request, user: CurrentUser) -> dict:
+        db = conn(request)
+        own(db, user, model_id)
+        rows = db.execute("SELECT shot_id, key, modified FROM renders WHERE model_id = ? ORDER BY shot_id", (model_id,))
+        base = f"/api/models/{model_id}/renders"
+        return {
+            "renders": [
+                {"shot": x["shot_id"], "key": x["key"], "modified": x["modified"], "url": f"{base}/{x['shot_id']}?k={x['key']}"}
+                for x in rows
+            ]
+        }
+
+    @r.get("/models/{model_id}/renders/{shot_id}")
+    def render_picture(model_id: str, shot_id: str, request: Request, user: CurrentUser) -> Response:
+        db = conn(request)
+        own(db, user, model_id)
+        row = db.execute("SELECT image FROM renders WHERE model_id = ? AND shot_id = ?", (model_id, shot(shot_id))).fetchone()
+        return image(row["image"] if row else None, "private, max-age=31536000, immutable")
+
+    @r.put("/models/{model_id}/renders/{shot_id}")
+    def set_render(model_id: str, shot_id: str, body: RenderPicture, request: Request, user: Writer) -> dict:
+        """Keeps a finished render beside the model, replacing the last one of that shot."""
+        if not THUMB.match(body.image):
+            raise HTTPException(422, "That isn't a picture.")
+        db = conn(request)
+        own(db, user, model_id)
+        limiter.check(user.id)
+        with db:
+            db.execute(
+                "INSERT INTO renders (model_id, shot_id, image, key) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT (model_id, shot_id) DO UPDATE SET image = excluded.image, key = excluded.key,"
+                " modified = strftime('%Y-%m-%d %H:%M:%f', 'now')",
+                (model_id, shot(shot_id), body.image, body.key),
+            )
+        return {"ok": True}
+
+    @r.delete("/models/{model_id}/renders/{shot_id}")
+    def delete_render(model_id: str, shot_id: str, request: Request, user: Writer) -> dict:
+        db = conn(request)
+        own(db, user, model_id)
+        with db:
+            db.execute("DELETE FROM renders WHERE model_id = ? AND shot_id = ?", (model_id, shot(shot_id)))
+        return {"ok": True}
 
     # --- Versions ---------------------------------------------------------------------------------------------
 
