@@ -1,8 +1,12 @@
 services:
   bettercad:
-    image: ghcr.io/kevinmcaleer/bettercad:latest
+    # latest is the last version tag; set BETTERCAD_TAG=main in .env to follow every merge to main (docs/deploy.md).
+    image: ghcr.io/kevinmcaleer/bettercad:${BETTERCAD_TAG:-latest}
     build: .
     restart: unless-stopped
+    labels:
+      # Only this container is updated by the watchtower service below, never cloudflared or anything else on the host.
+      com.centurylinklabs.watchtower.enable: "true"
     # No published port: only the tunnel below reaches it, over this project's Docker network, at http://bettercad:8000.
     # To open it on this machine for a quick look, see docs/deploy.md ("Reaching it locally").
     volumes:
@@ -47,6 +51,19 @@ services:
     depends_on:
       bettercad:
         condition: service_healthy
+
+  # Pulls a new BetterCad image when one is published and restarts the app on it. Off unless .env has
+  # COMPOSE_PROFILES=autoupdate. Checks every 5 minutes and removes the old image.
+  watchtower:
+    image: nickfedor/watchtower:1.24.1
+    profiles: [autoupdate]
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: "300"
+      WATCHTOWER_CLEANUP: "true"
 
 volumes:
   bettercad-data:
