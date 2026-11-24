@@ -92,9 +92,15 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
                 }}
               >
                 <span className="bc-render-tile-pic">
-                  {pic ? <img src={pic.url} alt="" draggable={false} /> : <span className="bc-render-tile-empty" />}
+                  {job?.preview ? (
+                    <img src={job.preview} alt="" draggable={false} data-preview="" />
+                  ) : pic ? (
+                    <img src={pic.url} alt="" draggable={false} />
+                  ) : (
+                    <span className="bc-render-tile-empty" />
+                  )}
                   {job && (
-                    <span className="bc-render-tile-job">
+                    <span className={job.preview ? "bc-render-tile-job bc-render-tile-live" : "bc-render-tile-job"}>
                       <Pie f={job.progress} size={28} />
                     </span>
                   )}

@@ -257,3 +257,9 @@
     animation: none;
   }
 }
+/* A render still clearing: its picture so far fills the tile and the ring moves to the corner, out of its way. */
+.bc-render-tile-live {
+  inset: auto var(--bc-space-1) var(--bc-space-1) auto;
+  padding: 2px;
+  border-radius: 50%;
+}
