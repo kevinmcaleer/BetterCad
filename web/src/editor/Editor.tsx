@@ -134,7 +134,6 @@ import { AppShell } from "./AppShell";
 import { TopBar } from "./TopBar";
 import { useRibbon } from "./ribbonPrefs";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
-import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
 import { View3D, type ViewDecal } from "../viewport/View3D";
 import { useStatus } from "./useStatus";
@@ -195,6 +194,8 @@ import type { IkProblem } from "../state/ik";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
+// The armed tool's options strip: only Section, Move and Turn draw one, so it loads when first needed.
+const StageBars = lazy(() => import("./Stage").then((m) => ({ default: m.StageBars })));
 const DeleteStepDialog = lazy(() => import("./DeleteStep").then((m) => ({ default: m.DeleteStepDialog })));
 const EmptyState = lazy(() => import("./EmptyState").then((m) => ({ default: m.EmptyState })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
@@ -3350,11 +3351,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setShowBedState(on);
     keep("bettercad.showBed", on ? "1" : "0");
   }, []);
+  const coarse = !!window.matchMedia?.("(pointer: coarse)").matches;
   const cubeMenu: MenuEntry[] = [
     ...vp.cubeMenu,
     { kind: "separator", id: "s-bed" },
     { id: "bed", label: "Show build volume", checked: showBed, multiple: true, onSelect: () => setShowBed(!showBed) },
     ...(anyHidden ? [{ id: "unhide-all", label: "Unhide all", icon: "eye" as const, onSelect: () => isolate(null) }] : []),
+    // Phones and tablets: the view bar's Full screen button lives here now.
+    ...(coarse
+      ? [{ id: "fullscreen", label: "Full screen", icon: "expand" as const, onSelect: () => void import("./fullscreen").then((m) => m.switchFullscreen(say)) }]
+      : []),
   ];
   /** The bodies that print: shown, not holes, and measured by the kernel. */
   const printBoxes = useMemo(() => {
@@ -4667,6 +4673,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               onMoveInto={moveIn}
               joints={browserJoints}
               poses={posesProps}
+              views={vp.namedViews}
               sections={{
                 sections: vp.sectionList,
                 section: vp.appliedSection,
@@ -4770,16 +4777,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   />
                 </Suspense>
               ) : (
-                <StageBars
-                  tool={activeTool}
-                  onArmTool={armTool}
-                  vp={vp}
-                  onePart={selection.length === 1}
-                  onRender={openRender}
-                  onDrawing={files.shared ? undefined : () => onDrawing("new")}
-                  onEveryPart={files.shared ? undefined : everyPart}
-                  say={window.matchMedia?.("(pointer: coarse)").matches ? say : undefined}
-                />
+                activeTool.id !== "select" && (
+                  <Suspense fallback={null}>
+                    <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
+                  </Suspense>
+                )
               )}
               {place.part && (
                 <Suspense fallback={null}>
@@ -5036,6 +5038,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               setViewMenuAt({ ids, at });
             }}
             onHome={vp.goHome}
+            onFit={vp.fit}
             cubeMenu={cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
             warn={offBed}

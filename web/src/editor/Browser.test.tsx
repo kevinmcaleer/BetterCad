@@ -723,6 +723,74 @@ describe("named poses in the browser (#177)", () => {
   });
 });
 
+describe("named views", () => {
+  const views = { views: [{ id: "v1", name: "Bench" }], atView: "front" };
+  const panel = (m: BrowserModel, onView = vi.fn()) => (
+    <BrowserPanel
+      model={m}
+      selection={[]}
+      onSelect={() => {}}
+      onAdd={() => {}}
+      onToggle={() => {}}
+      onBodiesHidden={() => {}}
+      onSketchesHidden={() => {}}
+      onOrigin={() => {}}
+      onPicked={() => {}}
+      onSelectSketch={() => {}}
+      onRename={() => {}}
+      onRenameModel={() => {}}
+      onRenameSketch={() => {}}
+      onReorder={() => {}}
+      onSketchOn={() => {}}
+      partMenu={() => []}
+      sketchMenu={() => []}
+      renameId={null}
+      onRenameIdChange={() => {}}
+      onView={onView}
+    />
+  );
+
+  it("lists Home, Front, Side and Top, then the saved views, folded under Named views before the origin", () => {
+    expect(browserItems(model()).some((i) => i.id === ROW.views)).toBe(false);
+    const items = browserItems(model(views));
+    expect(items.findIndex((i) => i.id === ROW.views)).toBeLessThan(items.findIndex((i) => i.id === ROW.origin));
+    expect(items.find((i) => i.id === ROW.views)?.folded).toBe(true);
+    expect(items.filter((i) => i.parentId === ROW.views).map((i) => [i.name, i.note])).toEqual([
+      ["Home", undefined],
+      ["Front", "Now"],
+      ["Side", undefined],
+      ["Top", undefined],
+      ["Bench", undefined],
+    ]);
+  });
+
+  it("looks from a view on click, and saves, updates and deletes from the menu", async () => {
+    const onView = vi.fn();
+    render(panel(model(views), onView));
+    await userEvent.click(screen.getByRole("button", { name: "Show what is in Named views" }));
+    await userEvent.click(screen.getByText("Bench"));
+    expect(onView).toHaveBeenLastCalledWith("look", "v1");
+    await userEvent.click(screen.getByText("Top"));
+    expect(onView).toHaveBeenLastCalledWith("look", "top");
+    fireEvent.contextMenu(row(/^Named views/));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Save this view/ }));
+    expect(onView).toHaveBeenLastCalledWith("save");
+    fireEvent.contextMenu(row(/^Bench/));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Update/ }));
+    expect(onView).toHaveBeenLastCalledWith("update", "v1");
+    fireEvent.contextMenu(row(/^Bench/));
+    await userEvent.click(screen.getByRole("menuitem", { name: /Delete/ }));
+    expect(onView).toHaveBeenLastCalledWith("delete", "v1");
+  });
+
+  it("only looks in a shared model", async () => {
+    render(panel(model({ ...views, readOnly: true })));
+    await userEvent.click(screen.getByRole("button", { name: "Show what is in Named views" }));
+    fireEvent.contextMenu(row(/^Bench/));
+    expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Look from Bench"]);
+  });
+});
+
 describe("section analyses", () => {
   const secs = {
     sections: [

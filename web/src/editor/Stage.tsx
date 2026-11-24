@@ -1,12 +1,6 @@
-import { lazy, Suspense } from "react";
-import { ArmedBar, Button, MenuButton, NumberField, Toolbar, type MenuEntry } from "@bettercad/ui";
-import { formatCombo } from "../state/commands";
+import { ArmedBar, Button, NumberField } from "@bettercad/ui";
 import type { Tool, ToolId } from "./tools";
-import { FILTERS, type Viewport } from "./useViewport";
-import type { RenderStyle } from "../render/session";
-import type { Say } from "./fullscreen";
-
-const FullscreenButton = lazy(() => import("./fullscreen"));
+import type { Viewport } from "./useViewport";
 
 export interface StageBarsProps {
   tool: Tool;
@@ -14,65 +8,16 @@ export interface StageBarsProps {
   vp: Viewport;
   /** Whether exactly one part is picked (Move and Turn need one). */
   onePart: boolean;
-  /** Opens the Render view (#197) in its colours or in paper white. */
-  onRender?: (style: RenderStyle) => void;
-  /** Starts a new drawing (#555). */
-  onDrawing?: () => void;
-  /** Make drawings of every part (#574). */
-  onEveryPart?: () => void;
-  /** Shows the Full screen button (phones and tablets), with where it says why there is none. */
-  say?: Say;
 }
 
-/** The view bar floating over the viewport (the tools live on the top bar), and the armed tool's options strip. */
-export function StageBars({ tool, onArmTool, vp, onePart, onRender, onDrawing, onEveryPart, say }: StageBarsProps) {
-  const filter = FILTERS.find((f) => f.id === vp.filter)!;
+/**
+ * The armed tool's options strip. There is no view bar: Fit and Go home sit by the view cube, the pick filter and
+ * display options are in the view menu (the cube's arrow, or a right-click in empty space), and named views are in
+ * the browser.
+ */
+export function StageBars({ tool, onArmTool, vp, onePart }: StageBarsProps) {
   return (
     <>
-      <Toolbar label="View tools">
-        <MenuButton
-          label="Pick filter"
-          entries={vp.filterEntries}
-          trigger={(p) => <Button {...p} label={`Pick: ${filter.label}`} title="What a click picks" shortcut={formatCombo(filter.key)} />}
-        />
-        <Toolbar.Separator />
-        <Button icon="frame" label="Fit" title="Fit the parts in the view" shortcut="F" onClick={vp.fit} />
-        <MenuButton label="Named views" entries={vp.viewEntries} trigger={(p) => <Button {...p} icon="camera" label="Views" title="Save and use views" />} />
-        <MenuButton
-          label="View style"
-          entries={[
-            { id: "shaded", label: "Shaded", checked: vp.style === "shaded", onSelect: () => vp.setStyle("shaded") },
-            { id: "lineart", label: "Line art", keys: "L", checked: vp.style === "lineart", onSelect: () => vp.setStyle("lineart") },
-            { kind: "separator", id: "grid-sep" },
-            { id: "grid", label: "Floor grid", checked: vp.grid, multiple: true, onSelect: vp.toggleGrid },
-            {
-              id: "cycle",
-              label: "Colour cycle",
-              keys: formatCombo("shift+n"),
-              checked: vp.colourCycle,
-              multiple: true,
-              onSelect: vp.toggleColourCycle,
-            },
-            ...(onRender
-              ? ([
-                  { kind: "separator", id: "render-sep" },
-                  { id: "render", label: "Render", icon: "sun", keys: formatCombo("shift+r"), onSelect: () => onRender("finishes") },
-                  { id: "paper", label: "Render in paper", icon: "sun", onSelect: () => onRender("paper") },
-                ] as MenuEntry[])
-              : []),
-            ...(onDrawing ? ([{ id: "drawing", label: "New drawing", icon: "drawing", onSelect: onDrawing }] as MenuEntry[]) : []),
-            ...(onEveryPart ? ([{ id: "drawings", label: "Make drawings of every part", icon: "drawing", onSelect: onEveryPart }] as MenuEntry[]) : []),
-          ]}
-          trigger={(p) => (
-            <Button {...p} icon="paint" label={vp.style === "lineart" ? "Line art" : "Shaded"} title="How the view draws the model, or a rendered picture" />
-          )}
-        />
-        {say && (
-          <Suspense fallback={null}>
-            <FullscreenButton say={say} />
-          </Suspense>
-        )}
-      </Toolbar>
       {tool.id === "section" && (
         <ArmedBar title={vp.editingSection ? `${tool.label}: ${vp.editingSection.name}` : tool.label} icon={tool.icon}>
           {vp.editingSection ? (

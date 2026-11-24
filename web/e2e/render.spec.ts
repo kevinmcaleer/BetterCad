@@ -12,7 +12,7 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+  await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
 
   await page.keyboard.press("Shift+R");
   const bar = page.getByRole("group", { name: "Render options" });
@@ -21,7 +21,7 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   // wait for the finished picture first, then check the rest; nothing below runs during a freeze.
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 200_000 });
   await expect(page.getByRole("img", { name: /Rendered picture of the model/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pick: Bodies" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeHidden();
 
   // The render has its own view cube, turning the picture; the modelling view comes back looking the same way.
   const cube = page.getByRole("group", { name: "View cube" });
@@ -33,12 +33,12 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await expect(bar).toHaveCount(0);
   await expect(page.getByRole("img", { name: /Rendered picture/ })).toHaveCount(0);
   await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "top");
-  await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeVisible();
 
-  // The view style menu opens it too, in paper white. Paper builds the path tracer's shader again, which freezes a
+  // Paper white from the render's own bar. Paper builds the path tracer's shader again, which freezes a
   // software GPU's page for over a minute (more on a busy runner), so wait for the finished picture, then check it.
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-  await page.getByRole("menuitem", { name: "Render in paper" }).click();
+  await page.keyboard.press("Shift+R");
+  await bar.getByRole("button", { name: "Paper" }).click();
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 240_000 });
   await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true");
   // The render's cube has the house too: home is the corner view, so the top view is left behind.

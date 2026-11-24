@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { Editor } from "./pages/editor";
+import { Editor, runCommand } from "./pages/editor";
 
 /** Editing the model from a drawing leaves the drawing for the 3D view first, the way Finish drawing does. */
 test("double-clicking a sketch while a drawing is open leaves the drawing to edit it", async ({ page }) => {
@@ -17,8 +17,7 @@ test("double-clicking a sketch while a drawing is open leaves the drawing to edi
   await expect(ed.said("Finished Sketch 1")).toBeVisible();
 
   const openDrawing = async () => {
-    await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-    await page.getByRole("menuitem", { name: "New drawing" }).click();
+    await runCommand(page, "New drawing");
     await page.getByRole("dialog", { name: "New drawing" }).getByRole("button", { name: "Create" }).click();
     await expect(page.getByRole("region", { name: /^Drawing: / })).toBeVisible();
   };

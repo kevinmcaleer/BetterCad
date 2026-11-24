@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openViewMenu } from "./pages/editor";
 
 async function addShape(page: Page, name: string) {
   await page.getByRole("button", { name: "Library" }).click();
@@ -26,9 +27,6 @@ test("presets, orbit and the pick filter", async ({ page }) => {
   await page.goto("/");
   await addShape(page, "Box");
   await page.getByRole("application", { name: /3D view/ }).focus();
-  // The view cube has the standard views; the view bar does not.
-  const bar = page.getByRole("toolbar", { name: "View tools" });
-  for (const name of ["Front", "Side", "Top"]) await expect(bar.getByRole("button", { name, exact: true })).toHaveCount(0);
   await page.keyboard.press("2");
   await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "front");
   // Arrow keys turn the view, so it is no longer a preset.
@@ -41,7 +39,7 @@ test("presets, orbit and the pick filter", async ({ page }) => {
   await expect(page.getByRole("application", { name: /3D view/ })).not.toHaveAttribute("data-view", "side");
 
   await page.keyboard.press("Shift+2");
-  await expect(page.getByRole("button", { name: /Pick: Faces/ })).toBeVisible();
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-pick", "face");
   await page.waitForTimeout(400);
   const box = (await canvas(page).boundingBox())!;
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
@@ -155,15 +153,17 @@ test("section: bodies made while it is on are cut too", async ({ page }) => {
   await expect.poll(uncut).toBe(0);
 });
 
-test("named views: save one and find it in the menu", async ({ page }) => {
+test("named views: save one from the view menu and look from it in the browser", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Views" }).click();
+  await openViewMenu(page);
   await page.getByRole("menuitem", { name: /Save this view/ }).click();
   await page.getByRole("dialog").getByRole("textbox", { name: "Name" }).fill("Bench");
   await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: "Views" }).click();
-  await expect(page.getByRole("menuitemradio", { name: "Bench" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Delete Bench" })).toBeVisible();
+  await page.getByRole("button", { name: "Show what is in Named views" }).click();
+  await page.getByRole("treeitem", { name: /^Top/ }).click();
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-view", "top");
+  await page.getByRole("treeitem", { name: /^Bench/ }).click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Delete" })).toBeVisible();
 });
 
 test("move: drag the gizmo's X arrow and a Move step lands on the timeline", async ({ page }) => {
@@ -228,11 +228,11 @@ test("the line-art outline turns with the model, not a frame behind", async ({ p
   expect(turned.equals(again)).toBe(true);
 });
 
-test("the view style menu turns the floor grid off, and it stays off", async ({ page }) => {
+test("the view menu turns the floor grid off, and it stays off", async ({ page }) => {
   await page.goto("/");
   const view = page.getByRole("application", { name: /3D view/ });
   await expect(view).toHaveAttribute("data-grid", "on");
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await openViewMenu(page);
   await expect(page.getByRole("menuitemcheckbox", { name: "Floor grid" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("menuitemcheckbox", { name: "Floor grid" }).click();
   await expect(view).toHaveAttribute("data-grid", "off");
@@ -250,18 +250,18 @@ test.describe("on a touch screen", () => {
     const roomShown = () => page.evaluate(() => (window as unknown as { __bcView: { roomShown: boolean } }).__bcView.roomShown);
     await expect(view).toHaveAttribute("data-grid", "on");
     await expect.poll(roomShown).toBe(true);
-    await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).tap();
+    await page.getByRole("button", { name: "View cube options" }).tap();
     await page.getByRole("menuitemcheckbox", { name: "Floor grid" }).tap();
     await expect(view).toHaveAttribute("data-grid", "off");
     await expect.poll(roomShown).toBe(false);
-    await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).tap();
+    await page.getByRole("button", { name: "View cube options" }).tap();
     await expect(page.getByRole("menuitemcheckbox", { name: "Floor grid" })).toHaveAttribute("aria-checked", "false");
     await page.getByRole("menuitemcheckbox", { name: "Floor grid" }).tap();
     await expect.poll(roomShown).toBe(true);
   });
 });
 
-test("Shift+N and the view style menu turn colour cycling on and off", async ({ page }) => {
+test("Shift+N and the view menu turn colour cycling on and off", async ({ page }) => {
   await page.goto("/");
   await addShape(page, "Box");
   await addShape(page, "Cylinder");
@@ -272,7 +272,7 @@ test("Shift+N and the view style menu turn colour cycling on and off", async ({ 
   await canvas(page).click({ position: { x: 5, y: (bar?.height ?? 46) + 5 } });
   await page.keyboard.press("Shift+N");
   await expect(view).toHaveAttribute("data-colour-cycle", "on");
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await openViewMenu(page);
   const item = page.getByRole("menuitemcheckbox", { name: /Colour cycle/ });
   await expect(item).toHaveAttribute("aria-checked", "true");
   await item.click();

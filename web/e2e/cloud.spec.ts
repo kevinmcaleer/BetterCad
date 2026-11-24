@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { modelRow } from "./pages/editor";
+import { modelRow, openViewMenu } from "./pages/editor";
 import { fakeApi } from "./fakeApi";
 
 /** A save draws a thumbnail and uploads it, which a busy CI runner can take well over the default 5 s to do. */
@@ -241,9 +241,9 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   await expect(page.locator("html")).toHaveAttribute("data-theme", "holoroom");
   await addBox(page);
   // Holoroom may already draw line art; choose it either way.
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
+  await openViewMenu(page);
   await page.getByRole("menuitemradio", { name: "Line art" }).click();
-  await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-style", "lineart");
   await page.getByRole("button", { name: "Share, versions and export" }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
@@ -275,7 +275,7 @@ test("a thumbnail is shaded in light colours whatever the theme and view style",
   }, thumb);
   expect(mean).toBeGreaterThan(120);
   // The view keeps its own style.
-  await expect(page.getByRole("button", { name: "Line art" })).toBeVisible();
+  await expect(page.getByRole("application", { name: /3D view/ })).toHaveAttribute("data-style", "lineart");
 });
 
 test("a thumbnail has the view's colours", async ({ page }) => {

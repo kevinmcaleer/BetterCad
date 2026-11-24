@@ -88,6 +88,8 @@ export interface ViewCubeProps {
   onOrbitEnd?: () => void;
   /** Go home: shows a house by the cube while the pointer is over it (always, on touch screens). */
   onHome?: () => void;
+  /** Fit the parts in the view: a frame by the cube's bottom left, shown as Go home is. */
+  onFit?: () => void;
   /**
    * Roll the view a quarter turn about the line of sight: 1 clockwise, −1 anticlockwise. Shows two curved arrows by
    * the cube's top right while the pointer is over the cube or the arrows, as in Fusion; always on a touch screen,
@@ -104,7 +106,7 @@ export interface ViewCubeProps {
  * place under the pointer lights up. X, Y and Z (red, green, blue) run along the edges from the bottom-front-left
  * corner.
  */
-export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, onRoll, menu }: ViewCubeProps) {
+export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, onFit, onRoll, menu }: ViewCubeProps) {
   const r = rotation;
 
   const [hover, setHover] = useState<string | null>(null);
@@ -317,6 +319,7 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
         {labels(true)}
       </svg>
       {onHome && <Button className="bc-cube-btn bc-cube-home" size="dense" icon="home" title="Go home" onClick={onHome} />}
+      {onFit && <Button className="bc-cube-btn bc-cube-fit" size="dense" icon="frame" title="Fit" shortcut="F" onClick={onFit} />}
       {onRoll && (
         <svg className="bc-cube-rolls" viewBox={`${-ROLL_PAD} ${-ROLL_PAD} ${SIZE + 2 * ROLL_PAD} ${SIZE + 2 * ROLL_PAD}`}>
           {ROLLS.map((t) => (
