@@ -283,6 +283,7 @@ const ExportDialog = lazy(() => import("../export/ExportDialog").then((m) => ({ 
 /** The Render view and its path tracer load on first Render (#197). */
 const RenderPicture = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderPicture })));
 const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderBar })));
+const RenderRibbon = lazy(() => import("../render/RenderView").then((m) => ({ default: m.RenderRibbon })));
 /** The render film strip and the top bar's wheel for background renders load with the strip's first shot. */
 const RenderStrip = lazy(() => import("../render/RenderStrip").then((m) => ({ default: m.RenderStrip })));
 const RenderWheel = lazy(() => import("../render/RenderStrip").then((m) => ({ default: m.RenderWheel })));
@@ -4418,6 +4419,18 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 </Suspense>
               ) : undefined
             }
+            renderRibbon={
+              ribbonOn && render && !sketch.editing && !shownDrawing ? (
+                <Suspense fallback={null}>
+                  <RenderRibbon
+                    session={render}
+                    onClose={closeRender}
+                    onAdd={files.shared || !strip ? undefined : () => renderCam.current && strip.add(render, renderCam.current)}
+                  />
+                </Suspense>
+              ) : undefined
+            }
+            onRender={files.shared ? undefined : () => openRender()}
             sketchRibbon={
               ribbonOn && sketch.editing ? (
                 <Suspense fallback={null}>
@@ -4635,6 +4648,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 >
                   <RenderBar
                     session={render}
+                    ribbon={ribbonOn && !files.shared}
                     onClose={closeRender}
                     onNote={(text) => say(text, false, true)}
                     onExportGltf={() => {

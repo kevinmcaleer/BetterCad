@@ -110,6 +110,22 @@ describe("Ribbon", () => {
     expect(screen.getByRole("toolbar", { name: "Drawing tools" })).toContainElement(screen.getByRole("button", { name: "Parts list" }));
   });
 
+  it("opens the Render view from a Render tab, whose options then take the tab over", () => {
+    const onRender = vi.fn();
+    setup({ ribbon: (t) => <span>{t} tools</span>, onRender });
+    fireEvent.click(screen.getByRole("tab", { name: "Render" }));
+    expect(onRender).toHaveBeenCalledOnce();
+    expect(screen.getByRole("tab", { name: "Model" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("shows the Render view's options on its tab while it is open", () => {
+    setup({ ribbon: () => <span>model</span>, onRender: vi.fn(), renderRibbon: <button type="button">Lighting</button> });
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing", "Render"]);
+    expect(tabs[4]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("toolbar", { name: "Render tools" })).toContainElement(screen.getByRole("button", { name: "Lighting" }));
+  });
+
   it("keeps the compact bar for a shared model", () => {
     setup({ ribbon: () => <span>tools</span>, shared: { owner: "Kev" } });
     expect(screen.queryByRole("tab")).toBeNull();

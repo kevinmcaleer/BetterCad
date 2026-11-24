@@ -98,6 +98,10 @@ export interface TopBarProps {
   sketchRibbon?: ReactNode;
   /** A drawing's sheet is open (#559): the ribbon's Drawing tab takes over the same way. */
   drawingRibbon?: ReactNode;
+  /** The Render view is open: the ribbon's Render tab holds its options. */
+  renderRibbon?: ReactNode;
+  /** The Render tab, chosen while the Render view is closed: opens it. */
+  onRender?: () => void;
   /** The compact bar's last button: the ribbon's tabs and tools as a sheet, for phones and tablets. */
   onMoreTools?: () => void;
 }
@@ -107,6 +111,7 @@ const TABS: [Exclude<RibbonTab, "sketch">, string][] = [
   ["assemble", "Assemble"],
   ["inspect", "Inspect"],
   ["drawing", "Drawing"],
+  ["render", "Render"],
 ];
 
 /** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
@@ -183,12 +188,14 @@ export function TopBar(p: TopBarProps) {
   const [tab, setTab] = useState<Exclude<RibbonTab, "sketch">>("model");
   const [folded, setFolded] = useState(false);
   const ribbon = !p.shared && p.ribbon;
-  // A sketch or a drawing takes the ribbon over with its own tab; the model's tabs wait.
+  // A sketch, a drawing or the Render view takes the ribbon over with its own tab; the model's tabs wait.
   const over = p.sketchRibbon
     ? { id: "sketch", label: "Sketch", tools: p.sketchRibbon }
     : p.drawingRibbon
       ? { id: "drawing", label: "Drawing", tools: p.drawingRibbon }
-      : null;
+      : p.renderRibbon
+        ? { id: "render", label: "Render", tools: p.renderRibbon }
+        : null;
   const sketching = !!over;
   const inPlace = TABS.some(([id]) => id === over?.id);
   const overTab = over && (
@@ -205,6 +212,8 @@ export function TopBar(p: TopBarProps) {
   );
   if (ribbon) {
     const pick = (t: Exclude<RibbonTab, "sketch">) => {
+      // Render is a view more than a tab of tools: choosing it opens the Render view, which brings its own tools.
+      if (t === "render") return p.onRender?.();
       setTab(t);
       setFolded(false);
     };
@@ -217,7 +226,7 @@ export function TopBar(p: TopBarProps) {
           <span className="bc-ribbon-tabs" role="tablist" aria-label="Tool tabs">
             {/* Sketch goes first; an open drawing's own tab stands in for the model's Drawing tab. */}
             {sketching && !inPlace && overTab}
-            {TABS.map(([id, label]) =>
+            {TABS.filter(([id]) => id !== "render" || p.onRender || over?.id === id).map(([id, label]) =>
               id === over?.id ? (
                 <Fragment key={id}>{overTab}</Fragment>
               ) : (

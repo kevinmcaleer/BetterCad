@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { barPosition, RenderBar, SLOW_TEXT, SLUGGISH_TEXT } from "./RenderView";
+import { barPosition, RenderBar, RenderRibbon, SLOW_TEXT, SLUGGISH_TEXT } from "./RenderView";
 import { renderSession } from "./session";
 
 describe("the Render view's options (#197)", () => {
@@ -34,6 +34,40 @@ describe("the Render view's options (#197)", () => {
     // Finished: nothing left to start until the quality goes up.
     s.set({ samples: 512 });
     expect(await screen.findByRole("button", { name: "Finished: raise the quality to keep going" })).toBeDisabled();
+  });
+
+  it("keeps the options on the ribbon's Render tab, and only the status and Done on the bar", async () => {
+    const s = renderSession();
+    const onAdd = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <>
+        <RenderBar session={s} onClose={onClose} onExportGltf={() => {}} ribbon />
+        <div role="toolbar" aria-label="Render tools">
+          <RenderRibbon session={s} onAdd={onAdd} onClose={onClose} />
+        </div>
+      </>,
+    );
+    const bar = screen.getByRole("group", { name: "Render options" });
+    expect(bar).toHaveTextContent("Loading the renderer…");
+    expect(bar.querySelectorAll("button")).toHaveLength(1);
+    s.set({ loading: false, samples: 40 });
+    await userEvent.click(await screen.findByRole("button", { name: "Lighting: Studio" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Daylight" }));
+    expect(s.get().preset).toBe("daylight");
+    await userEvent.click(screen.getByRole("button", { name: "Background: Lightbox" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Holoroom" }));
+    expect(s.get().background).toBe("holoroom");
+    await userEvent.click(screen.getByRole("button", { name: /^Paper/ }));
+    expect(s.get().style).toBe("paper");
+    await userEvent.click(screen.getByRole("button", { name: "Stop rendering" }));
+    expect(s.get().stopped).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "Start rendering" }));
+    expect(s.get().stopped).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: /^Add to strip/ }));
+    expect(onAdd).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole("button", { name: "Done: back to modelling" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("picks a background apart from the lighting", async () => {

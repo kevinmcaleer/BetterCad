@@ -168,6 +168,8 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       pins: ["drawing.new", "drawing.everyPart"],
     },
   ],
+  // Choosing the tab opens the Render view, whose own tools (RenderRibbon) take over.
+  render: [],
 };
 
 export const SHORT: Record<string, string> = { "construct.offset": "Plane", "panel.library": "Library", "tool.measure": "Measure" };
