@@ -104,6 +104,40 @@ describe("section, detail and break tools", () => {
     expect(within(screen.getByRole("button", { name: /^Front view, / })).getAllByText("A")).toHaveLength(2);
   });
 
+  it("Section view: a half section through the middle, and the kernel is asked for half a cut", async () => {
+    render(<Harness start="section" />);
+    const card = screen.getByRole("dialog", { name: "Section view" });
+    await ready(card, /Click the view where the cut goes/);
+    await userEvent.selectOptions(within(card).getByLabelText("Cut"), "Half the view");
+    await ready(card, /Click the view where the cut stops/);
+    await userEvent.click(within(card).getByRole("button", { name: "Cut through the middle" }));
+    const section = sheetNow().views[1]!;
+    expect(section.section).toEqual({ origin: [100, 0, 10], normal: [0, 0, 1], along: [1, 0, 0], half: true, label: "A" });
+    await waitFor(() => expect(asked.some((r) => r.cut?.half && r.cut.along?.[0] === 1)).toBe(true));
+    // One letter on the parent: a half section is marked at the end it is cut to.
+    await screen.findByRole("button", { name: /^Section A-A, 1:1/ });
+    expect(within(screen.getByRole("button", { name: /^Front view, / })).getAllByText("A")).toHaveLength(1);
+  });
+
+  it("Section view: a stepped section waits for two places, and a turned line makes a slanted one", async () => {
+    render(<Harness start="section" />);
+    const card = screen.getByRole("dialog", { name: "Section view" });
+    await ready(card, /Click the view where the cut goes/);
+    await userEvent.selectOptions(within(card).getByLabelText("Cut"), "Stepped");
+    await ready(card, /Click each place the cut goes through/);
+    expect(within(card).getByRole("button", { name: "Make the section" })).toHaveAttribute("aria-disabled", "true");
+    await userEvent.selectOptions(within(card).getByLabelText("Cut"), "All the way");
+    const turn = within(card).getByLabelText("Turn the line");
+    await userEvent.clear(turn);
+    await userEvent.type(turn, "30{Enter}");
+    await userEvent.click(within(card).getByRole("button", { name: "Cut through the middle" }));
+    const section = sheetNow().views[1]!;
+    expect(section.kind).toBe("section");
+    expect(section.section!.normal[0]).toBeCloseTo(-0.5);
+    expect(section.direction).toMatchObject({ up: [0, 1, 0] });
+    expect(await screen.findByRole("button", { name: /^Section A-A, 1:1/ })).toBeInTheDocument();
+  });
+
   it("Detail view: circle the middle at a scale and radius from the card", async () => {
     render(<Harness start="detail" />);
     const card = screen.getByRole("dialog", { name: "Detail view" });

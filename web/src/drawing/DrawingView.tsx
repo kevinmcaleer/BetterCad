@@ -64,7 +64,8 @@ import { draftOfNote, firstDraft, nextDatum, noteKindName, notePicks, noteSpot, 
 import {
   addBreak,
   cutArt,
-  cutSide,
+  cutPath,
+  cutThrough,
   flipSection,
   onPaper,
   picturesOf,
@@ -75,6 +76,8 @@ import {
   snapPoint,
   viewPoint,
   type CutWay,
+  type CutHow,
+  type CutKind,
 } from "./cuts";
 import {
   defaultSpot,
@@ -382,6 +385,10 @@ function Paper({
   const cutting: CutTool | null = isCutTool(tool) && !readOnly ? tool : null;
   const [way, setWay] = useState<CutWay>("across");
   const [flip, setFlip] = useState(false);
+  const [cutHow, setCutHow] = useState<CutKind>("full");
+  const [tilt, setTilt] = useState(0);
+  /** A stepped section's places so far, in the view's millimetres. */
+  const [stepAt, setStepAt] = useState<V2[]>([]);
   const [radius, setRadius] = useState<number | null>(null);
   const [detailScale, setDetailScale] = useState<number | null>(null);
   const [breakStart, setBreakStart] = useState<number | null>(null);
@@ -390,6 +397,9 @@ function Paper({
     setChanging(null);
     setPointer(null);
     setBreakStart(null);
+    setStepAt([]);
+    setCutHow("full");
+    setTilt(0);
     setRadius(null);
     setDetailScale(null);
     setWay(cutting === "break" ? "up" : "across");
@@ -568,8 +578,13 @@ function Paper({
     const parentId = cutParent.id;
     const art = artOf(cutPic, cutScale);
     if (cutting === "section") {
+      // A stepped cut takes a click for each place it goes through; the card's button makes it of what is picked.
+      if (cutHow === "stepped" && rel) return setStepAt((list) => [...list, p]);
+      const places = cutHow === "stepped" ? stepAt : [p];
+      if (cutHow === "stepped" && places.length < 2) return;
+      const how: CutHow = { kind: cutHow, tilt, more: places.slice(1) };
       const id = newId("vw");
-      onSheet?.((s) => placeSection(s, id, parentId, p, way, flip, angle, { w: Math.max(art.w, 20), h: Math.max(art.h, 20) }), "Section view");
+      onSheet?.((s) => placeSection(s, id, parentId, places[0]!, way, flip, angle, { w: Math.max(art.w, 20), h: Math.max(art.h, 20) }, how), "Section view");
       setSelected(id);
       return onTool?.(null);
     }
@@ -594,19 +609,21 @@ function Paper({
   };
   /** What the armed cut tool would do where the pointer is, drawn on its view. */
   const cutGhost = ((): CutGhost | undefined => {
-    if (!cutParent || !cutPic || cutWait || !pointer) return undefined;
-    const p = cutPoint([pointer[0] - cutParent.at[0], pointer[1] - cutParent.at[1]]);
-    if (!p) return undefined;
+    if (!cutParent || !cutPic || cutWait) return undefined;
+    const p = pointer ? cutPoint([pointer[0] - cutParent.at[0], pointer[1] - cutParent.at[1]]) : undefined;
     const P = onPaper(cutPic, cutScale);
-    const at = P(p);
     const art = artOf(cutPic, cutScale);
-    const [w, h] = [art.w / 2 + 6, art.h / 2 + 6];
     if (cutting === "section") {
-      const side = cutSide(way, flip);
-      return way === "across"
-        ? { kind: "line", a: [-w, at[1]], b: [w, at[1]], side: [side[0], side[1]] }
-        : { kind: "line", a: [at[0], -h], b: [at[0], h], side: [side[0], side[1]] };
+      // The line as it would be cut: through the places picked so far and where the pointer is.
+      const places = cutHow === "stepped" ? [...stepAt, ...(p ? [p] : [])] : p ? [p] : [];
+      if (!places.length) return undefined;
+      const cut = cutThrough(frameOf(cutParent.direction), places[0]!, way, flip, { kind: cutHow, tilt, more: places.slice(1) });
+      const path = cutPath(frameOf(cutParent.direction), cut, P, cutScale, art.w, art.h);
+      return path && { kind: "line", ...path };
     }
+    if (!p) return undefined;
+    const at = P(p);
+    const [w, h] = [art.w / 2 + 6, art.h / 2 + 6];
     if (cutting === "detail") return { kind: "ring", c: at, r: radiusNow * cutScale };
     const axis = way === "up" ? 0 : 1;
     const from = breakStart === null ? at[axis] : P(axis ? [p[0], breakStart] : [breakStart, p[1]])[axis];
@@ -1272,14 +1289,27 @@ function Paper({
             setFrom(id);
             setPointer(null);
             setBreakStart(null);
+            setStepAt([]);
           }}
           way={way}
           onWay={(w) => {
             setWay(w);
             setBreakStart(null);
+            setStepAt([]);
           }}
           flip={flip}
           onFlip={setFlip}
+          kind={cutHow}
+          onKind={(k) => {
+            setCutHow(k);
+            setStepAt([]);
+          }}
+          tilt={tilt}
+          onTilt={(t) => {
+            setTilt(t);
+            setStepAt([]);
+          }}
+          places={stepAt.length}
           radius={radiusNow}
           onRadius={setRadius}
           scale={detailScaleNow}
