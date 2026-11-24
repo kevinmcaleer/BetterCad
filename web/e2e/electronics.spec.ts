@@ -72,6 +72,37 @@ test.describe("on a wide screen", () => {
     await tree.getByRole("button", { name: /^Schematic/ }).dblclick();
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 3 parts, 1 net" })).toBeVisible();
   });
+
+  test("make a part of your own from a pin list and a package, then place it", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await tools(page)
+      .getByRole("button", { name: /^Components/ })
+      .click();
+    const card = page.getByRole("group", { name: "Components options" });
+    await card.getByRole("button", { name: "New part" }).click();
+    const editor = page.getByRole("dialog", { name: "New part" });
+    await editor.getByLabel("Name").fill("Level shifter");
+    await editor.getByRole("tab", { name: "Symbol" }).click();
+    await editor.getByLabel("Pins").fill("1 VCC power\n2 A io\n3 B io\n4 GND power");
+    await editor.getByRole("tab", { name: "Footprint" }).click();
+    await editor.getByLabel("Package").selectOption({ label: "DIP, through hole" });
+    await expect(editor.getByRole("img", { name: "Footprint Level shifter DIP-8" })).toBeVisible();
+    await expect(editor.getByRole("list", { name: "Checks" })).toHaveText("Every pin has a pad. Ready to save.");
+    await axe(page);
+    await editor.getByRole("button", { name: "Save to your parts" }).click();
+    await expect(card.getByText("Level shifter is in your parts.")).toBeVisible();
+    await card.getByRole("button", { name: "Place" }).click();
+    await page.mouse.click(...(await onCanvas(page, 0, 0)));
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 1 part, 0 nets" })).toBeVisible();
+    // It is still there after a reload: your parts are kept in this browser.
+    await page.reload();
+    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("bettercad.electronics.library") ?? "{}").pack?.parts?.[0]?.name)).toBe("Level shifter");
+  });
 });
 
 test.describe("on a phone", () => {

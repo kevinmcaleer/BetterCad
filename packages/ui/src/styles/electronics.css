@@ -493,3 +493,101 @@ button.bc-ec-pill {
     max-height: 60vh;
   }
 }
+
+/* ---- your library and the part editor */
+.bc-ec-library-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-3);
+}
+.bc-dialog.bc-ec-editor {
+  width: min(760px, calc(100vw - var(--bc-space-6)));
+  max-height: calc(100dvh - var(--bc-space-6));
+  /* A modal sits in the middle of its scrim at every width. */
+  bottom: auto;
+}
+.bc-dialog.bc-ec-import {
+  width: min(480px, calc(100vw - var(--bc-space-6)));
+}
+.bc-ec-editor .bc-dialog-body {
+  min-height: 0;
+  display: grid;
+  gap: var(--bc-space-4);
+  padding-top: var(--bc-space-5);
+}
+.bc-ec-editor .bc-text,
+.bc-ec-editor .bc-select {
+  width: 100%;
+}
+.bc-ec-editor-tabs {
+  display: flex;
+  gap: var(--bc-space-2);
+  padding: var(--bc-space-2);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bc-ec-editor-tabs > * {
+  flex: 1 0 auto;
+  justify-content: center;
+}
+.bc-ec-editor-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+  gap: var(--bc-space-7);
+  align-items: start;
+}
+.bc-ec-editor-fields,
+.bc-ec-editor-side {
+  display: grid;
+  gap: var(--bc-space-3);
+  min-width: 0;
+}
+.bc-ec-editor-pair,
+.bc-ec-editor-sizes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bc-space-4);
+  align-items: end;
+}
+.bc-ec-editor-pair > div,
+.bc-ec-editor-sizes > div {
+  display: grid;
+  gap: var(--bc-space-2);
+}
+.bc-ec-pins {
+  min-height: 160px;
+  padding: var(--bc-space-4);
+  font-family: var(--bc-font-mono);
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre;
+  tab-size: 8;
+}
+.bc-ec-editor-checks {
+  display: grid;
+  gap: var(--bc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bc-ec-editor-checks li {
+  padding-left: var(--bc-space-5);
+  border-left: 3px solid var(--bc-color-line);
+}
+.bc-ec-editor-checks .bc-ec-warned {
+  border-left-color: var(--bc-color-warn);
+}
+.bc-ec-editor-checks .bc-ec-blocked {
+  border-left-color: var(--bc-color-danger);
+  color: var(--bc-color-danger);
+}
+@media (max-width: 640px) {
+  .bc-ec-editor-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bc-ec-editor-side {
+    order: -1;
+  }
+}

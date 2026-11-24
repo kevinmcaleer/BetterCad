@@ -55,7 +55,7 @@ describe("the electronics workspace", () => {
     expect(screen.getByRole("tab", { name: "Schematic" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Start with a part.")).toBeInTheDocument();
     await userEvent.click(within(screen.getByText("Start with a part.").parentElement!).getByRole("button", { name: /Components/ }));
-    const card = screen.getByRole("group", { name: "Components options" });
+    const card = await screen.findByRole("group", { name: "Components options" });
     await userEvent.type(within(card).getByLabelText("Find a part"), "led");
     await userEvent.click(await within(card).findByRole("button", { name: /^LED \(0603\)/ }));
     expect(within(card).getByRole("img", { name: "Symbol of LED" })).toBeInTheDocument();

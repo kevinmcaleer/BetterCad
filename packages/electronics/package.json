@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./kicad": "./src/kicad/index.ts",
+    "./tools": "./src/library/tools.ts",
     "./library/starter.json": "./library/starter.json"
   },
   "scripts": {

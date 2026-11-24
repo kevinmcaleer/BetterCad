@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   applyChanges,
   blocks,
@@ -19,13 +19,15 @@ import { Button, ESC, FeaturePanel, Icon, PanelNote, PropsPanel, RibbonButton, R
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
 import { BoardCanvas } from "./BoardCanvas";
-import { ComponentsCard } from "./Components";
 import { LAYERS } from "./drawBoard";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
 import { eui, type EView, type SchTool } from "./ui";
 import { useEui } from "./useEui";
 
 export { onDesign } from "./design";
+
+// The Components panel brings the library, your own parts and their sync: fetched when it first opens.
+const ComponentsCard = lazy(() => import("./Components"));
 
 interface Tool {
   id: string;
@@ -488,7 +490,11 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           }}
         />
       )}
-      {ui.card === "components" && view === "schematic" && !readOnly && <ComponentsCard onClose={() => eui.set({ card: null })} />}
+      {ui.card === "components" && view === "schematic" && !readOnly && (
+        <Suspense fallback={null}>
+          <ComponentsCard onClose={() => eui.set({ card: null })} />
+        </Suspense>
+      )}
 
       {ask && (
         <form
