@@ -4134,7 +4134,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     { id: "tour", label: "Take the tour", icon: "info", onSelect: () => registry.run("help.tour") },
     { id: "tips", label: "Tips", icon: "bulb", onSelect: () => registry.run("help.tips") },
     { id: "learn", label: "Learn BetterCad", icon: "link", onSelect: () => registry.run("help.learn") },
-    { kind: "separator", id: "s1" },
+    { kind: "separator", id: "s-help" },
     { id: "report", label: "Report a problem…", icon: "warning", onSelect: () => registry.run("help.report") },
     { id: "whatsNew", label: "What's new", icon: "star", onSelect: () => registry.run("help.whatsNew") },
     { id: "about", label: "About BetterCad", icon: "info", onSelect: () => registry.run("help.about") },

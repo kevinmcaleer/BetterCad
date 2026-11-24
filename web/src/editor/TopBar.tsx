@@ -403,7 +403,7 @@ function rightSide(p: TopBarProps) {
           { id: "settings", label: "Settings", icon: "settings" as const, onSelect: () => p.onPanel("settings") },
           ...(p.onInstall ? [{ id: "install", label: "Install BetterCad", icon: "download" as const, onSelect: p.onInstall }] : []),
           ...(p.phone && p.helpEntries
-            ? [{ kind: "title" as const, id: "help", label: "Help" }, ...p.helpEntries.map((e) => ({ ...e, id: `help-${e.id}` }))]
+            ? [{ kind: "title" as const, id: "help", label: "Help" }, ...p.helpEntries]
             : []),
           { kind: "title", id: "t", label: "Theme" },
         ]}
