@@ -41,7 +41,7 @@ Not in yet, on purpose:
   checked list (#661).
 - **Real 3D models.** Bodies are simple shapes sized from the footprint. KiCad's STEP models are several GB; attaching
   a model to a part is #628.
-- **The rest of KiCad's libraries.** The starter set is what ships. Bring any other KiCad part in with Import KiCad,
+- **The rest of KiCad's libraries.** The starter set is what ships. Bring any other KiCad part in with Import parts,
   below.
 
 ## Sizes
@@ -109,7 +109,7 @@ board).
 
 ### Importing KiCad files
 
-Import KiCad (#623) takes `.kicad_sym` symbol libraries and `.kicad_mod` footprints, in KiCad 5 to 10 formats
+Import parts (#623) takes `.kicad_sym` symbol libraries and `.kicad_mod` footprints, in KiCad 5 to 10 formats
 (`importKicad` in `packages/electronics/src/kicad/import.ts`). You say where they are from and their licence, and both
 are kept on every part.
 
@@ -120,7 +120,10 @@ are kept on every part.
   those pads.
 - Power symbols are left out (BetterCad has its own), and so is a footprint no symbol uses.
 
-Tested on files from SparkFun, Espressif and Digi-Key as well as KiCad's own
+Import parts also takes Eagle libraries (`.lbr`, #665): each device set is a component, with every device that has a
+package as one of its packages. `docs/electronics.md`, "In from Eagle and Fusion Electronics", has the detail.
+
+The KiCad reader is tested on files from SparkFun, Espressif and Digi-Key as well as KiCad's own
 (`packages/electronics/src/kicad/testdata/external/README.md` has their credits).
 
 ## What is in it

@@ -390,8 +390,8 @@ drawing looks.
 
 ## In from KiCad (#663)
 
-Open project, in the schematic's tools (and on an empty schematic, and in the command palette as "Open a KiCad
-project"), reads a KiCad project into the model: pick every `.kicad_sch`, the `.kicad_pcb` and the `.kicad_pro`
+Open project, in the schematic's tools (and on an empty schematic, and in the command palette as "Open a KiCad or
+Eagle project"), reads a KiCad project into the model: pick every `.kicad_sch`, the `.kicad_pcb` and the `.kicad_pro`
 (`web/src/electronics/OpenProject.tsx`; the reader is `packages/electronics/src/kicad/project.ts`,
 `importKicadProject`, a chunk that loads when files are first picked). The dialog says what it found and lists what
 did not come across before anything changes. Opening replaces the model's schematic and board in one undo step, and
@@ -427,3 +427,51 @@ KiCad projects and reads them back: the same parts, nets, pads and board check, 
 all 11 demos' schematics come in with exactly the nets `kicad-cli` finds, hierarchy and buses included, and the nine
 2-layer demo boards come in with no shorts, nothing unrouted, nothing off the board and nothing behind the schematic.
 That is against KiCad 7.0.11 and its demo files; projects saved by KiCad 8 and 9 have not been tried yet.
+
+## In from Eagle and Fusion Electronics (#665)
+
+Open project also takes an Eagle schematic and board (`.sch`, `.brd`), and Import parts in Components takes Eagle
+libraries (`.lbr`). Eagle 6 and later write these as XML, and Fusion Electronics exports the same files; SparkFun and
+Adafruit publish their boards and parts this way. The readers are in `packages/electronics/src/eagle/`: `xml.ts` (just
+enough XML), `library.ts` (packages, symbols and device sets), `project.ts` (`importEagleProject`) and `import.ts`
+(`importEagleLibraries`). Each loads when its files are first picked.
+
+How Eagle's things become ours:
+
+- A device set is a component. Each gate is a unit of its symbol. A pin takes the name of the pad its device joins
+  it to as its number and keeps its own as its name; a pin on several pads gets a pin map. In a library, every device
+  that has a package is one of the packages the component comes in. In a project, a part takes the package it stands
+  on in the board, or failing a board, its device's.
+- A supply symbol (no package, every pin a supply pin) is a power symbol, and names the net it sits on.
+- Eagle lists each net's pins outright, piece by piece. The wires and dots come across as drawn. A net in more than
+  one piece, or one somebody named, gets a label on each piece that no supply symbol names, so the pieces still join
+  by name. Once the design is built its nets are held to Eagle's list, and any that came out joined differently are
+  named in the dialog. That can happen where a wire of one net ends on a wire or pin of another, which joins them
+  here and not in Eagle.
+- Eagle turns a part and then mirrors it left to right; a design here mirrors and then turns, so a mirrored part's
+  turn is taken the other way round. The same holds for parts on the bottom of a board.
+- A pad or via with no size of its own gets the ring Eagle's design rules give it: a quarter of the drill, within 10
+  to 20 mil for pads and 8 to 20 mil for vias, or what the board's own rules say.
+- The board is measured from its outline's bottom left corner. The outline is the closed loop of the Dimension layer
+  (curves kept), and other loops are cut-outs. Polygons on Top and Bottom are pours (rank 1 fills first, cut-out
+  polygons are keep-outs for pours), tRestrict, bRestrict and vRestrict areas keep tracks out, and tKeepout and
+  bKeepout areas keep parts out. tPlace and bPlace drawings and text are silkscreen.
+- Clearance, least track width, least drill, copper to edge and least ring come from the board's design rules, and
+  net classes with a width or clearance of their own come across with their nets.
+
+What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, buses
+as drawings, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
+drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as short
+straight pieces, hatched pours as solid ones, and octagon pads as round ones. A pad Eagle draws off the middle of its
+hole ("offset") comes in with the hole in the right place and the copper centred on it. Assembly variants are not
+read, apart from a part marked not populated. Files from Eagle older than 6 are binary and are refused with a note
+to save them from a newer Eagle. A board without its schematic does not open.
+
+How it is checked: `eagle/fixtures/turns.*` is a small Eagle 7 project written for the tests, with parts turned and
+mirrored every way on two sheets and both sides of a board, a part with three gates, supply symbols, nets in pieces,
+crossing wires, a curved edge and track, pours, restrict areas and holes. `eagle/project.test.ts` holds its nets,
+parts, pads, copper, rules and notes. `eagle/kicadReads.test.ts` is a second opinion where KiCad is installed (CI has
+none, so it is skipped there): KiCad's own Eagle reader opens the same board, and every pad must be where ours is,
+the same size, on the same side and net. That confirms the turns and mirrors on the board; the schematic's follow the
+same rule and are held to Eagle's own net list. No file made by Eagle or Fusion itself, and no SparkFun or Adafruit
+board, has been opened yet: the session that wrote this could not download any. Try a real one before leaning on it.

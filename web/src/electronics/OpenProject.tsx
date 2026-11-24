@@ -25,12 +25,21 @@ export const PROJECT_LICENCES = [
   "All rights reserved",
 ];
 
-/** Reads a project's files. The reader loads when it is first used. */
+/** Whether a file is one of Eagle's: XML that says so. KiCad 5 used `.sch` too, so the name is not enough. */
+const isEagle = (f: { name: string; text: string }) => /<eagle[\s>]/.test(f.text.slice(0, 4000)) || (/\.(sch|brd)$/i.test(f.name) && !/^\s*[(<E]/.test(f.text));
+
+/** Reads a project's files: KiCad's, or Eagle's when a schematic or board of Eagle's is among them. The reader loads when it is first used. */
 export async function readProject(
   files: { name: string; text: string }[],
   licence: string,
   known?: (name: string) => FootprintDef | undefined,
 ): Promise<Opened> {
+  if (files.some((f) => /^\s*EESchema/.test(f.text)))
+    throw new Error("That schematic was saved by KiCad 5 or older. Open and save the project in KiCad 6 or later first.");
+  if (files.some(isEagle)) {
+    const { importEagleProject } = await import("@bettercad/electronics/eagle/project");
+    return importEagleProject(files, { licence });
+  }
   const { importKicadProject } = await import("@bettercad/electronics/kicad/project");
   return importKicadProject(files, { licence, ...(known ? { known } : {}) });
 }
@@ -53,8 +62,8 @@ export interface OpenProjectProps {
 }
 
 /**
- * Open a KiCad project (#663): pick its schematic and board files, see what was found and what did not come across,
- * then use it as this model's design.
+ * Open a project from KiCad (#663) or from Eagle and Fusion Electronics (#665): pick its schematic and board files,
+ * see what was found and what did not come across, then use it as this model's design.
  */
 export default function OpenProject({ replaces, onOpen, onClose }: OpenProjectProps) {
   const ids = useId();
@@ -105,7 +114,7 @@ export default function OpenProject({ replaces, onOpen, onClose }: OpenProjectPr
     <Dialog
       open
       modal
-      title="Open a KiCad project"
+      title="Open a project"
       icon="folder"
       className="bc-ec-editor bc-ec-import"
       onCancel={onClose}
@@ -124,12 +133,12 @@ export default function OpenProject({ replaces, onOpen, onClose }: OpenProjectPr
         className="bc-text"
         type="file"
         multiple
-        accept=".kicad_sch,.kicad_pcb,.kicad_pro"
+        accept=".kicad_sch,.kicad_pcb,.kicad_pro,.sch,.brd"
         onChange={(e) => void pick(e.target.files)}
       />
       <p className="bc-note">
-        Pick every schematic sheet (.kicad_sch), the board (.kicad_pcb) and the project file (.kicad_pro) for its rules. Files from KiCad 6 and later open. You
-        can pick more than once.
+        From KiCad 6 or later, pick every schematic sheet (.kicad_sch), the board (.kicad_pcb) and the project file (.kicad_pro) for its rules. From Eagle 6 or
+        later, or Fusion Electronics, pick the schematic (.sch) and the board (.brd). You can pick more than once.
       </p>
       {files.length > 0 && (
         <p className="bc-note" aria-label="Files picked">

@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import { PIN_TYPES, type ComponentDef, type FootprintDef } from "@bettercad/electronics";
+import { importEagleLibraries } from "@bettercad/electronics/eagle/import";
 import { importKicad, type Imported } from "@bettercad/electronics/kicad";
 import { Button, Dialog, NumberField, cx } from "@bettercad/ui";
 import { textOf } from "./fileText";
@@ -278,17 +279,27 @@ export interface ImportPartsProps {
   onCancel: () => void;
 }
 
-/** Import KiCad files (#623): pick `.kicad_sym` and `.kicad_mod` files, see what was found and left out, then add. */
+/** Import parts (#623, #665): pick KiCad `.kicad_sym` and `.kicad_mod` files or Eagle `.lbr` libraries, see what was found and left out, then add. */
 export function ImportParts({ known, onAdd, onCancel }: ImportPartsProps) {
   const [files, setFiles] = useState<{ name: string; text: string }[]>([]);
   const [licence, setLicence] = useState(IMPORT_LICENCES[0]!);
   const [from, setFrom] = useState("");
   const [busy, setBusy] = useState(false);
   const ids = useId();
-  const got: Imported | null = useMemo(
-    () => (files.length ? importKicad(files, { licence, ...(from.trim() ? { library: from.trim() } : {}) }, known) : null),
-    [files, licence, from, known],
-  );
+  const got: Imported | null = useMemo(() => {
+    if (!files.length) return null;
+    const source = { licence, ...(from.trim() ? { library: from.trim() } : {}) };
+    // Eagle's libraries are whole in one file; KiCad's symbols and footprints are paired across files.
+    const eagle = files.filter((f) => /\.lbr$/i.test(f.name) || /<eagle[\s>]/.test(f.text.slice(0, 4000)));
+    const kicad = files.filter((f) => !eagle.includes(f));
+    const a = kicad.length ? importKicad(kicad, source, known) : null;
+    const b = eagle.length ? importEagleLibraries(eagle, source) : null;
+    return {
+      parts: [...(a?.parts ?? []), ...(b?.parts ?? [])],
+      found: { symbols: (a?.found.symbols ?? 0) + (b?.found.symbols ?? 0), footprints: (a?.found.footprints ?? 0) + (b?.found.footprints ?? 0) },
+      notes: [...(a?.notes ?? []), ...(b?.notes ?? [])],
+    };
+  }, [files, licence, from, known]);
   const pick = async (list: FileList | null) => {
     if (!list?.length) return;
     setBusy(true);
@@ -301,7 +312,7 @@ export function ImportParts({ known, onAdd, onCancel }: ImportPartsProps) {
     <Dialog
       open
       modal
-      title="Import KiCad parts"
+      title="Import parts"
       icon="chip"
       className="bc-ec-editor bc-ec-import"
       onCancel={onCancel}
@@ -319,11 +330,12 @@ export function ImportParts({ known, onAdd, onCancel }: ImportPartsProps) {
       }
     >
       <label className="bc-field-label" htmlFor={`${ids}files`}>
-        KiCad files
+        Library files
       </label>
-      <input id={`${ids}files`} className="bc-text" type="file" multiple accept=".kicad_sym,.kicad_mod" onChange={(e) => void pick(e.target.files)} />
+      <input id={`${ids}files`} className="bc-text" type="file" multiple accept=".kicad_sym,.kicad_mod,.lbr" onChange={(e) => void pick(e.target.files)} />
       <p className="bc-note">
-        Pick a symbol library (.kicad_sym) and the footprints it uses (.kicad_mod files from a .pretty folder). You can pick more than once.
+        From KiCad, pick a symbol library (.kicad_sym) and the footprints it uses (.kicad_mod files from a .pretty folder). From Eagle or Fusion Electronics,
+        pick a library (.lbr). You can pick more than once.
       </p>
       <label className="bc-field-label" htmlFor={`${ids}from`}>
         Where they are from

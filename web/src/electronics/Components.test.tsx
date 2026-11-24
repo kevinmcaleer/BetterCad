@@ -151,11 +151,11 @@ describe("the Components panel", () => {
 
   it("imports KiCad files: says what it found and left out, then adds the parts", async () => {
     const { card, parts } = await open();
-    await userEvent.click(within(card).getByRole("button", { name: "Import KiCad" }));
-    const dialog = await screen.findByRole("dialog", { name: "Import KiCad parts" });
+    await userEvent.click(within(card).getByRole("button", { name: "Import parts" }));
+    const dialog = await screen.findByRole("dialog", { name: "Import parts" });
     const data = join(__dirname, "../../../packages/electronics/src/kicad/testdata");
     const file = (path: string, name: string) => new File([readFileSync(join(data, path), "utf8")], name);
-    await userEvent.upload(within(dialog).getByLabelText("KiCad files"), [
+    await userEvent.upload(within(dialog).getByLabelText("Library files"), [
       file("external/Espressif.kicad_sym", "Espressif.kicad_sym"),
       file("external/SOT-23-3.kicad_mod", "SOT-23-3.kicad_mod"),
     ]);
@@ -163,7 +163,7 @@ describe("the Components panel", () => {
     expect(within(dialog).getByRole("list", { name: "Left out or worth a look" })).toHaveTextContent(
       "ESP32-C3-MINI-1: Its footprint ESP32-C3-MINI-1 was not among the files, so it came in with no footprint.",
     );
-    await userEvent.upload(within(dialog).getByLabelText("KiCad files"), [file("external/ESP32-C3-MINI-1.kicad_mod", "ESP32-C3-MINI-1.kicad_mod")]);
+    await userEvent.upload(within(dialog).getByLabelText("Library files"), [file("external/ESP32-C3-MINI-1.kicad_mod", "ESP32-C3-MINI-1.kicad_mod")]);
     await waitFor(() => expect(within(dialog).getByRole("list", { name: "Parts found" })).toHaveTextContent("ESP32-C3-MINI-1, ESP32-C3-MINI-1"));
     await userEvent.type(within(dialog).getByLabelText("Where they are from"), "Espressif");
     await userEvent.selectOptions(within(dialog).getByLabelText("Their licence"), "CC-BY-SA 4.0 with the KiCad libraries exception");
@@ -171,6 +171,24 @@ describe("the Components panel", () => {
     expect(within(card).getByText("Added 1 part to your parts.")).toBeInTheDocument();
     await userEvent.click(within(parts).getByRole("button", { name: "ESP32-C3-MINI-1 (ESP32-C3-MINI-1)" }));
     expect(within(card).getByText(/^From/)).toHaveTextContent("From Espressif, CC-BY-SA 4.0 with the KiCad libraries exception.");
+  });
+
+  it("imports an Eagle library: each device set is a part, with the packages it comes in", async () => {
+    const { card, parts } = await open();
+    await userEvent.click(within(card).getByRole("button", { name: "Import parts" }));
+    const dialog = await screen.findByRole("dialog", { name: "Import parts" });
+    const lbr = readFileSync(join(__dirname, "../../../packages/electronics/src/eagle/fixtures/turns.lbr"), "utf8");
+    await userEvent.upload(within(dialog).getByLabelText("Library files"), [new File([lbr], "turns.lbr")]);
+    expect(await within(dialog).findByRole("status")).toHaveTextContent("Found 9 symbols and 7 footprints: 5 parts to add.");
+    expect(within(dialog).getByRole("list", { name: "Parts found" })).toHaveTextContent("DUALBUF, SO8");
+    expect(within(dialog).getByRole("list", { name: "Left out or worth a look" })).toHaveTextContent(
+      "GND: A power symbol. BetterCad has its own, so it was left out.",
+    );
+    await userEvent.selectOptions(within(dialog).getByLabelText("Their licence"), "CC-BY-SA 4.0");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Add 5 parts" }));
+    expect(within(card).getByText("Added 5 parts to your parts.")).toBeInTheDocument();
+    await userEvent.click(within(parts).getByRole("button", { name: /^DUALBUF \(/ }));
+    expect(within(card).getByText(/^From/)).toHaveTextContent("From turns, CC-BY-SA 4.0.");
   });
 
   it("opens a library file, and says when a file is not one", async () => {

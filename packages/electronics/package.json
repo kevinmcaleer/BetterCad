@@ -11,6 +11,8 @@
     "./kicad/netlist": "./src/kicad/netlist.ts",
     "./kicad/export": "./src/kicad/export.ts",
     "./kicad/project": "./src/kicad/project.ts",
+    "./eagle/project": "./src/eagle/project.ts",
+    "./eagle/import": "./src/eagle/import.ts",
     "./tools": "./src/library/tools.ts",
     "./erc": "./src/erc.ts",
     "./replace": "./src/replace.ts",

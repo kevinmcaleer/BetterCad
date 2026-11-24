@@ -377,14 +377,14 @@ test.describe("on a wide screen", () => {
     await expect(dialog.getByRole("region", { name: "Preview of the files" }).getByRole("img", { name: /seen from the top/ })).toBeVisible();
   });
 
-  test("open a KiCad project: its schematic, its board, and what did not come across", async ({ page }) => {
+  test("open a KiCad project and an Eagle one: the schematic, the board, and what did not come across", async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "Schematic", exact: true }).click();
-    await page.getByRole("button", { name: "Open a KiCad project" }).click();
-    const dialog = page.getByRole("dialog", { name: "Open a KiCad project" });
+    await page.getByRole("button", { name: "Open a KiCad or Eagle project" }).click();
+    const dialog = page.getByRole("dialog", { name: "Open a project" });
     // The sample board as BetterCad writes it for KiCad, read back in.
     const golden = "../packages/electronics/src/kicad/golden";
     await dialog.getByLabel("Project files").setInputFiles([`${golden}/sample.kicad_sch`, `${golden}/sample.kicad_pcb`]);
@@ -402,6 +402,17 @@ test.describe("on a wide screen", () => {
     await page.keyboard.press("ControlOrMeta+z");
     await page.keyboard.press("1");
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 0 parts, 0 nets" })).toBeVisible();
+
+    // An Eagle schematic and board open the same way, from the tools this time.
+    await tools(page).getByRole("button", { name: /^Open/ }).click();
+    const eagle = "../packages/electronics/src/eagle/fixtures";
+    await dialog.getByLabel("Project files").setInputFiles([`${eagle}/turns.sch`, `${eagle}/turns.brd`]);
+    await expect(dialog.getByRole("status")).toContainText("Found 7 parts on 2 sheets, and a board with 7 parts placed");
+    await expect(dialog.getByRole("list", { name: "What did not come across" })).toContainText("1 curved track came in as short straight pieces");
+    await dialog.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 11 parts, 7 nets" })).toBeVisible();
+    await page.keyboard.press("2");
+    await expect(page.getByRole("img", { name: /^PCB: 7 parts/ })).toBeVisible();
   });
 
   test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
