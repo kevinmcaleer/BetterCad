@@ -381,10 +381,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [marker, setMarker] = useState<number | null>(null);
   const featureCount = doc.features.length;
   const at = marker === null ? featureCount : Math.min(marker, featureCount);
-  const built = useMemo(() => build(doc, at), [doc, at]);
+  // While the schematic or the PCB view covers the model, board changes do not rebuild the board in 3D on every
+  // click: the model is built from the design as it was, and catches up when it is next looked at (#651).
+  const covered = useSyncExternalStore(eui.subscribe, () => eui.get().view !== null);
+  const heldDesign = useRef(doc.electronics);
+  if (!covered || !heldDesign.current?.board !== !doc.electronics?.board) heldDesign.current = doc.electronics;
+  const held = heldDesign.current;
+  const modelDoc = useMemo(() => (doc.electronics === held ? doc : { ...doc, electronics: held }), [doc, held]);
+  const built = useMemo(() => build(modelDoc, at), [modelDoc, at]);
   const matesOf = useCallback((id: string) => rigidMates(built.rigid, id), [built.rigid]);
   const parts = built.parts;
-  const kernel = useKernel(doc, at, parts);
+  const kernel = useKernel(modelDoc, at, parts);
   const failed = useMemo(() => new Map([...built.failed, ...kernel.failed]), [built.failed, kernel.failed]);
   const failedRef = useRef(failed);
   failedRef.current = failed;
@@ -850,14 +857,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const step = built.boards?.[0];
     const body = step && kernel.bodies.get(step.body);
     const part = step && built.parts.find((p) => p.id === step.body);
-    const design = doc.electronics;
+    const design = held;
     if (!step || !body || !part || !design?.board) return setBoardDecals((was) => (was.length ? [] : was));
     let live = true;
     void import("../electronics/boardPicture").then((m) => live && setBoardDecals(m.boardDecals(design, step.id, body, part)));
     return () => {
       live = false;
     };
-  }, [built.boards, built.parts, kernel.bodies, doc.electronics]);
+  }, [built.boards, built.parts, kernel.bodies, held]);
   const allDecals = useMemo(() => (boardDecals.length ? [...viewDecals, ...boardDecals] : viewDecals), [viewDecals, boardDecals]);
   // Canvases (#248) to trace over; hidden ones left off.
   const viewCanvases = useMemo(

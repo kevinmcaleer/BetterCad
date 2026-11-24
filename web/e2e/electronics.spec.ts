@@ -171,6 +171,8 @@ test.describe("on a wide screen", () => {
   });
 
   test("lay out a board: place by numbers, route a track, add a hole and text, and check it", async ({ page }) => {
+    // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
+    test.setTimeout(90_000);
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
@@ -292,6 +294,8 @@ test.describe("on a wide screen", () => {
   });
 
   test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
+    // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
+    test.setTimeout(90_000);
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
