@@ -105,12 +105,14 @@ test("the loupe shows the sketch's lines at full width, on a view turned upside 
   await page.waitForTimeout(500);
   await page.screenshot({ path: test.info().outputPath("loupe-turned.png") });
 
-  // The line crosses the loupe in the sketch's colour, a pixel or more wide all the way: not a faint hairline.
-  const strong = await loupe.locator("canvas").evaluate((c: HTMLCanvasElement) => {
-    const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
-    let n = 0;
-    for (let i = 0; i < d.length; i += 4) if (d[i + 3]! > 200 && d[i + 2]! - d[i]! > 80) n++;
-    return n / (c.width / (window.devicePixelRatio || 1));
-  });
-  expect(strong).toBeGreaterThan(1);
+  // The line crosses the loupe in the sketch's colour, a pixel or more wide all the way: not a faint hairline. On a
+  // busy runner the loupe can still be part drawn when first read, so read it until it settles.
+  const strong = () =>
+    loupe.locator("canvas").evaluate((c: HTMLCanvasElement) => {
+      const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3]! > 200 && d[i + 2]! - d[i]! > 80) n++;
+      return n / (c.width / (window.devicePixelRatio || 1));
+    });
+  await expect.poll(strong, { timeout: 10_000 }).toBeGreaterThan(1);
 });

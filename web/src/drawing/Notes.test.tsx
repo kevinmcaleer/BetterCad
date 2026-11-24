@@ -162,7 +162,7 @@ describe("a note on the sheet", () => {
     const lost: DrawingNote[] = [{ id: "n1", kind: "leader", text: "Deburr", on: { view: "v1", ...edge(77, "gone") }, at: [20, 30] }];
     render(<Harness notes={lost} />);
     const warning = await screen.findByRole("button", { name: /Lost note/ });
-    expect(say).toHaveBeenCalledWith(expect.stringMatching(/^1 problem on this sheet/));
+    await waitFor(() => expect(say).toHaveBeenCalledWith(expect.stringMatching(/^1 problem on this sheet/)));
     fireEvent.contextMenu(warning, { clientX: 300, clientY: 200 });
     await userEvent.click(within(screen.getByRole("menu", { name: "Warning actions" })).getByRole("menuitem", { name: /Pick again/ }));
     expect(screen.getByTestId("tool")).toHaveTextContent("note-leader");

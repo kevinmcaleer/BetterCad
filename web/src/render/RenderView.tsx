@@ -196,6 +196,15 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     };
   }, [move, hold]);
 
+  useEffect(() => {
+    session.look = move;
+    session.size = () => ({ width: canvas.current?.clientWidth ?? 0, height: canvas.current?.clientHeight ?? 0 });
+    return () => {
+      session.look = null;
+      session.size = null;
+    };
+  }, [session, move]);
+
   const orbiting = useRef(false);
   const goHome = () => {
     const el = canvas.current!;
