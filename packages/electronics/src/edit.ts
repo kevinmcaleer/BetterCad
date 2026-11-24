@@ -48,10 +48,16 @@ export function placePart(
   sheet: Id,
   def: ComponentDef,
   at: { x: number; y: number; rot?: Rot; mirror?: boolean },
-  opts: { value?: string } = {},
+  opts: { value?: string; pkg?: number } = {},
 ): Placed {
   const k = defKey(def);
-  const part: Part = { id: eid("pt"), def: k, ref: nextRef(d, def.prefix), value: opts.value ?? def.value ?? def.name, pkg: 0 };
+  const part: Part = {
+    id: eid("pt"),
+    def: k,
+    ref: nextRef(d, def.prefix),
+    value: opts.value ?? def.value ?? def.name,
+    pkg: def.packages[opts.pkg ?? 0] ? (opts.pkg ?? 0) : 0,
+  };
   const symbol: SchSymbol = { id: eid("sy"), part: part.id, unit: 1, x: at.x, y: at.y, rot: at.rot ?? 0, ...(at.mirror ? { mirror: true } : {}) };
   const design: ElectronicsDesign = {
     ...d,

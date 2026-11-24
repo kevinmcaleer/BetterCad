@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  BASICS,
   applyChanges,
   blocks,
   boardChanges,
@@ -13,7 +12,6 @@ import {
   netlist,
   ratsnest,
   realParts,
-  type ComponentDef,
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
@@ -21,6 +19,7 @@ import { Button, ESC, FeaturePanel, Icon, PanelNote, PropsPanel, RibbonButton, R
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
 import { BoardCanvas } from "./BoardCanvas";
+import { ComponentsCard } from "./Components";
 import { LAYERS } from "./drawBoard";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
 import { eui, type EView, type SchTool } from "./ui";
@@ -352,48 +351,6 @@ function ChangeCard({ design, edit, onDone }: { design: ElectronicsDesign; edit:
           </ul>
         </>
       )}
-    </FeaturePanel>
-  );
-}
-
-/** Pick a part to place. The starter library (#624) and search (#625) replace this short list. */
-function ComponentsCard({ onClose }: { onClose: () => void }) {
-  const [find, setFind] = useState("");
-  const field = useId();
-  const all = useMemo(() => Object.entries(BASICS).map(([id, make]) => ({ id, def: make() })), []);
-  const q = find.trim().toLowerCase();
-  const shown = all.filter(
-    ({ def }) => !q || def.name.toLowerCase().includes(q) || def.keywords?.some((k) => k.includes(q)) || def.description?.toLowerCase().includes(q),
-  );
-  useEscape(true, onClose, ESC.panel);
-  const pick = (def: ComponentDef) => eui.set({ placing: def, schTool: "place", card: null, selected: [] });
-  return (
-    <FeaturePanel title="Components" icon="chip" className="bc-ec-card bc-ec-components" cancel={{ label: "Close", title: "Close (Esc)", onClick: onClose }}>
-      <label className="bc-field-label" htmlFor={field}>
-        Find a part
-      </label>
-      <input
-        id={field}
-        className="bc-text"
-        type="search"
-        value={find}
-        autoFocus
-        onChange={(e) => setFind(e.target.value)}
-        placeholder="Resistor, header, GND"
-      />
-      <ul className="bc-ec-parts" aria-label="Parts">
-        {shown.map(({ id, def }) => (
-          <li key={id}>
-            <button type="button" className="bc-ec-part" onClick={() => pick(def)}>
-              <Icon name={def.symbol.power ? "powerSymbol" : "chip"} size={16} />
-              <span>{def.name}</span>
-              <small>{def.symbol.power ? "Power" : (def.packages[0]?.footprint.name ?? "")}</small>
-            </button>
-          </li>
-        ))}
-        {shown.length === 0 && <li className="bc-note">Nothing matches. Try a shorter word.</li>}
-      </ul>
-      <PanelNote>Click a part, then click the sheet to place it. R turns it before you place it.</PanelNote>
     </FeaturePanel>
   );
 }
