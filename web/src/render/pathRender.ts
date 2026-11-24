@@ -239,6 +239,8 @@ export class PathRender {
     cam.lookAt(yUp(o.look));
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
+    // Smaller tiles, so each step of the render is short and it can stop soon after it is no longer wanted.
+    this.tracer.tiles.set(4, 4);
     this.tracer.setScene(this.scene, cam);
     this.restart();
   }

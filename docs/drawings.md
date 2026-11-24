@@ -31,7 +31,8 @@ Select a base or projected view and its **Style** is in the properties panel on 
 - **Wireframe**: every edge solid, the ones behind too.
 - **Shaded**: the bodies in their colours, lit as the modelling view is, under the edges you see.
 - **Rendered**: path traced in each body's colour and finish, with no lines. It shows shaded while the path tracer
-  works, and stays shaded if the browser takes more than 30 s.
+  works, and stays shaded if the browser takes more than 30 s or draws WebGL without a graphics card
+  (SwiftShader, llvmpipe), where a render would take minutes.
 
 A projected view starts with its parent's style, and follows it while it still has the parent's old one. Section and
 detail views, and views with breaks, are always line art. The pictures come from `web/src/drawing/pictures.ts`, which

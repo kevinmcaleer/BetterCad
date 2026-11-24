@@ -176,6 +176,12 @@ async function trace(bodies: RenderBody[], f: Framing, px: { w: number; h: numbe
   } catch {
     return null;
   }
+  // Software WebGL (no graphics card) would take minutes and hold the page up meanwhile: the view stays shaded.
+  if (softwareGl(pr.renderer.getContext())) {
+    pr.dispose();
+    pr.renderer.forceContextLoss();
+    return null;
+  }
   const until = performance.now() + GIVE_UP_MS;
   try {
     pr.maxSamples = RENDER_SAMPLES;
@@ -204,6 +210,13 @@ async function trace(bodies: RenderBody[], f: Framing, px: { w: number; h: numbe
     pr.dispose();
     pr.renderer.forceContextLoss();
   }
+}
+
+/** True when WebGL is drawn by the processor (SwiftShader, llvmpipe), not a graphics card. */
+function softwareGl(gl: WebGLRenderingContext | WebGL2RenderingContext): boolean {
+  const info = gl.getExtension("WEBGL_debug_renderer_info");
+  const name = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+  return /swiftshader|llvmpipe|software/i.test(name);
 }
 
 // One picture at a time: each takes a WebGL context of its own, and browsers allow only a handful.

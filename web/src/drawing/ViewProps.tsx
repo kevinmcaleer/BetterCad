@@ -15,7 +15,8 @@ const SAYS: Record<ViewStyle, string> = {
   lineart: "The edges you see, and hidden ones dashed when the view has them on.",
   wireframe: "Every edge, solid, including the ones behind.",
   shaded: "The bodies in their colours, under the edges you see.",
-  rendered: "Path traced in each body's colour and finish, with no lines. It takes a few seconds, and shows shaded until it is ready.",
+  rendered:
+    "Path traced in each body's colour and finish, with no lines. It takes a few seconds and shows shaded until it is ready. Without a graphics card it stays shaded.",
 };
 
 /**
