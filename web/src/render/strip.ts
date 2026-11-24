@@ -3,7 +3,7 @@
  * saving a picture, and keeping the pictures in the account beside the model. Loads with the strip, apart from the
  * shell; the editor only holds the controller.
  */
-import type { ModelDoc, RenderShot } from "@bettercad/kernel/document";
+import type { ModelDoc, NamedView, RenderShot } from "@bettercad/kernel/document";
 import type { createApi } from "../cloud/api";
 import type { OutFile } from "../files/fileStore";
 import { idbKV } from "../files/idb";
@@ -84,18 +84,44 @@ export class StripController {
 
   /** Keeps the Render view's current shot on the strip and renders it in the background. */
   add(session: RenderSession, camera: CameraState): void {
-    const { doc, newId, say } = this.deps();
+    const [shot] = this.addShots(session, [{ camera }]);
+    // Its tile shows the Render view's picture as it is now, while it waits its turn.
+    const canvas = session.canvas?.();
+    if (canvas) previewOf(canvas, (b) => void this.jobs.seed(shot!.id, b));
+    this.deps().say(`Added ${shot!.name}. It renders in the background.`);
+  }
+
+  /** A shot for each named view, in the Render view's light, background and finish, named after the view. */
+  addViews(session: RenderSession, views: NamedView[]): void {
+    if (!views.length) return;
+    const shots = this.addShots(session, views);
+    this.deps().say(
+      shots.length === 1 ? `Added ${shots[0]!.name}. It renders in the background.` : `Added ${shots.length} views. They render in the background.`,
+    );
+  }
+
+  private addShots(session: RenderSession, from: { camera: CameraState; name?: string }[]): RenderShot[] {
+    const { doc, newId } = this.deps();
     const r = session.get();
     const size = session.size?.() ?? { width: 16, height: 9 };
     const height = Math.max(200, Math.min(3200, Math.round((WIDTH * Math.max(1, size.height)) / Math.max(1, size.width))));
     const list = doc.renders ?? [];
     const used = new Set(list.map((s) => s.name));
     let n = list.length + 1;
-    while (used.has(`Render ${n}`)) n++;
-    const shot: RenderShot = {
+    const nameFor = (want?: string) => {
+      let name = want;
+      if (name) for (let i = 2; used.has(name); i++) name = `${want} ${i}`;
+      else {
+        while (used.has(`Render ${n}`)) n++;
+        name = `Render ${n}`;
+      }
+      used.add(name);
+      return name;
+    };
+    const shots = from.map((v): RenderShot => ({
       id: newId("r"),
-      name: `Render ${n}`,
-      camera: { ...camera, ortho: false },
+      name: nameFor(v.name),
+      camera: { ...v.camera, ortho: false },
       preset: r.preset,
       style: r.style,
       background: r.background,
@@ -104,13 +130,10 @@ export class StripController {
       width: WIDTH,
       height,
       auto: true,
-    };
-    this.shots((l) => [...l, shot], "Add render");
-    // Its tile shows the Render view's picture as it is now, while it waits its turn.
-    const canvas = session.canvas?.();
-    if (canvas) previewOf(canvas, (b) => void this.jobs.seed(shot.id, b));
-    this.render(shot);
-    say(`Added ${shot.name}. It renders in the background.`);
+    }));
+    this.shots((l) => [...l, ...shots], shots.length === 1 ? "Add render" : "Add renders");
+    for (const s of shots) this.render(s);
+    return shots;
   }
 
   /** Puts the Render view on the shot: its light, background, finish and camera. */

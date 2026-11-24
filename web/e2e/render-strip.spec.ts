@@ -46,3 +46,38 @@ test("Add to strip renders the shot in the background, with a wheel on the top b
   await bar.getByRole("button", { name: "Done" }).click();
   await expect(strip).toHaveCount(0);
 });
+
+/** Named views work in the Render view: a row moves the render's camera, a view saves from it, and goes on the strip. */
+test("named views look from, save from and add shots in the Render view", async ({ page }) => {
+  test.setTimeout(480_000);
+  await page.addInitScript(() => Object.assign(window, { __bcRenderMax: 2, __bcFakeRenderJobs: true }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Box", exact: true }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
+
+  await page.keyboard.press("Shift+R");
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
+  const picture = page.getByRole("img", { name: /Rendered picture/ });
+  await page.getByRole("button", { name: "Show what is in Named views" }).click();
+  await page.getByRole("treeitem", { name: /^Top/ }).click();
+  await expect(picture).toHaveAttribute("data-look", "-90 90");
+
+  // Saved from the render's camera.
+  await page.getByRole("tree").getByText("Named views", { exact: true }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: /Save this view/ }).click();
+  await page.getByRole("dialog").getByRole("textbox", { name: "Name" }).fill("Hero");
+  await page.keyboard.press("Enter");
+  await page.getByRole("treeitem", { name: /^Front/ }).click();
+  await expect(picture).toHaveAttribute("data-look", "-90 0");
+  await page.getByRole("treeitem", { name: /^Hero/ }).click();
+  await expect(picture).toHaveAttribute("data-look", "-90 90");
+
+  // A shot on the strip, named after the view.
+  await page.getByRole("treeitem", { name: /^Hero/ }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Add to the strip" }).click();
+  const strip = page.getByRole("region", { name: "Renders" });
+  await expect(strip.getByRole("button", { name: "Hero", exact: true })).toBeVisible({ timeout: 180_000 });
+});

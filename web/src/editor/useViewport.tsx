@@ -22,13 +22,14 @@ import {
   type Vec3,
 } from "../state/document";
 import { presetOf, type CameraState, type Preset } from "../viewport/camera";
+import type { RenderSession } from "../render/session";
 import type { RenderStyle, Section } from "../viewport/engine";
 import type { Pick, SelectFilter } from "../viewport/ids";
 import type { View3DHandle, ViewMode } from "../viewport/View3D";
 import type { ToolId, ViewId } from "./tools";
 
 /** What a named view row in the browser asks for. */
-export type ViewAct = "look" | "save" | "update" | "rename" | "delete" | "setHome" | "resetHome";
+export type ViewAct = "look" | "save" | "update" | "rename" | "delete" | "setHome" | "resetHome" | "strip";
 
 export const FILTERS: { id: SelectFilter; label: string; key: string }[] = [
   { id: "body", label: "Bodies", key: "shift+1" },
@@ -73,6 +74,8 @@ export interface ViewportDeps {
   say: (text: string, error?: boolean) => void;
   /** Bodies locked to one by rigid groups, itself included; empty when it is in none. */
   matesOf?: (id: string) => string[];
+  /** The Render view, while it is open: named views then look from, and save, the render's camera. */
+  render?: RenderSession | null;
 }
 
 const ELEMENT_NAME: Record<SelectFilter, string> = { body: "Body", face: "Face", edge: "Edge", vertex: "Point" };
@@ -191,8 +194,12 @@ export function useViewport(d: ViewportDeps) {
   }, []);
 
   // ---- home (the view cube's house and menu)
+  /** The camera named views save: the render's while it is open, else the modelling view's. */
+  const camNow = useCallback(() => live.current.render?.camera?.() ?? view3d.current?.camera(), []);
   const goHome = useCallback(() => {
-    view3d.current?.home(live.current.doc.home ?? null);
+    const r = live.current.render;
+    if (r) r.standard?.("home");
+    else view3d.current?.home(live.current.doc.home ?? null);
   }, []);
   /** Makes `camera` home: the modelling view's own camera, or the render's. */
   const setHomeTo = useCallback((camera: CameraState) => {
@@ -200,9 +207,9 @@ export function useViewport(d: ViewportDeps) {
     live.current.say("Home is now this view");
   }, []);
   const setHomeHere = useCallback(() => {
-    const camera = view3d.current?.camera();
+    const camera = camNow();
     if (camera) setHomeTo(camera);
-  }, [setHomeTo]);
+  }, [setHomeTo, camNow]);
   const resetHome = useCallback(() => {
     if (!live.current.doc.home) return;
     live.current.editDoc((doc) => setHome(doc, null), "Reset the home view");
@@ -215,8 +222,12 @@ export function useViewport(d: ViewportDeps) {
 
   // ---- named views: Home, Front, Side and Top, then the saved ones, in the browser's Named views folder
   const lookFrom = useCallback((v: NamedView) => {
-    view3d.current?.setCamera(v.camera, true);
-    setOrtho(v.camera.ortho);
+    const r = live.current.render;
+    if (r) r.look?.({ ...v.camera, ortho: false });
+    else {
+      view3d.current?.setCamera(v.camera, true);
+      setOrtho(v.camera.ortho);
+    }
     live.current.say(`Looking from ${v.name}`);
   }, []);
   const startSaveView = useCallback(() => setNaming({ id: null, name: nextViewName(live.current.doc) }), []);
@@ -227,7 +238,7 @@ export function useViewport(d: ViewportDeps) {
     if (existing) {
       live.current.editDoc((doc) => saveView(doc, { ...existing, name }), `Rename view ${existing.name}`);
     } else {
-      const camera = view3d.current?.camera();
+      const camera = camNow();
       if (camera) {
         const id = newId("v");
         live.current.editDoc((doc) => saveView(doc, { id, name, camera }), `Save view ${name}`);
@@ -235,13 +246,16 @@ export function useViewport(d: ViewportDeps) {
       }
     }
     setNaming(null);
-  }, [naming]);
-  const updateView = useCallback((v: NamedView) => {
-    const camera = view3d.current?.camera();
-    if (!camera) return;
-    live.current.editDoc((doc) => saveView(doc, { ...v, camera }), `Update view ${v.name}`);
-    live.current.say(`${v.name} now looks from here`);
-  }, []);
+  }, [naming, camNow]);
+  const updateView = useCallback(
+    (v: NamedView) => {
+      const camera = camNow();
+      if (!camera) return;
+      live.current.editDoc((doc) => saveView(doc, { ...v, camera }), `Update view ${v.name}`);
+      live.current.say(`${v.name} now looks from here`);
+    },
+    [camNow],
+  );
   const deleteView = useCallback((v: NamedView) => {
     live.current.editDoc((doc) => removeView(doc, v.id), `Delete view ${v.name}`);
   }, []);
@@ -254,7 +268,8 @@ export function useViewport(d: ViewportDeps) {
       if (act === "setHome") return setHomeHere();
       if (act === "resetHome") return resetHome();
       if (act === "look" && id === "home") return goHome();
-      if (act === "look" && (id === "front" || id === "side" || id === "top")) return view3d.current?.preset(id);
+      if (act === "look" && (id === "front" || id === "side" || id === "top"))
+        return live.current.render ? live.current.render.standard?.(id) : view3d.current?.preset(id);
       const v = (live.current.doc.views ?? []).find((x) => x.id === id);
       if (!v) return;
       if (act === "look") return lookFrom(v);
@@ -268,7 +283,7 @@ export function useViewport(d: ViewportDeps) {
   const namedViews = {
     list: views.map((v) => ({ id: v.id, name: v.name })),
     /** The standard view the camera is in now, if it is one. */
-    at: view,
+    at: d.render ? null : view,
     homeSet: !!d.doc.home,
     act: viewAct,
   };
