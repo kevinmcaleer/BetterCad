@@ -50,7 +50,7 @@ export function AutoCard({ options, onOptions, counts, wait, onDone, onCancel }:
   const now = counts[options.recipe];
   const said = wait ?? (now.total ? `${now.count} of ${now.total} dimensions` : "There is nothing here to dimension.");
   return (
-    <Dialog open title="Auto dimension" icon="dimension" className="bc-view-card" width={320} onCancel={onCancel} onDone={onDone} doneLabel="OK">
+    <Dialog open title="Auto dimension" icon="dimension" className="bc-view-card" width={420} onCancel={onCancel} onDone={onDone} doneLabel="OK">
       <div className="bc-sheet-card">
         <div className="bc-auto-recipes" role="radiogroup" aria-label="Recipe">
           {RECIPES.map((r) => (
