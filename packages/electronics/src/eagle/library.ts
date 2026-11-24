@@ -313,6 +313,10 @@ export interface EagleComponent {
   numbers: Map<string, string>;
   /** A supply symbol: no package, and every pin a supply pin. */
   supply: boolean;
+  /** The device's name as Eagle writes it, which a part with no value of its own shows as its value. */
+  shown: string;
+  /** The value is the person's to give ("10k"), so a part with none has none. */
+  userValue: boolean;
   /** Devices that named a package the library does not hold. */
   missing: string[];
 }
@@ -425,5 +429,5 @@ export function componentOf(
     ...(Object.keys(supplier).length ? { supplier } : {}),
     ...(supply ? {} : { source: { library: o.library ?? lib.name, licence: o.licence } }),
   };
-  return { def, gates: gates.map((g) => g.attrs.name ?? ""), numbers, supply, missing };
+  return { def, shown: shown || setName, userValue: set.attrs.uservalue === "yes", gates: gates.map((g) => g.attrs.name ?? ""), numbers, supply, missing };
 }

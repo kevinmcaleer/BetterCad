@@ -157,8 +157,9 @@ describe("opening an Eagle project", () => {
       "Sheet 1: 10 symbols, 29 wires, 4 dots",
       "Second half: 3 symbols, 3 wires, 0 dots",
     ]);
-    // A net in pieces gets a name on each piece that no supply symbol names; a net Eagle numbered gets none.
-    expect(design.sheets[0]!.labels.map((l) => `${l.name} ${l.x},${l.y}`)).toEqual(["VCC 119.38,63.5", "SIG 60.96,60.96", "MID 104.14,50.8"]);
+    // A net in pieces gets a name on each piece that no supply symbol names, at the end left in mid air when there
+    // is one; a net Eagle numbered gets none.
+    expect(design.sheets[0]!.labels.map((l) => `${l.name} ${l.x},${l.y}`)).toEqual(["VCC 119.38,63.5", "SIG 60.96,60.96", "MID 109.22,50.8"]);
     expect(design.sheets[1]!.labels.map((l) => l.name)).toEqual(["MID", "OUT"]);
     expect(design.sheets[0]!.notes?.map((n) => n.kind)).toEqual(["text", "line"]);
   });
@@ -329,5 +330,39 @@ describe("importing an Eagle library", () => {
       "It was saved by an Eagle older than 6, which is not XML. Open and save it in a newer Eagle first",
       "Not an Eagle library",
     ]);
+  });
+});
+
+/** The way Fusion Electronics draws a net: a short wire from the pin, and its name written just past the end. */
+const STUBS = `<?xml version="1.0" encoding="utf-8"?>
+<eagle version="9.7.0"><drawing><schematic><libraries><library name="lib">
+<packages><package name="P2"><pad name="1" x="0" y="0" drill="1"/><pad name="2" x="2.54" y="0" drill="1"/></package></packages>
+<symbols><symbol name="S"><pin name="1" x="-5.08" y="0" length="short"/><pin name="2" x="5.08" y="0" length="short" rot="R180"/></symbol></symbols>
+<devicesets>
+<deviceset name="CONN_02" prefix="J" uservalue="yes"><gates><gate name="G$1" symbol="S" x="0" y="0"/></gates>
+<devices><device name="" package="P2"><connects><connect gate="G$1" pin="1" pad="1"/><connect gate="G$1" pin="2" pad="2"/></connects><technologies><technology name=""/></technologies></device></devices></deviceset>
+<deviceset name="DRV_8411" prefix="IC"><gates><gate name="G$1" symbol="S" x="0" y="0"/></gates>
+<devices><device name="" package="P2"><connects><connect gate="G$1" pin="1" pad="1"/><connect gate="G$1" pin="2" pad="2"/></connects><technologies><technology name=""/></technologies></device></devices></deviceset>
+</devicesets></library></libraries>
+<parts><part name="MOTOR" library="lib" deviceset="CONN_02" device=""/><part name="IC1" library="lib" deviceset="DRV_8411" device=""/><part name="IC2" library="lib" deviceset="DRV_8411" device="" value="spare"/></parts>
+<sheets><sheet><instances><instance part="MOTOR" gate="G$1" x="0" y="0"/><instance part="IC1" gate="G$1" x="50.8" y="0"/><instance part="IC2" gate="G$1" x="50.8" y="25.4"/></instances>
+<nets><net name="AOUT1" class="0">
+<segment><pinref part="MOTOR" gate="G$1" pin="2"/><wire x1="5.08" y1="0" x2="12.7" y2="0" width="0.1524" layer="91"/><label x="15.24" y="0" size="1.778" layer="95"/></segment>
+<segment><pinref part="IC1" gate="G$1" pin="1"/><wire x1="45.72" y1="0" x2="38.1" y2="0" width="0.1524" layer="91"/><label x="33.02" y="0" size="1.778" layer="95"/></segment>
+</net></nets></sheet></sheets></schematic></drawing></eagle>`;
+
+describe("a schematic drawn the way Fusion Electronics draws one", () => {
+  const got = importEagleProject([{ name: "stubs.sch", text: STUBS }], { licence: "Not stated" });
+
+  it("puts a name written past the end of a wire on that end, so the pieces join and nothing hangs", () => {
+    expect(got.notes).toEqual([]);
+    expect(got.design.sheets[0]!.labels.map((l) => `${l.name} ${l.x},${l.y}`)).toEqual(["AOUT1 12.7,0", "AOUT1 38.1,0"]);
+    const nl = netlist(got.design);
+    expect(nl.nets.find((n) => n.name === "AOUT1")!.pins.map((p) => `${p.ref}:${p.pin}`)).toEqual(["IC1:1", "MOTOR:2"]);
+    expect(nl.nets.flatMap((n) => n.openEnds)).toEqual([]);
+  });
+
+  it("gives a part the value Eagle shows: its own, else its device's name, else none where the value is yours to give", () => {
+    expect(got.design.parts.map((p) => `${p.ref}=${p.value}`)).toEqual(["MOTOR=", "IC1=DRV_8411", "IC2=spare"]);
   });
 });

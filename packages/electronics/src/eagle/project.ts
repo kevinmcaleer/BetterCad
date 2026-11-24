@@ -469,7 +469,8 @@ export function importEagleProject(files: ImportFile[], o: ProjectOptions = {}):
       id: eid("pt"),
       def: comp.key,
       ref: comp.supply ? `#PWR${power}` : name,
-      value: p.attrs.value ?? on?.value ?? comp.def.value ?? "",
+      // Eagle shows a part with no value of its own as its device's name, unless the value is the person's to give.
+      value: p.attrs.value ?? (on?.value || undefined) ?? (comp.userValue ? "" : comp.shown),
       pkg: 0,
       ...(Object.keys(supplier).length ? { supplier } : {}),
       ...(on && !on.fitted ? { fitted: false } : {}),
@@ -571,13 +572,34 @@ export function importEagleProject(files: ImportFile[], o: ProjectOptions = {}):
       }
       // A net in more than one piece is one net because its pieces share a name; so is a net somebody named.
       if (supplied || (segs.length === 1 && /^N\$\d+$/.test(name))) continue;
-      const drawn = kids(el, "label")
-        .map((l) => ({ at: [r4(numOf(l, "x")), r4(numOf(l, "y"))] as P2, rot: rotOf(l.attrs.rot).deg }))
-        .find((l) => wires.some(([a, b]) => onSegment(l.at, a, b)));
-      const where = drawn?.at ?? wires[0]?.[0] ?? ends[0];
-      if (!where) continue;
-      const rot = (Math.round((drawn?.rot ?? 0) / 90) * 90) % 360;
-      sheet.labels.push({ id: eid("lb"), name, x: where[0], y: where[1], ...(rot ? { rot: rot as Rot } : {}) });
+      const labels = kids(el, "label").map((l) => ({ at: [r4(numOf(l, "x")), r4(numOf(l, "y"))] as P2, rot: rotOf(l.attrs.rot).deg }));
+      const put = (at: P2, deg = 0) => {
+        const rot = (Math.round(deg / 90) * 90) % 360;
+        sheet.labels.push({ id: eid("lb"), name, x: at[0], y: at[1], ...(rot ? { rot: rot as Rot } : {}) });
+      };
+      const drawn = labels.filter((l) => wires.some(([a, b]) => onSegment(l.at, a, b)));
+      for (const l of drawn) put(l.at, l.rot);
+      // Eagle and Fusion often write a net's name just past the end of a short wire, joined to nothing. Ours has to
+      // sit on the wire, so each of those goes to the nearest end of the piece that stops in mid air.
+      const same = (a: P2, b: P2) => a[0] === b[0] && a[1] === b[1];
+      const all = wires.flatMap(([a, b]) => [a, b]);
+      const open = all.filter(
+        (e) =>
+          all.filter((x) => same(x, e)).length === 1 &&
+          !ends.some((x) => same(x, e)) &&
+          !wires.some(([a, b]) => !same(a, e) && !same(b, e) && onSegment(e, a, b)),
+      );
+      let placed = drawn.length;
+      for (const l of labels.filter((x) => !drawn.includes(x))) {
+        const free = open.filter((e) => !sheet.labels.some((x) => x.name === name && x.x === e[0] && x.y === e[1]));
+        const near = free.sort((a, b) => Math.hypot(a[0] - l.at[0], a[1] - l.at[1]) - Math.hypot(b[0] - l.at[0], b[1] - l.at[1]))[0];
+        if (!near) continue;
+        put(near);
+        placed += 1;
+      }
+      if (placed) continue;
+      const where = open[0] ?? wires[0]?.[0] ?? ends[0];
+      if (where) put(where);
     }
     if (pins.length) theirs.push({ name, pins });
   }

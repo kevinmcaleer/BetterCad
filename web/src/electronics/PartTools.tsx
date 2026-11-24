@@ -1,11 +1,13 @@
-import { useId, useMemo, useState } from "react";
+import { Suspense, lazy, useId, useMemo, useState } from "react";
 import { PIN_TYPES, type ComponentDef, type FootprintDef } from "@bettercad/electronics";
 import { importEagleLibraries } from "@bettercad/electronics/eagle/import";
 import { importKicad, type Imported } from "@bettercad/electronics/kicad";
 import { Button, Dialog, NumberField, cx } from "@bettercad/ui";
 import { textOf } from "./fileText";
 import { PartPreview } from "./PartPreview";
-import { FAMILIES, LICENCES, build, draftFrom, newDraft, type BodyKind, type Draft, type Family, type Sizes } from "./partDraft";
+import { FAMILIES, LICENCES, build, draftFrom, newDraft, tableOf, type BodyKind, type Draft, type Family, type Sizes } from "./partDraft";
+
+const SymbolEditor = lazy(() => import("./SymbolEditor"));
 
 type Tab = "details" | "symbol" | "footprint" | "body";
 const TABS: { id: Tab; label: string }[] = [
@@ -136,31 +138,51 @@ export function PartEditor({ start, shelves, onSave, onCancel }: PartEditorProps
           )}
           {tab === "symbol" && (
             <>
-              <label className="bc-field-label" htmlFor={`${ids}pins`}>
-                Pins
+              <label className="bc-field-label" htmlFor={`${ids}drawn`}>
+                The symbol is
               </label>
-              <textarea
-                id={`${ids}pins`}
-                className="bc-text bc-ec-pins"
-                rows={10}
-                spellCheck={false}
-                value={d.pins}
-                onChange={(e) => set({ pins: e.target.value })}
-              />
-              <p className="bc-note">
-                One pin a line: number, name, what it does, and a side if you want one. Paste from a spreadsheet or a datasheet. It understands{" "}
-                {PIN_TYPES.filter((t) => t.id !== "unspecified")
-                  .map((t) => t.label.toLowerCase())
-                  .join(", ")}
-                , and left, right, top, bottom.
-              </p>
-              {d.base && (
-                <label className="bc-check">
-                  <input type="checkbox" checked={d.box} onChange={(e) => set({ box: e.target.checked })} />
-                  Draw as a box from the pin list
-                </label>
+              <select
+                id={`${ids}drawn`}
+                className="bc-select"
+                value={d.drawn ? "hand" : d.base && !d.box ? "keep" : "box"}
+                onChange={(e) => {
+                  const how = e.target.value;
+                  // Drawing by hand starts from what is on show, so nothing has to be drawn twice.
+                  if (how === "hand") set({ drawn: built.symbol });
+                  else setD((now) => ({ ...now, drawn: undefined, box: how === "box", ...(now.drawn ? { pins: tableOf(now.drawn) } : {}) }));
+                }}
+              >
+                <option value="box">A box from a pin list</option>
+                {d.base && <option value="keep">Kept as it came</option>}
+                <option value="hand">Drawn by hand</option>
+              </select>
+              {d.drawn ? (
+                <Suspense fallback={<p className="bc-note">Loading the drawing tools…</p>}>
+                  <SymbolEditor symbol={d.drawn} onChange={(drawn) => set({ drawn })} />
+                </Suspense>
+              ) : (
+                <>
+                  <label className="bc-field-label" htmlFor={`${ids}pins`}>
+                    Pins
+                  </label>
+                  <textarea
+                    id={`${ids}pins`}
+                    className="bc-text bc-ec-pins"
+                    rows={10}
+                    spellCheck={false}
+                    value={d.pins}
+                    onChange={(e) => set({ pins: e.target.value })}
+                  />
+                  <p className="bc-note">
+                    One pin a line: number, name, what it does, and a side if you want one. Paste from a spreadsheet or a datasheet. It understands{" "}
+                    {PIN_TYPES.filter((t) => t.id !== "unspecified")
+                      .map((t) => t.label.toLowerCase())
+                      .join(", ")}
+                    , and left, right, top, bottom.
+                  </p>
+                  {d.base && !d.box && <p className="bc-note">The drawing is kept as it came. You can rename pins and change what they do.</p>}
+                </>
               )}
-              {d.base && !d.box && <p className="bc-note">The drawing is kept as it came. You can rename pins and change what they do.</p>}
             </>
           )}
           {tab === "footprint" && (

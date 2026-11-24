@@ -104,6 +104,73 @@ test.describe("on a wide screen", () => {
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("bettercad.electronics.library") ?? "{}").pack?.parts?.[0]?.name)).toBe("Level shifter");
   });
 
+  test("draw a symbol by hand: shapes, pins, a second unit, undo and redo", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await tools(page)
+      .getByRole("button", { name: /^Components/ })
+      .click();
+    const card = page.getByRole("group", { name: "Components options" });
+    await card.getByRole("button", { name: "New part" }).click();
+    const editor = page.getByRole("dialog", { name: "New part" });
+    await editor.getByLabel("Name").fill("Two gates");
+    await editor.getByRole("tab", { name: "Symbol" }).click();
+    // Drawing by hand starts from the box the pin list made.
+    await editor.getByLabel("The symbol is").selectOption({ label: "Drawn by hand" });
+    const drawing = editor.getByRole("img", { name: /^Symbol drawing/ });
+    await expect(drawing).toHaveAccessibleName("Symbol drawing: 4 pins, 1 shape");
+    const at = async (x: number, y: number): Promise<[number, number]> => {
+      const [scale, ox, oy] = (await drawing.getAttribute("data-view"))!.split(" ").map(Number) as [number, number, number];
+      const box = (await drawing.boundingBox())!;
+      return [box.x + ox + x * scale, box.y + oy - y * scale];
+    };
+    const bar = editor.getByRole("toolbar", { name: "Symbol tools" });
+
+    // A second unit with its own outline and a pin.
+    await editor.getByLabel("Units").fill("2");
+    await editor.getByLabel("Units").press("Enter");
+    await editor.getByLabel("Showing").selectOption({ label: "Unit B" });
+    await expect(drawing).toHaveAccessibleName("Symbol drawing, unit B: 0 pins, 0 shapes");
+    await editor.getByRole("button", { name: "Copy unit A's drawing here" }).click();
+    await expect(drawing).toHaveAccessibleName("Symbol drawing, unit B: 0 pins, 1 shape");
+    await bar.getByRole("button", { name: "Circle" }).click();
+    await page.mouse.click(...(await at(0, 0)));
+    await page.mouse.click(...(await at(1.27, 0)));
+    await expect(drawing).toHaveAccessibleName("Symbol drawing, unit B: 0 pins, 2 shapes");
+    await bar.getByRole("button", { name: "Pin", exact: true }).click();
+    await page.mouse.click(...(await at(-7.62, 0)));
+    await expect(drawing).toHaveAccessibleName("Symbol drawing, unit B: 1 pin, 2 shapes");
+    await expect(editor.getByLabel("Number")).toHaveValue("5");
+    await editor.getByLabel("What it does").selectOption({ label: "Output" });
+    await editor.getByLabel("Side").selectOption({ label: "Right" });
+
+    // Undo takes the last change back, and redo returns it. Esc puts the tool down before it closes the editor.
+    await editor.getByRole("button", { name: "Undo" }).click();
+    await editor.getByRole("button", { name: "Undo" }).click();
+    await editor.getByRole("button", { name: "Undo" }).click();
+    await expect(drawing).toHaveAccessibleName("Symbol drawing, unit B: 0 pins, 2 shapes");
+    await editor.getByRole("button", { name: "Redo" }).click();
+    await expect(drawing).toHaveAccessibleName("Symbol drawing, unit B: 1 pin, 2 shapes");
+    await editor.getByRole("button", { name: "Redo" }).click();
+    await editor.getByRole("button", { name: "Redo" }).click();
+    await expect(editor.getByRole("button", { name: "Redo" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await expect(bar.getByRole("button", { name: "Select" })).toHaveAttribute("aria-pressed", "true");
+    await axe(page);
+
+    await editor.getByRole("tab", { name: "Footprint" }).click();
+    await editor.getByLabel("Package").selectOption({ label: "DIP, through hole" });
+    await expect(editor.getByRole("list", { name: "Checks" })).toHaveText("Every pin has a pad. Ready to save.");
+    await editor.getByRole("button", { name: "Save to your parts" }).click();
+    await expect(card.getByText("Two gates is in your parts.")).toBeVisible();
+    // The part keeps both units, and the second unit's pin is the one drawn here.
+    const saved = await page.evaluate(() => localStorage.getItem("bettercad.electronics.library") ?? "");
+    expect(saved).toContain('"units":2');
+    expect(saved).toMatch(/"number":"5","name":"5","type":"output"/);
+  });
+
   test("check the rules, copy a circuit, edit the parts in a table and export the schematic", async ({ page }) => {
     await page.addInitScript(() => delete (window as unknown as Record<string, unknown>).showSaveFilePicker);
     await page.goto("/");
