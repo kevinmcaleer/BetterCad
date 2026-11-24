@@ -24,6 +24,8 @@ export interface Job {
   /** 0 to 1; 0 while it waits its turn. */
   progress: number;
   running: boolean;
+  /** The running render as it clears: a small picture, refreshed about once a second. */
+  preview?: string;
 }
 
 export interface JobsState {
@@ -39,7 +41,39 @@ export type RenderFn = (
   progress: (f: number) => void,
   wait: () => Promise<unknown>,
   signal: AbortSignal,
+  /** The picture so far, small, now and then while it renders. */
+  preview?: (b: Blob) => void,
 ) => Promise<Blob>;
+
+/** How often a running render sends the strip its picture so far. */
+export const PREVIEW_MS = 1000;
+/** A preview's width: the strip's tiles are 128 px wide, twice that for sharp screens. */
+const PREVIEW_W = 256;
+
+/**
+ * Copies the canvas into a small JPEG, at once: a WebGL canvas keeps its picture only until the next task, so this
+ * runs straight after a sample is drawn.
+ */
+export function previewOf(canvas: HTMLCanvasElement, send: (b: Blob) => void): void {
+  const c = document.createElement("canvas");
+  c.width = PREVIEW_W;
+  c.height = Math.max(1, Math.round((PREVIEW_W * canvas.height) / Math.max(1, canvas.width)));
+  const g = c.getContext("2d");
+  if (!g) return;
+  g.drawImage(canvas, 0, 0, c.width, c.height);
+  c.toBlob((b) => b && send(b), "image/jpeg", 0.8);
+}
+
+/** Calls `fn` at most every `ms`, starting with the first call. */
+function every(ms: number, fn: () => void): () => void {
+  let last = -Infinity;
+  return () => {
+    const now = performance.now();
+    if (now - last < ms) return;
+    last = now;
+    fn();
+  };
+}
 
 /** Where the account keeps the pictures, when the model is saved there. */
 export interface CloudPictures {
@@ -81,25 +115,35 @@ const testMax = () => (typeof window === "undefined" ? undefined : (window as un
  */
 const testFake = () => typeof window !== "undefined" && !!(window as unknown as { __bcFakeRenderJobs?: boolean }).__bcFakeRenderJobs;
 
-async function fakeRender(shot: RenderShot, progress: (f: number) => void, wait: () => Promise<unknown>, signal: AbortSignal): Promise<Blob> {
+async function fakeRender(
+  shot: RenderShot,
+  progress: (f: number) => void,
+  wait: () => Promise<unknown>,
+  signal: AbortSignal,
+  preview?: (b: Blob) => void,
+): Promise<Blob> {
+  const c = document.createElement("canvas");
+  c.width = shot.width / 10;
+  c.height = shot.height / 10;
+  const g = c.getContext("2d")!;
+  const tick = every(PREVIEW_MS, () => preview && previewOf(c, preview));
   // Timers rather than frames: a busy software GPU can hold frames back for seconds.
   await wait();
   const steps = 30;
   for (let i = 1; i <= steps; i++) {
     if (signal.aborted) throw new Error("Stopped");
     await new Promise((r) => setTimeout(r, 100));
+    // Fills in from the left, so a preview part way shows a part-drawn picture.
+    g.fillRect(0, 0, (c.width * i) / steps, c.height);
     progress(i / steps);
+    tick();
   }
-  const c = document.createElement("canvas");
-  c.width = shot.width / 10;
-  c.height = shot.height / 10;
-  c.getContext("2d")!.fillRect(0, 0, c.width, c.height);
   return await new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error("No image"))), "image/jpeg"));
 }
 
 /** The path tracer, in its own canvas, for one shot. Loaded with the jobs, apart from the shell. */
-export const pathTrace: RenderFn = async (shot, bodies, progress, wait, signal) => {
-  if (testFake()) return fakeRender(shot, progress, wait, signal);
+export const pathTrace: RenderFn = async (shot, bodies, progress, wait, signal, preview) => {
+  if (testFake()) return fakeRender(shot, progress, wait, signal, preview);
   const { PathRender } = await import("./pathRender");
   const { FOCUSES } = await import("./session");
   const canvas = document.createElement("canvas");
@@ -114,7 +158,19 @@ export const pathTrace: RenderFn = async (shot, bodies, progress, wait, signal) 
     pr.setCamera(shot.camera);
     const samples = testMax() ?? samplesFor(shot.quality);
     pr.maxSamples = samples;
-    const png = await pr.snapshot(shot.width, shot.height, samples, progress, signal, wait);
+    const tick = every(PREVIEW_MS, () => preview && previewOf(canvas, preview));
+    const png = await pr.snapshot(
+      shot.width,
+      shot.height,
+      samples,
+      (f) => {
+        progress(f);
+        // Straight after the sample, while the canvas still holds it.
+        tick();
+      },
+      signal,
+      wait,
+    );
     return await toJpeg(png);
   } finally {
     pr.dispose();
@@ -252,9 +308,23 @@ export class RenderJobs {
     return (await this.deps.store.get(id).catch(() => undefined))?.blob ?? null;
   }
 
+  /** The running job's latest preview, an object URL. */
+  private preview: string | null = null;
+  private setPreview(b: Blob | null) {
+    if (this.preview) URL.revokeObjectURL(this.preview);
+    this.preview = b ? URL.createObjectURL(b) : null;
+  }
+
   private publish(progress = this.running ? (this.state.jobs.find((j) => j.running)?.progress ?? 0) : 0) {
     const jobs: Job[] = [];
-    if (this.running) jobs.push({ shot: this.running.job.shot.id, name: this.running.job.shot.name, progress, running: true });
+    if (this.running)
+      jobs.push({
+        shot: this.running.job.shot.id,
+        name: this.running.job.shot.name,
+        progress,
+        running: true,
+        ...(this.preview ? { preview: this.preview } : {}),
+      });
     for (const q of this.queue) jobs.push({ shot: q.shot.id, name: q.shot.name, progress: 0, running: false });
     this.set({ jobs });
   }
@@ -277,12 +347,24 @@ export class RenderJobs {
     this.running = { job, stop };
     this.publish(0);
     try {
-      const blob = await this.render(job.shot, job.bodies, (f) => this.publish(Math.min(1, f)), this.wait, stop.signal);
+      const blob = await this.render(
+        job.shot,
+        job.bodies,
+        (f) => this.publish(Math.min(1, f)),
+        this.wait,
+        stop.signal,
+        (b) => {
+          if (stop.signal.aborted || this.running?.job !== job) return;
+          this.setPreview(b);
+          this.publish();
+        },
+      );
       if (!stop.signal.aborted && !this.disposed) await this.keep(job.shot.id, blob, job.key, job.cloud);
     } catch {
       // Stopped, or the browser couldn't render: the old picture stays.
     } finally {
       this.running = null;
+      this.setPreview(null);
       this.publish();
       void this.next();
     }
@@ -292,6 +374,7 @@ export class RenderJobs {
     this.disposed = true;
     this.queue = [];
     this.running?.stop.abort();
+    this.setPreview(null);
     for (const p of Object.values(this.state.pictures)) URL.revokeObjectURL(p.url);
     if (typeof window !== "undefined") {
       window.removeEventListener("pointerdown", this.press, true);

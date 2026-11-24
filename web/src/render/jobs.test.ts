@@ -109,6 +109,29 @@ describe("render jobs", () => {
     jobs.dispose();
   });
 
+  it("shows the running render's picture so far, and drops it when the render ends", async () => {
+    let send: ((b: Blob) => void) | undefined;
+    let finish = () => {};
+    const render: RenderFn = (_s, _b, progress, _w, _sig, preview) =>
+      new Promise((resolve) => {
+        progress(0.3);
+        send = preview;
+        finish = () => resolve(new Blob(["done"]));
+      });
+    const jobs = new RenderJobs({ store: memoryKV(), render });
+    jobs.enqueue(shot("a"), "k", bodies);
+    await tick();
+    expect(jobs.get().jobs[0].preview).toBeUndefined();
+    send!(new Blob(["half"]));
+    expect(jobs.get().jobs[0]).toMatchObject({ shot: "a", running: true, progress: 0.3, preview: "blob:x" });
+    finish();
+    await tick();
+    await tick();
+    expect(jobs.get().jobs).toEqual([]);
+    expect(jobs.get().pictures.a.key).toBe("k");
+    jobs.dispose();
+  });
+
   it("keys a picture by the model and the shot, not its name or auto switch", () => {
     const doc = { features: [], looks: {} };
     const k = shotKey(doc, shot("a"));

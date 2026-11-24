@@ -91,6 +91,26 @@ describe("RenderStrip", () => {
     expect(screen.queryByRole("checkbox", { name: "Update when I save" })).toBeNull();
     jobs.dispose();
   });
+
+  it("shows a running render's picture so far on its tile", async () => {
+    let send: ((b: Blob) => void) | undefined;
+    const jobs = new RenderJobs({
+      store: memoryKV(),
+      render: (_s, _b, progress, _w, _sig, preview) => {
+        progress(0.5);
+        send = preview;
+        return new Promise(() => {});
+      },
+    });
+    jobs.enqueue(shot("a", "Front"), "k", [{} as RenderBody]);
+    await tick();
+    strip(jobs, [shot("a", "Front")]);
+    const tile = screen.getByRole("button", { name: "Front, rendering, 50%" });
+    expect(tile.querySelector("img[data-preview]")).toBeNull();
+    act(() => send!(new Blob(["x"])));
+    expect(tile.querySelector("img[data-preview]")).not.toBeNull();
+    jobs.dispose();
+  });
 });
 
 describe("RenderWheel", () => {
