@@ -123,20 +123,52 @@ export interface AdminModel {
   modified: string;
   deleted_at: string | null;
   shared: boolean;
+  /** The project it sits in, directly or inside one of the project's folders. */
+  project_id: string | null;
   thumbnail: string | null;
+}
+
+/** A project someone has made, with how much is in it. */
+export interface AdminProject {
+  id: string;
+  name: string;
+  created: string;
+  modified: string;
+  deleted_at: string | null;
+  /** Models in it, not counting the bin. */
+  models: number;
+  size: number;
+  cover: string | null;
+  /** The cover, or else the newest picture of a model inside. */
+  thumbnail: string | null;
+}
+
+/** A spell of use with no gap of 30 minutes or more. */
+export interface AdminVisit {
+  started: string;
+  ended: string;
 }
 
 /** Someone who has signed in to BetterCad, with the models they have saved. */
 export interface AdminUser {
   id: number;
   username: string;
+  /** What kevsrobots.com last said, or null before it was recorded. */
+  email: string | null;
   joined: string;
+  /** The moment they last used BetterCad, to within 5 minutes, or null before it was recorded. */
+  last_active: string | null;
+  /** Their latest visits, newest first. */
+  visits: AdminVisit[];
+  /** Visits started in the last 30 days. */
+  visits_month: number;
   /** The day they last used BetterCad ("2026-11-09"), or null before it was recorded. */
   last_seen: string | null;
   /** An account from before kevsrobots.com sign-in that nobody has claimed yet. */
   set_aside: boolean;
   last_saved: string | null;
   size: number;
+  projects: AdminProject[];
   models: AdminModel[];
 }
 

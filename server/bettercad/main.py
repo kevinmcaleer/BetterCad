@@ -116,6 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"ok": True, "version": version}
 
     app.state.admins = admin.admin_emails(settings)
+    app.state.admin_users = admin.admin_users(settings)
     auth.install(app, settings)
     app.include_router(models.router(settings))
     app.include_router(places.router(settings))

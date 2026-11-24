@@ -54,3 +54,60 @@ def test_last_seen_is_written_once_a_day(make_client):
         db.commit()
         client.get("/api/account")
         assert db.execute("SELECT last_seen FROM accounts").fetchone()[0] != "2020-01-01"
+
+
+def test_admins_see_projects_with_sizes_and_pictures(make_client):
+    from test_places import PNG, folder, project
+
+    with make_client(admin_emails="kev@example.com") as client:
+        sign_up(client, email="ada@example.com", name="ada")
+        rover = project(client, "Rover")
+        parts = folder(client, "Parts", project_id=rover["id"])
+        client.post("/api/models", json={"name": "Wheel", "bcad": BCAD, "folder_id": parts["id"]})
+        client.post("/api/models", json={"name": "Chassis", "bcad": BCAD, "project_id": rover["id"]})
+        save(client, "Loose bolt")
+        bare = project(client, "Empty")
+        client.patch(f"/api/projects/{bare['id']}", json={"cover": PNG})
+
+        client.cookies.clear()
+        sign_up(client)
+        ada = next(u for u in client.get("/api/admin/users").json()["users"] if u["username"] == "ada")
+        assert ada["email"] == "ada@example.com"
+        by_name = {p["name"]: p for p in ada["projects"]}
+        assert by_name["Rover"]["models"] == 2
+        assert by_name["Rover"]["size"] == sum(m["size"] for m in ada["models"] if m["project_id"] == rover["id"]) > 0
+        # No cover: the newest model picture inside stands in.
+        assert by_name["Rover"]["thumbnail"].startswith("/api/admin/models/")
+        assert by_name["Empty"]["models"] == 0 and by_name["Empty"]["size"] == 0
+        cover = client.get(by_name["Empty"]["thumbnail"])
+        assert cover.status_code == 200 and cover.headers["content-type"] == "image/png"
+        assert next(m for m in ada["models"] if m["name"] == "Loose bolt")["project_id"] is None
+
+
+def test_sign_ins_are_recorded_as_visits(make_client):
+    with make_client(admin_emails="kev@example.com") as client:
+        sign_up(client)
+        db: sqlite3.Connection = client.app.state.db
+        client.get("/api/account")
+        assert db.execute("SELECT COUNT(*) FROM visits").fetchone()[0] == 1
+        # 10 minutes later the visit runs on; an hour later a new one starts.
+        db.execute("UPDATE accounts SET last_active = datetime('now', '-10 minutes')")
+        db.commit()
+        client.get("/api/account")
+        assert db.execute("SELECT COUNT(*) FROM visits").fetchone()[0] == 1
+        db.execute("UPDATE accounts SET last_active = datetime('now', '-1 hour')")
+        db.execute("UPDATE visits SET started = datetime('now', '-2 hours')")
+        db.commit()
+        client.get("/api/account")
+        kev = client.get("/api/admin/users").json()["users"][0]
+        assert len(kev["visits"]) == 2 and kev["visits_month"] == 2
+        assert kev["visits"][0]["started"] > kev["visits"][1]["started"]
+        assert kev["last_active"]
+
+
+def test_admin_users_by_username(make_client):
+    with make_client(admin_users="kev") as client:
+        assert sign_up(client)["admin"] is True
+        assert client.get("/api/admin/users").status_code == 200
+    with make_client(admin_users="kev") as client:
+        assert sign_up(client, email="ada@example.com", name="ada")["admin"] is False

@@ -40,6 +40,13 @@ UNREACHABLE = "kevsrobots.com sign-in can't be reached just now. Try again in a 
 Identify = Callable[[str], dict | None]
 
 
+#: Minutes without a signed-in request that end a visit, and how often a busy account's "last active" moves on.
+VISIT_GAP = 30
+ACTIVE_EVERY = 5
+
+NOW = "strftime('%Y-%m-%d %H:%M:%f', 'now')"
+
+
 @dataclass
 class User:
     id: int
@@ -119,15 +126,32 @@ def current_user(request: Request) -> User:
     if who is None:
         raise HTTPException(401, "Sign in to do that.")
     db = conn(request)
-    acct = db.execute("SELECT name, theme, last_seen = date('now') AS seen FROM accounts WHERE id = ?", (who["id"],)).fetchone()
-    if acct is None or acct["name"] != who["username"] or not acct["seen"]:
-        # New, renamed on kevsrobots.com, or the first visit today (the admin console's "last seen"): one write a day.
+    acct = db.execute(
+        "SELECT name, email, theme, last_seen = date('now') AS seen,"
+        " (julianday('now') - julianday(last_active)) * 1440 AS idle FROM accounts WHERE id = ?",
+        (who["id"],),
+    ).fetchone()
+    email = who.get("email")
+    idle = acct["idle"] if acct else None
+    changed = acct is None or acct["name"] != who["username"] or acct["email"] != email or not acct["seen"]
+    if changed or idle is None or idle >= ACTIVE_EVERY:
+        # New, renamed on kevsrobots.com, or back after a few minutes: the admin console's sign-in history. A gap of
+        # VISIT_GAP minutes or more starts a new visit; otherwise the current one runs on. At most one write per
+        # ACTIVE_EVERY minutes for a busy account.
         with db:
             db.execute(
-                "INSERT INTO accounts (id, name, last_seen) VALUES (?, ?, date('now'))"
-                " ON CONFLICT (id) DO UPDATE SET name = excluded.name, last_seen = excluded.last_seen",
-                (who["id"], who["username"]),
+                f"INSERT INTO accounts (id, name, email, last_seen, last_active) VALUES (?, ?, ?, date('now'), {NOW})"
+                " ON CONFLICT (id) DO UPDATE SET name = excluded.name, email = excluded.email,"
+                " last_seen = excluded.last_seen, last_active = excluded.last_active",
+                (who["id"], who["username"], email),
             )
+            if idle is None or idle >= VISIT_GAP:
+                db.execute(f"INSERT INTO visits (user_id, started, ended) VALUES (?, {NOW}, {NOW})", (who["id"],))
+            else:
+                db.execute(
+                    f"UPDATE visits SET ended = {NOW} WHERE id = (SELECT MAX(id) FROM visits WHERE user_id = ?)",
+                    (who["id"],),
+                )
     return User(who["id"], who["username"], who.get("email"), acct["theme"] if acct else None, bearer(request) or "")
 
 
@@ -157,7 +181,7 @@ def account_json(request: Request, user: User) -> dict:
         "theme": user.theme,
         "csrf": csrf_for(request, user.token),
         # Shows the admin console in the account menu; the server checks again on every admin call.
-        "admin": (user.email or "").lower() in request.app.state.admins,
+        "admin": is_admin(request, user),
     }
 
 
@@ -236,3 +260,9 @@ def install(app: FastAPI, settings: Settings) -> None:
         return {"ok": True}
 
     app.include_router(acc)
+
+
+def is_admin(request: Request, user: User) -> bool:
+    """Named in ADMIN_EMAILS (or STATS_EMAILS) by email, or in ADMIN_USERS by kevsrobots.com username."""
+    state = request.app.state
+    return (user.email or "").lower() in state.admins or user.username.lower() in getattr(state, "admin_users", set())
