@@ -98,6 +98,8 @@ export interface Project {
   deleted_at: string | null;
   /** Models in it, at any depth. */
   models: number;
+  /** Bytes its models take from your space, pieces they share counted once. Missing from the bin. */
+  size?: number;
 }
 
 /** Where a model or folder lives: a folder, a project's top level, or My models when both are empty. */

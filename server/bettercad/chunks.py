@@ -190,3 +190,13 @@ MODEL_BYTES = (
     " SELECT vc.hash FROM version_chunks vc JOIN versions v ON v.id = vc.version_id WHERE v.model_id = m.id))"
     " + (SELECT COALESCE(SUM(length(v.bcad_json)), 0) FROM versions v WHERE v.model_id = m.id)"
 )
+
+#: SQL for one project's size, `p` being the projects row: what its live models take, each piece once even when
+#: several of its models or versions share it, so it is never more than the models' sizes added up.
+PROJECT_BYTES = (
+    "(SELECT COALESCE(SUM(c.stored), 0) FROM chunks c WHERE c.user_id = p.user_id AND c.hash IN ("
+    " SELECT vc.hash FROM version_chunks vc JOIN versions v ON v.id = vc.version_id JOIN models pm ON pm.id = v.model_id"
+    " WHERE pm.project_id = p.id AND pm.deleted_at IS NULL))"
+    " + (SELECT COALESCE(SUM(length(v.bcad_json)), 0) FROM versions v JOIN models pm ON pm.id = v.model_id"
+    " WHERE pm.project_id = p.id AND pm.deleted_at IS NULL)"
+)

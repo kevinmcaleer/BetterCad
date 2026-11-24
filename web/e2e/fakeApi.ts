@@ -184,6 +184,9 @@ export async function fakeApi(context: BrowserContext): Promise<FakeServer> {
       modified: now(),
       deleted_at: null,
       models: [...models.values()].filter((m) => m.project_id === p.id && !m.deleted_at).length,
+      size: [...models.values()]
+        .filter((m) => m.project_id === p.id && !m.deleted_at)
+        .reduce((n, m) => n + m.versions.reduce((k, v) => k + v.bcad.length, 0), 0),
     });
     const placeOf = (b: { folder_id?: string | null; project_id?: string | null }) => {
       const f = b.folder_id ? folders.get(b.folder_id) : undefined;
