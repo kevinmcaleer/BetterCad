@@ -148,7 +148,7 @@ test.describe("on a wide screen", () => {
     await axe(page);
     await page.keyboard.press("Escape");
 
-    // Export: an SVG whose text is text, and a netlist KiCad reads.
+    // Export: an SVG whose text is text, a netlist KiCad reads, and a whole KiCad project.
     const exported = async (format: string) => {
       await tools(page).getByRole("button", { name: "Export" }).click();
       const dialog = page.getByRole("dialog", { name: "Export schematic" });
@@ -168,6 +168,11 @@ test.describe("on a wide screen", () => {
     expect(net.text).toContain('(comp (ref "R2")\n      (value "4.7 kΩ")');
     const pdf = await exported("PDF");
     expect(pdf.text.slice(0, 5)).toBe("%PDF-");
+    // The whole design as a KiCad project: a zip that holds the schematic and the library of its parts.
+    const kicad = await exported("KiCad");
+    expect(kicad.name).toBe("Untitled model KiCad.zip");
+    expect(kicad.text.slice(0, 2)).toBe("PK");
+    for (const file of ["Untitled_model.kicad_sch", "Untitled_model.kicad_sym", "Untitled_model.kicad_pro", "CREDITS.md"]) expect(kicad.text).toContain(file);
   });
 
   test("lay out a board: place by numbers, route a track, add a hole and text, and check it", async ({ page }) => {
@@ -293,6 +298,112 @@ test.describe("on a wide screen", () => {
     await expect(timeline.getByRole("button", { name: /^Board,/ })).toHaveCount(0);
   });
 
+  test("order the board: check it, preview the files and save them for a board house", async ({ page }) => {
+    // No save dialog here: the files arrive as a download.
+    await page.addInitScript(() => {
+      delete (window as unknown as Record<string, unknown>).showSaveFilePicker;
+    });
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    await expect(page.getByRole("img", { name: /^PCB: 2 parts/ })).toBeVisible();
+
+    await tools(page)
+      .getByRole("button", { name: /^Order/ })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Order the board" });
+    await expect(dialog.getByLabel("What the order form asks")).toContainText("mm thick");
+    const checks = dialog.getByRole("list", { name: "Before you order" });
+    await expect(checks).toContainText("The outline is closed.");
+    await expect(checks).toContainText("No part number for assembly: D1, R1.");
+
+    // The preview reads the files back: nine Gerber layers, and no drill file for a board with no holes.
+    await dialog.getByRole("button", { name: "Preview the files" }).click();
+    const preview = dialog.getByRole("region", { name: "Preview of the files" });
+    await expect(preview.getByRole("img", { name: "The files to send, seen from the top: 9 of 9 layers shown" })).toBeVisible();
+    await preview.getByRole("checkbox", { name: "Top silkscreen" }).click();
+    await expect(preview.getByRole("img", { name: /8 of 9 layers shown/ })).toBeVisible();
+    await preview.getByRole("button", { name: "From the bottom" }).click();
+    await expect(preview.getByRole("img", { name: /seen from the bottom/ })).toBeVisible();
+
+    // Fill in a part number from the parts list, and the checklist follows.
+    await checks.getByRole("button", { name: "Open the parts list" }).click();
+    const parts = page.getByRole("dialog", { name: "Parts" });
+    for (const ref of ["D1", "R1"]) {
+      await parts.getByLabel(`LCSC number of ${ref}`).fill("C17414");
+      await parts.getByLabel(`LCSC number of ${ref}`).press("Enter");
+    }
+    await parts.getByRole("button", { name: "Close" }).click();
+    await expect(dialog.getByRole("list", { name: "Before you order" })).toContainText("Every part has a part number.");
+
+    // One zip for JLCPCB: the Gerber zip, the parts list and the pick and place list.
+    const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Save the files" }).click()]);
+    expect(download.suggestedFilename()).toMatch(/-jlcpcb\.zip$/);
+    await expect(dialog.getByRole("status")).toContainText("Saved");
+  });
+
+  test("open the Pico servo board sample: the board in the model, its PCB, and files ready to order", { tag: "@journey" }, async ({ page }) => {
+    test.setTimeout(90_000);
+    // The empty schematic offers it.
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("button", { name: "Open the sample board" }).click();
+    await expect(page.getByText("Opened the pico servo board sample. Its schematic and board are under Electronics.")).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("3");
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await expect(timeline.getByRole("button", { name: /^Board, 1\.6 mm thick, 8 parts/ })).toBeVisible({ timeout: 20_000 });
+    await expect(timeline.getByRole("button", { name: /problem:/ })).toHaveCount(0);
+    for (const name of [/^Board/, /^J1/, /^R1/, /^D1/]) await expect(page.getByRole("treeitem", { name }).first()).toBeVisible();
+
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "PCB", exact: true }).first().click();
+    await expect(page.getByRole("img", { name: /^PCB: 8 parts/ })).toBeVisible();
+    await tools(page)
+      .getByRole("button", { name: /^Order/ })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Order the board" });
+    const checks = dialog.getByRole("list", { name: "Before you order" });
+    await expect(checks).toContainText("The outline is closed.");
+    await expect(checks).toContainText("The board check is clean.");
+    await dialog.getByRole("button", { name: "Preview the files" }).click();
+    await expect(dialog.getByRole("region", { name: "Preview of the files" }).getByRole("img", { name: /seen from the top/ })).toBeVisible();
+  });
+
+  test("open a KiCad project: its schematic, its board, and what did not come across", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("button", { name: "Open a KiCad project" }).click();
+    const dialog = page.getByRole("dialog", { name: "Open a KiCad project" });
+    // The sample board as BetterCad writes it for KiCad, read back in.
+    const golden = "../packages/electronics/src/kicad/golden";
+    await dialog.getByLabel("Project files").setInputFiles([`${golden}/sample.kicad_sch`, `${golden}/sample.kicad_pcb`]);
+    await expect(dialog.getByRole("status")).toContainText("Found 8 parts on 1 sheet, and a board with 8 parts placed");
+    await axe(page);
+    await dialog.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: 8 parts/ })).toBeVisible();
+    // The board came with it, routed, and matches the schematic.
+    await page.keyboard.press("2");
+    await expect(page.getByRole("img", { name: /^PCB: 8 parts/ })).toBeVisible();
+    const status = page.getByRole("status", { name: "Electronics status" });
+    await expect(status).not.toContainText("left to route");
+    await expect(page.getByRole("tab", { name: "PCB" })).not.toContainText("behind");
+    // One undo takes it all away again.
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.keyboard.press("1");
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 0 parts, 0 nets" })).toBeVisible();
+  });
+
   test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
     // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
     test.setTimeout(90_000);
@@ -369,7 +480,8 @@ test.describe("on a wide screen", () => {
     const ask = page.getByRole("group", { name: "Delete parts" });
     await expect(ask.getByRole("status")).toContainText("Delete R1 from the schematic too?");
     await ask.getByRole("button", { name: "Delete" }).click();
-    await expect(page.getByRole("img", { name: /^PCB: 1 part,/ })).toBeVisible();
+    // The delete lands after the design's code answers; on a busy CI runner that has taken over five seconds.
+    await expect(page.getByRole("img", { name: /^PCB: 1 part,/ })).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("1");
     await expect(page.getByRole("img", { name: /^Schematic, .*: 1 part,/ })).toBeVisible();
     await undo.click();

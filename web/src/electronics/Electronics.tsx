@@ -32,6 +32,8 @@ const BoardView = lazy(() => import("./BoardView"));
 const ChecksCard = lazy(() => import("./Checks"));
 const PartsTable = lazy(() => import("./PartsTable"));
 const ExportSchematic = lazy(() => import("./ExportSchematic"));
+const OpenProject = lazy(() => import("./OpenProject"));
+const OrderBoard = lazy(() => import("./OrderBoard"));
 // The board's own cards: its check, its setup and the numbers of whatever is picked on it.
 const BoardChecks = lazy(() => import("./BoardChecks"));
 const BoardSetup = lazy(() => import("./BoardSetup"));
@@ -213,9 +215,20 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         group: "Sync",
         label: "Export",
         icon: "download",
-        tip: "Save the schematic as a PDF, an SVG or a netlist",
+        tip: "Save the schematic as a PDF, an SVG or a netlist, or the whole design as a KiCad project",
         on: ui.card === "export",
         run: toggle("export"),
+      },
+      {
+        id: "open",
+        group: "Sync",
+        label: "Open project",
+        short: "Open",
+        icon: "folder",
+        tip: "Open a KiCad project: its schematic and its board",
+        on: ui.card === "open",
+        disabled: readOnly,
+        run: toggle("open"),
       },
       { id: "fit", group: "View", label: "Fit", icon: "frame", key: "F", tip: "Fit the schematic in the view", run: () => eactions.current?.fit() },
     ];
@@ -318,6 +331,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       tip: "Look for shorts, tight gaps and connections left to route",
       on: ui.card === "checks",
       run: toggle("checks"),
+    },
+    {
+      id: "order",
+      group: "Board",
+      label: "Order the board",
+      short: "Order",
+      icon: "download",
+      tip: "Gerber and drill files, a parts list and a pick and place list for a board house",
+      on: ui.card === "order",
+      run: toggle("order"),
     },
     {
       id: "push",
@@ -435,6 +458,16 @@ function commands(design: () => ElectronicsDesign): Command[] {
     },
     {
       ...e,
+      id: "electronics.pcb.order",
+      label: "Order the board",
+      group: "Tools",
+      icon: "download",
+      when: pcb,
+      run: toggle("order"),
+      keywords: "gerber drill excellon bom bill of materials pick and place centroid cpl jlcpcb pcbway export manufacture fab",
+    },
+    {
+      ...e,
       id: "electronics.components",
       label: "Components",
       group: "Tools",
@@ -508,6 +541,15 @@ function commands(design: () => ElectronicsDesign): Command[] {
       when: schematic,
       run: toggle("export"),
       keywords: "pdf svg netlist kicad print",
+    },
+    {
+      ...e,
+      id: "electronics.open",
+      label: "Open a KiCad project",
+      group: "Tools",
+      icon: "folder",
+      run: () => eui.set({ view: eui.get().view ?? "schematic", card: "open" }),
+      keywords: "import kicad_sch kicad_pcb schematic board bring in",
     },
     { ...e, id: "electronics.selectAll", label: "Select all", group: "Edit", keys: ["mod+a"], run: () => eactions.current?.selectAll() },
     { ...e, id: "electronics.fit", label: "Fit in the view", group: "View", icon: "frame", keys: ["f"], run: () => eactions.current?.fit() },
@@ -635,13 +677,26 @@ export interface ElectronicsViewProps {
   /** The model has its Board step (#650), so the board stands in 3D; and how to add the step when it has not. */
   inModel?: boolean;
   onAddBoard?: () => void;
+  /** Opens the sample board (#666) as a new model. */
+  onSample?: () => void;
 }
 
 /**
  * The electronics workspace (#617, #619): the schematic or the board covers the 3D view, under the floating cards.
  * Laid out as Kev picked on 2026-11-24: switcher top centre, layers bottom right, checks strip along the bottom.
  */
-export default function ElectronicsView({ design: saved, edit, readOnly, ribbon, registry, name, sketches, inModel, onAddBoard }: ElectronicsViewProps) {
+export default function ElectronicsView({
+  design: saved,
+  edit,
+  readOnly,
+  ribbon,
+  registry,
+  name,
+  sketches,
+  inModel,
+  onAddBoard,
+  onSample,
+}: ElectronicsViewProps) {
   const ui = useEui();
   const blank = useRef(emptyDesign());
   const design = saved ?? blank.current;
@@ -704,6 +759,8 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           <p>Start with a part.</p>
           <p className="bc-note">Place parts, join their pins with wires, then push the schematic to a PCB.</p>
           <Button variant="primary" icon="chip" label="Components" shortcut="P" onClick={() => eui.set({ card: "components" })} />
+          {onSample && <Button icon="folder" label="Open the sample board" onClick={onSample} />}
+          <Button icon="folder" label="Open a KiCad project" onClick={() => eui.set({ card: "open" })} />
         </div>
       )}
 
@@ -717,6 +774,20 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           }}
         />
       )}
+      {ui.card === "open" && !readOnly && (
+        <Suspense fallback={null}>
+          <OpenProject
+            replaces={design.parts.length > 0 || !!design.board}
+            onClose={() => eui.set({ card: null })}
+            onOpen={(opened) => {
+              edit(() => opened, "Open a KiCad project");
+              eui.set({ card: null, sheet: null, selected: [], net: null, spot: null, unrouted: null });
+              // Once the new sheet is drawn, bring it all into view.
+              setTimeout(() => eactions.current?.fit(), 50);
+            }}
+          />
+        </Suspense>
+      )}
       {view === "schematic" && (
         <Suspense fallback={null}>
           {ui.card === "components" && !readOnly && <ComponentsCard onClose={() => eui.set({ card: null })} design={design} edit={edit} />}
@@ -728,6 +799,10 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
       {view === "pcb" && design.board && (
         <Suspense fallback={null}>
           {ui.card === "checks" && <BoardChecks design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: "order" })} />}
+          {ui.card === "order" && (
+            <OrderBoard design={design} name={name || "Board"} onClose={() => eui.set({ card: null })} onParts={() => eui.set({ card: "table" })} />
+          )}
           {ui.card === "board" && (
             <BoardSetup
               design={design}

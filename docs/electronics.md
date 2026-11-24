@@ -289,3 +289,141 @@ Left for later: dragging a part in the 3D view (move it in the PCB view; the mod
 board in 3D becoming a board hole, STEP models for parts (#628; parts are boxes and cylinders), the Connector
 opening and Standoffs under the board tools (#652; project the board's holes and use Mount), a board started from a
 face, and the copper in a path-traced render.
+
+## Files for a board house (#655 to #661)
+
+Everything a board house needs comes out of `packages/electronics/src/fab/`, as text and rows with no DOM, and is
+checked by reading the files back.
+
+**Gerber** (`gerber.ts`). One RS-274X file per layer with X2 attributes, in millimetres, format 4.6: top and bottom
+copper, mask, paste and silkscreen, and the outline. Every file is drawn looking down on the top of the board.
+Pads are flashed with apertures: circles, rectangles and obrounds as they are, and a macro (two bars and four
+discs, or a turned rectangle) for a rounded pad or one at an odd angle. Tracks are drawn with a round pen, and
+copper carries its net (`.N`), pads their part and pin (`.P`). The outline is drawn as closed paths with arcs kept
+as arcs. Mask openings are the pad grown by the mask margin; vias stay covered. The silkscreen has the mask
+openings taken back out of it, so ink never lands on a pad.
+
+A pour is painted the way the screen paints it, with dark and clear polarity in the same order: the area, the
+rings round its own pads out, the spokes back in, then everything it keeps clear of out, and last the islands the
+fill dropped. What lies outside the board is cleared with one area that has the board as a hole in it. The format
+has no way to clip one pour's clearing to its own area, so two pours on different nets on one side that run into
+each other cannot always be painted truly; `pourClashes` finds that case and the order card refuses to export it.
+
+**Text** (`font.ts`). Board houses are sent lines, not fonts, so silkscreen and copper text is drawn with our own
+stroke font: capitals, digits and common marks on a 4 by 6 grid, small letters as small capitals. The PCB view
+still draws text with the screen's font, so the preview is the place to see the text that will be printed.
+
+**Drill** (`drill.ts`). Excellon in millimetres, plated and bare holes in separate files, finished sizes, the same
+coordinates as the Gerbers. A slot is a routed slot (`G00`, `M15`, `G01`, `M16`). `tools` is the drill table.
+
+**Parts lists** (`parts.ts`). The bill of materials groups fitted parts whose component, value, package and part
+numbers all match. A part's own supplier numbers win over its component's, field by field. The pick and place list
+has every fitted part's middle, side and turn (anticlockwise, seen from the top), with a component's own
+corrections (`pnp`) added in the file only. Part numbers are typed or pasted in the parts table, which opens from
+the order card.
+
+**The order pack** (`pack.ts`, `houses.json`). Order the board, in the PCB view's tools, picks a board house and
+gives the Gerber and drill files in a zip of their own, then the parts list and the pick and place list as CSV or
+XLSX (`web/src/electronics/xlsx.ts`, a workbook written by hand: five small XML files in a zip). Each house is data:
+its columns and headings, which part number it needs, the pages they were read from and the date. Where a page
+names a field but not the exact heading, the house's notes say so. The card shows what an order form asks (size,
+layers, smallest track, gap and hole) and a checklist; only an open outline or clashing pours stop the export.
+Nothing is uploaded: a link opens the board house's site.
+
+**The preview** (`read.ts`, `web/src/electronics/FabPreview.tsx`). A small Gerber and Excellon reader draws the files
+that were just written, layer by layer, from the top or the bottom, with layer ticks, zoom and a two-point measure.
+It draws from the files, never from the design. It opens any Gerber zip dropped on it too; step and repeat and
+aperture blocks are not read, and it says so when a file uses them. `inkAt` asks whether a file leaves a mark at a
+point, which is how the tests check clearances, spokes and that drill hits land on copper.
+
+Left for later: a real upload to each house's quote page to confirm the headings and how bottom parts are turned
+(#660; neither house's page says), a pick and place preview showing pin 1 (#659), a realistic board picture in the
+preview, live stock and prices (#661), LCSC numbers filled in for the starter library, and panels (#662).
+
+## The sample board (#666)
+
+The Pico servo board (`packages/electronics/src/sample.ts`; Open the sample board, on an empty schematic, or `#/sample/pico-servo-board`) is a carrier
+for a Raspberry Pi Pico that drives two servos: two rows of 20 sockets, two three-pin servo headers, a two-pin 5 V
+input, a power LED with its resistor and a capacitor across the supply. It is built from the same calls the tools
+make (place a part, label a pin, push to the board, route a track, pour copper), with fixed ids so it comes out the
+same every time.
+
+It is also the main fixture: `sample.test.ts` holds it to both rules checks with nothing found, to a whole order pack
+with nothing blocking, and to goldens of its Gerber, drill, parts list and pick and place files
+(`fab/golden/sample.*`). In the model it stands on four standoffs over a printed base, so the sample shows the board
+as a step on the timeline too. The `@journey` test in `web/e2e/electronics.spec.ts` opens it, finds the board in the
+model, and takes it as far as the preview of the files.
+
+What it is not, yet: the issue asked for a motor driver, a Qwiic connector and a power switch. Those parts are not in
+the starter library, so the sample keeps to parts that are. Its order pack has been read back by our own reader and
+by nothing else: nobody has uploaded it to a board house's quote page.
+
+## Out to KiCad (#664)
+
+Export, in the schematic, has a KiCad format: the whole design as a KiCad project in a zip
+(`packages/electronics/src/kicad/export.ts`, `kicadProject`). It holds the schematic (one file a sheet), the board, a
+symbol library and a footprint library with every part the design uses, the two tables that tell KiCad where the
+libraries are, the project file with the board's rules and net classes, and `CREDITS.md`, which says where each part
+came from. The files are KiCad 7's formats, which KiCad 7, 8 and 9 open.
+
+What changes on the way out:
+
+- KiCad's schematic and board run y down, so both are turned over; parts on the bottom are flipped the way KiCad
+  flips them (top to bottom, half a turn from ours).
+- A wire that something joins in its middle is cut there and gets a dot: KiCad joins wires only at their ends.
+- With more than one sheet, the first is the root and the others hang off it as sheet boxes; labels go out as global
+  labels, so nets with one name still join between sheets.
+- A power symbol carries its net's name on its hidden pin, where KiCad 7 reads it, and as its value, where KiCad 8
+  and 9 do.
+- Pours go out as zone outlines. KiCad fills them itself (Edit, Fill all zones). Keep-outs go out as rule areas.
+- Ids are made from the design's own, so the same design always writes the same files.
+
+How it is checked: `export.test.ts` reads the libraries back with our own KiCad readers and holds the sample's
+schematic and board to goldens. `kicadCli.test.ts` goes further where KiCad is installed (`kicad-cli`, KiCad 7 or
+later; CI has none, so it is skipped there): KiCad reads the exported schematic and writes its netlist, which must
+have our nets, pin for pin and name for name; it plots the board's copper, which must lie where ours does on both
+sides; and it writes the drill files, which must have our holes. Both the sample and a design made to turn
+everything every way (`kicad/fixture.ts`: mirrored and turned symbols, a part with two units, power symbols, wires
+that join every way, two sheets, parts on both sides at odd angles) pass against KiCad 7.0.11. Nobody has opened the
+files in KiCad 8 or 9 yet, or looked at them on screen: the checks are on nets, copper and holes, not on how the
+drawing looks.
+
+## In from KiCad (#663)
+
+Open project, in the schematic's tools (and on an empty schematic, and in the command palette as "Open a KiCad
+project"), reads a KiCad project into the model: pick every `.kicad_sch`, the `.kicad_pcb` and the `.kicad_pro`
+(`web/src/electronics/OpenProject.tsx`; the reader is `packages/electronics/src/kicad/project.ts`,
+`importKicadProject`, a chunk that loads when files are first picked). The dialog says what it found and lists what
+did not come across before anything changes. Opening replaces the model's schematic and board in one undo step, and
+the Board step is added to the model so the board stands in 3D.
+
+What it reads:
+
+- The schematic, sheet by sheet. A hierarchy is flattened: each sheet box becomes a sheet of ours, the nets inside it
+  take the sheet's name as a prefix, and its sheet pins become labels, so what was joined through the box is still
+  joined. A sheet used twice comes in twice. Bus vectors (`D[0..7]`) are followed through sheet pins by name.
+- Symbols come from the schematic's own copy of each (`lib_symbols`), so no KiCad library is needed. Units of one
+  reference are one part. Power symbols stay power symbols; a hidden supply pin gets a label with its name, which is
+  the net KiCad joins it to.
+- The board: the outline from Edge.Cuts (lines and arcs joined into loops, the biggest is the outline, the rest are
+  cut-outs), each footprint as it stands on the board (so a part takes its footprint from there, not from a library),
+  tracks, vias, zones as pours, rule areas as keep-outs, text and drawings on the silkscreen, and mounting holes.
+- The rules and net classes from the project file.
+- A schematic on its own opens with no board. A part with no footprint on the board takes the starter library's
+  footprint of the same name if there is one, and is listed if there is not.
+
+What does not come across, each listed in the dialog when a project has it: copper on inside layers (the top and
+bottom still come in), blind and buried vias, buses as drawings (their wires still join by name), group buses
+between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions, drawings on fabrication and
+user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
+flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
+middle of its hole comes in with the hole in the right place and the copper centred on it, so the board check can
+report a clearance there that KiCad does not. A board without its schematic does not open: the nets of a design here
+come from its schematic. A local label and a global label with one name are one net here; in KiCad they can be two.
+
+How it is checked: `kicad/project.test.ts` writes the sample and the fixture that turns everything every way out as
+KiCad projects and reads them back: the same parts, nets, pads and board check, and nothing for Push to PCB to do.
+`kicad/demos.test.ts` runs where KiCad and its demo projects are installed (CI has neither, so it is skipped there):
+all 11 demos' schematics come in with exactly the nets `kicad-cli` finds, hierarchy and buses included, and the nine
+2-layer demo boards come in with no shorts, nothing unrouted, nothing off the board and nothing behind the schematic.
+That is against KiCad 7.0.11 and its demo files; projects saved by KiCad 8 and 9 have not been tried yet.

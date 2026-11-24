@@ -15,6 +15,7 @@ export interface BoardPad {
   at: P2;
   /** The pad's turn on the board, degrees. */
   angle: number;
+  /** The side its copper is on, for a surface pad: its part's, or the other for a pad on the part's back. */
   side: Side;
 }
 
@@ -43,7 +44,7 @@ export function boardPads(d: ElectronicsDesign, nl: Netlist = netlist(d)): Board
         net: netOfPad.get(pad.number) ?? "",
         at: placeOnBoard([pad.x, pad.y], at),
         angle: at.rot + flip * (pad.angle ?? 0),
-        side: at.side,
+        side: pad.back && pad.kind === "smd" ? (at.side === "top" ? "bottom" : "top") : at.side,
       });
     }
   }

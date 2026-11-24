@@ -9,6 +9,8 @@
     ".": "./src/index.ts",
     "./kicad": "./src/kicad/index.ts",
     "./kicad/netlist": "./src/kicad/netlist.ts",
+    "./kicad/export": "./src/kicad/export.ts",
+    "./kicad/project": "./src/kicad/project.ts",
     "./tools": "./src/library/tools.ts",
     "./erc": "./src/erc.ts",
     "./replace": "./src/replace.ts",
@@ -20,6 +22,9 @@
     "./pcb/state": "./src/pcb/state.ts",
     "./pcb/rules": "./src/pcb/rules.ts",
     "./drc": "./src/pcb/drc.ts",
+    "./sample": "./src/sample.ts",
+    "./fab/pack": "./src/fab/pack.ts",
+    "./fab/read": "./src/fab/read.ts",
     "./library/starter.json": "./library/starter.json"
   },
   "scripts": {

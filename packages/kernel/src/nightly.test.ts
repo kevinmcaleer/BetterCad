@@ -8,6 +8,7 @@ import { Exporter } from "./occt/exporter";
 import { DEFLECTION, readStep } from "./occt/export";
 import { measure } from "./occt/shapes";
 import { BcadError, loadBcad } from "./bcad";
+import { build } from "./document";
 import { meshVolume, readStl } from "./export/mesh";
 
 /**
@@ -60,7 +61,14 @@ describe.skipIf(!process.env.NIGHTLY)("nightly: every model the project keeps", 
       const r = builder.build(doc, doc.features.length, "fine");
       expect(r.failed, file).toEqual([]);
       const got = r.bodies.map((b) => ({ id: b.id, volume: round(b.measure.volume), area: round(b.measure.area), faces: b.measure.faces }));
-      const total = r.bodies.reduce((a, b) => a + b.measure.volume, 0);
+      // Reference bodies (a circuit board and its parts) are never exported, so they are left out of what comes back.
+      const kept = new Set(
+        build(doc, doc.features.length)
+          .parts.filter((p) => !p.reference)
+          .map((p) => p.id),
+      );
+      const sent = r.bodies.filter((b) => kept.has(b.id));
+      const total = sent.reduce((a, b) => a + b.measure.volume, 0);
 
       // A fixture keeps what it measured when it was added.
       if (file.startsWith("fixtures")) {
@@ -78,7 +86,7 @@ describe.skipIf(!process.env.NIGHTLY)("nightly: every model the project keeps", 
           });
         }
       }
-      if (!r.bodies.length) return;
+      if (!sent.length) return;
 
       // STL at the fine setting holds the volume to within 1 %.
       const stl = exporter.export({ doc, bodies: null, format: "stl", deflection: DEFLECTION.fine, name: "nightly" });
@@ -88,10 +96,10 @@ describe.skipIf(!process.env.NIGHTLY)("nightly: every model the project keeps", 
       // STEP is exact: the same volume and faces back.
       const step = exporter.export({ doc, bodies: null, format: "step", deflection: 0, name: "nightly" });
       const back = readStep(oc, step.files[0]!.data).map((b) => measure(oc, b.shape));
-      expect(back.length, `${file} STEP solids`).toBe(r.bodies.filter((b) => b.measure.volume > 0).length);
+      expect(back.length, `${file} STEP solids`).toBe(sent.filter((b) => b.measure.volume > 0).length);
       const backVolume = back.reduce((a, m) => a + m.volume, 0);
       expect(Math.abs(backVolume - total) / total, `${file} STEP volume`).toBeLessThan(1e-6);
-      expect(back.reduce((a, m) => a + m.faces, 0)).toBe(r.bodies.reduce((a, b) => a + b.measure.faces, 0));
+      expect(back.reduce((a, m) => a + m.faces, 0)).toBe(sent.reduce((a, b) => a + b.measure.faces, 0));
     },
     60_000,
   );
