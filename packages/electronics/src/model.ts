@@ -365,7 +365,7 @@ export interface Board {
   outline: Corner[];
   cutouts?: Corner[][];
   /** A sketch or face in the model the outline follows (#638). */
-  outlineFrom?: { sketch?: string; face?: string };
+  outlineFrom?: { sketch?: string; face?: string; at?: P2 };
   thickness: number;
   copperLayers: 2;
   placements: Placement[];

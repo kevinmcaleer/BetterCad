@@ -14,6 +14,10 @@
     "./replace": "./src/replace.ts",
     "./pcb/copper": "./src/pcb/copper.ts",
     "./pcb/route": "./src/pcb/route.ts",
+    "./pcb/pour": "./src/pcb/pour.ts",
+    "./pcb/outline": "./src/pcb/outline.ts",
+    "./pcb/solid": "./src/pcb/solid.ts",
+    "./pcb/state": "./src/pcb/state.ts",
     "./pcb/rules": "./src/pcb/rules.ts",
     "./drc": "./src/pcb/drc.ts",
     "./library/starter.json": "./library/starter.json"

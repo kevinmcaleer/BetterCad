@@ -18,6 +18,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./document": "./src/document.ts",
+    "./board": "./src/board.ts",
     "./browser": "./src/browser.ts",
     "./occt": "./src/occt/index.ts",
     "./bcad": "./src/bcad.ts",

@@ -353,6 +353,8 @@ export function moveOnBoard(d: ElectronicsDesign, ids: Id[], dx: number, dy: num
     vias: b.vias.map((v) => (set.has(v.id) ? at(v) : v)),
     holes: b.holes.map((h) => (set.has(h.id) ? at(h) : h)),
     texts: b.texts.map((t) => (set.has(t.id) ? at(t) : t)),
+    pours: b.pours.map((o) => (set.has(o.id) ? { ...o, outline: o.outline.map((p) => [q(p[0] + dx), q(p[1] + dy)] as P2) } : o)),
+    keepouts: b.keepouts.map((k) => (set.has(k.id) ? { ...k, outline: k.outline.map((p) => [q(p[0] + dx), q(p[1] + dy)] as P2) } : k)),
   }));
 }
 

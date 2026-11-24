@@ -1,7 +1,6 @@
 import { boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
 import { distToSegment, rad, segmentDistance } from "../geom";
 import type { Board, ElectronicsDesign, Id, NetClass, P2, Rules } from "../model";
-import { netlist, type Netlist } from "../nets";
 
 /**
  * Copper as shapes that can be measured (#640, #644). Every piece is a core (a point, a line or a convex outline)
@@ -127,9 +126,9 @@ const shares = (a: Copper, b: Copper): boolean => a.layers.some((l) => b.layers.
 
 /**
  * Which copper is joined to which: pieces of one net that touch on a layer they share are one group. The result gives
- * each piece its group, by its place in `copper`.
+ * each piece its group, by its place in `copper`. `joined` lists pieces joined some other way, such as by a pour.
  */
-export function copperGroups(copper: Copper[]): number[] {
+export function copperGroups(copper: Copper[], joined: number[][] = []): number[] {
   const parent = copper.map((_, i) => i);
   const find = (i: number): number => {
     while (parent[i] !== i) i = parent[i] = parent[parent[i]!]!;
@@ -148,15 +147,9 @@ export function copperGroups(copper: Copper[]): number[] {
         const b = copper[list[y]!]!;
         if (find(list[x]!) !== find(list[y]!) && shares(a, b) && gap(a, b) === 0) parent[find(list[x]!)] = find(list[y]!);
       }
+  // Pieces something else joins, such as a pour: each list is one group.
+  for (const list of joined) for (const i of list.slice(1)) parent[find(i)] = find(list[0]!);
   return copper.map((_, i) => find(i));
-}
-
-/** What the board still needs: the pads, the copper, and which pads the copper already joins (for `ratsnest`). */
-export function boardState(d: ElectronicsDesign, nl: Netlist = netlist(d)) {
-  const pads = boardPads(d, nl);
-  const copper = copperOf(d, pads);
-  const groups = copperGroups(copper);
-  return { pads, copper, groups, joined: (_: BoardPad, i: number) => groups[i]! };
 }
 
 /** The width, clearance and via a net is routed with: its class's, else the board's own. */
