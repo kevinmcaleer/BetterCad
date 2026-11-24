@@ -16,6 +16,11 @@ export interface EActions {
   /** Lists what the board needs to match the schematic, in the change card. */
   push(): void;
   selectAll(): void;
+  /** Schematic only: the clipboard, and a copy set down beside the original. */
+  copy?(): void;
+  paste?(): void;
+  duplicate?(): void;
+  renumber?(): void;
 }
 export const eactions: { current: EActions | null } = { current: null };
 
@@ -46,6 +51,7 @@ export function showView(to: EView | null, d?: ElectronicsDesign): void {
     schTool: "select",
     pcbTool: "select",
     card: null,
+    spot: null,
     focus: selected.length ? ui.focus + 1 : ui.focus,
   });
 }

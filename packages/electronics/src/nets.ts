@@ -40,7 +40,12 @@ export interface Netlist {
   noConnect: Set<string>;
   /** Pins with nothing on them and no mark. */
   floating: NetPin[];
+  /** The net at a wire's end, a label or a pin, by sheet and point (`netAt`). */
+  at: Map<string, string>;
 }
+
+/** The name of the net a point of a sheet is on, if a wire ends, a label sits or a pin joins there. */
+export const netAt = (nl: Netlist, sheet: Id, p: P2): string | undefined => nl.at.get(`${sheet}|${key(p[0], p[1])}`);
 
 export const pinKey = (part: Id, pin: string): string => `${part}:${pin}`;
 
@@ -204,14 +209,16 @@ export function netlist(d: ElectronicsDesign): Netlist {
       }
 
   const nets: Net[] = [];
+  const nameOf = new Map<Group, string>();
   for (const g of groups.values()) {
     if (g.pins.length === 0 && g.names.size === 0) continue;
     g.pins.sort((a, b) => byRef(a.ref, b.ref) || byRef(a.pin, b.pin));
     const power = [...g.power].sort();
     const all = [...power, ...[...g.names].filter((n) => !g.power.has(n)).sort()];
     const first = g.pins[0];
+    nameOf.set(g, all[0] ?? `Net-(${first!.ref}-${first!.pin})`);
     nets.push({
-      name: all[0] ?? `Net-(${first!.ref}-${first!.pin})`,
+      name: nameOf.get(g)!,
       named: all.length > 0,
       names: all,
       pins: g.pins,
@@ -224,5 +231,10 @@ export function netlist(d: ElectronicsDesign): Netlist {
   const of = new Map<string, string>();
   for (const net of nets) for (const p of net.pins) of.set(pinKey(p.part, p.pin), net.name);
   floating.sort((a, b) => byRef(a.ref, b.ref) || byRef(a.pin, b.pin));
-  return { nets, of, noConnect, floating };
+  const at = new Map<string, string>();
+  for (const n of [...wireNodes, ...labelsAt.keys(), ...pins.map((p) => node(p.sheet, p.at))]) {
+    const name = nameOf.get(groups.get(sets.find(n))!);
+    if (name) at.set(n, name);
+  }
+  return { nets, of, noConnect, floating, at };
 }

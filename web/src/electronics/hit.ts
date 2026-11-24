@@ -2,14 +2,9 @@ import {
   boxesTouch,
   distToSegment,
   emptyBox,
-  footprintBox,
   grow,
-  packageOf,
-  placeOnBoard,
   placeOnSheet,
-  type Board,
   type Box,
-  type BoardPad,
   type ElectronicsDesign,
   type P2,
   type Sheet,
@@ -50,7 +45,7 @@ export function placedBox(def: SymbolDef, at: { x: number; y: number; rot: 0 | 9
   return out;
 }
 
-const inBox = (p: P2, b: Box, pad = 0) => p[0] >= b.x1 - pad && p[0] <= b.x2 + pad && p[1] >= b.y1 - pad && p[1] <= b.y2 + pad;
+export const inBox = (p: P2, b: Box, pad = 0) => p[0] >= b.x1 - pad && p[0] <= b.x2 + pad && p[1] >= b.y1 - pad && p[1] <= b.y2 + pad;
 
 /** Everything under a point, nearest kind first: marks and labels, then wires, then symbols. `tol` is in mm. */
 export function hitSheet(d: ElectronicsDesign, sheet: Sheet, p: P2, tol: number): SchHit[] {
@@ -82,79 +77,5 @@ export function boxSheet(d: ElectronicsDesign, sheet: Sheet, a: P2, b: P2): stri
   for (const l of sheet.labels) if (inBox([l.x, l.y], box)) out.push(l.id);
   for (const j of sheet.junctions) if (inBox([j.x, j.y], box)) out.push(j.id);
   for (const n of sheet.noConnects) if (inBox([n.x, n.y], box)) out.push(n.id);
-  return out;
-}
-
-export interface BoardHit {
-  kind: "part" | "track" | "via" | "hole" | "text" | "pad";
-  /** A part's id for parts and pads; the thing's own id otherwise. */
-  id: string;
-  net?: string;
-  pad?: BoardPad;
-  /** For a track: which piece of it. */
-  segment?: number;
-}
-
-/** A placed footprint's box on the board. */
-export function placementBox(d: ElectronicsDesign, at: Board["placements"][number]): Box | null {
-  const part = d.parts.find((p) => p.id === at.part);
-  const pkg = part && packageOf(d, part);
-  if (!pkg) return null;
-  const b = footprintBox(pkg.footprint);
-  const out = emptyBox();
-  for (const p of [
-    [b.x1, b.y1],
-    [b.x2, b.y1],
-    [b.x2, b.y2],
-    [b.x1, b.y2],
-  ] as P2[])
-    grow(out, placeOnBoard(p, at));
-  return out;
-}
-
-/** Everything under a point on the board, smallest things first so a track on a part can still be picked. */
-export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: number, layerShown: (l: "top" | "bottom") => boolean = () => true): BoardHit[] {
-  const board = d.board;
-  if (!board) return [];
-  const out: BoardHit[] = [];
-  for (const v of board.vias) if (Math.hypot(v.x - p[0], v.y - p[1]) <= v.diameter / 2 + tol) out.push({ kind: "via", id: v.id, net: v.net });
-  for (const h of board.holes) if (Math.hypot(h.x - p[0], h.y - p[1]) <= Math.max(h.pad ?? 0, h.drill) / 2 + tol) out.push({ kind: "hole", id: h.id });
-  for (const t of board.tracks) {
-    if ((t.layer === "top" || t.layer === "bottom") && !layerShown(t.layer)) continue;
-    for (let i = 0; i + 1 < t.pts.length; i += 1)
-      if (distToSegment(p, t.pts[i]!, t.pts[i + 1]!) <= t.width / 2 + tol) {
-        out.push({ kind: "track", id: t.id, net: t.net, segment: i });
-        break;
-      }
-  }
-  for (const pad of pads)
-    if (
-      Math.abs(pad.at[0] - p[0]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol &&
-      Math.abs(pad.at[1] - p[1]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol &&
-      Math.hypot(pad.at[0] - p[0], pad.at[1] - p[1]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol
-    )
-      out.push({ kind: "pad", id: pad.part, net: pad.net, pad });
-  for (const t of board.texts)
-    if (inBox(p, { x1: t.x, y1: t.y - t.size * 0.2, x2: t.x + t.text.length * t.size * 0.6, y2: t.y + t.size }, tol)) out.push({ kind: "text", id: t.id });
-  for (const at of [...board.placements].reverse()) {
-    const b = placementBox(d, at);
-    if (b && inBox(p, b, tol * 0.5)) out.push({ kind: "part", id: at.part });
-  }
-  return out;
-}
-
-/** Ids of the parts, tracks, vias and holes a rubber-band box touches. Parts come back by part id. */
-export function boxBoard(d: ElectronicsDesign, a: P2, b: P2): string[] {
-  const board = d.board;
-  if (!board) return [];
-  const box: Box = { x1: Math.min(a[0], b[0]), y1: Math.min(a[1], b[1]), x2: Math.max(a[0], b[0]), y2: Math.max(a[1], b[1]) };
-  const out: string[] = [];
-  for (const at of board.placements) {
-    const pb = placementBox(d, at);
-    if (pb && boxesTouch(pb, box)) out.push(at.part);
-  }
-  for (const t of board.tracks) if (t.pts.every((q) => inBox(q, box))) out.push(t.id);
-  for (const v of board.vias) if (inBox([v.x, v.y], box)) out.push(v.id);
-  for (const h of board.holes) if (inBox([h.x, h.y], box)) out.push(h.id);
   return out;
 }

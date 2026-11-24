@@ -97,8 +97,8 @@ export function sceneDxf(scene: Scene): string {
     w.pair(40, l.size * CAP);
     w.pair(1, l.text);
     if (l.turn) w.pair(50, l.turn * DEG);
-    // 72: left or centre. 73: on the baseline or about the middle. The second point is the one they are measured from.
-    w.pair(72, l.anchor === "middle" ? 1 : 0);
+    // 72: left, centre or right. 73: on the baseline or about the middle. The second point is the one they are measured from.
+    w.pair(72, l.anchor === "middle" ? 1 : l.anchor === "end" ? 2 : 0);
     w.pair(73, l.baseline === "central" ? 2 : 0);
     point(11, l.at);
   }

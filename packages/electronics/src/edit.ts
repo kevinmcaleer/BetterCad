@@ -6,11 +6,13 @@ import {
   type ComponentDef,
   type ElectronicsDesign,
   type Id,
+  type NetLabel,
   type P2,
   type Part,
   type Rot,
   type SchSymbol,
   type Sheet,
+  type Wire,
 } from "./model";
 
 /**
@@ -134,9 +136,17 @@ export function moveOnSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[], dx: nu
   const set = new Set(ids);
   const at = <T extends { x: number; y: number }>(o: T): T => ({ ...o, x: q(o.x + dx), y: q(o.y + dy) });
   const next = changeSymbols(d, sheetId, set, at, set);
+  const shift = (p: P2): P2 => [q(p[0] + dx), q(p[1] + dy)];
+  // A wire that is dragged on its own keeps its neighbours: their ends on its ends come along.
+  const ends = new Set(
+    (next.sheets.find((s) => s.id === sheetId)?.wires ?? []).filter((w) => set.has(w.id)).flatMap((w) => [key(w.a[0], w.a[1]), key(w.b[0], w.b[1])]),
+  );
+  const follow = (p: P2): P2 => (ends.has(key(p[0], p[1])) ? shift(p) : p);
   return onSheet(next, sheetId, (s) => ({
     ...s,
-    wires: s.wires.map((w) => (set.has(w.id) ? { ...w, a: [q(w.a[0] + dx), q(w.a[1] + dy)] as P2, b: [q(w.b[0] + dx), q(w.b[1] + dy)] as P2 } : w)),
+    wires: s.wires
+      .map((w) => (set.has(w.id) ? { ...w, a: shift(w.a), b: shift(w.b) } : ends.size ? { ...w, a: follow(w.a), b: follow(w.b) } : w))
+      .filter((w) => key(w.a[0], w.a[1]) !== key(w.b[0], w.b[1])),
     labels: s.labels.map((l) => (set.has(l.id) ? at(l) : l)),
     junctions: s.junctions.map((j) => (set.has(j.id) ? at(j) : j)),
     noConnects: s.noConnects.map((n) => (set.has(n.id) ? at(n) : n)),
@@ -207,6 +217,124 @@ export function changePart(d: ElectronicsDesign, id: Id, change: Partial<Pick<Pa
     change = { ...change, ref };
   }
   return { ...d, parts: d.parts.map((p) => (p.id === id ? { ...p, ...change } : p)) };
+}
+
+// ---------------------------------------------------------------- copy and paste
+
+/** A piece of a sheet that was copied: its parts with their components, and the wires and marks picked with them. */
+export interface Clip {
+  defs: Record<Id, ComponentDef>;
+  parts: Part[];
+  symbols: SchSymbol[];
+  wires: Wire[];
+  labels: NetLabel[];
+  junctions: Sheet["junctions"];
+  noConnects: Sheet["noConnects"];
+}
+
+/** Copies the picked things off a sheet. Nothing picked: nothing copied. */
+export function copyFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): Clip | null {
+  const sheet = d.sheets.find((s) => s.id === sheetId);
+  const set = new Set(ids);
+  const pick = <T extends { id: Id }>(list: T[]): T[] => list.filter((x) => set.has(x.id));
+  if (!sheet) return null;
+  const symbols = pick(sheet.symbols);
+  const used = new Set(symbols.map((s) => s.part));
+  const parts = d.parts.filter((p) => used.has(p.id));
+  const clip: Clip = {
+    defs: Object.fromEntries(parts.map((p) => [p.def, d.defs[p.def]!]).filter(([, def]) => def)),
+    parts,
+    symbols,
+    wires: pick(sheet.wires),
+    labels: pick(sheet.labels),
+    junctions: pick(sheet.junctions),
+    noConnects: pick(sheet.noConnects),
+  };
+  return symbols.length + clip.wires.length + clip.labels.length + clip.junctions.length + clip.noConnects.length ? clip : null;
+}
+
+/** Where a clip's first thing sits, to paste it under the pointer. */
+export function clipOrigin(c: Clip): P2 {
+  const s = c.symbols[0] ?? c.labels[0] ?? c.junctions[0] ?? c.noConnects[0];
+  return s ? [s.x, s.y] : (c.wires[0]?.a ?? [0, 0]);
+}
+
+/** Pastes a clip, moved by (dx, dy). Parts get fresh references (R4 becomes R5); the ids of what was added come back. */
+export function pasteOnSheet(d: ElectronicsDesign, sheetId: Id, clip: Clip, dx: number, dy: number): { design: ElectronicsDesign; ids: Id[] } {
+  if (!d.sheets.some((s) => s.id === sheetId)) return { design: d, ids: [] };
+  const at = <T extends { x: number; y: number }>(o: T, prefix: string): T & { id: Id } => ({ ...o, id: eid(prefix), x: q(o.x + dx), y: q(o.y + dy) });
+  const move = (p: P2): P2 => [q(p[0] + dx), q(p[1] + dy)];
+  const defs = { ...d.defs };
+  const parts = [...d.parts];
+  const partId = new Map<Id, Id>();
+  for (const p of clip.parts) {
+    const def = clip.defs[p.def];
+    if (!def) continue;
+    defs[p.def] ??= def;
+    const id = eid("pt");
+    partId.set(p.id, id);
+    parts.push({ ...p, id, ref: nextRef({ ...d, parts }, def.prefix) });
+  }
+  const symbols = clip.symbols.filter((s) => partId.has(s.part)).map((s) => ({ ...at(s, "sy"), part: partId.get(s.part)! }));
+  const wires = clip.wires.map((w) => ({ id: eid("w"), a: move(w.a), b: move(w.b) }));
+  const labels = clip.labels.map((l) => at(l, "lb"));
+  const junctions = clip.junctions.map((j) => at(j, "jn"));
+  const noConnects = clip.noConnects.map((n) => at(n, "nc"));
+  const design = onSheet({ ...d, defs, parts }, sheetId, (s) => ({
+    ...s,
+    symbols: [...s.symbols, ...symbols],
+    wires: [...s.wires, ...wires],
+    labels: [...s.labels, ...labels],
+    junctions: [...s.junctions, ...junctions],
+    noConnects: [...s.noConnects, ...noConnects],
+  }));
+  return { design, ids: [...symbols, ...wires, ...labels, ...junctions, ...noConnects].map((x) => x.id) };
+}
+
+/**
+ * Numbers every part again by where it sits: sheet by sheet, top to bottom, then left to right, so R1 is the first
+ * resistor you come to. The board's parts are the same parts, so their names follow.
+ */
+export function renumber(d: ElectronicsDesign): ElectronicsDesign {
+  const order = new Map<Id, number>();
+  let n = 0;
+  for (const sheet of d.sheets) for (const s of [...sheet.symbols].sort((a, b) => b.y - a.y || a.x - b.x)) if (!order.has(s.part)) order.set(s.part, (n += 1));
+  const next = new Map<string, number>();
+  const ref = new Map<Id, string>();
+  for (const p of [...d.parts].sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity))) {
+    const prefix = d.defs[p.def]?.prefix ?? p.ref.replace(/\d+$/, "");
+    const k = (next.get(prefix) ?? 0) + 1;
+    next.set(prefix, k);
+    ref.set(p.id, `${prefix}${k}`);
+  }
+  if (d.parts.every((p) => ref.get(p.id) === p.ref)) return d;
+  return {
+    ...d,
+    parts: d.parts.map((p) => ({ ...p, ref: ref.get(p.id) ?? p.ref })),
+    ...(d.board ? { board: { ...d.board, placements: d.board.placements.map((p) => (ref.has(p.part) ? { ...p, ref: ref.get(p.part)! } : p)) } } : {}),
+  };
+}
+
+const MULT: Record<string, string> = { p: "p", n: "n", u: "µ", µ: "µ", m: "m", r: "", k: "k", K: "k", M: "M", G: "G" };
+const UNIT: Record<string, string> = { R: "Ω", C: "F", L: "H" };
+
+/**
+ * Reads engineering shorthand for a resistor, capacitor or coil and writes it with its unit: "4k7" is "4.7 kΩ",
+ * "100n" is "100 nF", "2R2" is "2.2 Ω". Anything it does not recognise is left as typed.
+ */
+export function tidyValue(text: string, prefix: string): string {
+  const unit = UNIT[prefix];
+  const t = text.trim();
+  if (!unit) return t;
+  const m = /^(\d+)(?:([.,])(\d+))?\s*([pnuµmrRkKMG]?)(\d*)\s*(?:Ω|ohms?|F|H)?$/.exec(t);
+  if (!m || (m[3] && m[5])) return t;
+  const [, whole, , frac, letter = "", after] = m;
+  const mult = letter === "R" ? "" : (MULT[letter] ?? "");
+  // A bare number is ohms on a resistor; on a capacitor or coil it could be anything, so it stays as typed.
+  if (!letter && unit !== "Ω") return t;
+  const digits = frac ?? after;
+  const number = digits ? `${whole}.${digits}` : whole!;
+  return `${Number(number)} ${mult}${unit}`;
 }
 
 // ---------------------------------------------------------------- the board

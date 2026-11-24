@@ -23,6 +23,10 @@ export interface SchematicLook {
   ghost?: { symbols?: { def: SymbolDef; at: Pick<SchSymbol, "x" | "y" | "rot" | "mirror">; ref?: string; value?: string }[]; wires?: [P2, P2][] };
   /** Open wire ends and floating pins to ring, from the netlist. */
   marks?: P2[];
+  /** Wires of the net under the pointer, lit with it. */
+  lit?: Set<string>;
+  /** The place a check's result points at, ringed. */
+  spot?: P2;
   /** A rubber-band box, in world millimetres. */
   box?: [P2, P2] | null;
   grid?: boolean;
@@ -234,7 +238,7 @@ export function drawSchematic(
   for (const w of sheet.wires) {
     const a = toScreen(v, w.a);
     const b = toScreen(v, w.b);
-    const on = look.selected.has(w.id) || look.hover === w.id;
+    const on = look.selected.has(w.id) || look.hover === w.id || !!look.lit?.has(w.id);
     ctx.strokeStyle = on ? c.accent : c["ec-wire"];
     ctx.lineWidth = on ? wire + 1.5 : wire;
     ctx.beginPath();
@@ -284,6 +288,14 @@ export function drawSchematic(
     ctx.strokeStyle = c["ec-mark"];
     ctx.lineWidth = 1.5;
     ctx.strokeRect(s[0] - 4, s[1] - 4, 8, 8);
+  }
+  if (look.spot) {
+    const s = toScreen(v, look.spot);
+    ctx.strokeStyle = c.danger;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(s[0], s[1], 12, 0, Math.PI * 2);
+    ctx.stroke();
   }
   for (const g of look.ghost?.symbols ?? []) drawSymbol(ctx, v, g.def, g.at, c, { ref: g.ref, value: g.value }, true, 0.7);
   for (const [a, b] of look.ghost?.wires ?? []) {

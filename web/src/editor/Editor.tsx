@@ -5066,7 +5066,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             )}
             {eview && (
               <Suspense fallback={null}>
-                <ElectronicsView design={doc.electronics} edit={editDesign} readOnly={!!files.shared} ribbon={ribbonOn} registry={registry} />
+                <ElectronicsView design={doc.electronics} edit={editDesign} readOnly={!!files.shared} ribbon={ribbonOn} registry={registry} name={doc.name} />
               </Suspense>
             )}
             {shownDrawing && (
