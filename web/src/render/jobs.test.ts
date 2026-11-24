@@ -132,6 +132,27 @@ describe("render jobs", () => {
     jobs.dispose();
   });
 
+  it("shows a first look until the render lands, and renders waiting shots in the order given", async () => {
+    const { render, pending } = controlled();
+    const jobs = new RenderJobs({ store: memoryKV(), render });
+    await jobs.seed("a", new Blob(["look"]));
+    expect(jobs.get().pictures.a.key).toBe("");
+    jobs.enqueue(shot("a"), "ka", bodies);
+    jobs.enqueue(shot("b"), "kb", bodies);
+    jobs.enqueue(shot("c"), "kc", bodies);
+    await tick();
+    jobs.order(["c", "a", "b"]);
+    expect(jobs.get().jobs.map((j) => j.shot)).toEqual(["a", "c", "b"]);
+    pending[0].done();
+    await tick();
+    await tick();
+    expect(jobs.get().pictures.a.key).toBe("ka");
+    await jobs.seed("a", new Blob(["late"]));
+    expect(jobs.get().pictures.a.key).toBe("ka");
+    expect(pending.map((p) => p.id)).toEqual(["a", "c"]);
+    jobs.dispose();
+  });
+
   it("keys a picture by the model and the shot, not its name or auto switch", () => {
     const doc = { features: [], looks: {} };
     const k = shotKey(doc, shot("a"));

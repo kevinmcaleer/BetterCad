@@ -56,6 +56,8 @@ export interface RenderSession {
   save: ((size: SaveSize) => Promise<void>) | null;
   /** Set by the picture: moves its camera (the film strip's Use this view). */
   look: ((camera: CameraState) => void) | null;
+  /** Set by the picture: its canvas, for the film strip's first look at a new shot. */
+  canvas: (() => HTMLCanvasElement | null) | null;
   /** Set by the picture: the size it is drawn at, in CSS pixels. */
   size: (() => { width: number; height: number }) | null;
 }
@@ -88,6 +90,7 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     },
     save: null,
     look: null,
+    canvas: null,
     size: null,
   };
 }

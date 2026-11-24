@@ -199,10 +199,12 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
 
   useEffect(() => {
     session.look = move;
+    session.canvas = () => canvas.current;
     session.size = () => ({ width: canvas.current?.clientWidth ?? 0, height: canvas.current?.clientHeight ?? 0 });
     return () => {
       session.look = null;
       session.size = null;
+      session.canvas = null;
     };
   }, [session, move]);
 

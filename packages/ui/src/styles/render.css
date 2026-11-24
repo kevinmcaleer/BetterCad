@@ -181,6 +181,12 @@
   outline: 2px solid var(--bc-color-accent);
   outline-offset: 1px;
 }
+.bc-render-drop .bc-render-tile {
+  box-shadow: inset 3px 0 0 var(--bc-color-accent);
+}
+.bc-render-tile-pic img[data-first] {
+  opacity: 0.7;
+}
 .bc-render-tile-pic {
   position: relative;
   display: grid;
