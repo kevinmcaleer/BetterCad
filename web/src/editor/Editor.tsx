@@ -180,8 +180,7 @@ import { importFormat, type BodyMass, type Clash, type ExportFormat, type Mate }
 import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
-import type { RenderJobs } from "../render/jobs";
-import type { RenderShot } from "@bettercad/kernel/document";
+import type { StripController, StripDeps } from "../render/strip";
 import type { DrawingApi, DrawingTool, NoteTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
@@ -284,7 +283,6 @@ const RenderBar = lazy(() => import("../render/RenderView").then((m) => ({ defau
 /** The render film strip and the top bar's wheel for background renders load with the strip's first shot. */
 const RenderStrip = lazy(() => import("../render/RenderStrip").then((m) => ({ default: m.RenderStrip })));
 const RenderWheel = lazy(() => import("../render/RenderStrip").then((m) => ({ default: m.RenderWheel })));
-type JobsModule = typeof import("../render/jobs");
 // Drawings (#555): the sheet, its bar and its set-up card load the first time a drawing opens.
 const drawingCode = () => import("../drawing/DrawingView");
 const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingPaper })));
@@ -1926,115 +1924,36 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   // Accounts (#88, #90): open "#/edit/<id>" once we know who is signed in.
   const { api, account, ready: accountReady, available: accountsOn, setAccount } = useAccount();
 
-  // The render film strip: shots kept with the model, rendered in the background in this browser. The jobs and the
-  // strip load with the first shot, or when the Render view opens.
-  const [strip, setStrip] = useState<{ jobs: RenderJobs; mod: JobsModule } | null>(null);
+  // The render film strip: shots kept with the model, rendered in the background in this browser. Its controller
+  // loads with the first shot, or when the Render view opens.
+  const [strip, setStrip] = useState<StripController | null>(null);
   const stripLoading = useRef(false);
-  const cloudModel = useRef<string | null>(null);
-  cloudModel.current = files.shared ? null : (files.cloud?.modelId ?? null);
+  const stripDeps = useRef<StripDeps | null>(null);
+  stripDeps.current = {
+    api,
+    cloudModel: files.shared || !account ? null : (files.cloud?.modelId ?? null),
+    doc,
+    bodies: () => thumbBodies.current(),
+    edit: (change, label) => store.edit(change, label),
+    say,
+    saveFiles: (f) => files.store.saveFiles(f),
+    newId,
+  };
   const shots = useMemo(() => doc.renders ?? [], [doc.renders]);
   useEffect(() => {
     if (strip || stripLoading.current || (!render && !shots.length)) return;
     stripLoading.current = true;
-    void Promise.all([import("../render/jobs"), import("../files/idb")]).then(([mod, idb]) => {
-      const pics = (id: string) => `models/${encodeURIComponent(id)}/renders`;
-      const jobs = new mod.RenderJobs({
-        store: idb.idbKV("renders"),
-        cloud: () => {
-          const id = cloudModel.current;
-          if (!id || !account) return null;
-          return {
-            list: () => api.call<{ renders: { shot: string; key: string; url: string }[] }>("GET", pics(id)).then((r) => r.renders),
-            fetch: (url) => fetch(url, { credentials: "same-origin" }).then((r) => (r.ok ? r.blob() : Promise.reject(new Error("Missing")))),
-            put: (shot, image, key) =>
-              mod.dataUrl(image).then((data) => api.call<{ ok: true }>("PUT", `${pics(id)}/${encodeURIComponent(shot)}`, { image: data, key })),
-            remove: (shot) => api.call<{ ok: true }>("DELETE", `${pics(id)}/${encodeURIComponent(shot)}`),
-          };
-        },
-      });
-      setStrip({ jobs, mod });
-    });
-  }, [strip, render, shots.length, api, account]);
-  useEffect(() => () => strip?.jobs.dispose(), [strip]);
-  const shotKeyOf = useCallback((s: RenderShot) => (strip ? strip.mod.shotKey(live.current.doc, s) : ""), [strip]);
-  const renderShot = useCallback(
-    (s: RenderShot) => {
-      if (!strip) return;
-      strip.jobs.enqueue(s, strip.mod.shotKey(live.current.doc, s), thumbBodies.current());
-    },
-    [strip],
-  );
+    void import("../render/strip").then((m) => setStrip(new m.StripController(() => stripDeps.current!)));
+  }, [strip, render, shots.length]);
+  useEffect(() => () => strip?.dispose(), [strip]);
   // Each model's pictures, from this browser or the account; in the Render view, shots never rendered start now.
   const shotIds = shots.map((s) => s.id).join(" ");
   useEffect(() => {
-    if (!strip || !shots.length) return;
-    let gone = false;
-    void strip.jobs.load(shots).then(() => {
-      if (gone || !render || files.shared) return;
-      const { pictures, jobs } = strip.jobs.get();
-      for (const s of shots) if (!pictures[s.id] && !jobs.some((j) => j.shot === s.id)) renderShot(s);
-    });
-    return () => void (gone = true);
+    if (strip && shots.length) void strip.load(shots, !!render && !files.shared);
     // Shots are read when the list of ids changes, not on each edit of one.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strip, shotIds, !!render, files.cloud?.modelId]);
-  stripSaved.current = (saved) => {
-    if (!strip) return;
-    const { pictures } = strip.jobs.get();
-    for (const s of saved.renders ?? []) {
-      if (!s.auto) continue;
-      const key = strip.mod.shotKey(saved, s);
-      if (pictures[s.id]?.key !== key) strip.jobs.enqueue(s, key, thumbBodies.current());
-    }
-  };
-  const editShots = (change: (list: RenderShot[]) => RenderShot[], label: string) =>
-    store.edit((x) => {
-      const renders = change(x.renders ?? []);
-      const next: ModelDoc = { ...x, renders };
-      if (!renders.length) delete next.renders;
-      return next;
-    }, label);
-  /** Keeps the Render view's current shot on the strip and renders it in the background. */
-  const addShot = () => {
-    const r = render?.get();
-    const cam = renderCam.current;
-    if (!r || !cam) return;
-    const size = render?.size?.() ?? { width: 16, height: 9 };
-    const width = 1600;
-    const height = Math.max(200, Math.min(3200, Math.round((width * Math.max(1, size.height)) / Math.max(1, size.width))));
-    const used = new Set(shots.map((s) => s.name));
-    let n = shots.length + 1;
-    while (used.has(`Render ${n}`)) n++;
-    const shot: RenderShot = {
-      id: newId("r"),
-      name: `Render ${n}`,
-      camera: { ...cam, ortho: false },
-      preset: r.preset,
-      style: r.style,
-      background: r.background,
-      focus: r.focus,
-      quality: r.quality,
-      width,
-      height,
-      auto: true,
-    };
-    editShots((list) => [...list, shot], "Add render");
-    renderShot(shot);
-    say(`Added ${shot.name}. It renders in the background.`);
-  };
-  const useShot = (s: RenderShot) => {
-    if (!render) return;
-    render.set({ preset: s.preset, style: s.style, background: s.background, focus: s.focus, quality: s.quality });
-    render.look?.({ ...s.camera, ortho: false });
-  };
-  const saveShot = (s: RenderShot) => {
-    if (!strip) return;
-    const data = strip.jobs.blob(s.id).then((b) => (b ? b.arrayBuffer() : Promise.reject(new Error("Not rendered yet"))));
-    files.store.saveFiles([{ name: `${live.current.doc.name} ${s.name}.jpg`, data, mime: "image/jpeg" }]).then(
-      (saved) => saved && say(`Saved ${saved.names[0]}`),
-      () => say(`Couldn't save ${s.name}`, true),
-    );
-  };
+  stripSaved.current = (saved) => strip?.saved(saved);
   const openCloud = useRef(files.openCloud);
   openCloud.current = files.openCloud;
   useEffect(() => {
@@ -5068,19 +4987,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   <RenderStrip
                     jobs={strip.jobs}
                     shots={shots}
-                    keyOf={shotKeyOf}
+                    keyOf={strip.keyOf}
                     readOnly={!!files.shared}
-                    onAdd={addShot}
-                    onRerender={renderShot}
-                    onUse={useShot}
-                    onChange={(s) =>
-                      editShots((list) => list.map((x) => (x.id === s.id ? s : x)), s.auto ? "Update render when saved" : "Stop updating render")
-                    }
-                    onDelete={(s) => {
-                      editShots((list) => list.filter((x) => x.id !== s.id), "Delete render");
-                      void strip.jobs.remove(s.id);
-                    }}
-                    onSave={saveShot}
+                    onAdd={() => renderCam.current && strip.add(render, renderCam.current)}
+                    onRerender={strip.render}
+                    onUse={(s) => strip.use(render, s)}
+                    onChange={strip.change}
+                    onDelete={strip.remove}
+                    onSave={strip.save}
                   />
                 </Suspense>
               )
