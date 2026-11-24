@@ -75,8 +75,30 @@ export function shotKey(doc: Pick<ModelDoc, "features" | "looks" | "pose">, shot
 /** Tests cap the samples so a software GPU finishes. */
 const testMax = () => (typeof window === "undefined" ? undefined : (window as unknown as { __bcRenderMax?: number }).__bcRenderMax);
 
+/**
+ * End-to-end tests on a software GPU swap the path tracer for a plain picture made over a few frames: building a
+ * second path tracer takes minutes there, and the Render view's own tests already cover it.
+ */
+const testFake = () => typeof window !== "undefined" && !!(window as unknown as { __bcFakeRenderJobs?: boolean }).__bcFakeRenderJobs;
+
+async function fakeRender(shot: RenderShot, progress: (f: number) => void, wait: () => Promise<unknown>, signal: AbortSignal): Promise<Blob> {
+  const steps = 40;
+  for (let i = 1; i <= steps; i++) {
+    if (signal.aborted) throw new Error("Stopped");
+    await wait();
+    await new Promise((r) => setTimeout(r, 100));
+    progress(i / steps);
+  }
+  const c = document.createElement("canvas");
+  c.width = shot.width / 10;
+  c.height = shot.height / 10;
+  c.getContext("2d")!.fillRect(0, 0, c.width, c.height);
+  return await new Promise<Blob>((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error("No image"))), "image/jpeg"));
+}
+
 /** The path tracer, in its own canvas, for one shot. Loaded with the jobs, apart from the shell. */
 export const pathTrace: RenderFn = async (shot, bodies, progress, wait, signal) => {
+  if (testFake()) return fakeRender(shot, progress, wait, signal);
   const { PathRender } = await import("./pathRender");
   const { FOCUSES } = await import("./session");
   const canvas = document.createElement("canvas");
