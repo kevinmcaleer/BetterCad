@@ -1,0 +1,907 @@
+{
+ "defs": {
+  "resistor-1rqm988": {
+   "name": "Resistor",
+   "description": "Resistor, surface mount",
+   "prefix": "R",
+   "value": "10 kΩ",
+   "symbol": {
+    "name": "Resistor",
+    "units": 1,
+    "shapes": [
+     {
+      "kind": "rect",
+      "x1": -1.016,
+      "y1": -2.54,
+      "x2": 1.016,
+      "y2": 2.54
+     }
+    ],
+    "pins": [
+     {
+      "number": "1",
+      "name": "1",
+      "type": "passive",
+      "x": 0,
+      "y": 3.81,
+      "length": 1.27,
+      "dir": 270
+     },
+     {
+      "number": "2",
+      "name": "2",
+      "type": "passive",
+      "x": 0,
+      "y": -3.81,
+      "length": 1.27,
+      "dir": 90
+     }
+    ],
+    "refAt": [
+     2.54,
+     1.27
+    ],
+    "valueAt": [
+     2.54,
+     -1.27
+    ]
+   },
+   "packages": [
+    {
+     "footprint": {
+      "name": "0805 (2012 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -0.95,
+        "y": 0,
+        "w": 1,
+        "h": 1.45
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 0.95,
+        "y": 0,
+        "w": 1,
+        "h": 1.45
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -1,
+        "y1": -0.625,
+        "x2": 1,
+        "y2": 0.625,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -1.7,
+        "y1": -0.975,
+        "x2": 1.7,
+        "y2": 0.975,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.24999999999999994,
+          0.875
+         ],
+         [
+          0.24999999999999994,
+          0.875
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.24999999999999994,
+          -0.875
+         ],
+         [
+          0.24999999999999994,
+          -0.875
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.775
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        2,
+        1.25,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "footprint": {
+      "name": "0603 (1608 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -0.825,
+        "y": 0,
+        "w": 0.8,
+        "h": 0.95
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 0.825,
+        "y": 0,
+        "w": 0.8,
+        "h": 0.95
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -0.8,
+        "y1": -0.4,
+        "x2": 0.8,
+        "y2": 0.4,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -1.475,
+        "y1": -0.725,
+        "x2": 1.475,
+        "y2": 0.725,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.22499999999999992,
+          0.625
+         ],
+         [
+          0.22499999999999992,
+          0.625
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.22499999999999992,
+          -0.625
+         ],
+         [
+          0.22499999999999992,
+          -0.625
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.525
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        1.6,
+        0.8,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "footprint": {
+      "name": "1206 (3216 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -1.45,
+        "y": 0,
+        "w": 1.15,
+        "h": 1.8
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 1.45,
+        "y": 0,
+        "w": 1.15,
+        "h": 1.8
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -1.6,
+        "y1": -0.8,
+        "x2": 1.6,
+        "y2": 0.8,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -2.275,
+        "y1": -1.15,
+        "x2": 2.275,
+        "y2": 1.15,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.675,
+          1.0499999999999998
+         ],
+         [
+          0.675,
+          1.0499999999999998
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.675,
+          -1.0499999999999998
+         ],
+         [
+          0.675,
+          -1.0499999999999998
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.95
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        3.2,
+        1.6,
+        0.5
+       ]
+      }
+     }
+    }
+   ],
+   "keywords": [
+    "resistor",
+    "r"
+   ],
+   "source": {
+    "library": "BetterCad basics",
+    "licence": "MIT"
+   }
+  },
+  "pin-header-1-2-1557v3c": {
+   "name": "Pin header 1×2",
+   "description": "Pin header, 2 pins, 2.54 mm",
+   "prefix": "J",
+   "value": "1×2",
+   "symbol": {
+    "name": "Header 1×2",
+    "units": 1,
+    "shapes": [
+     {
+      "kind": "rect",
+      "x1": -1.27,
+      "y1": -2.54,
+      "x2": 3.81,
+      "y2": 2.54,
+      "fill": true
+     }
+    ],
+    "pins": [
+     {
+      "number": "1",
+      "name": "Pin 1",
+      "type": "passive",
+      "x": -5.08,
+      "y": 1.27,
+      "length": 3.81,
+      "dir": 0
+     },
+     {
+      "number": "2",
+      "name": "Pin 2",
+      "type": "passive",
+      "x": -5.08,
+      "y": -1.27,
+      "length": 3.81,
+      "dir": 0
+     }
+    ],
+    "refAt": [
+     -1.27,
+     3.81
+    ],
+    "valueAt": [
+     -1.27,
+     -4.318
+    ]
+   },
+   "packages": [
+    {
+     "footprint": {
+      "name": "Pin header 1×2, 2.54 mm",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "thru",
+        "shape": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 1.7,
+        "h": 1.7,
+        "drill": 1
+       },
+       {
+        "number": "2",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -2.54,
+        "w": 1.7,
+        "h": 1.7,
+        "drill": 1
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -1.27,
+        "y1": -3.81,
+        "x2": 1.27,
+        "y2": 1.27,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "silk",
+        "x1": -1.33,
+        "y1": -3.87,
+        "x2": 1.33,
+        "y2": 1.33,
+        "width": 0.12
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -1.77,
+        "y1": -4.3100000000000005,
+        "x2": 1.77,
+        "y2": 1.77,
+        "width": 0.05
+       }
+      ],
+      "refAt": [
+       -1.27,
+       2.27
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "header",
+       "rows": 1,
+       "pins": 2,
+       "pitch": 2.54,
+       "height": 8.5
+      },
+      "offset": [
+       0,
+       -1.27,
+       0
+      ]
+     }
+    }
+   ],
+   "keywords": [
+    "header",
+    "connector",
+    "pins"
+   ],
+   "source": {
+    "library": "BetterCad basics",
+    "licence": "MIT"
+   },
+   "pnp": {
+    "dy": -1.27
+   }
+  }
+ },
+ "parts": [
+  {
+   "id": "ptmwv7fnbw2",
+   "def": "resistor-1rqm988",
+   "ref": "R1",
+   "value": "10 kΩ",
+   "pkg": 0
+  },
+  {
+   "id": "ptmwv7fnbw4",
+   "def": "pin-header-1-2-1557v3c",
+   "ref": "J1",
+   "value": "1×2",
+   "pkg": 0
+  }
+ ],
+ "sheets": [
+  {
+   "id": "sh1",
+   "name": "Sheet 1",
+   "symbols": [
+    {
+     "id": "symwv7fnbw3",
+     "part": "ptmwv7fnbw2",
+     "unit": 1,
+     "x": 0,
+     "y": 0,
+     "rot": 0
+    },
+    {
+     "id": "symwv7fnbw5",
+     "part": "ptmwv7fnbw4",
+     "unit": 1,
+     "x": 50.8,
+     "y": 0,
+     "rot": 0
+    }
+   ],
+   "wires": [
+    {
+     "id": "wmwv7fnbw6",
+     "a": [
+      0,
+      3.81
+     ],
+     "b": [
+      0,
+      15.24
+     ]
+    },
+    {
+     "id": "wmwv7fnbw7",
+     "a": [
+      0,
+      15.24
+     ],
+     "b": [
+      45.72,
+      15.24
+     ]
+    },
+    {
+     "id": "wmwv7fnbw8",
+     "a": [
+      45.72,
+      15.24
+     ],
+     "b": [
+      45.72,
+      1.27
+     ]
+    },
+    {
+     "id": "wmwv7fnbw9",
+     "a": [
+      0,
+      -3.81
+     ],
+     "b": [
+      0,
+      -15.24
+     ]
+    },
+    {
+     "id": "wmwv7fnbwa",
+     "a": [
+      0,
+      -15.24
+     ],
+     "b": [
+      45.72,
+      -15.24
+     ]
+    },
+    {
+     "id": "wmwv7fnbwb",
+     "a": [
+      45.72,
+      -15.24
+     ],
+     "b": [
+      45.72,
+      -1.27
+     ]
+    }
+   ],
+   "junctions": [],
+   "labels": [],
+   "noConnects": []
+  }
+ ],
+ "board": {
+  "outline": [
+   {
+    "x": 3,
+    "y": 0
+   },
+   {
+    "x": 47,
+    "y": 0,
+    "bulge": 0.41421356237309515
+   },
+   {
+    "x": 50,
+    "y": 3
+   },
+   {
+    "x": 50,
+    "y": 37,
+    "bulge": 0.41421356237309515
+   },
+   {
+    "x": 47,
+    "y": 40
+   },
+   {
+    "x": 3,
+    "y": 40,
+    "bulge": 0.41421356237309515
+   },
+   {
+    "x": 0,
+    "y": 37
+   },
+   {
+    "x": 0,
+    "y": 3,
+    "bulge": 0.41421356237309515
+   }
+  ],
+  "thickness": 1.6,
+  "copperLayers": 2,
+  "placements": [
+   {
+    "part": "ptmwv7fnbw4",
+    "ref": "J1",
+    "x": 30,
+    "y": 20,
+    "rot": 0,
+    "side": "top",
+    "footprint": "Pin header 1×2, 2.54 mm"
+   },
+   {
+    "part": "ptmwv7fnbw2",
+    "ref": "R1",
+    "x": 10,
+    "y": 20,
+    "rot": 30,
+    "side": "top",
+    "footprint": "0805 (2012 metric)"
+   }
+  ],
+  "tracks": [
+   {
+    "id": "trmwv7fnbxc",
+    "net": "Net-(J1-1)",
+    "layer": "top",
+    "width": 0.25,
+    "pts": [
+     [
+      9.177276,
+      19.525
+     ],
+     [
+      10,
+      30
+     ],
+     [
+      20,
+      30
+     ]
+    ]
+   },
+   {
+    "id": "trmwv7fnbxe",
+    "net": "Net-(J1-1)",
+    "layer": "bottom",
+    "width": 0.25,
+    "pts": [
+     [
+      20,
+      30
+     ],
+     [
+      30,
+      30
+     ],
+     [
+      30,
+      20
+     ]
+    ]
+   }
+  ],
+  "vias": [
+   {
+    "id": "vimwv7fnbxd",
+    "net": "Net-(J1-1)",
+    "x": 20,
+    "y": 30,
+    "diameter": 0.7,
+    "drill": 0.3
+   }
+  ],
+  "pours": [
+   {
+    "id": "pomwv7fnbyf",
+    "net": "Net-(J1-2)",
+    "layer": "bottom",
+    "outline": [
+     [
+      3,
+      0
+     ],
+     [
+      47,
+      0
+     ],
+     [
+      47.667563,
+      0.075216
+     ],
+     [
+      48.301651,
+      0.297093
+     ],
+     [
+      48.870469,
+      0.654506
+     ],
+     [
+      49.345494,
+      1.129531
+     ],
+     [
+      49.702907,
+      1.698349
+     ],
+     [
+      49.924784,
+      2.332437
+     ],
+     [
+      50,
+      3
+     ],
+     [
+      50,
+      37
+     ],
+     [
+      49.924784,
+      37.667563
+     ],
+     [
+      49.702907,
+      38.301651
+     ],
+     [
+      49.345494,
+      38.870469
+     ],
+     [
+      48.870469,
+      39.345494
+     ],
+     [
+      48.301651,
+      39.702907
+     ],
+     [
+      47.667563,
+      39.924784
+     ],
+     [
+      47,
+      40
+     ],
+     [
+      3,
+      40
+     ],
+     [
+      2.332437,
+      39.924784
+     ],
+     [
+      1.698349,
+      39.702907
+     ],
+     [
+      1.129531,
+      39.345494
+     ],
+     [
+      0.654506,
+      38.870469
+     ],
+     [
+      0.297093,
+      38.301651
+     ],
+     [
+      0.075216,
+      37.667563
+     ],
+     [
+      0,
+      37
+     ],
+     [
+      0,
+      3
+     ],
+     [
+      0.075216,
+      2.332437
+     ],
+     [
+      0.297093,
+      1.698349
+     ],
+     [
+      0.654506,
+      1.129531
+     ],
+     [
+      1.129531,
+      0.654506
+     ],
+     [
+      1.698349,
+      0.297093
+     ],
+     [
+      2.332437,
+      0.075216
+     ]
+    ],
+    "thermal": true
+   }
+  ],
+  "texts": [
+   {
+    "id": "txmwv7fnbyi",
+    "layer": "silk-top",
+    "x": 5,
+    "y": 3,
+    "text": "Rev A",
+    "size": 1.5
+   }
+  ],
+  "shapes": [],
+  "holes": [
+   {
+    "id": "homwv7fnbyg",
+    "x": 45,
+    "y": 35,
+    "drill": 3.2
+   },
+   {
+    "id": "homwv7fnbyh",
+    "x": 5,
+    "y": 35,
+    "drill": 1,
+    "pad": 2
+   }
+  ],
+  "keepouts": [],
+  "rules": {
+   "clearance": 0.2,
+   "trackWidth": 0.25,
+   "minTrackWidth": 0.15,
+   "viaDiameter": 0.7,
+   "viaDrill": 0.3,
+   "minDrill": 0.3,
+   "minRing": 0.15,
+   "holeToHole": 0.5,
+   "copperToEdge": 0.3,
+   "minSilkWidth": 0.15,
+   "minSilkHeight": 1,
+   "maskMargin": 0.05
+  },
+  "classes": [],
+  "synced": {
+   "nets": {
+    "Net-(J1-1)": [
+     "ptmwv7fnbw2:1",
+     "ptmwv7fnbw4:1"
+    ],
+    "Net-(J1-2)": [
+     "ptmwv7fnbw2:2",
+     "ptmwv7fnbw4:2"
+    ]
+   }
+  },
+  "cutouts": [
+   [
+    {
+     "x": 20,
+     "y": 5
+    },
+    {
+     "x": 30,
+     "y": 5
+    },
+    {
+     "x": 30,
+     "y": 8
+    },
+    {
+     "x": 20,
+     "y": 8
+    }
+   ]
+  ]
+ }
+}

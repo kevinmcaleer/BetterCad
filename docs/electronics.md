@@ -3,6 +3,10 @@
 The electronics workspace (epic #606): draw a schematic, push it to a PCB, and get a 3D board in the model, all kept in
 step. This page is for people working on the code. Millimetres everywhere, x to the right, y up, angles anticlockwise.
 
+For people using it: [the guide](electronics-guide.md), [ordering a board](electronics-ordering.md) and the lesson
+[Your first board](lessons/your-first-board.md). The guide opens from the empty schematic and from Electronics guide in
+the command finder (#668).
+
 ## What we reuse and what we wrote (#614)
 
 Checked 2026-11-24. Licence notes are a reading of the published terms, not legal advice.
@@ -475,3 +479,33 @@ none, so it is skipped there): KiCad's own Eagle reader opens the same board, an
 the same size, on the same side and net. That confirms the turns and mirrors on the board; the schematic's follow the
 same rule and are held to Eagle's own net list. No file made by Eagle or Fusion itself, and no SparkFun or Adafruit
 board, has been opened yet: the session that wrote this could not download any. Try a real one before leaning on it.
+
+## Tests and help (#667, #668)
+
+- **Fixtures.** `fixtures/electronics/` keeps saved designs, each with a golden list of its nets, what Push to PCB
+  would change, and what the two checks say (`packages/electronics/src/fixtures.test.ts`, in `npm run test:golden`).
+  Nightly, each board's order files are written for every board house and read back, and each design goes out to
+  KiCad and home again with the same nets. The Gerber, drill, parts list and pick and place goldens sit beside their
+  writers in `fab/golden/`, and the KiCad ones in `kicad/golden/`.
+- **In the browser.** `web/e2e/electronics.spec.ts` has the journeys (`@journey`, so they also run nightly in WebKit):
+  two parts, a wire, Push to PCB, a routed track, a clean check and the saved order files; and the sample board from
+  open to order. axe runs over the schematic, the board and the order pack in Light, Dark and Holoroom. The `@visual`
+  tests picture the sample's schematic and board in each theme.
+- **Budgets.** Nothing from electronics is in the shell beyond its commands and view state: the workspace, each card
+  and each reader or writer is its own chunk (`budgets.json`).
+- **Help.** [electronics-guide.md](electronics-guide.md) is the user guide,
+  [electronics-ordering.md](electronics-ordering.md) says which file goes where at JLCPCB and PCBWay, and
+  [lessons/your-first-board.md](lessons/your-first-board.md) is the lesson, written in the lesson format of #239. The
+  lesson player is not built, so for now it reads as a page. The ordering guide's pictures are of our own order pack:
+  nobody has uploaded a pack to either house from here, so there are no pictures of their order forms yet.
+
+## What release 1 leaves open
+
+- Release 2, by decision: more sheets with hierarchy (#636), shove routing (#646), an autorouter (#647), four layers
+  and more (#648), panels and IPC-2581 (#662).
+- Parts: custom pin shapes and per-pad mask and paste (#626, #627), STEP or BetterCad models as a part's body (#628),
+  sharing a library (#629), the server's shared catalogue (#625), live stock and prices (#661).
+- Eagle and Fusion files (#665): read, but not yet tried on a file Eagle or Fusion wrote.
+- KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.
+- A first real order: the order pack reads back in our own preview, and its copper and holes agree with what KiCad
+  plots from the same board, but no board has been ordered with it.

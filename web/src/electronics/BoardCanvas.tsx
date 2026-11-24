@@ -74,6 +74,19 @@ export interface BoardCanvasProps {
 }
 
 /**
+ * The cards' insets, and the Layers card's too where it stands open beside the board (not as a chip on a phone) and
+ * the view is wide enough to give it a column: Fit then shows the whole board, with nothing under the card.
+ */
+function clearOfLayers(host: Element | null, width: number) {
+  const clear = clearOf(host);
+  const card = document.querySelector(".bc-ec-layers")?.getBoundingClientRect();
+  const all = host?.getBoundingClientRect();
+  if (!card || !all || card.height < 120) return clear;
+  const right = all.right - card.left;
+  return width - clear.left - right >= 360 ? { ...clear, right: Math.max(clear.right, right) } : clear;
+}
+
+/**
  * The PCB (#617, #639, #640): the board, its parts, copper and the lines still to route. Select, move, turn and flip
  * parts; route tracks with 45° bends that stop at anything they must keep clear of; drop vias, holes and text.
  */
@@ -132,7 +145,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const doFit = (only?: Set<string>) => {
     const size = api.current?.size();
     if (!size || size.w < 10) return false;
-    const v = fit(boardBox(design, only), size, clearOf(host.current));
+    const v = fit(boardBox(design, only), size, clearOfLayers(host.current, size.w));
     setView(only ? { ...v, scale: Math.min(v.scale, 40) } : v);
     return true;
   };

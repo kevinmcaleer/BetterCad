@@ -175,9 +175,14 @@ test.describe("on a wide screen", () => {
     for (const file of ["Untitled_model.kicad_sch", "Untitled_model.kicad_sym", "Untitled_model.kicad_pro", "CREDITS.md"]) expect(kicad.text).toContain(file);
   });
 
-  test("lay out a board: place by numbers, route a track, add a hole and text, and check it", async ({ page }) => {
+  // The whole way (#667): two parts, a wire, a board, a routed track, a clean check and the files to order.
+  test("lay out a board: place by numbers, route a track, add a hole and text, check it and save the order files", { tag: "@journey" }, async ({ page }) => {
     // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
-    test.setTimeout(90_000);
+    test.setTimeout(120_000);
+    // No save dialog here: the files arrive as a download.
+    await page.addInitScript(() => {
+      delete (window as unknown as Record<string, unknown>).showSaveFilePicker;
+    });
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
@@ -272,7 +277,73 @@ test.describe("on a wide screen", () => {
     await undo.click();
     await expect(status).toContainText("Board 50 × 40 mm");
     await expect(check.getByRole("status")).toHaveText("No problems found. The board is ready to make.");
+    await check.getByRole("button", { name: "Close" }).click();
+
+    // With the check clean, the order pack says so and saves as one zip.
+    await tools(page)
+      .getByRole("button", { name: /^Order/ })
+      .click();
+    const order = page.getByRole("dialog", { name: "Order the board" });
+    await expect(order.getByRole("list", { name: "Before you order" })).toContainText("The board check is clean.");
+    const [download] = await Promise.all([page.waitForEvent("download"), order.getByRole("button", { name: "Save the files" }).click()]);
+    expect(download.suggestedFilename()).toMatch(/\.zip$/);
+    await expect(order.getByRole("status")).toContainText("Saved");
   });
+
+  // The sample board's schematic and board as pictures, in each theme (#667). CI keeps the baselines.
+  for (const theme of ["light", "dark", "holoroom"] as const) {
+    test(`the sample board's schematic and PCB in ${theme} @visual`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.addInitScript((t) => localStorage.setItem("bettercad.theme", t), theme);
+      await page.goto("/");
+      await page.getByRole("group", { name: "View cube" }).waitFor();
+      await page.getByRole("tab", { name: "Electronics" }).click();
+      await page.getByRole("button", { name: "Schematic", exact: true }).click();
+      await page.getByRole("button", { name: "Open the sample board" }).click();
+      const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
+      await expect(schematic).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("Start with a part.")).toBeHidden();
+      await expect(page.getByText(/^Opened the pico servo board sample/)).toBeHidden({ timeout: 20_000 });
+      await page.keyboard.press("f");
+      // A first picture is taken twice to see that it holds still, which is slow on a runner with no graphics card.
+      await expect(schematic).toHaveScreenshot(`sample-schematic-${theme}.png`, { maxDiffPixelRatio: 0.01, timeout: 30_000 });
+      await page.keyboard.press("2");
+      const board = page.getByRole("img", { name: /^PCB: 8 parts/ });
+      await expect(board).toBeVisible();
+      await page.keyboard.press("f");
+      await expect(board).toHaveScreenshot(`sample-pcb-${theme}.png`, { maxDiffPixelRatio: 0.01, timeout: 30_000 });
+    });
+  }
+
+  // The sample board in each theme (#667): the schematic, the board and the order pack hold up to axe.
+  for (const theme of ["light", "dark", "holoroom"] as const) {
+    test(`the schematic, the board and the order pack have no axe violations in ${theme}`, async ({ page }) => {
+      test.setTimeout(90_000);
+      await page.addInitScript((t) => localStorage.setItem("bettercad.theme", t), theme);
+      await page.goto("/");
+      await page.getByRole("group", { name: "View cube" }).waitFor();
+      await page.getByRole("tab", { name: "Electronics" }).click();
+      await page.getByRole("button", { name: "Schematic", exact: true }).click();
+      await page.getByRole("button", { name: "Open the sample board" }).click();
+      await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("Start with a part.")).toBeHidden();
+      await page.keyboard.press("e");
+      await expect(page.getByRole("group", { name: /check options$/ })).toBeVisible();
+      await axe(page);
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("2");
+      await expect(page.getByRole("img", { name: /^PCB: 8 parts/ })).toBeVisible();
+      await axe(page);
+      await tools(page)
+        .getByRole("button", { name: /^Order/ })
+        .click();
+      const dialog = page.getByRole("dialog", { name: "Order the board" });
+      await dialog.getByRole("button", { name: "Preview the files" }).click();
+      await expect(dialog.getByRole("region", { name: "Preview of the files" }).getByRole("img", { name: /seen from the top/ })).toBeVisible();
+      await axe(page);
+    });
+  }
 
   test("the board stands in the model, with a body for each part", async ({ page }) => {
     await page.goto("/");

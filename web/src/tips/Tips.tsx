@@ -34,6 +34,16 @@ export function tips(): Tip[] {
       title: "Tidy a drawing's sizes",
       text: "Right-click a view and choose Arrange dimensions: the shortest size goes nearest the part.",
     },
+    {
+      id: "electronics",
+      title: "Design a circuit board",
+      text: "Find Schematic with the command finder. Press P to place parts, W to wire their pins, then Push to PCB to lay out the board.",
+    },
+    {
+      id: "electronics-order",
+      title: "Order your board",
+      text: "On the PCB, run the checks, then choose Order to save the Gerber, drill and parts files as one .zip for a board house.",
+    },
     { id: "find", title: "Find any command", text: `Press ${formatCombo("mod+k")} to find a command by name, or ? to see every shortcut.` },
   ];
 }

@@ -1,0 +1,28 @@
+## Nets
+5V: C1:1 J1:1 R1:1 U1:5
+GND: C1:2 D1:2 J1:3
+LED: D1:1 R1:2 R3:2
+MID: U1:2 U1:3
+OUT: R2:2 U1:4
+OVER: J2:3
+SIG: J1:2 J2:6 R3:1 U1:1
+TEE: J2:1 J2:2 J2:4 R2:1
+
+## Push to PCB
+Nothing.
+
+## Schematic check
+error pin-open: U1 pin 5 (EN) is not connected.
+warning label-once: The label OVER is used once, so it joins nothing.
+warning label-once: The label TEE is used once, so it joins nothing.
+warning wire-open: A wire on TEE ends in mid air.
+
+## Board check
+error short: C1 pad 2 touches a track on 5V, joining GND and 5V.
+error unrouted: 5V still has 2 connections to route.
+error unrouted: GND still has 1 connection to route.
+error unrouted: LED still has 1 connection to route.
+error unrouted: MID still has 1 connection to route.
+error unrouted: OUT still has 1 connection to route.
+error unrouted: SIG still has 3 connections to route.
+error unrouted: TEE still has 3 connections to route.

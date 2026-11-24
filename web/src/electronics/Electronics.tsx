@@ -19,12 +19,16 @@ import type { Sketch } from "@bettercad/sketch";
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
+import { SOURCE_URL } from "../help/about";
 import { eui, type EView, type PcbTool, type SchTool } from "./ui";
 import { useEui } from "./useEui";
 
 export { onDesign } from "./design";
 
 // The Components panel brings the library, your own parts and their sync: fetched when it first opens.
+/** The user guide (#668): how to draw a schematic, lay out the board and order it. */
+export const GUIDE_URL = `${SOURCE_URL}/blob/main/docs/electronics-guide.md`;
+
 const ComponentsCard = lazy(() => import("./Components"));
 // The rules check, the parts table and export each load when they are first opened.
 // The board's drawing, picking and layers load with the PCB view, so the schematic opens without them.
@@ -551,6 +555,15 @@ function commands(design: () => ElectronicsDesign): Command[] {
       run: () => eui.set({ view: eui.get().view ?? "schematic", card: "open" }),
       keywords: "import kicad_sch kicad_pcb sch brd fusion electronics schematic board bring in",
     },
+    {
+      ...e,
+      id: "electronics.guide",
+      label: "Electronics guide",
+      group: "Help",
+      icon: "link",
+      run: () => window.open(GUIDE_URL, "_blank", "noopener"),
+      keywords: "help learn schematic pcb board order gerber how to lesson",
+    },
     { ...e, id: "electronics.selectAll", label: "Select all", group: "Edit", keys: ["mod+a"], run: () => eactions.current?.selectAll() },
     { ...e, id: "electronics.fit", label: "Fit in the view", group: "View", icon: "frame", keys: ["f"], run: () => eactions.current?.fit() },
   ];
@@ -761,6 +774,9 @@ export default function ElectronicsView({
           <Button variant="primary" icon="chip" label="Components" shortcut="P" onClick={() => eui.set({ card: "components" })} />
           {onSample && <Button icon="folder" label="Open the sample board" onClick={onSample} />}
           <Button icon="folder" label="Open a KiCad or Eagle project" onClick={() => eui.set({ card: "open" })} />
+          <a className="bc-note" href={GUIDE_URL} target="_blank" rel="noreferrer">
+            Read the electronics guide
+          </a>
         </div>
       )}
 

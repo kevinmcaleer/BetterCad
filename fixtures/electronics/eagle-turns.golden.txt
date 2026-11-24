@@ -1,0 +1,25 @@
+## Nets
+GND: D1:K J1:3 Q1:2 R3:1 U1:4
+MID: U1:2 U1:3
+Net-(D1-A): D1:A Q1:3 R1:2
+Net-(Q1-1): Q1:1 R2:1
+OUT: R3:2 U1:5
+SIG: J1:2 R2:2 U1:1
+VCC: J1:1 R1:1 U1:8
+
+## Push to PCB
+Nothing.
+
+## Schematic check
+warning label-once: The label OUT is used once, so it joins nothing.
+warning label-once: The label SIG is used once, so it joins nothing.
+warning wire-open: A wire on MID ends in mid air.
+warning wire-open: A wire on MID ends in mid air.
+
+## Board check
+error unrouted: GND still has 1 connection to route.
+error unrouted: Net-(Q1-1) still has 1 connection to route.
+error unrouted: OUT still has 1 connection to route.
+error unrouted: SIG still has 2 connections to route.
+error unrouted: VCC still has 2 connections to route.
+warning pour-empty: The pour on GND fills nothing.
