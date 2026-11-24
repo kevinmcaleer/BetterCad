@@ -75,7 +75,7 @@ test.describe("on a wide screen", () => {
 
   test("make a part of your own from a pin list and a package, then place it", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "Schematic", exact: true }).click();
     await tools(page)
@@ -100,14 +100,14 @@ test.describe("on a wide screen", () => {
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 1 part, 0 nets" })).toBeVisible();
     // It is still there after a reload: your parts are kept in this browser.
     await page.reload();
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).waitFor();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("bettercad.electronics.library") ?? "{}").pack?.parts?.[0]?.name)).toBe("Level shifter");
   });
 
   test("check the rules, copy a circuit, edit the parts in a table and export the schematic", async ({ page }) => {
     await page.addInitScript(() => delete (window as unknown as Record<string, unknown>).showSaveFilePicker);
     await page.goto("/");
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "Schematic", exact: true }).click();
     await ledCircuit(page);
@@ -169,6 +169,103 @@ test.describe("on a wide screen", () => {
     const pdf = await exported("PDF");
     expect(pdf.text.slice(0, 5)).toBe("%PDF-");
   });
+
+  test("lay out a board: place by numbers, route a track, add a hole and text, and check it", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    const canvas = page.getByRole("img", { name: /^PCB: 2 parts/ });
+    await expect(canvas).toBeVisible();
+    const status = page.getByRole("status", { name: "Electronics status" });
+
+    // A part picked on the schematic stays picked on the board, where its place can be typed.
+    for (const [x, to] of [
+      [-10 * PITCH, 15],
+      [0, 30],
+    ] as const) {
+      await page.keyboard.press("1");
+      await page.mouse.click(...(await onCanvas(page, x, 0)));
+      await page.keyboard.press("2");
+      // A change lands a moment after Enter and redraws the fields, so each is typed until it has stuck.
+      for (const [label, value] of [
+        ["X (mm)", String(to)],
+        ["Y (mm)", "20"],
+      ] as const)
+        await expect(async () => {
+          await page.getByLabel(label).fill(value);
+          await page.getByLabel(label).press("Enter");
+          await page.waitForTimeout(150);
+          await expect(page.getByLabel(label)).toHaveValue(value, { timeout: 1000 });
+        }).toPass();
+      await canvas.focus();
+    }
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("f");
+
+    // The board check lists the connection still to route, and goes to it.
+    await page.keyboard.press("e");
+    const check = page.getByRole("group", { name: "Board check options" });
+    await expect(check.getByRole("status")).toHaveText("1 error to look at.");
+    await expect(check.getByRole("button", { name: /still has 1 connection to route/ })).toBeVisible();
+    await axe(page);
+    await check.getByRole("button", { name: "Close" }).click();
+
+    // Route: from the resistor's pad, a bend, then onto the LED's pad. A track never runs over another net's pad.
+    await tools(page)
+      .getByRole("button", { name: /^Route/ })
+      .click();
+    const bar = page.getByRole("group", { name: "Tool options" });
+    await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
+    await press(page, 14.2, 20);
+    await expect(bar.getByRole("status")).toContainText("Routing Net-(D1-1) on the top side");
+    await press(page, 15.8, 20);
+    await expect(bar.getByRole("status")).toContainText("Too close to R1 pad 2");
+    await press(page, 22, 24);
+    await press(page, 29.2, 20);
+    await expect(status).toContainText("Every connection is routed");
+    await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
+    await page.keyboard.press("Escape");
+
+    // A mounting hole and a line of silkscreen text.
+    await page.keyboard.press("h");
+    await press(page, 45, 35);
+    await page.keyboard.press("t");
+    await press(page, 20, 34);
+    await page.getByLabel("Text for the silkscreen").fill("Blinky v1");
+    await page.getByLabel("Text for the silkscreen").press("Enter");
+    await page.keyboard.press("Escape");
+    await press(page, 45, 35);
+    await expect(page.getByLabel("Screw")).toHaveValue("M3");
+
+    // Board setup: the size, and a board house's rules with where they came from.
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("b");
+    const setup = page.getByRole("group", { name: "Board setup options" });
+    await setup.getByLabel("Width (mm)").fill("40");
+    await setup.getByLabel("Width (mm)").press("Enter");
+    await expect(status).toContainText("Board 40 × 40 mm");
+    await setup.getByLabel("Made by").selectOption({ label: "JLCPCB, 2 layers" });
+    await expect(setup.getByRole("link", { name: "jlcpcb.com" })).toBeVisible();
+    await axe(page);
+
+    // The hole now hangs over the narrower board's edge, and the check says so.
+    await tools(page)
+      .getByRole("button", { name: /^Board check/ })
+      .click();
+    await expect(check.getByRole("status")).toHaveText("1 error to look at.");
+    await expect(check.getByRole("button", { name: /A mounting hole is off the board/ })).toBeVisible();
+    const undo = page.getByRole("banner").getByRole("button", { name: /^Undo/ });
+    await undo.click();
+    await undo.click();
+    await expect(status).toContainText("Board 50 × 40 mm");
+    await expect(check.getByRole("status")).toHaveText("No problems found. The board is ready to make.");
+  });
 });
 
 test.describe("on a phone", () => {
@@ -205,6 +302,34 @@ test.describe("on a phone", () => {
     await expect(layers.getByRole("button", { name: "Bottom copper", exact: true })).toBeHidden();
     await layers.getByRole("button", { name: "Top copper", exact: true }).first().click();
     await expect(layers.getByRole("button", { name: "Bottom copper", exact: true })).toBeVisible();
+    await layers.getByRole("button", { name: "Top copper", exact: true }).first().click();
+
+    // Routing by touch: tap the tool, tap a pad, tap where the track goes. The options stay on the screen.
+    await tools(page)
+      .getByRole("button", { name: /^Route/ })
+      .click();
+    const bar = page.getByRole("group", { name: "Tool options" });
+    await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
+    await press(page, 61.64, 38.27, true);
+    await expect(bar.getByRole("status")).toContainText("Routing Net-(D1-1)");
+    // The parts are still parked beside the board, where no track may go.
+    await press(page, 58, 30, true);
+    await expect(bar.getByRole("status")).toContainText("Too close to the board's edge");
+    const at = (await bar.boundingBox())!;
+    expect(at.x).toBeGreaterThanOrEqual(0);
+    expect(at.x + at.width).toBeLessThanOrEqual(390);
+    await bar.getByRole("button", { name: "Done" }).tap();
+    await tools(page)
+      .getByRole("button", { name: /^Route/ })
+      .click();
+    await tools(page)
+      .getByRole("button", { name: /^Board check/ })
+      .click();
+    const board = page.getByRole("group", { name: "Board check options" });
+    await expect(board.getByRole("button", { name: /D1 is off the board/ })).toBeVisible();
+    expect((await board.boundingBox())!.x + (await board.boundingBox())!.width).toBeLessThanOrEqual(390);
+    await board.getByRole("button", { name: "Close" }).tap();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.getByRole("tab", { name: "3D" }).click();
     await expect(page.getByRole("toolbar", { name: "PCB tools" })).toBeHidden();
   });

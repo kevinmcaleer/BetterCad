@@ -188,7 +188,7 @@ describe("golden views", () => {
 
   const builder = () => new ModelBuilder(oc);
   const sample = (id: string) => SAMPLES.find((s) => s.id === id)!.build();
-  const cases: [string, string, keyof typeof VIEWS, boolean, [number, number, number]?, ("half" | "stepped")?][] = [];
+  const cases: [string, string, keyof typeof VIEWS, boolean, [number, number, number]?, ("half" | "stepped" | "exploded")?][] = [];
   for (const model of ["bracket", "phone-stand"])
     for (const v of Object.keys(VIEWS) as (keyof typeof VIEWS)[]) cases.push([`view-${model}-${v}`, model, v, true]);
   cases.push(["view-bracket-front-visible", "bracket", "front", false], ["view-bracket-iso-visible", "bracket", "iso", false]);
@@ -201,8 +201,11 @@ describe("golden views", () => {
   cases.push(["view-bracket-section-half-front", "bracket", "front", true, [0, -1, 0], "half"]);
   cases.push(["view-bracket-section-stepped-front", "bracket", "front", true, [0, -1, 0], "stepped"]);
 
+  // An exploded view of the box and its lid (#574).
+  cases.push(["view-box-with-lid-exploded-front", "box-with-lid", "front", true, undefined, "exploded"]);
+
   for (const [file, model, name, hidden, normal, kind] of cases) {
-    it(`${model}, ${name}${hidden ? "" : ", visible edges only"}${kind ? `, ${kind} section` : ""}`, () => {
+    it(`${model}, ${name}${hidden ? "" : ", visible edges only"}${kind === "exploded" ? ", exploded" : kind ? `, ${kind} section` : ""}`, () => {
       const whole = builder().view(sample(model), undefined, { shows: { all: true }, frame: VIEWS[name], hidden: false, trace: false }, projectView);
       // A cut goes through the middle of the model as this view sees it.
       const ax = viewAxes(VIEWS[name]);
@@ -217,7 +220,13 @@ describe("golden views", () => {
       const origin = [0, 1, 2].map((i) => r(ax.x[i]! * mid[0]! + ax.y[i]! * mid[1]! + ax.z[i]! * d)) as [number, number, number];
       // A half section cuts from the middle on; a stepped one moves 4 mm back there.
       const more = kind === "half" ? { along: ax.x, half: true } : kind === "stepped" ? { along: ax.x, steps: [{ at: 0, offset: -4 }] } : {};
-      const req = { shows: { all: true as const }, frame: VIEWS[name], hidden, ...(normal ? { cut: { origin, normal, ...more } } : {}) };
+      const req = {
+        shows: { all: true as const },
+        frame: VIEWS[name],
+        hidden,
+        ...(normal ? { cut: { origin, normal, ...more } } : {}),
+        ...(kind === "exploded" ? { explode: 1 } : {}),
+      };
       const view = builder().view(sample(model), undefined, req, projectView);
       const lines = view.edges.map((e) => `${e.visible ? "visible" : "hidden"} ${e.type} ${flat(e.curve)} <- ${e.source?.name ?? "?"}`).sort();
       // Text, not arrays: the file then reads the same before and after Prettier.
@@ -257,6 +266,24 @@ describe("a view of a model", () => {
     const hole = view.rounds.find((x) => x.seen === "end");
     expect(hole).toMatchObject({ seen: "end", hole: true, r: 2.25, source: { kind: "face" } });
     expect(view.ms).toBeGreaterThan(0);
+  });
+
+  it("an exploded view moves each body out from the middle of them all, and is kept apart from the whole one", () => {
+    const doc = SAMPLES.find((s) => s.id === "box-with-lid")!.build();
+    const b = new ModelBuilder(oc);
+    const req = { shows: { all: true as const }, frame: VIEWS.front };
+    const whole = b.view(doc, undefined, req, projectView);
+    expect(whole.bodies.length).toBeGreaterThan(1);
+    const apart = b.view(doc, undefined, { ...req, explode: 1 }, projectView);
+    expect(apart.bodies).toEqual(whole.bodies);
+    const size = (v: typeof whole) => [v.box.max[0] - v.box.min[0], v.box.max[1] - v.box.min[1]];
+    // Further apart one way at least, and never closer.
+    expect(size(apart)[0]! + size(apart)[1]!).toBeGreaterThan(size(whole)[0]! + size(whole)[1]! + 1);
+    expect(size(apart)[0]!).toBeGreaterThanOrEqual(size(whole)[0]! - 1e-6);
+    expect(size(apart)[1]!).toBeGreaterThanOrEqual(size(whole)[1]! - 1e-6);
+    // Every curve still names the body and edge it came from.
+    for (const e of apart.edges) expect(e.source?.body).toBeTruthy();
+    expect(b.view(doc, undefined, { ...req, explode: 0 }, projectView).box).toEqual(whole.box);
   });
 
   it("keeps a view it has made, until a body it shows changes", () => {

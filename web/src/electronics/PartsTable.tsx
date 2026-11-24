@@ -99,7 +99,7 @@ export default function PartsTable({ design, edit, readOnly, onClose }: { design
                           aria-label={`Package of ${p.ref}`}
                           value={p.pkg}
                           disabled={readOnly || (def?.packages.length ?? 0) < 2}
-                          onChange={(e) => edit((d) => changePart(d, p.id, { pkg: Number(e.target.value) }), `Change ${p.ref}`)}
+                          onChange={({ target: { value } }) => edit((d) => changePart(d, p.id, { pkg: Number(value) }), `Change ${p.ref}`)}
                         >
                           {def?.packages.map((k, n) => (
                             <option key={n} value={n}>
@@ -117,7 +117,7 @@ export default function PartsTable({ design, edit, readOnly, onClose }: { design
                           aria-label={`${p.ref} is fitted`}
                           checked={p.fitted !== false}
                           disabled={readOnly}
-                          onChange={(e) => edit((d) => changePart(d, p.id, { fitted: e.target.checked ? undefined : false }), `Change ${p.ref}`)}
+                          onChange={({ target: { checked } }) => edit((d) => changePart(d, p.id, { fitted: checked ? undefined : false }), `Change ${p.ref}`)}
                         />
                       </td>
                     </tr>

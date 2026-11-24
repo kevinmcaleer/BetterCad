@@ -91,6 +91,11 @@ export interface DrawingView {
   tangent: boolean;
   /** How it is drawn. Missing: line art. A projected view starts with its parent's. */
   style?: ViewStyle;
+  /**
+   * An exploded view (#574): how far the parts are moved out from the middle, as a share of how far each is from it
+   * (0.5 is half as far again). Missing: where the model has them. A projected view starts with its parent's.
+   */
+  explode?: number;
   /** Where the middle of the view's box sits on the sheet. */
   at: V2;
   /**

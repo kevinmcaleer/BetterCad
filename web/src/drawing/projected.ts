@@ -120,6 +120,7 @@ export function placeProjected(sheet: DrawingSheet, id: string, parentId: string
     at,
   };
   if (parent.style) view.style = parent.style;
+  if (parent.explode) view.explode = parent.explode;
   return { ...sheet, views: [...sheet.views, { ...view, at: lineUp({ ...sheet, views: [...sheet.views, view] }, view, at) }] };
 }
 

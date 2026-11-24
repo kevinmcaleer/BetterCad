@@ -39,7 +39,10 @@ export interface BoardLook {
   air: Air[];
   /** Rules check markers: a point and the distance found, mm. */
   marks?: { at: P2; text?: string }[];
-  ghost?: { track?: { pts: P2[]; width: number; layer: CopperLayer }; placements?: { part: string; x: number; y: number; rot: number; side: Side }[] };
+  ghost?: {
+    track?: { pts: P2[]; width: number; layer: CopperLayer; blocked?: boolean };
+    placements?: { part: string; x: number; y: number; rot: number; side: Side }[];
+  };
   box?: [P2, P2] | null;
 }
 
@@ -293,6 +296,15 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     ctx.restore();
   }
 
+  for (const k of board.keepouts) {
+    ctx.strokeStyle = c["ec-mark"];
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    path(ctx, v, k.outline, true);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
   if (show("edge")) {
     ctx.strokeStyle = c["ec-edge"];
     ctx.lineWidth = Math.max(1.5, 0.15 * v.scale);
@@ -319,7 +331,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
   const g = look.ghost?.track;
   if (g && g.pts.length > 1) {
     ctx.globalAlpha = 0.8;
-    ctx.strokeStyle = copper(g.layer);
+    ctx.strokeStyle = g.blocked ? c["ec-mark"] : copper(g.layer);
     ctx.lineWidth = Math.max(1, g.width * v.scale);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";

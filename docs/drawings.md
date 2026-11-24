@@ -80,6 +80,16 @@ has Duplicate. Each sheet has its own page size; the title block is the drawing'
 them all, and the sheet count ("2/3") fills itself in. Right-click a view for **Move to** another sheet: its projected
 views, marks and dimensions go with it. Export has **All sheets** for PDF, one page each at its own size.
 
+## Exploded views
+
+Select a base or projected view and set **Explode** in the properties panel (#574, Kev's choice 2026-11-24: a slider
+on the view, with nothing saved in the model). At 0 % the parts are where the model has them. Above it, each
+component's bodies move out from the middle of everything the view shows, by that share of how far the component's
+own middle is from it: 100 % doubles the distance. When no two bodies are in different components, each body moves on
+its own. Views projected from an exploded view start as far apart and stay in step while they are. The kernel does the
+moving (`explode` on the view request), so edges keep their names and marks hold on. Sizes between two parts are then
+not the model's. An exploded view is drawn as line art; sections and details are cut from the model as it is.
+
 ## Section, detail and broken views
 
 **Section view** cuts a view on a line and shows what is inside. Pick the view, choose a line across it or up it, and
@@ -249,4 +259,4 @@ their lines as line art.
 
 ## Not yet
 
-Exploded views wait for the model to save one. A stepped section still shows a line where its planes step. Ordinate dimensions are not planned yet. Weld symbols and a hole table are not here.
+A stepped section still shows a line where its planes step. Ordinate dimensions are not planned yet. Weld symbols and a hole table are not here.

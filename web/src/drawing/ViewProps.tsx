@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { PropsPanel } from "@bettercad/ui";
+import { NumberField, PropsPanel } from "@bettercad/ui";
 import type { DrawingSheet, ViewStyle } from "@bettercad/kernel/drawing";
 import { scaleLabel, styleOf, VIEW_STYLES, viewName, viewScale } from "./DrawingView";
 
@@ -52,6 +52,31 @@ export function ViewProps({ sheet, view: id, onSheet }: ViewPropsProps) {
         }),
       };
     }, "Set the view style");
+  const explode = Math.round((v.explode ?? 0) * 100);
+  const spread = (percent: number) =>
+    onSheet((s) => {
+      const before = s.views.find((x) => x.id === id);
+      if (!before) return s;
+      const next = Math.min(Math.max(percent, 0), 500) / 100;
+      // Views projected from it that were as far apart stay in step with it.
+      const follows = new Set([id]);
+      for (let grew = true; grew;) {
+        grew = false;
+        for (const x of s.views)
+          if (!follows.has(x.id) && x.kind === "projected" && x.parent && follows.has(x.parent) && (x.explode ?? 0) === (before.explode ?? 0))
+            grew = !!follows.add(x.id);
+      }
+      return {
+        ...s,
+        views: s.views.map((x) => {
+          if (!follows.has(x.id)) return x;
+          const out = { ...x };
+          if (next > 0) out.explode = next;
+          else delete out.explode;
+          return out;
+        }),
+      };
+    }, "Explode the view");
   return (
     <PropsPanel
       sections={[
@@ -77,7 +102,15 @@ export function ViewProps({ sheet, view: id, onSheet }: ViewPropsProps) {
                     ))}
                   </select>
                   <p className="bc-note">
-                    {v.breaks?.length && (style === "shaded" || style === "rendered") ? "A view with breaks is drawn as line art." : SAYS[style]}
+                    {(v.breaks?.length || v.explode) && (style === "shaded" || style === "rendered")
+                      ? `${v.explode ? "An exploded view" : "A view with breaks"} is drawn as line art.`
+                      : SAYS[style]}
+                  </p>
+                  <NumberField label="Explode" value={explode} unit="%" min={0} max={500} step={10} onCommit={spread} />
+                  <p className="bc-note">
+                    {explode
+                      ? "Parts are moved out from the middle. Sizes between two parts are not the model's."
+                      : "Above 0 %, each part moves out from the middle so you can see how they go together."}
                   </p>
                 </>
               ) : (

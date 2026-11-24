@@ -21,6 +21,11 @@ export interface EActions {
   paste?(): void;
   duplicate?(): void;
   renumber?(): void;
+  /** Board only: swap the copper layer (dropping a via when a track is on the go), and lock the picked parts. */
+  layer?(): void;
+  lock?(): void;
+  /** Board only: bend the track being laid the other way. */
+  bend?(): void;
 }
 export const eactions: { current: EActions | null } = { current: null };
 
