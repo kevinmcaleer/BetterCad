@@ -783,6 +783,24 @@ describe("named views", () => {
     expect(onView).toHaveBeenLastCalledWith("delete", "v1");
   });
 
+  it("puts one saved view, or every one, on the render strip while rendering", async () => {
+    const onView = vi.fn();
+    const { unmount } = render(panel(model(views), onView));
+    await userEvent.click(screen.getByRole("button", { name: "Show what is in Named views" }));
+    fireEvent.contextMenu(row(/^Bench/));
+    expect(screen.queryByRole("menuitem", { name: "Add to the strip" })).toBeNull();
+    await userEvent.keyboard("{Escape}");
+    unmount();
+    render(panel(model({ ...views, rendering: true }), onView));
+    await userEvent.click(screen.getByRole("button", { name: "Show what is in Named views" }));
+    fireEvent.contextMenu(row(/^Bench/));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Add to the strip" }));
+    expect(onView).toHaveBeenLastCalledWith("strip", "v1");
+    fireEvent.contextMenu(row(/^Named views/));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Add every view to the strip" }));
+    expect(onView).toHaveBeenLastCalledWith("strip");
+  });
+
   it("only looks in a shared model", async () => {
     render(panel(model({ ...views, readOnly: true })));
     await userEvent.click(screen.getByRole("button", { name: "Show what is in Named views" }));

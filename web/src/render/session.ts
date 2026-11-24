@@ -57,8 +57,12 @@ export interface RenderSession {
   subscribe(fn: () => void): () => void;
   /** Set by the picture once it can save. */
   save: ((size: SaveSize) => Promise<void>) | null;
-  /** Set by the picture: moves its camera (the film strip's Use this view). */
+  /** Set by the picture: moves its camera (the film strip's Use this view, a named view in the browser). */
   look: ((camera: CameraState) => void) | null;
+  /** Set by the picture: where its camera is now, for saving a named view from the render. */
+  camera: (() => CameraState) | null;
+  /** Set by the picture: goes home, or looks from the front, side or top fitted round the model. */
+  standard: ((view: "home" | "front" | "side" | "top") => void) | null;
   /** Set by the picture: its canvas, for the film strip's first look at a new shot. */
   canvas: (() => HTMLCanvasElement | null) | null;
   /** Set by the picture: the size it is drawn at, in CSS pixels. */
@@ -93,6 +97,8 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     },
     save: null,
     look: null,
+    camera: null,
+    standard: null,
     canvas: null,
     size: null,
   };

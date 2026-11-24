@@ -52,17 +52,17 @@ export interface RenderPictureProps {
   onResetHome?: () => void;
 }
 
-/** The corner view, fitted round the bodies: home when the model has none of its own. */
-function cornerView(bodies: RenderBody[], aspect: number): CameraState {
+/** The corner view (or the front, side or top), fitted round the bodies: home when the model has none of its own. */
+function cornerView(bodies: RenderBody[], aspect: number, from: "iso" | "front" | "side" | "top" = "iso"): CameraState {
   const box = new Box3();
   const p = new Vector3();
   for (const b of bodies) {
     const pos = b.mesh.positions;
     for (let i = 0; i < pos.length; i += 3) box.expandByPoint(p.set(pos[i], pos[i + 1], pos[i + 2]).applyMatrix4(b.matrix));
   }
-  if (box.isEmpty()) return DEFAULT_CAMERA;
+  if (box.isEmpty()) return { ...DEFAULT_CAMERA, ...PRESETS[from] };
   const s = box.getBoundingSphere(new Sphere());
-  return fit({ ...DEFAULT_CAMERA, ...PRESETS.iso }, [s.center.x, s.center.y, s.center.z], s.radius, aspect);
+  return fit({ ...DEFAULT_CAMERA, ...PRESETS[from] }, [s.center.x, s.center.y, s.center.z], s.radius, aspect);
 }
 
 /**
@@ -205,22 +205,30 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     };
   }, [move, hold]);
 
+  const goHome = useCallback(() => {
+    const el = canvas.current!;
+    move(home ? { ...home, ortho: false } : cornerView(bodies, el.clientWidth / Math.max(1, el.clientHeight)));
+  }, [move, home, bodies]);
   useEffect(() => {
     session.look = move;
+    session.camera = () => cam.current;
+    session.standard = (v) => {
+      const el = canvas.current!;
+      if (v === "home") goHome();
+      else move(cornerView(bodies, el.clientWidth / Math.max(1, el.clientHeight), v));
+    };
     session.canvas = () => canvas.current;
     session.size = () => ({ width: canvas.current?.clientWidth ?? 0, height: canvas.current?.clientHeight ?? 0 });
     return () => {
       session.look = null;
+      session.camera = null;
+      session.standard = null;
       session.size = null;
       session.canvas = null;
     };
-  }, [session, move]);
+  }, [session, move, goHome, bodies]);
 
   const orbiting = useRef(false);
-  const goHome = () => {
-    const el = canvas.current!;
-    move(home ? { ...home, ortho: false } : cornerView(bodies, el.clientWidth / Math.max(1, el.clientHeight)));
-  };
   // As the modelling view's cube, less the projection: a path-traced picture is always in perspective.
   const cubeMenu: MenuEntry[] = [
     { id: "home", label: "Go home", icon: "home", onSelect: goHome },
@@ -230,7 +238,14 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
   ];
   return (
     <>
-      <canvas ref={canvas} className="bc-render-canvas" role="img" aria-label={`Rendered picture of the model, ${samplesText(state.samples)}`} />
+      <canvas
+        ref={canvas}
+        className="bc-render-canvas"
+        role="img"
+        aria-label={`Rendered picture of the model, ${samplesText(state.samples)}`}
+        // Where the camera looks from, for tests: named views move it.
+        data-look={`${Math.round(cam.current.azimuth)} ${Math.round(cam.current.elevation)}`}
+      />
       {/* The render's own view cube: it turns the picture's camera, as the modelling view's turns that one. */}
       <div className="bc-render-cube">
         <ViewCube

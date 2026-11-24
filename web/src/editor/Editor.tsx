@@ -578,6 +578,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     locked: store.isLocked,
     say,
     matesOf,
+    render,
   });
   live.current.dialogOpen ||= vp.namingOpen;
 
@@ -4706,7 +4707,22 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               onMoveInto={moveIn}
               joints={browserJoints}
               poses={posesProps}
-              views={vp.namedViews}
+              views={
+                render
+                  ? {
+                      ...vp.namedViews,
+                      // In the Render view the rows move the render's camera, and saved views can go on the strip.
+                      rendering: !files.shared,
+                      act: (act, id, name) =>
+                        act === "strip"
+                          ? strip?.addViews(
+                              render,
+                              (doc.views ?? []).filter((v) => !id || v.id === id),
+                            )
+                          : vp.namedViews.act(act, id, name),
+                    }
+                  : vp.namedViews
+              }
               sections={{
                 sections: vp.sectionList,
                 section: vp.appliedSection,

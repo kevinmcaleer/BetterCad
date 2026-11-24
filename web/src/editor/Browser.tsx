@@ -111,6 +111,8 @@ export interface BrowserModel {
   atView?: string | null;
   /** Whether home has been set to a view of your own, so Reset home has something to do. */
   homeSet?: boolean;
+  /** The Render view is open: saved views can go on its film strip. */
+  rendering?: boolean;
   /** Section analyses, under Analysis; only `section`, the one applied, cuts the view. */
   sections?: { id: string; name: string }[];
   section?: string | null;
@@ -506,7 +508,7 @@ export interface BrowserPanelProps {
   /** Opens the schematic or the board (#617). */
   onElectronics?: (view: "schematic" | "pcb") => void;
   /** Named views (#40): look from one ("home", "front", "side", "top" or a saved view's id), save, update, rename or delete one, set or reset home. */
-  onView?: (act: "look" | "save" | "update" | "rename" | "delete" | "setHome" | "resetHome", id?: string, name?: string) => void;
+  onView?: (act: "look" | "save" | "update" | "rename" | "delete" | "setHome" | "resetHome" | "strip", id?: string, name?: string) => void;
   /** Named poses (#177): go to one (null: Home), save the joints as a new one, update, rename or delete one. */
   onPose?: (id: string | null) => void;
   onSavePose?: () => void;
@@ -697,7 +699,14 @@ export function BrowserPanel(p: BrowserPanelProps) {
     if (id === ROW.views)
       return {
         title: "Named views",
-        entries: model.readOnly ? [] : [{ id: "save", label: "Save this view…", icon: "camera", onSelect: () => p.onView?.("save") }],
+        entries: model.readOnly
+          ? []
+          : [
+              { id: "save", label: "Save this view…", icon: "camera", onSelect: () => p.onView?.("save") },
+              ...(model.rendering && model.views?.length
+                ? [{ id: "strip", label: "Add every view to the strip", icon: "plus" as const, onSelect: () => p.onView?.("strip") }]
+                : []),
+            ],
       };
     const std = VIEW_ROWS.get(id);
     if (std)
@@ -725,6 +734,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
           ...(model.readOnly
             ? []
             : [
+                ...(model.rendering ? [{ id: "strip", label: "Add to the strip", icon: "plus" as const, onSelect: () => p.onView?.("strip", id) }] : []),
                 { id: "update", label: "Update to this view", icon: "redo" as const, onSelect: () => p.onView?.("update", id) },
                 { id: "rename", label: "Rename", icon: "pencil" as const, keys: "F2", onSelect: () => p.onRenameIdChange(id) },
                 { id: "delete", label: "Delete", icon: "trash" as const, danger: true, onSelect: () => p.onView?.("delete", id) },

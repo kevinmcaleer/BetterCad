@@ -83,7 +83,7 @@ export interface LeftPanelProps {
   poses?: Pick<BrowserModel, "poses" | "atPose"> &
     Required<Pick<BrowserPanelProps, "onPose" | "onSavePose" | "onUpdatePose" | "onRenamePose" | "onDeletePose">>;
   /** Named views (#40) in the browser: the saved ones, the standard view the camera is in, and what the rows do. */
-  views?: { list: BrowserModel["views"]; at: string | null; homeSet: boolean; act: NonNullable<BrowserPanelProps["onView"]> };
+  views?: { list: BrowserModel["views"]; at: string | null; homeSet: boolean; rendering?: boolean; act: NonNullable<BrowserPanelProps["onView"]> };
   /** Section analyses, under Analysis in the browser, and what to do with them. */
   sections?: Pick<BrowserModel, "sections" | "section"> &
     Required<Pick<BrowserPanelProps, "onApplySection" | "onEditSection" | "onRenameSection" | "onDeleteSection">>;
@@ -193,6 +193,7 @@ function PartsPanel(p: LeftPanelProps) {
         views: p.views?.list,
         atView: p.views?.at,
         homeSet: p.views?.homeSet,
+        rendering: p.views?.rendering,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
         sections: p.sections?.sections,
