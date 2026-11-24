@@ -468,6 +468,23 @@
   gap: var(--bc-space-3);
   padding: 0 0 var(--bc-space-6) var(--bc-space-8);
 }
+.bc-admin-detail {
+  padding: 0 0 var(--bc-space-6) var(--bc-space-8);
+}
+.bc-admin-detail h3 {
+  margin: var(--bc-space-4) 0 var(--bc-space-3);
+  font-size: 13px;
+}
+.bc-admin-detail .bc-admin-models {
+  padding: 0;
+}
+.bc-admin-visits {
+  display: grid;
+  gap: var(--bc-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 .bc-admin-model {
   display: flex;
   align-items: center;
