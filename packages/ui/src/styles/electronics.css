@@ -492,12 +492,6 @@ button.bc-ec-pill {
   .bc-ec-layers-title {
     display: none;
   }
-  .bc-ec-routebar {
-    top: calc(var(--bc-ec-top) + 100px);
-    bottom: auto;
-    left: var(--bc-ec-gap);
-    right: var(--bc-ec-gap);
-  }
   .bc-ec-layers.bc-open {
     width: 220px;
   }
@@ -853,5 +847,11 @@ button.bc-ec-pill {
   .bc-ec-checks,
   .bc-ec-setup {
     width: auto;
+  }
+  .bc-ec-routebar {
+    top: calc(var(--bc-ec-top) + 100px);
+    bottom: auto;
+    left: var(--bc-ec-gap);
+    right: var(--bc-ec-gap);
   }
 }

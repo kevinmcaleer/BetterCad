@@ -78,7 +78,7 @@ export default function BoardSetup({ design, edit, readOnly, onClose }: { design
             className="bc-select"
             aria-label="Thickness"
             value={board.thickness}
-            onChange={(e) => edit((d) => setBoard(d, { thickness: Number(e.target.value) }), "Change the board's thickness")}
+            onChange={({ target: { value } }) => edit((d) => setBoard(d, { thickness: Number(value) }), "Change the board's thickness")}
           >
             {[...new Set([...THICKNESS, board.thickness])].sort().map((t) => (
               <option key={t} value={t}>
@@ -92,7 +92,7 @@ export default function BoardSetup({ design, edit, readOnly, onClose }: { design
             className="bc-select"
             aria-label="Solder mask"
             value={board.mask ?? "green"}
-            onChange={(e) => edit((d) => setBoard(d, { mask: e.target.value as Board["mask"] }), "Change the board's colour")}
+            onChange={({ target: { value } }) => edit((d) => setBoard(d, { mask: value as Board["mask"] }), "Change the board's colour")}
           >
             {MASKS.map((m) => (
               <option key={m} value={m}>
@@ -106,7 +106,7 @@ export default function BoardSetup({ design, edit, readOnly, onClose }: { design
             className="bc-select"
             aria-label="Silkscreen"
             value={board.silk ?? "white"}
-            onChange={(e) => edit((d) => setBoard(d, { silk: e.target.value as Board["silk"] }), "Change the silkscreen's colour")}
+            onChange={({ target: { value } }) => edit((d) => setBoard(d, { silk: value as Board["silk"] }), "Change the silkscreen's colour")}
           >
             <option value="white">White</option>
             <option value="black">Black</option>
@@ -121,7 +121,7 @@ export default function BoardSetup({ design, edit, readOnly, onClose }: { design
             className="bc-select"
             aria-label="Made by"
             value={preset?.id ?? "safe"}
-            onChange={(e) => edit((d) => applyPreset(d, e.target.value), "Change the board's rules")}
+            onChange={({ target: { value } }) => edit((d) => applyPreset(d, value), "Change the board's rules")}
           >
             {PRESETS.map((p) => (
               <option key={p.id} value={p.id}>

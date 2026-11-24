@@ -178,7 +178,7 @@ export function ChecksPanel({ design, edit, readOnly, onClose, title, results, r
                 className="bc-select"
                 value={levelOf(design, r)}
                 disabled={readOnly}
-                onChange={(e) => edit((d) => setLevel(d, r.id, e.target.value as CheckLevel, ruleList), "Change a rule")}
+                onChange={({ target: { value } }) => edit((d) => setLevel(d, r.id, value as CheckLevel, ruleList), "Change a rule")}
               >
                 {LEVELS.map((l) => (
                   <option key={l.id} value={l.id}>

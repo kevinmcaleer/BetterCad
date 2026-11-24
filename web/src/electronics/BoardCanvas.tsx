@@ -183,12 +183,20 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     board && ui.keepClear ? blockers(board, copper, loops, { net, layers, pts, width: w })[0] : undefined;
   const tooClose = (what: string) => setSaid(`Too close to ${what}. Go round it, or turn Keep clear off.`);
 
-  /** Lays the track on to `p`. True when it went down. */
+  /** The way to `to`: bent the way asked for, or the other way if only that one is clear. */
+  const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string } } => {
+    const w = widthOf(r.net);
+    const first = corner45(r.last, to, r.diag);
+    const stop = inWay(r.net, [layer], first, w);
+    if (!stop || first.length < 3) return { pts: first, stop };
+    const other = corner45(r.last, to, !r.diag);
+    return inWay(r.net, [layer], other, w) ? { pts: first, stop } : { pts: other };
+  };
+  /** Lays the track on to `p`: the routing to carry on with, null when it landed, false when something is in the way. */
   const extend = (r: Routing, p: P2): Routing | null | false => {
     const { to, lands } = aim(p, r);
-    const pts = corner45(r.last, to, r.diag);
-    if (pts.length < 2 || Math.hypot(to[0] - r.last[0], to[1] - r.last[1]) < 1e-6) return r;
-    const stop = inWay(r.net, [layer], pts, widthOf(r.net));
+    if (Math.hypot(to[0] - r.last[0], to[1] - r.last[1]) < 1e-6) return r;
+    const { pts, stop } = way(r, to);
     if (stop) {
       tooClose(stop.what);
       return false;
@@ -319,10 +327,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   // The piece of track that would go down on the next click.
   const ghost = useMemo(() => {
     if (!route || !at || !board) return undefined;
-    const { to } = aim(at, route);
-    const pts = corner45(route.last, to, route.diag);
-    const w = widthOf(route.net);
-    return { track: { pts, width: w, layer, blocked: !!inWay(route.net, [layer], pts, w) } };
+    const { pts, stop } = way(route, aim(at, route).to);
+    return { track: { pts, width: widthOf(route.net), layer, blocked: !!stop } };
   }, [route, at, board, copper, layer, width, ui.keepClear, grid]); // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => (ui.spot?.sheet === "board" ? [{ at: ui.spot.at }] : undefined), [ui.spot]);
 

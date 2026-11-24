@@ -160,3 +160,67 @@ everywhere. The netlist (`kicad/netlist.ts`) is KiCad's own format, with each pa
 net's pins. The writers load when Export is pressed.
 
 Left for later: sheets beyond the first (#636), hand-drawn text and shapes on a sheet, and buses.
+
+## Laying out a board (#637 to #643)
+
+The board's code is in `packages/electronics/src/pcb`, imported by subpath (`/pcb/copper`, `/pcb/route`,
+`/pcb/rules`, `/drc`) so it loads with the PCB view or the card that needs it.
+
+**Copper as shapes** (`copper.ts`). Every piece of copper is a core (a point, a line or a convex outline) grown by a
+radius: a via is a point, a track a line, a rounded pad a rectangle with its corners pulled in. `gap(a, b)` is the
+distance between the cores less both radii, which is exact for every pad shape we have. `copperGroups` joins pieces of
+one net that touch on a shared layer, so the ratsnest (`boardState` then `ratsnest`) leaves out pads that copper
+already connects, through vias and across layers.
+
+**Routing** (`route.ts`, the Route tool, W). Click a pad, a via or a track to start; each click lays a piece with one
+45° bend (`corner45`), bent whichever way is clear; a click on the net's own copper ends the track. V or Swap side
+drops a via and carries on on the other layer. The width comes from the net's class, else the board's rules, or from
+the Width list. With Keep clear on, `blockers` stops a piece that would come closer to another net, a hole or the edge
+than the rules allow, and says what is in the way; turn it off to route anywhere and let the board check find it.
+Pieces laid one after another become one track. There is no push and shove (#646) and no autorouter (#647).
+
+**Placing.** Drag parts on the grid (0.1 to 2.54 mm, in Layers), or pick one and type X, Y and turn in the part
+card. Lock (K) pins parts down; with several picked, the card lines them up or spaces them evenly. A part picked on
+the schematic stays picked on the board.
+
+**Holes and text.** Hole (H) adds an M3 mounting hole; the card changes the screw size, the drill and whether it has
+a copper ring. Text (T) writes on the silkscreen of the side being worked on.
+
+**Board setup** (B). Width, height and corner radius of a rectangular board (`roundedOutline`), thickness, solder
+mask and silkscreen colours, the rules and the net classes. A net class gives its nets a track width and clearance of
+their own; a net is in one class at a time.
+
+**Rule presets** (`presets.json`). A board house's limits are data: the numbers, the page they were read from and
+the day they were read. `ours` lists the fields that are our working values (clearance, track width, via size)
+chosen above the house's minimum. Adding a house is an entry in that file. The card links the source and says to
+check it before ordering, because the houses change their pages.
+
+## The board check (#644)
+
+`pcb/drc.ts`, imported as `@bettercad/electronics/drc`. `checkBoard(design)` returns results in the same shape as the
+schematic's check, and levels and waivers are kept in the same `design.checks`, so one card shows either.
+
+| Rule | Starts as | Finds |
+| --- | --- | --- |
+| `short` | Error | Copper of two nets touching |
+| `clearance` | Error | Copper of two nets closer than the larger of their clearances |
+| `unrouted` | Error | A net with connections still to route |
+| `behind` | Error | The board not yet updated from the schematic |
+| `edge` | Error | Copper closer to the edge than the rules allow, or over it |
+| `off-board` | Error | A part or a mounting hole that is not on the board |
+| `track-width` | Error | A track narrower than the narrowest allowed |
+| `hole-size` | Error | A hole smaller than the smallest drill |
+| `ring` | Error | Too little copper round a pad's, via's or plated hole's drill |
+| `hole-near` | Error | Two holes too close together |
+| `keepout` | Error | A track or a part inside a keep-out |
+| `courtyard` | Warning | Two parts on one side whose outlines overlap |
+| `track-open` | Warning | A track end that reaches no copper of its net |
+| `dead-net` | Warning | Copper on a net the schematic no longer has |
+| `silk-size` | Warning | Silkscreen text smaller than prints well |
+
+A part's own pads are never checked against each other; that is the footprint's business. Pairs are found with a
+sweep along x, so a busy board stays quick, and the check runs in the page as the board changes. Each rule has a
+board that breaks it in `pcb.test.ts`.
+
+Left for later: copper pours and thermals (#641), drawing keep-outs and cut-outs (#642), sending a change back to
+the schematic (#645), an outline from a sketch, a face or a DXF (#638), and dragging a track's corners.

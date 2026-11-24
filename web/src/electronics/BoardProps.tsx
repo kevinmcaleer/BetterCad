@@ -259,7 +259,9 @@ export default function BoardProps({
           <input
             type="checkbox"
             checked={!!hole.pad}
-            onChange={(e) => edit((d) => setHole(d, hole.id, { pad: e.target.checked ? (screw?.pad ?? round(hole.drill * 2)) : null }), "Change the hole")}
+            onChange={({ target: { checked } }) =>
+              edit((d) => setHole(d, hole.id, { pad: checked ? (screw?.pad ?? round(hole.drill * 2)) : null }), "Change the hole")
+            }
           />
           Copper ring
         </label>
