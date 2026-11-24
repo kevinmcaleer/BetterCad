@@ -4533,10 +4533,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             renderRibbon={
               ribbonOn && render && !sketch.editing && !shownDrawing ? (
                 <Suspense fallback={null}>
-                  <RenderRibbon
-                    session={render}
-                    onAdd={files.shared || !strip ? undefined : () => renderCam.current && strip.add(render, renderCam.current)}
-                  />
+                  <RenderRibbon session={render} onAdd={files.shared || !strip ? undefined : () => renderCam.current && strip.add(render, renderCam.current)} />
                 </Suspense>
               ) : undefined
             }
