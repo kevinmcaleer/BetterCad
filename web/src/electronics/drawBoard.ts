@@ -160,7 +160,7 @@ export function padPath(ctx: CanvasRenderingContext2D, v: View2D, pad: BoardPad[
   ctx.restore();
 }
 
-function shapeOn(ctx: CanvasRenderingContext2D, v: View2D, s: Shape, place: (p: P2) => P2, turnBy: number, flip: boolean, colour: string, c: Colours) {
+export function shapeOn(ctx: CanvasRenderingContext2D, v: View2D, s: Shape, place: (p: P2) => P2, turnBy: number, flip: boolean, colour: string, c: Colours) {
   ctx.strokeStyle = colour;
   ctx.fillStyle = colour;
   ctx.lineCap = "round";

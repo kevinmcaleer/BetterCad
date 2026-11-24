@@ -103,12 +103,22 @@ New part, Edit and Edit a copy open the part editor (`web/src/electronics/PartTo
   are two-pad chip, two rows (SOIC, SOP, TSSOP), four sides (QFP, QFN with a centre pad), DIP, pin header and ball grid
   (`packages/electronics/src/library/wizards.ts`). Each gets a fabrication outline, courtyard, silkscreen and a pin 1
   dot. The wizards are tested against KiCad's own footprints for 0603, SOIC-8, DIP-8, a 1 × 4 header and QFN-24.
+  Tick **Edit it pad by pad** to change the footprint by hand (`FootprintEditor.tsx`, loaded on first use, with its
+  edits in `footprintEdit.ts`). It starts from the footprint on show, a package's or a library part's own, and the
+  result is saved under the part's name so it never writes over the one it came from. The Pad tool adds a pad shaped
+  like the last; pick one or several (Shift-click) to type the number, kind (surface mount, through hole, bare hole),
+  shape, position, size, turn, corner rounding, hole and slot. Each pad can have its own **mask opening** (a gap in
+  mm, in place of the board's rule) and its own **solder paste**: the pad's size, its own gap (below zero pulls the
+  opening inside the pad) or none. `Pad.maskMargin`, `Pad.pasteMargin` and `Pad.noPaste` hold them; the Gerber mask
+  and paste files and the KiCad export honour them, and a KiCad footprint's `solder_mask_margin` and
+  `solder_paste_margin` are read on import. Line, Rectangle and Circle draw on the silkscreen, courtyard or
+  fabrication layer, and Wrap a courtyard round it redraws the courtyard 0.25 mm clear of the pads and body.
 - **3D body** (#628): sized from the footprint, or a box or cylinder of your own sizes, or none.
 - **Checks**, as you type: every pin has a pad (this one stops a save), pads closer than 0.2 mm, no courtyard, nothing
   on the silkscreen to show pin 1, a hole that leaves no copper, pin lines that could not be read.
 
-Not built yet: editing pads one at a time with per-pad mask and paste (#627), and attaching a STEP file or a BetterCad model as the body (#628, with the 3D
-board).
+Not built yet: attaching a STEP file or a BetterCad model as the body (#628, with the 3D board). Pad sizes are typed
+numbers, not expressions, and arcs and text on a footprint come only from imported footprints.
 
 ### Importing KiCad files
 

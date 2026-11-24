@@ -60,7 +60,7 @@ export function addPin(def: SymbolDef, at: P2, side: PinSide, unit: number, type
   return { def: { ...def, pins: [...def.pins, pin] }, id: `p${def.pins.length}` };
 }
 
-function movedShape(s: SymShape, dx: number, dy: number): SymShape {
+export function movedShape<S extends Shape>(s: S, dx: number, dy: number): S {
   if (s.kind === "line") return { ...s, pts: s.pts.map((p) => [r4(p[0] + dx), r4(p[1] + dy)] as P2) };
   if (s.kind === "rect") return { ...s, x1: r4(s.x1 + dx), y1: r4(s.y1 + dy), x2: r4(s.x2 + dx), y2: r4(s.y2 + dy) };
   if (s.kind === "circle" || s.kind === "arc") return { ...s, cx: r4(s.cx + dx), cy: r4(s.cy + dy) };
@@ -147,7 +147,8 @@ export function onArc(a: number, a0: number, a1: number): boolean {
   return norm(a - a0) <= sweep;
 }
 
-function shapeDist(s: SymShape, p: P2): number {
+/** How far a point is from a shape's line work, mm. */
+export function shapeDist(s: Shape, p: P2): number {
   if (s.kind === "line") {
     let d = Infinity;
     for (let i = 0; i + 1 < s.pts.length; i++) d = Math.min(d, segDist(p, s.pts[i]!, s.pts[i + 1]!));
@@ -203,7 +204,10 @@ export function itemBox(def: SymbolDef, id: ItemId): { x1: number; y1: number; x
     return { x1: Math.min(p.x, b[0]), y1: Math.min(p.y, b[1]), x2: Math.max(p.x, b[0]), y2: Math.max(p.y, b[1]) };
   }
   const s = def.shapes[index(id)];
-  if (!s) return null;
+  return s ? shapeBox(s) : null;
+}
+
+export function shapeBox(s: Shape): { x1: number; y1: number; x2: number; y2: number } {
   if (s.kind === "line") {
     const xs = s.pts.map((q) => q[0]);
     const ys = s.pts.map((q) => q[1]);

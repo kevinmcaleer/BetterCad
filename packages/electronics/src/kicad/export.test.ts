@@ -3,7 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { sampleBoard } from "../sample";
-import { kicadName, kicadProject, uuidOf } from "./export";
+import type { FootprintDef } from "../model";
+import { kicadFootprint, kicadName, kicadProject, uuidOf } from "./export";
 import { tangle } from "./fixture";
 import { readKicadFootprint } from "./footprint";
 import { children, parseSexpr, text, type Node } from "./sexpr";
@@ -76,6 +77,21 @@ describe("exporting to KiCad (#664)", () => {
     }
     // The library says where each part came from.
     expect(file("CREDITS.md")).toMatch(/- Resistor: .+/);
+  });
+
+  it("keeps a pad's own mask and paste openings out to KiCad and back", () => {
+    const fp: FootprintDef = {
+      name: "Own openings",
+      pads: [
+        { number: "1", kind: "smd", shape: "rect", x: -1, y: 0, w: 1, h: 0.6, maskMargin: 0.1, pasteMargin: -0.05 },
+        { number: "2", kind: "smd", shape: "rect", x: 1, y: 0, w: 1, h: 0.6, noPaste: true },
+      ],
+      shapes: [],
+    };
+    const text = kicadFootprint(fp, "Own_openings");
+    expect(text).toContain("(solder_mask_margin 0.1)");
+    expect(text).toContain("(solder_paste_margin -0.05)");
+    expect(readKicadFootprint(text).footprint.pads).toEqual(fp.pads);
   });
 
   it("puts every part on the board with its pads on their nets", () => {

@@ -124,6 +124,8 @@ export interface Pad {
   slot?: number;
   /** Gap between pad and mask opening; none uses the board's rule. */
   maskMargin?: number;
+  /** Gap between pad and paste opening: negative makes the opening smaller than the pad. None: the pad's own size. */
+  pasteMargin?: number;
   /** No paste on this pad (test points, edge fingers). */
   noPaste?: boolean;
   /** A surface pad on the far side of the board from its part: the other face of an edge connector. */

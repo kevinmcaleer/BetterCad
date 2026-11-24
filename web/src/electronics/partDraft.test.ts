@@ -98,6 +98,26 @@ describe("a copy of a library part", () => {
     ]);
   });
 
+  it("uses a footprint changed pad by pad, under a name of its own, and checks it", () => {
+    const start = build({ ...newDraft(), name: "Hand" }).footprint!;
+    const land = { ...start, pads: start.pads.map((p) => (p.number === "1" ? { ...p, maskMargin: 0.1, pasteMargin: -0.05 } : p)) };
+    const made = build({ ...newDraft(), name: "Hand", land });
+    expect(made.def!.packages).toHaveLength(1);
+    expect(made.def!.packages[0]!.footprint).toEqual({ ...land, name: "Hand SO-4" });
+    expect(made.def!.packages[0]!.model).toBeDefined();
+    // Taking a pad away leaves a pin with nowhere to go, and taking the courtyard away is worth a note.
+    const three = { ...land, pads: land.pads.slice(0, 3), shapes: land.shapes.filter((s) => s.layer !== "courtyard") };
+    const short = build({ ...newDraft(), name: "Hand", land: three });
+    expect(short.problems).toEqual(["Hand SO-4 has no pad for pin 4. Change the pin numbers or the footprint."]);
+    expect(short.notes).toEqual(["It has no courtyard, so the board cannot tell when parts overlap."]);
+    // A library part's footprint, edited, is saved beside the part and keeps its other packages and its body.
+    const base = part("bc817");
+    const kept = build({ ...draftFrom(base), land: base.packages[0]!.footprint });
+    expect(kept.def!.packages[0]!.footprint.name).toBe(`BC817 copy ${base.packages[0]!.footprint.name.split(":").pop()}`);
+    expect(kept.def!.packages[0]!.model).toEqual(base.packages[0]!.model);
+    expect(kept.def!.packages.slice(1)).toEqual(base.packages.slice(1));
+  });
+
   it("redraws as a box when asked, with the same pins", () => {
     const made = build({ ...draftFrom(part("bc817")), box: true });
     expect(made.def!.symbol.shapes).toHaveLength(1);
