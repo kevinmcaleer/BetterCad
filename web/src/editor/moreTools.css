@@ -1,0 +1,82 @@
+/* More tools (MoreTools.tsx): the ribbon as a sheet along the bottom on phones and tablets. Loads with the sheet. */
+.bc-scrim.bc-more-scrim {
+  align-items: flex-end;
+  padding: var(--bc-space-4);
+}
+.bc-more {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: 100%;
+  max-height: 70dvh;
+  background: var(--bc-color-bar);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  box-shadow: var(--bc-shadow-pop);
+  overflow: hidden;
+}
+.bc-more-head {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+  padding: var(--bc-space-3) var(--bc-space-3) var(--bc-space-3) var(--bc-space-4);
+  border-bottom: 1px solid var(--bc-color-line);
+}
+.bc-more-tabs {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: var(--bc-space-1);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bc-more-tabs .bc-tab {
+  flex: none;
+  height: var(--bc-control);
+}
+.bc-more-body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--bc-space-3) var(--bc-space-4);
+  overflow-y: auto;
+}
+.bc-more-group + .bc-more-group {
+  margin-top: var(--bc-space-4);
+}
+.bc-more-name {
+  margin: 0 0 var(--bc-space-2);
+  color: var(--bc-color-muted);
+  font: var(--bc-type-small-strong-weight) var(--bc-type-small-strong-size) / var(--bc-type-small-strong-line) var(--bc-font-sans);
+}
+.bc-more-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: var(--bc-space-1);
+}
+.bc-more-grid .bc-rb {
+  min-width: 0;
+  min-height: 64px;
+  justify-content: center;
+}
+.bc-more-grid .bc-rb-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bc-more-find {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bc-space-3);
+  min-height: var(--bc-control);
+  padding: var(--bc-space-3);
+  border: 0;
+  border-top: 1px solid var(--bc-color-line);
+  background: transparent;
+  color: var(--bc-color-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.bc-more-find:hover {
+  background: var(--bc-color-hover);
+}

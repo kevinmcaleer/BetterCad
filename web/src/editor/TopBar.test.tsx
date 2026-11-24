@@ -115,3 +115,16 @@ describe("Ribbon", () => {
     expect(screen.queryByRole("tab")).toBeNull();
   });
 });
+
+describe("More tools", () => {
+  it("ends the compact tool bar with More tools, which opens the ribbon's tabs", () => {
+    const p = setup({ onMoreTools: vi.fn() });
+    fireEvent.click(screen.getByRole("button", { name: "More tools" }));
+    expect(p.onMoreTools).toHaveBeenCalledOnce();
+  });
+
+  it("leaves it off when there is nothing to open", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "More tools" })).toBeNull();
+  });
+});
