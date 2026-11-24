@@ -59,6 +59,13 @@ ElectronicsDesign
 - A net is named by a power symbol if it has one, else a label, else from its first pin: `Net-(R1-2)`.
 - Pins with nothing on them and no no-connect mark are reported as floating; wire ends in mid air as open ends.
 
+## Parts and libraries
+
+What a component holds, the starter library, where its parts come from and how to rebuild it are in
+[electronics-library.md](electronics-library.md). `packages/electronics/src/library/pack.ts` is the pack format and its
+search; `@bettercad/electronics/kicad` reads KiCad's `.kicad_sym` and `.kicad_mod` files. The Components panel
+(`web/src/electronics/Components.tsx`) fetches the starter pack the first time it opens.
+
 ## Keeping the board in step
 
 `boardChanges(design)` compares the schematic with the board and returns a change list; `applyChanges` applies it as

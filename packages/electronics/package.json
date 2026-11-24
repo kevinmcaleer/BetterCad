@@ -6,7 +6,9 @@
   "description": "Electronics: the schematic, board and component model, nets, the rules checks and the manufacturing writers. No DOM.",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./kicad": "./src/kicad/index.ts",
+    "./library/starter.json": "./library/starter.json"
   },
   "scripts": {
     "build": "tsc -b"

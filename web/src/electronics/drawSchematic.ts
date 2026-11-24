@@ -54,7 +54,7 @@ function shape(
     });
     if (s.fill) {
       ctx.closePath();
-      ctx.fillStyle = fill;
+      ctx.fillStyle = s.fill === "solid" ? stroke : fill;
       ctx.fill();
     }
     ctx.lineWidth = px(s.width);
@@ -71,7 +71,7 @@ function shape(
     ctx.beginPath();
     pts.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
     ctx.closePath();
-    ctx.fillStyle = fill;
+    ctx.fillStyle = s.fill === "solid" ? stroke : fill;
     if (s.fill !== false) ctx.fill();
     ctx.lineWidth = px(s.width ?? 0.25);
     ctx.stroke();
@@ -80,7 +80,7 @@ function shape(
     ctx.beginPath();
     ctx.arc(q[0], q[1], s.r * v.scale, 0, Math.PI * 2);
     if (s.fill) {
-      ctx.fillStyle = stroke;
+      ctx.fillStyle = s.fill === "solid" ? stroke : fill;
       ctx.fill();
     }
     ctx.lineWidth = px(s.width);

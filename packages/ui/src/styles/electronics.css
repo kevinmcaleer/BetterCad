@@ -171,6 +171,112 @@
 .bc-ec-part:focus-visible {
   background: var(--bc-color-accent-soft);
 }
+.bc-ec-part.bc-on {
+  background: var(--bc-color-accent-soft);
+  box-shadow: inset 3px 0 0 var(--bc-color-accent);
+}
+.bc-ec-parts-short {
+  max-height: none;
+  padding-bottom: var(--bc-space-3);
+  border-bottom: 1px solid var(--bc-color-line);
+}
+.bc-ec-components {
+  width: min(340px, calc(100% - var(--bc-ec-gap) * 2));
+}
+/* The panel's body scrolls as one; nothing in it squashes to make room. */
+.bc-ec-components .bc-fpanel-body > * {
+  flex: none;
+}
+.bc-ec-components .bc-select {
+  width: 100%;
+}
+.bc-ec-components .bc-ec-parts {
+  grid-template-columns: minmax(0, 1fr);
+  max-height: 30vh;
+}
+/* The name keeps its room; a long package name gives way first. */
+.bc-ec-components .bc-ec-part {
+  display: flex;
+}
+.bc-ec-components .bc-ec-part > :first-child {
+  flex: none;
+}
+.bc-ec-components .bc-ec-part span,
+.bc-ec-components .bc-ec-part small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bc-ec-components .bc-ec-part span {
+  flex: 0 1 auto;
+  min-width: 35%;
+}
+.bc-ec-components .bc-ec-part small {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: right;
+}
+.bc-ec-part-card {
+  display: grid;
+  gap: var(--bc-space-3);
+  padding-top: var(--bc-space-4);
+  border-top: 1px solid var(--bc-color-line);
+}
+.bc-ec-part-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bc-space-4);
+}
+.bc-ec-part-card h3 {
+  margin: 0;
+  font-size: var(--bc-type-body-size);
+}
+.bc-ec-part-card p {
+  margin: 0;
+}
+.bc-ec-star {
+  display: inline-grid;
+  place-items: center;
+  width: var(--bc-control);
+  height: var(--bc-control);
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-muted);
+  cursor: pointer;
+}
+.bc-ec-star:hover {
+  background: var(--bc-color-hover);
+}
+.bc-ec-star[aria-pressed="true"] {
+  color: var(--bc-color-accent);
+}
+.bc-ec-star[aria-pressed="true"] svg {
+  fill: currentColor;
+}
+.bc-ec-preview {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--bc-space-4);
+}
+.bc-ec-preview figure {
+  margin: 0;
+  min-width: 0;
+}
+.bc-ec-preview canvas {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-viewport);
+}
+.bc-ec-preview figcaption {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-micro-size);
+  text-align: center;
+}
 .bc-ec-part small {
   color: var(--bc-color-muted);
   font-size: var(--bc-type-micro-size);

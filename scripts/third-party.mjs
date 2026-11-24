@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerates the "Every runtime dependency" table in THIRD_PARTY_LICENSES.md (#111): the npm packages the app ships
+// Regenerates the "Every runtime dependency" and "Part libraries" tables in THIRD_PARTY_LICENSES.md (#111, #630): the npm packages the app ships
 // (package-lock.json, not dev) and the Python packages the server runs (uv export --no-dev). `--check` fails if the
 // file is out of date, so CI catches a new dependency nobody listed.
 import { execFileSync } from "node:child_process";
@@ -55,9 +55,38 @@ const table = [
   END,
 ].join("\n");
 
+// The electronics part libraries the app serves (#630): each pack's own credits, so the page and the pack agree.
+const PARTS_START = "<!-- generated: part libraries -->";
+const PACKS = ["packages/electronics/library/starter.json"];
+const parts = [
+  PARTS_START,
+  "",
+  "| Pack | Parts | From | Version | Licence | Source |",
+  "| --- | --- | --- | --- | --- | --- |",
+  ...PACKS.flatMap((file) => {
+    const pack = JSON.parse(readFileSync(join(ROOT, file), "utf8"));
+    return pack.credits.map((c, i) => {
+      const n = pack.parts.filter((p) => p.from === i).length;
+      return `| ${pack.name} | ${n} | ${c.name} | ${c.version ?? ""} | ${c.licence} | ${c.url} |`;
+    });
+  }),
+  "",
+  END,
+].join("\n");
+
+function put(md, start, block, heading) {
+  const at = md.indexOf(start);
+  if (at < 0) return `${md.trimEnd()}\n\n${heading}\n\n${block}\n`;
+  return `${md.slice(0, at)}${block}${md.slice(md.indexOf(END, at) + END.length)}`;
+}
+
 const md = readFileSync(FILE, "utf8");
-const at = md.indexOf(START);
-const next = at < 0 ? `${md.trimEnd()}\n\n## Every runtime dependency\n\n${table}\n` : `${md.slice(0, at)}${table}${md.slice(md.indexOf(END) + END.length)}`;
+const PARTS_HEADING = [
+  "## Part libraries",
+  "",
+  "The electronics starter library is taken from the KiCad libraries, converted to BetterCad's format. It stays under their licence, CC-BY-SA 4.0, whose exception says the boards and files you make with the parts are yours, with no share-alike. If you pass the library itself on, keep the licence and the credit. See `packages/electronics/library/CREDITS.md`.",
+].join("\n");
+const next = put(put(md, START, table, "## Every runtime dependency"), PARTS_START, parts, PARTS_HEADING);
 
 if (process.argv.includes("--check")) {
   if (next !== md) {

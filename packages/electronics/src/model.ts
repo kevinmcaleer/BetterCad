@@ -20,11 +20,14 @@ export function eid(prefix: string): Id {
 
 // ---------------------------------------------------------------- shapes
 
+/** How a closed shape is filled: `true` with the body tint, "solid" with the line's own colour (arrow heads, dots). */
+export type Fill = boolean | "solid";
+
 /** Line work shared by symbols, footprints and the board. `fill` closes the shape and fills it. */
 export type Shape =
-  | { kind: "line"; pts: P2[]; width?: number; fill?: boolean }
-  | { kind: "rect"; x1: number; y1: number; x2: number; y2: number; width?: number; fill?: boolean }
-  | { kind: "circle"; cx: number; cy: number; r: number; width?: number; fill?: boolean }
+  | { kind: "line"; pts: P2[]; width?: number; fill?: Fill }
+  | { kind: "rect"; x1: number; y1: number; x2: number; y2: number; width?: number; fill?: Fill }
+  | { kind: "circle"; cx: number; cy: number; r: number; width?: number; fill?: Fill }
   /** From angle `a0` anticlockwise to `a1`, degrees. */
   | { kind: "arc"; cx: number; cy: number; r: number; a0: number; a1: number; width?: number }
   | { kind: "text"; x: number; y: number; text: string; size: number; angle?: number; align?: "left" | "centre" | "right" };
