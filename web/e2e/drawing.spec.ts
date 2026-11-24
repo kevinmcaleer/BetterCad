@@ -992,7 +992,7 @@ test("give the title block a logo and a field, save a template and start the nex
   await settings.getByRole("button", { name: "Done" }).click();
   const block = page.getByRole("group", { name: "Title block" });
   await expect(block.getByRole("img", { name: "Logo: a picture" })).toBeVisible();
-  await expect(block.getByRole("img", { name: "Material: PETG" })).toBeVisible();
+  await expect(block.getByRole("button", { name: "Material: PETG" })).toBeVisible();
 
   // The next New drawing: pick the template, and the first sheet comes finished.
   await page.getByRole("button", { name: "Finish drawing" }).click();
