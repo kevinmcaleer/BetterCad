@@ -4,6 +4,16 @@ import { expect, test } from "@playwright/test";
 // Close the page ourselves: SwiftShader can leave the context's own close waiting long enough to stall the next test.
 test.afterEach(async ({ page }) => page.close());
 
+/**
+ * The Render view opens stopped: press Start. The path tracer's first look can freeze a software GPU's page while its
+ * shader builds, so both steps wait long.
+ */
+async function startRender(page: import("@playwright/test").Page) {
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
+  await bar.getByRole("button", { name: "Start rendering" }).click({ timeout: 200_000 });
+}
+
 /** Render (#197): a path-traced picture over the view. Esc goes back to modelling. */
 test("Render switches the view to a path-traced picture, and Esc goes back", async ({ page }) => {
   test.setTimeout(480_000);
@@ -15,6 +25,7 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
 
   await page.keyboard.press("Shift+R");
+  await startRender(page);
   const bar = page.getByRole("group", { name: "Render options" });
   // On a software GPU (SwiftShader in CI) the path tracer's shader takes over a minute to build, and the whole page
   // is frozen while it does: every check made in that time stalls with it and runs out of its own short timeout. So
@@ -38,6 +49,7 @@ test("Render switches the view to a path-traced picture, and Esc goes back", asy
   // Paper white from the render's own bar. Paper builds the path tracer's shader again, which freezes a
   // software GPU's page for over a minute (more on a busy runner), so wait for the finished picture, then check it.
   await page.keyboard.press("Shift+R");
+  await startRender(page);
   await bar.getByRole("button", { name: "Paper" }).click();
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 240_000 });
   await expect(bar.getByRole("button", { name: "Paper" })).toHaveAttribute("aria-pressed", "true");
@@ -73,6 +85,7 @@ test("switching an open render to Paper drops the colours", async ({ page }) => 
   await page.getByRole("group", { name: "Colour" }).getByRole("button", { name: "Orange" }).click();
   await page.keyboard.press("Escape");
   await page.keyboard.press("Shift+R");
+  await startRender(page);
   const bar = page.getByRole("group", { name: "Render options" });
   const status = bar.getByRole("status");
   await expect(status).toHaveText("2 of 2 samples", { timeout: 200_000 });
@@ -100,6 +113,7 @@ test("Save image saves the picture already rendered, without rendering it again"
   await page.getByRole("button", { name: "Box", exact: true }).click();
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
   await page.keyboard.press("Shift+R");
+  await startRender(page);
   const bar = page.getByRole("group", { name: "Render options" });
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 200_000 });
   const shown = await page.locator(".bc-render-canvas").evaluate((el: HTMLCanvasElement) => el.toDataURL("image/png"));
@@ -156,6 +170,7 @@ test("Save image at a bigger size asks where to save straight away, while the cl
   await page.getByRole("button", { name: "Box", exact: true }).click();
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
   await page.keyboard.press("Shift+R");
+  await startRender(page);
   const bar = page.getByRole("group", { name: "Render options" });
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 200_000 });
   await bar.getByRole("button", { name: "Save image" }).click({ force: true });
@@ -186,6 +201,7 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   await page.getByRole("group", { name: "Colour" }).getByRole("button", { name: "Orange" }).click();
   await page.keyboard.press("Escape");
   await page.keyboard.press("Shift+R");
+  await startRender(page);
   await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("4 of 4 samples", { timeout: 200_000 });
   // Four samples are grainy, so compare the picture shrunk to 60 × 40: halving it
   // step by step averages each pixel with its neighbours, which keeps the shape, colour and shadow and drops the grain.

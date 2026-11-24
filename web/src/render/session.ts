@@ -36,7 +36,10 @@ export interface RenderState {
   /** Where the picture stops adding samples. */
   quality: RenderQuality;
   samples: number;
-  /** Stopped with the stop button: the picture keeps what it has, so background renders get the GPU. */
+  /**
+   * Not rendering: the view opens stopped, showing a first look, until you press Start. The stop button stops it
+   * again, keeping the picture so far, so background renders get the GPU.
+   */
   stopped: boolean;
   /** Orbiting: the picture waits for you to stop. */
   moving: boolean;
@@ -71,7 +74,7 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     focus: "soft",
     quality: "better",
     samples: 0,
-    stopped: false,
+    stopped: true,
     moving: false,
     slow: false,
     sluggish: false,
