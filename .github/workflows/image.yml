@@ -1,0 +1,44 @@
+# Builds the image from every push to main and publishes it as ghcr.io/kevinmcaleer/bettercad:main (and
+# :main-<commit>). The server pulls :main on its own within a few minutes when Watchtower is on (docs/deploy.md,
+# "Updating on its own"). Version tags still build :latest and :v… in release.yml.
+name: Main image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# A newer push replaces a build still running: only the latest main is worth shipping.
+concurrency:
+  group: main-image
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=main-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          tags: |
+            ghcr.io/kevinmcaleer/bettercad:main
+            ghcr.io/kevinmcaleer/bettercad:${{ steps.v.outputs.version }}
+          cache-from: type=gha,scope=main-image
+          cache-to: type=gha,mode=max,scope=main-image

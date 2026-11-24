@@ -15,8 +15,22 @@ cp .env.example .env    # set SECRET_KEY, e.g. openssl rand -hex 32; every other
 docker compose pull && docker compose up -d
 ```
 
-Until the first `v*` tag is released there is no published image; build it on the machine instead with
-`docker compose up -d --build` from a checkout of the repository.
+`latest` is the last `v*` tag. Every push to `main` also publishes `:main` (and `:main-<commit>`), built by
+`.github/workflows/image.yml`.
+
+### Updating on its own
+
+To have the server follow `main`, so a merged fix is live a few minutes later, add to `.env`:
+
+```sh
+BETTERCAD_TAG=main
+COMPOSE_PROFILES=autoupdate
+```
+
+then `docker compose pull && docker compose up -d`. That runs `:main` and starts a `watchtower` container, which
+checks for a new `:main` every 5 minutes, restarts only the BetterCad container on it, and removes the old image.
+`curl https://bettercad.kevsrobots.com/api/health` shows the running build as `"version":"main-<commit>"`, and
+Help → About shows the same. To go back to releases, remove both lines and run the same two commands.
 
 ## Cloudflare Tunnel
 
@@ -131,4 +145,5 @@ every admin call.
 
 ## Live preview
 
-`.github/workflows/pages.yml` publishes the web app (no server) to GitHub Pages on every push to `main`. Turn it on once in Settings → Pages → Source: GitHub Actions.
+`.github/workflows/pages.yml` can publish the web app (no server) to GitHub Pages on every push to `main`. Turn it on
+once in Settings → Pages → Source: GitHub Actions, then add the repository variable `PAGES_PREVIEW` = `true`.
