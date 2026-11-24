@@ -19,7 +19,7 @@ import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { readColours } from "./colours";
 import { drawBoard, type LayerId } from "./drawBoard";
-import { boxBoard, hitBoard, placementBox } from "./hit";
+import { boxBoard, hitBoard, placementBox } from "./hitBoard";
 import { clearOf } from "./SchematicCanvas";
 import { eui } from "./ui";
 import { useEui } from "./useEui";

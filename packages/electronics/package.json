@@ -8,7 +8,10 @@
   "exports": {
     ".": "./src/index.ts",
     "./kicad": "./src/kicad/index.ts",
+    "./kicad/netlist": "./src/kicad/netlist.ts",
     "./tools": "./src/library/tools.ts",
+    "./erc": "./src/erc.ts",
+    "./replace": "./src/replace.ts",
     "./library/starter.json": "./library/starter.json"
   },
   "scripts": {

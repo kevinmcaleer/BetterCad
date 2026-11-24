@@ -1,6 +1,19 @@
 import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState } from "react";
-import { categoriesOf, emptyPack, inflate, isPack, putPart, searchPack, type ComponentDef, type LibraryPack, type PackPart } from "@bettercad/electronics";
+import {
+  categoriesOf,
+  emptyPack,
+  inflate,
+  isPack,
+  putPart,
+  searchPack,
+  type ComponentDef,
+  type ElectronicsDesign,
+  type LibraryPack,
+  type PackPart,
+} from "@bettercad/electronics";
+import { replacePart } from "@bettercad/electronics/replace";
 import { Button, ESC, FeaturePanel, Icon, PanelNote, cx, useEscape } from "@bettercad/ui";
+import type { EEdit } from "./actions";
 import { textOf } from "./fileText";
 import { useAccount } from "../cloud/account";
 import { MY_PARTS, libraryFile, useMyLibrary } from "./myLibrary";
@@ -9,6 +22,7 @@ import { noteRecent, recentParts, starredParts, toggleStar } from "./partPrefs";
 import { PartPreview } from "./PartPreview";
 import { basicsPack, loadStarter } from "./starter";
 import { eui } from "./ui";
+import { useEui } from "./useEui";
 
 // The editor and the importer carry the wizards and the KiCad readers: fetched when one is opened.
 const PartEditor = lazy(() => import("./PartTools").then((m) => ({ default: m.PartEditor })));
@@ -54,7 +68,11 @@ function saveAs(blob: Blob, name: string) {
  * keyword, look at its symbol and footprint, pick the package, then place it. Parts you starred and parts you placed
  * lately sit on top. From here you also make a part, import KiCad files, and save or open your library as a file.
  */
-export function ComponentsCard({ onClose }: { onClose: () => void }) {
+export function ComponentsCard({ onClose, design, edit }: { onClose: () => void; design?: ElectronicsDesign; edit?: EEdit }) {
+  // One part picked on the sheet can be swapped for the one picked here (#631).
+  const picked = useEui().selected;
+  const symbol = picked.length === 1 ? design?.sheets.flatMap((s) => s.symbols).find((y) => y.id === picked[0]) : undefined;
+  const swap = design?.parts.find((p) => p.id === symbol?.part && !design.defs[p.def]?.symbol.power);
   const [starter, setStarter] = useState<LibraryPack | null>(null);
   const [failed, setFailed] = useState(false);
   const [find, setFind] = useState("");
@@ -342,6 +360,23 @@ export function ComponentsCard({ onClose }: { onClose: () => void }) {
               </p>
             )}
             <div className="bc-ec-library-tools">
+              {swap && edit && design && (
+                <Button
+                  size="dense"
+                  variant="secondary"
+                  label={`Replace ${swap.ref}`}
+                  title={`Swap ${swap.ref} for this part and keep its wires where the pins match`}
+                  onClick={() => {
+                    const { lost } = replacePart(design, swap.id, def, pkg);
+                    edit((d) => replacePart(d, swap.id, def, pkg).design, `Replace ${swap.ref}`);
+                    setSaid(
+                      lost.length
+                        ? `Replaced ${swap.ref}. ${lost.length === 1 ? `The wire on pin ${lost[0]} has` : `The wires on pins ${lost.join(", ")} have`} no pin to join now.`
+                        : `Replaced ${swap.ref}. Its wires are still joined.`,
+                    );
+                  }}
+                />
+              )}
               {row.mine ? (
                 <>
                   <Button

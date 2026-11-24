@@ -65,7 +65,7 @@ export function sceneSvg(scene: Scene, o: SvgOptions = {}): string {
   } else if (scene.labels.length) {
     out.push(`<g fill="black" font-family="Inter, Helvetica, Arial, sans-serif">`);
     for (const l of scene.labels) {
-      const anchor = l.anchor === "middle" ? ` text-anchor="middle"` : "";
+      const anchor = l.anchor === "start" ? "" : ` text-anchor="${l.anchor}"`;
       const base = l.baseline === "central" ? ` dominant-baseline="central"` : "";
       // The page counts y down, so anticlockwise on the sheet is a negative turn here.
       const spin = l.turn ? ` transform="rotate(${n((-l.turn * 180) / Math.PI)} ${n(l.at[0])} ${n(h - l.at[1])})"` : "";

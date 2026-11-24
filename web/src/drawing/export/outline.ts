@@ -10,7 +10,7 @@ export function outline(label: Label, font: GlyphFont): PathCommand[] {
   const chars = [...label.text];
   const advances = chars.map((ch, i) => font.glyph(ch).advance + (i + 1 < chars.length ? (font.kerning?.(ch, chars[i + 1]!) ?? 0) : 0));
   const width = advances.reduce((s, a) => s + a, 0) * k;
-  let x = label.anchor === "middle" ? label.at[0] - width / 2 : label.at[0];
+  let x = label.at[0] - (label.anchor === "middle" ? width / 2 : label.anchor === "end" ? width : 0);
   // "central" is the middle of the letters' box: halfway between the ascender and the descender.
   const y = label.baseline === "central" ? label.at[1] - ((font.ascender + font.descender) / 2) * k : label.at[1];
   const out: PathCommand[] = [];

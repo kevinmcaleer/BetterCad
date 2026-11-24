@@ -12,14 +12,13 @@ import {
   netlist,
   ratsnest,
   realParts,
+  tidyValue,
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
-import { Button, ESC, FeaturePanel, Icon, PanelNote, PropsPanel, RibbonButton, RibbonGroup, Toolbar, cx, useEscape, type IconName } from "@bettercad/ui";
+import { Button, ESC, FeaturePanel, PanelNote, PropsPanel, RibbonButton, RibbonGroup, Toolbar, cx, useEscape, type IconName } from "@bettercad/ui";
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
-import { BoardCanvas } from "./BoardCanvas";
-import { LAYERS } from "./drawBoard";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
 import { eui, type EView, type SchTool } from "./ui";
 import { useEui } from "./useEui";
@@ -28,6 +27,16 @@ export { onDesign } from "./design";
 
 // The Components panel brings the library, your own parts and their sync: fetched when it first opens.
 const ComponentsCard = lazy(() => import("./Components"));
+// The rules check, the parts table and export each load when they are first opened.
+// The board's drawing, picking and layers load with the PCB view, so the schematic opens without them.
+const BoardView = lazy(() => import("./BoardView"));
+const ChecksCard = lazy(() => import("./Checks"));
+const PartsTable = lazy(() => import("./PartsTable"));
+const ExportSchematic = lazy(() => import("./ExportSchematic"));
+const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
+
+type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
+const toggle = (card: Card) => () => eui.set({ card: eui.get().card === card ? null : card });
 
 interface Tool {
   id: string;
@@ -145,6 +154,47 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         run: () => eactions.current?.remove(),
       },
       {
+        id: "duplicate",
+        group: "Edit",
+        label: "Duplicate",
+        icon: "copy",
+        key: "Ctrl+D",
+        tip: "Make a copy of the selection beside it, with fresh names",
+        disabled: readOnly || ui.selected.length === 0,
+        run: () => eactions.current?.duplicate?.(),
+      },
+      {
+        id: "renumber",
+        group: "Edit",
+        label: "Renumber",
+        icon: "text",
+        tip: "Name the parts again in order, top to bottom and left to right",
+        disabled: readOnly,
+        run: () => eactions.current?.renumber?.(),
+      },
+      {
+        id: "checks",
+        group: "Check",
+        label: "Rules check",
+        short: "Check",
+        icon: "rulesCheck",
+        key: "E",
+        tip: "Look for unconnected pins, clashing outputs and missing power",
+        on: ui.card === "checks",
+        run: toggle("checks"),
+      },
+      {
+        id: "table",
+        group: "Check",
+        label: "Parts table",
+        short: "Parts",
+        icon: "list",
+        key: "T",
+        tip: "See and change every part in one table",
+        on: ui.card === "table",
+        run: toggle("table"),
+      },
+      {
         id: "push",
         group: "Sync",
         label: "Push to PCB",
@@ -152,7 +202,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         tip: "Make the board, or bring it up to date",
         on: ui.card === "changes",
         disabled: readOnly,
-        run: () => eui.set({ card: ui.card === "changes" ? null : "changes" }),
+        run: toggle("changes"),
+      },
+      {
+        id: "export",
+        group: "Sync",
+        label: "Export",
+        icon: "download",
+        tip: "Save the schematic as a PDF, an SVG or a netlist",
+        on: ui.card === "export",
+        run: toggle("export"),
       },
       { id: "fit", group: "View", label: "Fit", icon: "frame", key: "F", tip: "Fit the schematic in the view", run: () => eactions.current?.fit() },
     ];
@@ -260,6 +319,60 @@ function commands(design: () => ElectronicsDesign): Command[] {
     { ...e, id: "electronics.rotate", label: "Rotate", group: "Edit", icon: "rotate", keys: ["r"], run: () => eactions.current?.rotate() },
     { ...e, id: "electronics.mirror", label: "Mirror or flip side", group: "Edit", icon: "flipSide", keys: ["x"], run: () => eactions.current?.mirror() },
     { ...e, id: "electronics.delete", label: "Delete", group: "Edit", icon: "trash", keys: ["delete", "backspace"], run: () => eactions.current?.remove() },
+    { ...e, id: "electronics.copy", label: "Copy", group: "Edit", icon: "copy", keys: ["mod+c"], when: schematic, run: () => eactions.current?.copy?.() },
+    { ...e, id: "electronics.paste", label: "Paste", group: "Edit", keys: ["mod+v"], when: schematic, run: () => eactions.current?.paste?.() },
+    {
+      ...e,
+      id: "electronics.duplicate",
+      label: "Duplicate",
+      group: "Edit",
+      icon: "copy",
+      keys: ["mod+d"],
+      when: schematic,
+      run: () => eactions.current?.duplicate?.(),
+    },
+    {
+      ...e,
+      id: "electronics.renumber",
+      label: "Renumber the parts",
+      group: "Edit",
+      icon: "text",
+      when: schematic,
+      run: () => eactions.current?.renumber?.(),
+      keywords: "annotate references names order",
+    },
+    {
+      ...e,
+      id: "electronics.checks",
+      label: "Rules check",
+      group: "Tools",
+      icon: "rulesCheck",
+      keys: ["e"],
+      when: schematic,
+      run: toggle("checks"),
+      keywords: "erc electrical errors warnings unconnected",
+    },
+    {
+      ...e,
+      id: "electronics.table",
+      label: "Parts table",
+      group: "Tools",
+      icon: "list",
+      keys: ["t"],
+      when: schematic,
+      run: toggle("table"),
+      keywords: "bom list values bulk",
+    },
+    {
+      ...e,
+      id: "electronics.export",
+      label: "Export the schematic",
+      group: "Tools",
+      icon: "download",
+      when: schematic,
+      run: toggle("export"),
+      keywords: "pdf svg netlist kicad print",
+    },
     { ...e, id: "electronics.selectAll", label: "Select all", group: "Edit", keys: ["mod+a"], run: () => eactions.current?.selectAll() },
     { ...e, id: "electronics.fit", label: "Fit in the view", group: "View", icon: "frame", keys: ["f"], run: () => eactions.current?.fit() },
   ];
@@ -317,6 +430,15 @@ function ChangeCard({ design, edit, onDone }: { design: ElectronicsDesign; edit:
   const changes = useMemo(() => boardChanges(design, nl), [design, nl]);
   const stuck = changes.some(blocks);
   const first = !design.board;
+  // The rules check runs before every push (#634). It is advice: the push goes ahead if you say so.
+  const [found, setFound] = useState("");
+  useEffect(() => {
+    let on = true;
+    void import("@bettercad/electronics/erc").then((m) => on && setFound(m.tallyText(m.tally(m.check(design, nl)))));
+    return () => {
+      on = false;
+    };
+  }, [design, nl]);
   useEscape(true, () => onDone(false), ESC.panel);
   return (
     <FeaturePanel
@@ -337,6 +459,11 @@ function ChangeCard({ design, edit, onDone }: { design: ElectronicsDesign; edit:
           : undefined
       }
     >
+      {found && (
+        <p className="bc-ec-check-sum bc-ec-check-found" role="status">
+          The rules check found {found}. <Button size="dense" variant="secondary" label="Show them" onClick={() => eui.set({ card: "checks" })} />
+        </p>
+      )}
       {changes.length === 0 ? (
         <PanelNote>The board matches the schematic. There is nothing to change.</PanelNote>
       ) : (
@@ -357,49 +484,6 @@ function ChangeCard({ design, edit, onDone }: { design: ElectronicsDesign; edit:
   );
 }
 
-function LayersCard() {
-  const ui = useEui();
-  const [open, setOpen] = useState(false);
-  const hidden = new Set(ui.hidden);
-  const active = LAYERS.find((l) => l.copper === ui.layer) ?? LAYERS[0]!;
-  return (
-    <section className={cx("bc-ec-layers", open && "bc-open")} aria-label="Layers">
-      <button type="button" className="bc-ec-layers-chip" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="bc-ec-swatch" style={{ background: `var(--bc-color-${active.colour})` }} />
-        {active.label}
-        <Icon name="chevronDown" size={14} />
-      </button>
-      <h2 className="bc-ec-layers-title">Layers</h2>
-      <ul>
-        {LAYERS.map((l) => (
-          <li key={l.id} className={cx(l.copper === ui.layer && "bc-on")}>
-            <button
-              type="button"
-              className="bc-ec-layer"
-              aria-pressed={l.copper ? l.copper === ui.layer : undefined}
-              disabled={!l.copper}
-              data-tip={l.copper ? `Work on ${l.label.toLowerCase()}` : undefined}
-              onClick={() => l.copper && eui.set({ layer: l.copper })}
-            >
-              <span className="bc-ec-swatch" style={{ background: `var(--bc-color-${l.colour})` }} />
-              {l.label}
-            </button>
-            <button
-              type="button"
-              className="bc-ec-eye"
-              aria-pressed={!hidden.has(l.id)}
-              aria-label={`Show ${l.label.toLowerCase()}`}
-              onClick={() => eui.set({ hidden: hidden.has(l.id) ? ui.hidden.filter((x) => x !== l.id) : [...ui.hidden, l.id] })}
-            >
-              <Icon name={hidden.has(l.id) ? "eyeOff" : "eye"} size={16} />
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 export interface ElectronicsViewProps {
   design: ElectronicsDesign | undefined;
   edit: EEdit;
@@ -408,13 +492,15 @@ export interface ElectronicsViewProps {
   ribbon?: boolean;
   /** Where the views' own shortcuts and palette entries go while one is open. */
   registry?: { register(list: Command[]): () => void };
+  /** The model's name, for exported files and their title block. */
+  name?: string;
 }
 
 /**
  * The electronics workspace (#617, #619): the schematic or the board covers the 3D view, under the floating cards.
  * Laid out as Kev picked on 2026-11-24: switcher top centre, layers bottom right, checks strip along the bottom.
  */
-export default function ElectronicsView({ design: saved, edit, readOnly, ribbon, registry }: ElectronicsViewProps) {
+export default function ElectronicsView({ design: saved, edit, readOnly, ribbon, registry, name }: ElectronicsViewProps) {
   const ui = useEui();
   const blank = useRef(emptyDesign());
   const design = saved ?? blank.current;
@@ -441,7 +527,9 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
       {view === "schematic" ? (
         <SchematicCanvas key={sheet.id} design={design} sheet={sheet} edit={edit} readOnly={readOnly} onAskLabel={setAsk} />
       ) : (
-        <BoardCanvas design={design} edit={edit} readOnly={readOnly} />
+        <Suspense fallback={null}>
+          <BoardView design={design} edit={edit} readOnly={readOnly} />
+        </Suspense>
       )}
 
       <Switcher behind={behind} onView={go} />
@@ -462,8 +550,6 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           ))}
         </Toolbar>
       )}
-
-      {view === "pcb" && design.board && <LayersCard />}
 
       {view === "pcb" && !design.board && (
         <div className="bc-ec-empty" role="status">
@@ -490,9 +576,12 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           }}
         />
       )}
-      {ui.card === "components" && view === "schematic" && !readOnly && (
+      {view === "schematic" && (
         <Suspense fallback={null}>
-          <ComponentsCard onClose={() => eui.set({ card: null })} />
+          {ui.card === "components" && !readOnly && <ComponentsCard onClose={() => eui.set({ card: null })} design={design} edit={edit} />}
+          {ui.card === "checks" && <ChecksCard design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "export" && <ExportSchematic design={design} sheet={sheet} name={name || "Schematic"} onClose={() => eui.set({ card: null })} />}
         </Suspense>
       )}
 
@@ -521,13 +610,18 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
       <div className="bc-ec-status" role="status" aria-label="Electronics status">
         {view === "schematic" ? (
           <>
-            <span className={cx("bc-ec-pill", loose ? "bc-warn" : "bc-ok")}>
+            <button
+              type="button"
+              className={cx("bc-ec-pill", loose ? "bc-warn" : "bc-ok")}
+              data-tip="Open the rules check (E)"
+              onClick={() => eui.set({ card: "checks" })}
+            >
               {loose
                 ? `${loose} ${loose === 1 ? "pin or wire end is" : "pins or wire ends are"} not connected`
                 : design.parts.length
                   ? "Everything is connected"
                   : "Nothing placed yet"}
-            </span>
+            </button>
             {behind > 0 && !readOnly && (
               <button type="button" className="bc-ec-pill bc-warn" onClick={() => eui.set({ card: "changes" })}>
                 PCB is {behind} {behind === 1 ? "change" : "changes"} behind
@@ -538,7 +632,9 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
                 ? `Placing ${ui.placing.name}. Click to place, Esc to stop.`
                 : ui.schTool === "wire"
                   ? "Click a pin to start a wire, click again to turn or finish."
-                  : "Grid 2.54 mm"}
+                  : ui.net
+                    ? `Net ${ui.net}`
+                    : "Grid 2.54 mm"}
             </span>
           </>
         ) : (
@@ -593,6 +689,11 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
                   value={part.value}
                   disabled={readOnly}
                   onChange={(e) => set({ value: e.target.value }, "Change the value")}
+                  onBlur={(e) => {
+                    // Shorthand is read when you leave the field: 4k7 becomes 4.7 kΩ.
+                    const tidy = power ? e.target.value : tidyValue(e.target.value, def.prefix);
+                    if (tidy !== part.value) set({ value: tidy }, "Change the value");
+                  }}
                 />
                 {!power && (
                   <>
@@ -624,6 +725,11 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
                       ))}
                       {def.packages.length === 0 && <option value={0}>No footprint</option>}
                     </select>
+                    {def.packages.length > 0 && (
+                      <Suspense fallback={null}>
+                        <PartPreview def={def} pkg={part.pkg} />
+                      </Suspense>
+                    )}
                     <label className="bc-field-label" htmlFor={`${ids}l`}>
                       LCSC part number
                     </label>
@@ -635,6 +741,28 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
                       disabled={readOnly}
                       onChange={(e) => set({ supplier: { ...part.supplier, lcsc: e.target.value.trim() || undefined } }, "Change the part number")}
                     />
+                    <label className="bc-field-label" htmlFor={`${ids}m`}>
+                      Maker's part number
+                    </label>
+                    <input
+                      id={`${ids}m`}
+                      className="bc-text"
+                      value={part.supplier?.mpn ?? def.supplier?.mpn ?? ""}
+                      disabled={readOnly}
+                      onChange={(e) => set({ supplier: { ...part.supplier, mpn: e.target.value.trim() || undefined } }, "Change the part number")}
+                    />
+                    <label className="bc-ec-fitted">
+                      <input
+                        type="checkbox"
+                        checked={part.fitted !== false}
+                        disabled={readOnly}
+                        onChange={(e) => set({ fitted: e.target.checked ? undefined : false }, e.target.checked ? "Fit the part" : "Leave the part off")}
+                      />
+                      Fitted
+                    </label>
+                    {part.fitted === false && (
+                      <p className="bc-note">Stays on the schematic and the board, but is left off the parts list and assembly files.</p>
+                    )}
                     {at && (
                       <dl className="bc-facts">
                         <dt>On the board</dt>
