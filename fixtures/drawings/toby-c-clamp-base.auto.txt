@@ -1,0 +1,50 @@
+baseline, from the bottom left
+  top  overall  104  up
+  top  overall  42  across
+  front  overall  34  across
+  front  overall  16  up
+  front  hole position  8  up
+  front  hole size  Ø16
+  front  hole size  Ø11.2
+  front  hole size  Ø5.5
+  top  step  86  up
+  top  step  79  up
+  top  step  30  up
+  top  step  27  up
+  top  step  26  across
+  top  step  24  across
+  top  step  23  up
+  top  step  19  across
+  front  step  16  across
+  top  step  16  across
+  top  step  8  across
+  top  small step  9  up
+  top  radius or angle  R18
+  top  radius or angle  R7
+chain, from the bottom left
+  top  overall  104  up
+  top  overall  42  across
+  front  overall  34  across
+  front  overall  16  up
+  front  hole position  8  up
+  front  hole position  8  up
+  front  hole size  Ø16
+  front  hole size  Ø11.2
+  front  hole size  Ø5.5
+  top  step  49  up
+  front  step  18  across
+  top  step  18  up
+  front  step  16  across
+  top  step  16  across
+  top  step  8  across
+  top  step  8  across
+  top  small step  14  up
+  top  small step  9  up
+  top  small step  7  up
+  top  small step  5  across
+  top  small step  4  up
+  top  small step  3  across
+  top  small step  3  up
+  top  small step  2  across
+  top  radius or angle  R18
+  top  radius or angle  R7

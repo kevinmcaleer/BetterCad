@@ -239,7 +239,7 @@ their lines as line art.
 ## Tests
 
 - `web/src/drawing/*.test.ts(x)`: the layout, each tool, Auto dimension's lists and following the model, on made-up views.
-- `fixtures/drawings/`: two real models with drawings, drawn by the real kernel (`web/src/drawing/fixtures.test.ts`).
+- `fixtures/drawings/`: three real models with drawings (one is Too Tall Toby's 01-03 C Clamp Base, built from sketches), drawn by the real kernel (`web/src/drawing/fixtures.test.ts`).
   Each has a golden list of what Auto dimension offers, in `*.auto.txt`. After a deliberate change, run
   `UPDATE_GOLDEN=1 npm run test:golden` and read the diff. The nightly run also writes each sheet to SVG, PDF and DXF
   and checks nothing was dropped.

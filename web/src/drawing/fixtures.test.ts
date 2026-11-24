@@ -5,8 +5,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { BcadError, loadBcad, saveBcad } from "@bettercad/kernel/bcad";
 import { type Feature, type ModelDoc, newDoc } from "@bettercad/kernel/document";
 import { type Drawing, type DrawingSheet, type DrawingView, newSheet } from "@bettercad/kernel/drawing";
-import { loadOCCT, ModelBuilder, projectView } from "@bettercad/kernel/occt";
+import { loadOCCT, ModelBuilder, projectView, type OC } from "@bettercad/kernel/occt";
 import { SAMPLES } from "@bettercad/kernel/samples";
+import { PARTS } from "@bettercad/kernel/speedmodel";
 import type { ModelView } from "@bettercad/kernel/view";
 import { AUTO_START, autoDimension, candidates, RANKS, type AutoOptions } from "./auto";
 import { contextOf } from "./arrange";
@@ -60,9 +61,29 @@ function flange(): ModelDoc {
   return doc;
 }
 
+/**
+ * A model with its sketch ids made the same every time: a sketch names its points and curves by the clock and a
+ * count, and a fixture's file must only change when its model does. The clock is held while the model is made, and
+ * each id becomes its letter and its place in the file.
+ */
+function steady(make: () => ModelDoc): ModelDoc {
+  const now = Date.now;
+  Date.now = () => WHEN.getTime();
+  let text: string;
+  try {
+    text = JSON.stringify(make());
+  } finally {
+    Date.now = now;
+  }
+  const id = new RegExp(`[a-z]${WHEN.getTime().toString(36)}[0-9a-z]+`, "g");
+  const ids = new Map<string, string>();
+  for (const [found] of text.matchAll(id)) if (!ids.has(found)) ids.set(found, `${found[0]}${ids.size + 1}`);
+  return JSON.parse(text.replace(id, (found) => ids.get(found)!)) as ModelDoc;
+}
+
 interface Fixture {
   file: string;
-  model: () => ModelDoc;
+  model: (oc: OC) => ModelDoc;
   size: "A3" | "tabloid";
   /** Paper over real. */
   scale: number;
@@ -95,11 +116,27 @@ const FIXTURES: Fixture[] = [
     ],
     auto: { recipe: "chain", datum: "bottom-left", density: 1 },
   },
+  {
+    // Too Tall Toby's 01-03 C Clamp Base (docs/speed-modelling.md), modelled from sketches as the challenge has it:
+    // a drawing of a part whose own drawing is published, so the sizes Auto dimension offers can be read against it.
+    file: "toby-c-clamp-base",
+    model: (oc) => steady(() => PARTS.find((p) => p.id === "ppp0103")!.build!(oc)),
+    size: "A3",
+    scale: 1,
+    views: [
+      { id: "v1", direction: "front", at: [130, 215] },
+      { id: "v2", direction: "top", at: [130, 130] },
+      { id: "v3", direction: "right", at: [260, 215] },
+    ],
+    auto: { recipe: "centre-baseline", datum: "bottom-left", density: 1 },
+  },
 ];
 
 let builder: ModelBuilder;
+let oc: OC;
 beforeAll(async () => {
-  builder = new ModelBuilder(await loadOCCT());
+  oc = await loadOCCT();
+  builder = new ModelBuilder(oc);
 }, 60_000);
 
 const viewsOf = (doc: ModelDoc, sheet: DrawingSheet) => {
@@ -115,7 +152,7 @@ const counter = () => {
 
 /** The fixture as it is made: its model, three views and Auto dimension run on them. */
 function made(f: Fixture): ModelDoc {
-  const doc = f.model();
+  const doc = f.model(oc);
   const views: DrawingView[] = f.views.map((v) => ({
     id: v.id,
     kind: "base",
