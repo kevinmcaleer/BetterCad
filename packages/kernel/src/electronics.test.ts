@@ -100,6 +100,42 @@ describe("the Board step", () => {
     expect(b.boards![0]!.left).toBe(2);
   });
 
+  it("stands a part's STEP file on its footprint, a body for each solid in the file, lifted and turned (#628)", () => {
+    const d = doc();
+    const e = d.electronics!;
+    const id = e.parts.find((p) => p.ref === "R1")!.def;
+    const def = e.defs[id]!;
+    const model = {
+      source: { kind: "step" as const, blob: "abc", name: "r.step", bodies: 2, size: [3, 2, 1] as [number, number, number] },
+      offset: [0, 0, 0.5] as [number, number, number],
+      rotate: [0, 0, 90] as [number, number, number],
+    };
+    const withStep = { ...d, electronics: { ...e, defs: { ...e.defs, [id]: { ...def, packages: def.packages.map((k) => ({ ...k, model })) } } } };
+    // Until the file is in the model, a box of the file's size stands in for it.
+    const box = build(withStep).parts.filter((p) => p.name === "R1");
+    expect(box).toHaveLength(1);
+    expect(box[0]).toMatchObject({ kind: "box", size: { x: 3, y: 2, z: 1 } });
+    const b = build({ ...withStep, blobs: { abc: "" } });
+    expect([...b.failed]).toEqual([]);
+    const made = b.parts.filter((p) => p.name === "R1");
+    expect(made.map((p) => p.id)).toEqual(["pcb/" + e.parts.find((p) => p.ref === "R1")!.id, `pcb/${e.parts.find((p) => p.ref === "R1")!.id}.1`]);
+    expect(made[1]).toMatchObject({
+      kind: "solid",
+      reference: true,
+      pcb: true,
+      link: "pcb",
+      imported: { blob: "abc", format: "step", index: 1, mesh: false, keepLayout: true },
+    });
+    // On the top face, half a millimetre up, and a quarter turn on from where the layout turned the part.
+    const at = e.board!.placements[0]!;
+    expect(made[0]!.position).toMatchObject({ x: expect.closeTo(10 + at.x, 6), y: expect.closeTo(at.y, 6), z: expect.closeTo(5 + 1.6 + 0.5, 6) });
+    const x = fromPartLocal([1, 0, 0], made[0]!, true);
+    const turned = ((at.rot + 90) * Math.PI) / 180;
+    expect(x[0]).toBeCloseTo(Math.cos(turned), 6);
+    expect(x[1]).toBeCloseTo(Math.sin(turned), 6);
+    expect(b.links.find((l) => l.id === "pcb")!.parts).toHaveLength(3);
+  });
+
   it("is one per model, and says so when there is no board yet", () => {
     const d = doc();
     expect(addBoard(d)).toBe(d);

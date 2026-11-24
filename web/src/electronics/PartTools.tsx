@@ -5,7 +5,22 @@ import { importKicad, type Imported } from "@bettercad/electronics/kicad";
 import { Button, Dialog, NumberField, cx } from "@bettercad/ui";
 import { textOf } from "./fileText";
 import { PartPreview } from "./PartPreview";
-import { FAMILIES, LICENCES, build, draftFrom, newDraft, tableOf, type BodyKind, type Draft, type Family, type Sizes } from "./partDraft";
+import { readBodyFile, type KernelCall } from "./bodyFile";
+import { stepFiles } from "./partBlobs";
+import {
+  FAMILIES,
+  LICENCES,
+  bodyCentre,
+  build,
+  draftFrom,
+  liftOntoBoard,
+  newDraft,
+  tableOf,
+  type BodyKind,
+  type Draft,
+  type Family,
+  type Sizes,
+} from "./partDraft";
 
 const SymbolEditor = lazy(() => import("./SymbolEditor"));
 const FootprintEditor = lazy(() => import("./FootprintEditor"));
@@ -29,15 +44,18 @@ export interface PartEditorProps {
   start: EditStart;
   /** Shelves there are already, offered as you type. */
   shelves: string[];
-  onSave: (def: ComponentDef, shelf: string, id?: string) => void;
+  /** `files`: the bytes (base64, by hash) of any file newly picked as the part's body. */
+  onSave: (def: ComponentDef, shelf: string, id?: string, files?: Record<string, string>) => void;
   onCancel: () => void;
+  /** The geometry engine, which reads a file picked as the part's body (#628). */
+  call?: KernelCall;
 }
 
 /**
  * The part editor (#626, #627, #628): a symbol from a pin table, a footprint from a package's sizes, a simple 3D body,
  * and the details that travel with the part. What it makes is checked as you type and saved to your parts.
  */
-export function PartEditor({ start, shelves, onSave, onCancel }: PartEditorProps) {
+export function PartEditor({ start, shelves, onSave, onCancel, call }: PartEditorProps) {
   const [d, setD] = useState<Draft>(() =>
     start.def ? draftFrom(start.def, { ...(start.id ? { id: start.id } : {}), ...(start.shelf ? { shelf: start.shelf } : {}) }) : newDraft(),
   );
@@ -51,7 +69,31 @@ export function PartEditor({ start, shelves, onSave, onCancel }: PartEditorProps
     symbol: built.symbol,
     packages: built.footprint ? [{ footprint: built.footprint }] : [],
   };
-  const save = () => built.def && onSave(built.def, d.shelf.trim(), d.id);
+  // Files picked for the body in this sitting, kept until the part is saved.
+  const [files, setFiles] = useState<Record<string, string>>({});
+  const [reading, setReading] = useState(false);
+  const [bodyError, setBodyError] = useState("");
+  const save = () => {
+    if (!built.def) return;
+    const used = Object.fromEntries(stepFiles([built.def]).flatMap((h) => (files[h] ? [[h, files[h]]] : [])));
+    onSave(built.def, d.shelf.trim(), d.id, used);
+  };
+  const pickBody = async (file: File | undefined) => {
+    if (!file) return;
+    setReading(true);
+    setBodyError("");
+    try {
+      const got = await readBodyFile(file, call);
+      setFiles((now) => ({ ...now, [got.blob]: got.data }));
+      const [x, y] = built.footprint ? bodyCentre(built.footprint) : [0, 0];
+      set({ step: { blob: got.blob, name: got.name, bodies: got.bodies, size: got.size }, stepAt: [x, y, 0], stepTurn: [0, 0, 0] });
+    } catch (e) {
+      setBodyError((e as Error).message || "That file couldn't be read.");
+    }
+    setReading(false);
+  };
+  const setAt = (i: 0 | 1 | 2, v: number) => set({ stepAt: d.stepAt.map((n, k) => (k === i ? v : n)) as Draft["stepAt"] });
+  const setTurn = (i: 0 | 1 | 2, v: number) => set({ stepTurn: d.stepTurn.map((n, k) => (k === i ? v : n)) as Draft["stepTurn"] });
 
   const text = (key: keyof Draft & string, label: string, opts: { placeholder?: string; list?: string } = {}) => (
     <>
@@ -257,16 +299,91 @@ export function PartEditor({ start, shelves, onSave, onCancel }: PartEditorProps
               <select
                 id={`${ids}body`}
                 className="bc-select"
-                value={d.family === "keep" ? "keep" : d.body}
-                disabled={d.family === "keep"}
-                onChange={(e) => set({ body: e.target.value as BodyKind })}
+                value={d.family === "keep" && d.body !== "step" ? "keep" : d.body}
+                onChange={(e) => set({ body: e.target.value === "keep" ? "auto" : (e.target.value as BodyKind) })}
               >
                 {d.family === "keep" && <option value="keep">Kept with its footprints</option>}
-                <option value="auto">Sized from the footprint</option>
-                <option value="box">A box</option>
-                <option value="cylinder">A cylinder</option>
-                <option value="none">None</option>
+                {d.family !== "keep" && <option value="auto">Sized from the footprint</option>}
+                {d.family !== "keep" && <option value="box">A box</option>}
+                {d.family !== "keep" && <option value="cylinder">A cylinder</option>}
+                <option value="step">A STEP file or a BetterCad model</option>
+                {d.family !== "keep" && <option value="none">None</option>}
               </select>
+              {d.body === "step" && (
+                <>
+                  <label className="bc-field-label" htmlFor={`${ids}bodyfile`}>
+                    File
+                  </label>
+                  <input id={`${ids}bodyfile`} className="bc-text" type="file" accept=".step,.stp,.bcad" onChange={(e) => void pickBody(e.target.files?.[0])} />
+                  {reading && <p role="status">Reading the file…</p>}
+                  {bodyError && (
+                    <p className="bc-ec-blocked" role="alert">
+                      {bodyError}
+                    </p>
+                  )}
+                  {d.step && !reading && (
+                    <>
+                      <p role="status">
+                        {d.step.name}: {d.step.bodies} {d.step.bodies === 1 ? "solid" : "solids"}, {d.step.size.join(" × ")} mm.
+                      </p>
+                      <div className="bc-ec-editor-sizes">
+                        <NumberField label="X" unit="mm" value={d.stepAt[0]} min={-500} max={500} step={0.1} precision={3} onCommit={(v) => setAt(0, v)} />
+                        <NumberField label="Y" unit="mm" value={d.stepAt[1]} min={-500} max={500} step={0.1} precision={3} onCommit={(v) => setAt(1, v)} />
+                        <NumberField label="Lift" unit="mm" value={d.stepAt[2]} min={-100} max={100} step={0.1} precision={3} onCommit={(v) => setAt(2, v)} />
+                        <NumberField
+                          label="Turn about X"
+                          unit="°"
+                          value={d.stepTurn[0]}
+                          min={-360}
+                          max={360}
+                          step={90}
+                          precision={1}
+                          onCommit={(v) => setTurn(0, v)}
+                        />
+                        <NumberField
+                          label="Turn about Y"
+                          unit="°"
+                          value={d.stepTurn[1]}
+                          min={-360}
+                          max={360}
+                          step={90}
+                          precision={1}
+                          onCommit={(v) => setTurn(1, v)}
+                        />
+                        <NumberField
+                          label="Turn about Z"
+                          unit="°"
+                          value={d.stepTurn[2]}
+                          min={-360}
+                          max={360}
+                          step={90}
+                          precision={1}
+                          onCommit={(v) => setTurn(2, v)}
+                        />
+                      </div>
+                      <div className="bc-ec-symed-tools">
+                        <Button
+                          size="dense"
+                          variant="secondary"
+                          label="Centre it on the pads"
+                          disabled={!built.footprint}
+                          onClick={() => built.footprint && set({ stepAt: [...bodyCentre(built.footprint), d.stepAt[2]] })}
+                        />
+                        <Button
+                          size="dense"
+                          variant="secondary"
+                          label="Sit it on the board"
+                          onClick={() => d.step && set({ stepAt: [d.stepAt[0], d.stepAt[1], liftOntoBoard(d.step.size, d.stepTurn)] })}
+                        />
+                      </div>
+                      <p className="bc-note">
+                        The dashed outline on the footprint is the file's box, seen from above. A BetterCad model is kept as it is now, and does not follow
+                        later changes to it.
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
               {d.family !== "keep" && (d.body === "box" || d.body === "cylinder") && (
                 <div className="bc-ec-editor-sizes">
                   <NumberField

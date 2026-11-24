@@ -13,9 +13,12 @@ export type Edge = { kind: "line"; a: P2; b: P2; id: string } | { kind: "arc"; a
 export interface PartBody {
   part: Id;
   ref: string;
-  kind: "box" | "cylinder";
+  /** `step`: a STEP file from the model's blobs (#628); `size` is then the file's box, for when the file is missing. */
+  kind: "box" | "cylinder" | "step";
   /** Across, deep and tall, mm. A cylinder is as wide as it is deep. */
   size: [number, number, number];
+  /** A STEP body: the file, how many solids it holds, and its own lift off the board and turns about X, Y and Z. */
+  step?: { blob: string; bodies: number; lift: number; rotate: [number, number, number] };
   /** The middle of its base, on the board (z is the face it stands on). */
   at: [number, number, number];
   /** Turned anticlockwise seen from the top, degrees, after any flip. */
@@ -101,15 +104,18 @@ export function boardSolid(d: ElectronicsDesign, minDrill = MIN_DRILL): BoardSol
     const size: [number, number, number] =
       src?.kind === "box"
         ? src.size
-        : src?.kind === "cylinder"
-          ? [src.diameter, src.diameter, src.height]
-          : [q(box.x2 - box.x1), q(box.y2 - box.y1), src?.kind === "header" ? src.height : 2];
+        : src?.kind === "step" && src.size
+          ? src.size
+          : src?.kind === "cylinder"
+            ? [src.diameter, src.diameter, src.height]
+            : [q(box.x2 - box.x1), q(box.y2 - box.y1), src?.kind === "header" ? src.height : 2];
     if (!(size[0] > 0 && size[1] > 0 && size[2] > 0)) continue;
     bodies.push({
       part: part.id,
       ref: part.ref,
-      kind: src?.kind === "cylinder" ? "cylinder" : "box",
+      kind: src?.kind === "cylinder" ? "cylinder" : src?.kind === "step" ? "step" : "box",
       size,
+      ...(src?.kind === "step" ? { step: { blob: src.blob, bodies: Math.max(1, src.bodies ?? 1), lift: off[2] ?? 0, rotate: m?.rotate ?? [0, 0, 0] } } : {}),
       at: [c[0], c[1], flip ? 0 : board.thickness],
       rot: ((at.rot % 360) + 360) % 360,
       flip,

@@ -78,6 +78,8 @@ export interface Recognised extends Recognition {
 
 export interface ImportInfo {
   bodies: { name: string; open: boolean; triangles?: number }[];
+  /** The whole file's box, mm: across, deep and tall. */
+  size?: [number, number, number];
 }
 
 export interface ModelResult {
@@ -264,7 +266,7 @@ export class ModelBuilder {
 
   /** The document's imported files (base64 by hash), and the bodies read from them, as the file has them. */
   private blobs: Record<string, string> = {};
-  private files = new Map<string, { raw: ImportedBody[]; placed: Partial<Record<"each" | "whole", ImportedBody[]>> }>();
+  private files = new Map<string, { raw: ImportedBody[]; placed: Partial<Record<"each" | "whole", ImportedBody[]>>; size?: [number, number, number] }>();
 
   /**
    * A file's bodies, read once. `whole`: they keep their places in the file, the file's bottom centre on the origin.
@@ -284,6 +286,7 @@ export class ModelBuilder {
       min: [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b.min[k]!))),
       max: [0, 1, 2].map((k) => Math.max(...boxes.map((b) => b.max[k]!))),
     };
+    if (boxes.length) file.size = [0, 1, 2].map((k) => Math.round((all.max[k]! - all.min[k]!) * 1000) / 1000) as [number, number, number];
     const bodies = file.raw.map((b, i) => {
       const box = how === "whole" ? all : boxes[i]!;
       const at = { x: -(box.min[0]! + box.max[0]!) / 2, y: -(box.min[1]! + box.max[1]!) / 2, z: -box.min[2]! };
@@ -296,7 +299,8 @@ export class ModelBuilder {
   /** What an import would bring in (#82): its bodies' names, and which are open meshes. */
   inspect(p: { name: string; format: ImportFormat; blob: string; data: string }, progress?: Progress): ImportInfo {
     const bodies = this.readFile(p.blob, p.format, p.data, baseName(p.name), "whole", progress);
-    return { bodies: bodies.map((b) => ({ name: b.name, open: b.open, triangles: b.triangles })) };
+    const size = this.files.get(p.blob)?.size;
+    return { bodies: bodies.map((b) => ({ name: b.name, open: b.open, triangles: b.triangles })), ...(size ? { size } : {}) };
   }
 
   /**

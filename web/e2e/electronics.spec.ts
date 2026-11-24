@@ -1,6 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PITCH, ledCircuit, onCanvas, pick, press, tools } from "./lib/electronics";
+
+const STEP = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "packages", "kernel", "src", "testdata", "step", "cog-on-flat.step");
 
 const axe = async (page: import("@playwright/test").Page) => {
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
@@ -480,6 +484,56 @@ test.describe("on a wide screen", () => {
       await axe(page);
     });
   }
+
+  test("give a part a STEP file for its body, and see it on the board in 3D", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await tools(page)
+      .getByRole("button", { name: /^Components/ })
+      .click();
+    const card = page.getByRole("group", { name: "Components options" });
+    await card.getByRole("button", { name: "New part" }).click();
+    const editor = page.getByRole("dialog", { name: "New part" });
+    await editor.getByLabel("Name").fill("Cog block");
+    await editor.getByRole("tab", { name: "3D body" }).click();
+    await editor.getByLabel("Body", { exact: true }).selectOption({ label: "A STEP file or a BetterCad model" });
+    // The file holds two solids: a flat block with a cog on it.
+    await editor.getByLabel("File", { exact: true }).setInputFiles(STEP);
+    await expect(editor.getByText(/^cog-on-flat\.step: 2 solids, [\d.]+ × [\d.]+ × [\d.]+ mm\.$/)).toBeVisible({ timeout: 60_000 });
+    await expect(editor.getByText("Footprint and body")).toBeVisible();
+    await editor.getByLabel("Lift").fill("0.2");
+    await editor.getByLabel("Lift").press("Enter");
+    await axe(page);
+    await editor.getByRole("button", { name: "Save to your parts" }).click();
+    await expect(card.getByText("Cog block is in your parts.")).toBeVisible();
+
+    // Placed and pushed to a board, the part stands in the model as the file's two solids, not a box.
+    await card.getByRole("button", { name: "Place" }).click();
+    await page.mouse.click(...(await onCanvas(page, 0, 0)));
+    await page.keyboard.press("Escape");
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    await expect(page.getByRole("img", { name: /^PCB: 1 part/ })).toBeVisible();
+    await page.keyboard.press("3");
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await expect(timeline.getByRole("button", { name: /^Board, 1\.6 mm thick, 1 part/ })).toBeVisible();
+    await expect(page.getByRole("treeitem", { name: /^U1/ })).toHaveCount(2);
+    type View = { __bcView: { bodyCounts(): { id: string; vertices: number }[] } };
+    await expect
+      .poll(
+        () => page.evaluate(() => (window as unknown as View).__bcView.bodyCounts().filter((b) => /^f[^/]*\/.+/.test(b.id) && !b.id.endsWith("/board")).length),
+        {
+          timeout: 60_000,
+        },
+      )
+      .toBe(2);
+    await expect(timeline.getByRole("button", { name: /problem:/ })).toHaveCount(0);
+  });
 
   test("the board stands in the model, with a body for each part", async ({ page }) => {
     await page.goto("/");

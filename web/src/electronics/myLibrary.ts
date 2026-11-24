@@ -134,7 +134,11 @@ export function useMyLibrary(api?: LibraryApi, signedIn = false): MyParts {
   return { pack: lib.pack, save, remove, add, kept };
 }
 
-/** The library as a file to keep or pass on: the pack itself, with every part's source and licence inside. */
-export function libraryFile(pack: LibraryPack): Blob {
-  return new Blob([`${JSON.stringify(pack, null, 1)}\n`], { type: "application/json" });
+/**
+ * The library as a file to keep or pass on: the pack itself, with every part's source and licence inside, and under
+ * `files` the STEP files its parts' bodies come from (#628), so the file is whole on its own.
+ */
+export function libraryFile(pack: LibraryPack, files: Record<string, string> = {}): Blob {
+  const whole = Object.keys(files).length ? { ...pack, files } : pack;
+  return new Blob([`${JSON.stringify(whole, null, 1)}\n`], { type: "application/json" });
 }

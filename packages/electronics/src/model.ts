@@ -149,7 +149,11 @@ export interface FootprintDef {
  */
 export interface Model3D {
   source:
-    | { kind: "step"; blob: string; name?: string }
+    /**
+     * `bodies`: how many solids the file holds (one when left out). `size`: the whole file's box, mm. The file stands
+     * with the bottom centre of that box on the footprint's origin before `offset` and `rotate` move it.
+     */
+    | { kind: "step"; blob: string; name?: string; bodies?: number; size?: [number, number, number] }
     | { kind: "model"; id: string; version?: number }
     | { kind: "box"; size: [number, number, number] }
     | { kind: "cylinder"; diameter: number; height: number }

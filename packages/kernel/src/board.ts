@@ -28,7 +28,13 @@ function placed(by: Mat4, local: Mat4): Pick<Part, "position" | "rotation"> {
 }
 
 /** The bodies a Board step makes. */
-export function boardParts(step: { id: string; position: Vec3; rotation?: Vec3 }, solid: BoardSolid, on?: Mat4): Part[] {
+export function boardParts(
+  step: { id: string; position: Vec3; rotation?: Vec3 },
+  solid: BoardSolid,
+  on?: Mat4,
+  /** Whether the model holds a STEP file (#628). A part whose file is missing stands as a box of the file's size. */
+  hasBlob: (blob: string) => boolean = () => false,
+): Part[] {
   const r = step.rotation ?? { x: 0, y: 0, z: 0 };
   const own = placeMatrix([step.position.x, step.position.y, step.position.z], [r.x, r.y, r.z]);
   const by = on ? mat4Mul(on, own) : own;
@@ -49,17 +55,39 @@ export function boardParts(step: { id: string; position: Vec3; rotation?: Vec3 }
   };
   return [
     board,
-    ...solid.bodies.map((b): Part => ({
-      id: `${step.id}/${b.part}`,
-      name: b.ref,
-      kind: b.kind,
-      hidden: false,
-      ...placed(by, placeMatrix(b.at, [0, b.flip ? 180 : 0, b.rot])),
-      size: { x: b.size[0], y: b.size[1], z: b.size[2] },
-      colour: b.colour,
-      reference: true,
-      pcb: true,
-    })),
+    ...solid.bodies.flatMap((b): Part[] => {
+      const stand = placeMatrix(b.at, [0, b.flip ? 180 : 0, b.rot]);
+      const s = b.step;
+      // A STEP file's solids, each a body of its own, lifted and turned on the footprint as the component says.
+      if (s && hasBlob(s.blob)) {
+        const own = mat4Mul(stand, placeMatrix([0, 0, s.lift], s.rotate));
+        return Array.from({ length: s.bodies }, (_, index) => ({
+          id: index ? `${step.id}/${b.part}.${index}` : `${step.id}/${b.part}`,
+          name: b.ref,
+          kind: "solid",
+          hidden: false,
+          ...placed(by, own),
+          size: { x: 0, y: 0, z: 0 },
+          imported: { blob: s.blob, format: "step", index, mesh: false, keepLayout: true },
+          colour: b.colour,
+          reference: true,
+          pcb: true,
+        }));
+      }
+      return [
+        {
+          id: `${step.id}/${b.part}`,
+          name: b.ref,
+          kind: b.kind === "cylinder" ? "cylinder" : "box",
+          hidden: false,
+          ...placed(by, stand),
+          size: { x: b.size[0], y: b.size[1], z: b.size[2] },
+          colour: b.colour,
+          reference: true,
+          pcb: true,
+        },
+      ];
+    }),
   ];
 }
 
