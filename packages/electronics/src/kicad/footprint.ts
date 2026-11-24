@@ -102,6 +102,7 @@ function pad(n: Node[], back: boolean): Pad | null {
   const angle = num(at, 3);
   const round = num(child(n, "roundrect_rratio"), 1, 0.25);
   const margin = child(n, "solder_mask_margin");
+  const paste = child(n, "solder_paste_margin");
   return {
     number: text(n, 1),
     kind,
@@ -115,6 +116,7 @@ function pad(n: Node[], back: boolean): Pad | null {
     ...(kind !== "smd" && d ? { drill: Math.min(d, dy) } : {}),
     ...(kind !== "smd" && oval && d !== dy ? { slot: Math.max(d, dy) } : {}),
     ...(margin ? { maskMargin: num(margin) } : {}),
+    ...(paste && kind === "smd" && num(paste) ? { pasteMargin: num(paste) } : {}),
     ...(kind === "smd" && !layers.some((l) => l.endsWith(".Paste")) ? { noPaste: true } : {}),
     ...(far ? { back: true } : {}),
   };

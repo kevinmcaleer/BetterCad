@@ -457,7 +457,12 @@ function maskFile(board: Board, side: Side, pads: BoardPad[], fn: string): strin
 
 function pasteFile(side: Side, pads: BoardPad[], fn: string): string {
   const w = new Writer(fn);
-  for (const p of pads) if (p.pad.kind === "smd" && p.side === side && !p.pad.noPaste) w.flash(w.pad(p.pad, p.angle, 0), p.at);
+  for (const p of pads) {
+    if (p.pad.kind !== "smd" || p.side !== side || p.pad.noPaste) continue;
+    // A pad's own paste gap (#627), never so far in that nothing is left to print.
+    const grow = Math.max(p.pad.pasteMargin ?? 0, -(Math.min(p.pad.w, p.pad.h) / 2 - 0.05));
+    w.flash(w.pad(p.pad, p.angle, grow), p.at);
+  }
   return w.text();
 }
 

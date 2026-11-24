@@ -61,6 +61,8 @@ export interface Draft {
   drawn?: SymbolDef;
   family: Family;
   sizes: Sizes;
+  /** The footprint changed pad by pad (#627). While it is set it is the footprint, and the package's sizes rest. */
+  land?: FootprintDef;
   body: BodyKind;
   /** A box's width, length and height, or a cylinder's diameter (w) and height, mm. */
   bodySize: { w: number; l: number; h: number };
@@ -263,6 +265,14 @@ const fpName = (d: Draft): string => {
   return `${base} BGA-${s.bga.rows * s.bga.cols}`;
 };
 
+/** A name of its own for a footprint changed by hand, so it never saves over the one it started from. */
+function landName(d: Draft): string {
+  if (d.family !== "keep" || !d.base) return fpName(d);
+  const part = d.name.trim() || "Part";
+  const was = (d.base.packages[0]?.footprint.name ?? "footprint").split(":").pop()!;
+  return was.startsWith(`${part} `) ? was : `${part} ${was}`;
+}
+
 function footprintOf(d: Draft): FootprintDef | null {
   const s = d.sizes;
   const name = fpName(d);
@@ -323,7 +333,12 @@ export function build(d: Draft): Built {
 
   let packages: PackageChoice[];
   let footprint: FootprintDef | null;
-  if (d.family === "keep" && d.base) {
+  if (d.land) {
+    const kept = d.family === "keep" && d.base ? d.base.packages : [];
+    footprint = { ...d.land, name: landName(d) };
+    const model = kept[0] ? kept[0].model : bodyOf(d, footprint);
+    packages = [{ ...kept[0], footprint, ...(model ? { model } : {}) }, ...kept.slice(1)];
+  } else if (d.family === "keep" && d.base) {
     packages = d.base.packages;
     footprint = packages[0]?.footprint ?? null;
   } else {
@@ -331,7 +346,7 @@ export function build(d: Draft): Built {
     const model = footprint ? bodyOf(d, footprint) : undefined;
     packages = footprint ? [{ footprint, ...(model ? { model } : {}) }] : [];
   }
-  if (footprint && d.family !== "keep") for (const p of checkFootprint(footprint)) (p.kind === "no-pads" ? problems : notes).push(p.text);
+  if (footprint && (d.family !== "keep" || d.land)) for (const p of checkFootprint(footprint)) (p.kind === "no-pads" ? problems : notes).push(p.text);
 
   const keywords = d.keywords
     .split(/[,\n]/)

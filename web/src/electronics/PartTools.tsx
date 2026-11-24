@@ -8,6 +8,7 @@ import { PartPreview } from "./PartPreview";
 import { FAMILIES, LICENCES, build, draftFrom, newDraft, tableOf, type BodyKind, type Draft, type Family, type Sizes } from "./partDraft";
 
 const SymbolEditor = lazy(() => import("./SymbolEditor"));
+const FootprintEditor = lazy(() => import("./FootprintEditor"));
 
 type Tab = "details" | "symbol" | "footprint" | "body";
 const TABS: { id: Tab; label: string }[] = [
@@ -190,7 +191,13 @@ export function PartEditor({ start, shelves, onSave, onCancel }: PartEditorProps
               <label className="bc-field-label" htmlFor={`${ids}family`}>
                 Package
               </label>
-              <select id={`${ids}family`} className="bc-select" value={d.family} onChange={(e) => set({ family: e.target.value as Family })}>
+              <select
+                id={`${ids}family`}
+                className="bc-select"
+                value={d.family}
+                disabled={!!d.land}
+                onChange={(e) => set({ family: e.target.value as Family })}
+              >
                 {d.base && d.base.packages.length > 0 && <option value="keep">Keep its footprints ({d.base.packages.length})</option>}
                 {FAMILIES.map((f) => (
                   <option key={f.id} value={f.id}>
@@ -198,7 +205,25 @@ export function PartEditor({ start, shelves, onSave, onCancel }: PartEditorProps
                   </option>
                 ))}
               </select>
-              {family ? (
+              <label className="bc-check">
+                <input
+                  type="checkbox"
+                  checked={!!d.land}
+                  disabled={!d.land && !built.footprint}
+                  onChange={(e) => set({ land: e.target.checked ? (built.footprint ?? undefined) : undefined })}
+                />
+                Edit it pad by pad
+              </label>
+              {d.land ? (
+                <>
+                  <Suspense fallback={<p className="bc-note">Loading the drawing tools…</p>}>
+                    <FootprintEditor footprint={d.land} onChange={(land) => set({ land })} />
+                  </Suspense>
+                  <p className="bc-note">
+                    Untick to go back to {d.family === "keep" ? "the footprint as it came" : "the package's sizes"}. Your pad changes are dropped.
+                  </p>
+                </>
+              ) : family ? (
                 <>
                   <p className="bc-note">{family.hint} Take the sizes from the datasheet's land pattern.</p>
                   <div className="bc-ec-editor-sizes">

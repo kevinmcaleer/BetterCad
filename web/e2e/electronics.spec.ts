@@ -171,6 +171,71 @@ test.describe("on a wide screen", () => {
     expect(saved).toMatch(/"number":"5","name":"5","type":"output"/);
   });
 
+  test("edit a footprint pad by pad: a pad's own mask and paste, a new pad, undo and redo", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await tools(page)
+      .getByRole("button", { name: /^Components/ })
+      .click();
+    const card = page.getByRole("group", { name: "Components options" });
+    await card.getByRole("button", { name: "New part" }).click();
+    const editor = page.getByRole("dialog", { name: "New part" });
+    await editor.getByLabel("Name").fill("Own pads");
+    await editor.getByRole("tab", { name: "Footprint" }).click();
+    // Editing pad by pad starts from the footprint the package's sizes made.
+    await editor.getByLabel("Edit it pad by pad").check();
+    const drawing = editor.getByRole("img", { name: /^Footprint drawing/ });
+    await expect(drawing).toHaveAccessibleName("Footprint drawing: 4 pads, 5 outlines", { timeout: 20_000 });
+    await expect(editor.getByLabel("Package")).toBeDisabled();
+    const at = async (x: number, y: number): Promise<[number, number]> => {
+      const [scale, ox, oy] = (await drawing.getAttribute("data-view"))!.split(" ").map(Number) as [number, number, number];
+      const box = (await drawing.boundingBox())!;
+      return [box.x + ox + x * scale, box.y + oy - y * scale];
+    };
+    const bar = editor.getByRole("toolbar", { name: "Footprint tools" });
+
+    // Pad 1 gets a wider mask opening of its own and no paste.
+    await page.mouse.click(...(await at(-2.475, 0.635)));
+    await expect(editor.getByLabel("Number")).toHaveValue("1");
+    await expect(editor.getByLabel("Width")).toHaveValue("1.95");
+    await editor.getByLabel("Mask opening").selectOption({ label: "Its own gap" });
+    await editor.getByLabel("Mask gap").fill("0.1");
+    await editor.getByLabel("Mask gap").press("Enter");
+    await editor.getByLabel("Solder paste").selectOption({ label: "None" });
+
+    // A fifth pad, shaped like the last, then turned into a hole with copper round it.
+    await bar.getByRole("button", { name: "Pad" }).click();
+    await page.mouse.click(...(await at(0, 0)));
+    await expect(drawing).toHaveAccessibleName("Footprint drawing: 5 pads, 5 outlines");
+    await expect(editor.getByLabel("Number")).toHaveValue("5");
+    await editor.getByLabel("Kind").selectOption({ label: "Through hole" });
+    await expect(editor.getByLabel("Hole")).toBeVisible();
+    await expect(editor.getByLabel("Solder paste")).toBeHidden();
+
+    // Undo takes the hole and the pad back, redo returns the pad, and Esc puts the tool down first.
+    await editor.getByRole("button", { name: "Undo" }).click();
+    await editor.getByRole("button", { name: "Undo" }).click();
+    await expect(drawing).toHaveAccessibleName("Footprint drawing: 4 pads, 5 outlines");
+    await editor.getByRole("button", { name: "Redo" }).click();
+    await expect(drawing).toHaveAccessibleName("Footprint drawing: 5 pads, 5 outlines");
+    await page.keyboard.press("Escape");
+    await expect(bar.getByRole("button", { name: "Select" })).toHaveAttribute("aria-pressed", "true");
+    await expect(editor).toBeVisible();
+    await axe(page);
+
+    await editor.getByRole("button", { name: "Save to your parts" }).click();
+    await expect(card.getByText("Own pads is in your parts.")).toBeVisible();
+    const pads = await page.evaluate(() => {
+      const pack = JSON.parse(localStorage.getItem("bettercad.electronics.library") ?? "{}").pack;
+      return (Object.values(pack.footprints)[0] as { pads: Record<string, unknown>[] }).pads;
+    });
+    expect(pads).toHaveLength(5);
+    expect(pads[0]).toMatchObject({ number: "1", maskMargin: 0.1, noPaste: true });
+    expect(pads[4]).toMatchObject({ number: "5", kind: "smd" });
+  });
+
   test("check the rules, copy a circuit, edit the parts in a table and export the schematic", async ({ page }) => {
     await page.addInitScript(() => delete (window as unknown as Record<string, unknown>).showSaveFilePicker);
     await page.goto("/");

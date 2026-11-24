@@ -3,7 +3,8 @@ import { addPour, setPour, wholeBoard } from "../pcb/pour";
 import { addTrack } from "../pcb/route";
 import { fabBoard } from "./fixture";
 import { GERBER_LAYERS, gerberFiles, pourClashes, type GerberLayer } from "./gerber";
-import { inkAt, readGerber } from "./read";
+import type { ElectronicsDesign, Pad } from "../model";
+import { inkAt, readGerber, type GerberImage } from "./read";
 
 const files = () => {
   const { d, pad, nets } = fabBoard();
@@ -117,6 +118,33 @@ describe("Gerber files", () => {
     expect(image("paste-top").ops).toHaveLength(2);
     expect(inkAt(image("paste-top"), pad("R1", "2"))).toBe(true);
     expect(image("paste-bottom").ops).toHaveLength(0);
+  });
+
+  it("gives a pad its own paste opening, or none", () => {
+    const { d, pad } = fabBoard();
+    const r1 = d.defs[d.parts.find((p) => p.ref === "R1")!.def]!;
+    const edit = (change: (p: Pad) => Pad): ElectronicsDesign => ({
+      ...d,
+      defs: {
+        ...d.defs,
+        [d.parts.find((p) => p.ref === "R1")!.def]: {
+          ...r1,
+          packages: r1.packages.map((k) => ({ ...k, footprint: { ...k.footprint, pads: k.footprint.pads.map((p) => (p.number === "2" ? change(p) : p)) } })),
+        },
+      },
+    });
+    const paste = (design: ElectronicsDesign) => readGerber(gerberFiles(design).find((f) => f.layer === "paste-top")!.text);
+    const w = r1.packages[0]!.footprint.pads[0]!.w;
+    const h = r1.packages[0]!.footprint.pads[0]!.h;
+    const span = (i: GerberImage) => (i.box!.x2 - i.box!.x1) * (i.box!.y2 - i.box!.y1);
+    // A gap below zero pulls the opening inside the pad: less paste than before, but still on the pad.
+    const smaller = paste(edit((p) => ({ ...p, pasteMargin: -0.1 })));
+    expect(smaller.ops).toHaveLength(2);
+    expect(inkAt(smaller, pad("R1", "2"))).toBe(true);
+    expect(span(smaller)).toBeLessThan(span(paste(d)));
+    // A gap deeper than the pad still leaves a dot to print, never a shape turned inside out.
+    expect(paste(edit((p) => ({ ...p, pasteMargin: -Math.max(w, h) }))).skipped).toEqual([]);
+    expect(paste(edit((p) => ({ ...p, noPaste: true }))).ops).toHaveLength(1);
   });
 
   it("draws the silkscreen with strokes and keeps it off the pads", () => {

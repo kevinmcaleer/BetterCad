@@ -243,6 +243,7 @@ function padNode(pad: Pad, side: Side, angle: number, net?: { code: number; name
   out.push(pad.kind === "smd" ? ["layers", s(`${f}.Cu`), ...(pad.noPaste ? [] : [s(`${f}.Paste`)]), s(`${f}.Mask`)] : ["layers", s("*.Cu"), s("*.Mask")]);
   if (pad.shape === "roundrect") out.push(["roundrect_rratio", n(pad.round ?? 0.25)]);
   if (pad.maskMargin !== undefined) out.push(["solder_mask_margin", n(pad.maskMargin)]);
+  if (pad.pasteMargin !== undefined && pad.kind === "smd" && !pad.noPaste) out.push(["solder_paste_margin", n(pad.pasteMargin)]);
   if (net && pad.kind !== "npth") out.push(["net", String(net.code), s(net.name)]);
   return out;
 }
