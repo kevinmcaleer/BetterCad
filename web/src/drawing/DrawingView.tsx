@@ -203,6 +203,17 @@ export interface DrawingPaperProps {
   pictures?: PictureModel;
   /** The view that is selected changed, for the properties panel's Style. */
   onSelectView?: (id: string | null) => void;
+  /** The size that is selected changed, with what it measures, for the properties panel (#564). */
+  onSelectSize?: (size: SelectedSize | null) => void;
+  /** Edit in model (#564): open the step that sets a size, and the sketch dimension when it is one. */
+  onEditModel?: (feature: string, dimension?: string) => void;
+}
+
+/** A selected size as the properties panel needs it: which, and what it measures in mm or degrees. */
+export interface SelectedSize {
+  id: string;
+  value: number;
+  unit: "mm" | "°";
 }
 
 /**
@@ -254,6 +265,8 @@ function Paper({
   onDecimals,
   pictures: pictureFrom,
   onSelectView,
+  onSelectSize,
+  onEditModel,
 }: DrawingPaperProps & { strip?: boolean }) {
   const sheet = sheetOf(drawing, sheetId);
   const sheetNumber = drawing.sheets.indexOf(sheet) + 1;
@@ -744,6 +757,31 @@ function Paper({
       label,
     );
   const removeDim = (id: string) => onSheet?.((s) => ({ ...s, dimensions: s.dimensions.filter((d) => d.id !== id) }), "Delete dimension");
+  /** What a size measures now, in mm or degrees; nothing while its view is being worked out or when it is lost. */
+  const measureOf = (id: string | null) => {
+    const d = id ? sheet.dimensions.find((x) => x.id === id) : undefined;
+    const model = d && got.get(d.view)?.view;
+    const ctx = model && contextOf(sheet, d.view, model, drawing.decimals);
+    const art = ctx && dimArt(d, ctx);
+    return art ? { dim: d!, value: art.value, unit: art.unit } : undefined;
+  };
+  const sizeNow = measureOf(selectedDim);
+  const sizeKey = sizeNow ? `${sizeNow.dim.id} ${sizeNow.value} ${sizeNow.unit}` : "";
+  useEffect(() => {
+    const [id, value, unit] = sizeKey.split(" ");
+    onSelectSize?.(id ? { id, value: Number(value), unit: unit as "mm" | "°" } : null);
+  }, [onSelectSize, sizeKey]);
+  useEffect(() => () => onSelectSize?.(null), [onSelectSize]);
+  /** Edit in model (#564): sizes report and never drive, so this opens the sketch dimension or step that sets one. */
+  const openSize = (id: string) => {
+    const m = measureOf(id);
+    if (!m || !onEditModel || !doc) return;
+    void import("./source").then(({ sizeSource }) => {
+      const from = sizeSource(doc, m.dim, m.value);
+      if (from) onEditModel(from.feature, from.dimension);
+      else say?.("No one sketch dimension or step sets this size. Change the model to change it.");
+    });
+  };
   const menuDim = dimMenu ? sheet.dimensions.find((d) => d.id === dimMenu.id) : undefined;
   // Tolerances (#573): the size whose tolerance card is up.
   const [tolerating, setTolerating] = useState<string | null>(null);
@@ -880,6 +918,7 @@ function Paper({
     press.current = { x: e.clientX, y: e.clientY, dragging: false, view: on };
     if (!placing && !projecting) setSelected(on?.id ?? null);
     setSelectedNote(null);
+    setSelectedDim(null);
   };
   const move = (e: ReactPointerEvent<HTMLDivElement>) => {
     const was = touches.current.get(e.pointerId);
@@ -1148,6 +1187,7 @@ function Paper({
                       onMove={readOnly || autoing ? undefined : (id, at) => changeDim(id, { at }, "Move dimension")}
                       onDelete={readOnly || autoing ? undefined : removeDim}
                       onMenu={readOnly || autoing ? undefined : (id, x, y) => setDimMenu({ at: { x, y }, id })}
+                      onOpen={readOnly || autoing || !onEditModel ? undefined : openSize}
                     />
                   )}
                   {g?.view && live.notes?.some((n) => n.on?.view === v.id) && (
@@ -1329,6 +1369,7 @@ function Paper({
                 })),
                 { kind: "separator" as const, id: "t" },
                 { id: "tolerance", label: "Tolerance…", icon: "dimension" as const, onSelect: () => setTolerating(menuDim.id) },
+                ...(onEditModel ? [{ id: "model", label: "Edit in model", icon: "sketch" as const, keys: "Enter", onSelect: () => openSize(menuDim.id) }] : []),
                 { kind: "separator" as const, id: "s" },
                 { id: "delete", label: "Delete", danger: true, keys: "Del", onSelect: () => removeDim(menuDim.id) },
               ]
