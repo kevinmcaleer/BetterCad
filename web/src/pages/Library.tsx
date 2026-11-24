@@ -436,6 +436,11 @@ function ProjectCard({
           <div className="bc-card-time">
             {bin && project.deleted_at ? ago(Date.now() - serverTime(project.deleted_at)) : `${project.models} ${project.models === 1 ? "model" : "models"}`}
           </div>
+          {!bin && !!project.size && (
+            <div className="bc-card-size" title={`${formatBytes(project.size)} for every model and version in it`}>
+              {formatBytes(project.size)}
+            </div>
+          )}
         </div>
         <MenuButton
           label={`${project.name} menu`}

@@ -12,7 +12,7 @@ import sqlite3
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from . import where
+from . import chunks, where
 from .auth import CurrentUser, Writer, conn
 from .models import THUMB, THUMB_BYTES, image, tag
 
@@ -63,7 +63,7 @@ def folder_json(row: sqlite3.Row, counts: dict[str, tuple[int, int]] | None = No
     }
 
 
-def project_json(row: sqlite3.Row, models: int = 0) -> dict:
+def project_json(row: sqlite3.Row, models: int = 0, size: int = 0) -> dict:
     return {
         "id": row["id"],
         "name": row["name"],
@@ -73,6 +73,8 @@ def project_json(row: sqlite3.Row, models: int = 0) -> dict:
         "modified": row["modified"],
         "deleted_at": row["deleted_at"],
         "models": models,
+        #: Bytes its live models take from the quota, shared pieces counted once (as a model's own size is).
+        "size": size,
     }
 
 
@@ -111,11 +113,12 @@ def router(settings) -> APIRouter:
             "SELECT * FROM folders WHERE user_id = ? AND deleted_at IS NULL ORDER BY name COLLATE NOCASE, id", (user.id,)
         )
         ps = db.execute(
-            "SELECT p.*, (SELECT COUNT(*) FROM models m WHERE m.project_id = p.id AND m.deleted_at IS NULL) AS n"
+            "SELECT p.*, (SELECT COUNT(*) FROM models m WHERE m.project_id = p.id AND m.deleted_at IS NULL) AS n,"
+            f" {chunks.PROJECT_BYTES} AS bytes"
             " FROM projects p WHERE p.user_id = ? AND p.deleted_at IS NULL ORDER BY p.modified DESC, p.id",
             (user.id,),
         )
-        return {"folders": [folder_json(f, counts) for f in fs], "projects": [project_json(p, p["n"]) for p in ps]}
+        return {"folders": [folder_json(f, counts) for f in fs], "projects": [project_json(p, p["n"], p["bytes"]) for p in ps]}
 
     # --- Folders (#273) ---------------------------------------------------------------------------------------
 
@@ -193,7 +196,8 @@ def router(settings) -> APIRouter:
     def counted(db: sqlite3.Connection, user_id: int, project_id: str) -> dict:
         p = where.project(db, user_id, project_id)
         n = db.execute("SELECT COUNT(*) FROM models WHERE project_id = ? AND deleted_at IS NULL", (project_id,)).fetchone()[0]
-        return project_json(p, n)
+        size = db.execute(f"SELECT {chunks.PROJECT_BYTES} FROM projects p WHERE p.id = ?", (project_id,)).fetchone()[0]
+        return project_json(p, n, size)
 
     @r.get("/projects/{project_id}")
     def get_project(project_id: str, request: Request, user: CurrentUser) -> dict:
