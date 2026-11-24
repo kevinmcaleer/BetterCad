@@ -187,6 +187,38 @@
   --bc-color-paper-ink: #16181d;
   /* On `paper`: the view, field or mark you are pointing at or have selected, and the ghost of a view being placed. Blue, as geometry feedback is everywhere else; one value for every theme because paper does not change. 3:1 on `paper` as a graphic. */
   --bc-color-paper-pick: #1a5fc4;
+  /* Electronics, schematic: wires, junction dots and power symbols, on `viewport`. Green, as schematic wires usually are. 4.5:1 on `viewport` for the net names drawn in it. */
+  --bc-color-ec-wire: #1b7a34;
+  /* Electronics, schematic: symbol outlines, pins and pin numbers, on `viewport` and on `ec-symbol-fill`. */
+  --bc-color-ec-symbol: #8a1f1f;
+  /* Electronics, schematic: the body of a filled symbol, under `ink` pin names and `ec-symbol` lines. */
+  --bc-color-ec-symbol-fill: #fff8e1;
+  /* Electronics, PCB: the space round the board. Dark in every theme, so copper colours read the same everywhere. */
+  --bc-color-ec-pcb-bg: #15191e;
+  /* Electronics, PCB: text, the ratsnest and part outlines on `ec-pcb-bg` and on `ec-board`. */
+  --bc-color-ec-pcb-ink: #e8eaed;
+  /* Electronics, PCB: the board itself (green solder mask). */
+  --bc-color-ec-board: #1f4d3a;
+  /* Electronics, PCB: the board's edge and cut-outs. */
+  --bc-color-ec-edge: #e0c341;
+  /* Electronics, PCB: tracks, pours and pads on the top copper layer. */
+  --bc-color-ec-copper-top: #e0574f;
+  /* Electronics, PCB: tracks, pours and pads on the bottom copper layer. */
+  --bc-color-ec-copper-bottom: #4a86e8;
+  /* Electronics, PCB: plated through holes and vias, which are on every copper layer. */
+  --bc-color-ec-pad: #d4af37;
+  /* Electronics, PCB: silkscreen on the side you are looking at. */
+  --bc-color-ec-silk: #f2efe4;
+  /* Electronics, PCB: silkscreen on the far side of the board. */
+  --bc-color-ec-silk-far: #9a7fc4;
+  /* Electronics, PCB: a part's courtyard, the space it needs. */
+  --bc-color-ec-courtyard: #c77dff;
+  /* Electronics, PCB: drilled holes. */
+  --bc-color-ec-hole: #0b0d10;
+  /* Electronics: a rules check marker on the schematic or board, and its size text on `ec-pcb-bg`. */
+  --bc-color-ec-mark: #ffb020;
+  /* Electronics, PCB: the outline of what is selected or pointed at, on `ec-board` and `ec-pcb-bg`. */
+  --bc-color-ec-pick: #ffffff;
   /* A floating toolbar over the stage; a pressed rail button (0 1px 3px at 8%). */
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.12);
   /* The viewport frame on the stage; the selection toolbar (0 2px 10px at 16%). */
@@ -253,6 +285,22 @@
   --bc-color-paper: #f4f2ec;
   --bc-color-paper-ink: #16181d;
   --bc-color-paper-pick: #1a5fc4;
+  --bc-color-ec-wire: #5fd27e;
+  --bc-color-ec-symbol: #ff9b8a;
+  --bc-color-ec-symbol-fill: #3a3320;
+  --bc-color-ec-pcb-bg: #15191e;
+  --bc-color-ec-pcb-ink: #e8eaed;
+  --bc-color-ec-board: #1f4d3a;
+  --bc-color-ec-edge: #e0c341;
+  --bc-color-ec-copper-top: #e0574f;
+  --bc-color-ec-copper-bottom: #4a86e8;
+  --bc-color-ec-pad: #d4af37;
+  --bc-color-ec-silk: #f2efe4;
+  --bc-color-ec-silk-far: #9a7fc4;
+  --bc-color-ec-courtyard: #c77dff;
+  --bc-color-ec-hole: #0b0d10;
+  --bc-color-ec-mark: #ffb020;
+  --bc-color-ec-pick: #ffffff;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);
@@ -314,6 +362,22 @@
   --bc-color-paper: #f4f2ec;
   --bc-color-paper-ink: #16181d;
   --bc-color-paper-pick: #1a5fc4;
+  --bc-color-ec-wire: #5fd27e;
+  --bc-color-ec-symbol: #ff9b8a;
+  --bc-color-ec-symbol-fill: #2a2610;
+  --bc-color-ec-pcb-bg: #0b0d10;
+  --bc-color-ec-pcb-ink: #e8eaed;
+  --bc-color-ec-board: #1f4d3a;
+  --bc-color-ec-edge: #e0c341;
+  --bc-color-ec-copper-top: #e0574f;
+  --bc-color-ec-copper-bottom: #4a86e8;
+  --bc-color-ec-pad: #d4af37;
+  --bc-color-ec-silk: #f2efe4;
+  --bc-color-ec-silk-far: #9a7fc4;
+  --bc-color-ec-courtyard: #c77dff;
+  --bc-color-ec-hole: #000000;
+  --bc-color-ec-mark: #ffb020;
+  --bc-color-ec-pick: #ffffff;
   --bc-shadow-float: 0 1px 3px rgba(0, 0, 0, 0.5);
   --bc-shadow-frame: 0 2px 12px rgba(0, 0, 0, 0.6);
   --bc-shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.6);

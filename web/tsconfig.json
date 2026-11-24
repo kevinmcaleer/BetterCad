@@ -2,5 +2,5 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": { "outDir": "dist-types", "rootDir": "..", "tsBuildInfoFile": "dist-types/.tsbuildinfo" },
   "include": ["src", "e2e", "*.ts", "../vitest.setup.ts"],
-  "references": [{ "path": "../packages/ui" }, { "path": "../packages/kernel" }, { "path": "../packages/sketch" }]
+  "references": [{ "path": "../packages/ui" }, { "path": "../packages/kernel" }, { "path": "../packages/sketch" }, { "path": "../packages/electronics" }]
 }

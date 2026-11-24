@@ -6,6 +6,7 @@ COPY web/package.json web/
 COPY packages/ui/package.json packages/ui/
 COPY packages/kernel/package.json packages/kernel/
 COPY packages/sketch/package.json packages/sketch/
+COPY packages/electronics/package.json packages/electronics/
 RUN npm ci
 COPY . .
 ARG VERSION=""

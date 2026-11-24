@@ -102,10 +102,10 @@ describe("Ribbon", () => {
     expect(screen.getByRole("tabpanel")).toHaveTextContent("drawing tools");
   });
 
-  it("shows one Drawing tab, last, while a drawing is open", () => {
+  it("shows one Drawing tab, in its place, while a drawing is open", () => {
     setup({ ribbon: () => <span>model</span>, drawingRibbon: <button type="button">Parts list</button> });
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing", "Electronics"]);
     expect(tabs[3]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("toolbar", { name: "Drawing tools" })).toContainElement(screen.getByRole("button", { name: "Parts list" }));
   });
@@ -121,9 +121,18 @@ describe("Ribbon", () => {
   it("shows the Render view's options on its tab while it is open", () => {
     setup({ ribbon: () => <span>model</span>, onRender: vi.fn(), renderRibbon: <button type="button">Lighting</button> });
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing", "Render"]);
+    expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing", "Render", "Electronics"]);
     expect(tabs[4]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("toolbar", { name: "Render tools" })).toContainElement(screen.getByRole("button", { name: "Lighting" }));
+  });
+
+  it("the Electronics tab shows the open view's tools while the schematic or the board is open (#617)", () => {
+    setup({ ribbon: () => <span>model</span>, electronicsRibbon: <button type="button">Wire</button> });
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing", "Electronics"]);
+    expect(tabs[4]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[0]).toBeDisabled();
+    expect(screen.getByRole("toolbar", { name: "Electronics tools" })).toContainElement(screen.getByRole("button", { name: "Wire" }));
   });
 
   it("keeps the compact bar for a shared model", () => {

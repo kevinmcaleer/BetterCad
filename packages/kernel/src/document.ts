@@ -4,6 +4,7 @@
  * app's history store keeps immutable revisions of it for undo; the worker turns a revision into solids.
  */
 import type { Drawing } from "./drawing";
+import type { ElectronicsDesign } from "@bettercad/electronics";
 import {
   drawCentreRectangle,
   drawCircle,
@@ -901,6 +902,11 @@ export interface ModelDoc {
   canvases?: CanvasImage[];
   /** Drawings (#555): 2D sheets made from the model. They read it and never change it, so they are not steps. */
   drawings?: Drawing[];
+  /**
+   * The electronics design (#606, #615): components, schematic sheets and one board. Edits are undoable but are not
+   * steps; only the 3D board built from it is one.
+   */
+  electronics?: ElectronicsDesign;
   /**
    * The render film strip: shots kept with the model and rendered in the background. Only the settings live here; the
    * pictures are kept beside the model (in the account, or this browser), so the file stays small. Not steps.

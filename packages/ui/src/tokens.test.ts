@@ -26,6 +26,14 @@ const PAIRS: [ColourName, ColourName][] = [
   ["danger", "rail"],
   ["dimension", "viewport"],
   ["snap-point", "snap-face"],
+  // Electronics (#606): net names and pin numbers on the schematic, and text on the board view.
+  ["ec-wire", "viewport"],
+  ["ec-symbol", "viewport"],
+  ["ec-symbol", "ec-symbol-fill"],
+  ["ink", "ec-symbol-fill"],
+  ["ec-pcb-ink", "ec-pcb-bg"],
+  ["ec-pcb-ink", "ec-board"],
+  ["ec-mark", "ec-pcb-bg"],
 ];
 
 describe("contrast", () => {

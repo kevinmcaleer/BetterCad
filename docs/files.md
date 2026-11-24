@@ -39,6 +39,10 @@ opens. The types are in `packages/kernel/src/drawing.ts`.
 The schema number did not change for drawings: a file without any is exactly as it was, and a BetterCad from before
 drawings keeps the `drawings` list as it found it and saves it back, as it does any field it doesn't know.
 
+The electronics design (#606) is saved the same way, under `document.electronics`: the components used, the schematic
+sheets and the board. See `docs/electronics.md`; the types are in `packages/electronics/src/model.ts`. The schema number
+did not change for it either.
+
 ## Saving
 
 In Chrome and Edge, Save writes back to the file you opened or last saved, without a dialog, and the file joins

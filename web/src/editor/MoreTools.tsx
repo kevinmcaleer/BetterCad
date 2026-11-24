@@ -16,6 +16,7 @@ const TABS: [Tab, string][] = [
   ["assemble", "Assemble"],
   ["inspect", "Inspect"],
   ["drawing", "Drawing"],
+  ["electronics", "Electronics"],
 ];
 
 // The tab you last looked at, while the page stays open.

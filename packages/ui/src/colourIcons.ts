@@ -279,6 +279,43 @@ const DRAW: Record<string, () => string> = {
     `<path d="M2.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2h9.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5z" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.2" stroke-linejoin="round"/>` +
     `<rect x="7" y="9" width="11" height="8" fill="${TOP}" stroke="${EDGE}" stroke-width="1"/>` +
     `<rect x="12.5" y="14" width="5.5" height="3" fill="${HI}" stroke="${EDGE}" stroke-width="0.7"/>`,
+  // Electronics (#606). A symbol with its pins, the body in the accent
+  schematic: () =>
+    line("M2.5 9h4M2.5 15h4M17.5 12h4") +
+    `<rect x="6.5" y="5" width="11" height="14" fill="${HI}" stroke="${EDGE}" stroke-width="1.3"/>` +
+    line("M9.5 9h2M9.5 15h2M12.5 12h2", EDGE, 1),
+  // A board with a part and a track in the accent
+  pcb: () =>
+    `<rect x="2.5" y="4.5" width="19" height="15" rx="2" fill="${TOP}" stroke="${EDGE}" stroke-width="1.3"/>` +
+    `<rect x="6" y="8" width="5" height="5" fill="${SIDE}" stroke="${EDGE}" stroke-width="0.9"/>` +
+    hiLine("M11 10.5h3l3.5 3.5") +
+    dot(17.5, 14, 1.5) +
+    `<circle cx="6" cy="16" r="1.1" fill="${HOLE}" stroke="${EDGE}" stroke-width="0.7"/><circle cx="18" cy="8" r="1.1" fill="${HOLE}" stroke="${EDGE}" stroke-width="0.7"/>`,
+  chip: () =>
+    line("M9.5 2.5v4M14.5 2.5v4M9.5 17.5v4M14.5 17.5v4M2.5 9.5h4M2.5 14.5h4M17.5 9.5h4M17.5 14.5h4", EDGE, 1.3) +
+    `<rect x="6.5" y="6.5" width="11" height="11" rx="1" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.3"/>` +
+    `<circle cx="9.5" cy="9.5" r="1.2" fill="${HI}"/>`,
+  wire: () => hiLine("M4 18h7V6h9", 2) + dot(4, 18, 2) + dot(20, 6, 2),
+  netLabel: () =>
+    `<path d="M3 7.5h11l5.5 4.5-5.5 4.5H3z" fill="${HI}" stroke="${EDGE}" stroke-width="1.2" stroke-linejoin="round"/>` + line("M6.5 12h5", EDGE, 1.2),
+  noConnect: () => line("M3 12h9", EDGE, 1.8) + hiLine("M14 8l6 8M20 8l-6 8", 2),
+  junction: () => line("M3 12h18M12 12v8.5", EDGE, 1.8) + dot(12, 12, 2.6),
+  powerSymbol: () => line("M12 3v9", EDGE, 1.8) + hiLine("M6 12h12M8.5 16h7M11 20h2", 2),
+  route: () =>
+    `<rect x="2.5" y="4.5" width="19" height="15" rx="2" fill="${TOP}" stroke="${EDGE}" stroke-width="1.1"/>` +
+    hiLine("M6 16h4l5-5V8", 2.2) +
+    dot(6, 16, 1.8) +
+    dot(15, 8, 1.8),
+  via: () =>
+    `<circle cx="12" cy="12" r="8.5" fill="${HI}" stroke="${EDGE}" stroke-width="1.2"/><circle cx="12" cy="12" r="3.4" fill="${HOLE}" stroke="${EDGE}" stroke-width="1"/>`,
+  pushPcb: () =>
+    `<rect x="2.5" y="3.5" width="9" height="7" fill="${TOP}" stroke="${EDGE}" stroke-width="1.1"/>` +
+    `<rect x="12.5" y="13.5" width="9" height="7" rx="1" fill="${HI}" stroke="${EDGE}" stroke-width="1.1"/>` +
+    line("M7 10.5V17h5.5M10.5 14.5 13 17l-2.5 2.5", EDGE, 1.4),
+  flipSide: () =>
+    line("M12 3v18", EDGE, 1.2, dashed) +
+    `<path d="M8.5 7 4 12l4.5 5z" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.1" stroke-linejoin="round"/><path d="M15.5 7l4.5 5-4.5 5z" fill="${HI}" stroke="${EDGE}" stroke-width="1.1" stroke-linejoin="round"/>`,
+  rulesCheck: () => `<rect x="3.5" y="3.5" width="17" height="17" rx="2" fill="${TOP}" stroke="${EDGE}" stroke-width="1.2"/>` + hiLine("M8 12l3 3 5-6", 2.2),
   clash: () => box(-6, -3, -5, 7, 7, 7) + box(-1, -5, -3, 7, 7, 7) + poly([P(-1, -3, 2), P(1, -3, 2), P(1, 2, 2), P(-1, 2, 2)], HI, 0.7),
   // Sketch: flat shapes with their points in the accent
   line: () => line("M5 19L19 5", EDGE, 1.8) + dot(5, 19, 2) + dot(19, 5, 2),

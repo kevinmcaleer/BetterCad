@@ -102,6 +102,8 @@ export interface TopBarProps {
   renderRibbon?: ReactNode;
   /** The Render tab, chosen while the Render view is closed: opens it. */
   onRender?: () => void;
+  /** The schematic or the board is open (#617): the Electronics tab shows that view's tools. */
+  electronicsRibbon?: ReactNode;
   /** The compact bar's last button: the ribbon's tabs and tools as a sheet, for phones and tablets. */
   onMoreTools?: () => void;
 }
@@ -112,6 +114,7 @@ const TABS: [Exclude<RibbonTab, "sketch">, string][] = [
   ["inspect", "Inspect"],
   ["drawing", "Drawing"],
   ["render", "Render"],
+  ["electronics", "Electronics"],
 ];
 
 /** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
@@ -195,7 +198,9 @@ export function TopBar(p: TopBarProps) {
       ? { id: "drawing", label: "Drawing", tools: p.drawingRibbon }
       : p.renderRibbon
         ? { id: "render", label: "Render", tools: p.renderRibbon }
-        : null;
+        : p.electronicsRibbon
+          ? { id: "electronics", label: "Electronics", tools: p.electronicsRibbon }
+          : null;
   const sketching = !!over;
   const inPlace = TABS.some(([id]) => id === over?.id);
   const overTab = over && (

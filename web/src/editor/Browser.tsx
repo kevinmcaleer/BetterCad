@@ -26,6 +26,9 @@ export const ROW = {
   analysis: "browser:analysis",
   canvases: "browser:canvases",
   drawings: "browser:drawings",
+  electronics: "browser:electronics",
+  schematic: "browser:schematic",
+  pcb: "browser:pcb",
   bodies: "browser:bodies",
   sketches: "browser:sketches",
   construct: "browser:construct",
@@ -100,6 +103,8 @@ export interface BrowserModel {
   /** Drawings (#555), under Drawings; `drawing` is the one whose sheet is open. */
   drawings?: { id: string; name: string; problems?: number }[];
   drawing?: string | null;
+  /** The electronics design (#606), under Electronics: its part count, whether it has a board, and the open view. */
+  electronics?: { parts: number; board: boolean; view: "schematic" | "pcb" | null };
 }
 
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
@@ -257,6 +262,16 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         note: x.id === m.drawing ? (x.problems ? `Open, ${x.problems} ${x.problems === 1 ? "problem" : "problems"}` : "Open") : undefined,
         ...(x.problems ? { warning: "Something on this drawing lost what it was fixed to. Right-click its warning to pick again or delete it." } : {}),
       });
+  }
+  // Electronics (#606): one design, seen as a schematic and a board. Double-click opens a view.
+  if (m.electronics) {
+    const e = m.electronics;
+    const row = { kind: "drawing" as const, parentId: ROW.electronics, drag: false, rename: false, toggles: [] };
+    items.push(
+      folder(ROW.electronics, "Electronics", { icon: "chip", note: e.parts ? `${e.parts} ${e.parts === 1 ? "part" : "parts"}` : undefined, toggles: [] }),
+    );
+    items.push({ ...row, id: ROW.schematic, name: "Schematic", icon: "schematic", note: e.view === "schematic" ? "Open" : undefined });
+    items.push({ ...row, id: ROW.pcb, name: "PCB", icon: "pcb", note: e.view === "pcb" ? "Open" : e.board ? undefined : "Not made yet" });
   }
   // Then the model's own folders and components, and each component's, inside out (#171).
   const o = owners(m);
@@ -445,6 +460,8 @@ export interface BrowserPanelProps {
   onCanvas?: (id: string, act: "hide" | "edit" | "rename" | "delete", name?: string) => void;
   /** Drawings (#555): make one, open one or its Sheet settings, rename or delete one. */
   onDrawing?: (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart", id?: string, name?: string) => void;
+  /** Opens the schematic or the board (#617). */
+  onElectronics?: (view: "schematic" | "pcb") => void;
   /** Named poses (#177): go to one (null: Home), save the joints as a new one, update, rename or delete one. */
   onPose?: (id: string | null) => void;
   onSavePose?: () => void;
@@ -690,6 +707,16 @@ export function BrowserPanel(p: BrowserPanelProps) {
               ]),
         ],
       };
+    if (id === ROW.schematic || id === ROW.pcb || id === ROW.electronics)
+      return {
+        title: id === ROW.pcb ? "PCB" : id === ROW.schematic ? "Schematic" : "Electronics",
+        entries: [
+          ...(id === ROW.pcb
+            ? []
+            : [{ id: "schematic", label: "Open the schematic", icon: "schematic" as const, onSelect: () => p.onElectronics?.("schematic") }]),
+          ...(id === ROW.schematic ? [] : [{ id: "pcb", label: "Open the PCB", icon: "pcb" as const, onSelect: () => p.onElectronics?.("pcb") }]),
+        ],
+      };
     if (id === ROW.drawings)
       return {
         title: "Drawings",
@@ -781,12 +808,14 @@ export function BrowserPanel(p: BrowserPanelProps) {
         onRenameIdChange={p.onRenameIdChange}
         onContextMenu={(id, at) => setMenu({ id, at })}
         onOpen={(id) =>
-          !model.readOnly &&
-          (model.drawings?.some((x) => x.id === id)
-            ? (p.onDrawing?.("open", id), true)
-            : model.sections?.some((x) => x.id === id)
-              ? (p.onEditSection?.(id), true)
-              : !!model.canvases?.some((x) => x.id === id) && (p.onCanvas?.(id, "edit"), true))
+          id === ROW.schematic || id === ROW.pcb
+            ? (p.onElectronics?.(id === ROW.pcb ? "pcb" : "schematic"), true)
+            : !model.readOnly &&
+              (model.drawings?.some((x) => x.id === id)
+                ? (p.onDrawing?.("open", id), true)
+                : model.sections?.some((x) => x.id === id)
+                  ? (p.onEditSection?.(id), true)
+                  : !!model.canvases?.some((x) => x.id === id) && (p.onCanvas?.(id, "edit"), true))
         }
       />
       {/* The how-to tips live in the tips card (Help → Tips); only the empty model keeps a first step here. */}
