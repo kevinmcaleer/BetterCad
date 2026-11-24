@@ -9,7 +9,7 @@ export const THEME_NAMES: Record<ThemeId, string> = {
   "holoroom": "Holoroom"
 };
 
-export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "snap-face" | "snap-point" | "snap-point-ring" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room" | "icon-top" | "icon-side" | "icon-side-dark" | "icon-edge" | "icon-hole" | "icon-accent" | "icon-accent-side" | "icon-accent-dark" | "paper" | "paper-ink" | "paper-pick";
+export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "snap-face" | "snap-point" | "snap-point-ring" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room" | "icon-top" | "icon-side" | "icon-side-dark" | "icon-edge" | "icon-hole" | "icon-accent" | "icon-accent-side" | "icon-accent-dark" | "paper" | "paper-ink" | "paper-pick" | "ec-wire" | "ec-symbol" | "ec-symbol-fill" | "ec-pcb-bg" | "ec-pcb-ink" | "ec-board" | "ec-edge" | "ec-copper-top" | "ec-copper-bottom" | "ec-pad" | "ec-silk" | "ec-silk-far" | "ec-courtyard" | "ec-hole" | "ec-mark" | "ec-pick";
 
 /** Every colour token's value in every theme. */
 export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
@@ -66,7 +66,23 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "icon-accent-dark": "#a5680f",
     "paper": "#ffffff",
     "paper-ink": "#16181d",
-    "paper-pick": "#1a5fc4"
+    "paper-pick": "#1a5fc4",
+    "ec-wire": "#1b7a34",
+    "ec-symbol": "#8a1f1f",
+    "ec-symbol-fill": "#fff8e1",
+    "ec-pcb-bg": "#15191e",
+    "ec-pcb-ink": "#e8eaed",
+    "ec-board": "#1f4d3a",
+    "ec-edge": "#e0c341",
+    "ec-copper-top": "#e0574f",
+    "ec-copper-bottom": "#4a86e8",
+    "ec-pad": "#d4af37",
+    "ec-silk": "#f2efe4",
+    "ec-silk-far": "#9a7fc4",
+    "ec-courtyard": "#c77dff",
+    "ec-hole": "#0b0d10",
+    "ec-mark": "#ffb020",
+    "ec-pick": "#ffffff"
   },
   "dark": {
     "accent": "#a78bfa",
@@ -121,7 +137,23 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "icon-accent-dark": "#a8701c",
     "paper": "#f4f2ec",
     "paper-ink": "#16181d",
-    "paper-pick": "#1a5fc4"
+    "paper-pick": "#1a5fc4",
+    "ec-wire": "#5fd27e",
+    "ec-symbol": "#ff9b8a",
+    "ec-symbol-fill": "#3a3320",
+    "ec-pcb-bg": "#15191e",
+    "ec-pcb-ink": "#e8eaed",
+    "ec-board": "#1f4d3a",
+    "ec-edge": "#e0c341",
+    "ec-copper-top": "#e0574f",
+    "ec-copper-bottom": "#4a86e8",
+    "ec-pad": "#d4af37",
+    "ec-silk": "#f2efe4",
+    "ec-silk-far": "#9a7fc4",
+    "ec-courtyard": "#c77dff",
+    "ec-hole": "#0b0d10",
+    "ec-mark": "#ffb020",
+    "ec-pick": "#ffffff"
   },
   "holoroom": {
     "accent": "#a78bfa",
@@ -176,6 +208,22 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "icon-accent-dark": "#a8701c",
     "paper": "#f4f2ec",
     "paper-ink": "#16181d",
-    "paper-pick": "#1a5fc4"
+    "paper-pick": "#1a5fc4",
+    "ec-wire": "#5fd27e",
+    "ec-symbol": "#ff9b8a",
+    "ec-symbol-fill": "#2a2610",
+    "ec-pcb-bg": "#0b0d10",
+    "ec-pcb-ink": "#e8eaed",
+    "ec-board": "#1f4d3a",
+    "ec-edge": "#e0c341",
+    "ec-copper-top": "#e0574f",
+    "ec-copper-bottom": "#4a86e8",
+    "ec-pad": "#d4af37",
+    "ec-silk": "#f2efe4",
+    "ec-silk-far": "#9a7fc4",
+    "ec-courtyard": "#c77dff",
+    "ec-hole": "#000000",
+    "ec-mark": "#ffb020",
+    "ec-pick": "#ffffff"
   }
 };

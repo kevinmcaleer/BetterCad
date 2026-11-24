@@ -843,6 +843,49 @@ describe("canvases in the browser (#248)", () => {
   });
 });
 
+describe("electronics", () => {
+  const props = () => ({
+    selection: [],
+    onSelect: () => {},
+    onAdd: () => {},
+    onToggle: () => {},
+    onBodiesHidden: () => {},
+    onSketchesHidden: () => {},
+    onOrigin: () => {},
+    onPicked: () => {},
+    onSelectSketch: () => {},
+    onRename: () => {},
+    onRenameModel: () => {},
+    onRenameSketch: () => {},
+    onReorder: () => {},
+    onSketchOn: () => {},
+    partMenu: () => [],
+    sketchMenu: () => [],
+    renameId: null,
+    onRenameIdChange: () => {},
+    onElectronics: vi.fn(),
+  });
+
+  it("lists the schematic and the PCB under Electronics, and marks the open one", () => {
+    const items = browserItems(model({ electronics: { parts: 2, board: false, view: "schematic" } }));
+    expect(items.find((i) => i.id === ROW.electronics)).toMatchObject({ name: "Electronics", note: "2 parts", toggles: [] });
+    expect(items.find((i) => i.id === ROW.schematic)).toMatchObject({ name: "Schematic", parentId: ROW.electronics, note: "Open" });
+    expect(items.find((i) => i.id === ROW.pcb)).toMatchObject({ name: "PCB", note: "Not made yet" });
+    expect(browserItems(model({ electronics: { parts: 1, board: true, view: "pcb" } })).find((i) => i.id === ROW.pcb)?.note).toBe("Open");
+    expect(browserItems(model()).some((i) => i.id === ROW.electronics)).toBe(false);
+  });
+
+  it("double-click or the menu opens a view, in a view-only model too", async () => {
+    const p = props();
+    render(<BrowserPanel model={model({ electronics: { parts: 2, board: true, view: null }, readOnly: true })} {...p} />);
+    await userEvent.dblClick(screen.getByRole("button", { name: /^Schematic/ }));
+    expect(p.onElectronics).toHaveBeenLastCalledWith("schematic");
+    fireEvent.contextMenu(row(/^PCB/));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Open the PCB" }));
+    expect(p.onElectronics).toHaveBeenLastCalledWith("pcb");
+  });
+});
+
 describe("drawings", () => {
   const drs = { drawings: [{ id: "dr1", name: "Drawing 1" }], drawing: "dr1" };
   const props = () => ({

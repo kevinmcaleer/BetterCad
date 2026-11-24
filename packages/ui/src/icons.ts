@@ -112,6 +112,20 @@ export const chamfer = "M4 20V10l6-6h10v16zM4 10h6V4";
 /** Offset face (#264): a wedge, its slope moved out along an arrow. */
 /** A picture laid on a plane, to trace over (#248). */
 export const canvas = "M2 19 6 5h16l-4 14zM6.5 15.5l4-4 3 3 2-2 2 2";
+// Electronics (#606).
+export const schematic = "M3 12h4M17 12h4M7 8h10v8H7zM12 3v5M12 16v5";
+export const pcb = "M3 5h18v14H3zM7 9h4v4H7zM11 11h3l3 3M17 14v.01M7 16h.01M17 8h.01";
+export const chip = "M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4";
+export const wire = "M4 18h7V6h9M4 18v.01M20 6v.01";
+export const netLabel = "M3 8h11l5 4-5 4H3zM7 12h4";
+export const noConnect = "M4 12h8M14 8l6 8M20 8l-6 8";
+export const junction = "M3 12h18M12 12v8M12 12a2 2 0 1 0 .01 0";
+export const powerSymbol = "M12 3v9M6 12h12M8.5 16h7M11 20h2";
+export const route = "M4 19h5l6-6V6M15 6a2 2 0 1 0 .01 0M4 19a2 2 0 1 0 .01 0";
+export const via = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
+export const pushPcb = "M3 5h8v6H3zM13 13h8v6h-8zM7 11v4h6M10.5 12.5 13 15l-2.5 2.5";
+export const flipSide = "M12 3v18M8 7 4 12l4 5zM16 7l4 5-4 5";
+export const rulesCheck = "M4 4h16v16H4zM8 12l3 3 5-6";
 export const drawing = "M3 4h18v16H3zM12 15h9M12 15v5M6 8h5v4H6z";
 export const offsetFace = "M3 20h12L3 8zM6 5l13 13M10 13l3-3M13 10h-2.5M13 10v2.5";
 export const shell = "M3 7l9-4 9 4v10l-9 4-9-4zM6.5 8.5 12 6l5.5 2.5L12 11zM12 11v10";
@@ -305,6 +319,19 @@ export const ICONS = {
   offsetFace,
   canvas,
   drawing,
+  schematic,
+  pcb,
+  chip,
+  wire,
+  netLabel,
+  noConnect,
+  junction,
+  powerSymbol,
+  route,
+  via,
+  pushPcb,
+  flipSide,
+  rulesCheck,
   point,
   plane,
   axis,

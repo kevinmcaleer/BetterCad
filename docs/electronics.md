@@ -76,3 +76,24 @@ one edit. Nothing moves or goes without being listed first.
 
 The board remembers each net's pins from the last push (`board.synced`), which is how a renamed net is told from one
 that was deleted.
+
+## The workspace in the app (#617 to #620)
+
+`web/src/electronics/` holds the views. The shell imports only `ui.ts` (the view-state store `eui`: which view is open,
+the tool, the selection, the layer) and `actions.ts` (`showView`); everything else is one lazy chunk,
+`Electronics.tsx`, with its own line in `budgets.json`.
+
+- **A view covers the 3D view** the way a drawing's sheet does. While one is open the command scope is `electronics`:
+  only the views' commands, files, themes, help and undo apply, so the views reuse the model's keys (1, 2 and 3
+  switch between Schematic, PCB and 3D). The view registers its commands when it mounts and takes them away when it
+  goes.
+- **`Canvas2D`** is the shared canvas: scroll or pinch zooms, right-drag or a finger on empty space pans, and the tool
+  in charge gets everything else in millimetres. It puts `data-view="scale ox oy"` on the canvas so a browser test
+  can click a place on the drawing (`web/e2e/lib/electronics.ts`).
+- **Layout**, as picked on 2026-11-24: the switcher top centre (full width on a phone) with a dot on PCB when the
+  board is behind; the browser left and the part card right as the usual floating cards; Layers bottom right on the
+  board, one chip on a phone; a status strip along the bottom where the timeline sits; on a phone the tools are one
+  scrolling row along the bottom. `.bc-ec-clear` is a hidden box with the cards' insets, measured so Fit centres the
+  drawing in the room the cards leave.
+- **Edits** go through `onDesign`, which wraps a design change as a model change for the history store, so undo and
+  redo work as everywhere else. Colours are the `ec-*` tokens, read from CSS when the canvas draws.

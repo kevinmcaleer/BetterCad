@@ -394,7 +394,8 @@ export interface ElectronicsDesign {
 
 export const emptySheet = (name = "Sheet 1"): Sheet => ({ id: eid("sh"), name, symbols: [], wires: [], junctions: [], labels: [], noConnects: [] });
 
-export const emptyDesign = (): ElectronicsDesign => ({ defs: {}, parts: [], sheets: [emptySheet()] });
+/** A design with nothing on it. Its one sheet has a fixed id, so a view of a design that is not saved yet and its first edit agree on it. */
+export const emptyDesign = (): ElectronicsDesign => ({ defs: {}, parts: [], sheets: [{ ...emptySheet(), id: "sh1" }] });
 
 /** A rectangle outline with its bottom left corner at the origin. */
 export const rectOutline = (w: number, h: number): Corner[] => [

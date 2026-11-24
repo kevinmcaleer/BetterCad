@@ -102,6 +102,8 @@ export interface LeftPanelProps {
   canvases?: { list: BrowserModel["canvases"]; on: NonNullable<BrowserPanelProps["onCanvas"]> };
   /** Drawings (#555): the list, the one whose sheet is open, and the browser's actions on them. */
   drawings?: { list: BrowserModel["drawings"]; open: string | null; on: NonNullable<BrowserPanelProps["onDrawing"]> };
+  /** The electronics design (#606) and opening its views. */
+  electronics?: { summary: BrowserModel["electronics"]; on: NonNullable<BrowserPanelProps["onElectronics"]> };
   onSketchOnStep?: (id: string) => void;
   features: Feature[];
   at: number;
@@ -183,6 +185,7 @@ function PartsPanel(p: LeftPanelProps) {
         canvases: p.canvases?.list,
         drawings: p.drawings?.list,
         drawing: p.drawings?.open,
+        electronics: p.electronics?.summary,
         poses: p.poses?.poses,
         atPose: p.poses?.atPose,
         sections: p.sections?.sections,
@@ -226,6 +229,7 @@ function PartsPanel(p: LeftPanelProps) {
       onDeleteSection={p.sections?.onDeleteSection}
       onCanvas={p.canvases?.on}
       onDrawing={p.drawings?.on}
+      onElectronics={p.electronics?.on}
     />
   );
 }

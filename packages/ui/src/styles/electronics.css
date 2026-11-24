@@ -1,0 +1,389 @@
+/* The electronics workspace (#606): the schematic or the board covers the whole 3D view, under the floating cards.
+   Laid out as picked on 2026-11-24: switcher top centre, layers bottom right, checks strip along the bottom. */
+.bc-electronics {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: clip;
+  background: var(--bc-color-viewport);
+  font-size: var(--bc-type-ui-size);
+  --bc-ec-top: var(--bc-view-top, 0px);
+  --bc-ec-gap: var(--bc-float-gap, 8px);
+}
+.bc-ec-pcb {
+  background: var(--bc-color-ec-pcb-bg);
+}
+.bc-ec-host,
+.bc-ec-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  outline: none;
+}
+.bc-ec-canvas:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--bc-color-accent);
+}
+/* The model's cube, view bar and compact tools belong to the 3D view under the sheet. */
+.bc-viewport:has(.bc-electronics) .bc-viewcube,
+.bc-app:has(.bc-electronics) .bc-top-tools,
+.bc-app:has(.bc-electronics) .bc-help,
+.bc-app:has(.bc-electronics) .bc-tips-card {
+  display: none;
+}
+
+/* The part of the view the cards leave clear: Fit centres the schematic or the board in it. */
+.bc-ec-clear {
+  position: absolute;
+  inset: calc(var(--bc-view-top, 0px) + 56px) var(--bc-view-right, 0px) 64px var(--bc-view-left, 0px);
+  visibility: hidden;
+  pointer-events: none;
+}
+.bc-electronics:has(.bc-ec-tools) .bc-ec-clear {
+  top: calc(var(--bc-view-top, 0px) + 108px);
+}
+
+/* ---- the switcher */
+.bc-ec-switch {
+  position: absolute;
+  top: var(--bc-ec-top);
+  left: calc(var(--bc-view-left, 0px) + (100% - var(--bc-view-left, 0px) - var(--bc-view-right, 0px)) / 2);
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--bc-space-1);
+  padding: var(--bc-space-2);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-xl);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  z-index: 2;
+}
+.bc-electronics:has(.bc-ec-tools) .bc-ec-switch {
+  top: calc(var(--bc-ec-top) + 52px);
+}
+.bc-ec-switch-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  min-height: var(--bc-control);
+  padding: 0 var(--bc-space-7);
+  border: 0;
+  border-radius: var(--bc-radius-md);
+  background: transparent;
+  color: var(--bc-color-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bc-ec-switch-item:hover {
+  background: var(--bc-color-hover);
+  color: var(--bc-color-ink);
+}
+.bc-ec-switch-item.bc-on {
+  background: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+}
+.bc-ec-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-warn);
+}
+
+/* ---- the compact tool bar (phones, tablets, and desktops without the ribbon) */
+.bc-ec-tools {
+  position: absolute;
+  top: var(--bc-ec-top);
+  left: calc(var(--bc-view-left, 0px) + (100% - var(--bc-view-left, 0px) - var(--bc-view-right, 0px)) / 2);
+  transform: translateX(-50%);
+  max-width: calc(100% - var(--bc-view-left, 0px) - var(--bc-view-right, 0px));
+  /* One row that scrolls sideways when the screen is narrower than the tools. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  z-index: 2;
+}
+.bc-ec-tools > * {
+  flex: none;
+}
+
+/* ---- cards */
+.bc-ec-card {
+  position: absolute;
+  top: calc(var(--bc-ec-top) + 104px);
+  left: calc(var(--bc-view-left, 0px) + var(--bc-ec-gap));
+  max-height: calc(100% - var(--bc-ec-top) - 180px);
+  z-index: 3;
+}
+.bc-ec-card .bc-text {
+  width: 100%;
+}
+.bc-ec-change-list,
+.bc-ec-parts,
+.bc-ec-layers ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bc-ec-change-list {
+  display: grid;
+  gap: var(--bc-space-3);
+  max-height: 40vh;
+  overflow: auto;
+}
+.bc-ec-change-list li {
+  padding-left: var(--bc-space-6);
+  border-left: 3px solid var(--bc-color-line);
+}
+.bc-ec-change-list .bc-ec-warned {
+  border-left-color: var(--bc-color-warn);
+}
+.bc-ec-change-list .bc-ec-blocked {
+  border-left-color: var(--bc-color-danger);
+  color: var(--bc-color-danger);
+}
+.bc-ec-parts {
+  display: grid;
+  gap: var(--bc-space-1);
+  max-height: 44vh;
+  overflow: auto;
+  margin: var(--bc-space-4) 0;
+}
+.bc-ec-part {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--bc-space-4);
+  width: 100%;
+  min-height: var(--bc-control);
+  padding: 0 var(--bc-space-4);
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: transparent;
+  color: var(--bc-color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-ec-part:hover,
+.bc-ec-part:focus-visible {
+  background: var(--bc-color-accent-soft);
+}
+.bc-ec-part small {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-micro-size);
+}
+
+/* ---- layers */
+.bc-ec-layers {
+  position: absolute;
+  right: calc(var(--bc-view-right, 0px) + var(--bc-ec-gap));
+  bottom: 64px;
+  width: 230px;
+  padding: var(--bc-space-4) 0;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-xl);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  z-index: 2;
+}
+.bc-ec-layers-title {
+  margin: 0;
+  padding: var(--bc-space-2) var(--bc-space-6) var(--bc-space-3);
+  font-size: var(--bc-type-panel-title-size);
+  font-weight: var(--bc-type-panel-title-weight);
+}
+.bc-ec-layers-chip {
+  display: none;
+}
+.bc-ec-layers li {
+  display: flex;
+  align-items: center;
+}
+.bc-ec-layers li.bc-on {
+  background: var(--bc-color-accent-soft);
+}
+.bc-ec-layer,
+.bc-ec-layers-chip {
+  flex: 1;
+  align-items: center;
+  gap: var(--bc-space-4);
+  min-height: 30px;
+  padding: 0 var(--bc-space-6);
+  border: 0;
+  background: transparent;
+  color: var(--bc-color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-ec-layer {
+  display: flex;
+}
+.bc-ec-layer:disabled {
+  cursor: default;
+}
+.bc-ec-eye {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--bc-color-muted);
+  cursor: pointer;
+}
+.bc-ec-eye[aria-pressed="true"] {
+  color: var(--bc-color-ink);
+}
+.bc-ec-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--bc-color-line);
+}
+
+/* ---- the checks strip, where the timeline sits in the model */
+.bc-ec-status {
+  position: absolute;
+  left: calc(var(--bc-view-left, 0px) + var(--bc-ec-gap));
+  right: calc(var(--bc-view-right, 0px) + var(--bc-ec-gap));
+  bottom: calc(var(--bc-keyboard, 0px) + var(--bc-space-6));
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--bc-space-4);
+  min-height: 44px;
+  padding: var(--bc-space-3) var(--bc-space-6);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-xl);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  z-index: 2;
+}
+.bc-ec-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 var(--bc-space-5);
+  border: 0;
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-hover);
+  color: var(--bc-color-ink);
+  font: inherit;
+  font-size: var(--bc-type-small-strong-size);
+  font-weight: var(--bc-type-small-strong-weight);
+}
+button.bc-ec-pill {
+  cursor: pointer;
+}
+.bc-ec-pill.bc-warn {
+  background: var(--bc-color-warn-soft);
+  color: var(--bc-color-warn-ink);
+}
+.bc-ec-status-far {
+  margin-left: auto;
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
+}
+
+/* ---- hints */
+.bc-ec-empty {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--bc-view-left, 0px) + (100% - var(--bc-view-left, 0px) - var(--bc-view-right, 0px)) / 2);
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: var(--bc-space-4);
+  max-width: min(320px, 80vw);
+  padding: var(--bc-space-8);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-xl);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  text-align: center;
+  z-index: 2;
+}
+.bc-ec-empty p {
+  margin: 0;
+  font-weight: 600;
+}
+.bc-ec-empty p.bc-note {
+  font-weight: 400;
+}
+.bc-ec-ask {
+  position: absolute;
+  transform: translate(8px, -36px);
+  z-index: 4;
+}
+.bc-ec-ask .bc-text {
+  width: 160px;
+  box-shadow: var(--bc-shadow-pop);
+}
+
+/* ---- phones: the switcher runs the full width, tools along the bottom, layers fold to one chip */
+@media (max-width: 700px) {
+  .bc-ec-switch,
+  .bc-electronics:has(.bc-ec-tools) .bc-ec-switch {
+    top: var(--bc-ec-top);
+    left: var(--bc-ec-gap);
+    right: var(--bc-ec-gap);
+    transform: none;
+  }
+  .bc-electronics .bc-ec-clear,
+  .bc-electronics:has(.bc-ec-tools) .bc-ec-clear {
+    inset: calc(var(--bc-view-top, 0px) + 56px) 0 116px 0;
+  }
+  .bc-ec-switch-item {
+    flex: 1;
+    justify-content: center;
+    min-height: 40px;
+  }
+  .bc-ec-tools {
+    top: auto;
+    bottom: calc(var(--bc-keyboard, 0px) + var(--bc-ec-gap));
+    left: var(--bc-ec-gap);
+    right: var(--bc-ec-gap);
+    transform: none;
+    max-width: none;
+  }
+  .bc-ec-status {
+    left: var(--bc-ec-gap);
+    right: var(--bc-ec-gap);
+    bottom: calc(var(--bc-keyboard, 0px) + var(--bc-ec-gap) + 56px);
+  }
+  .bc-ec-status-far {
+    display: none;
+  }
+  .bc-ec-layers {
+    top: calc(var(--bc-ec-top) + 56px);
+    right: var(--bc-ec-gap);
+    bottom: auto;
+    width: auto;
+    padding: 0;
+  }
+  .bc-ec-layers-chip {
+    display: flex;
+    min-height: 36px;
+    font-weight: 600;
+  }
+  .bc-ec-layers:not(.bc-open) ul,
+  .bc-ec-layers-title {
+    display: none;
+  }
+  .bc-ec-layers.bc-open {
+    width: 220px;
+  }
+  .bc-ec-card {
+    top: auto;
+    left: var(--bc-ec-gap);
+    right: var(--bc-ec-gap);
+    bottom: calc(var(--bc-keyboard, 0px) + var(--bc-ec-gap) + 56px);
+    width: auto;
+    max-height: 60vh;
+  }
+}
