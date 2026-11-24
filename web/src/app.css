@@ -351,6 +351,16 @@ kr-app-switcher:not(:defined) {
   overflow-x: auto;
   scrollbar-width: none;
 }
+/* More tools stays at the strip's end while the tools scroll under it. */
+.bc-top-tools > .bc-more-btn {
+  position: sticky;
+  right: 0;
+  flex: none;
+  margin-left: var(--bc-space-1);
+  background: var(--bc-color-bar);
+  /* Cover the strip's own padding too, so no tool peeks out beside it. */
+  box-shadow: var(--bc-space-2) 0 0 var(--bc-color-bar);
+}
 .bc-tool-group {
   display: inline-flex;
   align-items: center;

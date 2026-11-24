@@ -62,15 +62,29 @@ export function useSplit(d: SplitDeps) {
     [store],
   );
 
+  // Each body's box as it was when picked: once the split shows, the view holds only one half under the body's id,
+  // and a plane chosen then would go through that half's middle instead of the body's.
+  const boxes = useRef(new Map<string, NonNullable<ReturnType<Engine["bodyBox"]>>>());
+  const boxOf = useCallback(
+    (part: string) => {
+      const cached = boxes.current.get(part);
+      if (cached) return cached;
+      const box = engineOf()?.bodyBox(part);
+      if (box) boxes.current.set(part, box);
+      return box ?? null;
+    },
+    [engineOf],
+  );
+
   /** How far along an origin plane's axis the middle of a body is, so the plane starts through it. */
   const middle = useCallback(
     (part: string, plane: MirrorPlane): number => {
-      const box = engineOf()?.bodyBox(part);
+      const box = boxOf(part);
       if (!box) return 0;
       const i = AXIS_OF[plane];
       return Math.round(((box.min[i]! + box.max[i]!) / 2) * 100) / 100;
     },
-    [engineOf],
+    [boxOf],
   );
 
   const pickBody = useCallback(
@@ -78,6 +92,7 @@ export function useSplit(d: SplitDeps) {
       const L = live.current;
       if (!L.session) {
         const id = newId("f");
+        boxes.current.clear();
         const params: SplitParams = { part, plane: "YZ", offset: middle(part, "YZ"), keep: "both" };
         deps.current.record((doc, i) => addSplit(doc, params, id, newId(), i), "Split body", KEY(id));
         setSession({ id, isNew: true });
@@ -85,9 +100,10 @@ export function useSplit(d: SplitDeps) {
         return;
       }
       if (L.feature?.keep === "both" && part === L.feature.body.id) return;
+      boxOf(part);
       change({ part });
     },
-    [change, middle],
+    [change, middle, boxOf],
   );
 
   /** An origin plane from the panel, moved to the body's middle. */

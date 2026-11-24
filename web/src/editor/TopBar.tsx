@@ -98,6 +98,8 @@ export interface TopBarProps {
   sketchRibbon?: ReactNode;
   /** A drawing's sheet is open (#559): the ribbon's Drawing tab takes over the same way. */
   drawingRibbon?: ReactNode;
+  /** The compact bar's last button: the ribbon's tabs and tools as a sheet, for phones and tablets. */
+  onMoreTools?: () => void;
 }
 
 const TABS: [Exclude<RibbonTab, "sketch">, string][] = [
@@ -300,6 +302,7 @@ export function TopBar(p: TopBarProps) {
                 )}
               </span>
             ))}
+            {p.onMoreTools && <ToolButton className="bc-more-btn" icon="more" colour={false} label="More tools" onPress={p.onMoreTools} />}
           </Toolbar>
         </>
       )}

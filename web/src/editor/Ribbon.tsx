@@ -7,12 +7,12 @@ import type { PanelId } from "./LeftPanel";
 import { pinnedTools, setPinnedTools, type RibbonTab } from "./ribbonPrefs";
 
 /** A tool on the ribbon: a command, with a shorter name under its icon and its own colour icon where it needs one. */
-interface Item {
+export interface Item {
   id: string;
   short?: string;
   colour?: string;
 }
-interface Group {
+export interface Group {
   id: string;
   label: string;
   /** The drop-down's sections: a title (or none) and the tools under it. */
@@ -170,8 +170,22 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
   ],
 };
 
-const SHORT: Record<string, string> = { "construct.offset": "Plane", "panel.library": "Library", "tool.measure": "Measure" };
+export const SHORT: Record<string, string> = { "construct.offset": "Plane", "panel.library": "Library", "tool.measure": "Measure" };
 const item = (x: Item | string): Item => (typeof x === "string" ? { id: x } : x);
+
+/** A section's tools that the registry knows, with "construct.*" opened out to every Construct command. */
+export function sectionItems(list: (Item | string)[], registry: Registry): Item[] {
+  return list
+    .flatMap((x): Item[] =>
+      x === "construct.*"
+        ? registry
+            .list()
+            .filter((c) => c.id.startsWith("construct."))
+            .map((c) => ({ id: c.id }))
+        : [item(x)],
+    )
+    .filter((it) => registry.get(it.id));
+}
 
 export interface RibbonToolsProps {
   tab: Exclude<RibbonTab, "sketch">;
@@ -184,18 +198,22 @@ export interface RibbonToolsProps {
   onOpenDrawing?: (id: string) => void;
 }
 
+/** A ribbon tool shows pressed while its tool is armed or its panel is open. */
+export function isPressed(id: string, tool: ToolId, mirrorOn: boolean | undefined, panel: PanelId | null): boolean {
+  return id === "tool.mirror"
+    ? !!mirrorOn
+    : id === "panel.library"
+      ? panel === "library"
+      : id === "panel.catalogue"
+        ? panel === "robot"
+        : id === `tool.${tool}` && !(id === "tool.pattern" && mirrorOn);
+}
+
 /** The ribbon's second row: the open tab's groups, each with its pinned tools big and a drop-down of all of them. */
 export function RibbonTools({ tab, registry, tool, mirrorOn, panel, drawings, onOpenDrawing }: RibbonToolsProps) {
   useSyncExternalStore(registry.subscribe, registry.version);
   const [pins, setPins] = useState(pinnedTools);
-  const pressed = (id: string) =>
-    id === "tool.mirror"
-      ? !!mirrorOn
-      : id === "panel.library"
-        ? panel === "library"
-        : id === "panel.catalogue"
-          ? panel === "robot"
-          : id === `tool.${tool}` && !(id === "tool.pattern" && mirrorOn);
+  const pressed = (id: string) => isPressed(id, tool, mirrorOn, panel);
   const togglePin = (g: Group, id: string) => {
     const now = pins[`${tab}.${g.id}`] ?? g.pins;
     const next = { ...pins, [`${tab}.${g.id}`]: now.includes(id) ? now.filter((x) => x !== id) : [...now, id] };
@@ -209,15 +227,7 @@ export function RibbonTools({ tab, registry, tool, mirrorOn, panel, drawings, on
         const all = new Map<string, Item>();
         const entries: MenuEntry[] = [];
         for (const [title, list] of g.sections) {
-          const items = list.flatMap((x): Item[] =>
-            x === "construct.*"
-              ? registry
-                  .list()
-                  .filter((c) => c.id.startsWith("construct."))
-                  .map((c) => ({ id: c.id }))
-              : [item(x)],
-          );
-          const known = items.filter((it) => registry.get(it.id));
+          const known = sectionItems(list, registry);
           if (!known.length) continue;
           if (title) entries.push({ kind: "title", id: `t-${title}`, label: title });
           for (const it of known) {
