@@ -8,3 +8,4 @@ package-lock.json
 *.md
 dist-types
 web/src/vendor
+packages/electronics/library/starter.json

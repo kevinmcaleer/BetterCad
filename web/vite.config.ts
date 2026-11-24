@@ -21,7 +21,7 @@ function precompress(): Plugin {
     closeBundle() {
       const dir = join(outDir, "assets");
       for (const f of readdirSync(dir)) {
-        if (!/\.(wasm|js|css)$/.test(f)) continue;
+        if (!/\.(wasm|js|css|json)$/.test(f)) continue;
         const bytes = readFileSync(join(dir, f));
         if (bytes.length <= 10_000) continue;
         writeFileSync(join(dir, `${f}.gz`), gzipSync(bytes, { level: 9 }));

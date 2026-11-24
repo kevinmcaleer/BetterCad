@@ -21,26 +21,38 @@ export async function press(page: Page, x: number, y: number, touch = false) {
 /** The tools of the open view: on the ribbon's Electronics tab, or the compact bar over the view. */
 export const tools = (page: Page) => page.getByRole("toolbar", { name: /^(Schematic|PCB|Electronics) tools$/ });
 
+/** Picks a part by name in the open Components card and takes it onto the pointer. */
+export async function pick(page: Page, part: string) {
+  const card = page.getByRole("group", { name: "Components options" });
+  await card.getByLabel("Find a part").fill(part);
+  await card
+    .getByRole("list", { name: "Parts", exact: true })
+    .getByRole("button", { name: new RegExp(`^${part} \\(`) })
+    .click();
+  await expect(card.getByRole("img", { name: `Symbol of ${part}` })).toBeVisible();
+  await card.getByRole("button", { name: "Place" }).click();
+}
+
 /** Picks a part from the Components card, places it, and lets go of it. */
-export async function place(page: Page, part: RegExp, x: number, y: number, touch = false) {
+export async function place(page: Page, part: string, x: number, y: number, touch = false) {
   const components = tools(page).getByRole("button", { name: /^Components/ });
   await components.click();
-  await page.getByRole("group", { name: "Components options" }).getByRole("button", { name: part }).click();
+  await pick(page, part);
   await press(page, x, y, touch);
   await components.click();
   await expect(components).toHaveAttribute("aria-pressed", "false");
 }
 
-/** A resistor and an LED with their top pins wired together. */
+/** A resistor and an LED, with the resistor's top pin wired to the LED's first. */
 export async function ledCircuit(page: Page, touch = false) {
-  await place(page, /^Resistor/, -10 * PITCH, 0, touch);
-  await place(page, /^LED/, 0, 0, touch);
+  await place(page, "Resistor", -10 * PITCH, 0, touch);
+  await place(page, "LED", 0, 0, touch);
   const status = page.getByRole("status", { name: "Electronics status" });
   await expect(status).toContainText("4 pins or wire ends are not connected");
   const wire = tools(page).getByRole("button", { name: /^Wire/ });
   await wire.click();
   await press(page, -10 * PITCH, 3.81, touch);
-  await press(page, 0, 3.81, touch);
+  await press(page, -3.81, 0, touch);
   await expect(status).toContainText("2 pins or wire ends are not connected");
   await wire.click();
 }

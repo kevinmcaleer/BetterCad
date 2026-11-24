@@ -5,3 +5,4 @@ export * from "./sync";
 export * from "./basics";
 export * from "./edit";
 export * from "./board";
+export * from "./library/pack";

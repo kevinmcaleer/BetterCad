@@ -53,7 +53,12 @@ class CachedStatic(StaticFiles):
         if encoding:
             response.headers["Content-Encoding"] = encoding[0]
             response.headers["Vary"] = "Accept-Encoding"
-            kind = {".wasm": "application/wasm", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
+            kind = {
+                ".wasm": "application/wasm",
+                ".js": "text/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8",
+                ".json": "application/json",
+            }
             response.headers["Content-Type"] = next((v for k, v in kind.items() if path.endswith(k)), "application/octet-stream")
         if path.startswith("assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"

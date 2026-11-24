@@ -12,6 +12,7 @@ BetterCad's own code is MIT. These libraries keep their own licences. The WASM b
 | three.js | The 3D view (epic #3) | MIT | https://github.com/mrdoob/three.js |
 | React, React DOM | The interface | MIT | https://github.com/facebook/react |
 | FastAPI, Starlette, Pydantic, Uvicorn | The server | MIT / BSD-3-Clause | https://github.com/fastapi/fastapi |
+| KiCad libraries 9.0.0 (symbols and footprints, converted to BetterCad's format) | The electronics starter parts (epic #606) | CC-BY-SA 4.0 with the KiCad libraries exception | https://www.kicad.org/libraries/license/, https://gitlab.com/kicad/libraries |
 
 The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VERSIONS.md` to swap it. planegcs ships as `assets/planegcs-*.wasm`.
 
@@ -61,5 +62,18 @@ The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VER
 | uvloop | 0.23.0 | MIT | PyPI |
 | watchfiles | 1.3.0 | MIT | PyPI |
 | websockets | 17.4 | BSD-3-Clause | PyPI |
+
+<!-- end generated -->
+
+## Part libraries
+
+The electronics starter library is taken from the KiCad libraries, converted to BetterCad's format. It stays under their licence, CC-BY-SA 4.0, whose exception says the boards and files you make with the parts are yours, with no share-alike. If you pass the library itself on, keep the licence and the credit. See `packages/electronics/library/CREDITS.md`.
+
+<!-- generated: part libraries -->
+
+| Pack | Parts | From | Version | Licence | Source |
+| --- | --- | --- | --- | --- | --- |
+| BetterCad starter library | 224 | KiCad libraries | 9.0.0 | CC-BY-SA 4.0 with exception | https://www.kicad.org/libraries/license/ |
+| BetterCad starter library | 4 | BetterCad |  | CC-BY-SA 4.0 | https://bettercad.kevsrobots.com |
 
 <!-- end generated -->
