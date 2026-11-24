@@ -281,7 +281,7 @@ export function viewPicture(
 /** The picture style a view needs, if any: breaks leave a view as lines, because the picture can't be broken. */
 export function pictureStyle(v: DrawingView): PictureStyle | undefined {
   const s = styleOf(v);
-  return (s === "shaded" || s === "rendered") && !v.breaks?.length ? s : undefined;
+  return (s === "shaded" || s === "rendered") && !v.breaks?.length && !v.explode ? s : undefined;
 }
 
 /** Every shaded and rendered view's picture on a sheet, for export: a rendered view that fails falls back to shaded. */

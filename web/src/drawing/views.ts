@@ -41,7 +41,10 @@ export function viewName(view: Pick<DrawingView, "direction"> & Partial<Pick<Dra
 }
 
 /** What to ask the kernel for. A preview skips hidden edges and tracing, which is several times quicker. */
-export function viewRequest(view: Pick<DrawingView, "shows" | "direction" | "hidden" | "tangent" | "section" | "style">, preview = false): ModelViewRequest {
+export function viewRequest(
+  view: Pick<DrawingView, "shows" | "direction" | "hidden" | "tangent" | "section" | "style" | "explode">,
+  preview = false,
+): ModelViewRequest {
   const req: ModelViewRequest = {
     shows: view.shows,
     frame: frameOf(view.direction),
@@ -56,6 +59,7 @@ export function viewRequest(view: Pick<DrawingView, "shows" | "direction" | "hid
     req.cut = { origin, normal };
     if (along && (half || steps?.length)) Object.assign(req.cut, half ? { along, half } : { along, steps });
   }
+  if (view.explode && view.explode > 0) req.explode = view.explode;
   return req;
 }
 

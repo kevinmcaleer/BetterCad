@@ -246,7 +246,7 @@ export function sheetScene(
     for (const c of (view as Picture).thin ?? []) strokes.push({ layer: "section", width: WEIGHT.thin, curve: placed(c, s, ox, oy) });
     // A shaded or rendered view's picture fills its box, under its lines; a rendered one has no lines.
     const style = styleOf(v);
-    const pic = (style === "shaded" || style === "rendered") && !v.breaks?.length ? pictures?.(v.id) : undefined;
+    const pic = (style === "shaded" || style === "rendered") && !v.breaks?.length && !v.explode ? pictures?.(v.id) : undefined;
     if (pic) images.push({ data: pic.data, px: pic.px, at: [ox + min[0] * s, oy + min[1] * s], w: (max[0] - min[0]) * s, h: (max[1] - min[1]) * s });
     // Hidden lines first, so the edges you see are drawn over them. A wireframe draws them solid.
     if (!pic)

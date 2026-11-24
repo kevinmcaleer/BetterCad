@@ -244,4 +244,10 @@ export interface ModelViewRequest extends ProjectOptions {
    */
   shows: { all: true } | { component: string } | { bodies: string[]; asMade?: true };
   frame: ViewFrame;
+  /**
+   * An exploded view (#574): each component's bodies (each body, when no two are in different components) moved away
+   * from the middle of what is shown by this many times how far its own middle is from it. 0.5 puts half as much
+   * again between the parts. Left out or 0, everything is where the model has it.
+   */
+  explode?: number;
 }
