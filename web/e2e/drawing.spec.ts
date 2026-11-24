@@ -607,6 +607,14 @@ test("auto dimension a view, turn the slider up and keep the sizes @journey @vis
   const status = card.getByRole("status");
   await expect(status).toHaveText(/^\d+ of \d+ dimensions$/);
   const total = Number((await status.textContent())!.split(" ")[2]);
+  // The setting names sit inside the card, left of their controls, not squeezed off its right edge.
+  const cardBox = (await card.boundingBox())!;
+  for (const name of ["Measure from", "How many sizes"]) {
+    const label = (await card.getByText(name, { exact: true }).boundingBox())!;
+    const control = (await card.getByLabel(name).boundingBox())!;
+    expect(label.x + label.width).toBeLessThanOrEqual(cardBox.x + cardBox.width);
+    expect(label.x + label.width).toBeLessThanOrEqual(control.x);
+  }
   // The sheet shows the sizes as you choose. All the way down leaves the two overall sizes.
   const slider = card.getByRole("slider", { name: "How many sizes" });
   await slider.focus();
