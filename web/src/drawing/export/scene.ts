@@ -1,4 +1,4 @@
-import { frameOf, scaleLabel, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
+import { frameOf, scaleLabel, styleOf, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
 import { TAU, turn, type ModelView, type V2, type ViewCurve } from "@bettercad/kernel/view";
 import { TEXT, WEIGHT, type SheetLayout } from "../layout";
 import { dimArt, dimStyle, isIso } from "../dimensions";
@@ -57,6 +57,12 @@ export interface SceneImage {
   at: V2;
   w: number;
   h: number;
+}
+
+/** A shaded or rendered view's picture (see `pictures.ts`): a JPEG on white and its size in pixels. */
+export interface ViewPicture {
+  data: string;
+  px: { w: number; h: number };
 }
 
 /** A cutting line's long dash, gap, dot and gap, mm: that of `drawing.css`. */
@@ -141,9 +147,14 @@ export function sheetScene(
   viewOf: (id: string) => ModelView | undefined,
   decimals?: number,
   /** The model's steps, which hole notes read (#573), and its parts list, for the table and balloons (#574). */
-  model: { features?: readonly Feature[] | undefined; parts?: readonly PartsRow[] | undefined } = {},
+  model: {
+    features?: readonly Feature[] | undefined;
+    parts?: readonly PartsRow[] | undefined;
+    /** Shaded and rendered views' pictures. Left out (DXF), or missing for a view, the view is drawn as line art. */
+    pictures?: (id: string) => ViewPicture | undefined;
+  } = {},
 ): Scene {
-  const { features, parts } = model;
+  const { features, parts, pictures } = model;
   const H = l.page.h;
   // The layout counts down from the top of the page; the scene counts up from the bottom.
   const up = (y: number) => H - y;
@@ -233,9 +244,21 @@ export function sheetScene(
     const oy = v.at[1] - ((min[1] + max[1]) / 2) * s;
     // Hatching, break lines and a detail's edge (#571), thin, under the view's own lines.
     for (const c of (view as Picture).thin ?? []) strokes.push({ layer: "section", width: WEIGHT.thin, curve: placed(c, s, ox, oy) });
-    // Hidden lines first, so the edges you see are drawn over them.
-    for (const e of view.edges) if (!e.visible) strokes.push({ layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve: placed(e.curve, s, ox, oy) });
-    for (const e of view.edges) if (e.visible) strokes.push({ layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) });
+    // A shaded or rendered view's picture fills its box, under its lines; a rendered one has no lines.
+    const style = styleOf(v);
+    const pic = (style === "shaded" || style === "rendered") && !v.breaks?.length ? pictures?.(v.id) : undefined;
+    if (pic) images.push({ data: pic.data, px: pic.px, at: [ox + min[0] * s, oy + min[1] * s], w: (max[0] - min[0]) * s, h: (max[1] - min[1]) * s });
+    // Hidden lines first, so the edges you see are drawn over them. A wireframe draws them solid.
+    if (!pic)
+      for (const e of view.edges)
+        if (!e.visible)
+          strokes.push(
+            style === "wireframe"
+              ? { layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) }
+              : { layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve: placed(e.curve, s, ox, oy) },
+          );
+    if (!pic || style === "shaded")
+      for (const e of view.edges) if (e.visible) strokes.push({ layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) });
     // Cutting lines, detail circles and letters (#571), about the middle of the view.
     const cuts = cutArt(sheet, v, viewOf);
     const here2 = (q: V2): V2 => [v.at[0] + q[0], v.at[1] + q[1]];

@@ -41,11 +41,12 @@ export function viewName(view: Pick<DrawingView, "direction"> & Partial<Pick<Dra
 }
 
 /** What to ask the kernel for. A preview skips hidden edges and tracing, which is several times quicker. */
-export function viewRequest(view: Pick<DrawingView, "shows" | "direction" | "hidden" | "tangent" | "section">, preview = false): ModelViewRequest {
+export function viewRequest(view: Pick<DrawingView, "shows" | "direction" | "hidden" | "tangent" | "section" | "style">, preview = false): ModelViewRequest {
   const req: ModelViewRequest = {
     shows: view.shows,
     frame: frameOf(view.direction),
-    hidden: preview ? false : view.hidden,
+    // A wireframe draws the edges behind as well, solid.
+    hidden: preview ? false : view.hidden || view.style === "wireframe",
     smooth: view.tangent,
     trace: !preview,
   };

@@ -153,6 +153,11 @@
   stroke-dasharray: 2 1;
   stroke-linecap: butt;
 }
+/* A shaded or rendered view's picture: white behind, multiplied so the white takes the paper's colour in every theme. */
+.bc-view-picture {
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
 /* What a view is pointed at and dragged by: its box, drawn only when it is selected or has no picture yet. */
 .bc-view-hit {
   fill: none;

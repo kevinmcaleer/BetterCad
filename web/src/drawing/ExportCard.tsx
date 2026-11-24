@@ -7,7 +7,7 @@ import type { PartsRow } from "./parts";
 import { follow } from "./follow";
 import { sheetLayout, sizeName, type SheetLayout } from "./layout";
 import { pixels } from "./export/browser";
-import { sheetScene, viewScene, type Scene } from "./export/scene";
+import { sheetScene, viewScene, type Scene, type ViewPicture } from "./export/scene";
 import { viewName } from "./views";
 
 export type DrawingFormat = "pdf" | "svg" | "dxf" | "png";
@@ -27,6 +27,8 @@ export interface ExportCardProps {
   viewOf: (id: string) => ModelView | undefined;
   /** The pictures of another sheet's views (#572), for all the sheets in one PDF. Left out, only this sheet exports. */
   viewsOf?: (sheet: DrawingSheet) => Promise<(id: string) => ModelView | undefined>;
+  /** Shaded and rendered views' pictures for a sheet (`pictures.ts`). Left out, or for DXF, every view is line art. */
+  pictures?: (sheet: DrawingSheet, viewOf: (id: string) => ModelView | undefined) => Promise<(id: string) => ViewPicture | undefined>;
   /** The model's steps, which hole notes read (#573). */
   features?: readonly Feature[];
   /** The model's parts list (#574), for a sheet that shows it and for balloons. */
@@ -101,7 +103,7 @@ export async function exportPdfPages(scenes: Scene[], o: { title?: string; autho
  * Export (#569): the sheet as a PDF, SVG, DXF or PNG, or straight to the printer. A DXF can instead be one view at
  * full size, which is what a laser cutter wants.
  */
-export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, parts, onSave, say, onClose }: ExportCardProps) {
+export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, pictures, features, parts, onSave, say, onClose }: ExportCardProps) {
   const id = useId();
   const [c, setC] = useState(load);
   const set = (change: Partial<Choices>) =>
@@ -121,19 +123,20 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
   const [every, setEvery] = useState(false);
   const count = drawing.sheets.length;
   const all = c.format === "pdf" && every && count > 1 && !!viewsOf;
+  /** A sheet's shaded and rendered pictures: none for DXF, whose lines are all a CAD program or a cutter can use. */
+  const picsOf = async (s: DrawingSheet, of: (id: string) => ModelView | undefined) => (c.format === "dxf" ? undefined : await pictures?.(s, of));
   /** Each sheet as it is drawn, in order: this one from what is on screen, the others from the kernel. */
   const allScenes = async (): Promise<Scene[]> =>
     Promise.all(
       drawing.sheets.map(async (s, i) => {
-        if (s.id === sheet.id) return sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts });
+        if (s.id === sheet.id) return sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts, pictures: await picsOf(sheet, viewOf) });
         const of = await viewsOf!(s);
-        return sheetScene(
-          follow(s, of, drawing.decimals),
-          sheetLayout(s, { index: i + 1, count, logo: drawing.logo, fields: drawing.fields }),
-          of,
-          drawing.decimals,
-          { features, parts },
-        );
+        const shown = follow(s, of, drawing.decimals);
+        return sheetScene(shown, sheetLayout(s, { index: i + 1, count, logo: drawing.logo, fields: drawing.fields }), of, drawing.decimals, {
+          features,
+          parts,
+          pictures: await picsOf(shown, of),
+        });
       }),
     );
   const waiting = sheet.views.some((v) => !viewOf(v.id));
@@ -142,9 +145,9 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
   const page = `${sizeName(sheet.size)} ${sheet.landscape ? "landscape" : "portrait"}, ${layout.page.w} × ${layout.page.h} mm`;
   const px = pixels(layout.page, c.dpi);
 
-  const scene = (): Scene => {
+  const scene = async (): Promise<Scene> => {
     const view = single && viewOf(single.id);
-    return view ? viewScene(view, false) : sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts });
+    return view ? viewScene(view, false) : sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts, pictures: await picsOf(sheet, viewOf) });
   };
   const run = async () => {
     const f = FORMATS.find((x) => x.id === c.format)!;
@@ -155,7 +158,7 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
       const saved = await onSave({
         name,
         mime: f.mime,
-        data: all ? allScenes().then((scenes) => exportPdfPages(scenes, o)) : exportBytes(scene(), c.format, o),
+        data: all ? allScenes().then((scenes) => exportPdfPages(scenes, o)) : scene().then((s) => exportBytes(s, c.format, o)),
       });
       if (!saved) return;
       say(`Exported ${saved}`);
@@ -169,7 +172,7 @@ export function ExportCard({ drawing, sheet, layout, viewOf, viewsOf, features, 
   const print = async () => {
     setBusy(true);
     try {
-      const s = sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts });
+      const s = sheetScene(sheet, layout, viewOf, drawing.decimals, { features, parts, pictures: await pictures?.(sheet, viewOf) });
       const [{ sceneSvg }, { outlines }, { printSvg }] = await Promise.all([import("./export/svg"), import("./export/outline"), import("./export/browser")]);
       printSvg(sceneSvg(s, { outlines: outlines(s.labels, await font()) }), layout.page, base);
       onClose();

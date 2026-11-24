@@ -181,6 +181,7 @@ import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
 import type { DrawingApi, DrawingTool, NoteTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
+import type { DrawingSheet } from "@bettercad/kernel/drawing";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
@@ -285,6 +286,7 @@ const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingP
 const DrawingBar = lazy(() => drawingCode().then((m) => ({ default: m.DrawingBar })));
 const DrawingRibbon = lazy(() => drawingCode().then((m) => ({ default: m.DrawingRibbon })));
 const SheetCard = lazy(() => import("../drawing/SheetCard"));
+const ViewProps = lazy(() => import("../drawing/ViewProps").then((m) => ({ default: m.ViewProps })));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 /** Importing a mesh or STEP file loads its code when you first do it (#320). */
@@ -420,6 +422,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [drawingProblems, setDrawingProblems] = useState(0);
   /** The sheet of the open drawing that is showing (#572); the first when it is none of them. */
   const [drawingSheet, setDrawingSheet] = useState<string | null>(null);
+  /** The view selected on the open sheet, whose style the properties panel shows. */
+  const [drawingView, setDrawingView] = useState<string | null>(null);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
@@ -563,6 +567,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   }, [drawing, shownDrawing]);
   const kernelView = kernel.call;
   const viewCall = useCallback<ViewCall>((p) => kernelView("view", p), [kernelView]);
+  const onDrawingSheet = (change: (s: DrawingSheet) => DrawingSheet, label: string) =>
+    void drawingCode().then((m) => shownDrawing && store.edit(...m.sheetEdit(shownDrawing, change, label, drawingSheet)));
   // The Drawing tab and the drawing's bar share their buttons.
   const isNote = (t: DrawingTool): t is NoteTool => t.startsWith("note-");
   const drawingBar = {
@@ -4881,8 +4887,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   sheetId={drawingSheet}
                   onSheetId={setDrawingSheet}
                   onDrawing={(change, label) => void drawingCode().then((m) => store.edit(...m.drawingEdit(shownDrawing, change, label)))}
-                  onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label, drawingSheet)))}
+                  onSheet={onDrawingSheet}
                   components={built.components}
+                  pictures={{ meshes: kernel.bodies, parts, built, pose: doc.pose }}
+                  onSelectView={setDrawingView}
                   bodies={parts}
                   onTitle={(field, value) => void drawingCode().then((m) => store.edit(...m.titleChange(shownDrawing, field, value)))}
                   onDecimals={(places) => void drawingCode().then((m) => store.edit(...m.decimalsChange(shownDrawing, places)))}
@@ -4981,6 +4989,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
           sketch.editing ? (
             <Suspense fallback={null}>
               <SketchPanel s={sketch} />
+            </Suspense>
+          ) : shownDrawing && drawingView && !files.shared ? (
+            <Suspense fallback={null}>
+              <ViewProps
+                sheet={shownDrawing.sheets.find((x) => x.id === drawingSheet) ?? shownDrawing.sheets[0]!}
+                view={drawingView}
+                onSheet={onDrawingSheet}
+              />
             </Suspense>
           ) : (
             <>
