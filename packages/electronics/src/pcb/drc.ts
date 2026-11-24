@@ -169,7 +169,8 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
       if (a.kind !== "pad" && a.id === b.id) continue;
       const need = clearanceBetween(board, a.net, b.net);
       const g = gap(a, b);
-      if (g >= need - 1e-6) continue;
+      // Half a micron of grace: a gap that reads as the rule's own number passes it.
+      if (g >= need - 5e-4) continue;
       const k = [idOf(a), idOf(b)].sort(byRef).join("|");
       const was = worst.get(k);
       if (!was || g < was.g) worst.set(k, { a, b, g, need });

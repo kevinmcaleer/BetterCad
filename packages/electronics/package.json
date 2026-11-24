@@ -10,6 +10,7 @@
     "./kicad": "./src/kicad/index.ts",
     "./kicad/netlist": "./src/kicad/netlist.ts",
     "./kicad/export": "./src/kicad/export.ts",
+    "./kicad/project": "./src/kicad/project.ts",
     "./tools": "./src/library/tools.ts",
     "./erc": "./src/erc.ts",
     "./replace": "./src/replace.ts",

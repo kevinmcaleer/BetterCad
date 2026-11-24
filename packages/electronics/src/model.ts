@@ -126,6 +126,8 @@ export interface Pad {
   maskMargin?: number;
   /** No paste on this pad (test points, edge fingers). */
   noPaste?: boolean;
+  /** A surface pad on the far side of the board from its part: the other face of an edge connector. */
+  back?: boolean;
 }
 
 /** Layers of a footprint, named from the part's own side; flipping the part to the bottom flips them. */

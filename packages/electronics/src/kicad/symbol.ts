@@ -122,6 +122,11 @@ function property(sym: Node[], name: string): Node[] | undefined {
 export function readKicadSymbols(source: string): KicadSymbol[] {
   const lib = parseSexpr(source).find((n) => head(n) === "kicad_symbol_lib");
   if (!isList(lib)) throw new Error("This is not a KiCad symbol library (.kicad_sym).");
+  return symbolsIn(lib);
+}
+
+/** The symbols a list holds: a library, or the copies a schematic keeps of the symbols it draws (`lib_symbols`). */
+export function symbolsIn(lib: Node[]): KicadSymbol[] {
   const blocks = new Map(children(lib, "symbol").map((s) => [text(s), s]));
   const out: KicadSymbol[] = [];
   for (const [name, sym] of blocks) {
@@ -132,12 +137,11 @@ export function readKicadSymbols(source: string): KicadSymbol[] {
       if (!parent) break;
       base = parent;
     }
-    const baseName = text(base);
     const shapes: SymbolDef["shapes"] = [];
     const pins: SymbolPin[] = [];
     let units = 1;
     for (const sub of children(base, "symbol")) {
-      const m = /_(\d+)_(\d+)$/.exec(text(sub).slice(baseName.length));
+      const m = /_(\d+)_(\d+)$/.exec(text(sub));
       const unit = m ? Number(m[1]) : 0;
       const style = m ? Number(m[2]) : 1;
       if (style > 1) continue;

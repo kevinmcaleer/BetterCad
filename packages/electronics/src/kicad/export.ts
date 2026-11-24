@@ -227,7 +227,7 @@ function footprintShapes(fp: FootprintDef, side: Side): Node[][] {
 }
 
 function padNode(pad: Pad, side: Side, angle: number, net?: { code: number; name: string }): Node[] {
-  const f = sideLetter(side);
+  const f = sideLetter(pad.back ? (side === "top" ? "bottom" : "top") : side);
   const type = pad.kind === "thru" ? "thru_hole" : pad.kind === "npth" ? "np_thru_hole" : "smd";
   const at = local([pad.x, pad.y], side);
   const turnBy = ((angle % 360) + 360) % 360;

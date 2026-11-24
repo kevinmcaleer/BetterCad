@@ -387,3 +387,43 @@ everything every way (`kicad/fixture.ts`: mirrored and turned symbols, a part wi
 that join every way, two sheets, parts on both sides at odd angles) pass against KiCad 7.0.11. Nobody has opened the
 files in KiCad 8 or 9 yet, or looked at them on screen: the checks are on nets, copper and holes, not on how the
 drawing looks.
+
+## In from KiCad (#663)
+
+Open project, in the schematic's tools (and on an empty schematic, and in the command palette as "Open a KiCad
+project"), reads a KiCad project into the model: pick every `.kicad_sch`, the `.kicad_pcb` and the `.kicad_pro`
+(`web/src/electronics/OpenProject.tsx`; the reader is `packages/electronics/src/kicad/project.ts`,
+`importKicadProject`, a chunk that loads when files are first picked). The dialog says what it found and lists what
+did not come across before anything changes. Opening replaces the model's schematic and board in one undo step, and
+the Board step is added to the model so the board stands in 3D.
+
+What it reads:
+
+- The schematic, sheet by sheet. A hierarchy is flattened: each sheet box becomes a sheet of ours, the nets inside it
+  take the sheet's name as a prefix, and its sheet pins become labels, so what was joined through the box is still
+  joined. A sheet used twice comes in twice. Bus vectors (`D[0..7]`) are followed through sheet pins by name.
+- Symbols come from the schematic's own copy of each (`lib_symbols`), so no KiCad library is needed. Units of one
+  reference are one part. Power symbols stay power symbols; a hidden supply pin gets a label with its name, which is
+  the net KiCad joins it to.
+- The board: the outline from Edge.Cuts (lines and arcs joined into loops, the biggest is the outline, the rest are
+  cut-outs), each footprint as it stands on the board (so a part takes its footprint from there, not from a library),
+  tracks, vias, zones as pours, rule areas as keep-outs, text and drawings on the silkscreen, and mounting holes.
+- The rules and net classes from the project file.
+- A schematic on its own opens with no board. A part with no footprint on the board takes the starter library's
+  footprint of the same name if there is one, and is listed if there is not.
+
+What does not come across, each listed in the dialog when a project has it: copper on inside layers (the top and
+bottom still come in), blind and buried vias, buses as drawings (their wires still join by name), group buses
+between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions, drawings on fabrication and
+user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
+flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
+middle of its hole comes in with the hole in the right place and the copper centred on it, so the board check can
+report a clearance there that KiCad does not. A board without its schematic does not open: the nets of a design here
+come from its schematic. A local label and a global label with one name are one net here; in KiCad they can be two.
+
+How it is checked: `kicad/project.test.ts` writes the sample and the fixture that turns everything every way out as
+KiCad projects and reads them back: the same parts, nets, pads and board check, and nothing for Push to PCB to do.
+`kicad/demos.test.ts` runs where KiCad and its demo projects are installed (CI has neither, so it is skipped there):
+all 11 demos' schematics come in with exactly the nets `kicad-cli` finds, hierarchy and buses included, and the nine
+2-layer demo boards come in with no shorts, nothing unrouted, nothing off the board and nothing behind the schematic.
+That is against KiCad 7.0.11 and its demo files; projects saved by KiCad 8 and 9 have not been tried yet.

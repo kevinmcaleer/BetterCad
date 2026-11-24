@@ -15,7 +15,7 @@ export interface KicadFootprint {
 }
 
 /** Front layers only: a library footprint is drawn for the top; the board flips it for the bottom. */
-const LAYERS: Record<string, FootprintLayer> = {
+const FRONT_LAYERS: Record<string, FootprintLayer> = {
   "F.SilkS": "silk",
   "F.Fab": "fab",
   "F.CrtYd": "courtyard",
@@ -23,6 +23,7 @@ const LAYERS: Record<string, FootprintLayer> = {
   "F.Silkscreen": "silk",
   "F.Courtyard": "courtyard",
 };
+const BACK_LAYERS: Record<string, FootprintLayer> = Object.fromEntries(Object.entries(FRONT_LAYERS).map(([k, v]) => [k.replace(/^F\./, "B."), v]));
 
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4 || 0;
 /** KiCad's boards have y running down; ours runs up. */
@@ -78,10 +79,16 @@ function joinLines(shapes: FootprintDef["shapes"]): FootprintDef["shapes"] {
   return out;
 }
 
-function pad(n: Node[]): Pad | null {
+function pad(n: Node[], back: boolean): Pad | null {
   const type = text(n, 2);
   const shape = text(n, 3);
-  if (type === "connect" && !children(n, "layers").some((l) => l.some((x) => String(x).endsWith(".Cu")))) return null;
+  // A pad with no copper is an opening in the paste or the mask, not a pad.
+  const copper = (child(n, "layers") ?? [])
+    .slice(1)
+    .map(String)
+    .filter((l) => l.endsWith(".Cu"));
+  if ((type === "connect" || type === "smd") && !copper.length) return null;
+  const far = (type === "connect" || type === "smd") && copper.every((l) => l.startsWith(back ? "F." : "B."));
   const at = child(n, "at");
   const size = child(n, "size");
   const drill = child(n, "drill");
@@ -109,6 +116,7 @@ function pad(n: Node[]): Pad | null {
     ...(kind !== "smd" && oval && d !== dy ? { slot: Math.max(d, dy) } : {}),
     ...(margin ? { maskMargin: num(margin) } : {}),
     ...(kind === "smd" && !layers.some((l) => l.endsWith(".Paste")) ? { noPaste: true } : {}),
+    ...(far ? { back: true } : {}),
   };
 }
 
@@ -119,6 +127,15 @@ function pad(n: Node[]): Pad | null {
 export function readKicadFootprint(source: string): KicadFootprint {
   const fp = parseSexpr(source).find((n) => head(n) === "footprint" || head(n) === "module");
   if (!isList(fp)) throw new Error("This is not a KiCad footprint (.kicad_mod).");
+  return footprintIn(fp);
+}
+
+/**
+ * A footprint from its list, in a library or on a board. On a board a footprint flipped to the bottom keeps its
+ * drawings on the back layers (`back`); they are read as they are written, and the board's reader turns them over.
+ */
+export function footprintIn(fp: Node[], back = false): KicadFootprint {
+  const LAYERS = back ? BACK_LAYERS : FRONT_LAYERS;
   const pads: Pad[] = [];
   const shapes: FootprintDef["shapes"] = [];
   let skipped = 0;
@@ -127,8 +144,9 @@ export function readKicadFootprint(source: string): KicadFootprint {
     if (!isList(item)) continue;
     const kind = head(item);
     if (kind === "pad") {
-      const p = pad(item);
+      const p = pad(item, back);
       if (p) pads.push(p);
+      else skipped += 1;
       continue;
     }
     if ((kind === "property" && text(item) === "Reference") || (kind === "fp_text" && text(item) === "reference")) {
@@ -138,7 +156,7 @@ export function readKicadFootprint(source: string): KicadFootprint {
     if (!kind.startsWith("fp_") || kind === "fp_text") continue;
     const layer = LAYERS[text(child(item, "layer"))];
     if (!layer) {
-      if (text(child(item, "layer")).startsWith("F.")) skipped += 1;
+      if (text(child(item, "layer")).startsWith(back ? "B." : "F.")) skipped += 1;
       continue;
     }
     const width = widthOf(item);

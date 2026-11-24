@@ -340,7 +340,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     }
     if (ghost)
       for (const pad of pkg.footprint.pads) {
-        ctx.fillStyle = pad.kind === "smd" ? copper(at.side) : c["ec-pad"];
+        ctx.fillStyle = pad.kind === "smd" ? copper(pad.back ? (at.side === "top" ? "bottom" : "top") : at.side) : c["ec-pad"];
         padPath(ctx, v, pad, place([pad.x, pad.y]), at.rot + (at.side === "bottom" ? -1 : 1) * (pad.angle ?? 0));
         ctx.fill();
       }

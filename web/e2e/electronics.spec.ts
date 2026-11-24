@@ -377,6 +377,33 @@ test.describe("on a wide screen", () => {
     await expect(dialog.getByRole("region", { name: "Preview of the files" }).getByRole("img", { name: /seen from the top/ })).toBeVisible();
   });
 
+  test("open a KiCad project: its schematic, its board, and what did not come across", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("button", { name: "Open a KiCad project" }).click();
+    const dialog = page.getByRole("dialog", { name: "Open a KiCad project" });
+    // The sample board as BetterCad writes it for KiCad, read back in.
+    const golden = "../packages/electronics/src/kicad/golden";
+    await dialog.getByLabel("Project files").setInputFiles([`${golden}/sample.kicad_sch`, `${golden}/sample.kicad_pcb`]);
+    await expect(dialog.getByRole("status")).toContainText("Found 8 parts on 1 sheet, and a board with 8 parts placed");
+    await axe(page);
+    await dialog.getByRole("button", { name: "Open", exact: true }).click();
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: 8 parts/ })).toBeVisible();
+    // The board came with it, routed, and matches the schematic.
+    await page.keyboard.press("2");
+    await expect(page.getByRole("img", { name: /^PCB: 8 parts/ })).toBeVisible();
+    const status = page.getByRole("status", { name: "Electronics status" });
+    await expect(status).not.toContainText("left to route");
+    await expect(page.getByRole("tab", { name: "PCB" })).not.toContainText("behind");
+    // One undo takes it all away again.
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.keyboard.press("1");
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 0 parts, 0 nets" })).toBeVisible();
+  });
+
   test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
     // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
     test.setTimeout(90_000);

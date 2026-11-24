@@ -32,6 +32,7 @@ const BoardView = lazy(() => import("./BoardView"));
 const ChecksCard = lazy(() => import("./Checks"));
 const PartsTable = lazy(() => import("./PartsTable"));
 const ExportSchematic = lazy(() => import("./ExportSchematic"));
+const OpenProject = lazy(() => import("./OpenProject"));
 const OrderBoard = lazy(() => import("./OrderBoard"));
 // The board's own cards: its check, its setup and the numbers of whatever is picked on it.
 const BoardChecks = lazy(() => import("./BoardChecks"));
@@ -217,6 +218,17 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         tip: "Save the schematic as a PDF, an SVG or a netlist, or the whole design as a KiCad project",
         on: ui.card === "export",
         run: toggle("export"),
+      },
+      {
+        id: "open",
+        group: "Sync",
+        label: "Open project",
+        short: "Open",
+        icon: "folder",
+        tip: "Open a KiCad project: its schematic and its board",
+        on: ui.card === "open",
+        disabled: readOnly,
+        run: toggle("open"),
       },
       { id: "fit", group: "View", label: "Fit", icon: "frame", key: "F", tip: "Fit the schematic in the view", run: () => eactions.current?.fit() },
     ];
@@ -530,6 +542,15 @@ function commands(design: () => ElectronicsDesign): Command[] {
       run: toggle("export"),
       keywords: "pdf svg netlist kicad print",
     },
+    {
+      ...e,
+      id: "electronics.open",
+      label: "Open a KiCad project",
+      group: "Tools",
+      icon: "folder",
+      run: () => eui.set({ view: eui.get().view ?? "schematic", card: "open" }),
+      keywords: "import kicad_sch kicad_pcb schematic board bring in",
+    },
     { ...e, id: "electronics.selectAll", label: "Select all", group: "Edit", keys: ["mod+a"], run: () => eactions.current?.selectAll() },
     { ...e, id: "electronics.fit", label: "Fit in the view", group: "View", icon: "frame", keys: ["f"], run: () => eactions.current?.fit() },
   ];
@@ -739,6 +760,7 @@ export default function ElectronicsView({
           <p className="bc-note">Place parts, join their pins with wires, then push the schematic to a PCB.</p>
           <Button variant="primary" icon="chip" label="Components" shortcut="P" onClick={() => eui.set({ card: "components" })} />
           {onSample && <Button icon="folder" label="Open the sample board" onClick={onSample} />}
+          <Button icon="folder" label="Open a KiCad project" onClick={() => eui.set({ card: "open" })} />
         </div>
       )}
 
@@ -751,6 +773,20 @@ export default function ElectronicsView({
             if (applied && view === "schematic") go("pcb");
           }}
         />
+      )}
+      {ui.card === "open" && !readOnly && (
+        <Suspense fallback={null}>
+          <OpenProject
+            replaces={design.parts.length > 0 || !!design.board}
+            onClose={() => eui.set({ card: null })}
+            onOpen={(opened) => {
+              edit(() => opened, "Open a KiCad project");
+              eui.set({ card: null, sheet: null, selected: [], net: null, spot: null, unrouted: null });
+              // Once the new sheet is drawn, bring it all into view.
+              setTimeout(() => eactions.current?.fit(), 50);
+            }}
+          />
+        </Suspense>
       )}
       {view === "schematic" && (
         <Suspense fallback={null}>
