@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { newSheet, viewScale, type DrawingNote, type DrawingSheet, type DrawingView } from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { newDoc, type ModelDoc } from "../state/document";
-import { makeEveryPart, partDrawings } from "./everyPart";
+import { makeEveryPart, partDrawings, withTrackLinks } from "./everyPart";
 import { sheetScene } from "./export/scene";
 import { firstDirections, standardViews } from "./firstViews";
 import { sheetLayout } from "./layout";
@@ -299,7 +299,7 @@ describe("Make drawings of every part", () => {
       { id: "b1", name: "Plate", link: "base" },
       { id: "foot", name: "Foot" },
     ];
-    const run = () => makeEveryPart(store, bodies, [{ id: "base", name: "Base" }], call, undefined, (t) => said.push(t), "Kev");
+    const run = () => makeEveryPart(store, bodies, [{ id: "base", name: "Base" }], [], call, undefined, (t) => said.push(t), "Kev");
     await run();
     expect(edits).toEqual(["Make drawings of every part"]);
     expect(doc.drawings!.map((d) => d.name)).toEqual(["Base", "Foot"]);
@@ -307,5 +307,49 @@ describe("Make drawings of every part", () => {
     await run();
     expect(edits).toHaveLength(1);
     expect(said.at(-1)).toBe("Every part already has a drawing.");
+  });
+
+  it("draws a track's link on its own, as made, so it can be printed", async () => {
+    const place = { place: [] };
+    // A track in a component: the component's drawing shows the whole track, so the link gets one of its own.
+    const inside: ListedBody[] = [
+      { id: "hub", name: "Hub", link: "drive" },
+      { id: "link", name: "Track link", link: "drive", copy: { body: { id: "link" }, by: place } },
+      { id: "t.link.0", name: "Track link 2", link: "drive", copy: { body: { id: "link" }, by: place } },
+      { id: "t.link.1", name: "Track link 3", link: "drive", copy: { body: { id: "link" }, by: place } },
+    ];
+    const track = { parts: ["link", "t.link.0", "t.link.1"] };
+    const rows = withTrackLinks(partsRows(inside, [{ id: "drive", name: "Drive" }], PLA), inside, [track]);
+    expect(rows.map((r) => [r.name, r.count, r.material])).toEqual([
+      ["Drive", 1, "PLA"],
+      ["Track link", 3, "PLA"],
+    ]);
+    expect(rows[1]!.shows).toEqual({ bodies: ["link"], asMade: true });
+    // A loose track is a row already: its pages show the one link as made.
+    const loose = inside.map((b) => ({ ...b, link: undefined }));
+    const own = withTrackLinks(partsRows(loose, [], PLA), loose, [track]);
+    expect(own.map((r) => [r.name, r.count])).toEqual([
+      ["Hub", 1],
+      ["Track link", 3],
+    ]);
+    expect(own[1]!.shows).toEqual({ bodies: ["link"], asMade: true });
+    // The parts list itself is left as it was.
+    expect(partsRows(loose, [], PLA)[1]!.shows).toEqual({ bodies: ["link"] });
+    // A link named like a part already listed takes "link" on its name; a hidden one is left out.
+    const named = inside.map((b) => (b.id === "link" ? { ...b, name: "Drive" } : b));
+    expect(withTrackLinks(partsRows(named, [{ id: "drive", name: "Drive" }], PLA), named, [track]).map((r) => r.name)).toEqual(["Drive", "Drive link"]);
+    const off = inside.map((b) => (b.id === "link" ? { ...b, hidden: true } : b));
+    expect(withTrackLinks(partsRows(off, [{ id: "drive", name: "Drive" }], PLA), off, [track]).map((r) => r.name)).toEqual(["Drive"]);
+    // And the command draws it: the link's views ask for it as made.
+    let doc: ModelDoc = newDoc();
+    const store = { get: () => doc, edit: (change: (d: ModelDoc) => ModelDoc) => void (doc = change(doc)) };
+    const asked: unknown[] = [];
+    const spy: ViewCall = (r) => {
+      asked.push(r.shows);
+      return call(r);
+    };
+    await makeEveryPart(store, inside, [{ id: "drive", name: "Drive" }], [track], spy, undefined, () => {});
+    expect(doc.drawings!.map((d) => d.name)).toEqual(["Drive", "Track link"]);
+    expect(asked).toContainEqual({ bodies: ["link"], asMade: true });
   });
 });

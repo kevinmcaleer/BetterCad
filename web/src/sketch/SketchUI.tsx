@@ -21,9 +21,11 @@ import {
   ToolButton,
   Toolbar,
   useNameComplete,
+  type IconName,
   type MenuEntry,
   type Scope,
 } from "@bettercad/ui";
+import { pinnedTools, setPinnedTools } from "../editor/ribbonPrefs";
 import {
   CONSTRAINT_LABEL,
   SketchIndex,
@@ -55,7 +57,6 @@ import {
   levelOrUpright,
   levelOrUprightPoints,
   toolById,
-  type ConstraintToolId,
   type SketchToolId,
 } from "./tools";
 import type { SketchSession } from "./useSketch";
@@ -72,77 +73,118 @@ const SKETCH_COLOUR: Partial<Record<SketchToolId, string>> = {
   scale: "sk-scale",
 };
 
-/** The ribbon's Sketch tab (desktop): draw, change, constrain, then Finish sketch, each group with a drop-down. */
+/** One button on the Sketch tab: a tool, a constraint or AutoConstrain. */
+interface SketchItem {
+  id: string;
+  label: string;
+  icon: IconName;
+  colour: string | boolean;
+  short?: string;
+  keys?: string;
+  pressed?: boolean;
+  run: () => void;
+}
+
+/** The Sketch tab's groups as they start: every tool in each drop-down, and the ones shown big until you pin others. */
+const SKETCH_GROUPS: { id: string; label: string; all: string[]; pins: string[] }[] = [
+  {
+    id: "draw",
+    label: "Draw",
+    all: ["select", "line", "rectangle", "circle", "arc", "slot", "ellipse", "spline", "polygon", "point", "text"],
+    pins: ["line", "rectangle", "circle", "arc", "slot", "spline", "text"],
+  },
+  {
+    id: "change",
+    label: "Change",
+    all: ["fillet", "trim", "extend", "break", "scale", "offset", "mirror", "pattern", "project"],
+    pins: ["trim", "offset", "mirror", "pattern", "project"],
+  },
+  {
+    id: "constrain",
+    label: "Constrain",
+    all: ["dimension", "auto", ...CONSTRAINT_TOOLS.map((c) => c.id)],
+    pins: ["dimension", "coincident", "horizontalVertical", "parallel", "tangent", "equal", "fix"],
+  },
+];
+
+/**
+ * The ribbon's Sketch tab (desktop): draw, change, constrain, then Finish sketch. Each group's drop-down lists all its
+ * tools, and pins any of them big on the ribbon, kept with the model tabs' pins.
+ */
 export function SketchRibbon({ s }: { s: SketchSession }) {
+  const [pins, setPins] = useState(pinnedTools);
   const tool = toolById(s.stool);
   const on = (id: SketchToolId) => (s.stool === id || tool.modeOf === id) && !s.ctool;
   const pick = (id: SketchToolId) => s.pickTool(tool.modeOf === id ? s.stool : id);
-  const tools = (ids: SketchToolId[]) => SKETCH_TOOLS.filter((t) => ids.includes(t.id));
-  const groups: [string, SketchToolId[], SketchToolId[]][] = [
-    [
-      "Draw",
-      ["select", "line", "rectangle", "circle", "arc", "slot", "ellipse", "spline", "polygon", "point", "text"],
-      ["line", "rectangle", "circle", "arc", "slot", "spline", "text"],
-    ],
-    ["Change", ["fillet", "trim", "extend", "break", "scale", "offset", "mirror", "pattern", "project"], ["trim", "offset", "mirror", "pattern", "project"]],
-  ];
-  const entry = (t: (typeof SKETCH_TOOLS)[number]): MenuEntry => ({
-    id: t.id,
-    label: t.label,
-    icon: t.icon,
-    colour: SKETCH_COLOUR[t.id] ?? true,
-    keys: t.key.toUpperCase(),
-    onSelect: () => pick(t.id),
-  });
-  const pinnedConstraints: ConstraintToolId[] = ["coincident", "horizontalVertical", "parallel", "tangent", "equal", "fix"];
-  const dim = toolById("dimension");
+  const itemOf = (id: string): SketchItem | undefined => {
+    if (id === "auto") return { id, label: "AutoConstrain", icon: "constraint", colour: "sk-auto", run: s.autoConstrain };
+    const c = CONSTRAINT_TOOLS.find((x) => x.id === id);
+    if (c)
+      return {
+        id,
+        label: c.label,
+        icon: "constraint",
+        colour: `sk-${c.id}`,
+        short: c.id === "horizontalVertical" ? c.tag : undefined,
+        pressed: s.ctool === c.id,
+        run: () => s.constrain(c.id),
+      };
+    const t = SKETCH_TOOLS.find((x) => x.id === id);
+    return (
+      t && {
+        id,
+        label: t.label,
+        icon: t.icon,
+        colour: SKETCH_COLOUR[t.id] ?? true,
+        keys: t.key.toUpperCase(),
+        pressed: on(t.id),
+        run: () => pick(t.id),
+      }
+    );
+  };
+  const togglePin = (key: string, now: string[], id: string) => {
+    const next = { ...pins, [key]: now.includes(id) ? now.filter((x) => x !== id) : [...now, id] };
+    setPins(next);
+    setPinnedTools(next);
+  };
   return (
     <>
-      {groups.map(([label, all, pins]) => (
-        <RibbonGroup key={label} label={label} entries={tools(all).map(entry)}>
-          {tools(pins).map((t) => (
-            <RibbonButton
-              key={t.id}
-              icon={t.icon}
-              colour={SKETCH_COLOUR[t.id] ?? true}
-              label={t.label}
-              shortcut={t.key.toUpperCase()}
-              pressed={on(t.id)}
-              onPress={() => pick(t.id)}
-            />
-          ))}
-        </RibbonGroup>
-      ))}
-      <RibbonGroup
-        label="Constrain"
-        entries={[
-          entry(dim),
-          { id: "auto", label: "AutoConstrain", icon: "constraint", colour: "sk-auto", onSelect: s.autoConstrain },
-          ...CONSTRAINT_TOOLS.map<MenuEntry>((c) => ({
-            id: c.id,
-            label: c.label,
-            icon: "constraint",
-            colour: `sk-${c.id}`,
-            onSelect: () => s.constrain(c.id),
-          })),
-        ]}
-      >
-        <RibbonButton icon={dim.icon} label={dim.label} shortcut={dim.key.toUpperCase()} pressed={on("dimension")} onPress={() => pick("dimension")} />
-        {pinnedConstraints.map((id) => {
-          const c = constraintToolById(id);
-          return (
-            <RibbonButton
-              key={id}
-              icon="constraint"
-              colour={`sk-${id}`}
-              label={c.label}
-              short={id === "horizontalVertical" ? c.tag : undefined}
-              pressed={s.ctool === id}
-              onPress={() => s.constrain(id)}
-            />
-          );
-        })}
-      </RibbonGroup>
+      {SKETCH_GROUPS.map((g) => {
+        const key = `sketch.${g.id}`;
+        const shown = pins[key] ?? g.pins;
+        const items = g.all.map(itemOf).filter((it): it is SketchItem => !!it);
+        return (
+          <RibbonGroup
+            key={g.id}
+            label={g.label}
+            entries={items.map<MenuEntry>((it) => ({
+              id: it.id,
+              label: it.label,
+              icon: it.icon,
+              colour: it.colour,
+              keys: it.keys,
+              pin: { on: shown.includes(it.id), onToggle: () => togglePin(key, shown, it.id) },
+              onSelect: it.run,
+            }))}
+          >
+            {/* In the drop-down's order, so a pin lands beside its neighbours. */}
+            {items
+              .filter((it) => shown.includes(it.id))
+              .map((it) => (
+                <RibbonButton
+                  key={it.id}
+                  icon={it.icon}
+                  colour={it.colour}
+                  label={it.label}
+                  short={it.short}
+                  shortcut={it.keys}
+                  pressed={it.pressed}
+                  onPress={it.run}
+                />
+              ))}
+          </RibbonGroup>
+        );
+      })}
       <RibbonGroup label="Finish" entries={[]}>
         <RibbonButton icon="finish" colour={false} done label="Finish sketch" shortcut="Enter" onPress={() => s.finish()} />
       </RibbonGroup>

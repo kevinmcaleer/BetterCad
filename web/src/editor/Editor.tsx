@@ -637,7 +637,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   /** Make drawings of every part (#574): one for each row of the parts list that has none of its name yet. */
   const everyPart = () => {
     if (live.current.sketching) return say("Finish the sketch first.");
-    if (!files.shared) void import("../drawing/everyPart").then((m) => m.makeEveryPart(store, parts, built.components, viewCall, at, say, account?.name));
+    if (!files.shared)
+      void import("../drawing/everyPart").then((m) => m.makeEveryPart(store, parts, built.components, built.tracks ?? [], viewCall, at, say, account?.name));
   };
   const onRenderCamera = useCallback((c: CameraState) => {
     renderCam.current = c;
@@ -4349,7 +4350,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               ribbonOn
                 ? (tab) => (
                     <Suspense fallback={null}>
-                      <RibbonTools tab={tab} registry={registry} tool={tool} mirrorOn={mirrorOn} panel={panel} />
+                      <RibbonTools
+                        tab={tab}
+                        registry={registry}
+                        tool={tool}
+                        mirrorOn={mirrorOn}
+                        panel={panel}
+                        drawings={doc.drawings?.map((d) => ({ id: d.id, name: d.name }))}
+                        onOpenDrawing={(id) => onDrawing("open", id)}
+                      />
                     </Suspense>
                   )
                 : undefined

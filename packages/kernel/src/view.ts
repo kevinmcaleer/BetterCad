@@ -225,7 +225,11 @@ export interface ModelView {
 
 /** What to draw and how, for `ModelView`. */
 export interface ModelViewRequest extends ProjectOptions {
-  /** The whole model, one component with everything in it, or picked bodies. Hidden bodies and holes stay out. */
-  shows: { all: true } | { component: string } | { bodies: string[] };
+  /**
+   * The whole model, one component with everything in it, or picked bodies. Hidden bodies and holes stay out.
+   * `asMade` draws picked bodies as they were made, before a track wrapped them round its wheels or a pose moved them:
+   * a track's first link drawn flat for printing, not tipped where it sits on the track.
+   */
+  shows: { all: true } | { component: string } | { bodies: string[]; asMade?: true };
   frame: ViewFrame;
 }

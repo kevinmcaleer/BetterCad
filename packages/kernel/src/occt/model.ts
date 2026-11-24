@@ -51,7 +51,7 @@ import type { ModelView, ModelViewRequest, ViewSource } from "../view";
 import { triangles } from "./export";
 import { meshTree, type MeshTree } from "../collide";
 import { sweepClashes, type SweepOptions, type SweepResult } from "../sweep";
-import { linkTransforms } from "../pose";
+import { linkTransforms, mat4InvertRigid } from "../pose";
 import { resolvePose } from "../drivelinks";
 import { catalogueShape } from "./catalogue";
 import { baseName, fromBase64, type ImportFormat } from "../imports";
@@ -666,8 +666,12 @@ export class ModelBuilder {
     const byLink = doc.pose ? linkTransforms(joints, resolvePose(drives, doc.pose), poseNesting(built)) : new Map();
     const linkOf = new Map<string, string>();
     for (const l of links) for (const id of l.parts) linkOf.set(id, l.id);
+    const asMade = "bodies" in req.shows && !!req.shows.asMade;
     const shown = parts.filter((p) => !p.hole && !p.hidden && wanted(p.id));
-    const moves = shown.map((p) => byLink.get(linkOf.get(p.id) ?? ""));
+    // As made: a track's link taken back off the track (its copy's place undone) and no pose, so it lies as drawn.
+    const moves = shown.map((p) =>
+      asMade ? (p.copy && "place" in p.copy.by ? mat4InvertRigid(p.copy.by.place) : undefined) : byLink.get(linkOf.get(p.id) ?? ""),
+    );
     const key = canonical([
       shown.map((p, i) => [partKey(p, "fast"), moves[i] ?? null]),
       req.frame,

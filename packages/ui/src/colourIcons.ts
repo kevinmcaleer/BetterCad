@@ -268,6 +268,17 @@ const DRAW: Record<string, () => string> = {
     `<rect x="3" y="4" width="18" height="16" fill="${TOP}" stroke="${EDGE}" stroke-width="1.4"/>` +
     `<rect x="12" y="15" width="9" height="5" fill="${HI}" stroke="${EDGE}" stroke-width="0.9"/>` +
     line("M6 8h5v4H6z", EDGE, 1.2),
+  // Two sheets, one behind the other: a drawing for each part
+  drawingEvery: () =>
+    `<rect x="6" y="2.5" width="15" height="13" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.2"/>` +
+    `<rect x="3" y="7" width="15" height="14" fill="${TOP}" stroke="${EDGE}" stroke-width="1.4"/>` +
+    `<rect x="10.5" y="16.5" width="7.5" height="4.5" fill="${HI}" stroke="${EDGE}" stroke-width="0.9"/>` +
+    line("M5.5 10.5h4.5v3.5H5.5z", EDGE, 1.1),
+  // A folder with a drawing sheet in it
+  drawingOpen: () =>
+    `<path d="M2.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2h9.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5z" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.2" stroke-linejoin="round"/>` +
+    `<rect x="7" y="9" width="11" height="8" fill="${TOP}" stroke="${EDGE}" stroke-width="1"/>` +
+    `<rect x="12.5" y="14" width="5.5" height="3" fill="${HI}" stroke="${EDGE}" stroke-width="0.7"/>`,
   clash: () => box(-6, -3, -5, 7, 7, 7) + box(-1, -5, -3, 7, 7, 7) + poly([P(-1, -3, 2), P(1, -3, 2), P(1, 2, 2), P(-1, 2, 2)], HI, 0.7),
   // Sketch: flat shapes with their points in the accent
   line: () => line("M5 19L19 5", EDGE, 1.8) + dot(5, 19, 2) + dot(19, 5, 2),
