@@ -55,7 +55,7 @@ describe("the electronics workspace", () => {
     expect(screen.getByRole("tab", { name: "Schematic" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Start with a part.")).toBeInTheDocument();
     await userEvent.click(within(screen.getByText("Start with a part.").parentElement!).getByRole("button", { name: /Components/ }));
-    const card = screen.getByRole("group", { name: "Components options" });
+    const card = await screen.findByRole("group", { name: "Components options" });
     await userEvent.type(within(card).getByLabelText("Find a part"), "led");
     await userEvent.click(await within(card).findByRole("button", { name: /^LED \(0603\)/ }));
     expect(within(card).getByRole("img", { name: "Symbol of LED" })).toBeInTheDocument();
@@ -84,7 +84,7 @@ describe("the electronics workspace", () => {
     expect(s.design()?.board?.placements).toHaveLength(2);
     // The board is made, and you are taken to it.
     expect(screen.getByRole("tab", { name: "PCB" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("img", { name: /^PCB/ })).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: /^PCB/ })).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Electronics status" })).toHaveTextContent("1 connection left to route");
     expect(screen.getByRole("status", { name: "Electronics status" })).toHaveTextContent("Board 50 × 40 mm");
   });
@@ -126,7 +126,7 @@ describe("the electronics workspace", () => {
   it("shows the layers on the board, picks the one to work on and hides one", async () => {
     act(() => showView("pcb"));
     setup(pushToBoard(ledAndResistor()).design);
-    const layers = screen.getByRole("region", { name: "Layers" });
+    const layers = await screen.findByRole("region", { name: "Layers" });
     await userEvent.click(within(layers).getByRole("button", { name: "Bottom copper" }));
     expect(eui.get().layer).toBe("bottom");
     await userEvent.click(within(layers).getByRole("button", { name: "Show top silkscreen" }));
@@ -144,6 +144,48 @@ describe("the electronics workspace", () => {
     expect(eui.get().view).toBe("pcb");
     act(() => key("3").run({} as never));
     expect(eui.get().view).toBeNull();
+  });
+
+  it("copies and pastes with fresh names, duplicates, and renumbers in one step", async () => {
+    act(() => showView("schematic"));
+    const { labels, commands, design } = setup(ledAndResistor());
+    const run = (id: string) => act(() => void commands.find((c) => c.id === id)!.run({} as never));
+    const symbols = () => design()!.sheets[0]!.symbols;
+    act(() => eui.set({ selected: [symbols()[0]!.id] }));
+    run("electronics.copy");
+    run("electronics.paste");
+    expect(design()!.parts.map((p) => p.ref)).toEqual(["R1", "D1", "R2"]);
+    // The copy is what is picked now, so Duplicate copies the copy.
+    await act(async () => {});
+    expect(eui.get().selected).toEqual([symbols()[2]!.id]);
+    await userEvent.click(within(screen.getByRole("toolbar", { name: "Schematic tools" })).getByRole("button", { name: "Duplicate" }));
+    expect(design()!.parts.map((p) => p.ref)).toEqual(["R1", "D1", "R2", "R3"]);
+    expect(symbols()[3]).toMatchObject({ x: symbols()[2]!.x + 5.08, y: symbols()[2]!.y - 5.08 });
+    run("electronics.renumber");
+    expect(labels).toEqual(["Paste", "Duplicate", "Renumber"]);
+    expect(
+      design()!
+        .parts.map((p) => p.ref)
+        .sort(),
+    ).toEqual(["D1", "R1", "R2", "R3"]);
+  });
+
+  it("opens the rules check from the tools and from the status strip, and shows what it found before a push", async () => {
+    act(() => showView("schematic"));
+    setup(ledAndResistor());
+    const tools = within(screen.getByRole("toolbar", { name: "Schematic tools" }));
+    await userEvent.click(tools.getByRole("button", { name: "Rules check" }));
+    const card = await screen.findByRole("group", { name: "Rules check options" });
+    expect(within(card).getByRole("status")).toHaveTextContent("2 errors to look at.");
+    await userEvent.click(within(card).getByRole("button", { name: "Close" }));
+    await userEvent.click(within(screen.getByRole("status", { name: "Electronics status" })).getByRole("button", { name: /not connected/ }));
+    expect(await screen.findByRole("group", { name: "Rules check options" })).toBeInTheDocument();
+    await userEvent.click(tools.getByRole("button", { name: "Push to PCB" }));
+    const push = screen.getByRole("group", { name: "Push to PCB options" });
+    expect(await within(push).findByText(/The rules check found 2 errors\./)).toBeInTheDocument();
+    expect(within(push).getByRole("button", { name: "Make the board" })).toBeEnabled();
+    await userEvent.click(tools.getByRole("button", { name: "Parts table" }));
+    expect(await screen.findByRole("dialog", { name: "Parts" })).toBeInTheDocument();
   });
 
   it("a view-only model can look but not change", () => {
@@ -183,6 +225,26 @@ describe("the part card", () => {
     const net = netlist(d).of.get(`${r1.id}:1`)!;
     expect(screen.getByText(net)).toBeInTheDocument();
     expect(screen.getByText("Not connected")).toBeInTheDocument();
+  });
+
+  it("reads shorthand when you leave the value, and marks a part as not fitted", async () => {
+    let d = ledAndResistor();
+    const edit: EEdit = (change) => {
+      d = change(d);
+    };
+    act(() => {
+      showView("schematic", d);
+      eui.set({ selected: [d.sheets[0]!.symbols[0]!.id] });
+    });
+    const ui = render(<ElectronicsProps design={d} edit={edit} />);
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "4k7" } });
+    ui.rerender(<ElectronicsProps design={d} edit={edit} />);
+    fireEvent.blur(screen.getByLabelText("Value"));
+    expect(d.parts[0]!.value).toBe("4.7 kΩ");
+    await userEvent.click(screen.getByLabelText("Fitted"));
+    expect(d.parts[0]!.fitted).toBe(false);
+    fireEvent.change(screen.getByLabelText("Maker's part number"), { target: { value: "RC0603FR-074K7L" } });
+    expect(d.parts[0]!.supplier).toEqual({ mpn: "RC0603FR-074K7L" });
   });
 
   it("with nothing picked, sums the design up", () => {

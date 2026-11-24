@@ -104,3 +104,59 @@ the tool, the selection, the layer) and `actions.ts` (`showView`); everything el
   drawing in the room the cards leave.
 - **Edits** go through `onDesign`, which wraps a design change as a model change for the history store, so undo and
   redo work as everywhere else. Colours are the `ec-*` tokens, read from CSS when the canvas draws.
+
+## Drawing a schematic (#631 to #633)
+
+The edits live in `packages/electronics/src/edit.ts`, each a function from a design to a new design.
+
+- **Copy, paste and duplicate.** `copyFromSheet` takes the picked symbols, wires, labels and marks as a `Clip` with
+  the components they use. `pasteOnSheet` puts a clip down with fresh ids and fresh references (R4 becomes R5). The
+  clip is kept in the browser's storage too (`clip.ts`), so it pastes into another model or another tab. Ctrl+C,
+  Ctrl+V and Ctrl+D; Duplicate is also a tool, for touch screens.
+- **Replace** (`replace.ts`, loaded with the Components card): with one part picked on the sheet, the card of the
+  part picked in Components offers Replace. Wire ends move to the pin of the same name, or failing that the same
+  number, and the pins that had a wire and found no match are listed.
+- **Wires follow.** Moving a part stretches the wires on its pins; dragging a wire on its own brings the ends of the
+  wires that meet it along. Hovering a wire or a label lights its whole net, and the status strip names it
+  (`netAt` on the netlist).
+- **Names and values.** `renumber` names every part again by position, sheet by sheet, top to bottom then left to
+  right, as one undo step. `tidyValue` reads engineering shorthand on resistors, capacitors and coils when you leave
+  the field: 4k7 is 4.7 kΩ, 100n is 100 nF, 2R2 is 2.2 Ω. Anything it does not recognise stays as typed.
+- **The part card** shows the package with a preview, the LCSC and maker's part numbers, and Fitted. The **Parts
+  table** (T) lists every part to change many at once; a column pasted from a spreadsheet fills the rows below.
+
+## The rules check (#634)
+
+`packages/electronics/src/erc.ts`, imported as `@bettercad/electronics/erc` so it loads only when the Checks card
+opens or a push is about to happen. `check(design)` returns results in plain words, each with what to do about it.
+
+| Rule | Starts as | Finds |
+| --- | --- | --- |
+| `pin-open` | Error | A pin with nothing on it and no Not connected mark |
+| `output-clash` | Error | Two outputs, or power outputs, on one net |
+| `input-undriven` | Error | An input on a net where nothing can drive it |
+| `ref-duplicate` | Error | Two parts with one name |
+| `no-footprint` | Error | A part with no package |
+| `power-undriven` | Warning | A power pin on a net with no power output and no power symbol |
+| `wire-open` | Warning | A wire that ends in mid air |
+| `net-one-pin` | Warning | A net with a single pin on it |
+| `label-once` | Warning | A label no other label or power symbol shares |
+| `net-two-names` | Warning | A net carrying two different names |
+
+A power symbol counts as a power source, so a board fed from a connector needs no extra flag: put 3V3 or GND on the
+net. Each rule's level (error, warning, ignore) is kept in `design.checks.levels` when it differs from the table.
+A single result can be waived with a note (`design.checks.waived`), keyed by the rule and the pins, parts or names it
+is about, so the waiver lasts until that spot changes. The check also runs when Push to PCB opens, which says what it
+found and lets you carry on. Each rule has a fixture that breaks it in `erc.test.ts`.
+
+## Exporting a schematic (#635)
+
+Export saves a PDF, an SVG or a netlist. The PDF and SVG reuse the drawing workspace: `sheetScene.ts` lays the
+schematic on a drawing sheet (A4 or A3 landscape) with the frame and title block of `web/src/drawing`, as the same
+`Scene` of lines and text the drawing writers take. The title block is filled from the model's name, the signed-in
+person and today's date. The diagram prints at 2:1 or 1:1 when it fits and steps down when it does not, and the
+title block says which. SVG text is text; a PDF's letters are outlines, as on drawings, so it looks the same
+everywhere. The netlist (`kicad/netlist.ts`) is KiCad's own format, with each part's value and footprint and each
+net's pins. The writers load when Export is pressed.
+
+Left for later: sheets beyond the first (#636), hand-drawn text and shapes on a sheet, and buses.

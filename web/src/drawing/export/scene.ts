@@ -25,11 +25,11 @@ export interface Stroke {
 }
 export interface Label {
   layer: Layer;
-  /** Where the text is anchored: its start or middle across, its middle or baseline up. */
+  /** Where the text is anchored: its start, middle or end across, its middle or baseline up. */
   at: V2;
   /** Letter height, mm (the font size). */
   size: number;
-  anchor: "start" | "middle";
+  anchor: "start" | "middle" | "end";
   baseline: "central" | "alphabetic";
   text: string;
   /** Turned anticlockwise about `at`, radians: a dimension's size along its line. */

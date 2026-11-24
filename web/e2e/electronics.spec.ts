@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { ledCircuit, onCanvas, pick, tools } from "./lib/electronics";
+import { PITCH, ledCircuit, onCanvas, pick, press, tools } from "./lib/electronics";
 
 const axe = async (page: import("@playwright/test").Page) => {
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
@@ -72,6 +72,103 @@ test.describe("on a wide screen", () => {
     await tree.getByRole("button", { name: /^Schematic/ }).dblclick();
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 3 parts, 1 net" })).toBeVisible();
   });
+
+  test("make a part of your own from a pin list and a package, then place it", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await tools(page)
+      .getByRole("button", { name: /^Components/ })
+      .click();
+    const card = page.getByRole("group", { name: "Components options" });
+    await card.getByRole("button", { name: "New part" }).click();
+    const editor = page.getByRole("dialog", { name: "New part" });
+    await editor.getByLabel("Name").fill("Level shifter");
+    await editor.getByRole("tab", { name: "Symbol" }).click();
+    await editor.getByLabel("Pins").fill("1 VCC power\n2 A io\n3 B io\n4 GND power");
+    await editor.getByRole("tab", { name: "Footprint" }).click();
+    await editor.getByLabel("Package").selectOption({ label: "DIP, through hole" });
+    await expect(editor.getByRole("img", { name: "Footprint Level shifter DIP-8" })).toBeVisible();
+    await expect(editor.getByRole("list", { name: "Checks" })).toHaveText("Every pin has a pad. Ready to save.");
+    await axe(page);
+    await editor.getByRole("button", { name: "Save to your parts" }).click();
+    await expect(card.getByText("Level shifter is in your parts.")).toBeVisible();
+    await card.getByRole("button", { name: "Place" }).click();
+    await page.mouse.click(...(await onCanvas(page, 0, 0)));
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 1 part, 0 nets" })).toBeVisible();
+    // It is still there after a reload: your parts are kept in this browser.
+    await page.reload();
+    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("bettercad.electronics.library") ?? "{}").pack?.parts?.[0]?.name)).toBe("Level shifter");
+  });
+
+  test("check the rules, copy a circuit, edit the parts in a table and export the schematic", async ({ page }) => {
+    await page.addInitScript(() => delete (window as unknown as Record<string, unknown>).showSaveFilePicker);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+
+    // The rules check lists the two pins left open, goes to one, and clears as they are dealt with.
+    await page.keyboard.press("e");
+    const checks = page.getByRole("group", { name: "Rules check options" });
+    await expect(checks.getByRole("status")).toHaveText("2 errors to look at.");
+    await checks.getByRole("button", { name: /R1 pin 2 is not connected/ }).click();
+    await expect(page.getByRole("heading", { name: /^R1/ })).toBeVisible();
+    await axe(page);
+    // Going to a result brings it to the middle; Fit brings both pins back out from under the cards.
+    await page.keyboard.press("f");
+    await tools(page)
+      .getByRole("button", { name: /^(Not connected|No connect)/ })
+      .click();
+    await press(page, -10 * PITCH, -3.81);
+    await press(page, 3.81, 0);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("e");
+    await expect(checks.getByRole("status")).toHaveText("No problems found.");
+    await checks.getByRole("button", { name: "Close" }).click();
+
+    // A copy gets fresh names, and Renumber puts them in order.
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("ControlOrMeta+d");
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 4 parts, 2 nets" })).toBeVisible();
+    await tools(page).getByRole("button", { name: "Renumber" }).click();
+    await page.keyboard.press("Escape");
+
+    // The table changes a value, read as shorthand.
+    await page.keyboard.press("t");
+    const table = page.getByRole("dialog", { name: "Parts" });
+    await expect(table.getByRole("rowheader")).toHaveText(["D1", "D2", "R1", "R2"]);
+    await table.getByLabel("Value of R2").fill("4k7");
+    await table.getByLabel("Value of R2").press("Enter");
+    await expect(table.getByLabel("Value of R2")).toHaveValue("4.7 kΩ");
+    await axe(page);
+    await page.keyboard.press("Escape");
+
+    // Export: an SVG whose text is text, and a netlist KiCad reads.
+    const exported = async (format: string) => {
+      await tools(page).getByRole("button", { name: "Export" }).click();
+      const dialog = page.getByRole("dialog", { name: "Export schematic" });
+      await dialog.getByRole("button", { name: format, exact: true }).click();
+      const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Export", exact: true }).click()]);
+      const stream = await download.createReadStream();
+      const chunks: Buffer[] = [];
+      for await (const c of stream) chunks.push(c as Buffer);
+      return { name: download.suggestedFilename(), text: Buffer.concat(chunks).toString("utf8") };
+    };
+    const svg = await exported("SVG");
+    expect(svg.name).toBe("Untitled model.svg");
+    expect(svg.text).toMatch(/<text class="visible"[^>]*>R2<\/text>/);
+    expect(svg.text).toContain(">4.7 kΩ</text>");
+    const net = await exported("Netlist");
+    expect(net.text).toContain('(export (version "E")');
+    expect(net.text).toContain('(comp (ref "R2")\n      (value "4.7 kΩ")');
+    const pdf = await exported("PDF");
+    expect(pdf.text.slice(0, 5)).toBe("%PDF-");
+  });
 });
 
 test.describe("on a phone", () => {
@@ -86,6 +183,17 @@ test.describe("on a phone", () => {
     await expect(page.getByRole("toolbar", { name: "Schematic tools" })).toBeVisible();
 
     await ledCircuit(page, true);
+    // The rules check opens from the tools along the bottom and fits the screen.
+    await tools(page)
+      .getByRole("button", { name: /^Rules check/ })
+      .click();
+    const checks = page.getByRole("group", { name: "Rules check options" });
+    await expect(checks.getByRole("status")).toHaveText("2 errors to look at.");
+    await checks.getByRole("button", { name: /R1 pin 2 is not connected/ }).tap();
+    const box = (await checks.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    await checks.getByRole("button", { name: "Close" }).tap();
     await tools(page)
       .getByRole("button", { name: /^Push to PCB/ })
       .click();

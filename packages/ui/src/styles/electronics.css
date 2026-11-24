@@ -108,6 +108,16 @@
 .bc-ec-tools > * {
   flex: none;
 }
+/* Centred while they fit; from the start once they scroll, so the first tool can always be reached. */
+.bc-ec-tools {
+  justify-content: flex-start;
+}
+.bc-ec-tools > :first-child {
+  margin-left: auto;
+}
+.bc-ec-tools > :last-child {
+  margin-right: auto;
+}
 
 /* ---- cards */
 .bc-ec-card {
@@ -491,5 +501,240 @@ button.bc-ec-pill {
     bottom: calc(var(--bc-keyboard, 0px) + var(--bc-ec-gap) + 56px);
     width: auto;
     max-height: 60vh;
+  }
+}
+
+/* ---- your library and the part editor */
+.bc-ec-library-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-3);
+}
+.bc-dialog.bc-ec-editor {
+  width: min(760px, calc(100vw - var(--bc-space-6)));
+  max-height: calc(100dvh - var(--bc-space-6));
+  /* A modal sits in the middle of its scrim at every width. */
+  bottom: auto;
+}
+.bc-dialog.bc-ec-import {
+  width: min(480px, calc(100vw - var(--bc-space-6)));
+}
+.bc-ec-editor .bc-dialog-body {
+  min-height: 0;
+  display: grid;
+  gap: var(--bc-space-4);
+  padding-top: var(--bc-space-5);
+}
+.bc-ec-editor .bc-text,
+.bc-ec-editor .bc-select {
+  width: 100%;
+}
+.bc-ec-editor-tabs {
+  display: flex;
+  gap: var(--bc-space-2);
+  padding: var(--bc-space-2);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-lg);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.bc-ec-editor-tabs > * {
+  flex: 1 0 auto;
+  justify-content: center;
+}
+.bc-ec-editor-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 300px);
+  gap: var(--bc-space-7);
+  align-items: start;
+}
+.bc-ec-editor-fields,
+.bc-ec-editor-side {
+  display: grid;
+  gap: var(--bc-space-3);
+  min-width: 0;
+}
+.bc-ec-editor-pair,
+.bc-ec-editor-sizes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--bc-space-4);
+  align-items: end;
+}
+.bc-ec-editor-pair > div,
+.bc-ec-editor-sizes > div {
+  display: grid;
+  gap: var(--bc-space-2);
+}
+.bc-ec-pins {
+  min-height: 160px;
+  padding: var(--bc-space-4);
+  font-family: var(--bc-font-mono);
+  line-height: 1.5;
+  resize: vertical;
+  white-space: pre;
+  tab-size: 8;
+}
+.bc-ec-editor-checks {
+  display: grid;
+  gap: var(--bc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bc-ec-editor-checks li {
+  padding-left: var(--bc-space-5);
+  border-left: 3px solid var(--bc-color-line);
+}
+.bc-ec-editor-checks .bc-ec-warned {
+  border-left-color: var(--bc-color-warn);
+}
+.bc-ec-editor-checks .bc-ec-blocked {
+  border-left-color: var(--bc-color-danger);
+  color: var(--bc-color-danger);
+}
+@media (max-width: 640px) {
+  .bc-ec-editor-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .bc-ec-editor-side {
+    order: -1;
+  }
+}
+
+/* ---- the rules check */
+.bc-ec-checks {
+  width: 320px;
+}
+.bc-ec-check-sum {
+  margin: 0;
+  font-weight: 600;
+}
+.bc-ec-check-found {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bc-space-3);
+  font-weight: 400;
+}
+.bc-ec-check-list {
+  display: grid;
+  gap: var(--bc-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 44vh;
+  overflow: auto;
+}
+.bc-ec-check-list li {
+  display: grid;
+  gap: var(--bc-space-2);
+  justify-items: start;
+  padding-left: var(--bc-space-4);
+  border-left: 3px solid var(--bc-color-line);
+}
+.bc-ec-check-list .bc-ec-check-error {
+  border-left-color: var(--bc-color-danger);
+}
+.bc-ec-check-list .bc-ec-check-warning {
+  border-left-color: var(--bc-color-warn);
+}
+.bc-ec-check-list li.bc-on {
+  background: var(--bc-color-accent-soft);
+}
+.bc-ec-check-go {
+  display: grid;
+  gap: var(--bc-space-1);
+  width: 100%;
+  padding: var(--bc-space-2);
+  border: 0;
+  border-radius: var(--bc-radius-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bc-ec-check-go:hover {
+  background: var(--bc-color-rail);
+}
+.bc-ec-check-level {
+  font-size: var(--bc-type-small-size);
+  font-weight: 600;
+  color: var(--bc-color-muted);
+}
+.bc-ec-check-error .bc-ec-check-level {
+  color: var(--bc-color-danger);
+}
+.bc-ec-check-waive {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bc-space-2);
+  width: 100%;
+}
+.bc-ec-check-waive .bc-text {
+  flex: 1 1 140px;
+  width: auto;
+}
+.bc-ec-check-rules {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.bc-ec-rule-list {
+  display: grid;
+  gap: var(--bc-space-2);
+}
+.bc-ec-rule-list label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  align-items: center;
+  gap: var(--bc-space-3);
+}
+
+/* ---- the parts table */
+.bc-ec-table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+.bc-ec-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.bc-ec-table th,
+.bc-ec-table td {
+  padding: var(--bc-space-1) var(--bc-space-2);
+  text-align: left;
+  white-space: nowrap;
+}
+.bc-ec-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bc-color-bar);
+  font-size: var(--bc-type-small-size);
+  color: var(--bc-color-muted);
+}
+.bc-ec-table .bc-text {
+  width: 100%;
+  min-width: 96px;
+}
+.bc-ec-table .bc-select {
+  max-width: 200px;
+}
+.bc-ec-fitted {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-3);
+  margin-top: var(--bc-space-3);
+}
+@media (max-width: 700px) {
+  .bc-ec-checks {
+    width: auto;
   }
 }

@@ -5,17 +5,22 @@ import {
   addLabel,
   addNoConnect,
   addWires,
+  clipOrigin,
+  copyFromSheet,
   emptyBox,
   grow,
   key,
   mirrorOnSheet,
   moveOnSheet,
+  netAt,
   netlist,
   onSegment,
+  pasteOnSheet,
   placePart,
   placedPins,
   removeFromSheet,
   renameLabel,
+  renumber,
   rotateOnSheet,
   type Box,
   type ElectronicsDesign,
@@ -26,6 +31,7 @@ import {
 import { ESC, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
+import { getClip, setClip } from "./clip";
 import { readColours } from "./colours";
 import { drawSchematic } from "./drawSchematic";
 import { boxSheet, hitSheet, placedBox } from "./hit";
@@ -137,8 +143,45 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     edit((d) => removeFromSheet(d, sheet.id, ui.selected), ui.selected.length === 1 ? "Delete" : `Delete ${ui.selected.length} things`);
     eui.set({ selected: [] });
   };
+  const paste = (beside: boolean) => {
+    const clip = beside ? copyFromSheet(design, sheet.id, eui.get().selected) : getClip();
+    if (readOnly || !clip) return;
+    // Under the pointer when it is over the sheet; else, and for a duplicate, two grid steps down and right.
+    const from = clipOrigin(clip);
+    const [dx, dy] = !beside && cursor ? [cursor[0] - from[0], cursor[1] - from[1]] : [2 * GRID, -2 * GRID];
+    eui.set({ schTool: "select", placing: null });
+    edit(
+      (d) => {
+        const pasted = pasteOnSheet(d, sheet.id, clip, dx, dy);
+        // The edit lands a moment later; the copy is picked once it is there, ready to drag into place.
+        queueMicrotask(() => eui.set({ selected: pasted.ids }));
+        return pasted.design;
+      },
+      beside ? "Duplicate" : "Paste",
+    );
+  };
+  // A check's result was clicked: bring its spot into the middle.
+  const spotted = useRef(0);
+  useEffect(() => {
+    const spot = ui.spot;
+    const size = api.current?.size();
+    if (!spot || spot.sheet !== sheet.id || spot.n === spotted.current || !size) return;
+    spotted.current = spot.n;
+    const clear = clearOf(host.current);
+    const scale = Math.max(view.scale, 8);
+    // On a wide screen the card sits on the left of the view, so the spot goes a little right of the middle.
+    const across = clear.left + (size.w - clear.right - clear.left) * (size.w > 900 ? 0.62 : 0.5);
+    setView({ scale, ox: across - spot.at[0] * scale, oy: (clear.top + size.h - clear.bottom) / 2 + spot.at[1] * scale });
+  });
   useEffect(() => {
     eactions.current = {
+      copy: () => {
+        const clip = copyFromSheet(design, sheet.id, eui.get().selected);
+        if (clip) setClip(clip);
+      },
+      paste: () => paste(false),
+      duplicate: () => paste(true),
+      renumber: () => !readOnly && edit(renumber, "Renumber"),
       fit: () => doFit(),
       rotate: () => {
         if (eui.get().placing) return setTurnBy((r) => ((r + 90) % 360) as Rot);
@@ -246,6 +289,17 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     return undefined;
   }, [cursor, tool, ui.placing, from, turnBy, flipped]);
 
+  /** Hovering a wire or a label lights its whole net across the sheet. */
+  const lit = useMemo(() => {
+    const over = sheet.wires.find((w) => w.id === hover)?.a ?? sheet.labels.filter((l) => l.id === hover).map((l): P2 => [l.x, l.y])[0];
+    const net = over && netAt(nl, sheet.id, over);
+    if (!net) return undefined;
+    return { net, ids: new Set(sheet.wires.filter((w) => netAt(nl, sheet.id, w.a) === net).map((w) => w.id)) };
+  }, [hover, nl, sheet]);
+  useEffect(() => {
+    if ((lit?.net ?? null) !== eui.get().net) eui.set({ net: lit?.net ?? null });
+  }, [lit]);
+
   const marks = useMemo(
     () => [
       ...nl.floating.filter((p) => p.sheet === sheet.id).map((p) => p.at),
@@ -264,8 +318,18 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         view={view}
         onView={setView}
         cursor={tool === "select" ? (hover ? "move" : "default") : "crosshair"}
-        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks]}
-        draw={(ctx, v, size) => drawSchematic(ctx, v, size, design, sheet, colours, { selected, hover, ghost, box, marks })}
+        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot]}
+        draw={(ctx, v, size) =>
+          drawSchematic(ctx, v, size, design, sheet, colours, {
+            selected,
+            hover,
+            ghost,
+            box,
+            marks,
+            lit: lit?.ids,
+            spot: ui.spot?.sheet === sheet.id ? ui.spot.at : undefined,
+          })
+        }
         onDown={onDown}
         onMove={onMove}
         onUp={onUp}

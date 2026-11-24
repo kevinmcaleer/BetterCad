@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { simpleBody } from "./body";
 import { buildPack, expand, packageLabel, type Manifest, type Sources } from "./build";
 import { BREAKOUTS, breakout } from "./modules";
-import { categoriesOf, checkPinMap, inflate, searchPack, type LibraryPack } from "./pack";
+import { categoriesOf, checkPinMap, dropPart, emptyPack, freeId, inflate, isPack, mergePacks, putPart, searchPack, type LibraryPack } from "./pack";
 
 const data = join(__dirname, "../kicad/testdata");
 // The few real KiCad files the reader tests use stand in for the whole library.
@@ -215,5 +215,46 @@ describe("the starter library", () => {
     expect(names("0402")).toEqual(expect.arrayContaining(["Resistor", "Capacitor"]));
     expect(names("", "Motor drivers")).toHaveLength(8);
     expect(names("zzzz")).toEqual([]);
+  });
+});
+
+describe("a library you change", () => {
+  const sonar = breakout(BREAKOUTS["hc-sr04"]!);
+  const mine = { ...sonar, source: { library: "You", licence: "CC0 1.0" } };
+
+  it("takes parts, replaces them by id, and lets go of what nothing uses", () => {
+    let pack = putPart(emptyPack("Your parts"), "sonar", mine, "Sensors");
+    expect(pack.parts.map((p) => [p.id, p.category])).toEqual([["sonar", "Sensors"]]);
+    expect(pack.credits).toEqual([{ name: "You", licence: "CC0 1.0", url: "" }]);
+    expect(inflate(pack, pack.parts[0]!)).toEqual(mine);
+    const renamed = { ...mine, name: "Sonar", symbol: { ...mine.symbol, name: "Sonar" } };
+    pack = putPart(pack, "sonar", renamed, "Sensors");
+    expect(Object.keys(pack.symbols)).toEqual(["Sonar"]);
+    expect(pack.parts).toHaveLength(1);
+    pack = putPart(pack, freeId(pack, "Sonar"), mine, "Sensors");
+    expect(pack.parts.map((p) => p.id)).toEqual(["sonar", "sonar-2"]);
+    pack = dropPart(pack, "sonar");
+    expect(pack.parts.map((p) => p.id)).toEqual(["sonar-2"]);
+    expect(Object.keys(pack.symbols)).toEqual([mine.symbol.name]);
+    expect(dropPart(pack, "sonar-2")).toMatchObject({ parts: [], symbols: {}, footprints: {}, credits: [] });
+  });
+
+  it("merges another pack in without doubling up, and keeps each part's own credit", () => {
+    const a = putPart(emptyPack("Your parts"), "sonar", mine, "Sensors");
+    const bc = starter.parts.find((p) => p.id === "bc817")!;
+    const b = putPart(putPart(emptyPack("Theirs"), "sonar", mine, "Sensors"), "bc817", inflate(starter, bc), "Transistors");
+    const merged = mergePacks(a, b);
+    expect(merged.added).toBe(1);
+    expect(merged.pack.parts.map((p) => p.id)).toEqual(["sonar", "bc817"]);
+    expect(merged.pack.credits.map((c) => `${c.name}: ${c.licence}`)).toEqual(["You: CC0 1.0", "KiCad libraries 9.0.0: CC-BY-SA 4.0 with exception"]);
+    const clash = mergePacks(a, putPart(emptyPack("Theirs"), "sonar", { ...mine, value: "other" }, "Sensors"));
+    expect(clash.pack.parts.map((p) => p.id)).toEqual(["sonar", "hc-sr04-ultrasonic-sensor"]);
+  });
+
+  it("knows a pack from something else", () => {
+    expect(isPack(starter)).toBe(true);
+    expect(isPack({ pack: 1, name: "x", parts: [{ id: "a", name: "A", symbol: "gone", packages: [] }], credits: [], symbols: {}, footprints: {} })).toBe(false);
+    expect(isPack({ pack: 2 })).toBe(false);
+    expect(isPack(null)).toBe(false);
   });
 });

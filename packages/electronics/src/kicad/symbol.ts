@@ -158,8 +158,21 @@ export function readKicadSymbols(source: string): KicadSymbol[] {
     const footprint = text(property(sym, "Footprint"), 2);
     const datasheet = text(property(sym, "Datasheet"), 2);
     const description = text(property(sym, "Description"), 2) || text(property(sym, "ki_description"), 2);
-    const refAt = at(ref);
-    const valueAt = at(value);
+    let refAt = at(ref);
+    let valueAt = at(value);
+    // KiCad writes these two up the side of an upright part (a resistor). Ours always read left to right, so they
+    // would land on top of each other: they go one above the other, to the right of the body.
+    if ((refAt && num(child(ref, "at"), 3) === 90) || (valueAt && num(child(value, "at"), 3) === 90)) {
+      let right = 0;
+      for (const sh of shapes) {
+        if (sh.kind === "rect") right = Math.max(right, sh.x1, sh.x2);
+        else if (sh.kind === "line") right = Math.max(right, ...sh.pts.map((q) => q[0]));
+        else if (sh.kind === "circle" || sh.kind === "arc") right = Math.max(right, sh.cx + sh.r);
+      }
+      const x = Math.round((right + 1) * 1000) / 1000;
+      if (refAt) refAt = [x, 1.27];
+      if (valueAt) valueAt = [x, -1.27];
+    }
     out.push({
       name,
       symbol: { name, units, shapes, pins, ...(refAt ? { refAt } : {}), ...(valueAt ? { valueAt } : {}), ...(power ? { power: true } : {}) },

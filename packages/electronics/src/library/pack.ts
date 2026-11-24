@@ -51,7 +51,9 @@ export function inflate(pack: LibraryPack, part: PackPart): ComponentDef {
     ...(part.keywords?.length ? { keywords: part.keywords } : {}),
     ...(part.datasheet ? { datasheet: part.datasheet } : {}),
     ...(part.supplier ? { supplier: part.supplier } : {}),
-    ...(credit ? { source: { library: credit.name + (credit.version ? ` ${credit.version}` : ""), licence: credit.licence, url: credit.url } } : {}),
+    ...(credit
+      ? { source: { library: credit.name + (credit.version ? ` ${credit.version}` : ""), licence: credit.licence, ...(credit.url ? { url: credit.url } : {}) } }
+      : {}),
   };
 }
 
@@ -142,3 +144,120 @@ export function searchPack(pack: LibraryPack, query: string, category?: string):
 }
 
 export const categoriesOf = (pack: LibraryPack): string[] => [...new Set(pack.parts.map((p) => p.category))];
+
+// ---------------------------------------------------------------- a library you change (#629)
+
+export const emptyPack = (name: string): LibraryPack => ({
+  pack: 1,
+  name,
+  licence: "Each part keeps its own licence.",
+  credits: [],
+  symbols: {},
+  footprints: {},
+  parts: [],
+});
+
+interface Entry {
+  id: string;
+  category: string;
+  def: ComponentDef;
+  labels?: (string | undefined)[];
+}
+
+const entriesOf = (pack: LibraryPack): Entry[] =>
+  pack.parts.map((p) => ({ id: p.id, category: p.category, def: inflate(pack, p), labels: p.packages.map((k) => k.label) }));
+
+/** Builds a pack from whole components. Each part's credit is its own `source`, so mixed libraries keep their licences. */
+function rebuild(like: LibraryPack, entries: Entry[]): LibraryPack {
+  const credits: LibraryPack["credits"] = [];
+  const creditOf = (def: ComponentDef): number => {
+    const want = { name: def.source?.library ?? "You", licence: def.source?.licence ?? "Not set", url: def.source?.url ?? "" };
+    const at = credits.findIndex((c) => c.name === want.name && c.licence === want.licence && c.url === want.url);
+    return at >= 0 ? at : credits.push(want) - 1;
+  };
+  const out = packOf(
+    like.name,
+    like.licence,
+    credits,
+    entries.map(({ id, category, def, labels }) => ({
+      id,
+      name: def.name,
+      category,
+      ...(def.description ? { description: def.description } : {}),
+      prefix: def.prefix,
+      ...(def.value ? { value: def.value } : {}),
+      ...(def.keywords?.length ? { keywords: def.keywords } : {}),
+      ...(def.datasheet ? { datasheet: def.datasheet } : {}),
+      ...(def.supplier ? { supplier: def.supplier } : {}),
+      from: creditOf(def),
+      def,
+      ...(labels?.some(Boolean) ? { labels: labels.map((l) => l ?? "") } : {}),
+    })),
+  );
+  return out;
+}
+
+/** An id nothing in the pack has yet, made from a name: "My part" gives "my-part", then "my-part-2". */
+export function freeId(pack: LibraryPack, name: string): string {
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "part";
+  const used = new Set(pack.parts.map((p) => p.id));
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n += 1) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+/** Adds a component to a pack, or replaces the part with that id. Symbols and footprints nothing uses any more go. */
+export function putPart(pack: LibraryPack, id: string, def: ComponentDef, category: string): LibraryPack {
+  const entries = entriesOf(pack);
+  const at = entries.findIndex((e) => e.id === id);
+  const entry: Entry = { id, category, def };
+  if (at >= 0) entries[at] = entry;
+  else entries.push(entry);
+  return rebuild(pack, entries);
+}
+
+export function dropPart(pack: LibraryPack, id: string): LibraryPack {
+  return rebuild(
+    pack,
+    entriesOf(pack).filter((e) => e.id !== id),
+  );
+}
+
+/**
+ * Adds every part of `from` to `into`. A part that is already there, the same, is not added twice. When two parts
+ * share an id but differ, the new one gets an id of its own, or with `replace` takes the old one's place (the way a
+ * newer copy of your own library does).
+ */
+export function mergePacks(into: LibraryPack, from: LibraryPack, opts: { replace?: boolean } = {}): { pack: LibraryPack; added: number } {
+  const entries = entriesOf(into);
+  let added = 0;
+  for (const e of entriesOf(from)) {
+    const at = entries.findIndex((x) => x.id === e.id);
+    if (at >= 0 && JSON.stringify(entries[at]!.def) === JSON.stringify(e.def) && entries[at]!.category === e.category) continue;
+    if (at >= 0 && opts.replace) entries[at] = e;
+    else entries.push({ ...e, id: at >= 0 ? freeId({ ...into, parts: entries.map((x) => ({ id: x.id })) as PackPart[] }, e.def.name) : e.id });
+    added += 1;
+  }
+  return { pack: rebuild(into, entries), added };
+}
+
+/** Whether something read from a file or from storage is a pack this app can use. */
+export function isPack(v: unknown): v is LibraryPack {
+  const p = v as Partial<LibraryPack> | null;
+  return (
+    !!p &&
+    typeof p === "object" &&
+    p.pack === 1 &&
+    typeof p.name === "string" &&
+    Array.isArray(p.parts) &&
+    Array.isArray(p.credits) &&
+    typeof p.symbols === "object" &&
+    typeof p.footprints === "object" &&
+    p.parts.every(
+      (x) => x && typeof x.id === "string" && typeof x.name === "string" && typeof x.symbol === "string" && !!p.symbols![x.symbol] && Array.isArray(x.packages),
+    )
+  );
+}

@@ -41,7 +41,8 @@ Not in yet, on purpose:
   checked list (#661).
 - **Real 3D models.** Bodies are simple shapes sized from the footprint. KiCad's STEP models are several GB; attaching
   a model to a part is #628.
-- **The rest of KiCad's libraries.** The starter set is what ships. Bring any other KiCad part in with import (#623).
+- **The rest of KiCad's libraries.** The starter set is what ships. Bring any other KiCad part in with Import KiCad,
+  below.
 
 ## Sizes
 
@@ -68,6 +69,59 @@ repository. To move to a newer KiCad release, change `kicad` in the manifest and
 changed.
 
 A part with `"symbol": "module:<id>"` is one BetterCad draws, from `BREAKOUTS` in `modules.ts`.
+
+## Your parts
+
+Parts you make or import go in your own library (#629), shown in the Components panel on the **Your parts** shelf (or
+any shelf you name) beside the starter library. It is a library pack like the starter one.
+
+- **Where it lives.** In this browser (`localStorage`, `bettercad.electronics.library`), so it works offline and signed
+  out. When you are signed in it is also kept in your account (`GET` and `PUT /api/parts-library`, one document per
+  account) and merged on sign-in: the account's copy of a part wins, parts made before signing in go up, and a part
+  deleted on one machine stays deleted on the others.
+- **As a file.** Export saves the pack as `your-parts.bcparts.json`: plain JSON in the pack format
+  (`LibraryPack` in `packages/electronics/src/library/pack.ts`), with every part's source and licence inside. Open
+  library adds the parts of such a file; a part that is already there is not added twice.
+- **Designs keep their own copy.** Deleting or changing a part in your library never changes a design that uses it.
+
+Not built yet: sharing a library by link and publishing parts to the shared catalogue (#629), which wait on the
+catalogue's review flow (#190).
+
+### The part editor
+
+New part, Edit and Edit a copy open the part editor (`web/src/electronics/PartTools.tsx`, logic in `partDraft.ts`):
+
+- **Symbol** (#626): a pin table, one pin a line as number, name, what it does and optionally a side. Paste it from a
+  spreadsheet or a datasheet; plain words work ("power in", "io", "nc"). The symbol is drawn as a box with the pins set
+  out like the package. A copy of a library part keeps its drawing unless you ask for a box; you can still rename its
+  pins and change what they do.
+- **Footprint** (#627): pick a package family and type the sizes from the datasheet's land pattern, in mm. The families
+  are two-pad chip, two rows (SOIC, SOP, TSSOP), four sides (QFP, QFN with a centre pad), DIP, pin header and ball grid
+  (`packages/electronics/src/library/wizards.ts`). Each gets a fabrication outline, courtyard, silkscreen and a pin 1
+  dot. The wizards are tested against KiCad's own footprints for 0603, SOIC-8, DIP-8, a 1 × 4 header and QFN-24.
+- **3D body** (#628): sized from the footprint, or a box or cylinder of your own sizes, or none.
+- **Checks**, as you type: every pin has a pad (this one stops a save), pads closer than 0.2 mm, no courtyard, nothing
+  on the silkscreen to show pin 1, a hole that leaves no copper, pin lines that could not be read.
+
+Not built yet: drawing a symbol's lines and arcs by hand, symbols with several units, editing pads one at a time with
+per-pad mask and paste (#626, #627), and attaching a STEP file or a BetterCad model as the body (#628, with the 3D
+board).
+
+### Importing KiCad files
+
+Import KiCad (#623) takes `.kicad_sym` symbol libraries and `.kicad_mod` footprints, in KiCad 5 to 10 formats
+(`importKicad` in `packages/electronics/src/kicad/import.ts`). You say where they are from and their licence, and both
+are kept on every part.
+
+- A symbol is paired with the footprint its own footprint field names, when that file is among those picked. Failing
+  that, a footprint of that name from the starter library, then the one footprint its filters fit.
+- A symbol with no footprint to be had comes in without one, and the card says so; nothing is forced to fit.
+- A package is only kept if every pin has a pad. KiCad's stacked pins (`[1,2,11,36-38]`) become one pin mapped to all
+  those pads.
+- Power symbols are left out (BetterCad has its own), and so is a footprint no symbol uses.
+
+Tested on files from SparkFun, Espressif and Digi-Key as well as KiCad's own
+(`packages/electronics/src/kicad/testdata/external/README.md` has their credits).
 
 ## What is in it
 
