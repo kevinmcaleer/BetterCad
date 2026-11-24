@@ -45,6 +45,21 @@ export const frameOf = (d: ViewDirection): ViewFrame => (typeof d === "string" ?
 /** What a view shows: the whole model, one component with everything in it, or picked bodies. Hidden bodies stay out. */
 export type ViewShows = ModelViewRequest["shows"];
 
+/**
+ * How a view is drawn (Kev, 2026-11-24): `lineart` its edges, hidden ones dashed when asked; `wireframe` every edge
+ * solid, seen or behind; `shaded` the bodies in their colours under the edges you see; `rendered` path traced in their
+ * colours and finishes, with no lines. Only base and projected views take one; the rest are always line art.
+ */
+export type ViewStyle = "lineart" | "wireframe" | "shaded" | "rendered";
+export const VIEW_STYLES: { id: ViewStyle; label: string }[] = [
+  { id: "lineart", label: "Line art" },
+  { id: "wireframe", label: "Wireframe" },
+  { id: "shaded", label: "Shaded" },
+  { id: "rendered", label: "Rendered" },
+];
+/** A view's style: its own, or line art. */
+export const styleOf = (v: Pick<DrawingView, "style">): ViewStyle => v.style ?? "lineart";
+
 export interface DrawingView {
   id: string;
   /**
@@ -74,6 +89,8 @@ export interface DrawingView {
   hidden: boolean;
   /** Draw tangent edges, where a fillet meets a flat. */
   tangent: boolean;
+  /** How it is drawn. Missing: line art. A projected view starts with its parent's. */
+  style?: ViewStyle;
   /** Where the middle of the view's box sits on the sheet. */
   at: V2;
   /**

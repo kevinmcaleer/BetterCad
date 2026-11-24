@@ -18,6 +18,7 @@ import {
   type AutoRecipe,
   scaleLabel,
   SCALES,
+  styleOf,
   viewScale,
   type Drawing,
   type DrawingDimension,
@@ -53,6 +54,8 @@ import { PartsList } from "./PartsList";
 import { ProjectedViewCard } from "./ProjectedViewCard";
 import { SheetArt } from "./Sheet";
 import { useModelViews, type ViewCall, type ViewWanted } from "./useModelViews";
+import { usePictures } from "./usePictures";
+import type { PictureModel } from "./pictures";
 import { CutCard, CUT_NAMES, isCutTool, type CutTool } from "./CutCard";
 import { CutLayer, type CutGhost } from "./CutLayer";
 import { isNoteTool, NoteCard, noteKindOf, type NoteTool } from "./NoteCard";
@@ -149,6 +152,9 @@ export type DrawingTool = "base" | "projected" | "export" | "dimension" | "auto"
 export { isNoteTool, type NoteTool } from "./NoteCard";
 export { isCutTool, type CutTool } from "./CutCard";
 export { isMarkTool, type MarkTool } from "./MarkLayer";
+// For the properties panel's view card and the pictures, which load later: from here, so they share this chunk.
+export { frameOf, scaleLabel, styleOf, VIEW_STYLES, viewScale } from "@bettercad/kernel/drawing";
+export { viewName } from "./views";
 
 export interface DrawingApi {
   fit(): void;
@@ -193,6 +199,10 @@ export interface DrawingPaperProps {
   say?: (text: string, bad?: boolean) => void;
   /** The drawing's decimal places were changed, from the Dimension card (#564). */
   onDecimals?: (places: number) => void;
+  /** The meshes, looks and pose that shaded and rendered views are pictured from. Left out, they are drawn as line art. */
+  pictures?: PictureModel;
+  /** The view that is selected changed, for the properties panel's Style. */
+  onSelectView?: (id: string | null) => void;
 }
 
 /**
@@ -242,6 +252,8 @@ function Paper({
   onSave,
   say,
   onDecimals,
+  pictures: pictureFrom,
+  onSelectView,
 }: DrawingPaperProps & { strip?: boolean }) {
   const sheet = sheetOf(drawing, sheetId);
   const sheetNumber = drawing.sheets.indexOf(sheet) + 1;
@@ -324,6 +336,8 @@ function Paper({
   const [choice, setChoice] = useState<ViewChoice>(FIRST_VIEW);
   const [changing, setChanging] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => onSelectView?.(selected), [onSelectView, selected]);
+  useEffect(() => () => onSelectView?.(null), [onSelectView]);
   const [moving, setMoving] = useState<{ id: string; at: V2 } | null>(null);
   /** Where the pointer is on the sheet, for the view being placed. */
   const [pointer, setPointer] = useState<V2 | null>(null);
@@ -398,6 +412,10 @@ function Paper({
   // changed sizes; your next change writes that down with it, so undo takes both back together.
   const pictureOf = useCallback((id: string) => got.get(id)?.view, [got]);
   const followed = useMemo(() => follow(sheet, pictureOf, drawing.decimals), [sheet, pictureOf, drawing.decimals]);
+  // Shaded and rendered views (Kev, 2026-11-24): their pictures, as each is made.
+  const { meshes, parts: looks, built, pose } = pictureFrom ?? {};
+  const pictureModel = useMemo(() => meshes && looks && built && { meshes, parts: looks, built, pose }, [meshes, looks, built, pose]);
+  const pics = usePictures(sheet, pictureOf, pictureModel);
   const onSheet = write
     ? (change: (s: DrawingSheet) => DrawingSheet, label: string) =>
         write((s) => stamp(change(follow(s, pictureOf, drawing.decimals)), pictureOf, drawing.decimals), label)
@@ -1049,6 +1067,8 @@ function Paper({
               const g = got.get(v.id);
               const scale = viewScale(sheet, v);
               const art = g?.view ? artOf(g.view, scale) : undefined;
+              const look = styleOf(v);
+              const pic = look === "shaded" || look === "rendered" ? pics.get(v.id) : undefined;
               const [x, y] = toPage(v.at, ph);
               const gone = wrong.some((p) => p.kind === "view" && p.id === v.id);
               const state = g?.error ? ", could not be drawn" : !art ? ", being worked out" : gone ? ", nothing to show" : "";
@@ -1079,8 +1099,12 @@ function Paper({
                 >
                   <rect className={art ? "bc-view-hit" : "bc-view-hit bc-view-wait"} x={-w / 2} y={-h / 2} width={w} height={h} />
                   {art?.thin && <path className="bc-view-thin" d={art.thin} />}
-                  {art && <path className="bc-view-hidden" d={art.hidden} />}
-                  {art && <path className="bc-view-visible" d={art.visible} />}
+                  {pic && art ? (
+                    <image className="bc-view-picture" href={pic.data} x={-art.w / 2} y={-art.h / 2} width={art.w} height={art.h} preserveAspectRatio="none" />
+                  ) : (
+                    art && <path className={look === "wireframe" ? "bc-view-visible" : "bc-view-hidden"} d={art.hidden} />
+                  )}
+                  {art && (!pic || look === "shaded") && <path className="bc-view-visible" d={art.visible} />}
                   {g?.view && <CutLayer art={cutArt(shown, v, pictureOf)} ghost={cutParent?.id === v.id ? cutGhost : undefined} />}
                   {g?.view && (
                     <MarkLayer
@@ -1393,6 +1417,7 @@ function Paper({
             sheet={followed}
             layout={layout}
             viewOf={(id) => got.get(id)?.view}
+            pictures={pictureModel ? (sh, of) => import("./pictures").then((m) => m.sheetPictures(sh, of, pictureModel)) : undefined}
             viewsOf={
               doc && call
                 ? async (other) => {

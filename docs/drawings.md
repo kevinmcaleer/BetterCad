@@ -23,6 +23,22 @@ back to the model.
 
 Every tool is also on the Drawing tab of the ribbon and under Ctrl+K (⌘K).
 
+## View styles
+
+Select a base or projected view and its **Style** is in the properties panel on the right:
+
+- **Line art** (the default): the edges you see, and hidden edges dashed when the view has them on.
+- **Wireframe**: every edge solid, the ones behind too.
+- **Shaded**: the bodies in their colours, lit as the modelling view is, under the edges you see.
+- **Rendered**: path traced in each body's colour and finish, with no lines. It shows shaded while the path tracer
+  works, and stays shaded if the browser takes more than 30 s or draws WebGL without a graphics card
+  (SwiftShader, llvmpipe), where a render would take minutes.
+
+A projected view starts with its parent's style, and follows it while it still has the parent's old one. Section and
+detail views, and views with breaks, are always line art. The pictures come from `web/src/drawing/pictures.ts`, which
+frames the bodies square on through an orthographic camera matching the view's box, so they lie exactly under its
+lines. They are JPEGs on white, laid over the paper with multiply so the white takes the paper's colour in every theme.
+
 ## Page sizes and standards
 
 A series pages (A4 to A0) start a sheet to ISO: first angle projection, sizes written along their lines, 8 mm between
@@ -196,7 +212,9 @@ back (`web/src/drawing/follow.ts`).
 **Export** writes the sheet as PDF, SVG, DXF or PNG, or prints it. Exports are black on white whatever the theme, and
 text is written as outlines so it looks the same everywhere. DXF puts lines on layers: VISIBLE, HIDDEN, CENTRE,
 DIMENSIONS, BORDER and TITLE. A single view can also be exported at full size as DXF or SVG for a laser cutter. Every
-format is written from one picture of the sheet, `sheetScene` in `web/src/drawing/export/scene.ts`.
+format is written from one picture of the sheet, `sheetScene` in `web/src/drawing/export/scene.ts`. Shaded and
+rendered views go into PDF, SVG and PNG as their pictures (about 200 and 125 dpi); DXF has no pictures, so it gets
+their lines as line art.
 
 ## Tests
 

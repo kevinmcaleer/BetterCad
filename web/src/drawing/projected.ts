@@ -119,6 +119,7 @@ export function placeProjected(sheet: DrawingSheet, id: string, parentId: string
     tangent: parent.tangent,
     at,
   };
+  if (parent.style) view.style = parent.style;
   return { ...sheet, views: [...sheet.views, { ...view, at: lineUp({ ...sheet, views: [...sheet.views, view] }, view, at) }] };
 }
 
@@ -174,6 +175,8 @@ export function followParent(sheet: DrawingSheet, before: DrawingView): DrawingS
         direction: v.kind === "detail" ? parent.direction : from ? directionFor(frameFrom(frameOf(parent.direction), from)) : v.direction,
         hidden: v.hidden === old.hidden ? parent.hidden : v.hidden,
         tangent: v.tangent === old.tangent ? parent.tangent : v.tangent,
+        // Sections and details stay line art.
+        style: v.kind === "projected" && v.style === old.style ? parent.style : v.style,
       });
       walk(v.id);
     }

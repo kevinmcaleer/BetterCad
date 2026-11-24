@@ -17,6 +17,7 @@ import {
   Mesh,
   MeshPhysicalMaterial,
   MeshStandardMaterial,
+  OrthographicCamera,
   PlaneGeometry,
   Scene,
   Vector3,
@@ -69,6 +70,8 @@ const Z_TO_Y = new Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1
 export interface PathRenderOptions {
   /** Called after each sample, with the count. */
   onSample?: (samples: number) => void;
+  /** Keep what is behind the model see-through, for a picture laid over something else (a drawing view). */
+  alpha?: boolean;
 }
 
 export class PathRender {
@@ -120,7 +123,7 @@ export class PathRender {
     readonly canvas: HTMLCanvasElement,
     private opts: PathRenderOptions = {},
   ) {
-    this.renderer = new WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+    this.renderer = new WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: !!opts.alpha });
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.tracer = new WebGLPathTracer(this.renderer);
@@ -220,6 +223,26 @@ export class PathRender {
     this.floor.updateMatrixWorld();
     const d = LOOKS.studio.sunDir;
     this.sun.position.set(d[0] * reach * 4, d[1] * reach * 4, d[2] * reach * 4);
+  }
+
+  /**
+   * For a drawing view (#555): no floor or walls and nothing behind (make it with `alpha`), seen square on through an orthographic camera
+   * at `eye` looking at `look`, `half` the width and height it frames, so the picture lies exactly under the view's
+   * lines. Points are BetterCad's own, Z up. Call after `setBodies`.
+   */
+  square(o: { eye: [number, number, number]; look: [number, number, number]; up: [number, number, number]; half: [number, number]; far: number }): void {
+    this.scene.remove(this.floor, this.walls);
+    this.scene.background = null;
+    const cam = new OrthographicCamera(-o.half[0], o.half[0], o.half[1], -o.half[1], 0.1, o.far);
+    cam.position.copy(yUp(o.eye));
+    cam.up.copy(yUp(o.up));
+    cam.lookAt(yUp(o.look));
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld();
+    // Smaller tiles, so each step of the render is short and it can stop soon after it is no longer wanted.
+    this.tracer.tiles.set(4, 4);
+    this.tracer.setScene(this.scene, cam);
+    this.restart();
   }
 
   /** Colours and finishes, or every part in one matte paper white, like a clay render. */

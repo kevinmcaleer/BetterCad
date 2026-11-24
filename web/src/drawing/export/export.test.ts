@@ -105,6 +105,39 @@ describe("the scene", () => {
     expect(viewScene(plate, true).strokes.filter((s) => s.layer === "hidden")).toHaveLength(2);
   });
 
+  describe("view styles", () => {
+    const styled = (style: "shaded" | "rendered" | "wireframe") => ({ ...sheet, views: [{ ...sheet.views[0]!, style }] });
+    const pic = { data: "data:image/jpeg;base64,AA==", px: { w: 640, h: 320 } };
+    const v1 = (s: { strokes: { layer: string; curve: { kind: string } }[] }) => s.strokes.filter((x) => x.layer === "visible" || x.layer === "hidden");
+
+    it("puts a shaded view's picture over its box, under the edges you see, with no hidden ones", () => {
+      const s = sheetScene(styled("shaded"), layout, () => plate, undefined, { pictures: () => pic });
+      // At 2:1 about (110, 140): 80 by 40 mm from (70, 120).
+      expect(s.images).toEqual([{ data: pic.data, px: pic.px, at: [70, 120], w: 80, h: 40 }]);
+      expect(v1(s).every((x) => x.layer === "visible")).toBe(true);
+      expect(v1(s)).toHaveLength(8);
+    });
+
+    it("draws a rendered view as its picture alone", () => {
+      const s = sheetScene(styled("rendered"), layout, () => plate, undefined, { pictures: () => pic });
+      expect(s.images).toHaveLength(1);
+      expect(v1(s)).toHaveLength(0);
+    });
+
+    it("draws every edge of a wireframe solid", () => {
+      const s = sheetScene(styled("wireframe"), layout, () => plate);
+      expect(v1(s)).toHaveLength(10);
+      expect(v1(s).every((x) => x.layer === "visible")).toBe(true);
+    });
+
+    it("falls back to line art with no picture, as DXF asks, or when the view has breaks", () => {
+      const lines = (sh: DrawingSheet, pictures?: () => typeof pic) => v1(sheetScene(sh, layout, () => plate, undefined, { pictures })).length;
+      expect(lines(styled("rendered"))).toBe(10);
+      const broken = { ...sheet, views: [{ ...sheet.views[0]!, style: "shaded" as const, breaks: [{ axis: "x" as const, from: 10, to: 20 }] }] };
+      expect(lines(broken, () => pic)).toBe(10);
+    });
+  });
+
   it("turns round curves into Béziers that stay on the curve", () => {
     const r = roundOf({ kind: "ellipse", c: [0, 0], rx: 5, ry: 3, turn: 0.5 });
     const { start, pieces } = cubics(r);
