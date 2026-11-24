@@ -19,16 +19,13 @@ import type { Sketch } from "@bettercad/sketch";
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
-import { SOURCE_URL } from "../help/about";
+import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
 import { eui, type EView, type PcbTool, type SchTool } from "./ui";
 import { useEui } from "./useEui";
 
 export { onDesign } from "./design";
 
 // The Components panel brings the library, your own parts and their sync: fetched when it first opens.
-/** The user guide (#668): how to draw a schematic, lay out the board and order it. */
-export const GUIDE_URL = `${SOURCE_URL}/blob/main/docs/electronics-guide.md`;
-
 const ComponentsCard = lazy(() => import("./Components"));
 // The rules check, the parts table and export each load when they are first opened.
 // The board's drawing, picking and layers load with the PCB view, so the schematic opens without them.

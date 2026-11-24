@@ -4,8 +4,8 @@ The electronics workspace (epic #606): draw a schematic, push it to a PCB, and g
 step. This page is for people working on the code. Millimetres everywhere, x to the right, y up, angles anticlockwise.
 
 For people using it: [the guide](electronics-guide.md), [ordering a board](electronics-ordering.md) and the lesson
-[Your first board](lessons/your-first-board.md). The guide opens from the empty schematic and from Electronics guide in
-the command finder (#668).
+[Your first board](lessons/your-first-board.md). The guide opens from Help, from the empty schematic and from Electronics guide
+in the command finder (#668).
 
 ## What we reuse and what we wrote (#614)
 

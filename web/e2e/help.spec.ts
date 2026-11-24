@@ -4,7 +4,7 @@ test("Help lists shortcuts, the tour, the course, reports and About", async ({ p
   await page.goto("/");
   await expect(page.getByTestId("view-canvas")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Help" }).click();
-  for (const name of ["Keyboard shortcuts", "Take the tour", "Learn BetterCad", "Report a problem…", "What's new", "About BetterCad"]) {
+  for (const name of ["Keyboard shortcuts", "Take the tour", "Learn BetterCad", "Electronics guide", "Report a problem…", "What's new", "About BetterCad"]) {
     await expect(page.getByRole("menuitem", { name: new RegExp(`^${name}`) })).toBeVisible();
   }
   await page.getByRole("menuitem", { name: "About BetterCad" }).click();
