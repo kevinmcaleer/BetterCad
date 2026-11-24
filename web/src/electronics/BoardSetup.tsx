@@ -1,7 +1,9 @@
 import { useId, useMemo, useState } from "react";
 import { boardSize, netlist, type Board, type ElectronicsDesign, type NetClass } from "@bettercad/electronics";
+import { followSketch, outlineBehind, unfollowSketch, type OutlineShape } from "@bettercad/electronics/pcb/outline";
 import { outlineRadius, roundedOutline, setBoard } from "@bettercad/electronics/pcb/route";
 import { PRESETS, RULE_FIELDS, applyPreset, matchesPreset, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
+import { profiles, type Sketch } from "@bettercad/sketch";
 import { Button, ESC, FeaturePanel, FeatureRow, NumberField, PanelNote, useEscape } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 
@@ -17,7 +19,38 @@ const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en
  * Board setup (#637, #643): the board's size, thickness and colours, the rules it is checked against and the net
  * classes that give some nets wider tracks. Every change is one undo step.
  */
-export default function BoardSetup({ design, edit, readOnly, onClose }: { design: ElectronicsDesign; edit: EEdit; readOnly?: boolean; onClose: () => void }) {
+/** A sketch in the model the board can take its shape from. */
+export interface OutlineSketch {
+  id: string;
+  name: string;
+  sketch: Sketch;
+}
+
+/** A sketch's biggest closed shape, with the shapes inside it as holes. */
+function shapeOf(sketch: Sketch): OutlineShape | null {
+  const best = profiles(sketch).profiles.reduce<ReturnType<typeof profiles>["profiles"][number] | null>((a, b) => (a && a.area >= b.area ? a : b), null);
+  return best ? { outer: best.points.map((p) => [p[0], p[1]]), holes: best.holes.map((h) => h.points.map((p) => [p[0], p[1]])) } : null;
+}
+
+export default function BoardSetup({
+  design,
+  edit,
+  readOnly,
+  onClose,
+  sketches = [],
+  inModel,
+  onAddBoard,
+}: {
+  design: ElectronicsDesign;
+  edit: EEdit;
+  readOnly?: boolean;
+  onClose: () => void;
+  /** The model's sketches, for a board that takes its shape from one. */
+  sketches?: OutlineSketch[];
+  /** Whether the model has its Board step, and how to add it. */
+  inModel?: boolean;
+  onAddBoard?: () => void;
+}) {
   const id = useId();
   const board = design.board!;
   const size = boardSize(board);
@@ -34,6 +67,10 @@ export default function BoardSetup({ design, edit, readOnly, onClose }: { design
     [design],
   );
   useEscape(true, onClose, ESC.panel);
+  const shapes = useMemo(() => sketches.flatMap((s) => (shapeOf(s.sketch) ? [{ id: s.id, name: s.name, shape: shapeOf(s.sketch)! }] : [])), [sketches]);
+  const followed = board.outlineFrom?.sketch;
+  const source = shapes.find((s) => s.id === followed);
+  const behind = !!source && outlineBehind(board, source.shape);
 
   const shape = (w: number, h: number, r: number) => edit((d) => setBoard(d, { outline: roundedOutline(w, h, r) }), "Change the board's size", "ec-board-size");
   const classes = (next: NetClass[], label: string, key?: string) => edit((d) => setBoard(d, { classes: next }), label, key);
@@ -53,7 +90,49 @@ export default function BoardSetup({ design, edit, readOnly, onClose }: { design
     >
       <fieldset className="bc-ec-set" disabled={readOnly}>
         <legend>Size</legend>
-        {plain ? (
+        {(shapes.length > 0 || followed) && (
+          <FeatureRow label="Shape">
+            <select
+              className="bc-select"
+              aria-label="Board shape"
+              value={followed ?? ""}
+              onChange={({ target: { value } }) => {
+                const to = shapes.find((s) => s.id === value);
+                if (to) edit((d) => followSketch(d, to.id, to.shape), `Shape the board from ${to.name}`);
+                else edit(unfollowSketch, "Stop following the sketch");
+              }}
+            >
+              <option value="">Set here</option>
+              {followed && !source && <option value={followed}>A sketch that is gone</option>}
+              {shapes.map((s) => (
+                <option key={s.id} value={s.id}>
+                  From {s.name}
+                </option>
+              ))}
+            </select>
+          </FeatureRow>
+        )}
+        {followed ? (
+          <>
+            <PanelNote>
+              {source
+                ? `The outline follows ${source.name}: ${size.w} × ${size.h} mm. Shapes inside it are cut out.`
+                : "The sketch the outline followed is gone, or has no closed shape. The outline stays as it was."}
+            </PanelNote>
+            {behind && source && (
+              <>
+                <PanelNote live>{source.name} has changed since the board took its shape.</PanelNote>
+                <Button
+                  size="dense"
+                  variant="primary"
+                  label="Update the outline"
+                  title="Take the sketch's shape as it is now"
+                  onClick={() => edit((d) => followSketch(d, source.id, source.shape), "Update the board's outline")}
+                />
+              </>
+            )}
+          </>
+        ) : plain ? (
           <div className="bc-ec-set-row">
             <NumberField label="Width" value={size.w} min={2} max={500} onCommit={(v) => shape(v, size.h, radius)} />
             <NumberField label="Height" value={size.h} min={2} max={500} onCommit={(v) => shape(size.w, v, radius)} />
@@ -113,6 +192,21 @@ export default function BoardSetup({ design, edit, readOnly, onClose }: { design
           </select>
         </FeatureRow>
       </fieldset>
+
+      {onAddBoard && !inModel && (
+        <fieldset className="bc-ec-set" disabled={readOnly}>
+          <legend>In the model</legend>
+          <PanelNote>The board is not in the 3D model yet. Add it to see it with its parts, and to design a case round it.</PanelNote>
+          <Button
+            size="dense"
+            variant="secondary"
+            icon="cube"
+            label="Add the board to the model"
+            title="Add a Board step to the timeline"
+            onClick={onAddBoard}
+          />
+        </fieldset>
+      )}
 
       <fieldset className="bc-ec-set" disabled={readOnly}>
         <legend>Rules</legend>

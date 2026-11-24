@@ -10,6 +10,7 @@ import {
   type Shape,
   type Side,
 } from "@bettercad/electronics";
+import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
 import type { Colours } from "./colours";
 import { rubber } from "./drawSchematic";
 import { toScreen, type View2D } from "./view2d";
@@ -44,6 +45,91 @@ export interface BoardLook {
     placements?: { part: string; x: number; y: number; rot: number; side: Side }[];
   };
   box?: [P2, P2] | null;
+  /** The pours as they fill: what to paint and the islands to leave out. */
+  pours?: { shape: PourShape; fill: PourFill }[];
+  /** An area being drawn, corner by corner. */
+  area?: P2[];
+}
+
+let scratch: HTMLCanvasElement | null = null;
+
+/**
+ * Paints a pour the way a Gerber file will: the area, cut to the board; rings round its own pads knocked out; spokes
+ * laid back; then everything it keeps clear of knocked out. It is drawn apart and laid on the board, so knocking out
+ * never rubs out what is underneath.
+ */
+function paintPour(
+  ctx: CanvasRenderingContext2D,
+  v: View2D,
+  size: { w: number; h: number },
+  { shape, fill }: { shape: PourShape; fill: PourFill },
+  colour: string,
+  alpha: number,
+) {
+  if (typeof document === "undefined") return;
+  scratch ??= document.createElement("canvas");
+  const dpr = ctx.canvas.width / Math.max(1, size.w);
+  if (scratch.width !== ctx.canvas.width || scratch.height !== ctx.canvas.height) {
+    scratch.width = ctx.canvas.width;
+    scratch.height = ctx.canvas.height;
+  }
+  const o = scratch.getContext("2d");
+  if (!o) return;
+  o.setTransform(dpr, 0, 0, dpr, 0, 0);
+  o.globalCompositeOperation = "source-over";
+  o.clearRect(0, 0, size.w, size.h);
+  o.save();
+  o.beginPath();
+  for (const loop of shape.board)
+    loop.forEach((p, i) => {
+      const s = toScreen(v, p);
+      if (i) o.lineTo(s[0], s[1]);
+      else o.moveTo(s[0], s[1]);
+    });
+  o.clip("evenodd");
+  o.fillStyle = colour;
+  o.strokeStyle = colour;
+  o.lineJoin = "round";
+  path(o, v, shape.outline, true);
+  o.fill();
+  const knock = (k: PourShape["knocks"][number]) => {
+    const r = (k.r + k.reach) * v.scale;
+    if (k.pts.length === 1) {
+      const s = toScreen(v, k.pts[0]!);
+      o.beginPath();
+      o.arc(s[0], s[1], r, 0, Math.PI * 2);
+      o.fill();
+      return;
+    }
+    path(o, v, k.pts, k.pts.length > 2);
+    if (k.pts.length > 2) o.fill();
+    if (r > 0) {
+      o.lineWidth = r * 2;
+      o.lineCap = "round";
+      o.stroke();
+    }
+  };
+  o.globalCompositeOperation = "destination-out";
+  shape.rings.forEach(knock);
+  o.globalCompositeOperation = "source-over";
+  o.lineCap = "butt";
+  for (const s of shape.spokes) {
+    o.lineWidth = Math.max(1, s.width * v.scale);
+    path(o, v, [s.a, s.b]);
+    o.stroke();
+  }
+  o.globalCompositeOperation = "destination-out";
+  shape.knocks.forEach(knock);
+  for (const [x, y, w, h] of fill.islands) {
+    const s = toScreen(v, [x, y + h]);
+    o.fillRect(s[0], s[1], w * v.scale, h * v.scale);
+  }
+  o.restore();
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(scratch, 0, 0);
+  ctx.restore();
 }
 
 function path(ctx: CanvasRenderingContext2D, v: View2D, pts: P2[], close = false) {
@@ -148,13 +234,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     if (!show(layer as LayerId)) continue;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    for (const pour of board.pours) {
-      if (pour.layer !== layer) continue;
-      ctx.globalAlpha = lit(pour.net) ? 0.35 : 0.12;
-      ctx.fillStyle = copper(layer);
-      path(ctx, v, pour.outline, true);
-      ctx.fill();
-    }
+    for (const p of look.pours ?? []) if (p.shape.pour.layer === layer) paintPour(ctx, v, size, p, copper(layer), lit(p.shape.pour.net) ? 0.55 : 0.2);
     for (const t of board.tracks) {
       if (t.layer !== layer) continue;
       const on = look.selected.has(t.id) || look.hover === t.id;
@@ -296,13 +376,48 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     ctx.restore();
   }
 
+  // Areas: keep-outs dashed, a pour's own outline thin, the picked one bright.
+  ctx.lineJoin = "round";
   for (const k of board.keepouts) {
-    ctx.strokeStyle = c["ec-mark"];
-    ctx.lineWidth = 1;
+    const on = look.selected.has(k.id) || look.hover === k.id;
+    ctx.strokeStyle = on ? c["ec-pick"] : c["ec-mark"];
+    ctx.lineWidth = on ? 2 : 1;
     ctx.setLineDash([6, 4]);
     path(ctx, v, k.outline, true);
     ctx.stroke();
     ctx.setLineDash([]);
+  }
+  for (const p of board.pours) {
+    const on = look.selected.has(p.id) || look.hover === p.id;
+    if (!on && !show(p.layer as LayerId)) continue;
+    ctx.strokeStyle = on ? c["ec-pick"] : copper(p.layer);
+    ctx.globalAlpha = on ? 1 : 0.6;
+    ctx.lineWidth = on ? 2 : 1;
+    ctx.setLineDash([2, 3]);
+    path(ctx, v, p.outline, true);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+  (board.cutouts ?? []).forEach((cut, i) => {
+    if (!look.selected.has(`cut:${i}`) && look.hover !== `cut:${i}`) return;
+    ctx.strokeStyle = c["ec-pick"];
+    ctx.lineWidth = 2;
+    path(ctx, v, outlinePoints(cut), true);
+    ctx.stroke();
+  });
+  if (look.area?.length) {
+    ctx.strokeStyle = c["ec-pick"];
+    ctx.fillStyle = c["ec-pick"];
+    ctx.lineWidth = 1.5;
+    path(ctx, v, look.area);
+    ctx.stroke();
+    for (const p of look.area.slice(0, -1)) {
+      const s = toScreen(v, p);
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   if (show("edge")) {

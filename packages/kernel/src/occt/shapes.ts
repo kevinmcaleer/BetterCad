@@ -2,7 +2,7 @@ import type { TopoDS_Shape, TopoDS_Edge, TopoDS_Face, NCollection_List_TopoDS_Sh
 import type { OC } from "./oc";
 import { KernelError, mm } from "../errors";
 import { toWorld, type Frame, type Vec2 } from "@bettercad/sketch";
-import type { EllipseSeg, SplineSeg, LoftSpec, PrismSpec, ProfileSeg, RevolveSpec, SweepSpec } from "../extrude";
+import { segPoints, type EllipseSeg, type SplineSeg, type LoftSpec, type PrismSpec, type ProfileSeg, type RevolveSpec, type SweepSpec } from "../extrude";
 import { holeSection, type HoleSpec } from "../holes";
 import type { CopyMove, Plane } from "../pattern";
 
@@ -323,7 +323,32 @@ function straightPrism(oc: OC, spec: PrismSpec, t?: Tracker): TopoDS_Shape {
         return out;
       });
     });
+  // Twice the area a loop encloses, signed: positive when it runs anticlockwise seen from the normal's tip.
+  const turns = (segs: ProfileSeg[]) => {
+    const pts = segs.flatMap((g) => (g.kind === "arc" ? [g.a, g.m] : g.kind === "line" ? [g.a] : segPoints(g)));
+    return pts.reduce((sum, a, i) => sum + a[0] * pts[(i + 1) % pts.length]![1] - pts[(i + 1) % pts.length]![0] * a[1], 0);
+  };
+  /** One face with its holes as inner outlines, pushed once. */
+  const pierced = (p: PrismSpec["profiles"][number], k: number) =>
+    guard(oc, "open-profile", "This shape could not be filled. Check it is closed and does not cross itself.", () => {
+      const named: [TopoDS_Shape, string][] | undefined = t ? [] : undefined;
+      const wire = (segs: ProfileSeg[], tag: string, hole: boolean) => {
+        const w = outlineWire(oc, spec, segs, spec.from, named, tag);
+        // The outline runs anticlockwise and holes clockwise; a full circle is made anticlockwise.
+        const ccw = segs.length === 1 && segs[0]!.kind === "circle" ? true : turns(segs) > 0;
+        return oc.TopoDS.Wire(ccw === hole ? w.Reversed() : w);
+      };
+      const mk = new oc.BRepBuilderAPI_MakeFace(wire(p.outer, `p${k}.`, false), true);
+      if (!mk.IsDone()) throw new KernelError("open-profile", "This shape could not be filled. Check it is closed and does not cross itself.");
+      p.holes.forEach((h, j) => mk.Add(wire(h, `p${k}h${j}.`, true)));
+      if (!t) return prism(oc, mk.Face(), v);
+      const pm = new oc.BRepPrimAPI_MakePrism(mk.Face(), new oc.gp_Vec(...v), false, true);
+      const out = pm.Shape();
+      t.sweep(pm, out, named!);
+      return out;
+    });
   const bodies = spec.profiles.map((p, k) => {
+    if (spec.pierced) return pierced(p, k);
     const outer = solidOf(p.outer, `p${k}.`);
     return p.holes.length
       ? boolean(

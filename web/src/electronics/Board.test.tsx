@@ -2,7 +2,9 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { BASICS, emptyDesign, placePart, pushToBoard, type ElectronicsDesign } from "@bettercad/electronics";
+import { addKeepoutArea, addPour, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import { addHole, addTrack, setPlacement } from "@bettercad/electronics/pcb/route";
+import { drawCircle, drawRectangle, newSketch } from "@bettercad/sketch";
 import type { EEdit } from "./actions";
 import BoardChecks from "./BoardChecks";
 import BoardProps from "./BoardProps";
@@ -116,7 +118,64 @@ describe("board setup", () => {
   });
 });
 
+describe("a board shaped by a sketch", () => {
+  it("takes its outline and cut-outs from a sketch, and says when the sketch has changed", async () => {
+    const plate = (w: number) => ({
+      id: "sk1",
+      name: "Lid",
+      sketch: drawCircle(drawRectangle(newSketch(), [100, 100], [100 + w, 130]).sketch, [110, 110], 3).sketch,
+    });
+    let sketches = [plate(70)];
+    const s = setup(board().d, (design, edit) => <BoardSetup design={design} edit={edit} sketches={sketches} onClose={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Board shape"), "From Lid");
+    expect(s.labels).toContain("Shape the board from Lid");
+    expect(s.design().board).toMatchObject({ outlineFrom: { sketch: "sk1" } });
+    expect(s.design().board!.cutouts).toHaveLength(1);
+    expect(screen.getByText(/The outline follows Lid: 70 × 30 mm/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Width (mm)")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Update the outline" })).toBeNull();
+    // The sketch grows: the board says so, and catches up when asked.
+    sketches = [plate(80)];
+    await userEvent.selectOptions(screen.getByLabelText("Solder mask"), "Blue");
+    expect(screen.getByText("Lid has changed since the board took its shape.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Update the outline" }));
+    expect(screen.getByText(/The outline follows Lid: 80 × 30 mm/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Board shape"), "Set here");
+    expect(s.design().board!.outlineFrom).toBeUndefined();
+    expect(screen.getByLabelText("Width (mm)")).toHaveValue("80");
+  });
+});
+
 describe("what is picked on the board", () => {
+  it("changes a pour's net, side and joins, and what a keep-out keeps out", async () => {
+    let d = board().d;
+    d = addPour(d, "", "top", wholeBoard(d.board!));
+    d = addKeepoutArea(d, [
+      [2, 2],
+      [8, 2],
+      [8, 8],
+    ]);
+    let picked = d.board!.pours[0]!.id;
+    const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} selected={[picked]} />);
+    expect(screen.getByRole("group", { name: "Pour" })).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Side"), "Bottom copper");
+    await userEvent.click(screen.getByLabelText("Join pads with spokes"));
+    await userEvent.selectOptions(screen.getByLabelText("Where pours overlap"), "Fills first of all");
+    expect(s.design().board!.pours[0]).toMatchObject({ layer: "bottom", thermal: false, priority: 2 });
+    picked = d.board!.keepouts[0]!.id;
+    await userEvent.click(screen.getByLabelText("Join pads with spokes"));
+    await userEvent.click(screen.getByLabelText("Parts"));
+    await userEvent.click(screen.getByLabelText("Pours"));
+    expect(s.design().board!.keepouts[0]).toMatchObject({ tracks: true, parts: true, pours: false });
+  });
+
+  it("hides a part's name on the silkscreen", async () => {
+    const { d, parts } = board();
+    const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} part={parts[0]} selected={[parts[0]]} />);
+    await userEvent.click(screen.getByLabelText("Name on the silkscreen"));
+    expect(s.design().board!.placements.find((p) => p.part === parts[0])!.refHidden).toBe(true);
+  });
+
   it("places a part by numbers and locks it", async () => {
     const { d, parts } = board();
     const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} part={parts[0]} selected={[parts[0]]} />);

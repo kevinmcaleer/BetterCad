@@ -1,5 +1,6 @@
+import { removeParts } from "../edit";
 import { key, q } from "../geom";
-import { eid, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type Id, type P2, type Placement } from "../model";
+import { eid, isPower, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type Id, type P2, type Placement } from "../model";
 import { clearanceBetween, edgeGap, gap, netRules, type Copper, type Layer, type Solid } from "./copper";
 
 /**
@@ -28,7 +29,7 @@ export interface Blocked {
 
 /** What a new run of track (or a via: one point) would come too close to. Its own net never blocks it. */
 export function blockers(
-  board: Pick<Board, "rules" | "classes">,
+  board: Pick<Board, "rules" | "classes"> & Partial<Pick<Board, "keepouts">>,
   copper: Copper[],
   loops: P2[][],
   run: { net: string; layers: Layer[]; pts: P2[]; width: number },
@@ -43,6 +44,8 @@ export function blockers(
       const g = gap(piece, c);
       if (g < need - 1e-6) out.push({ what: c.what, gap: g, need, at: c.at });
     }
+    for (const k of board.keepouts ?? [])
+      if (k.tracks && gap(piece, { pts: k.outline, r: 0 }) === 0) out.push({ what: "a keep-out", gap: 0, need: 0, at: k.outline[0]! });
     const e = edgeGap(piece, loops);
     if (e < board.rules.copperToEdge - 1e-6) out.push({ what: "the board's edge", gap: Math.max(0, e), need: board.rules.copperToEdge, at: piece.pts[0]! });
   }
@@ -286,4 +289,48 @@ export function addKeepout(d: ElectronicsDesign, a: P2, c: P2, what: { tracks?: 
       },
     ],
   }));
+}
+
+/**
+ * Deletes parts from the board and the schematic together (#645), as one change, so one undo brings both back. The
+ * tracks that ran to them stay: the board check lists them as loose ends.
+ */
+export function deleteParts(d: ElectronicsDesign, parts: Id[]): ElectronicsDesign {
+  const gone = new Set(parts);
+  if (!d.parts.some((p) => gone.has(p.id))) return d;
+  return onBoard(removeParts(d, parts), (b) => ({ ...b, placements: b.placements.filter((p) => !gone.has(p.part)) }));
+}
+
+/** Rows of parts this far apart or less count as one row when renumbering, mm. */
+const ROW = 2.54;
+
+/**
+ * Numbers the parts by where they sit on the board (#645): top side first, in rows from the top, left to right, so
+ * R1 is the first resistor you come to. The schematic's names change with them. Parts not on the board keep their
+ * place after the ones that are.
+ */
+export function renumberOnBoard(d: ElectronicsDesign): ElectronicsDesign {
+  const board = d.board;
+  if (!board) return d;
+  const top = Math.max(0, ...board.placements.map((p) => p.y));
+  const rank = new Map<Id, number>();
+  [...board.placements]
+    .sort((a, b) => Number(a.side === "bottom") - Number(b.side === "bottom") || Math.round((top - a.y) / ROW) - Math.round((top - b.y) / ROW) || a.x - b.x)
+    .forEach((p, i) => rank.set(p.part, i));
+  const next = new Map<string, number>();
+  const ref = new Map<Id, string>();
+  for (const p of [...d.parts].sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity))) {
+    // Power symbols have no number.
+    if (isPower(d, p)) continue;
+    const prefix = d.defs[p.def]?.prefix ?? p.ref.replace(/\d+$/, "");
+    const k = (next.get(prefix) ?? 0) + 1;
+    next.set(prefix, k);
+    ref.set(p.id, `${prefix}${k}`);
+  }
+  if (d.parts.every((p) => (ref.get(p.id) ?? p.ref) === p.ref)) return d;
+  return {
+    ...d,
+    parts: d.parts.map((p) => ({ ...p, ref: ref.get(p.id) ?? p.ref })),
+    board: { ...board, placements: board.placements.map((p) => (ref.has(p.part) ? { ...p, ref: ref.get(p.part)! } : p)) },
+  };
 }

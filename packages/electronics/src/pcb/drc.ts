@@ -1,10 +1,11 @@
-import { boardPads, ratsnest, type BoardPad } from "../board";
+import { ratsnest, type BoardPad } from "../board";
 import { levelOf, waiveIn, type CheckResult } from "../erc";
 import { placeOnBoard, rad } from "../geom";
 import { packageOf, type CheckLevel, type ElectronicsDesign, type Id, type P2 } from "../model";
 import { byRef, netlist, type Netlist } from "../nets";
 import { boardChanges, footprintBox } from "../sync";
-import { clearanceBetween, copperGroups, copperOf, edgeGap, edgeLoops, gap, type Copper, type Solid } from "./copper";
+import { clearanceBetween, edgeGap, edgeLoops, gap, type Copper, type Solid } from "./copper";
+import { boardState } from "./state";
 
 /**
  * The design rule check (#644): what would stop the board being made, or working, in plain words with what to do
@@ -26,6 +27,7 @@ export type BoardRuleId =
   | "courtyard"
   | "track-open"
   | "dead-net"
+  | "pour-empty"
   | "silk-size";
 
 export interface BoardRule {
@@ -49,6 +51,7 @@ export const BOARD_RULES: BoardRule[] = [
   { id: "courtyard", label: "Two parts overlap", level: "warning" },
   { id: "track-open", label: "A track ends in mid air", level: "warning" },
   { id: "dead-net", label: "Copper is left from a net that is gone", level: "warning" },
+  { id: "pour-empty", label: "A pour fills nothing", level: "warning" },
   { id: "silk-size", label: "Silkscreen text is too small", level: "warning" },
 ];
 
@@ -142,8 +145,7 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
   const on = (l: BoardRuleId) => (level.get(l) ?? "ignore") !== "ignore";
 
   const rules = board.rules;
-  const pads = boardPads(d, nl);
-  const copper = copperOf(d, pads);
+  const { pads, copper, groups, fills } = boardState(d, nl);
   const loops = edgeLoops(board);
   const partOfPad = (c: Copper): Id[] => (c.kind === "pad" ? [c.id] : []);
 
@@ -199,7 +201,6 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
 
   // Connections still to route, a net at a time.
   if (on("unrouted")) {
-    const groups = copperGroups(copper);
     const airs = ratsnest(pads, (_, i) => groups[i]!);
     const byNet = new Map<string, typeof airs>();
     for (const a of airs) byNet.set(a.net, [...(byNet.get(a.net) ?? []), a]);
@@ -367,6 +368,17 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
   for (const v of board.vias) if (v.net && !nets.has(v.net) && !dead.has(v.net)) dead.set(v.net, [v.x, v.y]);
   for (const [net, at] of dead)
     add("dead-net", net, `Copper is left on ${net}, a net the schematic no longer has.`, "Delete the copper, or put the net back.", at);
+
+  // A pour that joins none of its net's copper is dropped whole, as one big island.
+  for (const f of fills)
+    if (f.area === 0)
+      add(
+        "pour-empty",
+        f.pour.id,
+        `The pour on ${f.pour.net || "no net"} fills nothing.`,
+        f.pour.net ? "It needs a pad, a via or a track of its net inside it, and room round the other copper." : "Give it a net.",
+        f.pour.outline[0],
+      );
 
   for (const t of board.texts)
     if (t.layer.startsWith("silk") && t.size < rules.minSilkHeight - 1e-6)

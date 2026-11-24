@@ -4,6 +4,7 @@ import {
   emptyBox,
   footprintBox,
   grow,
+  outlinePoints,
   packageOf,
   placeOnBoard,
   type Board,
@@ -15,7 +16,7 @@ import {
 import { inBox } from "./hit";
 
 export interface BoardHit {
-  kind: "part" | "track" | "via" | "hole" | "text" | "pad";
+  kind: "part" | "track" | "via" | "hole" | "text" | "pad" | "area";
   /** A part's id for parts and pads; the thing's own id otherwise. */
   id: string;
   net?: string;
@@ -39,6 +40,15 @@ export function placementBox(d: ElectronicsDesign, at: Board["placements"][numbe
   ] as P2[])
     grow(out, placeOnBoard(p, at));
   return out;
+}
+
+/** The areas drawn on the board: pours, keep-outs and cut-outs (named "cut:" and their place in the list). */
+export function boardAreas(board: Board): { id: string; kind: "pour" | "keepout" | "cutout"; outline: P2[]; net?: string }[] {
+  return [
+    ...board.pours.map((x) => ({ id: x.id, kind: "pour" as const, outline: x.outline, net: x.net })),
+    ...board.keepouts.map((x) => ({ id: x.id, kind: "keepout" as const, outline: x.outline })),
+    ...(board.cutouts ?? []).map((x, i) => ({ id: `cut:${i}`, kind: "cutout" as const, outline: outlinePoints(x) })),
+  ];
 }
 
 /** Everything under a point on the board, smallest things first so a track on a part can still be picked. */
@@ -69,6 +79,9 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
     const b = placementBox(d, at);
     if (b && inBox(p, b, tol * 0.5)) out.push({ kind: "part", id: at.part });
   }
+  // Areas are picked by their edge, so what is inside them can still be reached.
+  for (const a of boardAreas(board))
+    if (a.outline.some((q, i) => distToSegment(p, q, a.outline[(i + 1) % a.outline.length]!) <= tol)) out.push({ kind: "area", id: a.id, net: a.net });
   return out;
 }
 

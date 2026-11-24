@@ -13,8 +13,10 @@ import {
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
-import { boardState, edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
-import { addHole, addText, addTrack, addVia, blockers, corner45, toggleLock } from "@bettercad/electronics/pcb/route";
+import { edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
+import { boardState } from "@bettercad/electronics/pcb/state";
+import { addCutout, addKeepoutArea, addPour, pourShape, removeAreas, wholeBoard } from "@bettercad/electronics/pcb/pour";
+import { addHole, addText, addTrack, addVia, blockers, corner45, deleteParts, renumberOnBoard, toggleLock } from "@bettercad/electronics/pcb/route";
 import { Button, ESC, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
@@ -94,12 +96,19 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const [said, setSaid] = useState("");
   const [ask, setAsk] = useState<{ at: P2; screen: P2 } | null>(null);
   const [text, setText] = useState("");
+  const [area, setArea] = useState<P2[]>([]);
+  const [pourNet, setPourNet] = useState("");
+  const [cut, setCut] = useState(false);
+  const [going, setGoing] = useState<string[] | null>(null);
   const drag = useRef<{ ids: string[]; last: P2; key: string } | null>(null);
 
   const board = design.board;
   const nl = useMemo(() => netlist(design), [design]);
   const state = useMemo(() => boardState(design, nl), [design, nl]);
   const { pads, copper } = state;
+  const pours = useMemo(() => state.fills.map((fill) => ({ fill, shape: pourShape(design, fill.pour, pads, copper) })), [state]); // eslint-disable-line react-hooks/exhaustive-deps
+  const nets = useMemo(() => [...new Set(pads.map((p) => p.net).filter(Boolean))].sort(), [pads]);
+  const fillNet = nets.includes(pourNet) ? pourNet : (nets.find((n) => /^(gnd|ground|0v|vss)$/i.test(n)) ?? nets[0] ?? "");
   const air = useMemo(() => ratsnest(state.pads, state.joined), [state]);
   const loops = useMemo(() => (board ? edgeLoops(board) : []), [board]);
   const selected = useMemo(() => new Set(ui.selected), [ui.selected]);
@@ -116,6 +125,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   useEffect(() => () => eui.set({ unrouted: null }), []);
   useEffect(() => {
     if (tool !== "route") setRoute(null);
+    setArea([]);
     setSaid("");
   }, [tool]);
 
@@ -152,7 +162,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   /** A part wins over its own pads, so a click on a pad picks the part; copper and holes win over parts. */
   const hitAt = (p: P2) => {
     const hits = hitBoard(design, pads, p, tol, shown);
-    return hits.find((h) => h.kind !== "pad" && h.kind !== "part") ?? hits.find((h) => h.kind === "part") ?? hits.find((h) => h.kind === "pad");
+    const small = (h: (typeof hits)[number]) => h.kind !== "pad" && h.kind !== "part" && h.kind !== "area";
+    return hits.find(small) ?? hits.find((h) => h.kind === "part") ?? hits.find((h) => h.kind === "pad") ?? hits.find((h) => h.kind === "area");
   };
   /** The copper with a net under a point: where a track can start or end. */
   const copperAt = (p: P2, net?: string): { net: string; at: P2; layer?: Layer } | null => {
@@ -215,6 +226,18 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     eui.set({ layer: layer === "top" ? "bottom" : "top" });
   };
 
+  /** Closes the area being drawn into a pour, a keep-out or a cut-out. */
+  const closeArea = (pts: P2[] = area) => {
+    setArea([]);
+    if (pts.length < 3) return setSaid("An area needs three corners or more.");
+    setSaid("");
+    if (tool === "pour") {
+      if (!fillNet) return setSaid("There is no net to pour yet. Wire the schematic first.");
+      edit((d) => addPour(d, fillNet, layer, pts), "Add a pour");
+    } else if (cut) edit((d) => addCutout(d, pts), "Cut a hole in the board");
+    else edit((d) => addKeepoutArea(d, pts), "Add a keep-out");
+  };
+
   useEffect(() => {
     const picked = () => eui.get().selected;
     eactions.current = {
@@ -225,20 +248,26 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         if (readOnly || !picked().length) return;
         const parts = new Set(design.board?.placements.map((p) => p.part));
         const rest = picked().filter((id) => !parts.has(id));
-        if (rest.length) edit((d) => removeFromBoard(d, rest), "Delete");
-        eui.set({ selected: picked().filter((id) => parts.has(id)) });
+        const mine = picked().filter((id) => parts.has(id));
+        if (rest.length) edit((d) => removeAreas(removeFromBoard(d, rest), rest), "Delete");
+        eui.set({ selected: mine });
+        // A part is the schematic's too, so that is asked first.
+        setGoing(mine.length ? mine : null);
       },
       push: () => eui.set({ card: "changes" }),
       selectAll: () => eui.set({ selected: design.board?.placements.map((p) => p.part) ?? [] }),
       layer: viaHere,
       lock: () => !readOnly && picked().length && edit((d) => toggleLock(d, picked()), "Lock or unlock"),
       bend: () => route && setRoute({ ...route, diag: !route.diag }),
+      renumber: () => !readOnly && edit(renumberOnBoard, "Renumber by the board"),
     };
     return () => {
       eactions.current = null;
     };
   });
   useEscape(!!route, () => setRoute(null), ESC.drag);
+  useEscape(area.length > 0, () => setArea([]), ESC.drag);
+  useEscape(!!going, () => setGoing(null), ESC.overlay);
   useEscape(!!ask, () => setAsk(null), ESC.overlay);
   useEscape(tool !== "select", () => eui.set({ pcbTool: "select" }), ESC.tool);
   useEscape(tool === "select" && ui.selected.length > 0, () => eui.set({ selected: [], net: null }), ESC.selection);
@@ -308,6 +337,15 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     } else if (tool === "text") {
       setText("");
       setAsk({ at: snap(p.world, grid), screen: p.screen });
+    } else if (tool === "pour" || tool === "keepout") {
+      const to = snap(p.world, grid);
+      const first = area[0];
+      // Back on the first corner closes it.
+      if (first && area.length > 2 && Math.hypot(first[0] - to[0], first[1] - to[1]) <= Math.max(tol, 1e-6)) return closeArea();
+      const last = area[area.length - 1];
+      if (last && last[0] === to[0] && last[1] === to[1]) return;
+      setSaid("");
+      setArea([...area, to]);
     }
   };
 
@@ -332,6 +370,10 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   }, [route, at, board, copper, layer, width, ui.keepClear, grid]); // eslint-disable-line react-hooks/exhaustive-deps
   const marks = useMemo(() => (ui.spot?.sheet === "board" ? [{ at: ui.spot.at }] : undefined), [ui.spot]);
 
+  const drawing = useMemo(() => (area.length ? (at ? [...area, snap(at, grid)] : [...area, area[area.length - 1]!]) : undefined), [area, at, grid]);
+  const asking = going?.every((id) => selected.has(id)) ? going : null;
+  const goingNames = asking?.map((id) => design.parts.find((p) => p.id === id)?.ref ?? "").filter(Boolean) ?? [];
+
   const left = air.length;
   const hint =
     tool === "route"
@@ -344,7 +386,15 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           ? "Click where the mounting hole goes."
           : tool === "text"
             ? "Click where the text starts."
-            : "";
+            : tool === "pour" || tool === "keepout"
+              ? area.length
+                ? "Click the next corner. Click the first corner again, or Done, to close it."
+                : tool === "pour"
+                  ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
+                  : cut
+                    ? "Click the corners of the hole to cut through the board."
+                    : "Click the corners of the area tracks and pours must stay out of."
+              : "";
   return (
     <div ref={host} className="bc-ec-host">
       <div className="bc-ec-clear" aria-hidden="true" />
@@ -359,14 +409,31 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         view={view}
         onView={setView}
         cursor={tool !== "select" ? "crosshair" : hover ? "move" : "default"}
-        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air]}
+        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air, pours, drawing]}
         draw={(ctx, v, size) =>
-          drawBoard(ctx, v, size, design, colours, { selected, hover, hidden, active: ui.layer, net: ui.net, pads, air, box, ghost, marks })
+          drawBoard(ctx, v, size, design, colours, {
+            selected,
+            hover,
+            hidden,
+            active: ui.layer,
+            net: ui.net,
+            pads,
+            air,
+            box,
+            ghost,
+            marks,
+            pours,
+            area: drawing,
+          })
         }
         onDown={onDown}
         onMove={onMove}
         onUp={onUp}
-        onDouble={() => route && setRoute(null)}
+        onDouble={() => {
+          if (route) setRoute(null);
+          // The second click of the pair already added a corner where the first one did, or tried to.
+          if (area.length > 2) closeArea();
+        }}
       />
       {tool !== "select" && (
         <div className="bc-ec-routebar" role="group" aria-label="Tool options">
@@ -412,6 +479,63 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
               )}
             </>
           )}
+          {tool === "pour" && (
+            <>
+              <label>
+                Net
+                <select className="bc-select" aria-label="Net to pour" value={fillNet} onChange={(e) => setPourNet(e.target.value)}>
+                  {nets.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!area.length && board && (
+                <Button
+                  size="dense"
+                  variant="secondary"
+                  label="Whole board"
+                  title={`Fill the whole ${layer} side with copper on this net`}
+                  disabled={!fillNet}
+                  onClick={() => edit((d) => (d.board ? addPour(d, fillNet, layer, wholeBoard(d.board)) : d), "Add a pour")}
+                />
+              )}
+            </>
+          )}
+          {tool === "keepout" && !area.length && (
+            <label>
+              Make
+              <select className="bc-select" aria-label="What the area makes" value={cut ? "cut" : "keep"} onChange={(e) => setCut(e.target.value === "cut")}>
+                <option value="keep">A keep-out</option>
+                <option value="cut">A hole in the board</option>
+              </select>
+            </label>
+          )}
+          {area.length > 0 && (
+            <Button size="dense" variant="secondary" label="Done" title="Close the area" disabled={area.length < 3} onClick={() => closeArea()} />
+          )}
+        </div>
+      )}
+      {asking && tool === "select" && (
+        <div className="bc-ec-routebar" role="group" aria-label="Delete parts">
+          <p role="status">
+            {goingNames.length === 1 ? `Delete ${goingNames[0]} from the schematic too?` : `Delete these ${goingNames.length} parts from the schematic too?`} A
+            part comes off the board when it comes off the schematic.
+          </p>
+          <Button
+            size="dense"
+            variant="danger"
+            label="Delete"
+            title="Take it off the board and the schematic, as one step you can undo"
+            onClick={() => {
+              const ids = asking;
+              edit((d) => deleteParts(d, ids), goingNames.length === 1 ? `Delete ${goingNames[0]}` : "Delete parts");
+              eui.set({ selected: [], net: null });
+              setGoing(null);
+            }}
+          />
+          <Button size="dense" variant="secondary" label="Keep" title="Leave it where it is (Esc)" onClick={() => setGoing(null)} />
         </div>
       )}
       {ask && (

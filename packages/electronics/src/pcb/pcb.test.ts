@@ -4,7 +4,7 @@ import { addWire, placePart } from "../edit";
 import { check, waive } from "../erc";
 import { emptyDesign, type ElectronicsDesign, type P2 } from "../model";
 import { pushToBoard } from "../sync";
-import { boardState, copperOf, edgeGap, edgeLoops, gap, netRules, padSolid } from "./copper";
+import { copperOf, edgeGap, edgeLoops, gap, netRules, padSolid } from "./copper";
 import { BOARD_RULES, checkBoard, waiveBoard, type BoardRuleId } from "./drc";
 import {
   addHole,
@@ -15,7 +15,9 @@ import {
   alignParts,
   blockers,
   corner45,
+  deleteParts,
   outlineRadius,
+  renumberOnBoard,
   ripUpNet,
   roundedOutline,
   setBoard,
@@ -23,7 +25,10 @@ import {
   tidyRun,
   toggleLock,
 } from "./route";
+import { followSketch, outlineBehind, outlineOf, unfollowSketch } from "./outline";
+import { addKeepoutArea, addCutout, addPour, pourFill, pourShape, removeAreas, setPour, wholeBoard, type PourFill } from "./pour";
 import { PRESETS, applyPreset, matchesPreset, setRule } from "./rules";
+import { boardState } from "./state";
 
 const G = GRID;
 
@@ -403,5 +408,218 @@ describe("rule presets", () => {
     expect(setRule(jlc, "clearance", -1)).toBe(jlc);
     expect(applyPreset(jlc, "safe").board!.rules.preset).toBeUndefined();
     expect(setBoard(d, { thickness: 1 }).board!.thickness).toBe(1);
+  });
+});
+
+describe("copper pours", () => {
+  /** A pour over the whole board on the net of pin 1, top side. */
+  const poured = (thermal = true) => {
+    const { d, pad } = netted();
+    const net = boardPads(d).find((p) => p.ref === "R1" && p.pad.number === "1")!.net;
+    const other = boardPads(d).find((p) => p.ref === "R1" && p.pad.number === "2")!.net;
+    return { d: addPour(d, net, "top", wholeBoard(d.board!), thermal), net, other, pad };
+  };
+  const cell = (f: PourFill, p: P2) => f.cells[Math.round((p[1] - f.y0) / f.step) * f.w + Math.round((p[0] - f.x0) / f.step)]!;
+  const left = (d: ElectronicsDesign) => {
+    const s = boardState(d);
+    return ratsnest(s.pads, s.joined).length;
+  };
+
+  it("fills the board, back from the edge and round the other net", () => {
+    const { d, pad } = poured();
+    const f = pourFill(d, d.board!.pours[0]!);
+    expect(f.step).toBeCloseTo(0.1, 6);
+    expect(f.area).toBeGreaterThan(50 * 40 * 0.9);
+    expect(f.area).toBeLessThan(50 * 40);
+    expect(cell(f, [25, 5])).toBeGreaterThan(0);
+    // Bare board inside the edge clearance, and on and round the other net's pad.
+    expect(cell(f, [0.15, 20])).toBe(0);
+    expect(cell(f, [0.6, 20])).toBeGreaterThan(0);
+    const two = pad("J1", "2");
+    expect(cell(f, two)).toBe(0);
+    expect(cell(f, [two[0] + 1.05, two[1]])).toBe(0);
+    expect(f.islands).toEqual([]);
+  });
+
+  it("joins its own pads, so they need no track", () => {
+    const { d } = poured();
+    expect(left(netted().d)).toBe(2);
+    expect(left(d)).toBe(1);
+    const found = checkBoard(d).filter((r) => r.rule === "unrouted");
+    expect(found).toHaveLength(1);
+  });
+
+  it("reaches a pad through spokes, or all round it when the pour is solid", () => {
+    const { d, pad } = poured();
+    const one = boardPads(d).find((p) => p.ref === "J1" && p.pad.number === "1")!;
+    // In the gap round the pad: beside a spoke, and on one.
+    const out = Math.max(one.pad.w, one.pad.h) / 2 + 0.15;
+    const diagonal: P2 = [one.at[0] + out, one.at[1] + 0.6];
+    const along: P2 = [one.at[0], one.at[1] + out];
+    const spoked = pourFill(d, d.board!.pours[0]!);
+    expect(pourShape(d, d.board!.pours[0]!).spokes.length).toBeGreaterThanOrEqual(8);
+    expect(cell(spoked, along)).toBeGreaterThan(0);
+    expect(cell(spoked, diagonal)).toBe(0);
+    const solid = setPour(d, d.board!.pours[0]!.id, { thermal: false });
+    expect(pourShape(solid, solid.board!.pours[0]!).spokes).toEqual([]);
+    expect(cell(pourFill(solid, solid.board!.pours[0]!), diagonal)).toBeGreaterThan(0);
+    expect(pad("J1", "1")).toEqual(one.at);
+  });
+
+  it("is cut in two by a track right across it, and drops a piece that reaches nothing", () => {
+    const { d, other } = poured();
+    // A wall of the other net from edge to edge between the two parts: each side keeps its own pad.
+    const wall = addTrack(d, other, "top", [
+      [20, 0.5],
+      [20, 39.5],
+    ]);
+    const f = pourFill(wall, wall.board!.pours[0]!);
+    expect(f.joins.filter((j) => j.length)).toHaveLength(2);
+    expect(left(wall)).toBe(2);
+    // A fence round an empty patch leaves an island there, which is dropped.
+    const fence = addTrack(d, other, "top", [
+      [40, 30],
+      [46, 30],
+      [46, 36],
+      [40, 36],
+      [40, 30],
+    ]);
+    const g = pourFill(fence, fence.board!.pours[0]!);
+    expect(g.islands.length).toBeGreaterThan(0);
+    expect(cell(g, [43, 33])).toBe(0);
+    expect(cell(g, [25, 5])).toBeGreaterThan(0);
+  });
+
+  it("stays out of keep-outs and cut-outs, and gives way to a pour that fills first", () => {
+    const { d, other } = poured();
+    const area: P2[] = [
+      [35, 2],
+      [45, 2],
+      [45, 10],
+      [35, 10],
+    ];
+    const kept = addKeepoutArea(d, area);
+    expect(cell(pourFill(kept, kept.board!.pours[0]!), [40, 6])).toBe(0);
+    const cut = addCutout(d, area);
+    expect(cell(pourFill(cut, cut.board!.pours[0]!), [40, 6])).toBe(0);
+    expect(cell(pourFill(cut, cut.board!.pours[0]!), [34.8, 6])).toBe(0);
+    expect(removeAreas(cut, ["cut:0"]).board!.cutouts).toBeUndefined();
+    expect(removeAreas(kept, [kept.board!.keepouts[0]!.id]).board!.keepouts).toEqual([]);
+    // A second pour on the other net, over the same patch, with a higher priority.
+    let both = addPour(d, other, "top", area);
+    both = setPour(both, both.board!.pours[1]!.id, { priority: 1 });
+    expect(cell(pourFill(both, both.board!.pours[0]!), [40, 6])).toBe(0);
+    expect(cell(pourFill(both, both.board!.pours[0]!), [34.9, 6])).toBe(0);
+    expect(cell(pourFill(both, both.board!.pours[0]!), [34.5, 6])).toBeGreaterThan(0);
+  });
+
+  it("says when a pour fills nothing", () => {
+    const { d } = netted();
+    const empty = addPour(d, "NOWHERE", "bottom", [
+      [35, 2],
+      [45, 2],
+      [45, 10],
+      [35, 10],
+    ]);
+    expect(checkBoard(empty).find((r) => r.rule === "pour-empty")!.text).toBe("The pour on NOWHERE fills nothing.");
+    expect(
+      addPour(d, "GND", "top", [
+        [0, 0],
+        [1, 1],
+      ]),
+    ).toBe(d);
+  });
+});
+
+describe("back to the schematic", () => {
+  it("deletes a part from the board and the sheet in one change", () => {
+    const { d } = netted();
+    const r1 = d.parts.find((p) => p.ref === "R1")!;
+    const gone = deleteParts(d, [r1.id]);
+    expect(gone.parts.map((p) => p.ref)).toEqual(["J1"]);
+    expect(gone.board!.placements.map((p) => p.part)).toEqual([d.parts.find((p) => p.ref === "J1")!.id]);
+    expect(gone.sheets[0]!.symbols.some((s) => s.part === r1.id)).toBe(false);
+    expect(deleteParts(d, ["nothing"])).toBe(d);
+  });
+
+  it("numbers parts by where they sit on the board, and the schematic follows", () => {
+    let d = emptyDesign();
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const r = placePart(d, "sh1", resistor(), { x: i * 10 * G, y: 0 });
+      d = r.design;
+      ids.push(r.part.id);
+    }
+    d = pushToBoard(d).design;
+    // R1 goes bottom right, R2 top right, R3 top left: R3 is now the first you come to.
+    d = setPlacement(d, ids[0]!, { x: 40, y: 5 });
+    d = setPlacement(d, ids[1]!, { x: 40, y: 30 });
+    d = setPlacement(d, ids[2]!, { x: 10, y: 30.4 });
+    const next = renumberOnBoard(d);
+    const ref = (id: string) => next.parts.find((p) => p.id === id)!.ref;
+    expect(ids.map(ref)).toEqual(["R3", "R2", "R1"]);
+    expect(next.board!.placements.find((p) => p.part === ids[2])!.ref).toBe("R1");
+    expect(renumberOnBoard(next)).toBe(next);
+    // The bottom side is numbered after the top.
+    const flipped = renumberOnBoard(setPlacement(next, ids[2]!, { side: "bottom" }));
+    expect(flipped.parts.find((p) => p.id === ids[2])!.ref).toBe("R3");
+  });
+});
+
+describe("an outline from a sketch", () => {
+  const l: P2[] = [
+    [100, 50],
+    [130, 50],
+    [140, 50],
+    [140, 70],
+    [120, 70],
+    [120, 90],
+    [100, 90],
+  ];
+  const slot: P2[] = [
+    [105, 55],
+    [110, 55],
+    [110, 60],
+    [105, 60],
+  ];
+
+  it("takes the shape, moves it to the board's corner and drops points on a straight run", () => {
+    const o = outlineOf({ outer: l, holes: [slot] });
+    expect(o.outline).toEqual([
+      { x: 0, y: 0 },
+      { x: 40, y: 0 },
+      { x: 40, y: 20 },
+      { x: 20, y: 20 },
+      { x: 20, y: 40 },
+      { x: 0, y: 40 },
+    ]);
+    expect(o.cutouts).toEqual([
+      [
+        { x: 5, y: 5 },
+        { x: 10, y: 5 },
+        { x: 10, y: 10 },
+        { x: 5, y: 10 },
+      ],
+    ]);
+  });
+
+  it("follows the sketch, says when it has changed, and lets go", () => {
+    const { d } = netted();
+    const made = followSketch(d, "sk1", { outer: l, holes: [slot] });
+    expect(made.board!.outlineFrom).toEqual({ sketch: "sk1", at: [100, 50] });
+    expect(made.board!.outline).toHaveLength(6);
+    expect(made.board!.cutouts).toHaveLength(1);
+    expect(outlineBehind(made.board!, { outer: l, holes: [slot] })).toBe(false);
+    // The sketch moving does not count; its shape changing does.
+    expect(outlineBehind(made.board!, { outer: l.map(([x, y]) => [x + 7, y - 3] as P2), holes: [slot.map(([x, y]) => [x + 7, y - 3] as P2)] })).toBe(false);
+    expect(outlineBehind(made.board!, { outer: l, holes: [] })).toBe(true);
+    const plain = followSketch(made, "sk1", { outer: l, holes: [] });
+    expect(plain.board!.cutouts).toBeUndefined();
+    const free = unfollowSketch(plain);
+    expect(free.board!.outlineFrom).toBeUndefined();
+    expect(free.board!.outline).toEqual(plain.board!.outline);
+    // A part in the cut-out is off the board.
+    const r1 = made.parts.find((p) => p.ref === "R1")!;
+    expect(rulesOf(setPlacement(made, r1.id, { x: 30, y: 30 }))).toContain("off-board");
   });
 });

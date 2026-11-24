@@ -267,7 +267,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
             position: p.position,
             rotation: p.rotation,
             ghost: p.ghost || (props.clash ? !props.clash.overlap.has(p.id) && !props.clash.touch.has(p.id) : undefined),
-            reference: p.reference,
+            reference: p.reference && !p.pcb,
             highlight: p.highlight,
             colour: p.colour && /^#[0-9a-f]{6}$/i.test(p.colour) ? p.colour : undefined,
             warn: props.warn?.has(p.id) || (props.clash?.touch.has(p.id) && !props.clash.overlap.has(p.id)),

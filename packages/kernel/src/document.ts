@@ -5,6 +5,8 @@
  */
 import type { Drawing } from "./drawing";
 import type { ElectronicsDesign } from "@bettercad/electronics";
+import { boardSolid } from "@bettercad/electronics/pcb/solid";
+import { boardBodyId, boardParts, onSketch } from "./board";
 import {
   drawCentreRectangle,
   drawCircle,
@@ -193,6 +195,8 @@ export interface Part {
   hole?: boolean;
   /** A reference body (#185): shown to design around, but never printed, exported or weighed. */
   reference?: boolean;
+  /** Part of a circuit board (#650): a reference body that is drawn solid, in its own colours. */
+  pcb?: boolean;
   /** A hole's fit (#183): cut with a printed gap round it when grouped. A named fit, or a custom `gap`. */
   fit?: FitId;
   /** A custom gap on each side, mm, when `fit` isn't set. */
@@ -809,7 +813,18 @@ export interface GearFeature extends FeatureBase {
   turn?: number;
 }
 
+/**
+ * Board (#650): the PCB as one component, built from the model's electronics design each time: the board body and a
+ * body for every part on it. Nothing of the board is kept in the step but where it sits, so it never goes stale.
+ */
+export interface BoardFeature extends FeatureBase {
+  type: "board";
+  /** Where the board's corner (0, 0) and bottom face sit. */
+  position: Vec3;
+  rotation?: Vec3;
+}
 export type Feature =
+  | BoardFeature
   | ModelInsertFeature
   | ConstructFeature
   | DriveFeature
@@ -1016,6 +1031,7 @@ export const FEATURE_LABEL: Record<FeatureType, string> = {
   convert: "Convert",
   insert: "Insert part",
   model: "Insert model",
+  board: "Board",
   mount: "Mount",
   gear: "Gear",
   link: "Component",
@@ -1064,6 +1080,8 @@ export interface Build {
   rigid?: BuiltRigid[];
   /** Decals (#263) that built, on bodies still there, in timeline order. */
   decals?: DecalFeature[];
+  /** Board steps (#650) that built: the board's body, and how many holes were left out of the solid. */
+  boards?: { id: string; body: string; left: number }[];
 }
 
 /** A rigid group as built. */
@@ -1121,6 +1139,7 @@ export interface BuiltLink {
 }
 
 const BUILT = new Set<string>([
+  "board",
   "construct",
   "drive",
   "rigid",
@@ -1241,6 +1260,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
   const rigid: { id: string; name: string; links: string[]; parts: string[] }[] = [];
   /** Decals (#263) that built, in timeline order. */
   const decals: DecalFeature[] = [];
+  const boards: NonNullable<Build["boards"]> = [];
   const find = (id: string) => parts.findIndex((p) => p.id === id);
   const missing = (f: Feature, ids: string[]) => {
     const gone = ids.filter((id) => find(id) < 0);
@@ -1384,6 +1404,21 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           });
         }
         break;
+      case "board": {
+        const solid = doc.electronics ? boardSolid(doc.electronics) : null;
+        if (!solid) {
+          failed.set(f.id, "There is no board yet. Make one in the PCB view with Push to PCB.");
+          break;
+        }
+        // A board shaped by a sketch stands on that sketch (#653); the step's own place then moves it from there.
+        const from = doc.electronics?.board?.outlineFrom;
+        const under = from?.sketch && from.at ? sketchById.get(from.sketch) : undefined;
+        const made = boardParts(f, solid, under && from?.at ? onSketch(planeFrame(under.plane), from.at) : undefined);
+        for (const p of made) if (find(p.id) < 0) parts.push({ ...p, link: f.id });
+        linkSteps.push({ id: f.id, type: "link", name: f.name, parts: made.map((p) => p.id), ...(f.component ? { parent: f.component } : {}) });
+        boards.push({ id: f.id, body: boardBodyId(f.id), left: solid.left });
+        break;
+      }
       case "model": {
         const inner = innerParts(f);
         if (typeof inner === "string") {
@@ -2162,6 +2197,7 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
     ...(builtRigid.length ? { rigid: builtRigid } : {}),
     // A decal goes with its body when a later step deletes it.
     ...(decals.length ? { decals: decals.filter((d) => looked.some((p) => p.id === d.part)) } : {}),
+    ...(boards.length ? { boards } : {}),
   };
 }
 
@@ -2515,6 +2551,8 @@ export function featureParts(f: Feature): string[] {
       return f.bodies.map((b) => b.id);
     case "insert":
       return [f.part.id];
+    case "board":
+      return [boardBodyId(f.id)];
     case "model": {
       const inner = innerParts(f);
       return typeof inner === "string" ? [] : inner.parts.map((p) => p.id);
@@ -2595,6 +2633,12 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
       const n = typeof inner === "string" ? 0 : inner.parts.length;
       const from = f.source.kind === "account" ? `version ${f.source.version} of ${f.source.name}` : `${f.source.name} from a file`;
       return `${from}, ${n === 1 ? "1 body" : `${n} bodies`}, one component`;
+    }
+    case "board": {
+      const solid = doc.electronics ? boardSolid(doc.electronics) : null;
+      if (!solid) return "No board yet";
+      const n = solid.bodies.length;
+      return `${mm(solid.thickness)} thick, ${n === 1 ? "1 part" : `${n} parts`}, one component`;
     }
     case "import":
       return `${f.bodies.length === 1 ? "1 body" : `${f.bodies.length} bodies`} from ${f.file}`;
@@ -3558,6 +3602,7 @@ function partsRead(f: Feature): string[] {
     case "import":
     case "insert":
     case "model":
+    case "board":
     case "gear":
     case "joint":
     case "drive":
@@ -3574,6 +3619,7 @@ function partsMade(f: Feature): string[] {
   if (f.type === "pattern") return patternCopyIds(f);
   if (f.type === "import") return f.bodies.map((b) => b.id);
   if (f.type === "insert") return [f.part.id];
+  if (f.type === "board") return [boardBodyId(f.id)];
   if (f.type === "model") {
     const inner = innerParts(f);
     return typeof inner === "string" ? [] : inner.parts.map((p) => p.id);

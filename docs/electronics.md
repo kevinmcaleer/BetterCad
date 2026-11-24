@@ -164,7 +164,7 @@ Left for later: sheets beyond the first (#636), hand-drawn text and shapes on a 
 ## Laying out a board (#637 to #643)
 
 The board's code is in `packages/electronics/src/pcb`, imported by subpath (`/pcb/copper`, `/pcb/route`,
-`/pcb/rules`, `/drc`) so it loads with the PCB view or the card that needs it.
+`/pcb/rules`, `/pcb/pour`, `/pcb/state`, `/pcb/outline`, `/drc`) so it loads with the PCB view or the card that needs it.
 
 **Copper as shapes** (`copper.ts`). Every piece of copper is a core (a point, a line or a convex outline) grown by a
 radius: a via is a point, a track a line, a rounded pad a rectangle with its corners pulled in. `gap(a, b)` is the
@@ -217,10 +217,75 @@ schematic's check, and levels and waivers are kept in the same `design.checks`, 
 | `track-open` | Warning | A track end that reaches no copper of its net |
 | `dead-net` | Warning | Copper on a net the schematic no longer has |
 | `silk-size` | Warning | Silkscreen text smaller than prints well |
+| `pour-empty` | Warning | A pour that fills nothing, or reaches none of its net's pads |
 
 A part's own pads are never checked against each other; that is the footprint's business. Pairs are found with a
 sweep along x, so a busy board stays quick, and the check runs in the page as the board changes. Each rule has a
 board that breaks it in `pcb.test.ts`.
 
-Left for later: copper pours and thermals (#641), drawing keep-outs and cut-outs (#642), sending a change back to
-the schematic (#645), an outline from a sketch, a face or a DXF (#638), and dragging a track's corners.
+## Pours, keep-outs and the board's shape (#638, #641, #642, #645)
+
+**Pours** (`pcb/pour.ts`, the Pour tool, P). Click the corners of an area, or press Whole board, to fill it with
+copper on one net. The fill is never stored: it is worked out from the board each time (`boardState`), so it is
+always up to date for the view, the board check and, later, the Gerber files. It has two forms. `pourShape` is exact
+geometry to paint in order: the area cut to the board, rings round the pour's own pads knocked out, spokes laid back,
+then every other net's copper, the edge, bare holes and keep-outs knocked out, each grown by the clearance it needs.
+`pourFill` is the same fill on a grid of 0.1 mm or coarser, which says which pieces of the pour join which pads and
+which pieces are islands that reach nothing; islands are dropped. Pads a pour joins need no track, and the ratsnest
+and the board check both know. The card sets the net, the side, spokes or solid joins, and which pour fills first
+where two overlap. `pour-empty` (a warning) finds a pour that fills nothing. Spokes are set per pour, not per pad.
+
+**Keep-outs and cut-outs** (the Keep-out tool, O). The same corner-by-corner drawing makes an area tracks, vias and
+pours stay out of (parts too, if ticked in its card), or a hole of any shape cut through the board. Route stops at a
+keep-out when Keep clear is on, pours flow round it, and the board check lists what sits in one. Areas are picked by
+their edge and can be dragged or deleted; to change a corner, draw the area again.
+
+**An outline from a sketch** (`pcb/outline.ts`). When the model has a sketch with a closed shape, Board setup offers
+it under Shape. The sketch's biggest closed shape becomes the edge and the shapes inside it become cut-outs, so the
+sketch tools, sizes and parameters shape the board. The board's bottom left corner stays where it is. The board
+remembers which sketch it follows; when the sketch's shape changes, Board setup says so and Update the outline takes
+the new shape. Arcs become short straight runs.
+
+**Back to the schematic** (#645). The board and the schematic are one design in one file, so a board change that the
+schematic should know about is made to both in the same undo step. Renumber on the board names parts by where they
+sit (top side first, in rows from the top, left to right) and the schematic's names follow. Delete on a part asks
+first, then takes it off the sheet as well. A part's name can be hidden on the silkscreen from its card.
+
+Left for later: dragging a track's or an area's corners, an outline from a face or a DXF file (there is no DXF
+import yet), spokes per pad, pin and gate swapping (no component marks pins as swappable yet), pictures and fiducials
+on the silkscreen.
+
+## The board in 3D (#649 to #654)
+
+The board is in the model as one **Board step** on the timeline (`packages/kernel/src/board.ts`). A model has one
+board, so it has at most one Board step. The step holds only where the board stands; everything else is read from
+the design each time the model builds, so a layout change rebuilds the board and nothing else, and there is nothing
+to keep in step by hand. The step is added in the same undo step as the change that first makes the board; Board
+setup has Add the board to the model for a file whose step was deleted.
+
+`boardSolid` (`pcb/solid.ts`) turns the design into plain numbers: the outline and cut-outs, the holes worth
+drilling, the thickness, the mass (FR4 at 1.85 g/cm³, with copper taken as covering a third of each side) and a box or a cylinder for each
+part from its package's body size. The kernel builds the board as one prism whose profile has every cut-out and hole
+as an inner loop (`pierced`), which is why a board with 300 holes builds in under 3 s where 300 cuts took most of a
+minute. Holes under 0.5 mm are left out of the solid, and so are holes that break the edge or each other; the
+picture still shows them. Bodies are named by reference (R1, U3), stand on their own side of the board, and belong
+to one component named Board, so joints, Move, Hide and the clash check treat it as any other component.
+
+The bodies are reference bodies that draw solid (`pcb` on the part): they are there to design round, they do not
+print, and a slicer export leaves them out. To send the board to other CAD, right-click its bodies and choose
+Export; STEP keeps one body per part with its name. The clash check sees them when Include references is on.
+
+**Copper and silkscreen** (`web/src/electronics/boardPicture.ts`). Each side of the board is painted once per design
+with the PCB view's own drawing code in the materials' colours (mask, bare pads, silkscreen) and laid on the board's
+top and bottom faces as a picture, the way decals are. Tracks are never made solid. The path-traced render does not
+draw pictures on faces yet, so a render shows the board and its parts without the copper.
+
+**A board that sits in its case** (#653). A board that takes its outline from a sketch stands on that sketch's
+plane, on the shape it was drawn from, so drawing the board's shape inside an enclosure puts the board there. The
+step's own position then moves it from the sketch (say 3 mm up, onto standoffs). The board's faces and edges take
+sketches and Auto project like any body's, which is how a case is fitted to it.
+
+Left for later: dragging a part in the 3D view (move it in the PCB view; the model follows), a hole cut through the
+board in 3D becoming a board hole, STEP models for parts (#628; parts are boxes and cylinders), the Connector
+opening and Standoffs under the board tools (#652; project the board's holes and use Mount), a board started from a
+face, and the copper in a path-traced render.

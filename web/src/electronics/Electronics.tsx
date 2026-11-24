@@ -15,6 +15,7 @@ import {
   type P2,
 } from "@bettercad/electronics";
 import { Button, ESC, FeaturePanel, PanelNote, PropsPanel, RibbonButton, RibbonGroup, Toolbar, cx, useEscape, type IconName } from "@bettercad/ui";
+import type { Sketch } from "@bettercad/sketch";
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
@@ -245,6 +246,8 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     },
     { ...draw("hole", "Hole", "hole", "H", "Add a mounting hole for a screw"), group: "Add" },
     { ...draw("text", "Text", "text", "T", "Write on the silkscreen"), group: "Add" },
+    { ...draw("pour", "Pour", "pour", "P", "Fill an area with copper on one net, usually ground"), group: "Add" },
+    { ...draw("keepout", "Keep-out", "keepOut", "O", "Mark an area tracks and pours stay out of, or cut a hole in the board"), group: "Add" },
     {
       id: "rotate",
       group: "Place",
@@ -281,7 +284,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       label: "Delete",
       icon: "trash",
       key: "Del",
-      tip: "Delete the selected tracks, vias, holes and text",
+      tip: "Delete what is selected. A part asks first, as it leaves the schematic too",
       disabled: readOnly || none,
       run: () => eactions.current?.remove(),
     },
@@ -295,6 +298,15 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       tip: "Set the board's size, its rules and net classes",
       on: ui.card === "board",
       run: toggle("board"),
+    },
+    {
+      id: "renumber",
+      group: "Board",
+      label: "Renumber",
+      icon: "text",
+      tip: "Name the parts again by where they sit on the board. The schematic follows",
+      disabled: readOnly,
+      run: () => eactions.current?.renumber?.(),
     },
     {
       id: "checks",
@@ -331,6 +343,8 @@ function commands(design: () => ElectronicsDesign): Command[] {
     ["via", "Via", "v", "via", "hole layer"],
     ["hole", "Mounting hole", "h", "hole", "screw drill"],
     ["text", "Silkscreen text", "t", "text", "label legend"],
+    ["pour", "Copper pour", "p", "pour", "fill ground plane zone polygon"],
+    ["keepout", "Keep-out or cut-out", "o", "keepOut", "restrict area slot hole"],
   ];
   const views = [
     ["schematic", "Show the schematic", "1", "schematic"],
@@ -460,7 +474,6 @@ function commands(design: () => ElectronicsDesign): Command[] {
       label: "Renumber the parts",
       group: "Edit",
       icon: "text",
-      when: schematic,
       run: () => eactions.current?.renumber?.(),
       keywords: "annotate references names order",
     },
@@ -617,13 +630,18 @@ export interface ElectronicsViewProps {
   registry?: { register(list: Command[]): () => void };
   /** The model's name, for exported files and their title block. */
   name?: string;
+  /** The model's sketches: a board can take its outline from one. */
+  sketches?: { id: string; name: string; sketch: Sketch }[];
+  /** The model has its Board step (#650), so the board stands in 3D; and how to add the step when it has not. */
+  inModel?: boolean;
+  onAddBoard?: () => void;
 }
 
 /**
  * The electronics workspace (#617, #619): the schematic or the board covers the 3D view, under the floating cards.
  * Laid out as Kev picked on 2026-11-24: switcher top centre, layers bottom right, checks strip along the bottom.
  */
-export default function ElectronicsView({ design: saved, edit, readOnly, ribbon, registry, name }: ElectronicsViewProps) {
+export default function ElectronicsView({ design: saved, edit, readOnly, ribbon, registry, name, sketches, inModel, onAddBoard }: ElectronicsViewProps) {
   const ui = useEui();
   const blank = useRef(emptyDesign());
   const design = saved ?? blank.current;
@@ -710,7 +728,17 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
       {view === "pcb" && design.board && (
         <Suspense fallback={null}>
           {ui.card === "checks" && <BoardChecks design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
-          {ui.card === "board" && <BoardSetup design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "board" && (
+            <BoardSetup
+              design={design}
+              edit={edit}
+              readOnly={readOnly}
+              sketches={sketches}
+              inModel={inModel}
+              onAddBoard={onAddBoard}
+              onClose={() => eui.set({ card: null })}
+            />
+          )}
         </Suspense>
       )}
 
