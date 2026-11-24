@@ -393,7 +393,7 @@ describe("components (#171)", () => {
       onToggle: () => {},
       onBodiesHidden: () => {},
       onSketchesHidden: () => {},
-      componentRemove: (id: string) => (id === "L2" ? [{ id: "remove", label: "Remove Component 2", onSelect: () => onRemove(id) }] : []),
+      componentMenu: (id: string) => (id === "L2" ? [{ id: "remove", label: "Remove Component 2", onSelect: () => onRemove(id) }] : []),
       onOrigin: () => {},
       onPicked: () => {},
       onSelectSketch: () => {},

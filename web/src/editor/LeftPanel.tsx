@@ -94,7 +94,7 @@ export interface LeftPanelProps {
   isolateMenu?: BrowserPanelProps["isolateMenu"];
   onBodiesGhost?: BrowserPanelProps["onBodiesGhost"];
   referenceMenu?: BrowserPanelProps["referenceMenu"];
-  componentRemove?: BrowserPanelProps["componentRemove"];
+  componentMenu?: BrowserPanelProps["componentMenu"];
   onBrowserPicked: (id: string | null) => void;
   onRowPick?: (id: string) => boolean;
   onSketchOn: (plane: WorldPlaneName) => void;
@@ -209,7 +209,7 @@ function PartsPanel(p: LeftPanelProps) {
       isolateMenu={p.isolateMenu}
       onBodiesGhost={p.onBodiesGhost}
       referenceMenu={p.referenceMenu}
-      componentRemove={p.componentRemove}
+      componentMenu={p.componentMenu}
       onOrigin={p.onOrigin}
       onPicked={p.onBrowserPicked}
       onRowPick={p.onRowPick}

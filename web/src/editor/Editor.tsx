@@ -231,6 +231,7 @@ const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: 
 const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
 const ModelPicker = lazy(() => import("../insert/ModelPicker").then((m) => ({ default: m.ModelPicker })));
 const InsertModelDialog = lazy(() => import("../insert/InsertModelDialog").then((m) => ({ default: m.InsertModelDialog })));
+const MakeExternalDialog = lazy(() => import("../insert/MakeExternalDialog").then((m) => ({ default: m.MakeExternalDialog })));
 const SendDialog = lazy(() => import("../steps/SendDialog").then((m) => ({ default: m.SendDialog })));
 const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 // Release notes (What's new) load in their own chunk, after first paint.
@@ -452,6 +453,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [crash, setCrash] = useState<Caught | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
+  // Make external: the component being saved as a model of its own and linked back in.
+  const [externalId, setExternalId] = useState<string | null>(null);
   // The model picker (#480) beside the browser: folded to a tab until opened.
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -474,7 +477,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     at,
     selection,
     tool,
-    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null || sheetCard !== null,
+    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null || sheetCard !== null || externalId !== null,
     drawing: drawing !== null,
     electronics: eview !== null,
     sketching: live.current.sketching,
@@ -4692,9 +4695,19 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               isolateMenu={isolateEntries}
               onBodiesGhost={ghostBodies}
               referenceMenu={referenceEntries}
-              componentRemove={(id) => {
-                const f = doc.features.find((x) => x.id === id && x.type === "model");
-                return f
+              componentMenu={(id) => {
+                const f = doc.features.find((x) => x.id === id);
+                if (f?.type === "link")
+                  return [
+                    { kind: "separator", id: "external-sep" },
+                    {
+                      id: "external",
+                      label: "Make external…",
+                      icon: "link",
+                      onSelect: () => (live.current.marker === null ? setExternalId(id) : say("Roll the timeline to the end to make a component external")),
+                    },
+                  ];
+                return f?.type === "model"
                   ? [
                       { kind: "separator", id: "remove-sep" },
                       { id: "remove", label: `Remove ${f.name}`, icon: "trash", danger: true, onSelect: () => removeModel(id) },
@@ -5495,6 +5508,21 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               setInsertOpen(false);
               insertFiles(list);
             }}
+          />
+        </Suspense>
+      )}
+      {externalId && (
+        <Suspense fallback={null}>
+          <MakeExternalDialog
+            api={api}
+            id={externalId}
+            store={store}
+            signedIn={!!account}
+            signinUrl={accountsOn ? `#/signin?next=${encodeURIComponent(window.location.hash || "#/")}` : undefined}
+            modelId={files.shared ? undefined : files.cloud?.modelId}
+            files={files.store}
+            say={say}
+            onClose={() => setExternalId(null)}
           />
         </Suspense>
       )}
