@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Banner, Button, MenuButton, ViewCube, type MenuEntry } from "@bettercad/ui";
+import { Banner, Button, IconButton, MenuButton, ViewCube, type MenuEntry } from "@bettercad/ui";
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
@@ -126,6 +126,7 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
   useEffect(() => r.current?.setBodies(bodies, cutPlane(section)), [bodies, section]);
   useEffect(() => r.current?.setPreset(state.preset), [state.preset]);
   useEffect(() => r.current?.setStyle(state.style), [state.style]);
+  useEffect(() => r.current?.hold(state.stopped), [state.stopped]);
   useEffect(() => r.current?.setBackground(state.background), [state.background]);
   useEffect(() => r.current?.setFocus(FOCUSES.find((f) => f.id === state.focus)!.aperture), [state.focus]);
   useEffect(() => {
@@ -319,7 +320,10 @@ export function RenderBar({ session, onClose, onExportGltf, onNote }: RenderBarP
       ? `Saving the picture, ${Math.round(s.saving * 100)}%`
       : s.moving
         ? "Waiting for you to stop moving"
-        : `${s.samples.toLocaleString("en-GB")} of ${samplesText(testMax() ?? samplesFor(s.quality))}`;
+        : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(testMax() ?? samplesFor(s.quality))}`;
+  const max = testMax() ?? samplesFor(s.quality);
+  const done = s.samples >= max;
+  const rendering = !s.stopped && !done && !s.loading && !s.slow;
   return (
     <>
       <div role="group" aria-label="Render options" className="bc-tools bc-armed bc-render-bar">
@@ -348,6 +352,13 @@ export function RenderBar({ session, onClose, onExportGltf, onNote }: RenderBarP
             onClick={() => session.set({ style: "paper" })}
           />
         </span>
+        <IconButton
+          className={rendering ? "bc-render-go bc-render-stop" : "bc-render-go"}
+          icon={rendering ? "stop" : "play"}
+          title={rendering ? "Stop rendering" : done ? "Finished: raise the quality to keep going" : "Start rendering"}
+          disabled={!rendering && (done || s.loading || s.slow)}
+          onClick={() => session.set({ stopped: rendering })}
+        />
         <QualityBar session={session} />
         <span className="bc-armed-note bc-render-status" role="status">
           {status}

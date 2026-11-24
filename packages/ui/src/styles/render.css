@@ -263,3 +263,21 @@
   padding: 2px;
   border-radius: 50%;
 }
+/*
+ * Start and stop the Render view's picture: a small round button, green (the dimension green) to start, red to stop,
+ * so background renders on the strip can have the GPU.
+ */
+.bc-icon-btn.bc-render-go {
+  border-radius: 50%;
+  background: var(--bc-color-dimension);
+  color: var(--bc-color-bar);
+}
+.bc-icon-btn.bc-render-go.bc-render-stop {
+  background: var(--bc-color-danger);
+}
+.bc-icon-btn.bc-render-go:hover:not(:disabled) {
+  filter: brightness(0.9);
+}
+.bc-icon-btn.bc-render-go:disabled {
+  opacity: 0.4;
+}

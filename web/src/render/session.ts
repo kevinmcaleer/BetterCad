@@ -36,6 +36,8 @@ export interface RenderState {
   /** Where the picture stops adding samples. */
   quality: RenderQuality;
   samples: number;
+  /** Stopped with the stop button: the picture keeps what it has, so background renders get the GPU. */
+  stopped: boolean;
   /** Orbiting: the picture waits for you to stop. */
   moving: boolean;
   /** No WebGL2: the browser can't render at all. */
@@ -67,6 +69,7 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     focus: "soft",
     quality: "better",
     samples: 0,
+    stopped: false,
     moving: false,
     slow: false,
     sluggish: false,
