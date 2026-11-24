@@ -255,3 +255,24 @@ def test_view_page_previews_and_redirects(user, make_client):
         assert "frame=1" not in anon.get(f"/view/{token}?frame=yes").text
         odd = anon.get("/view/%3Cscript%3E%22x")
         assert odd.status_code == 200 and '<script>"x' not in odd.text and "BetterCad" in odd.text
+
+
+def test_renders_are_kept_beside_the_model(user, make_client):
+    m = create(user)
+    url = f"/api/models/{m['id']}/renders"
+    assert user.get(url).json() == {"renders": []}
+    jpeg = "data:image/jpeg;base64,/9j/4AAQ"
+    assert user.put(f"{url}/shot-1", json={"image": jpeg, "key": "abc"}).json() == {"ok": True}
+    listed = user.get(url).json()["renders"]
+    assert [(x["shot"], x["key"]) for x in listed] == [("shot-1", "abc")]
+    got = user.get(listed[0]["url"])
+    assert got.headers["content-type"] == "image/jpeg" and got.content.startswith(b"\xff\xd8")
+    # A new render of the shot replaces the old one.
+    user.put(f"{url}/shot-1", json={"image": jpeg, "key": "def"})
+    assert [x["key"] for x in user.get(url).json()["renders"]] == ["def"]
+    assert user.put(f"{url}/shot-1", json={"image": "javascript:alert(1)", "key": "x"}).status_code == 422
+    assert user.put(f"{url}/bad id", json={"image": jpeg, "key": "x"}).status_code == 404
+    assert user.put("/api/models/nope/renders/shot-1", json={"image": jpeg, "key": "x"}).status_code == 404
+    assert user.delete(f"{url}/shot-1").json() == {"ok": True}
+    assert user.get(f"{url}/shot-1").status_code == 404
+    assert user.get(url).json() == {"renders": []}

@@ -901,6 +901,27 @@ export interface ModelDoc {
   canvases?: CanvasImage[];
   /** Drawings (#555): 2D sheets made from the model. They read it and never change it, so they are not steps. */
   drawings?: Drawing[];
+  /**
+   * The render film strip: shots kept with the model and rendered in the background. Only the settings live here; the
+   * pictures are kept beside the model (in the account, or this browser), so the file stays small. Not steps.
+   */
+  renders?: RenderShot[];
+}
+
+/** One shot on the render film strip: where the camera is and how the picture is lit and finished. */
+export interface RenderShot {
+  id: string;
+  name: string;
+  camera: ViewCamera;
+  preset: "studio" | "daylight" | "workbench" | "lightbox";
+  style: "finishes" | "paper";
+  background: "lightbox" | "grey" | "workbench" | "holoroom" | "replicator";
+  focus: "sharp" | "soft" | "shallow";
+  quality: "good" | "better" | "best";
+  width: number;
+  height: number;
+  /** Render it again, in the background, each time the model is saved. */
+  auto: boolean;
 }
 
 /**
