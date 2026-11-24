@@ -192,12 +192,17 @@ test.describe("on a wide screen", () => {
       await page.keyboard.press("1");
       await page.mouse.click(...(await onCanvas(page, x, 0)));
       await page.keyboard.press("2");
-      await page.getByLabel("X (mm)").fill(String(to));
-      await page.getByLabel("X (mm)").press("Enter");
-      await expect(page.getByLabel("X (mm)")).toHaveValue(String(to));
-      await page.getByLabel("Y (mm)").fill("20");
-      await page.getByLabel("Y (mm)").press("Enter");
-      await expect(page.getByLabel("Y (mm)")).toHaveValue("20");
+      // A change lands a moment after Enter and redraws the fields, so each is typed until it has stuck.
+      for (const [label, value] of [
+        ["X (mm)", String(to)],
+        ["Y (mm)", "20"],
+      ] as const)
+        await expect(async () => {
+          await page.getByLabel(label).fill(value);
+          await page.getByLabel(label).press("Enter");
+          await page.waitForTimeout(150);
+          await expect(page.getByLabel(label)).toHaveValue(value, { timeout: 1000 });
+        }).toPass();
       await canvas.focus();
     }
     await page.keyboard.press("Escape");
