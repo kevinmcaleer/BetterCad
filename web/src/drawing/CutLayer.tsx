@@ -3,7 +3,7 @@ import type { CutArt } from "./cuts";
 
 /** What an armed cut tool would do where the pointer is, in paper mm from the view's middle, y up. */
 export type CutGhost =
-  { kind: "line"; a: V2; b: V2; side: V2 } | { kind: "ring"; c: V2; r: number } | { kind: "band"; x: number; y: number; w: number; h: number };
+  { kind: "line"; pts: V2[]; side: V2 } | { kind: "ring"; c: V2; r: number } | { kind: "band"; x: number; y: number; w: number; h: number };
 
 const n = (v: number) => String(Math.round(v * 1000) / 1000);
 const pts = (list: V2[]) => list.map((p) => `${n(p[0])},${n(-p[1])}`).join(" ");
@@ -34,8 +34,8 @@ export function CutLayer({ art, ghost }: { art: CutArt; ghost?: CutGhost }) {
       ))}
       {ghost?.kind === "line" && (
         <>
-          <line className="bc-cut-ghost" x1={ghost.a[0]} y1={-ghost.a[1]} x2={ghost.b[0]} y2={-ghost.b[1]} />
-          {[ghost.a, ghost.b].map((p, i) => (
+          <polyline className="bc-cut-ghost" points={pts(ghost.pts)} />
+          {[ghost.pts[0]!, ghost.pts.at(-1)!].map((p, i) => (
             <line key={i} className="bc-cut-ghost" x1={p[0]} y1={-p[1]} x2={p[0] + ghost.side[0] * 6} y2={-(p[1] + ghost.side[1] * 6)} />
           ))}
         </>

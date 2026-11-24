@@ -596,7 +596,8 @@ function traceAll(edges: ViewEdge[], tracer: Tracer) {
 
 /**
  * The shapes with everything on the cut's `normal` side taken away, the outline of each one's cut face on the view
- * plane, and how deep the cut lies in the view. A shape wholly on the far side goes altogether.
+ * plane, and how deep the cut lies in the view. A shape wholly on the far side goes altogether. A half section takes
+ * only what is past the origin along the cutting line; a stepped one moves the cut at each step.
  */
 function cutAway(oc: OC, shapes: TopoDS_Shape[], cut: ViewCut, ax: { x: V3; y: V3; z: V3 }) {
   const l = Math.hypot(...cut.normal) || 1;
@@ -612,18 +613,34 @@ function cutAway(oc: OC, shapes: TopoDS_Shape[], cut: ViewCut, ax: { x: V3; y: V
     hi.delete();
   }
   box.delete();
-  const seed: V3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-  const u = unit3(cross3(n, seed));
-  const v = cross3(n, u);
-  const corner = (a: number, b: number): V3 => [0, 1, 2].map((i) => cut.origin[i]! + (u[i]! * a + v[i]! * b) * reach) as V3;
-  const away = prism(oc, polygonFace(oc, [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]), [n[0] * reach, n[1] * reach, n[2] * reach]);
+  // The cutting line's way, square to the normal; any way will do for a flat cut.
+  const seed: V3 = cut.along && (cut.half || cut.steps?.length) ? cut.along : Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const v = unit3(cross3(n, seed));
+  const u = cross3(v, n);
   const at = dot(cut.origin, n);
+  // What is taken away, as slabs along the line: each from where it starts to where the next does, with the cut
+  // moved `offset` along the normal. A flat cut is one slab the whole way; a half section one from the origin on.
+  const steps = cut.half ? [] : [...(cut.steps ?? [])].sort((a, b) => a.at - b.at);
+  const slabs: { from: number; to: number; offset: number }[] = cut.half
+    ? [{ from: 0, to: reach, offset: 0 }]
+    : [{ at: -reach, offset: 0 }, ...steps].map((s, i, all) => ({
+        from: Math.max(s.at, -reach),
+        to: Math.min(all[i + 1]?.at ?? reach, reach),
+        offset: s.offset,
+      }));
+  const away = slabs
+    .filter((s) => s.to - s.from > 1e-9)
+    .map((s) => {
+      const corner = (a: number, b: number): V3 => [0, 1, 2].map((i) => cut.origin[i]! + n[i]! * s.offset + u[i]! * a + v[i]! * b * reach) as V3;
+      return prism(oc, polygonFace(oc, [corner(s.from, -1), corner(s.to, -1), corner(s.to, 1), corner(s.from, 1)]), [n[0] * reach, n[1] * reach, n[2] * reach]);
+    });
+  const depths = slabs.map((s) => at + s.offset);
   const out: TopoDS_Shape[] = [];
   const cuts: { body: number; outline: V2[][]; faces: (number | undefined)[] }[] = [];
   shapes.forEach((shape, body) => {
     let left: TopoDS_Shape;
     try {
-      left = boolean(oc, "cut", shape, [away]);
+      left = boolean(oc, "cut", shape, away);
     } catch {
       // Nothing of it is left on this side.
       return;
@@ -663,7 +680,8 @@ function cutAway(oc: OC, shapes: TopoDS_Shape[], cut: ViewCut, ax: { x: V3; y: V
       if (s.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
         const pl = s.Plane();
         const [o, d] = [pl.Location(), pl.Axis().Direction()];
-        on = Math.abs(Math.abs(d.X() * n[0] + d.Y() * n[1] + d.Z() * n[2]) - 1) < 1e-9 && Math.abs(o.X() * n[0] + o.Y() * n[1] + o.Z() * n[2] - at) < 1e-6;
+        const where = o.X() * n[0] + o.Y() * n[1] + o.Z() * n[2];
+        on = Math.abs(Math.abs(d.X() * n[0] + d.Y() * n[1] + d.Z() * n[2]) - 1) < 1e-9 && depths.some((k) => Math.abs(where - k) < 1e-6);
         o.delete();
         d.delete();
         pl.delete();
@@ -692,7 +710,9 @@ function cutAway(oc: OC, shapes: TopoDS_Shape[], cut: ViewCut, ax: { x: V3; y: V
     }
     if (outline.length) cuts.push({ body, outline, faces });
   });
-  return { shapes: out, cuts, depth: dot(cut.origin, ax.z) };
+  // Nothing nearer the eye than the nearest slab's cut is left; with a half section the whole half still is.
+  const zn = dot(n, ax.z);
+  return { shapes: out, cuts, depth: cut.half ? undefined : dot(cut.origin, ax.z) + Math.max(...slabs.map((s) => s.offset * zn)) };
 }
 
 const cross3 = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];

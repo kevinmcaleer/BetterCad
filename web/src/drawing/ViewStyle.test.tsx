@@ -35,6 +35,37 @@ function Harness({ view }: { view: string }) {
   );
 }
 
+describe("an exploded view", () => {
+  it("is set as a percentage on the view, takes its projected views with it, and asks the kernel to move the parts", async () => {
+    function Explode() {
+      const [sheet, setSheet] = useState(start);
+      return (
+        <>
+          <ViewProps sheet={sheet} view="f" onSheet={(change) => setSheet(change)} />
+          <output data-testid="explode">{sheet.views.map((v) => `${v.id}:${v.explode ?? "-"}`).join(" ")}</output>
+        </>
+      );
+    }
+    render(<Explode />);
+    const field = screen.getByLabelText("Explode");
+    expect(field).toHaveValue("0");
+    await userEvent.clear(field);
+    await userEvent.type(field, "50{Enter}");
+    // The projected views were level with it and follow; the section is cut from the model as it is.
+    expect(screen.getByTestId("explode")).toHaveTextContent("f:0.5 t:0.5 r:0.5 s:-");
+    expect(screen.getByText(/Sizes between two parts are not the model's/)).toBeInTheDocument();
+    await userEvent.clear(field);
+    await userEvent.type(field, "0{Enter}");
+    expect(screen.getByTestId("explode")).toHaveTextContent("f:- t:- r:- s:-");
+
+    expect(viewRequest({ ...front, explode: 0.5 }).explode).toBe(0.5);
+    expect(viewRequest(front).explode).toBeUndefined();
+    // A view projected from an exploded one starts as far apart.
+    const sheet = { ...start, views: [{ ...front, explode: 0.5 }] };
+    expect(placeProjected(sheet, "p", "f", [1, 0], "first", [250, 150]).views[1]!.explode).toBe(0.5);
+  });
+});
+
 describe("a view's style in the properties panel", () => {
   it("starts as line art and changes from the Style list, taking projected views in the old style with it", async () => {
     render(<Harness view="f" />);

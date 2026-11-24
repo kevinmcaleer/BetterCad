@@ -1,16 +1,6 @@
-import {
-  addDrawing,
-  changeDrawing,
-  changeSheet,
-  removeDrawing,
-  renameDrawing,
-  standardFor,
-  type Drawing,
-  type DrawingSheet,
-  type TitleBlock,
-} from "@bettercad/kernel/drawing";
+import { addDrawing, changeDrawing, changeSheet, removeDrawing, renameDrawing, standardFor, type Drawing, type DrawingSheet } from "@bettercad/kernel/drawing";
 import { newId, type ModelDoc } from "../state/document";
-import { sheetLayout, today } from "./layout";
+import { isOwnField, sheetLayout, today, type TitleEdit } from "./layout";
 import { flipAngle } from "./projected";
 import { rememberSheet, type SheetPick } from "./prefs";
 import type { SheetChoice } from "./SheetCard";
@@ -119,7 +109,18 @@ export function sheetChange(drawing: Drawing, choice: SheetChoice, sheetId?: str
  * One title block field typed on the sheet. A blank leaves the field out of the file. Every sheet of a drawing shares
  * its title block, so the others take the change too (#572).
  */
-export function titleChange(drawing: Drawing, field: keyof TitleBlock, value: string): Edit {
+export function titleChange(drawing: Drawing, field: TitleEdit, value: string): Edit {
+  if (isOwnField(field)) {
+    // A field of your own (#575): its value, typed on the sheet. Its name is changed in Sheet settings.
+    const at = Number(field.slice(6));
+    return [
+      (d) =>
+        changeDrawing(d, drawing.id, (x) =>
+          x.fields?.[at] ? { ...x, fields: x.fields.map((f, i) => (i === at ? { ...f, value: value.slice(0, 80) } : f)) } : x,
+        ),
+      "Title block",
+    ];
+  }
   return [(d) => changeDrawing(d, drawing.id, (x) => shareTitle(x, field, value)), "Title block"];
 }
 

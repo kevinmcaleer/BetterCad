@@ -1,0 +1,19 @@
+{
+  "box": "-65,-12 to 135,30",
+  "curves": [
+    "hidden sharp line -63,2 -63,30 <- f3:new#1|f3:new#2",
+    "hidden sharp line -63,2 -7,2 <- f3:new#2|f3:new#3",
+    "hidden sharp line -7,2 -7,30 <- f3:new#2|f3:new#5",
+    "visible sharp line -5,0 -5,30 <- f1|f2",
+    "visible sharp line -5,0 -65,0 <- f2|f4",
+    "visible sharp line -5,30 -65,30 <- f2|shell(f5)",
+    "visible sharp line -65,0 -65,30 <- f0|f2",
+    "visible sharp line 132.7,-10 132.7,-6 <- f10:f1|f10:f2",
+    "visible sharp line 132.7,-6 77.3,-6 <- f10:f2|f10:f5",
+    "visible sharp line 135,-10 135,-12 <- f1|f2",
+    "visible sharp line 135,-10 75,-10 <- f2|f5",
+    "visible sharp line 135,-12 75,-12 <- f2|f4",
+    "visible sharp line 75,-10 75,-12 <- f0|f2",
+    "visible sharp line 77.3,-10 77.3,-6 <- f10:f0|f10:f2"
+  ]
+}

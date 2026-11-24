@@ -12,7 +12,9 @@ import {
   addBreak,
   caption,
   cutArt,
+  cutKind,
   cutLine,
+  cutPath,
   cutThrough,
   flipSection,
   hatch,
@@ -116,6 +118,10 @@ describe("section views", () => {
     expect(caption(v, 1, "iso")).toBe("A-A");
     expect(caption(v, 1, "asme")).toBe("SECTION A-A");
     expect(nextLetter(third)).toBe("B");
+    // A second section on the same side goes beyond the first.
+    const two = placeSection(third, "v3", "v1", [30, 10], "across", false, "third", { w: 200, h: 20 });
+    expect(two.views[2]!.at[1]).toBeGreaterThan(v.at[1] + 20);
+    expect(two.views[2]!.at[0]).toBe(100);
   });
 
   it("asks the kernel for the cut, and for nothing new when only the letter changes", () => {
@@ -178,6 +184,77 @@ describe("section views", () => {
     expect(scene.strokes.filter((k) => k.layer === "section").length).toBeGreaterThan(50);
     expect(scene.labels.filter((l) => l.layer === "section").map((l) => l.text)).toEqual(["A", "A", "A-A"]);
     expect(scene.fills?.filter((f) => f.layer === "section")).toHaveLength(2);
+  });
+
+  it("a half section cuts from where you click on along the line, and is marked with one arrow", () => {
+    const cut = cutThrough(VIEWS.front, [100, 10], "across", false, { kind: "half" });
+    expect(cut).toEqual({ origin: [100, 0, 10], normal: [0, 0, 1], along: [1, 0, 0], half: true });
+    expect(cutKind(cut)).toBe("half");
+    const s = placeSection(sheetWith(base()), "v2", "v1", [100, 10], "across", false, "third", { w: 200, h: 20 }, { kind: "half" });
+    expect(viewRequest(s.views[1]!).cut).toEqual(cut);
+    // The line starts at the middle of the view and runs out past its right end.
+    const path = cutPath(VIEWS.front, cut, (p) => [p[0] - 100, p[1] - 10], 1, 200, 20)!;
+    expect(path.pts).toEqual([
+      [0, 0],
+      [106, 0],
+    ]);
+    const art = cutArt(s, s.views[0]!, () => bar());
+    expect(art.arrows).toHaveLength(1);
+    expect(art.thick).toHaveLength(2);
+    expect(art.labels.map((l) => l.text)).toEqual(["A"]);
+    // Flipped, it is the same half, seen from below.
+    const f = flipSection(s, "v2").views[1]!.section!;
+    expect(f).toMatchObject({ normal: [0, 0, -1], along: [1, 0, 0], half: true });
+  });
+
+  it("a stepped section goes through each place, stepping halfway between them", () => {
+    // Through the hole at x = 30 on z = 10, then on z = 4 from x = 150: picked right to left, put in order.
+    const cut = cutThrough(VIEWS.front, [150, 4], "across", false, { kind: "stepped", more: [[30, 10]] });
+    expect(cut).toEqual({ origin: [30, 0, 10], normal: [0, 0, 1], along: [1, 0, 0], steps: [{ at: 60, offset: -6 }] });
+    expect(cutKind(cut)).toBe("stepped");
+    // Two places on one plane are a flat cut, and so is one place.
+    expect(cutThrough(VIEWS.front, [30, 10], "across", false, { kind: "stepped", more: [[150, 10]] })).toEqual({ origin: [30, 0, 10], normal: [0, 0, 1] });
+    expect(cutKind(cutThrough(VIEWS.front, [30, 10], "across", false, { kind: "stepped" }))).toBe("full");
+    const s = placeSection(sheetWith(base()), "v2", "v1", [150, 4], "across", false, "third", { w: 200, h: 20 }, { kind: "stepped", more: [[30, 10]] });
+    expect(s.views[1]).toMatchObject({ direction: "top", section: cut });
+    expect(viewRequest(s.views[1]!).cut).toEqual(cut);
+    // The line jogs down 6 mm at x = 90, which is 10 mm left of the view's middle.
+    const path = cutPath(VIEWS.front, cut, (p) => [p[0] - 100, p[1] - 10], 1, 200, 20)!;
+    expect(path.pts).toEqual([
+      [-106, 0],
+      [-10, 0],
+      [-10, -6],
+      [106, -6],
+    ]);
+    const art = cutArt(s, s.views[0]!, () => bar());
+    expect(art.arrows).toHaveLength(2);
+    // Thick at both ends and each side of both corners.
+    expect(art.thick).toHaveLength(6);
+    // Flipped, the planes stay where they are.
+    const f = flipSection(s, "v2").views[1]!.section!;
+    expect(f.normal).toEqual([0, 0, -1]);
+    expect(f.steps).toEqual([{ at: 60, offset: 6 }]);
+    expect(cutPath(VIEWS.front, f, (p) => [p[0] - 100, p[1] - 10], 1, 200, 20)!.pts[3]).toEqual([106, -6]);
+  });
+
+  it("a slanted section looks square on to its turned line, and moves freely", () => {
+    const cut = cutThrough(VIEWS.front, [100, 10], "across", false, { tilt: 30 });
+    expect(cut.origin).toEqual([100, 0, 10]);
+    expect(cut.normal[0]).toBeCloseTo(-0.5);
+    expect(cut.normal[2]).toBeCloseTo(Math.sqrt(3) / 2);
+    const s = placeSection(sheetWith(base()), "v2", "v1", [100, 10], "across", false, "third", { w: 200, h: 20 }, { tilt: 30 });
+    const v = s.views[1]!;
+    expect(v.direction).toMatchObject({ toEye: cut.normal, up: [0, 1, 0] });
+    // Out along the way it looks from, up and to the left of the parent.
+    expect(v.at[0]).toBeLessThan(100);
+    expect(v.at[1]).toBeGreaterThan(100);
+    const line = cutLine(VIEWS.front, v.section!)!;
+    expect(line.side[0]).toBeCloseTo(-0.5);
+    const path = cutPath(VIEWS.front, v.section!, (p) => [p[0] - 100, p[1] - 10], 1, 200, 20)!;
+    expect(path.pts).toHaveLength(2);
+    // The line climbs at 30°.
+    const [a, b] = path.pts as [V2, V2];
+    expect(Math.abs((b[1] - a[1]) / (b[0] - a[0]))).toBeCloseTo(Math.tan(Math.PI / 6));
   });
 
   it("stays a section when the view it was cut from is deleted", () => {

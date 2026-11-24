@@ -69,6 +69,18 @@ export type ViewRound = {
 export interface ViewCut {
   origin: V3;
   normal: V3;
+  /**
+   * The way the cutting line runs: a unit vector in the cut's plane, square to the way its parent view looks. Needed
+   * by `half` and `steps`, which say where along the line the cut changes.
+   */
+  along?: V3;
+  /** A half section: only what is past `origin` along `along` is taken away, so half the view is cut and half whole. */
+  half?: boolean;
+  /**
+   * A stepped (offset) section: past each `at` along `along`, in millimetres from `origin`, the cut is moved `offset`
+   * along `normal` from where `origin` has it. In order of `at`. Left out, the cut is one flat plane.
+   */
+  steps?: { at: number; offset: number }[];
 }
 
 export interface ProjectOptions {
@@ -232,4 +244,10 @@ export interface ModelViewRequest extends ProjectOptions {
    */
   shows: { all: true } | { component: string } | { bodies: string[]; asMade?: true };
   frame: ViewFrame;
+  /**
+   * An exploded view (#574): each component's bodies (each body, when no two are in different components) moved away
+   * from the middle of what is shown by this many times how far its own middle is from it. 0.5 puts half as much
+   * again between the parts. Left out or 0, everything is where the model has it.
+   */
+  explode?: number;
 }
