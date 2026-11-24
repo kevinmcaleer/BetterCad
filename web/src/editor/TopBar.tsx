@@ -104,6 +104,7 @@ const TABS: [Exclude<RibbonTab, "sketch">, string][] = [
   ["model", "Model"],
   ["assemble", "Assemble"],
   ["inspect", "Inspect"],
+  ["drawing", "Drawing"],
 ];
 
 /** The Construct menu's entries: planes, then axes, then points, as in Fusion. */
@@ -187,6 +188,12 @@ export function TopBar(p: TopBarProps) {
       ? { id: "drawing", label: "Drawing", tools: p.drawingRibbon }
       : null;
   const sketching = !!over;
+  const inPlace = TABS.some(([id]) => id === over?.id);
+  const overTab = over && (
+    <button type="button" role="tab" id={`bc-tab-${over.id}`} className="bc-tab" aria-selected aria-controls="bc-ribbon-tools">
+      {over.label}
+    </button>
+  );
   const title = (
     <span className="bc-title">
       <Icon name="cube" size={18} />
@@ -206,28 +213,29 @@ export function TopBar(p: TopBarProps) {
           {browserToggle(p)}
           {modelsToggle(p)}
           <span className="bc-ribbon-tabs" role="tablist" aria-label="Tool tabs">
-            {sketching && (
-              <button type="button" role="tab" id={`bc-tab-${over.id}`} className="bc-tab" aria-selected aria-controls="bc-ribbon-tools">
-                {over.label}
-              </button>
+            {/* Sketch goes first; an open drawing's own tab stands in for the model's Drawing tab. */}
+            {sketching && !inPlace && overTab}
+            {TABS.map(([id, label]) =>
+              id === over?.id ? (
+                <Fragment key={id}>{overTab}</Fragment>
+              ) : (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  id={`bc-tab-${id}`}
+                  className="bc-tab"
+                  aria-selected={!sketching && tab === id}
+                  aria-controls="bc-ribbon-tools"
+                  disabled={sketching}
+                  data-tip={folded ? undefined : "Double-click to fold the tools away"}
+                  onClick={() => pick(id)}
+                  onDoubleClick={() => setFolded(!folded)}
+                >
+                  {label}
+                </button>
+              ),
             )}
-            {TABS.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                id={`bc-tab-${id}`}
-                className="bc-tab"
-                aria-selected={!sketching && tab === id}
-                aria-controls="bc-ribbon-tools"
-                disabled={sketching}
-                data-tip={folded ? undefined : "Double-click to fold the tools away"}
-                onClick={() => pick(id)}
-                onDoubleClick={() => setFolded(!folded)}
-              >
-                {label}
-              </button>
-            ))}
           </span>
           <span className="bc-grow" />
           {undoRedo(p)}

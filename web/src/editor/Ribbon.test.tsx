@@ -80,4 +80,50 @@ describe("RibbonTools", () => {
     expect(screen.getByRole("button", { name: "Mirror" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Pattern" })).toHaveAttribute("aria-pressed", "false");
   });
+
+  describe("Drawing tab", () => {
+    function drawingTab(drawings?: { id: string; name: string }[]) {
+      localStorage.clear();
+      const ran: string[] = [];
+      const opened: string[] = [];
+      const registry = createRegistry(() => ctx);
+      const cmd = (id: string, label: string): Command => ({ id, label, group: "File", icon: "drawing", run: () => ran.push(id) });
+      registry.register([cmd("drawing.new", "New drawing"), cmd("drawing.everyPart", "Make drawings of every part"), cmd("view.render", "Render")]);
+      render(<RibbonTools tab="drawing" registry={registry} tool="select" panel="parts" drawings={drawings} onOpenDrawing={(id) => opened.push(id)} />);
+      return { ran, opened, registry };
+    }
+
+    it("starts a drawing, or one for every part", () => {
+      const { ran } = drawingTab();
+      const create = screen.getByRole("group", { name: "Create" });
+      fireEvent.click(within(create).getByRole("button", { name: "New drawing" }));
+      fireEvent.click(within(create).getByRole("button", { name: "Make drawings of every part" }));
+      expect(ran).toEqual(["drawing.new", "drawing.everyPart"]);
+    });
+
+    it("opens one of the model's drawings", () => {
+      const { opened } = drawingTab([
+        { id: "d1", name: "Bracket" },
+        { id: "d2", name: "Wheel" },
+      ]);
+      fireEvent.click(within(screen.getByRole("group", { name: "Open" })).getByRole("button", { name: "Open drawing" }));
+      fireEvent.click(within(screen.getByRole("menu", { name: "Drawings in this model" })).getByRole("menuitem", { name: /Wheel/ }));
+      expect(opened).toEqual(["d2"]);
+    });
+
+    it("greys Open while the model has no drawings", () => {
+      drawingTab([]);
+      expect(screen.getByRole("button", { name: /Open drawing/ })).toBeDisabled();
+    });
+  });
+
+  it("keeps New drawing off the Inspect tab, even where it was pinned before", () => {
+    localStorage.setItem("bettercad.ribbonPins", JSON.stringify({ "inspect.show": ["view.render", "drawing.new"] }));
+    const registry = createRegistry(() => ctx);
+    const cmd = (id: string, label: string): Command => ({ id, label, group: "File", icon: "drawing", run: () => {} });
+    registry.register([cmd("drawing.new", "New drawing"), cmd("view.render", "Render")]);
+    render(<RibbonTools tab="inspect" registry={registry} tool="select" panel="parts" />);
+    expect(within(screen.getByRole("group", { name: "Show" })).getByRole("button", { name: "Render" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New drawing" })).toBeNull();
+  });
 });
