@@ -6,6 +6,9 @@ import { loadOCCT, type OC } from "./oc";
 import { boolean, box, cylinder, elements, fillet, place, type TopoDS_Shape } from "./shapes";
 import { ModelBuilder } from "./model";
 import { SAMPLES } from "../samples";
+import { addPart, addPattern, build, changeParts, newDoc, type ModelDoc } from "../document";
+import type { V3 } from "../view";
+import { bodyRef } from "../construct";
 import { distanceTo, pointsOn, projectView, viewAxes, VIEWS, type ViewCurve, type ViewEdge } from "./project";
 
 let oc: OC;
@@ -292,6 +295,57 @@ describe("a view of a model", () => {
     expect(one.bodies).toEqual([all.bodies[0]]);
     expect(one.edges.every((e) => e.source?.body === all.bodies[0])).toBe(true);
     expect(b.view(doc, undefined, { shows: { bodies: ["nope"] }, frame: VIEWS.front }, projectView)).toMatchObject({ edges: [], bodies: [] });
+  });
+});
+
+/** A 10 x 4 x 2 mm link with pins 8 mm apart, wrapped as a track of 20 round two 40 mm wheels. */
+function trackDoc(): ModelDoc {
+  let doc = addPart(newDoc(), "cylinder", "w1");
+  doc = changeParts(doc, ["w1"], "size", { x: 40, y: 40, z: 10 });
+  doc = addPart(doc, "cylinder", "w2");
+  doc = changeParts(doc, ["w2"], "size", { x: 40, y: 40, z: 10 });
+  doc = changeParts(doc, ["w2"], "position", { x: 100, y: 0, z: 0 });
+  doc = addPart(doc, "box", "link");
+  doc = changeParts(doc, ["link"], "size", { x: 10, y: 4, z: 2 });
+  doc = changeParts(doc, ["link"], "position", { x: 50, y: 60, z: 4 });
+  const parts = build(doc).parts;
+  const p = (id: string) => parts.find((q) => q.id === id)!;
+  const circle = (centre: V3, radius: number) => ({ t: "circle" as const, centre, axis: [0, 0, 1] as V3, radius });
+  return addPattern(
+    doc,
+    {
+      kind: "track",
+      parts: ["link"],
+      track: {
+        count: 20,
+        start: bodyRef(p("link"), "edge", 0, circle([46, 60, 5], 1)),
+        end: bodyRef(p("link"), "edge", 1, circle([54, 60, 5], 1)),
+        wheels: [bodyRef(p("w1"), "edge", 0, circle([0, 0, 5], 20)), bodyRef(p("w2"), "edge", 0, circle([100, 0, 5], 20))],
+        offset: 0,
+        lift: 2,
+        side: 0,
+      },
+    },
+    "t",
+  );
+}
+
+describe("a track's link as made", () => {
+  const size = (v: { box: { min: number[]; max: number[] } }) =>
+    [v.box.max[0]! - v.box.min[0]!, v.box.max[1]! - v.box.min[1]!].map((n) => Math.round(n * 100) / 100);
+
+  it("draws a link square to its own axes, not tipped where it sits on the track", () => {
+    const doc = trackDoc();
+    const b = new ModelBuilder(oc);
+    const ids = build(doc).tracks![0]!.parts;
+    // From the top, the link as made is 10 x 4 mm; on the track, round a wheel, most are turned.
+    for (const id of [ids[0]!, ids[7]!]) {
+      const made = b.view(doc, undefined, { shows: { bodies: [id], asMade: true }, frame: VIEWS.top, hidden: false }, projectView);
+      expect(made.bodies).toEqual([id]);
+      expect(size(made)).toEqual([10, 4]);
+    }
+    const sat = b.view(doc, undefined, { shows: { bodies: [ids[7]!] }, frame: VIEWS.top, hidden: false }, projectView);
+    expect(size(sat)).not.toEqual([10, 4]);
   });
 });
 
