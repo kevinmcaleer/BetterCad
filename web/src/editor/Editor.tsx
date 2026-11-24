@@ -4344,7 +4344,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               ribbonOn
                 ? (tab) => (
                     <Suspense fallback={null}>
-                      <RibbonTools tab={tab} registry={registry} tool={tool} mirrorOn={mirrorOn} panel={panel} />
+                      <RibbonTools
+                        tab={tab}
+                        registry={registry}
+                        tool={tool}
+                        mirrorOn={mirrorOn}
+                        panel={panel}
+                        drawings={doc.drawings?.map((d) => ({ id: d.id, name: d.name }))}
+                        onOpenDrawing={(id) => onDrawing("open", id)}
+                      />
                     </Suspense>
                   )
                 : undefined

@@ -96,6 +96,20 @@ describe("Ribbon", () => {
     expect(screen.getByRole("toolbar", { name: "Sketch tools" })).toContainElement(screen.getByRole("button", { name: "Line" }));
   });
 
+  it("has a Drawing tab, which an open drawing's own tools take over in place", () => {
+    setup({ ribbon: (t) => <span>{t} tools</span> });
+    fireEvent.click(screen.getByRole("tab", { name: "Drawing" }));
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("drawing tools");
+  });
+
+  it("shows one Drawing tab, last, while a drawing is open", () => {
+    setup({ ribbon: () => <span>model</span>, drawingRibbon: <button type="button">Parts list</button> });
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing"]);
+    expect(tabs[3]).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("toolbar", { name: "Drawing tools" })).toContainElement(screen.getByRole("button", { name: "Parts list" }));
+  });
+
   it("keeps the compact bar for a shared model", () => {
     setup({ ribbon: () => <span>tools</span>, shared: { owner: "Kev" } });
     expect(screen.queryByRole("tab")).toBeNull();
