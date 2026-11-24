@@ -7,6 +7,14 @@ import { showView, type EEdit } from "./actions";
 import ElectronicsView, { ElectronicsProps, ElectronicsRibbon, onDesign } from "./Electronics";
 import { eui } from "./ui";
 
+// The starter library is fetched in the app; here it is read from the file the app would fetch.
+vi.mock("./starter", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const pack = JSON.parse(readFileSync(join(__dirname, "../../../packages/electronics/library/starter.json"), "utf8")) as unknown;
+  return { loadStarter: () => Promise.resolve(pack), basicsPack: () => pack };
+});
+
 /** A resistor and an LED, top pins wired together. */
 function ledAndResistor(): ElectronicsDesign {
   let d = emptyDesign();
@@ -49,9 +57,14 @@ describe("the electronics workspace", () => {
     await userEvent.click(within(screen.getByText("Start with a part.").parentElement!).getByRole("button", { name: /Components/ }));
     const card = screen.getByRole("group", { name: "Components options" });
     await userEvent.type(within(card).getByLabelText("Find a part"), "led");
-    await userEvent.click(within(card).getByRole("button", { name: /^LED/ }));
+    await userEvent.click(await within(card).findByRole("button", { name: /^LED \(0603\)/ }));
+    expect(within(card).getByRole("img", { name: "Symbol of LED" })).toBeInTheDocument();
+    expect(within(card).getByText(/^From/)).toHaveTextContent("From KiCad libraries 9.0.0, CC-BY-SA 4.0 with exception.");
+    await userEvent.selectOptions(within(card).getByLabelText("Package"), "LED D5.0mm");
+    await userEvent.click(within(card).getByRole("button", { name: "Place" }));
     expect(eui.get()).toMatchObject({ schTool: "place", card: null });
     expect(eui.get().placing?.name).toBe("LED");
+    expect(eui.get().placing?.packages[eui.get().placingPkg]?.footprint.name).toBe("LED_D5.0mm");
     expect(screen.getByRole("status", { name: "Electronics status" })).toHaveTextContent("Placing LED. Click to place, Esc to stop.");
   });
 

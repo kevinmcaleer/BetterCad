@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { ledCircuit, onCanvas, tools } from "./lib/electronics";
+import { ledCircuit, onCanvas, pick, tools } from "./lib/electronics";
 
 const axe = async (page: import("@playwright/test").Page) => {
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
@@ -57,10 +57,7 @@ test.describe("on a wide screen", () => {
     await page.keyboard.press("1");
     await expect(page.getByRole("tab", { name: "Schematic" })).toHaveAttribute("aria-selected", "true");
     await page.keyboard.press("p");
-    await page
-      .getByRole("group", { name: "Components options" })
-      .getByRole("button", { name: /^Capacitor/ })
-      .click();
+    await pick(page, "Capacitor");
     await page.mouse.click(...(await onCanvas(page, 25.4, 0)));
     await page.keyboard.press("Escape");
     await expect(page.getByRole("img", { name: "1 change behind the schematic" })).toBeVisible();

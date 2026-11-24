@@ -1,0 +1,1319 @@
+{
+  "kicad": "9.0.0",
+  "parts": [
+    {
+      "id": "resistor",
+      "category": "Passives",
+      "symbol": "Device:R",
+      "name": "Resistor",
+      "value": "10 kΩ",
+      "footprints": [
+        "Resistor_SMD:R_0603_1608Metric",
+        "Resistor_SMD:R_0402_1005Metric",
+        "Resistor_SMD:R_0805_2012Metric",
+        "Resistor_SMD:R_1206_3216Metric",
+        "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
+      ],
+      "keywords": ["ohm"]
+    },
+    {
+      "id": "capacitor",
+      "category": "Passives",
+      "symbol": "Device:C",
+      "name": "Capacitor",
+      "value": "100 nF",
+      "footprints": [
+        "Capacitor_SMD:C_0603_1608Metric",
+        "Capacitor_SMD:C_0402_1005Metric",
+        "Capacitor_SMD:C_0805_2012Metric",
+        "Capacitor_SMD:C_1206_3216Metric",
+        "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm"
+      ],
+      "keywords": ["cap", "ceramic"]
+    },
+    {
+      "id": "capacitor-polarised",
+      "category": "Passives",
+      "symbol": "Device:C_Polarized",
+      "name": "Capacitor, polarised",
+      "value": "100 µF",
+      "footprints": [
+        "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm",
+        "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm",
+        "Capacitor_THT:CP_Radial_D8.0mm_P3.50mm",
+        "Capacitor_SMD:CP_Elec_6.3x5.4"
+      ],
+      "keywords": ["electrolytic", "cap"]
+    },
+    {
+      "id": "inductor",
+      "category": "Passives",
+      "symbol": "Device:L",
+      "name": "Inductor",
+      "value": "10 µH",
+      "footprints": ["Inductor_SMD:L_0603_1608Metric", "Inductor_SMD:L_0402_1005Metric", "Inductor_SMD:L_0805_2012Metric", "Inductor_SMD:L_1206_3216Metric"],
+      "keywords": ["coil", "choke"]
+    },
+    {
+      "id": "ferrite-bead",
+      "category": "Passives",
+      "symbol": "Device:FerriteBead",
+      "name": "Ferrite bead",
+      "value": "600 Ω",
+      "footprints": ["Inductor_SMD:L_0603_1608Metric", "Inductor_SMD:L_0805_2012Metric"]
+    },
+    {
+      "id": "potentiometer",
+      "category": "Passives",
+      "symbol": "Device:R_Potentiometer",
+      "name": "Potentiometer",
+      "value": "10 kΩ",
+      "footprints": ["Potentiometer_THT:Potentiometer_Bourns_3386P_Vertical", "Potentiometer_THT:Potentiometer_Alps_RK09K_Single_Vertical"],
+      "keywords": ["pot", "trimmer", "variable"]
+    },
+    {
+      "id": "thermistor",
+      "category": "Passives",
+      "symbol": "Device:Thermistor_NTC",
+      "name": "Thermistor, NTC",
+      "value": "10 kΩ",
+      "footprints": ["Resistor_SMD:R_0603_1608Metric", "Resistor_SMD:R_0805_2012Metric"]
+    },
+    {
+      "id": "ldr",
+      "category": "Passives",
+      "symbol": "Device:R_Photo",
+      "name": "Light dependent resistor",
+      "value": "LDR",
+      "footprints": ["OptoDevice:R_LDR_5.1x4.3mm_P3.4mm_Vertical"],
+      "keywords": ["photoresistor", "light"]
+    },
+    {
+      "id": "fuse",
+      "category": "Passives",
+      "symbol": "Device:Fuse",
+      "name": "Fuse",
+      "value": "1 A",
+      "footprints": ["Fuse:Fuse_1206_3216Metric", "Fuse:Fuse_0805_2012Metric"]
+    },
+    {
+      "id": "polyfuse",
+      "category": "Passives",
+      "symbol": "Device:Polyfuse",
+      "name": "Resettable fuse",
+      "value": "500 mA",
+      "footprints": ["Fuse:Fuse_1206_3216Metric", "Fuse:Fuse_1812_4532Metric"],
+      "keywords": ["ptc", "polyfuse"]
+    },
+    {
+      "id": "crystal",
+      "category": "Passives",
+      "symbol": "Device:Crystal",
+      "name": "Crystal",
+      "value": "16 MHz",
+      "footprints": ["Crystal:Crystal_HC49-4H_Vertical", "Crystal:Crystal_SMD_HC49-SD"]
+    },
+    {
+      "id": "crystal-4pin",
+      "category": "Passives",
+      "symbol": "Device:Crystal_GND24",
+      "name": "Crystal, 4 pads",
+      "value": "12 MHz",
+      "footprints": ["Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm", "Crystal:Crystal_SMD_5032-4Pin_5.0x3.2mm"]
+    },
+    {
+      "id": "led",
+      "category": "Diodes and LEDs",
+      "symbol": "Device:LED",
+      "name": "LED",
+      "value": "Red",
+      "footprints": ["LED_SMD:LED_0603_1608Metric", "LED_SMD:LED_0805_2012Metric", "LED_SMD:LED_1206_3216Metric", "LED_THT:LED_D3.0mm", "LED_THT:LED_D5.0mm"],
+      "keywords": ["light"]
+    },
+    {
+      "id": "led-rgb",
+      "category": "Diodes and LEDs",
+      "symbol": "Device:LED_RGBA",
+      "name": "LED, RGB, common anode",
+      "value": "RGB",
+      "footprints": ["LED_THT:LED_D5.0mm-4_RGB"]
+    },
+    {
+      "id": "diode",
+      "category": "Diodes and LEDs",
+      "symbol": "Device:D",
+      "name": "Diode",
+      "value": "Diode",
+      "footprints": ["Diode_SMD:D_SOD-123", "Diode_SMD:D_SMA", "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal", "Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal"]
+    },
+    {
+      "id": "diode-schottky",
+      "category": "Diodes and LEDs",
+      "symbol": "Device:D_Schottky",
+      "name": "Schottky diode",
+      "value": "Schottky",
+      "footprints": ["Diode_SMD:D_SOD-123", "Diode_SMD:D_SMA", "Diode_THT:D_DO-41_SOD81_P10.16mm_Horizontal"]
+    },
+    {
+      "id": "diode-zener",
+      "category": "Diodes and LEDs",
+      "symbol": "Device:D_Zener",
+      "name": "Zener diode",
+      "value": "5.1 V",
+      "footprints": ["Diode_SMD:D_SOD-123", "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal"]
+    },
+    {
+      "id": "1n4148",
+      "category": "Diodes and LEDs",
+      "symbol": "Diode:1N4148"
+    },
+    {
+      "id": "1n4148w",
+      "category": "Diodes and LEDs",
+      "symbol": "Diode:1N4148W"
+    },
+    {
+      "id": "1n4007",
+      "category": "Diodes and LEDs",
+      "symbol": "Diode:1N4007"
+    },
+    {
+      "id": "1n5819",
+      "category": "Diodes and LEDs",
+      "symbol": "Diode:1N5819"
+    },
+    {
+      "id": "ss14",
+      "category": "Diodes and LEDs",
+      "symbol": "Diode:SS14"
+    },
+    {
+      "id": "ss34",
+      "category": "Diodes and LEDs",
+      "symbol": "Diode:SS34"
+    },
+    {
+      "id": "bat54s",
+      "category": "Diodes and LEDs",
+      "symbol": "Diode:BAT54S"
+    },
+    {
+      "id": "ws2812b",
+      "category": "Diodes and LEDs",
+      "symbol": "LED:WS2812B",
+      "keywords": ["neopixel", "addressable", "rgb"]
+    },
+    {
+      "id": "sk6812",
+      "category": "Diodes and LEDs",
+      "symbol": "LED:SK6812",
+      "keywords": ["neopixel", "addressable", "rgb"]
+    },
+    {
+      "id": "sk6812mini",
+      "category": "Diodes and LEDs",
+      "symbol": "LED:SK6812MINI",
+      "keywords": ["neopixel", "addressable", "rgb"]
+    },
+    {
+      "id": "ws2812b-2020",
+      "category": "Diodes and LEDs",
+      "symbol": "LED:WS2812B-2020",
+      "keywords": ["neopixel", "addressable", "rgb"]
+    },
+    {
+      "id": "apa102",
+      "category": "Diodes and LEDs",
+      "symbol": "LED:APA102",
+      "keywords": ["neopixel", "addressable", "rgb"]
+    },
+    {
+      "id": "power-gnd",
+      "category": "Power symbols",
+      "symbol": "power:GND",
+      "name": "GND",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-3v3",
+      "category": "Power symbols",
+      "symbol": "power:+3V3",
+      "name": "3V3",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-5v",
+      "category": "Power symbols",
+      "symbol": "power:+5V",
+      "name": "5V",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-vbus",
+      "category": "Power symbols",
+      "symbol": "power:VBUS",
+      "name": "VBUS",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-vcc",
+      "category": "Power symbols",
+      "symbol": "power:VCC",
+      "name": "VCC",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-vdd",
+      "category": "Power symbols",
+      "symbol": "power:VDD",
+      "name": "VDD",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-12v",
+      "category": "Power symbols",
+      "symbol": "power:+12V",
+      "name": "12V",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-9v",
+      "category": "Power symbols",
+      "symbol": "power:+9V",
+      "name": "9V",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-batt",
+      "category": "Power symbols",
+      "symbol": "power:+BATT",
+      "name": "Battery +",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-gnda",
+      "category": "Power symbols",
+      "symbol": "power:GNDA",
+      "name": "GND, analogue",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "power-pwr_flag",
+      "category": "Power symbols",
+      "symbol": "power:PWR_FLAG",
+      "name": "Power flag",
+      "keywords": ["power", "supply", "rail"]
+    },
+    {
+      "id": "header-1x{nn}",
+      "category": "Connectors",
+      "symbol": "Connector_Generic:Conn_01x{nn}",
+      "name": "Pin header, 1 × {n}",
+      "value": "1×{n}",
+      "repeat": {
+        "from": 1,
+        "to": 20
+      },
+      "footprints": [
+        "Connector_PinHeader_2.54mm:PinHeader_1x{nn}_P2.54mm_Vertical",
+        "Connector_PinSocket_2.54mm:PinSocket_1x{nn}_P2.54mm_Vertical",
+        "Connector_PinHeader_2.54mm:PinHeader_1x{nn}_P2.54mm_Horizontal"
+      ],
+      "keywords": ["header", "socket", "pins", "2.54", "0.1 in"]
+    },
+    {
+      "id": "header-2x{nn}",
+      "category": "Connectors",
+      "symbol": "Connector_Generic:Conn_02x{nn}_Odd_Even",
+      "name": "Pin header, 2 × {n}",
+      "value": "2×{n}",
+      "repeat": {
+        "from": 2,
+        "to": 20
+      },
+      "footprints": ["Connector_PinHeader_2.54mm:PinHeader_2x{nn}_P2.54mm_Vertical", "Connector_PinSocket_2.54mm:PinSocket_2x{nn}_P2.54mm_Vertical"],
+      "keywords": ["header", "socket", "pins", "2.54", "0.1 in"]
+    },
+    {
+      "id": "jst-ph-{n}",
+      "category": "Connectors",
+      "symbol": "Connector_Generic:Conn_01x{nn}",
+      "name": "JST PH, {n} pins",
+      "value": "JST PH {n}",
+      "repeat": {
+        "from": 2,
+        "to": 8
+      },
+      "footprints": ["Connector_JST:JST_PH_B{n}B-PH-K_1x{nn}_P2.00mm_Vertical", "Connector_JST:JST_PH_S{n}B-PH-K_1x{nn}_P2.00mm_Horizontal"],
+      "keywords": ["jst", "battery", "2 mm", "lipo"]
+    },
+    {
+      "id": "jst-xh-{n}",
+      "category": "Connectors",
+      "symbol": "Connector_Generic:Conn_01x{nn}",
+      "name": "JST XH, {n} pins",
+      "value": "JST XH {n}",
+      "repeat": {
+        "from": 2,
+        "to": 8
+      },
+      "footprints": ["Connector_JST:JST_XH_B{n}B-XH-A_1x{nn}_P2.50mm_Vertical", "Connector_JST:JST_XH_S{n}B-XH-A_1x{nn}_P2.50mm_Horizontal"],
+      "keywords": ["jst", "2.5 mm", "balance"]
+    },
+    {
+      "id": "jst-sh-4",
+      "category": "Connectors",
+      "symbol": "Connector_Generic:Conn_01x04",
+      "name": "JST SH, 4 pins (Qwiic, STEMMA QT)",
+      "value": "Qwiic",
+      "footprints": ["Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal", "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical"],
+      "keywords": ["qwiic", "stemma", "i2c", "jst", "1 mm"]
+    },
+    {
+      "id": "jst-sh-3",
+      "category": "Connectors",
+      "symbol": "Connector_Generic:Conn_01x03",
+      "name": "JST SH, 3 pins",
+      "value": "JST SH 3",
+      "footprints": ["Connector_JST:JST_SH_SM03B-SRSS-TB_1x03-1MP_P1.00mm_Horizontal"],
+      "keywords": ["jst", "1 mm", "debug"]
+    },
+    {
+      "id": "screw-terminal-{n}",
+      "category": "Connectors",
+      "symbol": "Connector:Screw_Terminal_01x0{n}",
+      "name": "Screw terminal, {n} way",
+      "value": "{n} way",
+      "repeat": {
+        "from": 2,
+        "to": 4
+      },
+      "footprints": [
+        "TerminalBlock:TerminalBlock_bornier-{n}_P5.08mm",
+        "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-{n}-5.08_1x0{n}_P5.08mm_Horizontal"
+      ],
+      "keywords": ["terminal", "block", "power", "motor"]
+    },
+    {
+      "id": "usb-c",
+      "category": "Connectors",
+      "symbol": "Connector:USB_C_Receptacle_USB2.0_16P",
+      "name": "USB-C socket, USB 2.0",
+      "value": "USB-C",
+      "footprints": ["Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12", "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal"],
+      "keywords": ["usb", "type-c", "power"]
+    },
+    {
+      "id": "usb-micro-b",
+      "category": "Connectors",
+      "symbol": "Connector:USB_B_Micro",
+      "name": "Micro USB socket",
+      "value": "Micro USB",
+      "footprints": ["Connector_USB:USB_Micro-B_Molex-105017-0001", "Connector_USB:USB_Micro-B_Wuerth_629105150521"],
+      "keywords": ["usb", "micro"]
+    },
+    {
+      "id": "barrel-jack",
+      "category": "Connectors",
+      "symbol": "Connector:Barrel_Jack_Switch",
+      "name": "Barrel jack",
+      "value": "DC jack",
+      "footprints": ["Connector_BarrelJack:BarrelJack_Horizontal", "Connector_BarrelJack:BarrelJack_CUI_PJ-102AH_Horizontal"],
+      "keywords": ["dc", "power", "jack"]
+    },
+    {
+      "id": "microsd",
+      "category": "Connectors",
+      "symbol": "Connector:Micro_SD_Card",
+      "name": "microSD card socket",
+      "value": "microSD",
+      "footprints": ["Connector_Card:microSD_HC_Hirose_DM3AT-SF-PEJM5", "Connector_Card:microSD_HC_Molex_104031-0811"],
+      "keywords": ["sd", "card", "storage"]
+    },
+    {
+      "id": "pi-header",
+      "category": "Connectors",
+      "symbol": "Connector:Raspberry_Pi_2_3",
+      "name": "Raspberry Pi 40-pin header",
+      "value": "Pi GPIO",
+      "footprints": ["Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical", "Connector_PinHeader_2.54mm:PinHeader_2x20_P2.54mm_Vertical"],
+      "keywords": ["raspberry", "pi", "hat", "gpio"]
+    },
+    {
+      "id": "swd-10",
+      "category": "Connectors",
+      "symbol": "Connector:Conn_ARM_JTAG_SWD_10",
+      "name": "SWD debug header, 10 pins",
+      "footprints": ["Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical_SMD", "Connector_PinHeader_1.27mm:PinHeader_2x05_P1.27mm_Vertical"],
+      "keywords": ["debug", "jtag", "swd"]
+    },
+    {
+      "id": "servo-header",
+      "category": "Connectors",
+      "symbol": "Motor:Motor_Servo",
+      "name": "Servo header",
+      "value": "Servo",
+      "footprints": ["Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"],
+      "keywords": ["servo", "pwm", "robot"]
+    },
+    {
+      "id": "motor-dc",
+      "category": "Connectors",
+      "symbol": "Motor:Motor_DC",
+      "name": "DC motor",
+      "value": "Motor",
+      "footprints": [
+        "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+        "TerminalBlock:TerminalBlock_bornier-2_P5.08mm",
+        "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical"
+      ],
+      "keywords": ["motor", "robot"]
+    },
+    {
+      "id": "stepper",
+      "category": "Connectors",
+      "symbol": "Motor:Stepper_Motor_bipolar",
+      "name": "Stepper motor, bipolar",
+      "value": "Stepper",
+      "footprints": ["Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical", "Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical"],
+      "keywords": ["stepper", "motor", "nema"]
+    },
+    {
+      "id": "battery-cell",
+      "category": "Connectors",
+      "symbol": "Device:Battery_Cell",
+      "name": "Coin cell holder, CR2032",
+      "value": "CR2032",
+      "footprints": ["Battery:BatteryHolder_Keystone_3034_1x20mm", "Battery:BatteryHolder_Keystone_103_1x20mm"],
+      "keywords": ["battery", "coin", "cr2032"]
+    },
+    {
+      "id": "battery",
+      "category": "Connectors",
+      "symbol": "Device:Battery",
+      "name": "Battery connector",
+      "value": "Battery",
+      "footprints": [
+        "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical",
+        "Connector_JST:JST_XH_B2B-XH-A_1x02_P2.50mm_Vertical",
+        "TerminalBlock:TerminalBlock_bornier-2_P5.08mm"
+      ],
+      "keywords": ["battery", "lipo", "pack"]
+    },
+    {
+      "id": "button",
+      "category": "Switches and sound",
+      "symbol": "Switch:SW_Push",
+      "name": "Push button",
+      "value": "Button",
+      "footprints": ["Button_Switch_THT:SW_PUSH_6mm", "Button_Switch_SMD:SW_SPST_TL3342"],
+      "keywords": ["tactile", "switch", "tact"]
+    },
+    {
+      "id": "slide-switch",
+      "category": "Switches and sound",
+      "symbol": "Switch:SW_SPDT",
+      "name": "Slide switch",
+      "value": "Switch",
+      "footprints": ["Button_Switch_SMD:SW_SPDT_PCM12", "Button_Switch_THT:SW_Slide-03_Wuerth-WS-SLTV_10x2.5x6.4_P2.54mm"],
+      "keywords": ["power", "switch", "spdt"]
+    },
+    {
+      "id": "dip-switch-4",
+      "category": "Switches and sound",
+      "symbol": "Switch:SW_DIP_x04",
+      "name": "DIP switch, 4 way",
+      "value": "DIP 4",
+      "footprints": ["Button_Switch_THT:SW_DIP_SPSTx04_Slide_9.78x12.34mm_W7.62mm_P2.54mm"]
+    },
+    {
+      "id": "buzzer",
+      "category": "Switches and sound",
+      "symbol": "Device:Buzzer",
+      "name": "Buzzer",
+      "value": "Buzzer",
+      "footprints": ["Buzzer_Beeper:Buzzer_12x9.5RM7.6", "Buzzer_Beeper:MagneticBuzzer_ProSignal_ABT-410-RC"],
+      "keywords": ["piezo", "beeper", "sound"]
+    },
+    {
+      "id": "speaker",
+      "category": "Switches and sound",
+      "symbol": "Device:Speaker",
+      "name": "Speaker",
+      "value": "Speaker",
+      "footprints": ["Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical", "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical"]
+    },
+    {
+      "id": "solderjumper-2-open",
+      "category": "Switches and sound",
+      "symbol": "Jumper:SolderJumper_2_Open",
+      "name": "Solder jumper, open",
+      "footprints": ["Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm", "Jumper:SolderJumper-2_P1.3mm_Open_TrianglePad1.0x1.5mm"],
+      "keywords": ["jumper", "bridge"]
+    },
+    {
+      "id": "solderjumper-2-bridged",
+      "category": "Switches and sound",
+      "symbol": "Jumper:SolderJumper_2_Bridged",
+      "name": "Solder jumper, bridged",
+      "footprints": ["Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm"],
+      "keywords": ["jumper", "bridge"]
+    },
+    {
+      "id": "solderjumper-3-open",
+      "category": "Switches and sound",
+      "symbol": "Jumper:SolderJumper_3_Open",
+      "name": "Solder jumper, 3 pads",
+      "footprints": ["Jumper:SolderJumper-3_P1.3mm_Open_RoundedPad1.0x1.5mm"],
+      "keywords": ["jumper", "bridge"]
+    },
+    {
+      "id": "jumper-2",
+      "category": "Switches and sound",
+      "symbol": "Jumper:Jumper_2_Open",
+      "name": "Jumper, 2 pins",
+      "footprints": ["Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"],
+      "keywords": ["jumper", "link"]
+    },
+    {
+      "id": "jumper-3",
+      "category": "Switches and sound",
+      "symbol": "Jumper:Jumper_3_Open",
+      "name": "Jumper, 3 pins",
+      "footprints": ["Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"],
+      "keywords": ["jumper", "link", "select"]
+    },
+    {
+      "id": "relay-sanyou-srd-form-c",
+      "category": "Switches and sound",
+      "symbol": "Relay:SANYOU_SRD_Form_C",
+      "keywords": ["relay"]
+    },
+    {
+      "id": "relay-g5le-1",
+      "category": "Switches and sound",
+      "symbol": "Relay:G5LE-1",
+      "keywords": ["relay"]
+    },
+    {
+      "id": "ams1117-3.3",
+      "category": "Power",
+      "symbol": "Regulator_Linear:AMS1117-3.3",
+      "keywords": ["regulator", "ldo", "3v3", "5v"]
+    },
+    {
+      "id": "ams1117-5.0",
+      "category": "Power",
+      "symbol": "Regulator_Linear:AMS1117-5.0",
+      "keywords": ["regulator", "ldo", "3v3", "5v"]
+    },
+    {
+      "id": "ap2112k-3.3",
+      "category": "Power",
+      "symbol": "Regulator_Linear:AP2112K-3.3",
+      "keywords": ["regulator", "ldo", "3v3", "5v"]
+    },
+    {
+      "id": "me6211c33m5",
+      "category": "Power",
+      "symbol": "Regulator_Linear:ME6211C33M5",
+      "keywords": ["regulator", "ldo", "3v3", "5v"]
+    },
+    {
+      "id": "lm7805-to220",
+      "category": "Power",
+      "symbol": "Regulator_Linear:LM7805_TO220",
+      "keywords": ["regulator", "ldo", "3v3", "5v"]
+    },
+    {
+      "id": "ld1117s33tr-sot223",
+      "category": "Power",
+      "symbol": "Regulator_Linear:LD1117S33TR_SOT223",
+      "keywords": ["regulator", "ldo", "3v3", "5v"]
+    },
+    {
+      "id": "mt3608",
+      "category": "Power",
+      "symbol": "Regulator_Switching:MT3608",
+      "keywords": ["regulator", "buck", "boost", "converter"]
+    },
+    {
+      "id": "lm2596s-5",
+      "category": "Power",
+      "symbol": "Regulator_Switching:LM2596S-5",
+      "keywords": ["regulator", "buck", "boost", "converter"]
+    },
+    {
+      "id": "ap63203wu",
+      "category": "Power",
+      "symbol": "Regulator_Switching:AP63203WU",
+      "keywords": ["regulator", "buck", "boost", "converter"]
+    },
+    {
+      "id": "tps563200",
+      "category": "Power",
+      "symbol": "Regulator_Switching:TPS563200",
+      "keywords": ["regulator", "buck", "boost", "converter"]
+    },
+    {
+      "id": "tp4056-42-esop8",
+      "category": "Power",
+      "symbol": "Battery_Management:TP4056-42-ESOP8",
+      "keywords": ["battery", "charger", "lipo", "protection"]
+    },
+    {
+      "id": "mcp73831-2-ot",
+      "category": "Power",
+      "symbol": "Battery_Management:MCP73831-2-OT",
+      "keywords": ["battery", "charger", "lipo", "protection"]
+    },
+    {
+      "id": "dw01a",
+      "category": "Power",
+      "symbol": "Battery_Management:DW01A",
+      "keywords": ["battery", "charger", "lipo", "protection"]
+    },
+    {
+      "id": "bss138",
+      "category": "Transistors",
+      "symbol": "Transistor_FET:BSS138",
+      "keywords": ["mosfet", "fet", "switch"]
+    },
+    {
+      "id": "2n7002",
+      "category": "Transistors",
+      "symbol": "Transistor_FET:2N7002",
+      "keywords": ["mosfet", "fet", "switch"]
+    },
+    {
+      "id": "ao3400a",
+      "category": "Transistors",
+      "symbol": "Transistor_FET:AO3400A",
+      "keywords": ["mosfet", "fet", "switch"]
+    },
+    {
+      "id": "ao3401a",
+      "category": "Transistors",
+      "symbol": "Transistor_FET:AO3401A",
+      "keywords": ["mosfet", "fet", "switch"]
+    },
+    {
+      "id": "irlml6402",
+      "category": "Transistors",
+      "symbol": "Transistor_FET:IRLML6402",
+      "keywords": ["mosfet", "fet", "switch"]
+    },
+    {
+      "id": "irlz44n",
+      "category": "Transistors",
+      "symbol": "Transistor_FET:IRLZ44N",
+      "keywords": ["mosfet", "fet", "switch"]
+    },
+    {
+      "id": "irf540n",
+      "category": "Transistors",
+      "symbol": "Transistor_FET:IRF540N",
+      "keywords": ["mosfet", "fet", "switch"]
+    },
+    {
+      "id": "2n3904",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:2N3904",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "2n3906",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:2N3906",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "bc547",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:BC547",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "bc557",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:BC557",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "s8050",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:S8050",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "ss8050",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:SS8050",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "mmbt3904",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:MMBT3904",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "mmbt3906",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:MMBT3906",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "mmbt2222a",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:MMBT2222A",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "pn2222a",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:PN2222A",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "bc817",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:BC817",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "tip120",
+      "category": "Transistors",
+      "symbol": "Transistor_BJT:TIP120",
+      "keywords": ["transistor", "bjt", "switch"]
+    },
+    {
+      "id": "pc817",
+      "category": "Transistors",
+      "symbol": "Isolator:PC817",
+      "keywords": ["optocoupler", "isolator", "opto"]
+    },
+    {
+      "id": "4n35",
+      "category": "Transistors",
+      "symbol": "Isolator:4N35",
+      "keywords": ["optocoupler", "isolator", "opto"]
+    },
+    {
+      "id": "drv8833pw",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:DRV8833PW",
+      "name": "DRV8833 motor driver (TSSOP)",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"]
+    },
+    {
+      "id": "drv8833pwp",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:DRV8833PWP",
+      "name": "DRV8833 motor driver (HTSSOP)",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"]
+    },
+    {
+      "id": "tb6612fng",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:TB6612FNG",
+      "name": "TB6612FNG motor driver",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"]
+    },
+    {
+      "id": "l293d",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:L293D",
+      "name": "L293D motor driver",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"]
+    },
+    {
+      "id": "l298n",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:L298N",
+      "name": "L298N motor driver",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"],
+      "footprints": ["Package_TO_SOT_THT:TO-220-15_P2.54x5.08mm_StaggerOdd_Lead4.58mm_Vertical"]
+    },
+    {
+      "id": "drv8871dda",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:DRV8871DDA",
+      "name": "DRV8871 motor driver",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"]
+    },
+    {
+      "id": "pololu-breakout-a4988",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:Pololu_Breakout_A4988",
+      "name": "A4988 stepper driver carrier",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"]
+    },
+    {
+      "id": "pololu-breakout-drv8825",
+      "category": "Motor drivers",
+      "symbol": "Driver_Motor:Pololu_Breakout_DRV8825",
+      "name": "DRV8825 stepper driver carrier",
+      "keywords": ["motor", "driver", "h-bridge", "robot", "stepper"]
+    },
+    {
+      "id": "pico",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:RaspberryPi_Pico",
+      "name": "Raspberry Pi Pico",
+      "value": "Pico",
+      "footprints": [
+        "Module:RaspberryPi_Pico_Common_Unspecified",
+        "Module:RaspberryPi_Pico_SMD",
+        "Module:RaspberryPi_Pico_Common_THT",
+        "Module:RaspberryPi_Pico_SMD_HandSolder"
+      ],
+      "keywords": ["rp2040", "raspberry", "pi", "pico", "micropython"]
+    },
+    {
+      "id": "pico-w",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:RaspberryPi_Pico",
+      "name": "Raspberry Pi Pico W",
+      "value": "Pico W",
+      "description": "Raspberry Pi Pico W: the Pico's pins and outline, with Wi-Fi and Bluetooth. Keep copper away from under its antenna.",
+      "footprints": [
+        "Module:RaspberryPi_Pico_Common_Unspecified",
+        "Module:RaspberryPi_Pico_SMD",
+        "Module:RaspberryPi_Pico_Common_THT",
+        "Module:RaspberryPi_Pico_SMD_HandSolder"
+      ],
+      "keywords": ["rp2040", "raspberry", "pi", "pico", "wifi", "wireless", "micropython"]
+    },
+    {
+      "id": "pico-2",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:RaspberryPi_Pico",
+      "name": "Raspberry Pi Pico 2",
+      "value": "Pico 2",
+      "description": "Raspberry Pi Pico 2 (RP2350): the Pico's pins and outline.",
+      "footprints": [
+        "Module:RaspberryPi_Pico_Common_Unspecified",
+        "Module:RaspberryPi_Pico_SMD",
+        "Module:RaspberryPi_Pico_Common_THT",
+        "Module:RaspberryPi_Pico_SMD_HandSolder"
+      ],
+      "keywords": ["rp2350", "raspberry", "pi", "pico", "micropython"]
+    },
+    {
+      "id": "pico-2-w",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:RaspberryPi_Pico",
+      "name": "Raspberry Pi Pico 2 W",
+      "value": "Pico 2 W",
+      "description": "Raspberry Pi Pico 2 W (RP2350): the Pico's pins and outline, with Wi-Fi and Bluetooth. Keep copper away from under its antenna.",
+      "footprints": [
+        "Module:RaspberryPi_Pico_Common_Unspecified",
+        "Module:RaspberryPi_Pico_SMD",
+        "Module:RaspberryPi_Pico_Common_THT",
+        "Module:RaspberryPi_Pico_SMD_HandSolder"
+      ],
+      "keywords": ["rp2350", "raspberry", "pi", "pico", "wifi", "wireless", "micropython"]
+    },
+    {
+      "id": "rp2040",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_RaspberryPi:RP2040",
+      "keywords": ["rp2040", "raspberry", "pi", "mcu"]
+    },
+    {
+      "id": "arduino-nano-v3-x",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:Arduino_Nano_v3.x",
+      "name": "Arduino Nano",
+      "keywords": ["arduino", "feather", "board", "module"]
+    },
+    {
+      "id": "arduino-uno-r3",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:Arduino_UNO_R3",
+      "name": "Arduino Uno R3 (shield)",
+      "keywords": ["arduino", "feather", "board", "module"]
+    },
+    {
+      "id": "arduino-nano-esp32",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:Arduino_Nano_ESP32",
+      "name": "Arduino Nano ESP32",
+      "keywords": ["arduino", "feather", "board", "module"]
+    },
+    {
+      "id": "arduino-nano-rp2040-connect",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:Arduino_Nano_RP2040_Connect",
+      "name": "Arduino Nano RP2040 Connect",
+      "keywords": ["arduino", "feather", "board", "module"]
+    },
+    {
+      "id": "arduino-nano-every",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:Arduino_Nano_Every",
+      "name": "Arduino Nano Every",
+      "keywords": ["arduino", "feather", "board", "module"]
+    },
+    {
+      "id": "adafruit-feather-generic",
+      "category": "Microcontrollers and modules",
+      "symbol": "MCU_Module:Adafruit_Feather_Generic",
+      "name": "Adafruit Feather",
+      "keywords": ["arduino", "feather", "board", "module"]
+    },
+    {
+      "id": "esp32-wroom-32e",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP32-WROOM-32E",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "esp32-wroom-32",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP32-WROOM-32",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "esp32-c3-wroom-02",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP32-C3-WROOM-02",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "esp32-s3-wroom-1",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP32-S3-WROOM-1",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "esp32-s3-mini-1",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP32-S3-MINI-1",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "esp32-c6-mini-1",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP32-C6-MINI-1",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "esp32-c3-devkitm-1",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP32-C3-DevKitM-1",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "esp-12f",
+      "category": "Microcontrollers and modules",
+      "symbol": "RF_Module:ESP-12F",
+      "keywords": ["esp32", "esp8266", "wifi", "bluetooth", "espressif", "module"]
+    },
+    {
+      "id": "ch340c",
+      "category": "Chips",
+      "symbol": "Interface_USB:CH340C",
+      "keywords": ["usb", "serial", "uart", "bridge"]
+    },
+    {
+      "id": "ch340g",
+      "category": "Chips",
+      "symbol": "Interface_USB:CH340G",
+      "keywords": ["usb", "serial", "uart", "bridge"]
+    },
+    {
+      "id": "ch340e",
+      "category": "Chips",
+      "symbol": "Interface_USB:CH340E",
+      "keywords": ["usb", "serial", "uart", "bridge"]
+    },
+    {
+      "id": "cp2102n-axx-xqfn24",
+      "category": "Chips",
+      "symbol": "Interface_USB:CP2102N-Axx-xQFN24",
+      "keywords": ["usb", "serial", "uart", "bridge"]
+    },
+    {
+      "id": "ft232rl",
+      "category": "Chips",
+      "symbol": "Interface_USB:FT232RL",
+      "keywords": ["usb", "serial", "uart", "bridge"]
+    },
+    {
+      "id": "ch9102f",
+      "category": "Chips",
+      "symbol": "Interface_USB:CH9102F",
+      "keywords": ["usb", "serial", "uart", "bridge"]
+    },
+    {
+      "id": "ne555",
+      "category": "Chips",
+      "symbol": "Timer:NE555P",
+      "name": "NE555 timer",
+      "footprints": ["Package_DIP:DIP-8_W7.62mm", "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"],
+      "keywords": ["555", "timer"]
+    },
+    {
+      "id": "lm358",
+      "category": "Chips",
+      "symbol": "Amplifier_Operational:LM358",
+      "footprints": ["Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "Package_DIP:DIP-8_W7.62mm"],
+      "keywords": ["opamp", "amplifier"]
+    },
+    {
+      "id": "lm324",
+      "category": "Chips",
+      "symbol": "Amplifier_Operational:LM324",
+      "footprints": ["Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", "Package_DIP:DIP-14_W7.62mm"],
+      "keywords": ["opamp", "amplifier"]
+    },
+    {
+      "id": "mcp6002",
+      "category": "Chips",
+      "symbol": "Amplifier_Operational:MCP6002-xSN",
+      "name": "MCP6002",
+      "footprints": ["Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "Package_DIP:DIP-8_W7.62mm"],
+      "keywords": ["opamp", "amplifier", "rail to rail"]
+    },
+    {
+      "id": "74hc595",
+      "category": "Chips",
+      "symbol": "74xx:74HC595",
+      "footprints": ["Package_SO:SOIC-16_3.9x9.9mm_P1.27mm", "Package_DIP:DIP-16_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "74hc165",
+      "category": "Chips",
+      "symbol": "74xx:74HC165",
+      "footprints": ["Package_SO:SOIC-16_3.9x9.9mm_P1.27mm", "Package_DIP:DIP-16_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "74hc138",
+      "category": "Chips",
+      "symbol": "74xx:74HC138",
+      "footprints": ["Package_SO:SOIC-16_3.9x9.9mm_P1.27mm", "Package_DIP:DIP-16_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "74hc00",
+      "category": "Chips",
+      "symbol": "74xx:74HC00",
+      "footprints": ["Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", "Package_DIP:DIP-14_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "74hc04",
+      "category": "Chips",
+      "symbol": "74xx:74HC04",
+      "footprints": ["Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", "Package_DIP:DIP-14_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "74hc14",
+      "category": "Chips",
+      "symbol": "74xx:74HC14",
+      "footprints": ["Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", "Package_DIP:DIP-14_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "74ahct125",
+      "category": "Chips",
+      "symbol": "74xx:74AHCT125",
+      "footprints": ["Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", "Package_DIP:DIP-14_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "74hc245",
+      "category": "Chips",
+      "symbol": "74xx:74HC245",
+      "footprints": ["Package_SO:SOIC-20W_7.5x12.8mm_P1.27mm", "Package_DIP:DIP-20_W7.62mm"],
+      "keywords": ["logic", "shift register", "buffer", "level"]
+    },
+    {
+      "id": "txs0108epw",
+      "category": "Chips",
+      "symbol": "Logic_LevelTranslator:TXS0108EPW",
+      "keywords": ["level shifter", "translator"]
+    },
+    {
+      "id": "txb0104pw",
+      "category": "Chips",
+      "symbol": "Logic_LevelTranslator:TXB0104PW",
+      "keywords": ["level shifter", "translator"]
+    },
+    {
+      "id": "sn74lvc1t45dbv",
+      "category": "Chips",
+      "symbol": "Logic_LevelTranslator:SN74LVC1T45DBV",
+      "keywords": ["level shifter", "translator"]
+    },
+    {
+      "id": "24lc256",
+      "category": "Chips",
+      "symbol": "Memory_EEPROM:24LC256",
+      "footprints": ["Package_SO:SOIC-8_3.9x4.9mm_P1.27mm", "Package_DIP:DIP-8_W7.62mm"],
+      "keywords": ["eeprom", "memory", "i2c"]
+    },
+    {
+      "id": "max3232",
+      "category": "Chips",
+      "symbol": "Interface_UART:MAX3232",
+      "footprints": ["Package_SO:SOIC-16_3.9x9.9mm_P1.27mm", "Package_DIP:DIP-16_W7.62mm"],
+      "keywords": ["rs232", "serial"]
+    },
+    {
+      "id": "sp3485",
+      "category": "Chips",
+      "symbol": "Interface_UART:SP3485EN",
+      "keywords": ["rs485", "serial"]
+    },
+    {
+      "id": "mpu-6050",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Motion:MPU-6050",
+      "keywords": ["imu", "accelerometer", "gyro", "sensor"]
+    },
+    {
+      "id": "bno055",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Motion:BNO055",
+      "keywords": ["imu", "accelerometer", "gyro", "sensor"]
+    },
+    {
+      "id": "lsm6ds3",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Motion:LSM6DS3",
+      "keywords": ["imu", "accelerometer", "gyro", "sensor"]
+    },
+    {
+      "id": "icm-20948",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Motion:ICM-20948",
+      "keywords": ["imu", "accelerometer", "gyro", "sensor"]
+    },
+    {
+      "id": "bme280",
+      "category": "Sensors and displays",
+      "symbol": "Sensor:BME280",
+      "keywords": ["sensor", "temperature", "humidity", "pressure"]
+    },
+    {
+      "id": "bme680",
+      "category": "Sensors and displays",
+      "symbol": "Sensor:BME680",
+      "keywords": ["sensor", "temperature", "humidity", "pressure"]
+    },
+    {
+      "id": "dht11",
+      "category": "Sensors and displays",
+      "symbol": "Sensor:DHT11",
+      "keywords": ["sensor", "temperature", "humidity", "pressure"]
+    },
+    {
+      "id": "max30102",
+      "category": "Sensors and displays",
+      "symbol": "Sensor:MAX30102",
+      "keywords": ["sensor", "temperature", "humidity", "pressure"]
+    },
+    {
+      "id": "ds18b20",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Temperature:DS18B20",
+      "keywords": ["sensor", "temperature"]
+    },
+    {
+      "id": "lm35-lp",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Temperature:LM35-LP",
+      "keywords": ["sensor", "temperature"]
+    },
+    {
+      "id": "vl53l0cxv0dh1",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Distance:VL53L0CXV0DH1",
+      "keywords": ["sensor", "distance", "tof", "laser"]
+    },
+    {
+      "id": "vl53l1cxv0fy1",
+      "category": "Sensors and displays",
+      "symbol": "Sensor_Distance:VL53L1CXV0FY1",
+      "keywords": ["sensor", "distance", "tof", "laser"]
+    },
+    {
+      "id": "wc1602a",
+      "category": "Sensors and displays",
+      "symbol": "Display_Character:WC1602A",
+      "keywords": ["lcd", "display", "1602", "hd44780"]
+    },
+    {
+      "id": "rc1602a",
+      "category": "Sensors and displays",
+      "symbol": "Display_Character:RC1602A",
+      "keywords": ["lcd", "display", "1602", "hd44780"]
+    },
+    {
+      "id": "hc-sr04",
+      "category": "Sensors and displays",
+      "symbol": "module:hc-sr04"
+    },
+    {
+      "id": "ssd1306-i2c",
+      "category": "Sensors and displays",
+      "symbol": "module:ssd1306-i2c"
+    },
+    {
+      "id": "gy-521",
+      "category": "Sensors and displays",
+      "symbol": "module:gy-521"
+    },
+    {
+      "id": "vl53l0x",
+      "category": "Sensors and displays",
+      "symbol": "module:vl53l0x"
+    },
+    {
+      "id": "mounting-hole",
+      "category": "Mechanical",
+      "symbol": "Mechanical:MountingHole",
+      "name": "Mounting hole",
+      "value": "M3",
+      "footprints": [
+        "MountingHole:MountingHole_3.2mm_M3",
+        "MountingHole:MountingHole_2.7mm_M2.5",
+        "MountingHole:MountingHole_2.2mm_M2",
+        "MountingHole:MountingHole_4.3mm_M4"
+      ],
+      "keywords": ["hole", "screw", "m3", "m2.5"]
+    },
+    {
+      "id": "mounting-hole-pad",
+      "category": "Mechanical",
+      "symbol": "Mechanical:MountingHole_Pad",
+      "name": "Mounting hole, plated",
+      "value": "M3",
+      "footprints": ["MountingHole:MountingHole_3.2mm_M3_Pad_Via", "MountingHole:MountingHole_2.7mm_M2.5_Pad_Via", "MountingHole:MountingHole_3.2mm_M3_Pad"],
+      "keywords": ["hole", "screw", "ground", "m3"]
+    },
+    {
+      "id": "fiducial",
+      "category": "Mechanical",
+      "symbol": "Mechanical:Fiducial",
+      "name": "Fiducial",
+      "footprints": ["Fiducial:Fiducial_1mm_Mask2mm", "Fiducial:Fiducial_0.5mm_Mask1mm"],
+      "keywords": ["assembly", "pick and place"]
+    },
+    {
+      "id": "test-point",
+      "category": "Mechanical",
+      "symbol": "Connector:TestPoint",
+      "name": "Test point",
+      "value": "TP",
+      "footprints": ["TestPoint:TestPoint_Pad_D1.5mm", "TestPoint:TestPoint_THTPad_D2.0mm_Drill1.0mm", "TestPoint:TestPoint_Loop_D2.50mm_Drill1.0mm"],
+      "keywords": ["probe", "test"]
+    }
+  ]
+}

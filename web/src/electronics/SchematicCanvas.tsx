@@ -218,7 +218,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     if (tool === "place") {
       const def = ui.placing;
       if (!def) return;
-      edit((d) => placePart(d, sheet.id, def, { x: at[0], y: at[1], rot: turnBy, mirror: flipped }).design, `Place ${def.name}`);
+      edit((d) => placePart(d, sheet.id, def, { x: at[0], y: at[1], rot: turnBy, mirror: flipped }, { pkg: ui.placingPkg }).design, `Place ${def.name}`);
       return;
     }
     if (tool === "wire") {

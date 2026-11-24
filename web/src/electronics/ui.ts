@@ -18,6 +18,8 @@ export interface EUi {
   net: string | null;
   /** The component riding on the pointer while placing. */
   placing: ComponentDef | null;
+  /** Which of its packages the placed part will use. */
+  placingPkg: number;
   layer: CopperLayer;
   hidden: LayerId[];
   /** Cards that are open over the view. */
@@ -34,6 +36,7 @@ const start = (): EUi => ({
   selected: [],
   net: null,
   placing: null,
+  placingPkg: 0,
   layer: "top",
   hidden: [],
   card: null,
