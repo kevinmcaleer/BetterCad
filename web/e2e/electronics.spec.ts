@@ -284,6 +284,8 @@ test.describe("on a wide screen", () => {
       .getByRole("button", { name: /^Order/ })
       .click();
     const order = page.getByRole("dialog", { name: "Order the board" });
+    // The order pack is its own chunk, and a busy runner can take a while to fetch it.
+    await expect(order).toBeVisible({ timeout: 20_000 });
     await expect(order.getByRole("list", { name: "Before you order" })).toContainText("The board check is clean.");
     const [download] = await Promise.all([page.waitForEvent("download"), order.getByRole("button", { name: "Save the files" }).click()]);
     expect(download.suggestedFilename()).toMatch(/\.zip$/);
@@ -339,6 +341,8 @@ test.describe("on a wide screen", () => {
         .getByRole("button", { name: /^Order/ })
         .click();
       const dialog = page.getByRole("dialog", { name: "Order the board" });
+      // The order pack is its own chunk, and a busy runner can take a while to fetch it.
+      await expect(dialog).toBeVisible({ timeout: 20_000 });
       await dialog.getByRole("button", { name: "Preview the files" }).click();
       await expect(dialog.getByRole("region", { name: "Preview of the files" }).getByRole("img", { name: /seen from the top/ })).toBeVisible();
       await axe(page);
@@ -389,6 +393,8 @@ test.describe("on a wide screen", () => {
       .getByRole("button", { name: /^Order/ })
       .click();
     const dialog = page.getByRole("dialog", { name: "Order the board" });
+    // The order pack is its own chunk, and a busy runner can take a while to fetch it.
+    await expect(dialog).toBeVisible({ timeout: 20_000 });
     await expect(dialog.getByLabel("What the order form asks")).toContainText("mm thick");
     const checks = dialog.getByRole("list", { name: "Before you order" });
     await expect(checks).toContainText("The outline is closed.");
@@ -441,6 +447,8 @@ test.describe("on a wide screen", () => {
       .getByRole("button", { name: /^Order/ })
       .click();
     const dialog = page.getByRole("dialog", { name: "Order the board" });
+    // The order pack is its own chunk, and a busy runner can take a while to fetch it.
+    await expect(dialog).toBeVisible({ timeout: 20_000 });
     const checks = dialog.getByRole("list", { name: "Before you order" });
     await expect(checks).toContainText("The outline is closed.");
     await expect(checks).toContainText("The board check is clean.");
