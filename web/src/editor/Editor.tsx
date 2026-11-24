@@ -399,6 +399,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   }, []);
 
   const narrow = useMedia(NARROW);
+  const phone = useMedia("(max-width: 520px)");
   const ribbonOn = useRibbon();
   const [selection, setSelection] = useState<string[]>([]);
   // The browser's origin planes on show, and its sketch or plane pick: view state, like the marker.
@@ -4550,6 +4551,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             // A run-out sign-in: Save logs in again, and the save that waits goes once you're back.
             onSave={() => void (files.cloud?.state === "signin" ? logInAgain(api, window.location.hash || "#/") : save())}
             helpEntries={helpEntries}
+            phone={phone}
             account={account ? { name: account.name, admin: account.admin } : null}
             accountsOn={accountReady && accountsOn}
             cloud={files.cloud?.state ?? null}
