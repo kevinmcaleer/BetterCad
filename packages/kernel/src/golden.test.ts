@@ -70,6 +70,10 @@ import {
 } from "./document";
 import { rectPattern } from "./catalogue";
 import { ModelBuilder } from "./occt/model";
+import { emptyBoard, emptyDesign, type Board } from "@bettercad/electronics";
+import { roundedOutline } from "@bettercad/electronics/pcb/route";
+import { boardSolid } from "@bettercad/electronics/pcb/solid";
+import { addBoard, boardBodyId, boardParts } from "./board";
 import { signature } from "./occt/repick";
 
 /** A 19 mm octagonal prism of circumradius 10 with a 1 mm, 20 mm wide disc on top: the disc's rim touches the corners. */
@@ -292,7 +296,55 @@ function textSketch(text: string): Sketch {
   };
 }
 
+/** A board (#649) as the Board step builds it: `w` by `h` mm, 1.6 mm thick, changed by `change`. */
+function boardOf(oc: OC, w: number, h: number, change: (b: Board) => Board = (b) => b, minDrill?: number): TopoDS_Shape {
+  const design = { ...emptyDesign(), board: change(emptyBoard(w, h)) };
+  const doc = addBoard({ ...newDoc(), electronics: design }, {}, "pcb");
+  const part =
+    minDrill === undefined
+      ? build(doc).parts.find((p) => p.id === boardBodyId("pcb"))!
+      : boardParts({ id: "pcb", position: { x: 0, y: 0, z: 0 } }, boardSolid(design, minDrill)!)[0]!;
+  return new ModelBuilder(oc).solid(part).shape;
+}
+
 const cases: Record<string, (oc: OC) => TopoDS_Shape> = {
+  // Boards (#649): the Board step's body, from an outline, cut-outs and drilled holes.
+  "board-plain": (oc) => boardOf(oc, 50, 40),
+  "board-rounded-slots": (oc) =>
+    boardOf(oc, 60, 40, (b) => ({
+      ...b,
+      outline: roundedOutline(60, 40, 4),
+      // A slot with round ends and a square window.
+      cutouts: [
+        [
+          { x: 10, y: 10, bulge: 0 },
+          { x: 20, y: 10, bulge: 1 },
+          { x: 20, y: 14, bulge: 0 },
+          { x: 10, y: 14, bulge: 1 },
+        ],
+        [
+          { x: 35, y: 20 },
+          { x: 50, y: 20 },
+          { x: 50, y: 30 },
+          { x: 35, y: 30 },
+        ],
+      ],
+      holes: [
+        { id: "h1", x: 5, y: 5, drill: 3.2 },
+        { id: "h2", x: 55, y: 35, drill: 3.2, pad: 6 },
+      ],
+    })),
+  "board-300-holes": (oc) =>
+    boardOf(
+      oc,
+      100,
+      80,
+      (b) => ({
+        ...b,
+        vias: [...Array(300).keys()].map((i) => ({ id: `v${i}`, net: "", x: 5 + (i % 20) * 4.5, y: 5 + Math.floor(i / 20) * 4.5, diameter: 1.6, drill: 1 })),
+      }),
+      0,
+    ),
   box: (oc) => box(oc, { x: 20, y: 10, z: 5 }),
   cylinder: (oc) => cylinder(oc, { x: 20, y: 20, z: 30 }),
   "cylinder-elliptical": (oc) => cylinder(oc, { x: 20, y: 10, z: 30 }),
@@ -825,7 +877,8 @@ describe("golden geometry", () => {
         }
         expect(moved.map(([p, b, a]) => `${p}: ${JSON.stringify(b)} → ${JSON.stringify(a)}`)).toEqual([]);
       },
-      20_000,
+      // The export-quality mesh of a face with 300 round holes in it takes about 12 s on its own.
+      name === "board-300-holes" ? 90_000 : 20_000,
     );
   }
 });

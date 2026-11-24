@@ -125,6 +125,7 @@ import {
   constructKind as kindInfo,
   type ConstructKind,
 } from "../state/document";
+import { addBoard } from "@bettercad/kernel/board";
 import type { ThemeSetting } from "../state/theme";
 import { useTheme } from "../state/useTheme";
 import { createRegistry, formatCombo, type Command, type CommandContext } from "../state/commands";
@@ -843,6 +844,21 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       }),
     [built.decals, doc.blobs, doc.looks, kernel.bodies],
   );
+  // The board's copper and silkscreen (#650), painted when there is a Board step and laid on its faces like decals.
+  const [boardDecals, setBoardDecals] = useState<ViewDecal[]>([]);
+  useEffect(() => {
+    const step = built.boards?.[0];
+    const body = step && kernel.bodies.get(step.body);
+    const part = step && built.parts.find((p) => p.id === step.body);
+    const design = doc.electronics;
+    if (!step || !body || !part || !design?.board) return setBoardDecals((was) => (was.length ? [] : was));
+    let live = true;
+    void import("../electronics/boardPicture").then((m) => live && setBoardDecals(m.boardDecals(design, step.id, body, part)));
+    return () => {
+      live = false;
+    };
+  }, [built.boards, built.parts, kernel.bodies, doc.electronics]);
+  const allDecals = useMemo(() => (boardDecals.length ? [...viewDecals, ...boardDecals] : viewDecals), [viewDecals, boardDecals]);
   // Canvases (#248) to trace over; hidden ones left off.
   const viewCanvases = useMemo(
     () => ({
@@ -5024,7 +5040,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             parts={viewParts}
             faded={faded}
             meshes={kernel.bodies}
-            decals={viewDecals}
+            decals={allDecals}
             canvases={viewCanvases}
             engine={kernel.state}
             rebuilding={kernel.rebuilding}
@@ -5077,7 +5093,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             )}
             {eview && (
               <Suspense fallback={null}>
-                <ElectronicsView design={doc.electronics} edit={editDesign} readOnly={!!files.shared} ribbon={ribbonOn} registry={registry} name={doc.name} />
+                <ElectronicsView
+                  design={doc.electronics}
+                  edit={editDesign}
+                  readOnly={!!files.shared}
+                  ribbon={ribbonOn}
+                  registry={registry}
+                  name={doc.name}
+                  sketches={built.sketches}
+                  inModel={doc.features.some((f) => f.type === "board")}
+                  onAddBoard={() => store.edit((d) => addBoard(d), "Add the board to the model")}
+                />
               </Suspense>
             )}
             {shownDrawing && (

@@ -126,6 +126,8 @@ export const powerSymbol = "M12 3v9M6 12h12M8.5 16h7M11 20h2";
 export const route = "M4 19h5l6-6V6M15 6a2 2 0 1 0 .01 0M4 19a2 2 0 1 0 .01 0";
 export const via = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
 export const pushPcb = "M3 5h8v6H3zM13 13h8v6h-8zM7 11v4h6M10.5 12.5 13 15l-2.5 2.5";
+export const pour = "M4 4h16v16H4zM4 12l8-8M8 20 20 8M14 20l6-6";
+export const keepOut = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM6 6l12 12";
 export const flipSide = "M12 3v18M8 7 4 12l4 5zM16 7l4 5-4 5";
 export const rulesCheck = "M4 4h16v16H4zM8 12l3 3 5-6";
 export const drawing = "M3 4h18v16H3zM12 15h9M12 15v5M6 8h5v4H6z";
@@ -334,6 +336,8 @@ export const ICONS = {
   route,
   via,
   pushPcb,
+  pour,
+  keepOut,
   flipSide,
   rulesCheck,
   point,

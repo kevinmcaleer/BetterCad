@@ -1,5 +1,6 @@
 import { useId } from "react";
-import type { ElectronicsDesign, Side } from "@bettercad/electronics";
+import { netlist, type ElectronicsDesign, type Keepout, type Side } from "@bettercad/electronics";
+import { pourFill, setKeepout, setPour } from "@bettercad/electronics/pcb/pour";
 import {
   SCREWS,
   alignParts,
@@ -82,6 +83,14 @@ export default function BoardProps({
           />
           Locked in place
         </label>
+        <label className="bc-ec-fitted">
+          <input
+            type="checkbox"
+            checked={!at.refHidden}
+            onChange={({ target: { checked } }) => set({ refHidden: !checked }, checked ? "Show the name" : "Hide the name")}
+          />
+          Name on the silkscreen
+        </label>
       </fieldset>
     );
   }
@@ -92,6 +101,99 @@ export default function BoardProps({
   const via = selected.length === 1 ? board.vias.find((v) => set.has(v.id)) : undefined;
   const hole = selected.length === 1 ? board.holes.find((h) => set.has(h.id)) : undefined;
   const text = selected.length === 1 ? board.texts.find((t) => set.has(t.id)) : undefined;
+
+  const pour = selected.length === 1 ? board.pours.find((x) => set.has(x.id)) : undefined;
+  const keepout = selected.length === 1 ? board.keepouts.find((x) => set.has(x.id)) : undefined;
+
+  if (pour) {
+    const nets = [
+      ...new Set([
+        pour.net,
+        ...netlist(design)
+          .nets.filter((n) => n.pins.length > 0)
+          .map((n) => n.name),
+      ]),
+    ].sort();
+    const area = round(pourFill(design, pour).area);
+    const change = (c: Parameters<typeof setPour>[2], label: string) =>
+      edit((d) => setPour(d, pour.id, c), label, `ec-pour-${pour.id}-${Object.keys(c).join()}`);
+    return (
+      <fieldset className="bc-ec-set" disabled={readOnly}>
+        <legend>Pour</legend>
+        <label className="bc-field-label" htmlFor={`${ids}n`}>
+          Net
+        </label>
+        <select id={`${ids}n`} className="bc-select" value={pour.net} onChange={({ target: { value } }) => change({ net: value }, "Change the pour's net")}>
+          {nets.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <label className="bc-field-label" htmlFor={`${ids}y`}>
+          Side
+        </label>
+        <select
+          id={`${ids}y`}
+          className="bc-select"
+          value={pour.layer === "bottom" ? "bottom" : "top"}
+          onChange={({ target: { value } }) => change({ layer: value as "top" | "bottom" }, "Move the pour")}
+        >
+          <option value="top">Top copper</option>
+          <option value="bottom">Bottom copper</option>
+        </select>
+        <label className="bc-ec-fitted" data-tip="Spokes make its pads easier to solder. Off, the copper runs right up to them">
+          <input
+            type="checkbox"
+            checked={pour.thermal !== false}
+            onChange={({ target: { checked } }) => change({ thermal: checked }, checked ? "Join pads with spokes" : "Join pads all round")}
+          />
+          Join pads with spokes
+        </label>
+        <label className="bc-field-label" htmlFor={`${ids}o`}>
+          Where pours overlap
+        </label>
+        <select
+          id={`${ids}o`}
+          className="bc-select"
+          value={Math.min(2, pour.priority ?? 0)}
+          onChange={({ target: { value } }) => change({ priority: Number(value) }, "Change which pour fills first")}
+        >
+          <option value={0}>Fills in turn</option>
+          <option value={1}>Fills before the others</option>
+          <option value={2}>Fills first of all</option>
+        </select>
+        <dl className="bc-facts">
+          <dt>Copper</dt>
+          <dd>{area} mm²</dd>
+        </dl>
+      </fieldset>
+    );
+  }
+
+  if (keepout) {
+    const tick = (what: keyof Pick<Keepout, "tracks" | "pours" | "parts">, label: string) => (
+      <label className="bc-ec-fitted">
+        <input
+          type="checkbox"
+          checked={!!keepout[what]}
+          onChange={({ target: { checked } }) => edit((d) => setKeepout(d, keepout.id, { [what]: checked }), "Change the keep-out")}
+        />
+        {label}
+      </label>
+    );
+    return (
+      <fieldset className="bc-ec-set" disabled={readOnly}>
+        <legend>Keeps out</legend>
+        {tick("tracks", "Tracks and vias")}
+        {tick("pours", "Pours")}
+        {tick("parts", "Parts")}
+      </fieldset>
+    );
+  }
+
+  if (selected.length === 1 && selected[0]!.startsWith("cut:"))
+    return <p className="bc-note">A hole cut through the board. Copper keeps back from its edge. Delete it to fill it in.</p>;
 
   if (parts.length > 1) {
     const locked = parts.every((p) => p.locked);

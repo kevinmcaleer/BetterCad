@@ -266,6 +266,113 @@ test.describe("on a wide screen", () => {
     await expect(status).toContainText("Board 50 × 40 mm");
     await expect(check.getByRole("status")).toHaveText("No problems found. The board is ready to make.");
   });
+
+  test("the board stands in the model, with a body for each part", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    await expect(page.getByRole("img", { name: /^PCB: 2 parts/ })).toBeVisible();
+
+    // Making the board adds one Board step, and the 3D view shows it as a component of bodies.
+    await page.keyboard.press("3");
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await expect(timeline.getByRole("button", { name: /^Board, 1\.6 mm thick, 2 parts/ })).toBeVisible();
+    await expect(timeline.getByRole("button", { name: /problem:/ })).toHaveCount(0);
+    for (const name of [/^Board/, /^R1/, /^D1/]) await expect(page.getByRole("treeitem", { name }).first()).toBeVisible();
+
+    // Undo takes the board and its step back together.
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(timeline.getByRole("button", { name: /^Board,/ })).toHaveCount(0);
+  });
+
+  test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    const canvas = page.getByRole("img", { name: /^PCB: 2 parts/ });
+    await expect(canvas).toBeVisible();
+    const status = page.getByRole("status", { name: "Electronics status" });
+    for (const [x, to] of [
+      [-10 * PITCH, 15],
+      [0, 30],
+    ] as const) {
+      await page.keyboard.press("1");
+      await page.mouse.click(...(await onCanvas(page, x, 0)));
+      await page.keyboard.press("2");
+      for (const [label, value] of [
+        ["X (mm)", String(to)],
+        ["Y (mm)", "20"],
+      ] as const)
+        await expect(async () => {
+          await page.getByLabel(label).fill(value);
+          await page.getByLabel(label).press("Enter");
+          await page.waitForTimeout(150);
+          await expect(page.getByLabel(label)).toHaveValue(value, { timeout: 1000 });
+        }).toPass();
+      await canvas.focus();
+    }
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("f");
+    await expect(status).toContainText("1 connection left to route");
+
+    // A pour over the whole board on the net joins its two pads, so nothing is left to route.
+    await tools(page).getByRole("button", { name: /^Pour/ }).click();
+    const bar = page.getByRole("group", { name: "Tool options" });
+    await expect(bar.getByRole("status")).toContainText("Click the corners of the area to fill on the top side");
+    await expect(bar.getByLabel("Net to pour")).toHaveValue("Net-(D1-1)");
+    await bar.getByRole("button", { name: "Whole board" }).click();
+    await expect(status).toContainText("Every connection is routed");
+    await page.keyboard.press("Escape");
+
+    // Picked by its edge, the pour says how it joins its pads.
+    await press(page, 0, 30);
+    const props = page.getByRole("group", { name: "Pour" });
+    await expect(props.getByLabel("Net")).toHaveValue("Net-(D1-1)");
+    await props.getByLabel("Join pads with spokes").click();
+    await expect(props.getByLabel("Join pads with spokes")).not.toBeChecked();
+    await axe(page);
+    await page.keyboard.press("Escape");
+
+    // A keep-out right across the board cuts the pour in two, and the connection is open again.
+    await page.keyboard.press("o");
+    await press(page, 22, -2);
+    await press(page, 24, -2);
+    await press(page, 24, 42);
+    await expect(bar.getByRole("status")).toContainText("Click the next corner");
+    await press(page, 22, 42);
+    await bar.getByRole("button", { name: "Done" }).click();
+    await expect(status).toContainText("1 connection left to route");
+    await page.keyboard.press("Escape");
+    const undo = page.getByRole("banner").getByRole("button", { name: /^Undo/ });
+    await undo.click();
+    await expect(status).toContainText("Every connection is routed");
+
+    // Deleting a part on the board asks first, then takes it off the schematic too. One undo brings both back.
+    await press(page, 15, 20);
+    await page.keyboard.press("Delete");
+    const ask = page.getByRole("group", { name: "Delete parts" });
+    await expect(ask.getByRole("status")).toContainText("Delete R1 from the schematic too?");
+    await ask.getByRole("button", { name: "Delete" }).click();
+    await expect(page.getByRole("img", { name: /^PCB: 1 part,/ })).toBeVisible();
+    await page.keyboard.press("1");
+    await expect(page.getByRole("img", { name: /^Schematic, .*: 1 part,/ })).toBeVisible();
+    await undo.click();
+    await expect(page.getByRole("img", { name: /^Schematic, .*: 2 parts,/ })).toBeVisible();
+    await page.keyboard.press("2");
+    await expect(page.getByRole("img", { name: /^PCB: 2 parts/ })).toBeVisible();
+  });
 });
 
 test.describe("on a phone", () => {
@@ -322,11 +429,18 @@ test.describe("on a phone", () => {
     await tools(page)
       .getByRole("button", { name: /^Route/ })
       .click();
+    // A pour by touch: tap the tool, then Whole board. Its options fit the screen too.
+    await tools(page).getByRole("button", { name: /^Pour/ }).click();
+    await expect(bar.getByLabel("Net to pour")).toHaveValue("Net-(D1-1)");
+    await bar.getByRole("button", { name: "Whole board" }).tap();
+    expect((await bar.boundingBox())!.x + (await bar.boundingBox())!.width).toBeLessThanOrEqual(390);
+    await tools(page).getByRole("button", { name: /^Pour/ }).click();
     await tools(page)
       .getByRole("button", { name: /^Board check/ })
       .click();
     const board = page.getByRole("group", { name: "Board check options" });
     await expect(board.getByRole("button", { name: /D1 is off the board/ })).toBeVisible();
+    await expect(board.getByRole("button", { name: /The pour on Net-\(D1-1\)/ })).toBeVisible();
     expect((await board.boundingBox())!.x + (await board.boundingBox())!.width).toBeLessThanOrEqual(390);
     await board.getByRole("button", { name: "Close" }).tap();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

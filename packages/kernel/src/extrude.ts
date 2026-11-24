@@ -102,6 +102,11 @@ export interface PrismSpec {
   taper?: number;
   /** Where the shape is full size along the normal, mm, for a taper; `from` when missing. */
   base?: number;
+  /**
+   * The holes are part of the face that is pushed, not cut out one at a time afterwards: far quicker with hundreds of
+   * holes (a circuit board, #649). They must not touch one another or the outline.
+   */
+  pierced?: boolean;
 }
 
 /** Revolve's geometry (#62): profiles turned round a line in their sketch plane. */
