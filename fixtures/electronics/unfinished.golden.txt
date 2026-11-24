@@ -1,0 +1,17 @@
+## Nets
+Net-(D1-2): D1:2 R1:1
+
+## Push to PCB
+Add D2 beside the board
+
+## Schematic check
+error pin-open: D1 pin 1 (K) is not connected.
+error pin-open: D2 pin 1 (K) is not connected.
+error pin-open: D2 pin 2 (A) is not connected.
+error pin-open: R1 pin 2 is not connected.
+
+## Board check
+error behind: The board is behind the schematic by 1 change.
+error off-board: D1 is off the board.
+error off-board: R1 is off the board.
+error unrouted: Net-(D1-2) still has 1 connection to route.

@@ -41,3 +41,5 @@ export const LIBRARIES: Library[] = [
     url: "https://www.kicad.org/libraries/license/",
   },
 ];
+/** The electronics user guide (#668). */
+export const ELECTRONICS_GUIDE_URL = `${SOURCE_URL}/blob/main/docs/electronics-guide.md`;

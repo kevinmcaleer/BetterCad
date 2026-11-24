@@ -1,0 +1,15 @@
+## Nets
+5V: C1:1 J2:2 J3:2 J4:2 J5:1 R1:1
+GND: C1:2 D1:2 J1:3 J2:3 J3:3 J4:3 J5:2
+LED: D1:1 R1:2
+SERVO1: J1:1 J3:1
+SERVO2: J1:2 J4:1
+
+## Push to PCB
+Nothing.
+
+## Schematic check
+Nothing.
+
+## Board check
+Nothing.

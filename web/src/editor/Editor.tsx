@@ -168,7 +168,7 @@ import { useAccount } from "../cloud/account";
 import { go } from "../cloud/route";
 import { logInAgain } from "../cloud/trouble";
 import { useTour } from "../tour/Tour";
-import { COURSE_URL } from "../help/about";
+import { COURSE_URL, ELECTRONICS_GUIDE_URL } from "../help/about";
 import { actionLog, editSummary } from "../report/actionLog";
 import { lastError, onCaught, watchWindow, type Caught } from "../report/errors";
 import { APP_VERSION } from "../version";
@@ -4168,6 +4168,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     { id: "tour", label: "Take the tour", icon: "info", onSelect: () => registry.run("help.tour") },
     { id: "tips", label: "Tips", icon: "bulb", onSelect: () => registry.run("help.tips") },
     { id: "learn", label: "Learn BetterCad", icon: "link", onSelect: () => registry.run("help.learn") },
+    { id: "electronics", label: "Electronics guide", icon: "link", onSelect: () => window.open(ELECTRONICS_GUIDE_URL, "_blank", "noopener") },
     { kind: "separator", id: "s-help" },
     { id: "report", label: "Report a problem…", icon: "warning", onSelect: () => registry.run("help.report") },
     { id: "whatsNew", label: "What's new", icon: "star", onSelect: () => registry.run("help.whatsNew") },

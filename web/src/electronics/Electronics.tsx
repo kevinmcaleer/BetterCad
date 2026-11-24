@@ -19,6 +19,7 @@ import type { Sketch } from "@bettercad/sketch";
 import type { Command } from "../state/commands";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
+import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
 import { eui, type EView, type PcbTool, type SchTool } from "./ui";
 import { useEui } from "./useEui";
 
@@ -225,7 +226,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         label: "Open project",
         short: "Open",
         icon: "folder",
-        tip: "Open a KiCad project: its schematic and its board",
+        tip: "Open a KiCad or Eagle project: its schematic and its board",
         on: ui.card === "open",
         disabled: readOnly,
         run: toggle("open"),
@@ -545,11 +546,20 @@ function commands(design: () => ElectronicsDesign): Command[] {
     {
       ...e,
       id: "electronics.open",
-      label: "Open a KiCad project",
+      label: "Open a KiCad or Eagle project",
       group: "Tools",
       icon: "folder",
       run: () => eui.set({ view: eui.get().view ?? "schematic", card: "open" }),
-      keywords: "import kicad_sch kicad_pcb schematic board bring in",
+      keywords: "import kicad_sch kicad_pcb sch brd fusion electronics schematic board bring in",
+    },
+    {
+      ...e,
+      id: "electronics.guide",
+      label: "Electronics guide",
+      group: "Help",
+      icon: "link",
+      run: () => window.open(GUIDE_URL, "_blank", "noopener"),
+      keywords: "help learn schematic pcb board order gerber how to lesson",
     },
     { ...e, id: "electronics.selectAll", label: "Select all", group: "Edit", keys: ["mod+a"], run: () => eactions.current?.selectAll() },
     { ...e, id: "electronics.fit", label: "Fit in the view", group: "View", icon: "frame", keys: ["f"], run: () => eactions.current?.fit() },
@@ -760,7 +770,10 @@ export default function ElectronicsView({
           <p className="bc-note">Place parts, join their pins with wires, then push the schematic to a PCB.</p>
           <Button variant="primary" icon="chip" label="Components" shortcut="P" onClick={() => eui.set({ card: "components" })} />
           {onSample && <Button icon="folder" label="Open the sample board" onClick={onSample} />}
-          <Button icon="folder" label="Open a KiCad project" onClick={() => eui.set({ card: "open" })} />
+          <Button icon="folder" label="Open a KiCad or Eagle project" onClick={() => eui.set({ card: "open" })} />
+          <a className="bc-note" href={GUIDE_URL} target="_blank" rel="noreferrer">
+            Read the electronics guide
+          </a>
         </div>
       )}
 
@@ -780,7 +793,7 @@ export default function ElectronicsView({
             replaces={design.parts.length > 0 || !!design.board}
             onClose={() => eui.set({ card: null })}
             onOpen={(opened) => {
-              edit(() => opened, "Open a KiCad project");
+              edit(() => opened, "Open a project");
               eui.set({ card: null, sheet: null, selected: [], net: null, spot: null, unrouted: null });
               // Once the new sheet is drawn, bring it all into view.
               setTimeout(() => eactions.current?.fit(), 50);

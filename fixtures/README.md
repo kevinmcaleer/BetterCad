@@ -22,3 +22,12 @@ on an ASME sheet, and Too Tall Toby's 01-03 C Clamp Base (`docs/speed-modelling.
 drawing the sizes in its `.auto.txt` can be read against. `web/src/drawing/fixtures.test.ts` makes them, draws their views with the real kernel, and keeps a
 golden list of what Auto dimension offers for each in `*.auto.txt`. `UPDATE_GOLDEN=1 npm run test:golden` writes them
 again after a deliberate change.
+
+## Electronics
+
+`electronics/` holds saved electronics designs (#667): the Pico servo board sample, the manufacturing test board, a
+design that turns everything every way, an Eagle project as it came in, and a board left unfinished on purpose. Each
+`*.design.json` has a `*.golden.txt` beside it with its nets, what Push to PCB would change, and what the schematic
+and board checks say. `packages/electronics/src/fixtures.test.ts` reads them in `npm run test:golden`; nightly it also
+writes each board's order files for every board house and reads them back, and sends each design out to KiCad and
+home again. `UPDATE_GOLDEN=1 npm run test:golden` writes them again after a deliberate change.

@@ -54,6 +54,7 @@ describe("the electronics workspace", () => {
     expect(screen.getByRole("img", { name: /^Schematic/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Schematic" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Start with a part.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Read the electronics guide" })).toHaveAttribute("href", expect.stringMatching(/docs\/electronics-guide\.md$/));
     await userEvent.click(within(screen.getByText("Start with a part.").parentElement!).getByRole("button", { name: /Components/ }));
     const card = await screen.findByRole("group", { name: "Components options" });
     await userEvent.type(within(card).getByLabelText("Find a part"), "led");

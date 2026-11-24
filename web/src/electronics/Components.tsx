@@ -243,8 +243,8 @@ export function ComponentsCard({ onClose, design, edit }: { onClose: () => void;
           <Button
             size="dense"
             variant="secondary"
-            label="Import KiCad"
-            title="Add parts from .kicad_sym and .kicad_mod files"
+            label="Import parts"
+            title="Add parts from KiCad files (.kicad_sym, .kicad_mod) or Eagle libraries (.lbr)"
             onClick={() => setImporting(true)}
           />
           <Button

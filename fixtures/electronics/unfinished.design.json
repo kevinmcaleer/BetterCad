@@ -1,0 +1,895 @@
+{
+ "defs": {
+  "resistor-1rqm988": {
+   "name": "Resistor",
+   "description": "Resistor, surface mount",
+   "prefix": "R",
+   "value": "10 kΩ",
+   "symbol": {
+    "name": "Resistor",
+    "units": 1,
+    "shapes": [
+     {
+      "kind": "rect",
+      "x1": -1.016,
+      "y1": -2.54,
+      "x2": 1.016,
+      "y2": 2.54
+     }
+    ],
+    "pins": [
+     {
+      "number": "1",
+      "name": "1",
+      "type": "passive",
+      "x": 0,
+      "y": 3.81,
+      "length": 1.27,
+      "dir": 270
+     },
+     {
+      "number": "2",
+      "name": "2",
+      "type": "passive",
+      "x": 0,
+      "y": -3.81,
+      "length": 1.27,
+      "dir": 90
+     }
+    ],
+    "refAt": [
+     2.54,
+     1.27
+    ],
+    "valueAt": [
+     2.54,
+     -1.27
+    ]
+   },
+   "packages": [
+    {
+     "footprint": {
+      "name": "0805 (2012 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -0.95,
+        "y": 0,
+        "w": 1,
+        "h": 1.45
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 0.95,
+        "y": 0,
+        "w": 1,
+        "h": 1.45
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -1,
+        "y1": -0.625,
+        "x2": 1,
+        "y2": 0.625,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -1.7,
+        "y1": -0.975,
+        "x2": 1.7,
+        "y2": 0.975,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.24999999999999994,
+          0.875
+         ],
+         [
+          0.24999999999999994,
+          0.875
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.24999999999999994,
+          -0.875
+         ],
+         [
+          0.24999999999999994,
+          -0.875
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.775
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        2,
+        1.25,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "footprint": {
+      "name": "0603 (1608 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -0.825,
+        "y": 0,
+        "w": 0.8,
+        "h": 0.95
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 0.825,
+        "y": 0,
+        "w": 0.8,
+        "h": 0.95
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -0.8,
+        "y1": -0.4,
+        "x2": 0.8,
+        "y2": 0.4,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -1.475,
+        "y1": -0.725,
+        "x2": 1.475,
+        "y2": 0.725,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.22499999999999992,
+          0.625
+         ],
+         [
+          0.22499999999999992,
+          0.625
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.22499999999999992,
+          -0.625
+         ],
+         [
+          0.22499999999999992,
+          -0.625
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.525
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        1.6,
+        0.8,
+        0.5
+       ]
+      }
+     }
+    },
+    {
+     "footprint": {
+      "name": "1206 (3216 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -1.45,
+        "y": 0,
+        "w": 1.15,
+        "h": 1.8
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 1.45,
+        "y": 0,
+        "w": 1.15,
+        "h": 1.8
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -1.6,
+        "y1": -0.8,
+        "x2": 1.6,
+        "y2": 0.8,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -2.275,
+        "y1": -1.15,
+        "x2": 2.275,
+        "y2": 1.15,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.675,
+          1.0499999999999998
+         ],
+         [
+          0.675,
+          1.0499999999999998
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.675,
+          -1.0499999999999998
+         ],
+         [
+          0.675,
+          -1.0499999999999998
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.95
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        3.2,
+        1.6,
+        0.5
+       ]
+      }
+     }
+    }
+   ],
+   "keywords": [
+    "resistor",
+    "r"
+   ],
+   "source": {
+    "library": "BetterCad basics",
+    "licence": "MIT"
+   }
+  },
+  "led-17hol63": {
+   "name": "LED",
+   "description": "LED, surface mount",
+   "prefix": "D",
+   "value": "Red",
+   "symbol": {
+    "name": "LED",
+    "units": 1,
+    "shapes": [
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        1.27
+       ],
+       [
+        1.27,
+        1.27
+       ],
+       [
+        0,
+        -1.27
+       ],
+       [
+        -1.27,
+        1.27
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        -1.27
+       ],
+       [
+        1.27,
+        -1.27
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        0,
+        2.54
+       ],
+       [
+        0,
+        1.27
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        0,
+        -2.54
+       ],
+       [
+        0,
+        -1.27
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        1.9,
+        0.6
+       ],
+       [
+        3.1,
+        -0.6
+       ],
+       [
+        2.5,
+        -0.5
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        1.9,
+        -0.6
+       ],
+       [
+        3.1,
+        -1.8
+       ],
+       [
+        2.5,
+        -1.7
+       ]
+      ]
+     }
+    ],
+    "pins": [
+     {
+      "number": "2",
+      "name": "A",
+      "type": "passive",
+      "x": 0,
+      "y": 3.81,
+      "length": 1.27,
+      "dir": 270
+     },
+     {
+      "number": "1",
+      "name": "K",
+      "type": "passive",
+      "x": 0,
+      "y": -3.81,
+      "length": 1.27,
+      "dir": 90
+     }
+    ],
+    "refAt": [
+     3.81,
+     1.27
+    ],
+    "valueAt": [
+     3.81,
+     -1.27
+    ]
+   },
+   "packages": [
+    {
+     "footprint": {
+      "name": "0805 (2012 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -0.95,
+        "y": 0,
+        "w": 1,
+        "h": 1.45
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 0.95,
+        "y": 0,
+        "w": 1,
+        "h": 1.45
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -1,
+        "y1": -0.625,
+        "x2": 1,
+        "y2": 0.625,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -1.7,
+        "y1": -0.975,
+        "x2": 1.7,
+        "y2": 0.975,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.24999999999999994,
+          0.875
+         ],
+         [
+          0.24999999999999994,
+          0.875
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.24999999999999994,
+          -0.875
+         ],
+         [
+          0.24999999999999994,
+          -0.875
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.775
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        2,
+        1.25,
+        0.7
+       ]
+      }
+     }
+    },
+    {
+     "footprint": {
+      "name": "0603 (1608 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -0.825,
+        "y": 0,
+        "w": 0.8,
+        "h": 0.95
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 0.825,
+        "y": 0,
+        "w": 0.8,
+        "h": 0.95
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -0.8,
+        "y1": -0.4,
+        "x2": 0.8,
+        "y2": 0.4,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -1.475,
+        "y1": -0.725,
+        "x2": 1.475,
+        "y2": 0.725,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.22499999999999992,
+          0.625
+         ],
+         [
+          0.22499999999999992,
+          0.625
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.22499999999999992,
+          -0.625
+         ],
+         [
+          0.22499999999999992,
+          -0.625
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.525
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        1.6,
+        0.8,
+        0.7
+       ]
+      }
+     }
+    },
+    {
+     "footprint": {
+      "name": "1206 (3216 metric)",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": -1.45,
+        "y": 0,
+        "w": 1.15,
+        "h": 1.8
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "round": 0.25,
+        "x": 1.45,
+        "y": 0,
+        "w": 1.15,
+        "h": 1.8
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "layer": "fab",
+        "x1": -1.6,
+        "y1": -0.8,
+        "x2": 1.6,
+        "y2": 0.8,
+        "width": 0.1
+       },
+       {
+        "kind": "rect",
+        "layer": "courtyard",
+        "x1": -2.275,
+        "y1": -1.15,
+        "x2": 2.275,
+        "y2": 1.15,
+        "width": 0.05
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.675,
+          1.0499999999999998
+         ],
+         [
+          0.675,
+          1.0499999999999998
+         ]
+        ],
+        "width": 0.12
+       },
+       {
+        "kind": "line",
+        "layer": "silk",
+        "pts": [
+         [
+          -0.675,
+          -1.0499999999999998
+         ],
+         [
+          0.675,
+          -1.0499999999999998
+         ]
+        ],
+        "width": 0.12
+       }
+      ],
+      "refAt": [
+       0,
+       1.95
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        3.2,
+        1.6,
+        0.7
+       ]
+      }
+     }
+    }
+   ],
+   "keywords": [
+    "led",
+    "light",
+    "diode"
+   ],
+   "source": {
+    "library": "BetterCad basics",
+    "licence": "MIT"
+   }
+  }
+ },
+ "parts": [
+  {
+   "id": "pt2",
+   "def": "resistor-1rqm988",
+   "ref": "R1",
+   "value": "10 kΩ",
+   "pkg": 0
+  },
+  {
+   "id": "pt4",
+   "def": "led-17hol63",
+   "ref": "D1",
+   "value": "Red",
+   "pkg": 0
+  },
+  {
+   "id": "pt7",
+   "def": "led-17hol63",
+   "ref": "D2",
+   "value": "Red",
+   "pkg": 0
+  }
+ ],
+ "sheets": [
+  {
+   "id": "sh1",
+   "name": "Sheet 1",
+   "symbols": [
+    {
+     "id": "sy3",
+     "part": "pt2",
+     "unit": 1,
+     "x": -25.4,
+     "y": 0,
+     "rot": 0
+    },
+    {
+     "id": "sy5",
+     "part": "pt4",
+     "unit": 1,
+     "x": 0,
+     "y": 0,
+     "rot": 0
+    },
+    {
+     "id": "sy8",
+     "part": "pt7",
+     "unit": 1,
+     "x": 25.4,
+     "y": 0,
+     "rot": 0
+    }
+   ],
+   "wires": [
+    {
+     "id": "w6",
+     "a": [
+      -25.4,
+      3.81
+     ],
+     "b": [
+      0,
+      3.81
+     ]
+    }
+   ],
+   "junctions": [],
+   "labels": [],
+   "noConnects": []
+  }
+ ],
+ "board": {
+  "outline": [
+   {
+    "x": 0,
+    "y": 0
+   },
+   {
+    "x": 50,
+    "y": 0
+   },
+   {
+    "x": 50,
+    "y": 40
+   },
+   {
+    "x": 0,
+    "y": 40
+   }
+  ],
+  "thickness": 1.6,
+  "copperLayers": 2,
+  "placements": [
+   {
+    "part": "pt4",
+    "ref": "D1",
+    "x": 57.7,
+    "y": 38.03,
+    "rot": 0,
+    "side": "top",
+    "footprint": "0805 (2012 metric)"
+   },
+   {
+    "part": "pt2",
+    "ref": "R1",
+    "x": 63.1,
+    "y": 38.03,
+    "rot": 0,
+    "side": "top",
+    "footprint": "0805 (2012 metric)"
+   }
+  ],
+  "tracks": [],
+  "vias": [],
+  "pours": [],
+  "texts": [],
+  "shapes": [],
+  "holes": [],
+  "keepouts": [],
+  "rules": {
+   "clearance": 0.2,
+   "trackWidth": 0.25,
+   "minTrackWidth": 0.15,
+   "viaDiameter": 0.7,
+   "viaDrill": 0.3,
+   "minDrill": 0.3,
+   "minRing": 0.15,
+   "holeToHole": 0.5,
+   "copperToEdge": 0.3,
+   "minSilkWidth": 0.15,
+   "minSilkHeight": 1,
+   "maskMargin": 0.05
+  },
+  "classes": [],
+  "synced": {
+   "nets": {
+    "Net-(D1-2)": [
+     "pt2:1",
+     "pt4:2"
+    ]
+   }
+  }
+ }
+}

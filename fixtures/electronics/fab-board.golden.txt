@@ -1,0 +1,12 @@
+## Nets
+Net-(J1-1): J1:1 R1:1
+Net-(J1-2): J1:2 R1:2
+
+## Push to PCB
+Nothing.
+
+## Schematic check
+Nothing.
+
+## Board check
+error unrouted: Net-(J1-2) still has 1 connection to route.

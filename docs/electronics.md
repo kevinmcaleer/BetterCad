@@ -3,6 +3,10 @@
 The electronics workspace (epic #606): draw a schematic, push it to a PCB, and get a 3D board in the model, all kept in
 step. This page is for people working on the code. Millimetres everywhere, x to the right, y up, angles anticlockwise.
 
+For people using it: [the guide](electronics-guide.md), [ordering a board](electronics-ordering.md) and the lesson
+[Your first board](lessons/your-first-board.md). The guide opens from Help, from the empty schematic and from Electronics guide
+in the command finder (#668).
+
 ## What we reuse and what we wrote (#614)
 
 Checked 2026-11-24. Licence notes are a reading of the published terms, not legal advice.
@@ -390,8 +394,8 @@ drawing looks.
 
 ## In from KiCad (#663)
 
-Open project, in the schematic's tools (and on an empty schematic, and in the command palette as "Open a KiCad
-project"), reads a KiCad project into the model: pick every `.kicad_sch`, the `.kicad_pcb` and the `.kicad_pro`
+Open project, in the schematic's tools (and on an empty schematic, and in the command palette as "Open a KiCad or
+Eagle project"), reads a KiCad project into the model: pick every `.kicad_sch`, the `.kicad_pcb` and the `.kicad_pro`
 (`web/src/electronics/OpenProject.tsx`; the reader is `packages/electronics/src/kicad/project.ts`,
 `importKicadProject`, a chunk that loads when files are first picked). The dialog says what it found and lists what
 did not come across before anything changes. Opening replaces the model's schematic and board in one undo step, and
@@ -427,3 +431,81 @@ KiCad projects and reads them back: the same parts, nets, pads and board check, 
 all 11 demos' schematics come in with exactly the nets `kicad-cli` finds, hierarchy and buses included, and the nine
 2-layer demo boards come in with no shorts, nothing unrouted, nothing off the board and nothing behind the schematic.
 That is against KiCad 7.0.11 and its demo files; projects saved by KiCad 8 and 9 have not been tried yet.
+
+## In from Eagle and Fusion Electronics (#665)
+
+Open project also takes an Eagle schematic and board (`.sch`, `.brd`), and Import parts in Components takes Eagle
+libraries (`.lbr`). Eagle 6 and later write these as XML, and Fusion Electronics exports the same files; SparkFun and
+Adafruit publish their boards and parts this way. The readers are in `packages/electronics/src/eagle/`: `xml.ts` (just
+enough XML), `library.ts` (packages, symbols and device sets), `project.ts` (`importEagleProject`) and `import.ts`
+(`importEagleLibraries`). Each loads when its files are first picked.
+
+How Eagle's things become ours:
+
+- A device set is a component. Each gate is a unit of its symbol. A pin takes the name of the pad its device joins
+  it to as its number and keeps its own as its name; a pin on several pads gets a pin map. In a library, every device
+  that has a package is one of the packages the component comes in. In a project, a part takes the package it stands
+  on in the board, or failing a board, its device's.
+- A supply symbol (no package, every pin a supply pin) is a power symbol, and names the net it sits on.
+- Eagle lists each net's pins outright, piece by piece. The wires and dots come across as drawn. A net in more than
+  one piece, or one somebody named, gets a label on each piece that no supply symbol names, so the pieces still join
+  by name. Once the design is built its nets are held to Eagle's list, and any that came out joined differently are
+  named in the dialog. That can happen where a wire of one net ends on a wire or pin of another, which joins them
+  here and not in Eagle.
+- Eagle turns a part and then mirrors it left to right; a design here mirrors and then turns, so a mirrored part's
+  turn is taken the other way round. The same holds for parts on the bottom of a board.
+- A pad or via with no size of its own gets the ring Eagle's design rules give it: a quarter of the drill, within 10
+  to 20 mil for pads and 8 to 20 mil for vias, or what the board's own rules say.
+- The board is measured from its outline's bottom left corner. The outline is the closed loop of the Dimension layer
+  (curves kept), and other loops are cut-outs. Polygons on Top and Bottom are pours (rank 1 fills first, cut-out
+  polygons are keep-outs for pours), tRestrict, bRestrict and vRestrict areas keep tracks out, and tKeepout and
+  bKeepout areas keep parts out. tPlace and bPlace drawings and text are silkscreen.
+- Clearance, least track width, least drill, copper to edge and least ring come from the board's design rules, and
+  net classes with a width or clearance of their own come across with their nets.
+
+What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, buses
+as drawings, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
+drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as short
+straight pieces, hatched pours as solid ones, and octagon pads as round ones. A pad Eagle draws off the middle of its
+hole ("offset") comes in with the hole in the right place and the copper centred on it. Assembly variants are not
+read, apart from a part marked not populated. Files from Eagle older than 6 are binary and are refused with a note
+to save them from a newer Eagle. A board without its schematic does not open.
+
+How it is checked: `eagle/fixtures/turns.*` is a small Eagle 7 project written for the tests, with parts turned and
+mirrored every way on two sheets and both sides of a board, a part with three gates, supply symbols, nets in pieces,
+crossing wires, a curved edge and track, pours, restrict areas and holes. `eagle/project.test.ts` holds its nets,
+parts, pads, copper, rules and notes. `eagle/kicadReads.test.ts` is a second opinion where KiCad is installed (CI has
+none, so it is skipped there): KiCad's own Eagle reader opens the same board, and every pad must be where ours is,
+the same size, on the same side and net. That confirms the turns and mirrors on the board; the schematic's follow the
+same rule and are held to Eagle's own net list. No file made by Eagle or Fusion itself, and no SparkFun or Adafruit
+board, has been opened yet: the session that wrote this could not download any. Try a real one before leaning on it.
+
+## Tests and help (#667, #668)
+
+- **Fixtures.** `fixtures/electronics/` keeps saved designs, each with a golden list of its nets, what Push to PCB
+  would change, and what the two checks say (`packages/electronics/src/fixtures.test.ts`, in `npm run test:golden`).
+  Nightly, each board's order files are written for every board house and read back, and each design goes out to
+  KiCad and home again with the same nets. The Gerber, drill, parts list and pick and place goldens sit beside their
+  writers in `fab/golden/`, and the KiCad ones in `kicad/golden/`.
+- **In the browser.** `web/e2e/electronics.spec.ts` has the journeys (`@journey`, so they also run nightly in WebKit):
+  two parts, a wire, Push to PCB, a routed track, a clean check and the saved order files; and the sample board from
+  open to order. axe runs over the schematic, the board and the order pack in Light, Dark and Holoroom. The `@visual`
+  tests picture the sample's schematic and board in each theme.
+- **Budgets.** Nothing from electronics is in the shell beyond its commands and view state: the workspace, each card
+  and each reader or writer is its own chunk (`budgets.json`).
+- **Help.** [electronics-guide.md](electronics-guide.md) is the user guide,
+  [electronics-ordering.md](electronics-ordering.md) says which file goes where at JLCPCB and PCBWay, and
+  [lessons/your-first-board.md](lessons/your-first-board.md) is the lesson, written in the lesson format of #239. The
+  lesson player is not built, so for now it reads as a page. The ordering guide's pictures are of our own order pack:
+  nobody has uploaded a pack to either house from here, so there are no pictures of their order forms yet.
+
+## What release 1 leaves open
+
+- Release 2, by decision: more sheets with hierarchy (#636), shove routing (#646), an autorouter (#647), four layers
+  and more (#648), panels and IPC-2581 (#662).
+- Parts: custom pin shapes and per-pad mask and paste (#626, #627), STEP or BetterCad models as a part's body (#628),
+  sharing a library (#629), the server's shared catalogue (#625), live stock and prices (#661).
+- Eagle and Fusion files (#665): read, but not yet tried on a file Eagle or Fusion wrote.
+- KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.
+- A first real order: the order pack reads back in our own preview, and its copper and holes agree with what KiCad
+  plots from the same board, but no board has been ordered with it.
