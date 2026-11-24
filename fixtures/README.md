@@ -17,7 +17,8 @@ It also exports each one to STL and STEP and reads them back.
 
 ## Drawings
 
-`drawings/` holds models with a drawing in them (#570): a flange with a bolt circle on an ISO sheet and the phone stand
-on an ASME sheet. `web/src/drawing/fixtures.test.ts` makes them, draws their views with the real kernel, and keeps a
+`drawings/` holds models with a drawing in them (#570): a flange with a bolt circle on an ISO sheet, the phone stand
+on an ASME sheet, and Too Tall Toby's 01-03 C Clamp Base (`docs/speed-modelling.md`) on an ISO sheet, whose published
+drawing the sizes in its `.auto.txt` can be read against. `web/src/drawing/fixtures.test.ts` makes them, draws their views with the real kernel, and keeps a
 golden list of what Auto dimension offers for each in `*.auto.txt`. `UPDATE_GOLDEN=1 npm run test:golden` writes them
 again after a deliberate change.

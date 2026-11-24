@@ -49,6 +49,13 @@ describe("drawing changes", () => {
     run(titleChange(now(), "title", ""));
     expect(now().sheets[0]!.title).toEqual({ number: "BC-001" });
 
+    // A field of your own takes what is typed on the sheet; one that is not there changes nothing.
+    doc = { ...doc, drawings: doc.drawings!.map((d) => ({ ...d, fields: [{ label: "Material", value: "PETG" }] })) };
+    run(titleChange(now(), "field-0", "PLA"));
+    expect(now().fields).toEqual([{ label: "Material", value: "PLA" }]);
+    run(titleChange(now(), "field-3", "x"));
+    expect(now().fields).toEqual([{ label: "Material", value: "PLA" }]);
+
     expect(drawingChange(id, "rename", "Arm drawing")[1]).toBe("Rename drawing");
     run(drawingChange(id, "rename", "Arm drawing"));
     expect(now().name).toBe("Arm drawing");

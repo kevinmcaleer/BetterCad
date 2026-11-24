@@ -46,6 +46,18 @@ describe("the drawing's sheet", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  it("a field of your own is typed into on the sheet too", async () => {
+    const onTitle = vi.fn();
+    const own = { ...drawing(), fields: [{ label: "Material", value: "PETG" }] };
+    render(<DrawingPaper drawing={own} onTitle={onTitle} />);
+    await userEvent.dblClick(screen.getByRole("button", { name: "Material: PETG" }));
+    const box = screen.getByRole("textbox", { name: "Material" });
+    expect((box as HTMLInputElement).value).toBe("PETG");
+    await userEvent.clear(box);
+    await userEvent.type(box, "PLA{Enter}");
+    expect(onTitle).toHaveBeenCalledWith("field-0", "PLA");
+  });
+
   it("Enter on a focused field opens it, Tab moves to the next, and nothing is saved when nothing changed", async () => {
     const onTitle = vi.fn();
     render(<DrawingPaper drawing={drawing()} onTitle={onTitle} />);

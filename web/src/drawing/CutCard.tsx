@@ -1,7 +1,7 @@
 import { useId } from "react";
 import { Button, Dialog, NumberField } from "@bettercad/ui";
 import { SCALES, scaleLabel } from "@bettercad/kernel/drawing";
-import type { CutWay } from "./cuts";
+import type { CutKind, CutWay } from "./cuts";
 
 export type CutTool = "section" | "detail" | "break";
 export const CUT_TOOLS: readonly CutTool[] = ["section", "detail", "break"];
@@ -20,6 +20,13 @@ export interface CutCardProps {
   /** A section: look from the other side. */
   flip: boolean;
   onFlip: (flip: boolean) => void;
+  /** A section: how much of the view is cut, and how far the cutting line is turned, in degrees. */
+  kind?: CutKind;
+  onKind?: (kind: CutKind) => void;
+  tilt?: number;
+  onTilt?: (degrees: number) => void;
+  /** A stepped section: how many places the cut goes through so far. */
+  places?: number;
   /** A detail: its circle's radius in the model's millimetres, and the scale it is drawn at. */
   radius: number;
   onRadius: (mm: number) => void;
@@ -39,6 +46,11 @@ const HOW: Record<CutTool, string> = {
   detail: "Click the view where the detail's circle goes.",
   break: "Click the view at each end of the stretch to leave out.",
 };
+const HOW_CUT: Record<CutKind, string> = {
+  full: HOW.section,
+  half: "Click the view where the cut stops. What is past it along the line is cut, and the rest is left whole.",
+  stepped: "Click each place the cut goes through. It steps from one to the next.",
+};
 const MIDDLE: Record<CutTool, string> = { section: "Cut through the middle", detail: "Circle the middle", break: "Leave out the middle third" };
 
 /**
@@ -48,6 +60,19 @@ const MIDDLE: Record<CutTool, string> = { section: "Cut through the middle", det
 export function CutCard(p: CutCardProps) {
   const id = useId();
   const { tool } = p;
+  const kind = p.kind ?? "full";
+  const places = p.places ?? 0;
+  const stepped = tool === "section" && kind === "stepped";
+  const how =
+    tool === "break" && p.started
+      ? "Now click the other end."
+      : tool !== "section"
+        ? HOW[tool]
+        : stepped && places
+          ? places === 1
+            ? "1 place picked. Click the next place the cut goes through."
+            : `${places} places picked. Click another, or make the section.`
+          : HOW_CUT[kind];
   return (
     <Dialog open title={CUT_NAMES[tool]} icon="drawing" className="bc-view-card" width={300} onCancel={p.onFinish} onDone={p.onFinish} doneLabel="Finish">
       <div className="bc-sheet-card">
@@ -83,6 +108,19 @@ export function CutCard(p: CutCardProps) {
           </>
         )}
         {tool === "section" && (
+          <>
+            <label className="bc-field-label" htmlFor={`${id}-kind`}>
+              Cut
+            </label>
+            <select id={`${id}-kind`} className="bc-select" value={kind} onChange={(e) => p.onKind?.(e.target.value as CutKind)}>
+              <option value="full">All the way</option>
+              <option value="half">Half the view</option>
+              <option value="stepped">Stepped</option>
+            </select>
+            <NumberField label="Turn the line" value={p.tilt ?? 0} unit="°" min={-80} max={80} step={5} onCommit={(v) => p.onTilt?.(v)} />
+          </>
+        )}
+        {tool === "section" && (
           <label className="bc-check">
             <input type="checkbox" checked={p.flip} onChange={(e) => p.onFlip(e.target.checked)} />
             Look from the other side
@@ -106,10 +144,10 @@ export function CutCard(p: CutCardProps) {
           </>
         )}
         <p className="bc-note" role="status">
-          {p.wait ?? (tool === "break" && p.started ? "Now click the other end." : HOW[tool])}
+          {p.wait ?? how}
         </p>
         <span className="bc-view-card-place">
-          <Button label={MIDDLE[tool]} variant="secondary" disabled={!!p.wait} onClick={p.onPlace} />
+          <Button label={stepped ? "Make the section" : MIDDLE[tool]} variant="secondary" disabled={!!p.wait || (stepped && places < 2)} onClick={p.onPlace} />
         </span>
       </div>
     </Dialog>

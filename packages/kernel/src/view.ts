@@ -69,6 +69,18 @@ export type ViewRound = {
 export interface ViewCut {
   origin: V3;
   normal: V3;
+  /**
+   * The way the cutting line runs: a unit vector in the cut's plane, square to the way its parent view looks. Needed
+   * by `half` and `steps`, which say where along the line the cut changes.
+   */
+  along?: V3;
+  /** A half section: only what is past `origin` along `along` is taken away, so half the view is cut and half whole. */
+  half?: boolean;
+  /**
+   * A stepped (offset) section: past each `at` along `along`, in millimetres from `origin`, the cut is moved `offset`
+   * along `normal` from where `origin` has it. In order of `at`. Left out, the cut is one flat plane.
+   */
+  steps?: { at: number; offset: number }[];
 }
 
 export interface ProjectOptions {

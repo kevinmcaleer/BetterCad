@@ -51,7 +51,11 @@ export function viewRequest(view: Pick<DrawingView, "shows" | "direction" | "hid
     trace: !preview,
   };
   // A section view's cut (#571): only the plane, so a new letter asks for nothing.
-  if (view.section) req.cut = { origin: view.section.origin, normal: view.section.normal };
+  if (view.section) {
+    const { origin, normal, along, half, steps } = view.section;
+    req.cut = { origin, normal };
+    if (along && (half || steps?.length)) Object.assign(req.cut, half ? { along, half } : { along, steps });
+  }
   return req;
 }
 

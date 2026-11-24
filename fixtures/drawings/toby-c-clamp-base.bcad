@@ -1,0 +1,1129 @@
+{
+  "schema": 3,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "toby-c-clamp-base",
+  "created": "2026-11-23T00:00:00.000Z",
+  "modified": "2026-11-23T00:00:00.000Z",
+  "name": "C Clamp Base",
+  "document": {
+    "drawings": [
+      {
+        "decimals": 2,
+        "id": "dr1",
+        "name": "Drawing 1",
+        "sheets": [
+          {
+            "auto": {
+              "datum": "bottom-left",
+              "density": 1,
+              "recipe": "centre-baseline"
+            },
+            "border": true,
+            "dimensions": [
+              {
+                "across": "y",
+                "at": [
+                  -79,
+                  0
+                ],
+                "auto": true,
+                "id": "dm4",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 39,
+                    "kind": "edge",
+                    "name": "side(l13)|x6:side(c38)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  0,
+                  -102
+                ],
+                "auto": true,
+                "id": "dm5",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 13,
+                    "kind": "edge",
+                    "name": "cap.end|side(l8)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  4,
+                  -26
+                ],
+                "auto": true,
+                "id": "dm6",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 21,
+                    "kind": "edge",
+                    "name": "cap.start|side(l3)",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 22,
+                    "kind": "edge",
+                    "name": "cap.start|side(a6)",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -39,
+                  0
+                ],
+                "auto": true,
+                "id": "dm7",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 21,
+                    "kind": "edge",
+                    "name": "cap.start|side(l3)",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 11,
+                    "kind": "edge",
+                    "name": "cap.end|side(l3)",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -31,
+                  -4
+                ],
+                "auto": true,
+                "id": "dm8",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 21,
+                    "kind": "edge",
+                    "name": "cap.start|side(l3)",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "centre",
+                    "body": "b2",
+                    "index": 1,
+                    "kind": "face",
+                    "name": "x9:side(c40)",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "at": [
+                  -35.545,
+                  0
+                ],
+                "auto": true,
+                "id": "dm9",
+                "kind": "diameter",
+                "refs": [
+                  {
+                    "body": "b2",
+                    "index": 1,
+                    "kind": "face",
+                    "name": "x9:side(c40)",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "at": [
+                  -37.575,
+                  5
+                ],
+                "auto": true,
+                "id": "dm10",
+                "kind": "diameter",
+                "refs": [
+                  {
+                    "body": "b2",
+                    "index": 35,
+                    "kind": "edge",
+                    "name": "h10:f1|x9:cap.end",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "at": [
+                  -36.56,
+                  10
+                ],
+                "auto": true,
+                "id": "dm11",
+                "kind": "diameter",
+                "refs": [
+                  {
+                    "body": "b2",
+                    "index": 5,
+                    "kind": "face",
+                    "name": "h10:f2#1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -71,
+                  -9
+                ],
+                "auto": true,
+                "id": "dm12",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 41,
+                    "kind": "edge",
+                    "name": "side(l17)|x6:side(c38)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -63,
+                  -12.5
+                ],
+                "auto": true,
+                "id": "dm13",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 19,
+                    "kind": "edge",
+                    "name": "cap.end|side(l22)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -55,
+                  -37
+                ],
+                "auto": true,
+                "id": "dm14",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 19,
+                    "kind": "edge",
+                    "name": "cap.end|side(l22)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -47,
+                  -38.5
+                ],
+                "auto": true,
+                "id": "dm15",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 13,
+                    "kind": "edge",
+                    "name": "cap.end|side(l8)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -8,
+                  -94
+                ],
+                "auto": true,
+                "id": "dm16",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 19,
+                    "kind": "edge",
+                    "name": "cap.end|side(l22)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -9,
+                  -86
+                ],
+                "auto": true,
+                "id": "dm17",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 11,
+                    "kind": "edge",
+                    "name": "cap.end|side(l3)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -39,
+                  -40.5
+                ],
+                "auto": true,
+                "id": "dm18",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 0,
+                    "kind": "edge",
+                    "name": "side(l27)|x9:side(c40)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -11.5,
+                  -78
+                ],
+                "auto": true,
+                "id": "dm19",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "cap.end|side(l27)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -5,
+                  -18
+                ],
+                "auto": true,
+                "id": "dm20",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 21,
+                    "kind": "edge",
+                    "name": "cap.start|side(l3)",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 22,
+                    "kind": "edge",
+                    "name": "cap.start|side(a6)",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -13,
+                  -70
+                ],
+                "auto": true,
+                "id": "dm21",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -17,
+                  -62
+                ],
+                "auto": true,
+                "id": "dm22",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 11,
+                    "kind": "edge",
+                    "name": "cap.end|side(l3)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -31,
+                  -47.5
+                ],
+                "auto": true,
+                "id": "dm23",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "b2",
+                    "index": 10,
+                    "kind": "edge",
+                    "name": "x9:cap.end|x9:side(c40)",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "b2",
+                    "index": 11,
+                    "kind": "edge",
+                    "name": "cap.end|side(l3)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "at": [
+                  11.985,
+                  -62
+                ],
+                "auto": true,
+                "id": "dm24",
+                "kind": "radius",
+                "refs": [
+                  {
+                    "body": "b2",
+                    "index": 8,
+                    "kind": "face",
+                    "name": "side(a6)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "at": [
+                  -9.166,
+                  -62
+                ],
+                "auto": true,
+                "id": "dm25",
+                "kind": "radius",
+                "refs": [
+                  {
+                    "body": "b2",
+                    "index": 4,
+                    "kind": "face",
+                    "name": "side(a25)",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              }
+            ],
+            "id": "sh1",
+            "landscape": true,
+            "marks": [
+              {
+                "id": "mk1",
+                "kind": "centre-mark",
+                "on": {
+                  "body": "b2",
+                  "index": 1,
+                  "kind": "face",
+                  "name": "x9:side(c40)",
+                  "view": "v1"
+                },
+                "was": [
+                  -13,
+                  0
+                ]
+              },
+              {
+                "a": {
+                  "body": "b2",
+                  "index": 1,
+                  "kind": "face",
+                  "name": "x9:side(c40)",
+                  "view": "v2"
+                },
+                "id": "mk2",
+                "kind": "centre-line",
+                "was": [
+                  -13,
+                  -40.5
+                ]
+              },
+              {
+                "a": {
+                  "body": "b2",
+                  "index": 1,
+                  "kind": "face",
+                  "name": "x9:side(c40)",
+                  "view": "v3"
+                },
+                "id": "mk3",
+                "kind": "centre-line",
+                "was": [
+                  -40.5,
+                  0
+                ]
+              }
+            ],
+            "name": "Sheet 1",
+            "scale": 1,
+            "size": "A3",
+            "standard": "iso",
+            "title": {
+              "date": "2026-11-23",
+              "revision": "A",
+              "title": "C Clamp Base",
+              "type": "Part drawing"
+            },
+            "views": [
+              {
+                "at": [
+                  130,
+                  215
+                ],
+                "direction": "front",
+                "hidden": true,
+                "id": "v1",
+                "kind": "base",
+                "laid": {
+                  "h": 16,
+                  "sizes": "dm6:34|dm7:16|dm8:8|dm9:Ø16|dm10:Ø11.2|dm11:Ø5.5|dm20:16",
+                  "w": 42
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              },
+              {
+                "at": [
+                  130,
+                  130
+                ],
+                "direction": "top",
+                "hidden": true,
+                "id": "v2",
+                "kind": "base",
+                "laid": {
+                  "h": 104,
+                  "sizes": "dm4:104|dm5:42|dm12:86|dm13:79|dm14:30|dm15:27|dm16:26|dm17:24|dm18:23|dm19:19|dm21:16|dm22:8|dm23:9|dm24:R18|dm25:R7",
+                  "w": 42
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              },
+              {
+                "at": [
+                  260,
+                  215
+                ],
+                "direction": "right",
+                "hidden": true,
+                "id": "v3",
+                "kind": "base",
+                "laid": {
+                  "h": 16,
+                  "sizes": "",
+                  "w": 104
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "features": [
+      {
+        "id": "s1",
+        "name": "Sketch 1",
+        "sketch": {
+          "constraints": [
+            {
+              "e": "l3",
+              "id": "k29",
+              "type": "horizontal"
+            },
+            {
+              "e": "l8",
+              "id": "k30",
+              "type": "vertical"
+            },
+            {
+              "e": "l13",
+              "id": "k31",
+              "type": "horizontal"
+            },
+            {
+              "e": "l15",
+              "id": "k32",
+              "type": "vertical"
+            },
+            {
+              "e": "l17",
+              "id": "k33",
+              "type": "horizontal"
+            },
+            {
+              "e": "l22",
+              "id": "k34",
+              "type": "vertical"
+            },
+            {
+              "e": "l27",
+              "id": "k35",
+              "type": "horizontal"
+            },
+            {
+              "e": "l28",
+              "id": "k36",
+              "type": "vertical"
+            }
+          ],
+          "dimensions": [],
+          "entities": [
+            {
+              "id": "p1",
+              "kind": "point",
+              "x": 0,
+              "y": -47.5
+            },
+            {
+              "id": "p2",
+              "kind": "point",
+              "x": 16,
+              "y": -47.5
+            },
+            {
+              "a": "p1",
+              "b": "p2",
+              "id": "l3",
+              "kind": "line"
+            },
+            {
+              "id": "p4",
+              "kind": "point",
+              "x": 34,
+              "y": -29.5
+            },
+            {
+              "id": "p5",
+              "kind": "point",
+              "x": 16,
+              "y": -29.5
+            },
+            {
+              "a": "p2",
+              "b": "p4",
+              "c": "p5",
+              "id": "a6",
+              "kind": "arc",
+              "r": 18
+            },
+            {
+              "id": "p7",
+              "kind": "point",
+              "x": 34,
+              "y": 29.5
+            },
+            {
+              "a": "p4",
+              "b": "p7",
+              "id": "l8",
+              "kind": "line"
+            },
+            {
+              "id": "p9",
+              "kind": "point",
+              "x": 16,
+              "y": 47.5
+            },
+            {
+              "id": "p10",
+              "kind": "point",
+              "x": 16,
+              "y": 29.5
+            },
+            {
+              "a": "p7",
+              "b": "p9",
+              "c": "p10",
+              "id": "a11",
+              "kind": "arc",
+              "r": 18
+            },
+            {
+              "id": "p12",
+              "kind": "point",
+              "x": 0,
+              "y": 47.5
+            },
+            {
+              "a": "p9",
+              "b": "p12",
+              "id": "l13",
+              "kind": "line"
+            },
+            {
+              "id": "p14",
+              "kind": "point",
+              "x": 0,
+              "y": 29.5
+            },
+            {
+              "a": "p12",
+              "b": "p14",
+              "id": "l15",
+              "kind": "line"
+            },
+            {
+              "id": "p16",
+              "kind": "point",
+              "x": 11,
+              "y": 29.5
+            },
+            {
+              "a": "p14",
+              "b": "p16",
+              "id": "l17",
+              "kind": "line"
+            },
+            {
+              "id": "p18",
+              "kind": "point",
+              "x": 18,
+              "y": 22.5
+            },
+            {
+              "id": "p19",
+              "kind": "point",
+              "x": 11,
+              "y": 22.5
+            },
+            {
+              "a": "p18",
+              "b": "p16",
+              "c": "p19",
+              "id": "a20",
+              "kind": "arc",
+              "r": 7
+            },
+            {
+              "id": "p21",
+              "kind": "point",
+              "x": 18,
+              "y": -26.5
+            },
+            {
+              "a": "p18",
+              "b": "p21",
+              "id": "l22",
+              "kind": "line"
+            },
+            {
+              "id": "p23",
+              "kind": "point",
+              "x": 11,
+              "y": -33.5
+            },
+            {
+              "id": "p24",
+              "kind": "point",
+              "x": 11,
+              "y": -26.5
+            },
+            {
+              "a": "p23",
+              "b": "p21",
+              "c": "p24",
+              "id": "a25",
+              "kind": "arc",
+              "r": 7
+            },
+            {
+              "id": "p26",
+              "kind": "point",
+              "x": 0,
+              "y": -33.5
+            },
+            {
+              "a": "p23",
+              "b": "p26",
+              "id": "l27",
+              "kind": "line"
+            },
+            {
+              "a": "p26",
+              "b": "p1",
+              "id": "l28",
+              "kind": "line"
+            }
+          ],
+          "id": "s1",
+          "name": "Sketch 1",
+          "plane": {
+            "kind": "world",
+            "offset": 0,
+            "plane": "XY"
+          }
+        },
+        "type": "sketch"
+      },
+      {
+        "body": {
+          "id": "b2",
+          "name": "Body 1"
+        },
+        "direction": "one",
+        "distance": 16,
+        "id": "x3",
+        "name": "Extrude 1",
+        "operation": "new",
+        "seeds": [
+          [
+            26,
+            0
+          ]
+        ],
+        "sketch": "s1",
+        "type": "extrude"
+      },
+      {
+        "id": "s4",
+        "name": "Sketch 2",
+        "sketch": {
+          "constraints": [],
+          "dimensions": [],
+          "entities": [
+            {
+              "id": "p37",
+              "kind": "point",
+              "x": 0,
+              "y": 8
+            },
+            {
+              "c": "p37",
+              "id": "c38",
+              "kind": "circle",
+              "r": 8
+            }
+          ],
+          "id": "s4",
+          "name": "Sketch 2",
+          "plane": {
+            "kind": "world",
+            "offset": -47.5,
+            "plane": "XZ"
+          }
+        },
+        "type": "sketch"
+      },
+      {
+        "body": {
+          "id": "b5",
+          "name": "Body 2"
+        },
+        "direction": "one",
+        "distance": 18,
+        "id": "x6",
+        "name": "Extrude 2",
+        "operation": "join",
+        "seeds": [
+          [
+            0,
+            8
+          ]
+        ],
+        "sketch": "s4",
+        "target": "b2",
+        "type": "extrude"
+      },
+      {
+        "id": "s7",
+        "name": "Sketch 3",
+        "sketch": {
+          "constraints": [],
+          "dimensions": [],
+          "entities": [
+            {
+              "id": "p39",
+              "kind": "point",
+              "x": 0,
+              "y": 8
+            },
+            {
+              "c": "p39",
+              "id": "c40",
+              "kind": "circle",
+              "r": 8
+            }
+          ],
+          "id": "s7",
+          "name": "Sketch 3",
+          "plane": {
+            "kind": "world",
+            "offset": 33.5,
+            "plane": "XZ"
+          }
+        },
+        "type": "sketch"
+      },
+      {
+        "body": {
+          "id": "b8",
+          "name": "Body 2"
+        },
+        "direction": "one",
+        "distance": 23,
+        "id": "x9",
+        "name": "Extrude 3",
+        "operation": "join",
+        "seeds": [
+          [
+            0,
+            8
+          ]
+        ],
+        "sketch": "s7",
+        "target": "b2",
+        "type": "extrude"
+      },
+      {
+        "depth": null,
+        "fit": "normal",
+        "frame": {
+          "normal": [
+            0,
+            -1,
+            0
+          ],
+          "origin": [
+            0,
+            -56.5,
+            8
+          ],
+          "x": [
+            1,
+            0,
+            0
+          ]
+        },
+        "head": "countersink",
+        "id": "h10",
+        "name": "Hole 1",
+        "part": "b2",
+        "points": [
+          [
+            0,
+            0
+          ]
+        ],
+        "size": "M5",
+        "type": "hole"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {},
+    "name": "C Clamp Base",
+    "version": 2
+  }
+}

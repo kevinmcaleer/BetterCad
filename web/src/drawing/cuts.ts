@@ -54,26 +54,107 @@ export type CutWay = "across" | "up";
 
 /**
  * The side of the parent a section looks from, as a projected view's would be: a line across is seen from above
- * (from below when flipped), a line up from the right (from the left).
+ * (from below when flipped), a line up from the right (from the left). `tilt` turns the line, and the side with it,
+ * anticlockwise by that many degrees, for a slanted cut.
  */
-export const cutSide = (way: CutWay, flip: boolean): Side => (way === "across" ? [0, flip ? -1 : 1] : [flip ? -1 : 1, 0]);
+export const cutSide = (way: CutWay, flip: boolean, tilt = 0): Side => turned(way === "across" ? [0, flip ? -1 : 1] : [flip ? -1 : 1, 0], tilt);
+/** The way a cutting line runs: to the right for a line across, up for a line up, turned as the line is. */
+export const cutAlong = (way: CutWay, tilt = 0): Side => turned(way === "across" ? [1, 0] : [0, 1], tilt);
+const turned = (v: Side, tilt: number): Side => {
+  if (!tilt) return v;
+  const [cs, sn] = [Math.cos((tilt * Math.PI) / 180), Math.sin((tilt * Math.PI) / 180)];
+  return [tidy(v[0] * cs - v[1] * sn), tidy(v[0] * sn + v[1] * cs)];
+};
 
-/** The cut a line through `through` (in the parent view's millimetres) makes: the part on the looking side goes. */
-export function cutThrough(parent: ViewFrame, through: V2, way: CutWay, flip: boolean): ViewCut {
-  const side = cutSide(way, flip);
-  return { origin: world(parent, through), normal: world(parent, [side[0], side[1]]) };
+/** How much of the view a section cuts: all of it on one plane, half of it, or on planes stepped from one to the next. */
+export type CutKind = "full" | "half" | "stepped";
+export interface CutHow {
+  kind?: CutKind;
+  /** Degrees the cutting line is turned anticlockwise from level or upright. */
+  tilt?: number;
+  /** A stepped cut: the other places it goes through, in the parent view's millimetres. */
+  more?: V2[];
 }
+
+/**
+ * The cut a line through `through` (in the parent view's millimetres) makes: the part on the looking side goes.
+ * A half section takes only what is past `through` along the line; a stepped one goes through each place given,
+ * stepping from one plane to the next halfway between them.
+ */
+export function cutThrough(parent: ViewFrame, through: V2, way: CutWay, flip: boolean, how: CutHow = {}): ViewCut {
+  const side = cutSide(way, flip, how.tilt);
+  const d = cutAlong(way, how.tilt);
+  const normal = world(parent, [side[0], side[1]]);
+  if (how.kind === "half") return { origin: world(parent, through), normal, along: world(parent, [d[0], d[1]]), half: true };
+  if (how.kind === "stepped" && how.more?.length) {
+    const on = (p: V2, v: Side) => p[0] * v[0] + p[1] * v[1];
+    const pts = [through, ...how.more].sort((a, b) => on(a, d) - on(b, d));
+    const first = pts[0]!;
+    const steps: NonNullable<ViewCut["steps"]> = [];
+    for (let i = 1; i < pts.length; i++) {
+      const offset = tidy(on(pts[i]!, side) - on(first, side));
+      // Two places on one plane are one stretch of the cut.
+      if (Math.abs(offset - (steps.at(-1)?.offset ?? 0)) < 1e-6) continue;
+      steps.push({ at: tidy((on(pts[i - 1]!, d) + on(pts[i]!, d)) / 2 - on(first, d)), offset });
+    }
+    if (steps.length) return { origin: world(parent, first), normal, along: world(parent, [d[0], d[1]]), steps };
+    return { origin: world(parent, first), normal };
+  }
+  return { origin: world(parent, through), normal };
+}
+
+/** What kind of cut a section's is. */
+export const cutKind = (cut: ViewCut): CutKind => (cut.half ? "half" : cut.steps?.length ? "stepped" : "full");
 
 /** A section's cutting line as its parent sees it: a point on it, and the side the part taken away is on. Nothing when the parent no longer sees the cut edge on. */
 export function cutLine(parent: ViewFrame, cut: ViewCut): { at: V2; side: V2 } | undefined {
   const { x, y, z } = viewAxes(parent);
-  const dot = (a: readonly number[], b: readonly number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
-  if (Math.abs(dot(cut.normal, z)) > 1e-6) return undefined;
-  const n: V2 = [dot(cut.normal, x), dot(cut.normal, y)];
+  if (Math.abs(dot3(cut.normal, z)) > 1e-6) return undefined;
+  const n: V2 = [dot3(cut.normal, x), dot3(cut.normal, y)];
   const l = Math.hypot(...n);
   if (l < 1e-9) return undefined;
-  return { at: [dot(cut.origin, x), dot(cut.origin, y)], side: [n[0] / l + 0, n[1] / l + 0] };
+  return { at: [dot3(cut.origin, x), dot3(cut.origin, y)], side: [n[0] / l + 0, n[1] / l + 0] };
 }
+const dot3 = (a: readonly number[], b: readonly number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+
+/**
+ * A section's cutting line drawn on its parent: its corners in order, in paper mm from the view's middle (y up), and
+ * the side taken away. It runs a little past a view `w` by `h` on paper; a half section's starts where its cut does,
+ * and a stepped one's jogs at each step. `P` puts a point of the view on paper.
+ */
+export function cutPath(parent: ViewFrame, cut: ViewCut, P: (p: V2) => V2, scale: number, w: number, h: number): { pts: V2[]; side: V2 } | undefined {
+  const line = cutLine(parent, cut);
+  if (!line) return undefined;
+  const n = line.side;
+  let d: V2 = [-n[1], n[0]];
+  if (cut.along) {
+    const { x, y } = viewAxes(parent);
+    if (dot3(cut.along, x) * d[0] + dot3(cut.along, y) * d[1] < 0) d = [-d[0] + 0, -d[1] + 0];
+  }
+  const o = P(line.at);
+  // Along the line, as far as the view's box goes and a little past.
+  const reach = Math.abs(d[0]) * (w / 2) + Math.abs(d[1]) * (h / 2) + PAST;
+  const mid = o[0] * d[0] + o[1] * d[1];
+  const [lo, hi] = [cut.half ? 0 : -reach - mid, reach - mid];
+  if (hi - lo < 1) return undefined;
+  const at = (t: number, off: number): V2 => [o[0] + d[0] * t + n[0] * off, o[1] + d[1] * t + n[1] * off];
+  let off = 0;
+  const pts: V2[] = [at(lo, 0)];
+  for (const s of cut.half ? [] : [...(cut.steps ?? [])].sort((a, b) => a.at - b.at)) {
+    const t = s.at * scale;
+    if (t <= lo || t >= hi) {
+      // A step off the end of the line: the line starts, or stays, on the plane it leads to.
+      if (t <= lo) pts[0] = at(lo, (off = s.offset * scale));
+      continue;
+    }
+    pts.push(at(t, off), at(t, (off = s.offset * scale)));
+  }
+  pts.push(at(hi, off));
+  return { pts, side: n };
+}
+
+/** Clear paper between a parent and a slanted section put beside it, mm. */
+const BESIDE = 15;
 
 /** Puts a section view on the sheet, beside its parent on the side the standard's projection has it. */
 export function placeSection(
@@ -85,25 +166,39 @@ export function placeSection(
   flip: boolean,
   angle: "first" | "third",
   size: { w: number; h: number },
+  how: CutHow = {},
 ): DrawingSheet {
   const parent = sheet.views.find((v) => v.id === parentId);
   if (!parent) return sheet;
   const frame = frameOf(parent.direction);
-  const from = cutSide(way, flip);
+  const from = cutSide(way, flip, how.tilt);
+  const slant = !!(from[0] && from[1]);
+  // A slanted cut is seen square on: from the side it looks from, with the line it was cut on level or upright.
+  const seen: ViewFrame = slant
+    ? {
+        toEye: world(frame, [from[0], from[1]]),
+        up: way === "across" ? (viewAxes(frame).z.map((k) => tidy(-k * (flip ? -1 : 1))) as V3) : world(frame, [...cutAlong(way, how.tilt)] as V2),
+      }
+    : frameFrom(frame, from);
   const view: DrawingView = {
     id,
     kind: "section",
     parent: parentId,
     shows: parent.shows,
-    direction: directionFor(frameFrom(frame, from)),
+    direction: directionFor(seen),
     hidden: false,
     tangent: parent.tangent,
     at: [0, 0],
-    section: { ...cutThrough(frame, through, way, flip), label: nextLetter(sheet) },
+    section: { ...cutThrough(frame, through, way, flip, how), label: nextLetter(sheet) },
   };
   // Third angle shows what you see from a side on that side; first angle puts it on the far one.
   const on: Side = angle === "first" ? [-from[0], -from[1]] : from;
-  const at = spotBeside({ at: parent.at, ...size }, size, on);
+  const far = Math.abs(on[0]) * size.w + Math.abs(on[1]) * size.h + BESIDE;
+  let at: V2 = slant ? [tidy(parent.at[0] + on[0] * far), tidy(parent.at[1] + on[1] * far)] : spotBeside({ at: parent.at, ...size }, size, on);
+  // A second section on the same side goes beyond the first, not on top of it.
+  const step = Math.abs(on[0]) * size.w + Math.abs(on[1]) * size.h + BESIDE;
+  for (let i = 0; i < 20 && sheet.views.some((v) => Math.hypot(v.at[0] - at[0], v.at[1] - at[1]) < 1); i++)
+    at = [tidy(at[0] + on[0] * step), tidy(at[1] + on[1] * step)];
   const next = { ...sheet, views: [...sheet.views, view] };
   return { ...next, views: next.views.map((v) => (v.id === id ? { ...v, at: lineUp(next, view, at) } : v)) };
 }
@@ -113,11 +208,13 @@ export function flipSection(sheet: DrawingSheet, id: string): DrawingSheet {
   const v = sheet.views.find((x) => x.id === id);
   const parent = v?.parent ? sheet.views.find((x) => x.id === v.parent) : undefined;
   if (!v?.section) return sheet;
-  const normal = v.section.normal.map((n) => -n + 0) as V3;
+  const section = { ...v.section, normal: v.section.normal.map((n) => -n + 0) as V3 };
+  // The steps stay where they are: measured the other way along the turned normal.
+  if (section.steps) section.steps = section.steps.map((s) => ({ at: s.at, offset: -s.offset + 0 }));
   const f = frameOf(v.direction);
   const direction = directionFor({ toEye: f.toEye.map((n) => -n + 0) as V3, up: f.up });
   const at: V2 = parent ? [2 * parent.at[0] - v.at[0], 2 * parent.at[1] - v.at[1]] : v.at;
-  return { ...sheet, views: sheet.views.map((x) => (x.id === id ? { ...x, direction, at, section: { ...v.section!, normal } } : x)) };
+  return { ...sheet, views: sheet.views.map((x) => (x.id === id ? { ...x, direction, at, section } : x)) };
 }
 
 /** Puts a detail view on the sheet: the circle at `c` (the parent view's millimetres) of radius `r`, at its own scale. */
@@ -499,29 +596,33 @@ export function cutArt(sheet: DrawingSheet, v: DrawingView, viewOf: (id: string)
   for (const child of sheet.views) {
     if (child.parent !== v.id) continue;
     if (child.kind === "section" && child.section) {
-      const line = cutLine(frameOf(v.direction), child.section);
-      if (!line) continue;
-      const o = P(line.at);
-      const n = line.side;
-      // Along the line, as far as the view's box goes and a little past.
-      const d: V2 = [-n[1], n[0]];
-      const reach = Math.abs(d[0]) * (w / 2) + Math.abs(d[1]) * (h / 2) + PAST;
-      const along = o[0] * d[0] + o[1] * d[1];
-      const base: V2 = [o[0] - d[0] * along, o[1] - d[1] * along];
-      const ends = [-reach, reach].map((t): V2 => [base[0] + d[0] * t, base[1] + d[1] * t]) as [V2, V2];
-      art.chain.push(ends);
-      for (const [end, k] of [
-        [ends[0], 1],
-        [ends[1], -1],
-      ] as const) {
-        art.thick.push([end, [end[0] + d[0] * k * PAST, end[1] + d[1] * k * PAST]]);
+      const path = cutPath(frameOf(v.direction), child.section, P, scale, w, h);
+      if (!path) continue;
+      const { pts, side: n } = path;
+      for (let i = 1; i < pts.length; i++) art.chain.push([pts[i - 1]!, pts[i]!]);
+      const toward = (a: V2, b: V2, by: number): V2 => {
+        const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        return [a[0] + ((b[0] - a[0]) / l) * Math.min(by, l), a[1] + ((b[1] - a[1]) / l) * Math.min(by, l)];
+      };
+      // Thick where the line turns, so a step reads as one.
+      for (let i = 1; i + 1 < pts.length; i++) art.thick.push([toward(pts[i]!, pts[i - 1]!, HEAD), pts[i]!], [pts[i]!, toward(pts[i]!, pts[i + 1]!, HEAD)]);
+      const ends: [V2, V2][] = [
+        [pts[0]!, pts[1]!],
+        [pts.at(-1)!, pts.at(-2)!],
+      ];
+      ends.forEach(([end, next], i) => {
+        const inward = toward(end, next, PAST);
+        art.thick.push([end, inward]);
+        // A half section is marked where it is cut from: one arrow, at the end the cut runs out to.
+        if (child.section!.half && i === 0) return;
+        const d: V2 = [(inward[0] - end[0]) / PAST, (inward[1] - end[1]) / PAST];
         // The arrow points the way the section looks: at what is left, away from what was taken.
         const tail: V2 = [end[0] + n[0] * (HEAD + 4), end[1] + n[1] * (HEAD + 4)];
         const back: V2 = [end[0] + n[0] * HEAD, end[1] + n[1] * HEAD];
         art.chain.push([back, tail]);
         art.arrows.push([end, [back[0] + d[0] * (HEAD / 3), back[1] + d[1] * (HEAD / 3)], [back[0] - d[0] * (HEAD / 3), back[1] - d[1] * (HEAD / 3)]]);
-        art.labels.push({ at: [tail[0] + n[0] * (CUT_TEXT * 0.7), tail[1] + n[1] * (CUT_TEXT * 0.7)], text: child.section.label, size: CUT_TEXT });
-      }
+        art.labels.push({ at: [tail[0] + n[0] * (CUT_TEXT * 0.7), tail[1] + n[1] * (CUT_TEXT * 0.7)], text: child.section!.label, size: CUT_TEXT });
+      });
     } else if (child.kind === "detail" && child.detail) {
       const c = P(child.detail.c);
       const r = child.detail.r * scale;
