@@ -412,6 +412,13 @@ describe("ViewCube", () => {
     expect(screen.getByRole("menu", { name: "View cube" })).toBeInTheDocument();
   });
 
+  it("has a Fit button by its bottom left", async () => {
+    const onFit = vi.fn();
+    render(<ViewCube onFit={onFit} />);
+    await userEvent.click(within(screen.getByRole("group", { name: "View cube" })).getByRole("button", { name: /^Fit/ }));
+    expect(onFit).toHaveBeenCalledTimes(1);
+  });
+
   it("turns the view a quarter turn with its arrows", async () => {
     const onRoll = vi.fn();
     render(<ViewCube onRoll={onRoll} />);
@@ -425,6 +432,7 @@ describe("ViewCube", () => {
   it("leaves the buttons out when it has nowhere to send them", () => {
     render(<ViewCube />);
     expect(screen.queryByRole("button", { name: "Go home" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Fit/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "View cube options" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Turn clockwise 90°" })).toBeNull();
   });

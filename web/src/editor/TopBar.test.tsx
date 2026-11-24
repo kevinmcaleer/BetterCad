@@ -68,6 +68,18 @@ describe("Account menu", () => {
     expect(screen.getByRole("menuitem", { name: /My models/ })).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: /Admin/ })).toBeNull();
   });
+  it("takes Parameters and Help on a phone, where their buttons leave the bar", () => {
+    const help = vi.fn();
+    const p = setup({ phone: true, onParams: vi.fn(), helpEntries: [{ id: "about", label: "About BetterCad", onSelect: help }] });
+    expect(screen.queryByRole("button", { name: "Parameters" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Help" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Account and settings" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Parameters/ }));
+    expect(p.onParams).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Account and settings" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /About BetterCad/ }));
+    expect(help).toHaveBeenCalledOnce();
+  });
 });
 
 describe("Ribbon", () => {

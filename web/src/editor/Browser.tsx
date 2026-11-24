@@ -19,10 +19,22 @@ export const AXES: OriginAxis[] = ["X", "Y", "Z"];
 export type OriginItem = WorldPlaneName | OriginAxis | "point";
 export const ORIGIN: OriginItem[] = ["point", ...AXES, ...PLANES];
 
+/** The Named views folder's standard rows, as Fusion's Home, Front, Right and Top. */
+export type StandardView = "home" | "front" | "side" | "top";
+export const STANDARD_VIEWS: { id: StandardView; name: string }[] = [
+  { id: "home", name: "Home" },
+  { id: "front", name: "Front" },
+  { id: "side", name: "Side" },
+  { id: "top", name: "Top" },
+];
+const VIEW_ROWS = new Map(STANDARD_VIEWS.map((v) => [`browser:view:${v.id}`, v.id]));
+
 /** Row ids for the browser's own rows, kept apart from part and feature ids. */
 export const ROW = {
   root: "browser:model",
   origin: "browser:origin",
+  views: "browser:views",
+  view: (v: StandardView) => `browser:view:${v}`,
   analysis: "browser:analysis",
   canvases: "browser:canvases",
   drawings: "browser:drawings",
@@ -93,6 +105,12 @@ export interface BrowserModel {
   poses?: { id: string; name: string }[];
   /** The named pose the joints are in now, or "home"; none when they've moved since. */
   atPose?: string | null;
+  /** Named views (#40): saved cameras, under Named views after the standard ones. Left out, the folder is too. */
+  views?: { id: string; name: string }[];
+  /** The standard view the camera is in now, if any. */
+  atView?: string | null;
+  /** Whether home has been set to a view of your own, so Reset home has something to do. */
+  homeSet?: boolean;
   /** Section analyses, under Analysis; only `section`, the one applied, cuts the view. */
   sections?: { id: string; name: string }[];
   section?: string | null;
@@ -173,6 +191,24 @@ export function browserItems(m: BrowserModel): TreeItem[] {
   // Rows can be dragged into a component, or back to the model, unless the model is view-only (#334).
   const move = !m.readOnly;
   const items: TreeItem[] = [{ id: ROW.root, name: m.name, icon: "layers", kind: "component", drag: false, rename: !m.readOnly, toggles: [], into: move }];
+  // Named views, as Fusion's: the standard views, then the ones you saved. A click looks from one.
+  if (m.views) {
+    items.push(folder(ROW.views, "Named views", { icon: "camera", folded: true, toggles: [], note: count(m.views.length) }));
+    for (const v of STANDARD_VIEWS)
+      items.push({
+        id: ROW.view(v.id),
+        name: v.name,
+        icon: v.id === "home" ? "home" : "camera",
+        kind: "view",
+        parentId: ROW.views,
+        drag: false,
+        rename: false,
+        toggles: [],
+        note: m.atView === v.id ? "Now" : undefined,
+      });
+    for (const v of m.views)
+      items.push({ id: v.id, name: v.name, icon: "eye", kind: "view", parentId: ROW.views, drag: false, rename: !m.readOnly, toggles: [] });
+  }
   items.push(folder(ROW.origin, "Origin", { folded: true, hidden: m.origin.length === 0 }));
   items.push({
     id: ROW.point,
@@ -453,8 +489,8 @@ export interface BrowserPanelProps {
   /** Starts a sketch on a construction plane (#265). */
   onSketchOnStep?: (id: string) => void;
   partMenu: (ids: string[]) => MenuEntry[];
-  /** A component's Remove entry, when it is an inserted model (#480). */
-  componentRemove?: (id: string) => MenuEntry[];
+  /** A component's own entries: Make external for one made here, Remove for an inserted model (#480). */
+  componentMenu?: (id: string) => MenuEntry[];
   sketchMenu: (id: string) => MenuEntry[];
   renameId: string | null;
   onRenameIdChange: (id: string | null) => void;
@@ -469,6 +505,8 @@ export interface BrowserPanelProps {
   onDrawing?: (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart", id?: string, name?: string) => void;
   /** Opens the schematic or the board (#617). */
   onElectronics?: (view: "schematic" | "pcb") => void;
+  /** Named views (#40): look from one ("home", "front", "side", "top" or a saved view's id), save, update, rename or delete one, set or reset home. */
+  onView?: (act: "look" | "save" | "update" | "rename" | "delete" | "setHome" | "resetHome", id?: string, name?: string) => void;
   /** Named poses (#177): go to one (null: Home), save the joints as a new one, update, rename or delete one. */
   onPose?: (id: string | null) => void;
   onSavePose?: () => void;
@@ -505,6 +543,9 @@ export function BrowserPanel(p: BrowserPanelProps) {
       if (last === ROW.root && model.active) p.onActivate(null);
       else if (last && last !== model.active && (model.links ?? []).some((c) => c.id === last)) p.onActivate(last);
     }
+    const std = last ? VIEW_ROWS.get(last) : undefined;
+    if (std) return p.onView?.("look", std);
+    if (last && model.views?.some((x) => x.id === last)) return p.onView?.("look", last);
     if (last === ROW.home) return p.onPose?.(null);
     if (last && model.poses?.some((x) => x.id === last)) return p.onPose?.(last);
     if (last && (model.joints?.some((j) => j.id === last) || model.construct?.some((c) => c.id === last))) p.onSelectSketch(last);
@@ -577,6 +618,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
 
   const rename = (id: string, name: string) => {
     if (id === ROW.root) return p.onRenameModel(name);
+    if (model.views?.some((x) => x.id === id)) return p.onView?.("rename", id, name);
     if (model.poses?.some((x) => x.id === id)) return p.onRenamePose?.(id, name);
     if (model.sections?.some((x) => x.id === id)) return p.onRenameSection?.(id, name);
     if (model.canvases?.some((x) => x.id === id)) return p.onCanvas?.(id, "rename", name);
@@ -650,6 +692,43 @@ export function BrowserPanel(p: BrowserPanelProps) {
             onSelect: () => toggle(id, "hidden"),
           },
           ...p.sketchMenu(id).map((e) => (e.kind !== "separator" && e.id === "rename" ? { ...e, onSelect: () => p.onRenameIdChange(id) } : e)),
+        ],
+      };
+    if (id === ROW.views)
+      return {
+        title: "Named views",
+        entries: model.readOnly ? [] : [{ id: "save", label: "Save this view…", icon: "camera", onSelect: () => p.onView?.("save") }],
+      };
+    const std = VIEW_ROWS.get(id);
+    if (std)
+      return {
+        title: STANDARD_VIEWS.find((v) => v.id === std)!.name,
+        entries:
+          std === "home"
+            ? [
+                { id: "look", label: "Go home", icon: "home", onSelect: () => p.onView?.("look", "home") },
+                ...(model.readOnly
+                  ? []
+                  : [
+                      { id: "set-home", label: "Set this view as home", icon: "home" as const, onSelect: () => p.onView?.("setHome") },
+                      { id: "reset-home", label: "Reset home", disabled: !model.homeSet, onSelect: () => p.onView?.("resetHome") },
+                    ]),
+              ]
+            : [{ id: "look", label: `Look from ${std === "side" ? "the side" : `the ${std}`}`, icon: "camera", onSelect: () => p.onView?.("look", std) }],
+      };
+    const nv = model.views?.find((x) => x.id === id);
+    if (nv)
+      return {
+        title: nv.name,
+        entries: [
+          { id: "look", label: `Look from ${nv.name}`, icon: "eye", onSelect: () => p.onView?.("look", id) },
+          ...(model.readOnly
+            ? []
+            : [
+                { id: "update", label: "Update to this view", icon: "redo" as const, onSelect: () => p.onView?.("update", id) },
+                { id: "rename", label: "Rename", icon: "pencil" as const, keys: "F2", onSelect: () => p.onRenameIdChange(id) },
+                { id: "delete", label: "Delete", icon: "trash" as const, danger: true, onSelect: () => p.onView?.("delete", id) },
+              ]),
         ],
       };
     if (id === ROW.poses || id === ROW.home)
@@ -759,7 +838,7 @@ export function BrowserPanel(p: BrowserPanelProps) {
           ...(p.isolateMenu?.(heldIds(id), link.name) ?? []),
           ...(model.readOnly ? [] : (p.referenceMenu?.(heldIds(id), link.name) ?? [])),
           { id: "rename", label: "Rename", icon: "pencil", keys: "F2", onSelect: () => p.onRenameIdChange(id) },
-          ...(model.readOnly ? [] : (p.componentRemove?.(id) ?? [])),
+          ...(model.readOnly ? [] : (p.componentMenu?.(id) ?? [])),
         ],
       };
     if (id === ROW.root && model.active && !model.readOnly)

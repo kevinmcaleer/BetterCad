@@ -134,7 +134,6 @@ import { AppShell } from "./AppShell";
 import { TopBar } from "./TopBar";
 import { useRibbon } from "./ribbonPrefs";
 import { LeftPanel, PANEL_TITLES, type PanelId } from "./LeftPanel";
-import { StageBars } from "./Stage";
 import { useViewport } from "./useViewport";
 import { View3D, type ViewDecal } from "../viewport/View3D";
 import { useStatus } from "./useStatus";
@@ -195,6 +194,8 @@ import type { IkProblem } from "../state/ik";
 
 /** The gear bar loads when the Gear tool is first armed, keeping it out of the first paint. */
 const PatternBar = lazy(() => import("../pattern/PatternBar").then((m) => ({ default: m.PatternBar })));
+// The armed tool's options strip: only Section, Move and Turn draw one, so it loads when first needed.
+const StageBars = lazy(() => import("./Stage").then((m) => ({ default: m.StageBars })));
 const DeleteStepDialog = lazy(() => import("./DeleteStep").then((m) => ({ default: m.DeleteStepDialog })));
 const EmptyState = lazy(() => import("./EmptyState").then((m) => ({ default: m.EmptyState })));
 const MountBar = lazy(() => import("../mount/MountBar").then((m) => ({ default: m.MountBar })));
@@ -230,6 +231,7 @@ const Versions = lazy(() => import("../cloud/Versions").then((m) => ({ default: 
 const ShareDialog = lazy(() => import("../cloud/ShareDialog").then((m) => ({ default: m.ShareDialog })));
 const ModelPicker = lazy(() => import("../insert/ModelPicker").then((m) => ({ default: m.ModelPicker })));
 const InsertModelDialog = lazy(() => import("../insert/InsertModelDialog").then((m) => ({ default: m.InsertModelDialog })));
+const MakeExternalDialog = lazy(() => import("../insert/MakeExternalDialog").then((m) => ({ default: m.MakeExternalDialog })));
 const SendDialog = lazy(() => import("../steps/SendDialog").then((m) => ({ default: m.SendDialog })));
 const AboutDialog = lazy(() => import("../help/AboutDialog").then((m) => ({ default: m.AboutDialog })));
 // Release notes (What's new) load in their own chunk, after first paint.
@@ -399,6 +401,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   }, []);
 
   const narrow = useMedia(NARROW);
+  const phone = useMedia("(max-width: 520px)");
   const ribbonOn = useRibbon();
   const [selection, setSelection] = useState<string[]>([]);
   // The browser's origin planes on show, and its sketch or plane pick: view state, like the marker.
@@ -450,6 +453,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [crash, setCrash] = useState<Caught | null>(null);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [insertOpen, setInsertOpen] = useState(false);
+  // Make external: the component being saved as a model of its own and linked back in.
+  const [externalId, setExternalId] = useState<string | null>(null);
   // The model picker (#480) beside the browser: folded to a tab until opened.
   const [pickerOpen, setPickerOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -472,7 +477,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     at,
     selection,
     tool,
-    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null || sheetCard !== null,
+    dialogOpen: paletteOpen || shortcutsOpen || aboutOpen || whatsNew.open || exportOpen || report !== null || sheetCard !== null || externalId !== null,
     drawing: drawing !== null,
     electronics: eview !== null,
     sketching: live.current.sketching,
@@ -3349,11 +3354,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setShowBedState(on);
     keep("bettercad.showBed", on ? "1" : "0");
   }, []);
+  const coarse = !!window.matchMedia?.("(pointer: coarse)").matches;
   const cubeMenu: MenuEntry[] = [
     ...vp.cubeMenu,
     { kind: "separator", id: "s-bed" },
     { id: "bed", label: "Show build volume", checked: showBed, multiple: true, onSelect: () => setShowBed(!showBed) },
     ...(anyHidden ? [{ id: "unhide-all", label: "Unhide all", icon: "eye" as const, onSelect: () => isolate(null) }] : []),
+    // Phones and tablets: the view bar's Full screen button lives here now.
+    ...(coarse
+      ? [{ id: "fullscreen", label: "Full screen", icon: "expand" as const, onSelect: () => void import("./fullscreen").then((m) => m.switchFullscreen(say)) }]
+      : []),
   ];
   /** The bodies that print: shown, not holes, and measured by the kernel. */
   const printBoxes = useMemo(() => {
@@ -4133,7 +4143,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     { id: "tour", label: "Take the tour", icon: "info", onSelect: () => registry.run("help.tour") },
     { id: "tips", label: "Tips", icon: "bulb", onSelect: () => registry.run("help.tips") },
     { id: "learn", label: "Learn BetterCad", icon: "link", onSelect: () => registry.run("help.learn") },
-    { kind: "separator", id: "s1" },
+    { kind: "separator", id: "s-help" },
     { id: "report", label: "Report a problem…", icon: "warning", onSelect: () => registry.run("help.report") },
     { id: "whatsNew", label: "What's new", icon: "star", onSelect: () => registry.run("help.whatsNew") },
     { id: "about", label: "About BetterCad", icon: "info", onSelect: () => registry.run("help.about") },
@@ -4550,6 +4560,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             // A run-out sign-in: Save logs in again, and the save that waits goes once you're back.
             onSave={() => void (files.cloud?.state === "signin" ? logInAgain(api, window.location.hash || "#/") : save())}
             helpEntries={helpEntries}
+            phone={phone}
             account={account ? { name: account.name, admin: account.admin } : null}
             accountsOn={accountReady && accountsOn}
             cloud={files.cloud?.state ?? null}
@@ -4665,6 +4676,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               onMoveInto={moveIn}
               joints={browserJoints}
               poses={posesProps}
+              views={vp.namedViews}
               sections={{
                 sections: vp.sectionList,
                 section: vp.appliedSection,
@@ -4683,9 +4695,19 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               isolateMenu={isolateEntries}
               onBodiesGhost={ghostBodies}
               referenceMenu={referenceEntries}
-              componentRemove={(id) => {
-                const f = doc.features.find((x) => x.id === id && x.type === "model");
-                return f
+              componentMenu={(id) => {
+                const f = doc.features.find((x) => x.id === id);
+                if (f?.type === "link")
+                  return [
+                    { kind: "separator", id: "external-sep" },
+                    {
+                      id: "external",
+                      label: "Make external…",
+                      icon: "link",
+                      onSelect: () => (live.current.marker === null ? setExternalId(id) : say("Roll the timeline to the end to make a component external")),
+                    },
+                  ];
+                return f?.type === "model"
                   ? [
                       { kind: "separator", id: "remove-sep" },
                       { id: "remove", label: `Remove ${f.name}`, icon: "trash", danger: true, onSelect: () => removeModel(id) },
@@ -4768,16 +4790,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   />
                 </Suspense>
               ) : (
-                <StageBars
-                  tool={activeTool}
-                  onArmTool={armTool}
-                  vp={vp}
-                  onePart={selection.length === 1}
-                  onRender={openRender}
-                  onDrawing={files.shared ? undefined : () => onDrawing("new")}
-                  onEveryPart={files.shared ? undefined : everyPart}
-                  say={window.matchMedia?.("(pointer: coarse)").matches ? say : undefined}
-                />
+                activeTool.id !== "select" && (
+                  <Suspense fallback={null}>
+                    <StageBars tool={activeTool} onArmTool={armTool} vp={vp} onePart={selection.length === 1} />
+                  </Suspense>
+                )
               )}
               {place.part && (
                 <Suspense fallback={null}>
@@ -5034,6 +5051,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               setViewMenuAt({ ids, at });
             }}
             onHome={vp.goHome}
+            onFit={vp.fit}
             cubeMenu={cubeMenu}
             bed={showBed && !share ? { ...printer, label: bedLabel(printer) } : null}
             warn={offBed}
@@ -5490,6 +5508,21 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               setInsertOpen(false);
               insertFiles(list);
             }}
+          />
+        </Suspense>
+      )}
+      {externalId && (
+        <Suspense fallback={null}>
+          <MakeExternalDialog
+            api={api}
+            id={externalId}
+            store={store}
+            signedIn={!!account}
+            signinUrl={accountsOn ? `#/signin?next=${encodeURIComponent(window.location.hash || "#/")}` : undefined}
+            modelId={files.shared ? undefined : files.cloud?.modelId}
+            files={files.store}
+            say={say}
+            onClose={() => setExternalId(null)}
           />
         </Suspense>
       )}

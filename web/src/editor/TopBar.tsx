@@ -106,6 +106,11 @@ export interface TopBarProps {
   electronicsRibbon?: ReactNode;
   /** The compact bar's last button: the ribbon's tabs and tools as a sheet, for phones and tablets. */
   onMoreTools?: () => void;
+  /**
+   * A phone-wide window: Parameters and Help fold into the account menu, so the bar fits on one row with nothing
+   * cut off at either end.
+   */
+  phone?: boolean;
 }
 
 const TABS: [Exclude<RibbonTab, "sketch">, string][] = [
@@ -354,7 +359,7 @@ function rightSide(p: TopBarProps) {
       {p.background}
       <IconButton className="bc-find" icon="search" title={`Find a command (/ or ${formatCombo("mod+k")})`} onClick={p.onPalette} />
       <IconButton className="bc-props-toggle" icon="info" title={p.propsOpen ? "Hide properties" : "Show properties"} on={p.propsOpen} onClick={p.onProps} />
-      {!p.shared && <IconButton icon="sliders" title="Parameters" on={!!p.paramsOpen} onClick={p.onParams} />}
+      {!p.shared && !p.phone && <IconButton icon="sliders" title="Parameters" on={!!p.paramsOpen} onClick={p.onParams} />}
       {p.shared ? (
         <>
           <span className="bc-owner">by {p.shared.owner}</span>
@@ -374,7 +379,7 @@ function rightSide(p: TopBarProps) {
           <SaveSplit {...p} />
         </>
       )}
-      {p.helpEntries && (
+      {p.helpEntries && !p.phone && (
         <MenuButton label="Help" align="end" entries={p.helpEntries} trigger={(t) => <Button {...t} icon="help" title="Help" data-help-button="" />} />
       )}
       <MenuButton
@@ -393,22 +398,24 @@ function rightSide(p: TopBarProps) {
               ? [{ id: "signin", label: "Sign in", icon: "user" as const, onSelect: () => go("#/signin?next=%23%2F") }]
               : [{ id: "signin", label: "Accounts can't be reached here", icon: "cloudOff" as const, disabled: true, onSelect: () => {} }]),
           { kind: "separator", id: "s1" },
+          ...(p.phone && !p.shared ? [{ id: "params", label: "Parameters", icon: "sliders" as const, onSelect: () => p.onParams?.() }] : []),
           ...(p.shared ? [] : [{ id: "print", label: "Print settings", icon: "printer" as const, onSelect: () => p.onPanel("print") }]),
           { id: "settings", label: "Settings", icon: "settings" as const, onSelect: () => p.onPanel("settings") },
           ...(p.onInstall ? [{ id: "install", label: "Install BetterCad", icon: "download" as const, onSelect: p.onInstall }] : []),
+          ...(p.phone && p.helpEntries ? [{ kind: "title" as const, id: "help", label: "Help" }, ...p.helpEntries] : []),
           { kind: "title", id: "t", label: "Theme" },
         ]}
         trigger={(t) =>
           p.account ? (
-            <Button {...t} className="bc-avatar-btn" title={`${p.account.name}: account and settings`}>
+            <Button {...t} data-help-button={p.phone ? "" : undefined} className="bc-avatar-btn" title={`${p.account.name}: account and settings`}>
               <span className="bc-avatar" aria-hidden>
                 {p.account.name.trim().charAt(0).toUpperCase() || "?"}
               </span>
             </Button>
           ) : p.accountsOn ? (
-            <Button {...t} icon="user" label="Sign in" title="Account and settings" />
+            <Button {...t} data-help-button={p.phone ? "" : undefined} icon="user" label="Sign in" title="Account and settings" />
           ) : (
-            <Button {...t} icon="user" title="Account and settings" />
+            <Button {...t} data-help-button={p.phone ? "" : undefined} icon="user" title="Account and settings" />
           )
         }
       >

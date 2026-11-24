@@ -1,11 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { runCommand } from "./pages/editor";
 
-/** New drawing from the view menu, on the page size given. */
+/** New drawing from Find a command, on the page size given. */
 async function newDrawing(page: Page, size: string) {
-  // The view style button is named for the style: Shaded, or Line art in Holoroom.
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-  await page.getByRole("menuitem", { name: "New drawing" }).click();
+  await runCommand(page, "New drawing");
   const card = page.getByRole("dialog", { name: "New drawing" });
   await card.getByLabel("Page size").selectOption(size);
   await card.getByRole("button", { name: "Create" }).click();
@@ -54,13 +53,13 @@ const sheetBoxes = (page: Page) =>
 /** Drawings (#555): a sheet in place of the 3D view, with its title block, kept in the model. */
 test("make a drawing, fill in its title block, leave it and open it again", { tag: "@journey" }, async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+  await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
   await newDrawing(page, "A3");
 
   // The sheet takes the view: paper, with the title block bottom right, and the 3D view's bar gives way to its own.
   const sheet = page.getByRole("group", { name: "Sheet 1: A3, landscape" });
   await expect(sheet).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pick: Bodies" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeHidden();
   await expect(page.getByRole("group", { name: "View cube" })).toBeHidden();
   const block = page.getByRole("group", { name: "Title block" });
   await expect(block.getByRole("button", { name: "Title: Untitled model" })).toBeVisible();
@@ -104,7 +103,7 @@ test("make a drawing, fill in its title block, leave it and open it again", { ta
   // Esc goes back to the model; the drawing is in the browser, and a double-click opens it as it was left.
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "Drawing: Drawing 1" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Pick: Bodies" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeVisible();
   await page.getByRole("treeitem", { name: /^Drawing 1/ }).dblclick();
   await expect(page.getByRole("group", { name: "Sheet 1: A3, portrait" })).toBeVisible();
   await expect(block.getByRole("button", { name: "Title: Bracket" })).toBeVisible();
@@ -546,9 +545,8 @@ test("a drawing opens by touch, and a pinch zooms the sheet", async ({ browser }
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 820, height: 1180 }, storageState: test.info().project.use.storageState });
   const page = await context.newPage();
   await page.goto("/");
-  await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
-  await page.getByRole("button", { name: "Shaded" }).tap();
-  await page.getByRole("menuitem", { name: "New drawing" }).tap();
+  await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
+  await runCommand(page, "New drawing");
   await page.getByRole("dialog", { name: "New drawing" }).getByRole("button", { name: "Create" }).tap();
   const paper = page.locator(".bc-sheet-paper");
   await expect(paper).toBeVisible();
@@ -582,7 +580,7 @@ for (const theme of ["light", "dark", "holoroom"] as const) {
   test(`a drawing's sheet and its settings have no axe violations in ${theme}`, async ({ page }) => {
     await page.addInitScript((t) => localStorage.setItem("bettercad.theme", t), theme);
     await page.goto("/");
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
     await newDrawing(page, "letter");
     const check = async () => {
       const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze();
@@ -956,8 +954,7 @@ test("add a parts list and balloons, then make a drawing of every part @journey 
 
   // Back in the model, one command makes a drawing of each part, with four views set out for you.
   await page.getByRole("button", { name: "Finish drawing" }).click();
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-  await page.getByRole("menuitem", { name: "Make drawings of every part" }).click();
+  await runCommand(page, "Make drawings of every part");
   await expect(page.getByRole("status").filter({ hasText: /^Made 1 drawing/ })).toBeVisible({ timeout: 30_000 });
   // The browser lists it under Drawings, above the body of the same name.
   await expect(page.getByRole("treeitem", { name: /^Bracket/ })).toHaveCount(2);
@@ -999,8 +996,7 @@ test("give the title block a logo and a field, save a template and start the nex
 
   // The next New drawing: pick the template, and the first sheet comes finished.
   await page.getByRole("button", { name: "Finish drawing" }).click();
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-  await page.getByRole("menuitem", { name: "New drawing" }).click();
+  await runCommand(page, "New drawing");
   const card = page.getByRole("dialog", { name: "New drawing" });
   await card.getByLabel("Template").selectOption({ label: "Workshop" });
   await expect(card.getByLabel("First views")).toHaveValue("four");
@@ -1023,8 +1019,7 @@ test("give the title block a logo and a field, save a template and start the nex
 
   // It is your default now: the card opens on it.
   await page.getByRole("button", { name: "Finish drawing" }).click();
-  await page.getByRole("button", { name: /^(Shaded|Line art)$/ }).click();
-  await page.getByRole("menuitem", { name: "New drawing" }).click();
+  await runCommand(page, "New drawing");
   await expect(card.getByLabel("Template")).toHaveValue(/^dt_/);
   await expect(card.getByLabel("Page size")).toHaveValue("A4");
 });

@@ -56,7 +56,7 @@ export interface View3DProps {
   filter: SelectFilter;
   mode: ViewMode;
   style: RenderStyle;
-  /** Whether the floor grid shows (the view style menu); on when left out. */
+  /** Whether the floor grid shows (the view menu); on when left out. */
   grid?: boolean;
   /** Colour cycling (Shift+N): each component, or body in none, drawn in its own colour. View only. */
   colourCycle?: boolean;
@@ -95,6 +95,8 @@ export interface View3DProps {
   emptyHint?: boolean;
   /** The view cube's Go home button and its menu. */
   onHome?: () => void;
+  /** Fit, from the button by the view cube. */
+  onFit?: () => void;
   cubeMenu?: MenuEntry[];
   /** A step's result while its tool is open: drawn in place of the bodies it changes. */
   preview?: PreviewBody[] | null;
@@ -356,6 +358,8 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
       data-view={view ?? "free"}
       data-grid={grid ? "on" : "off"}
       data-colour-cycle={colourCycle ? "on" : "off"}
+      data-style={style}
+      data-pick={filter}
       onKeyDown={onKeyDown}
     >
       <div ref={safe} className="bc-view-safe" aria-hidden="true" />
@@ -377,6 +381,7 @@ export const View3D = forwardRef<View3DHandle, View3DProps>(function View3D(prop
         onOrbit={(dx, dy) => engine.current?.orbitBy(dx, dy)}
         onRoll={(dir) => engine.current?.roll(dir)}
         onHome={props.onHome}
+        onFit={props.onFit}
         menu={props.cubeMenu}
       />
       {supported && parts.length === 0 && props.emptyHint !== false && (
