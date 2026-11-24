@@ -1,0 +1,596 @@
+{
+  "schema": 3,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "phone-stand",
+  "created": "2026-11-23T00:00:00.000Z",
+  "modified": "2026-11-23T00:00:00.000Z",
+  "name": "Phone stand",
+  "document": {
+    "drawings": [
+      {
+        "decimals": 2,
+        "id": "dr1",
+        "name": "Drawing 1",
+        "sheets": [
+          {
+            "auto": {
+              "datum": "bottom-left",
+              "density": 1,
+              "recipe": "chain"
+            },
+            "border": true,
+            "dimensions": [
+              {
+                "across": "y",
+                "at": [
+                  -44,
+                  0
+                ],
+                "auto": true,
+                "id": "dm1",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 19,
+                    "kind": "edge",
+                    "name": "f0|f9:f1",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 19,
+                    "kind": "edge",
+                    "name": "f0|f9:f1",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  0,
+                  -49
+                ],
+                "auto": true,
+                "id": "dm2",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 0,
+                    "kind": "edge",
+                    "name": "f2|f4",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 0,
+                    "kind": "edge",
+                    "name": "f2|f4",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -56,
+                  0
+                ],
+                "auto": true,
+                "id": "dm3",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 0,
+                    "kind": "edge",
+                    "name": "f2|f4",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 2,
+                    "kind": "edge",
+                    "name": "f2|f9:f1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -9,
+                  -37
+                ],
+                "auto": true,
+                "id": "dm4",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 0,
+                    "kind": "edge",
+                    "name": "f2|f4",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 2,
+                    "kind": "edge",
+                    "name": "f2|f9:f1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -50,
+                  6
+                ],
+                "auto": true,
+                "id": "dm5",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 4,
+                    "kind": "edge",
+                    "name": "f2|f9:f0",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 2,
+                    "kind": "edge",
+                    "name": "f2|f9:f1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "x",
+                "at": [
+                  23,
+                  -43
+                ],
+                "auto": true,
+                "id": "dm6",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 2,
+                    "kind": "edge",
+                    "name": "f2|f9:f1",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 3,
+                    "kind": "edge",
+                    "name": "f2|f5",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  44,
+                  -11.75
+                ],
+                "auto": true,
+                "id": "dm7",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 2,
+                    "kind": "edge",
+                    "name": "f2|f9:f1",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 4,
+                    "kind": "edge",
+                    "name": "f2|f9:f0",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "x",
+                "at": [
+                  32,
+                  -37
+                ],
+                "auto": true,
+                "id": "dm8",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 3,
+                    "kind": "edge",
+                    "name": "f2|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "stand",
+                    "index": 0,
+                    "kind": "edge",
+                    "name": "f2|f4",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -44,
+                  -13.75
+                ],
+                "auto": true,
+                "id": "dm9",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 0,
+                    "kind": "edge",
+                    "name": "f2|f4",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "start",
+                    "body": "stand",
+                    "index": 2,
+                    "kind": "edge",
+                    "name": "f2|f9:f1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "at": [
+                  -28.26,
+                  13.142
+                ],
+                "auto": true,
+                "id": "dm10",
+                "kind": "angle",
+                "refs": [
+                  {
+                    "body": "stand",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f2",
+                    "view": "v1"
+                  },
+                  {
+                    "body": "stand",
+                    "index": 2,
+                    "kind": "edge",
+                    "name": "f2|f9:f1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              }
+            ],
+            "id": "sh1",
+            "landscape": true,
+            "marks": [],
+            "name": "Sheet 1",
+            "scale": 1,
+            "size": "tabloid",
+            "standard": "asme",
+            "title": {
+              "date": "2026-11-23",
+              "revision": "A",
+              "title": "Phone stand",
+              "type": "Part drawing"
+            },
+            "views": [
+              {
+                "at": [
+                  130,
+                  110
+                ],
+                "direction": "front",
+                "hidden": true,
+                "id": "v1",
+                "kind": "base",
+                "laid": {
+                  "h": 54,
+                  "sizes": "dm2:68|dm3:54|dm4:50|dm5:42|dm6:14|dm7:8|dm8:4|dm9:4|dm10:45°",
+                  "w": 68
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              },
+              {
+                "at": [
+                  130,
+                  200
+                ],
+                "direction": "top",
+                "hidden": true,
+                "id": "v2",
+                "kind": "base",
+                "laid": {
+                  "h": 70,
+                  "sizes": "dm1:70",
+                  "w": 68
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              },
+              {
+                "at": [
+                  260,
+                  110
+                ],
+                "direction": "right",
+                "hidden": true,
+                "id": "v3",
+                "kind": "base",
+                "laid": {
+                  "h": 54,
+                  "sizes": "",
+                  "w": 70
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "features": [
+      {
+        "id": "f1",
+        "name": "Add Phone stand",
+        "part": {
+          "id": "stand",
+          "kind": "box",
+          "name": "Phone stand",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "lean + shelf + 4",
+          "size.y": "width",
+          "size.z": "base"
+        },
+        "id": "f2",
+        "name": "Size Phone stand",
+        "parts": [
+          "stand"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f3",
+        "name": "Add Back rest",
+        "part": {
+          "id": "rest",
+          "kind": "wedge",
+          "name": "Back rest",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "lean",
+          "size.y": "width",
+          "size.z": "height"
+        },
+        "id": "f4",
+        "name": "Size Back rest",
+        "parts": [
+          "rest"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "lean / 2 - (lean + shelf + 4) / 2",
+          "position.z": "base"
+        },
+        "id": "f5",
+        "name": "Place Back rest",
+        "parts": [
+          "rest"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f6",
+        "name": "Add Lip",
+        "part": {
+          "id": "lip",
+          "kind": "box",
+          "name": "Lip",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "exprs": {
+          "size.x": "4",
+          "size.y": "width",
+          "size.z": "base + 8"
+        },
+        "id": "f7",
+        "name": "Size Lip",
+        "parts": [
+          "lip"
+        ],
+        "size": {
+          "x": 10,
+          "y": 10,
+          "z": 10
+        },
+        "type": "resize"
+      },
+      {
+        "exprs": {
+          "position.x": "(lean + shelf + 4) / 2 - 2"
+        },
+        "id": "f8",
+        "name": "Place Lip",
+        "parts": [
+          "lip"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "type": "move"
+      },
+      {
+        "id": "f9",
+        "mode": "group",
+        "name": "Phone stand",
+        "target": "stand",
+        "tools": [
+          {
+            "id": "rest",
+            "op": "join"
+          },
+          {
+            "id": "lip",
+            "op": "join"
+          }
+        ],
+        "type": "combine"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {},
+    "name": "Phone stand",
+    "params": [
+      {
+        "comment": "Across the stand",
+        "expression": "70",
+        "id": "p_width",
+        "name": "width",
+        "unit": "mm"
+      },
+      {
+        "comment": "How high the back rest reaches",
+        "expression": "50",
+        "id": "p_height",
+        "name": "height",
+        "unit": "mm"
+      },
+      {
+        "comment": "How far the back rest leans: the same as height is 45°, more leans further back",
+        "expression": "50",
+        "id": "p_lean",
+        "name": "lean",
+        "unit": "mm"
+      },
+      {
+        "comment": "Room for the phone in its case",
+        "expression": "14",
+        "id": "p_shelf",
+        "name": "shelf",
+        "unit": "mm"
+      },
+      {
+        "comment": "Base thickness",
+        "expression": "4",
+        "id": "p_base",
+        "name": "base",
+        "unit": "mm"
+      }
+    ],
+    "version": 2
+  }
+}

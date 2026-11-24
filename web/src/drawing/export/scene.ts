@@ -1,13 +1,19 @@
-import { scaleLabel, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
+import { frameOf, scaleLabel, viewScale, type DrawingSheet } from "@bettercad/kernel/drawing";
 import { TAU, turn, type ModelView, type V2, type ViewCurve } from "@bettercad/kernel/view";
 import { TEXT, WEIGHT, type SheetLayout } from "../layout";
+import { dimArt, dimStyle, isIso } from "../dimensions";
+import { CENTRE_DASH, markArt, markStyle, markView, targets } from "../marks";
+import { cutArt, type Picture } from "../cuts";
+import { NOTE_TEXT, noteArt, type NoteContext } from "../notes";
+import type { Feature } from "../../state/document";
+import { itemOf, partsTable, type PartsRow } from "../parts";
 
 /**
  * A sheet as plain lines and text, for export (#569). Millimetres from the page's bottom left corner with y up, the
  * way PDF and DXF count, so each writer only has to spell the same shapes its own way. No DOM, no colours: an
  * export is black on white whatever the theme.
  */
-export type Layer = "visible" | "hidden" | "border" | "title";
+export type Layer = "visible" | "hidden" | "centre" | "dimension" | "border" | "title" | "section";
 
 export interface Stroke {
   layer: Layer;
@@ -26,13 +32,35 @@ export interface Label {
   anchor: "start" | "middle";
   baseline: "central" | "alphabetic";
   text: string;
+  /** Turned anticlockwise about `at`, radians: a dimension's size along its line. */
+  turn?: number;
+}
+/** A filled shape: an arrowhead. */
+export interface Fill {
+  layer: Layer;
+  pts: V2[];
 }
 export interface Scene {
   w: number;
   h: number;
   strokes: Stroke[];
   labels: Label[];
+  /** Left out when there is nothing filled. */
+  fills?: Fill[];
+  /** Pictures (#575): the title block's logo. Left out when there are none. */
+  images?: SceneImage[];
 }
+/** A JPEG on the page: its data URL, its size in pixels, and the box it fills, from the box's bottom left corner. */
+export interface SceneImage {
+  data: string;
+  px: { w: number; h: number };
+  at: V2;
+  w: number;
+  h: number;
+}
+
+/** A cutting line's long dash, gap, dot and gap, mm: that of `drawing.css`. */
+export const CUT_DASH = [8, 1.5, 1, 1.5] as const;
 
 /** Line widths and dashes on paper, mm: those of `drawing.css`. */
 export const LINES = { visible: 0.5, hidden: 0.25, dash: [2, 1] } as const;
@@ -107,12 +135,21 @@ const box = (x: number, y: number, w: number, h: number): ViewCurve => ({
 });
 
 /** Everything on a sheet: the frame, zones and title block, and each view's lines from the kernel's picture of it. */
-export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: string) => ModelView | undefined): Scene {
+export function sheetScene(
+  sheet: DrawingSheet,
+  l: SheetLayout,
+  viewOf: (id: string) => ModelView | undefined,
+  decimals?: number,
+  /** The model's steps, which hole notes read (#573), and its parts list, for the table and balloons (#574). */
+  model: { features?: readonly Feature[] | undefined; parts?: readonly PartsRow[] | undefined } = {},
+): Scene {
+  const { features, parts } = model;
   const H = l.page.h;
   // The layout counts down from the top of the page; the scene counts up from the bottom.
   const up = (y: number) => H - y;
   const strokes: Stroke[] = [];
   const labels: Label[] = [];
+  const fills: Fill[] = [];
   const line = (layer: Layer, width: number, s: { x1: number; y1: number; x2: number; y2: number }) =>
     strokes.push({ layer, width, curve: { kind: "line", a: [s.x1, up(s.y1)], b: [s.x2, up(s.y2)] } });
 
@@ -125,8 +162,14 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
   }
 
   strokes.push({ layer: "title", width: WEIGHT.thick, curve: box(l.block.x, up(l.block.y + l.block.h), l.block.w, l.block.h) });
+  const images: SceneImage[] = [];
   for (const c of l.cells) {
     strokes.push({ layer: "title", width: WEIGHT.thin, curve: box(c.x, up(c.y + c.h), c.w, c.h) });
+    if (c.image) {
+      const b = c.image.box;
+      images.push({ data: c.image.logo.data, px: { w: c.image.logo.w, h: c.image.logo.h }, at: [b.x, up(b.y + b.h)], w: b.w, h: b.h });
+      continue;
+    }
     labels.push({ layer: "title", at: [c.x + 1, up(c.y + 2)], size: TEXT.label, anchor: "start", baseline: "central", text: c.label });
     const cy = up(c.y + c.h / 2 + 1.2);
     const cx = c.x + c.w / 2;
@@ -154,6 +197,33 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
     }
   }
 
+  // The parts list (#574), above the title block.
+  if (sheet.partsList) {
+    const t = partsTable(parts ?? [], l);
+    strokes.push({ layer: "title", width: WEIGHT.thick, curve: box(t.box.x, up(t.box.y + t.box.h), t.box.w, t.box.h) });
+    for (const s of t.lines) line("title", WEIGHT.thin, s);
+    for (const r of t.rows)
+      for (const c of r.cells) labels.push({ layer: "title", at: [c.x, up(c.y)], size: t.size, anchor: c.anchor, baseline: "central", text: c.text });
+  }
+
+  // Notes (#573): thin lines, filled arrowheads and text, about the middle of their view or, loose, from the page's corner.
+  const notes = (ox: number, oy: number, mine: NonNullable<DrawingSheet["notes"]>, ctx?: NoteContext) => {
+    const here = (q: V2): V2 => [ox + q[0], oy + q[1]];
+    for (const n of mine) {
+      const art = noteArt(n, ctx);
+      if (!art) continue;
+      for (const [a, b] of art.lines) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: { kind: "line", a: here(a), b: here(b) } });
+      for (const c of art.curves) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: placed(c, 1, ox, oy) });
+      for (const f of art.fills) fills.push({ layer: "dimension", pts: f.map(here) });
+      for (const t of art.texts) labels.push({ layer: "dimension", at: here(t.at), size: NOTE_TEXT, anchor: t.anchor, baseline: "central", text: t.text });
+    }
+  };
+  notes(
+    0,
+    0,
+    (sheet.notes ?? []).filter((n) => !n.on),
+  );
+
   for (const v of sheet.views) {
     const view = viewOf(v.id);
     if (!view) continue;
@@ -161,9 +231,62 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
     const { min, max } = view.box;
     const ox = v.at[0] - ((min[0] + max[0]) / 2) * s;
     const oy = v.at[1] - ((min[1] + max[1]) / 2) * s;
+    // Hatching, break lines and a detail's edge (#571), thin, under the view's own lines.
+    for (const c of (view as Picture).thin ?? []) strokes.push({ layer: "section", width: WEIGHT.thin, curve: placed(c, s, ox, oy) });
     // Hidden lines first, so the edges you see are drawn over them.
     for (const e of view.edges) if (!e.visible) strokes.push({ layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve: placed(e.curve, s, ox, oy) });
     for (const e of view.edges) if (e.visible) strokes.push({ layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) });
+    // Cutting lines, detail circles and letters (#571), about the middle of the view.
+    const cuts = cutArt(sheet, v, viewOf);
+    const here2 = (q: V2): V2 => [v.at[0] + q[0], v.at[1] + q[1]];
+    for (const [a, b] of cuts.chain) strokes.push({ layer: "section", width: WEIGHT.thin, dash: CUT_DASH, curve: { kind: "line", a: here2(a), b: here2(b) } });
+    for (const [a, b] of cuts.thick) strokes.push({ layer: "section", width: WEIGHT.thick, curve: { kind: "line", a: here2(a), b: here2(b) } });
+    for (const a of cuts.arrows) fills.push({ layer: "section", pts: a.map(here2) });
+    for (const r of cuts.rings) strokes.push({ layer: "section", width: WEIGHT.thin, curve: { kind: "circle", c: here2(r.c), r: r.r } });
+    for (const l of cuts.labels) labels.push({ layer: "section", at: here2(l.at), size: l.size, anchor: "middle", baseline: "central", text: l.text });
+    // Centre marks and centre lines (#563), thin, about the middle of the view.
+    const mine = sheet.marks.filter((m) => markView(m) === v.id);
+    if (mine.length) {
+      const all = targets(view);
+      const style = markStyle(sheet.standard);
+      for (const m of mine) {
+        const art = markArt(m, view, s, style, all);
+        if (!art) continue;
+        for (const [a, b] of art.lines) {
+          strokes.push({
+            layer: "centre",
+            width: WEIGHT.thin,
+            curve: { kind: "line", a: [v.at[0] + a[0], v.at[1] + a[1]], b: [v.at[0] + b[0], v.at[1] + b[1]] },
+          });
+        }
+        for (const c of art.curves) strokes.push({ layer: "centre", width: WEIGHT.thin, dash: CENTRE_DASH, curve: placed(c, 1, v.at[0], v.at[1]) });
+      }
+    }
+    // Dimensions (#564): thin lines, filled arrowheads and the size.
+    const sizes = sheet.dimensions.filter((d) => d.view === v.id);
+    if (sizes.length) {
+      const ctx = { view, scale: s, style: dimStyle(sheet.standard), decimals: decimals ?? 2, iso: isIso(frameOf(v.direction).toEye), all: targets(view) };
+      const here = (q: V2): V2 => [v.at[0] + q[0], v.at[1] + q[1]];
+      for (const d of sizes) {
+        const art = dimArt(d, ctx);
+        if (!art) continue;
+        for (const [a, b] of art.lines) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: { kind: "line", a: here(a), b: here(b) } });
+        for (const c of art.arcs) strokes.push({ layer: "dimension", width: WEIGHT.thin, curve: placed(c, 1, v.at[0], v.at[1]) });
+        for (const a of art.arrows) fills.push({ layer: "dimension", pts: a.map(here) });
+        const label: Label = { layer: "dimension", at: here(art.text.at), size: ctx.style.text, anchor: "middle", baseline: "central", text: art.text.text };
+        if (art.text.turn) label.turn = art.text.turn;
+        labels.push(label);
+      }
+    }
+    const pointing = (sheet.notes ?? []).filter((n) => n.on?.view === v.id);
+    if (pointing.length)
+      notes(v.at[0], v.at[1], pointing, {
+        view,
+        scale: s,
+        frame: frameOf(v.direction),
+        ...(features ? { features } : {}),
+        ...(parts ? { itemOf: (body: string) => itemOf(parts, body) } : {}),
+      });
     if (s !== sheet.scale) {
       // As on the sheet: under the view's box, which has 2 mm of room round the lines.
       const h = Math.max((max[1] - min[1]) * s, 20) + 4;
@@ -177,7 +300,10 @@ export function sheetScene(sheet: DrawingSheet, l: SheetLayout, viewOf: (id: str
       });
     }
   }
-  return { w: l.page.w, h: l.page.h, strokes, labels };
+  const scene: Scene = { w: l.page.w, h: l.page.h, strokes, labels };
+  if (fills.length) scene.fills = fills;
+  if (images.length) scene.images = images;
+  return scene;
 }
 
 /**

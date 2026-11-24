@@ -1,6 +1,7 @@
 import { fitScale, frameOf, viewScale, type DrawingSheet, type DrawingView, type ViewDirection } from "@bettercad/kernel/drawing";
 import { TAU, turn, type ModelView, type ModelViewRequest, type V2, type ViewCurve } from "@bettercad/kernel/view";
 import type { Box, SheetLayout } from "./layout";
+import { cutName, type Picture } from "./cuts";
 import { followParent, inheritedScale, moveWithChildren } from "./projected";
 
 /**
@@ -30,7 +31,9 @@ export function directionOf(d: ViewDirection) {
 }
 
 /** "Front view", "Isometric view", or "View" for a direction of its own. */
-export function viewName(view: Pick<DrawingView, "direction">): string {
+export function viewName(view: Pick<DrawingView, "direction"> & Partial<Pick<DrawingView, "kind" | "section" | "detail">>): string {
+  const cut = view.kind && cutName({ kind: view.kind, section: view.section, detail: view.detail });
+  if (cut) return cut;
   // A top view turned on the sheet is still a top view: only where it looks from names it.
   const eye = frameOf(view.direction).toEye;
   const d = directionOf(view.direction) ?? DIRECTIONS.find((x) => frameOf(x.direction).toEye.every((v, i) => v === eye[i]));
@@ -38,8 +41,17 @@ export function viewName(view: Pick<DrawingView, "direction">): string {
 }
 
 /** What to ask the kernel for. A preview skips hidden edges and tracing, which is several times quicker. */
-export function viewRequest(view: Pick<DrawingView, "shows" | "direction" | "hidden" | "tangent">, preview = false): ModelViewRequest {
-  return { shows: view.shows, frame: frameOf(view.direction), hidden: preview ? false : view.hidden, smooth: view.tangent, trace: !preview };
+export function viewRequest(view: Pick<DrawingView, "shows" | "direction" | "hidden" | "tangent" | "section">, preview = false): ModelViewRequest {
+  const req: ModelViewRequest = {
+    shows: view.shows,
+    frame: frameOf(view.direction),
+    hidden: preview ? false : view.hidden,
+    smooth: view.tangent,
+    trace: !preview,
+  };
+  // A section view's cut (#571): only the plane, so a new letter asks for nothing.
+  if (view.section) req.cut = { origin: view.section.origin, normal: view.section.normal };
+  return req;
 }
 
 const n = (v: number) => String(Math.round(v * 1000) / 1000);
@@ -82,6 +94,8 @@ export interface ViewArt {
   /** Path data for the edges you can see, and for those behind (drawn dashed). */
   visible: string;
   hidden: string;
+  /** Thin lines: hatching, break lines and a detail's edge (#571). Empty for most views. */
+  thin: string;
   /** The view's size on paper, mm. */
   w: number;
   h: number;
@@ -98,7 +112,9 @@ export function viewArt(view: ModelView, scale: number): ViewArt {
     if (e.visible) visible += d;
     else hidden += d;
   }
-  return { visible, hidden, w: Math.max(0, (max[0] - min[0]) * scale), h: Math.max(0, (max[1] - min[1]) * scale) };
+  let thin = "";
+  for (const c of (view as Picture).thin ?? []) thin += curvePath(c, scale, mid);
+  return { visible, hidden, thin, w: Math.max(0, (max[0] - min[0]) * scale), h: Math.max(0, (max[1] - min[1]) * scale) };
 }
 
 /** True when a view came back with nothing in it: no bodies, or all of them hidden. */

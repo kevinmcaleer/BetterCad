@@ -1,0 +1,14 @@
+{
+  "box": "-34,0 to 34,54",
+  "curves": [
+    "visible sharp line -34,0 -34,54 <- f0",
+    "visible sharp line -34,0 34,0 <- f4",
+    "visible sharp line -34,54 16,4 <- f9:f1",
+    "visible sharp line 16,4 30,4 <- f5",
+    "visible sharp line 30,12 30,4 <- f9:f0",
+    "visible sharp line 30,12 34,12 <- f9:f5",
+    "visible sharp line 34,0 34,12 <- f1"
+  ],
+  "cut": "at 0,0,27",
+  "cutFaces": ["stand: 7 pieces, 455.544 mm"]
+}

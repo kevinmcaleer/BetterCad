@@ -1,6 +1,6 @@
 import type { ModelDoc } from "./document";
 import { newId } from "./document";
-import type { ModelViewRequest, V2, V3, ViewFrame } from "./view";
+import type { ModelViewRequest, V2, V3, ViewCut, ViewFrame } from "./view";
 import { VIEWS } from "./view";
 
 /**
@@ -47,9 +47,25 @@ export type ViewShows = ModelViewRequest["shows"];
 
 export interface DrawingView {
   id: string;
-  kind: "base" | "projected";
-  /** A projected view's parent. It stays lined up with it, and takes its scale and style unless it has its own. */
+  /**
+   * `section` (#571): the model cut on a plane, seen from the side taken away. `detail`: a circle of its parent,
+   * larger. Both are lettered, and marked on the parent.
+   */
+  kind: "base" | "projected" | "section" | "detail";
+  /**
+   * The view this one was taken from. A projected or section view stays lined up with it, and takes its scale and
+   * style unless it has its own.
+   */
   parent?: string;
+  /** A section view's cut, in the model's own millimetres, and its letter. A detail of a section view has it too. */
+  section?: ViewCut & { label: string };
+  /** A detail view's circle, in its parent's view millimetres, and its letter. */
+  detail?: { c: V2; r: number; label: string };
+  /**
+   * Breaks: stretches of a long part left out, in the view's millimetres. `x` takes a band out across the sheet,
+   * `y` one up it. What is past a break is drawn closer; dimensions still read the true size.
+   */
+  breaks?: { axis: "x" | "y"; from: number; to: number }[];
   shows: ViewShows;
   direction: ViewDirection;
   /** Paper size over real size (0.5 is 1:2). Missing: the parent's, or the sheet's. */
@@ -60,6 +76,11 @@ export interface DrawingView {
   tangent: boolean;
   /** Where the middle of the view's box sits on the sheet. */
   at: V2;
+  /**
+   * The view as its marks and dimensions were last laid out (#568): its size on paper and what each dimension read.
+   * When the model changes these, the rows are stacked again.
+   */
+  laid?: { w: number; h: number; sizes: string };
 }
 
 /**
@@ -75,15 +96,18 @@ export interface DrawingRef {
   at?: "start" | "end" | "middle" | "centre";
 }
 
-export type DrawingMark =
-  /** A cross at the centre of a circle or arc. */
-  | { id: string; kind: "centre-mark"; on: DrawingRef }
-  /** Centre marks on a set of holes, with the pitch circle or the lines that join them. */
+export type DrawingMark = (
+  | /** A cross at the centre of a circle or arc. */ { id: string; kind: "centre-mark"; on: DrawingRef }
+    /** Centre marks on a set of holes, with the pitch circle or the lines that join them. */
   | { id: string; kind: "centre-pattern"; on: DrawingRef[]; join: "circle" | "lines" }
   /** The line midway between two edges, or the axis of one round face seen from the side. */
   | { id: string; kind: "centre-line"; a: DrawingRef; b?: DrawingRef }
   /** Two edges carried on to where they would meet. */
-  | { id: string; kind: "extension"; a: DrawingRef; b: DrawingRef };
+  | { id: string; kind: "extension"; a: DrawingRef; b: DrawingRef }
+) & {
+  /** Where it was last drawn, from the middle of its view in paper mm: where its warning goes when it is lost (#568). */
+  was?: V2;
+};
 
 export interface DrawingDimension {
   id: string;
@@ -99,6 +123,41 @@ export interface DrawingDimension {
   auto?: boolean;
   /** Decimal places, when not the drawing's. */
   decimals?: number;
+  /** A tolerance written after the size (#573). */
+  tolerance?: DimTolerance;
+}
+
+/**
+ * How far a size may be off. `plus` and `minus` are both given as positive millimetres (or degrees): equal, they are
+ * written "±0.1", unequal "+0.2/-0.1", and as `limits` the largest and smallest sizes are written out instead. A
+ * `fit` is one of the printer's named fits (`docs/fits.md`), written with the gap each side it had when it was chosen
+ * (as a fitted cut keeps its gap, #183).
+ */
+export type DimTolerance = { plus: number; minus: number; limits?: boolean } | { fit: "press" | "sliding" | "loose"; gap: number };
+
+/** What a feature control frame says of a face or edge. */
+export type FrameSymbol = "position" | "flatness" | "perpendicular" | "parallel" | "circular" | "straight" | "concentric";
+
+/**
+ * A note on a sheet (#573). `text` is free writing; `leader` the same with an arrow to an edge or hole; `hole` reads
+ * the hole it points at from the model each time; `finish` is a surface finish mark, `datum` a datum letter and
+ * `frame` a feature control frame, each on the edge or hole it is about. A `balloon` (#574) is a part's item number
+ * in a circle, read from the parts list each time.
+ */
+export interface DrawingNote {
+  id: string;
+  kind: "text" | "leader" | "hole" | "finish" | "datum" | "frame" | "balloon";
+  /**
+   * What it says, lines parted by "\n". A hole note's is left empty: it is read from the model. A finish's is its
+   * roughness ("Ra 3.2"), a datum's its letter, and a frame's its tolerance then its datums, parted by "|".
+   */
+  text: string;
+  /** A frame's characteristic. */
+  symbol?: FrameSymbol;
+  /** What it points at. Left out, the note is loose on the sheet. */
+  on?: DrawingRef;
+  /** Where its text starts: from the middle of the view it points into, or (loose) from the sheet's bottom left. */
+  at: V2;
 }
 
 /** The document information box, bottom right. Missing fields show blank. */
@@ -113,6 +172,20 @@ export interface TitleBlock {
   type?: string;
   status?: string;
 }
+
+/** A picture in the title block (#575): a JPEG as a data URL, small enough to travel in the file, and its size in pixels. */
+export interface TitleLogo {
+  data: string;
+  w: number;
+  h: number;
+}
+/** A title block field of your own (#575): what it is called and what it says. */
+export interface TitleField {
+  label: string;
+  value: string;
+}
+/** How many fields of your own a title block holds. */
+export const MAX_TITLE_FIELDS = 8;
 
 export type AutoRecipe = "baseline" | "chain" | "centre-baseline" | "centre-chain";
 export type DatumCorner = "bottom-left" | "bottom-right" | "top-left" | "top-right" | "centre";
@@ -131,6 +204,15 @@ export interface DrawingSheet {
   views: DrawingView[];
   marks: DrawingMark[];
   dimensions: DrawingDimension[];
+  /**
+   * Where rows of dimensions sit, mm on paper: the first row this far from a view's outline and each further row
+   * this much further out (#565). Left out, the standard's own spacing.
+   */
+  rows?: { first: number; next: number };
+  /** Text, leaders, hole notes and symbols (#573). */
+  notes?: DrawingNote[];
+  /** A parts list above the title block (#574): the model's components and loose bodies, counted each time it is drawn. */
+  partsList?: boolean;
   /** What Auto dimension was last run with, so Run again does the same. `density` is 0 (fewest) to 1 (all). */
   auto?: { recipe: AutoRecipe; datum: DatumCorner; density: number };
 }
@@ -142,6 +224,10 @@ export interface Drawing {
   sheets: DrawingSheet[];
   /** Decimal places on dimensions (0 to 3). */
   decimals: number;
+  /** A logo in the title block of every sheet (#575). */
+  logo?: TitleLogo;
+  /** Fields of your own, in a row above the title block's (#575). */
+  fields?: TitleField[];
 }
 
 /** A sheet's width and height on screen and paper, mm. */
@@ -174,12 +260,16 @@ export interface NewDrawing {
   author?: string;
   /** Today, ISO, for the title block. */
   date?: string;
+  /** Title block fields to start from (#575): a template's. The title, author and date above still win. */
+  block?: TitleBlock;
+  logo?: TitleLogo;
+  fields?: TitleField[];
 }
 
 /** A sheet with nothing on it. The standard follows the page size unless one is given. */
 export function newSheet(name: string, o: NewDrawing & { title?: string } = {}): DrawingSheet {
   const size = o.size ?? "A4";
-  const title: TitleBlock = { revision: "A", type: "Part drawing" };
+  const title: TitleBlock = { revision: "A", type: "Part drawing", ...o.block };
   if (o.title) title.title = o.title;
   if (o.author) title.author = o.author;
   if (o.date) title.date = o.date;
@@ -207,6 +297,8 @@ const nextName = (doc: ModelDoc) => {
 /** Adds a drawing with one empty sheet, titled with the model's name. */
 export function addDrawing(doc: ModelDoc, o: NewDrawing = {}): { doc: ModelDoc; id: string } {
   const drawing: Drawing = { id: newId("dr"), name: nextName(doc), sheets: [newSheet("Sheet 1", { ...o, title: doc.name })], decimals: 2 };
+  if (o.logo) drawing.logo = o.logo;
+  if (o.fields?.length) drawing.fields = o.fields;
   return { doc: { ...doc, drawings: [...(doc.drawings ?? []), drawing] }, id: drawing.id };
 }
 
@@ -256,7 +348,7 @@ export function viewScale(sheet: DrawingSheet, view: DrawingView): number {
 
 /**
  * Takes a view off a sheet, with the marks and dimensions fixed to it. Its projected views stay, as base views (they
- * keep the scale they had).
+ * keep the scale they had), and so do its sections and details.
  */
 export function removeView(sheet: DrawingSheet, id: string): DrawingSheet {
   const gone = sheet.views.find((v) => v.id === id);
@@ -268,11 +360,13 @@ export function removeView(sheet: DrawingSheet, id: string): DrawingSheet {
       .filter((v) => v.id !== id)
       .map((v) => {
         if (v.parent !== id) return v;
-        const base: DrawingView = { ...v, kind: "base", scale: v.scale ?? viewScale(sheet, gone) };
+        // A section or detail is still one without the view it was taken from; it is only no longer marked there.
+        const base: DrawingView = { ...v, kind: v.kind === "projected" ? "base" : v.kind, scale: v.scale ?? viewScale(sheet, gone) };
         delete base.parent;
         return base;
       }),
     marks: sheet.marks.filter((m) => !(m.kind === "centre-pattern" ? m.on.some(on) : m.kind === "centre-mark" ? on(m.on) : on(m.a) || (m.b ? on(m.b) : false))),
     dimensions: sheet.dimensions.filter((d) => d.view !== id),
+    ...(sheet.notes ? { notes: sheet.notes.filter((n) => n.on?.view !== id) } : {}),
   };
 }

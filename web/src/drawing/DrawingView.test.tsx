@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { newSheet, type Drawing, type DrawingSheet } from "@bettercad/kernel/drawing";
-import { DrawingBar, DrawingPaper, SheetCard } from "./DrawingView";
+import { DrawingBar, DrawingPaper, type DrawingApi } from "./DrawingView";
+import SheetCard from "./SheetCard";
 
 const drawing = (o: Partial<DrawingSheet> = {}): Drawing => ({
   id: "dr1",
@@ -74,7 +75,7 @@ describe("the drawing's sheet", () => {
   });
 
   it("the wheel zooms about the pointer and a drag moves the sheet; Fit puts it back", () => {
-    const api = { current: null as { fit(): void } | null };
+    const api = { current: null as DrawingApi | null };
     render(<DrawingPaper drawing={drawing()} onTitle={vi.fn()} api={api} />);
     const region = screen.getByRole("region", { name: "Drawing: Drawing 1" });
     const placed = () => region.querySelector("svg > g")!.getAttribute("transform");

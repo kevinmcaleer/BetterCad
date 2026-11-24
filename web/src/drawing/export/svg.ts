@@ -5,7 +5,7 @@ import type { Layer, Scene, Stroke } from "./scene";
 const n = (v: number) => String(Math.round(v * 1000) / 1000);
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** Layers in the order they are drawn: hidden lines under the edges you see. */
-export const LAYERS: Layer[] = ["border", "title", "hidden", "visible"];
+export const LAYERS: Layer[] = ["border", "title", "section", "hidden", "visible", "centre", "dimension"];
 
 /** Strokes that share a layer, width and dash, so each kind is written once. */
 export function grouped(strokes: Stroke[]): { layer: Layer; width: number; dash?: readonly number[]; strokes: Stroke[] }[] {
@@ -36,6 +36,8 @@ export function sceneSvg(scene: Scene, o: SvgOptions = {}): string {
   const size = o.pixels ? `width="${o.pixels.w}" height="${o.pixels.h}"` : `width="${n(w)}mm" height="${n(h)}mm"`;
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" ${size} viewBox="0 0 ${n(w)} ${n(h)}">`);
   out.push(`<rect width="${n(w)}" height="${n(h)}" fill="white"/>`);
+  for (const i of scene.images ?? [])
+    out.push(`<image href="${esc(i.data)}" x="${n(i.at[0])}" y="${n(h - i.at[1] - i.h)}" width="${n(i.w)}" height="${n(i.h)}"/>`);
   out.push(`<g fill="none" stroke="black" stroke-linejoin="round">`);
   for (const g of grouped(scene.strokes)) {
     const d = g.strokes.map((s) => curvePath(s.curve, 1, [0, h])).join("");
@@ -43,6 +45,10 @@ export function sceneSvg(scene: Scene, o: SvgOptions = {}): string {
     out.push(`<path class="${g.layer}" stroke-width="${g.width}"${dash} d="${d}"/>`);
   }
   out.push(`</g>`);
+  if (scene.fills?.length) {
+    const d = scene.fills.map((f) => f.pts.map((q, i) => `${i ? "L" : "M"}${n(q[0])} ${n(h - q[1])}`).join("") + "Z").join("");
+    out.push(`<path class="arrows" fill="black" d="${d}"/>`);
+  }
   if (o.outlines) {
     const d = o.outlines
       .map((c) =>
@@ -61,7 +67,9 @@ export function sceneSvg(scene: Scene, o: SvgOptions = {}): string {
     for (const l of scene.labels) {
       const anchor = l.anchor === "middle" ? ` text-anchor="middle"` : "";
       const base = l.baseline === "central" ? ` dominant-baseline="central"` : "";
-      out.push(`<text class="${l.layer}" x="${n(l.at[0])}" y="${n(h - l.at[1])}" font-size="${n(l.size)}"${anchor}${base}>${esc(l.text)}</text>`);
+      // The page counts y down, so anticlockwise on the sheet is a negative turn here.
+      const spin = l.turn ? ` transform="rotate(${n((-l.turn * 180) / Math.PI)} ${n(l.at[0])} ${n(h - l.at[1])})"` : "";
+      out.push(`<text class="${l.layer}" x="${n(l.at[0])}" y="${n(h - l.at[1])}" font-size="${n(l.size)}"${anchor}${base}${spin}>${esc(l.text)}</text>`);
     }
     out.push(`</g>`);
   }

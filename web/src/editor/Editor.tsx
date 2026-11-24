@@ -180,7 +180,7 @@ import { importFormat, type BodyMass, type Clash, type ExportFormat, type Mate }
 import { Matrix4 } from "three";
 import type { RenderSession, RenderStyle, SaveSize } from "../render/session";
 import type { RenderBody } from "../render/pathRender";
-import type { DrawingApi, DrawingTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
+import type { DrawingApi, DrawingTool, NoteTool, SheetChoice, ViewCall } from "../drawing/DrawingView";
 import { DEFAULT_CAMERA, type CameraState } from "../viewport/camera";
 import type { PrintCheck, Suggestion } from "../print/PrintPanel";
 import { Page } from "../pages/Page";
@@ -284,7 +284,7 @@ const drawingCode = () => import("../drawing/DrawingView");
 const DrawingPaper = lazy(() => drawingCode().then((m) => ({ default: m.DrawingPaper })));
 const DrawingBar = lazy(() => drawingCode().then((m) => ({ default: m.DrawingBar })));
 const DrawingRibbon = lazy(() => drawingCode().then((m) => ({ default: m.DrawingRibbon })));
-const SheetCard = lazy(() => drawingCode().then((m) => ({ default: m.SheetCard })));
+const SheetCard = lazy(() => import("../drawing/SheetCard"));
 /** The Print panel loads when it first opens. */
 const PrintPanel = lazy(() => import("../print/PrintPanel").then((m) => ({ default: m.PrintPanel })));
 /** Importing a mesh or STEP file loads its code when you first do it (#320). */
@@ -416,6 +416,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const renderCam = useRef<CameraState | null>(null);
   // The drawing whose sheet covers the view (#559), and its set-up card: for a new drawing, or the open one's sheet.
   const [drawing, setDrawing] = useState<string | null>(null);
+  /** How many marks, dimensions and views on the open drawing have lost what they show (#568). */
+  const [drawingProblems, setDrawingProblems] = useState(0);
+  /** The sheet of the open drawing that is showing (#572); the first when it is none of them. */
+  const [drawingSheet, setDrawingSheet] = useState<string | null>(null);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
@@ -560,12 +564,39 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const kernelView = kernel.call;
   const viewCall = useCallback<ViewCall>((p) => kernelView("view", p), [kernelView]);
   // The Drawing tab and the drawing's bar share their buttons.
+  const isNote = (t: DrawingTool): t is NoteTool => t.startsWith("note-");
   const drawingBar = {
     baseView: drawingTool === "base",
     onBaseView: () => setDrawingTool((t) => (t === "base" ? null : "base")),
     projectedView: drawingTool === "projected",
     onProjectedView: () => setDrawingTool((t) => (t === "projected" ? null : "projected")),
+    dimension: drawingTool === "dimension",
+    onDimension: () => setDrawingTool((t) => (t === "dimension" ? null : "dimension")),
     onExport: () => setDrawingTool("export"),
+    mark:
+      drawingTool &&
+      drawingTool !== "base" &&
+      drawingTool !== "projected" &&
+      drawingTool !== "export" &&
+      drawingTool !== "dimension" &&
+      drawingTool !== "auto" &&
+      drawingTool !== "section" &&
+      drawingTool !== "detail" &&
+      drawingTool !== "break" &&
+      !isNote(drawingTool)
+        ? drawingTool
+        : null,
+    note: drawingTool && isNote(drawingTool) ? drawingTool : null,
+    onNote: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
+    cut: drawingTool === "section" || drawingTool === "detail" || drawingTool === "break" ? drawingTool : null,
+    onCut: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
+    onMark: (t: DrawingTool) => setDrawingTool((was) => (was === t ? null : t)),
+    onAutoMarks: () => drawingApi.current?.autoMarks(),
+    onPartsList: () => drawingApi.current?.partsList(),
+    onBalloons: () => drawingApi.current?.autoBalloons(),
+    onArrange: () => drawingApi.current?.arrange(),
+    auto: drawingTool === "auto",
+    onAuto: () => setDrawingTool((t) => (t === "auto" ? null : "auto")),
     onSettings: () => setSheetCard("settings"),
     onFit: () => drawingApi.current?.fit(),
     onFinish: () => setDrawing(null),
@@ -576,9 +607,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setSelection([]);
     setDrawing(id);
   };
-  const onDrawing = (act: "new" | "open" | "settings" | "rename" | "delete", id?: string, name?: string) => {
+  const onDrawing = (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart", id?: string, name?: string) => {
     if (live.current.sketching) return say("Finish the sketch first.");
     if (act === "new") return setSheetCard("new");
+    if (act === "everyPart") return everyPart();
     if (!id) return;
     if (act === "open" || act === "settings") {
       enterDrawing(id);
@@ -592,11 +624,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const making = sheetCard === "new";
     setSheetCard(null);
     void drawingCode().then((m) => {
-      if (!making) return shownDrawing && store.edit(...m.sheetChange(shownDrawing, choice));
-      const made = m.makeDrawing(store.get(), choice, account?.name);
-      store.edit(() => made.doc, "New drawing");
-      enterDrawing(made.id);
+      if (!making) return shownDrawing && store.edit(...m.sheetChange(shownDrawing, choice, drawingSheet));
+      void m.startDrawing(store, choice, account?.name, viewCall, at).then(enterDrawing);
     });
+  };
+  /** Make drawings of every part (#574): one for each row of the parts list that has none of its name yet. */
+  const everyPart = () => {
+    if (live.current.sketching) return say("Finish the sketch first.");
+    if (!files.shared) void import("../drawing/everyPart").then((m) => m.makeEveryPart(store, parts, built.components, viewCall, at, say, account?.name));
   };
   const onRenderCamera = useCallback((c: CameraState) => {
     renderCam.current = c;
@@ -2100,7 +2135,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit" | "base" | "projected" | "export") => {},
+    drawing: (_act: "new" | "settings" | "finish" | "fit" | "autoMarks" | "arrange" | "partsList" | "balloons" | "everyPart" | DrawingTool) => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2197,15 +2232,25 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     drawing: (act) =>
-      act === "base" || act === "projected" || act === "export"
-        ? setDrawingTool(act)
-        : act === "fit"
-          ? drawingApi.current?.fit()
-          : act === "finish"
-            ? setDrawing(null)
-            : act === "new"
-              ? onDrawing("new")
-              : setSheetCard("settings"),
+      act === "everyPart"
+        ? everyPart()
+        : act === "partsList"
+          ? drawingApi.current?.partsList()
+          : act === "balloons"
+            ? drawingApi.current?.autoBalloons()
+            : act === "autoMarks"
+              ? drawingApi.current?.autoMarks()
+              : act === "arrange"
+                ? drawingApi.current?.arrange()
+                : act === "fit"
+                  ? drawingApi.current?.fit()
+                  : act === "finish"
+                    ? setDrawing(null)
+                    : act === "new"
+                      ? onDrawing("new")
+                      : act === "settings"
+                        ? setSheetCard("settings")
+                        : setDrawingTool(act),
     startTour: tour.start,
     printCheck: (c: PrintCheck) => {
       setCheck((now) => (now === c ? "none" : c));
@@ -2878,6 +2923,33 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keywords: "2d sheet page paper technical views dimensions",
       },
       {
+        id: "drawing.everyPart",
+        scope: "model",
+        label: "Make drawings of every part",
+        group: "File",
+        icon: "drawing",
+        run: () => h().drawing("everyPart"),
+        keywords: "2d sheets all components bodies each part drawing batch",
+      },
+      {
+        id: "drawing.partsList",
+        scope: "drawing",
+        label: "Parts list",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("partsList"),
+        keywords: "bill of materials bom table items count quantity",
+      },
+      {
+        id: "drawing.balloons",
+        scope: "drawing",
+        label: "Add balloons",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("balloons"),
+        keywords: "item numbers callouts parts list automatic bubbles",
+      },
+      {
         id: "drawing.baseView",
         scope: "drawing",
         label: "Base view",
@@ -2896,6 +2968,127 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         keys: ["p"],
         run: () => h().drawing("projected"),
         keywords: "orthographic top side isometric first third angle",
+      },
+      {
+        id: "drawing.sectionView",
+        scope: "drawing",
+        label: "Section view",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("section"),
+        keywords: "cut cutting line plane hatch inside cross a-a",
+      },
+      {
+        id: "drawing.detailView",
+        scope: "drawing",
+        label: "Detail view",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("detail"),
+        keywords: "enlarge circle zoom larger scale",
+      },
+      {
+        id: "drawing.break",
+        scope: "drawing",
+        label: "Break",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("break"),
+        keywords: "broken view shorten long part break lines",
+      },
+      // The note tools (#573) and Balloon (#574): label, kind and what else finds them.
+      ...(
+        [
+          ["Text", "text", "note words label general"],
+          ["Leader", "leader", "note arrow callout point"],
+          ["Hole note", "hole", "callout thread tapped counterbore countersink depth diameter"],
+          ["Surface finish", "finish", "roughness ra texture symbol"],
+          ["Datum", "datum", "reference letter gd&t symbol"],
+          ["Feature control frame", "frame", "tolerance gd&t position flatness geometric symbol"],
+          ["Balloon", "balloon", "item number callout parts list bubble"],
+        ] as const
+      ).map(([label, kind, keywords]): Command => ({
+        id: `drawing.note-${kind}`,
+        scope: "drawing",
+        label,
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing(`note-${kind}`),
+        keywords,
+      })),
+      {
+        id: "drawing.dimension",
+        scope: "drawing",
+        label: "Dimension",
+        group: "Tools",
+        icon: "dimension",
+        keys: ["d"],
+        run: () => h().drawing("dimension"),
+        keywords: "size length distance angle radius diameter measure",
+      },
+      {
+        id: "drawing.autoDimension",
+        scope: "drawing",
+        label: "Auto dimension",
+        group: "Tools",
+        icon: "dimension",
+        run: () => h().drawing("auto"),
+        keywords: "automatic sizes baseline chain datum density recipe",
+      },
+      {
+        id: "drawing.arrange",
+        scope: "drawing",
+        label: "Arrange dimensions",
+        group: "Tools",
+        icon: "dimension",
+        run: () => h().drawing("arrange"),
+        keywords: "tidy stack rows sizes sort space",
+      },
+      {
+        id: "drawing.centreMark",
+        scope: "drawing",
+        label: "Centre mark",
+        group: "Tools",
+        icon: "drawing",
+        keys: ["c"],
+        run: () => h().drawing("centre-mark"),
+        keywords: "center cross hole",
+      },
+      {
+        id: "drawing.centrePattern",
+        scope: "drawing",
+        label: "Centre mark pattern",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("centre-pattern"),
+        keywords: "center bolt pitch circle holes",
+      },
+      {
+        id: "drawing.centreLine",
+        scope: "drawing",
+        label: "Centre line",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("centre-line"),
+        keywords: "center axis midway",
+      },
+      {
+        id: "drawing.extension",
+        scope: "drawing",
+        label: "Edge extension",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("extension"),
+        keywords: "corner meet",
+      },
+      {
+        id: "drawing.autoMarks",
+        scope: "drawing",
+        label: "Add centre marks to this view",
+        group: "Tools",
+        icon: "drawing",
+        run: () => h().drawing("autoMarks"),
+        keywords: "center holes axes all",
       },
       {
         id: "drawing.export",
@@ -4321,7 +4514,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
               construct={browserConstruct}
               decals={browserDecals}
               canvases={{ list: doc.canvases?.map((c) => ({ id: c.id, name: c.name, hidden: c.hidden })), on: onCanvas }}
-              drawings={{ list: doc.drawings?.map((d) => ({ id: d.id, name: d.name })), open: drawing, on: onDrawing }}
+              drawings={{
+                list: doc.drawings?.map((d) => ({ id: d.id, name: d.name, ...(d.id === drawing && drawingProblems ? { problems: drawingProblems } : {}) })),
+                open: drawing,
+                on: onDrawing,
+              }}
               onSketchOnStep={sketch.startOnStep}
               features={doc.features}
               at={at}
@@ -4385,6 +4582,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   onePart={selection.length === 1}
                   onRender={openRender}
                   onDrawing={files.shared ? undefined : () => onDrawing("new")}
+                  onEveryPart={files.shared ? undefined : everyPart}
                   say={window.matchMedia?.("(pointer: coarse)").matches ? say : undefined}
                 />
               )}
@@ -4673,10 +4871,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   onTool={setDrawingTool}
                   onSave={(f) => files.store.saveFiles([f]).then((saved) => saved?.names[0])}
                   say={say}
-                  onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label)))}
+                  onProblems={setDrawingProblems}
+                  sheetId={drawingSheet}
+                  onSheetId={setDrawingSheet}
+                  onDrawing={(change, label) => void drawingCode().then((m) => store.edit(...m.drawingEdit(shownDrawing, change, label)))}
+                  onSheet={(change, label) => void drawingCode().then((m) => store.edit(...m.sheetEdit(shownDrawing, change, label, drawingSheet)))}
                   components={built.components}
                   bodies={parts}
                   onTitle={(field, value) => void drawingCode().then((m) => store.edit(...m.titleChange(shownDrawing, field, value)))}
+                  onDecimals={(places) => void drawingCode().then((m) => store.edit(...m.decimalsChange(shownDrawing, places)))}
                 />
               </Suspense>
             )}
@@ -4991,7 +5194,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       )}
       {sheetCard && (
         <Suspense fallback={null}>
-          <SheetCard sheet={sheetCard === "settings" ? shownDrawing?.sheets[0] : undefined} onCancel={() => setSheetCard(null)} onDone={sheetChosen} />
+          <SheetCard
+            sheet={sheetCard === "settings" ? (shownDrawing?.sheets.find((s) => s.id === drawingSheet) ?? shownDrawing?.sheets[0]) : undefined}
+            drawing={shownDrawing}
+            api={api}
+            signedIn={!!account}
+            onCancel={() => setSheetCard(null)}
+            onDone={sheetChosen}
+          />
         </Suspense>
       )}
       {exportOpen && (

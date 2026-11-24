@@ -1,0 +1,20 @@
+baseline, from the bottom left
+  top  overall  70  up
+  front  overall  68  across
+  front  overall  54  up
+  front  step  50  across
+  front  step  12  up
+  front  small step  64  across
+  front  small step  4  up
+  front  radius or angle  45°
+chain, from the bottom left
+  top  overall  70  up
+  front  overall  68  across
+  front  overall  54  up
+  front  step  50  across
+  front  step  42  up
+  front  step  14  across
+  front  small step  8  up
+  front  small step  4  across
+  front  small step  4  up
+  front  radius or angle  45°

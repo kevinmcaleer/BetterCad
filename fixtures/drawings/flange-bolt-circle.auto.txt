@@ -1,0 +1,26 @@
+baseline, from the bottom left
+  top  overall  60  across
+  top  overall  60  up
+  front  overall  6  up
+  top  hole position  50  across
+  top  hole position  50  up
+  top  hole position  30  across
+  top  hole position  30  up
+  top  hole position  10  across
+  top  hole position  10  up
+  top  hole size  Ø16
+  top  hole size  4× Ø5
+chain, from the bottom left
+  top  overall  60  across
+  top  overall  60  up
+  front  overall  6  up
+  top  hole position  20  across
+  top  hole position  20  across
+  top  hole position  20  up
+  top  hole position  20  up
+  top  hole position  10  across
+  top  hole position  10  across
+  top  hole position  10  up
+  top  hole position  10  up
+  top  hole size  Ø16
+  top  hole size  4× Ø5

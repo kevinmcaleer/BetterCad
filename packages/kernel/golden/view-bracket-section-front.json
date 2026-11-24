@@ -1,0 +1,25 @@
+{
+  "box": "-20,0 to 20,40",
+  "curves": [
+    "visible sharp line -0.25,0 -0.25,4 <- f12:f0#2",
+    "visible sharp line -0.25,0 -20,0 <- f4",
+    "visible sharp line -0.25,0 4.25,0 <- f12:f0#2|f4",
+    "visible sharp line -0.25,4 -16,4 <- f5",
+    "visible sharp line -0.25,4 4.25,4 <- f12:f0#2|f5",
+    "visible sharp line -16,19.75 -16,24.25 <- f12:f0#1|f12:f1",
+    "visible sharp line -16,19.75 -16,4 <- f12:f1",
+    "visible sharp line -16,19.75 -20,19.75 <- f12:f0#1",
+    "visible sharp line -16,24.25 -16,40 <- f12:f1",
+    "visible sharp line -16,24.25 -20,24.25 <- f12:f0#1",
+    "visible sharp line -16,40 -20,40 <- f12:f5",
+    "visible sharp line -20,0 -20,19.75 <- f0",
+    "visible sharp line -20,19.75 -20,24.25 <- f0|f12:f0#1",
+    "visible sharp line -20,24.25 -20,40 <- f0",
+    "visible sharp line 20,0 20,4 <- f1",
+    "visible sharp line 20,0 4.25,0 <- f4",
+    "visible sharp line 20,4 4.25,4 <- f5",
+    "visible sharp line 4.25,0 4.25,4 <- f12:f0#2"
+  ],
+  "cut": "at 0,0,20",
+  "cutFaces": ["base: 14 pieces, 320.376 mm"]
+}

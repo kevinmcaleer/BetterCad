@@ -59,7 +59,7 @@ export function SheetArt({ layout: l, onEdit, editing }: SheetArtProps) {
         <rect className="bc-sheet-thick bc-sheet-block" x={l.block.x} y={l.block.y} width={l.block.w} height={l.block.h} />
         {l.cells.map((c) => {
           const edit = onEdit && c.edit;
-          const said = c.key === "projection" ? (l.angle === "first" ? "first angle" : "third angle") : c.value || "blank";
+          const said = c.key === "projection" ? (l.angle === "first" ? "first angle" : "third angle") : c.image ? "a picture" : c.value || "blank";
           const open = edit ? () => onEdit(edit) : undefined;
           return (
             <g
@@ -79,10 +79,14 @@ export function SheetArt({ layout: l, onEdit, editing }: SheetArtProps) {
               }
             >
               <rect className="bc-sheet-thin" x={c.x} y={c.y} width={c.w} height={c.h} />
-              <text className="bc-sheet-text" x={c.x + 1} y={c.y + 2} fontSize={TEXT.label} dominantBaseline="central" aria-hidden="true">
-                {c.label}
-              </text>
-              {c.key === "projection" ? (
+              {!c.image && (
+                <text className="bc-sheet-text" x={c.x + 1} y={c.y + 2} fontSize={TEXT.label} dominantBaseline="central" aria-hidden="true">
+                  {c.label}
+                </text>
+              )}
+              {c.image ? (
+                <image href={c.image.logo.data} x={c.image.box.x} y={c.image.box.y} width={c.image.box.w} height={c.image.box.h} aria-hidden="true" />
+              ) : c.key === "projection" ? (
                 <Projection cell={c} angle={l.angle} />
               ) : (
                 editing !== c.key && (

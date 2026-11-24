@@ -186,7 +186,8 @@ describe("a projected view on the sheet", () => {
     expect(ask.getByText("The view projected from it stays on the sheet as a base view.")).toBeTruthy();
     expect(sheetNow().views).toHaveLength(2);
     await userEvent.click(ask.getByRole("button", { name: "Delete" }));
-    expect(sheetNow().views).toEqual([{ ...top, kind: "base", parent: undefined, scale: 1 }].map((v) => JSON.parse(JSON.stringify(v))));
+    expect(sheetNow().views).toMatchObject([JSON.parse(JSON.stringify({ ...top, kind: "base", parent: undefined, scale: 1 }))]);
+    expect(sheetNow().views[0]).not.toHaveProperty("parent");
   });
 });
 

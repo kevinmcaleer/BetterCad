@@ -875,6 +875,15 @@ describe("drawings", () => {
     expect(browserItems(model()).some((i) => i.id === ROW.drawings)).toBe(false);
   });
 
+  it("counts what the open drawing has lost on its row (#568)", () => {
+    const lost = browserItems(model({ ...drs, drawings: [{ id: "dr1", name: "Drawing 1", problems: 2 }] })).find((i) => i.id === "dr1");
+    expect(lost).toMatchObject({ note: "Open, 2 problems" });
+    expect(lost?.warning).toMatch(/lost what it was fixed to/);
+    const one = browserItems(model({ ...drs, drawings: [{ id: "dr1", name: "Drawing 1", problems: 1 }] })).find((i) => i.id === "dr1");
+    expect(one?.note).toBe("Open, 1 problem");
+    expect(browserItems(model(drs)).find((i) => i.id === "dr1")?.warning).toBeUndefined();
+  });
+
   it("double-click opens one, and the menu opens, sets up, renames and deletes", async () => {
     const p = props();
     render(<BrowserPanel model={model(drs)} {...p} />);

@@ -98,7 +98,7 @@ export interface BrowserModel {
   /** Canvases (#248): pictures on planes to trace over, under Canvases. */
   canvases?: { id: string; name: string; hidden?: boolean }[];
   /** Drawings (#555), under Drawings; `drawing` is the one whose sheet is open. */
-  drawings?: { id: string; name: string }[];
+  drawings?: { id: string; name: string; problems?: number }[];
   drawing?: string | null;
 }
 
@@ -254,7 +254,8 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         drag: false,
         rename: !m.readOnly,
         toggles: [],
-        note: x.id === m.drawing ? "Open" : undefined,
+        note: x.id === m.drawing ? (x.problems ? `Open, ${x.problems} ${x.problems === 1 ? "problem" : "problems"}` : "Open") : undefined,
+        ...(x.problems ? { warning: "Something on this drawing lost what it was fixed to. Right-click its warning to pick again or delete it." } : {}),
       });
   }
   // Then the model's own folders and components, and each component's, inside out (#171).
@@ -443,7 +444,7 @@ export interface BrowserPanelProps {
   /** Canvases (#248): show or hide one (or, with the folder's id, all), edit, rename or delete one. */
   onCanvas?: (id: string, act: "hide" | "edit" | "rename" | "delete", name?: string) => void;
   /** Drawings (#555): make one, open one or its Sheet settings, rename or delete one. */
-  onDrawing?: (act: "new" | "open" | "settings" | "rename" | "delete", id?: string, name?: string) => void;
+  onDrawing?: (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart", id?: string, name?: string) => void;
   /** Named poses (#177): go to one (null: Home), save the joints as a new one, update, rename or delete one. */
   onPose?: (id: string | null) => void;
   onSavePose?: () => void;
@@ -690,7 +691,15 @@ export function BrowserPanel(p: BrowserPanelProps) {
         ],
       };
     if (id === ROW.drawings)
-      return { title: "Drawings", entries: model.readOnly ? [] : [{ id: "new", label: "New drawing", icon: "drawing", onSelect: () => p.onDrawing?.("new") }] };
+      return {
+        title: "Drawings",
+        entries: model.readOnly
+          ? []
+          : [
+              { id: "new", label: "New drawing", icon: "drawing", onSelect: () => p.onDrawing?.("new") },
+              { id: "every", label: "Make drawings of every part", icon: "drawing", onSelect: () => p.onDrawing?.("everyPart") },
+            ],
+      };
     const link = model.links?.find((l) => l.id === id);
     const heldIds = (c: string) => {
       const h = owners(model).held(c);

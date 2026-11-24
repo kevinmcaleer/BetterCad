@@ -1,0 +1,817 @@
+{
+  "schema": 3,
+  "app": "bettercad",
+  "version": "0.1.0",
+  "id": "flange-bolt-circle",
+  "created": "2026-11-23T00:00:00.000Z",
+  "modified": "2026-11-23T00:00:00.000Z",
+  "name": "Flange",
+  "document": {
+    "drawings": [
+      {
+        "decimals": 2,
+        "id": "dr1",
+        "name": "Drawing 1",
+        "sheets": [
+          {
+            "auto": {
+              "datum": "bottom-left",
+              "density": 1,
+              "recipe": "centre-baseline"
+            },
+            "border": true,
+            "dimensions": [
+              {
+                "across": "x",
+                "at": [
+                  0,
+                  -64
+                ],
+                "auto": true,
+                "id": "dm9",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "plate",
+                    "index": 6,
+                    "kind": "edge",
+                    "name": "f2|f5",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -64,
+                  0
+                ],
+                "auto": true,
+                "id": "dm10",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "end",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -40,
+                  0
+                ],
+                "auto": true,
+                "id": "dm11",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 4,
+                    "kind": "edge",
+                    "name": "f2|f4",
+                    "view": "v2"
+                  },
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 6,
+                    "kind": "edge",
+                    "name": "f2|f5",
+                    "view": "v2"
+                  }
+                ],
+                "view": "v2"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -5,
+                  -56
+                ],
+                "auto": true,
+                "id": "dm12",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "centre",
+                    "body": "plate",
+                    "index": 9,
+                    "kind": "face",
+                    "name": "f18:f0#2#2",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -56,
+                  -5
+                ],
+                "auto": true,
+                "id": "dm13",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "centre",
+                    "body": "plate",
+                    "index": 10,
+                    "kind": "face",
+                    "name": "f18:f0#2#1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -15,
+                  -48
+                ],
+                "auto": true,
+                "id": "dm14",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "centre",
+                    "body": "plate",
+                    "index": 6,
+                    "kind": "face",
+                    "name": "f18:f0",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -48,
+                  -15
+                ],
+                "auto": true,
+                "id": "dm15",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "centre",
+                    "body": "plate",
+                    "index": 7,
+                    "kind": "face",
+                    "name": "f18:f0#1#1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "x",
+                "at": [
+                  -25,
+                  -40
+                ],
+                "auto": true,
+                "id": "dm16",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "centre",
+                    "body": "plate",
+                    "index": 7,
+                    "kind": "face",
+                    "name": "f18:f0#1#1",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "across": "y",
+                "at": [
+                  -40,
+                  -25
+                ],
+                "auto": true,
+                "id": "dm17",
+                "kind": "linear",
+                "refs": [
+                  {
+                    "at": "start",
+                    "body": "plate",
+                    "index": 1,
+                    "kind": "edge",
+                    "name": "f0|f5",
+                    "view": "v1"
+                  },
+                  {
+                    "at": "centre",
+                    "body": "plate",
+                    "index": 6,
+                    "kind": "face",
+                    "name": "f18:f0",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "at": [
+                  44.545,
+                  40
+                ],
+                "auto": true,
+                "id": "dm18",
+                "kind": "diameter",
+                "refs": [
+                  {
+                    "body": "plate",
+                    "index": 8,
+                    "kind": "face",
+                    "name": "f18:f0#1#2",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              },
+              {
+                "at": [
+                  6.575,
+                  -40
+                ],
+                "auto": true,
+                "id": "dm19",
+                "kind": "diameter",
+                "refs": [
+                  {
+                    "body": "plate",
+                    "index": 6,
+                    "kind": "face",
+                    "name": "f18:f0",
+                    "view": "v1"
+                  }
+                ],
+                "view": "v1"
+              }
+            ],
+            "id": "sh1",
+            "landscape": true,
+            "marks": [
+              {
+                "id": "mk1",
+                "kind": "centre-mark",
+                "on": {
+                  "body": "plate",
+                  "index": 6,
+                  "kind": "face",
+                  "name": "f18:f0",
+                  "view": "v1"
+                },
+                "was": [
+                  0,
+                  -20
+                ]
+              },
+              {
+                "id": "mk2",
+                "kind": "centre-mark",
+                "on": {
+                  "body": "plate",
+                  "index": 7,
+                  "kind": "face",
+                  "name": "f18:f0#1#1",
+                  "view": "v1"
+                },
+                "was": [
+                  -20,
+                  0
+                ]
+              },
+              {
+                "id": "mk3",
+                "kind": "centre-mark",
+                "on": {
+                  "body": "plate",
+                  "index": 8,
+                  "kind": "face",
+                  "name": "f18:f0#1#2",
+                  "view": "v1"
+                },
+                "was": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "id": "mk4",
+                "kind": "centre-mark",
+                "on": {
+                  "body": "plate",
+                  "index": 9,
+                  "kind": "face",
+                  "name": "f18:f0#2#2",
+                  "view": "v1"
+                },
+                "was": [
+                  20,
+                  0
+                ]
+              },
+              {
+                "id": "mk5",
+                "kind": "centre-mark",
+                "on": {
+                  "body": "plate",
+                  "index": 10,
+                  "kind": "face",
+                  "name": "f18:f0#2#1",
+                  "view": "v1"
+                },
+                "was": [
+                  0,
+                  20
+                ]
+              },
+              {
+                "a": {
+                  "body": "plate",
+                  "index": 6,
+                  "kind": "face",
+                  "name": "f18:f0",
+                  "view": "v2"
+                },
+                "id": "mk6",
+                "kind": "centre-line",
+                "was": [
+                  0,
+                  0
+                ]
+              },
+              {
+                "a": {
+                  "body": "plate",
+                  "index": 7,
+                  "kind": "face",
+                  "name": "f18:f0#1#1",
+                  "view": "v2"
+                },
+                "id": "mk7",
+                "kind": "centre-line",
+                "was": [
+                  -20,
+                  0
+                ]
+              },
+              {
+                "a": {
+                  "body": "plate",
+                  "index": 9,
+                  "kind": "face",
+                  "name": "f18:f0#2#2",
+                  "view": "v2"
+                },
+                "id": "mk8",
+                "kind": "centre-line",
+                "was": [
+                  20,
+                  0
+                ]
+              }
+            ],
+            "name": "Sheet 1",
+            "scale": 1,
+            "size": "A3",
+            "standard": "iso",
+            "title": {
+              "date": "2026-11-23",
+              "revision": "A",
+              "title": "Flange",
+              "type": "Part drawing"
+            },
+            "views": [
+              {
+                "at": [
+                  140,
+                  180
+                ],
+                "direction": "top",
+                "hidden": true,
+                "id": "v1",
+                "kind": "base",
+                "laid": {
+                  "h": 60,
+                  "sizes": "dm9:60|dm10:60|dm12:50|dm13:50|dm14:30|dm15:30|dm16:10|dm17:10|dm18:Ø16|dm19:4× Ø5",
+                  "w": 60
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              },
+              {
+                "at": [
+                  140,
+                  95
+                ],
+                "direction": "front",
+                "hidden": true,
+                "id": "v2",
+                "kind": "base",
+                "laid": {
+                  "h": 6,
+                  "sizes": "dm11:6",
+                  "w": 60
+                },
+                "shows": {
+                  "all": true
+                },
+                "tangent": false
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "features": [
+      {
+        "id": "f1",
+        "name": "Add Flange",
+        "part": {
+          "id": "plate",
+          "kind": "box",
+          "name": "Flange",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "id": "f2",
+        "name": "Size Flange",
+        "parts": [
+          "plate"
+        ],
+        "size": {
+          "x": 60,
+          "y": 60,
+          "z": 6
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f3",
+        "name": "Add Bore",
+        "part": {
+          "id": "bore",
+          "kind": "cylinder",
+          "name": "Bore",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "id": "f4",
+        "name": "Size Bore",
+        "parts": [
+          "bore"
+        ],
+        "size": {
+          "x": 16,
+          "y": 16,
+          "z": 8
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f5",
+        "name": "Place Bore",
+        "parts": [
+          "bore"
+        ],
+        "position": {
+          "x": 0,
+          "y": 0,
+          "z": -1
+        },
+        "type": "move"
+      },
+      {
+        "id": "f6",
+        "name": "Add Bolt hole 1",
+        "part": {
+          "id": "bolt1",
+          "kind": "cylinder",
+          "name": "Bolt hole 1",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "id": "f7",
+        "name": "Size Bolt hole 1",
+        "parts": [
+          "bolt1"
+        ],
+        "size": {
+          "x": 5,
+          "y": 5,
+          "z": 8
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f8",
+        "name": "Place Bolt hole 1",
+        "parts": [
+          "bolt1"
+        ],
+        "position": {
+          "x": 20,
+          "y": 0,
+          "z": -1
+        },
+        "type": "move"
+      },
+      {
+        "id": "f9",
+        "name": "Add Bolt hole 2",
+        "part": {
+          "id": "bolt2",
+          "kind": "cylinder",
+          "name": "Bolt hole 2",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "id": "f10",
+        "name": "Size Bolt hole 2",
+        "parts": [
+          "bolt2"
+        ],
+        "size": {
+          "x": 5,
+          "y": 5,
+          "z": 8
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f11",
+        "name": "Place Bolt hole 2",
+        "parts": [
+          "bolt2"
+        ],
+        "position": {
+          "x": 0,
+          "y": 20,
+          "z": -1
+        },
+        "type": "move"
+      },
+      {
+        "id": "f12",
+        "name": "Add Bolt hole 3",
+        "part": {
+          "id": "bolt3",
+          "kind": "cylinder",
+          "name": "Bolt hole 3",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "id": "f13",
+        "name": "Size Bolt hole 3",
+        "parts": [
+          "bolt3"
+        ],
+        "size": {
+          "x": 5,
+          "y": 5,
+          "z": 8
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f14",
+        "name": "Place Bolt hole 3",
+        "parts": [
+          "bolt3"
+        ],
+        "position": {
+          "x": -20,
+          "y": 0,
+          "z": -1
+        },
+        "type": "move"
+      },
+      {
+        "id": "f15",
+        "name": "Add Bolt hole 4",
+        "part": {
+          "id": "bolt4",
+          "kind": "cylinder",
+          "name": "Bolt hole 4",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "size": {
+            "x": 10,
+            "y": 10,
+            "z": 10
+          }
+        },
+        "type": "add"
+      },
+      {
+        "id": "f16",
+        "name": "Size Bolt hole 4",
+        "parts": [
+          "bolt4"
+        ],
+        "size": {
+          "x": 5,
+          "y": 5,
+          "z": 8
+        },
+        "type": "resize"
+      },
+      {
+        "id": "f17",
+        "name": "Place Bolt hole 4",
+        "parts": [
+          "bolt4"
+        ],
+        "position": {
+          "x": 0,
+          "y": -20,
+          "z": -1
+        },
+        "type": "move"
+      },
+      {
+        "id": "f18",
+        "mode": "group",
+        "name": "Flange with holes",
+        "target": "plate",
+        "tools": [
+          {
+            "id": "bore",
+            "op": "cut"
+          },
+          {
+            "id": "bolt1",
+            "op": "cut"
+          },
+          {
+            "id": "bolt2",
+            "op": "cut"
+          },
+          {
+            "id": "bolt3",
+            "op": "cut"
+          },
+          {
+            "id": "bolt4",
+            "op": "cut"
+          }
+        ],
+        "type": "combine"
+      }
+    ],
+    "format": "bettercad",
+    "looks": {
+      "bolt1": {
+        "hole": true
+      },
+      "bolt2": {
+        "hole": true
+      },
+      "bolt3": {
+        "hole": true
+      },
+      "bolt4": {
+        "hole": true
+      },
+      "bore": {
+        "hole": true
+      }
+    },
+    "name": "Flange",
+    "version": 2
+  }
+}

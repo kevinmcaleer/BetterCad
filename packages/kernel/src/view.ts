@@ -62,7 +62,18 @@ export type ViewRound = {
   sweep: number;
 } & ({ seen: "end"; c: V2 } | { seen: "side"; a: V2; b: V2 });
 
+/**
+ * A flat cut through the model, for a section view (#571): everything on the side `normal` points to is taken away.
+ * A section view looks back along `normal`, at the cut face.
+ */
+export interface ViewCut {
+  origin: V3;
+  normal: V3;
+}
+
 export interface ProjectOptions {
+  /** Cut the shapes before drawing them. */
+  cut?: ViewCut;
   /** Work out hidden edges too. On by default. */
   hidden?: boolean;
   /** Keep tangent edges. On by default. */
@@ -77,6 +88,8 @@ export interface ProjectedView {
   box: { min: V2; max: V2 };
   /** Round faces seen end on or from the side, for centre marks and centre lines. Empty when tracing is off. */
   rounds: ViewRound[];
+  /** With a cut: the outline of each shape's cut face, as loose pieces (each a run of points) on the view plane. */
+  cuts?: { body: number; outline: V2[][] }[];
   /** Time spent, in ms: OpenCascade's hidden-line pass, reading the curves out, and tracing them back. */
   ms: { hide: number; read: number; trace: number };
 }
@@ -202,6 +215,8 @@ export interface ModelView {
   box: { min: V2; max: V2 };
   /** Round faces seen end on or from the side, for centre marks and centre lines. */
   rounds: (Omit<ViewRound, "body" | "face"> & { source: ViewSource })[];
+  /** A section view's cut faces, for hatching: each body's outline as loose pieces on the view plane. */
+  cuts?: { body: string; outline: V2[][] }[];
   /** The bodies drawn, in the order given. */
   bodies: string[];
   /** Time taken, ms; 0 when it came from the cache. */

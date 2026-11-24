@@ -185,17 +185,41 @@ describe("golden views", () => {
 
   const builder = () => new ModelBuilder(oc);
   const sample = (id: string) => SAMPLES.find((s) => s.id === id)!.build();
-  const cases: [string, string, keyof typeof VIEWS, boolean][] = [];
+  const cases: [string, string, keyof typeof VIEWS, boolean, [number, number, number]?][] = [];
   for (const model of ["bracket", "phone-stand"])
     for (const v of Object.keys(VIEWS) as (keyof typeof VIEWS)[]) cases.push([`view-${model}-${v}`, model, v, true]);
   cases.push(["view-bracket-front-visible", "bracket", "front", false], ["view-bracket-iso-visible", "bracket", "iso", false]);
 
-  for (const [file, model, name, hidden] of cases) {
+  // Section views (#571): each sample cut through its middle, seen from the front and from the right.
+  for (const model of ["bracket", "phone-stand"])
+    cases.push([`view-${model}-section-front`, model, "front", true, [0, -1, 0]], [`view-${model}-section-right`, model, "right", true, [1, 0, 0]]);
+
+  for (const [file, model, name, hidden, normal] of cases) {
     it(`${model}, ${name}${hidden ? "" : ", visible edges only"}`, () => {
-      const view = builder().view(sample(model), undefined, { shows: { all: true }, frame: VIEWS[name], hidden }, projectView);
+      const whole = builder().view(sample(model), undefined, { shows: { all: true }, frame: VIEWS[name], hidden: false, trace: false }, projectView);
+      // A cut goes through the middle of the model as this view sees it.
+      const ax = viewAxes(VIEWS[name]);
+      const mid = [(whole.box.min[0] + whole.box.max[0]) / 2, (whole.box.min[1] + whole.box.max[1]) / 2];
+      const depth = builder().view(
+        sample(model),
+        undefined,
+        { shows: { all: true }, frame: { toEye: ax.x, up: ax.y }, hidden: false, trace: false },
+        projectView,
+      ).box;
+      const d = -(depth.min[0] + depth.max[0]) / 2;
+      const origin = [0, 1, 2].map((i) => r(ax.x[i]! * mid[0]! + ax.y[i]! * mid[1]! + ax.z[i]! * d)) as [number, number, number];
+      const req = { shows: { all: true as const }, frame: VIEWS[name], hidden, ...(normal ? { cut: { origin, normal } } : {}) };
+      const view = builder().view(sample(model), undefined, req, projectView);
       const lines = view.edges.map((e) => `${e.visible ? "visible" : "hidden"} ${e.type} ${flat(e.curve)} <- ${e.source?.name ?? "?"}`).sort();
       // Text, not arrays: the file then reads the same before and after Prettier.
-      const got = { box: `${view.box.min.map(r).join(",")} to ${view.box.max.map(r).join(",")}`, curves: lines };
+      const got: Record<string, unknown> = { box: `${view.box.min.map(r).join(",")} to ${view.box.max.map(r).join(",")}`, curves: lines };
+      if (view.cuts) {
+        got.cut = `at ${origin.join(",")}`;
+        got.cutFaces = view.cuts.map(
+          (c) =>
+            `${c.body}: ${c.outline.length} pieces, ${r(c.outline.flat().reduce((sum, p, i, all) => (i ? sum + Math.hypot(p[0] - all[i - 1]![0], p[1] - all[i - 1]![1]) : 0), 0))} mm`,
+        );
+      }
       const path = join(DIR, `${file}.json`);
       if (UPDATE || !existsSync(path)) {
         if (!UPDATE && process.env.CI) throw new Error(`No golden file for ${file}. Run UPDATE_GOLDEN=1 npm run test:golden and commit it.`);
@@ -268,5 +292,49 @@ describe("a view of a model", () => {
     expect(one.bodies).toEqual([all.bodies[0]]);
     expect(one.edges.every((e) => e.source?.body === all.bodies[0])).toBe(true);
     expect(b.view(doc, undefined, { shows: { bodies: ["nope"] }, frame: VIEWS.front }, projectView)).toMatchObject({ edges: [], bodies: [] });
+  });
+});
+
+/** Section views (#571): the model cut on a plane, seen from the side that was taken away. */
+describe("a cut view", () => {
+  // Cut the drilled block through the middle of its hole, looking from the front (-Y) at what is behind.
+  const cut = { origin: [5, 3, 0] as [number, number, number], normal: [0, -1, 0] as [number, number, number] };
+
+  it("shows the hole's walls as visible lines and gives the cut face's outline", () => {
+    const view = projectView(oc, [drilled()], VIEWS.front, { cut });
+    // The outline of the block and the two walls of the hole, nothing hidden.
+    expect(view.edges.filter((e) => !e.visible)).toHaveLength(0);
+    const walls = view.edges.filter(
+      (e) => e.curve.kind === "line" && Math.abs(e.curve.a[0] - e.curve.b[0]) < 1e-6 && [2, 8].includes(Math.round(e.curve.a[0])),
+    );
+    expect(walls).toHaveLength(2);
+    expect(view.box).toEqual({ min: [-15, 0], max: [15, 10] });
+    // Two cut faces, one each side of the hole: eight straight pieces.
+    expect(view.cuts).toHaveLength(1);
+    expect(view.cuts![0]!.body).toBe(0);
+    expect(view.cuts![0]!.outline).toHaveLength(8);
+    const xs = view.cuts![0]!.outline.flat().map((p) => Math.round(p[0]));
+    expect([...new Set(xs)].sort((a, b) => a - b)).toEqual([-15, 2, 8, 15]);
+  });
+
+  it("names the edges behind the cut by the uncut body's own edges", () => {
+    const shape = drilled();
+    const whole = projectView(oc, [shape], VIEWS.front);
+    const view = projectView(oc, [shape], VIEWS.front, { cut });
+    // The block's top edge at the back is what shows along the top: an edge of the body, behind the cut.
+    const top = view.edges.find((e) => e.curve.kind === "line" && e.curve.a[1] === 10 && e.curve.b[1] === 10 && e.from?.edge !== undefined);
+    const front = whole.edges.find((e) => e.visible && e.curve.kind === "line" && e.curve.a[1] === 10 && e.curve.b[1] === 10);
+    // In the uncut view the front top edge is nearest the eye; cut, it has gone and the name is another edge's.
+    expect(top?.from?.edge).toBeDefined();
+    expect(front?.from?.edge).toBeDefined();
+    expect(top!.from!.edge).not.toBe(front!.from!.edge);
+  });
+
+  it("leaves out a body wholly in what was cut away, and marks no hole there", () => {
+    const near = place(oc, box(oc, { x: 4, y: 4, z: 4 }), { position: { x: 0, y: -30, z: 0 } });
+    const view = projectView(oc, [drilled(), near], VIEWS.front, { cut });
+    expect(view.box).toEqual({ min: [-15, 0], max: [15, 10] });
+    const far = projectView(oc, [drilled()], VIEWS.front, { cut: { origin: [0, 9, 0], normal: [0, -1, 0] } });
+    expect(far.rounds).toHaveLength(0);
   });
 });

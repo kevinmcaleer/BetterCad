@@ -1,6 +1,6 @@
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
-import { elements } from "./shapes";
+import { boolean, elements, polygonFace, prism } from "./shapes";
 import {
   boxOf,
   distanceTo,
@@ -15,6 +15,7 @@ import {
   type V2,
   type V3,
   type ViewCurve,
+  type ViewCut,
   type ViewEdge,
   type ViewEdgeType,
   type ViewFrame,
@@ -279,6 +280,8 @@ class Tracer {
     shapes: TopoDS_Shape[],
     private ax: { x: V3; y: V3; z: V3 },
     size: number,
+    /** With a cut: nothing nearer the eye than this is left, so nothing nearer is what a curve came from. */
+    private limit = Infinity,
   ) {
     this.cell = Math.max(0.5, size / 64);
     shapes.forEach((shape, body) => {
@@ -333,9 +336,13 @@ class Tracer {
             hole: f.Orientation() === oc.TopAbs_Orientation.TopAbs_REVERSED,
             sweep: Math.min(TAU, s.LastUParameter() - s.FirstUParameter()),
           };
-          if (l < 1e-6) this.rounds.push({ ...round, seen: "end", c: flat(centre) });
+          const end = (v: number): V3 => [centre[0] + dir[0] * v, centre[1] + dir[1] * v, centre[2] + dir[2] * v];
+          // With a cut, a round face wholly in what was taken away has no centre to mark.
+          const nearest = Math.min(dot(end(s.FirstVParameter()), ax.z), dot(end(s.LastVParameter()), ax.z)) - (l < 1e-6 ? 0 : cyl.Radius());
+          if (nearest > this.limit - NEAR) {
+            // Nothing of it to mark.
+          } else if (l < 1e-6) this.rounds.push({ ...round, seen: "end", c: flat(centre) });
           else if (Math.abs(dot(dir, ax.z)) < 1e-6) {
-            const end = (v: number): V3 => [centre[0] + dir[0] * v, centre[1] + dir[1] * v, centre[2] + dir[2] * v];
             this.rounds.push({ ...round, seen: "side", a: flat(end(s.FirstVParameter())), b: flat(end(s.LastVParameter())) });
           }
           // Seen end on a cylinder has no outline: its rims are all there is.
@@ -415,6 +422,7 @@ class Tracer {
       const t = Math.max(0, Math.min(1, ((p[0] - s[i]!) * dx + (p[1] - s[i + 1]!) * dy) / len2));
       if (Math.hypot(s[i]! + dx * t - p[0], s[i + 1]! + dy * t - p[1]) > NEAR) continue;
       const depth = s[i + 2]! + (s[i + 5]! - s[i + 2]!) * t;
+      if (depth > this.limit + NEAR) continue;
       const key = `${s[i + 6]}/${s[i + 7]}`;
       const had = out.get(key);
       if (!had || depth > had.depth) out.set(key, { body: s[i + 6]!, edge: s[i + 7]!, depth });
@@ -457,14 +465,15 @@ class Tracer {
         if (Math.abs(out - f.limb.r) > NEAR) continue;
       }
       // The line of sight, only as long as the face is deep: the exact distance is slow on a long line.
-      const [a, b] = [at(f.depth[0] - 1), at(f.depth[1] + 1)];
+      if (f.depth[0] > this.limit) continue;
+      const [a, b] = [at(f.depth[0] - 1), at(Math.min(f.depth[1] + 1, this.limit))];
       const mk = new oc.BRepBuilderAPI_MakeEdge(a, b);
       const d = new oc.BRepExtrema_DistShapeShape(mk.Edge(), f.shape);
       if (d.IsDone() && d.Value() < NEAR) {
         const q = d.PointOnShape2(1);
         const depth = q.X() * z[0] + q.Y() * z[1] + q.Z() * z[2];
         q.delete();
-        if (!best || depth > best.depth) best = { body: f.body, face: f.face, depth };
+        if (depth <= this.limit + NEAR && (!best || depth > best.depth)) best = { body: f.body, face: f.face, depth };
       }
       d.delete();
       mk.delete();
@@ -490,7 +499,8 @@ export function projectView(oc: OC, shapes: TopoDS_Shape[], frame: ViewFrame, op
   const cs = new oc.gp_Ax2(origin, n, vx);
   const projector = new oc.HLRAlgo_Projector(cs);
   const algo = new oc.HLRBRep_Algo();
-  for (const s of shapes) algo.Add(s, 0);
+  const cut = opts.cut && cutAway(oc, shapes, opts.cut, ax);
+  for (const s of cut ? cut.shapes : shapes) algo.Add(s, 0);
   algo.Projector(projector);
   algo.Update();
   algo.Hide();
@@ -524,8 +534,47 @@ export function projectView(oc: OC, shapes: TopoDS_Shape[], frame: ViewFrame, op
   if (trace && edges.length) {
     const all = edges.map((e) => boxOf(e.curve));
     const size = Math.max(...all.map((b) => b.max[0]), ...all.map((b) => b.max[1])) - Math.min(...all.map((b) => b.min[0]), ...all.map((b) => b.min[1]));
-    const tracer = new Tracer(oc, shapes, ax, size);
+    // Traced against the shapes as they were, so a curve keeps its name in a section view. The cut face's own
+    // outline is nobody's edge: each piece is where the cut goes through a face, and is named for that face.
+    const tracer = new Tracer(oc, shapes, ax, size, cut?.depth);
     rounds = tracer.rounds;
+    if (cut) {
+      const outline = cut.cuts.flatMap((c) => c.outline.map((pts, i) => ({ curve: { kind: "poly", pts } as ViewCurve, body: c.body, face: c.faces[i] })));
+      const onCut = (e: ViewEdge) => {
+        if (!e.visible) return undefined;
+        const pts = pointsOn(e.curve);
+        return outline.find((o) => pts.every((p) => distanceTo(o.curve, p) < 2 * CHORD));
+      };
+      const rest: ViewEdge[] = [];
+      const faced: ViewEdge[] = [];
+      for (const e of edges) {
+        const o = onCut(e);
+        if (!o) rest.push(e);
+        else faced.push(o.face === undefined ? e : { ...e, from: { body: o.body, face: o.face } });
+      }
+      traceAll(rest, tracer);
+      edges = [...rest, ...faced];
+    } else traceAll(edges, tracer);
+  }
+  edges = uncovered(joined(edges));
+  const box = { min: [Infinity, Infinity] as V2, max: [-Infinity, -Infinity] as V2 };
+  for (const e of edges) {
+    const b =
+      e.curve.kind === "arc" || (e.curve.kind === "ellipse" && e.curve.from !== undefined) ? boxOf({ kind: "poly", pts: pointsOn(e.curve) }) : boxOf(e.curve);
+    box.min = [Math.min(box.min[0], b.min[0]), Math.min(box.min[1], b.min[1])];
+    box.max = [Math.max(box.max[0], b.max[0]), Math.max(box.max[1], b.max[1])];
+  }
+  const t3 = performance.now();
+
+  for (const d of [to, algo, projector, cs, vx, n, origin]) d.delete();
+  const out: ProjectedView = { edges, box, rounds, ms: { hide: t1 - t0, read: t2 - t1, trace: t3 - t2 } };
+  if (cut) out.cuts = cut.cuts.map(({ body, outline }) => ({ body, outline }));
+  return out;
+}
+
+/** Says which model edge or face each curve came from. */
+function traceAll(edges: ViewEdge[], tracer: Tracer) {
+  {
     // Visible curves first: a hidden curve straight behind one came from a different edge.
     const shown = edges.filter((e) => e.visible && e.type !== "outline");
     for (const e of shown) e.from = tracer.edge(e.curve);
@@ -543,16 +592,111 @@ export function projectView(oc: OC, shapes: TopoDS_Shape[], frame: ViewFrame, op
       if (face !== undefined) Object.assign(e, { type: "outline", from: { body: e.from!.body, face } });
     }
   }
-  edges = uncovered(joined(edges));
-  const box = { min: [Infinity, Infinity] as V2, max: [-Infinity, -Infinity] as V2 };
-  for (const e of edges) {
-    const b =
-      e.curve.kind === "arc" || (e.curve.kind === "ellipse" && e.curve.from !== undefined) ? boxOf({ kind: "poly", pts: pointsOn(e.curve) }) : boxOf(e.curve);
-    box.min = [Math.min(box.min[0], b.min[0]), Math.min(box.min[1], b.min[1])];
-    box.max = [Math.max(box.max[0], b.max[0]), Math.max(box.max[1], b.max[1])];
-  }
-  const t3 = performance.now();
-
-  for (const d of [to, algo, projector, cs, vx, n, origin]) d.delete();
-  return { edges, box, rounds, ms: { hide: t1 - t0, read: t2 - t1, trace: t3 - t2 } };
 }
+
+/**
+ * The shapes with everything on the cut's `normal` side taken away, the outline of each one's cut face on the view
+ * plane, and how deep the cut lies in the view. A shape wholly on the far side goes altogether.
+ */
+function cutAway(oc: OC, shapes: TopoDS_Shape[], cut: ViewCut, ax: { x: V3; y: V3; z: V3 }) {
+  const l = Math.hypot(...cut.normal) || 1;
+  const n: V3 = [cut.normal[0] / l, cut.normal[1] / l, cut.normal[2] / l];
+  const box = new oc.Bnd_Box();
+  for (const s of shapes) oc.BRepBndLib.Add(s, box, false);
+  let reach = 1000;
+  if (!box.IsVoid()) {
+    const [lo, hi] = [box.CornerMin(), box.CornerMax()];
+    const far = [lo.X(), lo.Y(), lo.Z(), hi.X(), hi.Y(), hi.Z()].map((v, i) => Math.abs(v - cut.origin[i % 3]!));
+    reach = 2 * Math.hypot(Math.max(far[0]!, far[3]!), Math.max(far[1]!, far[4]!), Math.max(far[2]!, far[5]!)) + 10;
+    lo.delete();
+    hi.delete();
+  }
+  box.delete();
+  const seed: V3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = unit3(cross3(n, seed));
+  const v = cross3(n, u);
+  const corner = (a: number, b: number): V3 => [0, 1, 2].map((i) => cut.origin[i]! + (u[i]! * a + v[i]! * b) * reach) as V3;
+  const away = prism(oc, polygonFace(oc, [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]), [n[0] * reach, n[1] * reach, n[2] * reach]);
+  const at = dot(cut.origin, n);
+  const out: TopoDS_Shape[] = [];
+  const cuts: { body: number; outline: V2[][]; faces: (number | undefined)[] }[] = [];
+  shapes.forEach((shape, body) => {
+    let left: TopoDS_Shape;
+    try {
+      left = boolean(oc, "cut", shape, [away]);
+    } catch {
+      // Nothing of it is left on this side.
+      return;
+    }
+    out.push(left);
+    const outline: V2[][] = [];
+    const faces: (number | undefined)[] = [];
+    // The body's own faces and their boxes: each piece of the cut's outline lies in one of them.
+    const own = elements(oc, shape, "face").map((f) => {
+      const b = new oc.Bnd_Box();
+      oc.BRepBndLib.Add(f, b, false);
+      const [lo, hi] = [b.CornerMin(), b.CornerMax()];
+      const box = [lo.X(), lo.Y(), lo.Z(), hi.X(), hi.Y(), hi.Z()];
+      lo.delete();
+      hi.delete();
+      b.delete();
+      return { f, box };
+    });
+    const faceAt = (w: V3): number | undefined => {
+      const p = new oc.gp_Pnt(w[0], w[1], w[2]);
+      const mk = new oc.BRepBuilderAPI_MakeVertex(p);
+      let found: number | undefined;
+      for (let i = 0; i < own.length && found === undefined; i++) {
+        const b = own[i]!.box;
+        if (w.some((v, k) => v < b[k]! - 1e-3 || v > b[k + 3]! + 1e-3)) continue;
+        const d = new oc.BRepExtrema_DistShapeShape(mk.Vertex(), own[i]!.f);
+        if (d.IsDone() && d.Value() < 1e-4) found = i;
+        d.delete();
+      }
+      mk.delete();
+      p.delete();
+      return found;
+    };
+    for (const f of elements(oc, left, "face")) {
+      const s = new oc.BRepAdaptor_Surface(oc.TopoDS.Face(f), true);
+      let on = false;
+      if (s.GetType() === oc.GeomAbs_SurfaceType.GeomAbs_Plane) {
+        const pl = s.Plane();
+        const [o, d] = [pl.Location(), pl.Axis().Direction()];
+        on = Math.abs(Math.abs(d.X() * n[0] + d.Y() * n[1] + d.Z() * n[2]) - 1) < 1e-9 && Math.abs(o.X() * n[0] + o.Y() * n[1] + o.Z() * n[2] - at) < 1e-6;
+        o.delete();
+        d.delete();
+        pl.delete();
+      }
+      s.delete();
+      if (!on) continue;
+      for (const e of elements(oc, f, "edge")) {
+        const c = new oc.BRepAdaptor_Curve(oc.TopoDS.Edge(e));
+        const sampler = new oc.GCPnts_TangentialDeflection(c, c.FirstParameter(), c.LastParameter(), 0.1, CHORD, 2, 1e-9, 0);
+        const pts: V2[] = [];
+        for (let i = 1; i <= sampler.NbPoints(); i++) {
+          const p = sampler.Value(i);
+          const w: V3 = [p.X(), p.Y(), p.Z()];
+          p.delete();
+          pts.push([dot(w, ax.x), dot(w, ax.y)]);
+        }
+        sampler.delete();
+        const m = c.Value((c.FirstParameter() + c.LastParameter()) / 2);
+        const middle: V3 = [m.X(), m.Y(), m.Z()];
+        m.delete();
+        c.delete();
+        if (pts.length < 2) continue;
+        outline.push(pts);
+        faces.push(faceAt(middle));
+      }
+    }
+    if (outline.length) cuts.push({ body, outline, faces });
+  });
+  return { shapes: out, cuts, depth: dot(cut.origin, ax.z) };
+}
+
+const cross3 = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit3 = (a: V3): V3 => {
+  const l = Math.hypot(...a) || 1;
+  return [a[0] / l, a[1] / l, a[2] / l];
+};
