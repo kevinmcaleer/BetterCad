@@ -35,13 +35,20 @@ const FOUR_LAYERS = ["kit-dev-coldfire-xilinx_5213", "video"];
 
 describe.skipIf(!has).each(PROJECTS)("KiCad's demo %s", (dir, name) => {
   const folder = join(DEMOS, dir);
-  const files = readdirSync(folder)
-    .filter((f) => /\.kicad_sch$/.test(f) || f === `${name}.kicad_pcb` || f === `${name}.kicad_pro`)
-    .filter((f) => !/\.kicad_sch$/.test(f) || !/_v2/.test(f) || /_v2/.test(name))
-    .map((f) => ({ name: f, text: readFileSync(join(folder, f), "utf8") }));
-  const got = importKicadProject(files, { licence: "See the KiCad demos" });
+  // Read when a test runs, not when the file is collected: a skipped suite is still collected.
+  let read: ReturnType<typeof importKicadProject> | undefined;
+  const open = () => {
+    if (read) return read;
+    const files = readdirSync(folder)
+      .filter((f) => /\.kicad_sch$/.test(f) || f === `${name}.kicad_pcb` || f === `${name}.kicad_pro`)
+      .filter((f) => !/\.kicad_sch$/.test(f) || !/_v2/.test(f) || /_v2/.test(name))
+      .map((f) => ({ name: f, text: readFileSync(join(folder, f), "utf8") }));
+    read = importKicadProject(files, { licence: "See the KiCad demos" });
+    return read;
+  };
 
   it("has the nets KiCad finds", () => {
+    const got = open();
     const out = join(mkdtempSync(join(tmpdir(), "bc-demo-")), "out.net");
     execFileSync("kicad-cli", ["sch", "export", "netlist", join(folder, `${name}.kicad_sch`), "-o", out], { stdio: ["ignore", "pipe", "pipe"] });
     const tree = parseSexpr(readFileSync(out, "utf8"))[0] as Node[];
@@ -64,6 +71,7 @@ describe.skipIf(!has).each(PROJECTS)("KiCad's demo %s", (dir, name) => {
 
   // The two four layer boards lose their inside layers on the way in, so their copper is not whole.
   it.skipIf(FOUR_LAYERS.includes(dir))("has a board with nothing joined that should not be, and nothing left to route", () => {
+    const got = open();
     expect(got.design.board).toBeDefined();
     expect(got.found.placed).toBe(got.design.board!.placements.length);
     const found = new Map<string, number>();
