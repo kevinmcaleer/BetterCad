@@ -75,7 +75,7 @@ test.describe("on a wide screen", () => {
 
   test("make a part of your own from a pin list and a package, then place it", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "Schematic", exact: true }).click();
     await tools(page)
@@ -100,14 +100,14 @@ test.describe("on a wide screen", () => {
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 1 part, 0 nets" })).toBeVisible();
     // It is still there after a reload: your parts are kept in this browser.
     await page.reload();
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).waitFor();
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("bettercad.electronics.library") ?? "{}").pack?.parts?.[0]?.name)).toBe("Level shifter");
   });
 
   test("check the rules, copy a circuit, edit the parts in a table and export the schematic", async ({ page }) => {
     await page.addInitScript(() => delete (window as unknown as Record<string, unknown>).showSaveFilePicker);
     await page.goto("/");
-    await page.getByRole("button", { name: "Pick: Bodies" }).waitFor();
+    await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "Schematic", exact: true }).click();
     await ledCircuit(page);
