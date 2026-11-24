@@ -102,6 +102,8 @@ export interface TopBarProps {
   renderRibbon?: ReactNode;
   /** The Render tab, chosen while the Render view is closed: opens it. */
   onRender?: () => void;
+  /** Another tab chosen while the Render view is open: it goes back to modelling. */
+  onLeaveRender?: () => void;
   /** The schematic or the board is open (#617): the Electronics tab shows that view's tools. */
   electronicsRibbon?: ReactNode;
   /** The compact bar's last button: the ribbon's tabs and tools as a sheet, for phones and tablets. */
@@ -224,6 +226,7 @@ export function TopBar(p: TopBarProps) {
     const pick = (t: Exclude<RibbonTab, "sketch">) => {
       // Render is a view more than a tab of tools: choosing it opens the Render view, which brings its own tools.
       if (t === "render") return p.onRender?.();
+      if (over?.id === "render") p.onLeaveRender?.();
       setTab(t);
       setFolded(false);
     };
@@ -248,7 +251,7 @@ export function TopBar(p: TopBarProps) {
                   className="bc-tab"
                   aria-selected={!sketching && tab === id}
                   aria-controls="bc-ribbon-tools"
-                  disabled={sketching}
+                  disabled={sketching && over?.id !== "render"}
                   data-tip={folded ? undefined : "Double-click to fold the tools away"}
                   onClick={() => pick(id)}
                   onDoubleClick={() => setFolded(!folded)}

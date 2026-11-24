@@ -3,6 +3,16 @@ import { expect, test } from "@playwright/test";
 // Close the page ourselves: SwiftShader can leave the context's own close waiting long enough to stall the next test.
 test.afterEach(async ({ page }) => page.close());
 
+/**
+ * The Render view opens stopped: press Start. The path tracer's first look can freeze a software GPU's page while its
+ * shader builds, so both steps wait long.
+ */
+async function startRender(page: import("@playwright/test").Page) {
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
+  await bar.getByRole("button", { name: "Start rendering" }).click({ timeout: 200_000 });
+}
+
 /** The render film strip: a shot added in the Render view renders in the background and lands on the strip. */
 test("Add to strip renders the shot in the background, with a wheel on the top bar", async ({ page }) => {
   test.setTimeout(480_000);
@@ -15,6 +25,7 @@ test("Add to strip renders the shot in the background, with a wheel on the top b
   await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
 
   await page.keyboard.press("Shift+R");
+  await startRender(page);
   const bar = page.getByRole("group", { name: "Render options" });
   // A software GPU freezes the page while the path tracer's shader builds: wait for the picture before anything else.
   await expect(bar.getByRole("status")).toHaveText("2 of 2 samples", { timeout: 240_000 });

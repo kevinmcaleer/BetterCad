@@ -94,7 +94,6 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     pr.setCamera(cam.current);
     session.set({ loading: false, samples: 0 });
     pr.start();
-    const slow = window.setTimeout(() => pr.samples < SLOW_SAMPLES && session.set({ sluggish: true }), SLOW_MS);
     session.save = async (size) => {
       const w = el.clientWidth,
         h = el.clientHeight;
@@ -113,7 +112,6 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
       }
     };
     return () => {
-      window.clearTimeout(slow);
       ro.disconnect();
       session.save = null;
       pr.dispose();
@@ -126,7 +124,17 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
   useEffect(() => r.current?.setBodies(bodies, cutPlane(section)), [bodies, section]);
   useEffect(() => r.current?.setPreset(state.preset), [state.preset]);
   useEffect(() => r.current?.setStyle(state.style), [state.style]);
-  useEffect(() => r.current?.hold(state.stopped), [state.stopped]);
+  useEffect(() => {
+    const pr = r.current;
+    pr?.hold(state.stopped);
+    if (!pr || state.stopped) return;
+    // Started: a slow GPU shows in the first few seconds of samples.
+    const from = pr.samples;
+    const slow = window.setTimeout(() => pr.samples - from < SLOW_SAMPLES && session.set({ sluggish: true }), SLOW_MS);
+    return () => window.clearTimeout(slow);
+    // r.current is set in the effect above, which runs first.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.stopped]);
   useEffect(() => r.current?.setBackground(state.background), [state.background]);
   useEffect(() => r.current?.setFocus(FOCUSES.find((f) => f.id === state.focus)!.aperture), [state.focus]);
   useEffect(() => {
@@ -251,7 +259,7 @@ export interface RenderBarProps {
   onNote?: (text: string) => void;
   onClose: () => void;
   onExportGltf: () => void;
-  /** The ribbon's Render tab holds the options: the bar keeps only the status and Done. */
+  /** The ribbon's Render tab holds the options, and another tab leaves the view: the bar keeps only the status. */
   ribbon?: boolean;
 }
 
@@ -319,7 +327,9 @@ function useStatus(session: RenderSession) {
       ? `Saving the picture, ${Math.round(s.saving * 100)}%`
       : s.moving
         ? "Waiting for you to stop moving"
-        : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(max)}`;
+        : s.stopped && s.samples <= 1
+          ? "Press Start to render"
+          : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(max)}`;
   const done = s.samples >= max;
   const rendering = !s.stopped && !done && !s.loading && !s.slow;
   const go = {
@@ -332,7 +342,10 @@ function useStatus(session: RenderSession) {
   return { s, status, rendering, go, save };
 }
 
-/** The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. */
+/**
+ * The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. With the
+ * ribbon, only the status: the Render tab holds the options, and choosing another tab goes back to modelling.
+ */
 export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: RenderBarProps) {
   const { s, status, rendering, go, save } = useStatus(session);
   // A slow render still works, so it gets a toast that fades rather than a banner over the picture.
@@ -353,7 +366,6 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
           <span className="bc-armed-note bc-render-status" role="status">
             {status}
           </span>
-          <Button kind="done" label="Done" title="Back to modelling" shortcut="Esc" onClick={onClose} />
         </div>
         {slow}
       </>
@@ -431,11 +443,13 @@ export interface RenderRibbonProps {
   session: RenderSession;
   /** Keeps this view on the film strip, rendering in the background. */
   onAdd?: () => void;
-  onClose: () => void;
 }
 
-/** The ribbon's Render tab (desktop), as Drawing's: the scene, the picture's quality, the strip, saving, and Done. */
-export function RenderRibbon({ session, onAdd, onClose }: RenderRibbonProps) {
+/**
+ * The ribbon's Render tab (desktop): the scene, the picture's quality, the strip and saving. It is a workspace like
+ * the others, so there is no Done: another tab (or Esc) goes back to modelling.
+ */
+export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
   const { s, rendering, go, save } = useStatus(session);
   const pick = <T extends { id: string; label: string }>(list: readonly T[], on: string, set: (id: T["id"]) => void): MenuEntry[] =>
     list.map((x) => ({ id: x.id, label: x.label, checked: on === x.id, onSelect: () => set(x.id) }));
@@ -498,9 +512,6 @@ export function RenderRibbon({ session, onAdd, onClose }: RenderRibbonProps) {
       )}
       <RibbonGroup label="Output" entries={[]}>
         <RibbonMenu icon="download" colour="printer" label="Save image" short="Save image" entries={save} />
-      </RibbonGroup>
-      <RibbonGroup label="Finish" entries={[]}>
-        <RibbonButton icon="finish" colour={false} label="Done: back to modelling" short="Done" shortcut="Esc" done onPress={onClose} />
       </RibbonGroup>
     </>
   );

@@ -4535,13 +4535,13 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 <Suspense fallback={null}>
                   <RenderRibbon
                     session={render}
-                    onClose={closeRender}
                     onAdd={files.shared || !strip ? undefined : () => renderCam.current && strip.add(render, renderCam.current)}
                   />
                 </Suspense>
               ) : undefined
             }
             onRender={files.shared ? undefined : () => openRender()}
+            onLeaveRender={closeRender}
             electronicsRibbon={
               ribbonOn && eview ? (
                 <Suspense fallback={null}>

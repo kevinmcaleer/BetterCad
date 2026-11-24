@@ -138,6 +138,15 @@ describe("Ribbon", () => {
     expect(screen.getByRole("toolbar", { name: "Render tools" })).toContainElement(screen.getByRole("button", { name: "Lighting" }));
   });
 
+  it("leaves the Render view when you choose another tab, with no Done needed", () => {
+    const onLeaveRender = vi.fn();
+    setup({ ribbon: (t) => <span>{t} tools</span>, onRender: vi.fn(), onLeaveRender, renderRibbon: <button type="button">Lighting</button> });
+    const assemble = screen.getByRole("tab", { name: "Assemble" });
+    expect(assemble).toBeEnabled();
+    fireEvent.click(assemble);
+    expect(onLeaveRender).toHaveBeenCalledOnce();
+  });
+
   it("the Electronics tab shows the open view's tools while the schematic or the board is open (#617)", () => {
     setup({ ribbon: () => <span>model</span>, electronicsRibbon: <button type="button">Wire</button> });
     const tabs = screen.getAllByRole("tab");

@@ -9,7 +9,7 @@ describe("the Render view's options (#197)", () => {
     const s = renderSession();
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
     expect(screen.getByRole("status")).toHaveTextContent("Loading the renderer…");
-    s.set({ loading: false, samples: 24 });
+    s.set({ loading: false, stopped: false, samples: 24 });
     expect(await screen.findByText("24 of 512 samples")).toBeInTheDocument();
     s.set({ moving: true });
     expect(await screen.findByText("Waiting for you to stop moving")).toBeInTheDocument();
@@ -22,10 +22,15 @@ describe("the Render view's options (#197)", () => {
     expect(s.get().style).toBe("paper");
   });
 
-  it("stops and starts the picture with a round button, so background renders get the GPU", async () => {
+  it("opens stopped, then starts and stops the picture with a round button, so background renders get the GPU", async () => {
     const s = renderSession();
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
-    s.set({ loading: false, samples: 40 });
+    // A first look only: nothing renders until you press Start.
+    s.set({ loading: false, samples: 1 });
+    expect(await screen.findByText("Press Start to render")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Start rendering" }));
+    expect(s.get().stopped).toBe(false);
+    s.set({ samples: 40 });
     await userEvent.click(await screen.findByRole("button", { name: "Stop rendering" }));
     expect(s.get().stopped).toBe(true);
     expect(screen.getByRole("status")).toHaveTextContent("Stopped at 40 of 512 samples");
@@ -36,22 +41,22 @@ describe("the Render view's options (#197)", () => {
     expect(await screen.findByRole("button", { name: "Finished: raise the quality to keep going" })).toBeDisabled();
   });
 
-  it("keeps the options on the ribbon's Render tab, and only the status and Done on the bar", async () => {
+  it("keeps the options on the ribbon's Render tab, only the status on the bar, and no Done", async () => {
     const s = renderSession();
     const onAdd = vi.fn();
-    const onClose = vi.fn();
     render(
       <>
-        <RenderBar session={s} onClose={onClose} onExportGltf={() => {}} ribbon />
+        <RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} ribbon />
         <div role="toolbar" aria-label="Render tools">
-          <RenderRibbon session={s} onAdd={onAdd} onClose={onClose} />
+          <RenderRibbon session={s} onAdd={onAdd} />
         </div>
       </>,
     );
     const bar = screen.getByRole("group", { name: "Render options" });
     expect(bar).toHaveTextContent("Loading the renderer…");
-    expect(bar.querySelectorAll("button")).toHaveLength(1);
-    s.set({ loading: false, samples: 40 });
+    expect(bar.querySelectorAll("button")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: /Done/ })).toBeNull();
+    s.set({ loading: false, samples: 1 });
     await userEvent.click(await screen.findByRole("button", { name: "Lighting: Studio" }));
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Daylight" }));
     expect(s.get().preset).toBe("daylight");
@@ -60,14 +65,13 @@ describe("the Render view's options (#197)", () => {
     expect(s.get().background).toBe("holoroom");
     await userEvent.click(screen.getByRole("button", { name: /^Paper/ }));
     expect(s.get().style).toBe("paper");
-    await userEvent.click(screen.getByRole("button", { name: "Stop rendering" }));
-    expect(s.get().stopped).toBe(true);
+    expect(bar).toHaveTextContent("Press Start to render");
     await userEvent.click(screen.getByRole("button", { name: "Start rendering" }));
     expect(s.get().stopped).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "Stop rendering" }));
+    expect(s.get().stopped).toBe(true);
     await userEvent.click(screen.getByRole("button", { name: /^Add to strip/ }));
     expect(onAdd).toHaveBeenCalledOnce();
-    await userEvent.click(screen.getByRole("button", { name: "Done: back to modelling" }));
-    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("picks a background apart from the lighting", async () => {
