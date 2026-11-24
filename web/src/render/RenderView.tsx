@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Banner, Button, IconButton, MenuButton, ViewCube, type MenuEntry } from "@bettercad/ui";
+import { Banner, Button, Icon, IconButton, MenuButton, RibbonButton, RibbonGroup, ViewCube, type IconName, type MenuEntry } from "@bettercad/ui";
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
 import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
@@ -251,6 +251,8 @@ export interface RenderBarProps {
   onNote?: (text: string) => void;
   onClose: () => void;
   onExportGltf: () => void;
+  /** The ribbon's Render tab holds the options: the bar keeps only the status and Done. */
+  ribbon?: boolean;
 }
 
 const SIZES: { id: SaveSize; label: string }[] = [
@@ -307,25 +309,55 @@ function QualityBar({ session }: { session: RenderSession }) {
   );
 }
 
-/** The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. */
-export function RenderBar({ session, onClose, onExportGltf, onNote }: RenderBarProps) {
+/** Where the picture has got, and what Start and Save can do now: for the floating bar and the ribbon's Render tab. */
+function useStatus(session: RenderSession) {
   const s = useSession(session);
-  // A slow render still works, so it gets a toast that fades rather than a banner over the picture.
-  useEffect(() => {
-    if (s.sluggish && !s.slow) onNote?.(SLUGGISH_TEXT);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.sluggish]);
-  const save: MenuEntry[] = SIZES.map((z) => ({ id: z.id, label: z.label, disabled: s.saving !== null || s.slow, onSelect: () => void session.save?.(z.id) }));
+  const max = testMax() ?? samplesFor(s.quality);
   const status = s.loading
     ? "Loading the renderer…"
     : s.saving !== null
       ? `Saving the picture, ${Math.round(s.saving * 100)}%`
       : s.moving
         ? "Waiting for you to stop moving"
-        : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(testMax() ?? samplesFor(s.quality))}`;
-  const max = testMax() ?? samplesFor(s.quality);
+        : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(max)}`;
   const done = s.samples >= max;
   const rendering = !s.stopped && !done && !s.loading && !s.slow;
+  const go = {
+    icon: (rendering ? "stop" : "play") as IconName,
+    title: rendering ? "Stop rendering" : done ? "Finished: raise the quality to keep going" : "Start rendering",
+    disabled: !rendering && (done || s.loading || s.slow),
+    onClick: () => session.set({ stopped: rendering }),
+  };
+  const save: MenuEntry[] = SIZES.map((z) => ({ id: z.id, label: z.label, disabled: s.saving !== null || s.slow, onSelect: () => void session.save?.(z.id) }));
+  return { s, status, rendering, go, save };
+}
+
+/** The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. */
+export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: RenderBarProps) {
+  const { s, status, rendering, go, save } = useStatus(session);
+  // A slow render still works, so it gets a toast that fades rather than a banner over the picture.
+  useEffect(() => {
+    if (s.sluggish && !s.slow) onNote?.(SLUGGISH_TEXT);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.sluggish]);
+  const slow = s.slow && (
+    <Banner tone="warn" action={<Button size="dense" label="Export glTF" title="Export the model for Blender" onClick={onExportGltf} />}>
+      {SLOW_TEXT}
+    </Banner>
+  );
+  if (ribbon)
+    return (
+      <>
+        <div role="group" aria-label="Render options" className="bc-tools bc-armed bc-render-bar">
+          <span className="bc-tools-title">Render</span>
+          <span className="bc-armed-note bc-render-status" role="status">
+            {status}
+          </span>
+          <Button kind="done" label="Done" title="Back to modelling" shortcut="Esc" onClick={onClose} />
+        </div>
+        {slow}
+      </>
+    );
   return (
     <>
       <div role="group" aria-label="Render options" className="bc-tools bc-armed bc-render-bar">
@@ -354,13 +386,7 @@ export function RenderBar({ session, onClose, onExportGltf, onNote }: RenderBarP
             onClick={() => session.set({ style: "paper" })}
           />
         </span>
-        <IconButton
-          className={rendering ? "bc-render-go bc-render-stop" : "bc-render-go"}
-          icon={rendering ? "stop" : "play"}
-          title={rendering ? "Stop rendering" : done ? "Finished: raise the quality to keep going" : "Start rendering"}
-          disabled={!rendering && (done || s.loading || s.slow)}
-          onClick={() => session.set({ stopped: rendering })}
-        />
+        <IconButton className={rendering ? "bc-render-go bc-render-stop" : "bc-render-go"} {...go} />
         <QualityBar session={session} />
         <span className="bc-armed-note bc-render-status" role="status">
           {status}
@@ -368,11 +394,114 @@ export function RenderBar({ session, onClose, onExportGltf, onNote }: RenderBarP
         <MenuButton label="Save image" entries={save} trigger={(p) => <Button {...p} icon="download" label="Save image" title="Save the picture as a PNG" />} />
         <Button kind="done" label="Done" title="Back to modelling" shortcut="Esc" onClick={onClose} />
       </div>
-      {s.slow && (
-        <Banner tone="warn" action={<Button size="dense" label="Export glTF" title="Export the model for Blender" onClick={onExportGltf} />}>
-          {SLOW_TEXT}
-        </Banner>
+      {slow}
+    </>
+  );
+}
+
+/** A ribbon button that opens a menu: Lighting, Background, Focus and Save image. */
+function RibbonMenu({
+  icon,
+  colour,
+  label,
+  short,
+  entries,
+}: {
+  icon: IconName;
+  colour?: string | boolean;
+  label: string;
+  short: string;
+  entries: MenuEntry[];
+}) {
+  return (
+    <MenuButton
+      label={label}
+      entries={entries}
+      trigger={(t) => (
+        <button {...t} type="button" className="bc-rb" aria-label={label} data-tip={label}>
+          <Icon name={icon} size={28} colour={colour ?? true} />
+          <span className="bc-rb-label">{short}</span>
+        </button>
       )}
+    />
+  );
+}
+
+export interface RenderRibbonProps {
+  session: RenderSession;
+  /** Keeps this view on the film strip, rendering in the background. */
+  onAdd?: () => void;
+  onClose: () => void;
+}
+
+/** The ribbon's Render tab (desktop), as Drawing's: the scene, the picture's quality, the strip, saving, and Done. */
+export function RenderRibbon({ session, onAdd, onClose }: RenderRibbonProps) {
+  const { s, rendering, go, save } = useStatus(session);
+  const pick = <T extends { id: string; label: string }>(list: readonly T[], on: string, set: (id: T["id"]) => void): MenuEntry[] =>
+    list.map((x) => ({ id: x.id, label: x.label, checked: on === x.id, onSelect: () => set(x.id) }));
+  return (
+    <>
+      <RibbonGroup label="Scene" entries={[]}>
+        <RibbonMenu
+          icon="sun"
+          label={`Lighting: ${LIGHT_PRESETS.find((x) => x.id === s.preset)!.label}`}
+          short="Lighting"
+          entries={pick(LIGHT_PRESETS, s.preset, (preset) => session.set({ preset }))}
+        />
+        <RibbonMenu
+          icon="image"
+          label={`Background: ${BACKGROUNDS.find((x) => x.id === s.background)!.label}`}
+          short="Background"
+          entries={pick(BACKGROUNDS, s.background, (background) => session.set({ background }))}
+        />
+        <RibbonMenu
+          icon="camera"
+          label={`Depth of field: ${FOCUSES.find((x) => x.id === s.focus)!.label}`}
+          short="Focus"
+          entries={pick(FOCUSES, s.focus, (focus) => session.set({ focus }))}
+        />
+      </RibbonGroup>
+      <RibbonGroup label="Surface" entries={[]}>
+        <RibbonButton
+          icon="sliders"
+          colour="sliders"
+          label="Colours: each part's colour and finish"
+          short="Colours"
+          pressed={s.style === "finishes"}
+          onPress={() => session.set({ style: "finishes" })}
+        />
+        <RibbonButton
+          icon="shapes"
+          colour="shapes"
+          label="Paper: every part in matte white, to show the shape"
+          short="Paper"
+          pressed={s.style === "paper"}
+          onPress={() => session.set({ style: "paper" })}
+        />
+      </RibbonGroup>
+      <RibbonGroup label="Render" entries={[]}>
+        <RibbonButton
+          icon={go.icon}
+          colour={false}
+          label={go.title}
+          short={rendering ? "Stop" : "Start"}
+          done={!rendering && !go.disabled}
+          disabled={go.disabled}
+          onPress={go.onClick}
+        />
+        <QualityBar session={session} />
+      </RibbonGroup>
+      {onAdd && (
+        <RibbonGroup label="Strip" entries={[]}>
+          <RibbonButton icon="plus" colour="camera" label="Add to strip: keep this view and render it in the background" short="Add to strip" onPress={onAdd} />
+        </RibbonGroup>
+      )}
+      <RibbonGroup label="Output" entries={[]}>
+        <RibbonMenu icon="download" colour="printer" label="Save image" short="Save image" entries={save} />
+      </RibbonGroup>
+      <RibbonGroup label="Finish" entries={[]}>
+        <RibbonButton icon="finish" colour={false} label="Done: back to modelling" short="Done" shortcut="Esc" done onPress={onClose} />
+      </RibbonGroup>
     </>
   );
 }

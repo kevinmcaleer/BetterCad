@@ -168,6 +168,8 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
       pins: ["drawing.new", "drawing.everyPart"],
     },
   ],
+  // Choosing the tab opens the Render view, whose own tools (RenderRibbon) take over.
+  render: [],
   // The electronics workspace (#606). Inside a view the tab shows that view's tools instead.
   electronics: [
     {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
-/** The ribbon's tabs. Sketch takes over while a sketch is open. */
-export type RibbonTab = "model" | "assemble" | "inspect" | "drawing" | "electronics" | "sketch";
+/** The ribbon's tabs. Sketch takes over while a sketch is open; Render opens the Render view, whose tools it then holds. */
+export type RibbonTab = "model" | "assemble" | "inspect" | "drawing" | "render" | "electronics" | "sketch";
 
 /** Which tool bar shows: the ribbon on wide screens with a mouse, the compact bar elsewhere, or one of them always. */
 export type ToolbarMode = "auto" | "ribbon" | "compact";
