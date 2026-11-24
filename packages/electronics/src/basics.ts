@@ -266,6 +266,8 @@ export function header(pins: number): ComponentDef {
     ],
     keywords: ["header", "connector", "pins"],
     source: SOURCE,
+    // The footprint's origin is pin 1; a pick and place list wants the middle of the part.
+    ...(pins > 1 ? { pnp: { dy: (-(pins - 1) * GRID) / 2 } } : {}),
   };
 }
 

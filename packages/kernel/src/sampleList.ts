@@ -15,6 +15,7 @@ export const SAMPLE_CARDS: readonly SampleCard[] = [
   { id: "box-with-lid", name: "Box with a lid", blurb: "A box with a lid that fits" },
   { id: "bracket", name: "Bracket", blurb: "An L bracket with M4 screw holes" },
   { id: "phone-stand", name: "Phone stand", blurb: "Prints flat with no supports" },
+  { id: "pico-servo-board", name: "Pico servo board", blurb: "A circuit board from schematic to order, on a printed base", card: false },
   { id: "hole-calibration", name: "Hole calibration", blurb: "Find the hole offset your printer needs", card: false },
   { id: "fit-calibration", name: "Fit calibration", blurb: "Find the gaps your printer needs for parts that fit", card: false },
   { id: "track-wheels", name: "Track and wheels", blurb: "A track piece with two pins and two wheels to wrap it round", card: false },

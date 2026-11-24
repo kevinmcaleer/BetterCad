@@ -12,10 +12,26 @@ export type Id = string;
 export type P2 = [number, number];
 
 let counter = 0;
+let fixed: number | null = null;
 /** A fresh id. Ids only need to be unique inside one design. */
 export function eid(prefix: string): Id {
+  if (fixed !== null) {
+    fixed += 1;
+    return `${prefix}${fixed.toString(36)}`;
+  }
   counter += 1;
   return `${prefix}${Date.now().toString(36)}${counter.toString(36)}`;
+}
+
+/** Runs a builder with ids counted from one, so a sample or a fixture comes out the same every time. */
+export function withFixedIds<T>(build: () => T): T {
+  const was = fixed;
+  fixed = 0;
+  try {
+    return build();
+  } finally {
+    fixed = was;
+  }
 }
 
 // ---------------------------------------------------------------- shapes

@@ -1,0 +1,18 @@
+M48
+; DRILL file {BetterCad}
+; FORMAT={-:-/ absolute / metric / decimal}
+; #@! TF.FileFunction,Plated,1,2,PTH
+FMAT,2
+METRIC
+T1C0.300
+T2C1.000
+%
+G90
+G05
+T1
+X20.000Y30.000
+T2
+X30.000Y20.000
+X30.000Y17.460
+X5.000Y35.000
+M30

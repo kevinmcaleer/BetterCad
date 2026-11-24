@@ -24,7 +24,8 @@ describe("samples", () => {
     expect(r.failed).toEqual([]);
     for (const b of r.bodies) expect(b.measure.volume).toBeGreaterThan(0);
     // Small enough to ship beside the app, with room for a thumbnail.
-    expect(saveBcad(doc).length).toBeLessThan(id.endsWith("-calibration") ? 80_000 : 15_000);
+    // The board sample carries a whole electronics design, with its own copy of every component it uses.
+    expect(saveBcad(doc).length).toBeLessThan(id.endsWith("-calibration") ? 80_000 : doc.electronics ? 100_000 : 15_000);
     // Every sample has parameters, and every step that sizes a part uses them.
     expect(doc.params!.length).toBeGreaterThanOrEqual(3);
   });

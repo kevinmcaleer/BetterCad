@@ -20,6 +20,9 @@
     "./pcb/state": "./src/pcb/state.ts",
     "./pcb/rules": "./src/pcb/rules.ts",
     "./drc": "./src/pcb/drc.ts",
+    "./sample": "./src/sample.ts",
+    "./fab/pack": "./src/fab/pack.ts",
+    "./fab/read": "./src/fab/read.ts",
     "./library/starter.json": "./library/starter.json"
   },
   "scripts": {

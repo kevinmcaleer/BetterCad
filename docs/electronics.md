@@ -289,3 +289,71 @@ Left for later: dragging a part in the 3D view (move it in the PCB view; the mod
 board in 3D becoming a board hole, STEP models for parts (#628; parts are boxes and cylinders), the Connector
 opening and Standoffs under the board tools (#652; project the board's holes and use Mount), a board started from a
 face, and the copper in a path-traced render.
+
+## Files for a board house (#655 to #661)
+
+Everything a board house needs comes out of `packages/electronics/src/fab/`, as text and rows with no DOM, and is
+checked by reading the files back.
+
+**Gerber** (`gerber.ts`). One RS-274X file per layer with X2 attributes, in millimetres, format 4.6: top and bottom
+copper, mask, paste and silkscreen, and the outline. Every file is drawn looking down on the top of the board.
+Pads are flashed with apertures: circles, rectangles and obrounds as they are, and a macro (two bars and four
+discs, or a turned rectangle) for a rounded pad or one at an odd angle. Tracks are drawn with a round pen, and
+copper carries its net (`.N`), pads their part and pin (`.P`). The outline is drawn as closed paths with arcs kept
+as arcs. Mask openings are the pad grown by the mask margin; vias stay covered. The silkscreen has the mask
+openings taken back out of it, so ink never lands on a pad.
+
+A pour is painted the way the screen paints it, with dark and clear polarity in the same order: the area, the
+rings round its own pads out, the spokes back in, then everything it keeps clear of out, and last the islands the
+fill dropped. What lies outside the board is cleared with one area that has the board as a hole in it. The format
+has no way to clip one pour's clearing to its own area, so two pours on different nets on one side that run into
+each other cannot always be painted truly; `pourClashes` finds that case and the order card refuses to export it.
+
+**Text** (`font.ts`). Board houses are sent lines, not fonts, so silkscreen and copper text is drawn with our own
+stroke font: capitals, digits and common marks on a 4 by 6 grid, small letters as small capitals. The PCB view
+still draws text with the screen's font, so the preview is the place to see the text that will be printed.
+
+**Drill** (`drill.ts`). Excellon in millimetres, plated and bare holes in separate files, finished sizes, the same
+coordinates as the Gerbers. A slot is a routed slot (`G00`, `M15`, `G01`, `M16`). `tools` is the drill table.
+
+**Parts lists** (`parts.ts`). The bill of materials groups fitted parts whose component, value, package and part
+numbers all match. A part's own supplier numbers win over its component's, field by field. The pick and place list
+has every fitted part's middle, side and turn (anticlockwise, seen from the top), with a component's own
+corrections (`pnp`) added in the file only. Part numbers are typed or pasted in the parts table, which opens from
+the order card.
+
+**The order pack** (`pack.ts`, `houses.json`). Order the board, in the PCB view's tools, picks a board house and
+gives the Gerber and drill files in a zip of their own, then the parts list and the pick and place list as CSV or
+XLSX (`web/src/electronics/xlsx.ts`, a workbook written by hand: five small XML files in a zip). Each house is data:
+its columns and headings, which part number it needs, the pages they were read from and the date. Where a page
+names a field but not the exact heading, the house's notes say so. The card shows what an order form asks (size,
+layers, smallest track, gap and hole) and a checklist; only an open outline or clashing pours stop the export.
+Nothing is uploaded: a link opens the board house's site.
+
+**The preview** (`read.ts`, `web/src/electronics/FabPreview.tsx`). A small Gerber and Excellon reader draws the files
+that were just written, layer by layer, from the top or the bottom, with layer ticks, zoom and a two-point measure.
+It draws from the files, never from the design. It opens any Gerber zip dropped on it too; step and repeat and
+aperture blocks are not read, and it says so when a file uses them. `inkAt` asks whether a file leaves a mark at a
+point, which is how the tests check clearances, spokes and that drill hits land on copper.
+
+Left for later: a real upload to each house's quote page to confirm the headings and how bottom parts are turned
+(#660; neither house's page says), a pick and place preview showing pin 1 (#659), a realistic board picture in the
+preview, live stock and prices (#661), LCSC numbers filled in for the starter library, and panels (#662).
+
+## The sample board (#666)
+
+The Pico servo board (`packages/electronics/src/sample.ts`; Open the sample board, on an empty schematic, or `#/sample/pico-servo-board`) is a carrier
+for a Raspberry Pi Pico that drives two servos: two rows of 20 sockets, two three-pin servo headers, a two-pin 5 V
+input, a power LED with its resistor and a capacitor across the supply. It is built from the same calls the tools
+make (place a part, label a pin, push to the board, route a track, pour copper), with fixed ids so it comes out the
+same every time.
+
+It is also the main fixture: `sample.test.ts` holds it to both rules checks with nothing found, to a whole order pack
+with nothing blocking, and to goldens of its Gerber, drill, parts list and pick and place files
+(`fab/golden/sample.*`). In the model it stands on four standoffs over a printed base, so the sample shows the board
+as a step on the timeline too. The `@journey` test in `web/e2e/electronics.spec.ts` opens it, finds the board in the
+model, and takes it as far as the preview of the files.
+
+What it is not, yet: the issue asked for a motor driver, a Qwiic connector and a power switch. Those parts are not in
+the starter library, so the sample keeps to parts that are. Its order pack has been read back by our own reader and
+by nothing else: nobody has uploaded it to a board house's quote page.

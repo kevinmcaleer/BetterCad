@@ -32,6 +32,7 @@ const BoardView = lazy(() => import("./BoardView"));
 const ChecksCard = lazy(() => import("./Checks"));
 const PartsTable = lazy(() => import("./PartsTable"));
 const ExportSchematic = lazy(() => import("./ExportSchematic"));
+const OrderBoard = lazy(() => import("./OrderBoard"));
 // The board's own cards: its check, its setup and the numbers of whatever is picked on it.
 const BoardChecks = lazy(() => import("./BoardChecks"));
 const BoardSetup = lazy(() => import("./BoardSetup"));
@@ -320,6 +321,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       run: toggle("checks"),
     },
     {
+      id: "order",
+      group: "Board",
+      label: "Order the board",
+      short: "Order",
+      icon: "download",
+      tip: "Gerber and drill files, a parts list and a pick and place list for a board house",
+      on: ui.card === "order",
+      run: toggle("order"),
+    },
+    {
       id: "push",
       group: "Sync",
       label: "Update from schematic",
@@ -432,6 +443,16 @@ function commands(design: () => ElectronicsDesign): Command[] {
       when: pcb,
       run: toggle("checks"),
       keywords: "drc design rules clearance short unrouted",
+    },
+    {
+      ...e,
+      id: "electronics.pcb.order",
+      label: "Order the board",
+      group: "Tools",
+      icon: "download",
+      when: pcb,
+      run: toggle("order"),
+      keywords: "gerber drill excellon bom bill of materials pick and place centroid cpl jlcpcb pcbway export manufacture fab",
     },
     {
       ...e,
@@ -635,13 +656,26 @@ export interface ElectronicsViewProps {
   /** The model has its Board step (#650), so the board stands in 3D; and how to add the step when it has not. */
   inModel?: boolean;
   onAddBoard?: () => void;
+  /** Opens the sample board (#666) as a new model. */
+  onSample?: () => void;
 }
 
 /**
  * The electronics workspace (#617, #619): the schematic or the board covers the 3D view, under the floating cards.
  * Laid out as Kev picked on 2026-11-24: switcher top centre, layers bottom right, checks strip along the bottom.
  */
-export default function ElectronicsView({ design: saved, edit, readOnly, ribbon, registry, name, sketches, inModel, onAddBoard }: ElectronicsViewProps) {
+export default function ElectronicsView({
+  design: saved,
+  edit,
+  readOnly,
+  ribbon,
+  registry,
+  name,
+  sketches,
+  inModel,
+  onAddBoard,
+  onSample,
+}: ElectronicsViewProps) {
   const ui = useEui();
   const blank = useRef(emptyDesign());
   const design = saved ?? blank.current;
@@ -704,6 +738,7 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
           <p>Start with a part.</p>
           <p className="bc-note">Place parts, join their pins with wires, then push the schematic to a PCB.</p>
           <Button variant="primary" icon="chip" label="Components" shortcut="P" onClick={() => eui.set({ card: "components" })} />
+          {onSample && <Button icon="folder" label="Open the sample board" onClick={onSample} />}
         </div>
       )}
 
@@ -728,6 +763,10 @@ export default function ElectronicsView({ design: saved, edit, readOnly, ribbon,
       {view === "pcb" && design.board && (
         <Suspense fallback={null}>
           {ui.card === "checks" && <BoardChecks design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: "order" })} />}
+          {ui.card === "order" && (
+            <OrderBoard design={design} name={name || "Board"} onClose={() => eui.set({ card: null })} onParts={() => eui.set({ card: "table" })} />
+          )}
           {ui.card === "board" && (
             <BoardSetup
               design={design}

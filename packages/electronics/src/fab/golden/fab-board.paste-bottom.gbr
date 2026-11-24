@@ -1,0 +1,10 @@
+%TF.GenerationSoftware,BetterCad,BetterCad,1*%
+%TF.SameCoordinates,Original*%
+%TF.FileFunction,Paste,Bot*%
+%TF.FilePolarity,Positive*%
+%FSLAX46Y46*%
+%MOMM*%
+%LPD*%
+G01*
+G75*
+M02*

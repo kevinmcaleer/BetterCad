@@ -471,7 +471,9 @@ export function useFiles(d: FilesDeps) {
           store.edit(() => r.doc, `Open ${r.doc.name}`);
           setBaseline(r.doc);
           deps.current.onSwitched();
-          deps.current.say(`Opened the ${r.doc.name.toLowerCase()} sample. Change it in Parameters.`);
+          deps.current.say(
+            `Opened the ${r.doc.name.toLowerCase()} sample. ${r.doc.electronics ? "Its schematic and board are under Electronics." : "Change it in Parameters."}`,
+          );
         } catch {
           leaveCloudRoute();
           deps.current.say("That sample didn't open. Check your connection and try again.", true);

@@ -1,0 +1,108 @@
+{
+  "$comment": "What each board house asks for in an order, read from its own help pages on the date given. `source` lists the pages. Where a page names a field but not the exact heading, `notes` says so: check the house's sample file before changing a heading, and update `checked`. File names use the Protel extensions (GTL, GBL, GTS, GBS, GTP, GBP, GTO, GBO, GKO), which neither house's page asks for by name but both read.",
+  "houses": [
+    {
+      "id": "jlcpcb",
+      "name": "JLCPCB",
+      "site": "https://jlcpcb.com/",
+      "source": [
+        "https://jlcpcb.com/help/article/how-to-generate-the-bom-and-centroid-file-from-kicad",
+        "https://jlcpcb.com/help/article/pick-place-file-for-pcb-assembly"
+      ],
+      "checked": "2026-11-24",
+      "names": { "gerbers": "{name}-gerbers.zip", "bom": "{name}-bom", "place": "{name}-cpl" },
+      "bom": [
+        { "key": "value", "heading": "Comment" },
+        { "key": "refs", "heading": "Designator" },
+        { "key": "footprint", "heading": "Footprint" },
+        { "key": "lcsc", "heading": "LCSC Part #" }
+      ],
+      "place": [
+        { "key": "ref", "heading": "Designator" },
+        { "key": "x", "heading": "Mid X" },
+        { "key": "y", "heading": "Mid Y" },
+        { "key": "side", "heading": "Layer" },
+        { "key": "rotation", "heading": "Rotation" }
+      ],
+      "sides": { "top": "Top", "bottom": "Bottom" },
+      "placeThru": true,
+      "needs": ["lcsc"],
+      "notes": [
+        "BOM: a .csv, .xls or .xlsx file with at least Comment, Designator, Footprint and the JLCPCB or LCSC part number.",
+        "Pick and place: Designator, Mid X, Mid Y, Layer (Top or Bottom) and Rotation, in millimetres. Positive rotation is anticlockwise.",
+        "The pages do not say where coordinates are measured from, or how bottom parts are turned. JLCPCB shows the placement for you to check before you pay: check it there.",
+        "The part number heading is not fixed on the pages (\"JLCPCB / LCSC Part #\"); \"LCSC Part #\" is the one their KiCad guide shows."
+      ]
+    },
+    {
+      "id": "pcbway",
+      "name": "PCBWay",
+      "site": "https://www.pcbway.com/",
+      "source": ["https://www.pcbway.com/assembly-file-requirements.html"],
+      "checked": "2026-11-24",
+      "names": { "gerbers": "{name}-gerbers.zip", "bom": "{name}-bom", "place": "{name}-centroid" },
+      "bom": [
+        { "key": "line", "heading": "Line #" },
+        { "key": "qty", "heading": "Quantity" },
+        { "key": "refs", "heading": "Reference Designator" },
+        { "key": "mpn", "heading": "Part Number" },
+        { "key": "description", "heading": "Part Description" },
+        { "key": "footprint", "heading": "Package" },
+        { "key": "mounting", "heading": "Type" },
+        { "key": "manufacturer", "heading": "Manufacturer Name" },
+        { "key": "mpn", "heading": "Manufacturer Part Number" },
+        { "key": "lcsc", "heading": "Distributor Part Number" }
+      ],
+      "place": [
+        { "key": "ref", "heading": "Reference Designator" },
+        { "key": "x", "heading": "X (mm)" },
+        { "key": "y", "heading": "Y (mm)" },
+        { "key": "rotation", "heading": "Rotation" },
+        { "key": "side", "heading": "Side" }
+      ],
+      "sides": { "top": "Top", "bottom": "Bottom" },
+      "placeThru": false,
+      "needs": ["mpn"],
+      "notes": [
+        "Gerbers in RS-274X, with at least silkscreen, copper and solder paste layers for assembly.",
+        "BOM: .xls, .xlsx or .csv with line number, quantity, reference designator, part number, description, package and type (surface mount, thru-hole or hybrid). Turn-key orders add manufacturer, manufacturer part number and distributor part number.",
+        "Centroid: reference designator, X and Y, rotation and side (Top or Bottom), surface mount parts only.",
+        "The page names these fields but gives no exact headings, units or rotation rule: the headings here are the page's field names."
+      ]
+    },
+    {
+      "id": "generic",
+      "name": "Any board house",
+      "site": "",
+      "source": [],
+      "checked": "2026-11-24",
+      "names": { "gerbers": "{name}-gerbers.zip", "bom": "{name}-bom", "place": "{name}-positions" },
+      "bom": [
+        { "key": "line", "heading": "Line" },
+        { "key": "qty", "heading": "Quantity" },
+        { "key": "refs", "heading": "References" },
+        { "key": "value", "heading": "Value" },
+        { "key": "footprint", "heading": "Footprint" },
+        { "key": "description", "heading": "Description" },
+        { "key": "manufacturer", "heading": "Manufacturer" },
+        { "key": "mpn", "heading": "Manufacturer part number" },
+        { "key": "lcsc", "heading": "LCSC part number" }
+      ],
+      "place": [
+        { "key": "ref", "heading": "Reference" },
+        { "key": "value", "heading": "Value" },
+        { "key": "footprint", "heading": "Footprint" },
+        { "key": "x", "heading": "X (mm)" },
+        { "key": "y", "heading": "Y (mm)" },
+        { "key": "rotation", "heading": "Rotation (degrees)" },
+        { "key": "side", "heading": "Side" }
+      ],
+      "sides": { "top": "Top", "bottom": "Bottom" },
+      "placeThru": true,
+      "needs": [],
+      "notes": [
+        "Plain names and every column. Positions are in millimetres from the board's origin, the same as the Gerbers; rotation is anticlockwise seen from the top."
+      ]
+    }
+  ]
+}

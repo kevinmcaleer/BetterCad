@@ -1,3 +1,5 @@
+import { SAMPLE_BOARD, sampleBoard } from "@bettercad/electronics/sample";
+import { addBoard } from "./board";
 import { newDoc, type Feature, type ModelDoc, type PartKind, type Vec3 } from "./document";
 import type { Parameter } from "./params";
 import { SAMPLE_CARDS, type SampleCard } from "./sampleList";
@@ -239,7 +241,33 @@ function trackWheels(): ModelDoc {
   return s.doc;
 }
 
+/**
+ * A circuit board in a model (#666): the sample board from the electronics package, standing on a printed base with
+ * a standoff under each mounting hole. The base is sized from the board, with a margin round it.
+ */
+function picoServoBoard(): ModelDoc {
+  const s = new Sample("Pico servo board");
+  const { width, height, holes } = SAMPLE_BOARD;
+  s.param("margin", "4", "Base beyond the board's edge");
+  s.param("plate", "3", "Base thickness");
+  s.param("lift", "5", "Standoff height");
+  s.part("base", "Base", "box", { x: `${width} + margin * 2`, y: `${height} + margin * 2`, z: "plate" }, { x: String(width / 2), y: String(height / 2) });
+  holes.forEach(([x, y], i) =>
+    s.part(`post${i + 1}`, `Standoff ${i + 1}`, "cylinder", { x: "7", y: "7", z: "lift" }, { x: String(x), y: String(y), z: "plate" }),
+  );
+  s.group(
+    "Base with standoffs",
+    "base",
+    holes.map((_, i) => ({ id: `post${i + 1}`, op: "join" as const })),
+  );
+  s.doc.electronics = sampleBoard();
+  // The board sits on the standoffs: plate and lift at their starting sizes.
+  s.doc = addBoard(s.doc, { position: { x: 0, y: 0, z: 8 } }, "fboard");
+  return s.doc;
+}
+
 const BUILDS: Record<string, () => ModelDoc> = {
+  "pico-servo-board": picoServoBoard,
   "track-wheels": trackWheels,
   "box-with-lid": boxWithLid,
   bracket,

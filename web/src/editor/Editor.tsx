@@ -5110,6 +5110,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   sketches={built.sketches}
                   inModel={doc.features.some((f) => f.type === "board")}
                   onAddBoard={() => store.edit((d) => addBoard(d), "Add the board to the model")}
+                  onSample={() => files.openSample("pico-servo-board")}
                 />
               </Suspense>
             )}
