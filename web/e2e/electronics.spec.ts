@@ -448,7 +448,8 @@ test.describe("on a wide screen", () => {
     const ask = page.getByRole("group", { name: "Delete parts" });
     await expect(ask.getByRole("status")).toContainText("Delete R1 from the schematic too?");
     await ask.getByRole("button", { name: "Delete" }).click();
-    await expect(page.getByRole("img", { name: /^PCB: 1 part,/ })).toBeVisible();
+    // The delete lands after the design's code answers; on a busy CI runner that has taken over five seconds.
+    await expect(page.getByRole("img", { name: /^PCB: 1 part,/ })).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("1");
     await expect(page.getByRole("img", { name: /^Schematic, .*: 1 part,/ })).toBeVisible();
     await undo.click();
