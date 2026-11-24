@@ -337,6 +337,8 @@ circle.bc-size-point.bc-size-picked {
 .bc-auto-recipes {
   display: grid;
   gap: var(--bc-space-2);
+  /* Full width, so the names and controls below keep their own two columns. */
+  grid-column: 1 / -1;
 }
 .bc-auto-recipe {
   display: flex;
