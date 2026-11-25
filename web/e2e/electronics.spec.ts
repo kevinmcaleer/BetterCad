@@ -787,7 +787,9 @@ test.describe("on a wide screen", () => {
       });
       // Nothing dark in it: nothing to print, and you are told why.
       await file.setInputFiles(svg("white"));
-      await expect(page.getByRole("group", { name: "Picture" }).getByRole("status")).toContainText("nothing dark in it to print");
+      // The picture reader is its own chunk, and the first picture waits for it: on a busy runner that has taken
+      // more than five seconds, with the message there a moment after the wait gave up.
+      await expect(page.getByRole("group", { name: "Picture" }).getByRole("status")).toContainText("nothing dark in it to print", { timeout: 20_000 });
       await file.setInputFiles(svg("black"));
       const card = page.getByRole("group", { name: "Picture" });
       await expect(card.getByLabel("Width (mm)")).toBeVisible();
