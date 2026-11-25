@@ -10,3 +10,4 @@ dist-types
 web/src/vendor
 packages/electronics/library/starter.json
 fixtures/electronics/*.design.json
+packages/electronics/src/sample.parts.json

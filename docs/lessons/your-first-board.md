@@ -22,15 +22,16 @@ follow along in the app.
 Choose the [Electronics](bettercad:tab/electronics) tab, then Schematic. On the empty schematic, choose Open the
 sample board.
 
-The sample is a carrier for a Raspberry Pi Pico: two rows of sockets for the Pico, two 3 pin headers for servos, a
-2 pin header for 5 V in, a capacitor to steady the supply and a power LED with its resistor.
+The sample is a carrier for a Raspberry Pi Pico that runs a small rover: two rows of sockets for the Pico, a motor
+driver with a 2 pin header for each motor, two 3 pin headers for servos, a socket for I2C sensors, a 2 pin header
+for 5 V in with a power switch, a capacitor to steady the supply and a power LED with its resistor.
 
 <!-- done: sample pico-servo-board -->
 
 ## Read the schematic
 
 Press 1 for the [schematic](bettercad:view/schematic). Nothing here is joined by long wires. Each pin has a short
-wire with a name on it: 5V, GND, SERVO1, SERVO2. Wires with the same name are one net, wherever they are on the
+wire with a name on it: 5V, GND, SERVO1, SERVO2, MOTOR_A1. Wires with the same name are one net, wherever they are on the
 sheet.
 
 Click the resistor R1. The card on the right shows its value (1 kΩ), its package and its pins. Click the LED D1 and
@@ -54,7 +55,7 @@ You will light an LED from the first servo signal, so you can see it pulse.
 
 The status strip at the bottom says "Everything is connected" when no pin is left hanging.
 
-<!-- done: parts 10 -->
+<!-- done: parts 17 -->
 
 ## Bring it onto the board
 
@@ -64,14 +65,14 @@ Update the board.
 
 You are now in the PCB view. The two new parts sit beside the board, with thin lines to the pads they must join.
 
-<!-- done: board parts 10 -->
+<!-- done: board parts 15 -->
 
 ## Place the new parts
 
 Drag R2 and D2 onto the board, near the first servo header (J3). Press R to turn a part while it is picked. Keep
 the thin lines short and uncrossed: a board that is easy to route is one where the parts were placed with care.
 
-<!-- done: board placed 10 -->
+<!-- done: board placed 15 -->
 
 ## Route the tracks
 

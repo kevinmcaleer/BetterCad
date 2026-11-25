@@ -446,8 +446,9 @@ it filled in. The list is in `docs/electronics-library.md`.
 ## The sample board (#666)
 
 The Pico servo board (`packages/electronics/src/sample.ts`; Open the sample board, on an empty schematic, or `#/sample/pico-servo-board`) is a carrier
-for a Raspberry Pi Pico that drives two servos: two rows of 20 sockets, two three-pin servo headers, a two-pin 5 V
-input, a power LED with its resistor and a capacitor across the supply. It is built from the same calls the tools
+for a Raspberry Pi Pico that runs a small rover: two rows of 20 sockets, an L293D motor driver with a two-pin header for
+each motor, two three-pin servo headers, a Qwiic socket for I2C sensors, a two-pin 5 V input through a slide switch,
+a power LED with its resistor and a capacitor across the supply. It is built from the same calls the tools
 make (place a part, label a pin, push to the board, route a track, pour copper), with fixed ids so it comes out the
 same every time.
 
@@ -457,9 +458,11 @@ with nothing blocking, and to goldens of its Gerber, drill, parts list and pick 
 as a step on the timeline too. The `@journey` test in `web/e2e/electronics.spec.ts` opens it, finds the board in the
 model, and takes it as far as the preview of the files.
 
-What it is not, yet: the issue asked for a motor driver, a Qwiic connector and a power switch. Those parts are not in
-the starter library, so the sample keeps to parts that are. Its order pack has been read back by our own reader and
-by nothing else: nobody has uploaded it to a board house's quote page.
+The motor driver, the Qwiic socket and the switch are starter library parts. The sample carries its own copies
+(`sample.parts.json`) so that opening it does not load the library, and a test holds the copies to the library's.
+
+What it is not, yet: its order pack has been read back by our own reader and opened in KiCad, and by nothing else.
+Nobody has uploaded it to a board house's quote page.
 
 ## Out to KiCad (#664)
 

@@ -37,10 +37,15 @@ describe("exporting to KiCad (#664)", () => {
       "Pico_servo_board.pretty/0603_1608_metric.kicad_mod",
       "Pico_servo_board.pretty/0805_2012_metric.kicad_mod",
       "Pico_servo_board.pretty/1206_3216_metric.kicad_mod",
+      "Pico_servo_board.pretty/DIP-16_W7.62mm.kicad_mod",
       "Pico_servo_board.pretty/Hole_3.2mm.kicad_mod",
+      "Pico_servo_board.pretty/JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical.kicad_mod",
+      "Pico_servo_board.pretty/JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal.kicad_mod",
       "Pico_servo_board.pretty/Pin_header_1_2_2.54_mm.kicad_mod",
       "Pico_servo_board.pretty/Pin_header_1_20_2.54_mm.kicad_mod",
       "Pico_servo_board.pretty/Pin_header_1_3_2.54_mm.kicad_mod",
+      "Pico_servo_board.pretty/SW_Slide-03_Wuerth-WS-SLTV_10x2.5x6.4_P2.54mm.kicad_mod",
+      "Pico_servo_board.pretty/SW_SPDT_PCM12.kicad_mod",
       "sym-lib-table",
       "fp-lib-table",
       "Pico_servo_board.kicad_pro",
@@ -65,6 +70,8 @@ describe("exporting to KiCad (#664)", () => {
   it("writes a library our own reader takes back as the same parts", () => {
     const symbols = readKicadSymbols(file("Pico_servo_board.kicad_sym"));
     for (const def of Object.values(d.defs)) {
+      // A power symbol goes out as its net's own symbol, which the test of a design on two sheets holds below.
+      if (def.symbol.power) continue;
       const back = symbols.find((x) => x.name === kicadName(def.name))!;
       expect(back, def.name).toBeDefined();
       expect(back.prefix).toBe(def.prefix);
@@ -98,7 +105,25 @@ describe("exporting to KiCad (#664)", () => {
   it("puts every part on the board with its pads on their nets", () => {
     const pcb = parseSexpr(file("Pico_servo_board.kicad_pcb"))[0] as Node[];
     const nets = new Map(children(pcb, "net").map((n) => [text(n, 1), text(n, 2)]));
-    expect([...nets.values()].filter(Boolean).sort()).toEqual(["5V", "GND", "LED", "SERVO1", "SERVO2"]);
+    expect([...nets.values()].filter(Boolean).sort()).toEqual([
+      "3V3",
+      "5V",
+      "GND",
+      "LED",
+      "MOTOR_A1",
+      "MOTOR_A2",
+      "MOTOR_A_OUT1",
+      "MOTOR_A_OUT2",
+      "MOTOR_B1",
+      "MOTOR_B2",
+      "MOTOR_B_OUT1",
+      "MOTOR_B_OUT2",
+      "SCL",
+      "SDA",
+      "SERVO1",
+      "SERVO2",
+      "VIN",
+    ]);
     const fps = children(pcb, "footprint");
     const refs = fps
       .map((f) =>
@@ -108,7 +133,7 @@ describe("exporting to KiCad (#664)", () => {
         ),
       )
       .filter((r) => r !== "H");
-    expect(refs.sort()).toEqual(["C1", "D1", "J1", "J2", "J3", "J4", "J5", "R1"]);
+    expect(refs.sort()).toEqual(["C1", "D1", "J1", "J2", "J3", "J4", "J5", "J6", "J7", "J8", "R1", "SW1", "U1"]);
     expect(children(pcb, "zone")).toHaveLength(d.board!.pours.length);
     expect(children(pcb, "segment").length).toBe(d.board!.tracks.reduce((n, t) => n + t.pts.length - 1, 0));
     expect(children(pcb, "gr_arc").length).toBe(d.board!.outline.filter((c) => c.bulge).length);
