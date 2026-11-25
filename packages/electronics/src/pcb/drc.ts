@@ -112,6 +112,18 @@ function courtyards(d: ElectronicsDesign): { part: Id; ref: string; side: string
   return out;
 }
 
+/** The box round a piece. */
+function boxOf(it: Solid): { x1: number; x2: number; y1: number; y2: number } {
+  let [x1, x2, y1, y2] = [Infinity, -Infinity, Infinity, -Infinity];
+  for (const p of it.pts) {
+    x1 = Math.min(x1, p[0]);
+    x2 = Math.max(x2, p[0]);
+    y1 = Math.min(y1, p[1]);
+    y2 = Math.max(y2, p[1]);
+  }
+  return { x1: x1 - it.r, x2: x2 + it.r, y1: y1 - it.r, y2: y2 + it.r };
+}
+
 /** Pairs of pieces whose boxes, grown by `reach`, overlap. A sweep along x keeps a busy board quick. */
 function* near<T extends Solid>(items: T[], reach: number): Generator<[T, T]> {
   const boxed = items
@@ -437,8 +449,20 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
       const s = padSolid(p);
       return { p, solid: { pts: s.pts, r: s.r + (p.pad.maskMargin ?? rules.maskMargin) } };
     });
-    const hit = (box: P2[], side: "top" | "bottom") =>
-      open.find((o) => (o.p.pad.kind !== "smd" || o.p.side === side) && gap({ pts: box, r: 0 }, o.solid) === 0)?.p;
+    // A quick box round each opening first: measuring every word against every pad is slow on a big board.
+    const boxes = open.map((o) => boxOf(o.solid));
+    const hit = (box: P2[], side: "top" | "bottom") => {
+      const b = boxOf({ pts: box, r: 0 });
+      return open.find(
+        (o, i) =>
+          (o.p.pad.kind !== "smd" || o.p.side === side) &&
+          boxes[i]!.x1 <= b.x2 &&
+          b.x1 <= boxes[i]!.x2 &&
+          boxes[i]!.y1 <= b.y2 &&
+          b.y1 <= boxes[i]!.y2 &&
+          gap({ pts: box, r: 0 }, o.solid) === 0,
+      )?.p;
+    };
     const parts = new Map(d.parts.map((p) => [p.id, p]));
     for (const at of board.placements) {
       const part = parts.get(at.part);
