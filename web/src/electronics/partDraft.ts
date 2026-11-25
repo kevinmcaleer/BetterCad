@@ -275,6 +275,8 @@ export interface Built {
   /** What to draw while editing, even when it cannot be saved yet. */
   symbol: SymbolDef;
   footprint: FootprintDef | null;
+  /** The first package, with its body, even when the part cannot be saved yet. */
+  pkg: PackageChoice | null;
   /** What must be put right before it can be saved. */
   problems: string[];
   /** Worth a look, but it can be saved. */
@@ -454,5 +456,5 @@ export function build(d: Draft): Built {
     );
   if (packages.length === 0 && !symbol.power) notes.push("It has no footprint, so it cannot go on a board yet.");
   if (d.body === "step" && !d.step && packages.length) notes.push("Pick a file for the body.");
-  return { def: problems.length ? null : def, symbol, footprint, problems, notes };
+  return { def: problems.length ? null : def, symbol, footprint, pkg: packages[0] ?? null, problems, notes };
 }

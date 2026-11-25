@@ -13,7 +13,7 @@ A component (`ComponentDef` in `packages/electronics/src/model.ts`, #622) is:
 | Symbol | The drawing on the schematic and its pins: number, name and what the pin does (input, power in, passive) |
 | Packages | One or more footprints the part comes in. A resistor has 0603, 0402, 0805, 1206 and through-hole |
 | Pin map | Per package, which pads a pin joins when the numbers differ. With none, pin 3 joins pad 3 |
-| 3D body | Per package: a simple box, cylinder or pin header, or a STEP file (#628) placed and turned on the footprint |
+| 3D body | Per package: a simple box, cylinder or pin header, or a STEP file, one of your models or a robot catalogue part (#628), placed and turned on the footprint |
 | Value and prefix | What a new part starts as ("10 kΩ") and its reference letter (R, C, U, J) |
 | Supplier | Manufacturer, part number and LCSC number, used by the BOM and pick and place. Left empty until checked |
 | Source | The library it came from and its licence, shown on the part's card and kept in the design |
@@ -167,11 +167,24 @@ New part, Edit and Edit a copy open the part editor (`web/src/electronics/PartTo
   the model's blobs (`onDesign`), so the model opens anywhere. The Board step (`packages/kernel/src/board.ts`) then
   makes one reference body per solid, placed by the layout, flipped on the bottom; if the file is missing, a box of
   its size stands in.
+- **The body from your models or the robot parts catalogue** (#628). Beside the file box, signed in, is a list of
+  your saved models, and for everyone a list of the robot catalogue's parts. Either is built and kept as STEP, the
+  same copy a `.bcad` file gives (`readBodyModel`, `catalogueDoc`). A catalogue part is a reference body in a model,
+  which is never exported, so it is made an ordinary body for the copy.
+- **The body in 3D** (#628, `PartBody3D.tsx`, `partBody3d.ts`). On the 3D body tab the part stands on a small board
+  of its own: the engine builds the same Board step a real board would (`previewDoc`), so what you see is what a
+  board will show. The body is drawn see-through with every edge, over the pads and their holes. Drag, or use the
+  arrow keys, to look round it. It is drawn on a plain canvas, not with the graphics card: a part is small.
+- **Snap its pins to the pads** (#628). The pin ends are the flat patches at the body's lowest point (`pinEnds`): a
+  through-hole part's pin ends, a gull wing's feet, a chip's terminals. Of every move that puts one pin end on one
+  pad, the one that lands the most of them is taken (`snapPins`), and the editor says how many landed. A body with
+  one flat bottom, or pins at another pitch, is centred on the pads and you are told to turn it and try again.
 - **Checks**, as you type: every pin has a pad (this one stops a save), pads closer than 0.2 mm, no courtyard, nothing
   on the silkscreen to show pin 1, a hole that leaves no copper, pin lines that could not be read.
 
-Not built yet for bodies (#628): a 3D view inside the part editor, snapping a model's pins to the pads, a body that
-stays linked to a BetterCad model in your account, and a file's own colours (a body takes one colour). Pad sizes are typed
+Not built for bodies (#628): a body that stays linked to a BetterCad model in your account (a body is always a copy),
+turning the body for you when its pins only line up another way round, and a file's own colours (a body takes one
+colour). Pad sizes are typed
 numbers, not expressions, and arcs and text on a footprint come only from imported footprints.
 
 ### Importing KiCad files

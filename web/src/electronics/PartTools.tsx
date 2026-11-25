@@ -1,12 +1,18 @@
-import { Suspense, lazy, useId, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useId, useMemo, useState } from "react";
 import { PIN_TYPES, type ComponentDef, type FootprintDef } from "@bettercad/electronics";
 import { importEagleLibraries } from "@bettercad/electronics/eagle/import";
 import { importKicad, type Imported } from "@bettercad/electronics/kicad";
+import type { BodyMesh, Call, CataloguePart, ModelResult } from "@bettercad/kernel";
+import { BcadError, loadBcad } from "@bettercad/kernel/bcad";
 import { Button, Dialog, NumberField, cx } from "@bettercad/ui";
+import type { Api } from "../cloud/api";
+import { fillBlobs } from "../cloud/cloudDoc";
 import { textOf } from "./fileText";
 import { PartPreview } from "./PartPreview";
-import { readBodyFile, type KernelCall } from "./bodyFile";
-import { stepFiles } from "./partBlobs";
+import PartBody3D from "./PartBody3D";
+import { catalogueDoc, readBodyFile, readBodyModel, type BodyFile, type KernelCall } from "./bodyFile";
+import { partMeshes, pinEnds, previewDoc, snapPins } from "./partBody3d";
+import { fileOf, stepFiles } from "./partBlobs";
 import {
   FAMILIES,
   LICENCES,
@@ -49,13 +55,15 @@ export interface PartEditorProps {
   onCancel: () => void;
   /** The geometry engine, which reads a file picked as the part's body (#628). */
   call?: KernelCall;
+  /** Your account, when you are signed in: any of your saved models can be a part's body. */
+  models?: Pick<Api, "list" | "get" | "getBlob">;
 }
 
 /**
  * The part editor (#626, #627, #628): a symbol from a pin table, a footprint from a package's sizes, a simple 3D body,
  * and the details that travel with the part. What it makes is checked as you type and saved to your parts.
  */
-export function PartEditor({ start, shelves, onSave, onCancel, call }: PartEditorProps) {
+export function PartEditor({ start, shelves, onSave, onCancel, call, models }: PartEditorProps) {
   const [d, setD] = useState<Draft>(() =>
     start.def ? draftFrom(start.def, { ...(start.id ? { id: start.id } : {}), ...(start.shelf ? { shelf: start.shelf } : {}) }) : newDraft(),
   );
@@ -78,12 +86,14 @@ export function PartEditor({ start, shelves, onSave, onCancel, call }: PartEdito
     const used = Object.fromEntries(stepFiles([built.def]).flatMap((h) => (files[h] ? [[h, files[h]]] : [])));
     onSave(built.def, d.shelf.trim(), d.id, used);
   };
-  const pickBody = async (file: File | undefined) => {
-    if (!file) return;
+  const [snapped, setSnapped] = useState("");
+  /** Reads a body from wherever it comes: a file, one of your models or a catalogue part. */
+  const takeBody = async (from: () => Promise<BodyFile>) => {
     setReading(true);
     setBodyError("");
+    setSnapped("");
     try {
-      const got = await readBodyFile(file, call);
+      const got = await from();
       setFiles((now) => ({ ...now, [got.blob]: got.data }));
       const [x, y] = built.footprint ? bodyCentre(built.footprint) : [0, 0];
       set({ step: { blob: got.blob, name: got.name, bodies: got.bodies, size: got.size }, stepAt: [x, y, 0], stepTurn: [0, 0, 0] });
@@ -91,6 +101,89 @@ export function PartEditor({ start, shelves, onSave, onCancel, call }: PartEdito
       setBodyError((e as Error).message || "That file couldn't be read.");
     }
     setReading(false);
+  };
+  const pickBody = (file: File | undefined) => file && void takeBody(() => readBodyFile(file, call));
+  // The file box is made again when the body comes from somewhere else, so it stops naming the last file.
+  const [fileBox, setFileBox] = useState(0);
+
+  // Your models and the robot parts catalogue, listed once the body is to come from a file.
+  const [mine, setMine] = useState<{ id: string; name: string }[] | null>(null);
+  const [robot, setRobot] = useState<readonly CataloguePart[] | null>(null);
+  const fromFile = tab === "body" && d.body === "step";
+  useEffect(() => {
+    if (!fromFile) return;
+    let gone = false;
+    models?.list({ sort: "modified" }).then(
+      (l) => !gone && setMine(l.models.filter((m) => !m.deleted_at).map(({ id, name }) => ({ id, name }))),
+      () => !gone && setMine([]),
+    );
+    void import("@bettercad/kernel/catalogue").then((m) => !gone && setRobot(m.CATALOGUE));
+    return () => {
+      gone = true;
+    };
+  }, [fromFile, models]);
+  const pickModel = (id: string) => {
+    if (!id || !models) return;
+    setFileBox((n) => n + 1);
+    void takeBody(async () => {
+      const got = await models.get(id);
+      const read = loadBcad(got.bcad);
+      if (read instanceof BcadError) throw new Error(read.message);
+      return readBodyModel(await fillBlobs(models as Api, { ...read.doc, name: got.name }), got.name, call);
+    });
+  };
+  const pickRobot = (id: string) => {
+    const part = robot?.find((x) => x.id === id);
+    if (!part) return;
+    setFileBox((n) => n + 1);
+    void takeBody(() => readBodyModel(catalogueDoc(part), part.name, call));
+  };
+
+  // The body as a board will build it, for the 3D view and for finding its pins (#628).
+  const pkg0 = built.pkg;
+  const pkgKey = useMemo(() => (pkg0 ? JSON.stringify(pkg0) : ""), [pkg0]);
+  const [solid, setSolid] = useState<{ meshes: BodyMesh[]; thickness: number; key: string } | null>(null);
+  const [building, setBuilding] = useState(false);
+  const onBody = tab === "body";
+  useEffect(() => {
+    if (!onBody || !call || !pkg0) return;
+    const doc = previewDoc(built.symbol, pkg0, (h) => files[h] ?? fileOf(h));
+    if (!doc) return;
+    let gone = false;
+    let job: Call<ModelResult> | null = null;
+    setBuilding(true);
+    const wait = setTimeout(() => {
+      job = call("build", { doc });
+      if (!job) return setBuilding(false);
+      job.then(
+        (r) => {
+          if (gone) return;
+          setSolid({ meshes: partMeshes(r), thickness: doc.electronics?.board?.thickness ?? 1.6, key: pkgKey });
+          setBuilding(false);
+        },
+        () => !gone && setBuilding(false),
+      );
+    }, 150);
+    return () => {
+      gone = true;
+      clearTimeout(wait);
+      job?.cancel();
+    };
+    // The package's own text says when it changed: the objects are made again on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onBody, call, pkgKey, files]);
+  const snapBody = () => {
+    if (!solid || !built.footprint) return;
+    const pads = built.footprint.pads.filter((p) => p.kind !== "npth").map((p): [number, number] => [p.x, p.y]);
+    const snap = snapPins(pinEnds(solid.meshes), pads);
+    if (!snap) return setSnapped("The body has no pin ends to find.");
+    const far = Math.round(Math.hypot(snap.dx, snap.dy) * 100) / 100;
+    set({ stepAt: [Math.round((d.stepAt[0] + snap.dx) * 1000) / 1000, Math.round((d.stepAt[1] + snap.dy) * 1000) / 1000, d.stepAt[2]] });
+    setSnapped(
+      !snap.matched
+        ? "Its pins don't line up with the pads, so it is centred on them. Turn it and try again."
+        : `${far ? `Moved it ${far} mm.` : "It was already in place."} ${snap.matched} of its ${snap.ends} pin ${snap.ends === 1 ? "end sits" : "ends sit"} on ${snap.matched === 1 ? "a pad" : "pads"}.`,
+    );
   };
   const setAt = (i: 0 | 1 | 2, v: number) => set({ stepAt: d.stepAt.map((n, k) => (k === i ? v : n)) as Draft["stepAt"] });
   const setTurn = (i: 0 | 1 | 2, v: number) => set({ stepTurn: d.stepTurn.map((n, k) => (k === i ? v : n)) as Draft["stepTurn"] });
@@ -314,7 +407,44 @@ export function PartEditor({ start, shelves, onSave, onCancel, call }: PartEdito
                   <label className="bc-field-label" htmlFor={`${ids}bodyfile`}>
                     File
                   </label>
-                  <input id={`${ids}bodyfile`} className="bc-text" type="file" accept=".step,.stp,.bcad" onChange={(e) => void pickBody(e.target.files?.[0])} />
+                  <input
+                    key={fileBox}
+                    id={`${ids}bodyfile`}
+                    className="bc-text"
+                    type="file"
+                    accept=".step,.stp,.bcad"
+                    onChange={(e) => pickBody(e.target.files?.[0])}
+                  />
+                  {!!mine?.length && (
+                    <>
+                      <label className="bc-field-label" htmlFor={`${ids}bodymodel`}>
+                        Or one of your models
+                      </label>
+                      <select id={`${ids}bodymodel`} className="bc-select" value="" onChange={(e) => pickModel(e.target.value)}>
+                        <option value="">Choose a model</option>
+                        {mine.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  {!!robot?.length && (
+                    <>
+                      <label className="bc-field-label" htmlFor={`${ids}bodyrobot`}>
+                        Or a robot catalogue part
+                      </label>
+                      <select id={`${ids}bodyrobot`} className="bc-select" value="" onChange={(e) => pickRobot(e.target.value)}>
+                        <option value="">Choose a part</option>
+                        {robot.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
                   {reading && <p role="status">Reading the file…</p>}
                   {bodyError && (
                     <p className="bc-ec-blocked" role="alert">
@@ -375,10 +505,18 @@ export function PartEditor({ start, shelves, onSave, onCancel, call }: PartEdito
                           label="Sit it on the board"
                           onClick={() => d.step && set({ stepAt: [d.stepAt[0], d.stepAt[1], liftOntoBoard(d.step.size, d.stepTurn)] })}
                         />
+                        <Button
+                          size="dense"
+                          variant="secondary"
+                          label="Snap its pins to the pads"
+                          disabled={!built.footprint || !solid?.meshes.length || building || solid.key !== pkgKey}
+                          onClick={snapBody}
+                        />
                       </div>
+                      {snapped && <p role="status">{snapped}</p>}
                       <p className="bc-note">
-                        The dashed outline on the footprint is the file's box, seen from above. A BetterCad model is kept as it is now, and does not follow
-                        later changes to it.
+                        The dashed outline on the footprint is the body's box, seen from above. A model or a catalogue part is kept as it is now, and does not
+                        follow later changes to it.
                       </p>
                     </>
                   )}
@@ -406,6 +544,7 @@ export function PartEditor({ start, shelves, onSave, onCancel, call }: PartEdito
         </div>
         <div className="bc-ec-editor-side">
           <PartPreview def={shown} pkg={0} />
+          {onBody && call && pkg0 && <PartBody3D pkg={pkg0} meshes={solid?.meshes ?? []} thickness={solid?.thickness ?? 1.6} busy={building} />}
           <ul className="bc-ec-editor-checks" aria-label="Checks">
             {built.problems.map((p) => (
               <li key={p} className="bc-ec-blocked">
