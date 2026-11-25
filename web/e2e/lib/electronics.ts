@@ -51,6 +51,8 @@ export async function ledCircuit(page: Page, touch = false) {
   await expect(status).toContainText("4 pins or wire ends are not connected");
   const wire = tools(page).getByRole("button", { name: /^Wire/ });
   await wire.click();
+  // A click that lands before the view has taken the tool is a Select click, so wait for it.
+  await expect(wire).toHaveAttribute("aria-pressed", "true");
   await press(page, -10 * PITCH, 3.81, touch);
   await press(page, -3.81, 0, touch);
   await expect(status).toContainText("2 pins or wire ends are not connected");

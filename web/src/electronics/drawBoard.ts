@@ -61,6 +61,8 @@ export interface BoardLook {
   clashing?: Set<string>;
   ghost?: {
     track?: { pts: P2[]; width: number; layer: CopperLayer; blocked?: boolean };
+    /** The other track of a pair being routed. */
+    mate?: { pts: P2[]; width: number; layer: CopperLayer; blocked?: boolean };
     placements?: { part: string; x: number; y: number; rot: number; side: Side }[];
   };
   box?: [P2, P2] | null;
@@ -490,8 +492,8 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     ctx.globalAlpha = 1;
   }
 
-  const g = look.ghost?.track;
-  if (g && g.pts.length > 1) {
+  for (const g of [look.ghost?.track, look.ghost?.mate]) {
+    if (!g || g.pts.length < 2) continue;
     ctx.globalAlpha = 0.8;
     ctx.strokeStyle = g.blocked ? c["ec-mark"] : copper(g.layer);
     ctx.lineWidth = Math.max(1, g.width * v.scale);

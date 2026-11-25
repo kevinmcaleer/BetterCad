@@ -257,6 +257,27 @@ the ratsnest still shows, the short ones first, and only ever adds copper, so a 
 It is for simple boards and for finishing off. It does not rip up and retry, push tracks aside, or route fine-pitch
 pads that fall between grid lines; the connections it finds no way for are listed and left for you.
 
+## Push, length and pairs (#646)
+
+`pcb/shove.ts`, used by the route tool in `BoardCanvas.tsx`.
+
+- **Push.** With Push on, a run that comes too close to another net's track asks `shove` for room. The piece in the
+  way is cut so only the stretch beside the new run moves, then slid sideways with `slidePiece` (#640) just far
+  enough, with 45° pieces at each end. What it then comes too close to is pushed in turn, three deep at most. Pads,
+  vias, text, keep-outs and the board's edge never move: a push into one of them is no push, and the track stops as
+  before. Everything that moved is measured with `blockers` before it is kept, and the run and its pushes are one
+  edit, so one undo puts them back.
+- **Length.** The route bar shows the net's length as you go, the piece on the pointer counted, and against a target
+  when one is typed. A track's card shows its net's length; typing a longer one puts flat-topped wiggles with 45°
+  corners in its longest straight piece, on whichever side has room (`tuneLength`). Tuning only makes a net longer.
+- **Pairs.** With Pair on, starting on a net whose name has a partner (D+ and D-, USB_P and USB_N, DP and DM, TXP and
+  TXN) finds the partner's pad within 8 mm and routes both: you click the line between them, and `pairRuns` lays one
+  track each side of it at the track width plus the clearance, mitred so the gap holds round every corner. Clicking
+  a pad of either net lands both, on that pad and its partner's nearest. A pair stays on one side.
+
+Not done: pushing vias, walking a push round a pad (a push that needs to go round one stops), and matching the two
+lengths of a pair automatically (tune each track to the same target instead).
+
 ## Four and six layers (#648)
 
 A board has two, four or six copper layers: `Board.copperLayers`, with the inner ones named `in1`, `in2` and so on
@@ -688,7 +709,7 @@ or Adafruit project, has been opened yet.
 
 ## What release 1 leaves open
 
-- Release 2, by decision: shove routing (#646), panels and IPC-2581 (#662).
+- Release 2, by decision: panels and IPC-2581 (#662).
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.

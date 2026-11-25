@@ -26,6 +26,7 @@
     "./pcb/rules": "./src/pcb/rules.ts",
     "./pcb/picture": "./src/pcb/picture.ts",
     "./pcb/slide": "./src/pcb/slide.ts",
+    "./pcb/shove": "./src/pcb/shove.ts",
     "./pcb/dxf": "./src/pcb/dxf.ts",
     "./pcb/autoroute": "./src/pcb/autoroute.ts",
     "./drc": "./src/pcb/drc.ts",

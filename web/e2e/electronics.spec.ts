@@ -414,12 +414,25 @@ test.describe("on a wide screen", () => {
     await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
     await press(page, 14.2, 20);
     await expect(bar.getByRole("status")).toContainText("Routing Net-(D1-1) on the top side");
+    // The length so far shows as you route, against a target once you set one (#646).
+    await expect(bar.getByRole("status")).toContainText(" mm");
+    await bar.getByLabel(/Target length/).fill("30");
+    await bar.getByLabel(/Target length/).press("Enter");
+    await expect(bar.getByRole("status")).toContainText("of 30 mm");
     await press(page, 15.8, 20);
     await expect(bar.getByRole("status")).toContainText("Too close to R1 pad 2");
     await press(page, 22, 24);
     await press(page, 29.2, 20);
     await expect(status).toContainText("Every connection is routed");
     await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
+    // Push moves other tracks aside; Pair routes two nets together, and says so when a net has no partner (#646).
+    await expect(bar.getByRole("checkbox", { name: "Push" })).not.toBeChecked();
+    await bar.getByRole("checkbox", { name: "Pair" }).check();
+    await press(page, 14.2, 20);
+    await expect(bar.getByRole("status")).toContainText("has no partner");
+    await page.keyboard.press("Escape");
+    await bar.getByRole("checkbox", { name: "Pair" }).uncheck();
+    await canvas.focus();
     await page.keyboard.press("Escape");
 
     // Slide the track's middle piece down 2 mm (#640): the slanted pieces either side shorten to meet it, so the
@@ -434,6 +447,16 @@ test.describe("on a wide screen", () => {
     await page.mouse.up();
     await expect(length).toContainText("16.69 mm");
     await expect(status).toContainText("Every connection is routed");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(length).toContainText("18.35 mm");
+    // Type a longer length for the net and the track gets wiggles to make it up (#646). One undo takes them out.
+    await expect(async () => {
+      await page.getByLabel(/Net length/).fill("22");
+      await page.getByLabel(/Net length/).press("Enter");
+      await expect(length).toContainText("22 mm", { timeout: 1000 });
+    }).toPass();
+    await expect(status).toContainText("Every connection is routed");
+    await canvas.focus();
     await page.keyboard.press("ControlOrMeta+z");
     await expect(length).toContainText("18.35 mm");
     await page.keyboard.press("Escape");

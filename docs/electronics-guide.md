@@ -73,6 +73,10 @@ schematic brings it up to date and lists the changes first.
    connections still to make, on both sides or one, and leaves your own tracks where they are. Stop keeps what it
    has done, and one undo takes its tracks out. It suits simple boards and finishing off; it lists any connection
    it finds no way for.
+   Turn on Push and a track you lay moves other tracks aside to make room, keeping every gap. Pair routes two nets
+   such as D+ and D- side by side: start on one pad, click the line between them, and both tracks follow at the
+   same gap. The bar shows how long the net is as you go; type a Target length to see it against that. To make a
+   net longer, pick one of its tracks and type the length you want: it gets wiggles to make it up.
 4. **Pour copper.** Press P and draw round an area, usually the whole board for ground. The pour keeps clear of
    other nets and joins its own pads with spokes.
 5. **Add holes and text.** H adds a mounting hole for a screw. T writes on the silkscreen.
@@ -119,6 +123,6 @@ On a Mac, Ctrl is Cmd. Press ? in the app for every shortcut.
 
 ## What it does not do yet
 
-Boards have two, four or six copper layers, with our own usual builds and not a board house's. Autoroute routes simple boards; it does not push tracks aside, and neither does routing by hand. A model holds
+Boards have two, four or six copper layers, with our own usual builds and not a board house's. Autoroute routes simple boards and does not push tracks aside. Push moves tracks, not vias or parts. A model holds
 one board. Part bodies in 3D are simple shapes, not the makers' own models. Part numbers for assembly are typed in,
 not looked up. The developer notes in [electronics.md](electronics.md) list the rest.
