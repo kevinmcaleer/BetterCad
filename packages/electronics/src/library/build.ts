@@ -1,9 +1,11 @@
 import { readKicadFootprint } from "../kicad/footprint";
 import { readKicadSymbols, type KicadSymbol } from "../kicad/symbol";
-import type { ComponentDef } from "../model";
+import type { CatalogueBody, ComponentDef, Model3D } from "../model";
 import { simpleBody } from "./body";
 import { BREAKOUTS, breakout } from "./modules";
 import { checkPinMap, packOf, type LibraryPack, type PackPart } from "./pack";
+
+const r2 = (v: number) => Math.round(v * 100) / 100;
 
 /** What the starter library is made from (#624): `library/starter.manifest.json`. */
 export interface Manifest {
@@ -25,6 +27,11 @@ export interface ManifestPart {
   /** Pin to pads, where a footprint numbers its pads differently, by footprint. */
   pinMap?: Record<string, Record<string, string[]>>;
   keywords?: string[];
+  /**
+   * A body from the robot parts catalogue (#167), so the board and the mechanical model show the same part: the
+   * catalogue part's id, and how it is turned (degrees about X, Y, Z) to lie on the footprint.
+   */
+  body?: { catalogue: string; rotate?: [number, number, number] };
   /** Makes one part per number: `{n}` and `{nn}` (two digits) are filled in everywhere. */
   repeat?: { from: number; to: number };
 }
@@ -32,6 +39,14 @@ export interface ManifestPart {
 export interface Sources {
   symbols(library: string): string | undefined;
   footprint(library: string, name: string): string | undefined;
+  /**
+   * A robot catalogue part turned as asked: its record, and the box round it once turned, as its middle across the
+   * board and its lowest and highest points. Left out, parts keep their simple bodies.
+   */
+  catalogue?(
+    id: string,
+    rotate: [number, number, number],
+  ): { part: CatalogueBody; centre: [number, number]; size: [number, number, number]; bottom: number } | undefined;
 }
 
 const fill = (text: string, n: number) => text.replace(/\{nn\}/g, String(n).padStart(2, "0")).replace(/\{n\}/g, String(n));
@@ -141,6 +156,25 @@ export function buildPack(manifest: Manifest, src: Sources): { pack: LibraryPack
       if (labels) labels = labels.filter((_, i) => keep[i]);
       if (def.packages.length === 0) continue;
     }
+    if (m.body && src.catalogue) {
+      const rotate = m.body.rotate ?? [0, 0, 0];
+      const found = src.catalogue(m.body.catalogue, rotate);
+      if (!found) problems.push(`${m.id}: no robot catalogue part called ${m.body.catalogue}`);
+      else
+        def = {
+          ...def,
+          packages: def.packages.map((p) => {
+            // Its box goes where the simple body's was, standing on the board.
+            const [x, y] = p.model?.offset ?? [0, 0];
+            const model: Model3D = {
+              source: { kind: "catalogue", part: found.part, size: found.size },
+              offset: [r2(x - found.centre[0]), r2(y - found.centre[1]), r2(-found.bottom)],
+              ...(rotate.some(Boolean) ? { rotate } : {}),
+            };
+            return { ...p, model };
+          }),
+        };
+    }
     const part: Omit<PackPart, "symbol" | "packages"> & { def: ComponentDef; labels?: string[] } = {
       id: m.id,
       name: def.name,
@@ -165,7 +199,7 @@ export function buildPack(manifest: Manifest, src: Sources): { pack: LibraryPack
         licence: "CC-BY-SA 4.0 with exception",
         url: "https://www.kicad.org/libraries/license/",
         version: manifest.kicad,
-        note: "Symbols and footprints by the KiCad librarians and contributors, converted to BetterCad's format. The 3D bodies are simple shapes made by BetterCad.",
+        note: "Symbols and footprints by the KiCad librarians and contributors, converted to BetterCad's format. The 3D bodies are simple shapes made by BetterCad, or parts from its robot parts catalogue (MIT).",
       },
       { name: "BetterCad", licence: "CC-BY-SA 4.0", url: "https://bettercad.kevsrobots.com", note: "Modules drawn for BetterCad. Their outlines are guides." },
     ],

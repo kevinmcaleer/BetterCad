@@ -155,6 +155,12 @@ export interface Model3D {
      */
     | { kind: "step"; blob: string; name?: string; bodies?: number; size?: [number, number, number] }
     | { kind: "model"; id: string; version?: number }
+    /**
+     * A part from the robot parts catalogue (#167, #624): the record it was taken from, kept whole so a catalogue
+     * change never moves a board's parts. `size` is the box round it. The record's own origin goes on the footprint's
+     * origin before `offset` and `rotate` move it.
+     */
+    | { kind: "catalogue"; part: CatalogueBody; size: [number, number, number] }
     | { kind: "box"; size: [number, number, number] }
     | { kind: "cylinder"; diameter: number; height: number }
     /** Rows of square pins on a plastic strip. */
@@ -162,6 +168,15 @@ export interface Model3D {
   offset?: [number, number, number];
   rotate?: [number, number, number];
   colour?: string;
+}
+
+/** A robot parts catalogue record, as `@bettercad/kernel` defines it (`CataloguePart`). Only the kernel reads inside. */
+export interface CatalogueBody {
+  id: string;
+  version: number;
+  name: string;
+  model: unknown[];
+  [more: string]: unknown;
 }
 
 // ---------------------------------------------------------------- components

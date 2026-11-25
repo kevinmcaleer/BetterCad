@@ -27,6 +27,40 @@ await build({
 });
 const { buildPack, expand } = await import(pathToFileURL(bundled).href);
 
+// The robot parts catalogue (#167), for the parts that are in both: the same record the mechanical side places.
+const robot = join(root, "node_modules/.cache/kicad/catalogue.mjs");
+await build({
+  stdin: {
+    contents: `export { cataloguePart } from "./catalogue/list"; export { partBounds } from "./catalogue"; export { placeMatrix } from "./pose";`,
+    resolveDir: join(root, "packages/kernel/src"),
+    loader: "ts",
+  },
+  bundle: true,
+  format: "esm",
+  platform: "node",
+  outfile: robot,
+  logLevel: "error",
+});
+const { cataloguePart, partBounds, placeMatrix } = await import(pathToFileURL(robot).href);
+function catalogue(id, rotate) {
+  const part = cataloguePart(id);
+  if (!part) return undefined;
+  const [a, b] = partBounds(part);
+  const m = placeMatrix([0, 0, 0], rotate);
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (const x of [a[0], b[0]])
+    for (const y of [a[1], b[1]])
+      for (const z of [a[2], b[2]])
+        for (let i = 0; i < 3; i += 1) {
+          const v = m[i] * x + m[4 + i] * y + m[8 + i] * z;
+          min[i] = Math.min(min[i], v);
+          max[i] = Math.max(max[i], v);
+        }
+  const r = (v) => Math.round(v * 1000) / 1000;
+  return { part, centre: [r((min[0] + max[0]) / 2), r((min[1] + max[1]) / 2)], size: [0, 1, 2].map((i) => r(max[i] - min[i])), bottom: r(min[2]) };
+}
+
 async function fetched(repo, path) {
   const file = join(cache, repo, path);
   if (existsSync(file)) return readFileSync(file, "utf8") || undefined;
@@ -69,7 +103,7 @@ async function fetchFootprints(keys) {
     }),
   );
 }
-const src = { symbols: (l) => symbols.get(l), footprint: (l, n) => footprints.get(`${l}:${n}`) };
+const src = { symbols: (l) => symbols.get(l), footprint: (l, n) => footprints.get(`${l}:${n}`), catalogue };
 await fetchFootprints(parts.flatMap((p) => p.footprints ?? []));
 const first = buildPack(manifest, src);
 const defaults = first.problems.map((p) => /footprint (\S+:\S+) not found/.exec(p)?.[1]).filter(Boolean);

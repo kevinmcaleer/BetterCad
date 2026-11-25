@@ -1,7 +1,7 @@
 import { area, outlinePoints, pointInPolygon } from "../outlineGeom";
 import { distToSegment, placeOnBoard, q } from "../geom";
 import { bodyBox } from "../library/body";
-import { packageOf, type Board, type Corner, type ElectronicsDesign, type Id, type P2 } from "../model";
+import { packageOf, type Board, type CatalogueBody, type Corner, type ElectronicsDesign, type Id, type P2 } from "../model";
 
 /**
  * The board as a solid (#649, #650): what the modelling kernel needs to build it in 3D, worked out from the board
@@ -14,11 +14,13 @@ export interface PartBody {
   part: Id;
   ref: string;
   /** `step`: a STEP file from the model's blobs (#628); `size` is then the file's box, for when the file is missing. */
-  kind: "box" | "cylinder" | "step";
+  kind: "box" | "cylinder" | "step" | "catalogue";
   /** Across, deep and tall, mm. A cylinder is as wide as it is deep. */
   size: [number, number, number];
   /** A STEP body: the file, how many solids it holds, and its own lift off the board and turns about X, Y and Z. */
   step?: { blob: string; bodies: number; lift: number; rotate: [number, number, number] };
+  /** A robot catalogue part (#624): its record, lifted and turned the same way. */
+  catalogue?: { part: CatalogueBody; lift: number; rotate: [number, number, number] };
   /** The middle of its base, on the board (z is the face it stands on). */
   at: [number, number, number];
   /** Turned anticlockwise seen from the top, degrees, after any flip. */
@@ -104,7 +106,7 @@ export function boardSolid(d: ElectronicsDesign, minDrill = MIN_DRILL): BoardSol
     const size: [number, number, number] =
       src?.kind === "box"
         ? src.size
-        : src?.kind === "step" && src.size
+        : (src?.kind === "step" || src?.kind === "catalogue") && src.size
           ? src.size
           : src?.kind === "cylinder"
             ? [src.diameter, src.diameter, src.height]
@@ -113,9 +115,10 @@ export function boardSolid(d: ElectronicsDesign, minDrill = MIN_DRILL): BoardSol
     bodies.push({
       part: part.id,
       ref: part.ref,
-      kind: src?.kind === "cylinder" ? "cylinder" : src?.kind === "step" ? "step" : "box",
+      kind: src?.kind === "cylinder" || src?.kind === "step" || src?.kind === "catalogue" ? src.kind : "box",
       size,
       ...(src?.kind === "step" ? { step: { blob: src.blob, bodies: Math.max(1, src.bodies ?? 1), lift: off[2] ?? 0, rotate: m?.rotate ?? [0, 0, 0] } } : {}),
+      ...(src?.kind === "catalogue" ? { catalogue: { part: src.part, lift: off[2] ?? 0, rotate: m?.rotate ?? [0, 0, 0] } } : {}),
       at: [c[0], c[1], flip ? 0 : board.thickness],
       rot: ((at.rot % 360) + 360) % 360,
       flip,

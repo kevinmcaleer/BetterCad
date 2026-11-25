@@ -858,6 +858,7 @@
     },
     {
       "id": "pico",
+      "body": { "catalogue": "pico", "rotate": [0, 0, -90] },
       "category": "Microcontrollers and modules",
       "symbol": "MCU_Module:RaspberryPi_Pico",
       "name": "Raspberry Pi Pico",
@@ -872,6 +873,7 @@
     },
     {
       "id": "pico-w",
+      "body": { "catalogue": "pico-w", "rotate": [0, 0, -90] },
       "category": "Microcontrollers and modules",
       "symbol": "MCU_Module:RaspberryPi_Pico",
       "name": "Raspberry Pi Pico W",
@@ -887,6 +889,7 @@
     },
     {
       "id": "pico-2",
+      "body": { "catalogue": "pico", "rotate": [0, 0, -90] },
       "category": "Microcontrollers and modules",
       "symbol": "MCU_Module:RaspberryPi_Pico",
       "name": "Raspberry Pi Pico 2",
@@ -902,6 +905,7 @@
     },
     {
       "id": "pico-2-w",
+      "body": { "catalogue": "pico-w", "rotate": [0, 0, -90] },
       "category": "Microcontrollers and modules",
       "symbol": "MCU_Module:RaspberryPi_Pico",
       "name": "Raspberry Pi Pico 2 W",
@@ -1257,6 +1261,7 @@
     },
     {
       "id": "hc-sr04",
+      "body": { "catalogue": "hc-sr04", "rotate": [180, 0, 0] },
       "category": "Sensors and displays",
       "symbol": "module:hc-sr04"
     },

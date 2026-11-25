@@ -154,6 +154,25 @@ describe("KiCad footprints", () => {
     }
   });
 
+  it("keeps the paste on a thermal pad whose openings are drawn as pads of their own", () => {
+    const { footprint, skipped } = readKicadFootprint(`(footprint "EP"
+      (pad "1" smd rect (at -2 0) (size 0.6 0.3) (layers "F.Cu" "F.Paste" "F.Mask"))
+      (pad "9" smd rect (at 0 0) (size 2 2) (layers "F.Cu" "F.Mask"))
+      (pad "" smd rect (at -0.5 -0.5) (size 0.8 0.8) (layers "F.Paste"))
+      (pad "" smd rect (at 0.5 -0.5) (size 0.8 0.8) (layers "F.Paste"))
+      (pad "" smd rect (at -0.5 0.5) (size 0.8 0.8) (layers "F.Paste"))
+      (pad "" smd rect (at 0.5 0.5) (size 0.8 0.8) (layers "F.Paste"))
+      (pad "10" smd rect (at 3 0) (size 1 1) (layers "F.Cu" "F.Mask")))`);
+    // The four openings are not pads. The thermal pad gets one opening of their area: 4 × 0.64 = 1.6 × 1.6 mm.
+    expect(footprint.pads.map((p) => p.number)).toEqual(["1", "9", "10"]);
+    expect(skipped).toBe(4);
+    expect(footprint.pads[1]).toMatchObject({ pasteMargin: -0.2 });
+    expect(footprint.pads[1]).not.toHaveProperty("noPaste");
+    expect(footprint.pads[0]).not.toHaveProperty("pasteMargin");
+    // A pad with no paste layer and no openings over it stays bare.
+    expect(footprint.pads[2]).toMatchObject({ noPaste: true });
+  });
+
   it("reads arcs on the silkscreen, fabrication and courtyard layers", () => {
     const { footprint } = readKicadFootprint(file("LED_D5.0mm.kicad_mod"));
     const arcs = footprint.shapes.filter((s) => s.kind === "arc");

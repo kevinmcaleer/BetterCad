@@ -133,6 +133,24 @@ export function readKicadFootprint(source: string): KicadFootprint {
 }
 
 /**
+ * A pad whose paste is drawn as separate openings gets one opening of the same area, so it is still soldered: the
+ * stencil's pattern is not kept, the amount of paste is.
+ */
+function pasted(p: Pad, openings: { x: number; y: number; area: number }[]): Pad {
+  const turn = ((p.angle ?? 0) % 180) + ((p.angle ?? 0) < 0 ? 180 : 0);
+  if (!p.noPaste || (turn !== 0 && turn !== 90)) return p;
+  const [w, h] = turn ? [p.h, p.w] : [p.w, p.h];
+  const area = openings.filter((o) => Math.abs(o.x - p.x) <= w / 2 && Math.abs(o.y - p.y) <= h / 2).reduce((a, o) => a + o.area, 0);
+  if (!area) return p;
+  // (w + 2m)(h + 2m) = area, for the margin m, never bigger than the pad.
+  const b = p.w + p.h;
+  const m = Math.min(0, (-b + Math.sqrt(b * b - 4 * (p.w * p.h - area))) / 4);
+  const next: Pad = { ...p, ...(r4(m) ? { pasteMargin: r4(m) } : {}) };
+  delete next.noPaste;
+  return next;
+}
+
+/**
  * A footprint from its list, in a library or on a board. On a board a footprint flipped to the bottom keeps its
  * drawings on the back layers (`back`); they are read as they are written, and the board's reader turns them over.
  */
@@ -142,13 +160,20 @@ export function footprintIn(fp: Node[], back = false): KicadFootprint {
   const shapes: FootprintDef["shapes"] = [];
   let skipped = 0;
   let refAt: P2 | undefined;
+  // Paste openings drawn as pads of their own, as a thermal pad's are: where each is, and its area.
+  const openings: { x: number; y: number; area: number }[] = [];
   for (const item of fp) {
     if (!isList(item)) continue;
     const kind = head(item);
     if (kind === "pad") {
       const p = pad(item, back);
       if (p) pads.push(p);
-      else skipped += 1;
+      else {
+        skipped += 1;
+        const layers = child(item, "layers")?.slice(1).map(String) ?? [];
+        const [at, size] = [child(item, "at"), child(item, "size")];
+        if (layers.some((l) => l.endsWith(".Paste"))) openings.push({ x: num(at, 1), y: r4(-num(at, 2)), area: num(size, 1) * num(size, 2, num(size, 1)) });
+      }
       continue;
     }
     if ((kind === "property" && text(item) === "Reference") || (kind === "fp_text" && text(item) === "reference")) {
@@ -192,7 +217,7 @@ export function footprintIn(fp: Node[], back = false): KicadFootprint {
     return [num(v, 1, or), num(v, 2, or), num(v, 3, or)];
   };
   return {
-    footprint: { name: text(fp), pads, shapes: joinLines(shapes), ...(refAt ? { refAt } : {}) },
+    footprint: { name: text(fp), pads: pads.map((p) => pasted(p, openings)), shapes: joinLines(shapes), ...(refAt ? { refAt } : {}) },
     ...(description ? { description } : {}),
     keywords: text(child(fp, "tags")).split(/\s+/).filter(Boolean),
     ...(mount ? { mount } : {}),
