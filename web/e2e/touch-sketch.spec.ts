@@ -54,8 +54,12 @@ async function startSketch(page: Page) {
 
 async function pick(page: Page, tool: string) {
   const b = page.getByRole("toolbar", { name: "Sketch tools" }).getByRole("button", { name: tool, exact: true });
-  if ((await b.getAttribute("aria-pressed")) !== "true") await b.tap();
-  await expect(b).toHaveAttribute("aria-pressed", "true");
+  // A tap sent the moment a drag's finger lifts can be lost on a slow runner: the browser is still ending that
+  // touch. So look again and tap again, never tapping a tool that is already on (a second tap would put it down).
+  await expect(async () => {
+    if ((await b.getAttribute("aria-pressed")) !== "true") await b.tap();
+    await expect(b).toHaveAttribute("aria-pressed", "true", { timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
 }
 
 const curves = (page: Page) => page.evaluate(() => document.querySelector(".bc-help")?.textContent ?? "");
