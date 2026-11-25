@@ -134,7 +134,7 @@ describe("opening an Eagle project", () => {
       { number: "3", kind: "thru", shape: "oval", x: 2.54, y: 0, w: 3.2, h: 1.6, drill: 1, angle: 90 },
     ]);
     expect(def("R1").packages[0]!.footprint.pads[1]).toEqual({ number: "2", kind: "smd", shape: "roundrect", x: 0.95, y: 0, w: 0.9, h: 1.3, round: 0.25 });
-    expect(def("R1").packages[0]!.footprint.refAt).toEqual([-1.5, 1.2]);
+    expect(def("R1").packages[0]!.footprint.refAt).toEqual([-0.65, 1.7]);
   });
 
   it("puts every pin where its net's wires end, turned and mirrored as Eagle does", () => {

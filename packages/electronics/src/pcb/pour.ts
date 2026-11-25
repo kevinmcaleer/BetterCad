@@ -63,6 +63,7 @@ export function pourShape(d: ElectronicsDesign, pour: Pour, pads: BoardPad[] = b
     if (layerOf(other.layer) === layer && other.net !== pour.net)
       knocks.push({ pts: other.outline, r: 0, reach: clearanceBetween(board, pour.net, other.net) });
   }
+  const joins = new Map(board.placements.map((p) => [p.part, p.joins]));
   copper.forEach((c, i) => {
     if (!c.layers.includes(layer)) return;
     if (c.net !== pour.net || !c.net) {
@@ -70,7 +71,10 @@ export function pourShape(d: ElectronicsDesign, pour: Pour, pads: BoardPad[] = b
       return;
     }
     const pad = c.kind === "pad" ? pads[i] : undefined;
-    if (!pad || !pour.thermal) return;
+    if (!pad) return;
+    // The pad's own way of joining wins over the pour's.
+    const how = joins.get(pad.part)?.[pad.pad.number] ?? (pour.thermal ? "spokes" : "solid");
+    if (how === "solid") return;
     // Its own pad: a ring of bare board round it, bridged by four spokes along the pad's own axes.
     rings.push({ pts: c.pts, r: c.r, reach: THERMAL_GAP });
     const far = Math.max(pad.pad.w, pad.pad.h) / 2 + THERMAL_GAP + SPOKE;
@@ -247,6 +251,25 @@ function tidyArea(pts: P2[]): P2[] | null {
 export function addPour(d: ElectronicsDesign, net: string, layer: CopperLayer, outline: P2[], thermal = true): ElectronicsDesign {
   const area = tidyArea(outline);
   return area ? onBoard(d, (b) => ({ ...b, pours: [...b.pours, { id: eid("po"), net, layer, outline: area, thermal }] })) : d;
+}
+
+/**
+ * How one pad joins a pour on its net (#641): with spokes, so it solders easily, or all round, so it carries heat and
+ * current. Nothing given: as the pour says.
+ */
+export function setPadJoin(d: ElectronicsDesign, part: Id, pad: string, how?: "spokes" | "solid"): ElectronicsDesign {
+  return onBoard(d, (b) => ({
+    ...b,
+    placements: b.placements.map((p) => {
+      if (p.part !== part) return p;
+      const joins = { ...p.joins };
+      if (how) joins[pad] = how;
+      else delete joins[pad];
+      const next: typeof p = { ...p, joins };
+      if (!Object.keys(joins).length) delete next.joins;
+      return next;
+    }),
+  }));
 }
 
 export function setPour(d: ElectronicsDesign, id: Id, change: Partial<Pick<Pour, "net" | "layer" | "thermal" | "priority">>): ElectronicsDesign {

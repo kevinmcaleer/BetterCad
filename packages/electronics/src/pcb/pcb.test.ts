@@ -28,7 +28,7 @@ import {
   toggleLock,
 } from "./route";
 import { followSketch, outlineBehind, outlineOf, unfollowSketch } from "./outline";
-import { addKeepoutArea, addCutout, addPour, pourFill, pourShape, removeAreas, setPour, wholeBoard, type PourFill } from "./pour";
+import { addKeepoutArea, addCutout, addPour, pourFill, pourShape, removeAreas, setPadJoin, setPour, wholeBoard, type PourFill } from "./pour";
 import { PRESETS, applyPreset, keepRules, matchesPreset, presetChanges, setRule } from "./rules";
 import { boardState } from "./state";
 
@@ -497,6 +497,16 @@ describe("copper pours", () => {
     expect(pourShape(solid, solid.board!.pours[0]!).spokes).toEqual([]);
     expect(cell(pourFill(solid, solid.board!.pours[0]!), diagonal)).toBeGreaterThan(0);
     expect(pad("J1", "1")).toEqual(one.at);
+    // One pad can go its own way (#641): joined all round in a pour that uses spokes, and the other way about.
+    const own = setPadJoin(d, one.part, "1", "solid");
+    expect(own.board!.placements.find((p) => p.part === one.part)!.joins).toEqual({ "1": "solid" });
+    expect(cell(pourFill(own, own.board!.pours[0]!), diagonal)).toBeGreaterThan(0);
+    expect(pourShape(own, own.board!.pours[0]!).spokes.length).toBe(pourShape(d, d.board!.pours[0]!).spokes.length - 4);
+    const spokesIn = setPadJoin(solid, one.part, "1", "spokes");
+    expect(pourShape(spokesIn, spokesIn.board!.pours[0]!).spokes).toHaveLength(4);
+    expect(cell(pourFill(spokesIn, spokesIn.board!.pours[0]!), diagonal)).toBe(0);
+    // Back to the pour's way, and the note is gone.
+    expect(setPadJoin(own, one.part, "1").board!.placements.find((p) => p.part === one.part)).not.toHaveProperty("joins");
   });
 
   it("is cut in two by a track right across it, and drops a piece that reaches nothing", () => {

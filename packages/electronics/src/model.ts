@@ -310,6 +310,8 @@ export interface Placement {
   /** Where the reference text sits, from the part's origin, and whether it is drawn. */
   refAt?: P2;
   refHidden?: boolean;
+  /** How a pad joins a pour on its net, by pad number, where it differs from the pour's own way (#641). */
+  joins?: Record<string, "spokes" | "solid">;
 }
 
 export interface Track {
@@ -341,6 +343,20 @@ export interface Pour {
 }
 
 export type BoardLayer = "silk-top" | "silk-bottom" | "copper-top" | "copper-bottom";
+
+/** A picture printed on the silkscreen: ink or bare board, a bit a cell. */
+export interface BoardPicture {
+  id: Id;
+  layer: "silk-top" | "silk-bottom";
+  /** Its bottom left corner on the board, and how wide it is, mm. Its height follows from its cells. */
+  x: number;
+  y: number;
+  w: number;
+  cols: number;
+  rows: number;
+  /** The ink: rows from the top, each a whole number of bytes, first cell in the top bit, as base64. */
+  bits: string;
+}
 
 export interface BoardHole {
   id: Id;
@@ -413,7 +429,15 @@ export interface Board {
   outline: Corner[];
   cutouts?: Corner[][];
   /** A sketch or face in the model the outline follows (#638). */
-  outlineFrom?: { sketch?: string; face?: string; at?: P2 };
+  outlineFrom?: {
+    sketch?: string;
+    face?: string;
+    at?: P2;
+    /** Round cut-outs of the source are drilled as holes. */
+    holes?: boolean;
+    /** For a face: the plane it lies in, in the model, so the board can stand on it in 3D. */
+    frame?: { origin: [number, number, number]; x: [number, number, number]; normal: [number, number, number] };
+  };
   thickness: number;
   copperLayers: 2;
   placements: Placement[];
@@ -422,6 +446,8 @@ export interface Board {
   pours: Pour[];
   texts: { id: Id; layer: BoardLayer; x: number; y: number; text: string; size: number; angle?: number }[];
   shapes: (Shape & { id: Id; layer: BoardLayer })[];
+  /** Pictures on the silkscreen (#642). */
+  pictures?: BoardPicture[];
   holes: BoardHole[];
   keepouts: Keepout[];
   rules: Rules;

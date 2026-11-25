@@ -16,7 +16,7 @@ import {
 import { inBox } from "./hit";
 
 export interface BoardHit {
-  kind: "part" | "track" | "via" | "hole" | "text" | "pad" | "area";
+  kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area";
   /** A part's id for parts and pads; the thing's own id otherwise. */
   id: string;
   net?: string;
@@ -75,6 +75,8 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
       out.push({ kind: "pad", id: pad.part, net: pad.net, pad });
   for (const t of board.texts)
     if (inBox(p, { x1: t.x, y1: t.y - t.size * 0.2, x2: t.x + t.text.length * t.size * 0.6, y2: t.y + t.size }, tol)) out.push({ kind: "text", id: t.id });
+  for (const pic of board.pictures ?? [])
+    if (inBox(p, { x1: pic.x, y1: pic.y, x2: pic.x + pic.w, y2: pic.y + (pic.w / pic.cols) * pic.rows }, tol)) out.push({ kind: "picture", id: pic.id });
   for (const at of [...board.placements].reverse()) {
     const b = placementBox(d, at);
     if (b && inBox(p, b, tol * 0.5)) out.push({ kind: "part", id: at.part });

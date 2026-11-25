@@ -18,6 +18,7 @@ import { Button, ESC, FeaturePanel, PanelNote, PropsPanel, RibbonButton, RibbonG
 import type { Sketch } from "@bettercad/sketch";
 import type { Command } from "../state/commands";
 import type { KernelCall } from "./bodyFile";
+import type { ModelFaces } from "./faceOutline";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
 import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
@@ -271,6 +272,15 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     },
     { ...draw("hole", "Hole", "hole", "H", "Add a mounting hole for a screw"), group: "Add" },
     { ...draw("text", "Text", "text", "T", "Write on the silkscreen"), group: "Add" },
+    {
+      id: "picture",
+      group: "Add",
+      label: "Picture",
+      icon: "image",
+      tip: "Print a logo or a drawing on the silkscreen",
+      disabled: readOnly,
+      run: () => eactions.current?.picture?.(),
+    },
     { ...draw("pour", "Pour", "pour", "P", "Fill an area with copper on one net, usually ground"), group: "Add" },
     { ...draw("keepout", "Keep-out", "keepOut", "O", "Mark an area tracks and pours stay out of, or cut a hole in the board"), group: "Add" },
     {
@@ -705,6 +715,8 @@ export interface ElectronicsViewProps {
   name?: string;
   /** The model's sketches: a board can take its outline from one. */
   sketches?: { id: string; name: string; sketch: Sketch }[];
+  /** The model's bodies and what is picked on them: a board can take its outline from a flat face (#638). */
+  model?: ModelFaces;
   /** The model has its Board step (#650), so the board stands in 3D; and how to add the step when it has not. */
   inModel?: boolean;
   onAddBoard?: () => void;
@@ -726,6 +738,7 @@ export default function ElectronicsView({
   registry,
   name,
   sketches,
+  model,
   inModel,
   onAddBoard,
   onSample,
@@ -848,6 +861,7 @@ export default function ElectronicsView({
               edit={edit}
               readOnly={readOnly}
               sketches={sketches}
+              model={model}
               inModel={inModel}
               onAddBoard={onAddBoard}
               onClose={() => eui.set({ card: null })}

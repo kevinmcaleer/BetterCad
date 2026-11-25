@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  boardSize,
+  eid,
   emptyBox,
   flipOnBoard,
   grow,
@@ -15,6 +17,8 @@ import {
 } from "@bettercad/electronics";
 import { edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
 import { boardState } from "@bettercad/electronics/pcb/state";
+import { addPicture } from "@bettercad/electronics/pcb/picture";
+import { slideTrack } from "@bettercad/electronics/pcb/slide";
 import { addCutout, addKeepoutArea, addPour, pourShape, removeAreas, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import { addHole, addText, addTrack, addVia, blockers, corner45, deleteParts, renumberOnBoard, toggleLock } from "@bettercad/electronics/pcb/route";
 import { Button, ESC, useEscape } from "@bettercad/ui";
@@ -48,6 +52,7 @@ export function boardBox(d: ElectronicsDesign, only?: Set<string>): Box {
   for (const v of board.vias) if (only?.has(v.id)) grow(b, [v.x, v.y], 3);
   for (const h of board.holes) if (only?.has(h.id)) grow(b, [h.x, h.y], 4);
   for (const t of board.texts) if (only?.has(t.id)) grow(b, [t.x, t.y], 4);
+  for (const pic of board.pictures ?? []) if (only?.has(pic.id)) grow(grow(b, [pic.x, pic.y], 2), [pic.x + pic.w, pic.y + (pic.w / pic.cols) * pic.rows], 2);
   if (b.x1 === Infinity) return boardBox(d);
   return b;
 }
@@ -113,7 +118,33 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const [pourNet, setPourNet] = useState("");
   const [cut, setCut] = useState(false);
   const [going, setGoing] = useState<string[] | null>(null);
-  const drag = useRef<{ ids: string[]; last: P2; key: string } | null>(null);
+  const drag = useRef<{
+    ids: string[];
+    last: P2;
+    key: string;
+    slide?: { id: string; piece: number; from: P2; board: NonNullable<ElectronicsDesign["board"]> };
+  } | null>(null);
+  const pictureFile = useRef<HTMLInputElement>(null);
+  /** A picture for the silkscreen (#642): read, turned into ink, and set down in the middle of what is showing. */
+  const addPictureFrom = async (file: File | undefined) => {
+    if (!file || !design.board) return;
+    try {
+      const { pictureFromFile } = await import("./pictureFile");
+      const size = boardSize(design.board);
+      const w = Math.max(5, Math.min(20, Math.round(size.w / 3)));
+      const ink = await pictureFromFile(file, w);
+      const mid = [size.x + size.w / 2, size.y + size.h / 2];
+      const h = (w / ink.cols) * ink.rows;
+      const at = snap([mid[0] - w / 2, mid[1] - h / 2], grid);
+      const id = eid("pi");
+      const side = layer === "bottom" ? "silk-bottom" : "silk-top";
+      edit((d) => addPicture(d, { ...ink, layer: side, x: at[0], y: at[1], w }, id), "Add a picture");
+      eui.set({ selected: [id], pcbTool: "select" });
+      setSaid("");
+    } catch (e) {
+      setSaid((e as Error).message || "That picture could not be read.");
+    }
+  };
   // What is wrong with where the picked parts sit (#639), found as they move. The check's code loads once, apart.
   const [findClashes, setFindClashes] = useState<typeof import("@bettercad/electronics/drc").placeClashes | null>(null);
   useEffect(() => {
@@ -282,6 +313,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       lock: () => !readOnly && picked().length && edit((d) => toggleLock(d, picked()), "Lock or unlock"),
       bend: () => route && setRoute({ ...route, diag: !route.diag }),
       renumber: () => !readOnly && edit(renumberOnBoard, "Renumber by the board"),
+      picture: () => !readOnly && pictureFile.current?.click(),
     };
     return () => {
       eactions.current = null;
@@ -307,7 +339,12 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     if (p.shift) ids = ids.includes(hit.id) ? ids.filter((x) => x !== hit.id) : [...ids, hit.id];
     else if (!ids.includes(hit.id)) ids = [hit.id];
     eui.set({ selected: ids, net: hit.net || null, spot: null });
-    if (!readOnly && ids.includes(hit.id)) drag.current = { ids, last: snap(p.world, grid), key: `ec-board-move-${(run += 1)}` };
+    if (!readOnly && ids.includes(hit.id)) {
+      const from = snap(p.world, grid);
+      drag.current = { ids, last: from, key: `ec-board-move-${(run += 1)}` };
+      // One track, held by a piece of it: that piece slides and the rest of the track stays joined (#640).
+      if (ids.length === 1 && hit.kind === "track" && hit.segment !== undefined && board) drag.current.slide = { id: hit.id, piece: hit.segment, from, board };
+    }
     return true;
   };
 
@@ -324,7 +361,10 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       const dy = s[1] - d.last[1];
       if (dx || dy) {
         d.last = s;
-        edit((x) => moveOnBoard(x, d.ids, dx, dy), "Move", d.key);
+        const sl = d.slide;
+        // A slide is always worked out from the track as it was picked up, so going back puts it back.
+        if (sl) edit((x) => slideTrack({ ...x, board: sl.board }, sl.id, sl.piece, [s[0] - sl.from[0], s[1] - sl.from[1]]), "Move a piece of track", d.key);
+        else edit((x) => moveOnBoard(x, d.ids, dx, dy), "Move", d.key);
       }
       return;
     }
@@ -543,6 +583,22 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           {area.length > 0 && (
             <Button size="dense" variant="secondary" label="Done" title="Close the area" disabled={area.length < 3} onClick={() => closeArea()} />
           )}
+        </div>
+      )}
+      <input
+        ref={pictureFile}
+        type="file"
+        accept="image/png,image/jpeg,image/svg+xml,image/webp,image/gif"
+        hidden
+        aria-label="A picture for the silkscreen"
+        onChange={(e) => {
+          void addPictureFrom(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      {said && tool === "select" && clashes.length === 0 && !asking && (
+        <div className="bc-ec-routebar" role="group" aria-label="Picture">
+          <p role="status">{said}</p>
         </div>
       )}
       {clashes.length > 0 && !asking && (

@@ -100,11 +100,21 @@ function glyph(ch: string): { lines: P2[][]; scale: number } {
 /** How far the pen moves on per character, in grid units: 4 for the glyph and 2 of space. */
 const ADVANCE = 6;
 
-/** How wide a line of text is, mm, for capitals `size` tall. */
-export function textWidth(text: string, size: number): number {
+/** Capital height of a part's name on the silkscreen, mm. */
+export const REF_SIZE = 1;
+
+/** From one line's baseline down to the next, in capital heights. */
+export const LINE_GAP = 1.6;
+
+function lineWidth(text: string, size: number): number {
   let w = 0;
   for (const ch of text) w += ADVANCE * glyph(ch).scale;
   return text ? ((w - 2) * size) / 6 : 0;
+}
+
+/** How wide text is, mm, for capitals `size` tall: its widest line. */
+export function textWidth(text: string, size: number): number {
+  return Math.max(0, ...text.split("\n").map((l) => lineWidth(l, size)));
 }
 
 /** The pen width that suits text of a size: 15% of a capital's height. */
@@ -113,7 +123,8 @@ export const penFor = (size: number, least = 0): number => Math.max(least, Math.
 /**
  * Text as strokes, mm. `at` is where the text is anchored: its left end, middle or right end along the baseline
  * (`align`), and the baseline itself or the middle of a capital (`middle`). `angle` turns it anticlockwise about the
- * anchor. `mirror` flips it left to right about the anchor, for text read from the bottom of the board.
+ * anchor. `mirror` flips it left to right about the anchor, for text read from the bottom of the board. The anchor
+ * is the first line's; further lines go below it.
  */
 export function textStrokes(
   text: string,
@@ -122,26 +133,28 @@ export function textStrokes(
   opts: { angle?: number; align?: "left" | "centre" | "right"; middle?: boolean; mirror?: boolean } = {},
 ): P2[][] {
   const k = size / 6;
-  const width = textWidth(text, size);
-  const x0 = opts.align === "centre" ? -width / 2 : opts.align === "right" ? -width : 0;
-  const y0 = opts.middle ? -size / 2 : 0;
   const a = ((opts.angle ?? 0) * Math.PI) / 180;
   const c = Math.cos(a);
   const s = Math.sin(a);
   const out: P2[][] = [];
-  let pen = 0;
-  for (const ch of text) {
-    const g = glyph(ch);
-    for (const line of g.lines)
-      out.push(
-        line.map(([gx, gy]): P2 => {
-          let x = x0 + (pen + gx * g.scale) * k;
-          const y = y0 + gy * g.scale * k;
-          if (opts.mirror) x = -x;
-          return [Math.round((at[0] + x * c - y * s) * 1e6) / 1e6, Math.round((at[1] + x * s + y * c) * 1e6) / 1e6];
-        }),
-      );
-    pen += ADVANCE * g.scale;
-  }
+  text.split("\n").forEach((row, n) => {
+    const width = lineWidth(row, size);
+    const x0 = opts.align === "centre" ? -width / 2 : opts.align === "right" ? -width : 0;
+    const y0 = (opts.middle ? -size / 2 : 0) - n * size * LINE_GAP;
+    let pen = 0;
+    for (const ch of row) {
+      const g = glyph(ch);
+      for (const line of g.lines)
+        out.push(
+          line.map(([gx, gy]): P2 => {
+            let x = x0 + (pen + gx * g.scale) * k;
+            const y = y0 + gy * g.scale * k;
+            if (opts.mirror) x = -x;
+            return [Math.round((at[0] + x * c - y * s) * 1e6) / 1e6, Math.round((at[1] + x * s + y * c) * 1e6) / 1e6];
+          }),
+        );
+      pen += ADVANCE * g.scale;
+    }
+  });
   return out;
 }

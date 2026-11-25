@@ -1,4 +1,5 @@
 import { boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
+import { penFor, textStrokes } from "../fab/font";
 import { distToSegment, rad, segmentDistance } from "../geom";
 import type { Board, ElectronicsDesign, Id, NetClass, P2, Rules } from "../model";
 
@@ -15,7 +16,8 @@ export interface Solid {
 export type Layer = "top" | "bottom";
 
 export interface Copper extends Solid {
-  kind: "pad" | "track" | "via";
+  /** `text`: a stroke of text written in copper, on no net. */
+  kind: "pad" | "track" | "via" | "text";
   net: string;
   layers: Layer[];
   /** The part for a pad, the track or via otherwise. */
@@ -119,6 +121,24 @@ export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)):
     });
   for (const h of board.holes)
     if (h.pad) out.push({ pts: [[h.x, h.y]], r: h.pad / 2, kind: "via", net: "", layers: ["top", "bottom"], id: h.id, what: "a plated hole", at: [h.x, h.y] });
+  // Text written in copper (#642) is copper like any other: the same strokes the Gerber file draws.
+  for (const t of board.texts) {
+    if (!t.layer.startsWith("copper")) continue;
+    const side = t.layer === "copper-bottom" ? "bottom" : "top";
+    const cap = t.size * 0.72;
+    for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: side === "bottom" }))
+      for (let i = 0; i + 1 < line.length; i += 1)
+        out.push({
+          pts: [line[i]!, line[i + 1]!],
+          r: penFor(cap) / 2,
+          kind: "text",
+          net: "",
+          layers: [side],
+          id: t.id,
+          what: `the text "${t.text}"`,
+          at: [t.x, t.y],
+        });
+  }
   return out;
 }
 
@@ -140,9 +160,22 @@ export function copperGroups(copper: Copper[], joined: number[][] = []): number[
     if (!byNet.has(c.net)) byNet.set(c.net, []);
     byNet.get(c.net)!.push(i);
   });
+  // A box round each piece is looked at before the pieces are measured: most pairs of a net are nowhere near.
+  const box = copper.map((c) => {
+    let [x1, x2, y1, y2] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const p of c.pts) {
+      x1 = Math.min(x1, p[0]);
+      x2 = Math.max(x2, p[0]);
+      y1 = Math.min(y1, p[1]);
+      y2 = Math.max(y2, p[1]);
+    }
+    return [x1 - c.r, x2 + c.r, y1 - c.r, y2 + c.r] as const;
+  });
+  const apart = (i: number, j: number) => box[i]![0] > box[j]![1] || box[j]![0] > box[i]![1] || box[i]![2] > box[j]![3] || box[j]![2] > box[i]![3];
   for (const list of byNet.values())
     for (let x = 0; x < list.length; x += 1)
       for (let y = x + 1; y < list.length; y += 1) {
+        if (apart(list[x]!, list[y]!)) continue;
         const a = copper[list[x]!]!;
         const b = copper[list[y]!]!;
         if (find(list[x]!) !== find(list[y]!) && shares(a, b) && gap(a, b) === 0) parent[find(list[x]!)] = find(list[y]!);

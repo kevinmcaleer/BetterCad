@@ -26,6 +26,8 @@ export interface EActions {
   /** Board only: swap the copper layer (dropping a via when a track is on the go), and lock the picked parts. */
   layer?(): void;
   lock?(): void;
+  /** Board only: choose a picture file for the silkscreen. */
+  picture?(): void;
   /** Board only: bend the track being laid the other way. */
   bend?(): void;
 }

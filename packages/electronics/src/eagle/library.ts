@@ -211,7 +211,10 @@ export function packageIn(el: El, restring: Restring = RESTRING): EaglePackage {
       const layer = PACKAGE_LAYERS[item.attrs.layer];
       if (item.attrs.layer === "20" || item.attrs.layer === "46") out.edge = true;
       if (item.tag === "text" && item.text.trim().toUpperCase() === ">NAME") {
-        fp.refAt = [numOf(item, "x"), numOf(item, "y")];
+        // Eagle's text starts at its bottom left corner; a name here is centred on its point. A short name's middle
+        // is about this far in and up, for text lying flat.
+        const flat = !/R(90|180|270)/.test(item.attrs.rot ?? "");
+        fp.refAt = flat ? [numOf(item, "x") + 0.85, numOf(item, "y") + 0.5] : [numOf(item, "x"), numOf(item, "y")];
         continue;
       }
       if (item.tag === "text" && item.text.trim().startsWith(">")) continue;

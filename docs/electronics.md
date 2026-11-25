@@ -265,6 +265,53 @@ schematic should know about is made to both in the same undo step. Renumber on t
 sit (top side first, in rows from the top, left to right) and the schematic's names follow. Delete on a part asks
 first, then takes it off the sheet as well. A part's name can be hidden on the silkscreen from its card.
 
+**Text and silkscreen** (#642). The Text tool writes on the silkscreen; the text's card moves it to either side's
+silkscreen or copper. Text in copper is real copper on no net: the board check measures to it, pours keep clear of
+it, and it is drawn in the copper files with the same strokes. Text can have several lines. The files for the board
+house cut the silkscreen away wherever it crosses a pad's opening, and the board check now says so first
+(`silk-pad`, a warning): which part's name or which text loses ink, and over which pad.
+
+**An outline from a face or a DXF file** (#638). Board setup's **Shape** list offers the model's sketches and, with
+the 3D view's pick set to Faces, any flat face picked on a body. The board takes the face's edge, with holes through
+the face as cut-outs, seen from outside the body (`faceShape` in `web/src/electronics/faceOutline.ts`, worked out
+from the face's triangles). The face is kept by the name the kernel gives it (`outlineFrom.face`, "body|face name"),
+so it is found again after the model changes; when its shape has changed the card says so and offers **Update the
+outline**, as it does for a sketch. The face's plane is kept with it (`outlineFrom.frame`), so the Board step stands the board on the face in 3D, as a board from a sketch stands on its sketch; a body moved by a joint or a pose is not followed. Round cut-outs up to 10 mm across are offered as mounting holes (**Make them mounting holes**, `holesFromCutouts`, #653): they become drilled holes that can be sized for a screw, and a board that follows a sketch or a face keeps drilling them as it follows. **Shape from a DXF file** reads lines,
+arcs, circles, ellipses and polylines with bulges (`dxfOutline` in `pcb/dxf.ts`), joins them end to end into closed
+shapes and takes the biggest as the edge and the ones inside it as cut-outs. The file's units are honoured
+(`$INSUNITS`), curves come in as short straight runs, and the card says what was left out: open shapes, splines,
+text. A shape from a file follows nothing afterwards. BetterCad has no DXF reader for sketches yet, so this one is
+the board's own.
+
+**Sliding a piece of track** (#640). With one track picked, drag a piece of it and that piece slides sideways,
+staying parallel to itself. The pieces either side keep their own directions and grow or shrink to meet it, so 45°
+corners stay 45° (`slidePiece` in `pcb/slide.ts`). An end of the track sits on a pad or a via and does not move: a
+short 45° piece is put in to reach the slid piece. The slide stops where a neighbour would have to turn back on
+itself. Another track of the net that ends on a moved corner, and a via on one, go with it. With several things
+picked, a drag moves them all as before.
+
+**Big boards** (#640, #644). `bigBoard` (`pcb/big.ts`) makes a test board of any size. Measured in headless Chromium
+on a board of 1,750 parts and 5,145 pieces of track: zooming and panning hold 60 frames a second, and each step of a
+drag (a part, or a piece of track) takes 70 to 100 ms; before this work a step took 600 ms to a second. What changed:
+the nets are read from the schematic once and kept while only the board changes, a wire's box is looked at before a
+point is measured against it, the 3D model is left alone while the schematic or the PCB view covers it, and the
+copper's groups and the ink over a pad check look at boxes first. The board check itself runs in a worker
+(`boardCheck.worker.ts`), so the page stays free while a big board is measured; the last list stays up until the new
+one arrives, and where a worker cannot start the check runs in the page. A 500 part board is checked in about 0.2 s
+(`big.test.ts` holds both timings to a loose limit).
+
+**Pictures on the silkscreen** (#642). **Picture** on the board's ribbon takes a PNG, JPEG or SVG file and prints
+it as ink: dark, solid parts of the picture are ink, light or clear parts are bare board. It is kept in the design as
+a bit a cell (`BoardPicture`, at most 200 cells across, `pcb/picture.ts`), so nothing is fetched later. Its card sets
+the width (the height follows), the side, and **Swap ink and bare board** for a light logo on a dark ground; a note
+says when its finest detail is thinner than the board rules print. It is drawn in the silkscreen file as filled
+regions, flipped on the bottom so it reads from underneath, cut away over pads like any ink, and the board check
+warns when it crosses one. Pictures are not written to KiCad files yet.
+
+**A pad's own way into a pour** (#641). A pour joins its pads with spokes or all round. One pad can differ: a
+part's card lists its pads that are on a poured net, each with As the pour says, With spokes or All round
+(`joins` on the placement, `setPadJoin`).
+
 **Pin swap** (#645). A component marks pins that do the same job with the same word (`swap` on a pin: a resistor's
 two ends are both "ends"). For a part with such pins, its card on the board offers **Swap pins 1 and 2** (or a list
 of pairs when there are more). `swapPins` (in `swap.ts`) gives that one part its own copy of the component with the two pins in
@@ -439,7 +486,9 @@ between sheets, pictures, text boxes and shapes on a sheet, net class flags, dim
 user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
 flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
 middle of its hole comes in with the hole in the right place and the copper centred on it, so the board check can
-report a clearance there that KiCad does not. A board without its schematic does not open: the nets of a design here
+report a clearance there that KiCad does not. Text keeps its place, size, turn and lines, but not KiCad's separate
+width or its mirror flag, so a line of text can come in a little longer or shorter than KiCad draws it. A board
+without its schematic does not open: the nets of a design here
 come from its schematic. A local label and a global label with one name are one net here; in KiCad they can be two.
 
 How it is checked: `kicad/project.test.ts` writes the sample and the fixture that turns everything every way out as
