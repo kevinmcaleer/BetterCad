@@ -1,7 +1,7 @@
 import type { BoardSolid, Edge } from "@bettercad/electronics/pcb/solid";
 import type { ProfileSeg, ProfileShape } from "./extrude";
 import { partBounds, type CataloguePart } from "./catalogue";
-import { mat4Mul, placeMatrix, placeOf, type Mat4 } from "./pose";
+import { mat4Apply, mat4ApplyDir, mat4Mul, placeMatrix, placeOf, type Mat4 } from "./pose";
 import { newId, type ModelDoc, type Part, type Vec3 } from "./document";
 
 /**
@@ -145,4 +145,78 @@ export function addBoard(doc: ModelDoc, place: { position?: Vec3; rotation?: Vec
     ...(component ? { component } : {}),
   });
   return { ...doc, features };
+}
+
+/**
+ * Standoffs under a board (#652): where its mounting holes fall on a face it lies flat over, and how far the board is
+ * above that face. Null when the board has no holes, is not parallel to the face, or is not above it.
+ */
+export function standoffsUnder(
+  board: Pick<Part, "position" | "rotation">,
+  thickness: number,
+  holes: readonly { x: number; y: number }[],
+  frame: { origin: readonly number[]; x: readonly number[]; normal: readonly number[] },
+): { points: [number, number][]; height: number } | null {
+  if (!holes.length) return null;
+  const r = board.rotation ?? { x: 0, y: 0, z: 0 };
+  const by = placeMatrix([board.position.x, board.position.y, board.position.z], [r.x, r.y, r.z]);
+  const [o, fx, n] = [frame.origin, frame.x, frame.normal] as [number[], number[], number[]];
+  const up = mat4ApplyDir(by, [0, 0, 1]);
+  if (Math.abs(up[0] * n[0]! + up[1] * n[1]! + up[2] * n[2]!) < 0.999) return null;
+  const fy = [n[1]! * fx[2]! - n[2]! * fx[1]!, n[2]! * fx[0]! - n[0]! * fx[2]!, n[0]! * fx[1]! - n[1]! * fx[0]!];
+  const from = (p: number[]) => [p[0]! - o[0]!, p[1]! - o[1]!, p[2]! - o[2]!];
+  const along = (d: number[], a: number[]) => d[0]! * a[0]! + d[1]! * a[1]! + d[2]! * a[2]!;
+  // The face of the board nearer the face it stands over.
+  const height = Math.min(along(from(mat4Apply(by, [0, 0, 0])), n), along(from(mat4Apply(by, [0, 0, thickness])), n));
+  if (!(height > 0.05)) return null;
+  const q = (v: number) => Math.round(v * 1000) / 1000 + 0;
+  return {
+    points: holes.map((h) => {
+      const d = from(mat4Apply(by, [h.x, h.y, 0]));
+      return [q(along(d, fx)), q(along(d, fy))];
+    }),
+    height: q(height),
+  };
+}
+
+/** The box round a board part's body, in the body's own axes; null when its size is not known. */
+export function partBox(p: Part): [number[], number[]] | null {
+  if (p.catalogue) {
+    const [min, max] = partBounds(p.catalogue);
+    return [[...min], [...max]];
+  }
+  if (p.kind !== "box" && p.kind !== "cylinder") return null;
+  return [
+    [-p.size.x / 2, -p.size.y / 2, 0],
+    [p.size.x / 2, p.size.y / 2, p.size.z],
+  ];
+}
+
+/**
+ * The cut for a connector opening (#652): the box round a board part's body, from its middle out past its face on
+ * the `out` side by `by` mm, as a box body where the part stands. Null for a body whose size is not known (a STEP
+ * file's solids).
+ */
+export function openingBox(p: Part, reach: { out: readonly number[]; by: number }): Part | null {
+  const box = partBox(p);
+  if (!box) return null;
+  const [min, max] = box;
+  const axis = [0, 1, 2].reduce((a, i) => (Math.abs(reach.out[i] ?? 0) > Math.abs(reach.out[a] ?? 0) ? i : a), 0);
+  const middle = (min[axis]! + max[axis]!) / 2;
+  if ((reach.out[axis] ?? 0) >= 0) [min[axis], max[axis]] = [middle, max[axis]! + reach.by];
+  else [min[axis], max[axis]] = [min[axis]! - reach.by, middle];
+  const size = { x: max[0]! - min[0]!, y: max[1]! - min[1]!, z: max[2]! - min[2]! };
+  if (!(size.x > 0 && size.y > 0 && size.z > 0)) return null;
+  const r = p.rotation ?? { x: 0, y: 0, z: 0 };
+  // A box stands on the middle of its base.
+  const at = mat4Apply(placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z]), [(min[0]! + max[0]!) / 2, (min[1]! + max[1]!) / 2, min[2]!]);
+  return {
+    id: `${p.id}~opening`,
+    name: p.name,
+    kind: "box",
+    hidden: false,
+    position: { x: at[0], y: at[1], z: at[2] },
+    ...(p.rotation ? { rotation: { ...p.rotation } } : {}),
+    size,
+  };
 }

@@ -936,6 +936,11 @@ button.bc-ec-pill {
 .bc-ec-fab-open {
   cursor: pointer;
 }
+.bc-ec-fab-mask {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+}
 .bc-ec-fab-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

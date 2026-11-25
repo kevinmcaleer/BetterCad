@@ -345,18 +345,40 @@ Export; STEP keeps one body per part with its name. The clash check sees them wh
 
 **Copper and silkscreen** (`web/src/electronics/boardPicture.ts`). Each side of the board is painted once per design
 with the PCB view's own drawing code in the materials' colours (mask, bare pads, silkscreen) and laid on the board's
-top and bottom faces as a picture, the way decals are. Tracks are never made solid. The path-traced render does not
-draw pictures on faces yet, so a render shows the board and its parts without the copper.
+top and bottom faces as a picture, the way decals are. Tracks are never made solid. The path-traced render draws the
+same pictures (#654): each is a thin sheet just over its face with the picture as its colour (`RenderBody.decals`,
+`PathRender.picture`), cut with its body when a section is on and left off in the Paper style. Decals (#263) reach a
+render the same way. A shot's picture is out of date once the board's design changes (`shotKey`).
+
+**One mesh for repeated parts** (#650). The kernel meshes each shape a board's parts have once, where the shape is
+drawn, and sets the triangles down for every part of that shape (`ModelBuilder.sharedMesh`, `moveMesh`): 50 resistors
+cost one meshing and 50 moves of it. `ModelResult.shared` counts them.
+
+**From the 3D side** (#651, `packages/kernel/src/boardmove.ts`, `web/src/electronics/board3d.ts`). Move or Turn on a
+part's body in the 3D view changes where it sits on the board: the drag is read in the board's own plane, so the part
+slides along the face and turns about its normal, and a lift or a tilt is dropped. The PCB view shows it moved, its
+tracks stay where they were, and the board check flags what no longer joins. A locked part stays put and says why.
+Dragging the board's own body moves the Board step, so every part comes with it and a board on a sketch or a face
+stays on it. The Hole tool on the board's top or bottom face makes board holes (drilled through, at the screw's
+ordinary clearance, without a printer's hole offset) in place of a Hole step, in one undo step; they are in the PCB
+view and the drill file like any other.
 
 **A board that sits in its case** (#653). A board that takes its outline from a sketch stands on that sketch's
 plane, on the shape it was drawn from, so drawing the board's shape inside an enclosure puts the board there. The
 step's own position then moves it from the sketch (say 3 mm up, onto standoffs). The board's faces and edges take
 sketches and Auto project like any body's, which is how a case is fitted to it.
 
-Left for later: dragging a part in the 3D view (move it in the PCB view; the model follows), a hole cut through the
-board in 3D becoming a board hole, the Connector
-opening and Standoffs under the board tools (#652; project the board's holes and use Mount), a board started from a
-face, and the copper in a path-traced render.
+**Designing the case round the board** (#652). **Standoffs under the board**: the Mount tool, on a face the board
+lies flat over, has **Under the board's holes** at the top of its Pattern menu. One pick puts a standoff under each
+mounting hole, as tall as the gap up to the board, with the biggest screw that goes through the holes. The step keeps
+`underBoard`, so each build reads the holes and the height from the board again (`standoffsUnder`) and the standoffs
+follow a moved hole or a lifted board; when the board is no longer over the face they stay where they last were.
+**Connector opening** (right-click a part on the board in 3D, or the command list): finds the nearest printed body
+that one of the part's four sides looks at within 30 mm, and cuts the box round the part's body out through that
+wall with a sliding fit (`connectorOpening` in `board3d.ts`). It is a Combine cut whose tool has `reach` (which side
+of the part, and how far out), so the cut is made from the part each time the model builds (`openingBox`) and follows
+the part along the wall; how far it reaches is as it was when it was made. A part whose body is a STEP file has no
+box to cut round, and the step says so.
 
 ## Files for a board house (#655 to #661)
 
@@ -404,9 +426,19 @@ It draws from the files, never from the design. It opens any Gerber zip dropped 
 aperture blocks are not read, and it says so when a file uses them. `inkAt` asks whether a file leaves a mark at a
 point, which is how the tests check clearances, spokes and that drill hits land on copper.
 
+**As made** draws one side as the finished board looks, still from the files alone: the board's shape from the
+outline file (`boardLoops` joins its lines into loops; the biggest is the edge, the rest are cut-outs), the mask
+with copper a little lighter under it, bare metal where the mask opens over copper, ink kept off the openings and
+the holes drilled through. The files do not say the mask colour, so it starts as the board's and can be changed.
+
+**Pin 1** (#659) marks the pick and place list over the pads. `pinOnes` works from the list's own rows: a cross
+where a row puts the part, a ring on pad 1 as the layout has it, and a dot where pin 1 lands taking the row as
+written. A part with no correction has its dot in its ring. A component's own correction (a turn or an offset for
+the line) moves the dot off the ring by exactly that much, so you can see what each correction does, top and bottom.
+
 Left for later: a real upload to each house's quote page to confirm the headings and how bottom parts are turned
-(#660; neither house's page says), a pick and place preview showing pin 1 (#659), a realistic board picture in the
-preview, live stock and prices (#661), LCSC numbers filled in for the starter library, and panels (#662).
+(#660; neither house's page says), live stock and prices (#661), LCSC numbers filled in for the starter library,
+and panels (#662).
 
 ## The sample board (#666)
 

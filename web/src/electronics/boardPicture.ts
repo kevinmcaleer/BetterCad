@@ -8,6 +8,7 @@ import { mat4Apply, mat4ApplyDir, placeMatrix, type Part } from "../state/docume
 import type { ViewDecal } from "../viewport/View3D";
 import type { Colours } from "./colours";
 import { drawBoard, padPath, type LayerId } from "./drawBoard";
+import { HOLE, PAD, SILK, lighten } from "./materials";
 import type { View2D } from "./view2d";
 
 /**
@@ -15,18 +16,9 @@ import type { View2D } from "./view2d";
  * and bottom faces of the Board step's body the way a decal is. The same painter draws the PCB view, with the colours
  * of the materials in place of the layer colours.
  */
-const PAD = "#c8a84a";
-const HOLE = "#17181a";
 /** Pixels per mm at most, and the longest side in pixels. */
 const DENSITY = 24;
 const LONGEST = 2048;
-
-/** A colour moved a share of the way to white. */
-function lighten(hex: string, by: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const ch = (shift: number) => Math.round(((n >> shift) & 255) + (255 - ((n >> shift) & 255)) * by);
-  return `rgb(${ch(16)}, ${ch(8)}, ${ch(0)})`;
-}
 
 export interface BoardPicture {
   /** A PNG as a data: URL. */
@@ -56,7 +48,7 @@ export function boardPicture(d: ElectronicsDesign, side: "top" | "bottom", font 
   let out: BoardPicture | null = null;
   if (ctx) {
     const mask = MASK_COLOURS[board.mask ?? "green"];
-    const silk = board.silk === "black" ? "#16171a" : "#f1f1ec";
+    const silk = board.silk === "black" ? SILK.black : SILK.white;
     // Copper under the mask shows as a lighter run of the mask's own colour.
     const copper = lighten(mask, 0.22);
     const colours = { font, mono: font } as Colours;

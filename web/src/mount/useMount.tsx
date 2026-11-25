@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ESC, useEscape } from "@bettercad/ui";
 import { toSketch, type Frame, type Vec2 } from "@bettercad/sketch";
+import { boardBodyId, boardStep, standoffsUnder } from "@bettercad/kernel/board";
 import { MOUNT_DEFAULTS, addMount, holeOffsetOf, newId, updateMount, type ModelDoc, type MountFeature, type MountParams, type Part } from "../state/document";
 import type { View3DHandle } from "../viewport/View3D";
 import type { Engine } from "../viewport/engine";
@@ -83,7 +84,8 @@ export function useMount(d: MountDeps) {
             return true;
           }
           const q = snapPoint(toSketch(f.frame, w));
-          change({ points: f.kind === "horn" ? [q] : [...f.points, q] });
+          // A standoff put down by hand takes the step off the board's holes.
+          change({ points: f.kind === "horn" ? [q] : [...f.points, q], underBoard: undefined });
           return true;
         }
         const hit = eng.pick(p.x, p.y, "face");
@@ -148,6 +150,19 @@ export function useMount(d: MountDeps) {
 
   useEscape(!!session, cancel, ESC.tool + 1);
 
+  // Standoffs under the board (#652): where its mounting holes fall on this face and how far up it is, when the
+  // model's board lies flat over the face.
+  const { doc, parts } = d;
+  const frame = feature?.frame;
+  const board = useMemo(() => {
+    const pcb = doc.electronics?.board;
+    const step = pcb && frame && boardStep(doc);
+    const body = step && parts.find((p) => p.id === boardBodyId(step.id));
+    if (!pcb || !frame || !body) return null;
+    const under = standoffsUnder(body, pcb.thickness, pcb.holes, frame);
+    return under && { ...under, drill: pcb.holes[0]!.drill };
+  }, [doc, parts, frame]);
+
   const help = !d.active
     ? null
     : session
@@ -156,7 +171,7 @@ export function useMount(d: MountDeps) {
         : "Click to add standoffs, or pick a pattern. Enter keeps them, Esc takes them back."
       : "Click a flat face where the mount goes.";
 
-  return { session, feature, change, done, cancel, edit, help };
+  return { session, feature, change, done, cancel, edit, help, board };
 }
 
 /** The middle of some points: where a pattern is centred when it replaces them. */

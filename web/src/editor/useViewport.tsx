@@ -161,6 +161,16 @@ export function useViewport(d: ViewportDeps) {
     const pos: Vec3 = { x: position[0], y: position[1], z: position[2] };
     const rot: Vec3 = { x: rotation[0], y: rotation[1], z: rotation[2] };
     const verb = live.current.tool === "turn" ? "Turn" : "Move";
+    // A body of the board (#651): the part moves on the board, or the board moves its step, and the model follows.
+    if (p.pcb)
+      return void import("../electronics/board3d").then((m) => {
+        const now = live.current;
+        const r = m.movedIn3D(now.doc, now.parts, id, pos, rot, verb === "Turn");
+        if (!r) return now.record((doc, at) => placePart(doc, id, pos, rot, at), `${verb} ${p.name}`);
+        if (r.doc === now.doc) view3d.current?.engine()?.putBack(id);
+        else now.editDoc((doc) => m.movedIn3D(doc, now.parts, id, pos, rot, verb === "Turn")?.doc ?? doc, r.label);
+        if (r.say) now.say(r.say, r.error);
+      });
     const mates = live.current.matesOf?.(id) ?? [];
     if (mates.length < 2) return live.current.record((doc, at) => placePart(doc, id, pos, rot, at), `${verb} ${p.name}`);
     // A rigid group moves as one (its edits load on first use).

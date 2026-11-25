@@ -9,7 +9,7 @@ import { fabBoard } from "./fixture";
 import { gerberFiles } from "./gerber";
 import { HOUSES, bomTable, csv, fileBase, houseOf, orderPack, placeTable } from "./pack";
 import { byRef } from "../nets";
-import { bom, placeList, setFitted, setSupplier } from "./parts";
+import { bom, pinOnes, placeList, setFitted, setSupplier } from "./parts";
 import { inkAt, readDrill, readGerber } from "./read";
 
 const id = (d: ElectronicsDesign, ref: string) => d.parts.find((p) => p.ref === ref)!.id;
@@ -151,6 +151,37 @@ describe("the parts list", () => {
     expect(placeList(fixed).find((r) => r.ref === "R1")).toMatchObject({ x: 10, y: 21, rotation: 30 });
     fixed = setPlacement(fixed, r1.id, { side: "bottom" });
     expect(placeList(fixed).find((r) => r.ref === "R1")).toMatchObject({ x: 10, y: 19, side: "bottom" });
+  });
+
+  it("shows pin 1 against its pad: on it as the list stands, and off it by a component's correction (#659)", () => {
+    const { d } = fabBoard();
+    const ones = pinOnes(d, placeList(d));
+    expect(ones.map((o) => o.ref)).toEqual(["J1", "R1"]);
+    // No correction on the resistor: its row puts pin 1 on its pad, and the pad is where the copper is.
+    expect(ones.find((o) => o.ref === "R1")!.apart).toBe(0);
+    // The header's row is its body's middle, 1.27 mm from where the footprint is drawn from, so its pin 1 shows off by that.
+    expect(ones.find((o) => o.ref === "J1")).toMatchObject({ pad: [30, 20], dot: [30, 18.73], apart: 1.27 });
+    const r1 = d.parts.find((p) => p.ref === "R1")!;
+    const pad1 = boardPads(d).find((p) => p.part === r1.id && p.pad.number === "1")!;
+    const one = ones.find((o) => o.ref === "R1")!;
+    expect(one.pad[0]).toBeCloseTo(pad1.at[0], 3);
+    expect(one.pad[1]).toBeCloseTo(pad1.at[1], 3);
+    expect(one).toMatchObject({ side: "top", centre: [10, 20], rotation: 30 });
+    // A half turn of correction: the line would set pin 1 down on the other pad.
+    const turned: ElectronicsDesign = { ...d, defs: { ...d.defs, [r1.def]: { ...d.defs[r1.def]!, pnp: { rotation: 180 } } } };
+    const off = pinOnes(turned, placeList(turned)).find((o) => o.ref === "R1")!;
+    const pad2 = boardPads(d).find((p) => p.part === r1.id && p.pad.number === "2")!;
+    expect(off.dot[0]).toBeCloseTo(pad2.at[0], 3);
+    expect(off.dot[1]).toBeCloseTo(pad2.at[1], 3);
+    expect(off.apart).toBeGreaterThan(1);
+    // On the bottom, mirrored with the part.
+    const under = setPlacement(d, r1.id, { side: "bottom" });
+    const below = pinOnes(under, placeList(under)).find((o) => o.ref === "R1")!;
+    const padB = boardPads(under).find((p) => p.part === r1.id && p.pad.number === "1")!;
+    expect(below.side).toBe("bottom");
+    expect(below.apart).toBe(0);
+    expect(below.pad[0]).toBeCloseTo(padB.at[0], 3);
+    expect(below.pad[1]).toBeCloseTo(padB.at[1], 3);
   });
 });
 

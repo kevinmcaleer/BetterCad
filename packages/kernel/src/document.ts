@@ -6,7 +6,7 @@
 import type { Drawing } from "./drawing";
 import type { ElectronicsDesign } from "@bettercad/electronics";
 import { boardSolid } from "@bettercad/electronics/pcb/solid";
-import { boardBodyId, boardParts, onSketch } from "./board";
+import { boardBodyId, boardParts, onSketch, openingBox, standoffsUnder } from "./board";
 import {
   drawCentreRectangle,
   drawCircle,
@@ -532,6 +532,11 @@ export interface CombineTool {
   fit?: FitId;
   /** Cuts only: the gap on each side, mm, as it was when the step was made. */
   gap?: number;
+  /**
+   * A connector opening (#652): the cut is not the tool body itself but the box round it, pushed `by` mm out of its
+   * face on the `out` side (in the body's own axes), so a plug reaches the connector through a wall in front of it.
+   */
+  reach?: { out: [number, number, number]; by: number };
 }
 export interface CombineFeature extends FeatureBase {
   type: "combine";
@@ -732,6 +737,11 @@ export interface MountFeature extends FeatureBase {
   size: string;
   /** The printer's hole offset when it was made (#104), mm. */
   offset?: number;
+  /**
+   * Standoffs under the board (#652): they stand under its mounting holes and reach up to it, read from the board
+   * each time the model builds, so they follow it. `points` and `height` are then as they last were.
+   */
+  underBoard?: boolean;
   /** Standoffs: how tall, how wide, and a clearance hole right through or a heat-set insert at the top. */
   height: number;
   outer: number;
@@ -2061,7 +2071,11 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           failed.set(f.id, "The body it changes is gone");
           break;
         }
-        const r = mountOps(f);
+        // Standoffs under the board follow it: its holes and its height over the face, as they are now.
+        const body = f.kind === "standoffs" && f.underBoard && boards[0] ? parts[find(boards[0].body)] : undefined;
+        const pcb = doc.electronics?.board;
+        const under = body && pcb ? standoffsUnder(body, pcb.thickness, pcb.holes, f.frame) : null;
+        const r = mountOps(under ? { ...f, ...under } : f);
         if (typeof r === "string") {
           failed.set(f.id, r);
           break;
@@ -2088,15 +2102,20 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
           const i = find(x.id);
           const b = parts[i];
           if (!b || b === t) continue;
+          const reached = x.reach ? openingBox(b, x.reach) : null;
+          if (x.reach && !reached) {
+            failed.set(f.id, `${b.name} has no simple body to cut an opening for. Give its component a body size.`);
+            continue;
+          }
           const op: BodyOp = {
             op: x.op,
-            body: { ...b, hole: undefined, fit: undefined, gap: undefined },
+            body: reached ?? { ...b, hole: undefined, fit: undefined, gap: undefined },
             at: { position: { ...t.position }, rotation: t.rotation && { ...t.rotation } },
             feature: f.id,
           };
           if (x.op === "cut" && x.gap && x.gap > 0) op.gap = x.gap;
           ops.push(op);
-          if (!(f.mode === "combine" && f.keepTools)) parts.splice(i, 1);
+          if (!(f.mode === "combine" && f.keepTools) && !x.reach) parts.splice(i, 1);
         }
         t.ops = [...(t.ops ?? []), ...ops];
         break;
@@ -2747,6 +2766,10 @@ export function featureSummary(doc: ModelDoc, f: Feature): string {
     case "combine": {
       const n = f.tools.length;
       const holes = f.tools.filter((x) => x.op === "cut").length;
+      if (f.tools[0]?.reach) {
+        const gap = f.tools[0].gap;
+        return `An opening through ${who([f.target])}${gap ? `, ${mm(gap)} clear all round` : ""}`;
+      }
       if (f.mode === "group")
         return `${who([f.target])} with ${n === 1 ? "1 body" : `${n} bodies`}${holes ? `, ${holes === 1 ? "1 hole" : `${holes} holes`}` : ""}`;
       return `${f.tools[0]?.op ?? "join"} ${n === 1 ? "1 body" : `${n} bodies`} ${f.tools[0]?.op === "join" ? "to" : f.tools[0]?.op === "cut" ? "from" : "with"} ${who([f.target])}`;

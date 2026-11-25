@@ -159,5 +159,10 @@ describe("render jobs", () => {
     expect(shotKey(doc, shot("a", { name: "Front", auto: false }))).toBe(k);
     expect(shotKey(doc, shot("a", { background: "grey" }))).not.toBe(k);
     expect(shotKey({ ...doc, looks: { b: { colour: "#ff0000" } } } as never, shot("a"))).not.toBe(k);
+    // A board's design counts once the model has a Board step, and only then.
+    const mask = (m: string) => ({ board: { mask: m } }) as never;
+    expect(shotKey({ ...doc, electronics: mask("green") }, shot("a"))).toBe(k);
+    const withBoard = { ...doc, features: [{ id: "pcb", type: "board" }] as never };
+    expect(shotKey({ ...withBoard, electronics: mask("green") }, shot("a"))).not.toBe(shotKey({ ...withBoard, electronics: mask("blue") }, shot("a")));
   });
 });

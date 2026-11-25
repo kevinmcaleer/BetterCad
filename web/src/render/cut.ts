@@ -165,3 +165,44 @@ function capCut(segments: [V3, V3][], n: V3, d0: number, add: (p: V3, q: V3) => 
     for (const [a, b, c] of ShapeUtils.triangulateShape(outer, holes)) idx.push(base[a], base[b], base[c]);
   }
 }
+
+/** A flat sheet with a picture on it: triangles that also carry where on the picture each point is. */
+export type Sheet = Triangles & { uvs: Float32Array };
+
+/**
+ * Cuts a picture's sheet (#654) as `cutMesh` cuts its body, keeping each point's place on the picture. A sheet has no
+ * inside, so nothing is capped.
+ */
+export function cutSheet(sheet: Sheet, plane: CutPlane): Sheet {
+  const n = unit(plane.normal);
+  const d0 = dot(n, plane.point);
+  const { positions: P, normals: N, uvs: U, indices: I } = sheet;
+  const side = (i: number) => n[0] * P[i * 3]! + n[1] * P[i * 3 + 1]! + n[2] * P[i * 3 + 2]! - d0;
+  let any = false;
+  for (let i = 0; i < P.length / 3 && !any; i++) any = side(i) > 0;
+  if (!any) return sheet;
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const uvs: number[] = [];
+  const idx: number[] = [];
+  /** A point of the sheet, or one a share `t` of the way from `a` to `b`. */
+  const add = (a: number, b = a, t = 0) => {
+    for (let k = 0; k < 3; k++) pos.push(P[a * 3 + k]! + (P[b * 3 + k]! - P[a * 3 + k]!) * t);
+    nrm.push(N[a * 3]!, N[a * 3 + 1]!, N[a * 3 + 2]!);
+    for (let k = 0; k < 2; k++) uvs.push(U[a * 2 + k]! + (U[b * 2 + k]! - U[a * 2 + k]!) * t);
+    return pos.length / 3 - 1;
+  };
+  for (let t = 0; t < I.length; t += 3) {
+    const poly: number[] = [];
+    for (let e = 0; e < 3; e++) {
+      const a = I[t + e]!;
+      const b = I[t + ((e + 1) % 3)]!;
+      const sa = side(a);
+      const sb = side(b);
+      if (sa <= 0) poly.push(add(a));
+      if (sa <= 0 !== sb <= 0) poly.push(add(a, b, sa / (sa - sb)));
+    }
+    for (let k = 1; k + 1 < poly.length; k++) idx.push(poly[0]!, poly[k]!, poly[k + 1]!);
+  }
+  return { positions: new Float32Array(pos), normals: new Float32Array(nrm), uvs: new Float32Array(uvs), indices: new Uint32Array(idx) };
+}

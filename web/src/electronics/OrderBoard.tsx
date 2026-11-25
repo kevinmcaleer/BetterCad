@@ -1,6 +1,6 @@
 import { lazy, Suspense, useId, useMemo, useState } from "react";
 import type { ElectronicsDesign } from "@bettercad/electronics";
-import { HOUSES, orderPack } from "@bettercad/electronics/fab/pack";
+import { HOUSES, orderPack, pinOnes } from "@bettercad/electronics/fab/pack";
 import { Button, Dialog } from "@bettercad/ui";
 import { createFileStore } from "../files/fileStore";
 import { orderFiles, type SheetFormat } from "./orderFiles";
@@ -22,6 +22,7 @@ export default function OrderBoard({ design, name, onClose, onParts }: { design:
   const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);
   const pack = useMemo(() => orderPack(design, house, name), [design, house, name]);
+  const place = useMemo(() => (pack ? pinOnes(design, pack.place) : []), [design, pack]);
   if (!pack) return null;
   const blocked = pack.checks.filter((c) => !c.ok && c.blocks);
   const f = pack.facts;
@@ -157,7 +158,7 @@ export default function OrderBoard({ design, name, onClose, onParts }: { design:
 
         {preview && (
           <Suspense fallback={<p className="bc-note">Reading the files…</p>}>
-            <FabPreview files={pack.gerbers} />
+            <FabPreview files={pack.gerbers} mask={design.board?.mask ?? "green"} place={place} />
           </Suspense>
         )}
 

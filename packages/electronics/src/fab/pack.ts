@@ -9,6 +9,8 @@ import { gerberFiles, pourClashes, type GerberLayer } from "./gerber";
 import data from "./houses.json";
 import { bom, placeList, type Bom, type BomRow, type PlaceRow } from "./parts";
 
+export { pinOnes, type PinOne } from "./parts";
+
 /**
  * The order pack (#660): everything one board house wants for one board, named its way, with a checklist of what
  * would make the order go wrong. Rows and text only; the app zips them and writes spreadsheets.

@@ -300,6 +300,8 @@ const DrawingRibbon = lazy(() => drawingCode().then((m) => ({ default: m.Drawing
 const SheetCard = lazy(() => import("../drawing/SheetCard"));
 // Electronics (#606): the schematic, the board and their cards load the first time a view opens. The shell keeps only
 // the small view-state store, so the browser, the commands and the tabs can ask for a view.
+/** A part's body on the board in 3D (not the board itself): what Connector opening cuts for. */
+const isBoardPart = (p: { pcb?: boolean; id: string } | undefined) => !!p?.pcb && !p.id.endsWith("/board");
 const electronicsCode = () => import("../electronics/Electronics");
 const ElectronicsView = lazy(electronicsCode);
 const ElectronicsRibbon = lazy(() => electronicsCode().then((m) => ({ default: m.ElectronicsRibbon })));
@@ -720,18 +722,6 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const saved = await files.store.saveFiles([{ name, data: png.then((b) => b.arrayBuffer()), mime: "image/png" }]);
     if (saved) say(`Saved ${saved.names[0]}`);
   };
-  const renderBodies = useMemo<RenderBody[]>(
-    () =>
-      render
-        ? parts
-            .filter((p) => !p.hidden && !p.hole)
-            .flatMap((p) => {
-              const b = kernel.bodies.get(p.id);
-              return b ? [{ id: p.id, mesh: b.mesh, matrix: new Matrix4(), colour: p.colour, finish: p.finish, catalogue: p.catalogue }] : [];
-            })
-        : [],
-    [render, parts, kernel.bodies],
-  );
   useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
 
   const [livePose, setLivePose] = useState<Pose | null>(null);
@@ -876,6 +866,19 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     };
   }, [built.boards, built.parts, kernel.bodies, held]);
   const allDecals = useMemo(() => (boardDecals.length ? [...viewDecals, ...boardDecals] : viewDecals), [viewDecals, boardDecals]);
+  // What a render draws: the shown bodies, each with the pictures on its faces (decals, and a board's copper, #654).
+  const toRender = (): RenderBody[] =>
+    parts
+      .filter((p) => !p.hidden && !p.hole)
+      .flatMap((p) => {
+        const b = kernel.bodies.get(p.id);
+        if (!b) return [];
+        const decals = allDecals.filter((d) => d.part === p.id).map((d) => ({ mesh: b.mesh, face: d.face, at: d.at, image: d.image }));
+        return [
+          { id: p.id, mesh: b.mesh, matrix: new Matrix4(), colour: p.colour, finish: p.finish, catalogue: p.catalogue, ...(decals.length ? { decals } : {}) },
+        ];
+      });
+  const renderBodies = useMemo<RenderBody[]>(() => (render ? toRender() : []), [render, parts, kernel.bodies, allDecals]); // eslint-disable-line react-hooks/exhaustive-deps
   // Canvases (#248) to trace over; hidden ones left off.
   const viewCanvases = useMemo(
     () => ({
@@ -2002,6 +2005,21 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     [record, say],
   );
 
+  /** Connector opening (#652): a clearance hole through the wall in front of a part on the board. */
+  const bodiesNow = useRef(kernel.bodies);
+  bodiesNow.current = kernel.bodies;
+  const opening = useCallback(
+    (id: string) =>
+      void import("../electronics/board3d").then((m) => {
+        const r = m.connectorOpening(live.current.doc, live.current.parts, bodiesNow.current, id);
+        if (r.error) return say(r.say, true);
+        const step = newId("f");
+        record((d, at) => m.connectorOpening(d, live.current.parts, bodiesNow.current, id, at, step).doc, r.label);
+        say(r.say);
+      }),
+    [record, say],
+  );
+
   const armTool = useCallback((id: ToolId) => {
     // A modelling tool picked from the compact bar leaves a drawing's sheet for the model.
     setDrawing(null);
@@ -2013,13 +2031,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const stripSaved = useRef<(d: ModelDoc) => void>(() => {});
   // What a rendered thumbnail draws: the shown bodies, read when a save finishes.
   const thumbBodies = useRef<() => RenderBody[]>(() => []);
-  thumbBodies.current = () =>
-    parts
-      .filter((p) => !p.hidden && !p.hole)
-      .flatMap((p) => {
-        const b = kernel.bodies.get(p.id);
-        return b ? [{ id: p.id, mesh: b.mesh, matrix: new Matrix4(), colour: p.colour, finish: p.finish, catalogue: p.catalogue }] : [];
-      });
+  thumbBodies.current = toRender;
   const files = useFiles({
     store,
     doc,
@@ -2334,6 +2346,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     importReference: () => {},
     insertFile: () => {},
     pocket: (_id: string) => {},
+    opening: (_id: string) => {},
     mateGear: (_id: string) => {},
     addRack: (_id: string) => {},
     fitBelt: (_ids: string[]) => {},
@@ -2454,6 +2467,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     toggleHole,
     toggleReference,
     pocket,
+    opening,
     mateGear,
     addRack: addRackTo,
     fitBelt: beltPicked,
@@ -2747,6 +2761,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         run: () => h().pocket(sel()[0]!),
         when: () => sel().length === 1 && !!live.current.parts.find((p) => p.id === sel()[0])?.catalogue,
         keywords: "robot part catalogue cutout mount servo screw holes",
+      },
+      {
+        id: "edit.opening",
+        scope: "model",
+        label: "Connector opening",
+        group: "Edit",
+        icon: "extrude",
+        run: () => h().opening(sel()[0]!),
+        when: () => sel().length === 1 && isBoardPart(live.current.parts.find((p) => p.id === sel()[0])),
+        keywords: "usb socket jack plug cut hole wall case enclosure board pcb clearance",
       },
       {
         id: "gear.mate",
@@ -4116,6 +4140,9 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       },
       ...(chosen.length === 1 && chosen[0]!.catalogue
         ? [{ id: "pocket", label: "Cut pocket", icon: "extrude" as const, onSelect: () => pocket(chosen[0]!.id) }]
+        : []),
+      ...(chosen.length === 1 && isBoardPart(chosen[0])
+        ? [{ id: "opening", label: "Connector opening", icon: "extrude" as const, onSelect: () => opening(chosen[0]!.id) }]
         : []),
       ...(chosen.length === 1 && isSpur(chosen[0]!.id)
         ? [
