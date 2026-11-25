@@ -1,4 +1,4 @@
-import { eid, type Corner, type ElectronicsDesign, type P2, type Part, type Track } from "./model";
+import { eid, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Part, type Track } from "./model";
 import { pinKey, type Netlist } from "./nets";
 import { area } from "./outlineGeom";
 
@@ -74,7 +74,7 @@ export const loopArea = (loop: Corner[]): number => {
 
 export interface Run {
   net: string;
-  layer: "top" | "bottom";
+  layer: CopperLayer;
   width: number;
   pieces: [P2, P2][];
 }

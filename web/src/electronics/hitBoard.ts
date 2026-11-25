@@ -10,6 +10,7 @@ import {
   type Board,
   type BoardPad,
   type Box,
+  type CopperLayer,
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
@@ -52,14 +53,14 @@ export function boardAreas(board: Board): { id: string; kind: "pour" | "keepout"
 }
 
 /** Everything under a point on the board, smallest things first so a track on a part can still be picked. */
-export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: number, layerShown: (l: "top" | "bottom") => boolean = () => true): BoardHit[] {
+export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: number, layerShown: (l: CopperLayer) => boolean = () => true): BoardHit[] {
   const board = d.board;
   if (!board) return [];
   const out: BoardHit[] = [];
   for (const v of board.vias) if (Math.hypot(v.x - p[0], v.y - p[1]) <= v.diameter / 2 + tol) out.push({ kind: "via", id: v.id, net: v.net });
   for (const h of board.holes) if (Math.hypot(h.x - p[0], h.y - p[1]) <= Math.max(h.pad ?? 0, h.drill) / 2 + tol) out.push({ kind: "hole", id: h.id });
   for (const t of board.tracks) {
-    if ((t.layer === "top" || t.layer === "bottom") && !layerShown(t.layer)) continue;
+    if (!layerShown(t.layer)) continue;
     for (let i = 0; i + 1 < t.pts.length; i += 1)
       if (distToSegment(p, t.pts[i]!, t.pts[i + 1]!) <= t.width / 2 + tol) {
         out.push({ kind: "track", id: t.id, net: t.net, segment: i });

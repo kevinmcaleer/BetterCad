@@ -17,12 +17,25 @@ export interface FabFile {
 }
 
 type Kind =
-  "copper-top" | "copper-bottom" | "mask-top" | "mask-bottom" | "paste-top" | "paste-bottom" | "silk-top" | "silk-bottom" | "edge" | "drill" | "other";
+  | "copper-top"
+  | "copper-bottom"
+  | "copper-inner"
+  | "mask-top"
+  | "mask-bottom"
+  | "paste-top"
+  | "paste-bottom"
+  | "silk-top"
+  | "silk-bottom"
+  | "edge"
+  | "drill"
+  | "other";
 
 interface Layer {
   name: string;
   kind: Kind;
   label: string;
+  /** For an inner copper layer (#648): which, counted from 1 under the top. */
+  inner?: number;
   image?: GerberImage;
   hits?: DrillHit[];
 }
@@ -30,6 +43,7 @@ interface Layer {
 const LABEL: Record<Kind, string> = {
   "copper-top": "Top copper",
   "copper-bottom": "Bottom copper",
+  "copper-inner": "Inner copper",
   "mask-top": "Top mask openings",
   "mask-bottom": "Bottom mask openings",
   "paste-top": "Top paste",
@@ -43,6 +57,7 @@ const LABEL: Record<Kind, string> = {
 const COLOUR: Record<Kind, ColourKey> = {
   "copper-top": "ec-copper-top",
   "copper-bottom": "ec-copper-bottom",
+  "copper-inner": "ec-copper-in1",
   "mask-top": "ec-mark",
   "mask-bottom": "ec-mark",
   "paste-top": "ec-pad",
@@ -53,9 +68,11 @@ const COLOUR: Record<Kind, ColourKey> = {
   drill: "ec-hole",
   other: "muted",
 };
+const colourOf = (l: Layer): ColourKey => (l.inner ? (`ec-copper-in${Math.min(4, l.inner)}` as ColourKey) : COLOUR[l.kind]);
 /** Bottom of the stack first, so the top side draws over the bottom. */
 const ORDER: Kind[] = [
   "other",
+  "copper-inner",
   "copper-bottom",
   "mask-bottom",
   "paste-bottom",
@@ -85,7 +102,7 @@ export function kindOf(name: string, fn?: string): Kind {
   if (fn) {
     const [what, a, b] = fn.split(",");
     const side = [a, b].includes("Bot") ? "bottom" : "top";
-    if (what === "Copper") return `copper-${side}`;
+    if (what === "Copper") return b === "Inr" ? "copper-inner" : `copper-${side}`;
     if (what === "Soldermask") return `mask-${side}`;
     if (what === "Paste") return `paste-${side}`;
     if (what === "Legend") return `silk-${side}`;
@@ -93,6 +110,7 @@ export function kindOf(name: string, fn?: string): Kind {
   }
   const ext = name.split(".").pop()!.toUpperCase();
   if (EXT[ext]) return EXT[ext];
+  if (/^G\d+$/.test(ext)) return "copper-inner";
   const n = name.toLowerCase();
   const side = /b[._-]|bottom|back/.test(n) ? "bottom" : "top";
   if (/edge|outline|profile/.test(n)) return "edge";
@@ -112,10 +130,13 @@ export function readLayers(files: FabFile[]): Layer[] {
     else if (/%FS|%MO|G04/.test(head)) {
       const image = readGerber(f.text);
       const kind = kindOf(f.name, image.fn);
-      out.push({ name: f.name, kind, label: kind === "other" ? f.name : LABEL[kind], image });
+      // An inner layer says which it is: L2 is the first under the top.
+      const inner =
+        kind === "copper-inner" ? Number(/^Copper,L(\d+),Inr/.exec(image.fn ?? "")?.[1] ?? /\.G(\d+)$/i.exec(f.name)?.[1] ?? 2) - (image.fn ? 1 : 0) : 0;
+      out.push({ name: f.name, kind, label: kind === "other" ? f.name : inner ? `Inner ${inner} copper` : LABEL[kind], ...(inner ? { inner } : {}), image });
     }
   }
-  return out.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
+  return out.sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || (b.inner ?? 0) - (a.inner ?? 0));
 }
 
 interface View {
@@ -395,8 +416,8 @@ export default function FabPreview({ files, mask: maskOf = "green", place }: { f
       if (hidden.has(layer.name)) continue;
       o.setTransform(ratio, 0, 0, ratio, 0, 0);
       o.clearRect(0, 0, w, h);
-      paint(o, layer, v, colours[COLOUR[layer.kind]]);
-      ctx.globalAlpha = layer.kind.endsWith(far) ? 0.45 : 0.9;
+      paint(o, layer, v, colours[colourOf(layer)]);
+      ctx.globalAlpha = layer.kind.endsWith(far) || layer.inner ? 0.45 : 0.9;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.drawImage(scratch, 0, 0);
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -572,7 +593,7 @@ export default function FabPreview({ files, mask: maskOf = "green", place }: { f
                     })
                   }
                 />
-                <span className="bc-ec-fab-dot" style={{ background: `var(--bc-color-${COLOUR[l.kind]})` }} aria-hidden />
+                <span className="bc-ec-fab-dot" style={{ background: `var(--bc-color-${colourOf(l)})` }} aria-hidden />
                 {l.label}
               </label>
             </li>

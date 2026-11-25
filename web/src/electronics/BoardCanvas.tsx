@@ -16,6 +16,7 @@ import {
   type P2,
 } from "@bettercad/electronics";
 import { edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
+import { layersOf } from "@bettercad/electronics/pcb/stack";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
 import { slideTrack } from "@bettercad/electronics/pcb/slide";
@@ -168,7 +169,10 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const hidden = useMemo(() => new Set<LayerId>(ui.hidden), [ui.hidden]);
   const colours = useMemo(() => readColours(host.current), [host.current, ui.view]); // eslint-disable-line react-hooks/exhaustive-deps
   const tool = readOnly || !board ? "select" : ui.pcbTool;
-  const layer: Layer = ui.layer === "bottom" ? "bottom" : "top";
+  const layers = useMemo(() => (board ? layersOf(board) : (["top", "bottom"] as Layer[])), [board]);
+  const layer: Layer = layers.includes(ui.layer) ? ui.layer : "top";
+  /** The layer after this one, going down through the board and round to the top again. */
+  const nextLayer = layers[(layers.indexOf(layer) + 1) % layers.length]!;
   const grid = ui.grid;
 
   // The status strip and the switcher say how much is left to route, with the copper counted.
@@ -211,7 +215,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   });
 
   const tol = 5 / view.scale;
-  const shown = (l: "top" | "bottom") => !hidden.has(l);
+  const shown = (l: Layer) => !hidden.has(l as LayerId);
   /** A part wins over its own pads, so a click on a pad picks the part; copper and holes win over parts. */
   const hitAt = (p: P2) => {
     const hits = hitBoard(design, pads, p, tol, shown);
@@ -226,7 +230,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       const via = h.kind === "via" && board?.vias.find((v) => v.id === h.id);
       if (via) return { net: h.net, at: [via.x, via.y] };
       const t = h.kind === "track" && board?.tracks.find((x) => x.id === h.id);
-      if (t && (t.layer === "top" || t.layer === "bottom")) {
+      if (t && layers.includes(t.layer)) {
         const a = t.pts[h.segment ?? 0]!;
         const b = t.pts[(h.segment ?? 0) + 1]!;
         // An end if the pointer is near one, else the grid point nearest along the track.
@@ -272,11 +276,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   /** Drops a via where the track has got to and carries on on the other side. */
   const viaHere = () => {
     if (!board) return;
-    if (!route) return eui.set({ layer: layer === "top" ? "bottom" : "top" });
-    const stop = inWay(route.net, ["top", "bottom"], [route.last], netRules(board, route.net).viaDiameter);
+    if (!route) return eui.set({ layer: nextLayer });
+    const stop = inWay(route.net, layers, [route.last], netRules(board, route.net).viaDiameter);
     if (stop) return tooClose(stop.what);
     edit((d) => addVia(d, route.net, route.last[0], route.last[1]), "Add a via");
-    eui.set({ layer: layer === "top" ? "bottom" : "top" });
+    eui.set({ layer: nextLayer });
   };
 
   /** Closes the area being drawn into a pour, a keep-out or a cut-out. */
@@ -389,7 +393,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       const on = copperAt(p.world);
       const to = on?.at ?? snap(p.world, grid);
       const net = on?.net ?? "";
-      const stop = inWay(net, ["top", "bottom"], [to], netRules(board, net).viaDiameter);
+      const stop = inWay(net, layers, [to], netRules(board, net).viaDiameter);
       if (stop) return tooClose(stop.what);
       setSaid("");
       edit((d) => addVia(d, net, to[0], to[1]), "Add a via");

@@ -6,6 +6,7 @@ import { checkBoard } from "../pcb/drc";
 import { pourFills } from "../pcb/pour";
 import { drillFiles, type DrillTool } from "./drill";
 import { gerberFiles, pourClashes, type GerberLayer } from "./gerber";
+import { layerName } from "../pcb/stack";
 import data from "./houses.json";
 import { bom, placeList, type Bom, type BomRow, type PlaceRow } from "./parts";
 
@@ -65,7 +66,7 @@ export function csv(table: Table): string {
 }
 
 /** The file extension each layer is known by. */
-const EXT: Record<GerberLayer, string> = {
+const EXT: Record<Exclude<GerberLayer, `copper-in${number}`>, string> = {
   "copper-top": "GTL",
   "copper-bottom": "GBL",
   "mask-top": "GTS",
@@ -76,6 +77,9 @@ const EXT: Record<GerberLayer, string> = {
   "silk-bottom": "GBO",
   edge: "GKO",
 };
+
+/** An inner layer is G1, G2 and so on, the Protel way. */
+const extOf = (l: GerberLayer): string => (l in EXT ? EXT[l as keyof typeof EXT] : `G${l.slice(9)}`);
 
 /** A name safe in a file name on any system. */
 export const fileBase = (name: string): string =>
@@ -98,7 +102,7 @@ export interface Pack {
   facts: { width: number; height: number; thickness: number; layers: number; minTrack: number | null; minGap: number; minHole: number | null };
   checks: Check[];
   /** Files inside the Gerber zip, in the order a viewer stacks them. */
-  gerbers: { name: string; layer: GerberLayer | "drill-plated" | "drill-bare"; text: string }[];
+  gerbers: { name: string; layer: GerberLayer | "drill-plated" | "drill-bare" | "drill-span"; text: string }[];
   zipName: string;
   bom: Bom;
   bomTable: Table;
@@ -122,9 +126,10 @@ export function orderPack(d: ElectronicsDesign, houseId: string, name: string): 
   const copper = copperOf(d, pads);
   const base = fileBase(name);
   const drills = drillFiles(d, nl)!;
-  const gerbers: Pack["gerbers"] = gerberFiles(d, nl).map((f) => ({ name: `${base}.${EXT[f.layer]}`, layer: f.layer, text: f.text }));
-  if (drills.tools.some((t) => t.plated)) gerbers.push({ name: `${base}-PTH.DRL`, layer: "drill-plated", text: drills.plated });
+  const gerbers: Pack["gerbers"] = gerberFiles(d, nl).map((f) => ({ name: `${base}.${extOf(f.layer)}`, layer: f.layer, text: f.text }));
+  if (drills.tools.some((t) => t.plated && !t.span)) gerbers.push({ name: `${base}-PTH.DRL`, layer: "drill-plated", text: drills.plated });
   if (drills.tools.some((t) => !t.plated)) gerbers.push({ name: `${base}-NPTH.DRL`, layer: "drill-bare", text: drills.bare });
+  for (const s of drills.spans) gerbers.push({ name: `${base}-L${s.from}-L${s.to}.DRL`, layer: "drill-span", text: s.text });
 
   const parts = bom(d);
   const place = placeList(d, { thru: house.placeThru });
@@ -166,7 +171,7 @@ export function orderPack(d: ElectronicsDesign, houseId: string, name: string): 
             id: "pour-clash" as const,
             ok: false,
             blocks: true,
-            text: `Two pours on the ${clashes[0]!.side} side, on ${clashes[0]!.a} and ${clashes[0]!.b}, run into each other. Redraw one so they do not overlap; the files cannot show them truly as they are.`,
+            text: `Two pours on ${layerName(clashes[0]!.side).toLowerCase()}, on ${clashes[0]!.a} and ${clashes[0]!.b}, run into each other. Redraw one so they do not overlap; the files cannot show them truly as they are.`,
           },
         ]
       : []),

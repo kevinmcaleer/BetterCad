@@ -287,7 +287,7 @@ export interface Sheet {
 // ---------------------------------------------------------------- the board
 
 export type Side = "top" | "bottom";
-/** Copper layers. Release 1 has two; inner layers (#648) come as "in1", "in2". */
+/** Copper layers. Inner layers (#648) are "in1", "in2" and so on, counted down from the top. */
 export type CopperLayer = "top" | "bottom" | `in${number}`;
 
 /** A corner of an outline. `bulge` bends the edge to the next corner into an arc, as DXF does: tan(sweep / 4). */
@@ -329,6 +329,8 @@ export interface Via {
   y: number;
   diameter: number;
   drill: number;
+  /** The first and last layer it joins (#648), for a blind or buried via. None: right through the board. */
+  span?: [CopperLayer, CopperLayer];
 }
 
 export interface Pour {
@@ -439,7 +441,9 @@ export interface Board {
     frame?: { origin: [number, number, number]; x: [number, number, number]; normal: [number, number, number] };
   };
   thickness: number;
-  copperLayers: 2;
+  copperLayers: 2 | 4 | 6;
+  /** The build the board is made as (#648): one of `STACKS` in pcb/stack.ts. None: plain two layers. */
+  stack?: string;
   placements: Placement[];
   tracks: Track[];
   vias: Via[];

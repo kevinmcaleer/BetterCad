@@ -9,7 +9,7 @@ export const THEME_NAMES: Record<ThemeId, string> = {
   "holoroom": "Holoroom"
 };
 
-export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "snap-face" | "snap-point" | "snap-point-ring" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room" | "icon-top" | "icon-side" | "icon-side-dark" | "icon-edge" | "icon-hole" | "icon-accent" | "icon-accent-side" | "icon-accent-dark" | "paper" | "paper-ink" | "paper-pick" | "ec-wire" | "ec-symbol" | "ec-symbol-fill" | "ec-pcb-bg" | "ec-pcb-ink" | "ec-board" | "ec-edge" | "ec-copper-top" | "ec-copper-bottom" | "ec-pad" | "ec-silk" | "ec-silk-far" | "ec-courtyard" | "ec-hole" | "ec-mark" | "ec-pick";
+export type ColourName = "accent" | "accent-soft" | "on-accent" | "ink" | "muted" | "line" | "bar" | "rail" | "stage" | "hover" | "viewport" | "part-fill" | "part-line" | "part-line-dark" | "part-highlight" | "part-ghost" | "snap" | "dimension" | "picked" | "picked-edge" | "snap-face" | "snap-point" | "snap-point-ring" | "danger" | "warn" | "warn-soft" | "warn-ink" | "axis-x" | "axis-y" | "axis-z" | "cube-face" | "cube-face-low" | "cube-edge" | "cube-label" | "tile-icon" | "quiet-icon" | "thumb-bg" | "thumb-ink" | "scrim" | "grid" | "grid-major" | "room" | "icon-top" | "icon-side" | "icon-side-dark" | "icon-edge" | "icon-hole" | "icon-accent" | "icon-accent-side" | "icon-accent-dark" | "paper" | "paper-ink" | "paper-pick" | "ec-wire" | "ec-symbol" | "ec-symbol-fill" | "ec-pcb-bg" | "ec-pcb-ink" | "ec-board" | "ec-edge" | "ec-copper-top" | "ec-copper-bottom" | "ec-copper-in1" | "ec-copper-in2" | "ec-copper-in3" | "ec-copper-in4" | "ec-pad" | "ec-silk" | "ec-silk-far" | "ec-courtyard" | "ec-hole" | "ec-mark" | "ec-pick";
 
 /** Every colour token's value in every theme. */
 export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
@@ -76,6 +76,10 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "ec-edge": "#e0c341",
     "ec-copper-top": "#e0574f",
     "ec-copper-bottom": "#4a86e8",
+    "ec-copper-in1": "#5fd27e",
+    "ec-copper-in2": "#e08a3c",
+    "ec-copper-in3": "#3fc5c5",
+    "ec-copper-in4": "#e06fb0",
     "ec-pad": "#d4af37",
     "ec-silk": "#f2efe4",
     "ec-silk-far": "#9a7fc4",
@@ -147,6 +151,10 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "ec-edge": "#e0c341",
     "ec-copper-top": "#e0574f",
     "ec-copper-bottom": "#4a86e8",
+    "ec-copper-in1": "#5fd27e",
+    "ec-copper-in2": "#e08a3c",
+    "ec-copper-in3": "#3fc5c5",
+    "ec-copper-in4": "#e06fb0",
     "ec-pad": "#d4af37",
     "ec-silk": "#f2efe4",
     "ec-silk-far": "#9a7fc4",
@@ -218,6 +226,10 @@ export const COLOURS: Record<ThemeId, Record<ColourName, string>> = {
     "ec-edge": "#e0c341",
     "ec-copper-top": "#e0574f",
     "ec-copper-bottom": "#4a86e8",
+    "ec-copper-in1": "#5fd27e",
+    "ec-copper-in2": "#e08a3c",
+    "ec-copper-in3": "#3fc5c5",
+    "ec-copper-in4": "#e06fb0",
     "ec-pad": "#d4af37",
     "ec-silk": "#f2efe4",
     "ec-silk-far": "#9a7fc4",

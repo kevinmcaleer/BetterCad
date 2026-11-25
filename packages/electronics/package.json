@@ -22,6 +22,7 @@
     "./pcb/outline": "./src/pcb/outline.ts",
     "./pcb/solid": "./src/pcb/solid.ts",
     "./pcb/state": "./src/pcb/state.ts",
+    "./pcb/stack": "./src/pcb/stack.ts",
     "./pcb/rules": "./src/pcb/rules.ts",
     "./pcb/picture": "./src/pcb/picture.ts",
     "./pcb/slide": "./src/pcb/slide.ts",

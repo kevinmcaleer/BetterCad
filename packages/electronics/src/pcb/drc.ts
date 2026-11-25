@@ -6,6 +6,7 @@ import { byRef, netlist, type Netlist } from "../nets";
 import { boardChanges, footprintBox } from "../sync";
 import { REF_SIZE, textWidth } from "../fab/font";
 import { clearanceBetween, edgeGap, edgeLoops, gap, padSolid, type Copper, type Solid } from "./copper";
+import { layerName, layersOf, viaKind, viaLayers } from "./stack";
 import { boardState } from "./state";
 
 /**
@@ -30,7 +31,9 @@ export type BoardRuleId =
   | "track-open"
   | "dead-net"
   | "pour-empty"
-  | "silk-size";
+  | "silk-size"
+  | "layer-gone"
+  | "via-span";
 
 export interface BoardRule {
   id: BoardRuleId;
@@ -50,10 +53,12 @@ export const BOARD_RULES: BoardRule[] = [
   { id: "ring", label: "The copper round a hole is too thin", level: "error" },
   { id: "hole-near", label: "Two holes are too close", level: "error" },
   { id: "keepout", label: "Something is in a keep-out", level: "error" },
+  { id: "layer-gone", label: "Copper is on a layer the board does not have", level: "error" },
   { id: "courtyard", label: "Two parts overlap", level: "warning" },
   { id: "track-open", label: "A track ends in mid air", level: "warning" },
   { id: "dead-net", label: "Copper is left from a net that is gone", level: "warning" },
   { id: "pour-empty", label: "A pour fills nothing", level: "warning" },
+  { id: "via-span", label: "A via does not go right through", level: "warning" },
   { id: "silk-size", label: "Silkscreen text is too small", level: "warning" },
   { id: "silk-pad", label: "Silkscreen is printed over a pad", level: "warning" },
 ];
@@ -204,6 +209,7 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
   const on = (l: BoardRuleId) => (level.get(l) ?? "ignore") !== "ignore";
 
   const rules = board.rules;
+  const layers = layersOf(board);
   const { pads, copper, groups, fills } = boardState(d, nl);
   const loops = edgeLoops(board);
   const partOfPad = (c: Copper): Id[] => (c.kind === "pad" ? [c.id] : []);
@@ -399,7 +405,7 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
   // Track ends that reach nothing.
   if (on("track-open"))
     for (const t of board.tracks) {
-      if (t.layer !== "top" && t.layer !== "bottom") continue;
+      if (!layers.includes(t.layer)) continue;
       const layer = t.layer;
       for (const end of [t.pts[0]!, t.pts[t.pts.length - 1]!]) {
         const tip: Solid = { pts: [end], r: 0 };
@@ -415,6 +421,38 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
     }
 
   // Copper whose net the schematic no longer has.
+  // Inner layers (#648): copper on a layer the board does not have, and vias a board house charges more for.
+  for (const t of board.tracks)
+    if (!layers.includes(t.layer))
+      add(
+        "layer-gone",
+        t.id,
+        `A track on ${t.net || "no net"} is on ${layerName(t.layer)}, a layer this board does not have.`,
+        "Give the board more layers in Board setup, or delete the track.",
+        t.pts[0],
+      );
+  for (const p of board.pours)
+    if (!layers.includes(p.layer))
+      add(
+        "layer-gone",
+        p.id,
+        `The pour on ${p.net || "no net"} is on ${layerName(p.layer)}, a layer this board does not have.`,
+        "Give the board more layers in Board setup, or delete the pour.",
+        p.outline[0],
+      );
+  for (const v of board.vias) {
+    const kind = viaKind(board, v);
+    if (kind === "through") continue;
+    const on = viaLayers(board, v);
+    add(
+      "via-span",
+      v.id,
+      `A via on ${v.net || "no net"} is ${kind}: it joins ${layerName(on[0]!)} to ${layerName(on[on.length - 1]!)} only.`,
+      "Board houses charge more for these, and some do not make them. Make it go right through if you can.",
+      [v.x, v.y],
+    );
+  }
+
   const nets = new Set(nl.nets.map((n) => n.name));
   const dead = new Map<string, P2>();
   for (const t of board.tracks) if (t.net && !nets.has(t.net) && !dead.has(t.net)) dead.set(t.net, t.pts[0]!);

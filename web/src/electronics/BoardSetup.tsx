@@ -11,6 +11,7 @@ import {
   type OutlineShape,
 } from "@bettercad/electronics/pcb/outline";
 import { outlineRadius, roundedOutline, setBoard } from "@bettercad/electronics/pcb/route";
+import { STACKS, buildOf, layerName, setStack, stackLoses, stackOf } from "@bettercad/electronics/pcb/stack";
 import { PRESETS, RULE_FIELDS, applyPreset, keepRules, matchesPreset, presetChanges, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
 import { profiles, type Sketch } from "@bettercad/sketch";
 import { Button, ESC, FeaturePanel, FeatureRow, NumberField, PanelNote, useEscape } from "@bettercad/ui";
@@ -224,6 +225,46 @@ export default function BoardSetup({
               title="Drill them as holes, so each can be sized for a screw"
               onClick={() => edit(holesFromCutouts, "Make mounting holes from cut-outs")}
             />
+          </>
+        )}
+        <FeatureRow label="Layers">
+          <select
+            className="bc-select"
+            aria-label="Copper layers"
+            value={stackOf(board).id}
+            onChange={({ target: { value } }) => {
+              const lost = stackLoses(board, value);
+              edit((d) => setStack(d, value), "Change the board's layers");
+              const gone = [
+                lost.tracks ? `${lost.tracks} ${lost.tracks === 1 ? "track" : "tracks"}` : "",
+                lost.pours ? `${lost.pours} ${lost.pours === 1 ? "pour" : "pours"}` : "",
+              ].filter(Boolean);
+              setSaid(gone.length ? `${gone.join(" and ")} on the inner layers went with them. Undo puts them back.` : "");
+            }}
+          >
+            {STACKS.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.name}
+              </option>
+            ))}
+          </select>
+        </FeatureRow>
+        {board.copperLayers > 2 && (
+          <>
+            <table className="bc-ec-table" aria-label="The build, top to bottom">
+              <tbody>
+                {buildOf(board).map((ply, i) => (
+                  <tr key={i}>
+                    <th scope="row">{ply.layer ? layerName(ply.layer) : ply.kind === "core" ? "Core" : "Prepreg"}</th>
+                    <td>{ply.thickness} mm</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <PanelNote>
+              {stackOf(board).note} This is a usual build, not a board house's own: ask yours for its sheet thicknesses if they matter. Draw a pour over the
+              whole board on an inner layer to make it a plane.
+            </PanelNote>
           </>
         )}
         <FeatureRow label="Thickness">

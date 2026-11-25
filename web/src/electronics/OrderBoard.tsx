@@ -126,9 +126,9 @@ export default function OrderBoard({ design, name, onClose, onParts }: { design:
             </thead>
             <tbody>
               {pack.tools.map((t) => (
-                <tr key={`${t.plated}${t.tool}`}>
+                <tr key={`${t.plated}${t.span ?? ""}${t.tool}`}>
                   <th scope="row">{t.d} mm</th>
-                  <td>{t.plated ? "Yes" : "No"}</td>
+                  <td>{t.span ? `Yes, layers ${t.span[0]} to ${t.span[1]}` : t.plated ? "Yes" : "No"}</td>
                   <td>{t.holes}</td>
                   <td>{t.slots}</td>
                 </tr>

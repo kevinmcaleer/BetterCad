@@ -603,6 +603,45 @@ test.describe("on a wide screen", () => {
     await expect(status).toContainText("1 connection left to route");
   });
 
+  test("four layers: the build in Board setup, and inner layers to work on", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    const canvas = page.getByRole("img", { name: /^PCB: 2 parts/ });
+    await expect(canvas).toBeVisible();
+    const layers = page.getByRole("region", { name: "Layers" });
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveCount(0);
+
+    await page.keyboard.press("b");
+    const setup = page.getByRole("group", { name: "Board setup options" });
+    await setup.getByLabel("Copper layers").selectOption("4 layers");
+    const build = setup.getByRole("table", { name: "The build, top to bottom" });
+    await expect(build.getByRole("row")).toHaveCount(7);
+    await expect(build).toContainText("Inner 1 copper");
+    await axe(page);
+    await setup.getByRole("button", { name: "Close" }).click();
+
+    // The inner layers are in the Layers card, and L steps down through them and round to the top.
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await canvas.focus();
+    await page.keyboard.press("l");
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await layers.getByRole("button", { name: "Bottom copper", exact: true }).click();
+    await canvas.focus();
+    await page.keyboard.press("l");
+    await expect(layers.getByRole("button", { name: "Top copper", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+    // One undo takes the board back to two layers.
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveCount(0);
+  });
+
   test("give a part a STEP file for its body, and see it on the board in 3D", async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto("/");

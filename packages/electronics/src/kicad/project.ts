@@ -7,6 +7,7 @@ import {
   emptyBoard,
   type Board,
   type BoardLayer,
+  type CopperLayer,
   type ComponentDef,
   type Corner,
   type ElectronicsDesign,
@@ -24,6 +25,7 @@ import {
 } from "../model";
 import { Tally, joinRuns, loopArea, loopsOf, matchNets, type Edge } from "../boardIn";
 import { netlist } from "../nets";
+import { layersOf } from "../pcb/stack";
 import { netPins } from "../sync";
 import { footprintIn } from "./footprint";
 import { unstack, type ImportFile } from "./import";
@@ -349,7 +351,13 @@ const SIDE_LAYERS: Record<string, BoardLayer> = {
   "F.Cu": "copper-top",
   "B.Cu": "copper-bottom",
 };
-const copperOf = (layer: string): "top" | "bottom" | null => (layer === "F.Cu" ? "top" : layer === "B.Cu" ? "bottom" : null);
+/** Our layer for one of KiCad's copper layers. Inner layers (#648) come across up to the fourth; `inner` is how many the board keeps. */
+const copperOf = (layer: string, inner = 0): CopperLayer | null => {
+  if (layer === "F.Cu") return "top";
+  if (layer === "B.Cu") return "bottom";
+  const n = Number(/^In(\d+)\.Cu$/.exec(layer)?.[1] ?? 0);
+  return n >= 1 && n <= inner ? `in${n}` : null;
+};
 
 interface BoardRead {
   board: Board;
@@ -368,9 +376,15 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     notes.push({ name: "Board", why: "It was saved by a KiCad older than 6. Open and save it in a newer KiCad first, or arcs and some pads may be wrong" });
   const thickness = num(child(child(tree, "general"), "thickness"));
   if (thickness > 0) board.thickness = thickness;
-  const inner = (child(tree, "layers") ?? []).filter((l) => isList(l) && /^In\d+\.Cu$/.test(text(l, 1))).length;
-  if (inner)
-    notes.push({ name: "Board", why: `It has ${inner + 2} copper layers. Only the top and bottom came across; what is on the ${inner} inside is left out` });
+  const inside = (child(tree, "layers") ?? []).filter((l) => isList(l) && /^In\d+\.Cu$/.test(text(l, 1))).length;
+  // Four and six layers come across whole (#648). An odd count is made up to the next even one; more than six lose the rest.
+  const inner = Math.min(4, inside + (inside % 2));
+  if (inner) board.copperLayers = (inner + 2) as 4 | 6;
+  if (inside > 4)
+    notes.push({
+      name: "Board",
+      why: `It has ${inside + 2} copper layers. Six came across: the top, the bottom and the first four inside. What is on the other ${inside - 4} is left out`,
+    });
   const netName = new Map(children(tree, "net").map((n) => [text(n, 1), text(n, 2)]));
   const netOf = (item: Node[]) => netName.get(text(child(item, "net"))) ?? "";
 
@@ -469,10 +483,10 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
   board.placements = pending;
 
   // Tracks: KiCad keeps each straight piece on its own; pieces that run on from each other are joined.
-  const runs = new Map<string, { net: string; layer: "top" | "bottom"; width: number; pieces: [P2, P2][] }>();
+  const runs = new Map<string, { net: string; layer: CopperLayer; width: number; pieces: [P2, P2][] }>();
   const piece = (net: string, layer: string, width: number, a: P2, b: P2) => {
-    const side = copperOf(layer);
-    if (!side) return dropped.add("tracks on inside layers");
+    const side = copperOf(layer, inner);
+    if (!side) return dropped.add("tracks on inside layers past the fourth");
     const key = `${net}|${side}|${width}`;
     if (!runs.has(key)) runs.set(key, { net, layer: side, width, pieces: [] });
     runs.get(key)!.pieces.push([a, b]);
@@ -504,12 +518,22 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
   board.tracks.push(...joinRuns(runs.values()));
   for (const v of children(tree, "via")) {
     const layers = (child(v, "layers") ?? []).slice(1).map(String);
-    if (v.some((x) => x === "blind" || x === "micro") || !(layers.includes("F.Cu") && layers.includes("B.Cu"))) {
-      dropped.add("vias that do not go right through the board");
+    const ends = [copperOf(layers[0] ?? "", inner), copperOf(layers[layers.length - 1] ?? "", inner)];
+    if (!ends[0] || !ends[1] || ends[0] === ends[1]) {
+      dropped.add("vias between layers that did not come across");
       continue;
     }
+    const through = layers.includes("F.Cu") && layers.includes("B.Cu");
     const p = pt(child(v, "at"));
-    board.vias.push({ id: eid("v"), net: netOf(v), x: p[0], y: p[1], diameter: num(child(v, "size")), drill: num(child(v, "drill")) });
+    board.vias.push({
+      id: eid("v"),
+      net: netOf(v),
+      x: p[0],
+      y: p[1],
+      diameter: num(child(v, "size")),
+      drill: num(child(v, "drill")),
+      ...(through ? {} : { span: [ends[0], ends[1]] as [CopperLayer, CopperLayer] }),
+    });
   }
 
   for (const z of children(tree, "zone")) {
@@ -531,14 +555,18 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       continue;
     }
     const pads = child(z, "connect_pads");
-    const sides = new Set(layers.flatMap((l) => (l === "F&B.Cu" || l === "*.Cu" ? ["top", "bottom"] : copperOf(l) ? [copperOf(l)!] : [])));
-    if (!sides.size) dropped.add("zones on inside layers");
+    const sides = new Set(
+      layers.flatMap((l): CopperLayer[] =>
+        l === "F&B.Cu" ? ["top", "bottom"] : l === "*.Cu" ? layersOf(board) : copperOf(l, inner) ? [copperOf(l, inner)!] : [],
+      ),
+    );
+    if (!sides.size) dropped.add("zones on inside layers past the fourth");
     for (const side of sides) {
       const priority = num(child(z, "priority"));
       board.pours.push({
         id: eid("po"),
         net: text(child(z, "net_name")) || netOf(z),
-        layer: side as "top" | "bottom",
+        layer: side,
         outline,
         thermal: !pads?.some((x) => x === "yes" || x === "no"),
         ...(priority ? { priority } : {}),

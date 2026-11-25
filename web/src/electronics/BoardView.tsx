@@ -3,12 +3,13 @@ import type { ElectronicsDesign } from "@bettercad/electronics";
 import { Icon, cx } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { BoardCanvas } from "./BoardCanvas";
-import { LAYERS } from "./drawBoard";
+import { layersFor } from "./drawBoard";
 import { BOARD_GRIDS, eui } from "./ui";
 import { useEui } from "./useEui";
 
-function LayersCard() {
+function LayersCard({ board }: { board: { copperLayers: number } }) {
   const ui = useEui();
+  const LAYERS = layersFor(board);
   const [open, setOpen] = useState(false);
   const hidden = new Set(ui.hidden);
   const active = LAYERS.find((l) => l.copper === ui.layer) ?? LAYERS[0]!;
@@ -65,7 +66,7 @@ export default function BoardView({ design, edit, readOnly }: { design: Electron
   return (
     <>
       <BoardCanvas design={design} edit={edit} readOnly={readOnly} />
-      {design.board && <LayersCard />}
+      {design.board && <LayersCard board={design.board} />}
     </>
   );
 }

@@ -467,13 +467,13 @@ function commands(design: () => ElectronicsDesign): Command[] {
     {
       ...e,
       id: "electronics.pcb.layer",
-      label: "Swap copper side",
+      label: "Next copper layer",
       group: "Tools",
       icon: "layers",
       keys: ["l"],
       when: pcb,
       run: () => eactions.current?.layer?.(),
-      keywords: "layer top bottom via",
+      keywords: "layer top bottom inner side swap via",
     },
     { ...e, id: "electronics.pcb.bend", label: "Bend the track the other way", group: "Tools", keys: ["/"], when: pcb, run: () => eactions.current?.bend?.() },
     {

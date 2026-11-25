@@ -5,11 +5,12 @@ import { edgeLoops, netRules, padLayers, padSolid, type Copper, type Layer } fro
 import { applyRoutes, blockers, corner45, tidyRun, type Route } from "./route";
 
 export { applyRoutes, type Route };
+import { layersOf } from "./stack";
 import { boardState } from "./state";
 
 /**
- * The autorouter (#647): routes the connections still to make, the short ones first, on a fine grid over both sides
- * of the board. It is our own maze router, made for simple boards and for finishing off. It only ever adds copper:
+ * The autorouter (#647): routes the connections still to make, the short ones first, on a fine grid over every
+ * layer of the board (#648). It is our own maze router, made for simple boards and for finishing off. It only ever adds copper:
  * tracks and vias already on the board stay where they are, and every run it lays is measured against the rules
  * the same way a track drawn by hand is.
  */
@@ -29,7 +30,7 @@ export interface AutorouteOptions {
   nets?: string[];
   /** Only connections to these parts. */
   parts?: Id[];
-  /** The sides it may route on. None: both. */
+  /** The layers it may route on. None: every layer but inner planes. */
   layers?: Layer[];
   /** The grid's step, mm. None: 0.125 mm, coarser on a very large board. */
   pitch?: number;
@@ -49,7 +50,6 @@ export interface AutorouteResult {
 }
 
 const BIG = 1e9;
-const LAYERS: Layer[] = ["top", "bottom"];
 /** The eight ways on, and the way back for each. */
 const DIRS: [number, number][] = [
   [1, 0],
@@ -169,6 +169,8 @@ class Router {
   private netIds = new Map<string, number>([["", 0]]);
   private spaces = new Map<string, Space>();
   private near = new Map<number, Near[]>();
+  /** The board's copper layers, top to bottom, and which of them it may lay track on. */
+  private layers: Layer[];
   private allowed: boolean[];
   private viaCost: number;
   // The search's own arrays, kept between searches; `mark` says which search a cell's numbers belong to.
@@ -197,26 +199,29 @@ class Router {
     if (!Number.isFinite(x1)) [x1, y1, x2, y2] = [0, 0, 0, 0];
     let pitch = opts.pitch ?? 0.125;
     // A very large board is routed on a coarser grid, so the search stays quick and small.
-    if (!opts.pitch) while (((x2 - x1) / pitch) * ((y2 - y1) / pitch) > 1.3e6) pitch *= 2;
+    const layers = (this.layers = layersOf(board));
+    if (!opts.pitch) while (((x2 - x1) / pitch) * ((y2 - y1) / pitch) * (layers.length / 2) > 1.3e6) pitch *= 2;
     this.pitch = pitch;
     this.x0 = x1;
     this.y0 = y1;
     this.nx = Math.max(1, Math.floor((x2 - x1) / pitch + 1e-9) + 1);
     this.ny = Math.max(1, Math.floor((y2 - y1) / pitch + 1e-9) + 1);
     const n = (this.n = this.nx * this.ny);
-    this.allowed = LAYERS.map((l) => !opts.layers || opts.layers.includes(l));
+    // An inner layer with a pour on it is a plane: it is left whole.
+    this.allowed = layers.map((l) => (!opts.layers || opts.layers.includes(l)) && (l === "top" || l === "bottom" || !board.pours.some((p) => p.layer === l)));
+    const size = layers.length * n;
     this.viaCost = opts.viaCost ?? 4;
-    this.cost = new Float32Array(2 * n + 1);
-    this.from = new Int32Array(2 * n + 1);
-    this.dir = new Int8Array(2 * n + 1);
-    this.mark = new Uint32Array(2 * n + 1);
-    this.shut = new Uint32Array(2 * n + 1);
+    this.cost = new Float32Array(size + 1);
+    this.from = new Int32Array(size + 1);
+    this.dir = new Int8Array(size + 1);
+    this.mark = new Uint32Array(size + 1);
+    this.shut = new Uint32Array(size + 1);
 
     this.inside = new Uint8Array(n);
     this.fill(this.loops, (i) => (this.inside[i] = 1));
-    this.pour = new Uint16Array(2 * n);
+    this.pour = new Uint16Array(size);
     for (const p of [...board.pours].sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0))) {
-      const l = LAYERS.indexOf(p.layer as Layer);
+      const l = layers.indexOf(p.layer);
       if (l >= 0 && p.net) this.fill([p.outline], (i) => (this.pour[l * n + i] = this.netId(p.net)));
     }
     for (const p of pads) {
@@ -316,7 +321,7 @@ class Router {
     const id = `${r.trackWidth}|${r.clearance}|${r.viaDiameter}|${r.viaDrill}`;
     let s = this.spaces.get(id);
     if (!s) {
-      const size = 2 * this.n;
+      const size = this.layers.length * this.n;
       s = {
         width: r.trackWidth,
         clearance: r.clearance,
@@ -328,14 +333,15 @@ class Router {
         upto: 0,
       };
       this.spaces.set(id, s);
-      for (let c = 0; c < this.n; c += 1) if (!this.inside[c]) s.v1[c] = s.v1[this.n + c] = -BIG;
+      const every = this.layers.map((_, l) => l);
+      for (let c = 0; c < this.n; c += 1) if (!this.inside[c]) for (const l of every) s.v1[l * this.n + c] = -BIG;
       for (const loop of this.loops)
-        for (let i = 0; i < loop.length; i += 1) this.stamp(s, [0, 1], [loop[i]!, loop[(i + 1) % loop.length]!], 0, this.board.rules.copperToEdge, 0);
+        for (let i = 0; i < loop.length; i += 1) this.stamp(s, every, [loop[i]!, loop[(i + 1) % loop.length]!], 0, this.board.rules.copperToEdge, 0);
       for (const k of this.board.keepouts) if (k.tracks) this.keepOut(s, k.outline);
     }
     for (; s.upto < this.copper.length; s.upto += 1) {
       const c = this.copper[s.upto]!;
-      const layers = c.layers.map((l) => LAYERS.indexOf(l)).filter((l) => l >= 0);
+      const layers = c.layers.map((l) => this.layers.indexOf(l)).filter((l) => l >= 0);
       if (layers.length) this.stamp(s, layers, c.pts, c.r, Math.max(s.clearance, netRules(this.board, c.net).clearance), this.netId(c.net));
     }
     return s;
@@ -344,12 +350,13 @@ class Router {
   /** A keep-out may be any shape, so its inside is filled and its edge drawn a line at a time. */
   private keepOut(s: Space, outline: P2[]) {
     this.fill([outline], (c) => {
-      for (const l of [0, 1]) {
+      for (let l = 0; l < this.layers.length; l += 1) {
         s.v1[l * this.n + c] = -BIG;
         s.own[l * this.n + c] = 0;
       }
     });
-    for (let i = 0; i < outline.length; i += 1) this.stamp(s, [0, 1], [outline[i]!, outline[(i + 1) % outline.length]!], 0, 0.01, 0);
+    const every = this.layers.map((_, l) => l);
+    for (let i = 0; i < outline.length; i += 1) this.stamp(s, every, [outline[i]!, outline[(i + 1) % outline.length]!], 0, 0.01, 0);
   }
 
   /** Whether a via may be drilled at a cell: clear of other holes, and not on top of a pad. */
@@ -368,8 +375,8 @@ class Router {
     const ci = Math.round((pad.at[0] - this.x0) / this.pitch);
     const cj = Math.round((pad.at[1] - this.y0) / this.pitch);
     const span = Math.ceil(reach / this.pitch);
-    for (const layer of padLayers(pad)) {
-      const l = LAYERS.indexOf(layer);
+    for (const layer of padLayers(pad, this.layers)) {
+      const l = this.layers.indexOf(layer);
       if (!this.allowed[l]) continue;
       for (let j = Math.max(0, cj - span); j <= Math.min(this.ny - 1, cj + span); j += 1)
         for (let i = Math.max(0, ci - span); i <= Math.min(this.nx - 1, ci + span); i += 1) {
@@ -407,11 +414,12 @@ class Router {
     if (!starts.size || !ends.size) return null;
     const run = (this.run += 1);
     const { cost, from, dir, mark, shut } = this;
-    const GOAL = 2 * n;
+    const count = this.layers.length;
+    const GOAL = count * n;
     const heap = new Heap();
     const slack = Math.max(3 * pitch, 0.4) * 1.5;
     const guess = (node: number): number => {
-      const cell = node >= n ? node - n : node;
+      const cell = node % n;
       const dx = Math.abs(this.x0 + (cell % nx) * pitch - b.at[0]);
       const dy = Math.abs(this.y0 + Math.floor(cell / nx) * pitch - b.at[1]);
       return Math.max(0, Math.max(dx, dy) + 0.41421356 * Math.min(dx, dy) - slack);
@@ -438,7 +446,7 @@ class Router {
       const c = cost[node]!;
       const end = ends.get(node);
       if (end) reach(GOAL, c + end.cost, node, -1);
-      const l = node >= n ? 1 : 0;
+      const l = Math.floor(node / n);
       const cell = node - l * n;
       const i = cell % nx;
       const j = (cell - i) / nx;
@@ -452,10 +460,11 @@ class Router {
         const step = (k & 1 ? 1.41421356 : 1) * pitch * (over && over !== netId ? 2 : 1);
         reach(next, c + step + (dir[node] === k || dir[node] === -1 ? 0 : 0.3 * pitch), node, k);
       }
-      // Through to the other side.
-      const other = (1 - l) * n + cell;
-      if (this.allowed[1 - l] && shut[other] !== run && free(node) >= s.viaR && free(other) >= s.viaR && this.viaClear(s, this.px(cell), this.py(cell)))
-        reach(other, c + this.viaCost, node, -1);
+      // Through to another side: a via goes right through, so it needs room on every layer.
+      let room = count > 1 && this.viaClear(s, this.px(cell), this.py(cell));
+      for (let m = 0; room && m < count; m += 1) room = free(m * n + cell) >= s.viaR;
+      if (room)
+        for (let m = 0; m < count; m += 1) if (m !== l && this.allowed[m] && shut[m * n + cell] !== run) reach(m * n + cell, c + this.viaCost, node, -1);
     }
     if (!found) return null;
 
@@ -466,18 +475,18 @@ class Router {
     const route: Route = { net, tracks: [], vias: [] };
     let pts: P2[] = [...starts.get(nodes[0]!)!.pts];
     nodes.forEach((node, k) => {
-      const l = node >= n ? 1 : 0;
+      const l = Math.floor(node / n);
       const cell = node - l * n;
       const p: P2 = [this.px(cell), this.py(cell)];
       const before = nodes[k - 1];
-      if (before !== undefined && (before >= n ? 1 : 0) !== l) {
-        route.tracks.push({ layer: LAYERS[1 - l]!, pts });
+      if (before !== undefined && Math.floor(before / n) !== l) {
+        route.tracks.push({ layer: this.layers[Math.floor(before / n)]!, pts });
         route.vias.push(p);
         pts = [];
       }
       pts.push(p);
     });
-    const lastLayer = LAYERS[nodes[nodes.length - 1]! >= n ? 1 : 0]!;
+    const lastLayer = this.layers[Math.floor(nodes[nodes.length - 1]! / n)]!;
     pts.push(...[...ends.get(nodes[nodes.length - 1]!)!.pts].reverse());
     route.tracks.push({ layer: lastLayer, pts });
     route.tracks = route.tracks.map((t) => ({ layer: t.layer, pts: tidyRun(t.pts) })).filter((t) => t.pts.length > 1);
@@ -486,7 +495,7 @@ class Router {
     const rules = netRules(this.board, net);
     for (const t of route.tracks) if (blockers(this.board, this.copper, this.loops, { net, layers: [t.layer], pts: t.pts, width: s.width }).length) return null;
     for (const v of route.vias)
-      if (blockers(this.board, this.copper, this.loops, { net, layers: LAYERS, pts: [v], width: rules.viaDiameter }).length) return null;
+      if (blockers(this.board, this.copper, this.loops, { net, layers: this.layers, pts: [v], width: rules.viaDiameter }).length) return null;
 
     for (const t of route.tracks)
       for (let k = 0; k + 1 < t.pts.length; k += 1)
@@ -501,7 +510,7 @@ class Router {
           at: t.pts[k]!,
         });
     for (const v of route.vias) {
-      this.copper.push({ pts: [v], r: rules.viaDiameter / 2, kind: "via", net, layers: LAYERS, id: "", what: `a via on ${net}`, at: v });
+      this.copper.push({ pts: [v], r: rules.viaDiameter / 2, kind: "via", net, layers: this.layers, id: "", what: `a via on ${net}`, at: v });
       this.addNear({ pts: [v], r: rules.viaDrill / 2, hole: true });
     }
     return route;

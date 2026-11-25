@@ -257,6 +257,34 @@ the ratsnest still shows, the short ones first, and only ever adds copper, so a 
 It is for simple boards and for finishing off. It does not rip up and retry, push tracks aside, or route fine-pitch
 pads that fall between grid lines; the connections it finds no way for are listed and left for you.
 
+## Four and six layers (#648)
+
+A board has two, four or six copper layers: `Board.copperLayers`, with the inner ones named `in1`, `in2` and so on
+from the top down (`pcb/stack.ts`: `layersOf`, `layerName`). Everything that asked "top or bottom?" now asks
+`layersOf(board)`.
+
+- **Copper.** A through pad and a plated hole have copper on every layer, a surface pad on its own side, a track and
+  a pour on their own layer. A via joins every layer unless it has a `span`, which makes it blind or buried
+  (`viaLayers`, `viaKind`, `setViaSpan`). `copperOf` gives each piece its layers, so the board check, pours, the
+  ratsnest and the routing tools follow with no code of their own. A plane is a pour drawn over the whole board on
+  an inner layer.
+- **The build.** `STACKS` holds one usual FR-4 build for each count, written by us: copper, prepreg and core, top to
+  bottom. They are not a board house's own. `setStack` takes one (inner copper on layers that go is taken away, and
+  `stackLoses` says how much first); the board keeps its thickness and `buildOf` fits the sheets between the copper
+  to it. Board setup lists the build.
+- **The check.** Two new rules: copper on a layer the board does not have (an error), and a via that does not go
+  right through (a warning, since board houses charge more and some do not make them).
+- **Routing.** L steps down through the layers and round to the top. Autoroute searches every layer, lays vias
+  right through, and leaves an inner layer with a pour on it whole.
+- **Files.** `gerberLayers(board)` adds a copper file for each inner layer, numbered down from the top
+  (`Copper,L2,Inr`), named `.G1`, `.G2` in the order pack. Blind and buried vias are drilled in a file of their own
+  for each span (`-L1-L2.DRL`, `Plated,1,2,Blind`). KiCad projects go out with `In1.Cu` and so on and `via blind`,
+  and come back in the same; Eagle boards bring in the first four inner layers with copper on them.
+- **3D.** The board is as thick as Board setup says. Inner copper is not modelled: only the outside shows.
+
+Not done: board houses' own builds as presets. Their pages could not be read from here, and the numbers must come
+from those pages. Controlled impedance, microvias and back-drilling are not part of this.
+
 ## The board check (#644)
 
 `pcb/drc.ts`, imported as `@bettercad/electronics/drc`. `checkBoard(design)` returns results in the same shape as the
@@ -660,7 +688,7 @@ or Adafruit project, has been opened yet.
 
 ## What release 1 leaves open
 
-- Release 2, by decision: shove routing (#646), four layers and more (#648), panels and IPC-2581 (#662).
+- Release 2, by decision: shove routing (#646), panels and IPC-2581 (#662).
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.

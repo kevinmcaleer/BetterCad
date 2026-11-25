@@ -63,6 +63,8 @@ schematic brings it up to date and lists the changes first.
 
 1. **Set up the board.** Press B for Board setup: width, height, corner radius and thickness, or take the outline
    from a sketch in your model so the board fits the case you are printing. Pick a board house's rules here too.
+   Most boards need two copper layers. Layers gives you four or six: the inner ones show in the Layers card, L steps
+   through them while you route, and a pour over the whole board on an inner layer makes it a ground or power plane.
 2. **Place the parts.** Drag them into place. R turns a part, X flips it to the other side of the board, K locks it.
    Thin lines show which pads still need joining.
 3. **Route.** Press W and click a pad. Each click lays a piece of track with a 45° bend; click the pad it goes to and
@@ -117,6 +119,6 @@ On a Mac, Ctrl is Cmd. Press ? in the app for every shortcut.
 
 ## What it does not do yet
 
-Boards have two copper layers. Autoroute routes simple boards; it does not push tracks aside, and neither does routing by hand. A model holds
+Boards have two, four or six copper layers, with our own usual builds and not a board house's. Autoroute routes simple boards; it does not push tracks aside, and neither does routing by hand. A model holds
 one board. Part bodies in 3D are simple shapes, not the makers' own models. Part numbers for assembly are typed in,
 not looked up. The developer notes in [electronics.md](electronics.md) list the rest.
