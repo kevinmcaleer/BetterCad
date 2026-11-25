@@ -145,6 +145,72 @@ describe("board setup", () => {
   });
 });
 
+describe("a board shaped by a file or a face", () => {
+  it("takes its shape from a DXF file, and says when the file has none (#638)", async () => {
+    const s = setup(board().d, (design, edit) => <BoardSetup design={design} edit={edit} onClose={() => {}} />);
+    const pair = (rows: (string | number)[][]) => rows.map(([c, v]) => `${c}\n${v}`).join("\n");
+    const square = pair([
+      [0, "SECTION"],
+      [2, "ENTITIES"],
+      [0, "LWPOLYLINE"],
+      [70, 1],
+      [10, 0],
+      [20, 0],
+      [10, 64],
+      [20, 0],
+      [10, 64],
+      [20, 32],
+      [10, 0],
+      [20, 32],
+      [0, "ENDSEC"],
+      [0, "EOF"],
+    ]);
+    const input = screen.getByLabelText("A DXF file for the board's shape");
+    expect(screen.getByRole("button", { name: "Shape from a DXF file" })).toBeInTheDocument();
+    await userEvent.upload(input, new File(["nothing here"], "empty.dxf"));
+    expect(await screen.findByText(/That file has no closed shape/)).toBeInTheDocument();
+    await userEvent.upload(input, new File([square], "plate.dxf"));
+    expect(await screen.findByText(/The board took its shape from the file/)).toBeInTheDocument();
+    expect(s.labels).toEqual(["Shape the board from a DXF file"]);
+    expect(s.design().board!.outline).toHaveLength(4);
+    expect(screen.getByLabelText("Width (mm)")).toHaveValue("64");
+  });
+
+  it("takes its shape from a flat face picked in the model, and says when the face has changed (#638)", async () => {
+    // One face: a rectangle `w` wide and 20 deep, lying flat.
+    const mesh = (w: number) => ({
+      positions: new Float32Array([0, 0, 5, w, 0, 5, w, 20, 5, 0, 20, 5]),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      faceTris: new Uint32Array([0, 2]),
+    });
+    const model = (w: number, picked = true) =>
+      ({
+        bodies: new Map([["b1", { mesh: mesh(w), names: { faces: ["top"] } }]]),
+        picks: picked ? [{ body: "b1", kind: "face", index: 0 }] : [],
+        names: [{ id: "b1", name: "Lid" }],
+      }) as unknown as Parameters<typeof BoardSetup>[0]["model"];
+    let m = model(60);
+    const s = setup(board().d, (design, edit) => <BoardSetup design={design} edit={edit} model={m} onClose={() => {}} />);
+    await userEvent.selectOptions(screen.getByLabelText("Board shape"), "From a face of Lid");
+    expect(s.labels).toEqual(["Shape the board from a face of Lid"]);
+    expect(s.design().board!.outlineFrom).toEqual({ face: "b1|top" });
+    expect(screen.getByText(/The outline follows a face of Lid: 60 × 20 mm/)).toBeInTheDocument();
+    // The body changes, and nothing is picked any more: the face is still found, by its name.
+    m = model(80, false);
+    await userEvent.selectOptions(screen.getByLabelText("Solder mask"), "Blue");
+    expect(screen.getByText("A face of Lid has changed since the board took its shape.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Update the outline" }));
+    expect(screen.getByText(/The outline follows a face of Lid: 80 × 20 mm/)).toBeInTheDocument();
+    // The face goes: the outline stays, and the card says why it no longer follows.
+    m = { ...m!, bodies: new Map() };
+    await userEvent.selectOptions(screen.getByLabelText("Solder mask"), "Red");
+    expect(screen.getByText(/The face the outline followed is gone/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Board shape"), "Set here");
+    expect(s.labels.at(-1)).toBe("Stop following the face");
+    expect(screen.getByLabelText("Width (mm)")).toHaveValue("80");
+  });
+});
+
 describe("a board shaped by a sketch", () => {
   it("takes its outline and cut-outs from a sketch, and says when the sketch has changed", async () => {
     const plate = (w: number) => ({

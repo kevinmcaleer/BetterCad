@@ -18,6 +18,7 @@ import { Button, ESC, FeaturePanel, PanelNote, PropsPanel, RibbonButton, RibbonG
 import type { Sketch } from "@bettercad/sketch";
 import type { Command } from "../state/commands";
 import type { KernelCall } from "./bodyFile";
+import type { ModelFaces } from "./faceOutline";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
 import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
@@ -714,6 +715,8 @@ export interface ElectronicsViewProps {
   name?: string;
   /** The model's sketches: a board can take its outline from one. */
   sketches?: { id: string; name: string; sketch: Sketch }[];
+  /** The model's bodies and what is picked on them: a board can take its outline from a flat face (#638). */
+  model?: ModelFaces;
   /** The model has its Board step (#650), so the board stands in 3D; and how to add the step when it has not. */
   inModel?: boolean;
   onAddBoard?: () => void;
@@ -735,6 +738,7 @@ export default function ElectronicsView({
   registry,
   name,
   sketches,
+  model,
   inModel,
   onAddBoard,
   onSample,
@@ -857,6 +861,7 @@ export default function ElectronicsView({
               edit={edit}
               readOnly={readOnly}
               sketches={sketches}
+              model={model}
               inModel={inModel}
               onAddBoard={onAddBoard}
               onClose={() => eui.set({ card: null })}

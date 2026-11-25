@@ -380,6 +380,22 @@ test.describe("on a wide screen", () => {
     await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
     await page.keyboard.press("Escape");
 
+    // Slide the track's middle piece down 2 mm (#640): the slanted pieces either side shorten to meet it, so the
+    // track is shorter, still on both pads, and still bent at 45°.
+    const length = page.locator("dl").filter({ hasText: "Length" });
+    await press(page, 21, 24);
+    await expect(length).toContainText("18.35 mm");
+    await page.mouse.move(...(await onCanvas(page, 21, 24)));
+    await page.mouse.down();
+    await page.mouse.move(...(await onCanvas(page, 21.3, 23)), { steps: 3 });
+    await page.mouse.move(...(await onCanvas(page, 21.5, 22)), { steps: 3 });
+    await page.mouse.up();
+    await expect(length).toContainText("16.69 mm");
+    await expect(status).toContainText("Every connection is routed");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(length).toContainText("18.35 mm");
+    await page.keyboard.press("Escape");
+
     // A mounting hole and a line of silkscreen text.
     await page.keyboard.press("h");
     await press(page, 45, 35);

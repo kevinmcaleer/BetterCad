@@ -51,8 +51,10 @@ export const pinKey = (part: Id, pin: string): string => `${part}:${pin}`;
 
 /** Sorts R2 before R10. */
 export function byRef(a: string, b: string): number {
-  return a.localeCompare(b, "en", { numeric: true, sensitivity: "base" });
+  return refOrder.compare(a, b);
 }
+// One collator for every comparison: making one a call is most of the time a long parts list takes to sort.
+const refOrder = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
 class Sets {
   private parent = new Map<string, string>();
@@ -110,6 +112,16 @@ export function placedPins(d: ElectronicsDesign): (NetPin & { power: boolean; va
  * power symbols with one value.
  */
 export function netlist(d: ElectronicsDesign): Netlist {
+  // The nets come from the sheets, the parts and their components alone, and a change makes new ones of those. Work on
+  // the board changes none of them, so the last answer is kept: a big schematic is not read again for every move.
+  if (kept && kept.sheets === d.sheets && kept.parts === d.parts && kept.defs === d.defs) return kept.out;
+  const out = findNets(d);
+  kept = { sheets: d.sheets, parts: d.parts, defs: d.defs, out };
+  return out;
+}
+let kept: { sheets: unknown; parts: unknown; defs: unknown; out: Netlist } | null = null;
+
+function findNets(d: ElectronicsDesign): Netlist {
   const sets = new Sets();
   const node = (sheet: Id, p: P2) => `${sheet}|${key(p[0], p[1])}`;
   const pins = placedPins(d);
@@ -156,10 +168,22 @@ export function netlist(d: ElectronicsDesign): Netlist {
       }
     }
     // A point that lands part way along a wire joins it.
+    // A box round each wire is looked at first: every point against every wire is slow on a big sheet.
+    const reach = 0.01;
+    const boxed = sheet.wires.map((w) => ({
+      w,
+      x1: Math.min(w.a[0], w.b[0]) - reach,
+      x2: Math.max(w.a[0], w.b[0]) + reach,
+      y1: Math.min(w.a[1], w.b[1]) - reach,
+      y2: Math.max(w.a[1], w.b[1]) + reach,
+      a: key(w.a[0], w.a[1]),
+      b: key(w.b[0], w.b[1]),
+    }));
     for (const p of points) {
       const n = node(sheet.id, p);
-      for (const w of sheet.wires) {
-        if (key(p[0], p[1]) === key(w.a[0], w.a[1]) || key(p[0], p[1]) === key(w.b[0], w.b[1])) continue;
+      const at = key(p[0], p[1]);
+      for (const { w, x1, x2, y1, y2, a, b } of boxed) {
+        if (p[0] < x1 || p[0] > x2 || p[1] < y1 || p[1] > y2 || at === a || at === b) continue;
         if (onSegment(p, w.a, w.b)) {
           sets.join(n, node(sheet.id, w.a));
           endCount.set(n, (endCount.get(n) ?? 0) + 1);

@@ -387,7 +387,16 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const heldDesign = useRef(doc.electronics);
   if (!covered || !heldDesign.current?.board !== !doc.electronics?.board) heldDesign.current = doc.electronics;
   const held = heldDesign.current;
-  const modelDoc = useMemo(() => (doc.electronics === held ? doc : { ...doc, electronics: held }), [doc, held]);
+  // While the design is held, a board change must leave the very same model document behind, or everything built
+  // from it (the solids, the bodies in the view, the browser's rows) is made again for a change it cannot show.
+  const heldDoc = useRef<ModelDoc | null>(null);
+  const modelDoc = useMemo(() => {
+    if (doc.electronics === held) return (heldDoc.current = doc);
+    const was = heldDoc.current;
+    const keys = Object.keys(doc) as (keyof ModelDoc)[];
+    const same = was && was.electronics === held && Object.keys(was).length === keys.length && keys.every((k) => k === "electronics" || was[k] === doc[k]);
+    return same ? was : (heldDoc.current = { ...doc, electronics: held });
+  }, [doc, held]);
   const built = useMemo(() => build(modelDoc, at), [modelDoc, at]);
   const matesOf = useCallback((id: string) => rigidMates(built.rigid, id), [built.rigid]);
   const parts = built.parts;
@@ -1614,18 +1623,19 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const faded = useMemo(() => fadedOutside(workIn, built.components, parts), [workIn, built.components, parts]);
   // The timeline shows only the active component's steps, until "Show every step" for that component.
   const [allStepsFor, setAllStepsFor] = useState<string | null>(null);
-  // Worked out in a chunk of its own, so first paint doesn't carry it; until it lands, every step shows.
+  // Worked out in a chunk of its own, so first paint doesn't carry it; until it lands, every step shows. These read
+  // the model's own document, which board work under the schematic or PCB view leaves alone.
   const [compSteps, setCompSteps] = useState<{ id: string; ids: string[] } | null>(null);
   useEffect(() => {
     if (!workIn) return;
     let live = true;
     void import("../state/componentSteps").then((m) => {
-      if (live) setCompSteps({ id: workIn, ids: m.componentSteps(doc, workIn) });
+      if (live) setCompSteps({ id: workIn, ids: m.componentSteps(modelDoc, workIn) });
     });
     return () => {
       live = false;
     };
-  }, [doc, workIn]);
+  }, [modelDoc, workIn]);
   const workInName = workIn ? (built.components.find((c) => c.id === workIn)?.name ?? "") : "";
   // As Fusion's timeline: a mark over each step of the picked bodies, and a bar in each step's component colour. Worked
   // out in the same lazy chunk; a model with no components and nothing picked never loads it.
@@ -1639,13 +1649,13 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     let live = true;
     void Promise.all([import("../state/componentSteps"), import("../viewport/cycleHue")]).then(([m, hue]) => {
       if (!live) return;
-      const { of, cycle, names } = m.stepComponents(doc);
+      const { of, cycle, names } = m.stepComponents(modelDoc);
       setBands(new Map([...of].map(([f, c]) => [f, { name: names.get(c) ?? "", colour: hue.cycleCss(cycle.indexOf(c)) }])));
     });
     return () => {
       live = false;
     };
-  }, [doc, hasComps]);
+  }, [modelDoc, hasComps]);
   const pickedBodies = useMemo(() => selection.filter((id) => parts.some((p) => p.id === id)).join("\n"), [selection, parts]);
   const [marked, setMarked] = useState<Set<string> | undefined>(undefined);
   useEffect(() => {
@@ -1655,12 +1665,12 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     }
     let live = true;
     void import("../state/componentSteps").then((m) => {
-      if (live) setMarked(new Set(m.bodySteps(doc, pickedBodies.split("\n"))));
+      if (live) setMarked(new Set(m.bodySteps(modelDoc, pickedBodies.split("\n"))));
     });
     return () => {
       live = false;
     };
-  }, [doc, pickedBodies]);
+  }, [modelDoc, pickedBodies]);
 
   // A sketch on a face goes with the body it sits on, so a joint that turns the body carries the sketch too.
   const linkOf = useRef(new Map<string, string | null>());
@@ -5125,6 +5135,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   registry={registry}
                   name={doc.name}
                   sketches={built.sketches}
+                  model={{ bodies: kernel.bodies, picks: vp.elements, names: parts }}
                   inModel={doc.features.some((f) => f.type === "board")}
                   onAddBoard={() => store.edit((d) => addBoard(d), "Add the board to the model")}
                   onSample={() => files.openSample("pico-servo-board")}

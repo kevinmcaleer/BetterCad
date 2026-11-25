@@ -1,11 +1,13 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { boardSize, netlist, type Board, type ElectronicsDesign, type NetClass } from "@bettercad/electronics";
-import { followSketch, outlineBehind, unfollowSketch, type OutlineShape } from "@bettercad/electronics/pcb/outline";
+import { followFace, followSketch, outlineBehind, takeShape, unfollowSketch, type OutlineShape } from "@bettercad/electronics/pcb/outline";
 import { outlineRadius, roundedOutline, setBoard } from "@bettercad/electronics/pcb/route";
 import { PRESETS, RULE_FIELDS, applyPreset, keepRules, matchesPreset, presetChanges, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
 import { profiles, type Sketch } from "@bettercad/sketch";
 import { Button, ESC, FeaturePanel, FeatureRow, NumberField, PanelNote, useEscape } from "@bettercad/ui";
 import type { EEdit } from "./actions";
+import { boardFaces, type ModelFaces } from "./faceOutline";
+import { textOf } from "./fileText";
 
 const THICKNESS = [0.8, 1, 1.2, 1.6, 2];
 const MASKS: NonNullable<Board["mask"]>[] = ["green", "black", "blue", "red", "white", "purple", "yellow"];
@@ -38,6 +40,7 @@ export default function BoardSetup({
   readOnly,
   onClose,
   sketches = [],
+  model,
   inModel,
   onAddBoard,
 }: {
@@ -47,6 +50,8 @@ export default function BoardSetup({
   onClose: () => void;
   /** The model's sketches, for a board that takes its shape from one. */
   sketches?: OutlineSketch[];
+  /** The model's bodies and what is picked on them, for a board that takes its shape from a flat face. */
+  model?: ModelFaces;
   /** Whether the model has its Board step, and how to add it. */
   inModel?: boolean;
   onAddBoard?: () => void;
@@ -68,9 +73,34 @@ export default function BoardSetup({
     [design],
   );
   useEscape(true, onClose, ESC.panel);
-  const shapes = useMemo(() => sketches.flatMap((s) => (shapeOf(s.sketch) ? [{ id: s.id, name: s.name, shape: shapeOf(s.sketch)! }] : [])), [sketches]);
-  const followed = board.outlineFrom?.sketch;
+  // What the board can take its shape from: the model's sketches, then the face it follows and any face picked in 3D.
+  const onFace = board.outlineFrom?.face;
+  const shapes = useMemo(
+    () => [
+      ...sketches.flatMap((s) => (shapeOf(s.sketch) ? [{ id: s.id, name: s.name, shape: shapeOf(s.sketch)!, face: "" }] : [])),
+      ...boardFaces(model, onFace).map((f) => ({ id: `face:${f.id}`, name: f.name, shape: f.shape, face: f.id })),
+    ],
+    [sketches, model?.bodies, model?.picks, model?.names, onFace], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const followed = board.outlineFrom?.sketch ?? (onFace ? `face:${onFace}` : undefined);
   const source = shapes.find((s) => s.id === followed);
+  const follow = (to: (typeof shapes)[number], label: string) =>
+    edit((d) => (to.face ? followFace(d, to.face, to.shape) : followSketch(d, to.id, to.shape)), label);
+  const dxfFile = useRef<HTMLInputElement>(null);
+  const [said, setSaid] = useState("");
+  /** A DXF file's biggest closed shape becomes the board's edge (#638). Its reader loads when a file is picked. */
+  const fromDxf = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const { dxfOutline } = await import("@bettercad/electronics/pcb/dxf");
+      const { shape: found, notes } = dxfOutline(await textOf(file));
+      if (!found) return setSaid(["That file has no closed shape to make a board from.", ...notes].join(" "));
+      edit((d) => takeShape(d, found), "Shape the board from a DXF file");
+      setSaid(["The board took its shape from the file.", ...notes].join(" "));
+    } catch {
+      setSaid("That file could not be read.");
+    }
+  };
   const behind = !!source && outlineBehind(board, source.shape);
 
   const shape = (w: number, h: number, r: number) => edit((d) => setBoard(d, { outline: roundedOutline(w, h, r) }), "Change the board's size", "ec-board-size");
@@ -99,12 +129,12 @@ export default function BoardSetup({
               value={followed ?? ""}
               onChange={({ target: { value } }) => {
                 const to = shapes.find((s) => s.id === value);
-                if (to) edit((d) => followSketch(d, to.id, to.shape), `Shape the board from ${to.name}`);
-                else edit(unfollowSketch, "Stop following the sketch");
+                if (to) follow(to, `Shape the board from ${to.name}`);
+                else edit(unfollowSketch, onFace ? "Stop following the face" : "Stop following the sketch");
               }}
             >
               <option value="">Set here</option>
-              {followed && !source && <option value={followed}>A sketch that is gone</option>}
+              {followed && !source && <option value={followed}>{onFace ? "A face that is gone" : "A sketch that is gone"}</option>}
               {shapes.map((s) => (
                 <option key={s.id} value={s.id}>
                   From {s.name}
@@ -117,18 +147,20 @@ export default function BoardSetup({
           <>
             <PanelNote>
               {source
-                ? `The outline follows ${source.name}: ${size.w} × ${size.h} mm. Shapes inside it are cut out.`
-                : "The sketch the outline followed is gone, or has no closed shape. The outline stays as it was."}
+                ? `The outline follows ${source.name}: ${size.w} × ${size.h} mm. ${onFace ? "Holes through it" : "Shapes inside it"} are cut out.`
+                : onFace
+                  ? "The face the outline followed is gone, or is no longer flat. The outline stays as it was."
+                  : "The sketch the outline followed is gone, or has no closed shape. The outline stays as it was."}
             </PanelNote>
             {behind && source && (
               <>
-                <PanelNote live>{source.name} has changed since the board took its shape.</PanelNote>
+                <PanelNote live>{cap(source.name)} has changed since the board took its shape.</PanelNote>
                 <Button
                   size="dense"
                   variant="primary"
                   label="Update the outline"
-                  title="Take the sketch's shape as it is now"
-                  onClick={() => edit((d) => followSketch(d, source.id, source.shape), "Update the board's outline")}
+                  title={onFace ? "Take the face's shape as it is now" : "Take the sketch's shape as it is now"}
+                  onClick={() => follow(source, "Update the board's outline")}
                 />
               </>
             )}
@@ -153,6 +185,25 @@ export default function BoardSetup({
             />
           </>
         )}
+        <input
+          ref={dxfFile}
+          type="file"
+          accept=".dxf,image/vnd.dxf,application/dxf"
+          hidden
+          aria-label="A DXF file for the board's shape"
+          onChange={(e) => {
+            void fromDxf(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+        <Button
+          size="dense"
+          variant="secondary"
+          label="Shape from a DXF file"
+          title="Take the board's edge and cut-outs from a drawing's closed shapes"
+          onClick={() => dxfFile.current?.click()}
+        />
+        {said && <PanelNote live>{said}</PanelNote>}
         <FeatureRow label="Thickness">
           <select
             className="bc-select"

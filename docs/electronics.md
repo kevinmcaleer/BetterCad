@@ -271,6 +271,35 @@ it, and it is drawn in the copper files with the same strokes. Text can have sev
 house cut the silkscreen away wherever it crosses a pad's opening, and the board check now says so first
 (`silk-pad`, a warning): which part's name or which text loses ink, and over which pad.
 
+**An outline from a face or a DXF file** (#638). Board setup's **Shape** list offers the model's sketches and, with
+the 3D view's pick set to Faces, any flat face picked on a body. The board takes the face's edge, with holes through
+the face as cut-outs, seen from outside the body (`faceShape` in `web/src/electronics/faceOutline.ts`, worked out
+from the face's triangles). The face is kept by the name the kernel gives it (`outlineFrom.face`, "body|face name"),
+so it is found again after the model changes; when its shape has changed the card says so and offers **Update the
+outline**, as it does for a sketch. The board is not moved onto the face in 3D. **Shape from a DXF file** reads lines,
+arcs, circles, ellipses and polylines with bulges (`dxfOutline` in `pcb/dxf.ts`), joins them end to end into closed
+shapes and takes the biggest as the edge and the ones inside it as cut-outs. The file's units are honoured
+(`$INSUNITS`), curves come in as short straight runs, and the card says what was left out: open shapes, splines,
+text. A shape from a file follows nothing afterwards. BetterCad has no DXF reader for sketches yet, so this one is
+the board's own.
+
+**Sliding a piece of track** (#640). With one track picked, drag a piece of it and that piece slides sideways,
+staying parallel to itself. The pieces either side keep their own directions and grow or shrink to meet it, so 45°
+corners stay 45° (`slidePiece` in `pcb/slide.ts`). An end of the track sits on a pad or a via and does not move: a
+short 45° piece is put in to reach the slid piece. The slide stops where a neighbour would have to turn back on
+itself. Another track of the net that ends on a moved corner, and a via on one, go with it. With several things
+picked, a drag moves them all as before.
+
+**Big boards** (#640, #644). `bigBoard` (`pcb/big.ts`) makes a test board of any size. Measured in headless Chromium
+on a board of 1,750 parts and 5,145 pieces of track: zooming and panning hold 60 frames a second, and each step of a
+drag (a part, or a piece of track) takes 70 to 100 ms; before this work a step took 600 ms to a second. What changed:
+the nets are read from the schematic once and kept while only the board changes, a wire's box is looked at before a
+point is measured against it, the 3D model is left alone while the schematic or the PCB view covers it, and the
+copper's groups and the ink over a pad check look at boxes first. The board check itself runs in a worker
+(`boardCheck.worker.ts`), so the page stays free while a big board is measured; the last list stays up until the new
+one arrives, and where a worker cannot start the check runs in the page. A 500 part board is checked in about 0.2 s
+(`big.test.ts` holds both timings to a loose limit).
+
 **Pictures on the silkscreen** (#642). **Picture** on the board's ribbon takes a PNG, JPEG or SVG file and prints
 it as ink: dark, solid parts of the picture are ink, light or clear parts are bare board. It is kept in the design as
 a bit a cell (`BoardPicture`, at most 200 cells across, `pcb/picture.ts`), so nothing is fetched later. Its card sets

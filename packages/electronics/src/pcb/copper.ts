@@ -160,9 +160,22 @@ export function copperGroups(copper: Copper[], joined: number[][] = []): number[
     if (!byNet.has(c.net)) byNet.set(c.net, []);
     byNet.get(c.net)!.push(i);
   });
+  // A box round each piece is looked at before the pieces are measured: most pairs of a net are nowhere near.
+  const box = copper.map((c) => {
+    let [x1, x2, y1, y2] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const p of c.pts) {
+      x1 = Math.min(x1, p[0]);
+      x2 = Math.max(x2, p[0]);
+      y1 = Math.min(y1, p[1]);
+      y2 = Math.max(y2, p[1]);
+    }
+    return [x1 - c.r, x2 + c.r, y1 - c.r, y2 + c.r] as const;
+  });
+  const apart = (i: number, j: number) => box[i]![0] > box[j]![1] || box[j]![0] > box[i]![1] || box[i]![2] > box[j]![3] || box[j]![2] > box[i]![3];
   for (const list of byNet.values())
     for (let x = 0; x < list.length; x += 1)
       for (let y = x + 1; y < list.length; y += 1) {
+        if (apart(list[x]!, list[y]!)) continue;
         const a = copper[list[x]!]!;
         const b = copper[list[y]!]!;
         if (find(list[x]!) !== find(list[y]!) && shares(a, b) && gap(a, b) === 0) parent[find(list[x]!)] = find(list[y]!);

@@ -18,6 +18,7 @@ import {
 import { edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
+import { slideTrack } from "@bettercad/electronics/pcb/slide";
 import { addCutout, addKeepoutArea, addPour, pourShape, removeAreas, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import { addHole, addText, addTrack, addVia, blockers, corner45, deleteParts, renumberOnBoard, toggleLock } from "@bettercad/electronics/pcb/route";
 import { Button, ESC, useEscape } from "@bettercad/ui";
@@ -117,7 +118,12 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const [pourNet, setPourNet] = useState("");
   const [cut, setCut] = useState(false);
   const [going, setGoing] = useState<string[] | null>(null);
-  const drag = useRef<{ ids: string[]; last: P2; key: string } | null>(null);
+  const drag = useRef<{
+    ids: string[];
+    last: P2;
+    key: string;
+    slide?: { id: string; piece: number; from: P2; board: NonNullable<ElectronicsDesign["board"]> };
+  } | null>(null);
   const pictureFile = useRef<HTMLInputElement>(null);
   /** A picture for the silkscreen (#642): read, turned into ink, and set down in the middle of what is showing. */
   const addPictureFrom = async (file: File | undefined) => {
@@ -333,7 +339,12 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     if (p.shift) ids = ids.includes(hit.id) ? ids.filter((x) => x !== hit.id) : [...ids, hit.id];
     else if (!ids.includes(hit.id)) ids = [hit.id];
     eui.set({ selected: ids, net: hit.net || null, spot: null });
-    if (!readOnly && ids.includes(hit.id)) drag.current = { ids, last: snap(p.world, grid), key: `ec-board-move-${(run += 1)}` };
+    if (!readOnly && ids.includes(hit.id)) {
+      const from = snap(p.world, grid);
+      drag.current = { ids, last: from, key: `ec-board-move-${(run += 1)}` };
+      // One track, held by a piece of it: that piece slides and the rest of the track stays joined (#640).
+      if (ids.length === 1 && hit.kind === "track" && hit.segment !== undefined && board) drag.current.slide = { id: hit.id, piece: hit.segment, from, board };
+    }
     return true;
   };
 
@@ -350,7 +361,10 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       const dy = s[1] - d.last[1];
       if (dx || dy) {
         d.last = s;
-        edit((x) => moveOnBoard(x, d.ids, dx, dy), "Move", d.key);
+        const sl = d.slide;
+        // A slide is always worked out from the track as it was picked up, so going back puts it back.
+        if (sl) edit((x) => slideTrack({ ...x, board: sl.board }, sl.id, sl.piece, [s[0] - sl.from[0], s[1] - sl.from[1]]), "Move a piece of track", d.key);
+        else edit((x) => moveOnBoard(x, d.ids, dx, dy), "Move", d.key);
       }
       return;
     }

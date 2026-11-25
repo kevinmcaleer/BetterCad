@@ -1,4 +1,4 @@
-import { outlinePoints } from "../board";
+import { outlinePoints, pointInPolygon } from "../board";
 import { q } from "../geom";
 import type { Board, Corner, ElectronicsDesign, Id, P2 } from "../model";
 
@@ -66,7 +66,39 @@ export function followSketch(d: ElectronicsDesign, sketch: Id, shape: OutlineSha
   return { ...d, board: next };
 }
 
-/** Stops following a sketch. The outline stays as it is. */
+/**
+ * The same for a flat face of a body in the model: `face` names the body and the face ("body|face name"). The board
+ * is not moved onto the face in 3D; its step in the model places it.
+ */
+export function followFace(d: ElectronicsDesign, face: string, shape: OutlineShape): ElectronicsDesign {
+  const board = d.board;
+  if (!board || shape.outer.length < 3) return d;
+  const next: Board = { ...board, ...outlineOf(shape, low(outlinePoints(board.outline))), outlineFrom: { face } };
+  if (!shape.holes.length) delete next.cutouts;
+  return { ...d, board: next };
+}
+
+/** Gives the board a shape once, from a file say, following nothing. Its bottom left corner stays where it is. */
+export function takeShape(d: ElectronicsDesign, shape: OutlineShape): ElectronicsDesign {
+  const board = d.board;
+  if (!board || shape.outer.length < 3) return d;
+  const next: Board = { ...board, ...outlineOf(shape, low(outlinePoints(board.outline))) };
+  if (!shape.holes.length) delete next.cutouts;
+  delete next.outlineFrom;
+  return { ...d, board: next };
+}
+
+const areaOf = (loop: P2[]): number =>
+  Math.abs(loop.reduce((a, p, i) => a + p[0] * loop[(i + 1) % loop.length]![1] - loop[(i + 1) % loop.length]![0] * p[1], 0)) / 2;
+
+/** Closed loops as a board's shape: the biggest is the edge, and the loops inside it are cut-outs. Null with none. */
+export function shapeFromLoops(loops: P2[][]): OutlineShape | null {
+  const real = loops.filter((l) => l.length > 2 && areaOf(l) > 1e-6).sort((a, b) => areaOf(b) - areaOf(a));
+  const outer = real[0];
+  return outer ? { outer, holes: real.slice(1).filter((l) => pointInPolygon(l[0]!, outer)) } : null;
+}
+
+/** Stops following a sketch or a face. The outline stays as it is. */
 export function unfollowSketch(d: ElectronicsDesign): ElectronicsDesign {
   if (!d.board?.outlineFrom) return d;
   const board = { ...d.board };
