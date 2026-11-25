@@ -613,9 +613,11 @@ later; CI has none, so it is skipped there): KiCad reads the exported schematic 
 have our nets, pin for pin and name for name; it plots the board's copper, which must lie where ours does on both
 sides; and it writes the drill files, which must have our holes. Both the sample and a design made to turn
 everything every way (`kicad/fixture.ts`: mirrored and turned symbols, a part with two units, power symbols, wires
-that join every way, two sheets, parts on both sides at odd angles) pass against KiCad 7.0.11. Nobody has opened the
-files in KiCad 8 or 9 yet, or looked at them on screen: the checks are on nets, copper and holes, not on how the
-drawing looks.
+that join every way, two sheets, parts on both sides at odd angles) pass against KiCad 7.0.11. So do KiCad's own 11
+demo projects (`kicad/demos.test.ts`): each is opened here, written out again, and read by KiCad, which finds the
+nets it finds in the demo itself and writes the board's drill file. That showed one fault, now fixed: a part that is
+not fitted was written with a word only KiCad 8 knows. Nobody has opened the files in KiCad 8, 9 or 10 yet, or looked
+at them on screen: the checks are on nets, copper and holes, not on how the drawing looks.
 
 ## In from KiCad (#663)
 
@@ -656,8 +658,17 @@ How it is checked: `kicad/project.test.ts` writes the sample and the fixture tha
 KiCad projects and reads them back: the same parts, nets, pads and board check, and nothing for Push to PCB to do.
 `kicad/demos.test.ts` runs where KiCad and its demo projects are installed (CI has neither, so it is skipped there):
 all 11 demos' schematics come in with exactly the nets `kicad-cli` finds, hierarchy and buses included, and the nine
-2-layer demo boards come in with no shorts, nothing unrouted, nothing off the board and nothing behind the schematic.
-That is against KiCad 7.0.11 and its demo files; projects saved by KiCad 8 and 9 have not been tried yet.
+demo boards come in with no shorts, nothing unrouted and nothing behind the schematic, the two four layer ones
+included (the video card's edge connector hangs over its board's edge, as KiCad draws it).
+
+Files from KiCad 8, 9 and 10: set `KICAD_NEWER_DEMOS` to a folder holding `demos/` from each of those branches of
+KiCad's source (as `8.0`, `9.0`, `10.0`) and the same test opens every demo each version saved. The KiCad installed
+may be too old to open them, so their nets are held to the ones it finds in its own copy of the demo; three copies
+that were changed between versions (parts numbered again, a pin moved) are held only to their own boards. All of
+them pass. What the newer files needed: a name written with a word in braces ("VPP{slash}MCLR") is the net
+"VPP/MCLR"; KiCad 10's board names each net where it is used and keeps no table of them; teardrops, which are zones
+in the file, are left out and said; and a stub of track on a pin that joins nothing is left out and said. A supply
+pin that is not drawn joins the net with its name in every version, KiCad 10 included.
 
 ## In from Eagle and Fusion Electronics (#665)
 
@@ -737,6 +748,5 @@ or Adafruit project, has been opened yet.
 
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
-- KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.
 - A first real order: the order pack reads back in our own preview, and its copper and holes agree with what KiCad
   plots from the same board, but no board has been ordered with it.

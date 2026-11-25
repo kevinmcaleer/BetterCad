@@ -586,7 +586,9 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
     node.push(ref, fpText("value", part.value, [0, 0], side, "Fab", rot, true));
     const path = o.paths.get(part.id);
     if (path) node.push(["path", s(path)]);
-    const attr: string[] = [mount(fp), ...(part.fitted === false ? ["dnp"] : [])].filter(Boolean);
+    // A part that is not fitted: KiCad 7's board has no word for it (8 added `dnp`), so it is kept off the parts list
+    // and the placement file, which every version reads. The schematic says it is not fitted.
+    const attr: string[] = [mount(fp), ...(part.fitted === false ? ["exclude_from_pos_files", "exclude_from_bom"] : [])].filter(Boolean);
     if (attr.length) node.push(["attr", ...attr]);
     node.push(...footprintShapes(fp, side));
     for (const pad of pads) {
