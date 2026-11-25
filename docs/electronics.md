@@ -437,8 +437,11 @@ written. A part with no correction has its dot in its ring. A component's own co
 the line) moves the dot off the ring by exactly that much, so you can see what each correction does, top and bottom.
 
 Left for later: a real upload to each house's quote page to confirm the headings and how bottom parts are turned
-(#660; neither house's page says), live stock and prices (#661), LCSC numbers filled in for the starter library,
-and panels (#662).
+(#660; neither house's page says), live stock and prices (#661) and panels (#662).
+
+**Common parts** (`common.ts`, `common.json`). The parts table offers LCSC numbers for everyday resistors and
+capacitors: a part whose kind, value and package match a row of the checked list, and that has no number, can have
+it filled in. The list is in `docs/electronics-library.md`.
 
 ## The sample board (#666)
 

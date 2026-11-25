@@ -1,0 +1,204 @@
+{
+  "$comment": "Common resistors and capacitors with their LCSC numbers (#661). Every row was read from the part's own page on jlcpcb.com on the date in `checked`; add a row only from its page, and update `checked` when the rows are read again. `type` is JLCPCB's library type on that day: Basic parts carry no loading fee.",
+  "checked": "2026-11-25",
+  "parts": [
+    {
+      "prefix": "R",
+      "value": "100 Ω",
+      "package": "0603",
+      "lcsc": "C22775",
+      "mpn": "0603WAF1000T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/23502-0603WAF1000T5E/C22775"
+    },
+    {
+      "prefix": "R",
+      "value": "220 Ω",
+      "package": "0603",
+      "lcsc": "C22962",
+      "mpn": "0603WAF2200T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/23689-0603WAF2200T5E/C22962"
+    },
+    {
+      "prefix": "R",
+      "value": "330 Ω",
+      "package": "0603",
+      "lcsc": "C23138",
+      "mpn": "0603WAF3300T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/23865-0603WAF3300T5E/C23138"
+    },
+    {
+      "prefix": "R",
+      "value": "470 Ω",
+      "package": "0603",
+      "lcsc": "C23179",
+      "mpn": "0603WAF4700T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/0603WAF4700T5E/C23179"
+    },
+    {
+      "prefix": "R",
+      "value": "1 kΩ",
+      "package": "0603",
+      "lcsc": "C21190",
+      "mpn": "0603WAF1001T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/C21190"
+    },
+    {
+      "prefix": "R",
+      "value": "2.2 kΩ",
+      "package": "0603",
+      "lcsc": "C4190",
+      "mpn": "0603WAF2201T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/C4190"
+    },
+    {
+      "prefix": "R",
+      "value": "4.7 kΩ",
+      "package": "0603",
+      "lcsc": "C23162",
+      "mpn": "0603WAF4701T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/0603WAF4701T5E/C23162"
+    },
+    {
+      "prefix": "R",
+      "value": "10 kΩ",
+      "package": "0603",
+      "lcsc": "C25804",
+      "mpn": "0603WAF1002T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/C25804"
+    },
+    {
+      "prefix": "R",
+      "value": "100 kΩ",
+      "package": "0603",
+      "lcsc": "C25803",
+      "mpn": "0603WAF1003T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 100 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/C25803"
+    },
+    {
+      "prefix": "R",
+      "value": "10 kΩ",
+      "package": "0402",
+      "lcsc": "C25744",
+      "mpn": "0402WGF1002TCE",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 62.5 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/26487-0402WGF1002TCE/C25744"
+    },
+    {
+      "prefix": "R",
+      "value": "10 kΩ",
+      "package": "0805",
+      "lcsc": "C17414",
+      "mpn": "0805W8F1002T5E",
+      "manufacturer": "UNI-ROYAL",
+      "spec": "±1%, 125 mW",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/18102-0805W8F1002T5E/C17414"
+    },
+    {
+      "prefix": "C",
+      "value": "100 nF",
+      "package": "0603",
+      "lcsc": "C14663",
+      "mpn": "CC0603KRX7R9BB104",
+      "manufacturer": "YAGEO",
+      "spec": "±10%, 50 V, X7R",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/Yageo-CC0603KRX7R9BB104/C14663"
+    },
+    {
+      "prefix": "C",
+      "value": "1 µF",
+      "package": "0603",
+      "lcsc": "C15849",
+      "mpn": "CL10A105KB8NNNC",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "spec": "±10%, 50 V, X5R",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/16531-CL10A105KB8NNNC/C15849"
+    },
+    {
+      "prefix": "C",
+      "value": "10 µF",
+      "package": "0603",
+      "lcsc": "C19702",
+      "mpn": "CL10A106KP8NNNC",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "spec": "±10%, 10 V, X5R",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/20411-CL10A106KP8NNNC/C19702"
+    },
+    {
+      "prefix": "C",
+      "value": "22 pF",
+      "package": "0603",
+      "lcsc": "C1653",
+      "mpn": "CL10C220JB8NNNC",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "spec": "±5%, 50 V, C0G",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/2005-CL10C220JB8NNNC/C1653"
+    },
+    {
+      "prefix": "C",
+      "value": "10 nF",
+      "package": "0603",
+      "lcsc": "C1589",
+      "mpn": "CL10B103KB8NNNC",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "spec": "±10%, 50 V, X7R",
+      "type": "Extended",
+      "source": "https://jlcpcb.com/partdetail/CL10B103KB8NNNC/C1589"
+    },
+    {
+      "prefix": "C",
+      "value": "100 nF",
+      "package": "0402",
+      "lcsc": "C1525",
+      "mpn": "CL05B104KO5NNNC",
+      "manufacturer": "Samsung Electro-Mechanics",
+      "spec": "±10%, 16 V, X7R",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/1877-CL05B104KO5NNNC/C1525"
+    },
+    {
+      "prefix": "C",
+      "value": "100 nF",
+      "package": "0805",
+      "lcsc": "C49678",
+      "mpn": "CC0805KRX7R9BB104",
+      "manufacturer": "YAGEO",
+      "spec": "±10%, 50 V, X7R",
+      "type": "Basic",
+      "source": "https://jlcpcb.com/partdetail/CC0805KRX7R9BB104/C49678"
+    }
+  ]
+}

@@ -31,6 +31,7 @@
     "./sample": "./src/sample.ts",
     "./fab/pack": "./src/fab/pack.ts",
     "./fab/read": "./src/fab/read.ts",
+    "./fab/common": "./src/fab/common.ts",
     "./library/starter.json": "./library/starter.json"
   },
   "scripts": {
