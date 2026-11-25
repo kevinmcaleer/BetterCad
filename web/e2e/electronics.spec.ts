@@ -463,7 +463,7 @@ test.describe("on a wide screen", () => {
       // A first picture is taken twice to see that it holds still, which is slow on a runner with no graphics card.
       await expect(schematic).toHaveScreenshot(`sample-schematic-${theme}.png`, { maxDiffPixelRatio: 0.01, timeout: 30_000 });
       await page.keyboard.press("2");
-      const board = page.getByRole("img", { name: /^PCB: 8 parts/ });
+      const board = page.getByRole("img", { name: /^PCB: 13 parts/ });
       await expect(board).toBeVisible();
       await page.keyboard.press("f");
       await expect(board).toHaveScreenshot(`sample-pcb-${theme}.png`, { maxDiffPixelRatio: 0.01, timeout: 30_000 });
@@ -487,7 +487,7 @@ test.describe("on a wide screen", () => {
       await axe(page);
       await page.keyboard.press("Escape");
       await page.keyboard.press("2");
-      await expect(page.getByRole("img", { name: /^PCB: 8 parts/ })).toBeVisible();
+      await expect(page.getByRole("img", { name: /^PCB: 13 parts/ })).toBeVisible();
       await axe(page);
       await tools(page)
         .getByRole("button", { name: /^Order/ })
@@ -646,7 +646,7 @@ test.describe("on a wide screen", () => {
     await expect(page.getByText("Opened the pico servo board sample. Its schematic and board are under Electronics.")).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("3");
     const timeline = page.getByRole("region", { name: "Timeline" });
-    await expect(timeline.getByRole("button", { name: /^Board, 1\.6 mm thick, 8 parts/ })).toBeVisible({ timeout: 20_000 });
+    await expect(timeline.getByRole("button", { name: /^Board, 1\.6 mm thick, 13 parts/ })).toBeVisible({ timeout: 20_000 });
     await expect(timeline.getByRole("button", { name: /problem:/ })).toHaveCount(0);
     for (const name of [/^Board/, /^J1/, /^R1/, /^D1/]) await expect(page.getByRole("treeitem", { name }).first()).toBeVisible();
 
@@ -683,7 +683,7 @@ test.describe("on a wide screen", () => {
 
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "PCB", exact: true }).first().click();
-    await expect(page.getByRole("img", { name: /^PCB: 8 parts/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: /^PCB: 13 parts/ })).toBeVisible();
     await tools(page)
       .getByRole("button", { name: /^Order/ })
       .click();
@@ -708,13 +708,13 @@ test.describe("on a wide screen", () => {
     // The sample board as BetterCad writes it for KiCad, read back in.
     const golden = "../packages/electronics/src/kicad/golden";
     await dialog.getByLabel("Project files").setInputFiles([`${golden}/sample.kicad_sch`, `${golden}/sample.kicad_pcb`]);
-    await expect(dialog.getByRole("status")).toContainText("Found 8 parts on 1 sheet, and a board with 8 parts placed");
+    await expect(dialog.getByRole("status")).toContainText("Found 13 parts on 1 sheet, and a board with 13 parts placed");
     await axe(page);
     await dialog.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: 8 parts/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: 15 parts/ })).toBeVisible();
     // The board came with it, routed, and matches the schematic.
     await page.keyboard.press("2");
-    await expect(page.getByRole("img", { name: /^PCB: 8 parts/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: /^PCB: 13 parts/ })).toBeVisible();
     const status = page.getByRole("status", { name: "Electronics status" });
     await expect(status).not.toContainText("left to route");
     await expect(page.getByRole("tab", { name: "PCB" })).not.toContainText("behind");

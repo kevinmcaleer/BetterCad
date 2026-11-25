@@ -97,7 +97,7 @@ describe("opening a KiCad project", () => {
     const sch = kicadProject(sampleBoard(), "x").files.filter((f) => f.name.endsWith(".kicad_sch"));
     const got = importKicadProject(sch);
     expect(got.design.board).toBeUndefined();
-    expect(got.found).toMatchObject({ sheets: 1, parts: 8, placed: 0 });
+    expect(got.found).toMatchObject({ sheets: 1, parts: 13, placed: 0 });
     expect(got.notes.map((n) => n.why)).toContain("There is no board among the files, so parts came in with no footprint");
   });
 

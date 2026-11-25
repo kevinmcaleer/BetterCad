@@ -769,7 +769,7 @@
     "dy": -1.27
    }
   },
-  "resistor-1rqm988": {
+  "resistor-nqqie0": {
    "name": "Resistor",
    "description": "Resistor, surface mount",
    "prefix": "R",
@@ -794,7 +794,8 @@
       "x": 0,
       "y": 3.81,
       "length": 1.27,
-      "dir": 270
+      "dir": 270,
+      "swap": "ends"
      },
      {
       "number": "2",
@@ -803,7 +804,8 @@
       "x": 0,
       "y": -3.81,
       "length": 1.27,
-      "dir": 90
+      "dir": 90,
+      "swap": "ends"
      }
     ],
     "refAt": [
@@ -1517,7 +1519,7 @@
     "licence": "MIT"
    }
   },
-  "capacitor-3s5a33": {
+  "capacitor-exxt13": {
    "name": "Capacitor",
    "description": "Ceramic capacitor, surface mount",
    "prefix": "C",
@@ -1589,7 +1591,8 @@
       "x": 0,
       "y": 3.81,
       "length": 1.27,
-      "dir": 270
+      "dir": 270,
+      "swap": "ends"
      },
      {
       "number": "2",
@@ -1598,7 +1601,8 @@
       "x": 0,
       "y": -3.81,
       "length": 1.27,
-      "dir": 90
+      "dir": 90,
+      "swap": "ends"
      }
     ],
     "refAt": [
@@ -1894,6 +1898,2060 @@
     "library": "BetterCad basics",
     "licence": "MIT"
    }
+  },
+  "l293d-motor-driver-1hzprlx": {
+   "name": "L293D motor driver",
+   "description": "Quadruple Half-H Drivers",
+   "prefix": "U",
+   "value": "L293D",
+   "symbol": {
+    "name": "L293D",
+    "units": 1,
+    "shapes": [
+     {
+      "kind": "rect",
+      "x1": -10.16,
+      "y1": -17.78,
+      "x2": 10.16,
+      "y2": 22.86,
+      "fill": true,
+      "width": 0.254
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -6.35,
+        15.24
+       ],
+       [
+        -3.175,
+        15.24
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -6.35,
+        10.16
+       ],
+       [
+        -1.27,
+        10.16
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -6.35,
+        0.127
+       ],
+       [
+        -3.175,
+        0.127
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -6.35,
+        -4.953
+       ],
+       [
+        -1.27,
+        -4.953
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -3.175,
+        16.51
+       ],
+       [
+        -3.175,
+        13.97
+       ],
+       [
+        -1.27,
+        15.24
+       ],
+       [
+        -3.175,
+        16.51
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -3.175,
+        1.397
+       ],
+       [
+        -3.175,
+        -1.143
+       ],
+       [
+        -1.27,
+        0.127
+       ],
+       [
+        -3.175,
+        1.397
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -2.286,
+        14.478
+       ],
+       [
+        -2.286,
+        5.08
+       ],
+       [
+        -3.556,
+        5.08
+       ]
+      ]
+     },
+     {
+      "kind": "circle",
+      "cx": -2.286,
+      "cy": 8.255,
+      "r": 0.254,
+      "fill": "solid"
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -2.286,
+        8.255
+       ],
+       [
+        -0.254,
+        8.255
+       ],
+       [
+        -0.254,
+        9.525
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -2.286,
+        -0.635
+       ],
+       [
+        -2.286,
+        -10.16
+       ],
+       [
+        -3.556,
+        -10.16
+       ]
+      ]
+     },
+     {
+      "kind": "circle",
+      "cx": -2.286,
+      "cy": -6.858,
+      "r": 0.254,
+      "fill": "solid"
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -2.286,
+        -6.858
+       ],
+       [
+        -0.254,
+        -6.858
+       ],
+       [
+        -0.254,
+        -5.588
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        15.24
+       ],
+       [
+        6.35,
+        15.24
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        11.43
+       ],
+       [
+        -1.27,
+        8.89
+       ],
+       [
+        0.635,
+        10.16
+       ],
+       [
+        -1.27,
+        11.43
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        0.127
+       ],
+       [
+        6.35,
+        0.127
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        -3.683
+       ],
+       [
+        -1.27,
+        -6.223
+       ],
+       [
+        0.635,
+        -4.953
+       ],
+       [
+        -1.27,
+        -3.683
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        0.635,
+        10.16
+       ],
+       [
+        6.35,
+        10.16
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        0.635,
+        -4.953
+       ],
+       [
+        6.35,
+        -4.953
+       ]
+      ]
+     }
+    ],
+    "pins": [
+     {
+      "number": "2",
+      "name": "1A",
+      "type": "input",
+      "x": -12.7,
+      "y": 15.24,
+      "length": 2.54,
+      "dir": 0
+     },
+     {
+      "number": "7",
+      "name": "2A",
+      "type": "input",
+      "x": -12.7,
+      "y": 10.16,
+      "length": 2.54,
+      "dir": 0
+     },
+     {
+      "number": "1",
+      "name": "EN1,2",
+      "type": "input",
+      "x": -12.7,
+      "y": 5.08,
+      "length": 2.54,
+      "dir": 0
+     },
+     {
+      "number": "10",
+      "name": "3A",
+      "type": "input",
+      "x": -12.7,
+      "y": 0,
+      "length": 2.54,
+      "dir": 0
+     },
+     {
+      "number": "15",
+      "name": "4A",
+      "type": "input",
+      "x": -12.7,
+      "y": -5.08,
+      "length": 2.54,
+      "dir": 0
+     },
+     {
+      "number": "9",
+      "name": "EN3,4",
+      "type": "input",
+      "x": -12.7,
+      "y": -10.16,
+      "length": 2.54,
+      "dir": 0
+     },
+     {
+      "number": "4",
+      "name": "GND",
+      "type": "power_in",
+      "x": -5.08,
+      "y": -20.32,
+      "length": 2.54,
+      "dir": 90
+     },
+     {
+      "number": "16",
+      "name": "VCC1",
+      "type": "power_in",
+      "x": -2.54,
+      "y": 25.4,
+      "length": 2.54,
+      "dir": 270
+     },
+     {
+      "number": "5",
+      "name": "GND",
+      "type": "power_in",
+      "x": -2.54,
+      "y": -20.32,
+      "length": 2.54,
+      "dir": 90
+     },
+     {
+      "number": "8",
+      "name": "VCC2",
+      "type": "power_in",
+      "x": 2.54,
+      "y": 25.4,
+      "length": 2.54,
+      "dir": 270
+     },
+     {
+      "number": "12",
+      "name": "GND",
+      "type": "power_in",
+      "x": 2.54,
+      "y": -20.32,
+      "length": 2.54,
+      "dir": 90
+     },
+     {
+      "number": "13",
+      "name": "GND",
+      "type": "power_in",
+      "x": 5.08,
+      "y": -20.32,
+      "length": 2.54,
+      "dir": 90
+     },
+     {
+      "number": "3",
+      "name": "1Y",
+      "type": "output",
+      "x": 12.7,
+      "y": 15.24,
+      "length": 2.54,
+      "dir": 180
+     },
+     {
+      "number": "6",
+      "name": "2Y",
+      "type": "output",
+      "x": 12.7,
+      "y": 10.16,
+      "length": 2.54,
+      "dir": 180
+     },
+     {
+      "number": "11",
+      "name": "3Y",
+      "type": "output",
+      "x": 12.7,
+      "y": 0,
+      "length": 2.54,
+      "dir": 180
+     },
+     {
+      "number": "14",
+      "name": "4Y",
+      "type": "output",
+      "x": 12.7,
+      "y": -5.08,
+      "length": 2.54,
+      "dir": 180
+     }
+    ],
+    "refAt": [
+     -5.08,
+     26.035
+    ],
+    "valueAt": [
+     -5.08,
+     24.13
+    ]
+   },
+   "packages": [
+    {
+     "footprint": {
+      "name": "DIP-16_W7.62mm",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "thru",
+        "shape": "roundrect",
+        "x": 0,
+        "y": 0,
+        "w": 1.6,
+        "h": 1.6,
+        "round": 0.15625,
+        "drill": 0.8
+       },
+       {
+        "number": "2",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -2.54,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "3",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -5.08,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "4",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -7.62,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "5",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -10.16,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "6",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -12.7,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "7",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -15.24,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "8",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 0,
+        "y": -17.78,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "9",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": -17.78,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "10",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": -15.24,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "11",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": -12.7,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "12",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": -10.16,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "13",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": -7.62,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "14",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": -5.08,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "15",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": -2.54,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "16",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 7.62,
+        "y": 0,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "line",
+        "pts": [
+         [
+          2.81,
+          1.33
+         ],
+         [
+          1.16,
+          1.33
+         ],
+         [
+          1.16,
+          -19.11
+         ],
+         [
+          6.46,
+          -19.11
+         ],
+         [
+          6.46,
+          1.33
+         ],
+         [
+          4.81,
+          1.33
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "arc",
+        "cx": 3.81,
+        "cy": 1.33,
+        "r": 1,
+        "a0": 180,
+        "a1": 360,
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "rect",
+        "x1": -1.06,
+        "y1": -19.3,
+        "x2": 8.67,
+        "y2": 1.52,
+        "fill": false,
+        "width": 0.05,
+        "layer": "courtyard"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          0.635,
+          -19.05
+         ],
+         [
+          0.635,
+          0.27
+         ],
+         [
+          1.635,
+          1.27
+         ],
+         [
+          6.985,
+          1.27
+         ],
+         [
+          6.985,
+          -19.05
+         ],
+         [
+          0.635,
+          -19.05
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       }
+      ],
+      "refAt": [
+       3.81,
+       2.33
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        6.35,
+        20.32,
+        3.6
+       ]
+      },
+      "offset": [
+       3.81,
+       -8.89,
+       0
+      ]
+     }
+    }
+   ],
+   "keywords": [
+    "motor",
+    "driver",
+    "h-bridge",
+    "robot",
+    "stepper",
+    "half-h"
+   ],
+   "datasheet": "http://www.ti.com/lit/ds/symlink/l293.pdf",
+   "source": {
+    "library": "KiCad libraries 9.0.0",
+    "licence": "CC-BY-SA 4.0 with exception",
+    "url": "https://www.kicad.org/libraries/license/"
+   }
+  },
+  "jst-sh-4-pins-qwiic-stemma-qt-1vja3to": {
+   "name": "JST SH, 4 pins (Qwiic, STEMMA QT)",
+   "description": "Generic connector, single row, 01x04, script generated (kicad-library-utils/schlib/autogen/connector/)",
+   "prefix": "J",
+   "value": "Qwiic",
+   "symbol": {
+    "name": "Conn_01x04",
+    "units": 1,
+    "shapes": [
+     {
+      "kind": "rect",
+      "x1": -1.27,
+      "y1": -6.35,
+      "x2": 1.27,
+      "y2": 3.81,
+      "fill": true,
+      "width": 0.254
+     },
+     {
+      "kind": "rect",
+      "x1": -1.27,
+      "y1": 2.413,
+      "x2": 0,
+      "y2": 2.667,
+      "fill": false,
+      "width": 0.1524
+     },
+     {
+      "kind": "rect",
+      "x1": -1.27,
+      "y1": -0.127,
+      "x2": 0,
+      "y2": 0.127,
+      "fill": false,
+      "width": 0.1524
+     },
+     {
+      "kind": "rect",
+      "x1": -1.27,
+      "y1": -2.667,
+      "x2": 0,
+      "y2": -2.413,
+      "fill": false,
+      "width": 0.1524
+     },
+     {
+      "kind": "rect",
+      "x1": -1.27,
+      "y1": -5.207,
+      "x2": 0,
+      "y2": -4.953,
+      "fill": false,
+      "width": 0.1524
+     }
+    ],
+    "pins": [
+     {
+      "number": "1",
+      "name": "Pin_1",
+      "type": "passive",
+      "x": -5.08,
+      "y": 2.54,
+      "length": 3.81,
+      "dir": 0
+     },
+     {
+      "number": "2",
+      "name": "Pin_2",
+      "type": "passive",
+      "x": -5.08,
+      "y": 0,
+      "length": 3.81,
+      "dir": 0
+     },
+     {
+      "number": "3",
+      "name": "Pin_3",
+      "type": "passive",
+      "x": -5.08,
+      "y": -2.54,
+      "length": 3.81,
+      "dir": 0
+     },
+     {
+      "number": "4",
+      "name": "Pin_4",
+      "type": "passive",
+      "x": -5.08,
+      "y": -5.08,
+      "length": 3.81,
+      "dir": 0
+     }
+    ],
+    "refAt": [
+     0,
+     5.08
+    ],
+    "valueAt": [
+     0,
+     -7.62
+    ]
+   },
+   "packages": [
+    {
+     "footprint": {
+      "name": "JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": -1.5,
+        "y": 2,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": -0.5,
+        "y": 2,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "3",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": 0.5,
+        "y": 2,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "4",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": 1.5,
+        "y": 2,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "MP",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": -2.8,
+        "y": -1.875,
+        "w": 1.2,
+        "h": 1.8,
+        "round": 0.208333
+       },
+       {
+        "number": "MP",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": 2.8,
+        "y": -1.875,
+        "w": 1.2,
+        "h": 1.8,
+        "round": 0.208333
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -3.11,
+          -0.715
+         ],
+         [
+          -3.11,
+          1.785
+         ],
+         [
+          -2.06,
+          1.785
+         ],
+         [
+          -2.06,
+          2.775
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -1.94,
+          -2.685
+         ],
+         [
+          1.94,
+          -2.685
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3.11,
+          -0.715
+         ],
+         [
+          3.11,
+          1.785
+         ],
+         [
+          2.06,
+          1.785
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3.9,
+          3.28
+         ],
+         [
+          -3.9,
+          3.28
+         ],
+         [
+          -3.9,
+          -3.28
+         ],
+         [
+          3.9,
+          -3.28
+         ],
+         [
+          3.9,
+          3.28
+         ]
+        ],
+        "width": 0.05,
+        "layer": "courtyard"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -2,
+          1.675
+         ],
+         [
+          -1.5,
+          0.9679
+         ],
+         [
+          -1,
+          1.675
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3,
+          1.675
+         ],
+         [
+          -3,
+          1.675
+         ],
+         [
+          -3,
+          -2.575
+         ],
+         [
+          3,
+          -2.575
+         ],
+         [
+          3,
+          1.675
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       }
+      ],
+      "refAt": [
+       0,
+       3.98
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        6,
+        4.25,
+        3
+       ]
+      },
+      "offset": [
+       0,
+       -0.45,
+       0
+      ]
+     }
+    },
+    {
+     "footprint": {
+      "name": "JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": -1.5,
+        "y": -1.325,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": -0.5,
+        "y": -1.325,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "3",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": 0.5,
+        "y": -1.325,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "4",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": 1.5,
+        "y": -1.325,
+        "w": 0.6,
+        "h": 1.55,
+        "round": 0.25
+       },
+       {
+        "number": "MP",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": -2.8,
+        "y": 1.2,
+        "w": 1.2,
+        "h": 1.8,
+        "round": 0.208333
+       },
+       {
+        "number": "MP",
+        "kind": "smd",
+        "shape": "roundrect",
+        "x": 2.8,
+        "y": 1.2,
+        "w": 1.2,
+        "h": 1.8,
+        "round": 0.208333
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -3.11,
+          0.04
+         ],
+         [
+          -3.11,
+          -1.11
+         ],
+         [
+          -2.06,
+          -1.11
+         ],
+         [
+          -2.06,
+          -2.1
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -1.94,
+          2.01
+         ],
+         [
+          1.94,
+          2.01
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3.11,
+          0.04
+         ],
+         [
+          3.11,
+          -1.11
+         ],
+         [
+          2.06,
+          -1.11
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3.9,
+          2.6
+         ],
+         [
+          -3.9,
+          2.6
+         ],
+         [
+          -3.9,
+          -2.6
+         ],
+         [
+          3.9,
+          -2.6
+         ],
+         [
+          3.9,
+          2.6
+         ]
+        ],
+        "width": 0.05,
+        "layer": "courtyard"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -2,
+          -1
+         ],
+         [
+          -1.5,
+          -0.2929
+         ],
+         [
+          -1,
+          -1
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -1.35,
+          1.55
+         ],
+         [
+          -1.65,
+          1.55
+         ],
+         [
+          -1.65,
+          0.95
+         ],
+         [
+          -1.35,
+          0.95
+         ],
+         [
+          -1.35,
+          1.55
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -0.35,
+          1.55
+         ],
+         [
+          -0.65,
+          1.55
+         ],
+         [
+          -0.65,
+          0.95
+         ],
+         [
+          -0.35,
+          0.95
+         ],
+         [
+          -0.35,
+          1.55
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          0.65,
+          1.55
+         ],
+         [
+          0.35,
+          1.55
+         ],
+         [
+          0.35,
+          0.95
+         ],
+         [
+          0.65,
+          0.95
+         ],
+         [
+          0.65,
+          1.55
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          1.65,
+          1.55
+         ],
+         [
+          1.35,
+          1.55
+         ],
+         [
+          1.35,
+          0.95
+         ],
+         [
+          1.65,
+          0.95
+         ],
+         [
+          1.65,
+          1.55
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3,
+          -1
+         ],
+         [
+          -3,
+          -1
+         ],
+         [
+          -3,
+          1.9
+         ],
+         [
+          3,
+          1.9
+         ],
+         [
+          3,
+          -1
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       }
+      ],
+      "refAt": [
+       0,
+       3.3
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        6,
+        2.9,
+        3
+       ]
+      },
+      "offset": [
+       0,
+       0.45,
+       0
+      ]
+     }
+    }
+   ],
+   "keywords": [
+    "qwiic",
+    "stemma",
+    "i2c",
+    "jst",
+    "1 mm",
+    "connector"
+   ],
+   "source": {
+    "library": "KiCad libraries 9.0.0",
+    "licence": "CC-BY-SA 4.0 with exception",
+    "url": "https://www.kicad.org/libraries/license/"
+   }
+  },
+  "slide-switch-1uybzhf": {
+   "name": "Slide switch",
+   "description": "Switch, single pole double throw",
+   "prefix": "SW",
+   "value": "Switch",
+   "symbol": {
+    "name": "SW_SPDT",
+    "units": 1,
+    "shapes": [
+     {
+      "kind": "circle",
+      "cx": -2.032,
+      "cy": 0,
+      "r": 0.4572
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.651,
+        0.254
+       ],
+       [
+        1.651,
+        2.286
+       ]
+      ]
+     },
+     {
+      "kind": "circle",
+      "cx": 2.032,
+      "cy": 2.54,
+      "r": 0.4572
+     },
+     {
+      "kind": "circle",
+      "cx": 2.032,
+      "cy": -2.54,
+      "r": 0.4572
+     },
+     {
+      "kind": "rect",
+      "x1": -3.175,
+      "y1": -3.81,
+      "x2": 3.175,
+      "y2": 3.81,
+      "fill": true
+     }
+    ],
+    "pins": [
+     {
+      "number": "2",
+      "name": "B",
+      "type": "passive",
+      "x": -5.08,
+      "y": 0,
+      "length": 2.54,
+      "dir": 0
+     },
+     {
+      "number": "1",
+      "name": "A",
+      "type": "passive",
+      "x": 5.08,
+      "y": 2.54,
+      "length": 2.54,
+      "dir": 180
+     },
+     {
+      "number": "3",
+      "name": "C",
+      "type": "passive",
+      "x": 5.08,
+      "y": -2.54,
+      "length": 2.54,
+      "dir": 180
+     }
+    ],
+    "refAt": [
+     0,
+     5.08
+    ],
+    "valueAt": [
+     0,
+     -5.08
+    ]
+   },
+   "packages": [
+    {
+     "footprint": {
+      "name": "SW_SPDT_PCM12",
+      "pads": [
+       {
+        "number": "",
+        "kind": "smd",
+        "shape": "rect",
+        "x": -3.65,
+        "y": 0.78,
+        "w": 1,
+        "h": 0.8
+       },
+       {
+        "number": "",
+        "kind": "smd",
+        "shape": "rect",
+        "x": -3.65,
+        "y": -1.43,
+        "w": 1,
+        "h": 0.8
+       },
+       {
+        "number": "",
+        "kind": "npth",
+        "shape": "circle",
+        "x": -1.5,
+        "y": -0.33,
+        "w": 0.9,
+        "h": 0.9,
+        "drill": 0.9
+       },
+       {
+        "number": "",
+        "kind": "npth",
+        "shape": "circle",
+        "x": 1.5,
+        "y": -0.33,
+        "w": 0.9,
+        "h": 0.9,
+        "drill": 0.9
+       },
+       {
+        "number": "",
+        "kind": "smd",
+        "shape": "rect",
+        "x": 3.65,
+        "y": 0.78,
+        "w": 1,
+        "h": 0.8
+       },
+       {
+        "number": "",
+        "kind": "smd",
+        "shape": "rect",
+        "x": 3.65,
+        "y": -1.43,
+        "w": 1,
+        "h": 0.8
+       },
+       {
+        "number": "1",
+        "kind": "smd",
+        "shape": "rect",
+        "x": -2.25,
+        "y": 1.43,
+        "w": 0.7,
+        "h": 1.5
+       },
+       {
+        "number": "2",
+        "kind": "smd",
+        "shape": "rect",
+        "x": 0.75,
+        "y": 1.43,
+        "w": 0.7,
+        "h": 1.5
+       },
+       {
+        "number": "3",
+        "kind": "smd",
+        "shape": "rect",
+        "x": 2.25,
+        "y": 1.43,
+        "w": 0.7,
+        "h": 1.5
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -3.45,
+          0.07
+         ],
+         [
+          -3.45,
+          -0.72
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -2.85,
+          -1.73
+         ],
+         [
+          2.85,
+          -1.73
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -1.6,
+          1.12
+         ],
+         [
+          0.1,
+          1.12
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -1.4,
+          -1.73
+         ],
+         [
+          -1.4,
+          -3.02
+         ],
+         [
+          -1.2,
+          -3.23
+         ],
+         [
+          -0.3,
+          -3.23
+         ],
+         [
+          -0.1,
+          -3.02
+         ],
+         [
+          -0.1,
+          -1.73
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          1.4,
+          1.12
+         ],
+         [
+          1.6,
+          1.12
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3.45,
+          -0.72
+         ],
+         [
+          3.45,
+          0.07
+         ]
+        ],
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          1.65,
+          -2.1
+         ],
+         [
+          1.65,
+          -3.4
+         ],
+         [
+          -1.65,
+          -3.4
+         ],
+         [
+          -1.65,
+          -2.1
+         ],
+         [
+          -4.4,
+          -2.1
+         ],
+         [
+          -4.4,
+          2.45
+         ],
+         [
+          4.4,
+          2.45
+         ],
+         [
+          4.4,
+          -2.1
+         ],
+         [
+          1.65,
+          -2.1
+         ]
+        ],
+        "width": 0.05,
+        "layer": "courtyard"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          -1.4,
+          -1.65
+         ],
+         [
+          -1.4,
+          -2.95
+         ],
+         [
+          -1.2,
+          -3.15
+         ],
+         [
+          -0.35,
+          -3.15
+         ],
+         [
+          -0.15,
+          -2.95
+         ],
+         [
+          -0.1,
+          -2.9
+         ],
+         [
+          -0.1,
+          -1.6
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       },
+       {
+        "kind": "line",
+        "pts": [
+         [
+          3.35,
+          1
+         ],
+         [
+          -3.35,
+          1
+         ],
+         [
+          -3.35,
+          -1.6
+         ],
+         [
+          3.35,
+          -1.6
+         ],
+         [
+          3.35,
+          1
+         ]
+        ],
+        "width": 0.1,
+        "layer": "fab"
+       }
+      ],
+      "refAt": [
+       0,
+       3.2
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        6.7,
+        4.15,
+        2
+       ]
+      },
+      "offset": [
+       0,
+       -1.07,
+       0
+      ]
+     }
+    },
+    {
+     "footprint": {
+      "name": "SW_Slide-03_Wuerth-WS-SLTV_10x2.5x6.4_P2.54mm",
+      "pads": [
+       {
+        "number": "1",
+        "kind": "thru",
+        "shape": "rect",
+        "x": 0,
+        "y": 0,
+        "w": 1.5,
+        "h": 1.5,
+        "drill": 0.8
+       },
+       {
+        "number": "2",
+        "kind": "thru",
+        "shape": "circle",
+        "x": -2.54,
+        "y": 0,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       },
+       {
+        "number": "3",
+        "kind": "thru",
+        "shape": "circle",
+        "x": 2.54,
+        "y": 0,
+        "w": 1.6,
+        "h": 1.6,
+        "drill": 0.8
+       }
+      ],
+      "shapes": [
+       {
+        "kind": "rect",
+        "x1": -5.11,
+        "y1": -1.36,
+        "x2": 5.11,
+        "y2": 1.36,
+        "fill": false,
+        "width": 0.12,
+        "layer": "silk"
+       },
+       {
+        "kind": "rect",
+        "x1": -5.25,
+        "y1": -1.5,
+        "x2": 5.25,
+        "y2": 1.5,
+        "fill": false,
+        "width": 0.05,
+        "layer": "courtyard"
+       },
+       {
+        "kind": "rect",
+        "x1": -5,
+        "y1": -1.25,
+        "x2": 5,
+        "y2": 1.25,
+        "fill": false,
+        "width": 0.1,
+        "layer": "fab"
+       }
+      ],
+      "refAt": [
+       0,
+       2.54
+      ]
+     },
+     "model": {
+      "source": {
+       "kind": "box",
+       "size": [
+        10,
+        2.5,
+        2
+       ]
+      }
+     }
+    }
+   ],
+   "keywords": [
+    "power",
+    "switch",
+    "spdt",
+    "single-pole",
+    "double-throw",
+    "on-on"
+   ],
+   "source": {
+    "library": "KiCad libraries 9.0.0",
+    "licence": "CC-BY-SA 4.0 with exception",
+    "url": "https://www.kicad.org/libraries/license/"
+   }
+  },
+  "5v-1s3nquc": {
+   "name": "5V",
+   "description": "Power: 5V",
+   "prefix": "#PWR",
+   "value": "5V",
+   "symbol": {
+    "name": "5V",
+    "units": 1,
+    "power": true,
+    "shapes": [
+     {
+      "kind": "line",
+      "pts": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        1.27
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        1.27
+       ],
+       [
+        1.27,
+        1.27
+       ]
+      ]
+     }
+    ],
+    "pins": [
+     {
+      "number": "1",
+      "name": "5V",
+      "type": "power_in",
+      "x": 0,
+      "y": 0,
+      "length": 0,
+      "dir": 90
+     }
+    ],
+    "valueAt": [
+     0,
+     2.2
+    ]
+   },
+   "packages": [],
+   "keywords": [
+    "power",
+    "5v"
+   ],
+   "source": {
+    "library": "BetterCad basics",
+    "licence": "MIT"
+   }
+  },
+  "gnd-1oefsg7": {
+   "name": "GND",
+   "description": "Power: GND",
+   "prefix": "#PWR",
+   "value": "GND",
+   "symbol": {
+    "name": "GND",
+    "units": 1,
+    "power": true,
+    "shapes": [
+     {
+      "kind": "line",
+      "pts": [
+       [
+        0,
+        0
+       ],
+       [
+        0,
+        -1.27
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -1.27,
+        -1.27
+       ],
+       [
+        1.27,
+        -1.27
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -0.762,
+        -1.778
+       ],
+       [
+        0.762,
+        -1.778
+       ]
+      ]
+     },
+     {
+      "kind": "line",
+      "pts": [
+       [
+        -0.254,
+        -2.286
+       ],
+       [
+        0.254,
+        -2.286
+       ]
+      ]
+     }
+    ],
+    "pins": [
+     {
+      "number": "1",
+      "name": "GND",
+      "type": "power_in",
+      "x": 0,
+      "y": 0,
+      "length": 0,
+      "dir": 270
+     }
+    ],
+    "valueAt": [
+     0,
+     -3.8
+    ]
+   },
+   "packages": [],
+   "keywords": [
+    "power",
+    "gnd"
+   ],
+   "source": {
+    "library": "BetterCad basics",
+    "licence": "MIT"
+   }
   }
  },
  "parts": [
@@ -1934,7 +3992,7 @@
   },
   {
    "id": "ptc",
-   "def": "resistor-1rqm988",
+   "def": "resistor-nqqie0",
    "ref": "R1",
    "value": "1 kΩ",
    "pkg": 0
@@ -1948,9 +4006,58 @@
   },
   {
    "id": "ptg",
-   "def": "capacitor-3s5a33",
+   "def": "capacitor-exxt13",
    "ref": "C1",
    "value": "10 µF",
+   "pkg": 0
+  },
+  {
+   "id": "pti",
+   "def": "l293d-motor-driver-1hzprlx",
+   "ref": "U1",
+   "value": "L293D",
+   "pkg": 0
+  },
+  {
+   "id": "ptk",
+   "def": "pin-header-1-2-1557v3c",
+   "ref": "J6",
+   "value": "Motor A",
+   "pkg": 0
+  },
+  {
+   "id": "ptm",
+   "def": "pin-header-1-2-1557v3c",
+   "ref": "J7",
+   "value": "Motor B",
+   "pkg": 0
+  },
+  {
+   "id": "pto",
+   "def": "jst-sh-4-pins-qwiic-stemma-qt-1vja3to",
+   "ref": "J8",
+   "value": "Qwiic",
+   "pkg": 0
+  },
+  {
+   "id": "ptq",
+   "def": "slide-switch-1uybzhf",
+   "ref": "SW1",
+   "value": "Power",
+   "pkg": 0
+  },
+  {
+   "id": "pts",
+   "def": "5v-1s3nquc",
+   "ref": "#PWR1",
+   "value": "5V",
+   "pkg": 0
+  },
+  {
+   "id": "ptu",
+   "def": "gnd-1oefsg7",
+   "ref": "#PWR2",
+   "value": "GND",
    "pkg": 0
   }
  ],
@@ -2022,301 +4129,537 @@
      "x": 121.92,
      "y": 5.08,
      "rot": 0
+    },
+    {
+     "id": "syj",
+     "part": "pti",
+     "unit": 1,
+     "x": 167.64000000000001,
+     "y": 0,
+     "rot": 0
+    },
+    {
+     "id": "syl",
+     "part": "ptk",
+     "unit": 1,
+     "x": 213.36,
+     "y": 15.24,
+     "rot": 0
+    },
+    {
+     "id": "syn",
+     "part": "ptm",
+     "unit": 1,
+     "x": 213.36,
+     "y": -10.16,
+     "rot": 0
+    },
+    {
+     "id": "syp",
+     "part": "pto",
+     "unit": 1,
+     "x": 71.12,
+     "y": -45.72,
+     "rot": 0
+    },
+    {
+     "id": "syr",
+     "part": "ptq",
+     "unit": 1,
+     "x": 111.76,
+     "y": -40.64,
+     "rot": 0
+    },
+    {
+     "id": "syt",
+     "part": "pts",
+     "unit": 1,
+     "x": 137.16,
+     "y": -30.48,
+     "rot": 0
+    },
+    {
+     "id": "syv",
+     "part": "ptu",
+     "unit": 1,
+     "x": 152.4,
+     "y": -30.48,
+     "rot": 0
     }
    ],
    "wires": [],
    "junctions": [],
    "labels": [
     {
-     "id": "lbi",
-     "name": "5V",
+     "id": "lbw",
+     "name": "VIN",
      "x": 66.04,
      "y": -19.05
     },
     {
-     "id": "lbj",
+     "id": "lbx",
+     "name": "VIN",
+     "x": 106.68,
+     "y": -40.64
+    },
+    {
+     "id": "lby",
+     "name": "5V",
+     "x": 137.16,
+     "y": -30.48
+    },
+    {
+     "id": "lbz",
+     "name": "5V",
+     "x": 116.84,
+     "y": -43.18
+    },
+    {
+     "id": "lb10",
+     "name": "5V",
+     "x": 154.94,
+     "y": 5.08
+    },
+    {
+     "id": "lb11",
+     "name": "5V",
+     "x": 170.18,
+     "y": 25.4
+    },
+    {
+     "id": "lb12",
+     "name": "5V",
+     "x": 154.94,
+     "y": -10.16
+    },
+    {
+     "id": "lb13",
+     "name": "5V",
+     "x": 165.1,
+     "y": 25.4
+    },
+    {
+     "id": "lb14",
      "name": "5V",
      "x": 30.48,
      "y": 21.59
     },
     {
-     "id": "lbk",
+     "id": "lb15",
      "name": "5V",
      "x": 66.04,
      "y": 20.32
     },
     {
-     "id": "lbl",
+     "id": "lb16",
      "name": "5V",
      "x": 66.04,
      "y": 0
     },
     {
-     "id": "lbm",
+     "id": "lb17",
      "name": "5V",
      "x": 101.6,
      "y": 19.05
     },
     {
-     "id": "lbn",
+     "id": "lb18",
      "name": "5V",
      "x": 121.92,
      "y": 8.89
     },
     {
-     "id": "lbo",
+     "id": "lb19",
+     "name": "GND",
+     "x": 152.4,
+     "y": -30.48
+    },
+    {
+     "id": "lb1a",
+     "name": "GND",
+     "x": 162.56,
+     "y": -20.32
+    },
+    {
+     "id": "lb1b",
+     "name": "GND",
+     "x": 165.1,
+     "y": -20.32
+    },
+    {
+     "id": "lb1c",
+     "name": "GND",
+     "x": 170.18,
+     "y": -20.32
+    },
+    {
+     "id": "lb1d",
+     "name": "GND",
+     "x": 172.72,
+     "y": -20.32
+    },
+    {
+     "id": "lb1e",
+     "name": "GND",
+     "x": 66.04,
+     "y": -43.18
+    },
+    {
+     "id": "lb1f",
      "name": "GND",
      "x": 66.04,
      "y": -21.59
     },
     {
-     "id": "lbp",
+     "id": "lb1g",
      "name": "GND",
      "x": -5.08,
      "y": 19.05
     },
     {
-     "id": "lbq",
+     "id": "lb1h",
      "name": "GND",
      "x": 30.48,
      "y": 19.05
     },
     {
-     "id": "lbr",
+     "id": "lb1i",
      "name": "GND",
      "x": 66.04,
      "y": 17.78
     },
     {
-     "id": "lbs",
+     "id": "lb1j",
      "name": "GND",
      "x": 66.04,
      "y": -2.54
     },
     {
-     "id": "lbt",
+     "id": "lb1k",
      "name": "GND",
      "x": 101.6,
      "y": -1.27
     },
     {
-     "id": "lbu",
+     "id": "lb1l",
      "name": "GND",
      "x": 121.92,
      "y": 1.27
     },
     {
-     "id": "lbv",
+     "id": "lb1m",
      "name": "SERVO1",
      "x": -5.08,
      "y": 24.13
     },
     {
-     "id": "lbw",
+     "id": "lb1n",
      "name": "SERVO1",
      "x": 66.04,
      "y": 22.86
     },
     {
-     "id": "lbx",
+     "id": "lb1o",
      "name": "SERVO2",
      "x": -5.08,
      "y": 21.59
     },
     {
-     "id": "lby",
+     "id": "lb1p",
      "name": "SERVO2",
      "x": 66.04,
      "y": 2.54
     },
     {
-     "id": "lbz",
+     "id": "lb1q",
      "name": "LED",
      "x": 101.6,
      "y": 11.43
     },
     {
-     "id": "lb10",
+     "id": "lb1r",
      "name": "LED",
      "x": 101.6,
      "y": -8.89
+    },
+    {
+     "id": "lb1s",
+     "name": "MOTOR_A1",
+     "x": -5.08,
+     "y": 13.97
+    },
+    {
+     "id": "lb1t",
+     "name": "MOTOR_A1",
+     "x": 154.94,
+     "y": 15.24
+    },
+    {
+     "id": "lb1u",
+     "name": "MOTOR_A2",
+     "x": -5.08,
+     "y": 11.43
+    },
+    {
+     "id": "lb1v",
+     "name": "MOTOR_A2",
+     "x": 154.94,
+     "y": 10.16
+    },
+    {
+     "id": "lb1w",
+     "name": "MOTOR_B1",
+     "x": -5.08,
+     "y": 8.89
+    },
+    {
+     "id": "lb1x",
+     "name": "MOTOR_B1",
+     "x": 154.94,
+     "y": 0
+    },
+    {
+     "id": "lb1y",
+     "name": "MOTOR_B2",
+     "x": -5.08,
+     "y": 16.51
+    },
+    {
+     "id": "lb1z",
+     "name": "MOTOR_B2",
+     "x": 154.94,
+     "y": -5.08
+    },
+    {
+     "id": "lb20",
+     "name": "MOTOR_A_OUT1",
+     "x": 180.34,
+     "y": 15.24
+    },
+    {
+     "id": "lb21",
+     "name": "MOTOR_A_OUT1",
+     "x": 208.28,
+     "y": 13.97
+    },
+    {
+     "id": "lb22",
+     "name": "MOTOR_A_OUT2",
+     "x": 180.34,
+     "y": 10.16
+    },
+    {
+     "id": "lb23",
+     "name": "MOTOR_A_OUT2",
+     "x": 208.28,
+     "y": 16.51
+    },
+    {
+     "id": "lb24",
+     "name": "MOTOR_B_OUT1",
+     "x": 180.34,
+     "y": 0
+    },
+    {
+     "id": "lb25",
+     "name": "MOTOR_B_OUT1",
+     "x": 208.28,
+     "y": -11.43
+    },
+    {
+     "id": "lb26",
+     "name": "MOTOR_B_OUT2",
+     "x": 180.34,
+     "y": -5.08
+    },
+    {
+     "id": "lb27",
+     "name": "MOTOR_B_OUT2",
+     "x": 208.28,
+     "y": -8.89
+    },
+    {
+     "id": "lb28",
+     "name": "3V3",
+     "x": 30.48,
+     "y": 13.97
+    },
+    {
+     "id": "lb29",
+     "name": "3V3",
+     "x": 66.04,
+     "y": -45.72
+    },
+    {
+     "id": "lb2a",
+     "name": "SDA",
+     "x": 30.48,
+     "y": 1.27
+    },
+    {
+     "id": "lb2b",
+     "name": "SDA",
+     "x": 66.04,
+     "y": -48.26
+    },
+    {
+     "id": "lb2c",
+     "name": "SCL",
+     "x": 30.48,
+     "y": 3.81
+    },
+    {
+     "id": "lb2d",
+     "name": "SCL",
+     "x": 66.04,
+     "y": -50.8
     }
    ],
    "noConnects": [
     {
-     "id": "nc11",
-     "x": -5.08,
-     "y": 16.51
-    },
-    {
-     "id": "nc12",
-     "x": -5.08,
-     "y": 13.97
-    },
-    {
-     "id": "nc13",
-     "x": -5.08,
-     "y": 11.43
-    },
-    {
-     "id": "nc14",
-     "x": -5.08,
-     "y": 8.89
-    },
-    {
-     "id": "nc15",
+     "id": "nc2e",
      "x": -5.08,
      "y": 6.35
     },
     {
-     "id": "nc16",
+     "id": "nc2f",
      "x": -5.08,
      "y": 3.81
     },
     {
-     "id": "nc17",
+     "id": "nc2g",
      "x": -5.08,
      "y": 1.27
     },
     {
-     "id": "nc18",
+     "id": "nc2h",
      "x": -5.08,
      "y": -1.27
     },
     {
-     "id": "nc19",
+     "id": "nc2i",
      "x": -5.08,
      "y": -3.81
     },
     {
-     "id": "nc1a",
+     "id": "nc2j",
      "x": -5.08,
      "y": -6.35
     },
     {
-     "id": "nc1b",
+     "id": "nc2k",
      "x": -5.08,
      "y": -8.89
     },
     {
-     "id": "nc1c",
+     "id": "nc2l",
      "x": -5.08,
      "y": -11.43
     },
     {
-     "id": "nc1d",
+     "id": "nc2m",
      "x": -5.08,
      "y": -13.97
     },
     {
-     "id": "nc1e",
+     "id": "nc2n",
      "x": -5.08,
      "y": -16.51
     },
     {
-     "id": "nc1f",
+     "id": "nc2o",
      "x": -5.08,
      "y": -19.05
     },
     {
-     "id": "nc1g",
+     "id": "nc2p",
      "x": -5.08,
      "y": -21.59
     },
     {
-     "id": "nc1h",
+     "id": "nc2q",
      "x": -5.08,
      "y": -24.13
     },
     {
-     "id": "nc1i",
+     "id": "nc2r",
      "x": 30.48,
      "y": 24.13
     },
     {
-     "id": "nc1j",
+     "id": "nc2s",
      "x": 30.48,
      "y": 16.51
     },
     {
-     "id": "nc1k",
-     "x": 30.48,
-     "y": 13.97
-    },
-    {
-     "id": "nc1l",
+     "id": "nc2t",
      "x": 30.48,
      "y": 11.43
     },
     {
-     "id": "nc1m",
+     "id": "nc2u",
      "x": 30.48,
      "y": 8.89
     },
     {
-     "id": "nc1n",
+     "id": "nc2v",
      "x": 30.48,
      "y": 6.35
     },
     {
-     "id": "nc1o",
-     "x": 30.48,
-     "y": 3.81
-    },
-    {
-     "id": "nc1p",
-     "x": 30.48,
-     "y": 1.27
-    },
-    {
-     "id": "nc1q",
+     "id": "nc2w",
      "x": 30.48,
      "y": -1.27
     },
     {
-     "id": "nc1r",
+     "id": "nc2x",
      "x": 30.48,
      "y": -3.81
     },
     {
-     "id": "nc1s",
+     "id": "nc2y",
      "x": 30.48,
      "y": -6.35
     },
     {
-     "id": "nc1t",
+     "id": "nc2z",
      "x": 30.48,
      "y": -8.89
     },
     {
-     "id": "nc1u",
+     "id": "nc30",
      "x": 30.48,
      "y": -11.43
     },
     {
-     "id": "nc1v",
+     "id": "nc31",
      "x": 30.48,
      "y": -13.97
     },
     {
-     "id": "nc1w",
+     "id": "nc32",
      "x": 30.48,
      "y": -16.51
     },
     {
-     "id": "nc1x",
+     "id": "nc33",
      "x": 30.48,
      "y": -19.05
     },
     {
-     "id": "nc1y",
+     "id": "nc34",
      "x": 30.48,
      "y": -21.59
     },
     {
-     "id": "nc1z",
+     "id": "nc35",
      "x": 30.48,
      "y": -24.13
+    },
+    {
+     "id": "nc36",
+     "x": 116.84,
+     "y": -38.1
     }
    ]
   }
@@ -2338,21 +4681,21 @@
    },
    {
     "x": 60,
-    "y": 55,
+    "y": 77,
     "bulge": 0.41421356237309515
    },
    {
     "x": 57,
-    "y": 58
+    "y": 80
    },
    {
     "x": 3,
-    "y": 58,
+    "y": 80,
     "bulge": 0.41421356237309515
    },
    {
     "x": 0,
-    "y": 55
+    "y": 77
    },
    {
     "x": 0,
@@ -2427,6 +4770,33 @@
     "footprint": "Pin header 1×2, 2.54 mm"
    },
    {
+    "part": "ptk",
+    "ref": "J6",
+    "x": 8,
+    "y": 66,
+    "rot": 0,
+    "side": "top",
+    "footprint": "Pin header 1×2, 2.54 mm"
+   },
+   {
+    "part": "ptm",
+    "ref": "J7",
+    "x": 23.62,
+    "y": 76,
+    "rot": 90,
+    "side": "top",
+    "footprint": "Pin header 1×2, 2.54 mm"
+   },
+   {
+    "part": "pto",
+    "ref": "J8",
+    "x": 45,
+    "y": 31.18,
+    "rot": 90,
+    "side": "top",
+    "footprint": "JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal"
+   },
+   {
     "part": "ptc",
     "ref": "R1",
     "x": 50,
@@ -2434,11 +4804,29 @@
     "rot": 270,
     "side": "top",
     "footprint": "0805 (2012 metric)"
+   },
+   {
+    "part": "ptq",
+    "ref": "SW1",
+    "x": 50,
+    "y": 62,
+    "rot": 180,
+    "side": "top",
+    "footprint": "SW_SPDT_PCM12"
+   },
+   {
+    "part": "pti",
+    "ref": "U1",
+    "x": 16,
+    "y": 63,
+    "rot": 90,
+    "side": "top",
+    "footprint": "DIP-16_W7.62mm"
    }
   ],
   "tracks": [
    {
-    "id": "tr20",
+    "id": "tr37",
     "net": "SERVO1",
     "layer": "top",
     "width": 0.3,
@@ -2466,7 +4854,7 @@
     ]
    },
    {
-    "id": "tr21",
+    "id": "tr38",
     "net": "SERVO2",
     "layer": "top",
     "width": 0.3,
@@ -2494,7 +4882,7 @@
     ]
    },
    {
-    "id": "tr22",
+    "id": "tr39",
     "net": "LED",
     "layer": "top",
     "width": 0.3,
@@ -2510,8 +4898,8 @@
     ]
    },
    {
-    "id": "tr23",
-    "net": "5V",
+    "id": "tr3a",
+    "net": "VIN",
     "layer": "top",
     "width": 0.5,
     "pts": [
@@ -2520,8 +4908,64 @@
       50.46
      ],
      [
+      50,
+      56
+     ],
+     [
+      49.25,
+      56.75
+     ],
+     [
+      49.25,
+      60.57
+     ]
+    ]
+   },
+   {
+    "id": "tr3b",
+    "net": "5V",
+    "layer": "top",
+    "width": 0.5,
+    "pts": [
+     [
+      47.75,
+      60.57
+     ],
+     [
+      47.75,
+      58
+     ],
+     [
+      37,
+      58
+     ],
+     [
+      33.78,
+      61.22
+     ],
+     [
+      33.78,
+      63
+     ]
+    ]
+   },
+   {
+    "id": "tr3c",
+    "net": "5V",
+    "layer": "top",
+    "width": 0.5,
+    "pts": [
+     [
+      47.75,
+      58
+     ],
+     [
+      47.75,
+      45.5
+     ],
+     [
       53.5,
-      50.46
+      45.5
      ],
      [
       53.5,
@@ -2534,7 +4978,7 @@
     ]
    },
    {
-    "id": "tr24",
+    "id": "tr3d",
     "net": "5V",
     "layer": "top",
     "width": 0.5,
@@ -2554,13 +4998,85 @@
     ]
    },
    {
-    "id": "tr25",
+    "id": "tr3e",
     "net": "5V",
     "layer": "bottom",
     "width": 0.5,
     "pts": [
      [
-      50,
+      16,
+      63
+     ],
+     [
+      16,
+      70.62
+     ]
+    ]
+   },
+   {
+    "id": "tr3f",
+    "net": "5V",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      33.78,
+      63
+     ],
+     [
+      33.78,
+      70.62
+     ]
+    ]
+   },
+   {
+    "id": "tr3g",
+    "net": "5V",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      16,
+      66.8
+     ],
+     [
+      33.78,
+      66.8
+     ]
+    ]
+   },
+   {
+    "id": "tr3h",
+    "net": "5V",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      33.78,
+      63
+     ],
+     [
+      33.78,
+      58
+     ],
+     [
+      35.5,
+      56.28
+     ],
+     [
+      35.5,
+      56
+     ]
+    ]
+   },
+   {
+    "id": "tr3i",
+    "net": "5V",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      37.78,
       50.46
      ],
      [
@@ -2586,7 +5102,7 @@
     ]
    },
    {
-    "id": "tr26",
+    "id": "tr3j",
     "net": "5V",
     "layer": "bottom",
     "width": 0.5,
@@ -2602,14 +5118,319 @@
      [
       8,
       15.46
+     ]
+    ]
+   },
+   {
+    "id": "tr3k",
+    "net": "MOTOR_B2",
+    "layer": "top",
+    "width": 0.3,
+    "pts": [
+     [
+      20,
+      45.38
+     ],
+     [
+      22,
+      45.38
+     ],
+     [
+      22,
+      58.6
+     ],
+     [
+      17.27,
+      58.6
+     ],
+     [
+      17.27,
+      69.35000000000001
+     ],
+     [
+      18.54,
+      70.62
+     ]
+    ]
+   },
+   {
+    "id": "tr3l",
+    "net": "MOTOR_A1",
+    "layer": "top",
+    "width": 0.3,
+    "pts": [
+     [
+      20,
+      42.84
+     ],
+     [
+      23,
+      42.84
+     ],
+     [
+      23,
+      59.4
+     ],
+     [
+      18.54,
+      59.4
+     ],
+     [
+      18.54,
+      63
+     ]
+    ]
+   },
+   {
+    "id": "tr3m",
+    "net": "MOTOR_A2",
+    "layer": "top",
+    "width": 0.3,
+    "pts": [
+     [
+      20,
+      40.3
+     ],
+     [
+      24,
+      40.3
+     ],
+     [
+      24,
+      60.2
+     ],
+     [
+      31.24,
+      60.2
+     ],
+     [
+      31.24,
+      63
+     ]
+    ]
+   },
+   {
+    "id": "tr3n",
+    "net": "MOTOR_B1",
+    "layer": "top",
+    "width": 0.3,
+    "pts": [
+     [
+      20,
+      37.76
+     ],
+     [
+      25,
+      37.76
+     ],
+     [
+      25,
+      59.4
+     ],
+     [
+      32.51,
+      59.4
+     ],
+     [
+      32.51,
+      69.35000000000001
+     ],
+     [
+      31.24,
+      70.62
+     ]
+    ]
+   },
+   {
+    "id": "tr3o",
+    "net": "MOTOR_B_OUT1",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      28.7,
+      70.62
+     ],
+     [
+      28.7,
+      73.46
+     ],
+     [
+      26.16,
+      76
+     ]
+    ]
+   },
+   {
+    "id": "tr3p",
+    "net": "MOTOR_B_OUT2",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      21.08,
+      70.62
+     ],
+     [
+      21.08,
+      73.46
+     ],
+     [
+      23.62,
+      76
+     ]
+    ]
+   },
+   {
+    "id": "tr3q",
+    "net": "MOTOR_A_OUT1",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      21.08,
+      63
+     ],
+     [
+      21.08,
+      60.8
+     ],
+     [
+      10.660000000000004,
+      60.8
+     ],
+     [
+      8,
+      63.46
+     ]
+    ]
+   },
+   {
+    "id": "tr3r",
+    "net": "MOTOR_A_OUT2",
+    "layer": "bottom",
+    "width": 0.5,
+    "pts": [
+     [
+      28.7,
+      63
+     ],
+     [
+      28.7,
+      59.6
+     ],
+     [
+      6.5,
+      59.6
+     ],
+     [
+      5.5,
+      60.6
+     ],
+     [
+      5.5,
+      65
+     ],
+     [
+      6.5,
+      66
+     ],
+     [
+      8,
+      66
+     ]
+    ]
+   },
+   {
+    "id": "tr3s",
+    "net": "SCL",
+    "layer": "top",
+    "width": 0.3,
+    "pts": [
+     [
+      37.78,
+      32.68
+     ],
+     [
+      43,
+      32.68
+     ]
+    ]
+   },
+   {
+    "id": "tr3t",
+    "net": "SDA",
+    "layer": "top",
+    "width": 0.3,
+    "pts": [
+     [
+      37.78,
+      30.14
+     ],
+     [
+      39.7,
+      30.14
+     ],
+     [
+      41.24,
+      31.68
+     ],
+     [
+      43,
+      31.68
+     ]
+    ]
+   },
+   {
+    "id": "tr3u",
+    "net": "3V3",
+    "layer": "top",
+    "width": 0.3,
+    "pts": [
+     [
+      43,
+      30.68
+     ],
+     [
+      44.9,
+      30.68
+     ]
+    ]
+   },
+   {
+    "id": "tr3w",
+    "net": "3V3",
+    "layer": "bottom",
+    "width": 0.3,
+    "pts": [
+     [
+      37.78,
+      42.84
+     ],
+     [
+      44.9,
+      42.84
+     ],
+     [
+      44.9,
+      30.68
      ]
     ]
    }
   ],
-  "vias": [],
+  "vias": [
+   {
+    "id": "vi3v",
+    "net": "3V3",
+    "x": 44.9,
+    "y": 30.68,
+    "diameter": 0.7,
+    "drill": 0.3
+   }
+  ],
   "pours": [
    {
-    "id": "po27",
+    "id": "po3x",
     "net": "GND",
     "layer": "top",
     "outline": [
@@ -2651,67 +5472,67 @@
      ],
      [
       60,
-      55
+      77
      ],
      [
       59.924784,
-      55.667563
+      77.667563
      ],
      [
       59.702907,
-      56.301651
+      78.301651
      ],
      [
       59.345494,
-      56.870469
+      78.870469
      ],
      [
       58.870469,
-      57.345494
+      79.345494
      ],
      [
       58.301651,
-      57.702907
+      79.702907
      ],
      [
       57.667563,
-      57.924784
+      79.924784
      ],
      [
       57,
-      58
+      80
      ],
      [
       3,
-      58
+      80
      ],
      [
       2.332437,
-      57.924784
+      79.924784
      ],
      [
       1.698349,
-      57.702907
+      79.702907
      ],
      [
       1.129531,
-      57.345494
+      79.345494
      ],
      [
       0.654506,
-      56.870469
+      78.870469
      ],
      [
       0.297093,
-      56.301651
+      78.301651
      ],
      [
       0.075216,
-      55.667563
+      77.667563
      ],
      [
       0,
-      55
+      77
      ],
      [
       0,
@@ -2745,7 +5566,7 @@
     "thermal": true
    },
    {
-    "id": "po28",
+    "id": "po3y",
     "net": "GND",
     "layer": "bottom",
     "outline": [
@@ -2787,67 +5608,67 @@
      ],
      [
       60,
-      55
+      77
      ],
      [
       59.924784,
-      55.667563
+      77.667563
      ],
      [
       59.702907,
-      56.301651
+      78.301651
      ],
      [
       59.345494,
-      56.870469
+      78.870469
      ],
      [
       58.870469,
-      57.345494
+      79.345494
      ],
      [
       58.301651,
-      57.702907
+      79.702907
      ],
      [
       57.667563,
-      57.924784
+      79.924784
      ],
      [
       57,
-      58
+      80
      ],
      [
       3,
-      58
+      80
      ],
      [
       2.332437,
-      57.924784
+      79.924784
      ],
      [
       1.698349,
-      57.702907
+      79.702907
      ],
      [
       1.129531,
-      57.345494
+      79.345494
      ],
      [
       0.654506,
-      56.870469
+      78.870469
      ],
      [
       0.297093,
-      56.301651
+      78.301651
      ],
      [
       0.075216,
-      55.667563
+      77.667563
      ],
      [
       0,
-      55
+      77
      ],
      [
       0,
@@ -2883,7 +5704,7 @@
   ],
   "texts": [
    {
-    "id": "tx2d",
+    "id": "tx43",
     "layer": "silk-top",
     "x": 24,
     "y": 2,
@@ -2894,27 +5715,27 @@
   "shapes": [],
   "holes": [
    {
-    "id": "ho29",
+    "id": "ho3z",
     "x": 4,
     "y": 4,
     "drill": 3.2
    },
    {
-    "id": "ho2a",
+    "id": "ho40",
     "x": 56,
     "y": 4,
     "drill": 3.2
    },
    {
-    "id": "ho2b",
+    "id": "ho41",
     "x": 4,
-    "y": 54,
+    "y": 76,
     "drill": 3.2
    },
    {
-    "id": "ho2c",
+    "id": "ho42",
     "x": 56,
-    "y": 54,
+    "y": 76,
     "drill": 3.2
    }
   ],
@@ -2936,13 +5757,21 @@
   "classes": [],
   "synced": {
    "nets": {
+    "3V3": [
+     "pt4:5",
+     "pto:2"
+    ],
     "5V": [
      "pt4:2",
      "pt6:2",
      "pt8:2",
-     "pta:1",
      "ptc:1",
-     "ptg:1"
+     "ptg:1",
+     "pti:1",
+     "pti:16",
+     "pti:8",
+     "pti:9",
+     "ptq:3"
     ],
     "GND": [
      "pt2:3",
@@ -2951,11 +5780,56 @@
      "pt8:3",
      "pta:2",
      "pte:2",
-     "ptg:2"
+     "ptg:2",
+     "pti:12",
+     "pti:13",
+     "pti:4",
+     "pti:5",
+     "pto:1"
     ],
     "LED": [
      "ptc:2",
      "pte:1"
+    ],
+    "MOTOR_A_OUT1": [
+     "pti:3",
+     "ptk:2"
+    ],
+    "MOTOR_A_OUT2": [
+     "pti:6",
+     "ptk:1"
+    ],
+    "MOTOR_A1": [
+     "pt2:5",
+     "pti:2"
+    ],
+    "MOTOR_A2": [
+     "pt2:6",
+     "pti:7"
+    ],
+    "MOTOR_B_OUT1": [
+     "pti:11",
+     "ptm:2"
+    ],
+    "MOTOR_B_OUT2": [
+     "pti:14",
+     "ptm:1"
+    ],
+    "MOTOR_B1": [
+     "pt2:7",
+     "pti:10"
+    ],
+    "MOTOR_B2": [
+     "pt2:4",
+     "pti:15"
+    ],
+    "SCL": [
+     "pt4:9",
+     "pto:4"
+    ],
+    "SDA": [
+     "pt4:10",
+     "pto:3"
     ],
     "SERVO1": [
      "pt2:1",
@@ -2964,6 +5838,10 @@
     "SERVO2": [
      "pt2:2",
      "pt8:1"
+    ],
+    "VIN": [
+     "pta:1",
+     "ptq:2"
     ]
    }
   }
