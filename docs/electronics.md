@@ -233,6 +233,30 @@ every time they move: over another part on the same side, off the board, hanging
 for parts. The courtyards that clash are drawn in the warning colour and a line says what is wrong. It is the same
 test the board check runs, so nothing shows here that the check would pass.
 
+## Autoroute (#647)
+
+`pcb/autoroute.ts` is our own maze router: no code is taken from tscircuit or Freerouting. It routes the connections
+the ratsnest still shows, the short ones first, and only ever adds copper, so a track or via laid by hand never moves.
+
+- **The grid.** Both sides of the board at 0.125 mm (coarser when the board is very large). For each net class a
+  `Space` holds, for every cell and side, how much copper could sit there: the least gap to any other net's copper
+  less the clearance between the two nets, to the board's edge less `copperToEdge`, and to track keep-outs. It keeps
+  the nearest net and the nearest other net, so one map serves every net of a class. Copper is drawn in with a little
+  spare, worked out so that two free cells always have room for the track between them.
+- **The search.** A* over cells and sides, eight ways on, with a small cost for a turn, a cost of 4 mm for a via and
+  double for crossing another net's pour. A via needs room on both sides, its hole clear of other holes by
+  `holeToHole`, and may not sit on a pad. A run leaves and reaches a pad by a short piece with one 45° bend.
+- **Measured twice.** Every run and via found is measured with `blockers`, the same test a hand-drawn track gets,
+  before it is kept. A test routes the sample board from bare and asks the board check for an empty list.
+- **Options.** `nets`, `parts` and `layers` (one side only, which also means no vias). A track through a pour can cut
+  it in two, so the router looks at the ratsnest again, up to three times.
+- **In the app.** Autoroute on the PCB tools opens a card (`AutoRoute.tsx`). The router runs in a worker of its own
+  (the board check's script, `boardCheck.worker.ts`, so the board's model is bundled for a worker once), which sends each route back as it is found; Stop ends the worker and keeps those. They go
+  on the board in one edit, so one undo takes them out. If the board changed meanwhile nothing is laid.
+
+It is for simple boards and for finishing off. It does not rip up and retry, push tracks aside, or route fine-pitch
+pads that fall between grid lines; the connections it finds no way for are listed and left for you.
+
 ## The board check (#644)
 
 `pcb/drc.ts`, imported as `@bettercad/electronics/drc`. `checkBoard(design)` returns results in the same shape as the
@@ -636,8 +660,7 @@ or Adafruit project, has been opened yet.
 
 ## What release 1 leaves open
 
-- Release 2, by decision: shove routing (#646), an autorouter (#647), four layers
-  and more (#648), panels and IPC-2581 (#662).
+- Release 2, by decision: shove routing (#646), four layers and more (#648), panels and IPC-2581 (#662).
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.

@@ -67,7 +67,10 @@ schematic brings it up to date and lists the changes first.
    Thin lines show which pads still need joining.
 3. **Route.** Press W and click a pad. Each click lays a piece of track with a 45° bend; click the pad it goes to and
    the track ends. Press V to drop a via and carry on on the other side. With Keep clear on, a track stops before it
-   comes too close to anything else and says what is in the way.
+   comes too close to anything else and says what is in the way. Or choose Autoroute: it lays tracks for the
+   connections still to make, on both sides or one, and leaves your own tracks where they are. Stop keeps what it
+   has done, and one undo takes its tracks out. It suits simple boards and finishing off; it lists any connection
+   it finds no way for.
 4. **Pour copper.** Press P and draw round an area, usually the whole board for ground. The pour keeps clear of
    other nets and joins its own pads with spokes.
 5. **Add holes and text.** H adds a mounting hole for a screw. T writes on the silkscreen.
@@ -114,6 +117,6 @@ On a Mac, Ctrl is Cmd. Press ? in the app for every shortcut.
 
 ## What it does not do yet
 
-Boards have two copper layers. Tracks are laid by hand: there is no autorouter and no push and shove. A model holds
+Boards have two copper layers. Autoroute routes simple boards; it does not push tracks aside, and neither does routing by hand. A model holds
 one board. Part bodies in 3D are simple shapes, not the makers' own models. Part numbers for assembly are typed in,
 not looked up. The developer notes in [electronics.md](electronics.md) list the rest.

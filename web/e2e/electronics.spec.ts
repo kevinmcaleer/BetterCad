@@ -543,6 +543,66 @@ test.describe("on a wide screen", () => {
     });
   }
 
+  test("autoroute: the connections left are routed, and one undo takes them out", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    const canvas = page.getByRole("img", { name: /^PCB: 2 parts/ });
+    await expect(canvas).toBeVisible();
+    // The parts start beside the board: each is put on it by typing its place.
+    for (const [x, to] of [
+      [-10 * PITCH, 15],
+      [0, 30],
+    ] as const) {
+      await page.keyboard.press("1");
+      await page.mouse.click(...(await onCanvas(page, x, 0)));
+      await page.keyboard.press("2");
+      for (const [label, value] of [
+        ["X (mm)", String(to)],
+        ["Y (mm)", "20"],
+      ] as const)
+        await expect(async () => {
+          await page.getByLabel(label).fill(value);
+          await page.getByLabel(label).press("Enter");
+          await page.waitForTimeout(150);
+          await expect(page.getByLabel(label)).toHaveValue(value, { timeout: 1000 });
+        }).toPass();
+      await canvas.focus();
+    }
+    await page.keyboard.press("Escape");
+    const status = page.getByRole("status", { name: "Electronics status" });
+    await expect(status).toContainText("1 connection left to route");
+
+    await tools(page)
+      .getByRole("button", { name: /^Autoroute/ })
+      .click();
+    // The card and the router are chunks of their own.
+    const card = page.getByRole("group", { name: "Autoroute options" });
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toContainText("1 connection still to route on the board.");
+    await axe(page);
+    await card.getByRole("button", { name: "Route", exact: true }).click();
+    await expect(card).toContainText("Routed 1 of 1 connection. Undo takes the new tracks out in one step.", { timeout: 20_000 });
+    await expect(status).not.toContainText("left to route");
+    await expect(card.getByRole("button", { name: "Route", exact: true })).toHaveAttribute("aria-disabled", "true");
+
+    // The board check agrees, and one undo takes the tracks out again.
+    await card.getByRole("button", { name: "Close" }).click();
+    await page.keyboard.press("e");
+    await expect(page.getByText("No problems found. The board is ready to make.")).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("Escape");
+    await canvas.focus();
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(status).toContainText("1 connection left to route");
+  });
+
   test("give a part a STEP file for its body, and see it on the board in 3D", async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto("/");

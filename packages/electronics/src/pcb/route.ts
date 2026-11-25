@@ -106,6 +106,22 @@ export function setVia(d: ElectronicsDesign, id: Id, change: { diameter?: number
   return onBoard(d, (b) => ({ ...b, vias: b.vias.map((v) => (v.id === id ? { ...v, ...change } : v)) }));
 }
 
+/** What the autorouter (#647) lays for one connection: a run of track on each side it uses, and the vias between. */
+export interface Route {
+  net: string;
+  tracks: { layer: Layer; pts: P2[] }[];
+  vias: P2[];
+}
+
+/** Lays routes the autorouter found. */
+export function applyRoutes(d: ElectronicsDesign, routes: Route[]): ElectronicsDesign {
+  for (const r of routes) {
+    for (const t of r.tracks) d = addTrack(d, r.net, t.layer, t.pts);
+    for (const v of r.vias) d = addVia(d, r.net, v[0], v[1]);
+  }
+  return d;
+}
+
 /** How long a track is, mm. */
 export const trackLength = (pts: P2[]): number => pts.slice(1).reduce((n, p, i) => n + Math.hypot(p[0] - pts[i]![0], p[1] - pts[i]![1]), 0);
 
