@@ -681,36 +681,52 @@ test.describe("on a wide screen", () => {
   });
 
   test("print a picture on the silkscreen", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("group", { name: "View cube" }).waitFor();
-    await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
-    await ledCircuit(page);
-    await tools(page)
-      .getByRole("button", { name: /^Push to PCB/ })
-      .click();
-    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
-    await expect(page.getByRole("img", { name: /^PCB: 2 parts/ })).toBeVisible();
-    await expect(tools(page).getByRole("button", { name: /^Picture/ })).toBeVisible();
-    const file = page.getByLabel("A picture for the silkscreen");
-    const svg = (fill: string) => ({
-      name: "logo.svg",
-      mimeType: "image/svg+xml",
-      buffer: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><circle cx="20" cy="20" r="15" fill="${fill}"/></svg>`),
-    });
-    // Nothing dark in it: nothing to print, and you are told why.
-    await file.setInputFiles(svg("white"));
-    await expect(page.getByRole("group", { name: "Picture" }).getByRole("status")).toContainText("nothing dark in it to print");
-    await file.setInputFiles(svg("black"));
-    const card = page.getByRole("group", { name: "Picture" });
-    await expect(card.getByLabel("Width (mm)")).toBeVisible();
-    // Twice as wide as it is tall, like the file.
-    const w = Number(await card.getByLabel("Width (mm)").inputValue());
-    expect(Number(await card.getByLabel("Height (mm)").inputValue())).toBeCloseTo(w / 2, 1);
-    await card.getByLabel("Side").selectOption("Bottom silkscreen");
-    await expect(card.getByLabel("Side")).toHaveValue("silk-bottom");
-    await card.getByRole("button", { name: "Swap ink and bare board" }).click();
-    await expect(card.getByLabel("Width (mm)")).toHaveValue(String(w));
+    // Says what the page held when a step fails, since a runner's screenshots cannot always be fetched.
+    const seen: string[] = [];
+    page.on("console", (m) => (m.type() === "error" || m.type() === "warning") && seen.push(`${m.type()}: ${m.text()}`));
+    page.on("pageerror", (e) => seen.push(`pageerror: ${e.message}`));
+    page.on("framenavigated", (f) => f === page.mainFrame() && seen.push(`navigated: ${f.url()}`));
+    try {
+      await page.goto("/");
+      await page.getByRole("group", { name: "View cube" }).waitFor();
+      await page.getByRole("tab", { name: "Electronics" }).click();
+      await page.getByRole("button", { name: "Schematic", exact: true }).click();
+      await ledCircuit(page);
+      await tools(page)
+        .getByRole("button", { name: /^Push to PCB/ })
+        .click();
+      await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+      await expect(page.getByRole("img", { name: /^PCB: 2 parts/ })).toBeVisible();
+      await expect(tools(page).getByRole("button", { name: /^Picture/ })).toBeVisible();
+      const file = page.getByLabel("A picture for the silkscreen");
+      const svg = (fill: string) => ({
+        name: "logo.svg",
+        mimeType: "image/svg+xml",
+        buffer: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><circle cx="20" cy="20" r="15" fill="${fill}"/></svg>`),
+      });
+      // Nothing dark in it: nothing to print, and you are told why.
+      await file.setInputFiles(svg("white"));
+      await expect(page.getByRole("group", { name: "Picture" }).getByRole("status")).toContainText("nothing dark in it to print");
+      await file.setInputFiles(svg("black"));
+      const card = page.getByRole("group", { name: "Picture" });
+      await expect(card.getByLabel("Width (mm)")).toBeVisible();
+      // Twice as wide as it is tall, like the file.
+      const w = Number(await card.getByLabel("Width (mm)").inputValue());
+      expect(Number(await card.getByLabel("Height (mm)").inputValue())).toBeCloseTo(w / 2, 1);
+      await card.getByLabel("Side").selectOption("Bottom silkscreen");
+      await expect(card.getByLabel("Side")).toHaveValue("silk-bottom");
+      await card.getByRole("button", { name: "Swap ink and bare board" }).click();
+      await expect(card.getByLabel("Width (mm)")).toHaveValue(String(w));
+    } catch (e) {
+      console.log("PICTURE TEST FAILED. Page said:\n" + seen.join("\n"));
+      console.log(
+        await page
+          .locator("body")
+          .ariaSnapshot()
+          .catch((x) => `no snapshot: ${x}`),
+      );
+      throw e;
+    }
   });
 
   test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
