@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   categoriesOf,
+  defKey,
   emptyPack,
   inflate,
   isPack,
@@ -23,6 +24,18 @@ import { fileOf, keepFile, loadFiles, stepFiles } from "./partBlobs";
 import type { EditStart } from "./PartTools";
 import { noteRecent, recentParts, starredParts, toggleStar } from "./partPrefs";
 import { PartPreview } from "./PartPreview";
+import {
+  PUBLISH_LICENCES,
+  creditOf,
+  fetchPartFiles,
+  publishPack,
+  shareLink,
+  shareToken,
+  useSharedParts,
+  type PartsApi,
+  type ShareStatus,
+  type SharedPart,
+} from "./sharedParts";
 import { basicsPack, loadStarter } from "./starter";
 import { eui } from "./ui";
 import { useEui } from "./useEui";
@@ -52,6 +65,8 @@ interface Row {
   part: PackPart;
   pack: LibraryPack;
   mine: boolean;
+  /** From the shared catalogue (#625): who published it and whether it has been checked. */
+  shared?: SharedPart;
 }
 const MINE = "@mine";
 
@@ -88,7 +103,7 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
   const [importing, setImporting] = useState(false);
   const [said, setSaid] = useState("");
   // Your own parts go in your account when you are signed in.
-  const { api, account } = useAccount();
+  const { api, account, available } = useAccount();
   const my = useMyLibrary(api, !!account);
   const field = useId();
   const shelfId = useId();
@@ -129,11 +144,28 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
     () => [...new Set([...(starter ? categoriesOf(starter) : []), ...categoriesOf(my.pack)])].filter((c) => c !== MY_PARTS),
     [starter, my.pack],
   );
+  // Parts other people published (#625), once typing pauses. They sit under your own and the starter set's.
+  const catalogue = useSharedParts(available ? api : undefined, shelf ? "" : find);
+  const sharedRows = useMemo(
+    (): Row[] => catalogue.parts.map((s) => ({ key: `cat:${s.id}`, part: s.pack.parts[0]!, pack: s.pack, mine: false, shared: s })),
+    [catalogue.parts],
+  );
   const browsing = !find.trim() && !shelf;
   const kept = (keys: string[]) => keys.flatMap((k) => byKey.get(k) ?? []);
-  const row = chosen ? byKey.get(chosen) : undefined;
+  // A shared part stays picked while the list it came from changes under it.
+  const [heldShared, setHeldShared] = useState<Row | null>(null);
+  const row = chosen ? (byKey.get(chosen) ?? sharedRows.find((r) => r.key === chosen) ?? (heldShared?.key === chosen ? heldShared : undefined)) : undefined;
   const part = row?.part;
   const def = useMemo(() => (row ? inflate(row.pack, row.part) : null), [row]);
+  // Parts in this design that keep an older copy of the part picked (#629): same name and maker, different contents.
+  const stale = useMemo(() => {
+    if (!design || !def) return [];
+    const key = defKey(def);
+    return design.parts.filter((p) => {
+      const kept = design.defs[p.def];
+      return !!kept && p.def !== key && kept.name === def.name && (kept.source?.library ?? "") === (def.source?.library ?? "");
+    });
+  }, [design, def]);
 
   // The part's card sits under the list: bring it into view when a part is picked.
   const cardRef = useRef<HTMLElement>(null);
@@ -144,6 +176,88 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
   const choose = (r: Row) => {
     setChosen(r.key);
     setPkg(0);
+    if (r.shared) {
+      setHeldShared(r);
+      // Its body's file, if it has one, comes from its publisher so it is here by the time the part is placed.
+      void fetchPartFiles(api, `parts-catalogue/${r.shared.id}`, [inflate(r.pack, r.part)]);
+    }
+  };
+  // Which of your parts are published, and how each stands.
+  const [published, setPublished] = useState<Record<string, ShareStatus>>({});
+  useEffect(() => {
+    if (!account) return setPublished({});
+    let live = true;
+    api
+      .call<{ parts: { part: string; status: ShareStatus }[] }>("GET", "parts-catalogue/mine")
+      .then((r) => live && setPublished(Object.fromEntries(r.parts.map((p) => [p.part, p.status]))))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [account, api]);
+  // A link to your whole library, and adding someone else's from theirs.
+  const [link, setLink] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [from, setFrom] = useState("");
+  useEffect(() => {
+    if (!account) return setLink("");
+    let live = true;
+    api
+      .call<{ token: string | null }>("GET", "parts-library/share")
+      .then((r) => live && setLink(r.token ? shareLink(api, r.token) : ""))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [account, api]);
+  const upload = (defs: ComponentDef[]) => {
+    if (!account) return;
+    for (const h of stepFiles(defs)) {
+      const data = fileOf(h);
+      if (data) api.putBlob(h, fromBase64(data), "model/step").catch(() => undefined);
+    }
+  };
+  const share = async () => {
+    try {
+      const made = shareLink(api, (await api.call<{ token: string }>("POST", "parts-library/share")).token);
+      setLink(made);
+      const copied = await navigator.clipboard?.writeText(made).then(
+        () => true,
+        () => false,
+      );
+      setSaid(copied ? "A link to your parts is copied. Anyone with it can add them to theirs." : "Anyone with this link can add your parts to theirs.");
+    } catch (e) {
+      setSaid((e as Error).message || "The link could not be made.");
+    }
+  };
+  const unshare = async () => {
+    try {
+      await api.call("DELETE", "parts-library/share");
+      setLink("");
+      setSaid("The link no longer works.");
+    } catch (e) {
+      setSaid((e as Error).message || "The link could not be taken back.");
+    }
+  };
+  const addFrom = async () => {
+    const token = shareToken(from);
+    if (!token) return setSaid("That is not a link to a BetterCad parts library.");
+    try {
+      const got = await api.call<{ pack: unknown; by: string }>("GET", `parts-library/shared/${token}`);
+      if (!isPack(got.pack) || !got.pack.parts.length) return setSaid("That library has no parts in it yet.");
+      const pack = got.pack;
+      const defs = pack.parts.map((p) => inflate(pack, p));
+      await fetchPartFiles(api, `parts-library/shared/${token}`, defs);
+      upload(defs);
+      const n = my.add(pack);
+      setShelf(MINE);
+      setFrom("");
+      setLinking(false);
+      const whose = got.by ? `${got.by}'s library` : "that library";
+      setSaid(n ? `Added ${n} ${n === 1 ? "part" : "parts"} from ${whose}.` : `Every part in ${whose} was already in yours.`);
+    } catch (e) {
+      setSaid((e as Error).message || "That link could not be read.");
+    }
   };
   const place = (r = row, at = pkg) => {
     if (!r) return;
@@ -229,13 +343,17 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
         type="button"
         className={cx("bc-ec-part", chosen === r.key && "bc-on")}
         aria-pressed={chosen === r.key}
-        aria-label={`${r.part.name} (${r.part.packages.length ? labelOf(r.part) : r.pack.symbols[r.part.symbol]?.power ? "Power" : "No footprint"})`}
+        aria-label={`${r.part.name} (${r.part.packages.length ? labelOf(r.part) : r.pack.symbols[r.part.symbol]?.power ? "Power" : "No footprint"}${
+          r.shared ? `, from ${r.shared.by}${r.shared.status === "approved" ? "" : ", unreviewed"}` : ""
+        })`}
         onClick={() => choose(r)}
         onDoubleClick={() => place(r, 0)}
       >
         <Icon name={r.pack.symbols[r.part.symbol]?.power ? "powerSymbol" : "chip"} size={16} />
         <span>{r.part.name}</span>
-        <small>{r.mine ? "Yours" : r.part.packages.length ? labelOf(r.part) : "Power"}</small>
+        <small>
+          {r.shared ? (r.shared.status === "approved" ? "Shared" : "Unreviewed") : r.mine ? "Yours" : r.part.packages.length ? labelOf(r.part) : "Power"}
+        </small>
       </button>
     </li>
   );
@@ -302,6 +420,17 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
               }
             />
           )}
+          {account && my.pack.parts.length > 0 && !link && (
+            <Button size="dense" variant="secondary" label="Share by link" title="Make a link anyone can add your parts from" onClick={() => void share()} />
+          )}
+          <Button
+            size="dense"
+            variant="secondary"
+            label="Add from a link"
+            title="Add the parts of a library someone shared with you"
+            on={linking}
+            onClick={() => setLinking((v) => !v)}
+          />
           <input
             ref={openFile}
             type="file"
@@ -314,6 +443,35 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
             }}
           />
         </div>
+        {link && (
+          <>
+            <label className="bc-field-label" htmlFor={`${field}-link`}>
+              Link to your parts
+            </label>
+            <input id={`${field}-link`} className="bc-text" readOnly value={link} onFocus={(e) => e.target.select()} />
+            <div className="bc-ec-library-tools">
+              <Button size="dense" variant="secondary" label="Stop sharing" title="The link stops working" onClick={() => void unshare()} />
+            </div>
+          </>
+        )}
+        {linking && (
+          <>
+            <label className="bc-field-label" htmlFor={`${field}-from`}>
+              Link to a library
+            </label>
+            <input
+              id={`${field}-from`}
+              className="bc-text"
+              value={from}
+              placeholder="Paste the link you were sent"
+              onChange={(e) => setFrom(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void addFrom()}
+            />
+            <div className="bc-ec-library-tools">
+              <Button size="dense" variant="primary" label="Add its parts" disabled={!from.trim()} onClick={() => void addFrom()} />
+            </div>
+          </>
+        )}
         {(said || !my.kept) && (
           <p className="bc-note" role="status">
             {[said, !my.kept && "This browser would not keep your parts. Export them to a file so they are not lost."].filter(Boolean).join(" ")}
@@ -338,7 +496,7 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
         {ready && (
           <ul className="bc-ec-parts" aria-label="Parts">
             {found.slice(0, SHOWN).map((r) => line(r, "all"))}
-            {found.length === 0 && <li className="bc-note">Nothing matches. Try a shorter word.</li>}
+            {found.length === 0 && sharedRows.length === 0 && <li className="bc-note">Nothing matches. Try a shorter word.</li>}
             {found.length > SHOWN && (
               <li className="bc-note">
                 Showing {SHOWN} of {found.length}. Type a word or pick a shelf to narrow it.
@@ -346,6 +504,17 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
             )}
           </ul>
         )}
+        {ready && sharedRows.length > 0 && (
+          <>
+            <p className="bc-field-label" id={`${field}-shared`}>
+              From other makers
+            </p>
+            <ul className="bc-ec-parts bc-ec-parts-short" aria-labelledby={`${field}-shared`}>
+              {sharedRows.map((r) => line(r, "shared"))}
+            </ul>
+          </>
+        )}
+        {ready && catalogue.offline && <p className="bc-note">Parts from other makers need a connection. These are the ones kept in this browser.</p>}
         {row && part && def ? (
           <section ref={cardRef} className="bc-ec-part-card" aria-label={part.name}>
             <header>
@@ -362,6 +531,12 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
               </button>
             </header>
             {part.description && <p className="bc-note">{part.description}</p>}
+            {row.shared && (
+              <p className="bc-note">
+                Published by {row.shared.by}.{" "}
+                {row.shared.status === "approved" ? "Checked by BetterCad." : "Not checked yet: hold it against the datasheet before you order a board."}
+              </p>
+            )}
             <PartPreview def={def} pkg={pkg} />
             {part.packages.length > 1 && (
               <>
@@ -440,7 +615,53 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
               ) : (
                 <Button size="dense" variant="secondary" label="Edit a copy" title="Make your own part from this one" onClick={() => setEditing({ def })} />
               )}
+              {row.shared && (
+                <Button
+                  size="dense"
+                  variant="secondary"
+                  label="Add to your parts"
+                  title="Keep a copy in your own library"
+                  onClick={() => {
+                    upload([def]);
+                    const n = my.add(row.pack);
+                    setSaid(n ? `${part.name} is in your parts.` : `${part.name} was already in your parts.`);
+                  }}
+                />
+              )}
+              {stale.length > 0 && edit && (
+                <Button
+                  size="dense"
+                  variant="secondary"
+                  label={`Update ${stale.length === 1 ? stale[0]!.ref : `${stale.length} parts`}`}
+                  title={`This design keeps its own copy of ${part.name}, made before it changed. Swap in the part as it is now`}
+                  onClick={() => {
+                    edit((d) => stale.reduce((now, p) => replacePart(now, p.id, def, p.pkg).design, d), `Update ${part.name}`);
+                    setSaid(`Updated ${stale.map((p) => p.ref).join(", ")} to ${part.name} as it is now.`);
+                  }}
+                />
+              )}
             </div>
+            {row.mine && (
+              <PublishPart
+                key={part.id}
+                api={api}
+                you={account?.name ?? ""}
+                id={part.id}
+                def={def}
+                category={part.category}
+                status={published[part.id]}
+                onFiles={() => upload([def])}
+                onDone={(status, text) => {
+                  setPublished((now) => {
+                    const next = { ...now };
+                    if (status) next[part.id] = status;
+                    else delete next[part.id];
+                    return next;
+                  });
+                  setSaid(text);
+                }}
+              />
+            )}
           </section>
         ) : (
           ready && <PanelNote>Pick a part to see it, then Place. Double-click places it straight away.</PanelNote>
@@ -453,6 +674,82 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
         </Suspense>
       )}
     </>
+  );
+}
+
+/** Publish one of your parts to the shared catalogue (#629), under a licence that lets other people use it. */
+function PublishPart(p: {
+  api: PartsApi;
+  /** Your name, for the credit. Empty when signed out. */
+  you: string;
+  id: string;
+  def: ComponentDef;
+  category: string;
+  status: ShareStatus | undefined;
+  /** Sends the part's body files to your account first, so the catalogue can serve them. */
+  onFiles: () => void;
+  onDone: (status: ShareStatus | null, text: string) => void;
+}) {
+  const own = p.def.source?.licence ?? "";
+  const [licence, setLicence] = useState(PUBLISH_LICENCES.includes(own) ? own : "CC-BY 4.0");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const ids = useId();
+  if (!p.you) return <p className="bc-note">Sign in to publish this part to the shared catalogue.</p>;
+  const credit = creditOf(p.def, p.you);
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+    } catch (e) {
+      setError((e as Error).message || "That did not work. Try again.");
+    }
+    setBusy(false);
+  };
+  const publish = () =>
+    run(async () => {
+      p.onFiles();
+      const pack = publishPack(p.id, p.def, p.category, licence, credit);
+      const r = await p.api.call<{ status: ShareStatus }>("POST", "parts-catalogue", { id: p.id, pack, licence, credit });
+      p.onDone(r.status, `${p.def.name} is published. It shows as Unreviewed until it is checked.`);
+    });
+  const unpublish = () =>
+    run(async () => {
+      await p.api.call("DELETE", `parts-catalogue/mine/${encodeURIComponent(p.id)}`);
+      p.onDone(null, `${p.def.name} is out of the shared catalogue. It stays in your parts.`);
+    });
+  return (
+    <fieldset className="bc-ec-symed-props">
+      <legend>Shared catalogue</legend>
+      {p.status && (
+        <p className="bc-note" role="status">
+          {p.status === "approved"
+            ? "Published and checked."
+            : p.status === "rejected"
+              ? "Not accepted into the catalogue. Change it and publish it again."
+              : "Published. It shows as Unreviewed until it is checked."}
+        </p>
+      )}
+      <label className="bc-field-label" htmlFor={`${ids}lic`}>
+        Licence to publish under
+      </label>
+      <select id={`${ids}lic`} className="bc-select" value={licence} onChange={(e) => setLicence(e.target.value)}>
+        {PUBLISH_LICENCES.map((l) => (
+          <option key={l}>{l}</option>
+        ))}
+      </select>
+      <p className="bc-note">Credit: {credit}. Anyone can find a published part and use it under this licence.</p>
+      <div className="bc-ec-library-tools">
+        <Button size="dense" variant="secondary" label={p.status ? "Publish again" : "Publish"} busy={busy} onClick={() => void publish()} />
+        {p.status && <Button size="dense" variant="secondary" label="Unpublish" disabled={busy} onClick={() => void unpublish()} />}
+      </div>
+      {error && (
+        <p className="bc-ec-blocked" role="alert">
+          {error}
+        </p>
+      )}
+    </fieldset>
   );
 }
 

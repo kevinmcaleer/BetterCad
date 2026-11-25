@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Button, Icon } from "@bettercad/ui";
 import { ApiError, serverTime, type AdminModel, type AdminProject, type AdminUser, type AdminVisit } from "../cloud/api";
 import { useAccount } from "../cloud/account";
@@ -12,6 +12,8 @@ import { Page } from "./Page";
  * up and signed in, and the projects and models each has saved. Only accounts in ADMIN_EMAILS or ADMIN_USERS see it;
  * the server checks on every call.
  */
+
+const AdminParts = lazy(() => import("./AdminParts").then((m) => ({ default: m.AdminParts })));
 
 const when = (t: string | null) => (t ? ago(Date.now() - serverTime(t)) : "never");
 /** "Last seen" is a day, not a moment: today reads as today rather than "9 hours ago". */
@@ -220,6 +222,9 @@ export function AdminPage() {
           ))}
         </ul>
       )}
+      <Suspense fallback={null}>
+        <AdminParts api={api} />
+      </Suspense>
     </Page>
   );
 }
