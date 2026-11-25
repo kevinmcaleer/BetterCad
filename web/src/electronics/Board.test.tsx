@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
-import { BASICS, emptyDesign, placePart, pushToBoard, type ElectronicsDesign } from "@bettercad/electronics";
+import { BASICS, addLabel, emptyDesign, placePart, pushToBoard, type ElectronicsDesign } from "@bettercad/electronics";
 import { addKeepoutArea, addPour, wholeBoard } from "@bettercad/electronics/pcb/pour";
-import { addHole, addTrack, setPlacement } from "@bettercad/electronics/pcb/route";
+import { addPicture, packInk, pictureRects } from "@bettercad/electronics/pcb/picture";
+import { addHole, addText, addTrack, setPlacement } from "@bettercad/electronics/pcb/route";
 import { applyPreset } from "@bettercad/electronics/pcb/rules";
 import { drawCircle, drawRectangle, newSketch } from "@bettercad/sketch";
 import type { EEdit } from "./actions";
@@ -214,6 +215,49 @@ describe("what is picked on the board", () => {
     const placed = pushToBoard(j.design).design;
     setup(placed, (design, edit) => <BoardProps design={design} edit={edit} part={j.part.id} selected={[j.part.id]} />);
     expect(screen.getAllByRole("button", { name: /Swap pins/ })).toHaveLength(1);
+  });
+
+  it("lets one pad join its pour its own way (#641)", async () => {
+    const start = board();
+    const a = start.d.sheets[0]!.symbols[0]!;
+    const pin = start.d.defs[start.d.parts[0]!.def]!.symbol.pins[0]!;
+    // A GND label on R1's first pin, and a GND pour over the board.
+    const named = addLabel(start.d, "sh1", "GND", a.x + pin.x, a.y + pin.y);
+    const d = addPour(named, "GND", "top", wholeBoard(named.board!));
+    const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} part={start.parts[0]} selected={[start.parts[0]]} />);
+    expect(screen.queryByLabelText(/Pad 2 joins its pour/)).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText(/Pad 1 joins its pour/), "All round");
+    expect(s.design().board!.placements.find((p) => p.part === start.parts[0])!.joins).toEqual({ "1": "solid" });
+    expect(s.labels).toEqual(["Change how pad 1 joins its pour"]);
+    await userEvent.selectOptions(screen.getByLabelText(/Pad 1 joins its pour/), "As the pour says");
+    expect(s.design().board!.placements.find((p) => p.part === start.parts[0])).not.toHaveProperty("joins");
+  });
+
+  it("moves text into copper and says what that means (#642)", async () => {
+    const { d } = board();
+    const lettered = addText(d, 5, 5, "Rev A");
+    const id = lettered.board!.texts[0]!.id;
+    const s = setup(lettered, (design, edit) => <BoardProps design={design} edit={edit} selected={[id]} />);
+    expect(screen.queryByText(/Copper text is copper on no net/)).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Side"), "Bottom copper");
+    expect(s.design().board!.texts[0]!.layer).toBe("copper-bottom");
+    expect(screen.getByText(/Copper text is copper on no net/)).toBeInTheDocument();
+  });
+
+  it("sizes a picture, moves it to the other side and swaps its ink (#642)", async () => {
+    const { d } = board();
+    const pictured = addPicture(d, { layer: "silk-top", x: 20, y: 30, w: 4, cols: 4, rows: 2, bits: packInk([1, 1, 0, 0, 1, 1, 1, 1], 4, 2) }, "pi1");
+    const s = setup(pictured, (design, edit) => <BoardProps design={design} edit={edit} selected={["pi1"]} />);
+    const pic = () => s.design().board!.pictures![0]!;
+    expect(screen.getByLabelText("Height (mm)")).toHaveValue("2");
+    type(screen.getByLabelText("Width (mm)"), "8");
+    expect(pic().w).toBe(8);
+    expect(screen.getByLabelText("Height (mm)")).toHaveValue("4");
+    await userEvent.selectOptions(screen.getByLabelText("Side"), "Bottom silkscreen");
+    expect(pic().layer).toBe("silk-bottom");
+    await userEvent.click(screen.getByRole("button", { name: "Swap ink and bare board" }));
+    expect(pictureRects(pic())).toHaveLength(1);
+    expect(s.labels).toEqual(["Change the picture's size", "Move the picture", "Swap the picture's ink"]);
   });
 
   it("places a part by numbers and locks it", async () => {

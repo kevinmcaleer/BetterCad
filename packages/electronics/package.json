@@ -23,6 +23,7 @@
     "./pcb/solid": "./src/pcb/solid.ts",
     "./pcb/state": "./src/pcb/state.ts",
     "./pcb/rules": "./src/pcb/rules.ts",
+    "./pcb/picture": "./src/pcb/picture.ts",
     "./drc": "./src/pcb/drc.ts",
     "./swap": "./src/swap.ts",
     "./sample": "./src/sample.ts",

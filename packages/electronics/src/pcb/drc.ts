@@ -4,7 +4,8 @@ import { placeOnBoard, rad } from "../geom";
 import { packageOf, type CheckLevel, type ElectronicsDesign, type Id, type P2 } from "../model";
 import { byRef, netlist, type Netlist } from "../nets";
 import { boardChanges, footprintBox } from "../sync";
-import { clearanceBetween, edgeGap, edgeLoops, gap, type Copper, type Solid } from "./copper";
+import { REF_SIZE, textWidth } from "../fab/font";
+import { clearanceBetween, edgeGap, edgeLoops, gap, padSolid, type Copper, type Solid } from "./copper";
 import { boardState } from "./state";
 
 /**
@@ -25,6 +26,7 @@ export type BoardRuleId =
   | "hole-near"
   | "keepout"
   | "courtyard"
+  | "silk-pad"
   | "track-open"
   | "dead-net"
   | "pour-empty"
@@ -53,6 +55,7 @@ export const BOARD_RULES: BoardRule[] = [
   { id: "dead-net", label: "Copper is left from a net that is gone", level: "warning" },
   { id: "pour-empty", label: "A pour fills nothing", level: "warning" },
   { id: "silk-size", label: "Silkscreen text is too small", level: "warning" },
+  { id: "silk-pad", label: "Silkscreen is printed over a pad", level: "warning" },
 ];
 
 export type BoardResult = CheckResult<BoardRuleId>;
@@ -427,6 +430,85 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
         "Make the text larger.",
         [t.x, t.y],
       );
+
+  // Ink over a pad's opening is cut away when the files are made (#642), so say which words lose a piece.
+  if (on("silk-pad")) {
+    const open = pads.map((p) => {
+      const s = padSolid(p);
+      return { p, solid: { pts: s.pts, r: s.r + (p.pad.maskMargin ?? rules.maskMargin) } };
+    });
+    const hit = (box: P2[], side: "top" | "bottom") =>
+      open.find((o) => (o.p.pad.kind !== "smd" || o.p.side === side) && gap({ pts: box, r: 0 }, o.solid) === 0)?.p;
+    const parts = new Map(d.parts.map((p) => [p.id, p]));
+    for (const at of board.placements) {
+      const part = parts.get(at.part);
+      const pkg = part && packageOf(d, part);
+      if (!part || !pkg || at.refHidden) continue;
+      const size = Math.max(REF_SIZE, rules.minSilkHeight);
+      const c = placeOnBoard(at.refAt ?? pkg.footprint.refAt ?? [0, 0], at);
+      const w = textWidth(part.ref, size) / 2;
+      const pad = hit(
+        [
+          [c[0] - w, c[1] - size / 2],
+          [c[0] + w, c[1] - size / 2],
+          [c[0] + w, c[1] + size / 2],
+          [c[0] - w, c[1] + size / 2],
+        ],
+        at.side,
+      );
+      if (pad)
+        add(
+          "silk-pad",
+          part.ref,
+          `${part.ref}'s name is printed over ${pad.ref} pad ${pad.pad.number}. The ink is cut away there.`,
+          "Move the part, or hide its name on the silkscreen.",
+          c,
+          [part.id],
+        );
+    }
+    for (const t of board.texts) {
+      if (!t.layer.startsWith("silk")) continue;
+      const side = t.layer === "silk-bottom" ? "bottom" : "top";
+      const cap = t.size * 0.72;
+      const a = rad(t.angle ?? 0);
+      const flip = side === "bottom" ? -1 : 1;
+      const corner = (x: number, y: number): P2 => [t.x + flip * x * Math.cos(a) - y * Math.sin(a), t.y + flip * x * Math.sin(a) + y * Math.cos(a)];
+      const w = textWidth(t.text, cap);
+      const pad = hit([corner(0, 0), corner(w, 0), corner(w, cap), corner(0, cap)], side);
+      if (pad)
+        add(
+          "silk-pad",
+          t.id,
+          `The text "${t.text}" is printed over ${pad.ref} pad ${pad.pad.number}. The ink is cut away there.`,
+          "Move the text clear of the pad.",
+          [t.x, t.y],
+        );
+    }
+  }
+
+  if (on("silk-pad"))
+    for (const pic of board.pictures ?? []) {
+      const side = pic.layer === "silk-bottom" ? "bottom" : "top";
+      const top = pic.y + (pic.w / pic.cols) * pic.rows;
+      const box: Solid = {
+        pts: [
+          [pic.x, pic.y],
+          [pic.x + pic.w, pic.y],
+          [pic.x + pic.w, top],
+          [pic.x, top],
+        ],
+        r: 0,
+      };
+      const pad = pads.find((p) => (p.pad.kind !== "smd" || p.side === side) && gap(box, padSolid(p)) === 0);
+      if (pad)
+        add(
+          "silk-pad",
+          pic.id,
+          `A picture is printed over ${pad.ref} pad ${pad.pad.number}. The ink is cut away there.`,
+          "Move the picture clear of the pad.",
+          [pic.x, pic.y],
+        );
+    }
 
   const rank = (r: BoardResult) => (r.waived !== undefined ? 2 : r.level === "error" ? 0 : 1);
   const order = (r: BoardResult) => BOARD_RULES.findIndex((x) => x.id === r.rule);

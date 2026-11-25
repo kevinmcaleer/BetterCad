@@ -358,6 +358,7 @@ export function moveOnBoard(d: ElectronicsDesign, ids: Id[], dx: number, dy: num
     vias: b.vias.map((v) => (set.has(v.id) ? at(v) : v)),
     holes: b.holes.map((h) => (set.has(h.id) ? at(h) : h)),
     texts: b.texts.map((t) => (set.has(t.id) ? at(t) : t)),
+    ...(b.pictures ? { pictures: b.pictures.map((p) => (set.has(p.id) ? at(p) : p)) } : {}),
     pours: b.pours.map((o) => (set.has(o.id) ? { ...o, outline: o.outline.map((p) => [q(p[0] + dx), q(p[1] + dy)] as P2) } : o)),
     keepouts: b.keepouts.map((k) => (set.has(k.id) ? { ...k, outline: k.outline.map((p) => [q(p[0] + dx), q(p[1] + dy)] as P2) } : k)),
   }));
@@ -390,6 +391,7 @@ export function removeFromBoard(d: ElectronicsDesign, ids: Id[]): ElectronicsDes
     vias: b.vias.filter((v) => !set.has(v.id)),
     holes: b.holes.filter((h) => !set.has(h.id)),
     texts: b.texts.filter((t) => !set.has(t.id)),
+    ...(b.pictures ? { pictures: b.pictures.filter((p) => !set.has(p.id)) } : {}),
     pours: b.pours.filter((p) => !set.has(p.id)),
   }));
 }

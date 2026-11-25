@@ -1,6 +1,6 @@
 import { defKey } from "../edit";
 import { onSegment } from "../geom";
-import { textWidth } from "../fab/font";
+import { LINE_GAP, textWidth } from "../fab/font";
 import {
   DEFAULT_RULES,
   eid,
@@ -568,7 +568,9 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       // KiCad anchors text by its middle unless it says otherwise; ours starts at its left end, on its baseline.
       const wide = textWidth(text(item), size);
       const along = just.some((j) => j === "left") ? 0 : just.some((j) => j === "right") ? -wide : -wide / 2;
-      const up = just.some((j) => j === "bottom") ? 0 : just.some((j) => j === "top") ? -size : -size / 2;
+      // Several lines sit about the anchor as a block; ours hangs below its first line's baseline.
+      const below = (text(item).split("\n").length - 1) * size * LINE_GAP;
+      const up = just.some((j) => j === "bottom") ? below : just.some((j) => j === "top") ? -size : -size / 2 + below / 2;
       const c = Math.cos((angle * Math.PI) / 180);
       const s0 = Math.sin((angle * Math.PI) / 180);
       const dx = (bottom ? -1 : 1) * along;

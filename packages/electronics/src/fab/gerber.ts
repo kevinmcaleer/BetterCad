@@ -4,7 +4,8 @@ import { packageOf, type Board, type Corner, type ElectronicsDesign, type P2, ty
 import { netlist, type Netlist } from "../nets";
 import { copperOf, type Copper, type Solid } from "../pcb/copper";
 import { pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
-import { penFor, textStrokes } from "./font";
+import { penFor, textStrokes, REF_SIZE } from "./font";
+import { pictureRects } from "../pcb/picture";
 
 /**
  * Gerber files for a board (#655): one RS-274X file per layer with X2 attributes, in millimetres, as every board
@@ -37,8 +38,7 @@ export const GERBER_LAYERS: { id: GerberLayer; label: string; fn: string }[] = [
 
 /** The pen the outline is drawn with, mm. Board houses cut along its middle. */
 export const EDGE_PEN = 0.1;
-/** Capital height of a part's name on the silkscreen, mm. */
-export const REF_SIZE = 1;
+export { REF_SIZE };
 
 /** A coordinate in the file's units: whole numbers of a millionth of a millimetre (format 4.6). */
 const co = (n: number): string => String(Math.round(n * 1e6) + 0);
@@ -492,6 +492,16 @@ function silkFile(d: ElectronicsDesign, board: Board, side: Side, pads: BoardPad
     const cap = Math.max(t.size * 0.72, 0);
     const code = w.circle(penFor(cap, least));
     for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror })) w.line(code, line);
+  }
+  for (const pic of board.pictures ?? []) {
+    if (pic.layer !== `silk-${side}`) continue;
+    for (const r of pictureRects(pic))
+      w.region([
+        [r.x1, r.y1],
+        [r.x2, r.y1],
+        [r.x2, r.y2],
+        [r.x1, r.y2],
+      ]);
   }
   // Ink never lands on a pad: the mask's openings are taken back out of the silkscreen.
   w.comment("Silkscreen kept off the pads");

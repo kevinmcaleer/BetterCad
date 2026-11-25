@@ -271,6 +271,15 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     },
     { ...draw("hole", "Hole", "hole", "H", "Add a mounting hole for a screw"), group: "Add" },
     { ...draw("text", "Text", "text", "T", "Write on the silkscreen"), group: "Add" },
+    {
+      id: "picture",
+      group: "Add",
+      label: "Picture",
+      icon: "image",
+      tip: "Print a logo or a drawing on the silkscreen",
+      disabled: readOnly,
+      run: () => eactions.current?.picture?.(),
+    },
     { ...draw("pour", "Pour", "pour", "P", "Fill an area with copper on one net, usually ground"), group: "Add" },
     { ...draw("keepout", "Keep-out", "keepOut", "O", "Mark an area tracks and pours stay out of, or cut a hole in the board"), group: "Add" },
     {

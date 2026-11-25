@@ -680,6 +680,38 @@ test.describe("on a wide screen", () => {
     await expect(page.getByRole("img", { name: /^PCB: 7 parts/ })).toBeVisible();
   });
 
+  test("print a picture on the silkscreen", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    await expect(page.getByRole("img", { name: /^PCB: 2 parts/ })).toBeVisible();
+    await expect(tools(page).getByRole("button", { name: /^Picture/ })).toBeVisible();
+    const file = page.getByLabel("A picture for the silkscreen");
+    const svg = (fill: string) => ({
+      name: "logo.svg",
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><circle cx="20" cy="20" r="15" fill="${fill}"/></svg>`),
+    });
+    // Nothing dark in it: nothing to print, and you are told why.
+    await file.setInputFiles(svg("white"));
+    await expect(page.getByRole("group", { name: "Picture" }).getByRole("status")).toContainText("nothing dark in it to print");
+    await file.setInputFiles(svg("black"));
+    const card = page.getByRole("group", { name: "Picture" });
+    await expect(card.getByLabel("Width (mm)")).toBeVisible();
+    // Twice as wide as it is tall, like the file.
+    const w = Number(await card.getByLabel("Width (mm)").inputValue());
+    expect(Number(await card.getByLabel("Height (mm)").inputValue())).toBeCloseTo(w / 2, 1);
+    await card.getByLabel("Side").selectOption("Bottom silkscreen");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(card.getByLabel("Side")).toHaveValue("silk-top");
+  });
+
   test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
     // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
     test.setTimeout(90_000);

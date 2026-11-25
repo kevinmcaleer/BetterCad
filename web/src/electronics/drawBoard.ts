@@ -1,3 +1,4 @@
+import { pictureRects } from "@bettercad/electronics/pcb/picture";
 import {
   outlinePoints,
   packageOf,
@@ -384,8 +385,21 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     ctx.font = `${Math.max(1, t.size * v.scale)}px ${c.font}`;
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
-    ctx.fillText(t.text, 0, 0);
+    // Further lines go below the first, as the files for the board house draw them.
+    t.text.split("\n").forEach((row, n) => ctx.fillText(row, 0, n * t.size * 0.72 * 1.6 * v.scale));
     ctx.restore();
+  }
+
+  // Pictures on the silkscreen: the ink, a cell at a time.
+  for (const pic of board.pictures ?? []) {
+    if (!show(pic.layer)) continue;
+    const on = look.selected.has(pic.id) || look.hover === pic.id;
+    ctx.fillStyle = on ? c["ec-pick"] : c[pic.layer === "silk-top" ? "ec-silk" : "ec-silk-far"];
+    for (const r of pictureRects(pic)) {
+      const a = toScreen(v, [r.x1, r.y2]);
+      const b = toScreen(v, [r.x2, r.y1]);
+      ctx.fillRect(a[0], a[1], Math.max(1, b[0] - a[0]), Math.max(1, b[1] - a[1]));
+    }
   }
 
   // Areas: keep-outs dashed, a pour's own outline thin, the picked one bright.

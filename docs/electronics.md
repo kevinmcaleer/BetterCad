@@ -265,6 +265,24 @@ schematic should know about is made to both in the same undo step. Renumber on t
 sit (top side first, in rows from the top, left to right) and the schematic's names follow. Delete on a part asks
 first, then takes it off the sheet as well. A part's name can be hidden on the silkscreen from its card.
 
+**Text and silkscreen** (#642). The Text tool writes on the silkscreen; the text's card moves it to either side's
+silkscreen or copper. Text in copper is real copper on no net: the board check measures to it, pours keep clear of
+it, and it is drawn in the copper files with the same strokes. Text can have several lines. The files for the board
+house cut the silkscreen away wherever it crosses a pad's opening, and the board check now says so first
+(`silk-pad`, a warning): which part's name or which text loses ink, and over which pad.
+
+**Pictures on the silkscreen** (#642). **Picture** on the board's ribbon takes a PNG, JPEG or SVG file and prints
+it as ink: dark, solid parts of the picture are ink, light or clear parts are bare board. It is kept in the design as
+a bit a cell (`BoardPicture`, at most 200 cells across, `pcb/picture.ts`), so nothing is fetched later. Its card sets
+the width (the height follows), the side, and **Swap ink and bare board** for a light logo on a dark ground; a note
+says when its finest detail is thinner than the board rules print. It is drawn in the silkscreen file as filled
+regions, flipped on the bottom so it reads from underneath, cut away over pads like any ink, and the board check
+warns when it crosses one. Pictures are not written to KiCad files yet.
+
+**A pad's own way into a pour** (#641). A pour joins its pads with spokes or all round. One pad can differ: a
+part's card lists its pads that are on a poured net, each with As the pour says, With spokes or All round
+(`joins` on the placement, `setPadJoin`).
+
 **Pin swap** (#645). A component marks pins that do the same job with the same word (`swap` on a pin: a resistor's
 two ends are both "ends"). For a part with such pins, its card on the board offers **Swap pins 1 and 2** (or a list
 of pairs when there are more). `swapPins` (in `swap.ts`) gives that one part its own copy of the component with the two pins in
@@ -439,7 +457,9 @@ between sheets, pictures, text boxes and shapes on a sheet, net class flags, dim
 user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
 flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
 middle of its hole comes in with the hole in the right place and the copper centred on it, so the board check can
-report a clearance there that KiCad does not. A board without its schematic does not open: the nets of a design here
+report a clearance there that KiCad does not. Text keeps its place, size, turn and lines, but not KiCad's separate
+width or its mirror flag, so a line of text can come in a little longer or shorter than KiCad draws it. A board
+without its schematic does not open: the nets of a design here
 come from its schematic. A local label and a global label with one name are one net here; in KiCad they can be two.
 
 How it is checked: `kicad/project.test.ts` writes the sample and the fixture that turns everything every way out as

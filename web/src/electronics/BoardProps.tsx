@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
-import { netlist, type ElectronicsDesign, type Keepout, type Side } from "@bettercad/electronics";
+import { boardPads, netlist, type ElectronicsDesign, type Keepout, type Side } from "@bettercad/electronics";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
-import { pourFill, setKeepout, setPour } from "@bettercad/electronics/pcb/pour";
+import { invertInk, setPicture } from "@bettercad/electronics/pcb/picture";
+import { pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
 import {
   SCREWS,
   alignParts,
@@ -28,6 +29,45 @@ const ALIGN: { how: Align; label: string; icon: IconName }[] = [
   { how: "down", label: "Space evenly down", icon: "alignObjMiddle" },
 ];
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * How each pad joins a pour on its net (#641), for the pads that are on a net with a pour. A pad left alone joins the
+ * way its pour says.
+ */
+function PadJoins({ design, edit, part }: { design: ElectronicsDesign; edit: EEdit; part: string }) {
+  const board = design.board!;
+  const poured = new Set(board.pours.map((p) => p.net));
+  const at = board.placements.find((p) => p.part === part);
+  if (!at || !poured.size) return null;
+  const pads = [
+    ...new Set(
+      boardPads(design)
+        .filter((p) => p.part === part && p.net && poured.has(p.net) && p.pad.number)
+        .map((p) => p.pad.number),
+    ),
+  ];
+  if (!pads.length) return null;
+  return (
+    <>
+      {pads.map((n) => (
+        <label key={n} className="bc-ec-set-row">
+          Pad {n} joins its pour
+          <select
+            className="bc-select"
+            value={at.joins?.[n] ?? ""}
+            onChange={(e) =>
+              edit((d) => setPadJoin(d, part, n, (e.target.value || undefined) as "spokes" | "solid" | undefined), `Change how pad ${n} joins its pour`)
+            }
+          >
+            <option value="">As the pour says</option>
+            <option value="spokes">With spokes</option>
+            <option value="solid">All round</option>
+          </select>
+        </label>
+      ))}
+    </>
+  );
+}
 
 /**
  * Pin swap (#645): offered only for pins the component says do the same job. The schematic follows in the same step.
@@ -120,6 +160,7 @@ export default function BoardProps({
           Name on the silkscreen
         </label>
         <SwapPins design={design} edit={edit} part={part} />
+        <PadJoins design={design} edit={edit} part={part} />
       </fieldset>
     );
   }
@@ -131,6 +172,7 @@ export default function BoardProps({
   const hole = selected.length === 1 ? board.holes.find((h) => set.has(h.id)) : undefined;
   const text = selected.length === 1 ? board.texts.find((t) => set.has(t.id)) : undefined;
 
+  const picture = selected.length === 1 ? board.pictures?.find((x) => set.has(x.id)) : undefined;
   const pour = selected.length === 1 ? board.pours.find((x) => set.has(x.id)) : undefined;
   const keepout = selected.length === 1 ? board.keepouts.find((x) => set.has(x.id)) : undefined;
 
@@ -355,6 +397,45 @@ export default function BoardProps({
       </fieldset>
     );
 
+  if (picture) {
+    const change = (c: Parameters<typeof setPicture>[2], label: string) =>
+      edit((d) => setPicture(d, picture.id, c), label, `ec-picture-${picture.id}-${Object.keys(c).join()}`);
+    const cell = picture.w / picture.cols;
+    return (
+      <fieldset className="bc-ec-set" disabled={readOnly}>
+        <legend>Picture</legend>
+        <div className="bc-ec-set-row">
+          <NumberField label="Width" value={round(picture.w)} min={1} max={300} step={1} onCommit={(v) => change({ w: v }, "Change the picture's size")} />
+          <NumberField label="Height" value={round(cell * picture.rows)} locked onCommit={() => undefined} />
+        </div>
+        <label className="bc-field-label" htmlFor={`${ids}pl`}>
+          Side
+        </label>
+        <select
+          id={`${ids}pl`}
+          className="bc-select"
+          value={picture.layer}
+          onChange={(e) => change({ layer: e.target.value as typeof picture.layer }, "Move the picture")}
+        >
+          <option value="silk-top">Top silkscreen</option>
+          <option value="silk-bottom">Bottom silkscreen</option>
+        </select>
+        <Button
+          size="dense"
+          variant="secondary"
+          label="Swap ink and bare board"
+          title="For a light logo drawn on a dark ground"
+          onClick={() => change({ bits: invertInk(picture).bits }, "Swap the picture's ink")}
+        />
+        {cell < board.rules.minSilkWidth - 1e-6 && (
+          <p className="bc-note">
+            Its finest detail is {round(cell)} mm. Lines thinner than {board.rules.minSilkWidth} mm may not print: make it wider.
+          </p>
+        )}
+      </fieldset>
+    );
+  }
+
   if (hole) {
     const screw = SCREWS.find((s) => s.drill === hole.drill);
     return (
@@ -434,7 +515,10 @@ export default function BoardProps({
         >
           <option value="silk-top">Top silkscreen</option>
           <option value="silk-bottom">Bottom silkscreen</option>
+          <option value="copper-top">Top copper</option>
+          <option value="copper-bottom">Bottom copper</option>
         </select>
+        {text.layer.startsWith("copper") && <p className="bc-note">Copper text is copper on no net. Tracks and pours keep clear of it.</p>}
       </fieldset>
     );
   }

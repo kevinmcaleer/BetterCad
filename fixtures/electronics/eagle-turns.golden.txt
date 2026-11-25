@@ -23,3 +23,8 @@ error unrouted: OUT still has 1 connection to route.
 error unrouted: SIG still has 2 connections to route.
 error unrouted: VCC still has 2 connections to route.
 warning pour-empty: The pour on GND fills nothing.
+warning silk-pad: D1's name is printed over D1 pad A. The ink is cut away there.
+warning silk-pad: R1's name is printed over R1 pad 1. The ink is cut away there.
+warning silk-pad: R2's name is printed over R2 pad 1. The ink is cut away there.
+warning silk-pad: R3's name is printed over R3 pad 1. The ink is cut away there.
+warning silk-pad: U1's name is printed over U1 pad 8. The ink is cut away there.

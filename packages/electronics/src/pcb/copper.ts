@@ -1,4 +1,5 @@
 import { boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
+import { penFor, textStrokes } from "../fab/font";
 import { distToSegment, rad, segmentDistance } from "../geom";
 import type { Board, ElectronicsDesign, Id, NetClass, P2, Rules } from "../model";
 
@@ -15,7 +16,8 @@ export interface Solid {
 export type Layer = "top" | "bottom";
 
 export interface Copper extends Solid {
-  kind: "pad" | "track" | "via";
+  /** `text`: a stroke of text written in copper, on no net. */
+  kind: "pad" | "track" | "via" | "text";
   net: string;
   layers: Layer[];
   /** The part for a pad, the track or via otherwise. */
@@ -119,6 +121,24 @@ export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)):
     });
   for (const h of board.holes)
     if (h.pad) out.push({ pts: [[h.x, h.y]], r: h.pad / 2, kind: "via", net: "", layers: ["top", "bottom"], id: h.id, what: "a plated hole", at: [h.x, h.y] });
+  // Text written in copper (#642) is copper like any other: the same strokes the Gerber file draws.
+  for (const t of board.texts) {
+    if (!t.layer.startsWith("copper")) continue;
+    const side = t.layer === "copper-bottom" ? "bottom" : "top";
+    const cap = t.size * 0.72;
+    for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: side === "bottom" }))
+      for (let i = 0; i + 1 < line.length; i += 1)
+        out.push({
+          pts: [line[i]!, line[i + 1]!],
+          r: penFor(cap) / 2,
+          kind: "text",
+          net: "",
+          layers: [side],
+          id: t.id,
+          what: `the text "${t.text}"`,
+          at: [t.x, t.y],
+        });
+  }
   return out;
 }
 
