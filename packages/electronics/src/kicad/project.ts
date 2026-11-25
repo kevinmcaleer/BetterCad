@@ -57,6 +57,25 @@ const base = (file: string) => file.replace(/^.*[\\/]/, "");
 const stem = (file: string) => base(file).replace(/\.[^.]+$/, "");
 const norm = (deg: number) => (((Math.round(deg * 1e4) / 1e4) % 360) + 360) % 360;
 
+/** KiCad 8 and later write some characters of a name as a word in braces: "VPP{slash}MCLR" is the net "VPP/MCLR". */
+const ESCAPES: Record<string, string> = {
+  slash: "/",
+  backslash: "\\",
+  colon: ":",
+  comma: ",",
+  space: " ",
+  bar: "|",
+  dollar: "$",
+  lt: "<",
+  gt: ">",
+  quote: "'",
+  dblquote: '"',
+  brace: "{",
+  tab: " ",
+  return: " ",
+};
+export const plainName = (name: string) => name.replace(/\{([a-z]+)\}/g, (all, word: string) => ESCAPES[word] ?? all);
+
 // ---------------------------------------------------------------- the schematic
 
 interface PlacedUnit {
@@ -125,7 +144,7 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
     const sheet: Sheet = { id: eid("sh"), name: name || "Sheet 1", symbols: [], wires: [], junctions: [], labels: [], noConnects: [], notes: [] };
     out.sheets.push(sheet);
     const label = (text0: string, p: P2, rot = 0) =>
-      sheet.labels.push({ id: eid("lb"), name: text0, x: p[0], y: p[1], ...(rot ? { rot: (norm(rot) - (norm(rot) % 90)) as Rot } : {}) });
+      sheet.labels.push({ id: eid("lb"), name: plainName(text0), x: p[0], y: p[1], ...(rot ? { rot: (norm(rot) - (norm(rot) % 90)) as Rot } : {}) });
     /** A name used on this sheet, as the whole design knows it. */
     const scoped = (local: string) => alias.get(local) ?? `${prefix}${local}`;
 
@@ -295,7 +314,9 @@ function boardFootprint(node: Node[]): {
   const fp = read.footprint;
   const nets = new Map<string, string>();
   for (const p of children(node, "pad")) {
-    const net = text(child(p, "net"), 2);
+    // KiCad 10 gives a pad its net by name alone; before that it is a number, then the name.
+    const at = child(p, "net");
+    const net = plainName(at && at.length === 2 ? text(at, 1) : text(at, 2));
     if (net && text(p, 1)) nets.set(text(p, 1), net);
   }
   const pads = fp.pads.map((p) => {
@@ -385,8 +406,9 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       name: "Board",
       why: `It has ${inside + 2} copper layers. Six came across: the top, the bottom and the first four inside. What is on the other ${inside - 4} is left out`,
     });
-  const netName = new Map(children(tree, "net").map((n) => [text(n, 1), text(n, 2)]));
-  const netOf = (item: Node[]) => netName.get(text(child(item, "net"))) ?? "";
+  const netName = new Map(children(tree, "net").map((n) => [text(n, 1), plainName(text(n, 2))]));
+  // KiCad 10 keeps no table of nets: a track, via or zone names its net itself.
+  const netOf = (item: Node[]) => (netName.size ? (netName.get(text(child(item, "net"))) ?? "") : plainName(text(child(item, "net"))));
 
   // The edge first: it says where the board's corner is.
   const raw: { kind: string; item: Node[]; shift?: (p: P2) => P2 }[] = [];
@@ -554,6 +576,11 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       });
       continue;
     }
+    // A teardrop is a zone KiCad 8 and later draw where a track meets a pad. It joins nothing new, so it is left out.
+    if (child(child(z, "attr"), "teardrop")) {
+      dropped.add("teardrops, the copper KiCad adds where a track meets a pad");
+      continue;
+    }
     const pads = child(z, "connect_pads");
     const sides = new Set(
       layers.flatMap((l): CopperLayer[] =>
@@ -565,7 +592,7 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       const priority = num(child(z, "priority"));
       board.pours.push({
         id: eid("po"),
-        net: text(child(z, "net_name")) || netOf(z),
+        net: plainName(text(child(z, "net_name"))) || netOf(z),
         layer: side,
         outline,
         thermal: !pads?.some((x) => x === "yes" || x === "no"),
@@ -783,8 +810,9 @@ export function importKicadProject(files: ImportFile[], o: ProjectOptions = {}):
       why: pcb ? "Not on the board, so it came in with no footprint" : "There is no board among the files, so parts came in with no footprint",
     });
 
-  // Old symbols carry supply pins that are not drawn: each joins the net with the pin's name.
-  if (sch.version < 20250114) {
+  // Old symbols carry supply pins that are not drawn: each joins the net with the pin's name. KiCad 10 still reads
+  // them that way (`SCH_PIN::IsGlobalPower`), so no version of the file is left out.
+  {
     let hiddenPins = 0;
     for (const u of sch.units) {
       if (u.lib.symbol.power || u.ref === "") continue;
@@ -820,8 +848,18 @@ export function importKicadProject(files: ImportFile[], o: ProjectOptions = {}):
         name: "Board",
         why: `${split} ${split === 1 ? "net on the board does" : "nets on the board do"} not match the schematic's. The board may be behind its schematic; run the board check`,
       });
-    board.tracks = board.tracks.map((t) => ({ ...t, net: ours(t.net) }));
-    board.vias = board.vias.map((v) => ({ ...v, net: ours(v.net) }));
+    // KiCad names the net of a pin that joins nothing "unconnected-(…)", and a board can hold a stub of track on one.
+    // Here such a pin has no net, so the stub would read as a short: it is left out, and said.
+    const known = new Set(nl.nets.map((n) => n.name));
+    const stub = (net: string) => net.startsWith("unconnected-(") && !known.has(ours(net));
+    const stubs = board.tracks.filter((t) => stub(t.net)).length + board.vias.filter((v) => stub(v.net)).length;
+    if (stubs)
+      notes.push({
+        name: "Board",
+        why: `Left out: ${stubs} ${stubs === 1 ? "piece of track" : "pieces of track"} on pins that join nothing in the schematic`,
+      });
+    board.tracks = board.tracks.filter((t) => !stub(t.net)).map((t) => ({ ...t, net: ours(t.net) }));
+    board.vias = board.vias.filter((v) => !stub(v.net)).map((v) => ({ ...v, net: ours(v.net) }));
     board.pours = board.pours.map((p) => ({ ...p, net: ours(p.net) }));
     board.classes = classes.map((c) => ({ ...c, id: eid("nc"), nets: [...new Set(c.nets.map(ours))] }));
     board.synced = { nets: netPins(nl) };
