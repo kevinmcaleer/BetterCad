@@ -520,6 +520,32 @@ test.describe("on a wide screen", () => {
     await editor.getByLabel("File", { exact: true }).setInputFiles(STEP);
     await expect(editor.getByText(/^cog-on-flat\.step: 2 solids, [\d.]+ × [\d.]+ × [\d.]+ mm\.$/)).toBeVisible({ timeout: 60_000 });
     await expect(editor.getByText("Footprint and body")).toBeVisible();
+    // The body stands on its footprint in a 3D view, drawn once the engine has built it, and its pins can be found.
+    const view = editor.getByRole("img", { name: /^The body on its footprint, in 3D/ });
+    await expect(view).toBeVisible();
+    const snap = editor.getByRole("button", { name: "Snap its pins to the pads" });
+    await expect(snap).not.toHaveAttribute("aria-disabled", "true", { timeout: 60_000 });
+    const drawn = () =>
+      view.evaluate((el) => {
+        const c = el as HTMLCanvasElement;
+        const d = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i]! > 0) n++;
+        return n / (d.length / 4);
+      });
+    expect(await drawn()).toBeGreaterThan(0.1);
+    await view.focus();
+    await page.keyboard.press("ArrowRight");
+    if (process.env.BODY_SHOT) await editor.screenshot({ path: process.env.BODY_SHOT });
+    await snap.click();
+    await expect(editor.getByText(/pin ends? sits? on|centred on them/)).toBeVisible();
+    // A robot catalogue part can be the body too, kept as a copy.
+    await editor.getByLabel("Or a robot catalogue part").selectOption({ label: "SG90 micro servo" });
+    await expect(editor.getByText(/^SG90 micro servo: \d+ solids?, [\d.]+ × [\d.]+ × [\d.]+ mm\.$/)).toBeVisible({ timeout: 60_000 });
+    await expect(snap).not.toHaveAttribute("aria-disabled", "true", { timeout: 60_000 });
+    if (process.env.BODY_SHOT) await editor.screenshot({ path: process.env.BODY_SHOT.replace(".png", "-servo.png") });
+    await editor.getByLabel("File", { exact: true }).setInputFiles(STEP);
+    await expect(editor.getByText(/^cog-on-flat\.step: 2 solids/)).toBeVisible({ timeout: 60_000 });
     await editor.getByLabel("Lift").fill("0.2");
     await editor.getByLabel("Lift").press("Enter");
     await axe(page);

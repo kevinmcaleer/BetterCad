@@ -670,7 +670,16 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
       </FeaturePanel>
       {(editing || importing) && (
         <Suspense fallback={null}>
-          {editing && <PartEditor start={editing} shelves={shelves} onSave={saved} onCancel={() => setEditing(null)} {...(call ? { call } : {})} />}
+          {editing && (
+            <PartEditor
+              start={editing}
+              shelves={shelves}
+              onSave={saved}
+              onCancel={() => setEditing(null)}
+              {...(call ? { call } : {})}
+              {...(account ? { models: api } : {})}
+            />
+          )}
           {importing && <ImportParts known={(name) => starter?.footprints[name]} onAdd={imported} onCancel={() => setImporting(false)} />}
         </Suspense>
       )}

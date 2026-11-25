@@ -614,8 +614,7 @@ or Adafruit project, has been opened yet.
 
 - Release 2, by decision: more sheets with hierarchy (#636), shove routing (#646), an autorouter (#647), four layers
   and more (#648), panels and IPC-2581 (#662).
-- Parts: custom pin shapes (#626), expressions in pad sizes (#627), a 3D view and pin snapping when lining up a part's body (#628),
-  live stock and prices (#661).
+- Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.
 - A first real order: the order pack reads back in our own preview, and its copper and holes agree with what KiCad

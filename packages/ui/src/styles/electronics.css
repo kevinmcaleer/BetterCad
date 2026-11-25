@@ -212,7 +212,31 @@
   flex: none;
 }
 .bc-ec-components .bc-ec-part span,
-.bc-ec-components .bc-ec-part small {
+.bc-ec-components /* The body on its footprint, in 3D (#628). */
+.bc-ec-body3d {
+  margin: 0;
+  min-width: 0;
+}
+.bc-ec-body3d canvas {
+  display: block;
+  width: 100%;
+  height: 180px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-viewport);
+  cursor: grab;
+  touch-action: none;
+}
+.bc-ec-body3d canvas:focus-visible {
+  outline: 2px solid var(--bc-color-accent);
+  outline-offset: 1px;
+}
+.bc-ec-body3d figcaption {
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-micro-size);
+  text-align: center;
+}
+.bc-ec-part small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

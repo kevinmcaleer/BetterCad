@@ -5,3 +5,4 @@ export * from "./tessellate";
 export * from "./model";
 export * from "./catalogue";
 export * from "./project";
+export * from "./exporter";
