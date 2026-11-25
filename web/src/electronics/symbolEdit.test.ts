@@ -15,6 +15,7 @@ import {
   pinInner,
   setPin,
   setPinSide,
+  setPinSwap,
   setShape,
   setUnits,
   sideOf,
@@ -60,6 +61,12 @@ describe("drawing a symbol by hand", () => {
     expect(sideOf(d.pins[0]!)).toBe("top");
     expect(pinInner(d.pins[0]!)).toEqual([-2.54, 0]);
     expect(d.pins[0]).toMatchObject({ x: -2.54, y: 2.54 });
+  });
+
+  it("marks pins that can swap with each other, and takes the mark off (#645)", () => {
+    const d = setPinSwap(setPinSwap(gate(), "p0", "inputs"), "p1", "inputs");
+    expect(d.pins.slice(0, 2).map((p) => p.swap)).toEqual(["inputs", "inputs"]);
+    expect(setPinSwap(d, "p0", "").pins[0]).not.toHaveProperty("swap");
   });
 
   it("finds pins before line work, on the unit that is showing", () => {

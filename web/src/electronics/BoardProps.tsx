@@ -1,5 +1,6 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { netlist, type ElectronicsDesign, type Keepout, type Side } from "@bettercad/electronics";
+import { swapGroups, swapPins } from "@bettercad/electronics/swap";
 import { pourFill, setKeepout, setPour } from "@bettercad/electronics/pcb/pour";
 import {
   SCREWS,
@@ -27,6 +28,33 @@ const ALIGN: { how: Align; label: string; icon: IconName }[] = [
   { how: "down", label: "Space evenly down", icon: "alignObjMiddle" },
 ];
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Pin swap (#645): offered only for pins the component says do the same job. The schematic follows in the same step.
+ */
+function SwapPins({ design, edit, part }: { design: ElectronicsDesign; edit: EEdit; part: string }) {
+  const groups = swapGroups(design, part);
+  const ref = design.parts.find((p) => p.id === part)?.ref ?? "";
+  const [pair, setPair] = useState("");
+  if (!groups.length) return null;
+  const pairs = groups.flatMap((g) => g.flatMap((a, i) => g.slice(i + 1).map((b) => `${a}/${b}`)));
+  const [a, b] = (pairs.includes(pair) ? pair : pairs[0]!).split("/") as [string, string];
+  const go = () => edit((d) => swapPins(d, part, a, b), `Swap pins ${a} and ${b} of ${ref}`);
+  const title = "The two pads take each other's nets, and the schematic follows";
+  if (pairs.length === 1) return <Button size="dense" variant="secondary" label={`Swap pins ${a} and ${b}`} title={title} onClick={go} />;
+  return (
+    <div className="bc-ec-set-row">
+      <select className="bc-select" aria-label="Pins to swap" value={`${a}/${b}`} onChange={(e) => setPair(e.target.value)}>
+        {pairs.map((p) => (
+          <option key={p} value={p}>
+            {p.replace("/", " and ")}
+          </option>
+        ))}
+      </select>
+      <Button size="dense" variant="secondary" label="Swap pins" title={title} onClick={go} />
+    </div>
+  );
+}
 
 /**
  * What is picked on the board, as numbers you can type (#639): where a part sits, a track's width, a hole's size.
@@ -91,6 +119,7 @@ export default function BoardProps({
           />
           Name on the silkscreen
         </label>
+        <SwapPins design={design} edit={edit} part={part} />
       </fieldset>
     );
   }

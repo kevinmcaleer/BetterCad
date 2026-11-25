@@ -10,6 +10,7 @@ import {
   emptyBox,
   grow,
   key,
+  flipOnSheet,
   mirrorOnSheet,
   moveOnSheet,
   netAt,
@@ -190,6 +191,13 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       mirror: () => {
         if (eui.get().placing) return setFlipped((f) => !f);
         if (!readOnly && eui.get().selected.length) edit((d) => mirrorOnSheet(d, sheet.id, eui.get().selected), "Mirror");
+      },
+      flip: () => {
+        if (eui.get().placing) {
+          setFlipped((f) => !f);
+          return setTurnBy((r) => ((r + 180) % 360) as Rot);
+        }
+        if (!readOnly && eui.get().selected.length) edit((d) => flipOnSheet(d, sheet.id, eui.get().selected), "Flip");
       },
       remove,
       push: () => eui.set({ card: "changes" }),

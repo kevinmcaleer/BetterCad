@@ -156,6 +156,12 @@ export function buildPack(manifest: Manifest, src: Sources): { pack: LibraryPack
       if (labels) labels = labels.filter((_, i) => keep[i]);
       if (def.packages.length === 0) continue;
     }
+    // A part with two ends that do the same job can have them swapped on the board (#645).
+    const ends = def.symbol.pins;
+    if (ends.length === 2 && ends.every((p) => p.type === "passive") && /^(R|L|FB|F)$/.test(def.prefix) && !/pot|trim|varist|therm/i.test(def.name))
+      def = { ...def, symbol: { ...def.symbol, pins: ends.map((p) => ({ ...p, swap: "ends" })) } };
+    else if (ends.length === 2 && ends.every((p) => p.type === "passive") && def.prefix === "C" && !/polar|electro|tant/i.test(`${def.name} ${m.symbol}`))
+      def = { ...def, symbol: { ...def.symbol, pins: ends.map((p) => ({ ...p, swap: "ends" })) } };
     if (m.body && src.catalogue) {
       const rotate = m.body.rotate ?? [0, 0, 0];
       const found = src.catalogue(m.body.catalogue, rotate);

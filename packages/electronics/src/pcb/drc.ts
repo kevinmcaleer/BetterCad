@@ -128,6 +128,50 @@ function* near<T extends Solid>(items: T[], reach: number): Generator<[T, T]> {
 }
 
 /** Everything the board rules find, errors first. Rules set to ignore are left out; waived results carry their note. */
+/** Whether two outlines overlap. Edges that only meet are parts placed side by side, which is fine. */
+function overlap(a: Solid, b: Solid): boolean {
+  if (gap(a, b) > 0) return false;
+  // Pull each in a little and look again.
+  const shrink = (s: Solid): Solid => {
+    const cx = (s.pts[0]![0] + s.pts[2]![0]) / 2;
+    const cy = (s.pts[0]![1] + s.pts[2]![1]) / 2;
+    return { pts: s.pts.map((p) => [p[0] + (cx - p[0]) * 0.02, p[1] + (cy - p[1]) * 0.02]), r: 0 };
+  };
+  return gap(shrink(a), shrink(b)) === 0;
+}
+
+/**
+ * What is wrong with where the named parts sit, for showing while they are dragged (#639): off the board, in a
+ * keep-out, or on top of another part. The board check finds the same things; this looks only at the parts asked for.
+ */
+export function placeClashes(d: ElectronicsDesign, ids: Iterable<Id>): { parts: Id[]; text: string }[] {
+  const board = d.board;
+  const moving = new Set(ids);
+  if (!board || !moving.size) return [];
+  const yards = courtyards(d);
+  const loops = edgeLoops(board);
+  const out: { parts: Id[]; text: string }[] = [];
+  const off = new Set<Id>();
+  for (const y of yards) {
+    if (!moving.has(y.part)) continue;
+    const inside = (p: P2) => edgeGap({ pts: [p], r: 0 }, loops) >= 0;
+    if (!inside(y.at) && !y.solid.pts.some(inside)) {
+      off.add(y.part);
+      out.push({ parts: [y.part], text: `${y.ref} is off the board.` });
+    } else if (!y.solid.pts.every(inside)) out.push({ parts: [y.part], text: `${y.ref} hangs over the board's edge.` });
+    for (const k of board.keepouts)
+      if (k.parts && gap(y.solid, { pts: k.outline, r: 0 }) === 0) out.push({ parts: [y.part], text: `${y.ref} is in a keep-out.` });
+  }
+  for (const a of yards) {
+    if (!moving.has(a.part) || off.has(a.part)) continue;
+    for (const b of yards) {
+      if (a === b || a.side !== b.side || off.has(b.part) || (moving.has(b.part) && byRef(a.ref, b.ref) > 0) || !overlap(a.solid, b.solid)) continue;
+      out.push({ parts: [a.part, b.part], text: `${a.ref} and ${b.ref} overlap.` });
+    }
+  }
+  return out;
+}
+
 export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): BoardResult[] {
   const board = d.board;
   if (!board) return [];
@@ -332,14 +376,7 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
     yards.map((y) => ({ ...y.solid, y })),
     0,
   )) {
-    if (a.y.side !== b.y.side || gap(a, b) > 0) continue;
-    // Edges that only meet are parts placed side by side, which is fine: pull each in a little and look again.
-    const shrink = (s: Solid): Solid => {
-      const cx = (s.pts[0]![0] + s.pts[2]![0]) / 2;
-      const cy = (s.pts[0]![1] + s.pts[2]![1]) / 2;
-      return { pts: s.pts.map((p) => [p[0] + (cx - p[0]) * 0.02, p[1] + (cy - p[1]) * 0.02]), r: 0 };
-    };
-    if (gap(shrink(a), shrink(b)) > 0) continue;
+    if (a.y.side !== b.y.side || !overlap(a, b)) continue;
     const [x, y] = byRef(a.y.ref, b.y.ref) <= 0 ? [a.y, b.y] : [b.y, a.y];
     add("courtyard", `${x.ref}|${y.ref}`, `${x.ref} and ${y.ref} overlap.`, "Move them apart, so both can be fitted.", y.at, [x.part, y.part]);
   }

@@ -164,7 +164,7 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
     const key = defKey(def);
     return design.parts.filter((p) => {
       const kept = design.defs[p.def];
-      return !!kept && p.def !== key && kept.name === def.name && (kept.source?.library ?? "") === (def.source?.library ?? "");
+      return !!kept && !kept.swapped && p.def !== key && kept.name === def.name && (kept.source?.library ?? "") === (def.source?.library ?? "");
     });
   }, [design, def]);
 

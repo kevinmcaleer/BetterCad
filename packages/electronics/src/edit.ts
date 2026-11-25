@@ -168,6 +168,11 @@ export function mirrorOnSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): Ele
   });
 }
 
+/** Flips the picked symbols top to bottom: a flip left to right, then a half turn. */
+export function flipOnSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): ElectronicsDesign {
+  return changeSymbols(mirrorOnSheet(d, sheetId, ids), sheetId, new Set(ids), (s) => ({ ...s, rot: ((s.rot + 180) % 360) as Rot }));
+}
+
 /** Deletes the picked things from a sheet. A part goes when its last symbol does. */
 export function removeFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): ElectronicsDesign {
   const set = new Set(ids);

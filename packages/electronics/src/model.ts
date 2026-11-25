@@ -86,6 +86,11 @@ export interface SymbolPin {
   /** The unit it belongs to in a symbol with several (1 based). None: every unit. */
   unit?: number;
   hidden?: boolean;
+  /**
+   * Pins that carry the same word here do the same job and can change places on the board (#645): a resistor's two
+   * ends ("ends"), a gate's inputs. None: the pin stays where it is.
+   */
+  swap?: string;
 }
 
 export interface SymbolDef {
@@ -215,6 +220,8 @@ export interface ComponentDef {
   supplier?: Supplier;
   /** Where it came from, shown on the part and carried into exported libraries. */
   source?: { library: string; licence: string; url?: string };
+  /** A design's own copy with pins swapped on the board (#645), so it is not taken for an older copy of the part. */
+  swapped?: boolean;
   /** Pick and place corrections (#659): added to the part's turn and position in the file only. */
   pnp?: { rotation?: number; dx?: number; dy?: number };
 }
@@ -356,6 +363,8 @@ export interface Keepout {
 export interface Rules {
   /** The preset they came from ("jlcpcb-2layer"), if any. */
   preset?: string;
+  /** The day the preset's numbers had last been checked when the board took them, so a later check can be offered. */
+  presetChecked?: string;
   clearance: number;
   trackWidth: number;
   minTrackWidth: number;

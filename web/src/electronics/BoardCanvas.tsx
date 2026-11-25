@@ -114,6 +114,15 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const [cut, setCut] = useState(false);
   const [going, setGoing] = useState<string[] | null>(null);
   const drag = useRef<{ ids: string[]; last: P2; key: string } | null>(null);
+  // What is wrong with where the picked parts sit (#639), found as they move. The check's code loads once, apart.
+  const [findClashes, setFindClashes] = useState<typeof import("@bettercad/electronics/drc").placeClashes | null>(null);
+  useEffect(() => {
+    let live = true;
+    void import("@bettercad/electronics/drc").then((m) => live && setFindClashes(() => m.placeClashes));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const board = design.board;
   const nl = useMemo(() => netlist(design), [design]);
@@ -381,6 +390,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     const { pts, stop } = way(route, aim(at, route).to);
     return { track: { pts, width: widthOf(route.net), layer, blocked: !!stop } };
   }, [route, at, board, copper, layer, width, ui.keepClear, grid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const clashes = useMemo(
+    () => (findClashes && tool === "select" && selected.size ? findClashes(design, selected) : []),
+    [findClashes, tool, selected, design.board, design.parts], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const clashing = useMemo(() => new Set(clashes.flatMap((c) => c.parts)), [clashes]);
   const marks = useMemo(() => (ui.spot?.sheet === "board" ? [{ at: ui.spot.at }] : undefined), [ui.spot]);
 
   const drawing = useMemo(() => (area.length ? (at ? [...area, snap(at, grid)] : [...area, area[area.length - 1]!]) : undefined), [area, at, grid]);
@@ -422,7 +436,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         view={view}
         onView={setView}
         cursor={tool !== "select" ? "crosshair" : hover ? "move" : "default"}
-        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air, pours, drawing]}
+        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air, pours, drawing, clashing]}
         draw={(ctx, v, size) =>
           drawBoard(ctx, v, size, design, colours, {
             selected,
@@ -435,6 +449,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             box,
             ghost,
             marks,
+            clashing,
             pours,
             area: drawing,
           })
@@ -528,6 +543,17 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           {area.length > 0 && (
             <Button size="dense" variant="secondary" label="Done" title="Close the area" disabled={area.length < 3} onClick={() => closeArea()} />
           )}
+        </div>
+      )}
+      {clashes.length > 0 && !asking && (
+        <div className="bc-ec-routebar" role="group" aria-label="Placing">
+          <p role="status" className="bc-ec-blocked">
+            {clashes
+              .slice(0, 3)
+              .map((c) => c.text)
+              .join(" ")}
+            {clashes.length > 3 ? ` And ${clashes.length - 3} more.` : ""}
+          </p>
         </div>
       )}
       {asking && tool === "select" && (

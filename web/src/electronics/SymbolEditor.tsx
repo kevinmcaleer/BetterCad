@@ -20,6 +20,7 @@ import {
   moveItems,
   onUnit,
   setPin,
+  setPinSwap,
   setPinSide,
   setShape,
   setUnits,
@@ -438,6 +439,17 @@ export default function SymbolEditor({ symbol, onChange }: SymbolEditorProps) {
             step={1.27}
             precision={2}
             onCommit={(length) => commit(setPin(symbol, one, { length }))}
+          />
+          <label className="bc-field-label" htmlFor={`${ids}swap`}>
+            Swaps with
+          </label>
+          <input
+            id={`${ids}swap`}
+            className="bc-text"
+            value={pin.swap ?? ""}
+            placeholder="No other pin"
+            title="Give pins that do the same job the same word, such as ends. The board can then swap them"
+            onChange={(e) => commit(setPinSwap(symbol, one, e.target.value.trimStart().toLowerCase()))}
           />
         </fieldset>
       )}

@@ -87,6 +87,20 @@ export function setPin(def: SymbolDef, id: ItemId, patch: Partial<SymbolPin>): S
   return { ...def, pins: def.pins.map((p, k) => (k === i ? { ...p, ...patch } : p)) };
 }
 
+/** Marks a pin as one that can swap with the others carrying the same word (#645). No word: it stays put. */
+export function setPinSwap(def: SymbolDef, id: ItemId, word: string): SymbolDef {
+  const i = index(id);
+  return {
+    ...def,
+    pins: def.pins.map((p, k) => {
+      if (k !== i) return p;
+      const next = { ...p, swap: word };
+      if (!word) delete (next as SymbolPin).swap;
+      return next;
+    }),
+  };
+}
+
 /** Moves a pin to another side, keeping the end at the body where it is, so the body does not have to move. */
 export function setPinSide(def: SymbolDef, id: ItemId, side: PinSide): SymbolDef {
   const pin = def.pins[index(id)];

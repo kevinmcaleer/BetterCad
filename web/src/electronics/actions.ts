@@ -12,6 +12,8 @@ export interface EActions {
   fit(): void;
   rotate(): void;
   mirror(): void;
+  /** Schematic only: flip top to bottom. */
+  flip?(): void;
   remove(): void;
   /** Lists what the board needs to match the schematic, in the change card. */
   push(): void;

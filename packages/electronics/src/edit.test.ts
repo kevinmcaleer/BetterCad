@@ -8,6 +8,7 @@ import {
   clipOrigin,
   copyFromSheet,
   flipOnBoard,
+  flipOnSheet,
   mirrorOnSheet,
   moveOnBoard,
   moveOnSheet,
@@ -21,6 +22,7 @@ import {
   rotateOnSheet,
   tidyValue,
 } from "./edit";
+import { placeOnSheet } from "./geom";
 import { emptyDesign } from "./model";
 import { netlist } from "./nets";
 import { replacePart } from "./replace";
@@ -50,6 +52,12 @@ describe("editing a sheet", () => {
     expect(pins(moveOnSheet(d, sheet, [r.symbol.id], -2 * G, 3 * G))).toEqual(["J1.1 R1.1"]);
     expect(pins(rotateOnSheet(d, sheet, [r.symbol.id]))).toEqual(["J1.1 R1.1"]);
     expect(pins(mirrorOnSheet(rotateOnSheet(d, sheet, [r.symbol.id]), sheet, [r.symbol.id]))).toEqual(["J1.1 R1.1"]);
+    // Top to bottom: a point above the part's middle ends up as far below it, and across stays where it was.
+    const flipped = flipOnSheet(d, sheet, [r.symbol.id]);
+    expect(pins(flipped)).toEqual(["J1.1 R1.1"]);
+    const s = flipped.sheets[0]!.symbols.find((y) => y.id === r.symbol.id)!;
+    expect(placeOnSheet([1, 2], s)).toEqual([s.x + 1, s.y - 2]);
+    expect(flipOnSheet(flipped, sheet, [r.symbol.id]).sheets[0]!.symbols.find((y) => y.id === r.symbol.id)).toEqual(r.symbol);
   });
 
   it("moves wires and labels that are picked themselves", () => {
