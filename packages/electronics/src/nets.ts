@@ -262,3 +262,19 @@ function findNets(d: ElectronicsDesign): Netlist {
   }
   return { nets, of, noConnect, floating, at };
 }
+
+/** For each net name on a sheet, the other sheets that have it too, in strip order (#636). */
+export function elsewhere(d: ElectronicsDesign, sheetId: Id): Map<string, { id: Id; name: string }[]> {
+  const out = new Map<string, { id: Id; name: string }[]>();
+  const here = d.sheets.find((s) => s.id === sheetId);
+  if (!here) return out;
+  const wanted = new Set(here.labels.map((l) => l.name));
+  if (!wanted.size) return out;
+  const power = new Map(d.parts.filter((p) => d.defs[p.def]?.symbol.power && p.value).map((p) => [p.id, p.value!]));
+  for (const s of d.sheets) {
+    if (s.id === sheetId) continue;
+    const names = new Set([...s.labels.map((l) => l.name), ...s.symbols.flatMap((y) => (power.has(y.part) ? [power.get(y.part)!] : []))]);
+    for (const n of names) if (wanted.has(n)) out.set(n, [...(out.get(n) ?? []), { id: s.id, name: s.name }]);
+  }
+  return out;
+}

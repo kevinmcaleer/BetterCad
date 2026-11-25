@@ -29,6 +29,7 @@
     "./drc": "./src/pcb/drc.ts",
     "./swap": "./src/swap.ts",
     "./sample": "./src/sample.ts",
+    "./sheets": "./src/sheets.ts",
     "./fab/pack": "./src/fab/pack.ts",
     "./fab/read": "./src/fab/read.ts",
     "./fab/common": "./src/fab/common.ts",

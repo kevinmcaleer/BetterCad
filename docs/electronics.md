@@ -165,7 +165,31 @@ title block says which. SVG text is text; a PDF's letters are outlines, as on dr
 everywhere. The netlist (`kicad/netlist.ts`) is KiCad's own format, with each part's value and footprint and each
 net's pins. The writers load when Export is pressed.
 
-Left for later: sheets beyond the first (#636), hand-drawn text and shapes on a sheet, and buses.
+Left for later: hand-drawn text and shapes on a sheet, and buses.
+
+## More than one sheet (#636)
+
+A schematic is one or more sheets (`packages/electronics/src/sheets.ts`). Nets join across sheets by name, exactly as
+they do on one sheet, and a power symbol is its rail on every sheet, so a sheet is a page and nothing more: there is
+no hierarchy and there are no sheet pins to keep in step. The netlist, the rules check, the parts table, Push to
+PCB, the PDF export (a page a sheet) and the KiCad project (a file a sheet) already worked on every sheet; what this
+adds is the way to make and move between them.
+
+- **The sheet strip** (`SchSheets.tsx`, loaded apart) sits above the status strip: a tab for each sheet and a plus.
+  Double-click or F2 renames, Delete deletes the sheet with its parts, Alt with an arrow moves it along, and
+  right-click or a long press has them all. Page Up and Page Down go from sheet to sheet from anywhere in the
+  schematic. A read-only model shows the strip only when there is more than one sheet.
+- **Where a name carries on.** A label whose name is on another sheet, or is a power rail drawn there, says so
+  beside it on the canvas ("SDA → Sensors"). Pick the label and the strip offers each of those sheets; choosing one
+  goes there with its labels of that name picked and ringed.
+- **A sheet as a block** (`duplicateSheet`). Duplicate copies a sheet to use again: a motor driver channel drawn
+  once and placed four times. Each copy's parts get their own references. A name used only on that sheet is a net
+  inside the block, so the copy gets its own ("OUT" becomes "OUT_2"); a name another sheet uses, or a power rail,
+  stays joined, and is the block's way in and out. Rename those on the copy where each copy needs its own. A copy is
+  a copy: it does not follow the sheet it came from.
+
+Not built: buses (a group of signals drawn as one line), hierarchy with sheet pins, and blocks that stay linked to
+their master.
 
 ## Laying out a board (#637 to #643)
 
@@ -612,7 +636,7 @@ or Adafruit project, has been opened yet.
 
 ## What release 1 leaves open
 
-- Release 2, by decision: more sheets with hierarchy (#636), shove routing (#646), an autorouter (#647), four layers
+- Release 2, by decision: shove routing (#646), an autorouter (#647), four layers
   and more (#648), panels and IPC-2581 (#662).
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.

@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 540" role="img" aria-labelledby="t d" font-family="system-ui, sans-serif">
+<title id="t">Which file goes where</title>
+<desc id="d">For JLCPCB and for PCBWay: the Gerber zip goes where the order asks for a Gerber file, on every order. The parts list and the pick and place list go in the assembly step, only when the house fits the parts.</desc>
+<defs>
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#5b5f6a"/></marker>
+<style>
+.bg{fill:#ffffff} .h{font-size:17px;font-weight:700;fill:#1b1c1e} .t{font-size:14px;fill:#1b1c1e}
+.s{font-size:12px;fill:#5b5f6a} .mid{text-anchor:middle} .mono{font-family:ui-monospace,Menlo,monospace;font-size:14px;fill:#1b1c1e}
+.file{fill:#f3f0ff;stroke:#7c3aed;stroke-width:1.5} .box{fill:#f6f6f4;stroke:#5b5f6a;stroke-width:1.5;stroke-dasharray:5 3}
+.arrow{stroke:#5b5f6a;stroke-width:1.5;fill:none} .cap{font-size:12px;fill:#5b5f6a}
+</style>
+</defs>
+<rect class="bg" width="880" height="540" rx="8"/>
+<text x="24" y="24" class="cap">What BetterCad saves</text>
+<text x="528" y="24" class="cap">On the house's order form (a drawing)</text>
+<text x="24" y="64" class="h">JLCPCB</text>
+<rect x="24" y="84" width="300" height="48" rx="6" class="file"/>
+<text x="38" y="105" class="mono">&lt;name&gt;-gerbers.zip</text>
+<text x="38" y="122" class="s">Gerber and drill files, left zipped</text>
+<path d="M330 108 H520" class="arrow" marker-end="url(#a)"/>
+<text x="425" y="100" class="s mid">every order</text>
+<rect x="528" y="84" width="328" height="48" rx="6" class="box"/>
+<text x="542" y="113" class="t">Where the order asks for your Gerber file</text>
+<rect x="24" y="148" width="300" height="48" rx="6" class="file"/>
+<text x="38" y="169" class="mono">&lt;name&gt;-bom</text>
+<text x="38" y="186" class="s">The parts list, with LCSC part numbers</text>
+<path d="M330 172 H520" class="arrow" marker-end="url(#a)"/>
+<text x="425" y="164" class="s mid">assembly only</text>
+<rect x="528" y="148" width="328" height="48" rx="6" class="box"/>
+<text x="542" y="177" class="t">BOM, in the assembly step</text>
+<rect x="24" y="212" width="300" height="48" rx="6" class="file"/>
+<text x="38" y="233" class="mono">&lt;name&gt;-cpl</text>
+<text x="38" y="250" class="s">The pick and place list</text>
+<path d="M330 236 H520" class="arrow" marker-end="url(#a)"/>
+<text x="425" y="228" class="s mid">assembly only</text>
+<rect x="528" y="212" width="328" height="48" rx="6" class="box"/>
+<text x="542" y="241" class="t">CPL, in the assembly step</text>
+<text x="24" y="314" class="h">PCBWay</text>
+<rect x="24" y="334" width="300" height="48" rx="6" class="file"/>
+<text x="38" y="355" class="mono">&lt;name&gt;-gerbers.zip</text>
+<text x="38" y="372" class="s">Gerber and drill files, left zipped</text>
+<path d="M330 358 H520" class="arrow" marker-end="url(#a)"/>
+<text x="425" y="350" class="s mid">every order</text>
+<rect x="528" y="334" width="328" height="48" rx="6" class="box"/>
+<text x="542" y="363" class="t">Gerber file, after you type the board's size</text>
+<rect x="24" y="398" width="300" height="48" rx="6" class="file"/>
+<text x="38" y="419" class="mono">&lt;name&gt;-bom</text>
+<text x="38" y="436" class="s">The parts list, with part numbers</text>
+<path d="M330 422 H520" class="arrow" marker-end="url(#a)"/>
+<text x="425" y="414" class="s mid">assembly only</text>
+<rect x="528" y="398" width="328" height="48" rx="6" class="box"/>
+<text x="542" y="427" class="t">BOM, for assembly</text>
+<rect x="24" y="462" width="300" height="48" rx="6" class="file"/>
+<text x="38" y="483" class="mono">&lt;name&gt;-centroid</text>
+<text x="38" y="500" class="s">The pick and place list</text>
+<path d="M330 486 H520" class="arrow" marker-end="url(#a)"/>
+<text x="425" y="478" class="s mid">assembly only</text>
+<rect x="528" y="462" width="328" height="48" rx="6" class="box"/>
+<text x="542" y="491" class="t">Centroid (pick and place) file, for assembly</text>
+</svg>

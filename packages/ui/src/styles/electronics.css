@@ -430,6 +430,35 @@ button.bc-ec-pill {
   font-size: var(--bc-type-small-size);
 }
 
+/* ---- the schematic's sheets (#636): the drawing workspace's strip, sitting above the status strip */
+.bc-ec-sheets {
+  left: calc(var(--bc-view-left, 0px) + (100% - var(--bc-view-left, 0px) - var(--bc-view-right, 0px)) / 2);
+  bottom: calc(var(--bc-keyboard, 0px) + var(--bc-space-6) + 52px);
+}
+.bc-ec-sheets .bc-sheet-tab {
+  min-width: 56px;
+  min-height: 32px;
+  justify-content: center;
+}
+.bc-ec-sheets-said {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(440px, 90vw);
+  margin: 0 0 var(--bc-space-2);
+  padding: var(--bc-space-2) var(--bc-space-4);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  background: var(--bc-color-bar);
+  box-shadow: var(--bc-shadow-float);
+  font-size: var(--bc-type-small-size);
+}
+.bc-ec-sheets-said .bc-ec-pill {
+  margin-left: var(--bc-space-2);
+}
+
 /* ---- hints */
 .bc-ec-empty {
   position: absolute;
@@ -498,6 +527,10 @@ button.bc-ec-pill {
   }
   .bc-ec-status-far {
     display: none;
+  }
+  .bc-ec-sheets {
+    left: 50%;
+    bottom: calc(var(--bc-keyboard, 0px) + var(--bc-ec-gap) + 56px + 52px);
   }
   .bc-ec-layers {
     top: calc(var(--bc-ec-top) + 56px);
