@@ -32,6 +32,7 @@
     "./track-motion": "./src/trackMotion.ts",
     "./gltf": "./src/export/gltf.ts",
     "./rigid": "./src/rigid.ts",
+    "./board-move": "./src/boardmove.ts",
     "./insert-model": "./src/insertmodel.ts",
     "./dim-names": "./src/dimNames.ts",
     "./drawing": "./src/drawing.ts",

@@ -138,3 +138,23 @@ export class MeshBuilder {
     };
   }
 }
+
+/**
+ * A mesh moved by a rigid transform (a column-major 4 by 4, as `placeMatrix` makes): the same triangles, faces and
+ * edges somewhere else. Lets bodies of one shape share a single meshing (#650).
+ */
+export function moveMesh(m: BodyMesh, by: ArrayLike<number>): BodyMesh {
+  const at = (src: Float32Array, w: 0 | 1) => {
+    const out = new Float32Array(src.length);
+    for (let i = 0; i < src.length; i += 3) {
+      const x = src[i]!;
+      const y = src[i + 1]!;
+      const z = src[i + 2]!;
+      out[i] = by[0]! * x + by[4]! * y + by[8]! * z + w * by[12]!;
+      out[i + 1] = by[1]! * x + by[5]! * y + by[9]! * z + w * by[13]!;
+      out[i + 2] = by[2]! * x + by[6]! * y + by[10]! * z + w * by[14]!;
+    }
+    return out;
+  };
+  return { ...m, positions: at(m.positions, 1), normals: at(m.normals, 0), edgePositions: at(m.edgePositions, 1), vertices: at(m.vertices, 1) };
+}

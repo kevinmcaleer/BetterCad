@@ -10,6 +10,7 @@ import {
   ACESFilmicToneMapping,
   BufferAttribute,
   BufferGeometry,
+  type CanvasTexture,
   Color,
   DirectionalLight,
   Group,
@@ -24,10 +25,12 @@ import {
   WebGLRenderer,
 } from "three";
 import { GradientEquirectTexture, PhysicalCamera, WebGLPathTracer } from "three-gpu-pathtracer";
-import { DEFAULT_COLOUR, finishById, finishOf, type FinishId } from "@bettercad/kernel";
+import { DEFAULT_COLOUR, finishById, finishOf, type BodyMesh, type FinishId } from "@bettercad/kernel";
+import { decalMesh, faceFrame, type Placement } from "../decal/place";
+import { DECAL_MARGIN, decalTexture } from "../viewport/decals";
 import { cameraBasis, FOV, type CameraState } from "../viewport/camera";
 import { Backgrounds, wallGrid } from "./backgrounds";
-import { cutMesh, type CutPlane, type Triangles } from "./cut";
+import { cutMesh, cutSheet, type CutPlane, type Triangles } from "./cut";
 
 export type { LightPresetId as LightPreset } from "./session";
 import type { BackgroundId, LightPresetId as LightPreset, RenderStyle } from "./session";
@@ -48,6 +51,17 @@ export interface RenderBody {
   colour?: string;
   finish?: FinishId;
   catalogue?: Parameters<typeof finishOf>[0]["catalogue"];
+  /** Pictures on its faces: decals (#263), and a board's copper and silkscreen (#654). */
+  decals?: RenderDecal[];
+}
+
+/** A picture on a body's face, as the modelling view lays it: the kernel's mesh the face is numbered on, where, and what. */
+export interface RenderDecal {
+  mesh: BodyMesh;
+  face: number;
+  at: Placement;
+  /** A data: URL. */
+  image: string;
 }
 
 /**
@@ -190,17 +204,88 @@ export class PathRender {
       mesh.matrixAutoUpdate = false;
       mesh.matrix.multiplyMatrices(Z_TO_Y, matrix);
       this.model.add(mesh);
+      for (const d of b.decals ?? []) {
+        const picture = this.picture(d, b.matrix, section);
+        if (!picture) continue;
+        picture.matrixAutoUpdate = false;
+        picture.matrix.copy(Z_TO_Y);
+        this.pictures.push(picture);
+        if (this.style !== "paper") this.model.add(picture);
+      }
     }
     this.model.updateMatrixWorld(true);
     this.placeFloor();
+    // The tracer keeps every picture at one size. A board's lettering needs more of it than its usual 1024.
+    const side = this.pictures.length ? 2048 : 1024;
+    this.tracer.textureSize.set(side, side);
     this.tracer.setScene(this.scene, this.camera);
   }
 
+  /** Pictures on faces. Paper has none, so they wait here while it is on. */
+  private pictures: Mesh[] = [];
+  private textures = new Map<string, { texture: CanvasTexture; loaded: Promise<void> }>();
+  /** Settles when every picture in the scene has been read, so a snapshot never goes out with a blank face. */
+  private get picturesIn(): Promise<unknown> {
+    return Promise.all([...this.textures.values()].map((t) => t.loaded));
+  }
+
+  /** A picture as a thin sheet just over its face, in model space, cut where the section cuts. */
+  private picture(d: RenderDecal, matrix: Matrix4, section: CutPlane | null): Mesh | null {
+    const frame = faceFrame(d.mesh, d.face);
+    if (!frame) return null;
+    const m = decalMesh(d.mesh, d.face, frame, d.at, DECAL_MARGIN);
+    const g = new BufferGeometry();
+    g.setAttribute("position", new BufferAttribute(m.positions, 3));
+    g.setAttribute("normal", new BufferAttribute(m.normals, 3));
+    g.setAttribute("uv", new BufferAttribute(m.uvs, 2));
+    g.setIndex(new BufferAttribute(m.indices, 1));
+    if (!matrix.equals(IDENTITY)) g.applyMatrix4(matrix);
+    let sheet = g;
+    if (section) {
+      const cut = cutSheet(
+        {
+          positions: g.getAttribute("position").array as Float32Array,
+          normals: g.getAttribute("normal").array as Float32Array,
+          uvs: m.uvs,
+          indices: m.indices,
+        },
+        section,
+      );
+      g.dispose();
+      if (!cut.indices.length) return null;
+      sheet = new BufferGeometry();
+      sheet.setAttribute("position", new BufferAttribute(cut.positions, 3));
+      sheet.setAttribute("normal", new BufferAttribute(cut.normals, 3));
+      sheet.setAttribute("uv", new BufferAttribute(cut.uvs, 2));
+      sheet.setIndex(new BufferAttribute(cut.indices, 1));
+    }
+    let t = this.textures.get(d.image);
+    if (!t) {
+      let done = () => {};
+      const loaded = new Promise<void>((r) => (done = r));
+      const texture = decalTexture(d.image, () => {
+        done();
+        // The tracer copied the pictures it had when it read the scene, so it reads it again now this one is in.
+        if (this.textures.get(d.image)?.texture !== texture || !this.model.children.length) return;
+        this.tracer.setScene(this.scene, this.camera);
+        this.restart();
+      });
+      this.textures.set(d.image, (t = { texture, loaded }));
+    }
+    const material = new MeshStandardMaterial({ map: t.texture, transparent: true, roughness: 0.55, metalness: 0 });
+    const mesh = new Mesh(sheet, material);
+    mesh.userData.finish = material;
+    return mesh;
+  }
+
   private clearModel(): void {
-    for (const m of this.model.children as Mesh[]) {
+    for (const m of new Set([...(this.model.children as Mesh[]), ...this.pictures])) {
       m.geometry.dispose();
       (m.userData.finish as MeshStandardMaterial).dispose();
     }
+    this.pictures = [];
+    for (const t of this.textures.values()) t.texture.dispose();
+    this.textures.clear();
     this.model.clear();
   }
 
@@ -250,7 +335,10 @@ export class PathRender {
   /** Colours and finishes, or every part in one matte paper white, like a clay render. */
   setStyle(style: RenderStyle): void {
     this.style = style;
+    for (const p of this.pictures) p.removeFromParent();
     for (const m of this.model.children as Mesh[]) m.material = style === "paper" ? this.paper : (m.userData.finish as MeshStandardMaterial);
+    if (style !== "paper") for (const p of this.pictures) this.model.add(p);
+    this.model.updateMatrixWorld(true);
     // The tracer keeps the list of materials it read in setScene, so a swapped material only shows once it re-reads the scene.
     if (this.model.children.length) this.tracer.setScene(this.scene, this.camera);
     this.restart();
@@ -448,6 +536,7 @@ export class PathRender {
         this.setSize(width, height);
       }
       this.tracer.pausePathTracing = false;
+      await this.picturesIn;
       while (this.samples < samples) {
         if (signal?.aborted) throw new Error("Stopped");
         this.tracer.renderSample();

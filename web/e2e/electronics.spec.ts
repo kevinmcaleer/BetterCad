@@ -606,6 +606,14 @@ test.describe("on a wide screen", () => {
     await dialog.getByRole("button", { name: "Preview the files" }).click();
     const preview = dialog.getByRole("region", { name: "Preview of the files" });
     await expect(preview.getByRole("img", { name: "The files to send, seen from the top: 9 of 9 layers shown" })).toBeVisible();
+    // The same files as the made board looks, and where the pick and place list puts each part's pin 1.
+    await preview.getByRole("button", { name: "As made" }).click();
+    await expect(preview.getByRole("img", { name: /as the made board looks from the top, green mask/ })).toBeVisible();
+    await preview.getByRole("button", { name: "Layers" }).click();
+    await preview.getByRole("button", { name: "Pin 1" }).click();
+    await expect(preview.getByRole("img", { name: /pin 1 marked on 2 parts$/ })).toBeVisible();
+    await expect(preview.getByRole("status")).toContainText("the ring is its pad 1");
+    await preview.getByRole("button", { name: "Pin 1" }).click();
     await preview.getByRole("checkbox", { name: "Top silkscreen" }).click();
     await expect(preview.getByRole("img", { name: /8 of 9 layers shown/ })).toBeVisible();
     await preview.getByRole("button", { name: "From the bottom" }).click();
@@ -641,6 +649,37 @@ test.describe("on a wide screen", () => {
     await expect(timeline.getByRole("button", { name: /^Board, 1\.6 mm thick, 8 parts/ })).toBeVisible({ timeout: 20_000 });
     await expect(timeline.getByRole("button", { name: /problem:/ })).toHaveCount(0);
     for (const name of [/^Board/, /^J1/, /^R1/, /^D1/]) await expect(page.getByRole("treeitem", { name }).first()).toBeVisible();
+
+    // The board wears its copper and silkscreen: its name is printed in white on the mask, along the bottom edge. A
+    // big board's picture is still loading when the board is first drawn, and it has to show once it is in.
+    type View = { __bcView: { project(p: number[]): { x: number; y: number }; preset(p: string): void } };
+    await page.evaluate(() => (window as unknown as View).__bcView.preset("top"));
+    const ink = async () => {
+      const [a, b] = await page.evaluate(() => {
+        const v = (window as unknown as View).__bcView;
+        return [v.project([22, 4.2, 9.6]), v.project([38, 1, 9.6])];
+      });
+      const box = (await page.getByTestId("view-canvas").boundingBox())!;
+      const clip = { x: box.x + Math.min(a.x, b.x), y: box.y + Math.min(a.y, b.y), width: Math.abs(b.x - a.x), height: Math.abs(b.y - a.y) };
+      if (clip.width < 8 || clip.height < 4) return 0;
+      const png = (await page.screenshot({ clip })).toString("base64");
+      // Light pixels: the mask is green and has little red or blue in it.
+      return page.evaluate(async (src) => {
+        const img = new Image();
+        img.src = `data:image/png;base64,${src}`;
+        await img.decode();
+        const c = document.createElement("canvas");
+        c.width = img.width;
+        c.height = img.height;
+        const o = c.getContext("2d")!;
+        o.drawImage(img, 0, 0);
+        const d = o.getImageData(0, 0, c.width, c.height).data;
+        let n = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i]! > 150 && d[i + 2]! > 150) n++;
+        return n;
+      }, png);
+    };
+    await expect.poll(ink, { timeout: 20_000 }).toBeGreaterThan(20);
 
     await page.getByRole("tab", { name: "Electronics" }).click();
     await page.getByRole("button", { name: "PCB", exact: true }).first().click();

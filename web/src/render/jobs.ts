@@ -100,9 +100,11 @@ function hash(s: string, h = 0x811c9dc5): number {
 }
 
 /** What a shot's picture depends on: the model's steps, colours and pose, and the shot itself (less its name and auto). */
-export function shotKey(doc: Pick<ModelDoc, "features" | "looks" | "pose">, shot: RenderShot): string {
+export function shotKey(doc: Pick<ModelDoc, "features" | "looks" | "pose" | "electronics">, shot: RenderShot): string {
   const look = [shot.camera, shot.preset, shot.style, shot.background, shot.focus, shot.quality, shot.width, shot.height];
-  const model = hash(JSON.stringify([doc.features, doc.looks, doc.pose ?? null]));
+  // A Board step is built from the board's design, so its picture is out of date when the board changes (#654).
+  const board = doc.features.some((f) => f.type === "board") ? (doc.electronics ?? null) : null;
+  const model = hash(JSON.stringify(board ? [doc.features, doc.looks, doc.pose ?? null, board] : [doc.features, doc.looks, doc.pose ?? null]));
   return model.toString(16).padStart(8, "0") + hash(JSON.stringify(look)).toString(16).padStart(8, "0");
 }
 

@@ -40,7 +40,7 @@ import { opMoves, undoMove } from "../pattern";
 import { match, signature, type Sig } from "./repick";
 import { DEFAULT_INFILL, SHELL_MM, estimateWeight, materialOf } from "../print/materials";
 import { scaledTo, shellAndInfill, type MassMethod, type MassProps, type VolumeProps } from "../mass";
-import type { BodyMesh } from "../mesh";
+import { moveMesh, type BodyMesh } from "../mesh";
 import { KernelError, isKernelError } from "../errors";
 import { between, describe, subShape, type MeasureResult, type TopoRef } from "./measure";
 import { importTriangles, readImport, type ImportedBody, type Progress } from "./imports";
@@ -51,7 +51,7 @@ import type { ModelView, ModelViewRequest, ViewSource } from "../view";
 import { triangles } from "./export";
 import { meshTree, type MeshTree } from "../collide";
 import { sweepClashes, type SweepOptions, type SweepResult } from "../sweep";
-import { linkTransforms, mat4InvertRigid } from "../pose";
+import { linkTransforms, mat4InvertRigid, placeMatrix } from "../pose";
 import { resolvePose } from "../drivelinks";
 import { catalogueShape } from "./catalogue";
 import { baseName, fromBase64, type ImportFormat } from "../imports";
@@ -89,6 +89,8 @@ export interface ModelResult {
   ms: number;
   /** How many body steps (joins, cuts, fillets…) were made rather than reused, for timings and tests. */
   made: number;
+  /** How many of the board's parts took their triangles from another of the same shape (#650). */
+  shared: number;
   /** Steps whose named edges or faces were not all found as they were (#47), so may now be on the wrong ones. */
   recovered: [string, string][];
   /** Each step's time on this build, in timeline order (#76). */
@@ -143,6 +145,8 @@ export const partKey = (p: Part, q: Quality) =>
 /** How many part-way bodies to keep: enough for a few bodies' worth of steps while one is dragged or undone. */
 export const STEPS_KEPT = 240;
 const PICKS_KEPT = 4000;
+/** How many board part shapes keep their mesh (#650): more kinds of part than a hobby board has. */
+const SHAPES_KEPT = 200;
 /** Finish steps whose picks Pattern and Mirror copies find again by place. */
 const FINISH = new Set(["fillet", "chamfer", "pushpull", "offsetFace"]);
 /** Thrown to leave a copied finish out without failing its step. */
@@ -257,6 +261,13 @@ export class ModelBuilder {
    * Pattern and Mirror copies of it find their own by place. Tiny, so many more are kept than `steps`.
    */
   private picksAt = new Map<string, Sig[]>();
+
+  /**
+   * One mesh for each shape a board's parts have (#650), made where the shape is drawn, least recently used first: 50
+   * resistors are meshed once and set down 50 times.
+   */
+  private shapes = new Map<string, BodyMesh>();
+  private shared = 0;
 
   constructor(
     private oc: OC,
@@ -545,7 +556,7 @@ export class ModelBuilder {
       const shape = place(oc, local, { position: p.position, rotation: p.rotation });
       // Placing keeps the faces' order, so the names hold; edges are named from them on the placed shape.
       const names = faces ? { faces, edges: edgeNames(oc, shape, faces) } : undefined;
-      const body = { mesh: tessellate(oc, shape, quality), measure: measure(oc, shape), names };
+      const body = { mesh: p.pcb && !ops.length ? this.sharedMesh(p, local, quality) : tessellate(oc, shape, quality), measure: measure(oc, shape), names };
       hit = { shape, body, bytes: bodyBytes(body), faces, failures, recovered };
       this.cache.set(k, hit);
       // Meshing counts towards the last step's time, and doesn't make a reused step new.
@@ -555,6 +566,20 @@ export class ModelBuilder {
     this.opFailures.push(...hit.failures);
     this.opRecovered.push(...hit.recovered);
     return hit;
+  }
+
+  /** A board part's mesh: its shape's own, meshed once, moved to where this part stands. */
+  private sharedMesh(p: Part, local: TopoDS_Shape, quality: Quality): BodyMesh {
+    const k = partKey({ ...p, position: { x: 0, y: 0, z: 0 }, rotation: undefined }, quality);
+    let mesh = this.shapes.get(k);
+    if (mesh) {
+      this.shapes.delete(k);
+      this.shared++;
+    } else mesh = tessellate(this.oc, local, quality);
+    this.shapes.set(k, mesh);
+    while (this.shapes.size > SHAPES_KEPT) this.shapes.delete(this.shapes.keys().next().value!);
+    const r = p.rotation ?? { x: 0, y: 0, z: 0 };
+    return moveMesh(mesh, placeMatrix([p.position.x, p.position.y, p.position.z], [r.x, r.y, r.z]));
   }
 
   useBlobs(doc: ModelDoc): void {
@@ -582,6 +607,7 @@ export class ModelBuilder {
     this.opFailures = [];
     this.opRecovered = [];
     this.made = 0;
+    this.shared = 0;
     this.times = [];
     this.makerOf = new Map(parts.flatMap((p) => (makers(doc, p.id) ? [[p.id, makers(doc, p.id)!.id]] : [])));
     const total = parts.reduce((n, p) => n + 1 + (p.ops?.length ?? 0), 0);
@@ -604,7 +630,7 @@ export class ModelBuilder {
     // A step that failed doesn't also need a warning that its picks moved.
     const failedIds = new Set(out.map(([id]) => id));
     const recovered = this.opRecovered.filter(([id], i, all) => !failedIds.has(id) && all.findIndex(([x]) => x === id) === i);
-    return { bodies, failed: out, ms: performance.now() - t0, made: this.made, recovered, timings: this.timings(doc), cache };
+    return { bodies, failed: out, ms: performance.now() - t0, made: this.made, shared: this.shared, recovered, timings: this.timings(doc), cache };
   }
 
   /**

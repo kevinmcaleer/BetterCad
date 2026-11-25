@@ -995,6 +995,20 @@ export class Engine {
     this.invalidate();
   }
 
+  /** Puts a body the gizmo dragged back where its part says it is: a move that was not taken (#651). */
+  putBack(id: string): void {
+    const o = this.bodies.get(id);
+    if (!o) return;
+    const to = o.body.world ? new Matrix4() : bodyMatrix(o.body);
+    for (const g of [o.group, o.pick, o.idMesh]) {
+      g.matrix.copy(to);
+      g.matrixWorldNeedsUpdate = true;
+    }
+    this.syncGizmo();
+    this.updateOverlays();
+    this.invalidate();
+  }
+
   /**
    * Puts the move gizmo on a point (#176), when no body has it: dragging an arrow moves the point along that axis, a
    * square in that plane. Null takes it off.

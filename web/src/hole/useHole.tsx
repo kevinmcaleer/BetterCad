@@ -131,6 +131,25 @@ export function useHole(d: HoleDeps) {
   const done = useCallback(() => {
     const s = live.current.session;
     const f = s && (store.get().features.find((x) => x.id === s.id) as HoleFeature | undefined);
+    // Holes in the board's face (#651) are the board's own: they go in its layout, not in a step that the next
+    // layout change would leave behind.
+    if (s?.isNew && f && deps.current.parts.find((p) => p.id === f.part)?.pcb) {
+      const key = KEY(s.id);
+      void import("../electronics/board3d").then((m) => {
+        const r = m.holesIn3D(store.get(), deps.current.parts, f);
+        if (!r) {
+          store.seal();
+          return deps.current.say(`Made ${f.points.length === 1 ? "1 hole" : `${f.points.length} holes`} in the board`);
+        }
+        // In place of the Hole step, in the same undo step.
+        store.edit((doc) => m.holesIn3D(doc, deps.current.parts, f)?.doc ?? doc, r.label, key);
+        store.seal();
+        deps.current.say(r.say);
+      });
+      setSession(null);
+      deps.current.onClose();
+      return;
+    }
     if (s && f) {
       store.seal();
       const n = f.points.length;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutMesh, type Triangles } from "./cut";
+import { cutMesh, cutSheet, type Triangles } from "./cut";
 
 /** A closed box from (0,0,0) to `s`, outward winding, with flat normals. */
 function box(s: [number, number, number], at: [number, number, number] = [0, 0, 0]): Triangles {
@@ -129,5 +129,39 @@ describe("the Render view's section cut", () => {
         expect(cx > 5 && cx < 15 && cy > 5 && cy < 15).toBe(false);
       }
     }
+  });
+});
+
+describe("a picture's sheet under the section cut (#654)", () => {
+  // A 10 by 10 mm square at z = 2, the picture stretched over it.
+  const sheet = {
+    positions: new Float32Array([0, 0, 2, 10, 0, 2, 10, 10, 2, 0, 10, 2]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    uvs: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]),
+    indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+  };
+
+  it("is left as it was when the plane misses it", () => {
+    expect(cutSheet(sheet, { point: [20, 0, 0], normal: [1, 0, 0] })).toBe(sheet);
+  });
+
+  it("is cut where its body is, and each point keeps its place on the picture", () => {
+    const cut = cutSheet(sheet, { point: [4, 0, 0], normal: [1, 0, 0] });
+    let area = 0;
+    for (let t = 0; t < cut.indices.length; t += 3) {
+      const [a, b, c] = [0, 1, 2].map((k) => cut.indices[t + k]! * 3);
+      const P = cut.positions;
+      area += Math.abs((P[b!]! - P[a!]!) * (P[c! + 1]! - P[a! + 1]!) - (P[c!]! - P[a!]!) * (P[b! + 1]! - P[a! + 1]!)) / 2;
+    }
+    expect(area).toBeCloseTo(40, 4);
+    for (let i = 0; i < cut.positions.length / 3; i++) {
+      expect(cut.positions[i * 3]).toBeLessThanOrEqual(4 + 1e-6);
+      expect(cut.uvs[i * 2]).toBeCloseTo(cut.positions[i * 3]! / 10, 5);
+      expect(cut.uvs[i * 2 + 1]).toBeCloseTo(cut.positions[i * 3 + 1]! / 10, 5);
+    }
+  });
+
+  it("is gone when it is all on the cut side", () => {
+    expect(cutSheet(sheet, { point: [-1, 0, 0], normal: [1, 0, 0] }).indices).toHaveLength(0);
   });
 });

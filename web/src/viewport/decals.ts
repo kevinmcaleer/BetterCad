@@ -16,6 +16,40 @@ export interface EngineDecal {
 /** The share of the texture left clear round the picture, so the face's triangles off the picture draw nothing. */
 export const DECAL_MARGIN = 0.02;
 
+/** The picture on a canvas with a clear border, so sampling past its edge comes out clear. `loaded` hears when it is in. */
+export function decalTexture(url: string, loaded: () => void): CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 2;
+  const t = new CanvasTexture(canvas);
+  t.colorSpace = SRGBColorSpace;
+  t.wrapS = t.wrapT = ClampToEdgeWrapping;
+  t.anisotropy = 4;
+  const img = new Image();
+  img.onload = () => {
+    // Big enough that the clear border is a few whole pixels even on its short side, small enough for the GPU.
+    const w = img.naturalWidth || 512;
+    const h = img.naturalHeight || 512;
+    const scale = Math.min(4096 / Math.max(w, h), Math.max(1, 256 / Math.min(w, h)));
+    const inner = [Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale))] as const;
+    const k = 1 - 2 * DECAL_MARGIN;
+    const c = document.createElement("canvas");
+    c.width = Math.round(inner[0] / k);
+    c.height = Math.round(inner[1] / k);
+    const ctx = c.getContext("2d");
+    ctx?.drawImage(img, (c.width - inner[0]) / 2, (c.height - inner[1]) / 2, inner[0], inner[1]);
+    // A texture keeps the size it was first drawn at, and the blank one may have been drawn by now: let it go, so the
+    // picture is sent whole at its own size.
+    t.dispose();
+    t.image = c;
+    t.needsUpdate = true;
+    loaded();
+  };
+  // A picture that cannot be read shows nothing, and holds nothing up.
+  img.onerror = () => loaded();
+  img.src = url;
+  return t;
+}
+
 const same = (a: EngineDecal, b: EngineDecal) =>
   a.mesh === b.mesh &&
   a.face === b.face &&
@@ -103,37 +137,11 @@ export class DecalLayer {
     return mesh;
   }
 
-  /** The picture on a canvas with a clear border, so sampling past its edge comes out clear. */
   private texture(url: string): CanvasTexture {
     let t = this.textures.get(url);
     if (t) return t;
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 2;
-    t = new CanvasTexture(canvas);
-    t.colorSpace = SRGBColorSpace;
-    t.wrapS = t.wrapT = ClampToEdgeWrapping;
-    t.anisotropy = 4;
+    t = decalTexture(url, () => this.textures.has(url) && this.invalidate());
     this.textures.set(url, t);
-    const img = new Image();
-    img.onload = () => {
-      const tex = this.textures.get(url);
-      if (!tex) return;
-      // Big enough that the clear border is a few whole pixels even on its short side, small enough for the GPU.
-      const w = img.naturalWidth || 512;
-      const h = img.naturalHeight || 512;
-      const scale = Math.min(4096 / Math.max(w, h), Math.max(1, 256 / Math.min(w, h)));
-      const inner = [Math.max(1, Math.round(w * scale)), Math.max(1, Math.round(h * scale))] as const;
-      const k = 1 - 2 * DECAL_MARGIN;
-      const c = document.createElement("canvas");
-      c.width = Math.round(inner[0] / k);
-      c.height = Math.round(inner[1] / k);
-      const ctx = c.getContext("2d");
-      ctx?.drawImage(img, (c.width - inner[0]) / 2, (c.height - inner[1]) / 2, inner[0], inner[1]);
-      tex.image = c;
-      tex.needsUpdate = true;
-      this.invalidate();
-    };
-    img.src = url;
     return t;
   }
 

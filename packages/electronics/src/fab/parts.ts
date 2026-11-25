@@ -140,6 +140,58 @@ export function placeList(d: ElectronicsDesign, opts: { thru?: boolean } = {}): 
   return out.sort((a, b) => byRef(a.ref, b.ref));
 }
 
+export interface PinOne {
+  part: Id;
+  ref: string;
+  side: Side;
+  /** The row's own place and turn, as the file gives them. */
+  centre: [number, number];
+  rotation: number;
+  /** Where pad 1 is on the board, from the layout. */
+  pad: [number, number];
+  /**
+   * Where pin 1 lands if the line takes the row as written and its 0° is the footprint as your library draws it. On
+   * the pad for a part with no correction; turned or moved off it by exactly the component's correction otherwise.
+   */
+  dot: [number, number];
+  /** How far the two are apart, mm. */
+  apart: number;
+}
+
+/**
+ * Pin 1 against its pad (#659), for the preview of the pick and place list: each row of the list as an assembly line
+ * reads it, beside the pad the layout really has. It is worked out from the rows, so a list that is wrong shows.
+ */
+export function pinOnes(d: ElectronicsDesign, rows: readonly PlaceRow[]): PinOne[] {
+  const board = d.board;
+  if (!board) return [];
+  const parts = new Map(d.parts.map((p) => [p.id, p]));
+  const out: PinOne[] = [];
+  for (const row of rows) {
+    const part = parts.get(row.part);
+    const at = board.placements.find((p) => p.part === row.part);
+    const pads = part && packageOf(d, part)?.footprint.pads;
+    const one = pads?.find((p) => p.number === "1" || p.number === "A1" || p.number === "A") ?? pads?.[0];
+    if (!part || !at || !one) continue;
+    const flip = at.side === "bottom" ? -1 : 1;
+    const real = turn([flip * one.x, one.y], at.rot);
+    const pad: [number, number] = [round3(at.x + real[0]), round3(at.y + real[1])];
+    const seen = turn([flip * one.x, one.y], row.rotation);
+    const dot: [number, number] = [round3(row.x + seen[0]), round3(row.y + seen[1])];
+    out.push({
+      part: row.part,
+      ref: row.ref,
+      side: row.side,
+      centre: [row.x, row.y],
+      rotation: row.rotation,
+      pad,
+      dot,
+      apart: round3(Math.hypot(pad[0] - dot[0], pad[1] - dot[1])),
+    });
+  }
+  return out;
+}
+
 /** Sets supplier numbers on parts (#661): a pasted column of numbers, or one field typed in the list. Empty clears. */
 export function setSupplier(d: ElectronicsDesign, ids: Id[], change: Supplier): ElectronicsDesign {
   const want = new Set(ids);

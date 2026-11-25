@@ -22,6 +22,7 @@ export function MountBar({ x, error, onCancel }: { x: MountSession; error?: stri
     );
   }
   const s = screw(f.size);
+  const horn = f.kind === "horn";
   const sizes: MenuEntry[] = SCREWS.filter((t) => t.system === "metric").map((t) => ({
     id: t.id,
     label: t.label,
@@ -30,18 +31,33 @@ export function MountBar({ x, error, onCancel }: { x: MountSession; error?: stri
   }));
   const at = middle(f.points);
   const centred = (pts: [number, number][]) => pts.map((p) => [round(at[0] + p[0]), round(at[1] + p[1])] as [number, number]);
+  // Off the board's holes when another layout is picked.
+  const own = { underBoard: undefined };
+  const board = x.board;
+  // The biggest metric screw that goes through the board's holes.
+  const fits = board && [...SCREWS].reverse().find((t) => t.system === "metric" && t.nominal <= board.drill + 1e-6);
   const patterns: MenuEntry[] = [
-    { id: "one", label: "One standoff", onSelect: () => x.change({ points: centred([[0, 0]]) }) },
-    { id: "rect", label: "Rectangle, 40 × 30 mm", onSelect: () => x.change({ points: centred(rectPattern(40, 30)) }) },
-    { id: "circle", label: "Circle of 4, 30 mm", onSelect: () => x.change({ points: centred(circlePattern(4, 30)) }) },
+    ...(board
+      ? [
+          {
+            id: "board",
+            label: "Under the board's holes",
+            checked: !!f.underBoard,
+            onSelect: () => x.change({ underBoard: true, points: board.points, height: board.height, ...(fits ? { size: fits.id } : {}) }),
+          },
+        ]
+      : []),
+    { id: "one", label: "One standoff", onSelect: () => x.change({ ...own, points: centred([[0, 0]]) }) },
+    { id: "rect", label: "Rectangle, 40 × 30 mm", onSelect: () => x.change({ ...own, points: centred(rectPattern(40, 30)) }) },
+    { id: "circle", label: "Circle of 4, 30 mm", onSelect: () => x.change({ ...own, points: centred(circlePattern(4, 30)) }) },
     { kind: "title", id: "parts", label: "Parts" },
-    ...HOLE_PATTERNS.map((p) => ({ id: p.id, label: p.label, onSelect: () => x.change({ points: centred(p.points), size: p.screw }) })),
+    ...HOLE_PATTERNS.map((p) => ({ id: p.id, label: p.label, onSelect: () => x.change({ ...own, points: centred(p.points), size: p.screw }) })),
   ];
-  const n = f.points.length;
-  const lastPoint = f.points[n - 1];
+  const follows = !horn && !!f.underBoard;
+  const n = follows && board ? board.points.length : f.points.length;
+  const lastPoint = follows ? undefined : f.points[n - 1];
   const move = (axis: 0 | 1, v: number) =>
     x.change({ points: f.points.map((p, i) => (i === n - 1 ? ((axis ? [p[0], v] : [v, p[1]]) as [number, number]) : p)) });
-  const horn = f.kind === "horn";
   return (
     <FeaturePanel
       title={horn ? "Horn mount" : "Standoffs"}
@@ -103,7 +119,7 @@ export function MountBar({ x, error, onCancel }: { x: MountSession; error?: stri
         </>
       ) : (
         <>
-          <NumberField label="Height" unit="mm" value={f.height} min={0.1} onCommit={(v) => x.change({ height: v })} />
+          {!follows && <NumberField label="Height" unit="mm" value={f.height} min={0.1} onCommit={(v) => x.change({ height: v })} />}
           <NumberField label="Width" unit="mm" value={f.outer} min={0.1} onCommit={(v) => x.change({ outer: v })} />
         </>
       )}
@@ -113,10 +129,18 @@ export function MountBar({ x, error, onCancel }: { x: MountSession; error?: stri
           <NumberField label={horn ? "Centre Y" : n > 1 ? `Standoff ${n} Y` : "Standoff Y"} value={lastPoint[1]} onCommit={(v) => move(1, v)} />
         </>
       )}
-      <PanelNote>
-        {horn ? "Measure your horn: these suit a micro servo's." : n === 1 ? "1 standoff." : `${n} standoffs.`} X and Y are from the face's centre.
-      </PanelNote>
-      {!horn && n > 1 && (
+      {follows ? (
+        <PanelNote>
+          {board
+            ? `${n === 1 ? "1 standoff" : `${n} standoffs`} under the board's mounting holes, ${round(board.height)} mm tall. They follow the board.`
+            : "The board is not over this face now, so the standoffs stay where they were."}
+        </PanelNote>
+      ) : (
+        <PanelNote>
+          {horn ? "Measure your horn: these suit a micro servo's." : n === 1 ? "1 standoff." : `${n} standoffs.`} X and Y are from the face's centre.
+        </PanelNote>
+      )}
+      {!horn && !follows && n > 1 && (
         <FeatureRow label="Standoffs">
           <Button label="Remove last" title="Take the last standoff out" onClick={() => x.change({ points: f.points.slice(0, -1) })} />
         </FeatureRow>

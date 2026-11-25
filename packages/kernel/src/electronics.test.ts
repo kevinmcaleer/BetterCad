@@ -2,8 +2,8 @@ import { GRID, addWire, emptyDesign, netlist, placePart, power, pushToBoard, res
 import { BcadError, loadBcad, saveBcad } from "./bcad";
 import { boardSolid } from "@bettercad/electronics/pcb/solid";
 import { cataloguePart } from "./catalogue/list";
-import { addBoard, boardBodyId, boardParts, boardStep, onSketch } from "./board";
-import { build, featureSummary, newDoc } from "./document";
+import { addBoard, boardBodyId, boardParts, boardStep, onSketch, standoffsUnder } from "./board";
+import { MOUNT_DEFAULTS, addMount, build, featureSummary, newDoc, type BoardFeature, type ModelDoc } from "./document";
 import { fromPartLocal } from "./extrude";
 
 const design = () => {
@@ -198,5 +198,73 @@ describe("the Board step", () => {
     // With no plane kept, it stays where its step puts it.
     const loose = { ...doc, electronics: { ...on, board: { ...on.board, outlineFrom: { face: "b1|side" } } } };
     expect(build(loose).parts.find((p) => p.id === boardBodyId("pcb"))!.position.x).toBeCloseTo(0, 6);
+  });
+});
+
+/** Standoffs under the board (#652): one Mount step that stands under the board's mounting holes and follows it. */
+describe("standoffs under the board", () => {
+  const holes = [
+    { id: "h1", x: 4, y: 4, drill: 3.2 },
+    { id: "h2", x: 46, y: 36, drill: 3.2 },
+  ];
+  /** A case floor with its top at z = 2, and the board 6 mm over it, 10 mm along x. */
+  const cased = (lift = 8) => {
+    const e = design();
+    let d: ModelDoc = { ...newDoc("Case"), electronics: { ...e, board: { ...e.board!, holes } } };
+    d = {
+      ...d,
+      features: [
+        {
+          id: "floor",
+          type: "add",
+          name: "Floor",
+          part: { id: "b1", name: "Floor", kind: "box", position: { x: 40, y: 20, z: 0 }, size: { x: 100, y: 60, z: 2 } },
+        } as never,
+      ],
+    };
+    d = addBoard(d, { position: { x: 10, y: 0, z: lift } }, "pcb");
+    const frame = { origin: [40, 20, 2], x: [1, 0, 0], normal: [0, 0, 1] } as {
+      origin: [number, number, number];
+      x: [number, number, number];
+      normal: [number, number, number];
+    };
+    return addMount(d, { ...MOUNT_DEFAULTS, kind: "standoffs", part: "b1", frame, points: [[0, 0]], size: "M3", underBoard: true }, "m1");
+  };
+  const posts = (d: ModelDoc) => {
+    const b = build(d);
+    expect([...b.failed]).toEqual([]);
+    const join = b.parts.find((p) => p.id === "b1")!.ops!.find((o) => o.op === "join")!.tool!;
+    return { at: join.profiles.map((p) => (p.outer[0] as { c: [number, number] }).c), height: join.to - join.from };
+  };
+
+  it("stand under the board's holes and reach up to it", () => {
+    const { at, height } = posts(cased());
+    // The floor is centred on (40, 20); the board's corner is at x = 10.
+    expect(at).toEqual([
+      [-26, -16],
+      [16, 16],
+    ]);
+    expect(height).toBeCloseTo(6, 6);
+  });
+
+  it("follow the board when a hole moves or the board is lifted", () => {
+    const d = cased();
+    const e = d.electronics!;
+    const moved = { ...d, electronics: { ...e, board: { ...e.board!, holes: [{ ...holes[0]!, x: 8 }, holes[1]!] } } };
+    expect(posts(moved).at[0]).toEqual([-22, -16]);
+    const lifted = { ...d, features: d.features.map((f) => (f.type === "board" ? ({ ...f, position: { x: 10, y: 0, z: 12 } } as BoardFeature) : f)) };
+    expect(posts(lifted).height).toBeCloseTo(10, 6);
+  });
+
+  it("stay where they last were when the board is not over the face", () => {
+    const d = cased();
+    const tipped = { ...d, features: d.features.map((f) => (f.type === "board" ? ({ ...f, rotation: { x: 90, y: 0, z: 0 } } as BoardFeature) : f)) };
+    const { at, height } = posts(tipped);
+    expect(at).toEqual([[0, 0]]);
+    expect(height).toBe(MOUNT_DEFAULTS.height);
+    const board = build(d).parts.find((p) => p.id === boardBodyId("pcb"))!;
+    expect(standoffsUnder(board, 1.6, [], { origin: [40, 20, 2], x: [1, 0, 0], normal: [0, 0, 1] })).toBeNull();
+    // Under the floor's top there is nothing to stand on.
+    expect(standoffsUnder(board, 1.6, holes, { origin: [40, 20, 20], x: [1, 0, 0], normal: [0, 0, 1] })).toBeNull();
   });
 });
