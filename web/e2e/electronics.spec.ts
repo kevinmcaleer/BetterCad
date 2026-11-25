@@ -823,6 +823,19 @@ test.describe("on a wide screen", () => {
     const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Save the files" }).click()]);
     expect(download.suggestedFilename()).toMatch(/-jlcpcb\.zip$/);
     await expect(dialog.getByRole("status")).toContainText("Saved");
+
+    // An assembly drawing and an IPC-2581 file, and a panel of four boards (#662).
+    await dialog.getByText(/files in .*-gerbers\.zip/).click();
+    const [drawing] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Save the assembly drawing" }).click()]);
+    expect(drawing.suggestedFilename()).toMatch(/-assembly\.pdf$/);
+    const [ipc] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Save as IPC-2581" }).click()]);
+    expect(ipc.suggestedFilename()).toMatch(/\.xml$/);
+    await dialog.getByRole("checkbox", { name: "Order a panel of boards" }).check();
+    await expect(dialog.getByLabel("What the order form asks")).toContainText("4 on a panel, held by tabs");
+    // The preview shows the panel: every layer of four boards, with the tabs' holes.
+    if (!(await preview.isVisible())) await dialog.getByRole("button", { name: "Preview the files" }).click();
+    await expect(preview.getByRole("img", { name: /seen from the (top|bottom)/ })).toBeVisible();
+    await axe(page);
   });
 
   test("open the Pico servo board sample: the board in the model, its PCB, and files ready to order", { tag: "@journey" }, async ({ page }) => {

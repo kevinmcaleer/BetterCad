@@ -4,7 +4,7 @@ import { Button, Dialog } from "@bettercad/ui";
 import { useAccount } from "../cloud/account";
 import { exportBytes, exportPdfPages } from "../drawing/ExportCard";
 import { createFileStore } from "../files/fileStore";
-import { schematicScene, type SchematicPage } from "./sheetScene";
+import { assemblyScene, schematicScene, sidesWithParts, type SchematicPage } from "./sheetScene";
 
 type Format = "pdf" | "svg" | "net" | "kicad";
 const FORMATS: { id: Format; label: string; title: string; mime: string; ext?: string }[] = [
@@ -45,6 +45,16 @@ export async function schematicBytes(
   const scene = (s: Sheet) => schematicScene(design, s, { ...page, index: design.sheets.indexOf(s) + 1, count });
   const info = { title: page.title.title, author: page.title.author };
   return format === "svg" ? exportBytes(scene(sheet), "svg", info) : exportPdfPages(design.sheets.map(scene), info);
+}
+
+/** The assembly drawing (#662) as a PDF: a page for each side of the board with parts on it. */
+export function assemblyPdf(design: ElectronicsDesign, name: string): Promise<ArrayBuffer> {
+  const sides = sidesWithParts(design);
+  const title = { title: name, date: new Date().toISOString().slice(0, 10) };
+  return exportPdfPages(
+    sides.map((side, i) => assemblyScene(design, side, { size: "A4", title, index: i + 1, count: sides.length })),
+    { title: name },
+  );
 }
 
 /**

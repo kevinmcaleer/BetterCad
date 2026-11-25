@@ -97,7 +97,8 @@ board's copper and silkscreen are drawn on its faces. Change the board and the m
 ## Order it
 
 Choose Order in the PCB view. [Ordering a board](electronics-ordering.md) goes through it step by step for JLCPCB
-and PCBWay.
+and PCBWay. It can also make a panel of several boards, save an assembly drawing of each side, and save the whole
+board as one IPC-2581 file for an assembler that asks for one.
 
 ## Bring a design in, or take it out
 

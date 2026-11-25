@@ -4,6 +4,7 @@ import { netlist } from "../nets";
 import { copperOf } from "../pcb/copper";
 import { checkBoard } from "../pcb/drc";
 import { pourFills } from "../pcb/pour";
+import { panelFiles, type Panel } from "./panel";
 import { drillFiles, type DrillTool } from "./drill";
 import { gerberFiles, pourClashes, type GerberLayer } from "./gerber";
 import { layerName } from "../pcb/stack";
@@ -89,7 +90,7 @@ export const fileBase = (name: string): string =>
     .replace(/^-+|-+$/g, "") || "board";
 
 export interface Check {
-  id: "board-check" | "outline" | "pours" | "pour-clash" | "part-numbers" | "placed" | "parts";
+  id: "board-check" | "outline" | "pours" | "pour-clash" | "part-numbers" | "placed" | "parts" | "panel";
   ok: boolean;
   /** Stops the export: the files would be wrong. The rest are warnings to read. */
   blocks: boolean;
@@ -102,7 +103,9 @@ export interface Pack {
   facts: { width: number; height: number; thickness: number; layers: number; minTrack: number | null; minGap: number; minHole: number | null };
   checks: Check[];
   /** Files inside the Gerber zip, in the order a viewer stacks them. */
-  gerbers: { name: string; layer: GerberLayer | "drill-plated" | "drill-bare" | "drill-span"; text: string }[];
+  gerbers: { name: string; layer: GerberLayer | "drill-plated" | "drill-bare" | "drill-span" | "vcut"; text: string }[];
+  /** The panel the files make, when there is one (#662): its size and how many boards. */
+  panel: { w: number; h: number; boards: number; join: Panel["join"] } | null;
   zipName: string;
   bom: Bom;
   bomTable: Table;
@@ -117,7 +120,7 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
 const list = (refs: string[]) => (refs.length > 6 ? `${refs.slice(0, 6).join(", ")} and ${refs.length - 6} more` : refs.join(", "));
 
 /** The order pack for a board house, or null when there is no board. `name` is the model's name. */
-export function orderPack(d: ElectronicsDesign, houseId: string, name: string): Pack | null {
+export function orderPack(d: ElectronicsDesign, houseId: string, name: string, panel?: Panel | null): Pack | null {
   const board = d.board;
   if (!board) return null;
   const house = houseOf(houseId);
@@ -125,8 +128,11 @@ export function orderPack(d: ElectronicsDesign, houseId: string, name: string): 
   const pads = boardPads(d, nl);
   const copper = copperOf(d, pads);
   const base = fileBase(name);
-  const drills = drillFiles(d, nl)!;
-  const gerbers: Pack["gerbers"] = gerberFiles(d, nl).map((f) => ({ name: `${base}.${extOf(f.layer)}`, layer: f.layer, text: f.text }));
+  const one = drillFiles(d, nl)!;
+  const many = panel && panel.rows * panel.cols > 1 ? panelFiles(board, panel, gerberFiles(d, nl), one, board.copperLayers) : null;
+  const drills = many?.drills ?? one;
+  const gerbers: Pack["gerbers"] = (many?.gerbers ?? gerberFiles(d, nl)).map((f) => ({ name: `${base}.${extOf(f.layer)}`, layer: f.layer, text: f.text }));
+  if (many?.vcut) gerbers.push({ name: `${base}-VCUT.gbr`, layer: "vcut", text: many.vcut });
   if (drills.tools.some((t) => t.plated && !t.span)) gerbers.push({ name: `${base}-PTH.DRL`, layer: "drill-plated", text: drills.plated });
   if (drills.tools.some((t) => !t.plated)) gerbers.push({ name: `${base}-NPTH.DRL`, layer: "drill-bare", text: drills.bare });
   for (const s of drills.spans) gerbers.push({ name: `${base}-L${s.from}-L${s.to}.DRL`, layer: "drill-span", text: s.text });
@@ -143,7 +149,21 @@ export function orderPack(d: ElectronicsDesign, houseId: string, name: string): 
   const unplaced = parts.rows.flatMap((r) => r.refs.filter((_, i) => !placed.has(r.parts[i]!)));
   const missing = [...new Set(house.needs.flatMap((k) => (k === "lcsc" ? parts.noLcsc : parts.noMpn)))];
 
+  const square = board.outline.length === 4 && !board.outline.some((c) => c.bulge) && !board.cutouts?.length;
   const checks: Check[] = [
+    ...(many && panel
+      ? [
+          {
+            id: "panel" as const,
+            ok: panel.join === "tabs" || square,
+            blocks: false,
+            text:
+              panel.join === "vcut" && !square
+                ? "V-cuts run in straight lines right across the panel, and this board is not a plain rectangle. Hold it with tabs instead."
+                : `${count(many.layout.offsets.length, "board", "boards")} on a ${many.layout.w} × ${many.layout.h} mm panel. Tell the board house it is a panel you made, and how the boards are joined. The pick and place list is for one board.`,
+          },
+        ]
+      : []),
     {
       id: "board-check",
       ok: errors === 0,
@@ -207,8 +227,8 @@ export function orderPack(d: ElectronicsDesign, houseId: string, name: string): 
   return {
     house,
     facts: {
-      width: Math.round(size.w * 100) / 100,
-      height: Math.round(size.h * 100) / 100,
+      width: Math.round((many ? many.layout.w : size.w) * 100) / 100,
+      height: Math.round((many ? many.layout.h : size.h) * 100) / 100,
       thickness: board.thickness,
       layers: board.copperLayers,
       minTrack: tracks.length ? Math.min(...tracks) : null,
@@ -217,6 +237,7 @@ export function orderPack(d: ElectronicsDesign, houseId: string, name: string): 
     },
     checks,
     gerbers,
+    panel: many && panel ? { w: many.layout.w, h: many.layout.h, boards: many.layout.offsets.length, join: panel.join } : null,
     zipName: house.names.gerbers.replace("{name}", base),
     bom: parts,
     bomTable: bomTable(house, parts.rows),

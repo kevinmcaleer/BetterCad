@@ -24,6 +24,11 @@ Choose Order in the PCB view's tools.
 - **The checklist.** The board check is clean, the outline is closed, the pours are filled, and every part has what
   that house needs to fit it. Only an open outline or pours that run into each other stop you saving. A missing part
   number matters only if the house is fitting the parts for you: for a bare board, carry on.
+- **Order a panel of boards.** Rows and columns of the same board on one panel, joined by tabs (a milled gap,
+  bridged, with a row of small holes to snap along) or V-cuts (a groove scored along straight lines; for
+  rectangular boards only), with rails along the top and bottom. The size shown is then the panel's. Tell the
+  board house it is a panel you made, and how the boards are joined: the tab and rail sizes are our own usual
+  ones, so check them against the house's panel rules.
 - **Parts lists as.** CSV or XLSX. Both houses take either.
 
 ## 3. Look at the files

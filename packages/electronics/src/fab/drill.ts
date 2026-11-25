@@ -121,8 +121,11 @@ export interface DrillFiles {
 
 export function drillFiles(d: ElectronicsDesign, nl: Netlist = netlist(d)): DrillFiles | null {
   if (!d.board) return null;
-  const holes = holesOf(d, boardPads(d, nl));
-  const layers = layersOf(d.board).length;
+  return excellonFor(holesOf(d, boardPads(d, nl)), layersOf(d.board).length);
+}
+
+/** The drill files for a set of holes: through holes plated and bare, and blind or buried vias by their span. */
+export function excellonFor(holes: Hole[], layers: number): DrillFiles {
   const through = holes.filter((h) => !h.span);
   const plated = toolsFor(through, true, 1);
   const bare = toolsFor(through, false, 1);

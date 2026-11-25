@@ -1,4 +1,19 @@
-import { GRID, pinDirOnSheet, placeOnSheet, turn, type ElectronicsDesign, type P2, type SchSymbol, type Sheet, type SymbolDef } from "@bettercad/electronics";
+import {
+  GRID,
+  boardPads,
+  outlinePoints,
+  packageOf,
+  pinDirOnSheet,
+  placeOnBoard,
+  placeOnSheet,
+  turn,
+  type ElectronicsDesign,
+  type P2,
+  type SchSymbol,
+  type Sheet,
+  type Side,
+  type SymbolDef,
+} from "@bettercad/electronics";
 import { newSheet, type SheetSize, type TitleBlock } from "@bettercad/kernel/drawing";
 import { sheetScene, type Fill, type Label, type Scene, type Stroke } from "../drawing/export/scene";
 import { sheetLayout } from "../drawing/layout";
@@ -111,6 +126,109 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
   for (const n of sheet.noConnects) {
     line([P([n.x - 0.6, n.y - 0.6]), P([n.x + 0.6, n.y + 0.6])], pen());
     line([P([n.x - 0.6, n.y + 0.6]), P([n.x + 0.6, n.y - 0.6])], pen());
+  }
+  return { ...scene, strokes, labels, ...(fills.length ? { fills } : {}) };
+}
+
+/** The scales an assembly drawing prints at: as large as fits, in the usual steps. */
+const BOARD_SCALES = [10, 5, 4, 2, 1.5, 1, 0.5, 0.25];
+
+export interface AssemblyPage {
+  size: SheetSize;
+  title: TitleBlock;
+  index?: number;
+  count?: number;
+}
+
+/** The sides of a board that have parts on them, top first. */
+export const sidesWithParts = (d: ElectronicsDesign): Side[] => (["top", "bottom"] as Side[]).filter((s) => d.board?.placements.some((p) => p.side === s));
+
+/**
+ * An assembly drawing (#662): one side of the board on the drawing workspace's sheet, with its frame and title block.
+ * The board's edge and holes, each part's outline and pads, a dot at pin 1 and the part's reference. The bottom is
+ * drawn as you see it when you turn the board over. Lines and text only, so the drawing PDF and SVG writers take it.
+ */
+export function assemblyScene(d: ElectronicsDesign, side: Side, page: AssemblyPage): Scene {
+  const board = d.board!;
+  const flip = side === "bottom";
+  const look = (p: P2): P2 => (flip ? [-p[0], p[1]] : p);
+  const edge = outlinePoints(board.outline).map(look);
+  const xs = edge.map((p) => p[0]);
+  const ys = edge.map((p) => p[1]);
+  const box = { x1: Math.min(...xs), x2: Math.max(...xs), y1: Math.min(...ys), y2: Math.max(...ys) };
+
+  const paper = newSheet(side === "top" ? "Top side" : "Bottom side", {
+    size: page.size,
+    landscape: true,
+    block: { type: side === "top" ? "Assembly drawing, top side" : "Assembly drawing, bottom side, seen from below", ...page.title },
+  });
+  const blank = sheetLayout(paper);
+  const room = { x: blank.frame.x + 10, w: blank.frame.w - 20, y: blank.frame.y + 12, h: blank.frame.h - blank.block.h - 22 };
+  const fit = Math.min(room.w / Math.max(box.x2 - box.x1, 1), room.h / Math.max(box.y2 - box.y1, 1));
+  const s = BOARD_SCALES.find((x) => x <= fit) ?? BOARD_SCALES[BOARD_SCALES.length - 1]!;
+  paper.scale = s;
+  const layout = sheetLayout(paper, { index: page.index, count: page.count });
+  const scene = sheetScene(paper, layout, () => undefined);
+  const ox = room.x + room.w / 2 - ((box.x1 + box.x2) / 2) * s;
+  const oy = layout.page.h - (room.y + room.h / 2) - ((box.y1 + box.y2) / 2) * s;
+  const P = (p: P2): P2 => {
+    const q = look(p);
+    return [ox + q[0] * s, oy + q[1] * s];
+  };
+
+  const strokes: Stroke[] = scene.strokes;
+  const labels: Label[] = scene.labels;
+  const fills = scene.fills ?? [];
+  const line = (pts: P2[], width: number, layer: Stroke["layer"] = "visible") =>
+    pts.length > 1 && strokes.push({ layer, width, curve: pts.length === 2 ? { kind: "line", a: pts[0]!, b: pts[1]! } : { kind: "poly", pts } });
+  const ring = (c: P2, r: number, width: number) => strokes.push({ layer: "visible", width, curve: { kind: "circle", c, r } });
+
+  // The board.
+  for (const loop of [board.outline, ...(board.cutouts ?? [])]) {
+    const pts = outlinePoints(loop).map(P);
+    line([...pts, pts[0]!], 0.5);
+  }
+  for (const h of board.holes) ring(P([h.x, h.y]), (h.pad ?? h.drill) * 0.5 * s, 0.25);
+
+  // The parts on this side: outline, pads, pin 1 and reference.
+  const pads = boardPads(d);
+  const parts = new Map(d.parts.map((p) => [p.id, p]));
+  for (const at of board.placements) {
+    if (at.side !== side) continue;
+    const part = parts.get(at.part);
+    const pkg = part && packageOf(d, part);
+    if (!part || !pkg) continue;
+    const place = (p: P2) => P(placeOnBoard(p, at));
+    const fab = pkg.footprint.shapes.filter((x) => x.layer === "fab");
+    const outline = fab.length ? fab : pkg.footprint.shapes.filter((x) => x.layer === "courtyard");
+    for (const sh of outline) {
+      if (sh.kind === "line") line(sh.pts.map(place), 0.25);
+      else if (sh.kind === "rect") {
+        const c = ([[sh.x1, sh.y1], [sh.x2, sh.y1], [sh.x2, sh.y2], [sh.x1, sh.y2], [sh.x1, sh.y1]] as P2[]).map(place); // prettier-ignore
+        line(c, 0.25);
+      } else if (sh.kind === "circle") ring(place([sh.cx, sh.cy]), sh.r * s, 0.25);
+    }
+    const mine = pads.filter((p) => p.part === at.part);
+    for (const p of mine) {
+      if (p.pad.kind === "smd" && p.side !== side) continue;
+      const a = (p.angle * Math.PI) / 180;
+      const [c, n] = [Math.cos(a), Math.sin(a)];
+      const corner = (x: number, y: number): P2 => P([p.at[0] + x * c - y * n, p.at[1] + x * n + y * c]);
+      const [w, h] = [p.pad.w / 2, p.pad.h / 2];
+      if (p.pad.shape === "circle") ring(P(p.at), Math.max(w, h) * s, 0.13);
+      else line([corner(-w, -h), corner(w, -h), corner(w, h), corner(-w, h), corner(-w, -h)], 0.13);
+    }
+    const one = mine.find((p) => p.pad.number === "1" || p.pad.number === "A1");
+    if (one && mine.length > 2) {
+      const c = P(one.at);
+      const r = Math.max(0.5, 0.3 * s);
+      fills.push({
+        layer: "visible",
+        pts: Array.from({ length: 12 }, (_, i): P2 => [c[0] + r * Math.cos((i * Math.PI) / 6), c[1] + r * Math.sin((i * Math.PI) / 6)]),
+      });
+    }
+    if (!/^#/.test(part.ref))
+      labels.push({ layer: "visible", at: P([at.x, at.y]), size: Math.min(3.5, Math.max(1.8, 1 * s)), anchor: "middle", baseline: "central", text: part.ref });
   }
   return { ...scene, strokes, labels, ...(fills.length ? { fills } : {}) };
 }

@@ -540,6 +540,32 @@ Left for later: a real upload to each house's quote page to confirm the headings
 capacitors: a part whose kind, value and package match a row of the checked list, and that has no number, can have
 it filled in. The list is in `docs/electronics-library.md`.
 
+## Panels, IPC-2581 and assembly drawings (#662)
+
+- **Panels** (`fab/panel.ts`). The order card's Order a panel of boards takes rows, columns, how the boards join and
+  the rails. Every Gerber file is written out once for each board, moved into place, rather than with Gerber's step
+  and repeat, so every viewer (ours included) shows the panel as it will be made. Each copy starts dark with no
+  object attributes left over. V-cuts: the boards touch, the lines run right across the panel between rows, columns
+  and rails, and they go in a file of their own (`-VCUT.gbr`) as well as being where the boards meet; a board that
+  is not a plain rectangle gets a warning. Tabs: a milled gap (2 mm unless changed) round each board and off the
+  rails, a 3 mm tab in the middle of each side that faces another board or a rail (two on a side over 50 mm), the
+  board's outline broken where each tab holds it, and a row of 0.5 mm unplated holes along each board's edge at the
+  tab. Rails of 4 mm or more get a 2 mm tooling hole 3 mm in from each corner. These sizes are our own usual ones,
+  not a board house's. The pick and place list stays the one board's.
+- **IPC-2581** (`fab/ipc2581.ts`), revision C. Each layer's image is the Gerber writer's own, read back with
+  `readGerber` (which now keeps each object's `.N` net) and written as IPC-2581 features: flashes as pads with a
+  standard shape, macro pads as their pieces, draws as polylines, areas as contours, and a pour's clearances as
+  negative sets in the order the Gerber paints them. On top: the board's build as the stack, the outline as the
+  profile, a package for each footprint with its pins, the components, a logical net for each net with its pins, a
+  drill layer for each span with its holes, and the parts list. Tests parse it and check that every reference is
+  to something it defines and that the copper matches the Gerber's object for object. It has not been opened in
+  another tool's IPC-2581 reader yet.
+- **Assembly drawing** (`assemblyScene` in `web/src/electronics/sheetScene.ts`): Save the assembly drawing on the order card writes
+  one PDF with a page for each side that has parts, on the drawing workspace's sheet with its frame and title
+  block, through the drawing export's PDF writer. The board's edge and holes, each part's fab outline (or its
+  courtyard), its pads, a dot on pin 1 for parts with more than two pads, and the reference. The bottom is drawn
+  turned over, as you see it from below. It is a page to print, not a sheet you can edit in the Drawing workspace.
+
 ## The sample board (#666)
 
 The Pico servo board (`packages/electronics/src/sample.ts`; Open the sample board, on an empty schematic, or `#/sample/pico-servo-board`) is a carrier
@@ -709,7 +735,6 @@ or Adafruit project, has been opened yet.
 
 ## What release 1 leaves open
 
-- Release 2, by decision: panels and IPC-2581 (#662).
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.
