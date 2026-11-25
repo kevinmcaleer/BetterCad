@@ -13,7 +13,7 @@ A component (`ComponentDef` in `packages/electronics/src/model.ts`, #622) is:
 | Symbol | The drawing on the schematic and its pins: number, name and what the pin does (input, power in, passive) |
 | Packages | One or more footprints the part comes in. A resistor has 0603, 0402, 0805, 1206 and through-hole |
 | Pin map | Per package, which pads a pin joins when the numbers differ. With none, pin 3 joins pad 3 |
-| 3D body | Per package: a simple box, cylinder or pin header for now; a STEP file or a BetterCad model later (#628) |
+| 3D body | Per package: a simple box, cylinder or pin header, or a STEP file (#628) placed and turned on the footprint |
 | Value and prefix | What a new part starts as ("10 kΩ") and its reference letter (R, C, U, J) |
 | Supplier | Manufacturer, part number and LCSC number, used by the BOM and pick and place. Left empty until checked |
 | Source | The library it came from and its licence, shown on the part's card and kept in the design |
@@ -39,8 +39,8 @@ Not in yet, on purpose:
 
 - **LCSC part numbers.** None are filled in. A wrong number orders the wrong part, so they will be added only from a
   checked list (#661).
-- **Real 3D models.** Bodies are simple shapes sized from the footprint. KiCad's STEP models are several GB; attaching
-  a model to a part is #628.
+- **Real 3D models.** The starter parts' bodies are simple shapes sized from the footprint. KiCad's STEP models are
+  several GB, so none ship; give a part a STEP file of your own in the part editor (#628).
 - **The rest of KiCad's libraries.** The starter set is what ships. Bring any other KiCad part in with Import parts,
   below.
 
@@ -113,11 +113,24 @@ New part, Edit and Edit a copy open the part editor (`web/src/electronics/PartTo
   and paste files and the KiCad export honour them, and a KiCad footprint's `solder_mask_margin` and
   `solder_paste_margin` are read on import. Line, Rectangle and Circle draw on the silkscreen, courtyard or
   fabrication layer, and Wrap a courtyard round it redraws the courtyard 0.25 mm clear of the pads and body.
-- **3D body** (#628): sized from the footprint, or a box or cylinder of your own sizes, or none.
+- **3D body** (#628): sized from the footprint, a box or cylinder of your own sizes, none, or **a STEP file or a
+  BetterCad model**. The geometry engine reads the file (`bodyFile.ts`) and says how many solids it holds and how big
+  it is. A `.bcad` model is built and kept as STEP: a copy as it is now, which does not follow the model later. The
+  file stands with the bottom centre of its box on the footprint's origin; X, Y and Lift move it and the three turns
+  (about X, then Y, then Z) turn it. Centre it on the pads and Sit it on the board do the usual two moves, and the
+  footprint preview outlines the body's box from above, see-through, over the pads. A library part keeps its
+  footprints and can still be given a file. `Model3D.source` of kind `step` holds the file's hash, solid count and
+  size, with `offset` and `rotate`. The bytes are kept by hash: in this browser beside your parts (`partBlobs.ts`, its
+  own IndexedDB database), in your account's files when you are signed in (the same `/api/blobs` a model's imports
+  use), and inside a saved parts library file under `files`. Placing or swapping in such a part copies the file into
+  the model's blobs (`onDesign`), so the model opens anywhere. The Board step (`packages/kernel/src/board.ts`) then
+  makes one reference body per solid, placed by the layout, flipped on the bottom; if the file is missing, a box of
+  its size stands in.
 - **Checks**, as you type: every pin has a pad (this one stops a save), pads closer than 0.2 mm, no courtyard, nothing
   on the silkscreen to show pin 1, a hole that leaves no copper, pin lines that could not be read.
 
-Not built yet: attaching a STEP file or a BetterCad model as the body (#628, with the 3D board). Pad sizes are typed
+Not built yet for bodies (#628): a 3D view inside the part editor, snapping a model's pins to the pads, a body that
+stays linked to a BetterCad model in your account, and a file's own colours (a body takes one colour). Pad sizes are typed
 numbers, not expressions, and arcs and text on a footprint come only from imported footprints.
 
 ### Importing KiCad files

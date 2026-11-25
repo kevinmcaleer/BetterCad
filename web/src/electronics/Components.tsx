@@ -16,7 +16,10 @@ import { Button, ESC, FeaturePanel, Icon, PanelNote, cx, useEscape } from "@bett
 import type { EEdit } from "./actions";
 import { textOf } from "./fileText";
 import { useAccount } from "../cloud/account";
+import { fromBase64, toBase64 } from "@bettercad/kernel";
+import type { KernelCall } from "./bodyFile";
 import { MY_PARTS, libraryFile, useMyLibrary } from "./myLibrary";
+import { fileOf, keepFile, loadFiles, stepFiles } from "./partBlobs";
 import type { EditStart } from "./PartTools";
 import { noteRecent, recentParts, starredParts, toggleStar } from "./partPrefs";
 import { PartPreview } from "./PartPreview";
@@ -68,7 +71,7 @@ function saveAs(blob: Blob, name: string) {
  * keyword, look at its symbol and footprint, pick the package, then place it. Parts you starred and parts you placed
  * lately sit on top. From here you also make a part, import KiCad files, and save or open your library as a file.
  */
-export function ComponentsCard({ onClose, design, edit }: { onClose: () => void; design?: ElectronicsDesign; edit?: EEdit }) {
+export function ComponentsCard({ onClose, design, edit, call }: { onClose: () => void; design?: ElectronicsDesign; edit?: EEdit; call?: KernelCall }) {
   // One part picked on the sheet can be swapped for the one picked here (#631).
   const picked = useEui().selected;
   const symbol = picked.length === 1 ? design?.sheets.flatMap((s) => s.symbols).find((y) => y.id === picked[0]) : undefined;
@@ -147,7 +150,29 @@ export function ComponentsCard({ onClose, design, edit }: { onClose: () => void;
     setRecent(noteRecent(r.key));
     eui.set({ placing: inflate(r.pack, r.part), placingPkg: at, schTool: "place", card: null, selected: [] });
   };
-  const saved = (made: ComponentDef, to: string, id?: string) => {
+  // The files your parts' bodies come from (#628): read from this browser when the panel opens, and any that are
+  // only in your account fetched from there, so a part made on another machine brings its body.
+  const packDefs = useMemo(() => my.pack.parts.map((p) => inflate(my.pack, p)), [my.pack]);
+  useEffect(() => {
+    let live = true;
+    void loadFiles().then(() => {
+      if (!live || !account) return;
+      for (const h of stepFiles(packDefs))
+        if (!fileOf(h))
+          api
+            .getBlob(h)
+            .then((bytes) => keepFile(h, toBase64(bytes)))
+            .catch(() => undefined);
+    });
+    return () => {
+      live = false;
+    };
+  }, [packDefs, account, api]);
+  const saved = (made: ComponentDef, to: string, id?: string, files: Record<string, string> = {}) => {
+    for (const [h, data] of Object.entries(files)) {
+      keepFile(h, data);
+      if (account) api.putBlob(h, fromBase64(data), "model/step").catch(() => undefined);
+    }
     const as = my.save(made, to, id);
     setEditing(null);
     setFind("");
@@ -181,6 +206,15 @@ export function ComponentsCard({ onClose, design, edit }: { onClose: () => void;
     try {
       const pack = JSON.parse(await textOf(file)) as unknown;
       if (!isPack(pack)) throw new Error("not a pack");
+      // A library file carries the files its parts' bodies come from.
+      const files = (pack as { files?: unknown }).files;
+      if (files && typeof files === "object")
+        for (const [h, data] of Object.entries(files)) {
+          if (typeof data !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(h)) continue;
+          keepFile(h, data);
+          if (account) api.putBlob(h, fromBase64(data), "model/step").catch(() => undefined);
+        }
+      delete (pack as { files?: unknown }).files;
       const n = my.add(pack);
       setShelf(MINE);
       setSaid(n ? `Added ${n} ${n === 1 ? "part" : "parts"} from ${file.name}.` : `Every part in ${file.name} was already in your library.`);
@@ -260,7 +294,12 @@ export function ComponentsCard({ onClose, design, edit }: { onClose: () => void;
               variant="secondary"
               label="Export"
               title="Save your parts as a library file"
-              onClick={() => saveAs(libraryFile(my.pack), "your-parts.bcparts.json")}
+              onClick={() =>
+                saveAs(
+                  libraryFile(my.pack, Object.fromEntries(stepFiles(packDefs).flatMap((h) => (fileOf(h) ? [[h, fileOf(h)!]] : [])))),
+                  "your-parts.bcparts.json",
+                )
+              }
             />
           )}
           <input
@@ -409,7 +448,7 @@ export function ComponentsCard({ onClose, design, edit }: { onClose: () => void;
       </FeaturePanel>
       {(editing || importing) && (
         <Suspense fallback={null}>
-          {editing && <PartEditor start={editing} shelves={shelves} onSave={saved} onCancel={() => setEditing(null)} />}
+          {editing && <PartEditor start={editing} shelves={shelves} onSave={saved} onCancel={() => setEditing(null)} {...(call ? { call } : {})} />}
           {importing && <ImportParts known={(name) => starter?.footprints[name]} onAdd={imported} onCancel={() => setImporting(false)} />}
         </Suspense>
       )}

@@ -17,6 +17,7 @@ import {
 import { Button, ESC, FeaturePanel, PanelNote, PropsPanel, RibbonButton, RibbonGroup, Toolbar, cx, useEscape, type IconName } from "@bettercad/ui";
 import type { Sketch } from "@bettercad/sketch";
 import type { Command } from "../state/commands";
+import type { KernelCall } from "./bodyFile";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
 import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
@@ -689,6 +690,8 @@ export interface ElectronicsViewProps {
   onAddBoard?: () => void;
   /** Opens the sample board (#666) as a new model. */
   onSample?: () => void;
+  /** The geometry engine, for reading a file picked as a part's 3D body (#628). */
+  call?: KernelCall;
 }
 
 /**
@@ -706,6 +709,7 @@ export default function ElectronicsView({
   inModel,
   onAddBoard,
   onSample,
+  call,
 }: ElectronicsViewProps) {
   const ui = useEui();
   const blank = useRef(emptyDesign());
@@ -803,7 +807,9 @@ export default function ElectronicsView({
       )}
       {view === "schematic" && (
         <Suspense fallback={null}>
-          {ui.card === "components" && !readOnly && <ComponentsCard onClose={() => eui.set({ card: null })} design={design} edit={edit} />}
+          {ui.card === "components" && !readOnly && (
+            <ComponentsCard onClose={() => eui.set({ card: null })} design={design} edit={edit} {...(call ? { call } : {})} />
+          )}
           {ui.card === "checks" && <ChecksCard design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "export" && <ExportSchematic design={design} sheet={sheet} name={name || "Schematic"} onClose={() => eui.set({ card: null })} />}

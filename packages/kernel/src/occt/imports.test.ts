@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { emptyDesign, placePart as placeOnSheet, pushToBoard, resistor } from "@bettercad/electronics";
+import { addBoard } from "../board";
 import { loadOCCT, type OC } from "./oc";
 import { ModelBuilder } from "./model";
 import { Exporter } from "./exporter";
@@ -138,6 +140,31 @@ describe("imports (#82)", () => {
     d = imported("cube.stl", bytes, ["b"], d);
     expect(Object.keys(d.blobs!)).toHaveLength(1);
     expect(d.features.map((f) => f.name)).toEqual(["Import 1", "Import 2"]);
+  });
+
+  it("builds a board part's STEP body where the layout put it (#628)", () => {
+    const bytes = new Uint8Array(
+      new Exporter(oc, m).export({ doc: addPart(newDoc("Kit"), "box", "bx"), bodies: null, format: "step", deflection: 0, name: "Kit" }).files[0]!.data,
+    );
+    const blob = blobHash(bytes);
+    const info = new ModelBuilder(oc).inspect({ name: "kit.step", format: "step", blob, data: toBase64(bytes) });
+    expect(info.bodies).toHaveLength(1);
+    expect(info.size).toEqual([20, 20, 20]);
+    let e = placeOnSheet(emptyDesign(), "sh1", resistor(), { x: 0, y: 0 }).design;
+    const id = e.parts[0]!.def;
+    const def = e.defs[id]!;
+    const model = { source: { kind: "step" as const, blob, bodies: 1, size: info.size! }, offset: [0, 0, 1] as [number, number, number] };
+    e = pushToBoard({ ...e, defs: { [id]: { ...def, packages: def.packages.map((k) => ({ ...k, model })) } } }).design;
+    const d = addBoard({ ...newDoc("Board"), electronics: e, blobs: { [blob]: toBase64(bytes) } }, {}, "pcb");
+    const r = m.build(d);
+    expect(r.failed).toEqual([]);
+    const body = r.bodies.find((b) => b.id === `pcb/${e.parts[0]!.id}`)!.measure;
+    expect(body.volume).toBeCloseTo(8000, 3);
+    // Its bottom centre sits on the pads' centre, 1 mm above the top face.
+    const at = e.board!.placements[0]!;
+    expect(body.bbox.min[2]).toBeCloseTo(1.6 + 1, 6);
+    expect((body.bbox.min[0]! + body.bbox.max[0]!) / 2).toBeCloseTo(at.x, 6);
+    expect((body.bbox.min[1]! + body.bbox.max[1]!) / 2).toBeCloseTo(at.y, 6);
   });
 
   it("says how far it has got while it reads a mesh and a STEP file", () => {

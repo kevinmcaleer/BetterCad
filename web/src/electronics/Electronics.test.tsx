@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BASICS, addWire, emptyDesign, netlist, placePart, pushToBoard, type ElectronicsDesign } from "@bettercad/electronics";
 import type { Command } from "../state/commands";
 import { showView, type EEdit } from "./actions";
+import { forgetFiles, keepFile } from "./partBlobs";
 import ElectronicsView, { ElectronicsProps, ElectronicsRibbon, onDesign } from "./Electronics";
 import { eui } from "./ui";
 
@@ -262,5 +263,23 @@ describe("onDesign", () => {
     const made = onDesign((d) => placePart(d, d.sheets[0]!.id, BASICS.led!(), { x: 0, y: 0 }).design)(doc);
     expect(made.electronics?.parts).toHaveLength(1);
     expect(onDesign((d) => d)(made)).toBe(made);
+  });
+
+  it("brings the file of a part's STEP body into the model with the part (#628)", () => {
+    const doc = { features: [], blobs: { other: "abc" } } as never as Parameters<ReturnType<typeof onDesign>>[0];
+    const led = BASICS.led!();
+    const def = {
+      ...led,
+      packages: led.packages.map((k) => ({ ...k, model: { source: { kind: "step" as const, blob: "bfile", size: [2, 1, 1] as [number, number, number] } } })),
+    };
+    const place = onDesign((d) => placePart(d, d.sheets[0]!.id, def, { x: 0, y: 0 }).design);
+    // Not held in this browser: the part still places, and its body is a box until the file turns up.
+    expect(place(doc).blobs).toEqual({ other: "abc" });
+    keepFile("bfile", "U1RFUA==");
+    const made = place(doc);
+    expect(made.blobs).toEqual({ other: "abc", bfile: "U1RFUA==" });
+    // Once it is in the model it is left alone.
+    expect(onDesign((d) => ({ ...d }))(made).blobs).toBe(made.blobs);
+    forgetFiles();
   });
 });

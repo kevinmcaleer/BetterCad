@@ -290,7 +290,7 @@ step's own position then moves it from the sketch (say 3 mm up, onto standoffs).
 sketches and Auto project like any body's, which is how a case is fitted to it.
 
 Left for later: dragging a part in the 3D view (move it in the PCB view; the model follows), a hole cut through the
-board in 3D becoming a board hole, STEP models for parts (#628; parts are boxes and cylinders), the Connector
+board in 3D becoming a board hole, the Connector
 opening and Standoffs under the board tools (#652; project the board's holes and use Mount), a board started from a
 face, and the copper in a path-traced render.
 
@@ -510,7 +510,7 @@ or Adafruit project, has been opened yet.
 
 - Release 2, by decision: more sheets with hierarchy (#636), shove routing (#646), an autorouter (#647), four layers
   and more (#648), panels and IPC-2581 (#662).
-- Parts: custom pin shapes (#626), expressions in pad sizes (#627), STEP or BetterCad models as a part's body (#628),
+- Parts: custom pin shapes (#626), expressions in pad sizes (#627), a 3D view and pin snapping when lining up a part's body (#628),
   sharing a library (#629), the server's shared catalogue (#625), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.

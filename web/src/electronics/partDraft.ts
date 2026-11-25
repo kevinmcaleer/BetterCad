@@ -23,7 +23,15 @@ import { checkSymbol } from "./symbolEdit";
 
 /** The package families the footprint wizard makes. "keep" leaves the footprints of the part being edited alone. */
 export type Family = "keep" | "chip" | "dual" | "quad" | "dip" | "header" | "bga";
-export type BodyKind = "auto" | "none" | "box" | "cylinder";
+export type BodyKind = "auto" | "none" | "box" | "cylinder" | "step";
+
+/** A STEP file chosen as the body (#628): where its bytes are and what was found in it. */
+export interface StepBody {
+  blob: string;
+  name: string;
+  bodies: number;
+  size: [number, number, number];
+}
 
 export interface Sizes {
   chip: ChipSizes;
@@ -66,6 +74,11 @@ export interface Draft {
   body: BodyKind;
   /** A box's width, length and height, or a cylinder's diameter (w) and height, mm. */
   bodySize: { w: number; l: number; h: number };
+  /** The STEP file that is the body, while `body` is "step". */
+  step?: StepBody;
+  /** Where the file's bottom centre sits from the footprint's origin (z is the lift off the board), and its turns, degrees. */
+  stepAt: [number, number, number];
+  stepTurn: [number, number, number];
 }
 
 /** A short list to pick from; the first is what a part you drew yourself starts with. */
@@ -196,6 +209,8 @@ export function newDraft(): Draft {
     sizes: { ...startSizes(), dual: { ...startSizes().dual, pins: 4, bodyL: 2.4 } },
     body: "auto",
     bodySize: { w: 4, l: 5, h: 1.5 },
+    stepAt: [0, 0, 0],
+    stepTurn: [0, 0, 0],
   };
 }
 
@@ -207,6 +222,17 @@ export function draftFrom(def: ComponentDef, opts: { id?: string; shelf?: string
     .map((p) => ({ number: p.number, name: p.name, type: p.type }))
     .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }));
   const mine = !!opts.id;
+  // A body that came from a file stays one, where it was put.
+  const model = def.packages[0]?.model;
+  const src = model?.source.kind === "step" ? model.source : undefined;
+  const step: Partial<Draft> = src
+    ? {
+        body: "step",
+        step: { blob: src.blob, name: src.name ?? "Body", bodies: src.bodies ?? 1, size: src.size ?? [1, 1, 1] },
+        stepAt: model!.offset ?? [0, 0, 0],
+        stepTurn: model!.rotate ?? [0, 0, 0],
+      }
+    : {};
   return {
     ...newDraft(),
     ...(opts.id ? { id: opts.id } : {}),
@@ -228,6 +254,7 @@ export function draftFrom(def: ComponentDef, opts: { id?: string; shelf?: string
     box: false,
     family: def.packages.length ? "keep" : "dual",
     sizes: startSizes(),
+    ...step,
   };
 }
 
@@ -285,8 +312,53 @@ function footprintOf(d: Draft): FootprintDef | null {
   return null;
 }
 
+const r3 = (n: number) => Math.round(n * 1000) / 1000 || 0;
+
+/**
+ * The box round a body after its turns (about X, then Y, then Z, degrees), from a box `size` standing with its bottom
+ * centre on the origin. For sitting a turned file on the board and drawing its outline over the pads.
+ */
+export function turnedBox(size: [number, number, number], turn: [number, number, number]): { min: [number, number, number]; max: [number, number, number] } {
+  const [a, b, c] = turn.map((t) => (t * Math.PI) / 180) as [number, number, number];
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (const sx of [-0.5, 0.5])
+    for (const sy of [-0.5, 0.5])
+      for (const sz of [0, 1]) {
+        let [x, y, z] = [sx * size[0], sy * size[1], sz * size[2]];
+        [y, z] = [y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)];
+        [x, z] = [x * Math.cos(b) + z * Math.sin(b), -x * Math.sin(b) + z * Math.cos(b)];
+        [x, y] = [x * Math.cos(c) - y * Math.sin(c), x * Math.sin(c) + y * Math.cos(c)];
+        [x, y, z].forEach((v, i) => {
+          min[i] = Math.min(min[i]!, r3(v));
+          max[i] = Math.max(max[i]!, r3(v));
+        });
+      }
+  return { min, max };
+}
+
+/** The lift that sits a turned file's lowest point on the board. */
+export const liftOntoBoard = (size: [number, number, number], turn: [number, number, number]): number => r3(-turnedBox(size, turn).min[2]);
+
+/** The middle of a footprint's body, where a new body starts. */
+export function bodyCentre(fp: FootprintDef): [number, number] {
+  const b = bodyBox(fp);
+  return [Math.round(((b.x1 + b.x2) / 2) * 100) / 100, Math.round(((b.y1 + b.y2) / 2) * 100) / 100];
+}
+
+function stepModel(d: Draft): Model3D | undefined {
+  if (!d.step) return undefined;
+  const { blob, name, bodies, size } = d.step;
+  return {
+    source: { kind: "step", blob, name, bodies, size },
+    offset: [...d.stepAt],
+    ...(d.stepTurn.some(Boolean) ? { rotate: [...d.stepTurn] } : {}),
+  };
+}
+
 function bodyOf(d: Draft, fp: FootprintDef): Model3D | undefined {
   if (d.body === "none") return undefined;
+  if (d.body === "step") return stepModel(d);
   const b = bodyBox(fp);
   const offset: [number, number, number] = [Math.round(((b.x1 + b.x2) / 2) * 100) / 100, Math.round(((b.y1 + b.y2) / 2) * 100) / 100, 0];
   if (d.body === "box") return { source: { kind: "box", size: [d.bodySize.w, d.bodySize.l, d.bodySize.h] }, offset };
@@ -336,10 +408,12 @@ export function build(d: Draft): Built {
   if (d.land) {
     const kept = d.family === "keep" && d.base ? d.base.packages : [];
     footprint = { ...d.land, name: landName(d) };
-    const model = kept[0] ? kept[0].model : bodyOf(d, footprint);
+    const model = kept[0] && d.body !== "step" ? kept[0].model : bodyOf(d, footprint);
     packages = [{ ...kept[0], footprint, ...(model ? { model } : {}) }, ...kept.slice(1)];
   } else if (d.family === "keep" && d.base) {
-    packages = d.base.packages;
+    // A library part keeps its footprints, and can still be given a file for its body.
+    const model = d.body === "step" ? stepModel(d) : undefined;
+    packages = model ? d.base.packages.map((k, i) => (i === 0 ? { ...k, model } : k)) : d.base.packages;
     footprint = packages[0]?.footprint ?? null;
   } else {
     footprint = footprintOf(d);
@@ -379,5 +453,6 @@ export function build(d: Draft): Built {
       `${bad.package} has no pad for ${bad.missing.length > 6 ? `${bad.missing.length} of the pins` : `pin ${bad.missing.join(", ")}`}. Change the pin numbers or the footprint.`,
     );
   if (packages.length === 0 && !symbol.power) notes.push("It has no footprint, so it cannot go on a board yet.");
+  if (d.body === "step" && !d.step && packages.length) notes.push("Pick a file for the body.");
   return { def: problems.length ? null : def, symbol, footprint, problems, notes };
 }

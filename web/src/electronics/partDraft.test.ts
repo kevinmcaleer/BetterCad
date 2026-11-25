@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkPinMap, inflate, type LibraryPack } from "@bettercad/electronics";
-import { build, draftFrom, newDraft, tableOf } from "./partDraft";
+import { build, draftFrom, liftOntoBoard, newDraft, tableOf, turnedBox } from "./partDraft";
 
 const starter = JSON.parse(readFileSync(join(__dirname, "../../../packages/electronics/library/starter.json"), "utf8")) as LibraryPack;
 const part = (id: string) =>
@@ -116,6 +116,36 @@ describe("a copy of a library part", () => {
     expect(kept.def!.packages[0]!.footprint.name).toBe(`BC817 copy ${base.packages[0]!.footprint.name.split(":").pop()}`);
     expect(kept.def!.packages[0]!.model).toEqual(base.packages[0]!.model);
     expect(kept.def!.packages.slice(1)).toEqual(base.packages.slice(1));
+  });
+
+  it("takes a STEP file as the body, placed and turned, and opens it again as it was left", () => {
+    const step = { blob: "b0123456789abcdef", name: "relay.step", bodies: 2, size: [10, 4, 6] as [number, number, number] };
+    const none = build({ ...newDraft(), name: "Relay", body: "step" });
+    expect(none.def!.packages[0]).not.toHaveProperty("model");
+    expect(none.notes).toEqual(["Pick a file for the body."]);
+    const made = build({ ...newDraft(), name: "Relay", body: "step", step, stepAt: [1, 2, 0.5], stepTurn: [90, 0, 0] });
+    expect(made.def!.packages[0]!.model).toEqual({ source: { kind: "step", ...step }, offset: [1, 2, 0.5], rotate: [90, 0, 0] });
+    expect(build({ ...newDraft(), name: "Relay", body: "step", step }).def!.packages[0]!.model).toEqual({
+      source: { kind: "step", ...step },
+      offset: [0, 0, 0],
+    });
+    expect(draftFrom(made.def!, { id: "relay" })).toMatchObject({ body: "step", step, stepAt: [1, 2, 0.5], stepTurn: [90, 0, 0], family: "keep" });
+    // A library part keeps its footprints and takes the file for its first package.
+    const base = part("bc817");
+    const kept = build({ ...draftFrom(base), body: "step", step });
+    expect(kept.def!.packages[0]!.footprint).toBe(base.packages[0]!.footprint);
+    expect(kept.def!.packages[0]!.model?.source).toMatchObject({ kind: "step", blob: step.blob });
+  });
+
+  it("knows the box round a turned body, to sit it on the board", () => {
+    // Standing: 10 across, 4 deep, 6 tall, its bottom centre on the origin.
+    expect(turnedBox([10, 4, 6], [0, 0, 0])).toEqual({ min: [-5, -2, 0], max: [5, 2, 6] });
+    // Tipped a quarter turn about X it lies on its back: 6 deep now, and half its old depth under the board.
+    expect(turnedBox([10, 4, 6], [90, 0, 0])).toEqual({ min: [-5, -6, -2], max: [5, 0, 2] });
+    expect(liftOntoBoard([10, 4, 6], [90, 0, 0])).toBe(2);
+    expect(liftOntoBoard([10, 4, 6], [0, 0, 45])).toBe(0);
+    // A quarter turn about Z swaps across and deep.
+    expect(turnedBox([10, 4, 6], [0, 0, 90])).toEqual({ min: [-2, -5, 0], max: [2, 5, 6] });
   });
 
   it("redraws as a box when asked, with the same pins", () => {
