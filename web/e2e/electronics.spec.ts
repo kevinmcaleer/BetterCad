@@ -708,8 +708,9 @@ test.describe("on a wide screen", () => {
     const w = Number(await card.getByLabel("Width (mm)").inputValue());
     expect(Number(await card.getByLabel("Height (mm)").inputValue())).toBeCloseTo(w / 2, 1);
     await card.getByLabel("Side").selectOption("Bottom silkscreen");
-    await page.keyboard.press("ControlOrMeta+z");
-    await expect(card.getByLabel("Side")).toHaveValue("silk-top");
+    await expect(card.getByLabel("Side")).toHaveValue("silk-bottom");
+    await card.getByRole("button", { name: "Swap ink and bare board" }).click();
+    await expect(card.getByLabel("Width (mm)")).toHaveValue(String(w));
   });
 
   test("pour copper, keep it out of an area, and delete a part from the board and the schematic", async ({ page }) => {
