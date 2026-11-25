@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { BASICS, emptyPack, putPart } from "@bettercad/electronics";
 import { AccountProvider } from "../cloud/account";
 import { createApi, type AdminUser } from "../cloud/api";
 import { AdminPage } from "./Admin";
@@ -62,9 +63,26 @@ const ada: AdminUser = {
 };
 const bob: AdminUser = { ...ada, id: 102, username: "bob", email: null, size: 0, projects: [], models: [], visits: [], visits_month: 0, last_seen: null };
 
+const shunt = {
+  id: 7,
+  name: "Shunt",
+  licence: "CC-BY 4.0",
+  credit: "ada",
+  by: "ada",
+  status: "unreviewed",
+  modified: "2026-11-24 10:00:00",
+  pack: putPart(emptyPack("Published"), "shunt", { ...BASICS.resistor!(), name: "Shunt" }, "Sensors"),
+};
+const reviews: unknown[] = [];
+
 function mount(admin: boolean) {
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-  const api = createApi("api/", async (url) => {
+  const api = createApi("api/", async (url, init) => {
+    if (url === "api/admin/parts-catalogue") return json({ parts: [shunt] });
+    if (url === "api/admin/parts-catalogue/7") {
+      reviews.push(JSON.parse(String(init?.body)));
+      return json({ id: 7, status: "approved" });
+    }
     if (url.startsWith("api/auth/session"))
       return json({ user: { id: 1, username: "kev", email: "kev@example.com" }, csrf_token: "t", signin_url: "", signup_url: "", account_url: "" });
     if (url === "api/account") return json({ id: 1, username: "kev", name: "kev", email: "kev@example.com", theme: null, csrf: "t", admin });
@@ -116,5 +134,19 @@ describe("admin console", () => {
     mount(false);
     expect(await screen.findByText("Only BetterCad’s admins can see this page.")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Users" })).toBeNull();
+  });
+
+  it("lists published parts, the ones waiting first, and approves or rejects them", async () => {
+    mount(true);
+    const parts = await screen.findByRole("list", { name: "Published parts" });
+    expect(screen.getByText("1 published, 1 waiting for a look")).toBeInTheDocument();
+    expect(parts).toHaveTextContent("By ada · CC-BY 4.0 · Credit: ada");
+    expect(parts).toHaveTextContent("Waiting for a look");
+    expect(parts).toHaveTextContent("2 pins: 1 1, 2 2");
+    fireEvent.click(within(parts).getByRole("button", { name: "Approve" }));
+    expect(await within(parts).findByRole("button", { name: "Back to waiting" })).toBeInTheDocument();
+    expect(reviews).toEqual([{ status: "approved" }]);
+    expect(screen.getByText("1 published, 0 waiting for a look")).toBeInTheDocument();
+    expect(within(parts).getByRole("button", { name: "Reject" })).toBeInTheDocument();
   });
 });

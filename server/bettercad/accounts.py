@@ -45,6 +45,9 @@ def _move(db: sqlite3.Connection, old: int, new: int) -> None:
     db.execute("DELETE FROM chunks WHERE user_id = ?", (old,))
     db.execute("UPDATE OR IGNORE printer_profiles SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("UPDATE OR IGNORE drawing_templates SET user_id = ? WHERE user_id = ?", (new, old))
+    db.execute("UPDATE OR IGNORE part_libraries SET user_id = ? WHERE user_id = ?", (new, old))
+    db.execute("UPDATE OR IGNORE part_catalogue SET user_id = ? WHERE user_id = ?", (new, old))
+    db.execute("UPDATE OR IGNORE part_library_shares SET user_id = ? WHERE user_id = ?", (new, old))
     db.execute("DELETE FROM accounts WHERE id = ?", (old,))
 
 

@@ -83,9 +83,30 @@ any shelf you name) beside the starter library. It is a library pack like the st
   (`LibraryPack` in `packages/electronics/src/library/pack.ts`), with every part's source and licence inside. Open
   library adds the parts of such a file; a part that is already there is not added twice.
 - **Designs keep their own copy.** Deleting or changing a part in your library never changes a design that uses it.
+  When a part you pick in the panel has changed since a design took its copy, the part's card offers **Update R1**
+  (or **Update 3 parts**), which swaps in the part as it is now and keeps the wires where the pins match.
+- **By link.** Signed in, **Share by link** makes one link to your whole library
+  (`POST /api/parts-library/share`; the link is `/api/parts-library/shared/{token}`, which answers with the pack and
+  who it belongs to). Anyone can paste it into **Add from a link** to add your parts to theirs, with the files their
+  bodies need. The link follows your library as it changes, and **Stop sharing** ends it.
 
-Not built yet: sharing a library by link and publishing parts to the shared catalogue (#629), which wait on the
-catalogue's review flow (#190).
+### The shared catalogue
+
+Publishing puts one of your parts where everyone's search finds it (#625, #629).
+
+- **Publish.** Pick one of your parts, choose the licence under **Shared catalogue** and press Publish. The licences
+  offered are the ones that let other people use the part: CC0 1.0, CC-BY 4.0, CC-BY-SA 4.0, CC-BY-SA 4.0 with the
+  KiCad libraries exception, and MIT. The credit is where the part came from, or your name when you drew it. A
+  published part is one pack of at most 400 KB (`POST /api/parts-catalogue`). **Publish again** sends the part as it
+  is now, and **Unpublish** takes it out.
+- **Find.** Typing two letters or more in Find a part also asks the server (`GET /api/parts-catalogue?q=`), and what
+  comes back is listed under **From other makers**, below your parts and the starter set. The starter set is still
+  searched in the browser, so searching works offline. A shared part places straight from the list, and **Add to
+  your parts** keeps a copy.
+- **Review.** A published part is live at once and tagged **Unreviewed**, and its card says to hold it against the
+  datasheet. An admin opens it on the admin page (`#/admin`, Published parts), sees its drawings and pins, and
+  approves or rejects it. Approved parts are listed first and lose the tag. Rejected parts leave the search, and the
+  owner sees that on the part. Publishing a part again puts it back to unreviewed.
 
 ### The part editor
 
