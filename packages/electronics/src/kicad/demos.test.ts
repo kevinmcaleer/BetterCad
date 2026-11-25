@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { boardPads } from "../board";
+import type { ElectronicsDesign } from "../model";
 import { netlist } from "../nets";
 import { checkBoard } from "../pcb/drc";
 import { boardChanges } from "../sync";
@@ -57,6 +59,12 @@ const netsOf = (got: ReturnType<typeof importKicadProject>) =>
     .nets.map((net) => [...new Set(net.pins.map((p) => `${p.ref}:${p.pin}`))].sort())
     .filter((pins) => pins.length > 1)
     .map((pins) => pins.join(" "))
+    .sort();
+
+/** Every pad: whose it is, its net, its side and where it sits. */
+const padsOf = (d: ElectronicsDesign) =>
+  boardPads(d)
+    .map((p) => `${p.ref}:${p.pad.number} ${p.net} ${p.side} ${p.at[0].toFixed(3)},${p.at[1].toFixed(3)}`)
     .sort();
 
 /** What KiCad itself says a schematic's nets are. */
@@ -121,6 +129,12 @@ describe.skipIf(!has).each(PROJECTS)("KiCad's demo %s", (dir, name) => {
       writeFileSync(join(dirOut, f.name), f.text);
     }
     expect(kicadNets(join(dirOut, "trip.kicad_sch"))).toEqual(kicadNets(join(folder, `${name}.kicad_sch`)));
+    // Read back here, every pad is where it was, on its net and its side.
+    const back = importKicadProject(
+      kicadProject(open().design, "trip").files.map((f) => ({ name: f.name, text: f.text })),
+      { licence: "See the KiCad demos" },
+    );
+    expect(padsOf(back.design)).toEqual(padsOf(open().design));
     // And KiCad reads the board well enough to write its drill file.
     execFileSync("kicad-cli", ["pcb", "export", "drill", "trip.kicad_pcb", "-o", "drill/"], { cwd: dirOut, stdio: ["ignore", "pipe", "pipe"] });
     expect(readdirSync(join(dirOut, "drill")).some((f) => f.endsWith(".drl"))).toBe(true);
