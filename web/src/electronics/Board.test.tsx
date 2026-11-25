@@ -174,6 +174,32 @@ describe("a board shaped by a file or a face", () => {
     expect(s.labels).toEqual(["Shape the board from a DXF file"]);
     expect(s.design().board!.outline).toHaveLength(4);
     expect(screen.getByLabelText("Width (mm)")).toHaveValue("64");
+    // A round shape inside the edge is a cut-out, and is offered as a mounting hole.
+    const holed = pair([
+      [0, "SECTION"],
+      [2, "ENTITIES"],
+      [0, "LWPOLYLINE"],
+      [70, 1],
+      [10, 0],
+      [20, 0],
+      [10, 64],
+      [20, 0],
+      [10, 64],
+      [20, 32],
+      [10, 0],
+      [20, 32],
+      [0, "CIRCLE"],
+      [10, 6],
+      [20, 6],
+      [40, 1.6],
+      [0, "ENDSEC"],
+      [0, "EOF"],
+    ]);
+    await userEvent.upload(input, new File([holed], "holed.dxf"));
+    await userEvent.click(await screen.findByRole("button", { name: "Make it a mounting hole" }));
+    expect(s.design().board!.cutouts).toBeUndefined();
+    expect(s.design().board!.holes.at(-1)).toMatchObject({ x: 6, y: 6, drill: 3.2 });
+    expect(screen.queryByText(/could be a mounting hole/)).toBeNull();
   });
 
   it("takes its shape from a flat face picked in the model, and says when the face has changed (#638)", async () => {
@@ -193,7 +219,8 @@ describe("a board shaped by a file or a face", () => {
     const s = setup(board().d, (design, edit) => <BoardSetup design={design} edit={edit} model={m} onClose={() => {}} />);
     await userEvent.selectOptions(screen.getByLabelText("Board shape"), "From a face of Lid");
     expect(s.labels).toEqual(["Shape the board from a face of Lid"]);
-    expect(s.design().board!.outlineFrom).toEqual({ face: "b1|top" });
+    // The face's plane is kept, so the board stands on the face in 3D: level, 5 mm up.
+    expect(s.design().board!.outlineFrom).toMatchObject({ face: "b1|top", frame: { origin: [0, 0, 5], x: [1, 0, 0], normal: [0, 0, 1] } });
     expect(screen.getByText(/The outline follows a face of Lid: 60 × 20 mm/)).toBeInTheDocument();
     // The body changes, and nothing is picked any more: the face is still found, by its name.
     m = model(80, false);

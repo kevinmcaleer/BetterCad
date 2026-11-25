@@ -180,4 +180,23 @@ describe("the Board step", () => {
     expect(board!.position.z).toBeCloseTo(6, 6);
     expect(fromPartLocal([0, 0, 1], board!, true)[0]).toBeCloseTo(1, 6);
   });
+
+  it("stands on the face its outline came from", () => {
+    // The same wall as a body's face: the plane was kept when the board took the face's shape.
+    const d = design();
+    const frame = { origin: [30, 0, 0], x: [0, 1, 0], normal: [1, 0, 0] } as {
+      origin: [number, number, number];
+      x: [number, number, number];
+      normal: [number, number, number];
+    };
+    const on = { ...d, board: { ...d.board!, outlineFrom: { face: "b1|side", frame, at: [4, 6] as [number, number] } } };
+    const doc = addBoard({ ...newDoc("Case"), electronics: on }, {}, "pcb");
+    const board = build(doc).parts.find((p) => p.id === boardBodyId("pcb"))!;
+    expect(board.position.x).toBeCloseTo(30, 6);
+    expect(board.position.y).toBeCloseTo(4, 6);
+    expect(board.position.z).toBeCloseTo(6, 6);
+    // With no plane kept, it stays where its step puts it.
+    const loose = { ...doc, electronics: { ...on, board: { ...on.board, outlineFrom: { face: "b1|side" } } } };
+    expect(build(loose).parts.find((p) => p.id === boardBodyId("pcb"))!.position.x).toBeCloseTo(0, 6);
+  });
 });

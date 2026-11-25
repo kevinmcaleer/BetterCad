@@ -429,7 +429,15 @@ export interface Board {
   outline: Corner[];
   cutouts?: Corner[][];
   /** A sketch or face in the model the outline follows (#638). */
-  outlineFrom?: { sketch?: string; face?: string; at?: P2 };
+  outlineFrom?: {
+    sketch?: string;
+    face?: string;
+    at?: P2;
+    /** Round cut-outs of the source are drilled as holes. */
+    holes?: boolean;
+    /** For a face: the plane it lies in, in the model, so the board can stand on it in 3D. */
+    frame?: { origin: [number, number, number]; x: [number, number, number]; normal: [number, number, number] };
+  };
   thickness: number;
   copperLayers: 2;
   placements: Placement[];

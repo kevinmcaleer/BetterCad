@@ -10,7 +10,9 @@ type FaceMesh = Pick<BodyMesh, "positions" | "indices" | "faceTris">;
  * the body. Worked out from the face's triangles: a side that only one of them uses is on the face's outline. Null
  * for a face that is not flat. Curved edges are already short straight runs in the mesh.
  */
-export function faceShape(mesh: FaceMesh, face: number): OutlineShape | null {
+export type FaceFrame = { origin: V3; x: V3; normal: V3 };
+
+export function faceShape(mesh: FaceMesh, face: number): (OutlineShape & { frame: FaceFrame }) | null {
   const [t0, t1] = [mesh.faceTris[face], mesh.faceTris[face + 1]];
   if (t0 === undefined || t1 === undefined || t1 <= t0) return null;
   const at = (i: number): V3 => [mesh.positions[i * 3]!, mesh.positions[i * 3 + 1]!, mesh.positions[i * 3 + 2]!];
@@ -77,7 +79,13 @@ export function faceShape(mesh: FaceMesh, face: number): OutlineShape | null {
       }
       if (at2 === start && loop.length > 2) loops.push(loop);
     }
-  return shapeFromLoops(loops);
+  const shape = shapeFromLoops(loops);
+  // The face's plane: 2D points are measured from where the plane is nearest the model's origin.
+  const first = at(mesh.indices[t0 * 3]!);
+  const off = first[0] * normal[0] + first[1] * normal[1] + first[2] * normal[2];
+  const r = (n: number) => Math.round(n * 1e6) / 1e6;
+  const v = (p: V3): V3 => [r(p[0]), r(p[1]), r(p[2])];
+  return shape && { ...shape, frame: { origin: v([normal[0] * off, normal[1] * off, normal[2] * off]), x: v(across), normal: v(normal) } };
 }
 
 /** What the model tells the board's setup: its bodies' meshes, what is picked in the 3D view, and the bodies' names. */
@@ -91,9 +99,9 @@ export interface ModelFaces {
  * The faces a board can take its shape from: the one it follows now (`followed`, as "body|face name") and any flat
  * face picked in the 3D view. A face is kept by its name, which the kernel holds steady as the model changes.
  */
-export function boardFaces(model: ModelFaces | undefined, followed?: string): { id: string; name: string; shape: OutlineShape }[] {
+export function boardFaces(model: ModelFaces | undefined, followed?: string): { id: string; name: string; shape: OutlineShape & { frame: FaceFrame } }[] {
   if (!model) return [];
-  const out: { id: string; name: string; shape: OutlineShape }[] = [];
+  const out: { id: string; name: string; shape: OutlineShape & { frame: FaceFrame } }[] = [];
   const add = (body: string, face: number) => {
     const b = model.bodies.get(body);
     const shape = b && face >= 0 ? faceShape(b.mesh, face) : null;

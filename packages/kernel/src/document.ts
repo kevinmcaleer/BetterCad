@@ -1413,7 +1413,9 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         // A board shaped by a sketch stands on that sketch (#653); the step's own place then moves it from there.
         const from = doc.electronics?.board?.outlineFrom;
         const under = from?.sketch && from.at ? sketchById.get(from.sketch) : undefined;
-        const made = boardParts(f, solid, under && from?.at ? onSketch(planeFrame(under.plane), from.at) : undefined, (h) => h in (doc.blobs ?? {}));
+        // A board shaped by a face stands on the face, by the plane kept when it took its shape.
+        const frame = under ? planeFrame(under.plane) : from?.face ? from.frame : undefined;
+        const made = boardParts(f, solid, frame && from?.at ? onSketch(frame, from.at) : undefined, (h) => h in (doc.blobs ?? {}));
         for (const p of made) if (find(p.id) < 0) parts.push({ ...p, link: f.id });
         linkSteps.push({ id: f.id, type: "link", name: f.name, parts: made.map((p) => p.id), ...(f.component ? { parent: f.component } : {}) });
         boards.push({ id: f.id, body: boardBodyId(f.id), left: solid.left });

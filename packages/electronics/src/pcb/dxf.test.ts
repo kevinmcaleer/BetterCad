@@ -3,7 +3,7 @@ import { boardSize } from "../board";
 import { fabBoard } from "../fab/fixture";
 import type { P2 } from "../model";
 import { dxfOutline } from "./dxf";
-import { followFace, outlineBehind, shapeFromLoops, takeShape, unfollowSketch } from "./outline";
+import { followFace, holesFromCutouts, outlineBehind, roundCutouts, shapeFromLoops, takeShape, unfollowSketch } from "./outline";
 
 /** A DXF file from group codes and values, a pair a row. */
 const dxf = (...rows: (string | number)[][]) => `${rows.map(([code, value]) => `${String(code).padStart(3)}\n${value}`).join("\n")}\n  0\nEOF\n`;
@@ -156,5 +156,40 @@ describe("a board that takes a shape", () => {
     expect(outlineBehind(on.board!, { ...plate, holes: [] })).toBe(true);
     expect(unfollowSketch(on).board).not.toHaveProperty("outlineFrom");
     expect(followFace(d, "b1|top", { outer: [], holes: [] })).toBe(d);
+  });
+
+  it("offers round cut-outs as mounting holes, and keeps them holes as it follows (#653)", () => {
+    const ring = (cx: number, cy: number, r: number): P2[] =>
+      Array.from({ length: 32 }, (_, i) => [cx + r * Math.cos((i * Math.PI) / 16), cy + r * Math.sin((i * Math.PI) / 16)]);
+    const edge: P2[] = [
+      [0, 0],
+      [70, 0],
+      [70, 30],
+      [0, 30],
+    ];
+    // A 3.2 mm screw hole, a square window, and a round window too big for a screw.
+    const window: P2[] = [
+      [20, 10],
+      [30, 10],
+      [30, 20],
+      [20, 20],
+    ];
+    const lid = (x: number) => shapeFromLoops([edge, ring(x, 5, 1.6), window, ring(50, 15, 8)])!;
+    const on = followFace(fabBoard().d, "b1|top", lid(5));
+    expect(roundCutouts(on.board!.cutouts!)).toEqual([{ at: [5, 5], d: 3.2, i: 2 }]);
+    const before = on.board!.holes.length;
+    const drilled = holesFromCutouts(on);
+    expect(drilled.board!.cutouts).toHaveLength(2);
+    expect(drilled.board!.holes).toHaveLength(before + 1);
+    expect(drilled.board!.holes.at(-1)).toMatchObject({ x: 5, y: 5, drill: 3.2 });
+    expect(drilled.board!.outlineFrom).toEqual({ face: "b1|top", holes: true });
+    expect(holesFromCutouts(drilled)).toBe(drilled);
+    // In step with the face as it is; behind when the face's hole moves, and the update drills the new one.
+    expect(outlineBehind(drilled.board!, lid(5))).toBe(false);
+    expect(outlineBehind(drilled.board!, lid(9))).toBe(true);
+    const moved = followFace(drilled, "b1|top", lid(9));
+    expect(moved.board!.cutouts).toHaveLength(2);
+    expect(moved.board!.holes.at(-1)).toMatchObject({ x: 9, y: 5, drill: 3.2 });
+    expect(outlineBehind(moved.board!, lid(9))).toBe(false);
   });
 });

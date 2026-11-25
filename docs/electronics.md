@@ -276,7 +276,7 @@ the 3D view's pick set to Faces, any flat face picked on a body. The board takes
 the face as cut-outs, seen from outside the body (`faceShape` in `web/src/electronics/faceOutline.ts`, worked out
 from the face's triangles). The face is kept by the name the kernel gives it (`outlineFrom.face`, "body|face name"),
 so it is found again after the model changes; when its shape has changed the card says so and offers **Update the
-outline**, as it does for a sketch. The board is not moved onto the face in 3D. **Shape from a DXF file** reads lines,
+outline**, as it does for a sketch. The face's plane is kept with it (`outlineFrom.frame`), so the Board step stands the board on the face in 3D, as a board from a sketch stands on its sketch; a body moved by a joint or a pose is not followed. Round cut-outs up to 10 mm across are offered as mounting holes (**Make them mounting holes**, `holesFromCutouts`, #653): they become drilled holes that can be sized for a screw, and a board that follows a sketch or a face keeps drilling them as it follows. **Shape from a DXF file** reads lines,
 arcs, circles, ellipses and polylines with bulges (`dxfOutline` in `pcb/dxf.ts`), joins them end to end into closed
 shapes and takes the biggest as the edge and the ones inside it as cut-outs. The file's units are honoured
 (`$INSUNITS`), curves come in as short straight runs, and the card says what was left out: open shapes, splines,

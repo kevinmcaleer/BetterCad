@@ -1,6 +1,15 @@
 import { useId, useMemo, useRef, useState } from "react";
 import { boardSize, netlist, type Board, type ElectronicsDesign, type NetClass } from "@bettercad/electronics";
-import { followFace, followSketch, outlineBehind, takeShape, unfollowSketch, type OutlineShape } from "@bettercad/electronics/pcb/outline";
+import {
+  followFace,
+  followSketch,
+  holesFromCutouts,
+  outlineBehind,
+  roundCutouts,
+  takeShape,
+  unfollowSketch,
+  type OutlineShape,
+} from "@bettercad/electronics/pcb/outline";
 import { outlineRadius, roundedOutline, setBoard } from "@bettercad/electronics/pcb/route";
 import { PRESETS, RULE_FIELDS, applyPreset, keepRules, matchesPreset, presetChanges, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
 import { profiles, type Sketch } from "@bettercad/sketch";
@@ -77,15 +86,16 @@ export default function BoardSetup({
   const onFace = board.outlineFrom?.face;
   const shapes = useMemo(
     () => [
-      ...sketches.flatMap((s) => (shapeOf(s.sketch) ? [{ id: s.id, name: s.name, shape: shapeOf(s.sketch)!, face: "" }] : [])),
-      ...boardFaces(model, onFace).map((f) => ({ id: `face:${f.id}`, name: f.name, shape: f.shape, face: f.id })),
+      ...sketches.flatMap((s) => (shapeOf(s.sketch) ? [{ id: s.id, name: s.name, shape: shapeOf(s.sketch)!, face: "", frame: undefined }] : [])),
+      ...boardFaces(model, onFace).map((f) => ({ id: `face:${f.id}`, name: f.name, shape: f.shape as OutlineShape, face: f.id, frame: f.shape.frame })),
     ],
     [sketches, model?.bodies, model?.picks, model?.names, onFace], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const followed = board.outlineFrom?.sketch ?? (onFace ? `face:${onFace}` : undefined);
   const source = shapes.find((s) => s.id === followed);
   const follow = (to: (typeof shapes)[number], label: string) =>
-    edit((d) => (to.face ? followFace(d, to.face, to.shape) : followSketch(d, to.id, to.shape)), label);
+    edit((d) => (to.face ? followFace(d, to.face, to.shape, to.frame) : followSketch(d, to.id, to.shape)), label);
+  const round = useMemo(() => roundCutouts(board.cutouts ?? []).length, [board.cutouts]);
   const dxfFile = useRef<HTMLInputElement>(null);
   const [said, setSaid] = useState("");
   /** A DXF file's biggest closed shape becomes the board's edge (#638). Its reader loads when a file is picked. */
@@ -204,6 +214,18 @@ export default function BoardSetup({
           onClick={() => dxfFile.current?.click()}
         />
         {said && <PanelNote live>{said}</PanelNote>}
+        {round > 0 && (
+          <>
+            <PanelNote>{round === 1 ? "1 round cut-out could be a mounting hole." : `${round} round cut-outs could be mounting holes.`}</PanelNote>
+            <Button
+              size="dense"
+              variant="secondary"
+              label={round === 1 ? "Make it a mounting hole" : "Make them mounting holes"}
+              title="Drill them as holes, so each can be sized for a screw"
+              onClick={() => edit(holesFromCutouts, "Make mounting holes from cut-outs")}
+            />
+          </>
+        )}
         <FeatureRow label="Thickness">
           <select
             className="bc-select"
