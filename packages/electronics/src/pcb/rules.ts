@@ -17,6 +17,9 @@ export interface Preset {
   notes?: string[];
 }
 
+/** A rule that is a number. */
+export type RuleField = Exclude<keyof Rules, "preset" | "presetChecked">;
+
 export const PRESETS: Preset[] = [{ id: "safe", name: "Safe for most board houses", rules: { ...DEFAULT_RULES } }, ...(data.presets as Preset[])];
 
 /** The preset a board's rules came from. */
@@ -29,7 +32,7 @@ export function matchesPreset(rules: Rules): boolean {
 }
 
 /** The rules as fields to show and edit, in the order they are worth reading. */
-export const RULE_FIELDS: { id: Exclude<keyof Rules, "preset">; label: string; hint: string }[] = [
+export const RULE_FIELDS: { id: RuleField; label: string; hint: string }[] = [
   { id: "clearance", label: "Clearance", hint: "The gap copper on different nets keeps" },
   { id: "trackWidth", label: "Track width", hint: "The width new tracks start with" },
   { id: "minTrackWidth", label: "Narrowest track", hint: "Tracks thinner than this are flagged" },
@@ -49,11 +52,38 @@ export const RULE_FIELDS: { id: Exclude<keyof Rules, "preset">; label: string; h
 export function applyPreset(d: ElectronicsDesign, id: string): ElectronicsDesign {
   const p = PRESETS.find((x) => x.id === id);
   if (!p || !d.board) return d;
-  return { ...d, board: { ...d.board, rules: { ...p.rules, ...(p.id === "safe" ? {} : { preset: p.id }) } } };
+  const from = p.id === "safe" ? {} : { preset: p.id, ...(p.checked ? { presetChecked: p.checked } : {}) };
+  return { ...d, board: { ...d.board, rules: { ...p.rules, ...from } } };
+}
+
+/**
+ * What a board house has changed since the board took its rules (#643): the numbers that differ now, when the
+ * preset has been checked again since. Nothing when the board is up to date, or never said when it took them.
+ * An update is offered, never applied.
+ */
+export function presetChanges(
+  rules: Rules,
+): { preset: Preset; fields: { id: RuleField; label: string; yours: number | undefined; theirs: number | undefined }[] } | null {
+  const p = presetOf(rules);
+  if (!p?.checked || !rules.preset || !rules.presetChecked || rules.presetChecked >= p.checked) return null;
+  const fields = RULE_FIELDS.filter((f) => (rules[f.id] ?? undefined) !== (p.rules[f.id] ?? undefined)).map((f) => ({
+    id: f.id,
+    label: f.label,
+    yours: rules[f.id],
+    theirs: p.rules[f.id],
+  }));
+  return fields.length ? { preset: p, fields } : null;
+}
+
+/** Keeps the board's rules as they are and stops offering the preset's newer numbers. */
+export function keepRules(d: ElectronicsDesign): ElectronicsDesign {
+  const p = d.board && presetOf(d.board.rules);
+  if (!d.board || !p?.checked) return d;
+  return { ...d, board: { ...d.board, rules: { ...d.board.rules, presetChecked: p.checked } } };
 }
 
 /** Changes one rule. The preset's name stays, so the card can say the rules were changed from it. */
-export function setRule(d: ElectronicsDesign, field: Exclude<keyof Rules, "preset">, value: number | undefined): ElectronicsDesign {
+export function setRule(d: ElectronicsDesign, field: RuleField, value: number | undefined): ElectronicsDesign {
   if (!d.board || (value !== undefined && !(value >= 0))) return d;
   const rules = { ...d.board.rules };
   if (value === undefined) {

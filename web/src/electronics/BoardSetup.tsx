@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from "react";
 import { boardSize, netlist, type Board, type ElectronicsDesign, type NetClass } from "@bettercad/electronics";
 import { followSketch, outlineBehind, unfollowSketch, type OutlineShape } from "@bettercad/electronics/pcb/outline";
 import { outlineRadius, roundedOutline, setBoard } from "@bettercad/electronics/pcb/route";
-import { PRESETS, RULE_FIELDS, applyPreset, matchesPreset, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
+import { PRESETS, RULE_FIELDS, applyPreset, keepRules, matchesPreset, presetChanges, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
 import { profiles, type Sketch } from "@bettercad/sketch";
 import { Button, ESC, FeaturePanel, FeatureRow, NumberField, PanelNote, useEscape } from "@bettercad/ui";
 import type { EEdit } from "./actions";
@@ -57,7 +57,8 @@ export default function BoardSetup({
   const radius = outlineRadius(board.outline);
   const plain = radius > 0 || (board.outline.length === 4 && board.outline.every((c) => !c.bulge));
   const preset = presetOf(board.rules);
-  const own = !matchesPreset(board.rules);
+  const newer = presetChanges(board.rules);
+  const own = !newer && !matchesPreset(board.rules);
   const [numbers, setNumbers] = useState(false);
   const nets = useMemo(
     () =>
@@ -231,6 +232,30 @@ export default function BoardSetup({
               {new URL(preset.source).hostname.replace(/^www\./, "")}
             </a>
             , checked on {day(preset.checked)}. Check their page before you order.
+          </PanelNote>
+        )}
+        {newer && (
+          <PanelNote>
+            {newer.preset.name} has been checked again since this board took its rules, and{" "}
+            {newer.fields.length === 1 ? "one number differs" : `${newer.fields.length} numbers differ`}:{" "}
+            {newer.fields
+              .map((f) => `${f.label} ${f.yours === undefined ? "not set" : `${f.yours} mm`}, now ${f.theirs === undefined ? "not set" : `${f.theirs} mm`}`)
+              .join("; ")}
+            .{" "}
+            <Button
+              size="dense"
+              variant="secondary"
+              label="Update the rules"
+              title={`Use ${newer.preset.name} as it is now`}
+              onClick={() => edit((d) => applyPreset(d, newer.preset.id), "Update the board's rules")}
+            />{" "}
+            <Button
+              size="dense"
+              variant="secondary"
+              label="Keep these"
+              title="Keep the numbers this board has"
+              onClick={() => edit(keepRules, "Keep the board's rules")}
+            />
           </PanelNote>
         )}
         {own && preset && (

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { BASICS, emptyDesign, placePart, pushToBoard, type ElectronicsDesign } from "@bettercad/electronics";
 import { addKeepoutArea, addPour, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import { addHole, addTrack, setPlacement } from "@bettercad/electronics/pcb/route";
+import { applyPreset } from "@bettercad/electronics/pcb/rules";
 import { drawCircle, drawRectangle, newSketch } from "@bettercad/sketch";
 import type { EEdit } from "./actions";
 import BoardChecks from "./BoardChecks";
@@ -105,6 +106,31 @@ describe("board setup", () => {
     expect(s.design().board!.rules.clearance).toBe(0.15);
   });
 
+  it("offers a board house's newer numbers, and never applies them itself (#643)", async () => {
+    // A board that took JLCPCB's rules when clearance was 0.2 mm, before the limits were checked again.
+    const taken = applyPreset(board().d, "jlcpcb-2layer");
+    const old = { ...taken, board: { ...taken.board!, rules: { ...taken.board!.rules, clearance: 0.2, presetChecked: "2026-01-01" } } };
+    const s = setup(old, (design, edit) => <BoardSetup design={design} edit={edit} onClose={() => {}} />);
+    expect(
+      screen.getByText(/has been checked again since this board took its rules, and one number differs: Clearance 0.2 mm, now 0.15 mm/),
+    ).toBeInTheDocument();
+    expect(s.design().board!.rules.clearance).toBe(0.2);
+    expect(screen.queryByRole("button", { name: "Put them back" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Keep these" }));
+    expect(s.design().board!.rules).toMatchObject({ clearance: 0.2, presetChecked: "2026-11-24" });
+    expect(screen.queryByRole("button", { name: "Update the rules" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Put them back" })).toBeInTheDocument();
+  });
+
+  it("updates to a board house's newer numbers when asked", async () => {
+    const taken = applyPreset(board().d, "jlcpcb-2layer");
+    const old = { ...taken, board: { ...taken.board!, rules: { ...taken.board!.rules, clearance: 0.2, presetChecked: "2026-01-01" } } };
+    const s = setup(old, (design, edit) => <BoardSetup design={design} edit={edit} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Update the rules" }));
+    expect(s.design().board!.rules).toMatchObject({ clearance: 0.15, presetChecked: "2026-11-24" });
+    expect(s.labels).toContain("Update the board's rules");
+  });
+
   it("makes a net class and puts nets in it", async () => {
     const start = board().d;
     const s = setup(start, (design, edit) => <BoardSetup design={design} edit={edit} onClose={() => {}} />);
@@ -174,6 +200,20 @@ describe("what is picked on the board", () => {
     const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} part={parts[0]} selected={[parts[0]]} />);
     await userEvent.click(screen.getByLabelText("Name on the silkscreen"));
     expect(s.design().board!.placements.find((p) => p.part === parts[0])!.refHidden).toBe(true);
+  });
+
+  it("swaps a resistor's two pins from the board, as one step (#645)", async () => {
+    const { d, parts } = board();
+    const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} part={parts[0]} selected={[parts[0]]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Swap pins 1 and 2" }));
+    expect(s.labels).toEqual(["Swap pins 1 and 2 of R1"]);
+    const part = s.design().parts.find((p) => p.id === parts[0])!;
+    expect(s.design().defs[part.def]!.swapped).toBe(true);
+    // A part whose pins each do their own job has nothing to swap.
+    const j = placePart(d, "sh1", BASICS["header-3"]!(), { x: 50, y: 0 });
+    const placed = pushToBoard(j.design).design;
+    setup(placed, (design, edit) => <BoardProps design={design} edit={edit} part={j.part.id} selected={[j.part.id]} />);
+    expect(screen.getAllByRole("button", { name: /Swap pins/ })).toHaveLength(1);
   });
 
   it("places a part by numbers and locks it", async () => {

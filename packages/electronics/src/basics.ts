@@ -45,9 +45,10 @@ export const CHIP_0603 = (): FootprintDef => chip("0603 (1608 metric)", 0.8, 0.9
 export const CHIP_0805 = (): FootprintDef => chip("0805 (2012 metric)", 1.0, 1.45, 1.9, 2.0, 1.25);
 export const CHIP_1206 = (): FootprintDef => chip("1206 (3216 metric)", 1.15, 1.8, 2.9, 3.2, 1.6);
 
+/** Two ends that do the same job, so the board may swap them. */
 const twoPins = (type: SymbolPin["type"] = "passive"): SymbolPin[] => [
-  { number: "1", name: "1", type, x: 0, y: GRID * 1.5, length: GRID / 2, dir: 270 },
-  { number: "2", name: "2", type, x: 0, y: -GRID * 1.5, length: GRID / 2, dir: 90 },
+  { number: "1", name: "1", type, x: 0, y: GRID * 1.5, length: GRID / 2, dir: 270, swap: "ends" },
+  { number: "2", name: "2", type, x: 0, y: -GRID * 1.5, length: GRID / 2, dir: 90, swap: "ends" },
 ];
 
 const packages = (h: number) =>

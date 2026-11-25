@@ -1,11 +1,13 @@
 import { GRID, header, resistor } from "../basics";
 import { boardPads, ratsnest } from "../board";
 import { addWire, placePart } from "../edit";
+import { swapGroups, swapPins } from "../swap";
+import { netlist } from "../nets";
 import { check, waive } from "../erc";
 import { emptyDesign, type ElectronicsDesign, type P2 } from "../model";
 import { pushToBoard } from "../sync";
 import { copperOf, edgeGap, edgeLoops, gap, netRules, padSolid } from "./copper";
-import { BOARD_RULES, checkBoard, waiveBoard, type BoardRuleId } from "./drc";
+import { BOARD_RULES, checkBoard, placeClashes, waiveBoard, type BoardRuleId } from "./drc";
 import {
   addHole,
   addKeepout,
@@ -27,7 +29,7 @@ import {
 } from "./route";
 import { followSketch, outlineBehind, outlineOf, unfollowSketch } from "./outline";
 import { addKeepoutArea, addCutout, addPour, pourFill, pourShape, removeAreas, setPour, wholeBoard, type PourFill } from "./pour";
-import { PRESETS, applyPreset, matchesPreset, setRule } from "./rules";
+import { PRESETS, applyPreset, keepRules, matchesPreset, presetChanges, setRule } from "./rules";
 import { boardState } from "./state";
 
 const G = GRID;
@@ -386,6 +388,23 @@ describe("the design rule check", () => {
   });
 });
 
+describe("placing, checked as you go", () => {
+  it("says what is wrong with where a part sits while it is moved, for that part alone (#639)", () => {
+    const { d } = netted();
+    const [j, r] = d.board!.placements.map((p) => p.part) as [string, string];
+    expect(placeClashes(d, [r])).toEqual([]);
+    expect(placeClashes(setPlacement(d, r, { x: 80, y: 20 }), [r])).toEqual([{ parts: [r], text: "R1 is off the board." }]);
+    const over = setPlacement(d, r, { x: 30, y: 20 });
+    expect(placeClashes(over, [r])).toEqual([{ parts: [r, j], text: "R1 and J1 overlap." }]);
+    // Both picked: said once. Neither picked: nothing to say.
+    expect(placeClashes(over, [r, j])).toEqual([{ parts: [j, r], text: "J1 and R1 overlap." }]);
+    expect(placeClashes(over, [])).toEqual([]);
+    expect(placeClashes(setPlacement(d, r, { x: 30, y: 20, side: "bottom" }), [r])).toEqual([]);
+    expect(placeClashes(addKeepout(d, [5, 15], [15, 25], { parts: true, tracks: true }), [r]).map((c) => c.text)).toEqual(["R1 is in a keep-out."]);
+    expect(placeClashes(setPlacement(d, r, { x: 0.5, y: 20 }), [r]).map((c) => c.text)).toEqual(["R1 hangs over the board's edge."]);
+  });
+});
+
 describe("rule presets", () => {
   it("says where each board house's numbers came from", () => {
     for (const p of PRESETS.filter((x) => x.id !== "safe")) {
@@ -407,6 +426,20 @@ describe("rule presets", () => {
     expect(matchesPreset(own.board!.rules)).toBe(false);
     expect(setRule(jlc, "clearance", -1)).toBe(jlc);
     expect(applyPreset(jlc, "safe").board!.rules.preset).toBeUndefined();
+    expect(applyPreset(jlc, "safe").board!.rules.presetChecked).toBeUndefined();
+    // The day the limits were checked is kept, so numbers checked again later are offered and never applied.
+    const day = PRESETS.find((p) => p.id === "jlcpcb-2layer")!.checked!;
+    expect(jlc.board!.rules.presetChecked).toBe(day);
+    expect(presetChanges(jlc.board!.rules)).toBeNull();
+    expect(presetChanges({ ...own.board!.rules })).toBeNull();
+    const older = { ...own.board!.rules, presetChecked: "2020-01-01" };
+    expect(presetChanges(older)).toMatchObject({
+      preset: { id: "jlcpcb-2layer" },
+      fields: [{ id: "clearance", label: "Clearance", yours: 0.3, theirs: jlc.board!.rules.clearance }],
+    });
+    expect(presetChanges({ ...jlc.board!.rules, presetChecked: "2020-01-01" })).toBeNull();
+    const kept = keepRules({ ...own, board: { ...own.board!, rules: older } });
+    expect(kept.board!.rules).toMatchObject({ clearance: 0.3, presetChecked: day });
     expect(setBoard(d, { thickness: 1 }).board!.thickness).toBe(1);
   });
 });
@@ -540,6 +573,39 @@ describe("back to the schematic", () => {
     expect(gone.board!.placements.map((p) => p.part)).toEqual([d.parts.find((p) => p.ref === "J1")!.id]);
     expect(gone.sheets[0]!.symbols.some((s) => s.part === r1.id)).toBe(false);
     expect(deleteParts(d, ["nothing"])).toBe(d);
+  });
+
+  it("swaps two pins where the component says they do the same job, and the schematic follows (#645)", () => {
+    const { d } = netted();
+    const r1 = d.parts.find((p) => p.ref === "R1")!;
+    const j1 = d.parts.find((p) => p.ref === "J1")!;
+    // A resistor's two ends can swap. A header's pins cannot.
+    expect(swapGroups(d, r1.id)).toEqual([["1", "2"]]);
+    expect(swapGroups(d, j1.id)).toEqual([]);
+    expect(swapPins(d, j1.id, "1", "2")).toBe(d);
+    const pinsOn = (x: ElectronicsDesign) =>
+      netlist(x)
+        .nets.map((n) =>
+          n.pins
+            .map((p) => `${p.ref}.${p.pin}`)
+            .sort()
+            .join(" "),
+        )
+        .sort();
+    expect(pinsOn(d)).toEqual(["J1.1 R1.1", "J1.2 R1.2"]);
+    const padNet = (x: ElectronicsDesign, n: string) => boardPads(x).find((p) => p.ref === "R1" && p.pad.number === n)!.net;
+    const before = [padNet(d, "1"), padNet(d, "2")];
+    const swapped = swapPins(d, r1.id, "1", "2");
+    // The wires have not moved; they reach the other pin now, and the pads have each other's nets.
+    expect(swapped.sheets).toBe(d.sheets);
+    expect(pinsOn(swapped)).toEqual(["J1.1 R1.2", "J1.2 R1.1"]);
+    expect([padNet(swapped, "1"), padNet(swapped, "2")]).toEqual([before[1], before[0]]);
+    // Only R1 changed: it has a copy of its own, marked as swapped.
+    const mine = swapped.parts.find((p) => p.id === r1.id)!;
+    expect(mine.def).not.toBe(r1.def);
+    expect(swapped.defs[mine.def]!.swapped).toBe(true);
+    expect(swapped.defs[r1.def]).toBe(d.defs[r1.def]);
+    expect(pinsOn(swapPins(swapped, r1.id, "2", "1"))).toEqual(pinsOn(d));
   });
 
   it("numbers parts by where they sit on the board, and the schematic follows", () => {

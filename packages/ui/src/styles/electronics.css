@@ -801,6 +801,9 @@ button.bc-ec-pill {
   flex: 1 1 200px;
   margin: 0;
 }
+.bc-ec-routebar .bc-ec-blocked {
+  color: var(--bc-color-danger);
+}
 .bc-ec-routebar label {
   display: flex;
   align-items: center;

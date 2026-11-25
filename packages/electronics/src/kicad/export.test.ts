@@ -68,7 +68,8 @@ describe("exporting to KiCad (#664)", () => {
       const back = symbols.find((x) => x.name === kicadName(def.name))!;
       expect(back, def.name).toBeDefined();
       expect(back.prefix).toBe(def.prefix);
-      expect(back.symbol.pins).toEqual(def.symbol.pins.map((p) => ({ ...p, x: tidy(p.x), y: tidy(p.y) })));
+      // KiCad's symbols have no word for pins that can swap, so that one mark does not come back.
+      expect(back.symbol.pins).toEqual(def.symbol.pins.map(({ swap: _, ...p }) => ({ ...p, x: tidy(p.x), y: tidy(p.y) })));
       expect(back.symbol.shapes.length).toBe(def.symbol.shapes.length);
       for (const pkg of def.packages) {
         const fp = readKicadFootprint(file(`Pico_servo_board.pretty/${kicadName(pkg.footprint.name)}.kicad_mod`)).footprint;

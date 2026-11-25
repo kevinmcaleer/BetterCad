@@ -40,6 +40,8 @@ export interface BoardLook {
   air: Air[];
   /** Rules check markers: a point and the distance found, mm. */
   marks?: { at: P2; text?: string }[];
+  /** Parts that sit where they cannot: over another part, off the board or in a keep-out (#639). */
+  clashing?: Set<string>;
   ghost?: {
     track?: { pts: P2[]; width: number; layer: CopperLayer; blocked?: boolean };
     placements?: { part: string; x: number; y: number; rot: number; side: Side }[];
@@ -331,10 +333,20 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     ctx.globalAlpha = ghost ? 0.6 : 1;
     for (const s of pkg.footprint.shapes) {
       if (s.layer === "silk" && show(silk)) shapeOn(ctx, v, s, place, at.rot, at.side === "bottom", c[at.side === "top" ? "ec-silk" : "ec-silk-far"], c);
-      else if (s.layer === "courtyard" && (show("courtyard") || on)) {
+      else if (s.layer === "courtyard" && (show("courtyard") || on || look.clashing?.has(at.part))) {
+        const bad = !!look.clashing?.has(at.part);
         ctx.save();
-        if (!on) ctx.globalAlpha = 0.5;
-        shapeOn(ctx, v, { ...s, width: on ? 0.12 : 0.05 } as Shape, place, at.rot, at.side === "bottom", on ? c["ec-pick"] : c["ec-courtyard"], c);
+        if (!on && !bad) ctx.globalAlpha = 0.5;
+        shapeOn(
+          ctx,
+          v,
+          { ...s, width: on || bad ? 0.12 : 0.05 } as Shape,
+          place,
+          at.rot,
+          at.side === "bottom",
+          bad ? c.danger : on ? c["ec-pick"] : c["ec-courtyard"],
+          c,
+        );
         ctx.restore();
       }
     }

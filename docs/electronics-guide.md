@@ -16,7 +16,7 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
 ## Draw the schematic
 
 1. **Place parts.** Press P for Components. Type what you want ("10k", "header 3", "pico"), pick a part and a
-   package, and choose Place. Click to set it down; R turns it and X mirrors it while it is on the pointer. Esc lets
+   package, and choose Place. Click to set it down; R turns it, X flips it left to right and Y flips it top to bottom while it is on the pointer. Esc lets
    go of it.
 2. **Wire the pins.** Press W and click a pin, then click where the wire should bend, then the pin it goes to. A wire
    that ends on another wire joins it. Wires that only cross do not join; press J and click the crossing to join them

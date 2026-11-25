@@ -120,6 +120,8 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
 - **Replace** (`replace.ts`, loaded with the Components card): with one part picked on the sheet, the card of the
   part picked in Components offers Replace. Wire ends move to the pin of the same name, or failing that the same
   number, and the pins that had a wire and found no match are listed.
+- **Turn and flip.** R turns the selection a quarter turn, X flips it left to right (`mirrorOnSheet`) and Y flips it
+  top to bottom (`flipOnSheet`: the same flip and a half turn). The same keys work on a part still on the pointer.
 - **Wires follow.** Moving a part stretches the wires on its pins; dragging a wire on its own brings the ends of the
   wires that meet it along. Hovering a wire or a label lights its whole net, and the status strip names it
   (`netAt` on the netlist).
@@ -197,7 +199,15 @@ their own; a net is in one class at a time.
 **Rule presets** (`presets.json`). A board house's limits are data: the numbers, the page they were read from and
 the day they were read. `ours` lists the fields that are our working values (clearance, track width, via size)
 chosen above the house's minimum. Adding a house is an entry in that file. The card links the source and says to
-check it before ordering, because the houses change their pages.
+check it before ordering, because the houses change their pages. A board notes the day its preset had been checked
+when it took the rules (`presetChecked`). When the preset is checked again later and a number differs, the Board
+card says which and offers **Update the rules** or **Keep these** (`presetChanges`, `keepRules`). Nothing changes
+until you choose.
+
+**Clashes while you place** (#639). While parts are picked on the board, `placeClashes` looks at just those parts
+every time they move: over another part on the same side, off the board, hanging over its edge, or in a keep-out
+for parts. The courtyards that clash are drawn in the warning colour and a line says what is wrong. It is the same
+test the board check runs, so nothing shows here that the check would pass.
 
 ## The board check (#644)
 
@@ -255,8 +265,15 @@ schematic should know about is made to both in the same undo step. Renumber on t
 sit (top side first, in rows from the top, left to right) and the schematic's names follow. Delete on a part asks
 first, then takes it off the sheet as well. A part's name can be hidden on the silkscreen from its card.
 
+**Pin swap** (#645). A component marks pins that do the same job with the same word (`swap` on a pin: a resistor's
+two ends are both "ends"). For a part with such pins, its card on the board offers **Swap pins 1 and 2** (or a list
+of pairs when there are more). `swapPins` (in `swap.ts`) gives that one part its own copy of the component with the two pins in
+each other's places: the wires on the sheet do not move and now reach the other pin, and the two pads take each
+other's nets, all in one undo step. In the starter library resistors, unpolarised capacitors, inductors, ferrite
+beads and fuses are marked, and the symbol editor's **Swaps with** field marks the pins of a part you draw. KiCad symbols have no such mark, so it is not written to or read from KiCad files.
+
 Left for later: dragging a track's or an area's corners, an outline from a face or a DXF file (there is no DXF
-import yet), spokes per pad, pin and gate swapping (no component marks pins as swappable yet), pictures and fiducials
+import yet), spokes per pad, gate swapping, pictures and fiducials
 on the silkscreen.
 
 ## The board in 3D (#649 to #654)
@@ -511,7 +528,7 @@ or Adafruit project, has been opened yet.
 - Release 2, by decision: more sheets with hierarchy (#636), shove routing (#646), an autorouter (#647), four layers
   and more (#648), panels and IPC-2581 (#662).
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), a 3D view and pin snapping when lining up a part's body (#628),
-  sharing a library (#629), the server's shared catalogue (#625), live stock and prices (#661).
+  live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.
 - A first real order: the order pack reads back in our own preview, and its copper and holes agree with what KiCad
