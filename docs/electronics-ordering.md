@@ -46,6 +46,10 @@ Choose Save the files. You get one zip named for the board and the house, with t
 
 Unzip the outer zip once. Leave `<name>-gerbers.zip` zipped: that is the file you upload.
 
+![Which file goes where, for JLCPCB and for PCBWay](images/electronics-ordering-files.svg)
+
+The picture is a drawing of which file goes where, not a copy of either house's page.
+
 ## 5. Upload: JLCPCB
 
 Their site leads you through the order. This is which file goes where:
@@ -96,8 +100,8 @@ Nobody has yet uploaded these files to either house and gone through to the quot
 tested by reading them back and by comparing them with what KiCad writes for the same board, and the parts lists
 follow the houses' pages, but the pages do not give exact headings for every column (PCBWay's gives field names
 only) or say how bottom parts are turned. The steps above say which file goes where and no more, because the click
-by click of each site was not on the pages we read; screenshots of the houses' own upload pages will be added after
-a real order. Treat a first order as the test.
+by click of each site was not on the pages we read. The picture in step 4 is our own drawing; screenshots of the
+houses' own upload pages will be added after a real order. Treat a first order as the test.
 
 ## Where the houses' needs were read
 

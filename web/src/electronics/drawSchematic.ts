@@ -1,5 +1,6 @@
 import {
   GRID,
+  elsewhere,
   key,
   onSegment,
   pinDirOnSheet,
@@ -261,6 +262,8 @@ export function drawSchematic(
     if (!part || !def) continue;
     drawSymbol(ctx, v, def.symbol, s, c, { ref: part.ref, value: part.value }, look.selected.has(s.id) || look.hover === s.id);
   }
+  // A name that carries on to another sheet says which (#636).
+  const far = d.sheets.length > 1 ? elsewhere(d, sheet.id) : null;
   for (const l of sheet.labels) {
     const s = toScreen(v, [l.x, l.y]);
     const on = look.selected.has(l.id) || look.hover === l.id;
@@ -270,6 +273,13 @@ export function drawSchematic(
     ctx.textBaseline = "bottom";
     ctx.fillText(l.name, s[0] + 2, s[1] - 2);
     ctx.fillRect(s[0] - 1.5, s[1] - 1.5, 3, 3);
+    const to = far?.get(l.name);
+    if (to) {
+      const w = ctx.measureText(l.name).width;
+      ctx.fillStyle = c.muted;
+      ctx.font = `${Math.max(1, 1.0 * v.scale)}px ${c.font}`;
+      ctx.fillText(` → ${to[0]!.name}${to.length > 1 ? ` +${to.length - 1}` : ""}`, s[0] + 2 + w, s[1] - 2);
+    }
   }
   for (const n of sheet.noConnects) {
     const s = toScreen(v, [n.x, n.y]);

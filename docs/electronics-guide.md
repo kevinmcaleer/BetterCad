@@ -24,6 +24,9 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
 3. **Name nets.** Press L, type a name and click a wire. Wires with the same name are joined, on one sheet or across
    sheets, so you can keep the drawing tidy without long wires. Power symbols (5V, GND) are in Components and join
    by name the same way.
+   A bigger design goes on more than one sheet: the plus beside the sheet tabs adds one, and right-click on a tab
+   renames, moves, deletes or duplicates it. Duplicate copies a sheet as a block to use again, with its own part
+   references. A label that carries on to another sheet says which; pick it to go there.
 4. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
 5. **Check it.** Press E for the rules check. It lists pins left unconnected, outputs wired together, nets with one
    pin and more, each with a way to fix it. Click a line to go to the spot.

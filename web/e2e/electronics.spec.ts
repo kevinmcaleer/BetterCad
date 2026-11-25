@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PITCH, ledCircuit, onCanvas, pick, press, tools } from "./lib/electronics";
+import { PITCH, ledCircuit, onCanvas, pick, place, press, tools } from "./lib/electronics";
 
 const STEP = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "packages", "kernel", "src", "testdata", "step", "cog-on-flat.step");
 
@@ -75,6 +75,48 @@ test.describe("on a wide screen", () => {
     await expect(page.getByRole("img", { name: /^PCB/ })).toBeHidden();
     await tree.getByRole("button", { name: /^Schematic/ }).dblclick();
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 3 parts, 1 net" })).toBeVisible();
+  });
+
+  test("a second sheet: add it, name it, and follow a net from one sheet to the other", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    const name = async (text: string, x: number, y: number) => {
+      const label = tools(page).getByRole("button", { name: /^Net label/ });
+      await label.click();
+      await press(page, x, y);
+      await page.getByLabel("Net name").fill(text);
+      await page.getByLabel("Net name").press("Enter");
+      await label.click();
+    };
+    await name("LAMP", 3.81, 0);
+
+    // A new sheet opens empty, with its own tab. A resistor there joins the first sheet's LED by the net's name.
+    const sheets = page.getByRole("tablist", { name: "Sheets" });
+    await page.getByRole("button", { name: "Add sheet" }).click();
+    await expect(sheets.getByRole("tab", { name: "Sheet 2, sheet 2 of 2" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 2:/ })).toBeVisible();
+    await place(page, "Resistor", 0, 0);
+    await name("LAMP", 0, 3.81);
+    const status = page.getByRole("status", { name: "Electronics status" });
+    // The LED's far pin and the new resistor's top pin are one net now: only the two resistors' far pins are open.
+    await expect(status).toContainText("2 pins or wire ends are not connected");
+
+    // F2 names the sheet. Page Up goes back, and the label there says where its net carries on.
+    await sheets.getByRole("tab", { name: /^Sheet 2/ }).focus();
+    await page.keyboard.press("F2");
+    await page.getByLabel("Sheet name").fill("Ballast");
+    await page.getByLabel("Sheet name").press("Enter");
+    await expect(sheets.getByRole("tab")).toHaveText(["Sheet 1", "Ballast"]);
+    await page.keyboard.press("PageUp");
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1:/ })).toBeVisible();
+    await press(page, 3.81, 0);
+    await page.getByRole("button", { name: "Ballast", exact: true }).click();
+    await expect(sheets.getByRole("tab", { name: /^Ballast/ })).toHaveAttribute("aria-selected", "true");
+    if (process.env.BODY_SHOT) await page.screenshot({ path: process.env.BODY_SHOT });
+    await axe(page);
   });
 
   test("make a part of your own from a pin list and a package, then place it", async ({ page }) => {

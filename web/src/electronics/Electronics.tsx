@@ -41,6 +41,7 @@ const OrderBoard = lazy(() => import("./OrderBoard"));
 const BoardChecks = lazy(() => import("./BoardChecks"));
 const BoardSetup = lazy(() => import("./BoardSetup"));
 const BoardProps = lazy(() => import("./BoardProps"));
+const SchSheets = lazy(() => import("./SchSheets"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -413,6 +414,24 @@ function commands(design: () => ElectronicsDesign): Command[] {
       keys: [key],
       run: () => showView(view, design()),
     })),
+    // Sheets (#636): the strip adds, names and moves them; these go from one to the next.
+    ...([1, -1] as const).map((step): Command => ({
+      ...e,
+      id: `electronics.sheet.${step > 0 ? "next" : "previous"}`,
+      label: step > 0 ? "Next sheet" : "Previous sheet",
+      group: "View",
+      icon: "schematic",
+      keys: [step > 0 ? "pagedown" : "pageup"],
+      when: () => schematic() && design().sheets.length > 1,
+      run: () => {
+        const all = design().sheets;
+        const at = Math.max(
+          0,
+          all.findIndex((s) => s.id === eui.get().sheet),
+        );
+        eui.set({ sheet: all[(at + step + all.length) % all.length]!.id, selected: [], net: null, spot: null });
+      },
+    })),
     ...tools.map(([t, label, key, icon]): Command => ({
       ...e,
       id: `electronics.${t}`,
@@ -776,6 +795,12 @@ export default function ElectronicsView({
       )}
 
       <Switcher behind={behind} onView={go} />
+
+      {view === "schematic" && (!readOnly || design.sheets.length > 1) && (
+        <Suspense fallback={null}>
+          <SchSheets design={design} open={sheet.id} edit={edit} readOnly={readOnly} />
+        </Suspense>
+      )}
 
       {!ribbon && (
         <Toolbar label={view === "schematic" ? "Schematic tools" : "PCB tools"} className="bc-ec-tools">
