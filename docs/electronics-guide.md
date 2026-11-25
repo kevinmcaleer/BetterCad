@@ -63,11 +63,20 @@ schematic brings it up to date and lists the changes first.
 
 1. **Set up the board.** Press B for Board setup: width, height, corner radius and thickness, or take the outline
    from a sketch in your model so the board fits the case you are printing. Pick a board house's rules here too.
+   Most boards need two copper layers. Layers gives you four or six: the inner ones show in the Layers card, L steps
+   through them while you route, and a pour over the whole board on an inner layer makes it a ground or power plane.
 2. **Place the parts.** Drag them into place. R turns a part, X flips it to the other side of the board, K locks it.
    Thin lines show which pads still need joining.
 3. **Route.** Press W and click a pad. Each click lays a piece of track with a 45° bend; click the pad it goes to and
    the track ends. Press V to drop a via and carry on on the other side. With Keep clear on, a track stops before it
-   comes too close to anything else and says what is in the way.
+   comes too close to anything else and says what is in the way. Or choose Autoroute: it lays tracks for the
+   connections still to make, on both sides or one, and leaves your own tracks where they are. Stop keeps what it
+   has done, and one undo takes its tracks out. It suits simple boards and finishing off; it lists any connection
+   it finds no way for.
+   Turn on Push and a track you lay moves other tracks aside to make room, keeping every gap. Pair routes two nets
+   such as D+ and D- side by side: start on one pad, click the line between them, and both tracks follow at the
+   same gap. The bar shows how long the net is as you go; type a Target length to see it against that. To make a
+   net longer, pick one of its tracks and type the length you want: it gets wiggles to make it up.
 4. **Pour copper.** Press P and draw round an area, usually the whole board for ground. The pour keeps clear of
    other nets and joins its own pads with spokes.
 5. **Add holes and text.** H adds a mounting hole for a screw. T writes on the silkscreen.
@@ -88,7 +97,8 @@ board's copper and silkscreen are drawn on its faces. Change the board and the m
 ## Order it
 
 Choose Order in the PCB view. [Ordering a board](electronics-ordering.md) goes through it step by step for JLCPCB
-and PCBWay.
+and PCBWay. It can also make a panel of several boards, save an assembly drawing of each side, and save the whole
+board as one IPC-2581 file for an assembler that asks for one.
 
 ## Bring a design in, or take it out
 
@@ -114,6 +124,6 @@ On a Mac, Ctrl is Cmd. Press ? in the app for every shortcut.
 
 ## What it does not do yet
 
-Boards have two copper layers. Tracks are laid by hand: there is no autorouter and no push and shove. A model holds
+Boards have two, four or six copper layers, with our own usual builds and not a board house's. Autoroute routes simple boards and does not push tracks aside. Push moves tracks, not vias or parts. A model holds
 one board. Part bodies in 3D are simple shapes, not the makers' own models. Part numbers for assembly are typed in,
 not looked up. The developer notes in [electronics.md](electronics.md) list the rest.

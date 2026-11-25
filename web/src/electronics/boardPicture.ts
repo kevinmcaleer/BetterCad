@@ -2,6 +2,7 @@ import { boardPads, boardSize, type ElectronicsDesign } from "@bettercad/electro
 import { copperOf } from "@bettercad/electronics/pcb/copper";
 import { pourFills, pourShape } from "@bettercad/electronics/pcb/pour";
 import { MASK_COLOURS } from "@bettercad/electronics/pcb/solid";
+import { layersOf, viaLayers } from "@bettercad/electronics/pcb/stack";
 import type { BodyMesh } from "@bettercad/kernel";
 import { faceFrame, inFace, type Placement, type V3 } from "../decal/place";
 import { mat4Apply, mat4ApplyDir, placeMatrix, type Part } from "../state/document";
@@ -59,21 +60,29 @@ export function boardPicture(d: ElectronicsDesign, side: "top" | "bottom", font 
     colours["ec-hole"] = HOLE;
     colours["ec-mark"] = mask;
     const far = side === "top" ? "bottom" : "top";
-    const hidden = new Set<LayerId>([far, `silk-${far}`, "courtyard", "edge", "ratsnest"]);
+    // Only this side's copper shows: the far side and any inner layers (#648) are under it.
+    const hidden = new Set<LayerId>([far, ...(layersOf(board).slice(1, -1) as LayerId[]), `silk-${far}`, "courtyard", "edge", "ratsnest"]);
     const v: View2D = { scale, ox: -box.x * scale, oy: (box.y + box.h) * scale };
     const pads = boardPads(d);
     const all = copperOf(d, pads);
     const pours = pourFills(d, pads, all)
-      .filter((fill) => (fill.pour.layer === "bottom" ? "bottom" : "top") === side)
+      .filter((fill) => fill.pour.layer === side)
       .map((fill) => ({ fill, shape: pourShape(d, fill.pour, pads, all) }));
-    drawBoard(ctx, v, { w: canvas.width, h: canvas.height }, { ...d, board: { ...board, keepouts: [] } }, colours, {
-      selected: new Set(),
-      hidden,
-      active: side,
-      pads,
-      air: [],
-      pours,
-    });
+    drawBoard(
+      ctx,
+      v,
+      { w: canvas.width, h: canvas.height },
+      { ...d, board: { ...board, keepouts: [], vias: board.vias.filter((x) => viaLayers(board, x).includes(side)) } },
+      colours,
+      {
+        selected: new Set(),
+        hidden,
+        active: side,
+        pads,
+        air: [],
+        pours,
+      },
+    );
     // Pads are bare metal: the mask is opened over them.
     ctx.fillStyle = PAD;
     for (const p of pads) {

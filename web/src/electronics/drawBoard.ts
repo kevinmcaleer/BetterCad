@@ -12,12 +12,13 @@ import {
   type Side,
 } from "@bettercad/electronics";
 import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
+import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
 import type { Colours } from "./colours";
 import { rubber } from "./drawSchematic";
 import { toScreen, type View2D } from "./view2d";
 
 /** The layers the Layers card lists. */
-export type LayerId = "top" | "bottom" | "silk-top" | "silk-bottom" | "courtyard" | "edge" | "holes" | "ratsnest";
+export type LayerId = "top" | "bottom" | `in${number}` | "silk-top" | "silk-bottom" | "courtyard" | "edge" | "holes" | "ratsnest";
 export const LAYERS: { id: LayerId; label: string; colour: keyof Colours; copper?: CopperLayer }[] = [
   { id: "top", label: "Top copper", colour: "ec-copper-top", copper: "top" },
   { id: "bottom", label: "Bottom copper", colour: "ec-copper-bottom", copper: "bottom" },
@@ -28,6 +29,21 @@ export const LAYERS: { id: LayerId; label: string; colour: keyof Colours; copper
   { id: "holes", label: "Holes", colour: "ec-pad" },
   { id: "ratsnest", label: "Unrouted lines", colour: "ec-pcb-ink" },
 ];
+
+/** The colour each copper layer is drawn in. */
+export const copperColour = (layer: CopperLayer): keyof Colours =>
+  layer === "top"
+    ? "ec-copper-top"
+    : layer === "bottom"
+      ? "ec-copper-bottom"
+      : (`ec-copper-in${Math.min(4, Math.max(1, Number(layer.slice(2)) || 1))}` as keyof Colours);
+
+/** The layers of a board, for the Layers card: its inner copper layers (#648) sit between the top and the bottom. */
+export function layersFor(board: { copperLayers: number }): typeof LAYERS {
+  const inner = layersOf({ copperLayers: board.copperLayers as 2 | 4 | 6 }).slice(1, -1);
+  if (!inner.length) return LAYERS;
+  return [LAYERS[0]!, ...inner.map((l) => ({ id: l as LayerId, label: layerName(l), colour: copperColour(l), copper: l })), ...LAYERS.slice(1)];
+}
 
 export interface BoardLook {
   selected: Set<string>;
@@ -45,6 +61,8 @@ export interface BoardLook {
   clashing?: Set<string>;
   ghost?: {
     track?: { pts: P2[]; width: number; layer: CopperLayer; blocked?: boolean };
+    /** The other track of a pair being routed. */
+    mate?: { pts: P2[]; width: number; layer: CopperLayer; blocked?: boolean };
     placements?: { part: string; x: number; y: number; rot: number; side: Side }[];
   };
   box?: [P2, P2] | null;
@@ -231,8 +249,13 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     });
   ctx.fill("evenodd");
 
-  const order: CopperLayer[] = look.active === "top" ? ["bottom", "top"] : ["top", "bottom"];
-  const copper = (layer: CopperLayer) => c[layer === "top" ? "ec-copper-top" : "ec-copper-bottom"];
+  // From the far side up, with the layer being worked on last, so it is on top.
+  const all = layersOf(board);
+  const order: CopperLayer[] = [
+    ...(look.active === "top" ? [...all].reverse() : all).filter((l) => l !== look.active),
+    ...(all.includes(look.active) ? [look.active] : []),
+  ];
+  const copper = (layer: CopperLayer) => c[copperColour(layer)];
   for (const layer of order) {
     if (!show(layer as LayerId)) continue;
     ctx.lineCap = "round";
@@ -469,8 +492,8 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     ctx.globalAlpha = 1;
   }
 
-  const g = look.ghost?.track;
-  if (g && g.pts.length > 1) {
+  for (const g of [look.ghost?.track, look.ghost?.mate]) {
+    if (!g || g.pts.length < 2) continue;
     ctx.globalAlpha = 0.8;
     ctx.strokeStyle = g.blocked ? c["ec-mark"] : copper(g.layer);
     ctx.lineWidth = Math.max(1, g.width * v.scale);

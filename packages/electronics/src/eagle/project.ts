@@ -9,6 +9,7 @@ import {
   emptyBoard,
   emptySheet,
   type Board,
+  type CopperLayer,
   type Corner,
   type ElectronicsDesign,
   type FootprintDef,
@@ -154,6 +155,20 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
   const classNets = new Map<string, string[]>();
   let curved = 0;
   let inner = 0;
+  // Inner layers (#648): Eagle numbers them 2 to 15. Those with copper on them become Inner 1 up, in order, to the fourth.
+  const used = new Set<number>();
+  for (const signal of kids(kid(brd, "signals"), "signal"))
+    for (const item of signal.kids)
+      if (item.tag === "wire" || item.tag === "polygon") {
+        const l = Number(item.attrs.layer);
+        if (l > 1 && l < 16) used.add(l);
+      }
+  const inside = [...used].sort((a, b) => a - b).slice(0, 4);
+  if (inside.length) board.copperLayers = (2 + inside.length + (inside.length % 2)) as 4 | 6;
+  const layerOf = (n: string | number | undefined): CopperLayer | null => {
+    const l = Number(n);
+    return l === 1 ? "top" : l === 16 ? "bottom" : inside.includes(l) ? `in${inside.indexOf(l) + 1}` : null;
+  };
   for (const signal of kids(kid(brd, "signals"), "signal")) {
     const net = signal.attrs.name ?? "";
     const cls = signal.attrs.class ?? "0";
@@ -165,7 +180,7 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
         if (!padNets.has(el)) padNets.set(el, new Map());
         padNets.get(el)!.set(item.attrs.pad ?? "", net);
       } else if (item.tag === "wire") {
-        const side = item.attrs.layer === "1" ? "top" : item.attrs.layer === "16" ? "bottom" : null;
+        const side = layerOf(item.attrs.layer);
         // Layer 19 holds the lines for what is still to route.
         if (item.attrs.layer === "19") continue;
         if (!side) {
@@ -185,15 +200,25 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
         }
       } else if (item.tag === "via") {
         const extent = (item.attrs.extent ?? "1-16").split("-").map(Number);
-        if (Math.min(...extent) !== 1 || Math.max(...extent) !== 16) {
-          dropped.add("vias that do not go right through the board");
+        const through = Math.min(...extent) === 1 && Math.max(...extent) === 16;
+        const ends = [layerOf(Math.min(...extent)), layerOf(Math.max(...extent))];
+        if (!through && (!ends[0] || !ends[1] || ends[0] === ends[1])) {
+          dropped.add("vias between layers that did not come across");
           continue;
         }
         const drill = numOf(item, "drill");
         const p = at(pOf(item));
-        board.vias.push({ id: eid("v"), net, x: p[0], y: p[1], diameter: numOf(item, "diameter") || ringed(drill, restring.via), drill });
+        board.vias.push({
+          id: eid("v"),
+          net,
+          x: p[0],
+          y: p[1],
+          diameter: numOf(item, "diameter") || ringed(drill, restring.via),
+          drill,
+          ...(through ? {} : { span: [ends[0]!, ends[1]!] as [CopperLayer, CopperLayer] }),
+        });
       } else if (item.tag === "polygon") {
-        const side = item.attrs.layer === "1" ? "top" : item.attrs.layer === "16" ? "bottom" : null;
+        const side = layerOf(item.attrs.layer);
         const outline = vertices(item).map(at);
         if (outline.length < 3) continue;
         if (!side) {
@@ -222,7 +247,7 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
   if (inner)
     notes.push({
       name: "Board",
-      why: `It has copper on inside layers. Only the top and bottom came across; ${inner} ${inner === 1 ? "track or pour inside was" : "tracks and pours inside were"} left out`,
+      why: `It has copper on more than four inside layers. The first four came across; ${inner} ${inner === 1 ? "track or pour on the others was" : "tracks and pours on the others were"} left out`,
     });
   if (kids(kid(brd, "signals"), "signal").some((s) => kids(s, "polygon").some((p) => p.attrs.pour === "hatch")))
     notes.push({ name: "Board", why: "Hatched pours came in as solid ones" });

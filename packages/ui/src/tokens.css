@@ -205,6 +205,14 @@
   --bc-color-ec-copper-top: #e0574f;
   /* Electronics, PCB: tracks, pours and pads on the bottom copper layer. */
   --bc-color-ec-copper-bottom: #4a86e8;
+  /* Electronics, PCB: tracks and pours on inner copper layer 1 of a board with four or six layers. */
+  --bc-color-ec-copper-in1: #5fd27e;
+  /* Electronics, PCB: tracks and pours on inner copper layer 2 of a board with four or six layers. */
+  --bc-color-ec-copper-in2: #e08a3c;
+  /* Electronics, PCB: tracks and pours on inner copper layer 3 of a board with four or six layers. */
+  --bc-color-ec-copper-in3: #3fc5c5;
+  /* Electronics, PCB: tracks and pours on inner copper layer 4 of a board with four or six layers. */
+  --bc-color-ec-copper-in4: #e06fb0;
   /* Electronics, PCB: plated through holes and vias, which are on every copper layer. */
   --bc-color-ec-pad: #d4af37;
   /* Electronics, PCB: silkscreen on the side you are looking at. */
@@ -294,6 +302,10 @@
   --bc-color-ec-edge: #e0c341;
   --bc-color-ec-copper-top: #e0574f;
   --bc-color-ec-copper-bottom: #4a86e8;
+  --bc-color-ec-copper-in1: #5fd27e;
+  --bc-color-ec-copper-in2: #e08a3c;
+  --bc-color-ec-copper-in3: #3fc5c5;
+  --bc-color-ec-copper-in4: #e06fb0;
   --bc-color-ec-pad: #d4af37;
   --bc-color-ec-silk: #f2efe4;
   --bc-color-ec-silk-far: #9a7fc4;
@@ -371,6 +383,10 @@
   --bc-color-ec-edge: #e0c341;
   --bc-color-ec-copper-top: #e0574f;
   --bc-color-ec-copper-bottom: #4a86e8;
+  --bc-color-ec-copper-in1: #5fd27e;
+  --bc-color-ec-copper-in2: #e08a3c;
+  --bc-color-ec-copper-in3: #3fc5c5;
+  --bc-color-ec-copper-in4: #e06fb0;
   --bc-color-ec-pad: #d4af37;
   --bc-color-ec-silk: #f2efe4;
   --bc-color-ec-silk-far: #9a7fc4;

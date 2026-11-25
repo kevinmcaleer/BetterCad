@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ElectronicsDesign } from "@bettercad/electronics";
 import { checkBoard, type BoardResult } from "@bettercad/electronics/drc";
 import type { CheckAnswer, CheckAsk } from "./boardCheck.worker";
+import { boardWorker } from "./boardWorker";
 
 type Waiting = { done: (r: BoardResult[]) => void; fail: (e: Error) => void };
 
@@ -50,10 +51,7 @@ export class BoardChecker {
 }
 
 let shared: BoardChecker | null = null;
-const inWorker = (d: ElectronicsDesign) =>
-  (shared ??= new BoardChecker(() => new Worker(new URL("./boardCheck.worker.ts", import.meta.url), { type: "module", name: "bettercad-board-check" }))).check(
-    d,
-  );
+const inWorker = (d: ElectronicsDesign) => (shared ??= new BoardChecker(() => boardWorker("bettercad-board-check"))).check(d);
 
 /**
  * The board check's results for a design, found in a worker (#644). `results` is null until the first answer; while a

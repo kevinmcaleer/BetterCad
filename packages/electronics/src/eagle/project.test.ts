@@ -207,6 +207,7 @@ describe("opening an Eagle project", () => {
     const board = design.board!;
     expect(board.tracks.map((t) => `${t.net} ${t.layer} ${t.width} ${t.pts.length}`)).toEqual([
       "VCC top 0.5 6",
+      "GND in1 0.2 2",
       "Net-(D1-A) top 0.3 2",
       // The run with the curved piece in it.
       "Net-(D1-A) top 0.3 39",
@@ -214,8 +215,14 @@ describe("opening an Eagle project", () => {
       "Net-(D1-A) bottom 0.3 2",
       "MID top 0.254 2",
     ]);
+    // The board's one inside layer with copper makes it a four-layer board (#648), and its blind via keeps its span.
+    expect(board.copperLayers).toBe(4);
     // A via with no size of its own gets a ring of 8 mil.
-    expect(board.vias.map((v) => `${v.net} ${v.x},${v.y} ${v.diameter} ${v.drill}`)).toEqual(["VCC 6,20 1.2 0.5", "Net-(D1-A) 12,22 0.8064 0.4"]);
+    expect(board.vias.filter((v) => !v.span).map((v) => `${v.net} ${v.x},${v.y} ${v.diameter} ${v.drill}`)).toEqual([
+      "VCC 6,20 1.2 0.5",
+      "Net-(D1-A) 12,22 0.8064 0.4",
+    ]);
+    expect(board.vias.filter((v) => v.span).map((v) => v.span)).toEqual([["top", "in1"]]);
     expect(board.pours.map((p) => `${p.net} ${p.layer} ${p.thermal} ${p.priority ?? 0}`)).toEqual(["GND bottom true -1", "GND top false 0"]);
     expect(
       board.keepouts.map((k) =>
@@ -245,16 +252,16 @@ describe("opening an Eagle project", () => {
     // The board is in step with its schematic, and nothing is joined that should not be.
     expect(boardChanges(design, netlist(design))).toEqual([]);
     const errors = checkBoard(design).filter((r) => r.level === "error");
-    expect([...new Set(errors.map((r) => r.rule))]).toEqual(["unrouted"]);
+    // The blind via's own hole is smaller than the file's rules allow, which the check now says.
+    expect([...new Set(errors.map((r) => r.rule))]).toEqual(["unrouted", "hole-size"]);
+    expect(errors.filter((r) => r.rule === "hole-size")).toHaveLength(1);
   });
 
   it("lists what did not come across", () => {
     const got = open();
-    expect(got.found).toEqual({ sheets: 2, parts: 7, placed: 7, tracks: 6, vias: 2, pours: 2 });
+    expect(got.found).toEqual({ sheets: 2, parts: 7, placed: 7, tracks: 7, vias: 3, pours: 2 });
     expect(got.notes.map((n) => `${n.name}: ${n.why}`)).toEqual([
       "Board: 1 curved track came in as short straight pieces",
-      "Board: It has copper on inside layers. Only the top and bottom came across; 1 track or pour inside was left out",
-      "Board: Left out: 1 vias that do not go right through the board",
       "Board: Left out: 3 drawings in packages on layers that are not kept (stop, cream, restrict and document layers)",
       "Board: Left out: 1 packages with no pads (logos and marks)",
       "Board: Left out: 1 dimensions",

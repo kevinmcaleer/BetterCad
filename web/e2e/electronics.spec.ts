@@ -414,12 +414,25 @@ test.describe("on a wide screen", () => {
     await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
     await press(page, 14.2, 20);
     await expect(bar.getByRole("status")).toContainText("Routing Net-(D1-1) on the top side");
+    // The length so far shows as you route, against a target once you set one (#646).
+    await expect(bar.getByRole("status")).toContainText(" mm");
+    await bar.getByLabel(/Target length/).fill("30");
+    await bar.getByLabel(/Target length/).press("Enter");
+    await expect(bar.getByRole("status")).toContainText("of 30 mm");
     await press(page, 15.8, 20);
     await expect(bar.getByRole("status")).toContainText("Too close to R1 pad 2");
     await press(page, 22, 24);
     await press(page, 29.2, 20);
     await expect(status).toContainText("Every connection is routed");
     await expect(bar.getByRole("status")).toHaveText("Click a pad to start a track.");
+    // Push moves other tracks aside; Pair routes two nets together, and says so when a net has no partner (#646).
+    await expect(bar.getByRole("checkbox", { name: "Push" })).not.toBeChecked();
+    await bar.getByRole("checkbox", { name: "Pair" }).check();
+    await press(page, 14.2, 20);
+    await expect(bar.getByRole("status")).toContainText("has no partner");
+    await page.keyboard.press("Escape");
+    await bar.getByRole("checkbox", { name: "Pair" }).uncheck();
+    await canvas.focus();
     await page.keyboard.press("Escape");
 
     // Slide the track's middle piece down 2 mm (#640): the slanted pieces either side shorten to meet it, so the
@@ -434,6 +447,16 @@ test.describe("on a wide screen", () => {
     await page.mouse.up();
     await expect(length).toContainText("16.69 mm");
     await expect(status).toContainText("Every connection is routed");
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(length).toContainText("18.35 mm");
+    // Type a longer length for the net and the track gets wiggles to make it up (#646). One undo takes them out.
+    await expect(async () => {
+      await page.getByLabel(/Net length/).fill("22");
+      await page.getByLabel(/Net length/).press("Enter");
+      await expect(length).toContainText("22 mm", { timeout: 1000 });
+    }).toPass();
+    await expect(status).toContainText("Every connection is routed");
+    await canvas.focus();
     await page.keyboard.press("ControlOrMeta+z");
     await expect(length).toContainText("18.35 mm");
     await page.keyboard.press("Escape");
@@ -542,6 +565,105 @@ test.describe("on a wide screen", () => {
       await axe(page);
     });
   }
+
+  test("autoroute: the connections left are routed, and one undo takes them out", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    const canvas = page.getByRole("img", { name: /^PCB: 2 parts/ });
+    await expect(canvas).toBeVisible();
+    // The parts start beside the board: each is put on it by typing its place.
+    for (const [x, to] of [
+      [-10 * PITCH, 15],
+      [0, 30],
+    ] as const) {
+      await page.keyboard.press("1");
+      await page.mouse.click(...(await onCanvas(page, x, 0)));
+      await page.keyboard.press("2");
+      for (const [label, value] of [
+        ["X (mm)", String(to)],
+        ["Y (mm)", "20"],
+      ] as const)
+        await expect(async () => {
+          await page.getByLabel(label).fill(value);
+          await page.getByLabel(label).press("Enter");
+          await page.waitForTimeout(150);
+          await expect(page.getByLabel(label)).toHaveValue(value, { timeout: 1000 });
+        }).toPass();
+      await canvas.focus();
+    }
+    await page.keyboard.press("Escape");
+    const status = page.getByRole("status", { name: "Electronics status" });
+    await expect(status).toContainText("1 connection left to route");
+
+    await tools(page)
+      .getByRole("button", { name: /^Autoroute/ })
+      .click();
+    // The card and the router are chunks of their own.
+    const card = page.getByRole("group", { name: "Autoroute options" });
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await expect(card).toContainText("1 connection still to route on the board.");
+    await axe(page);
+    await card.getByRole("button", { name: "Route", exact: true }).click();
+    await expect(card).toContainText("Routed 1 of 1 connection. Undo takes the new tracks out in one step.", { timeout: 20_000 });
+    await expect(status).not.toContainText("left to route");
+    await expect(card.getByRole("button", { name: "Route", exact: true })).toHaveAttribute("aria-disabled", "true");
+
+    // The board check agrees, and one undo takes the tracks out again.
+    await card.getByRole("button", { name: "Close" }).click();
+    await page.keyboard.press("e");
+    await expect(page.getByText("No problems found. The board is ready to make.")).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("Escape");
+    await canvas.focus();
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(status).toContainText("1 connection left to route");
+  });
+
+  test("four layers: the build in Board setup, and inner layers to work on", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    const canvas = page.getByRole("img", { name: /^PCB: 2 parts/ });
+    await expect(canvas).toBeVisible();
+    const layers = page.getByRole("region", { name: "Layers" });
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveCount(0);
+
+    await page.keyboard.press("b");
+    const setup = page.getByRole("group", { name: "Board setup options" });
+    await setup.getByLabel("Copper layers").selectOption("4 layers");
+    const build = setup.getByRole("table", { name: "The build, top to bottom" });
+    await expect(build.getByRole("row")).toHaveCount(7);
+    await expect(build).toContainText("Inner 1 copper");
+    await axe(page);
+    await setup.getByRole("button", { name: "Close" }).click();
+
+    // The inner layers are in the Layers card, and L steps down through them and round to the top.
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveAttribute("aria-pressed", "false");
+    await canvas.focus();
+    await page.keyboard.press("l");
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await layers.getByRole("button", { name: "Bottom copper", exact: true }).click();
+    await canvas.focus();
+    await page.keyboard.press("l");
+    await expect(layers.getByRole("button", { name: "Top copper", exact: true })).toHaveAttribute("aria-pressed", "true");
+
+    // One undo takes the board back to two layers.
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(layers.getByRole("button", { name: "Inner 1 copper", exact: true })).toHaveCount(0);
+  });
 
   test("give a part a STEP file for its body, and see it on the board in 3D", async ({ page }) => {
     test.setTimeout(120_000);
@@ -701,6 +823,19 @@ test.describe("on a wide screen", () => {
     const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Save the files" }).click()]);
     expect(download.suggestedFilename()).toMatch(/-jlcpcb\.zip$/);
     await expect(dialog.getByRole("status")).toContainText("Saved");
+
+    // An assembly drawing and an IPC-2581 file, and a panel of four boards (#662).
+    await dialog.getByText(/files in .*-gerbers\.zip/).click();
+    const [drawing] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Save the assembly drawing" }).click()]);
+    expect(drawing.suggestedFilename()).toMatch(/-assembly\.pdf$/);
+    const [ipc] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Save as IPC-2581" }).click()]);
+    expect(ipc.suggestedFilename()).toMatch(/\.xml$/);
+    await dialog.getByRole("checkbox", { name: "Order a panel of boards" }).check();
+    await expect(dialog.getByLabel("What the order form asks")).toContainText("4 on a panel, held by tabs");
+    // The preview shows the panel: every layer of four boards, with the tabs' holes.
+    if (!(await preview.isVisible())) await dialog.getByRole("button", { name: "Preview the files" }).click();
+    await expect(preview.getByRole("img", { name: /seen from the (top|bottom)/ })).toBeVisible();
+    await axe(page);
   });
 
   test("open the Pico servo board sample: the board in the model, its PCB, and files ready to order", { tag: "@journey" }, async ({ page }) => {

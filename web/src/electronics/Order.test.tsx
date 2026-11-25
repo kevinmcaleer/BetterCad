@@ -194,6 +194,22 @@ describe("the Order the board card", () => {
     expect(screen.getByRole("button", { name: "Save the files" })).toBeEnabled();
   });
 
+  it("makes a panel: rows, columns, how the boards join, and the size to order (#662)", async () => {
+    render(<OrderBoard design={board()} name="Blinky" onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Order a panel of boards" }));
+    const facts = screen.getByLabelText("What the order form asks");
+    // Two by two, held by tabs off 5 mm rails, 2 mm apart: 102 × 96 mm.
+    expect(facts).toHaveTextContent("102 × 96 mm");
+    expect(facts).toHaveTextContent("4 on a panel, held by tabs");
+    expect(screen.getByText(/4 boards on a 102 × 96 mm panel/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "V-cuts" }));
+    expect(facts).toHaveTextContent("100 × 90 mm");
+    expect(screen.queryByLabelText(/^Gap/)).toBeNull();
+    expect(screen.getByText(/12 files in Blinky-gerbers.zip/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Order a panel of boards" }));
+    expect(facts).toHaveTextContent("50 × 40 mm");
+  });
+
   it("is happy once every part has its number", () => {
     let d = board();
     for (const p of d.parts) d = changePart(d, p.id, { supplier: { lcsc: "C17414" } });

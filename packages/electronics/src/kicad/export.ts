@@ -23,6 +23,7 @@ import {
 import { byRef, netlist, type Netlist } from "../nets";
 import { netRules } from "../pcb/copper";
 import { SPOKE, THERMAL_GAP } from "../pcb/pour";
+import { layersOf, viaKind, viaLayers } from "../pcb/stack";
 import { Str, writeSexpr, type Node } from "./sexpr";
 
 /**
@@ -496,7 +497,7 @@ function sheetFile(
 // ---------------------------------------------------------------- the board
 
 const BOARD_LAYERS: Record<BoardLayer, string> = { "silk-top": "F.SilkS", "silk-bottom": "B.SilkS", "copper-top": "F.Cu", "copper-bottom": "B.Cu" };
-const copperLayer = (layer: string): string => (layer === "bottom" ? "B.Cu" : "F.Cu");
+const copperLayer = (layer: string): string => (layer === "bottom" ? "B.Cu" : layer.startsWith("in") ? `In${layer.slice(2)}.Cu` : "F.Cu");
 
 const LAYER_TABLE: Node[] = [
   "layers",
@@ -550,13 +551,15 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
   const codes = new Map([...netNames].sort((a, b) => a.localeCompare(b, "en", { numeric: true })).map((name, i) => [name, i + 1]));
   const net = (name: string): Node[] => ["net", String(codes.get(name) ?? 0)];
 
+  const inner = layersOf(board).slice(1, -1);
   const out: Node[] = [
     "kicad_pcb",
     ["version", PCB_VERSION],
     ["generator", "bettercad"],
     ["general", ["thickness", n(board.thickness)]],
     ["paper", s("A4")],
-    LAYER_TABLE,
+    // Inner layers (#648) are numbered 1 up, between the front and the back.
+    inner.length ? [...LAYER_TABLE.slice(0, 2), ...inner.map((l): Node[] => [l.slice(2), s(copperLayer(l)), "signal"]), ...LAYER_TABLE.slice(2)] : LAYER_TABLE,
     ["setup", ["pad_to_mask_clearance", n(board.rules.maskMargin)]],
     ["net", "0", s("")],
     ...[...codes.entries()].map(([name, code]): Node[] => ["net", String(code), s(name)]),
@@ -675,16 +678,19 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
         net(t.net),
         ["tstamp", uuidOf(`${t.id}:${i}`)],
       ]);
-  for (const v of board.vias)
+  for (const v of board.vias) {
+    const on = viaLayers(board, v);
     out.push([
       "via",
+      ...(viaKind(board, v) === "through" ? [] : ["blind"]),
       ["at", ...at([v.x, v.y])],
       ["size", n(v.diameter)],
       ["drill", n(v.drill)],
-      ["layers", s("F.Cu"), s("B.Cu")],
+      ["layers", s(copperLayer(on[0]!)), s(copperLayer(on[on.length - 1]!))],
       net(v.net),
       ["tstamp", uuidOf(v.id)],
     ]);
+  }
 
   for (const p of board.pours) {
     const gap = netRules(board, p.net).clearance;
@@ -710,7 +716,7 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       "zone",
       ["net", "0"],
       ["net_name", s("")],
-      ["layers", s("F&B.Cu")],
+      ["layers", s(inner.length ? "*.Cu" : "F&B.Cu")],
       ["tstamp", uuidOf(k.id)],
       ["hatch", "edge", "0.5"],
       ["connect_pads", ["clearance", "0"]],

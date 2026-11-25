@@ -1,7 +1,8 @@
 import { boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
 import { penFor, textStrokes } from "../fab/font";
 import { distToSegment, rad, segmentDistance } from "../geom";
-import type { Board, ElectronicsDesign, Id, NetClass, P2, Rules } from "../model";
+import type { Board, CopperLayer, ElectronicsDesign, Id, NetClass, P2, Rules } from "../model";
+import { layersOf, viaLayers } from "./stack";
 
 /**
  * Copper as shapes that can be measured (#640, #644). Every piece is a core (a point, a line or a convex outline)
@@ -13,7 +14,8 @@ export interface Solid {
   r: number;
 }
 
-export type Layer = "top" | "bottom";
+/** A copper layer: the outside two, and the inner ones of a board with more (#648). */
+export type Layer = CopperLayer;
 
 export interface Copper extends Solid {
   /** `text`: a stroke of text written in copper, on no net. */
@@ -71,8 +73,10 @@ export function padSolid(p: BoardPad): Solid {
   return { pts: [at(-x, -y), at(x, -y), at(x, y), at(-x, y)], r };
 }
 
-/** The layers a pad has copper on. */
-export const padLayers = (p: BoardPad): Layer[] => (p.pad.kind === "thru" ? ["top", "bottom"] : p.pad.kind === "smd" ? [p.side] : []);
+const OUTSIDE: Layer[] = ["top", "bottom"];
+
+/** The layers a pad has copper on. `all` is the board's layers, for a pad that goes through every one. */
+export const padLayers = (p: BoardPad, all: Layer[] = OUTSIDE): Layer[] => (p.pad.kind === "thru" ? all : p.pad.kind === "smd" ? [p.side] : []);
 
 /**
  * Every piece of copper on the board. The pads come first, one each in the order of `pads` (a bare hole has no
@@ -81,17 +85,18 @@ export const padLayers = (p: BoardPad): Layer[] => (p.pad.kind === "thru" ? ["to
 export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)): Copper[] {
   const board = d.board;
   if (!board) return [];
+  const all = layersOf(board);
   const out: Copper[] = pads.map((p) => ({
     ...padSolid(p),
     kind: "pad",
     net: p.net,
-    layers: padLayers(p),
+    layers: padLayers(p, all),
     id: p.part,
     what: `${p.ref} pad ${p.pad.number}`,
     at: p.at,
   }));
   for (const t of board.tracks) {
-    if (t.layer !== "top" && t.layer !== "bottom") continue;
+    if (!all.includes(t.layer)) continue;
     for (let i = 0; i + 1 < t.pts.length; i += 1) {
       const a = t.pts[i]!;
       const b = t.pts[i + 1]!;
@@ -114,13 +119,13 @@ export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)):
       r: v.diameter / 2,
       kind: "via",
       net: v.net,
-      layers: ["top", "bottom"],
+      layers: viaLayers(board, v),
       id: v.id,
       what: `a via on ${v.net || "no net"}`,
       at: [v.x, v.y],
     });
   for (const h of board.holes)
-    if (h.pad) out.push({ pts: [[h.x, h.y]], r: h.pad / 2, kind: "via", net: "", layers: ["top", "bottom"], id: h.id, what: "a plated hole", at: [h.x, h.y] });
+    if (h.pad) out.push({ pts: [[h.x, h.y]], r: h.pad / 2, kind: "via", net: "", layers: all, id: h.id, what: "a plated hole", at: [h.x, h.y] });
   // Text written in copper (#642) is copper like any other: the same strokes the Gerber file draws.
   for (const t of board.texts) {
     if (!t.layer.startsWith("copper")) continue;

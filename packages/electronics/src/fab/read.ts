@@ -12,7 +12,9 @@ export type Prim = { kind: "disc"; d: number; at: P2; dark: boolean } | { kind: 
 export type Aperture =
   { kind: "circle"; d: number } | { kind: "rect"; w: number; h: number } | { kind: "obround"; w: number; h: number } | { kind: "macro"; prims: Prim[] };
 
-export type GerberOp = { dark: boolean } & ({ kind: "flash"; ap: Aperture; at: P2 } | { kind: "draw"; pen: number; pts: P2[] } | { kind: "region"; pts: P2[] });
+export type GerberOp = { dark: boolean; net?: string } & (
+  { kind: "flash"; ap: Aperture; at: P2 } | { kind: "draw"; pen: number; pts: P2[] } | { kind: "region"; pts: P2[] }
+);
 
 export interface GerberImage {
   ops: GerberOp[];
@@ -167,13 +169,16 @@ export function readGerber(text: string): GerberImage {
   let at: P2 = [0, 0];
   let region: P2[] | null = null;
   let path: P2[] = [];
+  /** The net the objects drawn now are on, from the file's .N attribute. */
+  let net: string | undefined;
+  const on = () => (net !== undefined ? { net } : {});
 
   const endPath = () => {
     if (region) {
-      if (path.length > 2) ops.push({ kind: "region", pts: path, dark });
+      if (path.length > 2) ops.push({ kind: "region", pts: path, dark, ...on() });
     } else if (path.length > 1 && ap) {
       const pen = ap.kind === "circle" ? ap.d : ap.kind === "macro" ? 0 : Math.min(ap.w, ap.h);
-      ops.push({ kind: "draw", pen, pts: path, dark });
+      ops.push({ kind: "draw", pen, pts: path, dark, ...on() });
     }
     path = [];
   };
@@ -218,6 +223,14 @@ export function readGerber(text: string): GerberImage {
           };
         }
         aps.set(Number(m[1]), made);
+      } else if (head.startsWith("TO.N,") || head === "TD.N" || head === "TD") {
+        endPath();
+        net = head.startsWith("TO.N,")
+          ? t.body
+              .replace(/^TO\.N,/, "")
+              .replace(/\*$/, "")
+              .split(",")[0]
+          : undefined;
       } else if (head.startsWith("LP")) {
         endPath();
         dark = head[2] !== "C";
@@ -263,7 +276,7 @@ export function readGerber(text: string): GerberImage {
       path = [to];
     } else if (d === 3) {
       endPath();
-      if (ap) ops.push({ kind: "flash", ap, at: to, dark });
+      if (ap) ops.push({ kind: "flash", ap, at: to, dark, ...on() });
     } else {
       if (!path.length) path = [at];
       if (mode === 1) path.push(to);

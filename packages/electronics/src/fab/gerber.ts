@@ -1,11 +1,12 @@
 import { arcOf, boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
 import { distToSegment, placeOnBoard, rad, segmentDistance } from "../geom";
-import { packageOf, type Board, type Corner, type ElectronicsDesign, type P2, type Pad, type Shape, type Side } from "../model";
+import { packageOf, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Pad, type Shape, type Side } from "../model";
 import { netlist, type Netlist } from "../nets";
 import { copperOf, type Copper, type Solid } from "../pcb/copper";
 import { pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
 import { penFor, textStrokes, REF_SIZE } from "./font";
 import { pictureRects } from "../pcb/picture";
+import { layerName, layersOf, viaLayers } from "../pcb/stack";
 
 /**
  * Gerber files for a board (#655): one RS-274X file per layer with X2 attributes, in millimetres, as every board
@@ -15,7 +16,8 @@ import { pictureRects } from "../pcb/picture";
  * for. Pads are flashed with apertures (a macro for a rounded or turned pad), tracks are drawn with a round pen, and
  * a pour is painted the way the screen paints it: its area dark, then the copper it keeps clear of taken back out.
  */
-export type GerberLayer = "copper-top" | "copper-bottom" | "mask-top" | "mask-bottom" | "paste-top" | "paste-bottom" | "silk-top" | "silk-bottom" | "edge";
+export type GerberLayer =
+  "copper-top" | "copper-bottom" | `copper-in${number}` | "mask-top" | "mask-bottom" | "paste-top" | "paste-bottom" | "silk-top" | "silk-bottom" | "edge";
 
 export interface GerberFile {
   layer: GerberLayer;
@@ -35,6 +37,21 @@ export const GERBER_LAYERS: { id: GerberLayer; label: string; fn: string }[] = [
   { id: "silk-bottom", label: "Bottom silkscreen", fn: "Legend,Bot" },
   { id: "edge", label: "Board outline", fn: "Profile,NP" },
 ];
+
+/**
+ * The files a board needs, in the order a viewer stacks them. A board with inner layers (#648) has a copper file for
+ * each, numbered down from the top: L1 is the top, the last is the bottom.
+ */
+export function gerberLayers(board: Pick<Board, "copperLayers">): { id: GerberLayer; label: string; fn: string }[] {
+  const all = layersOf(board);
+  if (all.length === 2) return GERBER_LAYERS;
+  const copper = all.map((l, i) => ({
+    id: `copper-${l}` as GerberLayer,
+    label: layerName(l),
+    fn: `Copper,L${i + 1},${l === "top" ? "Top" : l === "bottom" ? "Bot" : "Inr"}`,
+  }));
+  return [...copper, ...GERBER_LAYERS.filter((g) => !g.id.startsWith("copper"))];
+}
 
 /** The pen the outline is drawn with, mm. Board houses cut along its middle. */
 export const EDGE_PEN = 0.1;
@@ -329,10 +346,10 @@ function paintPour(w: Writer, shape: PourShape, islands: [number, number, number
 }
 
 /** Pours in the order they are painted: the one that fills first goes on last, so nothing painted later cuts it. */
-const paintOrder = (board: Board, side: Side) =>
+const paintOrder = (board: Board, side: CopperLayer) =>
   board.pours
     .map((p, i) => ({ p, i }))
-    .filter((x) => (x.p.layer === "bottom" ? "bottom" : "top") === side)
+    .filter((x) => x.p.layer === side)
     .sort((a, b) => (a.p.priority ?? 0) - (b.p.priority ?? 0) || b.i - a.i)
     .map((x) => x.p);
 
@@ -344,11 +361,11 @@ export function pourClashes(
   d: ElectronicsDesign,
   pads: BoardPad[] = boardPads(d),
   copper: Copper[] = copperOf(d, pads),
-): { side: Side; a: string; b: string }[] {
+): { side: CopperLayer; a: string; b: string }[] {
   const board = d.board;
-  const out: { side: Side; a: string; b: string }[] = [];
+  const out: { side: CopperLayer; a: string; b: string }[] = [];
   if (!board) return out;
-  for (const side of ["top", "bottom"] as Side[]) {
+  for (const side of layersOf(board)) {
     const order = paintOrder(board, side);
     order.forEach((later, i) => {
       const shape = pourShape(d, later, pads, copper);
@@ -405,7 +422,7 @@ function drawShape(w: Writer, s: Shape, place: (p: P2) => P2, turnBy: number, mi
 /** The pad shape of a mask opening over a bare hole or a round land. */
 const round = (d: number): Pick<Pad, "shape" | "w" | "h"> => ({ shape: "circle", w: d, h: d });
 
-function copperFile(d: ElectronicsDesign, board: Board, side: Side, pads: BoardPad[], copper: Copper[], fn: string): string {
+function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads: BoardPad[], copper: Copper[], fn: string): string {
   const w = new Writer(fn);
   for (const pour of paintOrder(board, side)) paintPour(w, pourShape(d, pour, pads, copper), pourFill(d, pour, pads, copper).islands);
   for (const t of board.tracks) {
@@ -429,6 +446,7 @@ function copperFile(d: ElectronicsDesign, board: Board, side: Side, pads: BoardP
   }
   w.attr(".P");
   for (const v of board.vias) {
+    if (!viaLayers(board, v).includes(side)) continue;
     w.attr(".N", field(v.net));
     w.flash(w.circle(v.diameter, "ViaPad"), [v.x, v.y]);
   }
@@ -524,10 +542,10 @@ export function gerberFiles(d: ElectronicsDesign, nl: Netlist = netlist(d)): Ger
   if (!board) return [];
   const pads = boardPads(d, nl);
   const copper = copperOf(d, pads);
-  return GERBER_LAYERS.map(({ id, fn }): GerberFile => {
+  return gerberLayers(board).map(({ id, fn }): GerberFile => {
     const side: Side = id.endsWith("bottom") ? "bottom" : "top";
     const text = id.startsWith("copper")
-      ? copperFile(d, board, side, pads, copper, fn)
+      ? copperFile(d, board, id.slice(7) as CopperLayer, pads, copper, fn)
       : id.startsWith("mask")
         ? maskFile(board, side, pads, fn)
         : id.startsWith("paste")

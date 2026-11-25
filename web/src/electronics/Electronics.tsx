@@ -41,6 +41,7 @@ const OrderBoard = lazy(() => import("./OrderBoard"));
 const BoardChecks = lazy(() => import("./BoardChecks"));
 const BoardSetup = lazy(() => import("./BoardSetup"));
 const BoardProps = lazy(() => import("./BoardProps"));
+const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
@@ -336,6 +337,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       run: toggle("board"),
     },
     {
+      id: "autoroute",
+      group: "Board",
+      label: "Autoroute",
+      icon: "route",
+      tip: "Lay tracks for the connections still to make",
+      on: ui.card === "autoroute",
+      disabled: readOnly,
+      run: toggle("autoroute"),
+    },
+    {
       id: "renumber",
       group: "Board",
       label: "Renumber",
@@ -456,13 +467,13 @@ function commands(design: () => ElectronicsDesign): Command[] {
     {
       ...e,
       id: "electronics.pcb.layer",
-      label: "Swap copper side",
+      label: "Next copper layer",
       group: "Tools",
       icon: "layers",
       keys: ["l"],
       when: pcb,
       run: () => eactions.current?.layer?.(),
-      keywords: "layer top bottom via",
+      keywords: "layer top bottom inner side swap via",
     },
     { ...e, id: "electronics.pcb.bend", label: "Bend the track the other way", group: "Tools", keys: ["/"], when: pcb, run: () => eactions.current?.bend?.() },
     {
@@ -485,6 +496,16 @@ function commands(design: () => ElectronicsDesign): Command[] {
       when: pcb,
       run: toggle("board"),
       keywords: "size outline rules jlcpcb pcbway net class thickness",
+    },
+    {
+      ...e,
+      id: "electronics.pcb.autoroute",
+      label: "Autoroute",
+      group: "Tools",
+      icon: "route",
+      when: pcb,
+      run: toggle("autoroute"),
+      keywords: "autoroute autorouter automatic route tracks finish",
     },
     {
       ...e,
@@ -876,6 +897,7 @@ export default function ElectronicsView({
       {view === "pcb" && design.board && (
         <Suspense fallback={null}>
           {ui.card === "checks" && <BoardChecks design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "autoroute" && <AutoRoute design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: "order" })} />}
           {ui.card === "order" && (
             <OrderBoard design={design} name={name || "Board"} onClose={() => eui.set({ card: null })} onParts={() => eui.set({ card: "table" })} />

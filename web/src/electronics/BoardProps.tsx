@@ -1,5 +1,7 @@
 import { useId, useState } from "react";
-import { boardPads, netlist, type ElectronicsDesign, type Keepout, type Side } from "@bettercad/electronics";
+import { boardPads, netlist, type CopperLayer, type ElectronicsDesign, type Keepout, type Side } from "@bettercad/electronics";
+import { layerName, layerShort, layersOf, setViaSpan, viaKind, viaLayers } from "@bettercad/electronics/pcb/stack";
+import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
 import { invertInk, setPicture } from "@bettercad/electronics/pcb/picture";
 import { pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
@@ -34,6 +36,35 @@ const round = (n: number) => Math.round(n * 100) / 100;
  * How each pad joins a pour on its net (#641), for the pads that are on a net with a pour. A pad left alone joins the
  * way its pour says.
  */
+/** A net's length, and a field to make it longer with wiggles in the picked track (#646). */
+function TuneLength({ design, edit, id, net }: { design: ElectronicsDesign; edit: EEdit; id: string; net: string }) {
+  const [said, setSaid] = useState("");
+  const now = round(netLength(design, net));
+  return (
+    <>
+      <NumberField
+        label="Net length"
+        value={now}
+        min={0}
+        step={1}
+        precision={2}
+        onCommit={(v) => {
+          const out = tuneLength(design, id, v);
+          setSaid("why" in out ? out.why : "");
+          if ("design" in out)
+            edit((d) => {
+              const again = tuneLength(d, id, v);
+              return "design" in again ? again.design : d;
+            }, "Tune a net's length");
+        }}
+      />
+      <p className="bc-note" role="status">
+        {said || "Type a longer length to add wiggles to this track."}
+      </p>
+    </>
+  );
+}
+
 function PadJoins({ design, edit, part }: { design: ElectronicsDesign; edit: EEdit; part: string }) {
   const board = design.board!;
   const poured = new Set(board.pours.map((p) => p.net));
@@ -202,16 +233,19 @@ export default function BoardProps({
           ))}
         </select>
         <label className="bc-field-label" htmlFor={`${ids}y`}>
-          Side
+          {layersOf(board).length > 2 ? "Layer" : "Side"}
         </label>
         <select
           id={`${ids}y`}
           className="bc-select"
-          value={pour.layer === "bottom" ? "bottom" : "top"}
-          onChange={({ target: { value } }) => change({ layer: value as "top" | "bottom" }, "Move the pour")}
+          value={pour.layer}
+          onChange={({ target: { value } }) => change({ layer: value as CopperLayer }, "Move the pour")}
         >
-          <option value="top">Top copper</option>
-          <option value="bottom">Bottom copper</option>
+          {layersOf(board).map((l) => (
+            <option key={l} value={l}>
+              {layerName(l)}
+            </option>
+          ))}
         </select>
         <label className="bc-ec-fitted" data-tip="Spokes make its pads easier to solder. Off, the copper runs right up to them">
           <input
@@ -345,11 +379,12 @@ export default function BoardProps({
             <dt>Net</dt>
             <dd>{first.net || "None"}</dd>
             <dt>Layer</dt>
-            <dd>{first.layer === "top" ? "Top copper" : "Bottom copper"}</dd>
+            <dd>{layerName(first.layer)}</dd>
             <dt>Length</dt>
             <dd>{round(trackLength(first.pts))} mm</dd>
           </dl>
         )}
+        {one && first.net && <TuneLength design={design} edit={edit} id={first.id} net={first.net} />}
         {one && first.net && (
           <Button
             size="dense"
@@ -390,6 +425,41 @@ export default function BoardProps({
             onCommit={(v) => edit((d) => setVia(d, via.id, { drill: v }), "Change the via", "ec-via-h")}
           />
         </div>
+        {layersOf(board).length > 2 && (
+          <>
+            <label className="bc-field-label" htmlFor={`${ids}vs`}>
+              Joins
+            </label>
+            <select
+              id={`${ids}vs`}
+              className="bc-select"
+              value={
+                viaKind(board, via) === "through"
+                  ? ""
+                  : viaLayers(board, via)
+                      .filter((_, i, on) => i === 0 || i === on.length - 1)
+                      .join()
+              }
+              data-tip="A via that stops part of the way costs more to make"
+              onChange={({ target: { value } }) =>
+                edit((d) => setViaSpan(d, via.id, value ? (value.split(",") as [CopperLayer, CopperLayer]) : undefined), "Change the layers a via joins")
+              }
+            >
+              <option value="">Every layer</option>
+              {layersOf(board).flatMap((a, i, all) =>
+                all.slice(i + 1).flatMap((b, k) =>
+                  i === 0 && k === all.length - 2
+                    ? []
+                    : [
+                        <option key={`${a},${b}`} value={`${a},${b}`}>
+                          {layerShort(a)} to {layerShort(b)}
+                        </option>,
+                      ],
+                ),
+              )}
+            </select>
+          </>
+        )}
         <dl className="bc-facts">
           <dt>Net</dt>
           <dd>{via.net || "None"}</dd>

@@ -2,6 +2,7 @@ import { removeParts } from "../edit";
 import { key, q } from "../geom";
 import { eid, isPower, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type Id, type P2, type Placement } from "../model";
 import { clearanceBetween, edgeGap, gap, netRules, type Copper, type Layer, type Solid } from "./copper";
+import { layersOf, viaLayers } from "./stack";
 
 /**
  * A path from `a` to `b` with one 45° bend (#640): a straight run along x or y and a diagonal. `diagonalFirst`
@@ -92,18 +93,38 @@ export function addTrack(d: ElectronicsDesign, net: string, layer: CopperLayer, 
   });
 }
 
-/** Drops a via, sized by its net's rules. One already there on the same net is left as it is. */
-export function addVia(d: ElectronicsDesign, net: string, x: number, y: number): ElectronicsDesign {
+/**
+ * Drops a via, sized by its net's rules. One already there on the same net is left as it is. `span` makes it join
+ * only those layers and the ones between (#648); a span of the whole board is a via right through.
+ */
+export function addVia(d: ElectronicsDesign, net: string, x: number, y: number, span?: [CopperLayer, CopperLayer]): ElectronicsDesign {
   return onBoard(d, (b) => {
     if (b.vias.some((v) => v.net === net && key(v.x, v.y) === key(x, y))) return b;
     const r = netRules(b, net);
-    return { ...b, vias: [...b.vias, { id: eid("vi"), net, x, y, diameter: r.viaDiameter, drill: r.viaDrill }] };
+    const part = span && viaLayers(b, { span }).length < layersOf(b).length;
+    return { ...b, vias: [...b.vias, { id: eid("vi"), net, x, y, diameter: r.viaDiameter, drill: r.viaDrill, ...(part ? { span } : {}) }] };
   });
 }
 
 /** Changes a via's size or hole. */
 export function setVia(d: ElectronicsDesign, id: Id, change: { diameter?: number; drill?: number }): ElectronicsDesign {
   return onBoard(d, (b) => ({ ...b, vias: b.vias.map((v) => (v.id === id ? { ...v, ...change } : v)) }));
+}
+
+/** What the autorouter (#647) lays for one connection: a run of track on each side it uses, and the vias between. */
+export interface Route {
+  net: string;
+  tracks: { layer: Layer; pts: P2[] }[];
+  vias: P2[];
+}
+
+/** Lays routes the autorouter found. */
+export function applyRoutes(d: ElectronicsDesign, routes: Route[]): ElectronicsDesign {
+  for (const r of routes) {
+    for (const t of r.tracks) d = addTrack(d, r.net, t.layer, t.pts);
+    for (const v of r.vias) d = addVia(d, r.net, v[0], v[1]);
+  }
+  return d;
 }
 
 /** How long a track is, mm. */

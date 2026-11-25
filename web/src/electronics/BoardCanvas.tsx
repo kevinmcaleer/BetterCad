@@ -15,13 +15,27 @@ import {
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
-import { edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
+import { clearanceBetween, copperOf, edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
+import { layersOf } from "@bettercad/electronics/pcb/stack";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
 import { slideTrack } from "@bettercad/electronics/pcb/slide";
 import { addCutout, addKeepoutArea, addPour, pourShape, removeAreas, wholeBoard } from "@bettercad/electronics/pcb/pour";
-import { addHole, addText, addTrack, addVia, blockers, corner45, deleteParts, renumberOnBoard, toggleLock } from "@bettercad/electronics/pcb/route";
-import { Button, ESC, useEscape } from "@bettercad/ui";
+import {
+  addHole,
+  addText,
+  addTrack,
+  addVia,
+  blockers,
+  corner45,
+  deleteParts,
+  renumberOnBoard,
+  tidyRun,
+  toggleLock,
+  trackLength,
+} from "@bettercad/electronics/pcb/route";
+import { layPair, netLength, pairOf, pairRuns, shove } from "@bettercad/electronics/pcb/shove";
+import { Button, ESC, NumberField, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { readColours } from "./colours";
@@ -70,7 +84,13 @@ interface Routing {
   net: string;
   last: P2;
   diag: boolean;
+  /** Routing two tracks together (#646): the other net, where each started, and the line they run either side of. */
+  pair?: { net: string; ids: [string, string]; a: P2; b: P2; centre: P2[] };
 }
+
+/** How far to look for the other pad of a pair, mm. */
+const PAIR_REACH = 8;
+const mm = (n: number) => Math.round(n * 100) / 100;
 
 export interface BoardCanvasProps {
   design: ElectronicsDesign;
@@ -111,6 +131,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const [box, setBox] = useState<[P2, P2] | null>(null);
   const [route, setRoute] = useState<Routing | null>(null);
   const [width, setWidth] = useState(0);
+  const [target, setTarget] = useState(0);
+  const [paired, setPaired] = useState(false);
   const [said, setSaid] = useState("");
   const [ask, setAsk] = useState<{ at: P2; screen: P2 } | null>(null);
   const [text, setText] = useState("");
@@ -168,7 +190,10 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const hidden = useMemo(() => new Set<LayerId>(ui.hidden), [ui.hidden]);
   const colours = useMemo(() => readColours(host.current), [host.current, ui.view]); // eslint-disable-line react-hooks/exhaustive-deps
   const tool = readOnly || !board ? "select" : ui.pcbTool;
-  const layer: Layer = ui.layer === "bottom" ? "bottom" : "top";
+  const layers = useMemo(() => (board ? layersOf(board) : (["top", "bottom"] as Layer[])), [board]);
+  const layer: Layer = layers.includes(ui.layer) ? ui.layer : "top";
+  /** The layer after this one, going down through the board and round to the top again. */
+  const nextLayer = layers[(layers.indexOf(layer) + 1) % layers.length]!;
   const grid = ui.grid;
 
   // The status strip and the switcher say how much is left to route, with the copper counted.
@@ -211,7 +236,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   });
 
   const tol = 5 / view.scale;
-  const shown = (l: "top" | "bottom") => !hidden.has(l);
+  const shown = (l: Layer) => !hidden.has(l as LayerId);
   /** A part wins over its own pads, so a click on a pad picks the part; copper and holes win over parts. */
   const hitAt = (p: P2) => {
     const hits = hitBoard(design, pads, p, tol, shown);
@@ -226,7 +251,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       const via = h.kind === "via" && board?.vias.find((v) => v.id === h.id);
       if (via) return { net: h.net, at: [via.x, via.y] };
       const t = h.kind === "track" && board?.tracks.find((x) => x.id === h.id);
-      if (t && (t.layer === "top" || t.layer === "bottom")) {
+      if (t && layers.includes(t.layer)) {
         const a = t.pts[h.segment ?? 0]!;
         const b = t.pts[(h.segment ?? 0) + 1]!;
         // An end if the pointer is near one, else the grid point nearest along the track.
@@ -247,36 +272,101 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     board && ui.keepClear ? blockers(board, copper, loops, { net, layers, pts, width: w })[0] : undefined;
   const tooClose = (what: string) => setSaid(`Too close to ${what}. Go round it, or turn Keep clear off.`);
 
-  /** The way to `to`: bent the way asked for, or the other way if only that one is clear. */
-  const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string } } => {
+  /** With Push on: whether other tracks can move aside to let this run through (#646). */
+  const canPush = (net: string, pts: P2[], w: number): boolean => {
+    if (!ui.shove || !board) return false;
+    const made = shove(design, { net, layer, pts, width: w }, pads);
+    return !!made?.board && made !== design && !blockers(made.board, copperOf(made, pads), loops, { net, layers: [layer], pts, width: w }).length;
+  };
+  /** The way to `to`: bent the way asked for, or the other way if only that one is clear, or pushing through. */
+  const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string }; push?: boolean } => {
     const w = widthOf(r.net);
     const first = corner45(r.last, to, r.diag);
     const stop = inWay(r.net, [layer], first, w);
-    if (!stop || first.length < 3) return { pts: first, stop };
+    if (!stop) return { pts: first };
     const other = corner45(r.last, to, !r.diag);
-    return inWay(r.net, [layer], other, w) ? { pts: first, stop } : { pts: other };
+    if (first.length > 2 && !inWay(r.net, [layer], other, w)) return { pts: other };
+    if (canPush(r.net, first, w)) return { pts: first, push: true };
+    if (first.length > 2 && canPush(r.net, other, w)) return { pts: other, push: true };
+    return { pts: first, stop };
+  };
+  /** The nearest pad of a net to a point, within reach of a pair. */
+  const padNear = (net: string, at: P2): P2 | undefined =>
+    pads
+      .filter((p) => p.net === net && Math.hypot(p.at[0] - at[0], p.at[1] - at[1]) <= PAIR_REACH)
+      .sort((x, y) => Math.hypot(x.at[0] - at[0], x.at[1] - at[1]) - Math.hypot(y.at[0] - at[0], y.at[1] - at[1]))[0]?.at;
+  /** The two tracks of a pair, on to `p`: both runs, and what is in the way of them if anything. */
+  const pairWay = (r: Routing, p: P2) => {
+    const pr = r.pair!;
+    const on = copperAt(p, r.net) ?? copperAt(p, pr.net);
+    let to = snap(p, grid);
+    let ends: { a?: P2; b?: P2 } = {};
+    const far = (x: P2, y: P2) => Math.hypot(x[0] - y[0], x[1] - y[1]) > 1e-6;
+    if (on && far(on.at, pr.a) && far(on.at, pr.b)) {
+      const mate = padNear(on.net === r.net ? pr.net : r.net, on.at);
+      if (mate) {
+        to = [(on.at[0] + mate[0]) / 2, (on.at[1] + mate[1]) / 2];
+        ends = on.net === r.net ? { a: on.at, b: mate } : { a: mate, b: on.at };
+      }
+    }
+    const w = widthOf(r.net);
+    const pitch = w + (board ? clearanceBetween(board, r.net, pr.net) : 0.2);
+    const others = copper.filter((c) => !pr.ids.includes(c.id));
+    let found: { centre: P2[]; runs: { a: P2[]; b: P2[] }; stop?: { what: string } } | undefined;
+    for (const diag of [r.diag, !r.diag]) {
+      const centre = tidyRun([...pr.centre, ...corner45(r.last, to, diag).slice(1)]);
+      const runs = pairRuns(centre, pitch, { from: pr.a, to: ends.a }, { from: pr.b, to: ends.b });
+      if (!runs) continue;
+      const stop =
+        board && ui.keepClear
+          ? (blockers(board, others, loops, { net: r.net, layers: [layer], pts: runs.a, width: w })[0] ??
+            blockers(board, others, loops, { net: pr.net, layers: [layer], pts: runs.b, width: w })[0])
+          : undefined;
+      if (!found || !stop) found = { centre, runs, stop };
+      if (!stop) break;
+    }
+    return { to, lands: !!ends.a, w, found };
   };
   /** Lays the track on to `p`: the routing to carry on with, null when it landed, false when something is in the way. */
   const extend = (r: Routing, p: P2): Routing | null | false => {
+    if (r.pair) {
+      const pr = r.pair;
+      const { to, lands, w, found } = pairWay(r, p);
+      if (Math.hypot(to[0] - r.last[0], to[1] - r.last[1]) < 1e-6) return r;
+      if (!found) {
+        setSaid("That turn is too tight for the pair. Click further on.");
+        return false;
+      }
+      if (found.stop) {
+        tooClose(found.stop.what);
+        return false;
+      }
+      setSaid("");
+      edit((d) => layPair(d, pr.ids, [r.net, pr.net], layer, found.runs, w), "Route a pair");
+      return lands ? null : { ...r, last: to, pair: { ...pr, centre: found.centre } };
+    }
     const { to, lands } = aim(p, r);
     if (Math.hypot(to[0] - r.last[0], to[1] - r.last[1]) < 1e-6) return r;
-    const { pts, stop } = way(r, to);
+    const { pts, stop, push } = way(r, to);
     if (stop) {
       tooClose(stop.what);
       return false;
     }
     setSaid("");
-    edit((d) => addTrack(d, r.net, layer, pts, widthOf(r.net)), "Route a track");
+    const w = widthOf(r.net);
+    if (push) edit((d) => addTrack(shove(d, { net: r.net, layer, pts, width: w }) ?? d, r.net, layer, pts, w), "Route a track and push others aside");
+    else edit((d) => addTrack(d, r.net, layer, pts, w), "Route a track");
     return lands ? null : { ...r, last: to };
   };
   /** Drops a via where the track has got to and carries on on the other side. */
   const viaHere = () => {
     if (!board) return;
-    if (!route) return eui.set({ layer: layer === "top" ? "bottom" : "top" });
-    const stop = inWay(route.net, ["top", "bottom"], [route.last], netRules(board, route.net).viaDiameter);
+    if (!route) return eui.set({ layer: nextLayer });
+    if (route.pair) return setSaid("A pair stays on one side. Finish it first.");
+    const stop = inWay(route.net, layers, [route.last], netRules(board, route.net).viaDiameter);
     if (stop) return tooClose(stop.what);
     edit((d) => addVia(d, route.net, route.last[0], route.last[1]), "Add a via");
-    eui.set({ layer: layer === "top" ? "bottom" : "top" });
+    eui.set({ layer: nextLayer });
   };
 
   /** Closes the area being drawn into a pour, a keep-out or a cut-out. */
@@ -384,12 +474,24 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       setSaid("");
       if (from.layer && from.layer !== layer) eui.set({ layer: from.layer });
       eui.set({ net: from.net, selected: [] });
+      const mate = paired ? pairOf(from.net, nets) : null;
+      const other = mate ? padNear(mate, from.at) : undefined;
+      if (mate && other) {
+        const mid: P2 = [(from.at[0] + other[0]) / 2, (from.at[1] + other[1]) / 2];
+        return setRoute({ net: from.net, last: mid, diag: false, pair: { net: mate, ids: [eid("tr"), eid("tr")], a: from.at, b: other, centre: [mid] } });
+      }
+      if (paired)
+        setSaid(
+          mate
+            ? `No ${mate} pad is near enough to pair with. Routing ${from.net} on its own.`
+            : `${from.net} has no partner, such as D+ and D-. Routing it on its own.`,
+        );
       setRoute({ net: from.net, last: from.at, diag: false });
     } else if (tool === "via") {
       const on = copperAt(p.world);
       const to = on?.at ?? snap(p.world, grid);
       const net = on?.net ?? "";
-      const stop = inWay(net, ["top", "bottom"], [to], netRules(board, net).viaDiameter);
+      const stop = inWay(net, layers, [to], netRules(board, net).viaDiameter);
       if (stop) return tooClose(stop.what);
       setSaid("");
       edit((d) => addVia(d, net, to[0], to[1]), "Add a via");
@@ -427,9 +529,19 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   // The piece of track that would go down on the next click.
   const ghost = useMemo(() => {
     if (!route || !at || !board) return undefined;
+    if (route.pair) {
+      const { w, found } = pairWay(route, at);
+      if (!found) return undefined;
+      return { track: { pts: found.runs.a, width: w, layer, blocked: !!found.stop }, mate: { pts: found.runs.b, width: w, layer, blocked: !!found.stop } };
+    }
     const { pts, stop } = way(route, aim(at, route).to);
     return { track: { pts, width: widthOf(route.net), layer, blocked: !!stop } };
-  }, [route, at, board, copper, layer, width, ui.keepClear, grid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [route, at, board, copper, layer, width, ui.keepClear, ui.shove, grid]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** How long a net is, with the piece on the pointer counted, against the target if there is one. */
+  const lengthOf = (net: string, more: P2[] = []) => {
+    const n = mm(netLength(design, net) + trackLength(more));
+    return target ? `${n} of ${target} mm` : `${n} mm`;
+  };
   const clashes = useMemo(
     () => (findClashes && tool === "select" && selected.size ? findClashes(design, selected) : []),
     [findClashes, tool, selected, design.board, design.parts], // eslint-disable-line react-hooks/exhaustive-deps
@@ -445,7 +557,9 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const hint =
     tool === "route"
       ? route
-        ? `Routing ${route.net} on the ${layer} side. Click to turn, click a pad to finish.`
+        ? route.pair
+          ? `Routing ${route.net} and ${route.pair.net} as a pair: ${lengthOf(route.net)} and ${lengthOf(route.pair.net)}. Click to turn, click a pad to finish.`
+          : `Routing ${route.net} on the ${layer} side, ${lengthOf(route.net, ghost?.track.pts)}. Click to turn, click a pad to finish.`
         : "Click a pad to start a track."
       : tool === "via"
         ? "Click a track or a pad to drop a via on it."
@@ -523,6 +637,15 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
                 <input type="checkbox" checked={ui.keepClear} onChange={(e) => eui.set({ keepClear: e.target.checked })} />
                 Keep clear
               </label>
+              <label className="bc-ec-fitted" data-tip="Move other tracks aside when one is in the way">
+                <input type="checkbox" checked={ui.shove} onChange={(e) => eui.set({ shove: e.target.checked })} />
+                Push
+              </label>
+              <label className="bc-ec-fitted" data-tip="Route two nets side by side, such as D+ and D-">
+                <input type="checkbox" checked={paired} disabled={!!route} onChange={(e) => setPaired(e.target.checked)} />
+                Pair
+              </label>
+              <NumberField label="Target length" value={target || null} min={0} step={1} precision={2} onCommit={setTarget} />
               {route && (
                 <>
                   <Button

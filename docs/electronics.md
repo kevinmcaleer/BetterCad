@@ -233,6 +233,79 @@ every time they move: over another part on the same side, off the board, hanging
 for parts. The courtyards that clash are drawn in the warning colour and a line says what is wrong. It is the same
 test the board check runs, so nothing shows here that the check would pass.
 
+## Autoroute (#647)
+
+`pcb/autoroute.ts` is our own maze router: no code is taken from tscircuit or Freerouting. It routes the connections
+the ratsnest still shows, the short ones first, and only ever adds copper, so a track or via laid by hand never moves.
+
+- **The grid.** Both sides of the board at 0.125 mm (coarser when the board is very large). For each net class a
+  `Space` holds, for every cell and side, how much copper could sit there: the least gap to any other net's copper
+  less the clearance between the two nets, to the board's edge less `copperToEdge`, and to track keep-outs. It keeps
+  the nearest net and the nearest other net, so one map serves every net of a class. Copper is drawn in with a little
+  spare, worked out so that two free cells always have room for the track between them.
+- **The search.** A* over cells and sides, eight ways on, with a small cost for a turn, a cost of 4 mm for a via and
+  double for crossing another net's pour. A via needs room on both sides, its hole clear of other holes by
+  `holeToHole`, and may not sit on a pad. A run leaves and reaches a pad by a short piece with one 45° bend.
+- **Measured twice.** Every run and via found is measured with `blockers`, the same test a hand-drawn track gets,
+  before it is kept. A test routes the sample board from bare and asks the board check for an empty list.
+- **Options.** `nets`, `parts` and `layers` (one side only, which also means no vias). A track through a pour can cut
+  it in two, so the router looks at the ratsnest again, up to three times.
+- **In the app.** Autoroute on the PCB tools opens a card (`AutoRoute.tsx`). The router runs in a worker of its own
+  (the board check's script, `boardCheck.worker.ts`, so the board's model is bundled for a worker once), which sends each route back as it is found; Stop ends the worker and keeps those. They go
+  on the board in one edit, so one undo takes them out. If the board changed meanwhile nothing is laid.
+
+It is for simple boards and for finishing off. It does not rip up and retry, push tracks aside, or route fine-pitch
+pads that fall between grid lines; the connections it finds no way for are listed and left for you.
+
+## Push, length and pairs (#646)
+
+`pcb/shove.ts`, used by the route tool in `BoardCanvas.tsx`.
+
+- **Push.** With Push on, a run that comes too close to another net's track asks `shove` for room. The piece in the
+  way is cut so only the stretch beside the new run moves, then slid sideways with `slidePiece` (#640) just far
+  enough, with 45° pieces at each end. What it then comes too close to is pushed in turn, three deep at most. Pads,
+  vias, text, keep-outs and the board's edge never move: a push into one of them is no push, and the track stops as
+  before. Everything that moved is measured with `blockers` before it is kept, and the run and its pushes are one
+  edit, so one undo puts them back.
+- **Length.** The route bar shows the net's length as you go, the piece on the pointer counted, and against a target
+  when one is typed. A track's card shows its net's length; typing a longer one puts flat-topped wiggles with 45°
+  corners in its longest straight piece, on whichever side has room (`tuneLength`). Tuning only makes a net longer.
+- **Pairs.** With Pair on, starting on a net whose name has a partner (D+ and D-, USB_P and USB_N, DP and DM, TXP and
+  TXN) finds the partner's pad within 8 mm and routes both: you click the line between them, and `pairRuns` lays one
+  track each side of it at the track width plus the clearance, mitred so the gap holds round every corner. Clicking
+  a pad of either net lands both, on that pad and its partner's nearest. A pair stays on one side.
+
+Not done: pushing vias, walking a push round a pad (a push that needs to go round one stops), and matching the two
+lengths of a pair automatically (tune each track to the same target instead).
+
+## Four and six layers (#648)
+
+A board has two, four or six copper layers: `Board.copperLayers`, with the inner ones named `in1`, `in2` and so on
+from the top down (`pcb/stack.ts`: `layersOf`, `layerName`). Everything that asked "top or bottom?" now asks
+`layersOf(board)`.
+
+- **Copper.** A through pad and a plated hole have copper on every layer, a surface pad on its own side, a track and
+  a pour on their own layer. A via joins every layer unless it has a `span`, which makes it blind or buried
+  (`viaLayers`, `viaKind`, `setViaSpan`). `copperOf` gives each piece its layers, so the board check, pours, the
+  ratsnest and the routing tools follow with no code of their own. A plane is a pour drawn over the whole board on
+  an inner layer.
+- **The build.** `STACKS` holds one usual FR-4 build for each count, written by us: copper, prepreg and core, top to
+  bottom. They are not a board house's own. `setStack` takes one (inner copper on layers that go is taken away, and
+  `stackLoses` says how much first); the board keeps its thickness and `buildOf` fits the sheets between the copper
+  to it. Board setup lists the build.
+- **The check.** Two new rules: copper on a layer the board does not have (an error), and a via that does not go
+  right through (a warning, since board houses charge more and some do not make them).
+- **Routing.** L steps down through the layers and round to the top. Autoroute searches every layer, lays vias
+  right through, and leaves an inner layer with a pour on it whole.
+- **Files.** `gerberLayers(board)` adds a copper file for each inner layer, numbered down from the top
+  (`Copper,L2,Inr`), named `.G1`, `.G2` in the order pack. Blind and buried vias are drilled in a file of their own
+  for each span (`-L1-L2.DRL`, `Plated,1,2,Blind`). KiCad projects go out with `In1.Cu` and so on and `via blind`,
+  and come back in the same; Eagle boards bring in the first four inner layers with copper on them.
+- **3D.** The board is as thick as Board setup says. Inner copper is not modelled: only the outside shows.
+
+Not done: board houses' own builds as presets. Their pages could not be read from here, and the numbers must come
+from those pages. Controlled impedance, microvias and back-drilling are not part of this.
+
 ## The board check (#644)
 
 `pcb/drc.ts`, imported as `@bettercad/electronics/drc`. `checkBoard(design)` returns results in the same shape as the
@@ -467,6 +540,32 @@ Left for later: a real upload to each house's quote page to confirm the headings
 capacitors: a part whose kind, value and package match a row of the checked list, and that has no number, can have
 it filled in. The list is in `docs/electronics-library.md`.
 
+## Panels, IPC-2581 and assembly drawings (#662)
+
+- **Panels** (`fab/panel.ts`). The order card's Order a panel of boards takes rows, columns, how the boards join and
+  the rails. Every Gerber file is written out once for each board, moved into place, rather than with Gerber's step
+  and repeat, so every viewer (ours included) shows the panel as it will be made. Each copy starts dark with no
+  object attributes left over. V-cuts: the boards touch, the lines run right across the panel between rows, columns
+  and rails, and they go in a file of their own (`-VCUT.gbr`) as well as being where the boards meet; a board that
+  is not a plain rectangle gets a warning. Tabs: a milled gap (2 mm unless changed) round each board and off the
+  rails, a 3 mm tab in the middle of each side that faces another board or a rail (two on a side over 50 mm), the
+  board's outline broken where each tab holds it, and a row of 0.5 mm unplated holes along each board's edge at the
+  tab. Rails of 4 mm or more get a 2 mm tooling hole 3 mm in from each corner. These sizes are our own usual ones,
+  not a board house's. The pick and place list stays the one board's.
+- **IPC-2581** (`fab/ipc2581.ts`), revision C. Each layer's image is the Gerber writer's own, read back with
+  `readGerber` (which now keeps each object's `.N` net) and written as IPC-2581 features: flashes as pads with a
+  standard shape, macro pads as their pieces, draws as polylines, areas as contours, and a pour's clearances as
+  negative sets in the order the Gerber paints them. On top: the board's build as the stack, the outline as the
+  profile, a package for each footprint with its pins, the components, a logical net for each net with its pins, a
+  drill layer for each span with its holes, and the parts list. Tests parse it and check that every reference is
+  to something it defines and that the copper matches the Gerber's object for object. It has not been opened in
+  another tool's IPC-2581 reader yet.
+- **Assembly drawing** (`assemblyScene` in `web/src/electronics/sheetScene.ts`): Save the assembly drawing on the order card writes
+  one PDF with a page for each side that has parts, on the drawing workspace's sheet with its frame and title
+  block, through the drawing export's PDF writer. The board's edge and holes, each part's fab outline (or its
+  courtyard), its pads, a dot on pin 1 for parts with more than two pads, and the reference. The bottom is drawn
+  turned over, as you see it from below. It is a page to print, not a sheet you can edit in the Drawing workspace.
+
 ## The sample board (#666)
 
 The Pico servo board (`packages/electronics/src/sample.ts`; Open the sample board, on an empty schematic, or `#/sample/pico-servo-board`) is a carrier
@@ -636,8 +735,6 @@ or Adafruit project, has been opened yet.
 
 ## What release 1 leaves open
 
-- Release 2, by decision: shove routing (#646), an autorouter (#647), four layers
-  and more (#648), panels and IPC-2581 (#662).
 - Parts: custom pin shapes (#626), expressions in pad sizes (#627), live stock and prices (#661).
 - Eagle and Fusion files (#665): one Fusion schematic opens cleanly. No real board (.brd) has been tried.
 - KiCad 8 and 9 files: the reader was checked against KiCad 7's own demos. Newer files have not been tried.

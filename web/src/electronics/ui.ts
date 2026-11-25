@@ -23,7 +23,7 @@ export interface EUi {
   layer: CopperLayer;
   hidden: LayerId[];
   /** Cards that are open over the view. */
-  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | null;
+  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | "autoroute" | null;
   /** A place a check points at: the view brings it into the middle and rings it. On the board its sheet is "board". */
   spot: { sheet: string; at: P2; n: number } | null;
   /** Goes up by one to ask the open view to bring the selection into the middle. */
@@ -32,6 +32,8 @@ export interface EUi {
   grid: number;
   /** Routing stops at anything the rules say a track must keep clear of. Off lets a track go anywhere. */
   keepClear: boolean;
+  /** Routing moves other tracks aside when one is in the way (#646). */
+  shove: boolean;
   /** Connections the open board still needs, once its copper is counted. Null until the board has been looked at. */
   unrouted: number | null;
 }
@@ -55,6 +57,7 @@ const start = (): EUi => ({
   focus: 0,
   grid: 0.5,
   keepClear: true,
+  shove: false,
   unrouted: null,
 });
 

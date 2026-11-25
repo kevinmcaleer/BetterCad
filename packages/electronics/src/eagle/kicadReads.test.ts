@@ -84,6 +84,7 @@ describe.skipIf(!has)("KiCad reads the same Eagle board", () => {
   it("gives vias with no size of their own the ring KiCad gives them", () => {
     const { theirs, design } = read();
     const sizes = (list: { d: number; drill: number }[]) => list.map((v) => `${v.d} ${v.drill}`).sort();
-    expect(sizes(design.board!.vias.map((v) => ({ d: v.diameter, drill: v.drill })))).toEqual(sizes(theirs.vias));
+    // KiCad's reading has only the vias that go right through; the blind one (#648) is ours to keep as well.
+    expect(sizes(design.board!.vias.filter((v) => !v.span).map((v) => ({ d: v.diameter, drill: v.drill })))).toEqual(sizes(theirs.vias));
   });
 });

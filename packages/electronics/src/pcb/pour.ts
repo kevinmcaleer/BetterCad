@@ -35,7 +35,7 @@ export interface PourShape {
 export const THERMAL_GAP = 0.3;
 export const SPOKE = 0.4;
 
-const layerOf = (l: CopperLayer): Layer => (l === "bottom" ? "bottom" : "top");
+const layerOf = (l: CopperLayer): Layer => l;
 /** Pours in the order they fill: higher priority first, then as drawn. */
 const order = (board: Board): Pour[] =>
   board.pours
