@@ -30,6 +30,8 @@ export function bodyOutline(model: Model3D | undefined): { x1: number; y1: numbe
     const b = turnedBox(src.size, model?.rotate ?? [0, 0, 0]);
     return { x1: x + b.min[0], y1: y + b.min[1], x2: x + b.max[0], y2: y + b.max[1] };
   }
+  // A robot catalogue part's box is kept as it lies once turned.
+  if (src?.kind === "catalogue") return { x1: x - src.size[0] / 2, y1: y - src.size[1] / 2, x2: x + src.size[0] / 2, y2: y + src.size[1] / 2 };
   if (src?.kind === "box" && model?.offset) return { x1: x - src.size[0] / 2, y1: y - src.size[1] / 2, x2: x + src.size[0] / 2, y2: y + src.size[1] / 2 };
   if (src?.kind === "cylinder" && model?.offset)
     return { x1: x - src.diameter / 2, y1: y - src.diameter / 2, x2: x + src.diameter / 2, y2: y + src.diameter / 2, round: true };

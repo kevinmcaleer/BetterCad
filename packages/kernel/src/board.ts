@@ -1,5 +1,6 @@
 import type { BoardSolid, Edge } from "@bettercad/electronics/pcb/solid";
 import type { ProfileSeg, ProfileShape } from "./extrude";
+import { partBounds, type CataloguePart } from "./catalogue";
 import { mat4Mul, placeMatrix, placeOf, type Mat4 } from "./pose";
 import { newId, type ModelDoc, type Part, type Vec3 } from "./document";
 
@@ -73,6 +74,25 @@ export function boardParts(
           reference: true,
           pcb: true,
         }));
+      }
+      // A robot catalogue part, the same model Insert part places.
+      if (b.catalogue) {
+        const record = b.catalogue.part as unknown as CataloguePart;
+        const [min, max] = partBounds(record);
+        return [
+          {
+            id: `${step.id}/${b.part}`,
+            name: b.ref,
+            kind: "solid",
+            hidden: false,
+            ...placed(by, mat4Mul(stand, placeMatrix([0, 0, b.catalogue.lift], b.catalogue.rotate))),
+            size: { x: max[0] - min[0], y: max[1] - min[1], z: max[2] - min[2] },
+            catalogue: record,
+            colour: b.colour,
+            reference: true,
+            pcb: true,
+          },
+        ];
       }
       return [
         {

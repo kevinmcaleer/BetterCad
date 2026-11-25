@@ -35,12 +35,21 @@ credit needed; the library itself keeps its licence and credit when it is passed
 Four modules KiCad has no symbol for (HC-SR04, SSD1306 I2C display, GY-521, VL53L0X breakout) are drawn by BetterCad
 (`packages/electronics/src/library/modules.ts`).
 
+Parts that are also in the robot parts catalogue (#167) use its model for their body, so the board in 3D shows the
+same part the mechanical side places with Insert part: the Raspberry Pi Pico, Pico W, Pico 2 and Pico 2 W, and the
+HC-SR04. The manifest names the catalogue part (`"body": { "catalogue": "pico", "rotate": [0, 0, -90] }`) and
+`npm run library` copies the record into the pack, turned to lie on the footprint and standing on the board. The
+record is kept whole in the part, as Insert part keeps it, so a later catalogue change never moves a board's parts.
+
+A thermal pad whose paste KiCad draws as separate small openings is read as one pad with one opening of the same
+area, so it is still soldered. The stencil's pattern is not kept.
+
 Not in yet, on purpose:
 
 - **LCSC part numbers.** None are filled in. A wrong number orders the wrong part, so they will be added only from a
   checked list (#661).
-- **Real 3D models.** The starter parts' bodies are simple shapes sized from the footprint. KiCad's STEP models are
-  several GB, so none ship; give a part a STEP file of your own in the part editor (#628).
+- **Real 3D models.** Most starter parts' bodies are simple shapes sized from the footprint. KiCad's STEP models
+  are several GB, so none ship; give a part a STEP file of your own in the part editor (#628).
 - **The rest of KiCad's libraries.** The starter set is what ships. Bring any other KiCad part in with Import parts,
   below.
 

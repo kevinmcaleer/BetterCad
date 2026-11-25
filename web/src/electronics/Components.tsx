@@ -54,6 +54,7 @@ function bodyText(def: ComponentDef, pkg: number): string | null {
   if (s.kind === "box") return `Body: a box, ${s.size.join(" × ")} mm`;
   if (s.kind === "cylinder") return `Body: a cylinder, ${s.diameter} mm across, ${s.height} mm tall`;
   if (s.kind === "header") return `Body: ${s.rows} × ${s.pins} pins at ${s.pitch} mm`;
+  if (s.kind === "catalogue") return `Body: the ${s.part.name} from the robot parts catalogue`;
   return "Body: a 3D model";
 }
 

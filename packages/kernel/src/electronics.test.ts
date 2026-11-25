@@ -1,6 +1,7 @@
-import { GRID, addWire, emptyDesign, netlist, placePart, power, pushToBoard, resistor } from "@bettercad/electronics";
+import { GRID, addWire, emptyDesign, netlist, placePart, power, pushToBoard, resistor, type CatalogueBody } from "@bettercad/electronics";
 import { BcadError, loadBcad, saveBcad } from "./bcad";
 import { boardSolid } from "@bettercad/electronics/pcb/solid";
+import { cataloguePart } from "./catalogue/list";
 import { addBoard, boardBodyId, boardParts, boardStep, onSketch } from "./board";
 import { build, featureSummary, newDoc } from "./document";
 import { fromPartLocal } from "./extrude";
@@ -134,6 +135,31 @@ describe("the Board step", () => {
     expect(x[0]).toBeCloseTo(Math.cos(turned), 6);
     expect(x[1]).toBeCloseTo(Math.sin(turned), 6);
     expect(b.links.find((l) => l.id === "pcb")!.parts).toHaveLength(3);
+  });
+
+  it("stands a robot catalogue part on its footprint, the same model Insert part places (#624)", () => {
+    const d = doc();
+    const e = d.electronics!;
+    const id = e.parts.find((p) => p.ref === "R1")!.def;
+    const def = e.defs[id]!;
+    const pico = cataloguePart("pico")!;
+    const model = {
+      source: { kind: "catalogue" as const, part: pico as unknown as CatalogueBody, size: [21, 52.3, 3.6] as [number, number, number] },
+      offset: [0, 0, 0] as [number, number, number],
+      rotate: [0, 0, -90] as [number, number, number],
+    };
+    const b = build({ ...d, electronics: { ...e, defs: { ...e.defs, [id]: { ...def, packages: def.packages.map((k) => ({ ...k, model })) } } } });
+    expect([...b.failed]).toEqual([]);
+    const made = b.parts.filter((p) => p.name === "R1");
+    expect(made).toHaveLength(1);
+    expect(made[0]).toMatchObject({ kind: "solid", reference: true, pcb: true, link: "pcb", catalogue: { id: "pico" } });
+    // Its USB end, at -x in the catalogue, points up the footprint's +y, where pin 1 is.
+    const at = e.board!.placements[0]!;
+    const usb = fromPartLocal([-1, 0, 0], made[0]!, true);
+    const up = ((at.rot + 90) * Math.PI) / 180;
+    expect(usb[0]).toBeCloseTo(Math.cos(up), 6);
+    expect(usb[1]).toBeCloseTo(Math.sin(up), 6);
+    expect(made[0]!.position.z).toBeCloseTo(5 + 1.6, 6);
   });
 
   it("is one per model, and says so when there is no board yet", () => {
