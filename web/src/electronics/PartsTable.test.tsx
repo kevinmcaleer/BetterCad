@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { BASICS, emptyDesign, placePart, type ElectronicsDesign } from "@bettercad/electronics";
+import { BASICS, changePart, emptyDesign, placePart, type ElectronicsDesign } from "@bettercad/electronics";
 import type { EEdit } from "./actions";
 import PartsTable, { fillColumn, tableRows } from "./PartsTable";
 
@@ -64,5 +64,22 @@ describe("the parts table", () => {
     const ids = tableRows(d).map((p) => p.id);
     const next = fillColumn(d, ids, "mpn", ["", "RC0603", ""]);
     expect(tableRows(next).map((p) => p.supplier?.mpn)).toEqual([undefined, "RC0603", undefined]);
+  });
+
+  it("offers LCSC numbers for common resistors and capacitors, and fills them in when you ask (#661)", async () => {
+    // 0603 parts at their starting values: 10 kΩ and 100 nF are both common.
+    const start = three();
+    const small = start.parts.reduce((d, p) => {
+      const pkg = d.defs[p.def]?.packages.findIndex((k) => k.footprint.name.includes("0603")) ?? -1;
+      return pkg >= 0 ? changePart(d, p.id, { pkg }) : d;
+    }, start);
+    const { labels, design } = setup(small);
+    expect(screen.getByRole("status")).toHaveTextContent(/^C1, R1 and R2 match common parts with an LCSC number, read from JLCPCB on \d{4}-\d{2}-\d{2}\./);
+    await userEvent.click(screen.getByRole("button", { name: "Fill in their numbers" }));
+    expect(labels).toEqual(["Fill in 3 part numbers"]);
+    expect(design().parts.find((p) => p.ref === "R1")!.supplier).toMatchObject({ lcsc: "C25804", mpn: "0603WAF1002T5E" });
+    expect(screen.getByLabelText("LCSC number of C1")).toHaveValue("C14663");
+    expect(screen.getByRole("status")).toHaveTextContent("Filled in the numbers for C1, R1 and R2. Check each part suits your circuit: C1 is ±10%, 50 V, X7R");
+    expect(screen.queryByRole("button", { name: /^Fill in/ })).toBeNull();
   });
 });

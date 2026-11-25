@@ -1,5 +1,7 @@
 import { byRef, changePart, realParts, tidyValue, type ElectronicsDesign, type Part } from "@bettercad/electronics";
-import { Dialog } from "@bettercad/ui";
+import { COMMON_CHECKED, commonMatches, fillCommon } from "@bettercad/electronics/fab/common";
+import { Button, Dialog } from "@bettercad/ui";
+import { useState } from "react";
 import type { EEdit } from "./actions";
 
 export type Column = "value" | "lcsc" | "mpn";
@@ -26,6 +28,12 @@ export function fillColumn(d: ElectronicsDesign, ids: string[], col: Column, lin
   return lines.reduce((next, line, i) => (ids[i] && line.trim() ? setCell(next, ids[i]!, col, line) : next), d);
 }
 
+/** Names in a sentence: "R1", "R1 and R2", "R1, R2, R3 and 4 more". */
+const listed = (refs: string[]): string => {
+  const shown = refs.length > 4 ? [...refs.slice(0, 3), `${refs.length - 3} more`] : refs;
+  return shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown.at(-1)}` : (shown[0] ?? "");
+};
+
 /** The parts of the design, in name order: the table's rows, and the order a pasted column fills. */
 export const tableRows = (d: ElectronicsDesign): Part[] => realParts(d).sort((a, b) => byRef(a.ref, b.ref));
 
@@ -35,6 +43,9 @@ export const tableRows = (d: ElectronicsDesign): Part[] => realParts(d).sort((a,
  */
 export default function PartsTable({ design, edit, readOnly, onClose }: { design: ElectronicsDesign; edit: EEdit; readOnly?: boolean; onClose: () => void }) {
   const rows = tableRows(design);
+  // Everyday resistors and capacitors whose LCSC numbers are known (#661). Offered, never filled in for you.
+  const common = commonMatches(design);
+  const [filled, setFilled] = useState("");
   return (
     <Dialog open modal title="Parts" icon="list" width={760} className="bc-ec-table-dialog" onCancel={onClose}>
       {rows.length === 0 ? (
@@ -42,6 +53,32 @@ export default function PartsTable({ design, edit, readOnly, onClose }: { design
       ) : (
         <>
           <p className="bc-note">Change a cell and move on to keep it. Paste a column from a spreadsheet into a cell to fill the rows below.</p>
+          {(common.length > 0 || filled) && (
+            <p className="bc-note" role="status">
+              {common.length > 0 ? (
+                <>
+                  {listed(common.map((m) => m.ref))} {common.length === 1 ? "matches a common part" : "match common parts"} with an LCSC number, read from
+                  JLCPCB on {COMMON_CHECKED}.{" "}
+                  {!readOnly && (
+                    <Button
+                      label={common.length === 1 ? "Fill in its number" : "Fill in their numbers"}
+                      onClick={() => {
+                        setFilled(
+                          `Filled in ${common.length === 1 ? "the number" : "the numbers"} for ${listed(common.map((m) => m.ref))}. Check each part suits your circuit: ${common
+                            .slice(0, 3)
+                            .map((m) => `${m.ref} is ${m.common.spec}`)
+                            .join("; ")}${common.length > 3 ? ", and so on" : ""}.`,
+                        );
+                        edit(fillCommon, `Fill in ${common.length} part ${common.length === 1 ? "number" : "numbers"}`);
+                      }}
+                    />
+                  )}
+                </>
+              ) : (
+                filled
+              )}
+            </p>
+          )}
           <div className="bc-ec-table-wrap">
             <table className="bc-ec-table">
               <thead>

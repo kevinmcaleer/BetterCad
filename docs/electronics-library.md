@@ -46,12 +46,23 @@ area, so it is still soldered. The stencil's pattern is not kept.
 
 Not in yet, on purpose:
 
-- **LCSC part numbers.** None are filled in. A wrong number orders the wrong part, so they will be added only from a
-  checked list (#661).
+- **LCSC part numbers on the parts themselves.** A resistor is every value in every package, so the starter parts
+  carry no number. The everyday values have a checked list instead: see Common parts, below.
 - **Real 3D models.** Most starter parts' bodies are simple shapes sized from the footprint. KiCad's STEP models
   are several GB, so none ship; give a part a STEP file of your own in the part editor (#628).
 - **The rest of KiCad's libraries.** The starter set is what ships. Bring any other KiCad part in with Import parts,
   below.
+
+## Common parts
+
+`packages/electronics/src/fab/common.json` lists everyday resistors and capacitors with their LCSC number, maker's
+part number and what the value does not say (tolerance, power or voltage, dielectric). Every row was read from that
+part's own page on jlcpcb.com, and the file keeps each page's address and the day the rows were read. Add a row
+only from its page.
+
+The parts table offers these numbers for parts that match a row exactly, kind, value and package, and that have no
+number yet. Nothing is filled in until you ask, because a wrong number orders the wrong part, and a value alone does
+not give a capacitor's voltage.
 
 ## Sizes
 
