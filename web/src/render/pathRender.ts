@@ -35,6 +35,13 @@ import { cutMesh, cutSheet, type CutPlane, type Triangles } from "./cut";
 export type { LightPresetId as LightPreset } from "./session";
 import type { BackgroundId, LightPresetId as LightPreset, RenderStyle } from "./session";
 
+/** The graphics card dropped the tracer's context, so what it drew is gone. */
+export class ContextLost extends Error {
+  constructor() {
+    super("The graphics card reset");
+  }
+}
+
 /**
  * Waits for the next task, without setTimeout's 4 ms floor once timers nest: a message to ourselves queues behind
  * whatever the page has waiting (a click on Stop), and no longer.
@@ -149,6 +156,9 @@ export class PathRender {
     this.stopped = this.samples >= n;
   }
   private size = { width: 1, height: 1 };
+  /** The graphics card dropped this tracer's context: nothing it draws shows any more. */
+  lost = false;
+  private onLost = () => void (this.lost = true);
 
   /** Throws when the browser has no WebGL2. */
   constructor(
@@ -159,6 +169,8 @@ export class PathRender {
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.tracer = new WebGLPathTracer(this.renderer);
+    // The graphics card can drop the context (a reset, or it ran short of memory): the canvas goes blank for good.
+    canvas.addEventListener("webglcontextlost", this.onLost);
     this.tracer.tiles.set(2, 2);
     this.tracer.minSamples = 1;
     this.tracer.renderDelay = 0;
@@ -587,27 +599,13 @@ export class PathRender {
     run: (frame: (camera: CameraState, signal?: AbortSignal) => Promise<void>) => Promise<T>,
     onSample?: (taken: number) => void,
   ): Promise<T> {
-    this.stopLoop();
     const pr = this.renderer.getPixelRatio();
     const before = this.size;
     try {
-      this.renderer.setPixelRatio(1);
-      this.setSize(width, height);
-      this.tracer.pausePathTracing = false;
-      await this.picturesIn;
-      return await run(async (camera, signal) => {
-        this.setCamera(camera);
-        onSample?.(0);
-        while (this.samples < samples) {
-          if (signal?.aborted) throw new Error("Stopped");
-          this.tracer.renderSample();
-          onSample?.(Math.min(this.samples, samples));
-          // Give the page a turn after every tile, so Stop is heard straight away and the bars keep moving.
-          await nextTask();
-        }
-        onSample?.(samples);
-      });
+      await this.prepareFrames(width, height);
+      return await run((camera, signal) => this.traceFrame(camera, samples, signal, onSample));
     } finally {
+      this.tracer.tiles.set(2, 2);
       this.renderer.setPixelRatio(pr);
       this.setSize(before.width, before.height);
       this.tracer.pausePathTracing = this.paused;
@@ -615,7 +613,40 @@ export class PathRender {
     }
   }
 
+  /**
+   * Readies the tracer to make frames at `width` × `height` with `traceFrame`, its own loop stopped. Smaller tiles keep
+   * each step on the graphics card short: a full HD step that runs long can make the browser reset the card.
+   */
+  async prepareFrames(width: number, height: number): Promise<void> {
+    this.stopLoop();
+    this.renderer.setPixelRatio(1);
+    this.tracer.tiles.set(4, 4);
+    this.setSize(width, height);
+    this.tracer.pausePathTracing = false;
+    await this.picturesIn;
+  }
+
+  /**
+   * Renders `samples` samples from `camera`, settling once the canvas holds the finished frame. Throws ContextLost if
+   * the graphics card drops the context part way.
+   */
+  async traceFrame(camera: CameraState, samples: number, signal?: AbortSignal, onSample?: (taken: number) => void): Promise<void> {
+    this.setCamera(camera);
+    onSample?.(0);
+    while (this.samples < samples) {
+      if (signal?.aborted) throw new Error("Stopped");
+      if (this.lost) throw new ContextLost();
+      this.tracer.renderSample();
+      onSample?.(Math.min(this.samples, samples));
+      // Give the page a turn after every tile, so Stop is heard straight away and the bars keep moving.
+      await nextTask();
+    }
+    if (this.lost) throw new ContextLost();
+    onSample?.(samples);
+  }
+
   dispose(): void {
+    this.canvas.removeEventListener("webglcontextlost", this.onLost);
     this.stopLoop();
     this.clearModel();
     this.floor.geometry.dispose();

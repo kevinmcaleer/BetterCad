@@ -7,7 +7,7 @@ import { ArrayBufferTarget as Mp4Target, Muxer as Mp4Muxer } from "mp4-muxer";
 import { ArrayBufferTarget as WebmTarget, Muxer as WebmMuxer } from "webm-muxer";
 import type { CameraState } from "../viewport/camera";
 import type { CutPlane } from "./cut";
-import { PathRender, type RenderBody } from "./pathRender";
+import { ContextLost, PathRender, type RenderBody } from "./pathRender";
 import type { BackgroundId, LightPresetId as LightPreset, RenderStyle } from "./session";
 import { FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "./video";
 import { alphaPlanes, muxWebmAlpha, type AlphaFrame } from "./webmAlpha";
@@ -181,10 +181,14 @@ export interface FilmSetup {
   seeThrough: boolean;
 }
 
+/** How many times a video render starts its path tracer again after the graphics card drops it. */
+const RETRIES = 3;
+
 /**
- * Path-traces and encodes a video render with its own path tracer in `canvas`, apart from the Render view's picture,
- * so it keeps going when you leave the view. `onFrame` hears each finished frame and `onSample` the samples on the
- * frame in hand.
+ * Path-traces and encodes a video render with its own path tracer, apart from the Render view's picture, so it keeps
+ * going when you leave the view. `onFrame` hears each finished frame and `onSample` the samples on the frame in hand.
+ * If the graphics card drops the tracer part way (a reset, or short of memory), a new tracer in a new canvas takes up
+ * the same frame, and `onCanvas` hears of the new canvas so the view can show it.
  */
 export async function filmVideo(
   s: FilmSetup,
@@ -192,8 +196,8 @@ export async function filmVideo(
   onFrame: (done: number) => void,
   onSample: (taken: number) => void,
   signal: AbortSignal,
+  onCanvas?: (canvas: HTMLCanvasElement) => void,
 ): Promise<Blob> {
-  const pr = new PathRender(canvas, { alpha: true });
   // A few times a second is enough for the bars, and keeps the strip and the wheel from redrawing on every sample.
   let last = -Infinity;
   const sampled = (n: number) => {
@@ -202,21 +206,45 @@ export async function filmVideo(
     last = now;
     onSample(n);
   };
-  try {
+  const start = async (c: HTMLCanvasElement) => {
+    const pr = new PathRender(c, { alpha: true });
     pr.setBodies(s.bodies, s.cut);
     pr.setPreset(s.preset);
     pr.setStyle(s.style);
     pr.setBackground(s.background);
     pr.setFocus(s.aperture);
-    return await pr.frames(
-      VIDEO_WIDTH,
-      VIDEO_HEIGHT,
-      s.samples,
-      (frame) => encodeFrames({ canvas, frame: (i) => frame(s.at(i), signal) }, s.frames, s.ext, onFrame, signal, s.seeThrough),
-      sampled,
-    );
-  } finally {
+    await pr.prepareFrames(VIDEO_WIDTH, VIDEO_HEIGHT);
+    return pr;
+  };
+  const end = (pr: PathRender) => {
     pr.dispose();
     pr.renderer.forceContextLoss();
+  };
+  let pr = await start(canvas);
+  let retries = RETRIES;
+  const source: FrameSource = {
+    get canvas() {
+      return pr.canvas;
+    },
+    async frame(i) {
+      for (;;) {
+        try {
+          return await pr.traceFrame(s.at(i), s.samples, signal, sampled);
+        } catch (e) {
+          if (!(e instanceof ContextLost) || retries-- <= 0) throw e;
+          end(pr);
+          const c = document.createElement("canvas");
+          c.className = canvas.className;
+          for (const a of ["role", "aria-label"]) if (canvas.hasAttribute(a)) c.setAttribute(a, canvas.getAttribute(a)!);
+          pr = await start(c);
+          onCanvas?.(c);
+        }
+      }
+    },
+  };
+  try {
+    return await encodeFrames(source, s.frames, s.ext, onFrame, signal, s.seeThrough);
+  } finally {
+    end(pr);
   }
 }
