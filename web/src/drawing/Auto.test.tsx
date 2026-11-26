@@ -52,7 +52,6 @@ function Harness({ views = [front], dimensions = [], readOnly }: { views?: Drawi
         onAuto={() => setTool(tool === "auto" ? null : "auto")}
         onSettings={vi.fn()}
         onFit={vi.fn()}
-        onFinish={vi.fn()}
       />
       <DrawingPaper
         drawing={drawing}
@@ -182,7 +181,7 @@ describe("Auto dimension", () => {
     expect(screen.queryByRole("button", { name: "Auto dimension" })).toBeNull();
     unmount();
     const onAuto = vi.fn();
-    render(<DrawingRibbon onDimension={vi.fn()} onAuto={onAuto} auto onSettings={vi.fn()} onFit={vi.fn()} onFinish={vi.fn()} />);
+    render(<DrawingRibbon onDimension={vi.fn()} onAuto={onAuto} auto onSettings={vi.fn()} onFit={vi.fn()} />);
     const button = within(screen.getByRole("group", { name: "Dimensions" })).getByRole("button", { name: /^Auto/, pressed: true });
     fireEvent.click(button);
     expect(onAuto).toHaveBeenCalled();

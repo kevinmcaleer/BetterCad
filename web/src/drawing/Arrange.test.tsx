@@ -113,7 +113,7 @@ describe("Arrange dimensions", () => {
   });
 
   it("is on the Drawing tab beside Dimension", async () => {
-    const p = { onSettings: vi.fn(), onFit: vi.fn(), onFinish: vi.fn(), onDimension: vi.fn(), onArrange: vi.fn() };
+    const p = { onSettings: vi.fn(), onFit: vi.fn(), onDimension: vi.fn(), onArrange: vi.fn() };
     render(<DrawingRibbon {...p} />);
     await userEvent.click(within(screen.getByRole("group", { name: "Dimensions" })).getByRole("button", { name: "Arrange dimensions" }));
     expect(p.onArrange).toHaveBeenCalled();

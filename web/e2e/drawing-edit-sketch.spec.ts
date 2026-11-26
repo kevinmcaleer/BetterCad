@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { Editor, runCommand } from "./pages/editor";
 
-/** Editing the model from a drawing leaves the drawing for the 3D view first, the way Finish drawing does. */
+/** Editing the model from a drawing leaves the drawing for the 3D view first, the way Esc or any other tab does. */
 test("double-clicking a sketch while a drawing is open leaves the drawing to edit it", async ({ page }) => {
   test.setTimeout(120_000);
   const ed = await new Editor(page).open();

@@ -38,14 +38,7 @@ function Harness({
   const [call] = useState(() => vi.fn<ViewCall>(() => Promise.resolve(plate)));
   return (
     <>
-      <DrawingBar
-        name="Drawing 1"
-        projectedView={tool === "projected"}
-        onProjectedView={() => setTool("projected")}
-        onSettings={vi.fn()}
-        onFit={vi.fn()}
-        onFinish={vi.fn()}
-      />
+      <DrawingBar name="Drawing 1" projectedView={tool === "projected"} onProjectedView={() => setTool("projected")} onSettings={vi.fn()} onFit={vi.fn()} />
       <div data-testid="sheet">{JSON.stringify(drawing.sheets[0])}</div>
       <DrawingPaper
         drawing={drawing}
@@ -193,7 +186,7 @@ describe("a projected view on the sheet", () => {
 
 describe("the Drawing tab and bar", () => {
   it("have Projected view beside Base view", async () => {
-    const p = { onBaseView: vi.fn(), onProjectedView: vi.fn(), onSettings: vi.fn(), onFit: vi.fn(), onFinish: vi.fn() };
+    const p = { onBaseView: vi.fn(), onProjectedView: vi.fn(), onSettings: vi.fn(), onFit: vi.fn() };
     render(<DrawingRibbon {...p} />);
     await userEvent.click(within(screen.getByRole("group", { name: "Create" })).getByRole("button", { name: "Projected view" }));
     expect(p.onProjectedView).toHaveBeenCalledTimes(1);

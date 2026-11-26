@@ -104,14 +104,14 @@ describe("the drawing's sheet", () => {
     expect(placed()).not.toBe(fitted);
   });
 
-  it("the bar finishes the drawing, fits the sheet and opens its settings", async () => {
-    const p = { onSettings: vi.fn(), onFit: vi.fn(), onFinish: vi.fn() };
+  it("the bar fits the sheet and opens its settings, with no Finish: other tabs and tools leave the drawing", async () => {
+    const p = { onSettings: vi.fn(), onFit: vi.fn() };
     const { rerender } = render(<DrawingBar name="Drawing 1" {...p} />);
     const bar = within(screen.getByRole("group", { name: "Drawing 1 options" }));
     await userEvent.click(bar.getByRole("button", { name: "Sheet settings" }));
     await userEvent.click(bar.getByRole("button", { name: "Fit sheet" }));
-    await userEvent.click(bar.getByRole("button", { name: "Finish drawing" }));
-    expect([p.onSettings.mock.calls.length, p.onFit.mock.calls.length, p.onFinish.mock.calls.length]).toEqual([1, 1, 1]);
+    expect(bar.queryByRole("button", { name: "Finish drawing" })).toBeNull();
+    expect([p.onSettings.mock.calls.length, p.onFit.mock.calls.length]).toEqual([1, 1]);
     rerender(<DrawingBar name="Drawing 1" readOnly {...p} />);
     expect(screen.queryByRole("button", { name: "Sheet settings" })).toBeNull();
   });

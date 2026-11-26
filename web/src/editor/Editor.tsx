@@ -597,6 +597,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   // follows wherever you orbited it when you come back.
   const openRender = (style?: RenderStyle) => {
     renderCam.current = vp.ref.current?.camera() ?? null;
+    setDrawing(null);
     // The session's settings load with the first render, to keep them out of first paint.
     void import("../render/session").then((m) => setRender(m.renderSession(style)));
   };
@@ -669,7 +670,6 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     onAuto: () => setDrawingTool((t) => (t === "auto" ? null : "auto")),
     onSettings: () => setSheetCard("settings"),
     onFit: () => drawingApi.current?.fit(),
-    onFinish: () => setDrawing(null),
   };
   const enterDrawing = (id: string) => {
     setRender(null);
@@ -730,14 +730,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     if (saved) say(`Saved ${saved.names[0]}`);
   };
   // Draw on's video (the Render view's build-up animation): asked for on the click, recorded while the picker is open.
-  const saveVideo = async (video: Promise<Blob | null>, ext: "mp4" | "webm") => {
+  const saveVideo = async (video: Promise<Blob | null>, ext: "mp4" | "webm", name = "draw on") => {
     const data = video.then((b) => {
       if (!b) throw new Error("No video");
       return b.arrayBuffer();
     });
     data.catch(() => {});
     try {
-      const saved = await files.store.saveFiles([{ name: `${live.current.doc.name} draw on.${ext}`, data, mime: `video/${ext}` }]);
+      const saved = await files.store.saveFiles([{ name: `${live.current.doc.name} ${name}.${ext}`, data, mime: `video/${ext}` }]);
       if (saved) say(`Saved ${saved.names[0]}`);
     } catch {
       say("Your browser couldn't record the video");
@@ -1600,6 +1600,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   );
 
   const showPanel = useCallback((id: PanelId | null) => {
+    // Library, Catalogue and Print are for the model: opening one leaves a drawing's sheet for the 3D view.
+    if (id === "library" || id === "robot" || id === "print") setDrawing(null);
     setPanel(id);
     if (id && window.matchMedia?.(NARROW).matches) setPropsOpen(false);
   }, []);
@@ -2211,7 +2213,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   pickedStepRef.current = pickedStep;
   /** A step being changed: its tool is open for it. Sketches use sketch.editingId instead. */
   const [editingStep, setEditingStep] = useState<string | null>(null);
-  // Editing the model leaves a drawing's sheet for the 3D view, the way Finish drawing does: double-clicking a sketch
+  // Editing the model leaves a drawing's sheet for the 3D view, the way Esc or another tab does: double-clicking a sketch
   // or a step (browser or timeline), Edit sketch, Sketch on, re-picking a fillet or opening a step's tool.
   const editingModel = sketch.editing || editingStep !== null || tool !== "select" || driveDialog !== null;
   useEffect(() => {
@@ -4641,6 +4643,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             }
             onRender={files.shared ? undefined : () => openRender()}
             onLeaveRender={closeRender}
+            onLeaveDrawing={() => setDrawing(null)}
             electronicsRibbon={
               ribbonOn && eview ? (
                 <Suspense fallback={null}>
@@ -4849,6 +4852,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 list: doc.drawings?.map((d) => ({ id: d.id, name: d.name, ...(d.id === drawing && drawingProblems ? { problems: drawingProblems } : {}) })),
                 open: drawing,
                 on: onDrawing,
+                leave: () => setDrawing(null),
               }}
               electronics={
                 doc.electronics || eview

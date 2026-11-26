@@ -267,3 +267,36 @@ test("a camera move orbits the Render view's camera round the model, and Esc sto
   await expect(page.getByRole("button", { name: "Camera move: none" })).toBeVisible();
   await expect(bar).toBeVisible();
 });
+
+/** Video render: the camera move path-traced frame by frame and saved as a video. */
+test("Video render path-traces a camera move's frames and saves a video", async ({ page }) => {
+  test.setTimeout(480_000);
+  await page.addInitScript(() => {
+    Object.assign(window, { __bcRenderMax: 1, __bcVideoFrames: 3 });
+    (window as unknown as Record<string, unknown>).showSaveFilePicker = async (o: { suggestedName: string }) => ({
+      name: o.suggestedName,
+      createWritable: async () => ({
+        write: async (d: BlobPart) => {
+          const bytes = new Uint8Array(await new Blob([d]).arrayBuffer());
+          (window as unknown as { __bcSavedVideo: number[] }).__bcSavedVideo = [...bytes.slice(0, 12)];
+        },
+        close: async () => {},
+      }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.keyboard.press("Shift+R");
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
+  await page.getByRole("button", { name: /^Play: / }).click({ timeout: 200_000 });
+  await page.getByRole("menuitemradio", { name: "Video render" }).click();
+  await expect(bar.getByRole("status")).toHaveText(/^Rendering the video, frame \d of 3$/, { timeout: 200_000 });
+  await expect(page.getByText(/Saved .* orbit render\.(mp4|webm)/)).toBeVisible({ timeout: 360_000 });
+  const head = await page.evaluate(() => (window as unknown as { __bcSavedVideo: number[] }).__bcSavedVideo);
+  // An MP4 says "ftyp" at byte 4; a WebM starts with the EBML magic number.
+  const ftyp = String.fromCharCode(...head.slice(4, 8)) === "ftyp";
+  const ebml = head[0] === 0x1a && head[1] === 0x45 && head[2] === 0xdf && head[3] === 0xa3;
+  expect(ftyp || ebml).toBe(true);
+});

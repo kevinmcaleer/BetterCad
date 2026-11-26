@@ -1653,12 +1653,14 @@ export interface DrawingBarProps {
   onAutoMarks?: () => void;
   onSettings: () => void;
   onFit: () => void;
-  onFinish: () => void;
   /** The Drawing tab is showing (desktop), with the tools on it: the bar keeps only what is handy under the sheet. */
   ribbon?: boolean;
 }
 
-/** The strip over the sheet while a drawing is open: its name, Sheet settings, Fit sheet and Finish drawing. */
+/**
+ * The strip over the sheet while a drawing is open: its name, Sheet settings and Fit sheet. It has no Finish: any other
+ * tab, tool or browser row leaves the drawing (Esc too), and the drawing keeps every change as you make it.
+ */
 export function DrawingBar({
   name,
   readOnly,
@@ -1680,7 +1682,6 @@ export function DrawingBar({
   mark,
   onSettings,
   onFit,
-  onFinish,
   ribbon,
 }: DrawingBarProps) {
   const row = useRef<HTMLSpanElement>(null);
@@ -1700,7 +1701,6 @@ export function DrawingBar({
       <ArmedBar title={name} icon="drawing">
         <span ref={row} hidden />
         <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
-        <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
       </ArmedBar>
     );
   }
@@ -1747,12 +1747,11 @@ export function DrawingBar({
       )}
       {onExport && <Button icon="download" label="Export" title="Save the sheet as a PDF, SVG, DXF or PNG, or print it" onClick={onExport} />}
       <Button icon="frame" label="Fit sheet" title="Fit the sheet in the view" shortcut="F" onClick={onFit} />
-      <Button kind="done" icon="finish" label="Finish drawing" title="Go back to the model" shortcut="Esc" onClick={onFinish} />
     </ArmedBar>
   );
 }
 
-/** The ribbon's Drawing tab (desktop), in Fusion's order: Create, then the sheet, then Finish drawing. */
+/** The ribbon's Drawing tab (desktop), in Fusion's order: Create, then the sheet, then Output. */
 export function DrawingRibbon({
   readOnly,
   onBaseView,
@@ -1776,7 +1775,6 @@ export function DrawingRibbon({
   onAutoMarks,
   onSettings,
   onFit,
-  onFinish,
 }: Omit<DrawingBarProps, "name">) {
   return (
     <>
@@ -1870,9 +1868,6 @@ export function DrawingRibbon({
           <RibbonButton icon="download" colour="printer" label="Export" onPress={onExport} />
         </RibbonGroup>
       )}
-      <RibbonGroup label="Finish" entries={[]}>
-        <RibbonButton icon="finish" colour={false} label="Finish drawing" short="Finish" shortcut="Esc" done onPress={onFinish} />
-      </RibbonGroup>
     </>
   );
 }

@@ -124,7 +124,7 @@ describe("Export drawing", () => {
 describe("Export on the sheet", () => {
   it("opens from the bar and the tab, also in a view-only model, and closes on Cancel", async () => {
     const onExport = vi.fn();
-    const p = { onSettings: vi.fn(), onFit: vi.fn(), onFinish: vi.fn(), onExport };
+    const p = { onSettings: vi.fn(), onFit: vi.fn(), onExport };
     render(
       <>
         <DrawingBar name="Drawing 1" readOnly {...p} />

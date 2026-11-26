@@ -42,7 +42,7 @@ function Harness({
   const [tool, setTool] = useState<DrawingTool | null>(first);
   return (
     <>
-      <DrawingBar name="Drawing 1" baseView={tool === "base"} onBaseView={() => setTool("base")} onSettings={vi.fn()} onFit={vi.fn()} onFinish={vi.fn()} />
+      <DrawingBar name="Drawing 1" baseView={tool === "base"} onBaseView={() => setTool("base")} onSettings={vi.fn()} onFit={vi.fn()} />
       <div data-testid="sheet">{JSON.stringify(drawing.sheets[0])}</div>
       <DrawingPaper
         drawing={drawing}
@@ -216,14 +216,14 @@ describe("a placed view", () => {
 });
 
 describe("the Drawing tab", () => {
-  it("has Base view, the sheet's tools and Finish drawing", async () => {
-    const p = { onBaseView: vi.fn(), onSettings: vi.fn(), onFit: vi.fn(), onFinish: vi.fn() };
+  it("has Base view and the sheet's tools, and no Finish drawing", async () => {
+    const p = { onBaseView: vi.fn(), onSettings: vi.fn(), onFit: vi.fn() };
     const { rerender } = render(<DrawingRibbon {...p} />);
     await userEvent.click(within(screen.getByRole("group", { name: "Create" })).getByRole("button", { name: "Base view" }));
     await userEvent.click(within(screen.getByRole("group", { name: "Sheet" })).getByRole("button", { name: "Sheet settings" }));
     await userEvent.click(screen.getByRole("button", { name: "Fit sheet" }));
-    await userEvent.click(within(screen.getByRole("group", { name: "Finish" })).getByRole("button", { name: "Finish drawing" }));
-    expect([p.onBaseView, p.onSettings, p.onFit, p.onFinish].map((f) => f.mock.calls.length)).toEqual([1, 1, 1, 1]);
+    expect(screen.queryByRole("button", { name: "Finish drawing" })).toBeNull();
+    expect([p.onBaseView, p.onSettings, p.onFit].map((f) => f.mock.calls.length)).toEqual([1, 1, 1]);
     rerender(<DrawingRibbon {...p} readOnly />);
     expect(screen.queryByRole("button", { name: "Base view" })).toBeNull();
     expect(screen.getByRole("button", { name: "Fit sheet" })).toBeTruthy();
