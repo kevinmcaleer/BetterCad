@@ -132,8 +132,10 @@ export function RenderPicture({
   const r = useRef<PathRender | null>(null);
   const cam = useRef(camera);
   const state = useSession(session);
+  // Goes up when the graphics card drops the picture's context: a new canvas and tracer take over.
+  const [gen, setGen] = useState(0);
 
-  // Start once: the tracer, its size, the camera and the loop.
+  // Start once (and again after a dropped context): the tracer, its size, the camera and the loop.
   useEffect(() => {
     const el = canvas.current!;
     let pr: PathRender;
@@ -169,7 +171,10 @@ export function RenderPicture({
         session.set({ saving: null });
       }
     };
+    const lost = () => setGen((g) => g + 1);
+    el.addEventListener("webglcontextlost", lost);
     return () => {
+      el.removeEventListener("webglcontextlost", lost);
       ro.disconnect();
       session.save = null;
       pr.dispose();
@@ -177,11 +182,11 @@ export function RenderPicture({
     };
     // The tracer lives as long as the view; bodies, preset and camera update it below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gen]);
 
-  useEffect(() => r.current?.setBodies(bodies, cutPlane(section)), [bodies, section]);
-  useEffect(() => r.current?.setPreset(state.preset), [state.preset]);
-  useEffect(() => r.current?.setStyle(state.style), [state.style]);
+  useEffect(() => r.current?.setBodies(bodies, cutPlane(section)), [bodies, section, gen]);
+  useEffect(() => r.current?.setPreset(state.preset), [state.preset, gen]);
+  useEffect(() => r.current?.setStyle(state.style), [state.style, gen]);
   useEffect(() => {
     const pr = r.current;
     pr?.hold(state.stopped);
@@ -192,12 +197,12 @@ export function RenderPicture({
     return () => window.clearTimeout(slow);
     // r.current is set in the effect above, which runs first.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.stopped]);
-  useEffect(() => r.current?.setBackground(state.background), [state.background]);
-  useEffect(() => r.current?.setFocus(FOCUSES.find((f) => f.id === state.focus)!.aperture), [state.focus]);
+  }, [state.stopped, gen]);
+  useEffect(() => r.current?.setBackground(state.background), [state.background, gen]);
+  useEffect(() => r.current?.setFocus(FOCUSES.find((f) => f.id === state.focus)!.aperture), [state.focus, gen]);
   useEffect(() => {
     if (r.current) r.current.maxSamples = testMax() ?? samplesFor(state.quality);
-  }, [state.quality]);
+  }, [state.quality, gen]);
 
   const [rotation, setRotation] = useState(() => viewRotation(cam.current));
   const move = useCallback(
@@ -463,6 +468,7 @@ export function RenderPicture({
             (frame) => update({ frame }),
             (sample) => update({ sample }),
             signal,
+            (canvas) => update({ canvas }),
           ),
         ),
       );
@@ -489,6 +495,7 @@ export function RenderPicture({
   return (
     <>
       <canvas
+        key={gen}
         ref={canvas}
         className="bc-render-canvas"
         role="img"
