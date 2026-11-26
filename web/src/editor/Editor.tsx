@@ -722,6 +722,20 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const saved = await files.store.saveFiles([{ name, data: png.then((b) => b.arrayBuffer()), mime: "image/png" }]);
     if (saved) say(`Saved ${saved.names[0]}`);
   };
+  // Draw on's video (the Render view's build-up animation): asked for on the click, recorded while the picker is open.
+  const saveVideo = async (video: Promise<Blob | null>, ext: "mp4" | "webm") => {
+    const data = video.then((b) => {
+      if (!b) throw new Error("No video");
+      return b.arrayBuffer();
+    });
+    data.catch(() => {});
+    try {
+      const saved = await files.store.saveFiles([{ name: `${live.current.doc.name} draw on.${ext}`, data, mime: `video/${ext}` }]);
+      if (saved) say(`Saved ${saved.names[0]}`);
+    } catch {
+      say("Your browser couldn't record the video");
+    }
+  };
   useEffect(() => registry.register(vp.commands), [registry, vp.commands]);
 
   const [livePose, setLivePose] = useState<Pose | null>(null);
@@ -5221,6 +5235,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   home={doc.home ?? null}
                   onSetHome={vp.setHomeTo}
                   onResetHome={vp.resetHome}
+                  onSaveVideo={saveVideo}
                 />
               </Suspense>
             )}

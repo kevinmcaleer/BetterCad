@@ -155,3 +155,42 @@ describe("the Render view's options (#197)", () => {
     expect(barPosition(5000)).toBe(1);
   });
 });
+
+describe("Draw on in the Render view", () => {
+  it("turns on from the ribbon, stops the picture, and picks length and colour", async () => {
+    const s = renderSession();
+    s.set({ loading: false, samples: 1, stopped: false });
+    render(<RenderRibbon session={s} />);
+    expect(screen.queryByRole("button", { name: /^Save video/ })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /^Draw on/ }));
+    expect(s.get().drawOn).toMatchObject({ colour: "blue", length: "normal", playing: true });
+    expect(s.get().stopped).toBe(true);
+    // The path tracer waits while Draw on shows.
+    expect(screen.getByRole("button", { name: "Start rendering" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Length: Normal, 10 s" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Slow, 20 s" }));
+    expect(s.get().drawOn?.length).toBe("slow");
+    await userEvent.click(screen.getByRole("button", { name: "Colour: Neon blue" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Each part's colour" }));
+    expect(s.get().drawOn?.colour).toBe("parts");
+    await userEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(s.get().drawOn?.playing).toBe(false);
+    // Played to the end: play again from the start.
+    const replay = vi.fn();
+    s.replay = replay;
+    s.set({ drawOn: { ...s.get().drawOn!, at: 12, total: 12 } });
+    await userEvent.click(await screen.findByRole("button", { name: "Play again" }));
+    expect(replay).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: /^Draw on/ }));
+    expect(s.get().drawOn).toBeNull();
+  });
+
+  it("shows where the animation has got, and when it is recording", async () => {
+    const s = renderSession();
+    s.set({ loading: false, drawOn: { colour: "blue", length: "normal", playing: true, at: 3.24, total: 12.8, recording: false } });
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Draw on, 3.2 s of 12.8 s");
+    s.set({ drawOn: { ...s.get().drawOn!, recording: true } });
+    expect(await screen.findByText("Recording the video, 3.2 s of 12.8 s")).toBeInTheDocument();
+  });
+});
