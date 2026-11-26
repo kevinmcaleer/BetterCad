@@ -137,6 +137,16 @@ describe("Draw on timing", () => {
     expect(faceOpacity(plan, 2, 10 + SETTLE)).toBeCloseTo(1, 5);
     expect(solidity(plan, 4)).toBe(0);
   });
+  it("eases a face that closes late in from a ghost, rather than popping in nearly solid", () => {
+    // Closes at 9 s of 10, when the rest of the model is well on its way to solid.
+    let last = 0;
+    for (let t = 9; t <= 10 + SETTLE; t += 0.05) {
+      const o = faceOpacity(plan, 9, t);
+      expect(o - last).toBeLessThan(0.08);
+      last = o;
+    }
+    expect(faceOpacity(plan, 9, 10 + SETTLE)).toBeCloseTo(1, 5);
+  });
   it("fades the lines out once the model is solid, so the last frame is just the model", () => {
     expect(lineGlow(plan, 5)).toBe(1);
     expect(lineGlow(plan, 10 + SETTLE)).toBe(0);

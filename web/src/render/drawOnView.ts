@@ -9,6 +9,8 @@ import {
   AddEquation,
   CanvasTexture,
   CustomBlending,
+  DepthTexture,
+  WebGLRenderTarget,
   DirectionalLight,
   HemisphereLight,
   MeshStandardMaterial,
@@ -74,7 +76,8 @@ const FACE_TIMING = /* glsl */ `
   uniform float uDrawEnd;
   varying float vClosed;
   float shown() { return smoothstep(vClosed, vClosed + ${GHOST_IN.toFixed(3)}, uTime); }
-  float solid() { return smoothstep(uDrawEnd * 0.5, uDrawEnd + ${SETTLE.toFixed(3)}, uTime); }
+  // As solidity() in drawOn.ts: from halfway through the drawing, or from when the face closes if that is later.
+  float solid() { return smoothstep(max(uDrawEnd * 0.5, vClosed), uDrawEnd + ${SETTLE.toFixed(3)}, uTime); }
 `;
 
 const FACE_VERTEX = /* glsl */ `
@@ -91,19 +94,54 @@ const FACE_VERTEX = /* glsl */ `
   }
 `;
 
-/** Writes depth only where a face is mostly solid, so lines and ghosts behind it hide, but not behind a ghost. */
-const prepassMaterial = () =>
+/**
+ * How much of a line or ghost shows: all of it, unless it is behind the front-most solid face, when it shows as
+ * much as that face lets through.
+ */
+const BEHIND = /* glsl */ `
+  uniform sampler2D tFront;
+  uniform sampler2D tFrontDepth;
+  uniform vec2 uScreen;
+  uniform float uNear;
+  uniform float uFar;
+  float viewZ(float d) {
+    float z = d * 2.0 - 1.0;
+    return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
+  }
+  float seen() {
+    vec2 uv = gl_FragCoord.xy / uScreen;
+    float d = texture2D(tFrontDepth, uv).r;
+    if (d >= 1.0) return 1.0;
+    float front = viewZ(d);
+    return viewZ(gl_FragCoord.z) > front * 1.002 + 0.02 ? 1.0 - texture2D(tFront, uv).r : 1.0;
+  }
+`;
+const behindUniforms = () => ({
+  tFront: { value: null },
+  tFrontDepth: { value: null },
+  uScreen: { value: new Vector2(1, 1) },
+  uNear: { value: 1 },
+  uFar: { value: 1000 },
+});
+
+/**
+ * The front-most face with any solid in it. As depth only (in the picture), so the solid shows just its nearest
+ * surface; and as depth plus how solid it is (in the front pass, `front`), so lines and ghosts behind it fade out
+ * with it, smoothly, rather than vanishing the moment it is nearly solid.
+ */
+const prepassMaterial = (front = false) =>
   new ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uDrawEnd: { value: 1 } },
     vertexShader: FACE_VERTEX,
     fragmentShader: /* glsl */ `
       ${FACE_TIMING}
       void main() {
-        if (shown() * solid() < 0.6) discard;
-        gl_FragColor = vec4(0.0);
+        float a = shown() * solid();
+        if (a < 0.003) discard;
+        gl_FragColor = vec4(a, 0.0, 0.0, 1.0);
       }
     `,
-    colorWrite: false,
+    colorWrite: front,
     polygonOffset: true,
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 2,
@@ -150,6 +188,7 @@ const ghostMaterial = (glow: Color) =>
     vertexShader: FACE_VERTEX,
     fragmentShader: /* glsl */ `
       ${FACE_TIMING}
+      ${BEHIND}
       uniform vec3 uGlow;
       uniform float uInk;
       varying vec3 vNormal;
@@ -159,14 +198,16 @@ const ghostMaterial = (glow: Color) =>
         if (a < 0.003) discard;
         float facing = abs(dot(normalize(vNormal), normalize(vView)));
         float rim = pow(1.0 - facing, 2.0);
-        float k = (${GHOST.toFixed(3)} * 0.6 + rim * 0.55) * a;
+        float k = (${GHOST.toFixed(3)} * 0.6 + rim * 0.55) * a * seen();
         // As ink on a light background: a tint of the glow colour; as light, the glow itself.
         gl_FragColor = uInk > 0.5 ? vec4(uGlow, min(1.0, k * 1.4)) : vec4(uGlow * k, min(1.0, max(uGlow.r, max(uGlow.g, uGlow.b)) * k));
       }
     `,
-    uniforms: { uTime: { value: 0 }, uDrawEnd: { value: 1 }, uGlow: { value: glow }, uInk: { value: 0 } },
+    uniforms: { uTime: { value: 0 }, uDrawEnd: { value: 1 }, uGlow: { value: glow }, uInk: { value: 0 }, ...behindUniforms() },
     transparent: true,
     depthWrite: false,
+    // What is in front is worked out from the front pass (seen()), which fades it rather than cutting it off.
+    depthTest: false,
     // The brightest ghost wins rather than adding up, so many parts behind each other can't pile up to white.
     ...MAX,
     side: 2,
@@ -213,6 +254,7 @@ const lineMaterial = () =>
       uInk: { value: 0 },
       uResolution: { value: new Vector2(1, 1) },
       uWidth: { value: 2.5 },
+      ...behindUniforms(),
     },
     vertexShader: /* glsl */ `
       uniform vec2 uResolution;
@@ -242,6 +284,7 @@ const lineMaterial = () =>
       }
     `,
     fragmentShader: /* glsl */ `
+      ${BEHIND}
       uniform float uTime;
       uniform float uGlow;
       uniform float uScale;
@@ -255,7 +298,8 @@ const lineMaterial = () =>
         float core = 1.0 - abs(vSide);
         core *= core;
         vec3 tint = mix(vColour, vec3(1.0), hot * 0.6);
-        float k = (${LINE_BRIGHTNESS.toFixed(2)} * uGlow + ${TIP_BRIGHTNESS.toFixed(2)} * hot * uScale) * core;
+        float k = (${LINE_BRIGHTNESS.toFixed(2)} * uGlow + ${TIP_BRIGHTNESS.toFixed(2)} * hot * uScale) * core * seen();
+        if (k < 0.002) discard;
         // Light: the colour times its brightness, as opaque as its brightest channel (for a see-through video).
         // Ink: the colour itself, as opaque as the line is bright.
         vec3 c = tint * k;
@@ -264,6 +308,7 @@ const lineMaterial = () =>
     `,
     transparent: true,
     depthWrite: false,
+    depthTest: false,
     ...MAX,
   });
 
@@ -371,6 +416,11 @@ export class DrawOnView {
   private ink = false;
   private floor: Mesh<PlaneGeometry, MeshStandardMaterial>;
   private lights = new Group();
+  /** The front-most solid faces, drawn first into `front`: their depth, and how solid they are. */
+  private frontScene = new Scene();
+  private front = new WebGLRenderTarget(1, 1, { depthTexture: new DepthTexture(1, 1) });
+  /** Lines and ghosts, which fade behind the front-most solid. */
+  private behind: ShaderMaterial[] = [];
   private sky: CanvasTexture | null = null;
   /** The lines' total length, and the middle and size (diagonal) of the box round them, in mm: how busy the model is. */
   /** How far the glow is turned down for a busy picture, 0.3 to 1. */
@@ -478,6 +528,13 @@ export class DrawOnView {
         this.model.add(mesh);
         this.faceMaterials.push(mat);
       });
+      const front = new Mesh(g, prepassMaterial(true));
+      front.matrixAutoUpdate = false;
+      front.matrix.copy(b.matrix);
+      front.matrixWorld.copy(b.matrix);
+      this.frontScene.add(front);
+      this.faceMaterials.push(front.material);
+      this.behind.push(mats[2]);
     });
 
     // Lines: one instanced quad per segment. Segments are placed already; their colour is their body's.
@@ -501,6 +558,7 @@ export class DrawOnView {
     quad.setAttribute("iColour", new InstancedBufferAttribute(colours, 3));
     quad.instanceCount = n;
     this.lines = new Mesh(quad, lineMaterial());
+    this.behind.push(this.lines.material);
     this.lines.frustumCulled = false;
     this.lines.renderOrder = 3;
     this.scene.add(this.lines);
@@ -646,6 +704,8 @@ export class DrawOnView {
     this.size.set(width, height);
     this.renderer.setSize(width, height, false);
     this.composer.setSize(width, height);
+    const pr = this.renderer.getPixelRatio();
+    this.front.setSize(Math.round(width * pr), Math.round(height * pr));
     this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();
   }
@@ -769,6 +829,19 @@ export class DrawOnView {
         this.opts.onTime?.(t, plan.total);
       }
     }
+    // The front pass, then the picture, whose lines and ghosts read it.
+    for (const m of this.behind) {
+      const u = m.uniforms;
+      u.tFront.value = this.front.texture;
+      u.tFrontDepth.value = this.front.depthTexture;
+      u.uScreen.value.set(this.front.width, this.front.height);
+      u.uNear.value = this.camera.near;
+      u.uFar.value = this.camera.far;
+    }
+    this.renderer.setRenderTarget(this.front);
+    this.renderer.clear();
+    this.renderer.render(this.frontScene, this.camera);
+    this.renderer.setRenderTarget(null);
     this.composer.render();
   }
 
@@ -781,6 +854,12 @@ export class DrawOnView {
       seen.add(m.geometry);
       (m.material as ShaderMaterial).dispose();
     }
+    for (const c of [...this.frontScene.children]) {
+      const m = c as Mesh;
+      this.frontScene.remove(m);
+      (m.material as ShaderMaterial).dispose();
+    }
+    this.behind = [];
     for (const g of seen) g.dispose();
     this.faceMaterials = [];
     for (const o of [this.lines, this.embers]) {
@@ -802,6 +881,7 @@ export class DrawOnView {
     this.floor.material.dispose();
     this.backgrounds.dispose();
     this.saved.dispose();
+    this.front.dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }
