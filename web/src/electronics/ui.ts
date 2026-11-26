@@ -4,7 +4,7 @@ import type { LayerId } from "./drawBoard";
 /** Which electronics view covers the 3D view. 3D is the model itself, so it is "no electronics view". */
 export type EView = "schematic" | "pcb";
 export type SchTool = "select" | "wire" | "label" | "noConnect" | "junction" | "place" | "text" | "line" | "rect" | "circle";
-export type PcbTool = "select" | "route" | "via" | "hole" | "text" | "pour" | "keepout" | "measure";
+export type PcbTool = "select" | "route" | "via" | "hole" | "fiducial" | "testpoint" | "text" | "pour" | "keepout" | "measure";
 
 export interface EUi {
   view: EView | null;

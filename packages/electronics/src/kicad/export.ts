@@ -4,6 +4,7 @@ import {
   isPower,
   packageOf,
   type Board,
+  type BoardMark,
   type BoardLayer,
   type ComponentDef,
   type Corner,
@@ -23,6 +24,7 @@ import {
 import { byRef, netlist, type Netlist } from "../nets";
 import { netRules } from "../pcb/copper";
 import { SPOKE, THERMAL_GAP } from "../pcb/pour";
+import { markPad } from "../pcb/marks";
 import { layersOf, viaKind, viaLayers } from "../pcb/stack";
 import { Str, writeSexpr, type Node } from "./sexpr";
 
@@ -248,6 +250,9 @@ function padNode(pad: Pad, side: Side, angle: number, net?: { code: number; name
   if (net && pad.kind !== "npth") out.push(["net", String(net.code), s(net.name)]);
   return out;
 }
+
+/** A fiducial's or a test point's footprint name, by its size: Fiducial_1mm, TestPoint_1.5mm. */
+const markName = (m: BoardMark): string => `${m.kind === "fiducial" ? "Fiducial" : "TestPoint"}_${kicadName(n(m.size))}mm`;
 
 const mount = (fp: FootprintDef): string => (fp.pads.some((p) => p.kind === "thru") ? "through_hole" : fp.pads.some((p) => p.kind === "smd") ? "smd" : "");
 
@@ -625,6 +630,22 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
     ]);
   }
 
+  // Fiducials and test points (#735) are one-pad footprints too, like KiCad's own Fiducial and TestPoint ones.
+  for (const m of board.marks ?? []) {
+    const fid = m.kind === "fiducial";
+    out.push([
+      "footprint",
+      s(`${names.lib}:${markName(m)}`),
+      ["layer", s(m.side === "bottom" ? "B.Cu" : "F.Cu")],
+      ["tstamp", uuidOf(`mark:${m.id}`)],
+      ["at", ...at([m.x, m.y])],
+      ["attr", "smd", ...(fid ? [] : ["exclude_from_pos_files"]), "exclude_from_bom"],
+      fpText("reference", m.ref, [0, -m.size - 0.8], m.side, "SilkS", 0, fid),
+      fpText("value", fid ? "Fiducial" : "TestPoint", [0, m.size + 0.8], m.side, "Fab", 0, true),
+      padNode(markPad(m), m.side, 0, m.net ? { code: codes.get(m.net) ?? 0, name: m.net } : undefined),
+    ]);
+  }
+
   for (const [i, loop] of [board.outline, ...(board.cutouts ?? [])].entries()) {
     for (let k = 0; k < loop.length; k += 1) {
       const a = loop[k]!;
@@ -857,6 +878,7 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
         shapes: [],
       });
     }
+    for (const m of d.board.marks ?? []) holes.set(markName(m), { name: m.kind === "fiducial" ? "Fiducial" : "TestPoint", pads: [markPad(m)], shapes: [] });
     for (const [hole, fp] of holes) names.footprints.set(hole, { fp });
   }
 

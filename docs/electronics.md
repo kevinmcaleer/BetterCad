@@ -451,8 +451,19 @@ other's nets, all in one undo step. In the starter library resistors, unpolarise
 beads and fuses are marked, and the symbol editor's **Swaps with** field marks the pins of a part you draw. KiCad symbols have no such mark, so it is not written to or read from KiCad files.
 
 Left for later: dragging a track's or an area's corners, an outline from a face or a DXF file (there is no DXF
-import yet), spokes per pad, gate swapping, pictures and fiducials
+import yet), spokes per pad, gate swapping and pictures
 on the silkscreen.
+
+**Fiducials and test points** (#735). The Add group has **Fiducial** and **Test point**. Each is a round copper pad
+of the board's own, with no part behind it (`Board.marks`, `pcb/marks.ts`), numbered FID1… and TP1…. `markPads`
+puts them into `boardPads`, so the copper and mask files, the unrouted lines and the board check all see them like any
+pad. Both are 1 mm with no paste. A fiducial has a mask opening twice its size (`maskMargin` of half its size, the
+usual 1 mm dot in a 2 mm clear ring) and keeps other copper out of that ring (`copperOf` gives it the ring's size);
+it is on no net and goes in the pick and place file, so the line's camera knows where to look. A test point clicked
+onto a track or a pad takes that net, and its card picks another; a test point on a net and not routed shows in the
+board check as a connection to route. Both go to KiCad as one-pad footprints, `Fiducial_<size>mm` and
+`TestPoint_<size>mm` (smd, left off the parts list; test points off the position file too), and a one-pad round
+surface footprint named Fiducial or TestPoint, or with a FID or TP reference, comes back in as one.
 
 ## Calculators (#739)
 

@@ -27,7 +27,7 @@ export function textBox(t: Board["texts"][number]): Box {
 }
 
 export interface BoardHit {
-  kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area";
+  kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area" | "mark";
   /** A part's id for parts and pads; the thing's own id otherwise. */
   id: string;
   net?: string;
@@ -69,6 +69,8 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
   const out: BoardHit[] = [];
   for (const v of board.vias) if (Math.hypot(v.x - p[0], v.y - p[1]) <= v.diameter / 2 + tol) out.push({ kind: "via", id: v.id, net: v.net });
   for (const h of board.holes) if (Math.hypot(h.x - p[0], h.y - p[1]) <= Math.max(h.pad ?? 0, h.drill) / 2 + tol) out.push({ kind: "hole", id: h.id });
+  // A fiducial or test point is picked as itself, before the pad it is.
+  for (const m of board.marks ?? []) if (Math.hypot(m.x - p[0], m.y - p[1]) <= m.size / 2 + tol) out.push({ kind: "mark", id: m.id, net: m.net });
   for (const t of board.tracks) {
     if (!layerShown(t.layer)) continue;
     for (let i = 0; i + 1 < t.pts.length; i += 1)
@@ -97,7 +99,7 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
   return out;
 }
 
-/** Ids of the parts, tracks, vias and holes a rubber-band box touches. Parts come back by part id. */
+/** Ids of the parts, tracks, vias, holes and marks a rubber-band box touches. Parts come back by part id. */
 export function boxBoard(d: ElectronicsDesign, a: P2, b: P2): string[] {
   const board = d.board;
   if (!board) return [];
@@ -110,5 +112,6 @@ export function boxBoard(d: ElectronicsDesign, a: P2, b: P2): string[] {
   for (const t of board.tracks) if (t.pts.every((q) => inBox(q, box))) out.push(t.id);
   for (const v of board.vias) if (inBox([v.x, v.y], box)) out.push(v.id);
   for (const h of board.holes) if (inBox([h.x, h.y], box)) out.push(h.id);
+  for (const m of board.marks ?? []) if (inBox([m.x, m.y], box)) out.push(m.id);
   return out;
 }

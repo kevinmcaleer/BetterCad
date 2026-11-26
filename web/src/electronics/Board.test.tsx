@@ -5,6 +5,8 @@ import { BASICS, addLabel, emptyDesign, placePart, pushToBoard, type Electronics
 import { addKeepoutArea, addPour, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import { addPicture, packInk, pictureRects } from "@bettercad/electronics/pcb/picture";
 import { addHole, addText, addTrack, setPlacement } from "@bettercad/electronics/pcb/route";
+import { addMark } from "@bettercad/electronics/pcb/marks";
+import { sampleBoard } from "@bettercad/electronics/sample";
 import { applyPreset } from "@bettercad/electronics/pcb/rules";
 import { drawCircle, drawRectangle, newSketch } from "@bettercad/sketch";
 import type { EEdit } from "./actions";
@@ -339,6 +341,27 @@ describe("what is picked on the board", () => {
     await userEvent.selectOptions(screen.getByLabelText("Side"), "Bottom copper");
     expect(s.design().board!.texts[0]!.layer).toBe("copper-bottom");
     expect(screen.getByText(/Copper text is copper on no net/)).toBeInTheDocument();
+  });
+
+  it("puts a test point on a net (#735)", async () => {
+    const tp = addMark(sampleBoard(), "testpoint", 5, 5);
+    const s = setup(tp.design, (design, edit) => <BoardProps design={design} edit={edit} selected={[tp.id]} />);
+    expect(screen.getByRole("group", { name: "Test point TP1" })).toBeInTheDocument();
+    const net = screen.getByLabelText("Net");
+    const first = within(net).getAllByRole("option")[1]!;
+    await userEvent.selectOptions(net, first);
+    expect(s.design().board!.marks![0]!.net).toBe(first.textContent);
+    expect(s.labels).toEqual(["Change the test point's net"]);
+  });
+
+  it("moves a fiducial to the bottom and says what it is for (#735)", async () => {
+    const { d } = board();
+    const f = addMark(d, "fiducial", 5, 5);
+    const s = setup(f.design, (design, edit) => <BoardProps design={design} edit={edit} selected={[f.id]} />);
+    expect(screen.getByText(/A 1 mm copper dot in a 2 mm clear ring/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Net")).toBeNull();
+    await userEvent.selectOptions(screen.getByLabelText("Side"), "Bottom");
+    expect(s.design().board!.marks![0]!.side).toBe("bottom");
   });
 
   it("sizes a picture, moves it to the other side and swaps its ink (#642)", async () => {

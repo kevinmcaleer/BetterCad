@@ -374,6 +374,25 @@ export interface BoardHole {
   pad?: number;
 }
 
+/**
+ * A fiducial or a test point (#735): a round copper pad of the board's own, with no part in the schematic. A
+ * fiducial is bare copper in a wide mask opening, for an assembly line's camera; a test point sits on a net, for a
+ * probe.
+ */
+export interface BoardMark {
+  id: Id;
+  kind: "fiducial" | "testpoint";
+  /** FID1, TP1: how the files and the pick and place list name it. */
+  ref: string;
+  x: number;
+  y: number;
+  side: Side;
+  /** The copper's diameter, mm. */
+  size: number;
+  /** The net a test point is on. */
+  net?: string;
+}
+
 export interface Keepout {
   id: Id;
   outline: P2[];
@@ -467,6 +486,8 @@ export interface Board {
   silk?: "white" | "black";
   /** Whether vias are under the mask (#736). None: covered. */
   viaMask?: ViaMask;
+  /** Fiducials and test points (#735). */
+  marks?: BoardMark[];
   /** How a net looks on the board (#740), by its name: a colour for its unrouted lines and when it is lit. */
   netLooks?: Record<string, NetLook>;
 }

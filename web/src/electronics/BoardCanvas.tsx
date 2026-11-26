@@ -19,6 +19,7 @@ import { clearanceBetween, copperOf, edgeLoops, netRules, type Layer } from "@be
 import { layersOf } from "@bettercad/electronics/pcb/stack";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
+import { addMark } from "@bettercad/electronics/pcb/marks";
 import { slideTrack } from "@bettercad/electronics/pcb/slide";
 import { addCutout, addKeepoutArea, addPour, pourShape, removeAreas, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import {
@@ -518,6 +519,14 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     } else if (tool === "hole") {
       const to = snap(p.world, grid);
       edit((d) => addHole(d, to[0], to[1], 3.2), "Add a hole");
+    } else if (tool === "fiducial" || tool === "testpoint") {
+      // A test point dropped on copper joins its net; it goes on the side you are working on.
+      const on = tool === "testpoint" ? copperAt(p.world) : null;
+      const to = on?.at ?? snap(p.world, grid);
+      const side = layer === "bottom" ? "bottom" : "top";
+      edit((d) => addMark(d, tool, to[0], to[1], side, on?.net).design, tool === "fiducial" ? "Add a fiducial" : "Add a test point");
+      if (tool === "testpoint" && !on) setSaid("Test point added on no net. Pick its net on the right, or route a track to it.");
+      else setSaid("");
     } else if (tool === "text") {
       setText("");
       setAsk({ at: snap(p.world, grid), screen: p.screen });
@@ -598,17 +607,21 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           ? "Click a track or a pad to drop a via on it."
           : tool === "hole"
             ? "Click where the mounting hole goes."
-            : tool === "text"
-              ? "Click where the text starts."
-              : tool === "pour" || tool === "keepout"
-                ? area.length
-                  ? "Click the next corner. Click the first corner again, or Done, to close it."
-                  : tool === "pour"
-                    ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
-                    : cut
-                      ? "Click the corners of the hole to cut through the board."
-                      : "Click the corners of the area tracks and pours must stay out of."
-                : "";
+            : tool === "fiducial"
+              ? "Click where the fiducial goes. Put three near the board's corners, not in a line."
+              : tool === "testpoint"
+                ? "Click a track or a pad to put a test point on its net."
+                : tool === "text"
+                  ? "Click where the text starts."
+                  : tool === "pour" || tool === "keepout"
+                    ? area.length
+                      ? "Click the next corner. Click the first corner again, or Done, to close it."
+                      : tool === "pour"
+                        ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
+                        : cut
+                          ? "Click the corners of the hole to cut through the board."
+                          : "Click the corners of the area tracks and pours must stay out of."
+                    : "";
   return (
     <div ref={host} className="bc-ec-host">
       <div className="bc-ec-clear" aria-hidden="true" />

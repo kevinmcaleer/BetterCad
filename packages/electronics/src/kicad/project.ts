@@ -6,6 +6,7 @@ import {
   eid,
   emptyBoard,
   type Board,
+  type BoardMark,
   type BoardLayer,
   type CopperLayer,
   type ComponentDef,
@@ -25,6 +26,7 @@ import {
 } from "../model";
 import { Tally, joinRuns, loopArea, loopsOf, matchNets, type Edge } from "../boardIn";
 import { netlist } from "../nets";
+import { nextMarkRef } from "../pcb/marks";
 import { layersOf } from "../pcb/stack";
 import { netPins } from "../sync";
 import { footprintIn } from "./footprint";
@@ -404,6 +406,13 @@ interface BoardRead {
   found: { tracks: number; vias: number; pours: number };
 }
 
+/** Whether a one-pad footprint is a fiducial or a test point, by its name or its reference (FID1, TP3). */
+function markKind(name: string, ref: string): BoardMark["kind"] | null {
+  if (/fiducial/i.test(name) || /^FID\d/i.test(ref)) return "fiducial";
+  if (/test.?point/i.test(name) || /^TP\d/i.test(ref)) return "testpoint";
+  return null;
+}
+
 function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"]): BoardRead {
   const dropped = new Tally();
   const board = emptyBoard();
@@ -516,9 +525,22 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       pending.push({ part: f.ref, ...f.place, x: p[0], y: p[1], ref: f.ref, footprint: f.fp.name });
       continue;
     }
-    // A footprint with no symbol: a hole comes across as a hole; anything else is named.
+    // A footprint with no symbol: a hole comes across as a hole, a fiducial or test point as one (#735); anything else is named.
     const only = f.fp.pads.length === 1 ? f.fp.pads[0]! : undefined;
-    if (only && only.drill && !only.slot && only.kind !== "smd" && Math.abs(only.x) < 1e-6 && Math.abs(only.y) < 1e-6)
+    const mark = only?.kind === "smd" && only.shape === "circle" ? markKind(f.fp.name, f.ref) : null;
+    if (mark && only) {
+      const net = f.nets.get(only.number);
+      (board.marks ??= []).push({
+        id: eid("mk"),
+        kind: mark,
+        ref: f.ref || nextMarkRef(board, mark),
+        x: p[0],
+        y: p[1],
+        side: f.place.side,
+        size: only.w,
+        ...(mark === "testpoint" && net ? { net } : {}),
+      });
+    } else if (only && only.drill && !only.slot && only.kind !== "smd" && Math.abs(only.x) < 1e-6 && Math.abs(only.y) < 1e-6)
       board.holes.push({ id: eid("h"), x: p[0], y: p[1], drill: only.drill, ...(only.kind === "thru" && only.w > only.drill ? { pad: only.w } : {}) });
     else if (parts.has(f.ref)) notes.push({ name: f.ref, why: "The board has this reference twice. The second was left out" });
     else notes.push({ name: f.ref || f.fp.name, why: `${f.fp.name} is on the board but has no symbol in the schematic, so it was left out` });
@@ -882,6 +904,7 @@ export function importKicadProject(files: ImportFile[], o: ProjectOptions = {}):
     board.tracks = board.tracks.filter((t) => !stub(t.net)).map((t) => ({ ...t, net: ours(t.net) }));
     board.vias = board.vias.filter((v) => !stub(v.net)).map((v) => ({ ...v, net: ours(v.net) }));
     board.pours = board.pours.map((p) => ({ ...p, net: ours(p.net) }));
+    if (board.marks) board.marks = board.marks.map((m) => (m.net ? { ...m, net: ours(m.net) } : m));
     board.classes = classes.map((c) => ({ ...c, id: eid("nc"), nets: [...new Set(c.nets.map(ours))] }));
     board.synced = { nets: netPins(nl) };
   }

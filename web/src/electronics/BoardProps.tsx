@@ -4,6 +4,7 @@ import { layerName, layerShort, layersOf, setViaSpan, viaKind, viaLayers, viaOpe
 import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
 import { invertInk, setPicture } from "@bettercad/electronics/pcb/picture";
+import { setMark } from "@bettercad/electronics/pcb/marks";
 import { pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
 import {
   SCREWS,
@@ -203,6 +204,7 @@ export default function BoardProps({
   const via = selected.length === 1 ? board.vias.find((v) => set.has(v.id)) : undefined;
   const hole = selected.length === 1 ? board.holes.find((h) => set.has(h.id)) : undefined;
   const text = selected.length === 1 ? board.texts.find((t) => set.has(t.id)) : undefined;
+  const mark = selected.length === 1 ? board.marks?.find((m) => set.has(m.id)) : undefined;
 
   const picture = selected.length === 1 ? board.pictures?.find((x) => set.has(x.id)) : undefined;
   const pour = selected.length === 1 ? board.pours.find((x) => set.has(x.id)) : undefined;
@@ -582,6 +584,69 @@ export default function BoardProps({
     );
   }
 
+  if (mark) {
+    const fid = mark.kind === "fiducial";
+    const change = (c: Parameters<typeof setMark>[2], label: string) =>
+      edit((d) => setMark(d, mark.id, c), label, `ec-mark-${mark.id}-${Object.keys(c).join()}`);
+    const nets = fid
+      ? []
+      : [
+          ...new Set([
+            ...(mark.net ? [mark.net] : []),
+            ...netlist(design)
+              .nets.filter((n) => n.pins.length > 0)
+              .map((n) => n.name),
+          ]),
+        ].sort();
+    return (
+      <fieldset className="bc-ec-set" disabled={readOnly}>
+        <legend>
+          {fid ? "Fiducial" : "Test point"} {mark.ref}
+        </legend>
+        <NumberField
+          label={fid ? "Dot" : "Pad"}
+          value={mark.size}
+          min={0.5}
+          max={3}
+          step={0.1}
+          onCommit={(v) => change({ size: v }, fid ? "Change the fiducial" : "Change the test point")}
+        />
+        <label className="bc-field-label" htmlFor={`${ids}ms`}>
+          Side
+        </label>
+        <select id={`${ids}ms`} className="bc-select" value={mark.side} onChange={(e) => change({ side: e.target.value as Side }, "Move to the other side")}>
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+        </select>
+        {!fid && (
+          <>
+            <label className="bc-field-label" htmlFor={`${ids}mn`}>
+              Net
+            </label>
+            <select
+              id={`${ids}mn`}
+              className="bc-select"
+              value={mark.net ?? ""}
+              onChange={(e) => change({ net: e.target.value }, "Change the test point's net")}
+            >
+              <option value="">No net</option>
+              {nets.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+        <p className="bc-note">
+          {fid
+            ? `A ${mark.size} mm copper dot in a ${mark.size * 2} mm clear ring, with no paste. Put three near the corners so the camera can square the board.`
+            : "A round pad with no paste, for a meter's probe. Route a track to it like any pad."}
+        </p>
+      </fieldset>
+    );
+  }
+
   if (text) {
     const change = (c: Parameters<typeof setText>[2], label: string) =>
       edit((d) => setText(d, text.id, c), label, `ec-text-${text.id}-${Object.keys(c).join()}`);
@@ -614,5 +679,5 @@ export default function BoardProps({
     );
   }
 
-  return <p className="bc-note">{selected.length > 1 ? "Drag to move them together." : "Select a part, a track or a hole to change it."}</p>;
+  return <p className="bc-note">{selected.length > 1 ? "Drag to move them together." : "Select a part, a track, a hole or a fiducial to change it."}</p>;
 }

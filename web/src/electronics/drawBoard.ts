@@ -408,6 +408,24 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       }
     }
     ctx.globalAlpha = 1;
+    // Fiducials and test points (#735) are drawn as pads; a fiducial shows its clear ring, and a picked one its outline.
+    for (const m of board.marks ?? []) {
+      const s = toScreen(v, [m.x, m.y]);
+      if (m.kind === "fiducial") {
+        ctx.strokeStyle = c["ec-pad"];
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], m.size * v.scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (look.selected.has(m.id) || look.hover === m.id) {
+        ctx.strokeStyle = c["ec-pick"];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], (m.kind === "fiducial" ? m.size : m.size / 2) * v.scale + 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
   }
 
   // Parts: silkscreen, outline and reference.
