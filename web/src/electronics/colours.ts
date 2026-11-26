@@ -5,6 +5,7 @@ const NAMES = [
   "muted",
   "line",
   "accent",
+  "on-accent",
   "snap",
   "danger",
   "ec-wire",

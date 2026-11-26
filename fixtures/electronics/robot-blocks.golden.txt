@@ -1,0 +1,139 @@
+## Nets
+BOOST1.5V: A1:39 C5:1 C6:1 C8:1 C10:2 C11:1 D3:1 M1:2 M2:2 M3:2 M4:2 R8:1 U4:3 U5:12
+BOOST1.FB: R8:2 R9:1 U3:3
+BOOST1.SW: D3:2 L1:2 U3:1
+BOOST1.VIN: C2:1 C4:1 J3:1 L1:1 R6:1 U1:5 U3:4 U3:5
+CHG1.CHRG: D1:1 U1:7
+CHG1.LEDG: D2:2 R5:2
+CHG1.LEDR: D1:2 R4:2
+CHG1.PROG: R3:1 U1:2
+CHG1.STDBY: D2:1 U1:6
+CHG1.VIN: C1:1 J1:A4 J1:A9 J1:B4 J1:B9 R4:1 R5:1 U1:4 U1:8
+GND: A1:3 A1:8 A1:13 A1:18 A1:23 A1:28 A1:38 C1:2 C2:2 C4:2 C5:2 C6:2 C7:2 C8:2 C9:2 C11:2 J1:A1 J1:A12 J1:B1 J1:B12 J1:S1 J2:1 M1:3 M2:3 M3:3 M4:3 Q2:2 R1:2 R2:2 R3:2 R7:2 R9:2 U1:1 U1:3 U1:9 U3:2 U4:1 U5:3 U5:6 U5:13
+MD1.AIN1: A1:4 U5:16
+MD1.AIN2: A1:5 U5:15
+MD1.AOUT1: M5:1 U5:2
+MD1.AOUT2: M5:2 U5:4
+MD1.BIN1: A1:6 U5:9
+MD1.BIN2: A1:7 U5:10
+MD1.BOUT1: M6:1 U5:7
+MD1.BOUT2: M6:2 U5:5
+MD1.FAULT: R12:2 U5:8
+MD1.SLEEP: C7:1 J2:2 R10:1 R11:1 U4:2 U5:1
+MD1.VCP: C10:1 U5:11
+MD1.VINT: C9:1 R12:1 U5:14
+PROT1.B-: C3:2 J3:2 Q1:2 U2:6
+PROT1.CS: R7:1 U2:2
+PROT1.MID: Q1:3 Q2:3
+PROT1.OC: Q2:1 U2:3
+PROT1.OD: Q1:1 U2:1
+PROT1.VCC: C3:1 R6:2 U2:5
+QW1.SCL: A1:2 J2:4 R11:2
+QW1.SDA: A1:1 J2:3 R10:2
+SV1.S1: A1:9 M1:1
+SV1.S2: A1:10 M2:1
+SV1.S3: M3:1
+SV1.S4: M4:1
+USB1.CC1: J1:A5 R1:1
+USB1.CC2: J1:B5 R2:1
+USB1.D+: J1:A6 J1:B6
+USB1.D-: J1:A7 J1:B7
+
+## Push to PCB
+Nothing.
+
+## Schematic check
+Nothing.
+
+## Board check
+error off-board: A1 is off the board.
+error off-board: C1 is off the board.
+error off-board: C10 is off the board.
+error off-board: C11 is off the board.
+error off-board: C2 is off the board.
+error off-board: C3 is off the board.
+error off-board: C4 is off the board.
+error off-board: C5 is off the board.
+error off-board: C6 is off the board.
+error off-board: C7 is off the board.
+error off-board: C8 is off the board.
+error off-board: C9 is off the board.
+error off-board: D1 is off the board.
+error off-board: D2 is off the board.
+error off-board: D3 is off the board.
+error off-board: J1 is off the board.
+error off-board: J2 is off the board.
+error off-board: J3 is off the board.
+error off-board: L1 is off the board.
+error off-board: M1 is off the board.
+error off-board: M2 is off the board.
+error off-board: M3 is off the board.
+error off-board: M4 is off the board.
+error off-board: M5 is off the board.
+error off-board: M6 is off the board.
+error off-board: Q1 is off the board.
+error off-board: Q2 is off the board.
+error off-board: R1 is off the board.
+error off-board: R10 is off the board.
+error off-board: R11 is off the board.
+error off-board: R12 is off the board.
+error off-board: R2 is off the board.
+error off-board: R3 is off the board.
+error off-board: R4 is off the board.
+error off-board: R5 is off the board.
+error off-board: R6 is off the board.
+error off-board: R7 is off the board.
+error off-board: R8 is off the board.
+error off-board: R9 is off the board.
+error off-board: U1 is off the board.
+error off-board: U2 is off the board.
+error off-board: U3 is off the board.
+error off-board: U4 is off the board.
+error off-board: U5 is off the board.
+error unrouted: BOOST1.5V still has 13 connections to route.
+error unrouted: BOOST1.FB still has 2 connections to route.
+error unrouted: BOOST1.SW still has 2 connections to route.
+error unrouted: BOOST1.VIN still has 7 connections to route.
+error unrouted: CHG1.CHRG still has 1 connection to route.
+error unrouted: CHG1.LEDG still has 1 connection to route.
+error unrouted: CHG1.LEDR still has 1 connection to route.
+error unrouted: CHG1.PROG still has 1 connection to route.
+error unrouted: CHG1.STDBY still has 1 connection to route.
+error unrouted: CHG1.VIN still has 6 connections to route.
+error unrouted: GND still has 40 connections to route.
+error unrouted: MD1.AIN1 still has 1 connection to route.
+error unrouted: MD1.AIN2 still has 1 connection to route.
+error unrouted: MD1.AOUT1 still has 1 connection to route.
+error unrouted: MD1.AOUT2 still has 1 connection to route.
+error unrouted: MD1.BIN1 still has 1 connection to route.
+error unrouted: MD1.BIN2 still has 1 connection to route.
+error unrouted: MD1.BOUT1 still has 1 connection to route.
+error unrouted: MD1.BOUT2 still has 1 connection to route.
+error unrouted: MD1.FAULT still has 1 connection to route.
+error unrouted: MD1.SLEEP still has 6 connections to route.
+error unrouted: MD1.VCP still has 1 connection to route.
+error unrouted: MD1.VINT still has 2 connections to route.
+error unrouted: PROT1.B- still has 3 connections to route.
+error unrouted: PROT1.CS still has 1 connection to route.
+error unrouted: PROT1.MID still has 1 connection to route.
+error unrouted: PROT1.OC still has 1 connection to route.
+error unrouted: PROT1.OD still has 1 connection to route.
+error unrouted: PROT1.VCC still has 2 connections to route.
+error unrouted: QW1.SCL still has 2 connections to route.
+error unrouted: QW1.SDA still has 2 connections to route.
+error unrouted: SV1.S1 still has 1 connection to route.
+error unrouted: SV1.S2 still has 1 connection to route.
+error unrouted: USB1.CC1 still has 1 connection to route.
+error unrouted: USB1.CC2 still has 1 connection to route.
+error unrouted: USB1.D+ still has 1 connection to route.
+error unrouted: USB1.D- still has 1 connection to route.
+warning silk-pad: A1's name is printed over A1 pad 21. The ink is cut away there.
+warning silk-pad: C10's name is printed over U5 pad 9. The ink is cut away there.
+warning silk-pad: C6's name is printed over U4 pad 2. The ink is cut away there.
+warning silk-pad: C9's name is printed over U5 pad 7. The ink is cut away there.
+warning silk-pad: D3's name is printed over C4 pad 2. The ink is cut away there.
+warning silk-pad: L1's name is printed over C5 pad 2. The ink is cut away there.
+warning silk-pad: R10's name is printed over J2 pad MP. The ink is cut away there.
+warning silk-pad: R11's name is printed over J2 pad MP. The ink is cut away there.
+warning silk-pad: R12's name is printed over R12 pad 1. The ink is cut away there.
+warning silk-pad: U5's name is printed over C8 pad 1. The ink is cut away there.

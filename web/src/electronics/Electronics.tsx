@@ -41,6 +41,7 @@ const OrderBoard = lazy(() => import("./OrderBoard"));
 const BoardChecks = lazy(() => import("./BoardChecks"));
 const BoardSetup = lazy(() => import("./BoardSetup"));
 const BoardProps = lazy(() => import("./BoardProps"));
+const GroupProps = lazy(() => import("./GroupProps"));
 const NetProps = lazy(() => import("./NetProps"));
 const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
@@ -64,20 +65,20 @@ interface Tool {
   run: () => void;
 }
 
-const arm = (t: SchTool) => () => eui.set({ schTool: eui.get().schTool === t ? "select" : t, placing: null, card: null });
+const arm = (t: SchTool) => () => eui.set({ schTool: eui.get().schTool === t ? "select" : t, placing: null, placingBlock: null, card: null });
 const armPcb = (t: PcbTool) => () => eui.set({ pcbTool: eui.get().pcbTool === t ? "select" : t, card: null });
 
 /** Components: opens the list of parts, or lets go of the part being placed (the way out on a touch screen). */
 const pickPart = () => {
   const ui = eui.get();
-  if (ui.schTool === "place") eui.set({ schTool: "select", placing: null });
+  if (ui.schTool === "place") eui.set({ schTool: "select", placing: null, placingBlock: null });
   else eui.set({ card: ui.card === "components" ? null : "components" });
 };
 
 /** The tools of the open view, in ribbon order. The ribbon and the compact bar both draw from this. */
 function useTools(view: EView, readOnly: boolean): Tool[] {
   const ui = useEui();
-  const none = ui.selected.length === 0 && !ui.placing;
+  const none = ui.selected.length === 0 && !ui.placing && !ui.placingBlock;
   const find: Tool = {
     id: "find",
     group: "View",
@@ -223,6 +224,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         tip: "Make a copy of the selection beside it, with fresh names",
         disabled: readOnly || ui.selected.length === 0,
         run: () => eactions.current?.duplicate?.(),
+      },
+      {
+        id: "group",
+        group: "Edit",
+        label: "Group",
+        icon: "group",
+        key: "Ctrl+G",
+        tip: "Gather the selection in a named outline that moves as one. Pick a group and press again to take it apart",
+        disabled: readOnly || ui.selected.length === 0,
+        run: () => eactions.current?.groupToggle?.(),
       },
       {
         id: "renumber",
@@ -673,6 +684,37 @@ function commands(design: () => ElectronicsDesign): Command[] {
     },
     {
       ...e,
+      id: "electronics.group",
+      label: "Group",
+      group: "Edit",
+      icon: "group",
+      keys: ["mod+g"],
+      // On the board it picks the whole group of what is picked (#774).
+      when: () => schematic() || pcb(),
+      run: () => eactions.current?.group?.(),
+      keywords: "block outline gather organise",
+    },
+    {
+      ...e,
+      id: "electronics.fold",
+      label: "Fold or unfold the block",
+      group: "Edit",
+      when: schematic,
+      run: () => eactions.current?.fold?.(),
+      keywords: "fold unfold collapse box block hide inside",
+    },
+    {
+      ...e,
+      id: "electronics.ungroup",
+      label: "Ungroup",
+      group: "Edit",
+      keys: ["shift+mod+g"],
+      when: schematic,
+      run: () => eactions.current?.ungroup?.(),
+      keywords: "take apart group block",
+    },
+    {
+      ...e,
       id: "electronics.renumber",
       label: "Renumber the parts",
       group: "Edit",
@@ -869,7 +911,8 @@ export interface ElectronicsViewProps {
   inModel?: boolean;
   onAddBoard?: () => void;
   /** Opens the sample board (#666) as a new model. */
-  onSample?: () => void;
+  /** Opens a sample: the Pico servo board, or another by id. */
+  onSample?: (id?: string) => void;
   /** The geometry engine, for reading a file picked as a part's 3D body (#628). */
   call?: KernelCall;
 }
@@ -960,7 +1003,8 @@ export default function ElectronicsView({
           <p>Start with a part.</p>
           <p className="bc-note">Place parts, join their pins with wires, then push the schematic to a PCB.</p>
           <Button variant="primary" icon="chip" label="Components" shortcut="P" onClick={() => eui.set({ card: "components" })} />
-          {onSample && <Button icon="folder" label="Open the sample board" onClick={onSample} />}
+          {onSample && <Button icon="folder" label="Open the sample board" onClick={() => onSample()} />}
+          {onSample && <Button icon="folder" label="Open a board made from blocks" onClick={() => onSample("robot-blocks")} />}
           <Button icon="folder" label="Open a KiCad or Eagle project" onClick={() => eui.set({ card: "open" })} />
           <a className="bc-note" href={GUIDE_URL} target="_blank" rel="noreferrer">
             Read the electronics guide
@@ -1047,12 +1091,12 @@ export default function ElectronicsView({
         >
           <input
             className="bc-text"
-            aria-label={ask.note ? "Note text" : "Net name"}
+            aria-label={ask.group ? "Group name" : ask.note ? "Note text" : "Net name"}
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
             onBlur={() => setAsk(null)}
-            placeholder={ask.note ? "Note" : "Net name"}
+            placeholder={ask.group ? "Group name" : ask.note ? "Note" : "Net name"}
           />
         </form>
       )}
@@ -1078,8 +1122,8 @@ export default function ElectronicsView({
               </button>
             )}
             <span className="bc-ec-status-far">
-              {ui.schTool === "place" && ui.placing
-                ? `Placing ${ui.placing.name}. Click to place, Esc to stop.`
+              {ui.schTool === "place" && (ui.placing || ui.placingBlock)
+                ? `Placing ${ui.placing?.name ?? ui.placingBlock!.built.spec.name}. Click to place, Esc to stop.`
                 : ui.schTool === "wire"
                   ? "Click a pin to start a wire, click again to turn or finish."
                   : ui.schTool === "text"
@@ -1124,6 +1168,19 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
   // A symbol's id on the schematic, a part's own id on the board.
   const partId =
     design.sheets.flatMap((s) => s.symbols).find((y) => ui.selected.includes(y.id))?.part ?? design.parts.find((p) => ui.selected.includes(p.id))?.id;
+  // A whole group picked on the schematic, and nothing else (#766).
+  const openSheet = design.sheets.find((x) => x.id === ui.sheet) ?? design.sheets[0];
+  const picked = new Set(ui.selected);
+  const group =
+    ui.view !== "pcb" && ui.selected.length && !ui.inGroup
+      ? openSheet?.groups?.find((g) => g.members.length === picked.size && g.members.every((m) => picked.has(m)))
+      : undefined;
+  if (group && openSheet)
+    return (
+      <Suspense fallback={null}>
+        <GroupProps design={design} sheet={openSheet.id} group={group} edit={edit} readOnly={readOnly} />
+      </Suspense>
+    );
   const part = ui.selected.length === 1 ? design.parts.find((p) => p.id === partId) : undefined;
   const def = part && design.defs[part.def];
   if (part && def) {

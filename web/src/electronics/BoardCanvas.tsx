@@ -8,6 +8,8 @@ import {
   moveOnBoard,
   netlist,
   outlinePoints,
+  boardGroups,
+  pickGroups,
   ratsnest,
   removeFromBoard,
   rotateOnBoard,
@@ -200,6 +202,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const air = useMemo(() => ratsnest(state.pads, state.joined), [state]);
   const loops = useMemo(() => (board ? edgeLoops(board) : []), [board]);
   const selected = useMemo(() => new Set(ui.selected), [ui.selected]);
+  const groupLines = useMemo(() => boardGroups(design, selected), [design, selected]);
   const hidden = useMemo(() => new Set<LayerId>(ui.hidden), [ui.hidden]);
   const colours = useMemo(() => readColours(host.current), [host.current, ui.view]); // eslint-disable-line react-hooks/exhaustive-deps
   // Measuring changes nothing, so it works on a board you can only look at.
@@ -404,6 +407,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     else edit((d) => addKeepoutArea(d, pts), "Add a keep-out");
   };
 
+  const pickGroup = () => {
+    const placed = new Set(design.board?.placements.map((p) => p.part));
+    const ids = pickGroups(design, eui.get().selected).filter((id) => placed.has(id) || eui.get().selected.includes(id));
+    eui.set({ selected: ids, net: null });
+  };
   useEffect(() => {
     const picked = () => eui.get().selected;
     /** Copy, paste and duplicate (#741): the sums load the first time they are asked for. */
@@ -460,6 +468,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       },
       push: () => eui.set({ card: "changes" }),
       selectAll: () => eui.set({ selected: design.board?.placements.map((p) => p.part) ?? [] }),
+      group: () => pickGroup(),
+      groupToggle: () => pickGroup(),
       layer: viaHere,
       lock: () => !readOnly && picked().length && edit((d) => toggleLock(d, picked()), "Lock or unlock"),
       bend: () => route && setRoute({ ...route, diag: !route.diag }),
@@ -727,6 +737,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         drawKey={[
           design,
           selected,
+          groupLines,
           hover,
           hidden,
           ui.layer,
@@ -760,6 +771,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             area: drawing,
             pourOutlines: ui.pourOutlines,
             measure: measuring,
+            groups: groupLines,
             handles,
             teardrops: drops,
           })

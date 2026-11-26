@@ -130,6 +130,46 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   the field: 4k7 is 4.7 kΩ, 100n is 100 nF, 2R2 is 2.2 Ω. Anything it does not recognise stays as typed.
 - **The part card** shows the package with a preview, the LCSC and maker's part numbers, and Fitted. The **Parts
   table** (T) lists every part to change many at once; a column pasted from a spreadsheet fills the rows below.
+- **Groups (#766).** Group (Ctrl+G) gathers the selection in a named, rounded outline (`Sheet.groups`, edits in
+  `packages/electronics/src/groups.ts`). Clicking a member, the outline's edge or its name picks the whole group, so a
+  drag moves it as one and wires to parts outside stretch. Double-click a member to go into the group and pick things
+  one by one; Esc or a click outside comes back out. Double-click the name to rename it. A thing is in one group at
+  most and groups do not nest. Deleting members shrinks the group, and a group left empty goes. Copy, paste and
+  Duplicate sheet carry whole groups. The outline prints in the PDF and SVG, goes to KiCad as a box and text (KiCad
+  has no schematic groups), and Find (Ctrl+F) finds groups by name.
+- **Circuit blocks (#767-#771).** A block is a group with block facts (`PlacedBlock`): its tag (MD1), its connection
+  points and a note per part. Inside nets are scoped to the tag ("MD1.VM") and shown without it, so copies never
+  share a net; ground is named plainly. Points are net labels on the outline. Specs are `BlockSpec`s in
+  `library/blocks.ts` (19 starter blocks), built by `buildBlock` and placed by `placeBlock` (`blocks.ts`); the
+  Blocks tab in Components lists them. Picking a block shows its points, Connect to… and Join I2C (`connect.ts`).
+  The rules check trusts a block's inside nets and treats an open point as the outside, then adds its own rules: a
+  required point left open, a supply outside a power input's range, two power outputs joined, and an I2C line with
+  no pull-ups or more than two.
+- **Blocks on the board (#774).** Push to PCB sets each group's new parts out as one cluster (`clusters` in
+  `sync.ts`): a block's `layout` guide (millimetres by reference in its spec, kept by part id on `PlacedBlock`) where
+  it has one, packed close where not. Parked clusters and fully picked groups show their name in an outline
+  (`boardGroups`). Pick the group (board inspector, or Ctrl+G on the board) picks a group's footprints, and turning
+  several parts turns them round their middle so the group keeps its shape.
+- **Your own blocks (#772).** Save as block on a picked group (`SaveBlock.tsx`) offers its nets as points
+  (`pointChoices`: ticked when they leave the group or are a supply) and saves an `OwnBlock` (`ownBlocks.ts`): a
+  `BlockSpec` with the parts it uses carried inside, so it places anywhere. Blocks live in Your library
+  (`myLibrary.ts`, one store for every panel), go to the account inside the pack as `blocks`, and export as
+  `.bcblock.json`. The group becomes a placed copy (`markAsBlock`); saving it again makes a new version. Not built:
+  Edit block on its own sheet.
+- **Block updates (#773).** A design keeps its own copy of each block. `STARTER_VERSIONS`
+  (`library/blockVersions.ts`, kept in step by a test) and Your blocks' versions in storage (`blockVersions.ts`) let
+  the schematic tag an old copy with Update without loading the shelf. `placeBlockKept` stores a print of the inside
+  (`insidePrint`); `changedInside` compares it, so hand edits show as Changed and Update asks first. `whatChanged`
+  lists a spec's `changes`, new values, parts and points; `updateBlock` (`blockUpdate.ts`) re-places the block in the
+  same spot with the same tag, rejoins each joined point with a wire to where the new point is, lists points that
+  are gone and leaves their wires, and keeps board places for parts of the same kind. A block saved from a plain
+  group has no point labels, so wires joined straight to its pins are left for you after an update.
+- **Folded blocks (#775).** `SchGroup.folded` is a view only: `foldedAway` lists the members to leave out of the
+  drawing (all but the point labels), so nets and wires to the points never change. The canvas draws the outline
+  filled, picks the group on a click inside the box and unfolds it on a double-click; the inspector has Fold to a
+  box and Unfold, and the command list has Fold or unfold the block. The PDF prints folded blocks folded with "N
+  parts inside". Not built: printing each folded block's inside on a page of its own, and a right-click menu (the
+  schematic has none yet). KiCad gets the block flattened until hierarchy (#757) is in.
 
 ## The rules check (#634)
 

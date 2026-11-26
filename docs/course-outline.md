@@ -28,6 +28,7 @@ Each lesson ends with a short exercise and a `.bcad` file you can compare your m
 | 11 | Saving, sharing and printing tips | 8 | Saving files and saving to your account, share links, and the print checks: overhangs, thin walls, and orientation suggestions. | Find and fix an overhang in the bracket. `bracket.bcad` |
 | 12 | Project: a phone stand | 10 | Building the phone stand sample from scratch using everything above. | Build the stand, then compare. `phone-stand.bcad` |
 | 13 | Your first board | 15 | The electronics workspace: the schematic, Push to PCB, routing a track, the checks and the order files. Written out in [lessons/your-first-board.md](lessons/your-first-board.md). | Change the sample board and save its order files. `pico-servo-board.bcad` |
+| 14 | Build a robot board from blocks | 15 | Circuit blocks: placing them, Connect to… and Join I2C, the block checks, folding, and blocks on the board. Written out in [lessons/robot-board-from-blocks.md](lessons/robot-board-from-blocks.md). | Build the power and motor circuit for a robot. `robot-blocks.bcad` |
 
 ## Questions for Kev
 

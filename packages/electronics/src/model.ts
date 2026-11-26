@@ -282,6 +282,53 @@ export interface Sheet {
   /** Marks on pins left open on purpose. */
   noConnects: { id: Id; x: number; y: number }[];
   notes?: (Shape & { id: Id })[];
+  /** Things gathered in a named outline that move as one (#766). A thing is in one group at most. */
+  groups?: SchGroup[];
+}
+
+/** A group on a sheet: a name, and the ids of the symbols, wires, labels and marks inside its outline. */
+export interface SchGroup {
+  id: Id;
+  name: string;
+  members: Id[];
+  /** Set when the group is a circuit block dropped from the library (#767). */
+  block?: PlacedBlock;
+  /** Folded down to a box with only its points showing (#775). A view only: nets are the same either way. */
+  folded?: boolean;
+}
+
+/** What a connection point is for: its icon and colour, and what the rules check expects of it (#767). */
+export type PointKind = "power-in" | "power-out" | "ground" | "i2c-sda" | "i2c-scl" | "signal-in" | "signal-out" | "load" | "plain";
+
+/** A place on a block's outline the rest of the design hooks on. It is a net label on the outline. */
+export interface BlockPoint {
+  /** The label that is the point. */
+  label: Id;
+  name: string;
+  kind: PointKind;
+  /** "3.3 V", "6 to 10 V". */
+  volts?: string;
+  /** What it is for, in a few words. */
+  note?: string;
+  /** The block does not work until this is joined. */
+  required?: boolean;
+}
+
+/** A placed circuit block: which block, which version, and its points. */
+export interface PlacedBlock {
+  def: Id;
+  version: number;
+  /** The block's own tag ("MD1"): the start of its inside net names, so two copies' nets stay apart. */
+  tag: string;
+  points: BlockPoint[];
+  /** What each part inside is for, by part id, in plain words. */
+  notes?: Record<Id, string>;
+  /** The outline as laid out, from the first point's label: it moves with the block. */
+  frame?: { x1: number; y1: number; x2: number; y2: number };
+  /** Where its parts go on the board, from the block's layout guide: millimetres from the first part, by part id (#774). */
+  layout?: Record<Id, { x: number; y: number; rot: number }>;
+  /** A print of the inside as placed (#773), so a change made by hand shows as Changed. */
+  print?: string;
 }
 
 // ---------------------------------------------------------------- the board

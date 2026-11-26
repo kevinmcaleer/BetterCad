@@ -42,6 +42,9 @@ import { useEui } from "./useEui";
 
 // The editor and the importer carry the wizards and the KiCad readers: fetched when one is opened.
 const PartEditor = lazy(() => import("./PartTools").then((m) => ({ default: m.PartEditor })));
+const BlocksTab = lazy(() => import("./BlocksTab"));
+/** The Components panel's tab, kept while the app is open. */
+let lastTab: "parts" | "blocks" = "parts";
 const ImportParts = lazy(() => import("./PartTools").then((m) => ({ default: m.ImportParts })));
 
 /** How many results the list draws at once. More than this and typing another word is quicker than scrolling. */
@@ -94,6 +97,7 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
   const swap = design?.parts.find((p) => p.id === symbol?.part && !design.defs[p.def]?.symbol.power);
   const [starter, setStarter] = useState<LibraryPack | null>(null);
   const [failed, setFailed] = useState(false);
+  const [tab, setTab] = useState<"parts" | "blocks">(lastTab);
   const [find, setFind] = useState("");
   const [shelf, setShelf] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
@@ -359,6 +363,29 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
     </li>
   );
   const ready = !!starter;
+  const pick = (t: "parts" | "blocks") => {
+    lastTab = t;
+    setTab(t);
+  };
+  // Parts, or ready-made circuit blocks (#768): the tab last used opens again.
+  const tabs = (
+    <div className="bc-ec-editor-tabs" role="tablist" aria-label="Components">
+      {(["parts", "blocks"] as const).map((t) => (
+        <button key={t} type="button" role="tab" aria-selected={tab === t} className={cx("bc-ec-switch-item", tab === t && "bc-on")} onClick={() => pick(t)}>
+          {t === "parts" ? "Parts" : "Blocks"}
+        </button>
+      ))}
+    </div>
+  );
+  if (tab === "blocks")
+    return (
+      <FeaturePanel title="Components" icon="chip" className="bc-ec-card bc-ec-components" cancel={{ label: "Close", title: "Close (Esc)", onClick: onClose }}>
+        {tabs}
+        <Suspense fallback={<PanelNote>Getting the blocks…</PanelNote>}>
+          <BlocksTab own={my.blocks} onSave={my.saveBlock} onRemove={my.removeBlock} />
+        </Suspense>
+      </FeaturePanel>
+    );
 
   return (
     <>
@@ -369,6 +396,7 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
         cancel={{ label: "Close", title: "Close (Esc)", onClick: onClose }}
         {...(part ? { ok: { label: "Place", title: `Place ${part.name} on the sheet`, onClick: () => place() } } : {})}
       >
+        {tabs}
         <label className="bc-field-label" htmlFor={field}>
           Find a part
         </label>

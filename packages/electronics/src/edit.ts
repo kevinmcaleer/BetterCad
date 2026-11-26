@@ -1,4 +1,5 @@
 import { key, placeOnSheet, q } from "./geom";
+import { tidy } from "./groups";
 import {
   eid,
   isPower,
@@ -213,7 +214,7 @@ export function removeFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): E
   }));
   const used = new Set(next.sheets.flatMap((s) => s.symbols.map((y) => y.part)));
   return removeParts(
-    next,
+    onSheet(next, sheetId, tidy),
     next.parts.filter((p) => !used.has(p.id)).map((p) => p.id),
   );
 }
@@ -262,6 +263,8 @@ export interface Clip {
   labels: NetLabel[];
   junctions: Sheet["junctions"];
   noConnects: Sheet["noConnects"];
+  /** Groups whose every member was copied (#766). */
+  groups?: { name: string; members: Id[] }[];
   notes?: NonNullable<Sheet["notes"]>;
 }
 
@@ -284,6 +287,8 @@ export function copyFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): Cli
     noConnects: pick(sheet.noConnects),
     notes: pick(sheet.notes ?? []),
   };
+  const whole = (sheet.groups ?? []).filter((g) => g.members.every((m) => set.has(m)));
+  if (whole.length) clip.groups = whole.map((g) => ({ name: g.name, members: g.members }));
   return symbols.length + clip.wires.length + clip.labels.length + clip.junctions.length + clip.noConnects.length + clip.notes!.length ? clip : null;
 }
 
@@ -313,11 +318,16 @@ export function pasteOnSheet(d: ElectronicsDesign, sheetId: Id, clip: Clip, dx: 
     partId.set(p.id, id);
     parts.push({ ...p, id, ref: nextRef({ ...d, parts }, def.prefix) });
   }
-  const symbols = clip.symbols.filter((s) => partId.has(s.part)).map((s) => ({ ...at(s, "sy"), part: partId.get(s.part)! }));
-  const wires = clip.wires.map((w) => ({ id: eid("w"), a: move(w.a), b: move(w.b) }));
-  const labels = clip.labels.map((l) => at(l, "lb"));
-  const junctions = clip.junctions.map((j) => at(j, "jn"));
-  const noConnects = clip.noConnects.map((n) => at(n, "nc"));
+  const newId = new Map<Id, Id>();
+  const fresh = <T extends { id: Id }>(o: T, n: T): T => (newId.set(o.id, n.id), n);
+  const symbols = clip.symbols.filter((s) => partId.has(s.part)).map((s) => fresh(s, { ...at(s, "sy"), part: partId.get(s.part)! }));
+  const wires = clip.wires.map((w) => fresh(w, { id: eid("w"), a: move(w.a), b: move(w.b) }));
+  const labels = clip.labels.map((l) => fresh(l, at(l, "lb")));
+  const junctions = clip.junctions.map((j) => fresh(j, at(j, "jn")));
+  const noConnects = clip.noConnects.map((n) => fresh(n, at(n, "nc")));
+  const groups = (clip.groups ?? [])
+    .map((g) => ({ id: eid("gr"), name: g.name, members: g.members.flatMap((m) => (newId.has(m) ? [newId.get(m)!] : [])) }))
+    .filter((g) => g.members.length);
   const notes = (clip.notes ?? []).map((n) => ({ ...moveShape(n, dx, dy), id: eid("nt") }));
   const design = onSheet({ ...d, defs, parts }, sheetId, (s) => ({
     ...s,
@@ -326,6 +336,7 @@ export function pasteOnSheet(d: ElectronicsDesign, sheetId: Id, clip: Clip, dx: 
     labels: [...s.labels, ...labels],
     junctions: [...s.junctions, ...junctions],
     noConnects: [...s.noConnects, ...noConnects],
+    ...(groups.length ? { groups: [...(s.groups ?? []), ...groups] } : {}),
     ...(notes.length || s.notes ? { notes: [...(s.notes ?? []), ...notes] } : {}),
   }));
   return { design, ids: [...symbols, ...wires, ...labels, ...junctions, ...noConnects, ...notes].map((x) => x.id) };
@@ -403,10 +414,30 @@ export function moveOnBoard(d: ElectronicsDesign, ids: Id[], dx: number, dy: num
 /** Turns parts on the board by `by` degrees, each about its own origin. */
 export function rotateOnBoard(d: ElectronicsDesign, ids: Id[], by = 90): ElectronicsDesign {
   const set = new Set(ids);
-  return onBoard(d, (b) => ({
-    ...b,
-    placements: b.placements.map((p) => (set.has(p.part) && !p.locked ? { ...p, rot: (((p.rot + by) % 360) + 360) % 360 } : p)),
-  }));
+  return onBoard(d, (b) => {
+    const turning = b.placements.filter((p) => set.has(p.part) && !p.locked);
+    // Several parts turn as one, round their middle, so a group keeps its shape (#774).
+    const mid: P2 | null =
+      turning.length > 1
+        ? [
+            (Math.min(...turning.map((p) => p.x)) + Math.max(...turning.map((p) => p.x))) / 2,
+            (Math.min(...turning.map((p) => p.y)) + Math.max(...turning.map((p) => p.y))) / 2,
+          ]
+        : null;
+    const a = (by * Math.PI) / 180;
+    const [c, s] = [Math.cos(a), Math.sin(a)];
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return {
+      ...b,
+      placements: b.placements.map((p) => {
+        if (!set.has(p.part) || p.locked) return p;
+        const rot = (((p.rot + by) % 360) + 360) % 360;
+        if (!mid) return { ...p, rot };
+        const [dx, dy] = [p.x - mid[0], p.y - mid[1]];
+        return { ...p, rot, x: r2(mid[0] + dx * c - dy * s), y: r2(mid[1] + dx * s + dy * c) };
+      }),
+    };
+  });
 }
 
 /** Moves parts to the other side of the board. */
