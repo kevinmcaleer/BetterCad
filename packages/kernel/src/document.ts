@@ -1434,7 +1434,9 @@ export function build(doc: ModelDoc, upTo = doc.features.length): Build {
         }
         // A board shaped by a sketch stands on that sketch (#653); the step's own place then moves it from there.
         const from = doc.electronics?.board?.outlineFrom;
-        const under = from?.sketch && from.at ? sketchById.get(from.sketch) : undefined;
+        // A sketch made after the Board step is not built yet: its plane is in its own step.
+        const later = (id: string) => doc.features.find((x): x is Extract<Feature, { type: "sketch" }> => x.id === id && x.type === "sketch")?.sketch;
+        const under = from?.sketch && from.at ? (sketchById.get(from.sketch) ?? later(from.sketch)) : undefined;
         // A board shaped by a face stands on the face, by the plane kept when it took its shape.
         const frame = under ? planeFrame(under.plane) : from?.face ? from.frame : undefined;
         const made = boardParts(f, solid, frame && from?.at ? onSketch(frame, from.at) : undefined, (h) => h in (doc.blobs ?? {}));
