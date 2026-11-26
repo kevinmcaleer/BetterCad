@@ -149,6 +149,10 @@
   --bc-color-cube-edge: #b9bec8;
   /* FRONT / TOP / RIGHT lettering on the view cube. */
   --bc-color-cube-label: #3a3f47;
+  /* The edge or corner of the view cube under the pointer. Solid yellow in Holoroom, to match its edges. */
+  --bc-color-cube-hover: #7c3aed59;
+  /* The view cube face under the pointer. See-through, so its lettering still shows. */
+  --bc-color-cube-hover-face: #7c3aed59;
   /* Icon colour on element tiles (shapes, primitives) at rest. */
   --bc-color-tile-icon: #4c6ef5;
   /* Row buttons that stay quiet until pointed at (eye, ghost, highlight in the parts tree) and drag grips. Decorative: not a text colour. */
@@ -274,6 +278,8 @@
   --bc-color-cube-face-low: #2a2e36;
   --bc-color-cube-edge: #6b707a;
   --bc-color-cube-label: #f1f3f5;
+  --bc-color-cube-hover: #a78bfa59;
+  --bc-color-cube-hover-face: #a78bfa59;
   --bc-color-tile-icon: #91a7ff;
   --bc-color-quiet-icon: #4f545e;
   --bc-color-thumb-bg: #23262c;
@@ -355,6 +361,8 @@
   --bc-color-cube-face-low: #151515;
   --bc-color-cube-edge: #f2c230;
   --bc-color-cube-label: #f2c230;
+  --bc-color-cube-hover: #f2c230;
+  --bc-color-cube-hover-face: #f2c23073;
   --bc-color-tile-icon: #91a7ff;
   --bc-color-quiet-icon: #4f545e;
   --bc-color-thumb-bg: #23262c;
