@@ -164,6 +164,12 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   same spot with the same tag, rejoins each joined point with a wire to where the new point is, lists points that
   are gone and leaves their wires, and keeps board places for parts of the same kind. A block saved from a plain
   group has no point labels, so wires joined straight to its pins are left for you after an update.
+- **Folded blocks (#775).** `SchGroup.folded` is a view only: `foldedAway` lists the members to leave out of the
+  drawing (all but the point labels), so nets and wires to the points never change. The canvas draws the outline
+  filled, picks the group on a click inside the box and unfolds it on a double-click; the inspector has Fold to a
+  box and Unfold, and the command list has Fold or unfold the block. The PDF prints folded blocks folded with "N
+  parts inside". Not built: printing each folded block's inside on a page of its own, and a right-click menu (the
+  schematic has none yet). KiCad gets the block flattened until hierarchy (#757) is in.
 
 ## The rules check (#634)
 

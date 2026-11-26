@@ -293,6 +293,8 @@ export interface SchGroup {
   members: Id[];
   /** Set when the group is a circuit block dropped from the library (#767). */
   block?: PlacedBlock;
+  /** Folded down to a box with only its points showing (#775). A view only: nets are the same either way. */
+  folded?: boolean;
 }
 
 /** What a connection point is for: its icon and colour, and what the rules check expects of it (#767). */

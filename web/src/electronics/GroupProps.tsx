@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from "react";
 import { netlist, type ElectronicsDesign, type SchGroup } from "@bettercad/electronics";
 import { joinI2c, joinPoint, pointsJoined, suggestTargets } from "@bettercad/electronics/connect";
-import { renameGroup, ungroupOnSheet } from "@bettercad/electronics/groups";
+import { renameGroup, setFolded, ungroupOnSheet } from "@bettercad/electronics/groups";
 import { Button, PropsPanel, cx } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { KIND_TEXT } from "./pointKinds";
@@ -70,6 +70,16 @@ export default function GroupProps({
                   eui.set({ inGroup: null });
                 }}
               />
+              {block && (
+                <Button
+                  size="dense"
+                  variant="secondary"
+                  label={group.folded ? "Unfold" : "Fold to a box"}
+                  title={group.folded ? "Show the parts inside again" : "Show only the block's box and points. Its nets stay the same"}
+                  disabled={readOnly}
+                  onClick={() => edit((d) => setFolded(d, sheet, [group.id], !group.folded), group.folded ? "Unfold block" : "Fold block")}
+                />
+              )}
               {block && !readOnly && <BlockUpdate design={design} sheet={sheet} group={group} edit={edit} />}
               {!readOnly && <SaveBlock design={design} sheet={sheet} group={group} edit={edit} />}
             </>

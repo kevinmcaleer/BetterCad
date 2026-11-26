@@ -32,7 +32,7 @@ import {
   type Shape,
   type Sheet,
 } from "@bettercad/electronics";
-import { groupOf, groupOnSheet, groupsIn, renameGroup, ungroupOnSheet, unitOf, wholeGroups } from "@bettercad/electronics/groups";
+import { foldedAway, groupOf, groupOnSheet, groupsIn, renameGroup, setFolded, ungroupOnSheet, unitOf, wholeGroups } from "@bettercad/electronics/groups";
 import { ESC, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
@@ -143,6 +143,10 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   const stale = useMemo(() => staleBlocks(design, sheet), [design, sheet]);
   const inside = ui.inGroup && sheet.groups?.some((g) => g.id === ui.inGroup) ? ui.inGroup : null;
   const picked = useMemo(() => new Set(groupsIn(sheet, ui.selected).map((g) => g.id)), [sheet, ui.selected]);
+  // Folded blocks (#775): a box with its points, the inside out of sight.
+  const hidden = useMemo(() => foldedAway(sheet), [sheet]);
+  const folded = useMemo(() => new Set((sheet.groups ?? []).filter((g) => g.folded && g.block).map((g) => g.id)), [sheet]);
+  const foldedAt = (at: P2) => outlines.find((o) => folded.has(o.id) && at[0] >= o.box.x1 && at[0] <= o.box.x2 && at[1] >= o.box.y1 && at[1] <= o.box.y2);
   const askGroupName = (d: ElectronicsDesign, id: string) => {
     const o = groupOutlines(d, d.sheets.find((x) => x.id === sheet.id) ?? sheet).find((x) => x.id === id);
     const g = d.sheets.find((x) => x.id === sheet.id)?.groups?.find((x) => x.id === id);
@@ -261,6 +265,22 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         edit((d) => gone.reduce((x, g) => ungroupOnSheet(x, sheet.id, g.id), d), gone.length === 1 ? "Ungroup" : `Ungroup ${gone.length} groups`);
         eui.set({ inGroup: null });
       },
+      fold: () => {
+        const blocks = groupsIn(sheet, eui.get().selected).filter((g) => g.block);
+        if (readOnly || !blocks.length) return;
+        const open = blocks.every((g) => g.folded);
+        edit(
+          (d) =>
+            setFolded(
+              d,
+              sheet.id,
+              blocks.map((g) => g.id),
+              !open,
+            ),
+          open ? "Unfold block" : "Fold block",
+        );
+        eui.set({ inGroup: null });
+      },
       groupToggle: () => {
         const ids = eui.get().selected;
         const whole = groupsIn(sheet, ids);
@@ -295,9 +315,10 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
 
   const onDown = (p: Pointer): boolean => {
     if (tool !== "select") return true;
-    const hit = hitSheet(design, sheet, p.world, tol)[0];
-    // A group's edge or name picks the whole group, ready to drag as one block (#766).
-    const edge = hit ? undefined : hitGroupOutline(outlines, p.world, tol);
+    const shown = hitSheet(design, sheet, p.world, tol).filter((h) => !hidden.has(h.id));
+    const hit = shown[0];
+    // A group's edge or name picks the whole group, ready to drag as one block (#766); so does a folded block's box.
+    const edge = hit ? undefined : (hitGroupOutline(outlines, p.world, tol) ?? foldedAt(p.world));
     const grabbed = hit?.id ?? sheet.groups?.find((g) => g.id === edge?.id)?.members[0];
     if (!grabbed) {
       if (p.touch) return false;
@@ -446,7 +467,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         view={view}
         onView={setView}
         cursor={tool === "select" ? (hover ? "move" : "default") : "crosshair"}
-        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot, outlines, picked, inside, stale]}
+        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot, outlines, picked, inside, stale, folded, hidden]}
         draw={(ctx, v, size) =>
           drawSchematic(ctx, v, size, design, sheet, colours, {
             selected,
@@ -456,7 +477,8 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
             marks,
             lit: lit?.ids,
             spot: ui.spot?.sheet === sheet.id ? ui.spot.at : undefined,
-            groups: { outlines, picked, inside, stale },
+            groups: { outlines, picked, inside, stale, folded },
+            hidden,
           })
         }
         onDown={onDown}
@@ -465,7 +487,10 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         onDouble={(p) => {
           if (readOnly) return;
           if (tool === "wire") return setFrom(null);
-          const hit = hitSheet(design, sheet, p.world, tol)[0];
+          const hit = hitSheet(design, sheet, p.world, tol).filter((h) => !hidden.has(h.id))[0];
+          // Double-click a folded block's box to open it again (#775).
+          const box = hit?.kind === "label" ? undefined : foldedAt(p.world);
+          if (box) return edit((d) => setFolded(d, sheet.id, [box.id], false), "Unfold block");
           const edge = hit ? undefined : hitGroupOutline(outlines, p.world, tol);
           if (edge) return askGroupName(design, edge.id);
           // Double-click a thing in a group: go into the group and pick just that thing.

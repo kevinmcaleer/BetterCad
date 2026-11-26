@@ -208,3 +208,29 @@ export function groupBoxes(d: ElectronicsDesign, sheet: Sheet): GroupOutline[] {
   }
   return out;
 }
+
+/** Folds groups down to boxes, or opens them again (#775). Only a block can fold: its points are what shows. */
+export function setFolded(d: ElectronicsDesign, sheetId: Id, groupIds: Id[], folded: boolean): ElectronicsDesign {
+  const set = new Set(groupIds);
+  return onSheet(d, sheetId, (s) => ({
+    ...s,
+    groups: s.groups?.map((g) => {
+      if (!set.has(g.id) || !g.block) return g;
+      const next = { ...g };
+      if (folded) next.folded = true;
+      else delete next.folded;
+      return next;
+    }),
+  }));
+}
+
+/** What folded blocks keep out of sight: every member but the points' labels. */
+export function foldedAway(sheet: Sheet): Set<Id> {
+  const out = new Set<Id>();
+  for (const g of sheet.groups ?? []) {
+    if (!g.folded || !g.block) continue;
+    const points = new Set(g.block.points.map((p) => p.label));
+    for (const m of g.members) if (!points.has(m)) out.add(m);
+  }
+  return out;
+}

@@ -41,7 +41,9 @@ export interface SchematicLook {
   box?: [P2, P2] | null;
   grid?: boolean;
   /** Group outlines (#766), with which are picked and which one is gone into. */
-  groups?: { outlines: GroupOutline[]; picked: Set<string>; inside?: string | null; stale?: Set<string> };
+  groups?: { outlines: GroupOutline[]; picked: Set<string>; inside?: string | null; stale?: Set<string>; folded?: Set<string> };
+  /** Things inside folded blocks, not drawn (#775). */
+  hidden?: Set<string>;
 }
 
 const DIRS: Record<number, P2> = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
@@ -227,10 +229,23 @@ export function drawSchematic(
   v: View2D,
   size: { w: number; h: number },
   d: ElectronicsDesign,
-  sheet: Sheet,
+  whole: Sheet,
   c: Colours,
   look: SchematicLook,
 ) {
+  // A folded block (#775) shows only its box and points: what is inside is left out of the drawing, not the design.
+  const hide = look.hidden;
+  const sheet: Sheet = hide?.size
+    ? {
+        ...whole,
+        symbols: whole.symbols.filter((x) => !hide.has(x.id)),
+        wires: whole.wires.filter((x) => !hide.has(x.id)),
+        labels: whole.labels.filter((x) => !hide.has(x.id)),
+        junctions: whole.junctions.filter((x) => !hide.has(x.id)),
+        noConnects: whole.noConnects.filter((x) => !hide.has(x.id)),
+        ...(whole.notes ? { notes: whole.notes.filter((x) => !hide.has(x.id)) } : {}),
+      }
+    : whole;
   ctx.fillStyle = c.viewport;
   ctx.fillRect(0, 0, size.w, size.h);
   if (look.grid !== false) {
@@ -246,7 +261,7 @@ export function drawSchematic(
       }
   }
   for (const o of look.groups?.outlines ?? [])
-    drawGroup(ctx, v, o, c, look.groups!.picked.has(o.id), look.groups!.inside === o.id, look.groups!.stale?.has(o.id));
+    drawGroup(ctx, v, o, c, look.groups!.picked.has(o.id), look.groups!.inside === o.id, look.groups!.stale?.has(o.id), look.groups!.folded?.has(o.id));
   const parts = new Map(d.parts.map((p) => [p.id, p]));
   const wire = Math.max(1.5, 0.2 * v.scale);
   ctx.lineCap = "round";
@@ -415,7 +430,16 @@ export function drawPoint(ctx: CanvasRenderingContext2D, v: View2D, at: P2, p: B
 }
 
 /** A group's outline: a rounded box with its name on the top edge. Dashed while it is gone into. */
-export function drawGroup(ctx: CanvasRenderingContext2D, v: View2D, o: GroupOutline, c: Colours, picked: boolean, inside: boolean, stale = false) {
+export function drawGroup(
+  ctx: CanvasRenderingContext2D,
+  v: View2D,
+  o: GroupOutline,
+  c: Colours,
+  picked: boolean,
+  inside: boolean,
+  stale = false,
+  folded = false,
+) {
   const a = toScreen(v, [o.box.x1, o.box.y2]);
   const b = toScreen(v, [o.box.x2, o.box.y1]);
   const r = Math.min(Math.max(4, 0.8 * v.scale), (b[0] - a[0]) / 4, (b[1] - a[1]) / 4);
@@ -426,7 +450,19 @@ export function drawGroup(ctx: CanvasRenderingContext2D, v: View2D, o: GroupOutl
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(a[0], a[1], b[0] - a[0], b[1] - a[1], r);
   else ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  if (folded) {
+    ctx.fillStyle = c["ec-symbol-fill"];
+    ctx.fill();
+    ctx.lineWidth += 0.75;
+  }
   ctx.stroke();
+  if (folded) {
+    ctx.fillStyle = c.muted;
+    ctx.font = `${Math.max(10, 1.27 * v.scale)}px ${c.font}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("Double-click to open", (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+  }
   ctx.setLineDash([]);
   ctx.fillStyle = picked ? c.accent : c.muted;
   ctx.font = `600 ${Math.max(10, 1.5 * v.scale)}px ${c.font}`;

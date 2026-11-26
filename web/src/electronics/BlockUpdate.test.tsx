@@ -11,6 +11,7 @@ import { blockFromGroup, markAsBlock, pointChoices } from "@bettercad/electronic
 import type { EEdit } from "./actions";
 import { staleBlocks } from "./blockVersions";
 import { ElectronicsProps } from "./Electronics";
+import { schematicScene } from "./sheetScene";
 import { eui } from "./ui";
 
 const pack = JSON.parse(readFileSync(join(__dirname, "../../../packages/electronics/library/starter.json"), "utf8")) as LibraryPack;
@@ -87,5 +88,19 @@ describe("a placed block's Update (#773)", () => {
     await userEvent.click(within(screen.getByRole("region", { name: "Update" })).getByRole("button", { name: "Update" }));
     await userEvent.click(screen.getByRole("button", { name: "Replace my changes" }));
     expect(s.labels).toEqual(["Update Sensor plug"]);
+  });
+
+  it("folds a block to a box and opens it again; the PDF prints it folded (#775)", async () => {
+    const s = setup();
+    await userEvent.click(await screen.findByRole("button", { name: "Fold to a box" }));
+    expect(s.labels).toEqual(["Fold block"]);
+    expect(s.design().sheets[0]!.groups![0]!.folded).toBe(true);
+    const words = schematicScene(s.design(), s.design().sheets[0]!, { size: "A4", title: {} }).labels.map((l) => l.text);
+    expect(words).toContain("3 parts inside");
+    expect(words).not.toContain("J1");
+    expect(words).toContain("SDA");
+    await userEvent.click(screen.getByRole("button", { name: "Unfold" }));
+    expect(s.labels).toEqual(["Fold block", "Unfold block"]);
+    expect(s.design().sheets[0]!.groups![0]!.folded).toBeUndefined();
   });
 });

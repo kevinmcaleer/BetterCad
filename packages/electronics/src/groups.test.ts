@@ -109,3 +109,40 @@ describe("group outlines", () => {
     expect(sch).toMatch(/\(rectangle/);
   });
 });
+
+describe("folding a block (#775)", () => {
+  it("hides only the inside, keeps the points, and leaves the nets as they were", async () => {
+    const { buildBlock, placeBlock } = await import("./blocks");
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { inflate } = await import("./library/pack");
+    const pack = JSON.parse(readFileSync(join(__dirname, "../library/starter.json"), "utf8")) as import("./library/pack").LibraryPack;
+    const lookup = (id: string) => {
+      const p = pack.parts.find((x) => x.id === id);
+      return p && inflate(pack, p);
+    };
+    const { STARTER_BLOCKS } = await import("./library/blocks");
+    const { foldedAway, setFolded } = await import("./groups");
+    const { netlist } = await import("./nets");
+    const { emptyDesign } = await import("./model");
+    const d = placeBlock(
+      emptyDesign(),
+      "sh1",
+      buildBlock(
+        STARTER_BLOCKS.find((b) => b.id === "drv8833")!,
+        lookup,
+      ),
+      [0, 0],
+    ).design;
+    const g = d.sheets[0]!.groups![0]!;
+    const folded = setFolded(d, "sh1", [g.id], true);
+    expect(folded.sheets[0]!.groups![0]!.folded).toBe(true);
+    const away = foldedAway(folded.sheets[0]!);
+    expect(away.size).toBe(g.members.length - g.block!.points.length);
+    for (const p of g.block!.points) expect(away.has(p.label)).toBe(false);
+    expect(netlist(folded).nets).toEqual(netlist(d).nets);
+    const open = setFolded(folded, "sh1", [g.id], false);
+    expect("folded" in open.sheets[0]!.groups![0]!).toBe(false);
+    expect(foldedAway(open.sheets[0]!).size).toBe(0);
+  });
+});

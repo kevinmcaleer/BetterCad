@@ -673,6 +673,15 @@ function commands(design: () => ElectronicsDesign): Command[] {
     },
     {
       ...e,
+      id: "electronics.fold",
+      label: "Fold or unfold the block",
+      group: "Edit",
+      when: schematic,
+      run: () => eactions.current?.fold?.(),
+      keywords: "fold unfold collapse box block hide inside",
+    },
+    {
+      ...e,
       id: "electronics.ungroup",
       label: "Ungroup",
       group: "Edit",

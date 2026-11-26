@@ -28,6 +28,8 @@ export interface EActions {
   ungroup?(): void;
   /** The ribbon's Group button: take apart a selection that is only whole groups, else group it. */
   groupToggle?(): void;
+  /** Folds the picked blocks to boxes, or opens them again when they all are (#775). */
+  fold?(): void;
   /** Board only: swap the copper layer (dropping a via when a track is on the go), and lock the picked parts. */
   layer?(): void;
   lock?(): void;
