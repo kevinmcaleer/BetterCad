@@ -888,7 +888,8 @@ export interface ElectronicsViewProps {
   inModel?: boolean;
   onAddBoard?: () => void;
   /** Opens the sample board (#666) as a new model. */
-  onSample?: () => void;
+  /** Opens a sample: the Pico servo board, or another by id. */
+  onSample?: (id?: string) => void;
   /** The geometry engine, for reading a file picked as a part's 3D body (#628). */
   call?: KernelCall;
 }
@@ -979,7 +980,8 @@ export default function ElectronicsView({
           <p>Start with a part.</p>
           <p className="bc-note">Place parts, join their pins with wires, then push the schematic to a PCB.</p>
           <Button variant="primary" icon="chip" label="Components" shortcut="P" onClick={() => eui.set({ card: "components" })} />
-          {onSample && <Button icon="folder" label="Open the sample board" onClick={onSample} />}
+          {onSample && <Button icon="folder" label="Open the sample board" onClick={() => onSample()} />}
+          {onSample && <Button icon="folder" label="Open a board made from blocks" onClick={() => onSample("robot-blocks")} />}
           <Button icon="folder" label="Open a KiCad or Eagle project" onClick={() => eui.set({ card: "open" })} />
           <a className="bc-note" href={GUIDE_URL} target="_blank" rel="noreferrer">
             Read the electronics guide

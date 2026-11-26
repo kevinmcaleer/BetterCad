@@ -49,6 +49,16 @@ export function tips(): Tip[] {
       title: "Order your board",
       text: "On the PCB, run the checks, then choose Order to save the Gerber, drill and parts files as one .zip for a board house.",
     },
+    {
+      id: "electronics-blocks",
+      title: "Build from blocks",
+      text: "In Components, choose Blocks for ready-made circuits: a motor driver, a LiPo charger, a regulator. Place one, then use Connect to… on its card to join its points.",
+    },
+    {
+      id: "electronics-group",
+      title: "Group parts on a schematic",
+      text: `Pick some parts and press ${formatCombo("mod+g")} to put them in an outline that moves as one.`,
+    },
     { id: "find", title: "Find any command", text: `Press ${formatCombo("mod+k")} to find a command by name, or ? to see every shortcut.` },
   ];
 }

@@ -5278,7 +5278,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   model={{ bodies: kernel.bodies, picks: vp.elements, names: parts }}
                   inModel={doc.features.some((f) => f.type === "board")}
                   onAddBoard={() => store.edit((d) => addBoard(d), "Add the board to the model")}
-                  onSample={() => files.openSample("pico-servo-board")}
+                  onSample={(id) => files.openSample(id ?? "pico-servo-board")}
                   call={kernel.call}
                 />
               </Suspense>

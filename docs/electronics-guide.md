@@ -40,6 +40,37 @@ time. Export saves the schematic as a PDF or an SVG, a netlist, or the whole des
 
 On a phone or tablet the tools sit along the bottom, and you tap where you would click.
 
+## Build from blocks
+
+Not sure how a motor driver or a battery charger is wired? Use a block. A block is a small circuit that is already
+drawn and checked: the parts, how they join, and the points you join to the rest of your design. There are 19 on the
+Blocks shelf: power (USB-C, LiPo charger and protection, 5 V boost, 3.3 V regulators), motor drivers, servo headers,
+level shifters, Qwiic and other connectors. More about each is in [electronics-blocks.md](electronics-blocks.md).
+
+1. **Place one.** Press P for Components and choose Blocks. Pick a block to read what it does and what it needs,
+   then choose Place and click the sheet. It lands in an outline with its name on top, and its points on the edge.
+2. **Join it up.** Pick the block. The card lists its points: Joined, Open or Needed, with the voltage each one
+   takes. Connect to… beside a point offers the pins and points it can safely join; Join I2C joins SDA and SCL to a
+   free I2C pair on your microcontroller in one go. Ground joins by itself.
+3. **Check it.** The rules check (E) says when a Needed point is open, when two outputs drive one net, when a 5 V
+   output feeds a 3.3 V input, and when an I2C bus has no pull-ups or too many.
+4. **Tidy up.** Drag the outline to move the whole block. Fold to a box hides its inside and leaves its points;
+   double-click it to open it again. Double-click inside an open block to pick one part.
+
+You can group your own parts too: pick them and press Ctrl+G (Cmd+G on a Mac) for Group. The outline moves as one
+and keeps its name; Shift+Ctrl+G takes it apart. Save as block on a group's card keeps it in Your library to use
+again, or Export saves it as a file to share.
+
+Your design keeps its own copy of each block, so it never changes under you. When a block on the shelf moves on, the
+copy shows an Update tag; the card says what changed, and Update swaps it for the new one with its points still
+joined.
+
+On the PCB a block's parts arrive together, laid out the way the block suggests, inside an outline with its name.
+Pick the group from a part's card to move or turn them as one.
+
+To see a whole board made this way, choose Open a board made from blocks on an empty schematic. The lesson
+[Build a robot board from blocks](lessons/robot-board-from-blocks.md) makes it step by step.
+
 ## Find and make parts
 
 Components opens with a starter library of a couple of hundred parts: resistors, capacitors, LEDs, headers, common
