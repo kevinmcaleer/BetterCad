@@ -28,6 +28,8 @@ export interface EActions {
   lock?(): void;
   /** Board only: choose a picture file for the silkscreen. */
   picture?(): void;
+  /** Board only: take every track and via off, as one step, so Autoroute can run again. */
+  clearRoutes?(): void;
   /** Board only: bend the track being laid the other way. */
   bend?(): void;
 }

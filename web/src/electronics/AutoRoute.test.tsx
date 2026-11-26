@@ -104,6 +104,22 @@ describe("Autoroute (#647)", () => {
     act(() => eui.set({ unrouted: 0 }));
     expect(screen.getByText("Every connection on the board is routed.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Route" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Clear routes" })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("clears every track and via in one step, so it can route again", async () => {
+    const { d } = board();
+    const made = setup(d);
+    await userEvent.click(screen.getByRole("button", { name: "Route" }));
+    await screen.findByText(/^Routed 2 of 2 connections\./);
+    expect(made.design().board!.tracks.length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole("button", { name: "Clear routes" }));
+    expect(made.labels).toEqual(["Autoroute", "Clear routes"]);
+    expect(made.design().board!.tracks).toEqual([]);
+    expect(made.design().board!.vias).toEqual([]);
+    expect(left(made.design())).toBe(2);
+    expect(screen.getByText("Every track and via is off the board. Undo puts them back.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear routes" })).toHaveAttribute("aria-disabled", "true");
   });
 });
 

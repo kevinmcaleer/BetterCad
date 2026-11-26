@@ -323,6 +323,11 @@ const DRAW: Record<string, () => string> = {
     hiLine("M6 16h4l5-5V8", 2.2) +
     dot(6, 16, 1.8) +
     dot(15, 8, 1.8),
+  // The route board with its track faded and a cross: take the routes off
+  clearRoutes: () =>
+    `<rect x="2.5" y="4.5" width="19" height="15" rx="2" fill="${TOP}" stroke="${EDGE}" stroke-width="1.1"/>` +
+    line("M6 16h4l5-5V8", EDGE, 1.4, dashed) +
+    hiLine("M13.5 13.5l6 6M19.5 13.5l-6 6", 2.2),
   via: () =>
     `<circle cx="12" cy="12" r="8.5" fill="${HI}" stroke="${EDGE}" stroke-width="1.2"/><circle cx="12" cy="12" r="3.4" fill="${HOLE}" stroke="${EDGE}" stroke-width="1"/>`,
   pushPcb: () =>
