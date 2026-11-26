@@ -19,11 +19,14 @@ import {
   DRAW_COLOURS,
   DRAW_LENGTHS,
   DRAW_ON_START,
+  drawSeconds,
   FOCUSES,
+  moveStart,
   QUALITIES,
   samplesFor,
   samplesText,
   type DrawOnState,
+  type MoveState,
   type RenderSession,
   type SaveSize,
 } from "./session";
@@ -32,6 +35,8 @@ import { fit } from "../viewport/fitSphere";
 import { Box3, Sphere, Vector3 } from "three";
 import type { Section } from "../viewport/engine";
 import type { CutPlane } from "./cut";
+import { CAMERA_MOVES, cameraAt, cameraMove, framingOf, movePreset } from "./cameraMoves";
+import { recordCanvas, videoType } from "./video";
 
 /** Under this many samples after SLOW_MS, the browser can't render this well. */
 const SLOW_MS = 8000;
@@ -205,6 +210,9 @@ export function RenderPicture({
     const el = canvas.current!;
     let last: { x: number; y: number; button: number } | null = null;
     const down = (e: PointerEvent) => {
+      // Grabbing the picture stops a camera move where it is, so you can look round from there.
+      const m = session.get().move;
+      if (m?.playing && !m.recording && !session.get().drawOn) session.set({ move: { ...m, playing: false } });
       last = { x: e.clientX, y: e.clientY, button: e.button };
       el.setPointerCapture(e.pointerId);
       hold(true);
@@ -243,7 +251,7 @@ export function RenderPicture({
       el.removeEventListener("wheel", wheel);
       el.removeEventListener("contextmenu", menu);
     };
-  }, [move, hold]);
+  }, [move, hold, session]);
 
   const goHome = useCallback(() => {
     const el = canvas.current!;
@@ -268,8 +276,126 @@ export function RenderPicture({
     };
   }, [session, move, goHome, bodies]);
 
-  // Esc leaves Draw on first, back to the picture.
+  // Esc leaves Draw on first, back to the picture, then a camera move.
   useEscape(!!state.drawOn, () => session.set({ drawOn: null }), ESC.tool);
+  useEscape(!state.drawOn && !!state.move && !state.move.recording, () => session.set({ move: null }), ESC.tool);
+
+  // A camera move on its own (Draw on plays its own): a clock turns the picture's camera round the model, showing the
+  // quick preview as it goes, and the picture clears again where it ends.
+  const solo = !state.drawOn && state.move ? state.move : null;
+  const soloId = solo?.id ?? null;
+  const soloLength = solo?.length ?? "normal";
+  /** Where the last move started from, and where it left the camera: a new length or Play again starts there too. */
+  const moveFrom = useRef<{ from: CameraState; left: CameraState } | null>(null);
+  useEffect(() => {
+    const pr = r.current;
+    const el = canvas.current!;
+    if (!soloId || !pr) return;
+    const total = drawSeconds(soloLength);
+    const plan = cameraMove(soloId, total);
+    const framing = framingOf(
+      bodies.map((b) => ({ positions: b.mesh.positions, matrix: b.matrix.elements })),
+      1,
+    );
+    let t = 0,
+      last = performance.now(),
+      frame = 0,
+      told = -1,
+      playing = false;
+    // Where the move starts from: your view as the move begins, kept for Play again unless you have looked round since.
+    const kept = moveFrom.current;
+    let from = kept && cam.current === kept.left ? kept.from : cam.current,
+      shown: CameraState | null = null;
+    const ends: (() => void)[] = [];
+    const patch = (c: Partial<MoveState>) => {
+      const m = session.get().move;
+      if (m) session.set({ move: { ...m, ...c } });
+    };
+    const at = (time: number) => (framing ? cameraAt(plan, from, { ...framing, aspect: el.clientWidth / Math.max(1, el.clientHeight) }, time) : from);
+    const show = (c: CameraState) => {
+      shown = cam.current = c;
+      pr.setCamera(c);
+      setRotation(viewRotation(c));
+    };
+    const halt = () => {
+      if (!playing) return;
+      playing = false;
+      // Leave the camera where the move got to, so orbiting and the cube carry on from there.
+      if (shown) {
+        move(shown);
+        moveFrom.current = { from, left: shown };
+      }
+      pr.pause(false);
+    };
+    const tick = (now: number) => {
+      frame = requestAnimationFrame(tick);
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      if (!playing) return;
+      t = Math.min(total, t + dt);
+      show(at(t));
+      if (Math.floor(t * 10) !== told) {
+        told = Math.floor(t * 10);
+        patch({ at: t, total });
+      }
+      if (t >= total) {
+        halt();
+        patch({ playing: false, at: total, total });
+        for (const f of ends.splice(0)) f();
+      }
+    };
+    const begin = () => {
+      if (t >= total) t = 0;
+      if (t === 0 && shown && cam.current !== shown) from = cam.current;
+      shown = null;
+      playing = true;
+      last = performance.now();
+      pr.pause(true);
+    };
+    const sync = () => {
+      const m = session.get().move;
+      const want = !!m?.playing && !session.get().drawOn;
+      if (want && !playing) begin();
+      else if (!want && playing) halt();
+    };
+    const replay = () => {
+      t = 0;
+      if (shown && cam.current !== shown) from = cam.current;
+      told = -1;
+      patch({ playing: true, at: 0, total });
+      sync();
+    };
+    session.replayMove = replay;
+    session.recordMove = async () => {
+      const m = session.get().move;
+      const type = videoType();
+      if (!m || m.recording || !type) return;
+      const done = new Promise<void>((resolve) => ends.push(resolve));
+      session.set({ move: { ...m, recording: true } });
+      const video = recordCanvas(el, () => done).then((v) => v?.blob ?? null);
+      replay();
+      try {
+        await onSaveVideo?.(video, type.startsWith("video/mp4") ? "mp4" : "webm");
+      } finally {
+        await video.catch(() => null);
+        patch({ recording: false, playing: false });
+      }
+    };
+    patch({ total, at: 0 });
+    const unsubscribe = session.subscribe(sync);
+    sync();
+    frame = requestAnimationFrame(tick);
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(frame);
+      halt();
+      for (const f of ends.splice(0)) f();
+      session.replayMove = null;
+      session.recordMove = null;
+    };
+    // A new move, length or model starts it again; the camera and callbacks are read through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soloId, soloLength, bodies, session]);
   const camNow = useCallback(() => cam.current, []);
 
   const orbiting = useRef(false);
@@ -386,12 +512,16 @@ function useStatus(session: RenderSession) {
   const s = useSession(session);
   const max = testMax() ?? samplesFor(s.quality);
   const d = s.drawOn;
-  const status = d
-    ? d.recording
-      ? `Recording the video, ${secs(d.at)} of ${secs(d.total)}`
-      : d.total
-        ? `Draw on, ${secs(d.at)} of ${secs(d.total)}`
-        : "Draw on"
+  // The animation that owns the clock: Draw on, or a camera move on its own.
+  const m = d ? null : s.move;
+  const clip = d ?? m;
+  const name = d ? "Draw on" : m ? movePreset(m.id).label : "";
+  const status = clip
+    ? clip.recording
+      ? `Recording the video, ${secs(clip.at)} of ${secs(clip.total)}`
+      : clip.total
+        ? `${name}, ${secs(clip.at)} of ${secs(clip.total)}`
+        : name
     : s.loading
       ? "Loading the renderer…"
       : s.saving !== null
@@ -406,13 +536,13 @@ function useStatus(session: RenderSession) {
   const go = {
     icon: (rendering ? "stop" : "play") as IconName,
     title: rendering ? "Stop rendering" : done ? "Finished: raise the quality to keep going" : "Start rendering",
-    disabled: !rendering && (done || s.loading || s.slow || !!d),
+    disabled: !rendering && (done || s.loading || s.slow || !!d || !!m?.playing),
     onClick: () => session.set({ stopped: rendering }),
   };
   const save: MenuEntry[] = SIZES.map((z) => ({
     id: z.id,
     label: z.label,
-    disabled: s.saving !== null || s.slow || !!d,
+    disabled: s.saving !== null || s.slow || !!d || !!m?.playing,
     onSelect: () => void session.save?.(z.id),
   }));
   return { s, status, rendering, go, save };
@@ -421,26 +551,44 @@ function useStatus(session: RenderSession) {
 /** "3 s", "12.5 s". */
 const secs = (t: number) => `${(Math.round(t * 10) / 10).toLocaleString("en-GB")} s`;
 
-/** Draw on's controls, for the ribbon and the floating bar: on and off, play, length, colour and Save video. */
+/**
+ * The Animate controls, for the ribbon and the floating bar: Draw on on and off, a camera move, and for whichever is
+ * on, play, length, colour and Save video. With both on, the move turns the camera through Draw on's whole length.
+ */
 function useDrawOn(session: RenderSession) {
   const s = useSession(session);
   const d = s.drawOn;
+  const m = s.move;
+  // The clock: Draw on's, or the move's when it plays on its own.
+  const clip = d ?? m;
+  const recording = !!d?.recording || !!m?.recording;
   const set = (change: Partial<DrawOnState>) => d && session.set({ drawOn: { ...d, ...change } });
-  const toggle = () => (d ? session.set({ drawOn: null }) : session.set({ drawOn: { ...DRAW_ON_START }, stopped: true }));
-  const ended = !!d && !d.playing && d.total > 0 && d.at >= d.total - 1e-3;
+  const setClip = (change: Partial<DrawOnState & MoveState>) =>
+    d ? session.set({ drawOn: { ...d, ...change } }) : m && session.set({ move: { ...m, ...change } });
+  const toggle = () =>
+    d
+      ? session.set({ drawOn: null, move: m && { ...m, playing: true, at: 0 } })
+      : session.set({ drawOn: { ...DRAW_ON_START, length: m?.length ?? DRAW_ON_START.length }, stopped: true });
+  const ended = !!clip && !clip.playing && clip.total > 0 && clip.at >= clip.total - 1e-3;
   const play = {
-    icon: (d?.playing ? "pause" : ended ? "replay" : "play") as IconName,
-    title: d?.playing ? "Pause" : ended ? "Play again" : "Play",
-    short: d?.playing ? "Pause" : ended ? "Again" : "Play",
-    disabled: !d || d.recording,
-    onClick: () => (ended ? session.replay?.() : set({ playing: !d?.playing })),
+    icon: (clip?.playing ? "pause" : ended ? "replay" : "play") as IconName,
+    title: clip?.playing ? "Pause" : ended ? "Play again" : "Play",
+    short: clip?.playing ? "Pause" : ended ? "Again" : "Play",
+    disabled: !clip || recording,
+    onClick: () => (ended ? (d ? session.replay : session.replayMove)?.() : setClip({ playing: !clip?.playing })),
   };
+  const length = d?.length ?? m?.length ?? "normal";
   const lengths: MenuEntry[] = DRAW_LENGTHS.map((l) => ({
     id: l.id,
     label: l.label,
-    checked: d?.length === l.id,
-    disabled: d?.recording,
-    onSelect: () => set({ length: l.id }),
+    checked: length === l.id,
+    disabled: recording,
+    // One length for both: Draw on's drawing, and a move on its own.
+    onSelect: () =>
+      session.set({
+        ...(d && { drawOn: { ...d, length: l.id } }),
+        ...(m && { move: { ...m, length: l.id, playing: true, at: 0 } }),
+      }),
   }));
   const colours: MenuEntry[] = DRAW_COLOURS.map((c) => ({
     id: c.id,
@@ -449,13 +597,34 @@ function useDrawOn(session: RenderSession) {
     disabled: d?.recording,
     onSelect: () => set({ colour: c.id }),
   }));
+  const moves: MenuEntry[] = [
+    {
+      id: "none",
+      label: "No camera move",
+      checked: !m,
+      disabled: recording,
+      onSelect: () => session.set({ move: null }),
+    },
+    { kind: "separator", id: "s" },
+    ...CAMERA_MOVES.map((p) => ({
+      id: p.id,
+      label: p.label,
+      checked: m?.id === p.id,
+      disabled: recording,
+      onSelect: () => {
+        session.set({ move: moveStart(p.id, length) });
+        // With Draw on, the move goes with the drawing: both from the start.
+        if (d) session.replay?.();
+      },
+    })),
+  ];
   const canRecord = typeof MediaRecorder !== "undefined";
   const record = {
-    title: !canRecord ? "Your browser can't record video" : d?.recording ? "Recording the video" : "Save video: plays it from the start and records it",
-    disabled: !d || d.recording || !canRecord,
-    onClick: () => void session.record?.(),
+    title: !canRecord ? "Your browser can't record video" : recording ? "Recording the video" : "Save video: plays it from the start and records it",
+    disabled: !clip || recording || !canRecord,
+    onClick: () => void (d ? session.record : session.recordMove)?.(),
   };
-  return { d, toggle, play, lengths, colours, record };
+  return { d, m, clip, toggle, play, length, lengths, colours, moves, record };
 }
 
 /**
@@ -540,13 +709,18 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
   );
 }
 
-/** Draw on in the floating bar: the switch, and once on, play and Save video. */
+/** Draw on and camera moves in the floating bar: the switch, the move, and once either is on, play and Save video. */
 function DrawOnButtons({ session }: { session: RenderSession }) {
-  const { d, toggle, play, record } = useDrawOn(session);
+  const { d, m, clip, toggle, play, moves, record } = useDrawOn(session);
   return (
     <>
       <Button icon="sparkle" label="Draw on" title="Draw on: glowing lines trace the model, then it fills in" on={!!d} onClick={toggle} />
-      {d && (
+      <MenuButton
+        label="Camera move"
+        entries={moves}
+        trigger={(p) => <Button {...p} icon="rotate" title={`Camera move: ${m ? movePreset(m.id).label : "none"}`} />}
+      />
+      {clip && (
         <>
           <IconButton icon={play.icon} title={play.title} disabled={play.disabled} onClick={play.onClick} />
           <IconButton icon="video" title={record.title} disabled={record.disabled} onClick={record.onClick} />
@@ -659,7 +833,8 @@ export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
           pressed={!!draw.d}
           onPress={draw.toggle}
         />
-        {draw.d && (
+        <RibbonMenu icon="rotate" label={`Camera move: ${draw.m ? movePreset(draw.m.id).label : "none"}`} short="Camera" entries={draw.moves} />
+        {draw.clip && (
           <>
             <RibbonButton
               icon={draw.play.icon}
@@ -669,14 +844,16 @@ export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
               disabled={draw.play.disabled}
               onPress={draw.play.onClick}
             />
-            <RibbonMenu icon="sliders" label={`Length: ${DRAW_LENGTHS.find((x) => x.id === draw.d!.length)!.label}`} short="Length" entries={draw.lengths} />
-            <RibbonMenu
-              icon="paint"
-              colour="sliders"
-              label={`Colour: ${DRAW_COLOURS.find((x) => x.id === draw.d!.colour)!.label}`}
-              short="Colour"
-              entries={draw.colours}
-            />
+            <RibbonMenu icon="sliders" label={`Length: ${DRAW_LENGTHS.find((x) => x.id === draw.length)!.label}`} short="Length" entries={draw.lengths} />
+            {draw.d && (
+              <RibbonMenu
+                icon="paint"
+                colour="sliders"
+                label={`Colour: ${DRAW_COLOURS.find((x) => x.id === draw.d!.colour)!.label}`}
+                short="Colour"
+                entries={draw.colours}
+              />
+            )}
             <RibbonButton icon="video" label={draw.record.title} short="Save video" disabled={draw.record.disabled} onPress={draw.record.onClick} />
           </>
         )}
