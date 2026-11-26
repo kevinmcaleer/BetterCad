@@ -28,8 +28,11 @@ The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VER
 | @fontsource/jetbrains-mono | 5.3.0 | OFL-1.1 | npm |
 | @fontsource/roboto-slab | 5.3.0 | Apache-2.0 | npm |
 | @salusoft89/planegcs | 1.3.0 | LGPL-2.0-or-later | npm |
+| @types/dom-webcodecs | 0.1.19 | MIT | npm |
+| @types/wicg-file-system-access | 2020.9.8 | MIT | npm |
 | js-tokens | 4.0.0 | MIT | npm |
 | loose-envify | 1.4.0 | MIT | npm |
+| mp4-muxer | 5.2.2 | MIT | npm |
 | opentype.js | 1.3.4 | MIT | npm |
 | react | 18.3.1 | MIT | npm |
 | react-dom | 18.3.1 | MIT | npm |
@@ -40,6 +43,7 @@ The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VER
 | three-gpu-pathtracer | 0.0.24 | MIT | npm |
 | three-mesh-bvh | 0.9.18 | MIT | npm |
 | tiny-inflate | 1.0.3 | MIT | npm |
+| webm-muxer | 5.1.4 | MIT | npm |
 | xatlas-web | 0.1.0 | MIT | npm |
 | annotated-doc | 0.0.5 | MIT | PyPI |
 | annotated-types | 0.8.0 | MIT | PyPI |

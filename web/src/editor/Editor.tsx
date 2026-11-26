@@ -730,14 +730,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     if (saved) say(`Saved ${saved.names[0]}`);
   };
   // Draw on's video (the Render view's build-up animation): asked for on the click, recorded while the picker is open.
-  const saveVideo = async (video: Promise<Blob | null>, ext: "mp4" | "webm") => {
+  const saveVideo = async (video: Promise<Blob | null>, ext: "mp4" | "webm", name = "draw on") => {
     const data = video.then((b) => {
       if (!b) throw new Error("No video");
       return b.arrayBuffer();
     });
     data.catch(() => {});
     try {
-      const saved = await files.store.saveFiles([{ name: `${live.current.doc.name} draw on.${ext}`, data, mime: `video/${ext}` }]);
+      const saved = await files.store.saveFiles([{ name: `${live.current.doc.name} ${name}.${ext}`, data, mime: `video/${ext}` }]);
       if (saved) say(`Saved ${saved.names[0]}`);
     } catch {
       say("Your browser couldn't record the video");

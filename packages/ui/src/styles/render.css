@@ -305,3 +305,16 @@
 .bc-icon-btn.bc-render-go:disabled {
   opacity: 0.4;
 }
+/* Play and its drop-down (Image, Video preview, Video render), side by side. */
+.bc-render-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* The ribbon's Play drop-down: the mode's name over a small arrow, beside the big Play. */
+.bc-rb.bc-rb-more {
+  justify-content: center;
+  min-width: 0;
+  padding-inline: var(--bc-space-1);
+  font-size: 11px;
+}

@@ -554,6 +554,46 @@ export class PathRender {
     }
   }
 
+  /**
+   * Path-traces frames for a video render at `width` × `height`: `run` gets a `frame` that moves the camera and
+   * renders `samples` samples there, settling once the canvas holds the finished frame. The view goes back to its own
+   * size and loop afterwards, however `run` ends.
+   */
+  async frames<T>(
+    width: number,
+    height: number,
+    samples: number,
+    run: (frame: (camera: CameraState, signal?: AbortSignal) => Promise<void>) => Promise<T>,
+  ): Promise<T> {
+    this.stopLoop();
+    const pr = this.renderer.getPixelRatio();
+    const before = this.size;
+    try {
+      this.renderer.setPixelRatio(1);
+      this.setSize(width, height);
+      this.tracer.pausePathTracing = false;
+      await this.picturesIn;
+      return await run(async (camera, signal) => {
+        this.setCamera(camera);
+        let last = performance.now();
+        while (this.samples < samples) {
+          if (signal?.aborted) throw new Error("Stopped");
+          this.tracer.renderSample();
+          // Let the page breathe now and then, so the status and Stop keep working.
+          if (performance.now() - last > 50) {
+            await new Promise((r) => setTimeout(r, 0));
+            last = performance.now();
+          }
+        }
+      });
+    } finally {
+      this.renderer.setPixelRatio(pr);
+      this.setSize(before.width, before.height);
+      this.tracer.pausePathTracing = this.paused;
+      this.start();
+    }
+  }
+
   dispose(): void {
     this.stopLoop();
     this.clearModel();
