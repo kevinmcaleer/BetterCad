@@ -41,7 +41,15 @@ export function robotBlocksBoard(): ElectronicsDesign {
     d = pico.design;
     const groups: Record<string, Id> = {};
     for (const [id, at] of LAYOUT) {
-      const placed = placeBlock(d, sheet, buildBlock(STARTER_BLOCKS.find((b) => b.id === id)!, lookup), at);
+      const placed = placeBlock(
+        d,
+        sheet,
+        buildBlock(
+          STARTER_BLOCKS.find((b) => b.id === id)!,
+          lookup,
+        ),
+        at,
+      );
       d = placed.design;
       groups[id] = placed.group!;
     }
@@ -91,7 +99,11 @@ export function robotBlocksBoard(): ElectronicsDesign {
     }
 
     // The Pico's grounds join the blocks' ground by name; the pins it does not use are marked Not connected.
-    const used = new Set(placedPins(d).filter((p) => p.part === pico.part.id && p.name === "GND").map((p) => p.pin));
+    const used = new Set(
+      placedPins(d)
+        .filter((p) => p.part === pico.part.id && p.name === "GND")
+        .map((p) => p.pin),
+    );
     for (const n of used) {
       const at = pin(pico.part.id, n);
       d = addLabel(d, sheet, "GND", at[0], at[1]);
@@ -109,7 +121,11 @@ export function robotBlocksBoard(): ElectronicsDesign {
  */
 function slim(d: ElectronicsDesign): ElectronicsDesign {
   const used = new Map<string, number[]>();
-  for (const p of d.parts) used.set(p.def, [...new Set([...(used.get(p.def) ?? []), p.pkg ?? 0])].sort((a, b) => a - b));
+  for (const p of d.parts)
+    used.set(
+      p.def,
+      [...new Set([...(used.get(p.def) ?? []), p.pkg ?? 0])].sort((a, b) => a - b),
+    );
   const defs = Object.fromEntries(
     Object.entries(d.defs).map(([k, def]) => {
       const keep = used.get(k) ?? [];
