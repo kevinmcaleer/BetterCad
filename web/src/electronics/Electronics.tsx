@@ -8,6 +8,7 @@ import {
   describeChange,
   emptyDesign,
   isPower,
+  netAt,
   netlist,
   realParts,
   tidyValue,
@@ -41,6 +42,7 @@ const OrderBoard = lazy(() => import("./OrderBoard"));
 const BoardChecks = lazy(() => import("./BoardChecks"));
 const BoardSetup = lazy(() => import("./BoardSetup"));
 const BoardProps = lazy(() => import("./BoardProps"));
+const NetProps = lazy(() => import("./NetProps"));
 const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
@@ -1136,6 +1138,11 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
                     )}
                   </>
                 )}
+                {power && part.value && (
+                  <Suspense fallback={null}>
+                    <NetProps design={design} edit={edit} net={part.value} readOnly={readOnly} />
+                  </Suspense>
+                )}
                 {def.source && (
                   <p className="bc-note">
                     From {def.source.library} · {def.source.licence}
@@ -1167,6 +1174,15 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
     );
   }
   const size = design.board ? boardSize(design.board) : null;
+  // A wire or a label on the schematic: the net it is on.
+  const one = ui.view !== "pcb" && ui.selected.length === 1 ? ui.selected[0] : undefined;
+  let net: string | undefined;
+  for (const sh of one ? design.sheets : []) {
+    const w = sh.wires.find((x) => x.id === one);
+    const l = sh.labels.find((x) => x.id === one);
+    net = w ? (netAt(nl, sh.id, w.a) ?? netAt(nl, sh.id, w.b)) : l && (netAt(nl, sh.id, [l.x, l.y]) ?? l.name);
+    if (net) break;
+  }
   return (
     <PropsPanel
       sections={[
@@ -1178,6 +1194,10 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
               {ui.view === "pcb" && ui.selected.length > 0 ? (
                 <Suspense fallback={null}>
                   <BoardProps design={design} edit={edit} readOnly={readOnly} selected={ui.selected} />
+                </Suspense>
+              ) : net ? (
+                <Suspense fallback={null}>
+                  <NetProps design={design} edit={edit} net={net} readOnly={readOnly} />
                 </Suspense>
               ) : (
                 <p className="bc-note">{ui.selected.length > 1 ? "Drag to move them together." : "Select a part to see its value, package and pins."}</p>

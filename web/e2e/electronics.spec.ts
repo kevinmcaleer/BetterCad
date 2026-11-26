@@ -589,6 +589,36 @@ test.describe("on a wide screen", () => {
     });
   }
 
+  test("a track's net in the inspector: put it in a Power class and its tracks widen", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("button", { name: "Open the sample board" }).click();
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ })).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("2");
+    await expect(page.getByRole("img", { name: /^PCB: 13 parts/ })).toBeVisible();
+    await page.keyboard.press("f");
+    const net = page.getByRole("group", { name: "Net 5V" });
+    // A 5V track on the bottom copper, across the middle of the board's lower edge.
+    await expect(async () => {
+      await press(page, 25, 66.8);
+      await expect(net).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(net.getByText("Top, Bottom")).toBeVisible();
+    await net.getByLabel("Net class").selectOption({ label: "New class…" });
+    await expect(net.getByLabel("Net class")).toHaveValue(/.+/);
+    await expect(net.getByLabel(/^Power track width/)).toHaveValue("0.5");
+    await expect(async () => {
+      const field = net.getByLabel(/^Power track width/);
+      await field.fill("0.6");
+      await field.press("Enter");
+      await expect(page.getByRole("group", { name: "Track" }).getByLabel(/^Width/)).toHaveValue("0.6", { timeout: 2_000 });
+    }).toPass({ timeout: 10_000 });
+  });
+
   test("autoroute: the connections left are routed, and one undo takes them out", async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto("/");

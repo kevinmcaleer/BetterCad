@@ -199,13 +199,17 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
 
   // The status strip and the switcher say how much is left to route, with the copper counted.
   useEffect(() => {
-    if (eui.get().unrouted !== air.length) eui.set({ unrouted: air.length });
-  }, [air.length]);
+    const airs: Record<string, number> = {};
+    for (const a of air) airs[a.net] = (airs[a.net] ?? 0) + 1;
+    const was = eui.get().airs;
+    const same = was && Object.keys(was).length === Object.keys(airs).length && Object.entries(airs).every(([n, k]) => was[n] === k);
+    if (eui.get().unrouted !== air.length || !same) eui.set({ unrouted: air.length, ...(same ? {} : { airs }) });
+  }, [air]);
   const onCopper = (board?.tracks.length ?? 0) + (board?.vias.length ?? 0);
   useEffect(() => {
     if (eui.get().routed !== onCopper) eui.set({ routed: onCopper });
   }, [onCopper]);
-  useEffect(() => () => eui.set({ unrouted: null, routed: null }), []);
+  useEffect(() => () => eui.set({ unrouted: null, airs: null, routed: null }), []);
   useEffect(() => {
     if (tool !== "route") setRoute(null);
     setArea([]);
