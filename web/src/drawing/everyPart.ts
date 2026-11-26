@@ -1,4 +1,4 @@
-import { newSheet, standardFor, type Drawing, type DrawingView } from "@bettercad/kernel/drawing";
+import { newSheet, standardFor, type DrawingSheet, type DrawingView } from "@bettercad/kernel/drawing";
 import { newId, type ModelDoc } from "../state/document";
 import { firstPictures, standardViews } from "./firstViews";
 import { sheetLayout, today } from "./layout";
@@ -6,10 +6,28 @@ import { modelParts, type ListedBody, type ListedComponent, type PartsRow } from
 import { lastSheet } from "./prefs";
 import type { ViewCall } from "./useModelViews";
 
+/** The drawing Drawing of every part fills, a page for each part. */
+export const PARTS_DRAWING = "Parts";
+
 /**
- * Make drawings of every part (#574): a drawing for each row of the parts list, named for its part, on the page you
- * last set up, with a front view, the views beside it and an isometric. A track's link gets one too (`withTrackLinks`). A part that already has a drawing of its
- * name is left alone, so running it again only adds what is new.
+ * The drawing called `name` with pages added: a new drawing at the end when there is none of that name yet. Its
+ * sheet names are the ones taken, so a page is only made for what has none.
+ */
+export function withPages(doc: ModelDoc, name: string, sheets: DrawingSheet[], newId: (kind: string) => string): ModelDoc {
+  if (!sheets.length) return doc;
+  const had = (doc.drawings ?? []).find((d) => d.name === name);
+  if (had) return { ...doc, drawings: (doc.drawings ?? []).map((d) => (d === had ? { ...d, sheets: [...d.sheets, ...sheets] } : d)) };
+  return { ...doc, drawings: [...(doc.drawings ?? []), { id: newId("dr"), name, decimals: 2, sheets }] };
+}
+
+/** The pages a drawing already has, by name: none when there is no drawing of that name. */
+export const pagesOf = (doc: ModelDoc, name: string) => new Set((doc.drawings ?? []).find((d) => d.name === name)?.sheets.map((s) => s.name) ?? []);
+
+/**
+ * Drawing of every part (#574): one drawing, Parts, with a page for each row of the parts list, named for its
+ * part, on the page size you last set up, with a front view, the views beside it and an isometric. A track's link gets
+ * one too (`withTrackLinks`). A part that already has a page of its name is left alone, so running it again only adds
+ * what is new.
  */
 export async function partDrawings(
   doc: ModelDoc,
@@ -20,16 +38,16 @@ export async function partDrawings(
 ): Promise<{ doc: ModelDoc; made: string[]; skipped: number }> {
   const model = { ...doc };
   delete model.drawings;
-  const taken = new Set((doc.drawings ?? []).map((d) => d.name));
+  const taken = pagesOf(doc, PARTS_DRAWING);
   const pick = lastSheet();
-  const drawings: Drawing[] = [];
+  const sheets: DrawingSheet[] = [];
   let skipped = 0;
   for (const row of rows) {
     if (taken.has(row.name)) {
       skipped++;
       continue;
     }
-    const sheet = newSheet("Sheet 1", {
+    const sheet = newSheet(row.name, {
       ...pick,
       standard: pick.standard ?? standardFor(pick.size),
       date: today(),
@@ -43,14 +61,9 @@ export async function partDrawings(
       continue;
     }
     taken.add(row.name);
-    drawings.push({
-      id: o.newId("dr"),
-      name: row.name,
-      decimals: 2,
-      sheets: [standardViews({ ...sheet, id: o.newId("sh") }, l, row.shows, pics, () => o.newId("vw"))],
-    });
+    sheets.push(standardViews({ ...sheet, id: o.newId("sh") }, l, row.shows, pics, () => o.newId("vw")));
   }
-  return { doc: drawings.length ? { ...doc, drawings: [...(doc.drawings ?? []), ...drawings] } : doc, made: drawings.map((d) => d.name), skipped };
+  return { doc: withPages(doc, PARTS_DRAWING, sheets, o.newId), made: sheets.map((s) => s.name), skipped };
 }
 
 /** A track as the parts need it: its parts, the piece (the first link it was made from) first. */
@@ -97,7 +110,7 @@ export async function makeEveryPart(
   upTo: number | undefined,
   say: (text: string, bad?: boolean) => void,
   author?: string,
-): Promise<void> {
+): Promise<string | undefined> {
   say("Making a drawing of every part.");
   const from = store.get();
   try {
@@ -105,11 +118,27 @@ export async function makeEveryPart(
       newId,
       ...(author ? { author } : {}),
     });
-    if (!r.made.length) return say(r.skipped ? "Every part already has a drawing." : "There are no parts to draw yet.");
-    const add = (r.doc.drawings ?? []).slice((from.drawings ?? []).length);
-    store.edit((d) => ({ ...d, drawings: [...(d.drawings ?? []), ...add] }), "Make drawings of every part");
-    say(`Made ${r.made.length} ${r.made.length === 1 ? "drawing" : "drawings"}. They are under Drawings in the browser.`);
+    if (!r.made.length) return void say(r.skipped ? "Every part already has a page." : "There are no parts to draw yet.");
+    store.edit((d) => addPages(d, r.doc, PARTS_DRAWING, newId), "Drawing of every part");
+    say(`${pagesSaid(r.made.length)} to ${PARTS_DRAWING}, one for each part.`);
+    return drawingNamed(store.get(), PARTS_DRAWING);
   } catch {
-    say("Couldn't make the drawings.", true);
+    say("Couldn't make the drawing.", true);
   }
+}
+
+/** The id of the drawing of a name. */
+export const drawingNamed = (doc: ModelDoc, name: string) => (doc.drawings ?? []).find((d) => d.name === name)?.id;
+
+/** "Added 3 pages", "Added a page". */
+export const pagesSaid = (n: number) => (n === 1 ? "Added a page" : `Added ${n} pages`);
+
+/**
+ * The new pages from `made` added to the model as it is now: it may have changed while the views were worked out, so
+ * only the pages are taken across, onto the drawing of that name (made again if it went meanwhile).
+ */
+export function addPages(now: ModelDoc, made: ModelDoc, name: string, newId: (kind: string) => string): ModelDoc {
+  const had = pagesOf(now, name);
+  const got = (made.drawings ?? []).find((d) => d.name === name)?.sheets.filter((s) => !had.has(s.name)) ?? [];
+  return withPages(now, name, got, newId);
 }

@@ -1,0 +1,15 @@
+l1 seen line 0,0 35,0
+a1 seen arc 35,5 r5 4.712..0
+l2 seen line 40,5 40,20
+l3 seen line 40,20 0,20
+l4 seen line 0,20 0,0
+hole seen circle 12,10 r5
+cl hidden line 0,0 40,20
+p:p1 hidden line 0,0 0,0
+p:p2 hidden line 35,0 35,0
+p:p3 hidden line 40,5 40,5
+p:p4 hidden line 40,20 40,20
+p:p5 hidden line 0,20 0,20
+p:c0 hidden line 35,5 35,5
+p:h hidden line 12,10 12,10
+box 0,0 40,20

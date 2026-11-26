@@ -66,6 +66,8 @@ export function targets(view: ModelView): Target[] {
 export function offered(all: Target[]): Target[] {
   const out: Target[] = [];
   for (const t of all) {
+    // A sketch view's point marks are lines of no length: sizes are fixed to them, but there is nothing to click.
+    if (t.kind === "edge" && t.a[0] === t.b[0] && t.a[1] === t.b[1]) continue;
     if (t.kind === "round" && out.some((o) => o.kind === "round" && Math.hypot(o.c[0] - t.c[0], o.c[1] - t.c[1]) < 1e-6 && Math.abs(o.r - t.r) < 1e-6))
       continue;
     out.push(t);

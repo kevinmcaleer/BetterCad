@@ -88,7 +88,7 @@ describe("RibbonTools", () => {
       const opened: string[] = [];
       const registry = createRegistry(() => ctx);
       const cmd = (id: string, label: string): Command => ({ id, label, group: "File", icon: "drawing", run: () => ran.push(id) });
-      registry.register([cmd("drawing.new", "New drawing"), cmd("drawing.everyPart", "Make drawings of every part"), cmd("view.render", "Render")]);
+      registry.register([cmd("drawing.new", "New drawing"), cmd("drawing.everyPart", "Drawing of every part"), cmd("view.render", "Render")]);
       render(<RibbonTools tab="drawing" registry={registry} tool="select" panel="parts" drawings={drawings} onOpenDrawing={(id) => opened.push(id)} />);
       return { ran, opened, registry };
     }
@@ -97,7 +97,7 @@ describe("RibbonTools", () => {
       const { ran } = drawingTab();
       const create = screen.getByRole("group", { name: "Create" });
       fireEvent.click(within(create).getByRole("button", { name: "New drawing" }));
-      fireEvent.click(within(create).getByRole("button", { name: "Make drawings of every part" }));
+      fireEvent.click(within(create).getByRole("button", { name: "Drawing of every part" }));
       expect(ran).toEqual(["drawing.new", "drawing.everyPart"]);
     });
 

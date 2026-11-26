@@ -240,9 +240,10 @@ export interface ModelViewRequest extends ProjectOptions {
   /**
    * The whole model, one component with everything in it, or picked bodies. Hidden bodies and holes stay out.
    * `asMade` draws picked bodies as they were made, before a track wrapped them round its wheels or a pose moved them:
-   * a track's first link drawn flat for printing, not tipped where it sits on the track.
+   * a track's first link drawn flat for printing, not tipped where it sits on the track. `sketch` draws one sketch's
+   * curves instead of any body (`sketchView.ts`).
    */
-  shows: { all: true } | { component: string } | { bodies: string[]; asMade?: true };
+  shows: { all: true } | { component: string } | { bodies: string[]; asMade?: true } | { sketch: string };
   frame: ViewFrame;
   /**
    * An exploded view (#574): each component's bodies (each body, when no two are in different components) moved away

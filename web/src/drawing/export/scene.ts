@@ -251,7 +251,7 @@ export function sheetScene(
     // Hidden lines first, so the edges you see are drawn over them. A wireframe draws them solid.
     if (!pic)
       for (const e of view.edges)
-        if (!e.visible)
+        if (!e.visible && !point(e.curve))
           strokes.push(
             style === "wireframe"
               ? { layer: "visible", width: LINES.visible, curve: placed(e.curve, s, ox, oy) }
@@ -329,6 +329,9 @@ export function sheetScene(
   return scene;
 }
 
+/** A line of no length: a sketch view's mark for a point (`sketchView.ts`), there to measure from, not to draw. */
+const point = (c: ViewCurve) => c.kind === "line" && c.a[0] === c.b[0] && c.a[1] === c.b[1];
+
 /**
  * One view on its own at full size, for a laser cutter: just its lines in the model's millimetres, from the bottom
  * left corner of its box. Hidden edges go only when asked for.
@@ -337,7 +340,7 @@ export function viewScene(view: ModelView, hidden: boolean): Scene {
   const { min, max } = view.box;
   const strokes: Stroke[] = [];
   for (const e of view.edges) {
-    if (!e.visible && !hidden) continue;
+    if ((!e.visible && !hidden) || point(e.curve)) continue;
     const curve = placed(e.curve, 1, -min[0], -min[1]);
     strokes.push(e.visible ? { layer: "visible", width: LINES.visible, curve } : { layer: "hidden", width: LINES.hidden, dash: LINES.dash, curve });
   }

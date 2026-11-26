@@ -1,0 +1,15 @@
+l1 seen line 0,0 35,0
+a1 seen poly 25 35,0..40,0
+l2 seen line 40,0 40,0
+l3 seen line 40,0 0,0
+l4 seen line 0,0 0,0
+hole seen poly 97 17,0..17,0
+cl hidden line 0,0 40,0
+p:p1 hidden line 0,0 0,0
+p:p2 hidden line 35,0 35,0
+p:p3 hidden line 40,0 40,0
+p:p4 hidden line 40,0 40,0
+p:p5 hidden line 0,0 0,0
+p:c0 hidden line 35,0 35,0
+p:h hidden line 12,0 12,0
+box 0,0 40,0

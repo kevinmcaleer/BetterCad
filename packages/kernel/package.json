@@ -37,6 +37,7 @@
     "./dim-names": "./src/dimNames.ts",
     "./drawing": "./src/drawing.ts",
     "./view": "./src/view.ts",
+    "./sketch-view": "./src/sketchView.ts",
     "./speedmodel": "./src/speedmodel/parts.ts"
   },
   "devDependencies": {

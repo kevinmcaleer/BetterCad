@@ -1,3 +1,4 @@
+import { sketchView } from "../sketchView";
 import type { TopoDS_Shape } from "replicad-opencascadejs";
 import type { OC } from "./oc";
 import {
@@ -677,6 +678,11 @@ export class ModelBuilder {
    */
   view(doc: ModelDoc, upTo = doc.features.length, req: ModelViewRequest, project: typeof projectView): ModelView {
     const built = build(doc, upTo);
+    if ("sketch" in req.shows) {
+      // A sketch's own curves (drawings from sketches): flat already, so no OpenCascade and nothing to keep.
+      const id = req.shows.sketch;
+      return sketchView(built.sketches.find((s) => s.id === id)?.sketch, req.frame, id);
+    }
     const { parts, joints, links, drives, components } = built;
     this.useBlobs(doc);
     let wanted: (id: string) => boolean = () => true;

@@ -677,10 +677,10 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setSelection([]);
     setDrawing(id);
   };
-  const onDrawing = (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart", id?: string, name?: string) => {
+  const onDrawing = (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart" | "fromSketches", id?: string, name?: string) => {
     if (live.current.sketching) return say("Finish the sketch first.");
     if (act === "new") return setSheetCard("new");
-    if (act === "everyPart") return everyPart();
+    if (act === "everyPart" || act === "fromSketches") return pageEach(act);
     if (!id) return;
     if (act === "open" || act === "settings") {
       enterDrawing(id);
@@ -698,11 +698,18 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       void m.startDrawing(store, choice, account?.name, viewCall, at).then(enterDrawing);
     });
   };
-  /** Make drawings of every part (#574): one for each row of the parts list that has none of its name yet. */
-  const everyPart = () => {
-    if (live.current.sketching) return say("Finish the sketch first.");
-    if (!files.shared)
-      void import("../drawing/everyPart").then((m) => m.makeEveryPart(store, parts, built.components, built.tracks ?? [], viewCall, at, say, account?.name));
+  /**
+   * Drawing of every part (#574) and Drawing from sketches: one drawing with a page for each part, or each sketch,
+   * that has none of its name yet. The drawing opens when it is made.
+   */
+  const pageEach = (act: "everyPart" | "fromSketches") => {
+    if (files.shared) return;
+    const open = (id: string | undefined) => id && enterDrawing(id);
+    if (act === "everyPart")
+      void import("../drawing/everyPart").then((m) =>
+        m.makeEveryPart(store, parts, built.components, built.tracks ?? [], viewCall, at, say, account?.name).then(open),
+      );
+    else void import("../drawing/fromSketches").then((m) => m.makeFromSketches(store, built.sketches, viewCall, at, say, account?.name).then(open));
   };
   const onRenderCamera = useCallback((c: CameraState) => {
     renderCam.current = c;
@@ -2314,7 +2321,9 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     recognise: () => {},
     sendSteps: () => {},
     openRender: () => {},
-    drawing: (_act: "new" | "settings" | "finish" | "fit" | "autoMarks" | "arrange" | "partsList" | "balloons" | "everyPart" | DrawingTool) => {},
+    drawing: (
+      _act: "new" | "settings" | "finish" | "fit" | "autoMarks" | "arrange" | "partsList" | "balloons" | "everyPart" | "fromSketches" | DrawingTool,
+    ) => {},
     startTour: () => {},
     printCheck: (_c: PrintCheck) => {},
     toggleProps: () => {},
@@ -2412,8 +2421,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     sendSteps: () => setSendOpen(true),
     openRender: () => openRender(),
     drawing: (act) =>
-      act === "everyPart"
-        ? everyPart()
+      act === "everyPart" || act === "fromSketches"
+        ? onDrawing(act)
         : act === "partsList"
           ? drawingApi.current?.partsList()
           : act === "balloons"
@@ -3124,11 +3133,20 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
       {
         id: "drawing.everyPart",
         scope: "model",
-        label: "Make drawings of every part",
+        label: "Drawing of every part",
         group: "File",
         icon: "drawing",
         run: () => h().drawing("everyPart"),
-        keywords: "2d sheets all components bodies each part drawing batch",
+        keywords: "2d sheets pages all components bodies each part drawing batch",
+      },
+      {
+        id: "drawing.fromSketches",
+        scope: "model",
+        label: "Drawing from sketches",
+        group: "File",
+        icon: "drawing",
+        run: () => h().drawing("fromSketches"),
+        keywords: "2d sheets pages each sketch profile dimensions sizes drawing",
       },
       {
         id: "drawing.partsList",
