@@ -291,6 +291,38 @@ export interface SchGroup {
   id: Id;
   name: string;
   members: Id[];
+  /** Set when the group is a circuit block dropped from the library (#767). */
+  block?: PlacedBlock;
+}
+
+/** What a connection point is for: its icon and colour, and what the rules check expects of it (#767). */
+export type PointKind = "power-in" | "power-out" | "ground" | "i2c-sda" | "i2c-scl" | "signal-in" | "signal-out" | "load" | "plain";
+
+/** A place on a block's outline the rest of the design hooks on. It is a net label on the outline. */
+export interface BlockPoint {
+  /** The label that is the point. */
+  label: Id;
+  name: string;
+  kind: PointKind;
+  /** "3.3 V", "6 to 10 V". */
+  volts?: string;
+  /** What it is for, in a few words. */
+  note?: string;
+  /** The block does not work until this is joined. */
+  required?: boolean;
+}
+
+/** A placed circuit block: which block, which version, and its points. */
+export interface PlacedBlock {
+  def: Id;
+  version: number;
+  /** The block's own tag ("MD1"): the start of its inside net names, so two copies' nets stay apart. */
+  tag: string;
+  points: BlockPoint[];
+  /** What each part inside is for, by part id, in plain words. */
+  notes?: Record<Id, string>;
+  /** The outline as laid out, from the first point's label: it moves with the block. */
+  frame?: { x1: number; y1: number; x2: number; y2: number };
 }
 
 // ---------------------------------------------------------------- the board

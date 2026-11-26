@@ -1,4 +1,7 @@
 import { emptyBox, grow, placeOnSheet, type Box } from "./geom";
+
+/** A label's name as the sheet shows it: inside a block, without the block's tag. */
+export const shownName = (name: string, tag?: string): string => (tag && name.startsWith(`${tag}.`) ? name.slice(tag.length + 1) : name);
 import { eid, type ElectronicsDesign, type Id, type P2, type SchGroup, type SchSymbol, type Sheet, type SymbolDef } from "./model";
 
 /**
@@ -128,6 +131,16 @@ export function symbolBox(def: SymbolDef): Box {
   return b;
 }
 
+/** The shapes and pins of one unit of a symbol drawn in several (a chip with four gates). */
+export function unitOf(def: SymbolDef, unit: number): SymbolDef {
+  if (!(def.units > 1)) return def;
+  return {
+    ...def,
+    pins: def.pins.filter((p) => p.unit === undefined || p.unit === unit),
+    shapes: def.shapes.filter((s) => s.unit === undefined || s.unit === unit),
+  };
+}
+
 /** A symbol's box on the sheet, after turning and mirroring. */
 export function placedBox(def: SymbolDef, at: Pick<SchSymbol, "x" | "y" | "rot" | "mirror">): Box {
   const b = symbolBox(def);
@@ -163,23 +176,35 @@ export function groupBoxes(d: ElectronicsDesign, sheet: Sheet): GroupOutline[] {
   const out: GroupOutline[] = [];
   for (const g of sheet.groups) {
     const b = emptyBox();
+    const points = new Set(g.block?.points.map((p) => p.label));
     for (const id of g.members) {
+      if (points.has(id)) continue;
       const s = syms.get(id);
       const def = s && d.defs[parts.get(s.part)?.def ?? ""];
       // Room for the reference and value printed beside the body.
       if (s && def) {
-        const sb = placedBox(def.symbol, s);
+        const sb = placedBox(unitOf(def.symbol, s.unit), s);
         grow(grow(b, [sb.x1, sb.y1], 1.5), [sb.x2, sb.y2], 1.5);
       }
       const w = wires.get(id);
       if (w) grow(grow(b, w.a), w.b);
       const l = labels.get(id);
-      if (l) grow(grow(b, [l.x, l.y]), [l.x + Math.max(2, l.name.length * 0.95), l.y + 1.8]);
+      if (l) {
+        const w = Math.max(2, shownName(l.name, g.block?.tag).length * 0.95);
+        grow(grow(b, [l.x, l.y]), [l.x + (l.rot === 180 ? -w : w), l.y + 1.8]);
+      }
       const j = dots.get(id);
       if (j) grow(b, [j.x, j.y], 0.6);
     }
     if (b.x1 === Infinity) continue;
-    out.push({ id: g.id, name: g.name, box: { x1: b.x1 - GROUP_PAD, y1: b.y1 - GROUP_PAD, x2: b.x2 + GROUP_PAD, y2: b.y2 + GROUP_PAD } });
+    const box = { x1: b.x1 - GROUP_PAD, y1: b.y1 - GROUP_PAD, x2: b.x2 + GROUP_PAD, y2: b.y2 + GROUP_PAD };
+    // A block keeps the outline it was laid out with (#767), measured from its first point, so its points sit on it.
+    const first = g.block?.frame && labels.get(g.block.points[0]?.label ?? "");
+    if (first) {
+      const f = g.block!.frame!;
+      grow(grow(box, [first.x + f.x1, first.y + f.y1]), [first.x + f.x2, first.y + f.y2]);
+    }
+    out.push({ id: g.id, name: g.name, box });
   }
   return out;
 }

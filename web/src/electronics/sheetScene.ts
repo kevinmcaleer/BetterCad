@@ -18,6 +18,7 @@ import { newSheet, type SheetSize, type TitleBlock } from "@bettercad/kernel/dra
 import { sheetScene, type Fill, type Label, type Scene, type Stroke } from "../drawing/export/scene";
 import { sheetLayout } from "../drawing/layout";
 import { teePoints } from "./drawSchematic";
+import { shownName } from "@bettercad/electronics/groups";
 import { groupOutlines } from "./hit";
 import { sheetBox } from "./SchematicCanvas";
 
@@ -112,7 +113,8 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
   };
 
   // Group outlines (#766): a thin box with the group's name on its top edge.
-  for (const o of groupOutlines(d, sheet)) {
+  const outlines = groupOutlines(d, sheet);
+  for (const o of outlines) {
     const { x1, y1, x2, y2 } = o.box;
     line(
       (
@@ -137,8 +139,46 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
     const def = part && d.defs[part.def];
     if (part && def) symbol(def.symbol, y, part.ref, part.value);
   }
+  // Inside a block, labels print without its tag, and its points as a diamond with the name inside the outline (#767).
+  const tagOf = new Map<string, string>();
+  const points = new Map<string, { name: string; side: "start" | "end" | "middle"; dy: number }>();
+  for (const o of outlines) {
+    const g = sheet.groups?.find((x) => x.id === o.id)?.block;
+    if (!g) continue;
+    for (const m of sheet.groups!.find((x) => x.id === o.id)!.members) tagOf.set(m, g.tag);
+    for (const p of g.points) {
+      const l = sheet.labels.find((x) => x.id === p.label);
+      if (l)
+        points.set(l.id, {
+          name: p.volts ? `${p.name} · ${p.volts}` : p.name,
+          side: Math.abs(l.x - o.box.x1) < 0.01 ? "start" : Math.abs(l.x - o.box.x2) < 0.01 ? "end" : "middle",
+          dy: Math.abs(l.y - o.box.y2) < 0.01 ? -1.6 : 1.6,
+        });
+    }
+  }
   for (const l of sheet.labels) {
-    text(l.name, P([l.x + 0.3, l.y + 0.3]), 1.27, "start", "alphabetic");
+    const point = points.get(l.id);
+    if (point) {
+      const r = 0.6;
+      line(
+        (
+          [
+            [l.x - r, l.y],
+            [l.x, l.y + r],
+            [l.x + r, l.y],
+            [l.x, l.y - r],
+            [l.x - r, l.y],
+          ] as P2[]
+        ).map(P),
+        pen(0.15),
+      );
+      const dx = point.side === "start" ? 1.2 : point.side === "end" ? -1.2 : 0;
+      text(point.name, P([l.x + dx, l.y + (point.side === "middle" ? point.dy : 0)]), 1.2, point.side, "central");
+      continue;
+    }
+    const name = shownName(l.name, tagOf.get(l.id));
+    if (l.rot === 180) text(name, P([l.x - 0.3, l.y + 0.3]), 1.27, "end", "alphabetic");
+    else text(name, P([l.x + 0.3, l.y + 0.3]), 1.27, "start", "alphabetic");
     disc(P([l.x, l.y]), 0.25 * s);
   }
   for (const n of sheet.noConnects) {

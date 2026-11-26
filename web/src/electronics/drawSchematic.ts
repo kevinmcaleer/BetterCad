@@ -9,11 +9,14 @@ import {
   type ElectronicsDesign,
   type P2,
   type SchSymbol,
+  type BlockPoint,
+  type PointKind,
   type Shape,
   type Sheet,
   type SymbolDef,
 } from "@bettercad/electronics";
 import type { Colours } from "./colours";
+import { shownName } from "@bettercad/electronics/groups";
 import type { GroupOutline } from "./hit";
 import { gridStep, toScreen, toWorld, type View2D } from "./view2d";
 
@@ -268,14 +271,28 @@ export function drawSchematic(
   }
   // A name that carries on to another sheet says which (#636).
   const far = d.sheets.length > 1 ? elsewhere(d, sheet.id) : null;
+  // Inside a circuit block, labels show without the block's tag, and its points are drawn as terminals (#767).
+  const tagOf = new Map<string, string>();
+  const pointOf = new Map<string, { point: BlockPoint; box: GroupOutline["box"] }>();
+  for (const g of sheet.groups ?? []) {
+    if (!g.block) continue;
+    for (const m of g.members) tagOf.set(m, g.block.tag);
+    const box = look.groups?.outlines.find((o) => o.id === g.id)?.box;
+    if (box) for (const p of g.block.points) pointOf.set(p.label, { point: p, box });
+  }
   for (const l of sheet.labels) {
     const s = toScreen(v, [l.x, l.y]);
     const on = look.selected.has(l.id) || look.hover === l.id;
+    const point = pointOf.get(l.id);
+    if (point) {
+      drawPoint(ctx, v, [l.x, l.y], point.point, point.box, c, on || !!look.lit?.has(l.id), point.point.kind !== "ground" && !pointJoined(sheet, [l.x, l.y]));
+      continue;
+    }
     ctx.fillStyle = on ? c.accent : c["ec-wire"];
     ctx.font = `600 ${Math.max(1, 1.27 * v.scale)}px ${c.mono}`;
-    ctx.textAlign = "left";
+    ctx.textAlign = l.rot === 180 ? "right" : "left";
     ctx.textBaseline = "bottom";
-    ctx.fillText(l.name, s[0] + 2, s[1] - 2);
+    ctx.fillText(shownName(l.name, tagOf.get(l.id)), l.rot === 180 ? s[0] - 2 : s[0] + 2, s[1] - 2);
     ctx.fillRect(s[0] - 1.5, s[1] - 1.5, 3, 3);
     const to = far?.get(l.name);
     if (to) {
@@ -323,6 +340,63 @@ export function drawSchematic(
     ctx.stroke();
   }
   if (look.box) rubber(ctx, v, look.box, c);
+}
+
+/** True when a wire ends on a point or runs through it, so something outside its block is joined to it. */
+export function pointJoined(sheet: Sheet, at: P2): boolean {
+  const k = key(at[0], at[1]);
+  return sheet.wires.some((w) => key(w.a[0], w.a[1]) === k || key(w.b[0], w.b[1]) === k || onSegment(at, w.a, w.b));
+}
+
+/** The colour token a connection point is drawn in, by what it is for. */
+export function pointColour(kind: PointKind, c: Colours): string {
+  if (kind === "power-in" || kind === "power-out") return c.danger;
+  if (kind === "ground") return c.ink;
+  if (kind === "i2c-sda" || kind === "i2c-scl") return c.accent;
+  if (kind === "load") return c.snap;
+  return c["ec-wire"];
+}
+
+/**
+ * A block's connection point (#767): a small terminal on the outline in its kind's colour, with its name just inside.
+ * An open ring until something outside joins it is the sheet's open-end mark, drawn with the rest.
+ */
+export function drawPoint(ctx: CanvasRenderingContext2D, v: View2D, at: P2, p: BlockPoint, box: GroupOutline["box"], c: Colours, on: boolean, open = false) {
+  const s = toScreen(v, at);
+  const r = Math.max(3, 0.55 * v.scale);
+  const colour = pointColour(p.kind, c);
+  ctx.save();
+  ctx.fillStyle = colour;
+  ctx.strokeStyle = on ? c.accent : c.ink;
+  ctx.lineWidth = on ? 2 : 1;
+  ctx.beginPath();
+  ctx.moveTo(s[0] - r, s[1]);
+  ctx.lineTo(s[0], s[1] - r);
+  ctx.lineTo(s[0] + r, s[1]);
+  ctx.lineTo(s[0], s[1] + r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  if (open) {
+    // Not joined to anything outside yet: a ring round it.
+    ctx.strokeStyle = c["ec-mark"];
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.arc(s[0], s[1], r + 3, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // The name sits inside the outline, away from the edge the point is on.
+  const left = Math.abs(at[0] - box.x1) < 0.01;
+  const right = Math.abs(at[0] - box.x2) < 0.01;
+  const top = !left && !right && Math.abs(at[1] - box.y2) < 0.01;
+  ctx.fillStyle = on ? c.accent : c.ink;
+  ctx.font = `600 ${Math.max(9, 1.15 * v.scale)}px ${c.font}`;
+  ctx.textAlign = left ? "left" : right ? "right" : "center";
+  ctx.textBaseline = left || right ? "middle" : top ? "top" : "bottom";
+  const gap = r + 3;
+  const text = p.volts ? `${p.name} · ${p.volts}` : p.name;
+  ctx.fillText(text, s[0] + (left ? gap : right ? -gap : 0), s[1] + (left || right ? 0 : top ? gap : -gap));
+  ctx.restore();
 }
 
 /** A group's outline: a rounded box with its name on the top edge. Dashed while it is gone into. */

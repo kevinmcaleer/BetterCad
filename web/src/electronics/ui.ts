@@ -1,4 +1,11 @@
-import type { ComponentDef, CopperLayer, P2 } from "@bettercad/electronics";
+import type { ComponentDef, CopperLayer, ElectronicsDesign, P2 } from "@bettercad/electronics";
+import type { BuiltBlock } from "@bettercad/electronics/blocks";
+
+/** A block being placed: the block, and the edit that drops it, which comes with the lazily loaded Blocks tab. */
+export interface PlacingBlock {
+  built: BuiltBlock;
+  place: (d: ElectronicsDesign, sheet: string, at: P2) => { design: ElectronicsDesign; ids: string[] };
+}
 import type { LayerId } from "./drawBoard";
 
 /** Which electronics view covers the 3D view. 3D is the model itself, so it is "no electronics view". */
@@ -22,6 +29,8 @@ export interface EUi {
   placing: ComponentDef | null;
   /** Which of its packages the placed part will use. */
   placingPkg: number;
+  /** A circuit block riding on the pointer while placing (#768). */
+  placingBlock: PlacingBlock | null;
   layer: CopperLayer;
   hidden: LayerId[];
   /** Cards that are open over the view. */
@@ -61,6 +70,7 @@ const start = (): EUi => ({
   net: null,
   placing: null,
   placingPkg: 0,
+  placingBlock: null,
   layer: "top",
   hidden: [],
   card: null,

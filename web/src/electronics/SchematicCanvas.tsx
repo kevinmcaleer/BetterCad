@@ -29,7 +29,7 @@ import {
   type Rot,
   type Sheet,
 } from "@bettercad/electronics";
-import { groupOf, groupOnSheet, groupsIn, renameGroup, ungroupOnSheet, wholeGroups } from "@bettercad/electronics/groups";
+import { groupOf, groupOnSheet, groupsIn, renameGroup, ungroupOnSheet, unitOf, wholeGroups } from "@bettercad/electronics/groups";
 import { ESC, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
@@ -170,7 +170,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     // Under the pointer when it is over the sheet; else, and for a duplicate, two grid steps down and right.
     const from = clipOrigin(clip);
     const [dx, dy] = !beside && cursor ? [cursor[0] - from[0], cursor[1] - from[1]] : [2 * GRID, -2 * GRID];
-    eui.set({ schTool: "select", placing: null });
+    eui.set({ schTool: "select", placing: null, placingBlock: null });
     edit(
       (d) => {
         const pasted = pasteOnSheet(d, sheet.id, clip, dx, dy);
@@ -252,7 +252,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
 
   // Esc backs out one layer: the wire corner, then the tool, then the selection.
   useEscape(tool === "wire" && !!from, () => setFrom(null), ESC.drag);
-  useEscape(tool !== "select", () => eui.set({ schTool: "select", placing: null }), ESC.tool);
+  useEscape(tool !== "select", () => eui.set({ schTool: "select", placing: null, placingBlock: null }), ESC.tool);
   useEscape(tool === "select" && ui.selected.length > 0, () => eui.set({ selected: [] }), ESC.selection);
   useEscape(tool === "select" && !!inside && !ui.selected.length, () => eui.set({ inGroup: null }), ESC.selection);
 
@@ -318,6 +318,16 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       drag.current = null;
       return;
     }
+    if (tool === "place" && ui.placingBlock) {
+      const { built, place } = ui.placingBlock;
+      edit((d) => {
+        const placed = place(d, sheet.id, at);
+        // Picked once it lands, so it can be dragged straight into place; placing stops after one.
+        queueMicrotask(() => eui.set({ selected: placed.ids, schTool: "select", placingBlock: null }));
+        return placed.design;
+      }, `Place ${built.spec.name}`);
+      return;
+    }
     if (tool === "place") {
       const def = ui.placing;
       if (!def) return;
@@ -340,6 +350,17 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
 
   const ghost = useMemo(() => {
     if (!cursor) return undefined;
+    if (tool === "place" && ui.placingBlock) {
+      const c = ui.placingBlock.built.clip;
+      const defOf = new Map(c.parts.map((p) => [p.id, c.defs[p.def]!]));
+      return {
+        symbols: c.symbols.map((s) => ({ def: unitOf(defOf.get(s.part)!.symbol, s.unit), at: { x: s.x + cursor[0], y: s.y + cursor[1], rot: s.rot } })),
+        wires: c.wires.map((w): [P2, P2] => [
+          [w.a[0] + cursor[0], w.a[1] + cursor[1]],
+          [w.b[0] + cursor[0], w.b[1] + cursor[1]],
+        ]),
+      };
+    }
     if (tool === "place" && ui.placing)
       return { symbols: [{ def: ui.placing.symbol, at: { x: cursor[0], y: cursor[1], rot: turnBy, mirror: flipped }, value: ui.placing.value }] };
     if (tool === "wire" && from) {
@@ -347,7 +368,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       return { wires: pts.slice(1).map((b, i) => [pts[i]!, b] as [P2, P2]) };
     }
     return undefined;
-  }, [cursor, tool, ui.placing, from, turnBy, flipped]);
+  }, [cursor, tool, ui.placing, ui.placingBlock, from, turnBy, flipped]);
 
   /** Hovering a wire or a label lights its whole net across the sheet. */
   const lit = useMemo(() => {

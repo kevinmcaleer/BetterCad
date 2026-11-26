@@ -65,6 +65,7 @@ export function showView(to: EView | null, d?: ElectronicsDesign): void {
     ...(to ? { last: to } : {}),
     selected: to ? selected : [],
     placing: null,
+    placingBlock: null,
     schTool: "select",
     pcbTool: "select",
     card: null,

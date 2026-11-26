@@ -41,6 +41,7 @@ const OrderBoard = lazy(() => import("./OrderBoard"));
 const BoardChecks = lazy(() => import("./BoardChecks"));
 const BoardSetup = lazy(() => import("./BoardSetup"));
 const BoardProps = lazy(() => import("./BoardProps"));
+const GroupProps = lazy(() => import("./GroupProps"));
 const NetProps = lazy(() => import("./NetProps"));
 const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
@@ -63,20 +64,20 @@ interface Tool {
   run: () => void;
 }
 
-const arm = (t: SchTool) => () => eui.set({ schTool: eui.get().schTool === t ? "select" : t, placing: null, card: null });
+const arm = (t: SchTool) => () => eui.set({ schTool: eui.get().schTool === t ? "select" : t, placing: null, placingBlock: null, card: null });
 const armPcb = (t: PcbTool) => () => eui.set({ pcbTool: eui.get().pcbTool === t ? "select" : t, card: null });
 
 /** Components: opens the list of parts, or lets go of the part being placed (the way out on a touch screen). */
 const pickPart = () => {
   const ui = eui.get();
-  if (ui.schTool === "place") eui.set({ schTool: "select", placing: null });
+  if (ui.schTool === "place") eui.set({ schTool: "select", placing: null, placingBlock: null });
   else eui.set({ card: ui.card === "components" ? null : "components" });
 };
 
 /** The tools of the open view, in ribbon order. The ribbon and the compact bar both draw from this. */
 function useTools(view: EView, readOnly: boolean): Tool[] {
   const ui = useEui();
-  const none = ui.selected.length === 0 && !ui.placing;
+  const none = ui.selected.length === 0 && !ui.placing && !ui.placingBlock;
   const find: Tool = {
     id: "find",
     group: "View",
@@ -1051,8 +1052,8 @@ export default function ElectronicsView({
               </button>
             )}
             <span className="bc-ec-status-far">
-              {ui.schTool === "place" && ui.placing
-                ? `Placing ${ui.placing.name}. Click to place, Esc to stop.`
+              {ui.schTool === "place" && (ui.placing || ui.placingBlock)
+                ? `Placing ${ui.placing?.name ?? ui.placingBlock!.built.spec.name}. Click to place, Esc to stop.`
                 : ui.schTool === "wire"
                   ? "Click a pin to start a wire, click again to turn or finish."
                   : ui.net
@@ -1093,6 +1094,19 @@ export function ElectronicsProps({ design: saved, edit, readOnly }: { design: El
   // A symbol's id on the schematic, a part's own id on the board.
   const partId =
     design.sheets.flatMap((s) => s.symbols).find((y) => ui.selected.includes(y.id))?.part ?? design.parts.find((p) => ui.selected.includes(p.id))?.id;
+  // A whole group picked on the schematic, and nothing else (#766).
+  const openSheet = design.sheets.find((x) => x.id === ui.sheet) ?? design.sheets[0];
+  const picked = new Set(ui.selected);
+  const group =
+    ui.view !== "pcb" && ui.selected.length && !ui.inGroup
+      ? openSheet?.groups?.find((g) => g.members.length === picked.size && g.members.every((m) => picked.has(m)))
+      : undefined;
+  if (group && openSheet)
+    return (
+      <Suspense fallback={null}>
+        <GroupProps design={design} sheet={openSheet.id} group={group} edit={edit} readOnly={readOnly} />
+      </Suspense>
+    );
   const part = ui.selected.length === 1 ? design.parts.find((p) => p.id === partId) : undefined;
   const def = part && design.defs[part.def];
   if (part && def) {
