@@ -27,28 +27,33 @@ function setup(over: Partial<TopBarProps> = {}) {
   return p;
 }
 
-describe("Save split button", () => {
-  it("saves on a click, without opening a menu", () => {
+describe("File menu", () => {
+  it("saves from the first entry", () => {
     const p = setup();
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "File" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /^Save/ }));
     expect(p.onSave).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("opens Share, Versions and Export from the arrow", () => {
-    const p = setup({ cloud: "saved", onShare: vi.fn(), onHistory: vi.fn() });
-    expect(screen.getByRole("button", { name: "Save" })).toHaveAccessibleDescription("Saved to your account");
-    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Share, versions and export" }));
+  it("holds Save, the file entries, Share, Versions, Export and the recent files", () => {
+    const p = setup({
+      cloud: "saved",
+      onShare: vi.fn(),
+      onHistory: vi.fn(),
+      recentEntries: [{ id: "recent:1", label: "Bracket", onSelect: vi.fn() }],
+    });
+    expect(screen.getByRole("button", { name: "File" })).toHaveAccessibleDescription("Saved to your account");
+    fireEvent.click(screen.getByRole("button", { name: "File" }));
     const items = screen.getAllByRole("menuitem").map((el) => el.dataset.label);
-    expect(items).toEqual(["Share…", "Versions…", "Export…", "Build steps (.zip)…", "Send to kevsrobots…", "Open…"]);
+    expect(items).toEqual(["Save", "Open…", "Share…", "Versions…", "Export…", "Build steps (.zip)…", "Send to kevsrobots…", "Bracket"]);
     fireEvent.click(screen.getByRole("menuitem", { name: /Versions/ }));
     expect(p.onHistory).toHaveBeenCalledOnce();
   });
 
   it("greys out Share and Versions when the model is not in an account", () => {
     setup();
-    fireEvent.click(screen.getByRole("button", { name: "Share, versions and export" }));
+    fireEvent.click(screen.getByRole("button", { name: "File" }));
     expect(screen.getByRole("menuitem", { name: /Share/ })).toBeDisabled();
     expect(screen.getByRole("menuitem", { name: /Versions/ })).toBeDisabled();
     expect(screen.getByRole("menuitem", { name: /Export/ })).toBeTruthy();
@@ -56,14 +61,14 @@ describe("Save split button", () => {
 });
 
 describe("New model button", () => {
-  it("sits beside Save so starting over is easy to find", () => {
+  it("sits beside File so starting over is easy to find", () => {
     const onNewModel = vi.fn();
     setup({ onNewModel });
     fireEvent.click(screen.getByRole("button", { name: "New model" }));
     expect(onNewModel).toHaveBeenCalledOnce();
   });
 
-  it("stays in the Save menu on a phone", () => {
+  it("stays in the File menu on a phone", () => {
     setup({ onNewModel: vi.fn(), phone: true });
     expect(screen.queryByRole("button", { name: "New model" })).toBeNull();
   });

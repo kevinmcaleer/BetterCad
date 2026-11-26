@@ -59,7 +59,7 @@ test("STEP shows the solid count instead of a resolution, and downloads where it
   await page.goto("/");
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Box", exact: true }).click();
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: /^Export…/ }).click();
   const dialog = page.getByRole("dialog", { name: "Export" });
   await dialog.getByRole("button", { name: "STEP" }).click();

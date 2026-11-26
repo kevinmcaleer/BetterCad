@@ -15,13 +15,13 @@ const add = async (page: Page, shape: string) => {
 async function savedModel(page: Page) {
   await page.goto("/");
   await add(page, "Box");
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bracket");
-  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   // The toast fades after 3 s, and a busy CI runner can draw the save's thumbnail for longer; the Save button
   // is described as "Saved to your account" until the next change.
-  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
+  await expect(page.getByRole("button", { name: "File", exact: true })).toHaveAccessibleDescription("Saved to your account", SAVE);
 }
 
 test("save three times, look at version 1, and restore it", async ({ page, context }) => {
@@ -35,8 +35,8 @@ test("save three times, look at version 1, and restore it", async ({ page, conte
   await page.keyboard.press("ControlOrMeta+s");
   await expect.poll(() => [...server.models.values()][0]!.versions.length, SAVE).toBe(3);
 
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveAccessibleDescription("Saved to your account");
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await expect(page.getByRole("button", { name: "File", exact: true })).toHaveAccessibleDescription("Saved to your account");
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Versions…" }).click();
   const history = page.getByRole("dialog", { name: "Version history" });
   await expect(history.getByText("Version 3 · current")).toBeVisible();
@@ -55,7 +55,7 @@ test("save three times, look at version 1, and restore it", async ({ page, conte
   await history.getByRole("button", { name: "Close" }).first().click();
   await page.getByRole("button", { name: "Back", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: /Sphere 1/ })).toBeVisible();
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Versions…" }).click();
   await page
     .getByRole("dialog", { name: "Version history" })
@@ -74,7 +74,7 @@ test("share a link, view it read-only, open a copy, then turn the link off", { t
   const server = await fakeApi(context);
   await server.signIn(context);
   await savedModel(page);
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Share…" }).click();
   const link = page.getByRole("textbox", { name: "Link" });
   await expect(link).toHaveValue(/\/view\/t\d+$/);
@@ -94,7 +94,7 @@ test("share a link, view it read-only, open a copy, then turn the link off", { t
   await add(viewer, "Cone");
   await expect(viewer.getByRole("treeitem", { name: /Cone 1/ })).toBeVisible();
 
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Share…" }).click();
   await page.getByRole("button", { name: "Turn off the link" }).click();
   await viewer.goto(`/#/view/${token}`);

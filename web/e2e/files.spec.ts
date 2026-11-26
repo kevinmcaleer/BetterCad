@@ -142,7 +142,7 @@ test("asks before a new model throws away unsaved changes, and Undo brings them 
 test("the Save menu still offers New model", async ({ page }) => {
   await page.goto("/");
   await addBox(page);
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: /New model/ }).click();
   await expect(page.getByRole("dialog", { name: "Start a new model?" })).toBeVisible();
 });

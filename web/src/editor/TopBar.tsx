@@ -40,12 +40,14 @@ export interface TopBarProps {
   redoLabel: string;
   onUndo: () => void;
   onRedo: () => void;
-  /** The arrow beside Save: Save as, Open, New, Import and the recent files, after Share, Versions and Export. */
+  /** The File menu's entries after Save: Save as, New, Open and Import. */
   saveEntries: MenuEntry[];
-  /** The Save button's tooltip when the model is not saved to an account: where a click saves to. */
+  /** The recent files, at the foot of the File menu. */
+  recentEntries?: MenuEntry[];
+  /** Save's tooltip in the File menu when the model is not saved to an account: where it saves to. */
   saveTip?: string;
   onSave?: () => void;
-  /** New model: a button beside Save, so starting over is easy to find. */
+  /** New model: a button beside File, so starting over is easy to find. */
   onNewModel?: () => void;
   onPalette: () => void;
   theme: ThemeSetting;
@@ -137,11 +139,20 @@ export function constructEntries(on: (k: ConstructKind) => void): MenuEntry[] {
   return out;
 }
 
-/** The arrow's entries: Share, Versions and Export first, then the file entries from the editor. */
-export function saveMenuEntries(
-  p: Pick<TopBarProps, "saveEntries" | "onShare" | "onHistory" | "onExport" | "onExportSteps" | "onSendSteps" | "sentTo" | "cloud">,
+/**
+ * The File menu's entries: Save, then the editor's file entries (Save as, New, Open, Import), then Share, Versions
+ * and Export, then the recent files.
+ */
+export function fileMenuEntries(
+  p: Pick<
+    TopBarProps,
+    "saveEntries" | "recentEntries" | "onSave" | "saveTip" | "onShare" | "onHistory" | "onExport" | "onExportSteps" | "onSendSteps" | "sentTo" | "cloud"
+  >,
 ): MenuEntry[] {
   return [
+    { id: "save", label: p.saveTip ?? "Save", icon: "save", keys: formatCombo("mod+s"), onSelect: () => p.onSave?.() },
+    ...p.saveEntries,
+    { kind: "separator", id: "s-share" },
     // Share and Versions need the model in an account; they stay in the menu, greyed, so you know where they are.
     { id: "share", label: "Share…", icon: "share", disabled: !p.onShare, onSelect: () => p.onShare?.() },
     { id: "versions", label: "Versions…", icon: "history", disabled: !(p.cloud && p.onHistory), onSelect: () => p.onHistory?.() },
@@ -154,42 +165,50 @@ export function saveMenuEntries(
       disabled: !p.onSendSteps,
       onSelect: () => p.onSendSteps?.(),
     },
-    { kind: "separator", id: "s-file" },
-    ...p.saveEntries,
+    ...(p.recentEntries ?? []),
   ];
 }
 
 /**
- * Save as a split button: a click on Save saves, the arrow beside it opens Share, Versions, Export and the file
- * entries. When the model is saved to an account, the icon and description say how that stands.
+ * The File menu: Save, New, Open, Share, Versions, Export and the recent files. Ctrl+S still saves straight away.
+ * When the model is saved to an account, the icon and description say how that stands.
  */
-function SaveSplit(p: TopBarProps) {
+function FileMenu(p: TopBarProps) {
   const bad = p.cloud === "error" || p.cloud === "offline" || p.cloud === "unreachable" || p.cloud === "signin";
   return (
-    <span className={cx("bc-split", bad && "bc-bad")} role="group" aria-label="Save">
-      <Button
-        variant="primary"
-        icon={
-          p.cloud === "offline" || p.cloud === "unreachable" ? "cloudOff" : p.cloud === "error" || p.cloud === "signin" ? "warning" : p.cloud ? "cloud" : "save"
-        }
-        label="Save"
-        title={p.cloud ? CLOUD_TEXT[p.cloud] : (p.saveTip ?? "Save your model")}
-        shortcut={formatCombo("mod+s")}
-        aria-describedby={p.cloud ? "bc-cloud-state" : undefined}
-        onClick={p.onSave}
+    <>
+      <MenuButton
+        label="File"
+        align="end"
+        entries={fileMenuEntries(p)}
+        trigger={(t) => (
+          <Button
+            {...t}
+            variant="primary"
+            className={cx("bc-file-btn", bad && "bc-bad")}
+            icon={
+              p.cloud === "offline" || p.cloud === "unreachable"
+                ? "cloudOff"
+                : p.cloud === "error" || p.cloud === "signin"
+                  ? "warning"
+                  : p.cloud
+                    ? "cloud"
+                    : "save"
+            }
+            label="File"
+            title="Save, new, open, share and export"
+            aria-describedby={p.cloud ? "bc-cloud-state" : undefined}
+          >
+            <Icon name="chevronDown" size={14} />
+          </Button>
+        )}
       />
       {p.cloud && (
         <span id="bc-cloud-state" className="bc-sr-only">
           {CLOUD_TEXT[p.cloud]}
         </span>
       )}
-      <MenuButton
-        label="Save options"
-        align="end"
-        entries={saveMenuEntries(p)}
-        trigger={(t) => <Button {...t} variant="primary" className="bc-split-arrow" icon="chevronDown" title="Share, versions and export" />}
-      />
-    </span>
+    </>
   );
 }
 
@@ -391,7 +410,7 @@ function rightSide(p: TopBarProps) {
               onClick={p.onNewModel}
             />
           )}
-          <SaveSplit {...p} />
+          <FileMenu {...p} />
         </>
       )}
       {p.helpEntries && !p.phone && (
