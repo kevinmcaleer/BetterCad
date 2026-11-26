@@ -454,6 +454,17 @@ Left for later: dragging a track's or an area's corners, an outline from a face 
 import yet), spokes per pad, gate swapping and pictures
 on the silkscreen.
 
+**Copy, paste and duplicate** (#741). Ctrl+C, Ctrl+V and Ctrl+D work on the board as on a sheet, for tracks, vias,
+pours, keep-outs, text, pictures, holes, fiducials and test points (`pcb/clip.ts`, loaded the first time). A
+picked part copies with the tracks and vias of its pads' nets that lie round the picked parts (`copyBoard`). Pasted
+on its own (`pasteBoard`), the copy lands with its bottom left corner under the pointer and fresh ids. Pieces of
+copper that touch are one run, and a run takes the net of the copper it lands on, or is on no net if that is none
+or two nets; the status line says how many pieces are on no net. Parts are not pasted, since they come from the
+schematic. Pick the same number of matching parts (the same footprints, paired in reference order) and paste: the
+first stays put and the rest are laid out round it as the copied ones were, turned with it, and the routing
+follows with each net swapped for the net of the matching pad. That repeats a routed channel in one undo step.
+Parts on the other side from the copy's are refused with a note to flip them first.
+
 **Stitching vias** (#737). A pour's card has **Via spacing** (5 mm unless you change it) and **Add stitching vias**.
 `stitchPlan` (in `pcb/stitch.ts`, loaded only when asked) walks a grid that many mm apart, lined up with the board's
 origin, and keeps a point only when this pour and another pour of its net on another layer both fill all round a via

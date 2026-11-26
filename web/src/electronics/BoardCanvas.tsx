@@ -42,6 +42,7 @@ import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { readColours } from "./colours";
 import { drawBoard, type LayerId } from "./drawBoard";
+import { getBoardClip, setBoardClip } from "./clip";
 import { boxBoard, hitBoard, placementBox } from "./hitBoard";
 import { measureSnap, measureText } from "./measure";
 import { clearOf } from "./SchematicCanvas";
@@ -398,7 +399,40 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
 
   useEffect(() => {
     const picked = () => eui.get().selected;
+    /** Copy, paste and duplicate (#741): the sums load the first time they are asked for. */
+    const clipboard = () => import("@bettercad/electronics/pcb/clip");
+    const paste = async (beside: boolean) => {
+      if (readOnly || !board) return;
+      const { copyBoard, boardClipOrigin, pasteBoard } = await clipboard();
+      const clip = beside ? copyBoard(design, picked()) : getBoardClip();
+      if (!clip) return;
+      // Onto picked parts that match the copy's, the copy lays them out; else under the pointer, or beside it.
+      const from = boardClipOrigin(clip);
+      const to: P2 = !beside && at ? snap(at, grid) : [from[0] + 5 * grid, from[1] + 5 * grid];
+      const made = pasteBoard(design, clip, to, beside ? [] : picked());
+      if (!made.ids.length && !made.laid) return setSaid(made.why ?? "There was nothing to paste.");
+      edit(() => made.design, beside ? "Duplicate" : made.laid ? "Lay out like the copy" : "Paste");
+      eui.set({ selected: made.laid ? picked() : made.ids });
+      setSaid(
+        [
+          made.laid ? `Laid out ${made.laid} ${made.laid === 1 ? "part" : "parts"} like the copy.` : "",
+          made.offNet
+            ? `${made.offNet} ${made.offNet === 1 ? "piece" : "pieces"} of copper landed on nothing and ${made.offNet === 1 ? "is" : "are"} on no net.`
+            : "",
+          made.why ?? "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    };
     eactions.current = {
+      copy: async () => {
+        const { copyBoard } = await clipboard();
+        const clip = copyBoard(design, picked());
+        if (clip) setBoardClip(clip);
+      },
+      paste: () => void paste(false),
+      duplicate: () => void paste(true),
       fit: () => doFit(),
       rotate: () => !readOnly && picked().length && edit((d) => rotateOnBoard(d, picked()), "Rotate"),
       mirror: () => !readOnly && picked().length && edit((d) => flipOnBoard(d, picked()), "Flip to the other side"),

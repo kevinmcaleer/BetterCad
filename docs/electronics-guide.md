@@ -92,6 +92,8 @@ schematic brings it up to date and lists the changes first.
 5. **Add holes and text.** H adds a mounting hole for a screw. T writes on the silkscreen. If a board house will
    put the parts on, add three **Fiducials** near the corners, not in a line, so its camera can line the board up.
    A **Test point** clicked onto a track gives your meter's probe somewhere to land.
+   To repeat a routed channel, pick its parts, press Ctrl+C, pick the matching parts of the next channel and press
+   Ctrl+V. They are laid out and routed the same way, on their own nets.
 6. **Check it.** Press E for the board check. It finds shorts, gaps that are too small, connections left to route,
    copper too close to the edge, holes too small or too close together and text too small to print, against the
    rules you picked.

@@ -28,6 +28,7 @@
     "./pcb/slide": "./src/pcb/slide.ts",
     "./pcb/marks": "./src/pcb/marks.ts",
     "./pcb/stitch": "./src/pcb/stitch.ts",
+    "./pcb/clip": "./src/pcb/clip.ts",
     "./pcb/shove": "./src/pcb/shove.ts",
     "./pcb/dxf": "./src/pcb/dxf.ts",
     "./pcb/autoroute": "./src/pcb/autoroute.ts",
