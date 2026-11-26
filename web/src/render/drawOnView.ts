@@ -115,7 +115,8 @@ const solidMaterial = (colour: Color, glow: Color) =>
         float fill = max(dot(n, normalize(vec3(0.7, -0.1, 0.5))), 0.0);
         float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
         // Kept under the bloom's threshold, so only the lines and embers glow.
-        vec3 c = uColour * (0.16 + 0.5 * key + 0.16 * fill) + uGlow * rim * 0.25;
+        // The glow's rim fades with the ghosts, so the finished model is just the model.
+        vec3 c = uColour * (0.16 + 0.5 * key + 0.16 * fill) + uGlow * rim * 0.25 * (1.0 - solid());
         gl_FragColor = vec4(c, a);
       }
     `,
@@ -164,15 +165,17 @@ export const TIP_COOLING = 12;
 /**
  * How much to turn the glow down for a busy picture: the share of the model's on-screen size the lines would cover
  * (their total length × their width ÷ the model's size, squared), kept to about what a simple bracket covers. 1 is
- * full glow; a dense model far away goes down to 0.3.
+ * full glow; it falls with the square root of the cover, down to 0.45 for a dense assembly or a model far away.
+ * Overlaps can't add up (the lines keep the brighter colour), so this only takes the edge off a crowded picture.
  */
 export function glowScale(totalLength: number, size: number, widthPx: number, sizePx: number): number {
   if (!(totalLength > 0 && size > 0 && sizePx > 0)) return 1;
   const cover = (totalLength / size) * (widthPx / sizePx);
-  return Math.max(0.3, Math.min(1, Math.sqrt(COVER / cover)));
+  return Math.max(MIN_GLOW, Math.min(1, Math.sqrt(COVER / cover)));
 }
 /** The cover that still gets full glow. */
 const COVER = 0.12;
+const MIN_GLOW = 0.45;
 /** The lines' width in CSS pixels, and the bloom's strength at full glow. */
 const LINE_WIDTH = 2.5;
 const BLOOM = 1.1;
@@ -180,7 +183,7 @@ const BLOOM = 1.1;
 /** Wide line segments that grow from their start as time reaches them, white hot just where they are drawn. */
 const lineMaterial = () =>
   new ShaderMaterial({
-    uniforms: { uTime: { value: 0 }, uGlow: { value: 1 }, uResolution: { value: new Vector2(1, 1) }, uWidth: { value: 2.5 } },
+    uniforms: { uTime: { value: 0 }, uGlow: { value: 1 }, uScale: { value: 1 }, uResolution: { value: new Vector2(1, 1) }, uWidth: { value: 2.5 } },
     vertexShader: /* glsl */ `
       uniform vec2 uResolution;
       uniform float uWidth;
@@ -211,6 +214,7 @@ const lineMaterial = () =>
     fragmentShader: /* glsl */ `
       uniform float uTime;
       uniform float uGlow;
+      uniform float uScale;
       varying float vT;
       varying float vSide;
       varying vec3 vColour;
@@ -219,7 +223,7 @@ const lineMaterial = () =>
         float hot = exp(-(uTime - vT) * ${TIP_COOLING.toFixed(1)});
         float core = 1.0 - abs(vSide);
         core *= core;
-        vec3 c = mix(vColour, vec3(1.0), hot * 0.6) * (${LINE_BRIGHTNESS.toFixed(2)} * uGlow + ${TIP_BRIGHTNESS.toFixed(2)} * hot) * core;
+        vec3 c = mix(vColour, vec3(1.0), hot * 0.6) * (${LINE_BRIGHTNESS.toFixed(2)} * uGlow + ${TIP_BRIGHTNESS.toFixed(2)} * hot * uScale) * core;
         gl_FragColor = vec4(c, 1.0);
       }
     `,
@@ -571,7 +575,9 @@ export class DrawOnView {
         const away = Math.max(1e-3, this.camera.position.distanceTo(e.centre));
         const sizePx = (e.size / (2 * away * Math.tan((FOV * Math.PI) / 360))) * this.size.y;
         const scale = glowScale(e.length, e.size, LINE_WIDTH, sizePx);
-        this.bloom.strength = BLOOM * scale;
+        // The bloom keeps at least half its strength, so a busy model still glows.
+        this.bloom.strength = BLOOM * (0.5 + 0.5 * scale);
+        u.uScale.value = scale;
         // For tests and for checking a model by hand: how far the glow is turned down.
         this.glow = scale;
         this.canvas.dataset.glow = scale.toFixed(2);
