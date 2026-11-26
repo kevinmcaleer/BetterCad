@@ -147,7 +147,7 @@ const viewsOf = (doc: ModelDoc, sheet: DrawingSheet) => {
 };
 const counter = () => {
   let n = 0;
-  return (kind: "dm" | "mk") => `${kind}${++n}`;
+  return (kind: string) => `${kind}${++n}`;
 };
 
 /** The fixture as it is made: its model, three views and Auto dimension run on them. */

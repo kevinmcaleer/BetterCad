@@ -86,9 +86,9 @@ describe("Auto dimension", () => {
     expect(recipes.getAllByRole("radio").map((r) => (r as HTMLInputElement).checked)).toEqual([true, false, false, false]);
     expect(recipes.getByRole("radio", { name: /^Baseline with centre marks/ })).toBeTruthy();
     expect((card().getByRole("combobox", { name: "Measure from" }) as HTMLSelectElement).value).toBe("bottom-left");
-    // Two overall sizes, a hole each way, the holes' size, and the step each way: half way keeps five of the eight.
-    expect(card().getByRole("status").textContent).toBe("5 of 8 dimensions");
-    expect(sizes()).toHaveLength(5);
+    // Two overall sizes, a hole each way, the holes' size, and the step each way: half way suggests all eight.
+    expect(card().getByRole("status").textContent).toBe("8 of 8 dimensions");
+    expect(sizes()).toHaveLength(8);
     expect(sizes()).toContain("Dimension, 60 mm");
     // Nothing is on the sheet yet.
     expect(sheetNow().dimensions).toEqual([]);
@@ -111,11 +111,11 @@ describe("Auto dimension", () => {
     render(<Harness />);
     await open();
     slide(1);
-    await userEvent.click(card().getByRole("radio", { name: /^Chain\s*10 of 10/ }));
+    await userEvent.click(card().getByRole("radio", { name: /^Chain\s*9 of 9/ }));
     // Along the bottom: the edge to the first hole, the hole to the step, the step to the second hole, and on to the end.
     expect(sizes().filter((s) => s === "Dimension, 10 mm").length).toBeGreaterThanOrEqual(3);
     expect(sizes()).toContain("Dimension, 30 mm");
-    expect(card().getByRole("status").textContent).toBe("10 of 10 dimensions");
+    expect(card().getByRole("status").textContent).toBe("9 of 9 dimensions");
   });
 
   it("OK keeps the sizes as automatic ones in rows, with the holes marked when the recipe says so", async () => {

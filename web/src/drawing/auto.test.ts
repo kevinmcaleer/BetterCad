@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { Feature } from "@bettercad/kernel/document";
 import { newSheet, type AutoRecipe, type DrawingDimension, type DrawingSheet, type DrawingView } from "@bettercad/kernel/drawing";
 import type { ModelView, V2 } from "@bettercad/kernel/view";
-import { AUTO_START, autoDimension, candidates, keep, RANKS, type AutoOptions, type Candidate } from "./auto";
+import { AUTO_START, autoDimension, candidates, copiedBodies, keep, RANKS, repeatsOf, suggested, type AutoOptions, type Candidate } from "./auto";
 import { dimArt, dimStyle } from "./dimensions";
 import { targets } from "./marks";
 
@@ -76,7 +77,7 @@ const listed = (o: Partial<AutoOptions> = {}, sheet = sheetOf()) => candidates(s
 
 const count = () => {
   let n = 0;
-  return (kind: "dm" | "mk") => `${kind}${++n}`;
+  return (kind: string) => `${kind}${++n}`;
 };
 
 describe("what Auto dimension offers", () => {
@@ -101,7 +102,7 @@ describe("what Auto dimension offers", () => {
     ]);
   });
 
-  it("measures each position from the one before as a chain", () => {
+  it("measures each position from the one before as a chain, leaving out the link at the far end, which the overall size gives", () => {
     expect(listed({ recipe: "chain" })).toEqual([
       "v1 overall: 60 x",
       "v1 overall: 40 y",
@@ -117,8 +118,6 @@ describe("what Auto dimension offers", () => {
       "v1 hole size: Ø8",
       "v1 hole size: 2× Ø5",
       "v1 step: 10 x",
-      "v1 step: 10 y",
-      "v1 small step: 2 x",
       "v1 small step: 2 y",
       "v1 radius or angle: 135°",
     ]);
@@ -184,7 +183,9 @@ describe("how many sizes", () => {
   it("keeps the overall sizes at least, everything at most, and more as the slider goes up", () => {
     expect(list).toHaveLength(16);
     expect(keep(list, 0)).toBe(3);
-    expect(keep(list, 0.5)).toBe(10);
+    // Half way is the suggested amount: the overall sizes, the holes, and up to five steps a view.
+    expect(keep(list, 0.5)).toBe(13);
+    expect(suggested(list)).toBe(13);
     expect(keep(list, 1)).toBe(16);
     expect(keep(list, 7)).toBe(16);
     expect(keep(list, -1)).toBe(3);
@@ -231,8 +232,8 @@ describe("Auto dimension", () => {
     expect(again.sheet.dimensions[0]).toEqual(mine);
     expect(again.sheet.dimensions.filter((d) => d.auto)).toHaveLength(again.count);
     // The bore has its size from you, so it is not given another.
-    expect(again.total).toBe(17);
-    expect(again.sheet.dimensions).toHaveLength(18);
+    expect(again.total).toBe(15);
+    expect(again.sheet.dimensions).toHaveLength(16);
     expect(again.sheet.auto!.recipe).toBe("chain");
   });
 
@@ -249,5 +250,146 @@ describe("Auto dimension", () => {
   it("says there is nothing to do on an empty sheet", () => {
     const got = autoDimension(sheetOf([]), viewOf, 2, opts(), count());
     expect([got.count, got.total, got.sheet.dimensions.length]).toEqual([0, 0, 0]);
+  });
+});
+
+/**
+ * A 60 × 20 bar from the front with four 4 mm pins along it, made by a Pattern step (p1) from the first (f1), and a
+ * second bar the same, a copy of the body, 30 mm above it. Each pin's sides are lines from the bar up 5 mm.
+ */
+function patterned(): ModelView {
+  const named = (body: string, index: number, name: string, a: V2, b: V2) => ({
+    curve: { kind: "line", a, b },
+    visible: true,
+    type: "sharp",
+    source: { body, kind: "edge" as const, index, name },
+  });
+  const bar = (body: string, y: number) => {
+    const out = [
+      named(body, 0, "base:f1|base:f2", [0, y], [60, y]),
+      named(body, 1, "base:f2|base:f3", [60, y], [60, y + 20]),
+      named(body, 2, "base:f3|base:f4", [60, y + 20], [0, y + 20]),
+      named(body, 3, "base:f4|base:f1", [0, y + 20], [0, y]),
+    ];
+    [8, 22, 36, 50].forEach((x, i) => {
+      const step = i === 0 ? "f1" : "p1";
+      const k = i === 0 ? "" : `#${i}`;
+      out.push(
+        named(body, 10 + i * 3, `base:f3|${step}:side(l1)${k}`, [x, y + 20], [x, y + 25]),
+        named(body, 11 + i * 3, `${step}:cap.end${k}|${step}:side(l2)${k}`, [x, y + 25], [x + 4, y + 25]),
+        named(body, 12 + i * 3, `base:f3|${step}:side(l3)${k}`, [x + 4, y + 25], [x + 4, y + 20]),
+      );
+    });
+    return out;
+  };
+  return { edges: [...bar("b1", 0), ...bar("b2", 30)], box: { min: [0, 0], max: [60, 55] }, rounds: [], bodies: ["b1", "b2"], ms: 1 } as unknown as ModelView;
+}
+const pattern = {
+  id: "p1",
+  type: "pattern",
+  name: "Pattern 1",
+  kind: "rect",
+  of: "features",
+  features: ["f1"],
+  count1: 4,
+  spacing1: 14,
+  count2: 1,
+  spacing2: 10,
+} as unknown as Feature;
+
+describe("patterns and copies", () => {
+  const models2: Record<string, ModelView> = { v1: patterned() };
+  const viewOf2 = (id: string) => models2[id];
+  const repeats = repeatsOf([pattern]);
+  const words = (list: Candidate[]) =>
+    list.map((c) => {
+      const art = dimArt({ ...c.dim, at: [0, -60] } as DrawingDimension, { view: models2.v1!, scale: 1, style: dimStyle("iso"), decimals: 2 });
+      return `${RANKS[c.rank]}: ${art?.text.text}${c.dim.across ? ` ${c.dim.across}` : ""}`;
+    });
+
+  it("reads what each Pattern or Mirror of features makes, and leaves out patterns of bodies", () => {
+    const more = [
+      pattern,
+      { ...pattern, id: "p2", kind: "circle", count: 8, angle: 360 },
+      { ...pattern, id: "p3", kind: "circle", count: 3, angle: 90 },
+      { ...pattern, id: "p4", kind: "mirror" },
+      { ...pattern, id: "p5", count2: 2, spacing2: 10 },
+      { ...pattern, id: "p6", of: "bodies" },
+      { ...pattern, id: "p7", suppressed: true },
+    ] as Feature[];
+    expect([...repeatsOf(more).entries()].map(([id, r]) => `${id} ${r.count} ${r.says}`)).toEqual([
+      "p1 4 4× 14 mm apart",
+      "p2 8 8× equally spaced",
+      "p3 3 3× over 90°",
+      "p4 2 2×, mirrored",
+      "p5 8 4 × 2, 14 mm and 10 mm apart",
+    ]);
+  });
+
+  it("knows a body that is a copy of one before it, wherever it is", () => {
+    expect([...copiedBodies(patterned())]).toEqual(["b2"]);
+  });
+
+  it("measures the first of a pattern and the first copy of a body only", () => {
+    const sheet = sheetOf([v1]);
+    const before = candidates(sheet, viewOf2, opts({ recipe: "chain" }));
+    const after = candidates(sheet, viewOf2, opts({ recipe: "chain" }), repeats);
+    expect(after.length).toBeLessThan(before.length);
+    // Across: the bar's end to the first pin and the pin; the far end is the overall size, the other pins have the note.
+    expect(words(after).filter((w) => w.endsWith(" x"))).toEqual(["overall: 60 x", "small step: 8 x", "small step: 4 x"]);
+    // Up: only the first bar, the copy above it says nothing again.
+    expect(words(after).filter((w) => w.endsWith(" y"))).toEqual(["overall: 25 y", "step: 20 y"]);
+  });
+
+  it("puts a note on the first of a pattern, and replaces it when run again", () => {
+    let n = 0;
+    const id = (k: string) => `${k}${++n}`;
+    const got = autoDimension(sheetOf([v1]), viewOf2, 2, opts(), id, repeats);
+    expect(got.sheet.notes).toEqual([
+      {
+        id: expect.any(String),
+        kind: "leader",
+        text: "4× 14 mm apart",
+        on: expect.objectContaining({ view: "v1", body: "b1", name: "base:f3|f1:side(l1)" }),
+        at: expect.any(Array),
+        auto: true,
+      },
+    ]);
+    const mine = { id: "mine", kind: "text" as const, text: "Print in PETG", at: [10, 10] as V2 };
+    const again = autoDimension({ ...got.sheet, notes: [...got.sheet.notes!, mine] }, viewOf2, 2, opts(), id, repeats);
+    expect(again.sheet.notes!.map((x) => x.text)).toEqual(["Print in PETG", "4× 14 mm apart"]);
+    // With no sizes kept there is nothing for a note to go with.
+    expect(autoDimension(sheetOf([]), viewOf2, 2, opts(), id, repeats).sheet.notes).toBeUndefined();
+  });
+
+  it("places a bolt circle by one hole, and leaves slivers to the corner beside them", () => {
+    const ring = {
+      edges: [line(0, [0, 0], [60, 0]), line(1, [60, 0], [60, 60]), line(2, [60, 60], [0.3, 60]), line(3, [0.3, 60], [0, 59.7]), line(4, [0, 59.7], [0, 0])],
+      box: { min: [0, 0], max: [60, 60] },
+      rounds: [
+        hole(10, "bore", [30, 30], 8),
+        hole(11, "a", [10, 30], 2.5),
+        hole(12, "b", [30, 10], 2.5),
+        hole(13, "c", [50, 30], 2.5),
+        hole(14, "d", [30, 50], 2.5),
+      ],
+      bodies: ["b1"],
+      ms: 1,
+    } as unknown as ModelView;
+    const list = candidates(sheetOf([v1]), (id) => (id === "v1" ? ring : undefined), opts());
+    const texts = list.map((c) => {
+      const art = dimArt({ ...c.dim, at: [0, -60] } as DrawingDimension, { view: ring, scale: 1, style: dimStyle("iso"), decimals: 2 });
+      return `${RANKS[c.rank]}: ${art?.text.text}${c.dim.across ? ` ${c.dim.across}` : ""}`;
+    });
+    expect(texts).toEqual([
+      "overall: 60 x",
+      "overall: 60 y",
+      "hole position: 30 x",
+      "hole position: 30 y",
+      "hole position: 10 x",
+      "hole size: Ø16",
+      "hole size: 4× Ø5",
+      "radius or angle: 135°",
+    ]);
   });
 });

@@ -31,7 +31,7 @@ import {
 import type { ModelView, V2 } from "@bettercad/kernel/view";
 import { fitGap, newId, type ModelDoc } from "../state/document";
 import { arrangeSheet, contextOf, crowded, sheetRows, snapRow, type Crowded } from "./arrange";
-import { AUTO_START, autoDimension, RECIPES, type AutoOptions, type AutoResult } from "./auto";
+import { AUTO_START, autoDimension, RECIPES, repeatsOf, type AutoOptions, type AutoResult } from "./auto";
 import { AutoCard } from "./AutoCard";
 import { BaseViewCard } from "./BaseViewCard";
 import { DimensionCard } from "./DimensionCard";
@@ -842,7 +842,19 @@ function Paper({
     if (v && model) addNote(refTo(viewId, t), noteSpot(t, model, viewScale(sheet, v)));
   };
   const changeNote = (id: string, change: Partial<DrawingNote>, label: string) =>
-    onSheet?.((s) => ({ ...s, notes: (s.notes ?? []).map((n) => (n.id === id ? { ...n, ...change } : n)) }), label);
+    onSheet?.(
+      (s) => ({
+        ...s,
+        notes: (s.notes ?? []).map((n) => {
+          if (n.id !== id) return n;
+          // A note moved or edited by hand is no longer Auto dimension's to replace.
+          const next = { ...n, ...change };
+          delete next.auto;
+          return next;
+        }),
+      }),
+      label,
+    );
   const removeNote = (id: string) => onSheet?.((s) => ({ ...s, notes: (s.notes ?? []).filter((n) => n.id !== id) }), "Delete note");
   const editedNote = editingNote ? sheet.notes?.find((n) => n.id === editingNote) : undefined;
   const startNoteEdit = (id: string) => {
@@ -874,6 +886,8 @@ function Paper({
   };
   // Auto dimension (#566): what it is set to. The sheet shows the result as you choose, and OK keeps it.
   const autoing = tool === "auto" && !readOnly;
+  // Patterns of features: their copies are left to a note on the first (one of eight cogs, "8× equally spaced").
+  const repeats = useMemo(() => repeatsOf(doc?.features), [doc?.features]);
   const [autoOptions, setAutoOptions] = useState<AutoOptions>(AUTO_START);
   useEffect(() => {
     if (!autoing) return;
@@ -886,17 +900,17 @@ function Paper({
     if (!autoing) return null;
     const viewOf = (id: string) => got.get(id)?.view;
     let n = 0;
-    const run = (recipe: AutoRecipe) => autoDimension(sheet, viewOf, drawing.decimals, { ...autoOptions, recipe }, (kind) => `auto-${kind}-${n++}`);
+    const run = (recipe: AutoRecipe) => autoDimension(sheet, viewOf, drawing.decimals, { ...autoOptions, recipe }, (kind) => `auto-${kind}-${n++}`, repeats);
     const shown = run(autoOptions.recipe);
     const counts = Object.fromEntries(RECIPES.map((r) => [r.id, r.id === autoOptions.recipe ? shown : run(r.id)])) as Record<AutoRecipe, AutoResult>;
     return { shown, counts };
-  }, [autoing, sheet, got, drawing.decimals, autoOptions]);
+  }, [autoing, sheet, got, drawing.decimals, autoOptions, repeats]);
   /** The sheet as drawn: with Auto dimension's sizes while its card is up. */
   const live = autoRuns?.shown.sheet ?? followed;
   const keepAuto = () => {
     const viewOf = (id: string) => got.get(id)?.view;
     const count = autoRuns?.shown.count ?? 0;
-    if (count) onSheet?.((s) => autoDimension(s, viewOf, drawing.decimals, autoOptions, (kind) => newId(kind)).sheet, "Auto dimension");
+    if (count) onSheet?.((s) => autoDimension(s, viewOf, drawing.decimals, autoOptions, (kind) => newId(kind), repeats).sheet, "Auto dimension");
     say?.(count ? `Added ${count} ${count === 1 ? "size" : "sizes"}.` : "There was nothing to dimension.");
     if (autoRuns) setCrowd(crowded(autoRuns.shown.sheet, viewOf, drawing.decimals)[0] ?? null);
     onTool?.(null);
@@ -905,8 +919,8 @@ function Paper({
   const runAgain = () => {
     const o = sheet.auto;
     if (!o) return;
-    const count = autoDimension(followed, pictureOf, drawing.decimals, o, (kind) => `x-${kind}`).count;
-    onSheet?.((s) => autoDimension(s, pictureOf, drawing.decimals, o, (kind) => newId(kind)).sheet, "Auto dimension");
+    const count = autoDimension(followed, pictureOf, drawing.decimals, o, (kind) => `x-${kind}`, repeats).count;
+    onSheet?.((s) => autoDimension(s, pictureOf, drawing.decimals, o, (kind) => newId(kind), repeats).sheet, "Auto dimension");
     say?.(count ? `Auto dimension ran again: ${count} ${count === 1 ? "size" : "sizes"}.` : "There was nothing to dimension.");
   };
   const crowdNames = crowd ? [sheet.views.find((v) => v.id === crowd.view), sheet.views.find((v) => v.id === crowd.into)] : [];
