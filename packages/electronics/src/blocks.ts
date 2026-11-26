@@ -52,6 +52,8 @@ export interface BlockSpec {
    * first part at the middle. Parts it leaves out are set beside them (#774).
    */
   layout?: Record<string, [x: number, y: number, rot?: number]>;
+  /** What this version changes, for the Update badge (#773): "C2 is 22 µF now, for a steadier output". */
+  changes?: string;
 }
 
 /** A block laid out and ready to place: a clip at the origin and its points. Inside names start with `@.`. */
@@ -205,9 +207,15 @@ export function nextTag(d: ElectronicsDesign, prefix: string): string {
 }
 
 /** Drops a built block on a sheet, its top left near `at`. The ids of what was added and the new group come back. */
-export function placeBlock(d: ElectronicsDesign, sheetId: Id, built: BuiltBlock, at: P2): { design: ElectronicsDesign; group: Id | null; ids: Id[] } {
+export function placeBlock(
+  d: ElectronicsDesign,
+  sheetId: Id,
+  built: BuiltBlock,
+  at: P2,
+  tagAs?: string,
+): { design: ElectronicsDesign; group: Id | null; ids: Id[] } {
   if (!d.sheets.some((s) => s.id === sheetId)) return { design: d, group: null, ids: [] };
-  const tag = nextTag(d, built.spec.tag);
+  const tag = tagAs ?? nextTag(d, built.spec.tag);
   const rename = (n: string) => (n.startsWith(`${TAG}.`) ? `${tag}.${n.slice(TAG.length + 1)}` : n);
   const clip: Clip = { ...built.clip, labels: built.clip.labels.map((l) => ({ ...l, name: rename(l.name) })) };
   const pasted = pasteOnSheet(d, sheetId, clip, q(at[0]), q(at[1]));

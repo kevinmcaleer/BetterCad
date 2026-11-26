@@ -156,6 +156,14 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   (`myLibrary.ts`, one store for every panel), go to the account inside the pack as `blocks`, and export as
   `.bcblock.json`. The group becomes a placed copy (`markAsBlock`); saving it again makes a new version. Not built:
   Edit block on its own sheet.
+- **Block updates (#773).** A design keeps its own copy of each block. `STARTER_VERSIONS`
+  (`library/blockVersions.ts`, kept in step by a test) and Your blocks' versions in storage (`blockVersions.ts`) let
+  the schematic tag an old copy with Update without loading the shelf. `placeBlockKept` stores a print of the inside
+  (`insidePrint`); `changedInside` compares it, so hand edits show as Changed and Update asks first. `whatChanged`
+  lists a spec's `changes`, new values, parts and points; `updateBlock` (`blockUpdate.ts`) re-places the block in the
+  same spot with the same tag, rejoins each joined point with a wire to where the new point is, lists points that
+  are gone and leaves their wires, and keeps board places for parts of the same kind. A block saved from a plain
+  group has no point labels, so wires joined straight to its pins are left for you after an update.
 
 ## The rules check (#634)
 

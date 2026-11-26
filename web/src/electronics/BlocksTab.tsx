@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { inflate, type ComponentDef, type LibraryPack } from "@bettercad/electronics";
 import { KIND_TEXT } from "./pointKinds";
-import { buildBlock, placeBlock, type BlockSpec, type BuiltBlock } from "@bettercad/electronics/blocks";
+import { buildBlock, type BlockSpec, type BuiltBlock } from "@bettercad/electronics/blocks";
+import { placeBlockKept } from "@bettercad/electronics/blockUpdate";
 import { STARTER_BLOCKS } from "@bettercad/electronics/library/blocks";
 import { blockFileText, buildOwn, readBlockFile, type OwnBlock } from "@bettercad/electronics/ownBlocks";
 import { Button, Icon, PanelNote, cx } from "@bettercad/ui";
@@ -129,7 +130,7 @@ export default function BlocksTab({
   };
   const place = (b: BuiltBlock) =>
     eui.set({
-      placingBlock: { built: b, place: (d, sheet, at) => placeBlock(d, sheet, b, at) },
+      placingBlock: { built: b, place: (d, sheet, at) => placeBlockKept(d, sheet, b, at) },
       placing: null,
       schTool: "place",
       card: null,

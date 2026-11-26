@@ -39,6 +39,7 @@ import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { getClip, setClip } from "./clip";
 import { readColours } from "./colours";
 import { drawSchematic } from "./drawSchematic";
+import { staleBlocks } from "./blockVersions";
 import { boxSheet, groupOutlines, hitGroupOutline, hitSheet, noteBox, placedBox } from "./hit";
 import { eui } from "./ui";
 import { useEui } from "./useEui";
@@ -139,6 +140,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   const pins = useMemo(() => placedPins(design).filter((p) => p.sheet === sheet.id), [design, sheet.id]);
   const selected = useMemo(() => new Set(ui.selected), [ui.selected]);
   const outlines = useMemo(() => groupOutlines(design, sheet), [design, sheet]);
+  const stale = useMemo(() => staleBlocks(design, sheet), [design, sheet]);
   const inside = ui.inGroup && sheet.groups?.some((g) => g.id === ui.inGroup) ? ui.inGroup : null;
   const picked = useMemo(() => new Set(groupsIn(sheet, ui.selected).map((g) => g.id)), [sheet, ui.selected]);
   const askGroupName = (d: ElectronicsDesign, id: string) => {
@@ -444,7 +446,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         view={view}
         onView={setView}
         cursor={tool === "select" ? (hover ? "move" : "default") : "crosshair"}
-        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot, outlines, picked, inside]}
+        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot, outlines, picked, inside, stale]}
         draw={(ctx, v, size) =>
           drawSchematic(ctx, v, size, design, sheet, colours, {
             selected,
@@ -454,7 +456,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
             marks,
             lit: lit?.ids,
             spot: ui.spot?.sheet === sheet.id ? ui.spot.at : undefined,
-            groups: { outlines, picked, inside },
+            groups: { outlines, picked, inside, stale },
           })
         }
         onDown={onDown}

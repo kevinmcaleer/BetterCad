@@ -1160,3 +1160,19 @@ button.bc-ec-pill {
   gap: var(--bc-space-2);
   align-items: center;
 }
+
+/* A placed block's Update (#773): the badge and what changed. */
+.bc-ec-block-update {
+  display: grid;
+  gap: var(--bc-space-2);
+  padding: var(--bc-space-3);
+  border: 1px solid var(--bc-color-accent);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-ec-badge {
+  display: inline-block;
+  padding: 0 var(--bc-space-2);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+}

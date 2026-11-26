@@ -164,3 +164,11 @@ describe("the starter blocks (#769)", () => {
     }
   });
 });
+
+describe("the starter blocks' versions (#773)", () => {
+  it("are listed apart, in step with the blocks", async () => {
+    const { STARTER_VERSIONS } = await import("./library/blockVersions");
+    const { STARTER_BLOCKS } = await import("./library/blocks");
+    expect(STARTER_VERSIONS).toEqual(Object.fromEntries(STARTER_BLOCKS.map((b) => [b.id, b.version])));
+  });
+});

@@ -3,6 +3,7 @@
  * design and travels as one file. Saved blocks sit on the Your blocks shelf and are kept with Your library.
  */
 import { buildBlock, nextTag, type BlockSpec, type BuiltBlock } from "./blocks";
+import { insidePrint } from "./blockUpdate";
 import { eid, isPower, type ComponentDef, type ElectronicsDesign, type Id, type PointKind, type Sheet } from "./model";
 import { byRef, netlist, type Netlist } from "./nets";
 import { voltsOf } from "./points";
@@ -189,6 +190,7 @@ export function buildOwn(b: OwnBlock): BuiltBlock {
  * Update badge can tell when the block moves on. Its parts and wires stay as they are.
  */
 export function markAsBlock(d: ElectronicsDesign, sheetId: Id, groupId: Id, b: OwnBlock): ElectronicsDesign {
+  const print = insidePrint(d, sheetId, groupId);
   return {
     ...d,
     sheets: d.sheets.map((s): Sheet => {
@@ -200,7 +202,7 @@ export function markAsBlock(d: ElectronicsDesign, sheetId: Id, groupId: Id, b: O
             ? {
                 ...g,
                 name: b.spec.name,
-                block: { ...(g.block ?? { points: [], tag: nextTag(d, b.spec.tag) }), def: b.spec.id, version: b.spec.version },
+                block: { ...(g.block ?? { points: [], tag: nextTag(d, b.spec.tag) }), def: b.spec.id, version: b.spec.version, print },
               }
             : g,
         ),

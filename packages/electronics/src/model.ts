@@ -325,6 +325,8 @@ export interface PlacedBlock {
   frame?: { x1: number; y1: number; x2: number; y2: number };
   /** Where its parts go on the board, from the block's layout guide: millimetres from the first part, by part id (#774). */
   layout?: Record<Id, { x: number; y: number; rot: number }>;
+  /** A print of the inside as placed (#773), so a change made by hand shows as Changed. */
+  print?: string;
 }
 
 // ---------------------------------------------------------------- the board
