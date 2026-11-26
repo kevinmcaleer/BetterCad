@@ -13,6 +13,11 @@ export function tips(): Tip[] {
   const mod = formatCombo("mod");
   return [
     { id: "sketch", title: "Sketch, then extrude", text: "Press K to sketch on a plane or a flat face, then E to extrude a closed shape into a solid." },
+    {
+      id: "new",
+      title: "Start over",
+      text: `Press New beside Save, or ${formatCombo("mod+n")}, for an empty model. Undo brings your work back.`,
+    },
     { id: "plane", title: "Sketch on any plane", text: "Right-click a plane in the browser to sketch on it." },
     {
       id: "browser",

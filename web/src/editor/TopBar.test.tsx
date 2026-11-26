@@ -55,6 +55,20 @@ describe("Save split button", () => {
   });
 });
 
+describe("New model button", () => {
+  it("sits beside Save so starting over is easy to find", () => {
+    const onNewModel = vi.fn();
+    setup({ onNewModel });
+    fireEvent.click(screen.getByRole("button", { name: "New model" }));
+    expect(onNewModel).toHaveBeenCalledOnce();
+  });
+
+  it("stays in the Save menu on a phone", () => {
+    setup({ onNewModel: vi.fn(), phone: true });
+    expect(screen.queryByRole("button", { name: "New model" })).toBeNull();
+  });
+});
+
 describe("Account menu", () => {
   it("offers Admin only to admins", () => {
     setup({ account: { name: "kev", admin: true } });
