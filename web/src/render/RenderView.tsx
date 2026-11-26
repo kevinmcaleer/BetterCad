@@ -359,7 +359,8 @@ function useStatus(session: RenderSession) {
 
 /**
  * The Render view's options, in place of the view bar: lighting, the sample count, Save image and Done. With the
- * ribbon, only the status: the Render tab holds the options, and choosing another tab goes back to modelling.
+ * ribbon, only the status and Start (or Stop): the Render tab holds the options, and choosing another tab goes back
+ * to modelling.
  */
 export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: RenderBarProps) {
   const { s, status, rendering, go, save } = useStatus(session);
@@ -381,6 +382,17 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
           <span className="bc-armed-note bc-render-status" role="status">
             {status}
           </span>
+          {/* The ribbon's Start, again beside the status where the eye already is: both work the same session. */}
+          {!go.disabled && (
+            <Button
+              size="dense"
+              icon={go.icon}
+              label={rendering ? "Stop" : "Start"}
+              title={go.title}
+              variant={rendering ? "danger" : "primary"}
+              onClick={go.onClick}
+            />
+          )}
         </div>
         {slow}
       </>
