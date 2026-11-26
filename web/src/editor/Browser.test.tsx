@@ -1047,6 +1047,24 @@ describe("drawings", () => {
     expect(onDrawing).toHaveBeenLastCalledWith("rename", "dr1", "Front");
   });
 
+  it("picking a model row leaves an open drawing, while picking a drawing keeps it", () => {
+    const onLeaveDrawing = vi.fn();
+    const onSelect = vi.fn();
+    const m = model({
+      drawings: [
+        { id: "dr1", name: "Drawing 1" },
+        { id: "dr2", name: "Drawing 2" },
+      ],
+      drawing: "dr1",
+    });
+    render(<BrowserPanel model={m} {...props()} onSelect={onSelect} onLeaveDrawing={onLeaveDrawing} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Drawing 2/ }));
+    expect(onLeaveDrawing).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: m.parts[0]!.name }));
+    expect(onLeaveDrawing).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenLastCalledWith([m.parts[0]!.id]);
+  });
+
   const drs = { drawings: [{ id: "dr1", name: "Drawing 1" }], drawing: "dr1" };
   const props = () => ({
     selection: [],

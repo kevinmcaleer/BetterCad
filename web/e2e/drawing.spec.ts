@@ -107,7 +107,11 @@ test("make a drawing, fill in its title block, leave it and open it again", { ta
   await page.getByRole("treeitem", { name: /^Drawing 1/ }).click();
   await expect(page.getByRole("group", { name: "Sheet 1: A3, portrait" })).toBeVisible();
   await expect(block.getByRole("button", { name: "Title: Bracket" })).toBeVisible();
-  await page.getByRole("button", { name: "Finish drawing" }).click();
+  // There is no Finish: picking a model tool (or another tab, or a model row in the browser) leaves the drawing.
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Select/ })
+    .click();
   await expect(page.getByRole("region", { name: "Drawing: Drawing 1" })).toHaveCount(0);
 
   // Undo steps back through the drawing's changes like any others, down to there being no drawing.
@@ -571,7 +575,10 @@ test("a drawing opens by touch, and a pinch zooms the sheet", async ({ browser }
     [cx, cy],
   );
   await expect.poll(async () => (await paper.boundingBox())!.width).toBeGreaterThan(before.width * 2);
-  await page.getByRole("button", { name: "Finish drawing" }).tap();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Select/ })
+    .tap();
   await expect(paper).toHaveCount(0);
   await context.close();
 });
@@ -953,7 +960,10 @@ test("add a parts list and balloons, then make a drawing of every part @journey 
   });
 
   // Back in the model, one command makes a drawing with a page for each part, with four views set out for you.
-  await page.getByRole("button", { name: "Finish drawing" }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Select/ })
+    .click();
   await runCommand(page, "Drawing of every part");
   await expect(page.getByRole("status").filter({ hasText: /^Added a page to Parts/ })).toBeVisible({ timeout: 30_000 });
   // It opens on its page, named for the part.
@@ -990,7 +1000,10 @@ test("give the title block a logo and a field, save a template and start the nex
   await expect(block.getByRole("button", { name: "Material: PETG" })).toBeVisible();
 
   // The next New drawing: pick the template, and the first sheet comes finished.
-  await page.getByRole("button", { name: "Finish drawing" }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Select/ })
+    .click();
   await runCommand(page, "New drawing");
   const card = page.getByRole("dialog", { name: "New drawing" });
   await card.getByLabel("Template").selectOption({ label: "Workshop" });
@@ -1013,7 +1026,10 @@ test("give the title block a logo and a field, save a template and start the nex
   });
 
   // It is your default now: the card opens on it.
-  await page.getByRole("button", { name: "Finish drawing" }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Select/ })
+    .click();
   await runCommand(page, "New drawing");
   await expect(card.getByLabel("Template")).toHaveValue(/^dt_/);
   await expect(card.getByLabel("Page size")).toHaveValue("A4");

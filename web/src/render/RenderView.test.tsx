@@ -86,7 +86,7 @@ describe("the Render view's options (#197)", () => {
     );
     s.set({ loading: false, samples: 1 });
     const bar = screen.getByRole("group", { name: "Render options" });
-    await userEvent.click(await within(bar).findByRole("button", { name: "Start" }));
+    await userEvent.click(await within(bar).findByRole("button", { name: "Play" }));
     expect(s.get().stopped).toBe(false);
     expect(screen.getByRole("button", { name: "Stop rendering" })).toBeInTheDocument();
     await userEvent.click(within(bar).getByRole("button", { name: "Stop" }));
@@ -186,14 +186,15 @@ describe("the Render view's options (#197)", () => {
 describe("Draw on in the Render view", () => {
   it("turns on from the ribbon, stops the picture, and picks length and colour", async () => {
     const s = renderSession();
+    s.set({ playMode: "preview" });
     s.set({ loading: false, samples: 1, stopped: false });
     render(<RenderRibbon session={s} />);
     expect(screen.queryByRole("button", { name: /^Save video/ })).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /^Draw on/ }));
     expect(s.get().drawOn).toMatchObject({ colour: "blue", length: "normal", playing: true });
     expect(s.get().stopped).toBe(true);
-    // The path tracer waits while Draw on shows.
-    expect(screen.getByRole("button", { name: "Start rendering" })).toBeDisabled();
+    // Play plays Draw on in Video preview.
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Length: Normal, 10 s" }));
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Slow, 20 s" }));
     expect(s.get().drawOn?.length).toBe("slow");
@@ -226,6 +227,7 @@ describe("camera moves in the Render view", () => {
   it("picks a move from the ribbon's Animate group, plays it on its own, and shares Draw on's length", async () => {
     vi.stubGlobal("MediaRecorder", class {});
     const s = renderSession();
+    s.set({ playMode: "preview" });
     s.set({ loading: false, samples: 1 });
     render(<RenderRibbon session={s} />);
     expect(screen.queryByRole("button", { name: /^Save video/ })).toBeNull();
@@ -268,5 +270,49 @@ describe("camera moves in the Render view", () => {
     expect(screen.getByRole("button", { name: "Camera move: Orbit" })).toBeInTheDocument();
     s.set({ move: { ...s.get().move!, recording: true } });
     expect(await screen.findByText("Recording the video, 2.5 s of 10 s")).toBeInTheDocument();
+  });
+});
+
+describe("the one Play button", () => {
+  it("picks Image, Video preview or Video render from its drop-down, and runs it", async () => {
+    vi.stubGlobal("VideoEncoder", class {});
+    vi.stubGlobal("VideoFrame", class {});
+    const s = renderSession();
+    s.set({ loading: false, samples: 1 });
+    render(<RenderRibbon session={s} />);
+    const modes = () => userEvent.click(screen.getByRole("button", { name: /^Play: / }));
+    expect(screen.getByRole("button", { name: "Play: Image" })).toBeInTheDocument();
+    await modes();
+    expect(screen.getAllByRole("menuitemradio").map((e) => e.textContent)).toEqual(["Image", "Video preview", "Video render"]);
+    // Video preview with nothing to animate plays an orbit.
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Video preview" }));
+    expect(s.get()).toMatchObject({ playMode: "preview", move: { id: "orbit", playing: true } });
+    await userEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(s.get().move?.playing).toBe(false);
+    // Video render path-traces the move's frames.
+    const renderVideo = vi.fn(async () => {});
+    s.renderVideo = renderVideo;
+    await modes();
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Video render" }));
+    expect(renderVideo).toHaveBeenCalled();
+    s.set({ filming: { frame: 12, frames: 300 } });
+    const stopVideo = vi.fn();
+    s.stopVideo = stopVideo;
+    await userEvent.click(await screen.findByRole("button", { name: "Stop the video render" }));
+    expect(stopVideo).toHaveBeenCalled();
+    s.set({ filming: null });
+    // Image puts the animation away and renders the picture.
+    s.set({ drawOn: { colour: "blue", length: "normal", playing: true, at: 1, total: 12, recording: false } });
+    await modes();
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Image" }));
+    expect(s.get()).toMatchObject({ playMode: "image", drawOn: null, stopped: false });
+    vi.unstubAllGlobals();
+  });
+
+  it("says how far a video render has got", async () => {
+    const s = renderSession();
+    s.set({ loading: false, filming: { frame: 12, frames: 300 } });
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Rendering the video, frame 12 of 300");
   });
 });

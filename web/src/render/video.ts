@@ -39,3 +39,18 @@ export async function recordCanvas(
   const plain = type.split(";")[0];
   return { blob: new Blob(chunks, { type: plain }), type: plain };
 }
+
+/** The file a video render makes, decided at the click (the save dialog opens then): MP4 where the browser makes it. */
+export function videoExt(): "mp4" | "webm" {
+  return typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("video/mp4") ? "mp4" : "webm";
+}
+
+/** Whether this browser can encode video frame by frame (WebCodecs), for a video render. */
+export const canRenderVideo = () => typeof VideoEncoder !== "undefined" && typeof VideoFrame !== "undefined";
+
+/** A video render is full HD, at 30 frames a second. */
+export const FPS = 30;
+export const VIDEO_WIDTH = 1920;
+export const VIDEO_HEIGHT = 1080;
+/** Frames in a clip of `seconds`, at least two so the move has a start and an end. Tests cap it. */
+export const frameCount = (seconds: number) => (window as unknown as { __bcVideoFrames?: number }).__bcVideoFrames ?? Math.max(2, Math.round(seconds * FPS));

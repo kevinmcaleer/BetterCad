@@ -21,12 +21,15 @@ import {
   DRAW_ON_START,
   drawSeconds,
   FOCUSES,
+  FRAME_SAMPLES,
   moveStart,
+  PLAY_MODES,
   QUALITIES,
   samplesFor,
   samplesText,
   type DrawOnState,
   type MoveState,
+  type PlayMode,
   type RenderSession,
   type SaveSize,
 } from "./session";
@@ -36,7 +39,7 @@ import { Box3, Sphere, Vector3 } from "three";
 import type { Section } from "../viewport/engine";
 import type { CutPlane } from "./cut";
 import { CAMERA_MOVES, cameraAt, cameraMove, framingOf, movePreset } from "./cameraMoves";
-import { recordCanvas, videoType } from "./video";
+import { canRenderVideo, frameCount, recordCanvas, VIDEO_HEIGHT, VIDEO_WIDTH, videoExt, videoType } from "./video";
 
 /** Under this many samples after SLOW_MS, the browser can't render this well. */
 const SLOW_MS = 8000;
@@ -83,7 +86,7 @@ export interface RenderPictureProps {
   onSetHome?: (camera: CameraState) => void;
   onResetHome?: () => void;
   /** Saves Draw on's video. Called at once on the click with the video still recording. */
-  onSaveVideo?: (video: Promise<Blob | null>, ext: "mp4" | "webm") => Promise<void>;
+  onSaveVideo?: (video: Promise<Blob | null>, ext: "mp4" | "webm", name?: string) => Promise<void>;
 }
 
 /** The corner view (or the front, side or top), fitted round the bodies: home when the model has none of its own. */
@@ -376,7 +379,7 @@ export function RenderPicture({
       const video = recordCanvas(el, () => done, undefined, clear).then((v) => v?.blob ?? null);
       replay();
       try {
-        await onSaveVideo?.(video, type.startsWith("video/mp4") ? "mp4" : "webm");
+        await onSaveVideo?.(video, type.startsWith("video/mp4") ? "mp4" : "webm", movePreset(m.id).label.toLowerCase());
       } finally {
         await video.catch(() => null);
         patch({ recording: false, playing: false });
@@ -397,6 +400,62 @@ export function RenderPicture({
     // A new move, length or model starts it again; the camera and callbacks are read through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soloId, soloLength, bodies, session]);
+
+  // Video render: the camera move path-traced frame by frame, as pictures are, into a full HD video.
+  const saveVideo = useRef(onSaveVideo);
+  saveVideo.current = onSaveVideo;
+  useEffect(() => {
+    session.renderVideo = async () => {
+      const pr = r.current;
+      const m = session.get().move;
+      if (!pr || !m || session.get().filming || !canRenderVideo()) return;
+      const ext = videoExt();
+      const seconds = drawSeconds(m.length);
+      const plan = cameraMove(m.id, seconds);
+      const frames = frameCount(seconds);
+      const kept = moveFrom.current;
+      const from = kept && cam.current === kept.left ? kept.from : cam.current;
+      const framing = framingOf(
+        bodies.map((b) => ({ positions: b.mesh.positions, matrix: b.matrix.elements })),
+        VIDEO_WIDTH / VIDEO_HEIGHT,
+      );
+      const at = (i: number) => (framing ? cameraAt(plan, from, framing, (i / (frames - 1)) * seconds) : from);
+      const samples = testMax() ?? FRAME_SAMPLES[session.get().quality];
+      const stop = new AbortController();
+      session.stopVideo = () => stop.abort();
+      session.set({ move: { ...m, playing: false }, drawOn: null, stopped: true, filming: { frame: 0, frames } });
+      const video = import("./renderVideo").then(({ encodeFrames }) =>
+        pr.frames(VIDEO_WIDTH, VIDEO_HEIGHT, samples, (frame) =>
+          encodeFrames(
+            { canvas: canvas.current!, frame: (i) => frame(at(i), stop.signal) },
+            frames,
+            ext,
+            (frame) => session.set({ filming: { frame, frames } }),
+            stop.signal,
+          ),
+        ),
+      );
+      video.catch(() => {});
+      try {
+        await saveVideo.current?.(
+          video.catch(() => null),
+          ext,
+          `${movePreset(m.id).label.toLowerCase()} render`,
+        );
+      } finally {
+        // Cancelled in the save dialog, or saved: stop making frames nobody will keep.
+        stop.abort();
+        await video.catch(() => null);
+        session.stopVideo = null;
+        session.set({ filming: null });
+        // Back where the move starts, as the picture was.
+        move(from);
+      }
+    };
+    return () => {
+      session.renderVideo = null;
+    };
+  }, [session, bodies, move]);
   const camNow = useCallback(() => cam.current, []);
 
   const orbiting = useRef(false);
@@ -517,21 +576,23 @@ function useStatus(session: RenderSession) {
   const m = d ? null : s.move;
   const clip = d ?? m;
   const name = d ? "Draw on" : m ? movePreset(m.id).label : "";
-  const status = clip
-    ? clip.recording
-      ? `Recording the video, ${secs(clip.at)} of ${secs(clip.total)}`
-      : clip.total
-        ? `${name}, ${secs(clip.at)} of ${secs(clip.total)}`
-        : name
-    : s.loading
-      ? "Loading the renderer…"
-      : s.saving !== null
-        ? `Saving the picture, ${Math.round(s.saving * 100)}%`
-        : s.moving
-          ? "Waiting for you to stop moving"
-          : s.stopped && s.samples <= 1
-            ? "Press Start to render"
-            : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(max)}`;
+  const status = s.filming
+    ? `Rendering the video, frame ${s.filming.frame.toLocaleString("en-GB")} of ${s.filming.frames.toLocaleString("en-GB")}`
+    : clip
+      ? clip.recording
+        ? `Recording the video, ${secs(clip.at)} of ${secs(clip.total)}`
+        : clip.total
+          ? `${name}, ${secs(clip.at)} of ${secs(clip.total)}`
+          : name
+      : s.loading
+        ? "Loading the renderer…"
+        : s.saving !== null
+          ? `Saving the picture, ${Math.round(s.saving * 100)}%`
+          : s.moving
+            ? "Waiting for you to stop moving"
+            : s.stopped && s.samples <= 1
+              ? "Press Start to render"
+              : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(max)}`;
   const done = s.samples >= max;
   const rendering = !s.stopped && !done && !s.loading && !s.slow;
   const go = {
@@ -543,10 +604,86 @@ function useStatus(session: RenderSession) {
   const save: MenuEntry[] = SIZES.map((z) => ({
     id: z.id,
     label: z.label,
-    disabled: s.saving !== null || s.slow || !!d || !!m?.playing,
+    disabled: s.saving !== null || s.slow || !!d || !!m?.playing || !!s.filming,
     onSelect: () => void session.save?.(z.id),
   }));
-  return { s, status, rendering, go, save };
+  return { s, status, rendering, go, save, play: usePlay(session, go) };
+}
+
+/**
+ * The one Play button: what it does depends on the mode picked from its drop-down. Image renders the picture (Start,
+ * or Stop while it clears); Video preview plays Draw on or the camera move live; Video render path-traces every frame
+ * of the camera move and saves the video. Picking a mode from the drop-down runs it at once.
+ */
+function usePlay(session: RenderSession, go: { icon: IconName; title: string; disabled: boolean; onClick: () => void }) {
+  const s = useSession(session);
+  const mode = s.playMode;
+  const d = s.drawOn;
+  const m = s.move;
+  const clip = d ?? m;
+  const ended = !!clip && !clip.playing && clip.total > 0 && clip.at >= clip.total - 1e-3;
+  const recording = !!d?.recording || !!m?.recording;
+  const run = (to: PlayMode) => {
+    const now = session.get();
+    if (to === "image") {
+      // The picture shows once the animation is put away.
+      if (now.drawOn || now.move?.playing) {
+        session.set({ drawOn: null, move: now.move && { ...now.move, playing: false }, stopped: false });
+        return;
+      }
+      go.onClick();
+    } else if (to === "preview") {
+      const c = now.drawOn ?? now.move;
+      // Nothing to animate yet: an orbit is the plainest move.
+      if (!c) session.set({ move: moveStart("orbit"), stopped: true });
+      else if (!c.playing && c.total > 0 && c.at >= c.total - 1e-3) (now.drawOn ? session.replay : session.replayMove)?.();
+      else if (now.drawOn) session.set({ drawOn: { ...now.drawOn, playing: !now.drawOn.playing } });
+      else session.set({ move: { ...now.move!, playing: !now.move!.playing } });
+    } else {
+      if (now.filming) return session.stopVideo?.();
+      // A video render needs a camera move: an orbit unless one is picked. Draw on plays as a preview only.
+      if (!now.move) session.set({ move: { ...moveStart("orbit"), playing: false } });
+      void session.renderVideo?.();
+    }
+  };
+  const busy = s.loading || s.slow;
+  const state =
+    mode === "image"
+      ? {
+          icon: go.icon,
+          title: d || m?.playing ? "Render the picture" : go.title,
+          short: go.icon === "stop" ? "Stop" : "Play",
+          disabled: busy || (go.disabled && !d && !m?.playing),
+        }
+      : mode === "preview"
+        ? {
+            icon: (clip?.playing ? "pause" : ended ? "replay" : "play") as IconName,
+            title: clip?.playing ? "Pause" : ended ? "Play again" : clip ? "Play" : "Play an orbit round the model",
+            short: clip?.playing ? "Pause" : ended ? "Again" : "Play",
+            disabled: busy || recording || !!s.filming,
+          }
+        : {
+            icon: (s.filming ? "stop" : "play") as IconName,
+            title: s.filming
+              ? "Stop the video render"
+              : canRenderVideo()
+                ? `Render the ${m ? movePreset(m.id).label.toLowerCase() : "orbit"} frame by frame and save the video`
+                : "Your browser can't render video",
+            short: s.filming ? "Stop" : "Play",
+            disabled: busy || recording || (!s.filming && !canRenderVideo()),
+          };
+  const modes: MenuEntry[] = PLAY_MODES.map((x) => ({
+    id: x.id,
+    label: x.label,
+    checked: mode === x.id,
+    disabled: busy || recording || !!s.filming || (x.id === "video" && !canRenderVideo()),
+    onSelect: () => {
+      session.set({ playMode: x.id });
+      run(x.id);
+    },
+  }));
+  const label = PLAY_MODES.find((x) => x.id === mode)!.label;
+  return { ...state, mode, label, modes, onClick: () => run(mode), stop: state.icon === "stop" };
 }
 
 /** "3 s", "12.5 s". */
@@ -564,20 +701,10 @@ function useDrawOn(session: RenderSession) {
   const clip = d ?? m;
   const recording = !!d?.recording || !!m?.recording;
   const set = (change: Partial<DrawOnState>) => d && session.set({ drawOn: { ...d, ...change } });
-  const setClip = (change: Partial<DrawOnState & MoveState>) =>
-    d ? session.set({ drawOn: { ...d, ...change } }) : m && session.set({ move: { ...m, ...change } });
   const toggle = () =>
     d
       ? session.set({ drawOn: null, move: m && { ...m, playing: true, at: 0 } })
       : session.set({ drawOn: { ...DRAW_ON_START, length: m?.length ?? DRAW_ON_START.length }, stopped: true });
-  const ended = !!clip && !clip.playing && clip.total > 0 && clip.at >= clip.total - 1e-3;
-  const play = {
-    icon: (clip?.playing ? "pause" : ended ? "replay" : "play") as IconName,
-    title: clip?.playing ? "Pause" : ended ? "Play again" : "Play",
-    short: clip?.playing ? "Pause" : ended ? "Again" : "Play",
-    disabled: !clip || recording,
-    onClick: () => (ended ? (d ? session.replay : session.replayMove)?.() : setClip({ playing: !clip?.playing })),
-  };
   const length = d?.length ?? m?.length ?? "normal";
   const lengths: MenuEntry[] = DRAW_LENGTHS.map((l) => ({
     id: l.id,
@@ -625,7 +752,7 @@ function useDrawOn(session: RenderSession) {
     disabled: !clip || recording || !canRecord,
     onClick: () => void (d ? session.record : session.recordMove)?.(),
   };
-  return { d, m, clip, toggle, play, length, lengths, colours, moves, record };
+  return { d, m, clip, toggle, length, lengths, colours, moves, record };
 }
 
 /**
@@ -634,7 +761,7 @@ function useDrawOn(session: RenderSession) {
  * to modelling.
  */
 export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: RenderBarProps) {
-  const { s, status, rendering, go, save } = useStatus(session);
+  const { s, status, save, play } = useStatus(session);
   // A slow render still works, so it gets a toast that fades rather than a banner over the picture.
   useEffect(() => {
     if (s.sluggish && !s.slow) onNote?.(SLUGGISH_TEXT);
@@ -653,16 +780,9 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
           <span className="bc-armed-note bc-render-status" role="status">
             {status}
           </span>
-          {/* The ribbon's Start, again beside the status where the eye already is: both work the same session. */}
-          {!go.disabled && (
-            <Button
-              size="dense"
-              icon={go.icon}
-              label={rendering ? "Stop" : "Start"}
-              title={go.title}
-              variant={rendering ? "danger" : "primary"}
-              onClick={go.onClick}
-            />
+          {/* The ribbon's Play, again beside the status where the eye already is: both work the same session. */}
+          {!play.disabled && (
+            <Button size="dense" icon={play.icon} label={play.short} title={play.title} variant={play.stop ? "danger" : "primary"} onClick={play.onClick} />
           )}
         </div>
         {slow}
@@ -696,7 +816,16 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
             onClick={() => session.set({ style: "paper" })}
           />
         </span>
-        <IconButton className={rendering ? "bc-render-go bc-render-stop" : "bc-render-go"} {...go} />
+        <span className="bc-render-play">
+          <IconButton
+            className={play.stop ? "bc-render-go bc-render-stop" : "bc-render-go"}
+            icon={play.icon}
+            title={play.title}
+            disabled={play.disabled}
+            onClick={play.onClick}
+          />
+          <MenuButton label="Play" entries={play.modes} trigger={(p) => <Button {...p} size="dense" icon="chevronDown" title={`Play: ${play.label}`} />} />
+        </span>
         <QualityBar session={session} />
         <span className="bc-armed-note bc-render-status" role="status">
           {status}
@@ -712,7 +841,7 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
 
 /** Draw on and camera moves in the floating bar: the switch, the move, and once either is on, play and Save video. */
 function DrawOnButtons({ session }: { session: RenderSession }) {
-  const { d, m, clip, toggle, play, moves, record } = useDrawOn(session);
+  const { d, m, clip, toggle, moves, record } = useDrawOn(session);
   return (
     <>
       <Button icon="sparkle" label="Draw on" title="Draw on: glowing lines trace the model, then it fills in" on={!!d} onClick={toggle} />
@@ -723,7 +852,6 @@ function DrawOnButtons({ session }: { session: RenderSession }) {
       />
       {clip && (
         <>
-          <IconButton icon={play.icon} title={play.title} disabled={play.disabled} onClick={play.onClick} />
           <IconButton icon="video" title={record.title} disabled={record.disabled} onClick={record.onClick} />
         </>
       )}
@@ -770,7 +898,7 @@ export interface RenderRibbonProps {
  * the others, so there is no Done: another tab (or Esc) goes back to modelling.
  */
 export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
-  const { s, rendering, go, save } = useStatus(session);
+  const { s, save, play } = useStatus(session);
   const draw = useDrawOn(session);
   const pick = <T extends { id: string; label: string }>(list: readonly T[], on: string, set: (id: T["id"]) => void): MenuEntry[] =>
     list.map((x) => ({ id: x.id, label: x.label, checked: on === x.id, onSelect: () => set(x.id) }));
@@ -816,13 +944,29 @@ export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
       </RibbonGroup>
       <RibbonGroup label="Render" entries={[]}>
         <RibbonButton
-          icon={go.icon}
+          icon={play.icon}
           colour={false}
-          label={go.title}
-          short={rendering ? "Stop" : "Start"}
-          done={!rendering && !go.disabled}
-          disabled={go.disabled}
-          onPress={go.onClick}
+          label={play.title}
+          short={play.short}
+          done={!play.stop && !play.disabled}
+          disabled={play.disabled}
+          onPress={play.onClick}
+        />
+        <MenuButton
+          label="Play"
+          entries={play.modes}
+          trigger={(t) => (
+            <button
+              {...t}
+              type="button"
+              className="bc-rb bc-rb-more"
+              aria-label={`Play: ${play.label}`}
+              data-tip="What Play does: an image, a video preview or a video render"
+            >
+              <span className="bc-rb-label">{play.label}</span>
+              <Icon name="chevronDown" size={14} />
+            </button>
+          )}
         />
         <QualityBar session={session} />
       </RibbonGroup>
@@ -837,14 +981,6 @@ export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
         <RibbonMenu icon="rotate" label={`Camera move: ${draw.m ? movePreset(draw.m.id).label : "none"}`} short="Camera" entries={draw.moves} />
         {draw.clip && (
           <>
-            <RibbonButton
-              icon={draw.play.icon}
-              colour={false}
-              label={draw.play.title}
-              short={draw.play.short}
-              disabled={draw.play.disabled}
-              onPress={draw.play.onClick}
-            />
             <RibbonMenu icon="sliders" label={`Length: ${DRAW_LENGTHS.find((x) => x.id === draw.length)!.label}`} short="Length" entries={draw.lengths} />
             {draw.d && (
               <RibbonMenu

@@ -69,6 +69,16 @@ export interface MoveState {
   recording: boolean;
 }
 
+/** What the Play button does: render a picture, play the animation live, or path-trace a video of the camera move. */
+export type PlayMode = "image" | "preview" | "video";
+export const PLAY_MODES: { id: PlayMode; label: string; title: string }[] = [
+  { id: "image", label: "Image", title: "Render a picture: it clears over a few seconds" },
+  { id: "preview", label: "Video preview", title: "Play Draw on or the camera move live" },
+  { id: "video", label: "Video render", title: "Render every frame of the camera move like a picture, and save the video" },
+];
+/** Samples each frame of a video render gets, by quality: fewer than a picture, as there are hundreds of frames. */
+export const FRAME_SAMPLES: Record<RenderQuality, number> = { good: 16, better: 48, best: 160 };
+
 export interface RenderState {
   /** The renderer module is loading. */
   loading: boolean;
@@ -96,6 +106,10 @@ export interface RenderState {
   drawOn: DrawOnState | null;
   /** A camera move is on, or null. */
   move: MoveState | null;
+  /** What Play does. */
+  playMode: PlayMode;
+  /** A video render: frames done and all of them, or null. */
+  filming: { frame: number; frames: number } | null;
 }
 
 export interface RenderSession {
@@ -120,6 +134,9 @@ export interface RenderSession {
   /** Set by the picture while a camera move plays on its own (without Draw on): the same two. */
   replayMove: (() => void) | null;
   recordMove: (() => Promise<void>) | null;
+  /** Set by the picture: path-traces the camera move frame by frame and saves the video; and stops one early. */
+  renderVideo: (() => Promise<void>) | null;
+  stopVideo: (() => void) | null;
 }
 
 export function renderSession(style: RenderStyle = "finishes"): RenderSession {
@@ -138,6 +155,8 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     saving: null,
     drawOn: null,
     move: null,
+    playMode: "image",
+    filming: null,
   };
   const subs = new Set<() => void>();
   return {
@@ -160,6 +179,8 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     record: null,
     replayMove: null,
     recordMove: null,
+    renderVideo: null,
+    stopVideo: null,
   };
 }
 

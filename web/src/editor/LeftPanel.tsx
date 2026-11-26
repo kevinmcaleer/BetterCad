@@ -105,7 +105,7 @@ export interface LeftPanelProps {
   /** Canvases (#248) and what to do with them. */
   canvases?: { list: BrowserModel["canvases"]; on: NonNullable<BrowserPanelProps["onCanvas"]> };
   /** Drawings (#555): the list, the one whose sheet is open, and the browser's actions on them. */
-  drawings?: { list: BrowserModel["drawings"]; open: string | null; on: NonNullable<BrowserPanelProps["onDrawing"]> };
+  drawings?: { list: BrowserModel["drawings"]; open: string | null; on: NonNullable<BrowserPanelProps["onDrawing"]>; leave?: () => void };
   /** The electronics design (#606) and opening its views. */
   electronics?: { summary: BrowserModel["electronics"]; on: NonNullable<BrowserPanelProps["onElectronics"]> };
   onSketchOnStep?: (id: string) => void;
@@ -240,6 +240,7 @@ function PartsPanel(p: LeftPanelProps) {
       onDeleteSection={p.sections?.onDeleteSection}
       onCanvas={p.canvases?.on}
       onDrawing={p.drawings?.on}
+      onLeaveDrawing={p.drawings?.leave}
       onElectronics={p.electronics?.on}
     />
   );

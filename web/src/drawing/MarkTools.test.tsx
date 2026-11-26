@@ -223,7 +223,7 @@ describe("Add centre marks to this view", () => {
   });
 
   it("the Drawing tab has the four tools and Add centre marks", async () => {
-    const p = { onSettings: vi.fn(), onFit: vi.fn(), onFinish: vi.fn(), onMark: vi.fn(), onAutoMarks: vi.fn() };
+    const p = { onSettings: vi.fn(), onFit: vi.fn(), onMark: vi.fn(), onAutoMarks: vi.fn() };
     render(<DrawingRibbon {...p} mark="centre-line" />);
     const group = within(screen.getByRole("group", { name: "Geometry" }));
     for (const name of ["Centre mark", "Centre mark pattern", "Centre line", "Edge extension"]) await userEvent.click(group.getByRole("button", { name }));
