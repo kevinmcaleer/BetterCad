@@ -34,6 +34,7 @@
     "./swap": "./src/swap.ts",
     "./sample": "./src/sample.ts",
     "./sheets": "./src/sheets.ts",
+    "./groups": "./src/groups.ts",
     "./fab/pack": "./src/fab/pack.ts",
     "./fab/panel": "./src/fab/panel.ts",
     "./fab/ipc2581": "./src/fab/ipc2581.ts",

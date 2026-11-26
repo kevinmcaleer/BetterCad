@@ -130,6 +130,13 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   the field: 4k7 is 4.7 kΩ, 100n is 100 nF, 2R2 is 2.2 Ω. Anything it does not recognise stays as typed.
 - **The part card** shows the package with a preview, the LCSC and maker's part numbers, and Fitted. The **Parts
   table** (T) lists every part to change many at once; a column pasted from a spreadsheet fills the rows below.
+- **Groups (#766).** Group (Ctrl+G) gathers the selection in a named, rounded outline (`Sheet.groups`, edits in
+  `packages/electronics/src/groups.ts`). Clicking a member, the outline's edge or its name picks the whole group, so a
+  drag moves it as one and wires to parts outside stretch. Double-click a member to go into the group and pick things
+  one by one; Esc or a click outside comes back out. Double-click the name to rename it. A thing is in one group at
+  most and groups do not nest. Deleting members shrinks the group, and a group left empty goes. Copy, paste and
+  Duplicate sheet carry whole groups. The outline prints in the PDF and SVG, goes to KiCad as a box and text (KiCad
+  has no schematic groups), and Find (Ctrl+F) finds groups by name.
 
 ## The rules check (#634)
 

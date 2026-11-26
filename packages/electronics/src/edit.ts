@@ -1,4 +1,5 @@
 import { key, placeOnSheet, q } from "./geom";
+import { tidy } from "./groups";
 import {
   eid,
   isPower,
@@ -183,10 +184,11 @@ export function removeFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): E
     labels: s.labels.filter((l) => !set.has(l.id)),
     junctions: s.junctions.filter((j) => !set.has(j.id)),
     noConnects: s.noConnects.filter((n) => !set.has(n.id)),
+    ...(s.notes ? { notes: s.notes.filter((n) => !set.has(n.id)) } : {}),
   }));
   const used = new Set(next.sheets.flatMap((s) => s.symbols.map((y) => y.part)));
   return removeParts(
-    next,
+    onSheet(next, sheetId, tidy),
     next.parts.filter((p) => !used.has(p.id)).map((p) => p.id),
   );
 }
@@ -235,6 +237,8 @@ export interface Clip {
   labels: NetLabel[];
   junctions: Sheet["junctions"];
   noConnects: Sheet["noConnects"];
+  /** Groups whose every member was copied (#766). */
+  groups?: { name: string; members: Id[] }[];
 }
 
 /** Copies the picked things off a sheet. Nothing picked: nothing copied. */
@@ -255,6 +259,8 @@ export function copyFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): Cli
     junctions: pick(sheet.junctions),
     noConnects: pick(sheet.noConnects),
   };
+  const whole = (sheet.groups ?? []).filter((g) => g.members.every((m) => set.has(m)));
+  if (whole.length) clip.groups = whole.map((g) => ({ name: g.name, members: g.members }));
   return symbols.length + clip.wires.length + clip.labels.length + clip.junctions.length + clip.noConnects.length ? clip : null;
 }
 
@@ -280,11 +286,16 @@ export function pasteOnSheet(d: ElectronicsDesign, sheetId: Id, clip: Clip, dx: 
     partId.set(p.id, id);
     parts.push({ ...p, id, ref: nextRef({ ...d, parts }, def.prefix) });
   }
-  const symbols = clip.symbols.filter((s) => partId.has(s.part)).map((s) => ({ ...at(s, "sy"), part: partId.get(s.part)! }));
-  const wires = clip.wires.map((w) => ({ id: eid("w"), a: move(w.a), b: move(w.b) }));
-  const labels = clip.labels.map((l) => at(l, "lb"));
-  const junctions = clip.junctions.map((j) => at(j, "jn"));
-  const noConnects = clip.noConnects.map((n) => at(n, "nc"));
+  const newId = new Map<Id, Id>();
+  const fresh = <T extends { id: Id }>(o: T, n: T): T => (newId.set(o.id, n.id), n);
+  const symbols = clip.symbols.filter((s) => partId.has(s.part)).map((s) => fresh(s, { ...at(s, "sy"), part: partId.get(s.part)! }));
+  const wires = clip.wires.map((w) => fresh(w, { id: eid("w"), a: move(w.a), b: move(w.b) }));
+  const labels = clip.labels.map((l) => fresh(l, at(l, "lb")));
+  const junctions = clip.junctions.map((j) => fresh(j, at(j, "jn")));
+  const noConnects = clip.noConnects.map((n) => fresh(n, at(n, "nc")));
+  const groups = (clip.groups ?? [])
+    .map((g) => ({ id: eid("gr"), name: g.name, members: g.members.flatMap((m) => (newId.has(m) ? [newId.get(m)!] : [])) }))
+    .filter((g) => g.members.length);
   const design = onSheet({ ...d, defs, parts }, sheetId, (s) => ({
     ...s,
     symbols: [...s.symbols, ...symbols],
@@ -292,6 +303,7 @@ export function pasteOnSheet(d: ElectronicsDesign, sheetId: Id, clip: Clip, dx: 
     labels: [...s.labels, ...labels],
     junctions: [...s.junctions, ...junctions],
     noConnects: [...s.noConnects, ...noConnects],
+    ...(groups.length ? { groups: [...(s.groups ?? []), ...groups] } : {}),
   }));
   return { design, ids: [...symbols, ...wires, ...labels, ...junctions, ...noConnects].map((x) => x.id) };
 }

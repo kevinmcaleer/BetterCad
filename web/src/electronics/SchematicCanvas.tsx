@@ -29,13 +29,14 @@ import {
   type Rot,
   type Sheet,
 } from "@bettercad/electronics";
+import { groupOf, groupOnSheet, groupsIn, renameGroup, ungroupOnSheet, wholeGroups } from "@bettercad/electronics/groups";
 import { ESC, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { getClip, setClip } from "./clip";
 import { readColours } from "./colours";
 import { drawSchematic } from "./drawSchematic";
-import { boxSheet, hitSheet, placedBox } from "./hit";
+import { boxSheet, groupOutlines, hitGroupOutline, hitSheet, placedBox } from "./hit";
 import { eui } from "./ui";
 import { useEui } from "./useEui";
 import { fit, snap, toScreen, type View2D } from "./view2d";
@@ -66,6 +67,8 @@ export function sheetBox(d: ElectronicsDesign, sheet: Sheet, only?: Set<string>)
   }
   for (const w of sheet.wires) if (!only || only.has(w.id)) grow(grow(b, w.a), w.b);
   for (const l of sheet.labels) if (!only || only.has(l.id)) grow(b, [l.x, l.y], 2);
+  for (const o of groupOutlines(d, sheet))
+    if (!only || sheet.groups?.find((g) => g.id === o.id)?.members.some((m) => only.has(m))) grow(grow(b, [o.box.x1, o.box.y1]), [o.box.x2, o.box.y2 + 2]);
   if (b.x1 === Infinity) return { x1: -28, y1: -20, x2: 28, y2: 20 };
   return b;
 }
@@ -75,8 +78,17 @@ export interface SchematicCanvasProps {
   sheet: Sheet;
   edit: EEdit;
   readOnly?: boolean;
-  /** A label being named: where it goes on the screen, for the little field the view shows over the canvas. */
-  onAskLabel: (ask: { at: P2; screen: P2; id?: string; name?: string } | null) => void;
+  /** A label or group being named: where it goes on the screen, for the little field the view shows over the canvas. */
+  onAskLabel: (ask: NameAsk | null) => void;
+}
+
+/** A name being asked for over the canvas: a net label's, or with `group` set, a group's (#766). */
+export interface NameAsk {
+  at: P2;
+  screen: P2;
+  id?: string;
+  name?: string;
+  group?: boolean;
 }
 
 /** The schematic (#617, #631, #632): place parts, wire them, name the nets. */
@@ -103,6 +115,14 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   const nl = useMemo(() => netlist(design), [design]);
   const pins = useMemo(() => placedPins(design).filter((p) => p.sheet === sheet.id), [design, sheet.id]);
   const selected = useMemo(() => new Set(ui.selected), [ui.selected]);
+  const outlines = useMemo(() => groupOutlines(design, sheet), [design, sheet]);
+  const inside = ui.inGroup && sheet.groups?.some((g) => g.id === ui.inGroup) ? ui.inGroup : null;
+  const picked = useMemo(() => new Set(groupsIn(sheet, ui.selected).map((g) => g.id)), [sheet, ui.selected]);
+  const askGroupName = (d: ElectronicsDesign, id: string) => {
+    const o = groupOutlines(d, d.sheets.find((x) => x.id === sheet.id) ?? sheet).find((x) => x.id === id);
+    const g = d.sheets.find((x) => x.id === sheet.id)?.groups?.find((x) => x.id === id);
+    if (o && g) onAskLabel({ at: [o.box.x1, o.box.y2], screen: toScreen(view, [o.box.x1, o.box.y2]), id, name: g.name, group: true });
+  };
   const colours = useMemo(() => readColours(host.current), [host.current, ui.view]); // eslint-disable-line react-hooks/exhaustive-deps
   const tool = readOnly ? "select" : ui.schTool;
 
@@ -201,6 +221,28 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       },
       remove,
       push: () => eui.set({ card: "changes" }),
+      group: () => {
+        const ids = eui.get().selected;
+        if (readOnly || !ids.length) return;
+        const made = groupOnSheet(design, sheet.id, ids);
+        if (!made.id) return;
+        edit((d) => (d === design ? made.design : groupOnSheet(d, sheet.id, ids).design), "Group");
+        eui.set({ inGroup: null });
+        askGroupName(made.design, made.id);
+      },
+      ungroup: () => {
+        const gone = groupsIn(sheet, eui.get().selected);
+        if (readOnly || !gone.length) return;
+        edit((d) => gone.reduce((x, g) => ungroupOnSheet(x, sheet.id, g.id), d), gone.length === 1 ? "Ungroup" : `Ungroup ${gone.length} groups`);
+        eui.set({ inGroup: null });
+      },
+      groupToggle: () => {
+        const ids = eui.get().selected;
+        const whole = groupsIn(sheet, ids);
+        const covered = new Set(whole.flatMap((g) => g.members));
+        if (whole.length && ids.every((id) => covered.has(id))) eactions.current?.ungroup?.();
+        else eactions.current?.group?.();
+      },
       selectAll: () => eui.set({ selected: [...sheet.symbols.map((s) => s.id), ...sheet.wires.map((w) => w.id), ...sheet.labels.map((l) => l.id)] }),
     };
     return () => {
@@ -212,6 +254,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   useEscape(tool === "wire" && !!from, () => setFrom(null), ESC.drag);
   useEscape(tool !== "select", () => eui.set({ schTool: "select", placing: null }), ESC.tool);
   useEscape(tool === "select" && ui.selected.length > 0, () => eui.set({ selected: [] }), ESC.selection);
+  useEscape(tool === "select" && !!inside && !ui.selected.length, () => eui.set({ inGroup: null }), ESC.selection);
 
   const tol = 6 / view.scale;
   const elbow = (a: P2, b: P2): P2[] => (a[0] === b[0] || a[1] === b[1] ? [a, b] : [a, [b[0], a[1]], b]);
@@ -219,16 +262,22 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   const onDown = (p: Pointer): boolean => {
     if (tool !== "select") return true;
     const hit = hitSheet(design, sheet, p.world, tol)[0];
-    if (!hit) {
+    // A group's edge or name picks the whole group, ready to drag as one block (#766).
+    const edge = hit ? undefined : hitGroupOutline(outlines, p.world, tol);
+    const grabbed = hit?.id ?? sheet.groups?.find((g) => g.id === edge?.id)?.members[0];
+    if (!grabbed) {
       if (p.touch) return false;
       setBox([p.world, p.world]);
       return true;
     }
+    // Clicking outside the group gone into comes back out of it.
+    const into = edge ? null : groupOf(sheet, grabbed)?.id === inside ? inside : null;
+    const unit = wholeGroups(sheet, [grabbed], into);
     let ids = ui.selected;
-    if (p.shift) ids = ids.includes(hit.id) ? ids.filter((x) => x !== hit.id) : [...ids, hit.id];
-    else if (!ids.includes(hit.id)) ids = [hit.id];
-    eui.set({ selected: ids });
-    if (!readOnly && ids.includes(hit.id)) {
+    if (p.shift) ids = unit.every((x) => ids.includes(x)) ? ids.filter((x) => !unit.includes(x)) : [...new Set([...ids, ...unit])];
+    else if (!ids.includes(grabbed)) ids = unit;
+    eui.set({ selected: ids, inGroup: into });
+    if (!readOnly && ids.includes(grabbed)) {
       const s = snap(p.world, GRID);
       drag.current = { ids, start: s, last: s, key: `ec-move-${(run += 1)}` };
     }
@@ -251,7 +300,10 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         }
         return;
       }
-      if (!p.touch) setHover(hitSheet(design, sheet, p.world, tol)[0]?.id ?? null);
+      if (!p.touch) {
+        const over = hitSheet(design, sheet, p.world, tol)[0]?.id ?? null;
+        setHover(over ?? (hitGroupOutline(outlines, p.world, tol) ? "group" : null));
+      }
     }
   };
 
@@ -259,8 +311,8 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     const at = snapped(p);
     if (tool === "select") {
       if (box) {
-        if (moved) eui.set({ selected: boxSheet(design, sheet, box[0], p.world) });
-        else if (!p.shift) eui.set({ selected: [] });
+        if (moved) eui.set({ selected: wholeGroups(sheet, boxSheet(design, sheet, box[0], p.world), inside) });
+        else if (!p.shift) eui.set({ selected: [], inGroup: null });
         setBox(null);
       } else if (!moved && !drag.current && !hitSheet(design, sheet, p.world, tol)[0] && !p.shift) eui.set({ selected: [] });
       drag.current = null;
@@ -326,7 +378,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         view={view}
         onView={setView}
         cursor={tool === "select" ? (hover ? "move" : "default") : "crosshair"}
-        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot]}
+        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot, outlines, picked, inside]}
         draw={(ctx, v, size) =>
           drawSchematic(ctx, v, size, design, sheet, colours, {
             selected,
@@ -336,6 +388,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
             marks,
             lit: lit?.ids,
             spot: ui.spot?.sheet === sheet.id ? ui.spot.at : undefined,
+            groups: { outlines, picked, inside },
           })
         }
         onDown={onDown}
@@ -345,6 +398,11 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
           if (readOnly) return;
           if (tool === "wire") return setFrom(null);
           const hit = hitSheet(design, sheet, p.world, tol)[0];
+          const edge = hit ? undefined : hitGroupOutline(outlines, p.world, tol);
+          if (edge) return askGroupName(design, edge.id);
+          // Double-click a thing in a group: go into the group and pick just that thing.
+          const g = hit && groupOf(sheet, hit.id);
+          if (g && g.id !== inside) return eui.set({ inGroup: g.id, selected: [hit.id] });
           const label = hit?.kind === "label" ? sheet.labels.find((l) => l.id === hit.id) : undefined;
           if (label) onAskLabel({ at: [label.x, label.y], screen: toScreen(view, [label.x, label.y]), id: label.id, name: label.name });
         }}
@@ -353,10 +411,11 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   );
 }
 
-/** Applies the label field: a new label, or a new name for one. */
-export function commitLabel(edit: EEdit, sheet: string, ask: { at: P2; id?: string }, name: string): void {
+/** Applies the name field: a new label, or a new name for a label or a group. */
+export function commitLabel(edit: EEdit, sheet: string, ask: { at: P2; id?: string; group?: boolean }, name: string): void {
   const text = name.trim();
   if (!text) return;
+  if (ask.group && ask.id) return edit((d) => renameGroup(d, sheet, ask.id!, text), "Rename group");
   if (ask.id) edit((d) => renameLabel(d, sheet, ask.id!, text), "Rename label");
   else edit((d) => addLabel(d, sheet, text, ask.at[0], ask.at[1]), "Label");
 }

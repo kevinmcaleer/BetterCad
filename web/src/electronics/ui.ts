@@ -44,6 +44,8 @@ export interface EUi {
   routed: number | null;
   /** Pours drawn as outlines only, so what is under them shows (#728). */
   pourOutlines: boolean;
+  /** A schematic group gone into with a double-click: its things are picked one by one (#766). */
+  inGroup: string | null;
 }
 
 /** The board grids on offer, mm: round metric steps and the inch pitches parts are made on. */
@@ -71,6 +73,7 @@ const start = (): EUi => ({
   airs: null,
   routed: null,
   pourOutlines: false,
+  inGroup: null,
 });
 
 /**

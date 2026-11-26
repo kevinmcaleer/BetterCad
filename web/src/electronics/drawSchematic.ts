@@ -14,6 +14,7 @@ import {
   type SymbolDef,
 } from "@bettercad/electronics";
 import type { Colours } from "./colours";
+import type { GroupOutline } from "./hit";
 import { gridStep, toScreen, toWorld, type View2D } from "./view2d";
 
 export interface SchematicLook {
@@ -31,6 +32,8 @@ export interface SchematicLook {
   /** A rubber-band box, in world millimetres. */
   box?: [P2, P2] | null;
   grid?: boolean;
+  /** Group outlines (#766), with which are picked and which one is gone into. */
+  groups?: { outlines: GroupOutline[]; picked: Set<string>; inside?: string | null };
 }
 
 const DIRS: Record<number, P2> = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
@@ -233,6 +236,7 @@ export function drawSchematic(
         ctx.fillRect(s[0] - r / 2, s[1] - r / 2, r, r);
       }
   }
+  for (const o of look.groups?.outlines ?? []) drawGroup(ctx, v, o, c, look.groups!.picked.has(o.id), look.groups!.inside === o.id);
   const parts = new Map(d.parts.map((p) => [p.id, p]));
   const wire = Math.max(1.5, 0.2 * v.scale);
   ctx.lineCap = "round";
@@ -319,6 +323,28 @@ export function drawSchematic(
     ctx.stroke();
   }
   if (look.box) rubber(ctx, v, look.box, c);
+}
+
+/** A group's outline: a rounded box with its name on the top edge. Dashed while it is gone into. */
+export function drawGroup(ctx: CanvasRenderingContext2D, v: View2D, o: GroupOutline, c: Colours, picked: boolean, inside: boolean) {
+  const a = toScreen(v, [o.box.x1, o.box.y2]);
+  const b = toScreen(v, [o.box.x2, o.box.y1]);
+  const r = Math.min(Math.max(4, 0.8 * v.scale), (b[0] - a[0]) / 4, (b[1] - a[1]) / 4);
+  ctx.save();
+  ctx.strokeStyle = picked ? c.accent : c.muted;
+  ctx.lineWidth = picked ? 2 : 1.25;
+  if (inside) ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(a[0], a[1], b[0] - a[0], b[1] - a[1], r);
+  else ctx.rect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = picked ? c.accent : c.muted;
+  ctx.font = `600 ${Math.max(10, 1.5 * v.scale)}px ${c.font}`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(o.name, a[0] + r, a[1] - 3);
+  ctx.restore();
 }
 
 export function rubber(ctx: CanvasRenderingContext2D, v: View2D, box: [P2, P2], c: Colours) {

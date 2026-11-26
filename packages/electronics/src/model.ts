@@ -282,6 +282,15 @@ export interface Sheet {
   /** Marks on pins left open on purpose. */
   noConnects: { id: Id; x: number; y: number }[];
   notes?: (Shape & { id: Id })[];
+  /** Things gathered in a named outline that move as one (#766). A thing is in one group at most. */
+  groups?: SchGroup[];
+}
+
+/** A group on a sheet: a name, and the ids of the symbols, wires, labels and marks inside its outline. */
+export interface SchGroup {
+  id: Id;
+  name: string;
+  members: Id[];
 }
 
 // ---------------------------------------------------------------- the board

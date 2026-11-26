@@ -18,6 +18,7 @@ import { newSheet, type SheetSize, type TitleBlock } from "@bettercad/kernel/dra
 import { sheetScene, type Fill, type Label, type Scene, type Stroke } from "../drawing/export/scene";
 import { sheetLayout } from "../drawing/layout";
 import { teePoints } from "./drawSchematic";
+import { groupOutlines } from "./hit";
 import { sheetBox } from "./SchematicCanvas";
 
 const DIRS: Record<number, P2> = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
@@ -110,6 +111,23 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
     beside(value, def.valueAt ?? [GRID, -GRID]);
   };
 
+  // Group outlines (#766): a thin box with the group's name on its top edge.
+  for (const o of groupOutlines(d, sheet)) {
+    const { x1, y1, x2, y2 } = o.box;
+    line(
+      (
+        [
+          [x1, y1],
+          [x2, y1],
+          [x2, y2],
+          [x1, y2],
+          [x1, y1],
+        ] as P2[]
+      ).map(P),
+      pen(0.15),
+    );
+    text(o.name, P([x1 + 0.8, y2 + 0.5]), 1.5, "start", "alphabetic");
+  }
   for (const w of sheet.wires) line([P(w.a), P(w.b)], pen(0.2));
   for (const p of teePoints(sheet)) disc(P(p), 0.45 * s);
   for (const j of sheet.junctions) disc(P([j.x, j.y]), 0.45 * s);

@@ -13,7 +13,6 @@ import {
   realParts,
   tidyValue,
   type ElectronicsDesign,
-  type P2,
 } from "@bettercad/electronics";
 import { Button, ESC, FeaturePanel, PanelNote, PropsPanel, RibbonButton, RibbonGroup, Toolbar, cx, useEscape, type IconName } from "@bettercad/ui";
 import type { Sketch } from "@bettercad/sketch";
@@ -21,7 +20,7 @@ import type { Command } from "../state/commands";
 import type { KernelCall } from "./bodyFile";
 import type { ModelFaces } from "./faceOutline";
 import { eactions, showView, type EEdit } from "./actions";
-import { SchematicCanvas, commitLabel } from "./SchematicCanvas";
+import { SchematicCanvas, commitLabel, type NameAsk } from "./SchematicCanvas";
 import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
 import { eui, type EView, type PcbTool, type SchTool } from "./ui";
 import { useEui } from "./useEui";
@@ -196,6 +195,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         tip: "Make a copy of the selection beside it, with fresh names",
         disabled: readOnly || ui.selected.length === 0,
         run: () => eactions.current?.duplicate?.(),
+      },
+      {
+        id: "group",
+        group: "Edit",
+        label: "Group",
+        icon: "group",
+        key: "Ctrl+G",
+        tip: "Gather the selection in a named outline that moves as one. Pick a group and press again to take it apart",
+        disabled: readOnly || ui.selected.length === 0,
+        run: () => eactions.current?.groupToggle?.(),
       },
       {
         id: "renumber",
@@ -621,6 +630,27 @@ function commands(design: () => ElectronicsDesign): Command[] {
     },
     {
       ...e,
+      id: "electronics.group",
+      label: "Group",
+      group: "Edit",
+      icon: "group",
+      keys: ["mod+g"],
+      when: schematic,
+      run: () => eactions.current?.group?.(),
+      keywords: "block outline gather organise",
+    },
+    {
+      ...e,
+      id: "electronics.ungroup",
+      label: "Ungroup",
+      group: "Edit",
+      keys: ["shift+mod+g"],
+      when: schematic,
+      run: () => eactions.current?.ungroup?.(),
+      keywords: "take apart group block",
+    },
+    {
+      ...e,
       id: "electronics.renumber",
       label: "Renumber the parts",
       group: "Edit",
@@ -850,7 +880,7 @@ export default function ElectronicsView({
   const changes = useMemo(() => boardChanges(design, nl), [design, nl]);
   const behind = design.board ? changes.length : 0;
   const left = ui.unrouted ?? 0;
-  const [ask, setAsk] = useState<{ at: P2; screen: P2; id?: string; name?: string } | null>(null);
+  const [ask, setAsk] = useState<NameAsk | null>(null);
   const [text, setText] = useState("");
   useEffect(() => setText(ask?.name ?? ""), [ask]);
   useEscape(!!ask, () => setAsk(null), ESC.overlay);
@@ -990,12 +1020,12 @@ export default function ElectronicsView({
         >
           <input
             className="bc-text"
-            aria-label="Net name"
+            aria-label={ask.group ? "Group name" : "Net name"}
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
             onBlur={() => setAsk(null)}
-            placeholder="Net name"
+            placeholder={ask.group ? "Group name" : "Net name"}
           />
         </form>
       )}

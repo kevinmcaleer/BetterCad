@@ -5,7 +5,13 @@
 import { isPower, type ElectronicsDesign, type Id } from "./model";
 import { byRef, netlist, type Netlist } from "./nets";
 
-export type Found = { kind: "part"; id: Id; ref: string; text: string; note: string } | { kind: "net"; name: string; text: string; note: string };
+export type Found =
+  | { kind: "part"; id: Id; ref: string; text: string; note: string }
+  | { kind: "net"; name: string; text: string; note: string }
+  /** A schematic group (#766), by its name. */
+  | { kind: "group"; id: Id; sheet: Id; text: string; note: string };
+
+const ORDER: Record<Found["kind"], number> = { part: 0, group: 1, net: 2 };
 
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
 
@@ -42,8 +48,13 @@ export function findInDesign(d: ElectronicsDesign, query: string, nl: Netlist = 
     const pins = n.pins.length;
     out.push({ kind: "net", name: n.name, text: n.name, note: `Net · ${pins} ${pins === 1 ? "pin" : "pins"}`, rank: r });
   }
+  for (const sheet of d.sheets)
+    for (const g of sheet.groups ?? []) {
+      const r = rank(g.name);
+      if (r < 9) out.push({ kind: "group", id: g.id, sheet: sheet.id, text: g.name, note: `Group · ${sheet.name}`, rank: r + 1 });
+    }
   return out
-    .sort((a, b) => a.rank - b.rank || (a.kind === b.kind ? byRef(a.text, b.text) : a.kind === "part" ? -1 : 1))
+    .sort((a, b) => a.rank - b.rank || (a.kind === b.kind ? byRef(a.text, b.text) : ORDER[a.kind] - ORDER[b.kind]))
     .slice(0, limit)
     .map(({ rank: _, ...f }) => f as Found);
 }

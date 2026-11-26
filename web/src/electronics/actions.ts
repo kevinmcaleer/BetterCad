@@ -23,6 +23,11 @@ export interface EActions {
   paste?(): void;
   duplicate?(): void;
   renumber?(): void;
+  /** Schematic only: gather the selection into a named group, or take the picked groups apart (#766). */
+  group?(): void;
+  ungroup?(): void;
+  /** The ribbon's Group button: take apart a selection that is only whole groups, else group it. */
+  groupToggle?(): void;
   /** Board only: swap the copper layer (dropping a via when a track is on the go), and lock the picked parts. */
   layer?(): void;
   lock?(): void;
