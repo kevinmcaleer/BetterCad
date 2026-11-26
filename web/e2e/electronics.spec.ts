@@ -77,6 +77,29 @@ test.describe("on a wide screen", () => {
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 3 parts, 1 net" })).toBeVisible();
   });
 
+  test("another tab leaves the schematic for the model, and the schematic is as you left it", async ({ page }) => {
+    await page.goto("/");
+    const cube = page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true });
+    await cube.waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await expect(page.getByText("Start with a part.")).toBeVisible();
+    await page.keyboard.press("p");
+    await pick(page, "Capacitor");
+    await page.mouse.click(...(await onCanvas(page, 25.4, 0)));
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 1 part, 0 nets" })).toBeVisible();
+
+    await page.getByRole("tab", { name: "Assemble" }).click();
+    await expect(cube).toBeVisible();
+    await expect(page.getByRole("img", { name: /^Schematic/ })).toBeHidden();
+    await expect(page.getByRole("tab", { name: "Assemble" })).toHaveAttribute("aria-selected", "true");
+
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("tabpanel").getByRole("button", { name: "Schematic", exact: true }).click();
+    await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 1 part, 0 nets" })).toBeVisible();
+  });
+
   test("a second sheet: add it, name it, and follow a net from one sheet to the other", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
