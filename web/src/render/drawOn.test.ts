@@ -142,3 +142,18 @@ describe("Draw on timing", () => {
     expect(lineGlow(plan, 20)).toBeCloseTo(0.25, 5);
   });
 });
+
+describe("Draw on glow on busy models", () => {
+  it("keeps full glow for a simple part and turns it down as the lines crowd the picture", async () => {
+    const { glowScale } = await import("./drawOnView");
+    // A bracket: about 12 times its size in edges, 400 px across.
+    expect(glowScale(12 * 100, 100, 2.5, 400)).toBe(1);
+    // Many parts: 80 times its size in edges, same size on screen.
+    const busy = glowScale(80 * 100, 100, 2.5, 400);
+    expect(busy).toBeLessThan(1);
+    expect(busy).toBeGreaterThan(0.3);
+    // The same model far away is busier still, but never goes dark.
+    expect(glowScale(80 * 100, 100, 2.5, 60)).toBe(0.3);
+    expect(glowScale(0, 0, 2.5, 0)).toBe(1);
+  });
+});

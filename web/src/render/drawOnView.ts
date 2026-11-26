@@ -7,6 +7,7 @@
  */
 import {
   AdditiveBlending,
+  CustomBlending,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -15,6 +16,7 @@ import {
   InstancedBufferAttribute,
   InstancedBufferGeometry,
   Matrix4,
+  MaxEquation,
   Mesh,
   NormalBlending,
   PerspectiveCamera,
@@ -145,11 +147,37 @@ const ghostMaterial = (glow: Color) =>
     `,
     transparent: true,
     depthWrite: false,
-    blending: AdditiveBlending,
+    // The brightest ghost wins rather than adding up, so many parts behind each other can't pile up to white.
+    ...MAX,
     side: 2,
   });
 
-/** Wide line segments that grow from their start as time reaches them, white hot where just drawn. */
+/** Blending that keeps the brighter of what is there and what is drawn: overlapping glows never add up past one. */
+const MAX = { blending: CustomBlending, blendEquation: MaxEquation } as const;
+
+/** How bright a line is once the white-hot tip has passed, and how much hotter the tip is. */
+export const LINE_BRIGHTNESS = 2.4;
+const TIP_BRIGHTNESS = 1.8;
+/** How quickly the white-hot tip cools, per second: gone in about a fifth of a second. */
+export const TIP_COOLING = 12;
+
+/**
+ * How much to turn the glow down for a busy picture: the share of the model's on-screen size the lines would cover
+ * (their total length × their width ÷ the model's size, squared), kept to about what a simple bracket covers. 1 is
+ * full glow; a dense model far away goes down to 0.3.
+ */
+export function glowScale(totalLength: number, size: number, widthPx: number, sizePx: number): number {
+  if (!(totalLength > 0 && size > 0 && sizePx > 0)) return 1;
+  const cover = (totalLength / size) * (widthPx / sizePx);
+  return Math.max(0.3, Math.min(1, Math.sqrt(COVER / cover)));
+}
+/** The cover that still gets full glow. */
+const COVER = 0.12;
+/** The lines' width in CSS pixels, and the bloom's strength at full glow. */
+const LINE_WIDTH = 2.5;
+const BLOOM = 1.1;
+
+/** Wide line segments that grow from their start as time reaches them, white hot just where they are drawn. */
 const lineMaterial = () =>
   new ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uGlow: { value: 1 }, uResolution: { value: new Vector2(1, 1) }, uWidth: { value: 2.5 } },
@@ -188,16 +216,16 @@ const lineMaterial = () =>
       varying vec3 vColour;
       void main() {
         if (vT > uTime) discard;
-        float hot = exp(-(uTime - vT) * 2.5);
+        float hot = exp(-(uTime - vT) * ${TIP_COOLING.toFixed(1)});
         float core = 1.0 - abs(vSide);
         core *= core;
-        vec3 c = mix(vColour, vec3(1.0), hot * 0.7) * (2.8 * uGlow + 3.0 * hot) * core;
+        vec3 c = mix(vColour, vec3(1.0), hot * 0.6) * (${LINE_BRIGHTNESS.toFixed(2)} * uGlow + ${TIP_BRIGHTNESS.toFixed(2)} * hot) * core;
         gl_FragColor = vec4(c, 1.0);
       }
     `,
     transparent: true,
     depthWrite: false,
-    blending: AdditiveBlending,
+    ...MAX,
   });
 
 /** The embers: a hot white core, a halo of the glow colour and a four-point star that flickers. */
@@ -258,6 +286,10 @@ export class DrawOnView {
   private camera = new PerspectiveCamera(FOV, 1, 1, 100_000);
   private composer: EffectComposer;
   private bloom: UnrealBloomPass;
+  /** The lines' total length, and the middle and size (diagonal) of the box round them, in mm: how busy the model is. */
+  /** How far the glow is turned down for a busy picture, 0.3 to 1. */
+  private glow = 1;
+  private extent = { length: 0, centre: new Vector3(), size: 0 };
   private model = new Group();
   private lines: Mesh<InstancedBufferGeometry, ShaderMaterial> | null = null;
   private embers: Points<BufferGeometry, ShaderMaterial> | null = null;
@@ -285,7 +317,7 @@ export class DrawOnView {
     this.scene.add(this.model, this.camera);
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new Vector2(1, 1), 1.1, 0.55, 0.78);
+    this.bloom = new UnrealBloomPass(new Vector2(1, 1), BLOOM, 0.55, 0.78);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.loop = this.loop.bind(this);
@@ -301,6 +333,24 @@ export class DrawOnView {
       timing,
     );
     this.plan = plan;
+    {
+      const S = plan.segments;
+      const min = new Vector3(Infinity, Infinity, Infinity),
+        max = new Vector3(-Infinity, -Infinity, -Infinity),
+        a = new Vector3(),
+        b = new Vector3();
+      let length = 0;
+      for (let i = 0; i < S.length; i += 6) {
+        a.fromArray(S, i);
+        b.fromArray(S, i + 3);
+        length += a.distanceTo(b);
+        min.min(a).min(b);
+        max.max(a).max(b);
+      }
+      this.extent = S.length
+        ? { length, centre: min.clone().add(max).multiplyScalar(0.5), size: min.distanceTo(max) }
+        : { length: 0, centre: new Vector3(), size: 0 };
+    }
     const glowOf = (b: RenderBody) => new Color(colour === "parts" ? (b.colour ?? DEFAULT_COLOUR) : GLOWS[colour]);
 
     // Faces: one mesh per body, drawn three times (depth, solid, ghost), each vertex knowing when its face closes.
@@ -516,10 +566,20 @@ export class DrawOnView {
       if (this.lines) {
         const u = this.lines.material.uniforms;
         u.uTime.value = t;
-        u.uGlow.value = lineGlow(plan, t);
+        // A busy picture (many edges, or the model small on screen) glows less, so it never fills with white.
+        const e = this.extent;
+        const away = Math.max(1e-3, this.camera.position.distanceTo(e.centre));
+        const sizePx = (e.size / (2 * away * Math.tan((FOV * Math.PI) / 360))) * this.size.y;
+        const scale = glowScale(e.length, e.size, LINE_WIDTH, sizePx);
+        this.bloom.strength = BLOOM * scale;
+        // For tests and for checking a model by hand: how far the glow is turned down.
+        this.glow = scale;
+        this.canvas.dataset.glow = scale.toFixed(2);
+        this.canvas.dataset.cover = ((e.length / Math.max(1e-6, e.size)) * (LINE_WIDTH / Math.max(1e-6, sizePx))).toFixed(3);
+        u.uGlow.value = lineGlow(plan, t) * scale;
         const pr = this.renderer.getPixelRatio();
         u.uResolution.value.set((this.size.x * pr) / 2, (this.size.y * pr) / 2);
-        u.uWidth.value = 2.5 * pr;
+        u.uWidth.value = LINE_WIDTH * pr;
       }
       if (this.embers) {
         const pos = this.embers.geometry.getAttribute("position") as BufferAttribute;
@@ -534,7 +594,8 @@ export class DrawOnView {
         pos.needsUpdate = true;
         alpha.needsUpdate = true;
         const u = this.embers.material.uniforms;
-        u.uSize.value = Math.max(36, Math.min(96, this.size.y * 0.09)) * this.renderer.getPixelRatio();
+        // Smaller on a busy or far-off model, so the embers don't swamp it.
+        u.uSize.value = Math.max(36, Math.min(96, this.size.y * 0.09)) * this.renderer.getPixelRatio() * (0.4 + 0.6 * this.glow);
         u.uFlicker.value = 0.75 + 0.25 * Math.sin(now / 37) * Math.sin(now / 53);
       }
       if (this.playing && Math.floor(t * 10) !== this.told) {
