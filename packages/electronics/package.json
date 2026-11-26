@@ -28,6 +28,7 @@
     "./pcb/slide": "./src/pcb/slide.ts",
     "./padShape": "./src/padShape.ts",
     "./pcb/marks": "./src/pcb/marks.ts",
+    "./pcb/match": "./src/pcb/match.ts",
     "./pcb/stitch": "./src/pcb/stitch.ts",
     "./pcb/clip": "./src/pcb/clip.ts",
     "./pcb/corners": "./src/pcb/corners.ts",

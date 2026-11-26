@@ -499,6 +499,14 @@ export interface Board {
   marks?: BoardMark[];
   /** How a net looks on the board (#740), by its name: a colour for its unrouted lines and when it is lit. */
   netLooks?: Record<string, NetLook>;
+  /** Groups of nets tuned to the same length (#745), each within its tolerance, mm. The board check warns when one drifts. */
+  matched?: LengthGroup[];
+}
+
+export interface LengthGroup {
+  id: Id;
+  nets: string[];
+  tolerance: number;
 }
 
 /** Colours a net can be given (#740), each drawn from the theme's own tokens. */

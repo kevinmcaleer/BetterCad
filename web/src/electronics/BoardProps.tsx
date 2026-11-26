@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { lazy, Suspense, useId, useState } from "react";
 import { boardPads, netlist, type CopperLayer, type ElectronicsDesign, type Keepout, type Side, type ViaMask } from "@bettercad/electronics";
 import { layerName, layerShort, layersOf, setViaSpan, viaKind, viaLayers, viaOpen } from "@bettercad/electronics/pcb/stack";
 import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
@@ -22,6 +22,8 @@ import {
 import { Button, NumberField, type IconName } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import NetProps from "./NetProps";
+
+const LengthMatch = lazy(() => import("./LengthMatch"));
 import { eui } from "./ui";
 
 const ALIGN: { how: Align; label: string; icon: IconName }[] = [
@@ -436,6 +438,11 @@ export default function BoardProps({
             />
           )}
         </fieldset>
+        {!readOnly && (
+          <Suspense fallback={null}>
+            <LengthMatch design={design} edit={edit} nets={tracks.map((t) => t.net)} />
+          </Suspense>
+        )}
         {net ? (
           <NetProps design={design} edit={edit} net={net} readOnly={readOnly} />
         ) : (

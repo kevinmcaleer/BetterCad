@@ -33,7 +33,8 @@ export type BoardRuleId =
   | "pour-empty"
   | "silk-size"
   | "layer-gone"
-  | "via-span";
+  | "via-span"
+  | "length-match";
 
 export interface BoardRule {
   id: BoardRuleId;
@@ -59,6 +60,7 @@ export const BOARD_RULES: BoardRule[] = [
   { id: "dead-net", label: "Copper is left from a net that is gone", level: "warning" },
   { id: "pour-empty", label: "A pour fills nothing", level: "warning" },
   { id: "via-span", label: "A via does not go right through", level: "warning" },
+  { id: "length-match", label: "Nets matched in length have drifted apart", level: "warning" },
   { id: "silk-size", label: "Silkscreen text is too small", level: "warning" },
   { id: "silk-pad", label: "Silkscreen is printed over a pad", level: "warning" },
 ];
@@ -451,6 +453,26 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
       `A via on ${v.net || "no net"} is ${kind}: it joins ${layerName(on[0]!)} to ${layerName(on[on.length - 1]!)} only.`,
       "Board houses charge more for these, and some do not make them. Make it go right through if you can.",
       [v.x, v.y],
+    );
+  }
+
+  // Matched lengths (#745): the group's longest and shortest nets more than its tolerance apart.
+  for (const g of board.matched ?? []) {
+    const len = (net: string) =>
+      board.tracks.reduce(
+        (n, t) => (t.net === net ? n + t.pts.slice(1).reduce((m, p, i) => m + Math.hypot(p[0] - t.pts[i]![0], p[1] - t.pts[i]![1]), 0) : n),
+        0,
+      );
+    const lengths = g.nets.map((net) => ({ net, l: len(net) })).sort((a, b) => b.l - a.l);
+    const [long, short] = [lengths[0], lengths.at(-1)];
+    if (!long || !short || long.l - short.l <= g.tolerance + 1e-6) continue;
+    const at = board.tracks.find((t) => t.net === short.net)?.pts[0];
+    add(
+      "length-match",
+      g.id,
+      `${short.net} is ${mm(long.l - short.l)} shorter than ${long.net}. They are matched to within ${mm(g.tolerance)}.`,
+      "Pick a track on one of them and press Match lengths again.",
+      at,
     );
   }
 

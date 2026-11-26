@@ -316,6 +316,12 @@ pads that fall between grid lines; the connections it finds no way for are liste
 - **Length.** The route bar shows the net's length as you go, the piece on the pointer counted, and against a target
   when one is typed. A track's card shows its net's length; typing a longer one puts flat-topped wiggles with 45°
   corners in its longest straight piece, on whichever side has room (`tuneLength`). Tuning only makes a net longer.
+- **Matched lengths** (`pcb/match.ts`, #745, loaded when a track is picked). Pick tracks on several nets and press
+  Match lengths: each net is tuned to the longest, within a tolerance (0.1 mm unless you type one), its wiggles in one
+  piece when they fit and shared out over several when not (`matchLengths`). A track on one half of a pair shows both
+  lengths and the skew, and Match the pair tunes the shorter one. The nets are kept as a group (`board.matched`, a net
+  in one group at a time), and the board check's "Nets matched in length have drifted apart" warning says when later
+  routing pulls a group further apart than its tolerance. Stop matching takes the group apart.
 - **Pairs.** With Pair on, starting on a net whose name has a partner (D+ and D-, USB_P and USB_N, DP and DM, TXP and
   TXN) finds the partner's pad within 8 mm and routes both: you click the line between them, and `pairRuns` lays one
   track each side of it at the track width plus the clearance, mitred so the gap holds round every corner. Clicking
