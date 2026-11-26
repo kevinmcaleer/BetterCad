@@ -121,7 +121,14 @@ export interface PourFill {
 const MAX_CELLS = 250_000;
 
 /** The fill on a grid: which cells are copper, as pieces, and what each piece is joined to. */
-export function pourFill(d: ElectronicsDesign, pour: Pour, pads: BoardPad[] = boardPads(d), copper: Copper[] = copperOf(d, pads)): PourFill {
+export function pourFill(
+  d: ElectronicsDesign,
+  pour: Pour,
+  pads: BoardPad[] = boardPads(d),
+  copper: Copper[] = copperOf(d, pads),
+  /** Keep islands in: where the pour would fill if something joined it, as stitching vias (#737) would. */
+  o: { islands?: boolean } = {},
+): PourFill {
   const shape = pourShape(d, pour, pads, copper);
   const layer = layerOf(pour.layer);
   const xs = pour.outline.map((p) => p[0]);
@@ -220,7 +227,7 @@ export function pourFill(d: ElectronicsDesign, pour: Pour, pads: BoardPad[] = bo
     let from = -1;
     for (let i = 0; i <= w; i += 1) {
       const c = i < w ? cells[j * w + i]! : 0;
-      const island = c > 0 && !joins[c - 1]!.length;
+      const island = c > 0 && !o.islands && !joins[c - 1]!.length;
       if (c > 0 && !island) filled += 1;
       if (island && from < 0) from = i;
       else if (!island && from >= 0) {

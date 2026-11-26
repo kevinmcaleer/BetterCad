@@ -31,7 +31,8 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
    group of parts. Double-click a text note to change its words. Notes don't join anything.
 5. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
 6. **Check it.** Press E for the rules check. It lists pins left unconnected, outputs wired together, nets with one
-   pin and more, each with a way to fix it. Click a line to go to the spot.
+   pin and more, each with a way to fix it. Click a line to go to the spot. Choose the rules shows a table of which
+   pin types may meet; click a cell to make that pair fine, a warning or an error.
 
 ![The rules check, open over the schematic](images/electronics-check.png)
 
@@ -87,8 +88,12 @@ schematic brings it up to date and lists the changes first.
    same gap. The bar shows how long the net is as you go; type a Target length to see it against that. To make a
    net longer, pick one of its tracks and type the length you want: it gets wiggles to make it up.
 4. **Pour copper.** Press P and draw round an area, usually the whole board for ground. The pour keeps clear of
-   other nets and joins its own pads with spokes.
-5. **Add holes and text.** H adds a mounting hole for a screw. T writes on the silkscreen.
+   other nets and joins its own pads with spokes. Pour both sides, then pick a pour and press **Add stitching vias** to join them with vias every few millimetres.
+5. **Add holes and text.** H adds a mounting hole for a screw. T writes on the silkscreen. If a board house will
+   put the parts on, add three **Fiducials** near the corners, not in a line, so its camera can line the board up.
+   A **Test point** clicked onto a track gives your meter's probe somewhere to land.
+   To repeat a routed channel, pick its parts, press Ctrl+C, pick the matching parts of the next channel and press
+   Ctrl+V. They are laid out and routed the same way, on their own nets.
 6. **Check it.** Press E for the board check. It finds shorts, gaps that are too small, connections left to route,
    copper too close to the edge, holes too small or too close together and text too small to print, against the
    rules you picked.

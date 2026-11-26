@@ -1208,6 +1208,13 @@ test.describe("on a wide screen", () => {
     await props.getByLabel("Join pads with spokes").click();
     await expect(props.getByLabel("Join pads with spokes")).not.toBeChecked();
     await axe(page);
+    // Duplicate (#741) sets a copy of the pour down beside it, as one step to undo.
+    const undoIt = page.getByRole("banner").getByRole("button", { name: /^Undo/ });
+    await canvas.focus();
+    await page.keyboard.press("ControlOrMeta+d");
+    await expect(undoIt).toHaveAccessibleName(/^Undo duplicate/);
+    await undoIt.click();
+    await press(page, 0, 30);
     await page.keyboard.press("Escape");
 
     // A keep-out right across the board cuts the pour in two, and the connection is open again.

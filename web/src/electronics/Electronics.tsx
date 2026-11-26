@@ -289,7 +289,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       find,
       { id: "fit", group: "View", label: "Fit", icon: "frame", key: "F", tip: "Fit the schematic in the view", run: () => eactions.current?.fit() },
     ];
-  const draw = (id: PcbTool, label: string, icon: IconName, key: string, tip: string): Tool => ({
+  const draw = (id: PcbTool, label: string, icon: IconName, key: string | undefined, tip: string): Tool => ({
     id,
     group: "Route",
     label,
@@ -315,6 +315,8 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       run: () => eactions.current?.layer?.(),
     },
     { ...draw("hole", "Hole", "hole", "H", "Add a mounting hole for a screw"), group: "Add" },
+    { ...draw("fiducial", "Fiducial", "fiducial", undefined, "Add a copper dot the assembly line's camera lines the board up by"), group: "Add" },
+    { ...draw("testpoint", "Test point", "testPoint", undefined, "Add a pad on a net for a meter's probe"), group: "Add" },
     { ...draw("text", "Text", "text", "T", "Write on the silkscreen"), group: "Add" },
     {
       id: "picture",
@@ -327,6 +329,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     },
     { ...draw("pour", "Pour", "pour", "P", "Fill an area with copper on one net, usually ground"), group: "Add" },
     { ...draw("keepout", "Keep-out", "keepOut", "O", "Mark an area tracks and pours stay out of, or cut a hole in the board"), group: "Add" },
+    {
+      id: "duplicate",
+      group: "Place",
+      label: "Duplicate",
+      icon: "copy",
+      key: "Ctrl+D",
+      tip: "Copy the selection beside it. Copy parts with their routing, pick matching parts and paste to lay them out the same",
+      disabled: readOnly || none,
+      run: () => eactions.current?.duplicate?.(),
+    },
     {
       id: "rotate",
       group: "Place",
@@ -459,10 +471,12 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
 function commands(design: () => ElectronicsDesign): Command[] {
   const schematic = () => eui.get().view === "schematic";
   const pcb = () => eui.get().view === "pcb";
-  const board: [PcbTool, string, string, IconName, string][] = [
+  const board: [PcbTool, string, string | undefined, IconName, string][] = [
     ["route", "Route a track", "w", "route", "trace wire copper"],
     ["via", "Via", "v", "via", "hole layer"],
     ["hole", "Mounting hole", "h", "hole", "screw drill"],
+    ["fiducial", "Fiducial", undefined, "fiducial", "assembly camera mark pick and place"],
+    ["testpoint", "Test point", undefined, "testPoint", "probe meter pad test"],
     ["text", "Silkscreen text", "t", "text", "label legend"],
     ["pour", "Copper pour", "p", "pour", "fill ground plane zone polygon"],
     ["keepout", "Keep-out or cut-out", "o", "keepOut", "restrict area slot hole"],
@@ -524,7 +538,7 @@ function commands(design: () => ElectronicsDesign): Command[] {
       label,
       group: "Tools",
       icon,
-      keys: [key],
+      ...(key ? { keys: [key] } : {}),
       when: pcb,
       run: armPcb(t),
       keywords,
@@ -636,8 +650,17 @@ function commands(design: () => ElectronicsDesign): Command[] {
       run: () => eactions.current?.flip?.(),
     },
     { ...e, id: "electronics.delete", label: "Delete", group: "Edit", icon: "trash", keys: ["delete", "backspace"], run: () => eactions.current?.remove() },
-    { ...e, id: "electronics.copy", label: "Copy", group: "Edit", icon: "copy", keys: ["mod+c"], when: schematic, run: () => eactions.current?.copy?.() },
-    { ...e, id: "electronics.paste", label: "Paste", group: "Edit", keys: ["mod+v"], when: schematic, run: () => eactions.current?.paste?.() },
+    {
+      ...e,
+      id: "electronics.copy",
+      label: "Copy",
+      group: "Edit",
+      icon: "copy",
+      keys: ["mod+c"],
+      when: () => schematic() || pcb(),
+      run: () => eactions.current?.copy?.(),
+    },
+    { ...e, id: "electronics.paste", label: "Paste", group: "Edit", keys: ["mod+v"], when: () => schematic() || pcb(), run: () => eactions.current?.paste?.() },
     {
       ...e,
       id: "electronics.duplicate",
@@ -645,7 +668,7 @@ function commands(design: () => ElectronicsDesign): Command[] {
       group: "Edit",
       icon: "copy",
       keys: ["mod+d"],
-      when: schematic,
+      when: () => schematic() || pcb(),
       run: () => eactions.current?.duplicate?.(),
     },
     {

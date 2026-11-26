@@ -19,6 +19,8 @@ import { clearanceBetween, copperOf, edgeLoops, netRules, type Layer } from "@be
 import { layersOf } from "@bettercad/electronics/pcb/stack";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
+import { addMark } from "@bettercad/electronics/pcb/marks";
+import { teardrops } from "@bettercad/electronics/pcb/teardrops";
 import { slideTrack } from "@bettercad/electronics/pcb/slide";
 import { addCutout, addKeepoutArea, addPour, pourShape, removeAreas, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import {
@@ -41,7 +43,9 @@ import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { readColours } from "./colours";
 import { drawBoard, type LayerId } from "./drawBoard";
-import { boxBoard, hitBoard, placementBox } from "./hitBoard";
+import { getBoardClip, setBoardClip } from "./clip";
+import { boxBoard, handleAt, handlesOf, hitBoard, placementBox } from "./hitBoard";
+import { addAreaCorner, moveAreaCorner, moveTrackCorner, removeAreaCorner } from "@bettercad/electronics/pcb/corners";
 import { measureSnap, measureText } from "./measure";
 import { clearOf } from "./SchematicCanvas";
 import { eui } from "./ui";
@@ -149,7 +153,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     last: P2;
     key: string;
     slide?: { id: string; piece: number; from: P2; board: NonNullable<ElectronicsDesign["board"]> };
+    /** A corner held (#742): a track's bend or an area's corner, worked out from the board as it was picked up. */
+    corner?: { kind: "track" | "area"; id: string; i: number; design: ElectronicsDesign };
   } | null>(null);
+  /** The corner last picked, for Delete. */
+  const [corner, setCorner] = useState<{ id: string; i: number } | null>(null);
   const pictureFile = useRef<HTMLInputElement>(null);
   /** A picture for the silkscreen (#642): read, turned into ink, and set down in the middle of what is showing. */
   const addPictureFrom = async (file: File | undefined) => {
@@ -185,6 +193,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const nl = useMemo(() => netlist(design), [design]);
   const state = useMemo(() => boardState(design, nl), [design, nl]);
   const { pads, copper } = state;
+  const drops = useMemo(() => teardrops(design, pads, copper), [design, pads, copper]);
   const pours = useMemo(() => state.fills.map((fill) => ({ fill, shape: pourShape(design, fill.pour, pads, copper) })), [state]); // eslint-disable-line react-hooks/exhaustive-deps
   const nets = useMemo(() => [...new Set(pads.map((p) => p.net).filter(Boolean))].sort(), [pads]);
   const fillNet = nets.includes(pourNet) ? pourNet : (nets.find((n) => /^(gnd|ground|0v|vss)$/i.test(n)) ?? nets[0] ?? "");
@@ -397,12 +406,50 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
 
   useEffect(() => {
     const picked = () => eui.get().selected;
+    /** Copy, paste and duplicate (#741): the sums load the first time they are asked for. */
+    const clipboard = () => import("@bettercad/electronics/pcb/clip");
+    const paste = async (beside: boolean) => {
+      if (readOnly || !board) return;
+      const { copyBoard, boardClipOrigin, pasteBoard } = await clipboard();
+      const clip = beside ? copyBoard(design, picked()) : getBoardClip();
+      if (!clip) return;
+      // Onto picked parts that match the copy's, the copy lays them out; else under the pointer, or beside it.
+      const from = boardClipOrigin(clip);
+      const to: P2 = !beside && at ? snap(at, grid) : [from[0] + 5 * grid, from[1] + 5 * grid];
+      const made = pasteBoard(design, clip, to, beside ? [] : picked());
+      if (!made.ids.length && !made.laid) return setSaid(made.why ?? "There was nothing to paste.");
+      edit(() => made.design, beside ? "Duplicate" : made.laid ? "Lay out like the copy" : "Paste");
+      eui.set({ selected: made.laid ? picked() : made.ids });
+      setSaid(
+        [
+          made.laid ? `Laid out ${made.laid} ${made.laid === 1 ? "part" : "parts"} like the copy.` : "",
+          made.offNet
+            ? `${made.offNet} ${made.offNet === 1 ? "piece" : "pieces"} of copper landed on nothing and ${made.offNet === 1 ? "is" : "are"} on no net.`
+            : "",
+          made.why ?? "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    };
     eactions.current = {
+      copy: async () => {
+        const { copyBoard } = await clipboard();
+        const clip = copyBoard(design, picked());
+        if (clip) setBoardClip(clip);
+      },
+      paste: () => void paste(false),
+      duplicate: () => void paste(true),
       fit: () => doFit(),
       rotate: () => !readOnly && picked().length && edit((d) => rotateOnBoard(d, picked()), "Rotate"),
       mirror: () => !readOnly && picked().length && edit((d) => flipOnBoard(d, picked()), "Flip to the other side"),
       remove: () => {
         if (readOnly || !picked().length) return;
+        // A picked corner of an area goes on its own, while the area keeps three (#742).
+        if (corner && picked().length === 1 && picked()[0] === corner.id && board && handlesOf(board, corner.id)?.kind === "area") {
+          edit((d) => removeAreaCorner(d, corner.id, corner.i), "Delete a corner");
+          return setCorner(null);
+        }
         const parts = new Set(design.board?.placements.map((p) => p.part));
         const rest = picked().filter((id) => !parts.has(id));
         const mine = picked().filter((id) => parts.has(id));
@@ -435,6 +482,25 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const onDown = (p: Pointer): boolean => {
     // The tools work by clicks, so a drag is free to pan on a touch screen.
     if (tool !== "select") return false;
+    // A corner of the one picked track or area drags on its own; a press on an area's edge puts a new one there (#742).
+    const one = ui.selected.length === 1 ? ui.selected[0]! : null;
+    const h = one && board && !readOnly && !p.shift ? handleAt(board, one, p.world, Math.max(tol, 0.2)) : null;
+    if (one && h) {
+      const kind = handlesOf(board!, one)!.kind;
+      const key = `ec-board-corner-${(run += 1)}`;
+      let start = design;
+      let i: number;
+      if ("edge" in h) {
+        const made = addAreaCorner(design, one, h.edge, snap(h.at, grid));
+        start = made.design;
+        i = made.i;
+        edit(() => start, "Add a corner", key);
+      } else i = h.i;
+      setCorner({ id: one, i });
+      drag.current = { ids: [one], last: snap(p.world, grid), key, corner: { kind, id: one, i, design: start } };
+      return true;
+    }
+    setCorner(null);
     const hit = hitAt(p.world);
     if (!hit) {
       if (p.touch) return false;
@@ -467,6 +533,24 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       const dy = s[1] - d.last[1];
       if (dx || dy) {
         d.last = s;
+        const cn = d.corner;
+        if (cn) {
+          if (cn.kind === "area") edit(() => moveAreaCorner(cn.design, cn.id, cn.i, s), "Move a corner", d.key);
+          else {
+            // With Keep clear on, the bend stops at the last place where the track keeps its clearance.
+            const next = moveTrackCorner(cn.design, cn.id, cn.i, s);
+            const t = next.board?.tracks.find((x) => x.id === cn.id);
+            const others = copper.filter((c) => c.id !== cn.id);
+            const stop =
+              t && board && ui.keepClear ? blockers(board, others, loops, { net: t.net, layers: [t.layer], pts: t.pts, width: t.width })[0] : undefined;
+            if (stop) tooClose(stop.what);
+            else {
+              setSaid("");
+              edit(() => next, "Move a corner", d.key);
+            }
+          }
+          return;
+        }
         const sl = d.slide;
         // A slide is always worked out from the track as it was picked up, so going back puts it back.
         if (sl) edit((x) => slideTrack({ ...x, board: sl.board }, sl.id, sl.piece, [s[0] - sl.from[0], s[1] - sl.from[1]]), "Move a piece of track", d.key);
@@ -518,6 +602,14 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     } else if (tool === "hole") {
       const to = snap(p.world, grid);
       edit((d) => addHole(d, to[0], to[1], 3.2), "Add a hole");
+    } else if (tool === "fiducial" || tool === "testpoint") {
+      // A test point dropped on copper joins its net; it goes on the side you are working on.
+      const on = tool === "testpoint" ? copperAt(p.world) : null;
+      const to = on?.at ?? snap(p.world, grid);
+      const side = layer === "bottom" ? "bottom" : "top";
+      edit((d) => addMark(d, tool, to[0], to[1], side, on?.net).design, tool === "fiducial" ? "Add a fiducial" : "Add a test point");
+      if (tool === "testpoint" && !on) setSaid("Test point added on no net. Pick its net on the right, or route a track to it.");
+      else setSaid("");
     } else if (tool === "text") {
       setText("");
       setAsk({ at: snap(p.world, grid), screen: p.screen });
@@ -546,6 +638,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     drag.current = null;
   };
 
+  // The corners the one picked track or area shows to drag (#742).
+  const handles = useMemo(() => {
+    const one = tool === "select" && !readOnly && ui.selected.length === 1 && board ? handlesOf(board, ui.selected[0]!) : null;
+    return one ? { pts: one.handles.map((i) => one.pts[i]!), picked: corner?.id === ui.selected[0] ? one.handles.indexOf(corner.i) : undefined } : undefined;
+  }, [board, ui.selected, tool, readOnly, corner]);
   // The piece of track that would go down on the next click.
   const ghost = useMemo(() => {
     if (!route || !at || !board) return undefined;
@@ -598,17 +695,21 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           ? "Click a track or a pad to drop a via on it."
           : tool === "hole"
             ? "Click where the mounting hole goes."
-            : tool === "text"
-              ? "Click where the text starts."
-              : tool === "pour" || tool === "keepout"
-                ? area.length
-                  ? "Click the next corner. Click the first corner again, or Done, to close it."
-                  : tool === "pour"
-                    ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
-                    : cut
-                      ? "Click the corners of the hole to cut through the board."
-                      : "Click the corners of the area tracks and pours must stay out of."
-                : "";
+            : tool === "fiducial"
+              ? "Click where the fiducial goes. Put three near the board's corners, not in a line."
+              : tool === "testpoint"
+                ? "Click a track or a pad to put a test point on its net."
+                : tool === "text"
+                  ? "Click where the text starts."
+                  : tool === "pour" || tool === "keepout"
+                    ? area.length
+                      ? "Click the next corner. Click the first corner again, or Done, to close it."
+                      : tool === "pour"
+                        ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
+                        : cut
+                          ? "Click the corners of the hole to cut through the board."
+                          : "Click the corners of the area tracks and pours must stay out of."
+                    : "";
   return (
     <div ref={host} className="bc-ec-host">
       <div className="bc-ec-clear" aria-hidden="true" />
@@ -623,7 +724,25 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         view={view}
         onView={setView}
         cursor={tool !== "select" ? "crosshair" : hover ? "move" : "default"}
-        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air, pours, drawing, clashing, ui.pourOutlines, measuring]}
+        drawKey={[
+          design,
+          selected,
+          hover,
+          hidden,
+          ui.layer,
+          ui.net,
+          box,
+          colours,
+          ghost,
+          marks,
+          air,
+          pours,
+          drawing,
+          clashing,
+          ui.pourOutlines,
+          measuring,
+          handles,
+        ]}
         draw={(ctx, v, size) =>
           drawBoard(ctx, v, size, design, colours, {
             selected,
@@ -641,6 +760,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             area: drawing,
             pourOutlines: ui.pourOutlines,
             measure: measuring,
+            handles,
+            teardrops: drops,
           })
         }
         onDown={onDown}

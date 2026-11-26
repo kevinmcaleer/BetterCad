@@ -148,6 +148,16 @@ opens or a push is about to happen. `check(design)` returns results in plain wor
 | `net-one-pin` | Warning | A net with a single pin on it |
 | `label-once` | Warning | A label no other label or power symbol shares |
 | `net-two-names` | Warning | A net carrying two different names |
+| `pin-conflict` | From the pin table | Two pin types that should not meet on one net (#738) |
+
+Which pin types may share a net is a table (#738), `PIN_MEETS` in `erc.ts`, after KiCad's default: two outputs (or
+power outputs) fight, an output on a three-state, open collector or open emitter pin is an error, an output with an
+in-and-out pin and open collector with open emitter are warnings, a pin of no set type is a warning whatever it
+meets, and a pin marked not connected is an error whatever it meets. The Checks card's rules show the table, and a
+click steps a pair from fine to a warning to an error; changes are kept in `design.checks.pins` (keyed by the two
+types in `PIN_TYPES` order) and Reset takes them out. Two drivers on a net still report as `output-clash`, one line
+for them all; every other pair is `pin-conflict`, once for each pair of types on a net, at the table's level unless
+the rule's own level was changed.
 
 A power symbol counts as a power source, so a board fed from a connector needs no extra flag: put 3V3 or GND on the
 net. Each rule's level (error, warning, ignore) is kept in `design.checks.levels` when it differs from the table.
@@ -440,9 +450,57 @@ each other's places: the wires on the sheet do not move and now reach the other 
 other's nets, all in one undo step. In the starter library resistors, unpolarised capacitors, inductors, ferrite
 beads and fuses are marked, and the symbol editor's **Swaps with** field marks the pins of a part you draw. KiCad symbols have no such mark, so it is not written to or read from KiCad files.
 
-Left for later: dragging a track's or an area's corners, an outline from a face or a DXF file (there is no DXF
-import yet), spokes per pad, gate swapping, pictures and fiducials
+Left for later: an outline from a face or a DXF file (there is no DXF
+import yet), spokes per pad, gate swapping and pictures
 on the silkscreen.
+
+**Teardrops** (#743). Board setup has **Teardrops**, off unless you tick it (`Board.teardrops`). Like pours they
+are never stored: `teardrops` in `pcb/teardrops.ts` works them out from the board each time. Where a track ends on
+a pad or a via of its own net and layer that is wider than the track, and its first piece runs straight for at least
+the pad's width beyond its middle, a four-cornered flare runs from the track's width out to 80% of the pad's narrower
+side. One that would come closer to another net's copper than the clearance is left out, so teardrops never fail the
+board check. The canvas paints them with the tracks and the copper files fill them as regions. They go to KiCad as
+KiCad's own teardrop zones (`attr teardrop`, filled), and coming in, a teardrop zone, or a via or pad with KiCad 8's
+`teardrops` set to enabled, turns the setting on.
+
+**Dragging corners** (#742). The one picked track shows its bends as small squares, and a picked pour, keep-out or
+cut-out shows its corners (`handlesOf` and `handleAt` in `hitBoard.ts`). A bend drags (`moveTrackCorner` in
+`pcb/corners.ts`); a track's ends stay on their pads and vias, and a piece either side that would run at an odd angle
+gets a 45° bend of its own next to the moved corner. With Keep clear on, the bend stops where the track would come too
+close to other copper, and the status line says what is in the way. An area's corner drags (`moveAreaCorner`), a
+press on its edge puts a new corner there and drags it (`addAreaCorner`; an arc it splits goes straight), and Delete
+with a corner picked takes it away while the area keeps three (`removeAreaCorner`). Each drag is one undo step.
+
+**Copy, paste and duplicate** (#741). Ctrl+C, Ctrl+V and Ctrl+D work on the board as on a sheet, for tracks, vias,
+pours, keep-outs, text, pictures, holes, fiducials and test points (`pcb/clip.ts`, loaded the first time). A
+picked part copies with the tracks and vias of its pads' nets that lie round the picked parts (`copyBoard`). Pasted
+on its own (`pasteBoard`), the copy lands with its bottom left corner under the pointer and fresh ids. Pieces of
+copper that touch are one run, and a run takes the net of the copper it lands on, or is on no net if that is none
+or two nets; the status line says how many pieces are on no net. Parts are not pasted, since they come from the
+schematic. Pick the same number of matching parts (the same footprints, paired in reference order) and paste: the
+first stays put and the rest are laid out round it as the copied ones were, turned with it, and the routing
+follows with each net swapped for the net of the matching pad. That repeats a routed channel in one undo step.
+Parts on the other side from the copy's are refused with a note to flip them first.
+
+**Stitching vias** (#737). A pour's card has **Via spacing** (5 mm unless you change it) and **Add stitching vias**.
+`stitchPlan` (in `pcb/stitch.ts`, loaded only when asked) walks a grid that many mm apart, lined up with the board's
+origin, and keeps a point only when this pour and another pour of its net on another layer both fill all round a via
+there, at least one of them is joined to something already, and the via keeps its clearance from other nets'
+copper, from every pad (its own net's too, so no via lands in a pad), from holes, other vias and the edge.
+`addStitching` adds them in one edit, so one undo takes them out; after that they are ordinary vias on the net.
+Asking again adds none where they already are. `pourFill` takes `{ islands: true }` for the fill a pour would have
+once something joins it, as a bottom pour with nothing of its own on that side.
+
+**Fiducials and test points** (#735). The Add group has **Fiducial** and **Test point**. Each is a round copper pad
+of the board's own, with no part behind it (`Board.marks`, `pcb/marks.ts`), numbered FID1… and TP1…. `markPads`
+puts them into `boardPads`, so the copper and mask files, the unrouted lines and the board check all see them like any
+pad. Both are 1 mm with no paste. A fiducial has a mask opening twice its size (`maskMargin` of half its size, the
+usual 1 mm dot in a 2 mm clear ring) and keeps other copper out of that ring (`copperOf` gives it the ring's size);
+it is on no net and goes in the pick and place file, so the line's camera knows where to look. A test point clicked
+onto a track or a pad takes that net, and its card picks another; a test point on a net and not routed shows in the
+board check as a connection to route. Both go to KiCad as one-pad footprints, `Fiducial_<size>mm` and
+`TestPoint_<size>mm` (smd, left off the parts list; test points off the position file too), and a one-pad round
+surface footprint named Fiducial or TestPoint, or with a FID or TP reference, comes back in as one.
 
 ## Calculators (#739)
 
@@ -711,7 +769,7 @@ may be too old to open them, so their nets are held to the ones it finds in its 
 that were changed between versions (parts numbered again, a pin moved) are held only to their own boards. All of
 them pass. What the newer files needed: a name written with a word in braces ("VPP{slash}MCLR") is the net
 "VPP/MCLR"; KiCad 10's board names each net where it is used and keeps no table of them; teardrops, which are zones
-in the file, are left out and said; and a stub of track on a pin that joins nothing is left out and said. A supply
+in the file, turn the board's teardrop setting on instead of coming in as copper (#743); and a stub of track on a pin that joins nothing is left out and said. A supply
 pin that is not drawn joins the net with its name in every version, KiCad 10 included.
 
 ## In from Eagle and Fusion Electronics (#665)

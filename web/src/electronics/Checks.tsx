@@ -4,6 +4,7 @@ import { RULES, check, levelOf, setLevel, tally, tallyText, waive, type CheckRes
 import type { ReactNode } from "react";
 import { Button, ESC, FeaturePanel, PanelNote, cx, useEscape } from "@bettercad/ui";
 import type { EEdit } from "./actions";
+import { PinTable } from "./PinTable";
 import { eui } from "./ui";
 
 let shown = 0;
@@ -43,6 +44,8 @@ export interface ChecksPanelProps {
   clean: string;
   onWaive: (d: ElectronicsDesign, key: string, note?: string) => ElectronicsDesign;
   children?: ReactNode;
+  /** More to choose under the rules: the schematic's pin table (#738). */
+  more?: ReactNode;
 }
 
 /**
@@ -59,12 +62,13 @@ export default function ChecksCard(p: { design: ElectronicsDesign; edit: EEdit; 
       rules={RULES}
       clean={p.design.parts.length ? "No problems found." : "Nothing to check yet. Place some parts first."}
       onWaive={waive}
+      more={<PinTable design={p.design} edit={p.edit} readOnly={p.readOnly} />}
     />
   );
 }
 
 /** The card both checks share: the schematic's rules and the board's (#644) list, waive and set levels the same way. */
-export function ChecksPanel({ design, edit, readOnly, onClose, title, results, rules: ruleList, clean, onWaive, children }: ChecksPanelProps) {
+export function ChecksPanel({ design, edit, readOnly, onClose, title, results, rules: ruleList, clean, onWaive, children, more }: ChecksPanelProps) {
   const id = useId();
   const live = results.filter((r) => r.waived === undefined);
   const waived = results.filter((r) => r.waived !== undefined);
@@ -188,6 +192,7 @@ export function ChecksPanel({ design, edit, readOnly, onClose, title, results, r
               </select>
             </label>
           ))}
+          {more}
           <PanelNote>The rules are kept with the model.</PanelNote>
         </div>
       )}
