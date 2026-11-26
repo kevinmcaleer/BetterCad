@@ -137,9 +137,9 @@ describe("Draw on timing", () => {
     expect(faceOpacity(plan, 2, 10 + SETTLE)).toBeCloseTo(1, 5);
     expect(solidity(plan, 4)).toBe(0);
   });
-  it("dims the lines once the model is solid", () => {
+  it("fades the lines out once the model is solid, so the last frame is just the model", () => {
     expect(lineGlow(plan, 5)).toBe(1);
-    expect(lineGlow(plan, 20)).toBeCloseTo(0.25, 5);
+    expect(lineGlow(plan, 10 + SETTLE)).toBe(0);
   });
 });
 
@@ -148,12 +148,14 @@ describe("Draw on glow on busy models", () => {
     const { glowScale } = await import("./drawOnView");
     // A bracket: about 12 times its size in edges, 400 px across.
     expect(glowScale(12 * 100, 100, 2.5, 400)).toBe(1);
-    // Many parts: 80 times its size in edges, same size on screen.
-    const busy = glowScale(80 * 100, 100, 2.5, 400);
+    // Many parts: 40 times its size in edges, same size on screen.
+    const busy = glowScale(40 * 100, 100, 2.5, 400);
     expect(busy).toBeLessThan(1);
-    expect(busy).toBeGreaterThan(0.3);
+    expect(busy).toBeGreaterThan(0.45);
+    // Twice the lines glow 1/√2 as bright.
+    expect(glowScale(80 * 100, 100, 2.5, 400)).toBeCloseTo(busy / Math.SQRT2, 5);
     // The same model far away is busier still, but never goes dark.
-    expect(glowScale(80 * 100, 100, 2.5, 60)).toBe(0.3);
+    expect(glowScale(80 * 100, 100, 2.5, 60)).toBe(0.45);
     expect(glowScale(0, 0, 2.5, 0)).toBe(1);
   });
 });

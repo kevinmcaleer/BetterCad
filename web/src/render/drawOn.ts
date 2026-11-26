@@ -292,5 +292,5 @@ export function faceOpacity(plan: Pick<DrawOnPlan, "drawEnd">, closed: number, t
   return shown * (GHOST + (1 - GHOST) * solidity(plan, t));
 }
 
-/** How bright the lines glow at time `t`: full while drawing, dimming to a faint trace on the solid model. */
-export const lineGlow = (plan: Pick<DrawOnPlan, "drawEnd">, t: number) => 1 - 0.75 * smooth(plan.drawEnd, plan.drawEnd + SETTLE, t);
+/** How bright the lines glow at time `t`: full while drawing, gone once the model is solid, so the end is just the model. */
+export const lineGlow = (plan: Pick<DrawOnPlan, "drawEnd">, t: number) => 1 - smooth(plan.drawEnd, plan.drawEnd + SETTLE, t);
