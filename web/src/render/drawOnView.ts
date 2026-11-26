@@ -36,6 +36,7 @@ import { cameraBasis, FOV, type CameraState } from "../viewport/camera";
 import { emberAt, GHOST, GHOST_IN, lineGlow, planDrawOn, SETTLE, type DrawOnPlan, type DrawOnTiming } from "./drawOn";
 import type { RenderBody } from "./pathRender";
 import type { DrawOnColour } from "./session";
+import { videoType } from "./video";
 
 /**
  * The glow colours. Like the path tracer's lighting, these are colours of the rendered picture, not of the interface,
@@ -278,11 +279,7 @@ export interface DrawOnViewOptions {
   onEnd?: () => void;
 }
 
-/** The video formats to try, best first: MP4 where the browser records it, else WebM. */
-const VIDEO_TYPES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
-export function videoType(supported: (t: string) => boolean = (t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)): string | null {
-  return VIDEO_TYPES.find(supported) ?? null;
-}
+export { videoType };
 
 export class DrawOnView {
   readonly renderer: WebGLRenderer;

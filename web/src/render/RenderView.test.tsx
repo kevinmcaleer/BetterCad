@@ -218,3 +218,52 @@ describe("Draw on in the Render view", () => {
     expect(await screen.findByText("Recording the video, 3.2 s of 12.8 s")).toBeInTheDocument();
   });
 });
+
+describe("camera moves in the Render view", () => {
+  it("picks a move from the ribbon's Animate group, plays it on its own, and shares Draw on's length", async () => {
+    vi.stubGlobal("MediaRecorder", class {});
+    const s = renderSession();
+    s.set({ loading: false, samples: 1 });
+    render(<RenderRibbon session={s} />);
+    expect(screen.queryByRole("button", { name: /^Save video/ })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Camera move: none" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Speed ramp orbit" }));
+    expect(s.get().move).toMatchObject({ id: "ramp", length: "normal", playing: true, total: 10 });
+    expect(screen.getByRole("button", { name: /^Save video/ })).toBeEnabled();
+    // No colour for a move on its own: that is Draw on's.
+    expect(screen.queryByRole("button", { name: /^Colour:/ })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(s.get().move?.playing).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "Length: Normal, 10 s" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Quick, 5 s" }));
+    expect(s.get().move).toMatchObject({ length: "quick", playing: true });
+    // Played to the end: play again from the start, and record with Save video.
+    const replayMove = vi.fn();
+    const recordMove = vi.fn(async () => {});
+    s.replayMove = replayMove;
+    s.recordMove = recordMove;
+    s.set({ move: { ...s.get().move!, playing: false, at: 5, total: 5 } });
+    await userEvent.click(await screen.findByRole("button", { name: "Play again" }));
+    expect(replayMove).toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: /^Save video/ }));
+    expect(recordMove).toHaveBeenCalled();
+    // Draw on takes the move's length, and its clock: the move goes with the drawing.
+    await userEvent.click(screen.getByRole("button", { name: /^Draw on/ }));
+    expect(s.get().drawOn).toMatchObject({ length: "quick" });
+    expect(s.get().move?.id).toBe("ramp");
+    await userEvent.click(screen.getByRole("button", { name: "Camera move: Speed ramp orbit" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "No camera move" }));
+    expect(s.get().move).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows where a move on its own has got", async () => {
+    const s = renderSession();
+    s.set({ loading: false, move: { id: "orbit", length: "normal", playing: true, at: 2.5, total: 10, recording: false } });
+    render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Orbit, 2.5 s of 10 s");
+    expect(screen.getByRole("button", { name: "Camera move: Orbit" })).toBeInTheDocument();
+    s.set({ move: { ...s.get().move!, recording: true } });
+    expect(await screen.findByText("Recording the video, 2.5 s of 10 s")).toBeInTheDocument();
+  });
+});

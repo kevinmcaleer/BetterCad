@@ -245,3 +245,25 @@ test("Draw on plays the glowing build-up over the Render view, and Esc leaves it
   await expect(page.getByRole("img", { name: /Draw on/ })).toHaveCount(0);
   await expect(bar).toBeVisible();
 });
+
+/** Camera moves: an orbit turns the render's camera round the middle of the model on its own clock. */
+test("a camera move orbits the Render view's camera round the model, and Esc stops it", async ({ page }) => {
+  test.setTimeout(480_000);
+  await page.addInitScript(() => ((window as unknown as { __bcRenderMax: number }).__bcRenderMax = 2));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.keyboard.press("Shift+R");
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
+  const picture = page.getByRole("img", { name: /^Rendered picture/ });
+  const before = await picture.getAttribute("data-look");
+  await page.getByRole("button", { name: "Camera move: none" }).click({ timeout: 200_000 });
+  await page.getByRole("menuitemradio", { name: "Orbit", exact: true }).click();
+  await expect(bar.getByRole("status")).toHaveText(/^Orbit, [\d.]+ s of 10 s$/, { timeout: 60_000 });
+  // The camera turns.
+  await expect.poll(() => picture.getAttribute("data-look"), { timeout: 60_000 }).not.toBe(before);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Camera move: none" })).toBeVisible();
+  await expect(bar).toBeVisible();
+});

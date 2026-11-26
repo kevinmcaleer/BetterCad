@@ -3,6 +3,7 @@
  * Framework-free and tiny, so the shell can hold it without the path tracer.
  */
 import type { CameraState } from "../viewport/camera";
+import type { CameraMoveId } from "./cameraMoves";
 
 export type LightPresetId = "studio" | "daylight" | "workbench" | "lightbox";
 export type SaveSize = "view" | "double" | "4k";
@@ -55,6 +56,19 @@ export interface DrawOnState {
   recording: boolean;
 }
 
+/**
+ * A camera move round the model (orbit, sweep, push in): which, how long, and where it has got. With Draw on showing,
+ * the move spans Draw on's whole length and Draw on's clock drives it; on its own it has its own clock, below.
+ */
+export interface MoveState {
+  id: CameraMoveId;
+  length: DrawOnLength;
+  playing: boolean;
+  at: number;
+  total: number;
+  recording: boolean;
+}
+
 export interface RenderState {
   /** The renderer module is loading. */
   loading: boolean;
@@ -80,6 +94,8 @@ export interface RenderState {
   saving: number | null;
   /** Draw on is showing in place of the picture, or null. */
   drawOn: DrawOnState | null;
+  /** A camera move is on, or null. */
+  move: MoveState | null;
 }
 
 export interface RenderSession {
@@ -101,6 +117,9 @@ export interface RenderSession {
   /** Set by Draw on once it shows: plays from the start, and records a video of it. */
   replay: (() => void) | null;
   record: (() => Promise<void>) | null;
+  /** Set by the picture while a camera move plays on its own (without Draw on): the same two. */
+  replayMove: (() => void) | null;
+  recordMove: (() => Promise<void>) | null;
 }
 
 export function renderSession(style: RenderStyle = "finishes"): RenderSession {
@@ -118,6 +137,7 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     sluggish: false,
     saving: null,
     drawOn: null,
+    move: null,
   };
   const subs = new Set<() => void>();
   return {
@@ -138,6 +158,8 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     size: null,
     replay: null,
     record: null,
+    replayMove: null,
+    recordMove: null,
   };
 }
 
@@ -146,3 +168,13 @@ export const samplesText = (n: number) => `${n.toLocaleString("en-GB")} ${n === 
 
 /** Draw on as it opens: neon blue, normal length, playing. */
 export const DRAW_ON_START: DrawOnState = { colour: "blue", length: "normal", playing: true, at: 0, total: 0, recording: false };
+
+/** A camera move as it starts: playing from the start, as long as Draw on (if it is on) or normal length. */
+export const moveStart = (id: CameraMoveId, length: DrawOnLength = "normal"): MoveState => ({
+  id,
+  length,
+  playing: true,
+  at: 0,
+  total: drawSeconds(length),
+  recording: false,
+});
