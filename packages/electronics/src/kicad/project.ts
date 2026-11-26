@@ -413,6 +413,11 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     notes.push({ name: "Board", why: "It was saved by a KiCad older than 6. Open and save it in a newer KiCad first, or arcs and some pads may be wrong" });
   const thickness = num(child(child(tree, "general"), "thickness"));
   if (thickness > 0) board.thickness = thickness;
+  // Vias left open in the mask (#736): KiCad 7's "do not tent vias", or KiCad 8's tenting that names neither side.
+  const setup = child(tree, "setup");
+  const tenting = child(setup, "tenting");
+  if (text(child(child(setup, "pcbplotparams"), "viasonmask"), 1) === "true" || (tenting && !tenting.slice(1).some((x) => x === "front" || x === "back")))
+    board.viaMask = "open";
   const inside = (child(tree, "layers") ?? []).filter((l) => isList(l) && /^In\d+\.Cu$/.test(text(l, 1))).length;
   // Four and six layers come across whole (#648). An odd count is made up to the next even one; more than six lose the rest.
   const inner = Math.min(4, inside + (inside % 2));

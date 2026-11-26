@@ -508,8 +508,12 @@ copper, mask, paste and silkscreen, and the outline. Every file is drawn looking
 Pads are flashed with apertures: circles, rectangles and obrounds as they are, and a macro (two bars and four
 discs, or a turned rectangle) for a rounded pad or one at an odd angle. Tracks are drawn with a round pen, and
 copper carries its net (`.N`), pads their part and pin (`.P`). The outline is drawn as closed paths with arcs kept
-as arcs. Mask openings are the pad grown by the mask margin; vias stay covered. The silkscreen has the mask
-openings taken back out of it, so ink never lands on a pad.
+as arcs. Mask openings are the pad grown by the mask margin. Vias are covered (tented) unless Board setup says
+Vias: Open (`board.viaMask`, #736), and one via can differ (`via.mask`, `viaOpen` in `pcb/stack.ts`); an open via
+gets an opening the size of its copper ring grown by the margin, on each outer side it reaches. The silkscreen has
+the mask openings taken back out of it, so ink never lands on a pad or an open via. The as-made preview reads the
+files back, so it follows. KiCad 7 keeps one say for the whole board, `(pcbplotparams (viasonmask …))`, so a via
+that differs from its board does not carry its own across; coming in, KiCad 8's `(tenting)` is read as well.
 
 A pour is painted the way the screen paints it, with dark and clear polarity in the same order: the area, the
 rings round its own pads out, the spokes back in, then everything it keeps clear of out, and last the islands the

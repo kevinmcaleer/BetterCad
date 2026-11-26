@@ -27,6 +27,9 @@
 	)
 	(setup
 		(pad_to_mask_clearance 0.05)
+		(pcbplotparams
+			(viasonmask false)
+		)
 	)
 	(net 0 "")
 	(net 1 "3V3")

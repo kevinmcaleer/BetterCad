@@ -4,6 +4,7 @@ import { check } from "../erc";
 import type { ElectronicsDesign } from "../model";
 import { netlist } from "../nets";
 import { checkBoard } from "../pcb/drc";
+import { setBoard } from "../pcb/route";
 import { sampleBoard } from "../sample";
 import { boardChanges } from "../sync";
 import { kicadProject } from "./export";
@@ -87,6 +88,22 @@ describe.each([
 });
 
 describe("opening a KiCad project", () => {
+  it("keeps the board's open vias, as KiCad 7's setting and KiCad 8's (#736)", () => {
+    const d = sampleBoard();
+    const trip = (x: ElectronicsDesign) => importKicadProject(kicadProject(x, "trip").files, { licence: "CC0" }).design.board!.viaMask;
+    expect(trip(d)).toBeUndefined();
+    expect(trip(setBoard(d, { viaMask: "open" }))).toBe("open");
+    const files = kicadProject(d, "trip").files;
+    const pcb = files.find((f) => f.name.endsWith(".kicad_pcb"))!;
+    const with8 = (tenting: string) =>
+      importKicadProject(
+        files.map((f) => (f === pcb ? { ...f, text: f.text.replace(/\(pcbplotparams\s*\(viasonmask \w+\)\s*\)/, tenting) } : f)),
+        { licence: "CC0" },
+      ).design.board!.viaMask;
+    expect(with8("(tenting front back)")).toBeUndefined();
+    expect(with8("(tenting)")).toBe("open");
+  });
+
   it("says what it needs when the files are not a project", () => {
     expect(() => importKicadProject([{ name: "a.txt", text: "hello" }])).toThrow("There is no KiCad schematic");
     const pcb = kicadProject(sampleBoard(), "x").files.find((f) => f.name.endsWith(".kicad_pcb"))!;

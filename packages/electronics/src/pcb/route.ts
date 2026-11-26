@@ -1,6 +1,6 @@
 import { removeParts } from "../edit";
 import { key, q } from "../geom";
-import { eid, isPower, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type Id, type P2, type Placement } from "../model";
+import { eid, isPower, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type Id, type P2, type Placement, type ViaMask } from "../model";
 import { clearanceBetween, edgeGap, gap, netRules, type Copper, type Layer, type Solid } from "./copper";
 import { layersOf, viaLayers } from "./stack";
 
@@ -107,8 +107,17 @@ export function addVia(d: ElectronicsDesign, net: string, x: number, y: number, 
 }
 
 /** Changes a via's size or hole. */
-export function setVia(d: ElectronicsDesign, id: Id, change: { diameter?: number; drill?: number }): ElectronicsDesign {
-  return onBoard(d, (b) => ({ ...b, vias: b.vias.map((v) => (v.id === id ? { ...v, ...change } : v)) }));
+export function setVia(d: ElectronicsDesign, id: Id, change: { diameter?: number; drill?: number; mask?: ViaMask }): ElectronicsDesign {
+  return onBoard(d, (b) => ({
+    ...b,
+    vias: b.vias.map((v) => {
+      if (v.id !== id) return v;
+      const next = { ...v, ...change };
+      // A via that says what the board says keeps nothing of its own, so changing the board carries it along.
+      if ("mask" in change && (change.mask ?? "covered") === (b.viaMask ?? "covered")) delete next.mask;
+      return next;
+    }),
+  }));
 }
 
 /** What the autorouter (#647) lays for one connection: a run of track on each side it uses, and the vias between. */
@@ -180,7 +189,7 @@ export function outlineRadius(outline: Corner[]): number {
 /** Changes the board's make-up: its outline, thickness, colours. */
 export function setBoard(
   d: ElectronicsDesign,
-  change: Partial<Pick<Board, "outline" | "cutouts" | "thickness" | "mask" | "silk" | "rules" | "classes">>,
+  change: Partial<Pick<Board, "outline" | "cutouts" | "thickness" | "mask" | "silk" | "viaMask" | "rules" | "classes">>,
 ): ElectronicsDesign {
   return onBoard(d, (b) => ({ ...b, ...change }));
 }

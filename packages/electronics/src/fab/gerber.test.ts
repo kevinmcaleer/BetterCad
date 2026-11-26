@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addPour, setPour, wholeBoard } from "../pcb/pour";
-import { addTrack } from "../pcb/route";
+import { addTrack, setBoard, setVia } from "../pcb/route";
 import { fabBoard } from "./fixture";
 import { GERBER_LAYERS, gerberFiles, pourClashes, type GerberLayer } from "./gerber";
 import type { ElectronicsDesign, Pad } from "../model";
@@ -111,6 +111,26 @@ describe("Gerber files", () => {
     // R1 is on top: no opening for it on the bottom.
     expect(inkAt(image("mask-bottom"), pad("R1", "1"))).toBe(false);
     expect(inkAt(image("mask-bottom"), j)).toBe(true);
+  });
+
+  it("opens the mask over vias when the board says so, unless a via says otherwise (#736)", () => {
+    const { d } = files();
+    const via = d.board!.vias[0]!;
+    const at: [number, number] = [via.x, via.y];
+    const masks = (x: ElectronicsDesign) => {
+      const out = gerberFiles(x);
+      return (["mask-top", "mask-bottom", "silk-top"] as const).map((l) => inkAt(readGerber(out.find((f) => f.layer === l)!.text), at));
+    };
+    expect(masks(d)).toEqual([false, false, false]);
+    const open = setBoard(d, { viaMask: "open" });
+    // Open on both sides, and the silkscreen keeps off it as it does off a pad.
+    expect(masks(open).slice(0, 2)).toEqual([true, true]);
+    const one = setVia(open, via.id, { mask: "covered" });
+    expect(one.board!.vias[0]!.mask).toBe("covered");
+    expect(masks(one)).toEqual([false, false, false]);
+    // A via that says what the board says keeps nothing of its own.
+    expect(setVia(one, via.id, { mask: "open" }).board!.vias[0]).not.toHaveProperty("mask");
+    expect(masks(setVia(d, via.id, { mask: "open" })).slice(0, 2)).toEqual([true, true]);
   });
 
   it("puts paste on surface pads only", () => {

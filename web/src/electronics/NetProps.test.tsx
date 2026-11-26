@@ -40,6 +40,21 @@ const type = (field: HTMLElement, text: string) => {
 
 afterEach(() => act(() => eui.reset()));
 
+describe("a via in the inspector", () => {
+  it("is covered like the board, and can be left open on its own (#736)", async () => {
+    const d = board();
+    const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} selected={[d.board!.vias[0]!.id]} />);
+    const mask = screen.getByLabelText("Mask");
+    expect(mask).toHaveValue("covered");
+    expect(screen.getByRole("option", { name: "Covered, like the board" })).toBeInTheDocument();
+    await userEvent.selectOptions(mask, "open");
+    expect(s.design().board!.vias[0]!.mask).toBe("open");
+    expect(s.labels).toEqual(["Change the via's mask"]);
+    await userEvent.selectOptions(screen.getByLabelText("Mask"), "covered");
+    expect(s.design().board!.vias[0]).not.toHaveProperty("mask");
+  });
+});
+
 describe("a net in the inspector", () => {
   it("shows a track's net and sets the width of all its tracks", () => {
     const d = board();

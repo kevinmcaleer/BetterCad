@@ -331,7 +331,12 @@ export interface Via {
   drill: number;
   /** The first and last layer it joins (#648), for a blind or buried via. None: right through the board. */
   span?: [CopperLayer, CopperLayer];
+  /** Covered by the solder mask or left open (#736), when this via differs from the board's `viaMask`. */
+  mask?: ViaMask;
 }
+
+/** Whether a via's copper rings are under the solder mask (tented) or left bare. */
+export type ViaMask = "covered" | "open";
 
 export interface Pour {
   id: Id;
@@ -460,6 +465,8 @@ export interface Board {
   synced?: { nets: Record<string, string[]> };
   mask?: "green" | "black" | "blue" | "red" | "white" | "purple" | "yellow";
   silk?: "white" | "black";
+  /** Whether vias are under the mask (#736). None: covered. */
+  viaMask?: ViaMask;
 }
 
 export type CheckLevel = "error" | "warning" | "ignore";
