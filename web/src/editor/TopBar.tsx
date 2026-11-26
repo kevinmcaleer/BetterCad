@@ -45,6 +45,8 @@ export interface TopBarProps {
   /** The Save button's tooltip when the model is not saved to an account: where a click saves to. */
   saveTip?: string;
   onSave?: () => void;
+  /** New model: a button beside Save, so starting over is easy to find. */
+  onNewModel?: () => void;
   onPalette: () => void;
   theme: ThemeSetting;
   onTheme: (t: ThemeSetting) => void;
@@ -379,6 +381,16 @@ function rightSide(p: TopBarProps) {
         </>
       ) : (
         <>
+          {p.onNewModel && !p.phone && (
+            <Button
+              icon="plus"
+              label={p.ribbon ? "New" : undefined}
+              aria-label="New model"
+              title="New model: start over with an empty one"
+              shortcut={formatCombo("mod+n")}
+              onClick={p.onNewModel}
+            />
+          )}
           <SaveSplit {...p} />
         </>
       )}

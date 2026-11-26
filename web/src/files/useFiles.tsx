@@ -112,7 +112,8 @@ export function useFiles(d: FilesDeps) {
   const [recover, setRecover] = useState<AutosaveRecord[]>([]);
   const [recent, setRecent] = useState<Recent[]>([]);
   // A step that would replace unsaved work, waiting for Save or Don't save.
-  const [ask, setAsk] = useState<{ run: () => Promise<unknown> } | null>(null);
+  // `fresh` marks New model: the dialog then talks about starting over, and Start over lets the old autosave go.
+  const [ask, setAsk] = useState<{ run: () => Promise<unknown>; fresh?: () => Promise<unknown> } | null>(null);
   const warnedStorage = useRef(false);
   /** Out of a read-only look, before another model opens. */
   const unlock = useCallback(() => {
@@ -438,20 +439,29 @@ export function useFiles(d: FilesDeps) {
     [files, show, refreshRecent],
   );
 
-  const startNew = useCallback(async () => {
-    await auto.flush();
-    auto.cancel();
-    const fresh = newDoc();
-    meta.current = { id: newId("m"), file: null, savedAt: null };
-    setCloud(null);
-    leaveCloudRoute();
-    unlock();
-    store.edit(() => fresh, "New model");
-    setBaseline(fresh);
-    deps.current.onSwitched();
-  }, [auto, store, unlock]);
+  /** A blank model. `forget` lets the old model's autosave go to the bin, so it isn't offered back on the next visit. */
+  const startNew = useCallback(
+    async (forget = false) => {
+      await auto.flush();
+      auto.cancel();
+      if (forget) await auto.discard(meta.current.id).catch(() => undefined);
+      const fresh = newDoc();
+      meta.current = { id: newId("m"), file: null, savedAt: null };
+      setCloud(null);
+      leaveCloudRoute();
+      unlock();
+      store.edit(() => fresh, "New model");
+      setBaseline(fresh);
+      deps.current.onSwitched();
+    },
+    [auto, store, unlock],
+  );
 
-  const newModel = useCallback(() => confirmThen(startNew), [confirmThen, startNew]);
+  /** New model: straight away when nothing is unsaved, else a Start a new model? dialog. Undo brings the old one back. */
+  const newModel = useCallback(() => {
+    if (dirtyNow.current) setAsk({ run: () => startNew(), fresh: () => startNew(true) });
+    else void startNew();
+  }, [startNew]);
 
   /** A sample model (#99), opened as a new, unsaved model to pull apart (after asking about unsaved changes). */
   const openSample = useCallback(
@@ -745,7 +755,37 @@ export function useFiles(d: FilesDeps) {
 
   const banners = recover.length ? <RecoverNotice list={recover} onRecover={recoverOne} onDiscard={discardOne} onDiscardAll={discardAll} /> : null;
 
-  const dialog = ask ? (
+  const dialog = ask?.fresh ? (
+    <Dialog
+      open
+      title="Start a new model?"
+      icon="plus"
+      onCancel={() => setAsk(null)}
+      footer={
+        <>
+          <Button kind="cancel" label="Cancel" onClick={() => setAsk(null)} />
+          <Button
+            label="Start over"
+            title="Clear everything without saving"
+            onClick={() => {
+              setAsk(null);
+              void ask.fresh?.();
+            }}
+          />
+          <Button
+            variant="primary"
+            label="Save first"
+            onClick={async () => {
+              setAsk(null);
+              if (await save()) await ask.run();
+            }}
+          />
+        </>
+      }
+    >
+      <p>Your changes to {doc.name} aren't saved. Save them first, or start over with an empty model. Changed your mind? Press Undo to get them back.</p>
+    </Dialog>
+  ) : ask ? (
     <Dialog
       open
       title={`Save changes to ${doc.name}?`}

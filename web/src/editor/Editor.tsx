@@ -2531,7 +2531,15 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const sel = () => live.current.selection;
     const hasSel = (c: CommandContext) => c.hasSelection;
     const list: Command[] = [
-      { id: "file.new", label: "New model", group: "File", icon: "plus", keys: ["mod+n"], run: () => h().newModel() },
+      {
+        id: "file.new",
+        label: "New model",
+        group: "File",
+        icon: "plus",
+        keys: ["mod+n"],
+        keywords: "start over clear reset blank empty fresh",
+        run: () => h().newModel(),
+      },
       { id: "file.open", label: "Open…", group: "File", icon: "folder", keys: ["mod+o"], run: () => void h().open(), keywords: "load file disk" },
       { id: "file.save", label: "Save", group: "File", icon: "save", keys: ["mod+s"], run: () => void h().save(), keywords: "disk download file" },
       {
@@ -4224,8 +4232,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const saveEntries: MenuEntry[] = [
     accountEntry,
     { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
-    { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
+    { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
     { id: "insert-file", label: "Insert a file as a component…", icon: "upload", onSelect: () => insertInput.current?.click() },
     { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
@@ -4624,6 +4632,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onUndo={doUndo}
             onRedo={doRedo}
             saveEntries={saveEntries}
+            onNewModel={newModel}
             saveTip={saveTip}
             // A run-out sign-in: Save logs in again, and the save that waits goes once you're back.
             onSave={() => void (files.cloud?.state === "signin" ? logInAgain(api, window.location.hash || "#/") : save())}
