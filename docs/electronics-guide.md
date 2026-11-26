@@ -97,6 +97,9 @@ Layers, bottom right, shows and hides each layer and sets the grid. Pours are dr
 out, and the side you are not working on is dimmed; turn on Pours as outlines to see only their edges. Text on the
 board is drawn in the same stroke font the Gerber files use, so what you see is what is printed.
 
+Calculators, on the ribbon in both views, works out the width a track needs for a current, the current a via
+carries, the resistor for an LED and a resistor's colour bands. A track width can be made a net class's width.
+
 Press M to measure: click two points to read the distance between them, and its dx and dy. Pad, via and hole
 centres, track ends and the board's edge snap. Press Ctrl+F in either view to find a part by its reference, value or
 part number, or a net by its name: choosing a result goes to it, on whichever sheet it is, and picks it.

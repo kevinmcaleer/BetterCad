@@ -444,6 +444,22 @@ Left for later: dragging a track's or an area's corners, an outline from a face 
 import yet), spokes per pad, gate swapping, pictures and fiducials
 on the silkscreen.
 
+## Calculators (#739)
+
+Calculators (on the Check group of the schematic and the Board group of the PCB) is a card of sums with no say over
+the design, in `packages/electronics/src/calc.ts` (subpath `/calc`) and `Calculators.tsx`, both loaded when it opens.
+
+- **Track width for a current** and **current a via carries**: IPC-2221 (2012), section 6.2, the fit to its
+  conductor charts, I = k · ΔT^0.44 · A^0.725, with I in amps, ΔT the temperature rise in °C, A the cross-section
+  in square mils, and k = 0.048 for outer layers, 0.024 for inner ones. The charts cover up to 35 A, 400 mil and 10 to
+  100 °C. Copper is 34.79 µm per oz/ft². A via's barrel is a ring of plating (25 µm unless changed) round its hole,
+  rated as outer copper, as Saturn PCB Toolkit and KiCad's calculator do. Use a width can set a net class's track
+  width, rounded up to 0.01 mm; tracks at the class's old width follow, as they do from the inspector.
+- **Resistor for an LED**: Ohm's law, R = (V supply − V forward) / I, rounded up to the next E24 value (IEC 60063)
+  so the current only falls; the card says the current and power with that value.
+- **Resistor colour bands**: IEC 60062, four bands (two figures) or five (three), both ways. The swatches are paint
+  colours kept with the sums (`BAND_PAINT`), like the board's mask colours, not interface colours.
+
 ## The board in 3D (#649 to #654)
 
 The board is in the model as one **Board step** on the timeline (`packages/kernel/src/board.ts`). A model has one

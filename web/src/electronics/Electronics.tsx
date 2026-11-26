@@ -45,6 +45,7 @@ const NetProps = lazy(() => import("./NetProps"));
 const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
 const FindCard = lazy(() => import("./Find"));
+const Calculators = lazy(() => import("./Calculators"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -86,6 +87,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     tip: "Find a part by its name or value, or a net by its name",
     on: ui.card === "find",
     run: toggle("find"),
+  };
+  const calc: Tool = {
+    id: "calc",
+    group: view === "schematic" ? "Check" : "Board",
+    label: "Calculators",
+    short: "Calculate",
+    icon: "calculator",
+    tip: "Track width for a current, via current, an LED's resistor and colour bands",
+    on: ui.card === "calc",
+    run: toggle("calc"),
   };
   if (view === "schematic")
     return [
@@ -244,6 +255,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         on: ui.card === "table",
         run: toggle("table"),
       },
+      calc,
       {
         id: "push",
         group: "Sync",
@@ -416,6 +428,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       on: ui.card === "order",
       run: toggle("order"),
     },
+    calc,
     {
       id: "push",
       group: "Sync",
@@ -959,6 +972,11 @@ export default function ElectronicsView({
       {ui.card === "find" && (
         <Suspense fallback={null}>
           <FindCard design={design} view={view} onClose={() => eui.set({ card: null })} />
+        </Suspense>
+      )}
+      {ui.card === "calc" && (
+        <Suspense fallback={null}>
+          <Calculators design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />
         </Suspense>
       )}
       {view === "schematic" && (
