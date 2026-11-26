@@ -35,7 +35,63 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 URL.createObjectURL ??= () => "blob:x";
 URL.revokeObjectURL ??= () => {};
 
+const filming = { name: "Orbit video", frame: 0, frames: 10, sample: 0, samples: 16, started: 0, canvas: null };
+
 describe("render jobs", () => {
+  it("runs a video render in the background: the wheel counts it, shots wait, and Stop is heard at once", async () => {
+    const { render, pending } = controlled();
+    const jobs = new RenderJobs({ store: memoryKV(), render });
+    let finish: (b: Blob) => void = () => {};
+    let signal: AbortSignal | null = null;
+    let update: (c: Partial<typeof filming>) => void = () => {};
+    const video = jobs.film(filming, (u, s) => {
+      update = u;
+      signal = s;
+      return new Promise<Blob>((resolve, reject) => {
+        finish = resolve;
+        s.addEventListener("abort", () => setTimeout(() => reject(new Error("Stopped")), 50));
+      });
+    });
+    await tick();
+    expect(jobs.overall()).toEqual({ count: 1, progress: 0, name: "Orbit video" });
+    // Frame 5 of 10 done, half way through the sixth.
+    update({ frame: 5, sample: 8 });
+    expect(jobs.overall()?.progress).toBeCloseTo(0.55);
+    // A shot asked for now waits for the video.
+    jobs.enqueue(shot("a"), "k", bodies);
+    await tick();
+    expect(pending).toEqual([]);
+    await expect(jobs.film(filming, async () => new Blob())).rejects.toThrow("already rendering");
+    // Stop: the video is gone from the wheel at once, though its last tile is still winding up.
+    jobs.stopVideo();
+    expect(signal!.aborted).toBe(true);
+    expect(jobs.get().video).toBeNull();
+    await expect(video).rejects.toThrow("Stopped");
+    await tick();
+    expect(pending.map((p) => p.id)).toEqual(["a"]);
+    finish(new Blob());
+    jobs.dispose();
+  });
+
+  it("starts a new video render once a stopped one has wound up", async () => {
+    const jobs = new RenderJobs({ store: memoryKV(), render: controlled().render });
+    const order: string[] = [];
+    const first = jobs.film(
+      filming,
+      (_u, s) =>
+        new Promise((_r, reject) => s.addEventListener("abort", () => setTimeout(() => (order.push("first ended"), reject(new Error("Stopped"))), 20))),
+    );
+    await tick();
+    jobs.stopVideo();
+    const second = jobs.film({ ...filming, name: "Push in video" }, async () => (order.push("second started"), new Blob(["v"])));
+    expect(jobs.get().video?.name).toBe("Push in video");
+    await expect(first).rejects.toThrow();
+    expect(await second).toBeInstanceOf(Blob);
+    expect(order).toEqual(["first ended", "second started"]);
+    expect(jobs.get().video).toBeNull();
+    jobs.dispose();
+  });
+
   it("renders one shot at a time and keeps each picture", async () => {
     const { render, pending } = controlled();
     const store = memoryKV<Picture>();

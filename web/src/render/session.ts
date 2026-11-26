@@ -108,9 +108,29 @@ export interface RenderState {
   move: MoveState | null;
   /** What Play does. */
   playMode: PlayMode;
-  /** A video render: frames done and all of them, or null. */
-  filming: { frame: number; frames: number } | null;
+  /** A video render, running in the background, or null. */
+  filming: Filming | null;
 }
+
+/** A video render as it goes. */
+export interface Filming {
+  /** What it is, for the top bar's wheel: "Orbit video". */
+  name: string;
+  /** Frames done, and all of them. */
+  frame: number;
+  frames: number;
+  /** Samples taken on the frame in hand, and how many each frame gets. */
+  sample: number;
+  samples: number;
+  /** When it started, in performance.now() ms, for the time left. */
+  started: number;
+  /** The canvas the frames clear in, shown in the Render view while it is open. */
+  canvas: HTMLCanvasElement | null;
+}
+
+/** How far a video render has got, 0 to 1: whole frames, and the part of the frame in hand. */
+export const filmProgress = (f: Filming): number =>
+  f.frames ? Math.min(1, (f.frame + (f.frame < f.frames ? f.sample / Math.max(1, f.samples) : 0)) / f.frames) : 0;
 
 export interface RenderSession {
   get(): RenderState;

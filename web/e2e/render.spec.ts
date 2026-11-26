@@ -292,7 +292,15 @@ test("Video render path-traces a camera move's frames and saves a video", async 
   await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
   await page.getByRole("button", { name: /^Play: / }).click({ timeout: 200_000 });
   await page.getByRole("menuitemradio", { name: "Video render" }).click();
-  await expect(bar.getByRole("status")).toHaveText(/^Rendering the video, frame \d of 3$/, { timeout: 200_000 });
+  await expect(bar.getByRole("status")).toHaveText(/^Rendering the video, frame \d of 3/, { timeout: 200_000 });
+  // Bars for the frame in hand and the whole video, and the frame clearing over the picture.
+  await expect(bar.getByRole("progressbar", { name: "This frame" })).toBeVisible();
+  await expect(bar.getByRole("progressbar", { name: "Whole video" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "The video frame being rendered" })).toBeVisible();
+  // It keeps going in the background once you leave the Render view: Esc puts the move away, then leaves.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(bar).toBeHidden();
   await expect(page.getByText(/Saved .* orbit render\.(mp4|webm)/)).toBeVisible({ timeout: 360_000 });
   const head = await page.evaluate(() => (window as unknown as { __bcSavedVideo: number[] }).__bcSavedVideo);
   // An MP4 says "ftyp" at byte 4; a WebM starts with the EBML magic number.

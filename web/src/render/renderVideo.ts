@@ -5,7 +5,11 @@
  */
 import { ArrayBufferTarget as Mp4Target, Muxer as Mp4Muxer } from "mp4-muxer";
 import { ArrayBufferTarget as WebmTarget, Muxer as WebmMuxer } from "webm-muxer";
-import { FPS } from "./video";
+import type { CameraState } from "../viewport/camera";
+import type { CutPlane } from "./cut";
+import { PathRender, type RenderBody } from "./pathRender";
+import type { BackgroundId, LightPresetId as LightPreset, RenderStyle } from "./session";
+import { FPS, VIDEO_HEIGHT, VIDEO_WIDTH } from "./video";
 import { alphaPlanes, muxWebmAlpha, type AlphaFrame } from "./webmAlpha";
 
 interface Codec {
@@ -158,4 +162,61 @@ async function encodeSeeThrough(
     timestamp: p.timestamp,
   }));
   return muxWebmAlpha(frames, width, height, FPS);
+}
+
+/** What a video render needs, read from the Render view when it starts: the view can close while it runs. */
+export interface FilmSetup {
+  bodies: RenderBody[];
+  cut: CutPlane | null;
+  preset: LightPreset;
+  style: RenderStyle;
+  background: BackgroundId;
+  aperture: number;
+  /** Samples a frame. */
+  samples: number;
+  frames: number;
+  /** The camera for frame `i`. */
+  at: (i: number) => CameraState;
+  ext: "mp4" | "webm";
+  seeThrough: boolean;
+}
+
+/**
+ * Path-traces and encodes a video render with its own path tracer in `canvas`, apart from the Render view's picture,
+ * so it keeps going when you leave the view. `onFrame` hears each finished frame and `onSample` the samples on the
+ * frame in hand.
+ */
+export async function filmVideo(
+  s: FilmSetup,
+  canvas: HTMLCanvasElement,
+  onFrame: (done: number) => void,
+  onSample: (taken: number) => void,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const pr = new PathRender(canvas, { alpha: true });
+  // A few times a second is enough for the bars, and keeps the strip and the wheel from redrawing on every sample.
+  let last = -Infinity;
+  const sampled = (n: number) => {
+    const now = performance.now();
+    if (n > 0 && n < s.samples && now - last < 120) return;
+    last = now;
+    onSample(n);
+  };
+  try {
+    pr.setBodies(s.bodies, s.cut);
+    pr.setPreset(s.preset);
+    pr.setStyle(s.style);
+    pr.setBackground(s.background);
+    pr.setFocus(s.aperture);
+    return await pr.frames(
+      VIDEO_WIDTH,
+      VIDEO_HEIGHT,
+      s.samples,
+      (frame) => encodeFrames({ canvas, frame: (i) => frame(s.at(i), signal) }, s.frames, s.ext, onFrame, signal, s.seeThrough),
+      sampled,
+    );
+  } finally {
+    pr.dispose();
+    pr.renderer.forceContextLoss();
+  }
 }

@@ -35,6 +35,22 @@ import { cutMesh, cutSheet, type CutPlane, type Triangles } from "./cut";
 export type { LightPresetId as LightPreset } from "./session";
 import type { BackgroundId, LightPresetId as LightPreset, RenderStyle } from "./session";
 
+/**
+ * Waits for the next task, without setTimeout's 4 ms floor once timers nest: a message to ourselves queues behind
+ * whatever the page has waiting (a click on Stop), and no longer.
+ */
+function nextTask(): Promise<void> {
+  if (typeof MessageChannel === "undefined") return new Promise((r) => setTimeout(r, 0));
+  return new Promise((r) => {
+    const c = new MessageChannel();
+    c.port1.onmessage = () => {
+      c.port1.close();
+      r();
+    };
+    c.port2.postMessage(null);
+  });
+}
+
 export const LIGHT_PRESETS: { id: LightPreset; label: string; title: string }[] = [
   { id: "studio", label: "Studio", title: "Soft white light from above and to one side" },
   { id: "daylight", label: "Daylight", title: "A blue sky and a low sun" },
@@ -561,13 +577,15 @@ export class PathRender {
   /**
    * Path-traces frames for a video render at `width` × `height`: `run` gets a `frame` that moves the camera and
    * renders `samples` samples there, settling once the canvas holds the finished frame. The view goes back to its own
-   * size and loop afterwards, however `run` ends.
+   * size and loop afterwards, however `run` ends. `onSample` hears the samples taken on the frame in hand as it clears,
+   * a few times a second.
    */
   async frames<T>(
     width: number,
     height: number,
     samples: number,
     run: (frame: (camera: CameraState, signal?: AbortSignal) => Promise<void>) => Promise<T>,
+    onSample?: (taken: number) => void,
   ): Promise<T> {
     this.stopLoop();
     const pr = this.renderer.getPixelRatio();
@@ -579,16 +597,15 @@ export class PathRender {
       await this.picturesIn;
       return await run(async (camera, signal) => {
         this.setCamera(camera);
-        let last = performance.now();
+        onSample?.(0);
         while (this.samples < samples) {
           if (signal?.aborted) throw new Error("Stopped");
           this.tracer.renderSample();
-          // Let the page breathe now and then, so the status and Stop keep working.
-          if (performance.now() - last > 50) {
-            await new Promise((r) => setTimeout(r, 0));
-            last = performance.now();
-          }
+          onSample?.(Math.min(this.samples, samples));
+          // Give the page a turn after every tile, so Stop is heard straight away and the bars keep moving.
+          await nextTask();
         }
+        onSample?.(samples);
       });
     } finally {
       this.renderer.setPixelRatio(pr);

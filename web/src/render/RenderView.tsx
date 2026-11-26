@@ -27,7 +27,9 @@ import {
   QUALITIES,
   samplesFor,
   samplesText,
+  filmProgress,
   type DrawOnState,
+  type Filming,
   type MoveState,
   type PlayMode,
   type RenderSession,
@@ -87,6 +89,11 @@ export interface RenderPictureProps {
   onResetHome?: () => void;
   /** Saves Draw on's video. Called at once on the click with the video still recording. */
   onSaveVideo?: (video: Promise<Blob | null>, ext: "mp4" | "webm", name?: string) => Promise<void>;
+  /**
+   * Runs a video render in the background (the render jobs' `film`), so it outlives the view. Without it, Video
+   * render does nothing.
+   */
+  onFilm?: (start: Filming, work: (update: (change: Partial<Filming>) => void, signal: AbortSignal) => Promise<Blob>) => Promise<Blob>;
 }
 
 /** The corner view (or the front, side or top), fitted round the bodies: home when the model has none of its own. */
@@ -117,8 +124,11 @@ export function RenderPicture({
   onSetHome,
   onResetHome,
   onSaveVideo,
+  onFilm,
 }: RenderPictureProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const sectionRef = useRef(section);
+  sectionRef.current = section;
   const r = useRef<PathRender | null>(null);
   const cam = useRef(camera);
   const state = useSession(session);
@@ -401,16 +411,20 @@ export function RenderPicture({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soloId, soloLength, bodies, session]);
 
-  // Video render: the camera move path-traced frame by frame, as pictures are, into a full HD video.
+  // Video render: the camera move path-traced frame by frame, as pictures are, into a full HD video. It runs in the
+  // background with its own path tracer, so it keeps going when you leave the Render view.
   const saveVideo = useRef(onSaveVideo);
   saveVideo.current = onSaveVideo;
+  const filmRef = useRef(onFilm);
+  filmRef.current = onFilm;
   useEffect(() => {
     session.renderVideo = async () => {
-      const pr = r.current;
       const m = session.get().move;
-      if (!pr || !m || session.get().filming || !canRenderVideo()) return;
+      const run = filmRef.current;
+      if (!run || !m || session.get().filming || !canRenderVideo()) return;
+      const now = session.get();
       // On the Transparent background: a WebM, which keeps it see-through (an MP4 can't).
-      const clear = session.get().background === "transparent";
+      const clear = now.background === "transparent";
       const ext = clear ? "webm" : videoExt();
       const seconds = drawSeconds(m.length);
       const plan = cameraMove(m.id, seconds);
@@ -421,44 +435,47 @@ export function RenderPicture({
         bodies.map((b) => ({ positions: b.mesh.positions, matrix: b.matrix.elements })),
         VIDEO_WIDTH / VIDEO_HEIGHT,
       );
-      const at = (i: number) => (framing ? cameraAt(plan, from, framing, (i / (frames - 1)) * seconds) : from);
-      const samples = testMax() ?? FRAME_SAMPLES[session.get().quality];
-      const stop = new AbortController();
-      session.stopVideo = () => stop.abort();
-      session.set({ move: { ...m, playing: false }, drawOn: null, stopped: true, filming: { frame: 0, frames } });
-      const video = import("./renderVideo").then(({ encodeFrames }) =>
-        pr.frames(VIDEO_WIDTH, VIDEO_HEIGHT, samples, (frame) =>
-          encodeFrames(
-            { canvas: canvas.current!, frame: (i) => frame(at(i), stop.signal) },
-            frames,
-            ext,
-            (frame) => session.set({ filming: { frame, frames } }),
-            stop.signal,
-            clear,
+      const samples = testMax() ?? FRAME_SAMPLES[now.quality];
+      const label = movePreset(m.id).label;
+      const setup = {
+        bodies,
+        cut: cutPlane(sectionRef.current),
+        preset: now.preset,
+        style: now.style,
+        background: now.background,
+        aperture: FOCUSES.find((f) => f.id === now.focus)!.aperture,
+        samples,
+        frames,
+        at: (i: number) => (framing ? cameraAt(plan, from, framing, (i / (frames - 1)) * seconds) : from),
+        ext,
+        seeThrough: clear,
+      };
+      const film = document.createElement("canvas");
+      film.className = "bc-render-film";
+      film.setAttribute("role", "img");
+      film.setAttribute("aria-label", "The video frame being rendered");
+      session.set({ move: { ...m, playing: false }, drawOn: null, stopped: true });
+      const video = run({ name: `${label} video`, frame: 0, frames, sample: 0, samples, started: performance.now(), canvas: film }, (update, signal) =>
+        import("./renderVideo").then(({ filmVideo }) =>
+          filmVideo(
+            setup,
+            film,
+            (frame) => update({ frame }),
+            (sample) => update({ sample }),
+            signal,
           ),
         ),
       );
-      video.catch(() => {});
-      try {
-        await saveVideo.current?.(
-          video.catch(() => null),
-          ext,
-          `${movePreset(m.id).label.toLowerCase()} render`,
-        );
-      } finally {
-        // Cancelled in the save dialog, or saved: stop making frames nobody will keep.
-        stop.abort();
-        await video.catch(() => null);
-        session.stopVideo = null;
-        session.set({ filming: null });
-        // Back where the move starts, as the picture was.
-        move(from);
-      }
+      await saveVideo.current?.(
+        video.catch(() => null),
+        ext,
+        `${label.toLowerCase()} render`,
+      );
     };
     return () => {
       session.renderVideo = null;
     };
-  }, [session, bodies, move]);
+  }, [session, bodies]);
   const camNow = useCallback(() => cam.current, []);
 
   const orbiting = useRef(false);
@@ -479,6 +496,7 @@ export function RenderPicture({
         // Where the camera looks from, for tests: named views move it.
         data-look={`${Math.round(cam.current.azimuth)} ${Math.round(cam.current.elevation)}`}
       />
+      {state.filming?.canvas && <FilmPicture canvas={state.filming.canvas} />}
       {state.drawOn && (
         <Suspense fallback={null}>
           <DrawOnPicture session={session} bodies={bodies} camera={camNow} onSaveVideo={onSaveVideo} />
@@ -536,6 +554,64 @@ export function barPosition(n: number): number {
   return 1;
 }
 
+/** A video render's frame as it clears, over the picture: its own canvas, which outlives the view. */
+function FilmPicture({ canvas }: { canvas: HTMLCanvasElement }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = box.current!;
+    el.appendChild(canvas);
+    return () => {
+      if (canvas.parentNode === el) el.removeChild(canvas);
+    };
+  }, [canvas]);
+  return <div ref={box} className="bc-render-film-box" />;
+}
+
+/** "about 3 min left", from how long the frames so far took; nothing until a frame is done. */
+function timeLeft(f: Filming, now = performance.now()): string {
+  const done = filmProgress(f);
+  if (f.frame < 1 || done <= 0 || done >= 1) return "";
+  const left = (((now - f.started) / done) * (1 - done)) / 1000;
+  if (left < 60) return ", under a minute left";
+  const mins = Math.round(left / 60);
+  if (mins < 60) return `, about ${mins} min left`;
+  const hours = Math.floor(mins / 60);
+  return `, about ${hours} h ${mins % 60} min left`;
+}
+
+/** The status while a video renders: the frame in hand, counting from 1, and the time left. */
+export function filmingText(f: Filming, now?: number): string {
+  const n = Math.min(f.frame + 1, f.frames);
+  return `Rendering the video, frame ${n.toLocaleString("en-GB")} of ${f.frames.toLocaleString("en-GB")}${timeLeft(f, now)}`;
+}
+
+/** Two bars under the status while a video renders: the frame in hand as its samples come in, and the whole video. */
+function FilmBars({ session }: { session: RenderSession }) {
+  const f = useSession(session).filming;
+  if (!f) return null;
+  const frame = f.frame >= f.frames ? 1 : Math.min(1, f.sample / Math.max(1, f.samples));
+  const all = filmProgress(f);
+  const bar = (label: string, v: number, text: string) => (
+    <span
+      className="bc-render-film-bar"
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(v * 100)}
+      aria-valuetext={text}
+    >
+      <span style={{ width: `${v * 100}%` }} />
+    </span>
+  );
+  return (
+    <span className="bc-render-film-bars" title={`This frame ${Math.round(frame * 100)}%, the whole video ${Math.round(all * 100)}%`}>
+      {bar("This frame", frame, `${Math.min(f.sample, f.samples).toLocaleString("en-GB")} of ${samplesText(f.samples)}`)}
+      {bar("Whole video", all, `${Math.round(all * 100)}%`)}
+    </span>
+  );
+}
+
 /**
  * The samples taken so far as a bar that fills, with the Good, Better, Best slider on top of it: the picture stops
  * when the fill reaches the slider's stop.
@@ -580,7 +656,7 @@ function useStatus(session: RenderSession) {
   const clip = d ?? m;
   const name = d ? "Draw on" : m ? movePreset(m.id).label : "";
   const status = s.filming
-    ? `Rendering the video, frame ${s.filming.frame.toLocaleString("en-GB")} of ${s.filming.frames.toLocaleString("en-GB")}`
+    ? filmingText(s.filming)
     : clip
       ? clip.recording
         ? `Recording the video, ${secs(clip.at)} of ${secs(clip.total)}`
@@ -783,6 +859,7 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
           <span className="bc-armed-note bc-render-status" role="status">
             {status}
           </span>
+          <FilmBars session={session} />
           {/* The ribbon's Play, again beside the status where the eye already is: both work the same session. */}
           {!play.disabled && (
             <Button size="dense" icon={play.icon} label={play.short} title={play.title} variant={play.stop ? "danger" : "primary"} onClick={play.onClick} />
@@ -833,6 +910,7 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
         <span className="bc-armed-note bc-render-status" role="status">
           {status}
         </span>
+        <FilmBars session={session} />
         <MenuButton label="Save image" entries={save} trigger={(p) => <Button {...p} icon="download" label="Save image" title="Save the picture as a PNG" />} />
         <DrawOnButtons session={session} />
         <Button kind="done" label="Done" title="Back to modelling" shortcut="Esc" onClick={onClose} />
