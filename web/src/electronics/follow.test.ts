@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyDesign, type ElectronicsDesign } from "@bettercad/electronics";
 import type { BodyMesh } from "@bettercad/kernel";
+import { drawCircle, drawRectangle, newSketch } from "@bettercad/sketch";
 import { biggestFlatFace, catchUp, profileChange } from "./follow";
 
 type V3 = [number, number, number];
@@ -112,5 +113,18 @@ describe("Use as PCB profile", () => {
     expect(catchUp(d, [], new Map([["b1", { mesh: meshOf([wall]), names: { faces: ["side"] } }]]), ids)).toBe("gone");
     expect(catchUp(d, [], new Map(), new Set())).toBe("gone");
     expect(catchUp(emptyDesign(), [], new Map(), ids)).toBeNull();
+  });
+
+  it("follows a sketch: a bigger rectangle makes a bigger board, its circle a cut-out", () => {
+    const plate = (w: number) => ({ id: "s1", sketch: drawCircle(drawRectangle(newSketch(), [0, 0], [w, 30]).sketch, [10, 10], 3).sketch });
+    const first = profileChange({ sketch: plate(50) }, new Map());
+    if (typeof first === "string") throw new Error(first);
+    const d = first(emptyDesign());
+    expect(size(d)).toEqual([50, 30]);
+    expect(d.board!.cutouts).toHaveLength(1);
+    expect(catchUp(d, [plate(50)], new Map(), new Set())).toBeNull();
+    expect(size(catchUp(d, [plate(65)], new Map(), new Set()))).toEqual([65, 30]);
+    expect(catchUp(d, [], new Map(), new Set())).toBe("gone");
+    expect(profileChange({ sketch: { id: "s2", sketch: newSketch() } }, new Map())).toBe("That sketch has no closed shape to make a board from.");
   });
 });
