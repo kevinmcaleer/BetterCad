@@ -19,7 +19,15 @@ afterEach(() => eui.set({ selected: [], net: null }));
 
 describe("a block's parts on the board (#774)", () => {
   it("picks the whole group from one of its parts", async () => {
-    const placed = placeBlock(emptyDesign(), "sh1", buildBlock(STARTER_BLOCKS.find((b) => b.id === "qwiic")!, lookup), [0, 0]).design;
+    const placed = placeBlock(
+      emptyDesign(),
+      "sh1",
+      buildBlock(
+        STARTER_BLOCKS.find((b) => b.id === "qwiic")!,
+        lookup,
+      ),
+      [0, 0],
+    ).design;
     const design = pushToBoard(placed).design;
     const [first] = design.parts;
     render(<BoardProps design={design} edit={() => {}} part={first!.id} selected={[first!.id]} />);
