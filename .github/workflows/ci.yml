@@ -73,12 +73,14 @@ jobs:
   # The shards always start, so their checks keep their names; on a docs, server or Markdown only pull request every
   # step is skipped and the shard passes in seconds.
   # A shard takes about 5 minutes, but the split is by position, so the five render tests (1 to 3 minutes each on a
-  # runner without a GPU) can all land in one shard, which then takes about 10: the limit leaves room for that.
+  # runner without a GPU) can all land in one shard, which then takes about 10: the limit leaves room for that. The
+  # Video render test builds a second path tracer (a video render has its own, so it outlives the Render view), which
+  # takes a few minutes more on a software GPU: that shard now runs to about 16.
   e2e:
     needs: changes
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
