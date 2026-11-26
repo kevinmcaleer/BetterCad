@@ -3,14 +3,32 @@
  * saving a picture, and keeping the pictures in the account beside the model. Loads with the strip, apart from the
  * shell; the editor only holds the controller.
  */
-import type { ModelDoc, NamedView, RenderShot } from "@bettercad/kernel/document";
+import type { ModelDoc, NamedView, RenderClip, RenderShot } from "@bettercad/kernel/document";
 import type { createApi } from "../cloud/api";
 import type { OutFile } from "../files/fileStore";
 import { idbKV } from "../files/idb";
 import type { CameraState } from "../viewport/camera";
 import { dataUrl, previewOf, RenderJobs, shotKey, type CloudPictures } from "./jobs";
 import type { RenderBody } from "./pathRender";
-import type { RenderSession } from "./session";
+import { DRAW_ON_START, moveStart, type RenderSession } from "./session";
+import { movePreset } from "./cameraMoves";
+
+/** What the Render view is animating now, as a clip's recipe, or undefined when nothing is. */
+export function clipOf(session: RenderSession): RenderClip | undefined {
+  const { drawOn, move } = session.get();
+  if (!drawOn && !move) return undefined;
+  return {
+    ...(drawOn && { drawOn: { colour: drawOn.colour } }),
+    ...(move && { move: move.id }),
+    length: drawOn?.length ?? move!.length,
+  };
+}
+
+/** "Draw on", "Orbit", "Draw on and orbit". */
+export function clipName(c: RenderClip): string {
+  const move = c.move && movePreset(c.move).label;
+  return c.drawOn ? (move ? `Draw on and ${move.toLowerCase()}` : "Draw on") : (move ?? "Animation");
+}
 
 export interface StripDeps {
   api: ReturnType<typeof createApi>;
@@ -82,13 +100,17 @@ export class StripController {
     }, label);
   }
 
-  /** Keeps the Render view's current shot on the strip and renders it in the background. */
+  /**
+   * Keeps the Render view's current shot on the strip and renders it in the background. With Draw on or a camera move
+   * on, the shot is a clip: its recipe, with a rendered poster.
+   */
   add(session: RenderSession, camera: CameraState): void {
-    const [shot] = this.addShots(session, [{ camera }]);
+    const animation = clipOf(session);
+    const [shot] = this.addShots(session, [{ camera, name: animation && clipName(animation), animation }]);
     // Its tile shows the Render view's picture as it is now, while it waits its turn.
     const canvas = session.canvas?.();
     if (canvas) previewOf(canvas, (b) => void this.jobs.seed(shot!.id, b));
-    this.deps().say(`Added ${shot!.name}. It renders in the background.`);
+    this.deps().say(animation ? `Added ${shot!.name}. Its poster renders in the background.` : `Added ${shot!.name}. It renders in the background.`);
   }
 
   /** A shot for each named view, in the Render view's light, background and finish, named after the view. */
@@ -100,7 +122,7 @@ export class StripController {
     );
   }
 
-  private addShots(session: RenderSession, from: { camera: CameraState; name?: string }[]): RenderShot[] {
+  private addShots(session: RenderSession, from: { camera: CameraState; name?: string; animation?: RenderClip }[]): RenderShot[] {
     const { doc, newId } = this.deps();
     const r = session.get();
     const size = session.size?.() ?? { width: 16, height: 9 };
@@ -130,17 +152,49 @@ export class StripController {
       width: WIDTH,
       height,
       auto: true,
+      ...(v.animation && { animation: v.animation }),
     }));
     this.shots((l) => [...l, ...shots], shots.length === 1 ? "Add render" : "Add renders");
     for (const s of shots) this.render(s);
     return shots;
   }
 
-  /** Puts the Render view on the shot: its light, background, finish and camera. */
+  /** Puts the Render view on the shot: its light, background, finish and camera, and plays a clip from the start. */
   use(session: RenderSession, s: RenderShot): void {
     session.set({ preset: s.preset, style: s.style, background: s.background, focus: s.focus, quality: s.quality });
+    // The camera first: a camera move starts from wherever the view is when it begins.
     session.look?.({ ...s.camera, ortho: false });
+    const a = s.animation;
+    session.set(
+      a
+        ? {
+            drawOn: a.drawOn ? { ...DRAW_ON_START, colour: a.drawOn.colour, length: a.length } : null,
+            move: a.move ? moveStart(a.move, a.length) : null,
+            stopped: true,
+          }
+        : { drawOn: null, move: null },
+    );
+    // Already showing the same animation: its player stays, so start it again.
+    if (a?.drawOn) session.replay?.();
+    else if (a?.move) session.replayMove?.();
   }
+
+  /**
+   * Saves a clip's video: puts the Render view on it, waits for its player (Draw on loads on first use), then records
+   * it from the start as Save video does.
+   */
+  record = async (session: RenderSession, s: RenderShot): Promise<void> => {
+    if (!s.animation) return;
+    this.use(session, s);
+    // Let the view take the new clip first, so the player recording is this clip's, not the one before.
+    await new Promise((r) => setTimeout(r, 100));
+    const draw = !!s.animation.drawOn;
+    const ready = () => (draw ? session.record : session.recordMove);
+    for (let waited = 0; !ready() && waited < 15_000; waited += 50) await new Promise((r) => setTimeout(r, 50));
+    const go = ready();
+    if (go) await go();
+    else this.deps().say(`Couldn't record ${s.name}`, true);
+  };
 
   /** Moves a shot along the strip; waiting renders take the new order. */
   move = (id: string, to: number): void => {

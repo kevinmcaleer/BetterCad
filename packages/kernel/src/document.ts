@@ -953,6 +953,18 @@ export interface RenderShot {
   height: number;
   /** Render it again, in the background, each time the model is saved. */
   auto: boolean;
+  /**
+   * An animation: the shot is a clip, kept as its recipe and played live in the Render view (its picture is the
+   * poster). Draw on and a camera move, one or both, for one of Draw on's lengths. `camera` is where it starts from.
+   */
+  animation?: RenderClip;
+}
+
+/** A clip's recipe: what plays, for how long. */
+export interface RenderClip {
+  drawOn?: { colour: "blue" | "amber" | "green" | "white" | "parts" };
+  move?: "orbit" | "ramp" | "rise" | "crane" | "push";
+  length: "quick" | "normal" | "slow";
 }
 
 /**

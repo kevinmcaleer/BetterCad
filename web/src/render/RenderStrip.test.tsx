@@ -133,6 +133,36 @@ describe("RenderStrip", () => {
   });
 });
 
+describe("animations on the strip", () => {
+  it("shows a clip with its length, and plays it or saves its video from the tile or the viewer", async () => {
+    const store = memoryKV<{ key: string; blob: Blob; date: number }>();
+    await store.set("c", { key: "now", blob: new Blob(["x"]), date: 1 });
+    const jobs = new RenderJobs({ store, render: never });
+    const clip: RenderShot = { ...shot("c", "Draw on and orbit"), animation: { drawOn: { colour: "blue" }, move: "orbit", length: "normal" } };
+    await jobs.load([clip]);
+    const onRecord = vi.fn();
+    const p = strip(jobs, [clip], { onRecord });
+    const tile = screen.getByRole("button", { name: "Draw on and orbit, animation, 10 s" });
+    expect(tile).toHaveTextContent("10 s");
+    fireEvent.contextMenu(tile);
+    expect(screen.queryByRole("menuitem", { name: "Use this view" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Play" }));
+    expect(p.onUse).toHaveBeenCalledWith(clip);
+    fireEvent.contextMenu(tile);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Save video" }));
+    expect(onRecord).toHaveBeenCalledWith(clip);
+    fireEvent.contextMenu(tile);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Save poster" }));
+    expect(p.onSave).toHaveBeenCalledWith(clip);
+    fireEvent.click(tile);
+    const dialog = screen.getByRole("dialog", { name: "Draw on and orbit" });
+    expect(dialog).toHaveTextContent("Animation, 10 s.");
+    fireEvent.click(screen.getByRole("button", { name: "Save video" }));
+    expect(onRecord).toHaveBeenCalledTimes(2);
+    jobs.dispose();
+  });
+});
+
 describe("RenderWheel", () => {
   it("shows how far the background renders have got, and goes when they are done", async () => {
     let finish = () => {};
