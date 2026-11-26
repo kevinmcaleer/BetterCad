@@ -62,7 +62,11 @@ schematic brings it up to date and lists the changes first.
 ![The sample board in the PCB view](images/electronics-pcb.png)
 
 1. **Set up the board.** Press B for Board setup: width, height, corner radius and thickness, or take the outline
-   from a sketch in your model so the board fits the case you are printing. Pick a board house's rules here too.
+   from a sketch in your model so the board fits the case you are printing. You can also right-click a body, a flat
+   face or a sketch and choose **Use as PCB profile**: a body gives its biggest flat face, and holes through it become
+   cut-outs. The board follows its source, so when you change the model the board's shape changes with it, and one
+   undo takes back both. If the face or sketch goes away, the board keeps its last shape and you are told.
+   Pick a board house's rules here too.
    Most boards need two copper layers. Layers gives you four or six: the inner ones show in the Layers card, L steps
    through them while you route, and a pour over the whole board on an inner layer makes it a ground or power plane.
 2. **Place the parts.** Drag them into place. R turns a part, X flips it to the other side of the board, K locks it.

@@ -58,5 +58,13 @@ export function discard<T>(h: History<T>, key: string): History<T> {
   return { past: h.past.slice(0, -1), present: prev.state, label: prev.label, future: [] };
 }
 
+/**
+ * Changes the present without a step of its own, as part of the step that made it: what follows on from that step
+ * (a board's outline catching up with the face it follows). Undo goes back past both; redo brings both.
+ */
+export function amend<T>(h: History<T>, next: T): History<T> {
+  return Object.is(next, h.present) ? h : { ...h, present: next };
+}
+
 export const canUndo = (h: History<unknown>) => h.past.length > 0;
 export const canRedo = (h: History<unknown>) => h.future.length > 0;

@@ -200,7 +200,8 @@ export interface EngineEvents {
    * A long press with a finger, or a right click without a drag: what was under it, and where on the page
    * (client coordinates) to open a menu.
    */
-  menu?: (pick: Pick | null, at: { x: number; y: number }) => void;
+  /** `face`: the face under the pointer, whatever the filter (Use as PCB profile takes a flat face). */
+  menu?: (pick: Pick | null, at: { x: number; y: number }, face?: Pick | null) => void;
   /** The gizmo finished a drag: the body's new place. */
   transform?: (id: string, position: V3, rotation: V3) => void;
   /** The gizmo is dragging: live values to show. */
@@ -2443,7 +2444,7 @@ export class Engine {
           if (this.press !== press || press.dragged || this.pointers.size !== 1) return;
           press.held = true;
           this.setHover(null);
-          this.events.menu?.(this.pick(press.x, press.y), this.client(press));
+          this.events.menu?.(this.pick(press.x, press.y), this.client(press), this.pick(press.x, press.y, "face"));
         }, LONG_PRESS_MS);
       }
     });
@@ -2541,7 +2542,8 @@ export class Engine {
       }
       if (press.dragged || press.held || e.type === "pointercancel") return;
       if (press.button === 2 && this.events.menu) {
-        this.events.menu(this.pick(press.x, press.y), this.client(press));
+        const pick = this.pick(press.x, press.y);
+        this.events.menu(pick, this.client(press), this.filter === "face" ? pick : this.pick(press.x, press.y, "face"));
         return;
       }
       if (press.button !== 0) return;
