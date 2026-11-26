@@ -490,7 +490,8 @@ export interface ElectronicsDesign {
   sheets: Sheet[];
   board?: Board;
   /** Rule levels changed from their defaults, and results waived with a note, by a result's stable key. */
-  checks?: { levels?: Record<string, CheckLevel>; waived?: Record<string, string> };
+  /** The rules checks' settings: each rule's level, waivers, and the pin table where it differs (#738). */
+  checks?: { levels?: Record<string, CheckLevel>; waived?: Record<string, string>; pins?: Record<string, "ok" | "warning" | "error"> };
 }
 
 export const emptySheet = (name = "Sheet 1"): Sheet => ({ id: eid("sh"), name, symbols: [], wires: [], junctions: [], labels: [], noConnects: [] });

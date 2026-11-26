@@ -76,4 +76,18 @@ describe("the rules check card", () => {
     expect(screen.getByRole("list", { name: "Results" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Waive" })).toBeNull();
   });
+
+  it("has a pin table that steps a pair from fine to a warning to an error, and resets (#738)", async () => {
+    const s = setup(loose());
+    await userEvent.click(screen.getByRole("button", { name: "Choose the rules" }));
+    const table = screen.getByRole("table", { name: "Pin types that meet" });
+    expect(within(table).getByRole("button", { name: "Output with output: an error" })).toBeInTheDocument();
+    await userEvent.click(within(table).getByRole("button", { name: "Passive with input: fine" }));
+    expect(s.design().checks?.pins).toEqual({ "input|passive": "warning" });
+    await userEvent.click(within(table).getByRole("button", { name: "Passive with input: a warning" }));
+    expect(s.design().checks?.pins).toEqual({ "input|passive": "error" });
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(s.design().checks).not.toHaveProperty("pins");
+    expect(s.labels).toEqual(["Change the pin table", "Change the pin table", "Reset the pin table"]);
+  });
 });

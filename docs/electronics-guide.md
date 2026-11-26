@@ -31,7 +31,8 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
    group of parts. Double-click a text note to change its words. Notes don't join anything.
 5. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
 6. **Check it.** Press E for the rules check. It lists pins left unconnected, outputs wired together, nets with one
-   pin and more, each with a way to fix it. Click a line to go to the spot.
+   pin and more, each with a way to fix it. Click a line to go to the spot. Choose the rules shows a table of which
+   pin types may meet; click a cell to make that pair fine, a warning or an error.
 
 ![The rules check, open over the schematic](images/electronics-check.png)
 

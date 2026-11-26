@@ -148,6 +148,16 @@ opens or a push is about to happen. `check(design)` returns results in plain wor
 | `net-one-pin` | Warning | A net with a single pin on it |
 | `label-once` | Warning | A label no other label or power symbol shares |
 | `net-two-names` | Warning | A net carrying two different names |
+| `pin-conflict` | From the pin table | Two pin types that should not meet on one net (#738) |
+
+Which pin types may share a net is a table (#738), `PIN_MEETS` in `erc.ts`, after KiCad's default: two outputs (or
+power outputs) fight, an output on a three-state, open collector or open emitter pin is an error, an output with an
+in-and-out pin and open collector with open emitter are warnings, a pin of no set type is a warning whatever it
+meets, and a pin marked not connected is an error whatever it meets. The Checks card's rules show the table, and a
+click steps a pair from fine to a warning to an error; changes are kept in `design.checks.pins` (keyed by the two
+types in `PIN_TYPES` order) and Reset takes them out. Two drivers on a net still report as `output-clash`, one line
+for them all; every other pair is `pin-conflict`, once for each pair of types on a net, at the table's level unless
+the rule's own level was changed.
 
 A power symbol counts as a power source, so a board fed from a connector needs no extra flag: put 3V3 or GND on the
 net. Each rule's level (error, warning, ignore) is kept in `design.checks.levels` when it differs from the table.
