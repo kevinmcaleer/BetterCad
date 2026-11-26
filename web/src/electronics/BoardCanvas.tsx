@@ -42,6 +42,7 @@ import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { readColours } from "./colours";
 import { drawBoard, type LayerId } from "./drawBoard";
 import { boxBoard, hitBoard, placementBox } from "./hitBoard";
+import { measureSnap, measureText } from "./measure";
 import { clearOf } from "./SchematicCanvas";
 import { eui } from "./ui";
 import { useEui } from "./useEui";
@@ -141,6 +142,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const [pourNet, setPourNet] = useState("");
   const [cut, setCut] = useState(false);
   const [going, setGoing] = useState<string[] | null>(null);
+  /** The points picked with Measure (#732): none, the first, or both. */
+  const [measured, setMeasured] = useState<P2[]>([]);
   const drag = useRef<{
     ids: string[];
     last: P2;
@@ -190,7 +193,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const selected = useMemo(() => new Set(ui.selected), [ui.selected]);
   const hidden = useMemo(() => new Set<LayerId>(ui.hidden), [ui.hidden]);
   const colours = useMemo(() => readColours(host.current), [host.current, ui.view]); // eslint-disable-line react-hooks/exhaustive-deps
-  const tool = readOnly || !board ? "select" : ui.pcbTool;
+  // Measuring changes nothing, so it works on a board you can only look at.
+  const tool = !board || (readOnly && ui.pcbTool !== "measure") ? "select" : ui.pcbTool;
   const layers = useMemo(() => (board ? layersOf(board) : (["top", "bottom"] as Layer[])), [board]);
   const layer: Layer = layers.includes(ui.layer) ? ui.layer : "top";
   /** The layer after this one, going down through the board and round to the top again. */
@@ -213,6 +217,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   useEffect(() => {
     if (tool !== "route") setRoute(null);
     setArea([]);
+    setMeasured([]);
     setSaid("");
   }, [tool]);
 
@@ -421,6 +426,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   });
   useEscape(!!route, () => setRoute(null), ESC.drag);
   useEscape(area.length > 0, () => setArea([]), ESC.drag);
+  useEscape(measured.length > 0, () => setMeasured([]), ESC.drag);
   useEscape(!!going, () => setGoing(null), ESC.overlay);
   useEscape(!!ask, () => setAsk(null), ESC.overlay);
   useEscape(tool !== "select", () => eui.set({ pcbTool: "select" }), ESC.tool);
@@ -505,6 +511,10 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       if (stop) return tooClose(stop.what);
       setSaid("");
       edit((d) => addVia(d, net, to[0], to[1]), "Add a via");
+    } else if (tool === "measure") {
+      // Two clicks measure; a third starts again from there.
+      const { at: to } = measureSnap(design, pads, p.world, Math.max(tol, 0.5), grid);
+      setMeasured(measured.length === 1 ? [measured[0]!, to] : [to]);
     } else if (tool === "hole") {
       const to = snap(p.world, grid);
       edit((d) => addHole(d, to[0], to[1], 3.2), "Add a hole");
@@ -560,6 +570,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const marks = useMemo(() => (ui.spot?.sheet === "board" ? [{ at: ui.spot.at }] : undefined), [ui.spot]);
 
   const drawing = useMemo(() => (area.length ? (at ? [...area, snap(at, grid)] : [...area, area[area.length - 1]!]) : undefined), [area, at, grid]);
+  // The first point and the pointer while picking the second, then the two points picked.
+  const measuring = useMemo(
+    () => (measured.length === 1 && at ? [measured[0]!, measureSnap(design, pads, at, Math.max(tol, 0.5), grid).at] : measured),
+    [measured, at, design, pads, tol, grid],
+  );
   const asking = going?.every((id) => selected.has(id)) ? going : null;
   const goingNames = asking?.map((id) => design.parts.find((p) => p.id === id)?.ref ?? "").filter(Boolean) ?? [];
 
@@ -571,21 +586,29 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
           ? `Routing ${route.net} and ${route.pair.net} as a pair: ${lengthOf(route.net)} and ${lengthOf(route.pair.net)}. Click to turn, click a pad to finish.`
           : `Routing ${route.net} on the ${layer} side, ${lengthOf(route.net, ghost?.track.pts)}. Click to turn, click a pad to finish.`
         : "Click a pad to start a track."
-      : tool === "via"
-        ? "Click a track or a pad to drop a via on it."
-        : tool === "hole"
-          ? "Click where the mounting hole goes."
-          : tool === "text"
-            ? "Click where the text starts."
-            : tool === "pour" || tool === "keepout"
-              ? area.length
-                ? "Click the next corner. Click the first corner again, or Done, to close it."
-                : tool === "pour"
-                  ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
-                  : cut
-                    ? "Click the corners of the hole to cut through the board."
-                    : "Click the corners of the area tracks and pours must stay out of."
-              : "";
+      : tool === "measure"
+        ? measured.length === 2
+          ? `${measureText(measured[0]!, measured[1]!)}. Click to measure again.`
+          : measured.length === 1
+            ? at
+              ? `${measureText(measured[0]!, measureSnap(design, pads, at, Math.max(tol, 0.5), grid).at)}. Click the second point.`
+              : "Click the second point."
+            : "Click the first point. Pads, holes, track ends and the board's edge snap."
+        : tool === "via"
+          ? "Click a track or a pad to drop a via on it."
+          : tool === "hole"
+            ? "Click where the mounting hole goes."
+            : tool === "text"
+              ? "Click where the text starts."
+              : tool === "pour" || tool === "keepout"
+                ? area.length
+                  ? "Click the next corner. Click the first corner again, or Done, to close it."
+                  : tool === "pour"
+                    ? `Click the corners of the area to fill on the ${layer} side, or fill the whole board.`
+                    : cut
+                      ? "Click the corners of the hole to cut through the board."
+                      : "Click the corners of the area tracks and pours must stay out of."
+                : "";
   return (
     <div ref={host} className="bc-ec-host">
       <div className="bc-ec-clear" aria-hidden="true" />
@@ -600,7 +623,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         view={view}
         onView={setView}
         cursor={tool !== "select" ? "crosshair" : hover ? "move" : "default"}
-        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air, pours, drawing, clashing]}
+        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air, pours, drawing, clashing, ui.pourOutlines, measuring]}
         draw={(ctx, v, size) =>
           drawBoard(ctx, v, size, design, colours, {
             selected,
@@ -616,6 +639,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             clashing,
             pours,
             area: drawing,
+            pourOutlines: ui.pourOutlines,
+            measure: measuring,
           })
         }
         onDown={onDown}

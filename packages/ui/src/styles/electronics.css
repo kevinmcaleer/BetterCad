@@ -546,6 +546,7 @@ button.bc-ec-pill {
   }
   .bc-ec-layers:not(.bc-open) ul,
   .bc-ec-layers:not(.bc-open) .bc-ec-grid,
+  .bc-ec-layers:not(.bc-open) .bc-ec-outlines,
   .bc-ec-layers-title {
     display: none;
   }
@@ -836,6 +837,11 @@ button.bc-ec-pill {
 }
 .bc-ec-grid .bc-select {
   width: 110px;
+}
+.bc-ec-outlines {
+  padding: 0 var(--bc-space-6);
+  color: var(--bc-color-muted);
+  font-size: var(--bc-type-small-size);
 }
 .bc-ec-routebar {
   position: absolute;

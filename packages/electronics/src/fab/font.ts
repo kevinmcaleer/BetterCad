@@ -108,8 +108,13 @@ export const LINE_GAP = 1.6;
 
 function lineWidth(text: string, size: number): number {
   let w = 0;
-  for (const ch of text) w += ADVANCE * glyph(ch).scale;
-  return text ? ((w - 2) * size) / 6 : 0;
+  let last = 1;
+  for (const ch of text) {
+    last = glyph(ch).scale;
+    w += ADVANCE * last;
+  }
+  // The space after the last character is not part of the text: a small letter's is smaller (#730).
+  return text ? ((w - 2 * last) * size) / 6 : 0;
 }
 
 /** How wide text is, mm, for capitals `size` tall: its widest line. */

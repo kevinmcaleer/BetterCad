@@ -4,7 +4,7 @@ BetterCad has an electronics workspace: draw a schematic, lay out a 2-layer boar
 print, and save the files a board house needs. This is the guide for people using it. How it is built is in
 [electronics.md](electronics.md); the parts library is in [electronics-library.md](electronics-library.md).
 
-Open it from the Electronics tab on the top bar. Three views share one design, and a switcher at the top of the view
+Open it from the Electronics tab on the top bar: it opens the view you used last in this model, or the schematic. Three views share one design, and a switcher at the top of the view
 moves between them: Schematic (1), PCB (2) and 3D (3). A part you pick in one view stays picked in the others.
 
 Want to see a finished one first? On an empty schematic, choose Open the sample board. It is a carrier for a
@@ -88,7 +88,13 @@ schematic brings it up to date and lists the changes first.
    copper too close to the edge, holes too small or too close together and text too small to print, against the
    rules you picked.
 
-Layers, bottom right, shows and hides each layer and sets the grid.
+Layers, bottom right, shows and hides each layer and sets the grid. Pours are drawn light so tracks over them stand
+out, and the side you are not working on is dimmed; turn on Pours as outlines to see only their edges. Text on the
+board is drawn in the same stroke font the Gerber files use, so what you see is what is printed.
+
+Press M to measure: click two points to read the distance between them, and its dx and dy. Pad, via and hole
+centres, track ends and the board's edge snap. Press Ctrl+F in either view to find a part by its reference, value or
+part number, or a net by its name: choosing a result goes to it, on whichever sheet it is, and picks it.
 
 ## See it in 3D
 
@@ -122,7 +128,7 @@ board as one IPC-2581 file for an assembler that asks for one.
 | Add | | H hole, T text, P pour |
 | Change | R rotate, X mirror, Del delete, Ctrl+D duplicate | R rotate, X flip side, K lock, Del delete |
 | Check | E rules check, T parts table | E board check, B board setup |
-| View | F fit | F fit |
+| View | F fit, Ctrl+F find | F fit, M measure, Ctrl+F find |
 
 On a Mac, Ctrl is Cmd. Press ? in the app for every shortcut.
 

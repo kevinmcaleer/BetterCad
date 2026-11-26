@@ -45,6 +45,7 @@ const BoardProps = lazy(() => import("./BoardProps"));
 const NetProps = lazy(() => import("./NetProps"));
 const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
+const FindCard = lazy(() => import("./Find"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -77,6 +78,16 @@ const pickPart = () => {
 function useTools(view: EView, readOnly: boolean): Tool[] {
   const ui = useEui();
   const none = ui.selected.length === 0 && !ui.placing;
+  const find: Tool = {
+    id: "find",
+    group: "View",
+    label: "Find",
+    icon: "search",
+    key: "Ctrl+F",
+    tip: "Find a part by its name or value, or a net by its name",
+    on: ui.card === "find",
+    run: toggle("find"),
+  };
   if (view === "schematic")
     return [
       {
@@ -247,6 +258,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         disabled: readOnly,
         run: toggle("open"),
       },
+      find,
       { id: "fit", group: "View", label: "Fit", icon: "frame", key: "F", tip: "Fit the schematic in the view", run: () => eactions.current?.fit() },
     ];
   const draw = (id: PcbTool, label: string, icon: IconName, key: string, tip: string): Tool => ({
@@ -399,6 +411,17 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       disabled: readOnly,
       run: () => eui.set({ card: ui.card === "changes" ? null : "changes" }),
     },
+    {
+      id: "measure",
+      group: "View",
+      label: "Measure",
+      icon: "ruler",
+      key: "M",
+      tip: "Click two points to read the distance between them",
+      on: ui.pcbTool === "measure",
+      run: armPcb("measure"),
+    },
+    find,
     { id: "fit", group: "View", label: "Fit", icon: "frame", key: "F", tip: "Fit the board in the view", run: () => eactions.current?.fit() },
   ];
 }
@@ -414,6 +437,7 @@ function commands(design: () => ElectronicsDesign): Command[] {
     ["text", "Silkscreen text", "t", "text", "label legend"],
     ["pour", "Copper pour", "p", "pour", "fill ground plane zone polygon"],
     ["keepout", "Keep-out or cut-out", "o", "keepOut", "restrict area slot hole"],
+    ["measure", "Measure", "m", "ruler", "distance ruler dimension gap between"],
   ];
   const views = [
     ["schematic", "Show the schematic", "1", "schematic"],
@@ -653,6 +677,16 @@ function commands(design: () => ElectronicsDesign): Command[] {
       icon: "link",
       run: () => window.open(GUIDE_URL, "_blank", "noopener"),
       keywords: "help learn schematic pcb board order gerber how to lesson",
+    },
+    {
+      ...e,
+      id: "electronics.find",
+      label: "Find a part or a net",
+      group: "Edit",
+      icon: "search",
+      keys: ["mod+f"],
+      run: () => eui.set({ card: "find" }),
+      keywords: "search look for reference value net locate go to",
     },
     { ...e, id: "electronics.selectAll", label: "Select all", group: "Edit", keys: ["mod+a"], run: () => eactions.current?.selectAll() },
     { ...e, id: "electronics.fit", label: "Fit in the view", group: "View", icon: "frame", keys: ["f"], run: () => eactions.current?.fit() },
@@ -904,6 +938,11 @@ export default function ElectronicsView({
               setTimeout(() => eactions.current?.fit(), 50);
             }}
           />
+        </Suspense>
+      )}
+      {ui.card === "find" && (
+        <Suspense fallback={null}>
+          <FindCard design={design} view={view} onClose={() => eui.set({ card: null })} />
         </Suspense>
       )}
       {view === "schematic" && (

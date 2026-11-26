@@ -13,6 +13,7 @@ import {
 } from "@bettercad/electronics";
 import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
 import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
+import { REF_SIZE, penFor, textStrokes } from "@bettercad/electronics/fab/font";
 import type { Colours } from "./colours";
 import { rubber } from "./drawSchematic";
 import { toScreen, type View2D } from "./view2d";
@@ -70,6 +71,48 @@ export interface BoardLook {
   pours?: { shape: PourShape; fill: PourFill }[];
   /** An area being drawn, corner by corner. */
   area?: P2[];
+  /** Pours drawn as their outlines only, so everything under them shows (#728). */
+  pourOutlines?: boolean;
+  /** How strongly pours are painted, over the shares the screen uses: the 3D board's picture paints them fuller. */
+  pourAlpha?: number;
+  /** Two points being measured between (#732). */
+  measure?: P2[];
+}
+
+/**
+ * How strongly a pour is painted (#728): light enough that a track over it reads at a glance, and fainter again on a
+ * side you are not working on, or when another net is lit.
+ */
+export function pourAlpha(onActive: boolean, lit: boolean): number {
+  if (!lit) return 0.08;
+  return onActive ? 0.3 : 0.12;
+}
+
+/** How strongly a side you are not working on draws its tracks and pads, against 1 for the side you are on. */
+export const FAR_ALPHA = 0.45;
+
+/** Strokes of the board's own font, drawn with a round pen `pen` mm wide, as the Gerber files draw them (#730). */
+export function strokeLines(ctx: CanvasRenderingContext2D, v: View2D, lines: P2[][], pen: number) {
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = Math.max(0.75, pen * v.scale);
+  ctx.beginPath();
+  for (const line of lines)
+    line.forEach((p, i) => {
+      const s = toScreen(v, p);
+      if (i) ctx.lineTo(s[0], s[1]);
+      else ctx.moveTo(s[0], s[1]);
+    });
+  // A dot (a full stop) is one point drawn twice: a zero-length line still gets its round cap.
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** A board text's strokes: its capitals are 0.72 of its size, as the Gerber writer draws them. */
+export function boardTextStrokes(t: { text: string; size: number; x: number; y: number; angle?: number; layer: string }): { lines: P2[][]; pen: number } {
+  const cap = Math.max(0, t.size * 0.72);
+  return { lines: textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: t.layer.endsWith("bottom") }), pen: penFor(cap) };
 }
 
 let scratch: HTMLCanvasElement | null = null;
@@ -181,7 +224,7 @@ export function padPath(ctx: CanvasRenderingContext2D, v: View2D, pad: BoardPad[
   ctx.restore();
 }
 
-export function shapeOn(ctx: CanvasRenderingContext2D, v: View2D, s: Shape, place: (p: P2) => P2, turnBy: number, flip: boolean, colour: string, c: Colours) {
+export function shapeOn(ctx: CanvasRenderingContext2D, v: View2D, s: Shape, place: (p: P2) => P2, turnBy: number, flip: boolean, colour: string, _c?: Colours) {
   ctx.strokeStyle = colour;
   ctx.fillStyle = colour;
   ctx.lineCap = "round";
@@ -221,11 +264,15 @@ export function shapeOn(ctx: CanvasRenderingContext2D, v: View2D, s: Shape, plac
     ctx.arc(q[0], q[1], s.r * v.scale, (-(a0 + turnBy) * Math.PI) / 180, (-(a1 + turnBy) * Math.PI) / 180, true);
     ctx.stroke();
   } else {
-    const q = toScreen(v, place([s.x, s.y]));
-    ctx.font = `${Math.max(1, s.size * v.scale)}px ${c.font}`;
-    ctx.textAlign = s.align === "centre" ? "center" : (s.align ?? "left");
-    ctx.textBaseline = "middle";
-    ctx.fillText(s.text, q[0], q[1]);
+    // The board's own stroke font, placed and turned as the Gerber writer does it (#730).
+    const cap = s.size * 0.72;
+    const lines = textStrokes(s.text, cap, place([s.x, s.y]), {
+      angle: turnBy + (flip ? -1 : 1) * (s.angle ?? 0),
+      align: s.align ?? "left",
+      middle: true,
+      mirror: flip,
+    });
+    strokeLines(ctx, v, lines, penFor(cap));
   }
 }
 
@@ -260,11 +307,14 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     if (!show(layer as LayerId)) continue;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    for (const p of look.pours ?? []) if (p.shape.pour.layer === layer) paintPour(ctx, v, size, p, copper(layer), lit(p.shape.pour.net) ? 0.55 : 0.2);
+    const near = layer === look.active;
+    if (!look.pourOutlines)
+      for (const p of look.pours ?? [])
+        if (p.shape.pour.layer === layer) paintPour(ctx, v, size, p, copper(layer), look.pourAlpha ?? pourAlpha(near, lit(p.shape.pour.net)));
     for (const t of board.tracks) {
       if (t.layer !== layer) continue;
       const on = look.selected.has(t.id) || look.hover === t.id;
-      ctx.globalAlpha = lit(t.net) ? (layer === look.active ? 1 : 0.75) : 0.25;
+      ctx.globalAlpha = lit(t.net) ? (near ? 1 : FAR_ALPHA) : 0.2;
       if (on) {
         ctx.strokeStyle = c["ec-pick"];
         ctx.lineWidth = t.width * v.scale + 3;
@@ -278,7 +328,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     }
     for (const p of look.pads) {
       if (p.pad.kind !== "smd" || p.side !== layer) continue;
-      ctx.globalAlpha = lit(p.net) ? 1 : 0.3;
+      ctx.globalAlpha = lit(p.net) ? (near ? 1 : 0.6) : 0.3;
       ctx.fillStyle = copper(layer);
       padPath(ctx, v, p.pad, p.at, p.angle);
       ctx.fill();
@@ -380,14 +430,17 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
         padPath(ctx, v, pad, place([pad.x, pad.y]), at.rot + (at.side === "bottom" ? -1 : 1) * (pad.angle ?? 0));
         ctx.fill();
       }
-    if (show(silk) && !("refHidden" in at && at.refHidden) && v.scale >= 4) {
+    if (show(silk) && !("refHidden" in at && at.refHidden) && v.scale >= 3) {
+      // In the board's own font and size, as the silkscreen file has it (#730).
       const where = ("refAt" in at && at.refAt) || pkg.footprint.refAt || [0, 0];
-      const s = toScreen(v, place(where));
-      ctx.fillStyle = on ? c["ec-pick"] : c[at.side === "top" ? "ec-silk" : "ec-silk-far"];
-      ctx.font = `${Math.max(9, Math.min(1 * v.scale, 22))}px ${c.font}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(part.ref, s[0], s[1]);
+      const cap = Math.max(REF_SIZE, board.rules?.minSilkHeight ?? 0);
+      ctx.strokeStyle = on ? c["ec-pick"] : c[at.side === "top" ? "ec-silk" : "ec-silk-far"];
+      strokeLines(
+        ctx,
+        v,
+        textStrokes(part.ref, cap, place(where), { align: "centre", middle: true, mirror: at.side === "bottom" }),
+        penFor(cap, board.rules?.minSilkWidth ?? 0),
+      );
     }
     ctx.globalAlpha = 1;
   }
@@ -395,22 +448,15 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
   for (const t of board.texts) {
     const layer: LayerId = t.layer.endsWith("top") ? "silk-top" : "silk-bottom";
     if (!show(layer)) continue;
-    const s = toScreen(v, [t.x, t.y]);
-    ctx.save();
-    ctx.translate(s[0], s[1]);
-    ctx.rotate((-(t.angle ?? 0) * Math.PI) / 180);
-    if (t.layer.endsWith("bottom")) ctx.scale(-1, 1);
-    ctx.fillStyle = look.selected.has(t.id)
-      ? c["ec-pick"]
-      : t.layer.startsWith("copper")
-        ? copper(t.layer.endsWith("top") ? "top" : "bottom")
-        : c[t.layer.endsWith("top") ? "ec-silk" : "ec-silk-far"];
-    ctx.font = `${Math.max(1, t.size * v.scale)}px ${c.font}`;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
-    // Further lines go below the first, as the files for the board house draw them.
-    t.text.split("\n").forEach((row, n) => ctx.fillText(row, 0, n * t.size * 0.72 * 1.6 * v.scale));
-    ctx.restore();
+    // The strokes the files for the board house draw (#730), further lines below the first.
+    const { lines, pen } = boardTextStrokes(t);
+    ctx.strokeStyle =
+      look.selected.has(t.id) || look.hover === t.id
+        ? c["ec-pick"]
+        : t.layer.startsWith("copper")
+          ? copper(t.layer.endsWith("top") ? "top" : "bottom")
+          : c[t.layer.endsWith("top") ? "ec-silk" : "ec-silk-far"];
+    strokeLines(ctx, v, lines, t.layer.startsWith("silk") ? Math.max(pen, board.rules?.minSilkWidth ?? 0) : pen);
   }
 
   // Pictures on the silkscreen: the ink, a cell at a time.
@@ -440,9 +486,10 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     const on = look.selected.has(p.id) || look.hover === p.id;
     if (!on && !show(p.layer as LayerId)) continue;
     ctx.strokeStyle = on ? c["ec-pick"] : copper(p.layer);
-    ctx.globalAlpha = on ? 1 : 0.6;
-    ctx.lineWidth = on ? 2 : 1;
-    ctx.setLineDash([2, 3]);
+    ctx.globalAlpha = on || look.pourOutlines ? 1 : 0.6;
+    ctx.lineWidth = on ? 2 : look.pourOutlines ? 1.5 : 1;
+    // Shown as outlines only (#728), the edge is all there is of a pour: drawn solid so it reads.
+    ctx.setLineDash(look.pourOutlines ? [] : [2, 3]);
     path(ctx, v, p.outline, true);
     ctx.stroke();
     ctx.setLineDash([]);
@@ -519,5 +566,30 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       ctx.fillText(m.text, s[0], s[1] - 12);
     }
   }
+  if (look.measure?.length) drawMeasure(ctx, v, look.measure, c);
   if (look.box) rubber(ctx, v, look.box, { ...c, accent: c["ec-pick"] });
+}
+
+/** The measure tool's line (#732): a dot on each point, a line between, and the distance over its middle. */
+function drawMeasure(ctx: CanvasRenderingContext2D, v: View2D, pts: P2[], c: Colours) {
+  const [a, b] = pts.map((p) => toScreen(v, p));
+  ctx.save();
+  ctx.strokeStyle = c["ec-pick"];
+  ctx.fillStyle = c["ec-pick"];
+  ctx.lineWidth = 1.5;
+  if (a && b) {
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(b[0], b[1]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  for (const s of [a, b]) {
+    if (!s) continue;
+    ctx.beginPath();
+    ctx.arc(s[0], s[1], 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }

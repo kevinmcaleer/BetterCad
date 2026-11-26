@@ -251,6 +251,11 @@ const DRAW: Record<string, () => string> = {
     box(-7, -2.5, -4, 6, 5, 5) +
     box(1, -2.5, -4, 6, 5, 5) +
     `<rect x="8.4" y="8.2" width="7.2" height="3.6" rx="1.8" fill="none" stroke="${HI}" stroke-width="1.7"/>`,
+  // Find: a lens over a chip, its glass in the accent
+  search: () =>
+    box(-6, -6, -4, 12, 12, 2) +
+    `<circle cx="10.5" cy="9" r="5.4" fill="${HI}" fill-opacity="0.45" stroke="${EDGE}" stroke-width="1.6"/>` +
+    line("M14.4 12.9l5.6 5.6", EDGE, 2.6),
   // Inspect
   ruler: () =>
     `<polygon points="2.5,16 16,2.5 21.5,8 8,21.5" fill="${TOP}" stroke="${EDGE}" stroke-width="0.9" stroke-linejoin="round"/>` +

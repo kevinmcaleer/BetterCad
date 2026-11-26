@@ -57,6 +57,10 @@ function LayersCard({ board }: { board: { copperLayers: number } }) {
           ))}
         </select>
       </label>
+      <label className="bc-ec-fitted bc-ec-outlines" data-tip="Draw pours as their edges only, so tracks and pads under them show">
+        <input type="checkbox" checked={ui.pourOutlines} onChange={(e) => eui.set({ pourOutlines: e.target.checked })} />
+        Pours as outlines
+      </label>
     </section>
   );
 }

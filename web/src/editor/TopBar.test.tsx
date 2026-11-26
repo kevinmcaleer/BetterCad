@@ -187,6 +187,14 @@ describe("Ribbon", () => {
     expect(screen.getByRole("toolbar", { name: "Electronics tools" })).toContainElement(screen.getByRole("button", { name: "Wire" }));
   });
 
+  it("choosing the Electronics tab opens the electronics view straight away (#731)", () => {
+    const onElectronics = vi.fn();
+    setup({ ribbon: (t) => <span>{t} tools</span>, onElectronics });
+    fireEvent.click(screen.getByRole("tab", { name: "Electronics" }));
+    expect(onElectronics).toHaveBeenCalledOnce();
+    expect(screen.queryByText("electronics tools")).toBeNull();
+  });
+
   it("leaves the schematic or the board when you choose another tab", () => {
     const onLeaveElectronics = vi.fn();
     const onRender = vi.fn();

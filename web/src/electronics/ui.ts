@@ -4,10 +4,12 @@ import type { LayerId } from "./drawBoard";
 /** Which electronics view covers the 3D view. 3D is the model itself, so it is "no electronics view". */
 export type EView = "schematic" | "pcb";
 export type SchTool = "select" | "wire" | "label" | "noConnect" | "junction" | "place";
-export type PcbTool = "select" | "route" | "via" | "hole" | "text" | "pour" | "keepout";
+export type PcbTool = "select" | "route" | "via" | "hole" | "text" | "pour" | "keepout" | "measure";
 
 export interface EUi {
   view: EView | null;
+  /** The view open last in this model, which the Electronics tab opens again (#731). */
+  last: EView;
   /** The sheet that is showing; the first when it is none of them. */
   sheet: string | null;
   schTool: SchTool;
@@ -23,7 +25,7 @@ export interface EUi {
   layer: CopperLayer;
   hidden: LayerId[];
   /** Cards that are open over the view. */
-  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | "autoroute" | null;
+  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | "autoroute" | "find" | null;
   /** A place a check points at: the view brings it into the middle and rings it. On the board its sheet is "board". */
   spot: { sheet: string; at: P2; n: number } | null;
   /** Goes up by one to ask the open view to bring the selection into the middle. */
@@ -40,6 +42,8 @@ export interface EUi {
   airs: Record<string, number> | null;
   /** Tracks and vias on the open board, which Clear routes would take off. Null until the board has been looked at. */
   routed: number | null;
+  /** Pours drawn as outlines only, so what is under them shows (#728). */
+  pourOutlines: boolean;
 }
 
 /** The board grids on offer, mm: round metric steps and the inch pitches parts are made on. */
@@ -47,6 +51,7 @@ export const BOARD_GRIDS = [0.1, 0.25, 0.5, 1, 1.27, 2.54];
 
 const start = (): EUi => ({
   view: null,
+  last: "schematic",
   sheet: null,
   schTool: "select",
   pcbTool: "select",
@@ -65,6 +70,7 @@ const start = (): EUi => ({
   unrouted: null,
   airs: null,
   routed: null,
+  pourOutlines: false,
 });
 
 /**

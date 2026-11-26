@@ -112,6 +112,8 @@ export interface TopBarProps {
   onLeaveDrawing?: () => void;
   /** Leaves the schematic or the board for the 3D view, keeping what the workspace was showing. */
   onLeaveElectronics?: () => void;
+  /** Opens the electronics view used last, or the schematic (#731): choosing the Electronics tab does this. */
+  onElectronics?: () => void;
   /** The schematic or the board is open (#617): the Electronics tab shows that view's tools. */
   electronicsRibbon?: ReactNode;
   /** The compact bar's last button: the ribbon's tabs and tools as a sheet, for phones and tablets. */
@@ -257,6 +259,11 @@ export function TopBar(p: TopBarProps) {
       }
       if (over?.id === "render") p.onLeaveRender?.();
       if (over?.id === "drawing") p.onLeaveDrawing?.();
+      // The Electronics tab is a way into the schematic and the board: it opens one straight away (#731).
+      if (t === "electronics" && p.onElectronics) {
+        if (over?.id !== "electronics") p.onElectronics();
+        return;
+      }
       if (over?.id === "electronics") p.onLeaveElectronics?.();
       setTab(t);
       setFolded(false);
