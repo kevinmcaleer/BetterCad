@@ -378,7 +378,7 @@ export class PathRender {
     if (b.walls) this.scene.add(this.walls);
     else this.scene.remove(this.walls);
     // Transparent: nothing behind and nothing under, so the canvas (made with alpha) stays see-through there.
-    if (b.clear) this.scene.remove(this.floor);
+    if (b.clear || b.floorless) this.scene.remove(this.floor);
     else this.scene.add(this.floor);
     this.scene.background = b.clear ? null : b.sky;
     const m = this.floor.material;

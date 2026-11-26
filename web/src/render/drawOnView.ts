@@ -13,6 +13,7 @@ import {
   WebGLRenderTarget,
   DirectionalLight,
   HemisphereLight,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   OneFactor,
   PlaneGeometry,
@@ -48,7 +49,7 @@ import { DEFAULT_COLOUR, type BodyMesh } from "@bettercad/kernel";
 import { cameraBasis, FOV, type CameraState } from "../viewport/camera";
 import { emberAt, GHOST, GHOST_IN, lineGlow, planDrawOn, SETTLE, type DrawOnPlan, type DrawOnTiming } from "./drawOn";
 import type { RenderBody } from "./pathRender";
-import { Backgrounds, skyColours } from "./backgrounds";
+import { Backgrounds, skyColours, wallGrid } from "./backgrounds";
 import type { BackgroundId, DrawOnColour } from "./session";
 import { recordCanvas, videoType } from "./video";
 
@@ -66,7 +67,12 @@ export const GLOWS: Record<Exclude<DrawOnColour, "parts">, number> = {
  * Backgrounds the glow shows on as light, through the bloom. On the others (a white sweep, a grey table) a neon line
  * would vanish into the light behind it, so the lines and ghosts are drawn as coloured ink, with no bloom.
  */
-const DARK_BACKGROUNDS = new Set<BackgroundId>(["holoroom", "transparent"]);
+/**
+ * How bright the Holoroom's walls and gridded floor are drawn: their grid lines stay under the bloom's threshold, so
+ * only the drawing glows.
+ */
+const WALL_LIGHT = 0x8a8a8a;
+const DARK_BACKGROUNDS = new Set<BackgroundId>(["holoroom", "black", "transparent"]);
 
 /** A body with the kernel's edges, as the Render view has it. */
 const hasEdges = (m: RenderBody["mesh"]): m is BodyMesh => "edgePositions" in m && "edgeSegs" in m && "faceTris" in m;
@@ -415,6 +421,10 @@ export class DrawOnView {
   /** Drawing as coloured ink on a light background rather than as light. */
   private ink = false;
   private floor: Mesh<PlaneGeometry, MeshStandardMaterial>;
+  /** The Holoroom's four walls and roof, as the Render view builds them, in the floor's grid. */
+  private walls = new Group();
+  private wallMaterial = new MeshBasicMaterial({ color: WALL_LIGHT, side: 2 });
+  private roofMaterial = new MeshBasicMaterial({ color: WALL_LIGHT, side: 2 });
   private lights = new Group();
   /** The front-most solid faces, drawn first into `front`: their depth, and how solid they are. */
   private frontScene = new Scene();
@@ -473,6 +483,10 @@ export class DrawOnView {
     alpha.uniforms.tBefore.value = this.saved.renderTarget.texture;
     this.composer.addPass(alpha);
     this.composer.addPass(new OutputPass());
+    const plane = new PlaneGeometry(1, 1);
+    for (let i = 0; i < 4; i++) this.walls.add(new Mesh(plane, this.wallMaterial));
+    this.walls.add(new Mesh(plane, this.roofMaterial));
+    for (const w of this.walls.children) w.renderOrder = -1;
     this.setBackground("holoroom");
     this.loop = this.loop.bind(this);
     this.frame = requestAnimationFrame(this.loop);
@@ -635,20 +649,25 @@ export class DrawOnView {
     this.sky = null;
     if (b.clear) {
       this.scene.background = null;
-      this.scene.remove(this.floor, this.lights);
+      this.scene.remove(this.floor, this.lights, this.walls);
     } else {
       const { top, bottom } = skyColours(b);
       this.sky = gradientTexture(top, bottom);
       this.scene.background = this.sky;
-      this.scene.add(this.floor, this.lights);
+      this.scene.add(this.lights);
+      if (b.floorless) this.scene.remove(this.floor);
+      else this.scene.add(this.floor);
+      if (b.walls) this.scene.add(this.walls);
+      else this.scene.remove(this.walls);
       const m = this.floor.material;
-      m.color.set(b.floor.colour);
+      // A gridded floor under the glow is dimmed as the walls are, so its lines don't bloom.
+      m.color.set(b.floor.grid && DARK_BACKGROUNDS.has(id) ? WALL_LIGHT : b.floor.colour);
       m.roughness = b.floor.roughness;
       m.map = b.floor.grid?.map ?? null;
       m.emissiveMap = b.floor.grid?.map ?? null;
       m.emissive.set(b.floor.grid ? 0xffffff : 0x000000);
       // Kept under the bloom's threshold, so the floor never glows like the lines.
-      m.emissiveIntensity = b.floor.grid ? Math.min(0.5, b.floor.glow ?? 0.5) : 0;
+      m.emissiveIntensity = b.floor.grid ? Math.min(DARK_BACKGROUNDS.has(id) ? 0.3 : 0.5, b.floor.glow ?? 0.5) : 0;
       m.needsUpdate = true;
       this.placeFloor();
     }
@@ -682,11 +701,34 @@ export class DrawOnView {
         reach = Math.max(reach, Math.abs(S[i]), Math.abs(S[i + 1]));
       }
     }
-    this.floor.position.set(0, 0, Number.isFinite(low) ? low : 0);
+    const z = Number.isFinite(low) ? low : 0;
+    this.floor.position.set(0, 0, z);
     this.floor.scale.setScalar(reach * 40);
     this.floor.updateMatrixWorld();
     const g = this.backgrounds.get(this.background).floor.grid;
     if (g) g.map.repeat.setScalar((reach * 40) / g.cell);
+    // The Holoroom: a square room six reaches from the middle, three high, as in the Render view.
+    const half = reach * 6,
+      high = reach * 3;
+    const [roof, ...sides] = [this.walls.children[4], ...this.walls.children.slice(0, 4)];
+    roof.position.set(0, 0, z + high);
+    roof.scale.set(half * 2, half * 2, 1);
+    sides.forEach((w, i) => {
+      const a = (i * Math.PI) / 2;
+      w.position.set(-Math.sin(a) * half, -Math.cos(a) * half, z + high / 2);
+      // Stood up, then turned to face the middle.
+      w.rotation.set(Math.PI / 2, 0, a, "ZXY");
+      w.scale.set(half * 2, high, 1);
+    });
+    this.walls.updateMatrixWorld(true);
+    if (g) {
+      const wall = wallGrid(this.wallMaterial, g.map);
+      wall.repeat.set((half * 2) / g.cell, high / g.cell);
+      wall.needsUpdate = true;
+      const top = wallGrid(this.roofMaterial, g.map);
+      top.repeat.setScalar((half * 2) / g.cell);
+      top.needsUpdate = true;
+    }
   }
 
   setCamera(c: CameraState): void {
@@ -880,6 +922,11 @@ export class DrawOnView {
     this.sky?.dispose();
     this.floor.geometry.dispose();
     this.floor.material.dispose();
+    (this.walls.children[0] as Mesh).geometry.dispose();
+    for (const m of [this.wallMaterial, this.roofMaterial]) {
+      m.map?.dispose();
+      m.dispose();
+    }
     this.backgrounds.dispose();
     this.saved.dispose();
     this.front.dispose();
