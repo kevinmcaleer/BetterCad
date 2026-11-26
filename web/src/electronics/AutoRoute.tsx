@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ElectronicsDesign } from "@bettercad/electronics";
 import type { RouteProgress } from "@bettercad/electronics/pcb/autoroute";
-import { applyRoutes, type Route } from "@bettercad/electronics/pcb/route";
+import { applyRoutes, clearRoutes, type Route } from "@bettercad/electronics/pcb/route";
 import { Button, ESC, FeaturePanel, FeatureRow, PanelNote, useEscape } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { startRouting, type RouteJob } from "./autorouteJob";
@@ -142,6 +142,17 @@ export default function AutoRoute({ design, edit, readOnly, onClose }: { design:
         <>
           <PanelNote live>{said || (left ? `${connections(left)} still to route on the board.` : "Every connection on the board is routed.")}</PanelNote>
           <Button variant="primary" icon="route" label="Route" title="Start routing" disabled={readOnly || !left} onClick={start} />
+          <Button
+            variant="secondary"
+            icon="clearRoutes"
+            label="Clear routes"
+            title="Take every track and via off the board, so you can route it again. Undo puts them back"
+            disabled={readOnly || !(design.board?.tracks.length || design.board?.vias.length)}
+            onClick={() => {
+              edit(clearRoutes, "Clear routes");
+              setSaid("Every track and via is off the board. Undo puts them back.");
+            }}
+          />
         </>
       )}
     </FeaturePanel>

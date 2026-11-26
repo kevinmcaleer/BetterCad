@@ -27,6 +27,7 @@ import {
   addTrack,
   addVia,
   blockers,
+  clearRoutes,
   corner45,
   deleteParts,
   renumberOnBoard,
@@ -200,7 +201,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   useEffect(() => {
     if (eui.get().unrouted !== air.length) eui.set({ unrouted: air.length });
   }, [air.length]);
-  useEffect(() => () => eui.set({ unrouted: null }), []);
+  const onCopper = (board?.tracks.length ?? 0) + (board?.vias.length ?? 0);
+  useEffect(() => {
+    if (eui.get().routed !== onCopper) eui.set({ routed: onCopper });
+  }, [onCopper]);
+  useEffect(() => () => eui.set({ unrouted: null, routed: null }), []);
   useEffect(() => {
     if (tool !== "route") setRoute(null);
     setArea([]);
@@ -403,6 +408,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       lock: () => !readOnly && picked().length && edit((d) => toggleLock(d, picked()), "Lock or unlock"),
       bend: () => route && setRoute({ ...route, diag: !route.diag }),
       renumber: () => !readOnly && edit(renumberOnBoard, "Renumber by the board"),
+      clearRoutes: () => !readOnly && (board?.tracks.length || board?.vias.length) && edit(clearRoutes, "Clear routes"),
       picture: () => !readOnly && pictureFile.current?.click(),
     };
     return () => {

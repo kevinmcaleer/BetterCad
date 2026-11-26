@@ -21,6 +21,7 @@ import {
   outlineRadius,
   renumberOnBoard,
   ripUpNet,
+  clearRoutes,
   roundedOutline,
   setBoard,
   setPlacement,
@@ -198,6 +199,13 @@ describe("routing", () => {
     expect(left(routed)).toBe(1);
     expect(routed.board!.tracks[0]!.width).toBe(netRules(routed.board!, net).trackWidth);
     expect(left(ripUpNet(routed, net))).toBe(2);
+    // Clear routes takes every track and via off, and leaves the parts where they are.
+    const cleared = clearRoutes(routed);
+    expect(cleared.board!.tracks).toEqual([]);
+    expect(cleared.board!.vias).toEqual([]);
+    expect(cleared.board!.placements).toBe(routed.board!.placements);
+    expect(left(cleared)).toBe(2);
+    expect(clearRoutes(cleared)).toBe(cleared);
   });
 
   it("says what a new track would come too close to", () => {

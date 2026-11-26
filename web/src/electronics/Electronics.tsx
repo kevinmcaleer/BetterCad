@@ -347,6 +347,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       run: toggle("autoroute"),
     },
     {
+      id: "clearRoutes",
+      group: "Board",
+      label: "Clear routes",
+      short: "Clear",
+      icon: "clearRoutes",
+      tip: "Take every track and via off the board, so you can route it again. Undo puts them back",
+      disabled: readOnly || !ui.routed,
+      run: () => eactions.current?.clearRoutes?.(),
+    },
+    {
       id: "renumber",
       group: "Board",
       label: "Renumber",
@@ -506,6 +516,16 @@ function commands(design: () => ElectronicsDesign): Command[] {
       when: pcb,
       run: toggle("autoroute"),
       keywords: "autoroute autorouter automatic route tracks finish",
+    },
+    {
+      ...e,
+      id: "electronics.pcb.clearRoutes",
+      label: "Clear routes",
+      group: "Tools",
+      icon: "clearRoutes",
+      when: pcb,
+      run: () => eactions.current?.clearRoutes?.(),
+      keywords: "clear routes rip up unroute delete all tracks vias start again",
     },
     {
       ...e,

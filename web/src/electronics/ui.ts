@@ -36,6 +36,8 @@ export interface EUi {
   shove: boolean;
   /** Connections the open board still needs, once its copper is counted. Null until the board has been looked at. */
   unrouted: number | null;
+  /** Tracks and vias on the open board, which Clear routes would take off. Null until the board has been looked at. */
+  routed: number | null;
 }
 
 /** The board grids on offer, mm: round metric steps and the inch pitches parts are made on. */
@@ -59,6 +61,7 @@ const start = (): EUi => ({
   keepClear: true,
   shove: false,
   unrouted: null,
+  routed: null,
 });
 
 /**

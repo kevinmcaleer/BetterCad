@@ -129,6 +129,8 @@ export const noConnect = "M4 12h8M14 8l6 8M20 8l-6 8";
 export const junction = "M3 12h18M12 12v8M12 12a2 2 0 1 0 .01 0";
 export const powerSymbol = "M12 3v9M6 12h12M8.5 16h7M11 20h2";
 export const route = "M4 19h5l6-6V6M15 6a2 2 0 1 0 .01 0M4 19a2 2 0 1 0 .01 0";
+/** A track with a cross over it: take the routes off the board. */
+export const clearRoutes = "M3 18h4l5-5V9M12 9a2 2 0 1 0 .01 0M3 18a2 2 0 1 0 .01 0M15 15l6 6M21 15l-6 6";
 export const via = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
 export const pushPcb = "M3 5h8v6H3zM13 13h8v6h-8zM7 11v4h6M10.5 12.5 13 15l-2.5 2.5";
 export const pour = "M4 4h16v16H4zM4 12l8-8M8 20 20 8M14 20l6-6";
@@ -343,6 +345,7 @@ export const ICONS = {
   junction,
   powerSymbol,
   route,
+  clearRoutes,
   via,
   pushPcb,
   pour,

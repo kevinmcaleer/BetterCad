@@ -135,6 +135,11 @@ export function ripUpNet(d: ElectronicsDesign, net: string): ElectronicsDesign {
   return onBoard(d, (b) => ({ ...b, tracks: b.tracks.filter((t) => t.net !== net), vias: b.vias.filter((v) => v.net !== net) }));
 }
 
+/** Takes every track and via off the board, so it can be routed again. Parts, pours and keep-outs stay. */
+export function clearRoutes(d: ElectronicsDesign): ElectronicsDesign {
+  return onBoard(d, (b) => (b.tracks.length || b.vias.length ? { ...b, tracks: [], vias: [] } : b));
+}
+
 /** Changes the width of the picked tracks. */
 export function setTrackWidth(d: ElectronicsDesign, ids: Id[], width: number): ElectronicsDesign {
   const set = new Set(ids);

@@ -647,6 +647,18 @@ test.describe("on a wide screen", () => {
     await canvas.focus();
     await page.keyboard.press("ControlOrMeta+z");
     await expect(status).toContainText("1 connection left to route");
+
+    // Clear routes takes every track off so it can be routed again, and one undo puts them back.
+    await page.keyboard.press("ControlOrMeta+Shift+z");
+    await expect(status).not.toContainText("left to route");
+    await tools(page)
+      .getByRole("button", { name: /^Clear routes/ })
+      .click();
+    await expect(status).toContainText("1 connection left to route");
+    await expect(tools(page).getByRole("button", { name: /^Clear routes/ })).toBeDisabled();
+    await canvas.focus();
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(status).not.toContainText("left to route");
   });
 
   test("four layers: the build in Board setup, and inner layers to work on", async ({ page }) => {
