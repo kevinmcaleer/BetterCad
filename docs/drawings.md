@@ -64,7 +64,7 @@ logo; DXF has no pictures, so there the logo's cell is an empty box.
 (all but the title and the date, which are each drawing's own), the logo, your fields, and whether a new drawing starts
 with views. **New drawing** then has a **Template** list: pick one and Create. **First views** set to "Front, top,
 side and isometric" lays the four out on the first sheet where the standard puts them, at the largest standard scale
-that fits, as Make drawings of every part does. Tick **Start new drawings from this** and the card opens on that
+that fits, as Drawing of every part does. Tick **Start new drawings from this** and the card opens on that
 template every time; untick it to go back to the page you last used. You can keep 20 templates.
 
 Templates live in this browser (`bettercad.drawingTemplates`) and, when you are signed in, in your account
@@ -169,11 +169,20 @@ view's menu gives every part the view shows a balloon, set out round the view on
 parts that have one. A balloon reads its number from the list each time, so the two always agree. It is a note, so
 it drags, deletes, exports and follows its view like one.
 
-**Make drawings of every part** (the view style menu, the Drawings menu in the browser, or Ctrl+K) makes a drawing
-for each row of the parts list, named for its part, on the page you last set up: a front view, the views above or
-below and beside it where the standard puts them, and an isometric, at the largest standard scale that fits
-(`firstViews.ts`, `everyPart.ts`). A part that already has a drawing of its name is skipped, so running it again
-only adds what is new. It is one step in Undo.
+**Drawing of every part** (the Drawing tab, the Drawings menu in the browser, or Ctrl+K) makes one drawing, Parts,
+with a page for each row of the parts list, named for its part, on the page you last set up: a front view, the views
+above or below and beside it where the standard puts them, and an isometric, at the largest standard scale that fits
+(`firstViews.ts`, `everyPart.ts`). A part that already has a page of its name in Parts is skipped, so running it
+again only adds pages for what is new. It is one step in Undo, and the drawing opens when it is made. Export to PDF
+with "All sheets" for every page in one file.
+
+**Drawing from sketches** (the same places) makes one drawing, Sketches, with a page for each sketch that has curves
+(`fromSketches.ts`). The page shows the sketch face on, at the largest standard scale that leaves room round it,
+with the sketch's own sizes as drawing dimensions laid out in rows. Construction curves are dashed; curves projected
+from the model are left out. The view's curves come from the kernel's `sketchView.ts` (no OpenCascade): each is named
+after its sketch entity, and each point is a hidden line of no length named `p:<id>`, so dimensions are fixed to the
+sketch the way they are fixed to a body's edges and follow it when the sketch changes. Sizes to a circle's edge,
+pattern counts and sizes on ellipses or splines are left out. Like every part, a sketch with a page already is skipped.
 
 Exploded views wait for the model to be able to save one. The fuller parts list for printing and buying (weights,
 print times, a CSV) is #494; it can start from `partsRows`.

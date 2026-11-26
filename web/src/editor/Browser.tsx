@@ -504,7 +504,7 @@ export interface BrowserPanelProps {
   /** Canvases (#248): show or hide one (or, with the folder's id, all), edit, rename or delete one. */
   onCanvas?: (id: string, act: "hide" | "edit" | "rename" | "delete", name?: string) => void;
   /** Drawings (#555): make one, open one or its Sheet settings, rename or delete one. */
-  onDrawing?: (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart", id?: string, name?: string) => void;
+  onDrawing?: (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart" | "fromSketches", id?: string, name?: string) => void;
   /** Opens the schematic or the board (#617). */
   onElectronics?: (view: "schematic" | "pcb") => void;
   /** Named views (#40): look from one ("home", "front", "side", "top" or a saved view's id), save, update, rename or delete one, set or reset home. */
@@ -828,7 +828,8 @@ export function BrowserPanel(p: BrowserPanelProps) {
           ? []
           : [
               { id: "new", label: "New drawing", icon: "drawing", onSelect: () => p.onDrawing?.("new") },
-              { id: "every", label: "Make drawings of every part", icon: "drawing", onSelect: () => p.onDrawing?.("everyPart") },
+              { id: "every", label: "Drawing of every part", icon: "drawing", onSelect: () => p.onDrawing?.("everyPart") },
+              { id: "sketches", label: "Drawing from sketches", icon: "drawing", onSelect: () => p.onDrawing?.("fromSketches") },
             ],
       };
     const link = model.links?.find((l) => l.id === id);

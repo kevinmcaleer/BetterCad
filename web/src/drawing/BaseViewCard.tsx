@@ -9,9 +9,11 @@ export interface ShowOption {
   name: string;
 }
 
-/** What the Show list picked, as the list's value: "all", "c:<component>" or "b:<body>". */
-const showValue = (s: ViewChoice["shows"]) => ("all" in s ? "all" : "component" in s ? `c:${s.component}` : `b:${s.bodies[0] ?? ""}`);
-const showOf = (v: string): ViewChoice["shows"] => (v === "all" ? { all: true } : v.startsWith("c:") ? { component: v.slice(2) } : { bodies: [v.slice(2)] });
+/** What the Show list picked, as the list's value: "all", "c:<component>", "b:<body>" or "s:<sketch>". */
+const showValue = (s: ViewChoice["shows"]) =>
+  "all" in s ? "all" : "component" in s ? `c:${s.component}` : "sketch" in s ? `s:${s.sketch}` : `b:${s.bodies[0] ?? ""}`;
+const showOf = (v: string): ViewChoice["shows"] =>
+  v === "all" ? { all: true } : v.startsWith("c:") ? { component: v.slice(2) } : v.startsWith("s:") ? { sketch: v.slice(2) } : { bodies: [v.slice(2)] };
 
 export interface BaseViewCardProps {
   /** Changing a view that is already placed, rather than placing a new one. */
@@ -61,6 +63,7 @@ export function BaseViewCard({ editing, projected, choice, onChoice, components,
               value={showValue(choice.shows)}
               onChange={(e) => onChoice({ ...choice, shows: showOf(e.target.value) })}
             >
+              {"sketch" in choice.shows && <option value={`s:${choice.shows.sketch}`}>Its sketch</option>}
               <option value="all">The whole model</option>
               {components.length > 0 && (
                 <optgroup label="Components">
@@ -94,7 +97,7 @@ export function BaseViewCard({ editing, projected, choice, onChoice, components,
                 if (d) onChoice({ ...choice, direction: d.direction });
               }}
             >
-              {!direction && <option value="own">As placed</option>}
+              {!direction && <option value="own">{"sketch" in choice.shows ? "Face on to the sketch" : "As placed"}</option>}
               {DIRECTIONS.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.label}

@@ -285,6 +285,12 @@ const DRAW: Record<string, () => string> = {
     `<rect x="3" y="7" width="15" height="14" fill="${TOP}" stroke="${EDGE}" stroke-width="1.4"/>` +
     `<rect x="10.5" y="16.5" width="7.5" height="4.5" fill="${HI}" stroke="${EDGE}" stroke-width="0.9"/>` +
     line("M5.5 10.5h4.5v3.5H5.5z", EDGE, 1.1),
+  // A sheet with a dimensioned sketch on it, its sizes in the accent
+  drawingSketches: () =>
+    `<rect x="3" y="4" width="18" height="16" fill="${TOP}" stroke="${EDGE}" stroke-width="1.4"/>` +
+    line("M7 15h6v-5l-6 0z", EDGE, 1.3) +
+    hiLine("M7 18h6M16 10v5", 1.2) +
+    `<circle cx="16" cy="7.5" r="1.4" fill="${HI}"/>`,
   // A folder with a drawing sheet in it
   drawingOpen: () =>
     `<path d="M2.5 6.5a1.5 1.5 0 0 1 1.5-1.5h4.5l2 2h9.5a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5z" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.2" stroke-linejoin="round"/>` +

@@ -243,7 +243,7 @@ describe("a finished first sheet", () => {
   });
 });
 
-describe("Make drawings of every part", () => {
+describe("Drawing of every part", () => {
   const rows = partsRows(
     [
       { id: "b1", name: "Plate", link: "base" },
@@ -256,16 +256,20 @@ describe("Make drawings of every part", () => {
   let n = 0;
   const newId = (kind: string) => `${kind}${++n}`;
 
-  it("makes a drawing named for each part, each with four views of that part alone", async () => {
+  it("makes one drawing with a page named for each part, each with four views of that part alone", async () => {
     const doc = { ...newDoc(), name: "Robot" };
     const r = await partDrawings(doc, rows, call, undefined, { author: "Kev", newId });
     expect(r.made).toEqual(["Base", "Foot"]);
-    const [base, foot] = r.doc.drawings!;
+    expect(r.doc.drawings!.map((d) => d.name)).toEqual(["Parts"]);
+    const [base, foot] = r.doc.drawings![0]!.sheets;
     expect(base!.name).toBe("Base");
-    expect(base!.sheets[0]!.title).toMatchObject({ title: "Base", author: "Kev" });
-    expect(base!.sheets[0]!.views).toHaveLength(4);
-    expect(base!.sheets[0]!.views.every((v) => "component" in v.shows && v.shows.component === "base")).toBe(true);
-    expect(foot!.sheets[0]!.views[0]!.shows).toEqual({ bodies: ["foot"] });
+    expect(base!.title).toMatchObject({ title: "Base", author: "Kev" });
+    expect(base!.views).toHaveLength(4);
+    expect(base!.views.every((v) => "component" in v.shows && v.shows.component === "base")).toBe(true);
+    expect(foot!.name).toBe("Foot");
+    expect(foot!.views[0]!.shows).toEqual({ bodies: ["foot"] });
+    // Every page has ids of its own.
+    expect(new Set([base!.id, foot!.id]).size).toBe(2);
     // The kernel was asked for quick pictures of the part on its own, never of the drawings.
     expect(call.mock.calls.every(([p]) => p.trace === false && p.doc.drawings === undefined)).toBe(true);
     // Run again: nothing new to make.
@@ -295,18 +299,26 @@ describe("Make drawings of every part", () => {
       },
     };
     const said: string[] = [];
-    const bodies = [
+    const bodies: ListedBody[] = [
       { id: "b1", name: "Plate", link: "base" },
       { id: "foot", name: "Foot" },
     ];
     const run = () => makeEveryPart(store, bodies, [{ id: "base", name: "Base" }], [], call, undefined, (t) => said.push(t), "Kev");
     await run();
-    expect(edits).toEqual(["Make drawings of every part"]);
-    expect(doc.drawings!.map((d) => d.name)).toEqual(["Base", "Foot"]);
-    expect(said).toEqual(["Making a drawing of every part.", "Made 2 drawings. They are under Drawings in the browser."]);
+    expect(edits).toEqual(["Drawing of every part"]);
+    expect(doc.drawings!.map((d) => d.name)).toEqual(["Parts"]);
+    expect(doc.drawings![0]!.sheets.map((s) => s.name)).toEqual(["Base", "Foot"]);
+    expect(said).toEqual(["Making a drawing of every part.", "Added 2 pages to Parts, one for each part."]);
     await run();
     expect(edits).toHaveLength(1);
-    expect(said.at(-1)).toBe("Every part already has a drawing.");
+    expect(said.at(-1)).toBe("Every part already has a page.");
+    // A new part gets a page added to the same drawing, and the drawing to open comes back.
+    bodies.push({ id: "arm", name: "Arm" });
+    const opened = await run();
+    expect(opened).toBe(doc.drawings![0]!.id);
+    expect(doc.drawings!).toHaveLength(1);
+    expect(doc.drawings![0]!.sheets.map((s) => s.name)).toEqual(["Base", "Foot", "Arm"]);
+    expect(said.at(-1)).toBe("Added a page to Parts, one for each part.");
   });
 
   it("draws a track's link on its own, as made, so it can be printed", async () => {
@@ -349,7 +361,7 @@ describe("Make drawings of every part", () => {
       return call(r);
     };
     await makeEveryPart(store, inside, [{ id: "drive", name: "Drive" }], [track], spy, undefined, () => {});
-    expect(doc.drawings!.map((d) => d.name)).toEqual(["Drive", "Track link"]);
+    expect(doc.drawings![0]!.sheets.map((s) => s.name)).toEqual(["Drive", "Track link"]);
     expect(asked).toContainEqual({ bodies: ["link"], asMade: true });
   });
 });

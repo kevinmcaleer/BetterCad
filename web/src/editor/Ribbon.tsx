@@ -162,10 +162,11 @@ export const RIBBON: Record<Exclude<RibbonTab, "sketch">, Group[]> = {
           [
             { id: "drawing.new", short: "New drawing", colour: "drawing" },
             { id: "drawing.everyPart", short: "Every part", colour: "drawingEvery" },
+            { id: "drawing.fromSketches", short: "From sketches", colour: "drawingSketches" },
           ],
         ],
       ],
-      pins: ["drawing.new", "drawing.everyPart"],
+      pins: ["drawing.new", "drawing.everyPart", "drawing.fromSketches"],
     },
   ],
   // Choosing the tab opens the Render view, whose own tools (RenderRibbon) take over.

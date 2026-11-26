@@ -952,17 +952,12 @@ test("add a parts list and balloons, then make a drawing of every part @journey 
     timeout: 30_000,
   });
 
-  // Back in the model, one command makes a drawing of each part, with four views set out for you.
+  // Back in the model, one command makes a drawing with a page for each part, with four views set out for you.
   await page.getByRole("button", { name: "Finish drawing" }).click();
-  await runCommand(page, "Make drawings of every part");
-  await expect(page.getByRole("status").filter({ hasText: /^Made 1 drawing/ })).toBeVisible({ timeout: 30_000 });
-  // The browser lists it under Drawings, above the body of the same name.
-  await expect(page.getByRole("treeitem", { name: /^Bracket/ })).toHaveCount(2);
-  await page
-    .getByRole("treeitem", { name: /^Bracket/ })
-    .first()
-    .dblclick();
-  await expect(page.getByRole("region", { name: "Drawing: Bracket" })).toBeVisible();
+  await runCommand(page, "Drawing of every part");
+  await expect(page.getByRole("status").filter({ hasText: /^Added a page to Parts/ })).toBeVisible({ timeout: 30_000 });
+  // It opens on its page, named for the part.
+  await expect(page.getByRole("region", { name: "Drawing: Parts" })).toBeVisible();
   await expect(page.locator(".bc-view")).toHaveCount(4);
   await expect(page.getByRole("button", { name: /^Front view, / })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Top view, / })).toBeVisible();
