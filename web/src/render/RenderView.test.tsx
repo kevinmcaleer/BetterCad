@@ -103,7 +103,7 @@ describe("the Render view's options (#197)", () => {
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
     s.set({ loading: false });
     await userEvent.click(await screen.findByRole("button", { name: "Lightbox" }));
-    for (const name of ["Lightbox", "Grey table", "Workbench", "Holoroom", "Replicator", "Transparent"])
+    for (const name of ["Lightbox", "Grey table", "Workbench", "Holoroom", "Replicator", "Black", "Transparent"])
       expect(screen.getByRole("menuitemradio", { name })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Holoroom" }));
     expect(s.get().background).toBe("holoroom");

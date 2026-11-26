@@ -2,7 +2,7 @@
  * The Render view's backgrounds: what is behind the model and what it stands on, separate from the lighting. The
  * Holoroom takes its black room and yellow grid from the Holoroom theme's own colours.
  */
-import { CanvasTexture, RepeatWrapping, SRGBColorSpace, type MeshStandardMaterial, type Texture } from "three";
+import { CanvasTexture, RepeatWrapping, SRGBColorSpace, type MeshBasicMaterial, type MeshStandardMaterial, type Texture } from "three";
 import { GradientEquirectTexture } from "three-gpu-pathtracer";
 import { COLOURS } from "@bettercad/ui";
 import type { BackgroundId } from "./session";
@@ -13,6 +13,7 @@ export const BACKGROUNDS: { id: BackgroundId; label: string; title: string }[] =
   { id: "workbench", label: "Workbench", title: "A wooden bench in a warm room" },
   { id: "holoroom", label: "Holoroom", title: "A black room with a yellow grid" },
   { id: "replicator", label: "Replicator", title: "A bright floor lit from below, with a grey grid" },
+  { id: "black", label: "Black", title: "Plain black, nothing else" },
   { id: "transparent", label: "Transparent", title: "Nothing behind the model: saved pictures and videos keep it see-through" },
 ];
 
@@ -90,7 +91,7 @@ function replicatorTile(): CanvasTexture {
  * again when the grid changes: the walls must carry the Holoroom grid even when another gridded floor (Replicator's
  * white panels) was shown first.
  */
-export function wallGrid(material: MeshStandardMaterial, grid: Texture): Texture {
+export function wallGrid(material: MeshStandardMaterial | MeshBasicMaterial, grid: Texture): Texture {
   let copy = material.map;
   if (!copy || copy.userData.from !== grid) {
     copy?.dispose();
@@ -98,7 +99,7 @@ export function wallGrid(material: MeshStandardMaterial, grid: Texture): Texture
     copy.userData = { from: grid };
     material.map = copy;
   }
-  material.emissiveMap = copy;
+  if ("emissiveMap" in material) material.emissiveMap = copy;
   material.needsUpdate = true;
   return copy;
 }
@@ -111,6 +112,8 @@ export interface Background {
   walls?: boolean;
   /** Transparent: no sky and no floor, so what is behind the model stays see-through. */
   clear?: boolean;
+  /** Black: no floor, so nothing catches the light or a shadow under the model. */
+  floorless?: boolean;
 }
 
 /** A sky's colour at the top and at the horizon, for Draw on, which paints the sky as a flat gradient. */
@@ -160,6 +163,9 @@ function make(id: BackgroundId): Background {
     case "replicator":
       // A pale haze beyond a glowing, gridded pad; the pad's light comes up under the model.
       return { sky: gradient(0xf2f4f6, 0xc9ced3), floor: { colour: 0xffffff, roughness: 0.35, grid: { map: replicatorTile(), cell: 50 }, glow: 1.1 } };
+    case "black":
+      // Black all round, with no floor: the model stands in empty space.
+      return { sky: gradient(0x000000, 0x000000), floor: { colour: 0x000000, roughness: 1 }, floorless: true };
     case "transparent":
       // The sky still lights nothing (the lighting preset does that); it is never shown.
       return { sky: gradient(0x000000, 0x000000), floor: { colour: 0xffffff, roughness: 1 }, clear: true };
