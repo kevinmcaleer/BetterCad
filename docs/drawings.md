@@ -221,13 +221,25 @@ Auto dimension works out every size the sheet's views could show and ranks them,
 
 A size is shown once: a later view leaves out any length an earlier view has. Pictorial views are left alone.
 
+It keeps the list to what a person would draw:
+
+- **Patterns.** A Pattern or Mirror of features is measured on its first one only. Its copies are known by their face
+  names (they carry the pattern step's id, #47), and a leader note on the first says how many there are: "8× equally
+  spaced", "4× 14 mm apart", "2×, mirrored". The note is Auto dimension's until you move or edit it.
+- **Holes alike.** A bolt circle is placed by one hole, an even row by its first two; the hole size says how many.
+- **Copied bodies.** A body with the same edges as one shown before it in the view (a wheel and its copy) is not
+  measured again.
+- **Slivers.** Places closer together than 1.5% of the view's overall size share one size, and the corners of slanted
+  edges (a diamond window) are not measured to.
+- **Chains.** The link at the end away from the datum is left out, as the overall size gives it.
+
 | Choice | What it does |
 | --- | --- |
 | Baseline | Every position is measured from one corner. |
 | Chain | Each position is measured from the one before. |
 | With centre marks | The same, and every hole is marked first. |
 | Measure from | The corner (or the centre) positions start from. |
-| How many sizes | From the overall sizes alone up to everything on the list. |
+| How many sizes | From the overall sizes alone up to everything on the list. It starts in the middle, the suggested amount: overall sizes, holes, and each view's five biggest steps. |
 
 The sheet shows the result as you choose. **OK** keeps it as one undo step. Running it again replaces the sizes it
 added and keeps the ones you placed or moved by hand; **Run Auto dimension again** on a view's menu does that with the

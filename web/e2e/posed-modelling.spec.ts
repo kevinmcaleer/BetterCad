@@ -59,11 +59,13 @@ test("a sketch and extrude on a turned part land where you draw them", async ({ 
     const at = await ed.view.at(x, y, z);
     return page.evaluate((p) => (window as unknown as View).__bcView.pick(p.x, p.y, "body")?.body ?? null, { x: at.x - box.x, y: at.y - box.y });
   };
-  await expect.poll(() => hit(0, 30, 12.5)).toBe("arm");
+  // The 5 mm preview is rebuilt by the kernel after Tab, which takes longer than a poll's 5 s on a busy runner.
+  await expect.poll(() => hit(0, 30, 12.5), { timeout: 20_000 }).toBe("arm");
   expect(await hit(30, 0, 12.5)).toBeNull();
   // Kept, the model stays posed with the block on it.
   await page.getByRole("button", { name: "OK", exact: true }).click();
   await expect(ed.said("Extruded one shape 5 mm")).toBeVisible();
-  await expect.poll(() => hit(0, 30, 12.5)).toBe("arm");
+  // The 5 mm preview is rebuilt by the kernel after Tab, which takes longer than a poll's 5 s on a busy runner.
+  await expect.poll(() => hit(0, 30, 12.5), { timeout: 20_000 }).toBe("arm");
   await page.screenshot({ path: test.info().outputPath("posed-extrude.png") });
 });

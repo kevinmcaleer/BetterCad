@@ -25,7 +25,7 @@
                 "across": "x",
                 "at": [
                   0,
-                  -64
+                  -56
                 ],
                 "auto": true,
                 "id": "dm9",
@@ -53,7 +53,7 @@
               {
                 "across": "y",
                 "at": [
-                  -64,
+                  -48,
                   0
                 ],
                 "auto": true,
@@ -111,8 +111,8 @@
               {
                 "across": "x",
                 "at": [
-                  -5,
-                  -56
+                  -15,
+                  -48
                 ],
                 "auto": true,
                 "id": "dm12",
@@ -129,9 +129,9 @@
                   {
                     "at": "centre",
                     "body": "plate",
-                    "index": 9,
+                    "index": 8,
                     "kind": "face",
-                    "name": "f18:f0#2#2",
+                    "name": "f18:f0#1#2",
                     "view": "v1"
                   }
                 ],
@@ -140,69 +140,11 @@
               {
                 "across": "y",
                 "at": [
-                  -56,
-                  -5
-                ],
-                "auto": true,
-                "id": "dm13",
-                "kind": "linear",
-                "refs": [
-                  {
-                    "at": "start",
-                    "body": "plate",
-                    "index": 1,
-                    "kind": "edge",
-                    "name": "f0|f5",
-                    "view": "v1"
-                  },
-                  {
-                    "at": "centre",
-                    "body": "plate",
-                    "index": 10,
-                    "kind": "face",
-                    "name": "f18:f0#2#1",
-                    "view": "v1"
-                  }
-                ],
-                "view": "v1"
-              },
-              {
-                "across": "x",
-                "at": [
-                  -15,
-                  -48
-                ],
-                "auto": true,
-                "id": "dm14",
-                "kind": "linear",
-                "refs": [
-                  {
-                    "at": "start",
-                    "body": "plate",
-                    "index": 1,
-                    "kind": "edge",
-                    "name": "f0|f5",
-                    "view": "v1"
-                  },
-                  {
-                    "at": "centre",
-                    "body": "plate",
-                    "index": 6,
-                    "kind": "face",
-                    "name": "f18:f0",
-                    "view": "v1"
-                  }
-                ],
-                "view": "v1"
-              },
-              {
-                "across": "y",
-                "at": [
-                  -48,
+                  -40,
                   -15
                 ],
                 "auto": true,
-                "id": "dm15",
+                "id": "dm13",
                 "kind": "linear",
                 "refs": [
                   {
@@ -231,7 +173,7 @@
                   -40
                 ],
                 "auto": true,
-                "id": "dm16",
+                "id": "dm14",
                 "kind": "linear",
                 "refs": [
                   {
@@ -254,41 +196,12 @@
                 "view": "v1"
               },
               {
-                "across": "y",
-                "at": [
-                  -40,
-                  -25
-                ],
-                "auto": true,
-                "id": "dm17",
-                "kind": "linear",
-                "refs": [
-                  {
-                    "at": "start",
-                    "body": "plate",
-                    "index": 1,
-                    "kind": "edge",
-                    "name": "f0|f5",
-                    "view": "v1"
-                  },
-                  {
-                    "at": "centre",
-                    "body": "plate",
-                    "index": 6,
-                    "kind": "face",
-                    "name": "f18:f0",
-                    "view": "v1"
-                  }
-                ],
-                "view": "v1"
-              },
-              {
                 "at": [
                   44.545,
                   40
                 ],
                 "auto": true,
-                "id": "dm18",
+                "id": "dm15",
                 "kind": "diameter",
                 "refs": [
                   {
@@ -307,7 +220,7 @@
                   -40
                 ],
                 "auto": true,
-                "id": "dm19",
+                "id": "dm16",
                 "kind": "diameter",
                 "refs": [
                   {
@@ -467,7 +380,7 @@
                 "kind": "base",
                 "laid": {
                   "h": 60,
-                  "sizes": "dm9:60|dm10:60|dm12:50|dm13:50|dm14:30|dm15:30|dm16:10|dm17:10|dm18:Ø16|dm19:4× Ø5",
+                  "sizes": "dm9:60|dm10:60|dm12:30|dm13:30|dm14:10|dm15:Ø16|dm16:4× Ø5",
                   "w": 60
                 },
                 "shows": {

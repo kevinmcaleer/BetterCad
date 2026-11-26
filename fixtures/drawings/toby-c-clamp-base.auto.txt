@@ -32,10 +32,7 @@ chain, from the bottom left
   front  hole size  Ø11.2
   front  hole size  Ø5.5
   top  step  49  up
-  front  step  18  across
-  top  step  18  up
   front  step  16  across
-  top  step  16  across
   top  step  8  across
   top  step  8  across
   top  small step  14  up

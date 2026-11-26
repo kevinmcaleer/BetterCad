@@ -180,6 +180,8 @@ export interface DrawingNote {
   on?: DrawingRef;
   /** Where its text starts: from the middle of the view it points into, or (loose) from the sheet's bottom left. */
   at: V2;
+  /** Put on by Auto dimension (a pattern's "8× equally spaced"), so running it again replaces this one. */
+  auto?: boolean;
 }
 
 /** The document information box, bottom right. Missing fields show blank. */
