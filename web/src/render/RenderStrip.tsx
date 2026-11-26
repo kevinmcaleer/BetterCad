@@ -18,6 +18,8 @@ export interface RenderStripProps {
   onChange: (s: RenderShot) => void;
   onDelete: (s: RenderShot) => void;
   onSave: (s: RenderShot) => void;
+  /** Saves a clip's video: plays it in the Render view from the start and records it. */
+  onRecord?: (s: RenderShot) => void;
   /** Moves a shot to this place on the strip: renders still waiting go in the strip's order. */
   onMove?: (id: string, to: number) => void;
   /** A shared model: look, don't change. */
@@ -38,6 +40,12 @@ export function Pie({ f, size = 18 }: { f: number; size?: number }) {
   );
 }
 
+const LENGTH_SECONDS = { quick: 5, normal: 10, slow: 20 } as const;
+/** A clip's length on its tile: "10 s". */
+const secsOf = (s: RenderShot) => `${LENGTH_SECONDS[s.animation!.length]} s`;
+/** "animation, 10 s". */
+const clipText = (s: RenderShot) => `animation, ${secsOf(s)}`;
+
 const percent = (f: number) => `${Math.round(f * 100)}%`;
 
 function jobText(j: Job | undefined): string | null {
@@ -49,7 +57,7 @@ function jobText(j: Job | undefined): string | null {
  * The render film strip: one tile per shot along the bottom of the Render view, each its latest picture. A shot
  * still rendering shows how far it has got; one made before the model changed says it is out of date.
  */
-export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onChange, onDelete, onSave, onMove, readOnly }: RenderStripProps) {
+export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onChange, onDelete, onSave, onRecord, onMove, readOnly }: RenderStripProps) {
   const state = useJobs(jobs);
   const movable = !!onMove && !readOnly;
   const [dragging, setDragging] = useState<string | null>(null);
@@ -60,15 +68,18 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
   const entries = (s: RenderShot): MenuEntry[] => {
     const pic = state.pictures[s.id];
     const job = state.jobs.find((j) => j.shot === s.id);
+    const clip = !!s.animation;
     return [
-      { id: "save", label: "Save image", icon: "download", disabled: !pic, onSelect: () => onSave(s) },
+      ...(clip && onUse ? [{ id: "play", label: "Play", icon: "play", onSelect: () => onUse(s) } as MenuEntry] : []),
+      ...(clip && onRecord ? [{ id: "video", label: "Save video", icon: "video", onSelect: () => onRecord(s) } as MenuEntry] : []),
+      { id: "save", label: clip ? "Save poster" : "Save image", icon: "download", disabled: !pic, onSelect: () => onSave(s) },
       ...(readOnly
         ? []
         : ([
             job
               ? { id: "stop", label: "Stop rendering", icon: "close", onSelect: () => jobs.cancel(s.id) }
               : { id: "again", label: "Render again", icon: "camera", onSelect: () => onRerender(s) },
-            ...(onUse ? [{ id: "use", label: "Use this view", icon: "eye", onSelect: () => onUse(s) }] : []),
+            ...(onUse && !clip ? [{ id: "use", label: "Use this view", icon: "eye", onSelect: () => onUse(s) }] : []),
             { id: "auto", label: "Update when I save", checked: s.auto, onSelect: () => onChange({ ...s, auto: !s.auto }) },
             ...(movable && shots.length > 1
               ? [
@@ -130,7 +141,7 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
               <button
                 type="button"
                 className="bc-render-tile"
-                aria-label={`${s.name}${note ? `, ${note.toLowerCase()}` : ""}`}
+                aria-label={`${s.name}${s.animation ? `, ${clipText(s)}` : ""}${note ? `, ${note.toLowerCase()}` : ""}`}
                 title={`${s.name}${s.auto ? ". Updates when you save" : ""}${movable ? ". Drag to change the order" : ""}`}
                 onClick={() => setOpen(s.id)}
                 onContextMenu={(e) => {
@@ -145,6 +156,12 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
                     <img src={pic.url} alt="" draggable={false} data-first={first || undefined} />
                   ) : (
                     <span className="bc-render-tile-empty" />
+                  )}
+                  {s.animation && !job && (
+                    <span className="bc-render-tile-clip" aria-hidden>
+                      <Icon name="play" size={14} />
+                      {secsOf(s)}
+                    </span>
                   )}
                   {job && (
                     <span className={job.preview ? "bc-render-tile-job bc-render-tile-live" : "bc-render-tile-job"}>
@@ -197,6 +214,13 @@ export function RenderStrip({ jobs, shots, keyOf, onAdd, onRerender, onUse, onCh
               onUse(shown);
             })
           }
+          onRecord={
+            onRecord &&
+            (() => {
+              setOpen(null);
+              onRecord(shown);
+            })
+          }
           onAuto={(auto) => onChange({ ...shown, auto })}
           onDelete={() => {
             setOpen(null);
@@ -218,12 +242,14 @@ interface ViewerProps {
   onSave: () => void;
   onRerender: () => void;
   onUse?: () => void;
+  onRecord?: () => void;
   onAuto: (on: boolean) => void;
   onDelete: () => void;
 }
 
 /** One render, large, with what you can do with it. */
-function RenderViewer({ shot, url, note, stale, readOnly, onClose, onSave, onRerender, onUse, onAuto, onDelete }: ViewerProps) {
+function RenderViewer({ shot, url, note, stale, readOnly, onClose, onSave, onRerender, onUse, onRecord, onAuto, onDelete }: ViewerProps) {
+  const clip = !!shot.animation;
   return (
     <Dialog
       open
@@ -237,14 +263,20 @@ function RenderViewer({ shot, url, note, stale, readOnly, onClose, onSave, onRer
         <>
           {!readOnly && <Button variant="danger" icon="trash" label="Delete" onClick={onDelete} />}
           <span className="bc-grow" />
-          {!readOnly && onUse && <Button icon="eye" label="Use this view" title="Put the Render view on this shot" onClick={onUse} />}
-          {!readOnly && <Button icon="camera" label="Render again" onClick={onRerender} />}
-          <Button variant="primary" icon="download" label="Save image" disabled={!url} onClick={onSave} />
+          {!readOnly && !clip && onUse && <Button icon="eye" label="Use this view" title="Put the Render view on this shot" onClick={onUse} />}
+          {!readOnly && <Button icon="camera" label={clip ? "Render poster again" : "Render again"} onClick={onRerender} />}
+          {clip && onUse && <Button icon="play" label="Play" title="Play the clip in the Render view" onClick={onUse} />}
+          {clip && onRecord ? (
+            <Button variant="primary" icon="video" label="Save video" title="Play the clip from the start and record it" onClick={onRecord} />
+          ) : (
+            <Button variant="primary" icon="download" label={clip ? "Save poster" : "Save image"} disabled={!url} onClick={onSave} />
+          )}
         </>
       }
     >
       <div className="bc-render-viewer-pic">{url ? <img src={url} alt={`Render of ${shot.name}`} /> : <p className="bc-note">{note}</p>}</div>
       <p className="bc-note">
+        {clip && `${clipText(shot)[0]!.toUpperCase()}${clipText(shot).slice(1)}. `}
         {shot.width} × {shot.height}
         {stale ? ". Out of date: the model has changed since this render." : note && url ? `. ${note}.` : ""}
       </p>

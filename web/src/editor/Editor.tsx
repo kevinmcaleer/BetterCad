@@ -5291,6 +5291,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                     onAdd={() => renderCam.current && strip.add(render, renderCam.current)}
                     onRerender={strip.render}
                     onUse={(s) => strip.use(render, s)}
+                    onRecord={(s) => void strip.record(render, s)}
                     onChange={strip.change}
                     onDelete={strip.remove}
                     onSave={strip.save}

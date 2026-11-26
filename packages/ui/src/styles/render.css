@@ -217,6 +217,20 @@
   place-items: center;
   background: var(--bc-color-scrim);
 }
+/* A clip: a play mark and its length over the poster's corner. */
+.bc-render-tile-clip {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px 1px 3px;
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-bar);
+  color: var(--bc-color-ink);
+  font-size: 11px;
+}
 .bc-render-tile-name {
   overflow: hidden;
   text-overflow: ellipsis;

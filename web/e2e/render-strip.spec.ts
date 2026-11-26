@@ -81,3 +81,28 @@ test("named views look from, save from and add shots in the Render view", async 
   const strip = page.getByRole("region", { name: "Renders" });
   await expect(strip.getByRole("button", { name: "Hero", exact: true })).toBeVisible({ timeout: 180_000 });
 });
+
+/** Animations on the strip: a camera move added to the strip is a clip that plays again from its tile. */
+test("a camera move goes on the strip as a clip, and plays again from its tile", async ({ page }) => {
+  test.setTimeout(480_000);
+  await page.addInitScript(() => Object.assign(window, { __bcRenderMax: 2, __bcFakeRenderJobs: true }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.keyboard.press("Shift+R");
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
+  await page.getByRole("button", { name: "Camera move: none" }).click({ timeout: 200_000 });
+  await page.getByRole("menuitemradio", { name: "Push in" }).click();
+  await expect(bar.getByRole("status")).toHaveText(/^Push in, /, { timeout: 60_000 });
+  const strip = page.getByRole("region", { name: "Renders" });
+  await strip.getByRole("button", { name: "Add to strip" }).click();
+  const tile = strip.getByRole("button", { name: /^Push in, animation, 10 s/ });
+  await expect(tile).toBeVisible({ timeout: 180_000 });
+  // Off, then back from the strip: Play puts the move on again from the start.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Camera move: none" })).toBeVisible();
+  await tile.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Play" }).click();
+  await expect(bar.getByRole("status")).toHaveText(/^Push in, [\d.]+ s of 10 s$/, { timeout: 60_000 });
+});
