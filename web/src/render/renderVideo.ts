@@ -6,6 +6,7 @@
 import { ArrayBufferTarget as Mp4Target, Muxer as Mp4Muxer } from "mp4-muxer";
 import { ArrayBufferTarget as WebmTarget, Muxer as WebmMuxer } from "webm-muxer";
 import { FPS } from "./video";
+import { alphaPlanes, muxWebmAlpha, type AlphaFrame } from "./webmAlpha";
 
 interface Codec {
   config: VideoEncoderConfig;
@@ -43,8 +44,13 @@ export async function encodeFrames(
   ext: "mp4" | "webm",
   progress?: (done: number, count: number) => void,
   signal?: AbortSignal,
+  seeThrough = false,
 ): Promise<Blob> {
   const { width, height } = source.canvas;
+  if (seeThrough && ext === "webm") {
+    const vp9 = codecs("webm", width, height)[0].config;
+    if ((await VideoEncoder.isConfigSupported(vp9).catch(() => null))?.supported) return encodeSeeThrough(source, count, vp9, progress, signal);
+  }
   let codec: Codec | null = null;
   for (const c of codecs(ext, width, height)) {
     const ok = await VideoEncoder.isConfigSupported(c.config).catch(() => null);
@@ -89,4 +95,67 @@ export async function encodeFrames(
   }
   webm!.finalize();
   return new Blob([webm!.target.buffer], { type: "video/webm" });
+}
+
+/**
+ * As encodeFrames, keeping the transparent background see-through: the picture and its alpha go through two VP9
+ * encoders, frame for frame, and into a WebM that carries the alpha beside each picture (see `webmAlpha.ts`).
+ */
+async function encodeSeeThrough(
+  source: FrameSource,
+  count: number,
+  config: VideoEncoderConfig,
+  progress?: (done: number, count: number) => void,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const { width, height } = source.canvas;
+  const pictures: EncodedVideoChunk[] = [];
+  const alphas: EncodedVideoChunk[] = [];
+  let failed: unknown = null;
+  const make = (into: EncodedVideoChunk[], bitrate: number) => {
+    const e = new VideoEncoder({ output: (chunk) => into.push(chunk), error: (err) => (failed = err) });
+    e.configure({ ...config, bitrate });
+    return e;
+  };
+  const picture = make(pictures, config.bitrate ?? 12_000_000);
+  const alpha = make(alphas, 4_000_000);
+  // Reads the frame back to find its alpha.
+  const grab = new OffscreenCanvas(width, height).getContext("2d", { willReadFrequently: true })!;
+  try {
+    for (let i = 0; i < count; i++) {
+      if (signal?.aborted) throw new Error("Stopped");
+      if (failed) throw failed;
+      await source.frame(i, count);
+      const timestamp = Math.round((i * 1e6) / FPS);
+      const duration = Math.round(1e6 / FPS);
+      const keyFrame = i % (FPS * 2) === 0;
+      const frame = new VideoFrame(source.canvas, { timestamp, duration });
+      grab.clearRect(0, 0, width, height);
+      grab.drawImage(frame, 0, 0);
+      picture.encode(frame, { keyFrame });
+      frame.close();
+      const planes = alphaPlanes(grab.getImageData(0, 0, width, height).data, width, height);
+      const a = new VideoFrame(planes, { format: "I420", codedWidth: width, codedHeight: height, timestamp, duration });
+      alpha.encode(a, { keyFrame });
+      a.close();
+      while (picture.encodeQueueSize > 4 || alpha.encodeQueueSize > 4) await new Promise((r) => setTimeout(r, 5));
+      progress?.(i + 1, count);
+    }
+    await Promise.all([picture.flush(), alpha.flush()]);
+    if (failed) throw failed;
+  } finally {
+    for (const e of [picture, alpha]) if (e.state !== "closed") e.close();
+  }
+  const bytes = (c: EncodedVideoChunk) => {
+    const b = new Uint8Array(c.byteLength);
+    c.copyTo(b);
+    return b;
+  };
+  const frames: AlphaFrame[] = pictures.map((p, i) => ({
+    data: bytes(p),
+    alpha: alphas[i] ? bytes(alphas[i]) : new Uint8Array(),
+    key: p.type === "key",
+    timestamp: p.timestamp,
+  }));
+  return muxWebmAlpha(frames, width, height, FPS);
 }
