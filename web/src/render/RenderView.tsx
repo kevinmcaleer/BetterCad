@@ -125,7 +125,7 @@ export function RenderPicture({
     const el = canvas.current!;
     let pr: PathRender;
     try {
-      pr = new PathRender(el, { onSample: (n) => session.get().samples !== n && session.set({ samples: n }) });
+      pr = new PathRender(el, { alpha: true, onSample: (n) => session.get().samples !== n && session.set({ samples: n }) });
     } catch {
       session.set({ loading: false, slow: true });
       return;
@@ -368,11 +368,12 @@ export function RenderPicture({
     session.replayMove = replay;
     session.recordMove = async () => {
       const m = session.get().move;
-      const type = videoType();
+      const clear = session.get().background === "transparent";
+      const type = videoType(clear);
       if (!m || m.recording || !type) return;
       const done = new Promise<void>((resolve) => ends.push(resolve));
       session.set({ move: { ...m, recording: true } });
-      const video = recordCanvas(el, () => done).then((v) => v?.blob ?? null);
+      const video = recordCanvas(el, () => done, undefined, clear).then((v) => v?.blob ?? null);
       replay();
       try {
         await onSaveVideo?.(video, type.startsWith("video/mp4") ? "mp4" : "webm");

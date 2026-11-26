@@ -946,7 +946,7 @@ export interface RenderShot {
   camera: ViewCamera;
   preset: "studio" | "daylight" | "workbench" | "lightbox";
   style: "finishes" | "paper";
-  background: "lightbox" | "grey" | "workbench" | "holoroom" | "replicator";
+  background: "lightbox" | "grey" | "workbench" | "holoroom" | "replicator" | "transparent";
   focus: "sharp" | "soft" | "shallow";
   quality: "good" | "better" | "best";
   width: number;

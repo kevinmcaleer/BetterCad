@@ -8,7 +8,7 @@ import type { CameraMoveId } from "./cameraMoves";
 export type LightPresetId = "studio" | "daylight" | "workbench" | "lightbox";
 export type SaveSize = "view" | "double" | "4k";
 /** What is behind the model and what it stands on. */
-export type BackgroundId = "lightbox" | "grey" | "workbench" | "holoroom" | "replicator";
+export type BackgroundId = "lightbox" | "grey" | "workbench" | "holoroom" | "replicator" | "transparent";
 /** Depth of field: everything sharp, or the model sharp and what is nearer and further softly or strongly blurred. */
 export type FocusId = "sharp" | "soft" | "shallow";
 export const FOCUSES: { id: FocusId; label: string; title: string; /** Aperture as a share of the distance to the model. */ aperture: number }[] = [

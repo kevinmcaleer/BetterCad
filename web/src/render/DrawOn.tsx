@@ -69,10 +69,11 @@ export default function DrawOnPicture({ session, bodies, camera, onSaveVideo }: 
     session.record = async () => {
       const d = session.get().drawOn;
       if (!d || d.recording) return;
-      const type = videoType();
+      const clear = session.get().background === "transparent";
+      const type = videoType(clear);
       if (!type) return;
       patch({ recording: true, playing: true });
-      const video = v.record().then((r) => r?.blob ?? null);
+      const video = v.record(undefined, clear).then((r) => r?.blob ?? null);
       try {
         await onSaveVideo?.(video, type.startsWith("video/mp4") ? "mp4" : "webm");
       } finally {
@@ -90,6 +91,10 @@ export default function DrawOnPicture({ session, bodies, camera, onSaveVideo }: 
     // The player lives as long as Draw on shows; bodies and options update it below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The Render view's background: its sky and floor behind Draw on, or nothing (Transparent).
+  const background = useSyncExternalStore(session.subscribe, () => session.get().background);
+  useEffect(() => view.current?.setBackground(background), [background]);
 
   // New bodies, colour or length: plan again and play from the start.
   useEffect(() => {
