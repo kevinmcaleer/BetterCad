@@ -115,3 +115,26 @@ export function boxBoard(d: ElectronicsDesign, a: P2, b: P2): string[] {
   for (const m of board.marks ?? []) if (inBox([m.x, m.y], box)) out.push(m.id);
   return out;
 }
+
+/**
+ * The corners a picked thing shows to drag (#742): a track's bends (its ends stay on their pads), or an area's
+ * corners. Nothing for anything else.
+ */
+export function handlesOf(board: Board, id: string): { kind: "track" | "area"; pts: P2[]; handles: number[] } | null {
+  const t = board.tracks.find((x) => x.id === id);
+  if (t) return { kind: "track", pts: t.pts, handles: t.pts.map((_, i) => i).slice(1, -1) };
+  const a = boardAreas(board).find((x) => x.id === id);
+  if (!a) return null;
+  const pts = a.kind === "cutout" ? (board.cutouts?.[Number(id.slice(4))] ?? []).map((c): P2 => [c.x, c.y]) : a.outline;
+  return { kind: "area", pts, handles: pts.map((_, i) => i) };
+}
+
+/** A corner of a picked thing under a point, or for an area a place on its edge to put a new one. */
+export function handleAt(board: Board, id: string, p: P2, tol: number): { i: number } | { edge: number; at: P2 } | null {
+  const h = handlesOf(board, id);
+  if (!h) return null;
+  for (const i of h.handles) if (Math.hypot(h.pts[i]![0] - p[0], h.pts[i]![1] - p[1]) <= tol) return { i };
+  if (h.kind === "area")
+    for (let k = 0; k < h.pts.length; k += 1) if (distToSegment(p, h.pts[k]!, h.pts[(k + 1) % h.pts.length]!) <= tol) return { edge: k, at: p };
+  return null;
+}

@@ -43,7 +43,8 @@ import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { readColours } from "./colours";
 import { drawBoard, type LayerId } from "./drawBoard";
 import { getBoardClip, setBoardClip } from "./clip";
-import { boxBoard, hitBoard, placementBox } from "./hitBoard";
+import { boxBoard, handleAt, handlesOf, hitBoard, placementBox } from "./hitBoard";
+import { addAreaCorner, moveAreaCorner, moveTrackCorner, removeAreaCorner } from "@bettercad/electronics/pcb/corners";
 import { measureSnap, measureText } from "./measure";
 import { clearOf } from "./SchematicCanvas";
 import { eui } from "./ui";
@@ -151,7 +152,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     last: P2;
     key: string;
     slide?: { id: string; piece: number; from: P2; board: NonNullable<ElectronicsDesign["board"]> };
+    /** A corner held (#742): a track's bend or an area's corner, worked out from the board as it was picked up. */
+    corner?: { kind: "track" | "area"; id: string; i: number; design: ElectronicsDesign };
   } | null>(null);
+  /** The corner last picked, for Delete. */
+  const [corner, setCorner] = useState<{ id: string; i: number } | null>(null);
   const pictureFile = useRef<HTMLInputElement>(null);
   /** A picture for the silkscreen (#642): read, turned into ink, and set down in the middle of what is showing. */
   const addPictureFrom = async (file: File | undefined) => {
@@ -438,6 +443,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       mirror: () => !readOnly && picked().length && edit((d) => flipOnBoard(d, picked()), "Flip to the other side"),
       remove: () => {
         if (readOnly || !picked().length) return;
+        // A picked corner of an area goes on its own, while the area keeps three (#742).
+        if (corner && picked().length === 1 && picked()[0] === corner.id && board && handlesOf(board, corner.id)?.kind === "area") {
+          edit((d) => removeAreaCorner(d, corner.id, corner.i), "Delete a corner");
+          return setCorner(null);
+        }
         const parts = new Set(design.board?.placements.map((p) => p.part));
         const rest = picked().filter((id) => !parts.has(id));
         const mine = picked().filter((id) => parts.has(id));
@@ -470,6 +480,25 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const onDown = (p: Pointer): boolean => {
     // The tools work by clicks, so a drag is free to pan on a touch screen.
     if (tool !== "select") return false;
+    // A corner of the one picked track or area drags on its own; a press on an area's edge puts a new one there (#742).
+    const one = ui.selected.length === 1 ? ui.selected[0]! : null;
+    const h = one && board && !readOnly && !p.shift ? handleAt(board, one, p.world, Math.max(tol, 0.2)) : null;
+    if (one && h) {
+      const kind = handlesOf(board!, one)!.kind;
+      const key = `ec-board-corner-${(run += 1)}`;
+      let start = design;
+      let i: number;
+      if ("edge" in h) {
+        const made = addAreaCorner(design, one, h.edge, snap(h.at, grid));
+        start = made.design;
+        i = made.i;
+        edit(() => start, "Add a corner", key);
+      } else i = h.i;
+      setCorner({ id: one, i });
+      drag.current = { ids: [one], last: snap(p.world, grid), key, corner: { kind, id: one, i, design: start } };
+      return true;
+    }
+    setCorner(null);
     const hit = hitAt(p.world);
     if (!hit) {
       if (p.touch) return false;
@@ -502,6 +531,24 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       const dy = s[1] - d.last[1];
       if (dx || dy) {
         d.last = s;
+        const cn = d.corner;
+        if (cn) {
+          if (cn.kind === "area") edit(() => moveAreaCorner(cn.design, cn.id, cn.i, s), "Move a corner", d.key);
+          else {
+            // With Keep clear on, the bend stops at the last place where the track keeps its clearance.
+            const next = moveTrackCorner(cn.design, cn.id, cn.i, s);
+            const t = next.board?.tracks.find((x) => x.id === cn.id);
+            const others = copper.filter((c) => c.id !== cn.id);
+            const stop =
+              t && board && ui.keepClear ? blockers(board, others, loops, { net: t.net, layers: [t.layer], pts: t.pts, width: t.width })[0] : undefined;
+            if (stop) tooClose(stop.what);
+            else {
+              setSaid("");
+              edit(() => next, "Move a corner", d.key);
+            }
+          }
+          return;
+        }
         const sl = d.slide;
         // A slide is always worked out from the track as it was picked up, so going back puts it back.
         if (sl) edit((x) => slideTrack({ ...x, board: sl.board }, sl.id, sl.piece, [s[0] - sl.from[0], s[1] - sl.from[1]]), "Move a piece of track", d.key);
@@ -589,6 +636,11 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     drag.current = null;
   };
 
+  // The corners the one picked track or area shows to drag (#742).
+  const handles = useMemo(() => {
+    const one = tool === "select" && !readOnly && ui.selected.length === 1 && board ? handlesOf(board, ui.selected[0]!) : null;
+    return one ? { pts: one.handles.map((i) => one.pts[i]!), picked: corner?.id === ui.selected[0] ? one.handles.indexOf(corner.i) : undefined } : undefined;
+  }, [board, ui.selected, tool, readOnly, corner]);
   // The piece of track that would go down on the next click.
   const ghost = useMemo(() => {
     if (!route || !at || !board) return undefined;
@@ -670,7 +722,25 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         view={view}
         onView={setView}
         cursor={tool !== "select" ? "crosshair" : hover ? "move" : "default"}
-        drawKey={[design, selected, hover, hidden, ui.layer, ui.net, box, colours, ghost, marks, air, pours, drawing, clashing, ui.pourOutlines, measuring]}
+        drawKey={[
+          design,
+          selected,
+          hover,
+          hidden,
+          ui.layer,
+          ui.net,
+          box,
+          colours,
+          ghost,
+          marks,
+          air,
+          pours,
+          drawing,
+          clashing,
+          ui.pourOutlines,
+          measuring,
+          handles,
+        ]}
         draw={(ctx, v, size) =>
           drawBoard(ctx, v, size, design, colours, {
             selected,
@@ -688,6 +758,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             area: drawing,
             pourOutlines: ui.pourOutlines,
             measure: measuring,
+            handles,
           })
         }
         onDown={onDown}

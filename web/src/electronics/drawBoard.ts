@@ -89,6 +89,8 @@ export interface BoardLook {
   pourAlpha?: number;
   /** Two points being measured between (#732). */
   measure?: P2[];
+  /** Corners of the picked track or area that drag (#742), and the one picked. */
+  handles?: { pts: P2[]; picked?: number };
 }
 
 /**
@@ -605,6 +607,16 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     }
   }
   if (look.measure?.length) drawMeasure(ctx, v, look.measure, c);
+  // Corners that drag (#742): small squares, the picked one filled.
+  if (look.handles)
+    for (const [i, p] of look.handles.pts.entries()) {
+      const s = toScreen(v, p);
+      ctx.fillStyle = i === look.handles.picked ? c["ec-pick"] : c["ec-pcb-bg"];
+      ctx.strokeStyle = c["ec-pick"];
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(s[0] - 4, s[1] - 4, 8, 8);
+      ctx.strokeRect(s[0] - 4, s[1] - 4, 8, 8);
+    }
   if (look.box) rubber(ctx, v, look.box, { ...c, accent: c["ec-pick"] });
 }
 

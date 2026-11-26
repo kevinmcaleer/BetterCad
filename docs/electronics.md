@@ -450,9 +450,17 @@ each other's places: the wires on the sheet do not move and now reach the other 
 other's nets, all in one undo step. In the starter library resistors, unpolarised capacitors, inductors, ferrite
 beads and fuses are marked, and the symbol editor's **Swaps with** field marks the pins of a part you draw. KiCad symbols have no such mark, so it is not written to or read from KiCad files.
 
-Left for later: dragging a track's or an area's corners, an outline from a face or a DXF file (there is no DXF
+Left for later: an outline from a face or a DXF file (there is no DXF
 import yet), spokes per pad, gate swapping and pictures
 on the silkscreen.
+
+**Dragging corners** (#742). The one picked track shows its bends as small squares, and a picked pour, keep-out or
+cut-out shows its corners (`handlesOf` and `handleAt` in `hitBoard.ts`). A bend drags (`moveTrackCorner` in
+`pcb/corners.ts`); a track's ends stay on their pads and vias, and a piece either side that would run at an odd angle
+gets a 45° bend of its own next to the moved corner. With Keep clear on, the bend stops where the track would come too
+close to other copper, and the status line says what is in the way. An area's corner drags (`moveAreaCorner`), a
+press on its edge puts a new corner there and drags it (`addAreaCorner`; an arc it splits goes straight), and Delete
+with a corner picked takes it away while the area keeps three (`removeAreaCorner`). Each drag is one undo step.
 
 **Copy, paste and duplicate** (#741). Ctrl+C, Ctrl+V and Ctrl+D work on the board as on a sheet, for tracks, vias,
 pours, keep-outs, text, pictures, holes, fiducials and test points (`pcb/clip.ts`, loaded the first time). A
