@@ -33,6 +33,7 @@
     "./drc": "./src/pcb/drc.ts",
     "./swap": "./src/swap.ts",
     "./sample": "./src/sample.ts",
+    "./sample-blocks": "./src/sampleBlocks.ts",
     "./sheets": "./src/sheets.ts",
     "./blocks": "./src/blocks.ts",
     "./connect": "./src/connect.ts",

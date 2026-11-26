@@ -26,9 +26,11 @@ describe("samples", () => {
     // Small enough to ship beside the app, with room for a thumbnail.
     // The board sample carries a whole electronics design, with its own copy of every component it uses: a motor
     // driver, a Qwiic socket and a switch among them (#666).
-    expect(saveBcad(doc).length).toBeLessThan(id.endsWith("-calibration") ? 80_000 : doc.electronics ? 175_000 : 15_000);
-    // Every sample has parameters, and every step that sizes a part uses them.
-    expect(doc.params!.length).toBeGreaterThanOrEqual(3);
+    // The blocks sample (#776) is eight blocks round a Pico, 44 parts with one footprint each: about 450 KB, 60 KB gzipped.
+    expect(saveBcad(doc).length).toBeLessThan(id.endsWith("-calibration") ? 80_000 : id === "robot-blocks" ? 500_000 : doc.electronics ? 175_000 : 15_000);
+    // Every sample with a model has parameters, and every step that sizes a part uses them. The blocks sample is a
+    // circuit only.
+    if (doc.features.length) expect(doc.params!.length).toBeGreaterThanOrEqual(3);
   });
 
   it("the calibration coupon has M2 to M6 holes at each offset, and notches that count the columns", () => {

@@ -5,7 +5,7 @@
  * is a label on the outline with the same name as its inside net. Points marked global (ground) are named plainly and
  * join the design's net of that name.
  */
-import { pasteOnSheet, type Clip } from "./edit";
+import { defKey, pasteOnSheet, type Clip } from "./edit";
 import { emptyBox, grow, pinDirOnSheet, placeOnSheet, q, type Box } from "./geom";
 import { GROUP_PAD, placedBox, unitOf } from "./groups";
 import { GRID } from "./basics";
@@ -116,7 +116,8 @@ export function buildBlock(spec: BlockSpec, lookup: (id: string) => ComponentDef
   const ROW = 90;
   for (const p of spec.parts) {
     const def = defs.get(p.ref)!;
-    const key = `${p.part}-${spec.id}`;
+    // The same key placing the part by hand gives, so a design keeps one copy of each part whichever way it came.
+    const key = defKey(def);
     clip.defs[key] = def;
     const id = eid("pt");
     clip.parts.push({ id, def: key, ref: p.ref, value: p.value ?? def.value ?? def.name, pkg: def.packages[p.pkg ?? 0] ? (p.pkg ?? 0) : 0 });
