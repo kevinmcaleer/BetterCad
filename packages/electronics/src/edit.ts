@@ -12,6 +12,7 @@ import {
   type Part,
   type Rot,
   type SchSymbol,
+  type Shape,
   type Sheet,
   type Wire,
 } from "./model";
@@ -151,6 +152,31 @@ export function moveOnSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[], dx: nu
     labels: s.labels.map((l) => (set.has(l.id) ? at(l) : l)),
     junctions: s.junctions.map((j) => (set.has(j.id) ? at(j) : j)),
     noConnects: s.noConnects.map((n) => (set.has(n.id) ? at(n) : n)),
+    ...(s.notes ? { notes: s.notes.map((n) => (set.has(n.id) ? moveShape(n, dx, dy) : n)) } : {}),
+  }));
+}
+
+/** A shape moved by (dx, dy), on the sheet's grid. */
+export function moveShape<T extends Shape>(s: T, dx: number, dy: number): T {
+  const m = (p: P2): P2 => [q(p[0] + dx), q(p[1] + dy)];
+  if (s.kind === "line") return { ...s, pts: s.pts.map(m) };
+  if (s.kind === "rect") return { ...s, x1: q(s.x1 + dx), y1: q(s.y1 + dy), x2: q(s.x2 + dx), y2: q(s.y2 + dy) };
+  if (s.kind === "circle" || s.kind === "arc") return { ...s, cx: q(s.cx + dx), cy: q(s.cy + dy) };
+  return { ...s, x: q(s.x + dx), y: q(s.y + dy) };
+}
+
+/** A note on a sheet (#733): text, a line, a box or a circle. Its id comes back with the design. */
+export function addNote(d: ElectronicsDesign, sheet: Id, note: Shape): { design: ElectronicsDesign; id: Id } {
+  const id = eid("nt");
+  return { design: onSheet(d, sheet, (s) => ({ ...s, notes: [...(s.notes ?? []), { ...note, id }] })), id };
+}
+
+/** Changes a text note's words. Empty words take the note away. */
+export function setNoteText(d: ElectronicsDesign, sheet: Id, id: Id, text: string): ElectronicsDesign {
+  const t = text.trim();
+  return onSheet(d, sheet, (s) => ({
+    ...s,
+    notes: (s.notes ?? []).flatMap((n) => (n.id !== id || n.kind !== "text" ? [n] : t ? [{ ...n, text: t }] : [])),
   }));
 }
 
@@ -239,6 +265,7 @@ export interface Clip {
   noConnects: Sheet["noConnects"];
   /** Groups whose every member was copied (#766). */
   groups?: { name: string; members: Id[] }[];
+  notes?: NonNullable<Sheet["notes"]>;
 }
 
 /** Copies the picked things off a sheet. Nothing picked: nothing copied. */
@@ -258,16 +285,21 @@ export function copyFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): Cli
     labels: pick(sheet.labels),
     junctions: pick(sheet.junctions),
     noConnects: pick(sheet.noConnects),
+    notes: pick(sheet.notes ?? []),
   };
   const whole = (sheet.groups ?? []).filter((g) => g.members.every((m) => set.has(m)));
   if (whole.length) clip.groups = whole.map((g) => ({ name: g.name, members: g.members }));
-  return symbols.length + clip.wires.length + clip.labels.length + clip.junctions.length + clip.noConnects.length ? clip : null;
+  return symbols.length + clip.wires.length + clip.labels.length + clip.junctions.length + clip.noConnects.length + clip.notes!.length ? clip : null;
 }
 
 /** Where a clip's first thing sits, to paste it under the pointer. */
 export function clipOrigin(c: Clip): P2 {
   const s = c.symbols[0] ?? c.labels[0] ?? c.junctions[0] ?? c.noConnects[0];
-  return s ? [s.x, s.y] : (c.wires[0]?.a ?? [0, 0]);
+  if (s) return [s.x, s.y];
+  if (c.wires[0]) return c.wires[0].a;
+  const n = c.notes?.[0];
+  if (!n) return [0, 0];
+  return n.kind === "line" ? n.pts[0]! : n.kind === "rect" ? [n.x1, n.y1] : n.kind === "circle" || n.kind === "arc" ? [n.cx, n.cy] : [n.x, n.y];
 }
 
 /** Pastes a clip, moved by (dx, dy). Parts get fresh references (R4 becomes R5); the ids of what was added come back. */
@@ -296,6 +328,7 @@ export function pasteOnSheet(d: ElectronicsDesign, sheetId: Id, clip: Clip, dx: 
   const groups = (clip.groups ?? [])
     .map((g) => ({ id: eid("gr"), name: g.name, members: g.members.flatMap((m) => (newId.has(m) ? [newId.get(m)!] : [])) }))
     .filter((g) => g.members.length);
+  const notes = (clip.notes ?? []).map((n) => ({ ...moveShape(n, dx, dy), id: eid("nt") }));
   const design = onSheet({ ...d, defs, parts }, sheetId, (s) => ({
     ...s,
     symbols: [...s.symbols, ...symbols],
@@ -304,8 +337,9 @@ export function pasteOnSheet(d: ElectronicsDesign, sheetId: Id, clip: Clip, dx: 
     junctions: [...s.junctions, ...junctions],
     noConnects: [...s.noConnects, ...noConnects],
     ...(groups.length ? { groups: [...(s.groups ?? []), ...groups] } : {}),
+    ...(notes.length || s.notes ? { notes: [...(s.notes ?? []), ...notes] } : {}),
   }));
-  return { design, ids: [...symbols, ...wires, ...labels, ...junctions, ...noConnects].map((x) => x.id) };
+  return { design, ids: [...symbols, ...wires, ...labels, ...junctions, ...noConnects, ...notes].map((x) => x.id) };
 }
 
 /**

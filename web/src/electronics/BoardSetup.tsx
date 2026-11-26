@@ -290,6 +290,18 @@ export default function BoardSetup({
             ))}
           </select>
         </FeatureRow>
+        <FeatureRow label="Vias">
+          <select
+            className="bc-select"
+            aria-label="Vias"
+            value={board.viaMask ?? "covered"}
+            data-tip="Open vias can be probed and soldered to, but solder can run into them"
+            onChange={({ target: { value } }) => edit((d) => setBoard(d, { viaMask: value === "open" ? "open" : undefined }), "Change how vias are masked")}
+          >
+            <option value="covered">Covered by the mask</option>
+            <option value="open">Open</option>
+          </select>
+        </FeatureRow>
         <FeatureRow label="Silkscreen">
           <select
             className="bc-select"

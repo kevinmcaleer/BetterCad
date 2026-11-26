@@ -6,7 +6,7 @@ import { copperOf, type Copper, type Solid } from "../pcb/copper";
 import { pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
 import { penFor, textStrokes, REF_SIZE } from "./font";
 import { pictureRects } from "../pcb/picture";
-import { layerName, layersOf, viaLayers } from "../pcb/stack";
+import { layerName, layersOf, viaLayers, viaOpen } from "../pcb/stack";
 
 /**
  * Gerber files for a board (#655): one RS-274X file per layer with X2 attributes, in millimetres, as every board
@@ -455,7 +455,10 @@ function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads:
   return w.text();
 }
 
-/** The openings in the solder mask on a side: over pads and holes, each a little bigger than the copper. Vias stay covered. */
+/**
+ * The openings in the solder mask on a side: over pads and holes, each a little bigger than the copper, and over the
+ * vias left open (#736) on a side they reach. Covered vias stay under the mask.
+ */
 function openings(w: Writer, board: Board, side: Side, pads: BoardPad[]) {
   const margin = board.rules.maskMargin;
   for (const p of pads) {
@@ -465,6 +468,7 @@ function openings(w: Writer, board: Board, side: Side, pads: BoardPad[]) {
     else w.flash(w.pad(p.pad, p.angle, grow), p.at);
   }
   for (const h of board.holes) w.flash(w.pad(round(h.pad ?? h.drill), 0, margin), [h.x, h.y]);
+  for (const v of board.vias) if (viaOpen(board, v) && viaLayers(board, v).includes(side)) w.flash(w.pad(round(v.diameter), 0, margin), [v.x, v.y]);
 }
 
 function maskFile(board: Board, side: Side, pads: BoardPad[], fn: string): string {

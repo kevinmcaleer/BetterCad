@@ -10,7 +10,7 @@ import type { LayerId } from "./drawBoard";
 
 /** Which electronics view covers the 3D view. 3D is the model itself, so it is "no electronics view". */
 export type EView = "schematic" | "pcb";
-export type SchTool = "select" | "wire" | "label" | "noConnect" | "junction" | "place";
+export type SchTool = "select" | "wire" | "label" | "noConnect" | "junction" | "place" | "text" | "line" | "rect" | "circle";
 export type PcbTool = "select" | "route" | "via" | "hole" | "text" | "pour" | "keepout" | "measure";
 
 export interface EUi {
@@ -34,7 +34,7 @@ export interface EUi {
   layer: CopperLayer;
   hidden: LayerId[];
   /** Cards that are open over the view. */
-  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | "autoroute" | "find" | null;
+  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | "autoroute" | "find" | "calc" | null;
   /** A place a check points at: the view brings it into the middle and rings it. On the board its sheet is "board". */
   spot: { sheet: string; at: P2; n: number } | null;
   /** Goes up by one to ask the open view to bring the selection into the middle. */

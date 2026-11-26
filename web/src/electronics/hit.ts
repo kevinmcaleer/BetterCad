@@ -7,6 +7,7 @@ import {
   type Box,
   type ElectronicsDesign,
   type P2,
+  type Shape,
   type Sheet,
   type SymbolDef,
 } from "@bettercad/electronics";
@@ -14,7 +15,7 @@ import { GROUP_NAME, type GroupOutline } from "@bettercad/electronics/groups";
 
 /** What the pointer is over on a sheet. `id` is the thing's own id; for a symbol, `part` is its part. */
 export interface SchHit {
-  kind: "symbol" | "wire" | "label" | "junction" | "noConnect";
+  kind: "symbol" | "wire" | "label" | "junction" | "noConnect" | "note";
   id: string;
   part?: string;
 }
@@ -46,6 +47,37 @@ export function placedBox(def: SymbolDef, at: { x: number; y: number; rot: 0 | 9
   return out;
 }
 
+/** The box round a note on a sheet (#733). Text is measured roughly: 0.6 of its size a character. */
+export function noteBox(n: Shape): Box {
+  const b = emptyBox();
+  if (n.kind === "line") for (const p of n.pts) grow(b, p);
+  else if (n.kind === "rect") grow(grow(b, [n.x1, n.y1]), [n.x2, n.y2]);
+  else if (n.kind === "circle" || n.kind === "arc") grow(b, [n.cx, n.cy], n.r);
+  else {
+    const rows = n.text.split("\n");
+    const w = Math.max(...rows.map((r) => r.length)) * n.size * 0.6;
+    const x1 = n.align === "centre" ? n.x - w / 2 : n.align === "right" ? n.x - w : n.x;
+    grow(grow(b, [x1, n.y - n.size / 2 - (rows.length - 1) * n.size * 1.4]), [x1 + w, n.y + n.size / 2]);
+  }
+  return b;
+}
+
+/** Whether a point is on a note: on a line or a box's or circle's edge, or anywhere in a text. */
+function onNote(n: Shape, p: P2, tol: number): boolean {
+  if (n.kind === "line") return n.pts.some((a, i) => i > 0 && distToSegment(p, n.pts[i - 1]!, a) <= tol);
+  if (n.kind === "rect") {
+    const c: P2[] = [
+      [n.x1, n.y1],
+      [n.x2, n.y1],
+      [n.x2, n.y2],
+      [n.x1, n.y2],
+    ];
+    return c.some((a, i) => distToSegment(p, a, c[(i + 1) % 4]!) <= tol);
+  }
+  if (n.kind === "circle" || n.kind === "arc") return Math.abs(Math.hypot(p[0] - n.cx, p[1] - n.cy) - n.r) <= tol;
+  return inBox(p, noteBox(n), tol * 0.5);
+}
+
 export const inBox = (p: P2, b: Box, pad = 0) => p[0] >= b.x1 - pad && p[0] <= b.x2 + pad && p[1] >= b.y1 - pad && p[1] <= b.y2 + pad;
 
 /** Everything under a point, nearest kind first: marks and labels, then wires, then symbols. `tol` is in mm. */
@@ -57,6 +89,7 @@ export function hitSheet(d: ElectronicsDesign, sheet: Sheet, p: P2, tol: number)
     if (inBox(p, { x1: l.x - 0.5, y1: l.y - 0.3, x2: l.x + Math.max(2, l.name.length * 0.95), y2: l.y + 1.8 }, tol * 0.5))
       out.push({ kind: "label", id: l.id });
   for (const w of sheet.wires) if (distToSegment(p, w.a, w.b) <= tol) out.push({ kind: "wire", id: w.id });
+  for (const n of sheet.notes ?? []) if (onNote(n, p, tol)) out.push({ kind: "note", id: n.id });
   const parts = new Map(d.parts.map((x) => [x.id, x]));
   for (const s of [...sheet.symbols].reverse()) {
     const def = d.defs[parts.get(s.part)?.def ?? ""];
@@ -78,6 +111,10 @@ export function boxSheet(d: ElectronicsDesign, sheet: Sheet, a: P2, b: P2): stri
   for (const l of sheet.labels) if (inBox([l.x, l.y], box)) out.push(l.id);
   for (const j of sheet.junctions) if (inBox([j.x, j.y], box)) out.push(j.id);
   for (const n of sheet.noConnects) if (inBox([n.x, n.y], box)) out.push(n.id);
+  for (const n of sheet.notes ?? []) {
+    const nb = noteBox(n);
+    if (inBox([nb.x1, nb.y1], box) && inBox([nb.x2, nb.y2], box)) out.push(n.id);
+  }
   return out;
 }
 

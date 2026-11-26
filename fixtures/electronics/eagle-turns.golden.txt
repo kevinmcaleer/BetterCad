@@ -11,8 +11,6 @@ VCC: J1:1 R1:1 U1:8
 Nothing.
 
 ## Schematic check
-warning label-once: The label OUT is used once, so it joins nothing.
-warning label-once: The label SIG is used once, so it joins nothing.
 warning wire-open: A wire on MID ends in mid air.
 warning wire-open: A wire on MID ends in mid air.
 

@@ -27,8 +27,10 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
    A bigger design goes on more than one sheet: the plus beside the sheet tabs adds one, and right-click on a tab
    renames, moves, deletes or duplicates it. Duplicate copies a sheet as a block to use again, with its own part
    references. A label that carries on to another sheet says which; pick it to go there.
-4. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
-5. **Check it.** Press E for the rules check. It lists pins left unconnected, outputs wired together, nets with one
+4. **Write on the sheet.** The Draw group has Text, Line, Box and Circle, for titles, notes and boxes round a
+   group of parts. Double-click a text note to change its words. Notes don't join anything.
+5. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
+6. **Check it.** Press E for the rules check. It lists pins left unconnected, outputs wired together, nets with one
    pin and more, each with a way to fix it. Click a line to go to the spot.
 
 ![The rules check, open over the schematic](images/electronics-check.png)
@@ -66,11 +68,14 @@ schematic brings it up to date and lists the changes first.
    face or a sketch and choose **Use as PCB profile**: a body gives its biggest flat face, and holes through it become
    cut-outs. The board follows its source, so when you change the model the board's shape changes with it, and one
    undo takes back both. If the face or sketch goes away, the board keeps its last shape and you are told.
-   Pick a board house's rules here too.
+   Pick a board house's rules here too, and whether vias are covered by the mask or left open. A via's own card can
+   say otherwise for that one.
    Most boards need two copper layers. Layers gives you four or six: the inner ones show in the Layers card, L steps
    through them while you route, and a pour over the whole board on an inner layer makes it a ground or power plane.
 2. **Place the parts.** Drag them into place. R turns a part, X flips it to the other side of the board, K locks it.
-   Thin lines show which pads still need joining.
+   Thin lines show which pads still need joining. Pick a track or a via and its net's section can give the net a
+   colour for its lines, or hide them, handy for ground before the pour is drawn. Hidden lines still count as left
+   to route.
 3. **Route.** Press W and click a pad. Each click lays a piece of track with a 45° bend; click the pad it goes to and
    the track ends. Press V to drop a via and carry on on the other side. With Keep clear on, a track stops before it
    comes too close to anything else and says what is in the way. Or choose Autoroute: it lays tracks for the
@@ -91,6 +96,9 @@ schematic brings it up to date and lists the changes first.
 Layers, bottom right, shows and hides each layer and sets the grid. Pours are drawn light so tracks over them stand
 out, and the side you are not working on is dimmed; turn on Pours as outlines to see only their edges. Text on the
 board is drawn in the same stroke font the Gerber files use, so what you see is what is printed.
+
+Calculators, on the ribbon in both views, works out the width a track needs for a current, the current a via
+carries, the resistor for an LED and a resistor's colour bands. A track width can be made a net class's width.
 
 Press M to measure: click two points to read the distance between them, and its dx and dy. Pad, via and hole
 centres, track ends and the board's edge snap. Press Ctrl+F in either view to find a part by its reference, value or

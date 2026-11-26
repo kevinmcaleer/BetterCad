@@ -579,7 +579,9 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
     ["paper", s("A4")],
     // Inner layers (#648) are numbered 1 up, between the front and the back.
     inner.length ? [...LAYER_TABLE.slice(0, 2), ...inner.map((l): Node[] => [l.slice(2), s(copperLayer(l)), "signal"]), ...LAYER_TABLE.slice(2)] : LAYER_TABLE,
-    ["setup", ["pad_to_mask_clearance", n(board.rules.maskMargin)]],
+    // KiCad 7 keeps one say for every via: "do not tent vias" when plotting (#736). A via of ours that differs from
+    // the board cannot carry its own across.
+    ["setup", ["pad_to_mask_clearance", n(board.rules.maskMargin)], ["pcbplotparams", ["viasonmask", board.viaMask === "open" ? "true" : "false"]]],
     ["net", "0", s("")],
     ...[...codes.entries()].map(([name, code]): Node[] => ["net", String(code), s(name)]),
   ];

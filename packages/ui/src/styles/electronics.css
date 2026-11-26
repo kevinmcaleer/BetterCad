@@ -1128,3 +1128,23 @@ button.bc-ec-pill {
   background: var(--bc-color-snap);
   fill: var(--bc-color-snap);
 }
+
+/* Calculators (#739): a resistor's bands, each a swatch of its paint over the colour picker. */
+.bc-ec-bands {
+  display: flex;
+  gap: var(--bc-space-2);
+  margin: var(--bc-space-4) 0;
+}
+.bc-ec-bands > span {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--bc-space-2);
+  min-width: 0;
+}
+.bc-ec-band {
+  display: block;
+  height: var(--bc-space-8);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+}

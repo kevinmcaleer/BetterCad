@@ -4,6 +4,7 @@ import { check } from "../erc";
 import type { ElectronicsDesign } from "../model";
 import { netlist } from "../nets";
 import { checkBoard } from "../pcb/drc";
+import { setBoard } from "../pcb/route";
 import { sampleBoard } from "../sample";
 import { boardChanges } from "../sync";
 import { kicadProject } from "./export";
@@ -87,6 +88,22 @@ describe.each([
 });
 
 describe("opening a KiCad project", () => {
+  it("keeps the board's open vias, as KiCad 7's setting and KiCad 8's (#736)", () => {
+    const d = sampleBoard();
+    const trip = (x: ElectronicsDesign) => importKicadProject(kicadProject(x, "trip").files, { licence: "CC0" }).design.board!.viaMask;
+    expect(trip(d)).toBeUndefined();
+    expect(trip(setBoard(d, { viaMask: "open" }))).toBe("open");
+    const files = kicadProject(d, "trip").files;
+    const pcb = files.find((f) => f.name.endsWith(".kicad_pcb"))!;
+    const with8 = (tenting: string) =>
+      importKicadProject(
+        files.map((f) => (f === pcb ? { ...f, text: f.text.replace(/\(pcbplotparams\s*\(viasonmask \w+\)\s*\)/, tenting) } : f)),
+        { licence: "CC0" },
+      ).design.board!.viaMask;
+    expect(with8("(tenting front back)")).toBeUndefined();
+    expect(with8("(tenting)")).toBe("open");
+  });
+
   it("says what it needs when the files are not a project", () => {
     expect(() => importKicadProject([{ name: "a.txt", text: "hello" }])).toThrow("There is no KiCad schematic");
     const pcb = kicadProject(sampleBoard(), "x").files.find((f) => f.name.endsWith(".kicad_pcb"))!;
@@ -161,5 +178,30 @@ describe("opening a KiCad project", () => {
       expect(got.design.board!.tracks.every((t) => !t.net.startsWith("unconnected-"))).toBe(true);
       expect(got.notes.map((n) => n.why)).toContain("Left out: 1 piece of track on pins that join nothing in the schematic");
     });
+  });
+});
+
+describe("notes on a sheet go out to KiCad and come back (#733)", () => {
+  it("keeps text, lines, boxes and circles, and lists none of them as left out", () => {
+    const d = sampleBoard();
+    const sheet = d.sheets[0]!;
+    const notes = [
+      { id: "n1", kind: "text" as const, x: 10.16, y: 20.32, text: "Servo power", size: 1.27, align: "left" as const },
+      { id: "n2", kind: "line" as const, pts: [[0, 0] as [number, number], [25.4, 0] as [number, number]] },
+      { id: "n3", kind: "rect" as const, x1: 0, y1: 0, x2: 50.8, y2: 25.4, fill: false as const },
+      { id: "n4", kind: "circle" as const, cx: 12.7, cy: 12.7, r: 5.08 },
+    ];
+    const withNotes: ElectronicsDesign = { ...d, sheets: [{ ...sheet, notes }, ...d.sheets.slice(1)] };
+    const back = importKicadProject(kicadProject(withNotes, "notes").files, { licence: "CC0" });
+    const got = back.design.sheets[0]!.notes ?? [];
+    expect(got.map((n) => n.kind).sort()).toEqual(["circle", "line", "rect", "text"]);
+    expect(got.find((n) => n.kind === "text")).toMatchObject({ text: "Servo power", size: 1.27 });
+    const box = got.find((n) => n.kind === "rect")!;
+    const line = got.find((n) => n.kind === "line")!;
+    // The sheet may be shifted onto KiCad's page, but each shape keeps its size.
+    if (box.kind === "rect") expect([box.x2 - box.x1, box.y2 - box.y1].map((v) => Math.round(v * 1e4) / 1e4)).toEqual([50.8, 25.4]);
+    if (line.kind === "line") expect(Math.hypot(line.pts[1]![0] - line.pts[0]![0], line.pts[1]![1] - line.pts[0]![1])).toBeCloseTo(25.4, 4);
+    expect(got.find((n) => n.kind === "circle")).toMatchObject({ r: 5.08 });
+    expect(back.notes.map((n) => n.why).join(" ")).not.toMatch(/shapes drawn on the sheet/);
   });
 });

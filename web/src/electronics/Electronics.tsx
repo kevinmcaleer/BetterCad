@@ -20,7 +20,7 @@ import type { Command } from "../state/commands";
 import type { KernelCall } from "./bodyFile";
 import type { ModelFaces } from "./faceOutline";
 import { eactions, showView, type EEdit } from "./actions";
-import { SchematicCanvas, commitLabel, type NameAsk } from "./SchematicCanvas";
+import { SchematicCanvas, commitLabel, type LabelAsk } from "./SchematicCanvas";
 import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
 import { eui, type EView, type PcbTool, type SchTool } from "./ui";
 import { useEui } from "./useEui";
@@ -46,6 +46,7 @@ const NetProps = lazy(() => import("./NetProps"));
 const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
 const FindCard = lazy(() => import("./Find"));
+const Calculators = lazy(() => import("./Calculators"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -87,6 +88,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     tip: "Find a part by its name or value, or a net by its name",
     on: ui.card === "find",
     run: toggle("find"),
+  };
+  const calc: Tool = {
+    id: "calc",
+    group: view === "schematic" ? "Check" : "Board",
+    label: "Calculators",
+    short: "Calculate",
+    icon: "calculator",
+    tip: "Track width for a current, via current, an LED's resistor and colour bands",
+    on: ui.card === "calc",
+    run: toggle("calc"),
   };
   if (view === "schematic")
     return [
@@ -147,6 +158,23 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         disabled: readOnly,
         run: arm("junction"),
       },
+      ...(
+        [
+          ["text", "Text", "text", "Write a note on the sheet"],
+          ["line", "Line", "line", "Draw a line on the sheet: click its two ends"],
+          ["rect", "Box", "rect", "Draw a box round a part of the circuit: click two corners"],
+          ["circle", "Circle", "circle", "Draw a circle on the sheet: click its middle, then its edge"],
+        ] as const
+      ).map(([id, label, icon, tip]): Tool => ({
+        id: `note-${id}`,
+        group: "Draw",
+        label,
+        icon,
+        tip,
+        on: ui.schTool === id,
+        disabled: readOnly,
+        run: arm(id),
+      })),
       {
         id: "rotate",
         group: "Edit",
@@ -238,6 +266,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         on: ui.card === "table",
         run: toggle("table"),
       },
+      calc,
       {
         id: "push",
         group: "Sync",
@@ -410,6 +439,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       on: ui.card === "order",
       run: toggle("order"),
     },
+    calc,
     {
       id: "push",
       group: "Sync",
@@ -882,7 +912,7 @@ export default function ElectronicsView({
   const changes = useMemo(() => boardChanges(design, nl), [design, nl]);
   const behind = design.board ? changes.length : 0;
   const left = ui.unrouted ?? 0;
-  const [ask, setAsk] = useState<NameAsk | null>(null);
+  const [ask, setAsk] = useState<LabelAsk | null>(null);
   const [text, setText] = useState("");
   useEffect(() => setText(ask?.name ?? ""), [ask]);
   useEscape(!!ask, () => setAsk(null), ESC.overlay);
@@ -977,6 +1007,11 @@ export default function ElectronicsView({
           <FindCard design={design} view={view} onClose={() => eui.set({ card: null })} />
         </Suspense>
       )}
+      {ui.card === "calc" && (
+        <Suspense fallback={null}>
+          <Calculators design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />
+        </Suspense>
+      )}
       {view === "schematic" && (
         <Suspense fallback={null}>
           {ui.card === "components" && !readOnly && (
@@ -1022,12 +1057,12 @@ export default function ElectronicsView({
         >
           <input
             className="bc-text"
-            aria-label={ask.group ? "Group name" : "Net name"}
+            aria-label={ask.group ? "Group name" : ask.note ? "Note text" : "Net name"}
             autoFocus
             value={text}
             onChange={(e) => setText(e.target.value)}
             onBlur={() => setAsk(null)}
-            placeholder={ask.group ? "Group name" : "Net name"}
+            placeholder={ask.group ? "Group name" : ask.note ? "Note" : "Net name"}
           />
         </form>
       )}
@@ -1057,9 +1092,13 @@ export default function ElectronicsView({
                 ? `Placing ${ui.placing?.name ?? ui.placingBlock!.built.spec.name}. Click to place, Esc to stop.`
                 : ui.schTool === "wire"
                   ? "Click a pin to start a wire, click again to turn or finish."
-                  : ui.net
-                    ? `Net ${ui.net}`
-                    : "Grid 2.54 mm"}
+                  : ui.schTool === "text"
+                    ? "Click where the note goes."
+                    : ui.schTool === "line" || ui.schTool === "rect" || ui.schTool === "circle"
+                      ? `Click to start the ${ui.schTool === "rect" ? "box" : ui.schTool}, click again to finish it.`
+                      : ui.net
+                        ? `Net ${ui.net}`
+                        : "Grid 2.54 mm"}
             </span>
           </>
         ) : (

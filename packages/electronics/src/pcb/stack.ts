@@ -183,3 +183,6 @@ export function setViaSpan(d: ElectronicsDesign, id: Id, span?: [CopperLayer, Co
     };
   });
 }
+
+/** Whether a via is left open in the solder mask (#736): its own say, else the board's. Vias are covered unless told. */
+export const viaOpen = (b: Board, v: Via): boolean => (v.mask ?? b.viaMask ?? "covered") === "open";

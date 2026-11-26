@@ -256,6 +256,15 @@ const DRAW: Record<string, () => string> = {
     box(-6, -6, -4, 12, 12, 2) +
     `<circle cx="10.5" cy="9" r="5.4" fill="${HI}" fill-opacity="0.45" stroke="${EDGE}" stroke-width="1.6"/>` +
     line("M14.4 12.9l5.6 5.6", EDGE, 2.6),
+  // A pocket calculator: its screen in the accent, a grid of keys below
+  calculator: () =>
+    `<rect x="5" y="2" width="14" height="20" rx="1.6" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.2"/>` +
+    `<rect x="7.5" y="4.5" width="9" height="4.5" rx="0.6" fill="${HI}" fill-opacity="0.6" stroke="${EDGE}" stroke-width="0.8"/>` +
+    [11.5, 15, 18.5]
+      .flatMap((y) =>
+        [8.5, 12, 15.5].map((x) => `<rect x="${x - 1.1}" y="${y - 1.1}" width="2.2" height="2.2" rx="0.4" fill="${TOP}" stroke="${EDGE}" stroke-width="0.6"/>`),
+      )
+      .join(""),
   // Inspect
   ruler: () =>
     `<polygon points="2.5,16 16,2.5 21.5,8 8,21.5" fill="${TOP}" stroke="${EDGE}" stroke-width="0.9" stroke-linejoin="round"/>` +

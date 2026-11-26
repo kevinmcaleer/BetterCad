@@ -322,3 +322,14 @@ describe("measure on the board (#732)", () => {
     expect(await screen.findByText(/Click the first point/)).toBeInTheDocument();
   });
 });
+
+describe("notes on a sheet (#733)", () => {
+  it("has Text, Line, Box and Circle under Draw, and a text note takes its words from a field", async () => {
+    act(() => showView("schematic"));
+    setup(ledAndResistor(), { ribbon: false });
+    for (const name of ["Text", "Line", "Box", "Circle"]) expect(screen.getByRole("button", { name: new RegExp(`^${name}`) })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: /^Box/ }));
+    expect(eui.get().schTool).toBe("rect");
+    expect(screen.getByText("Click to start the box, click again to finish it.")).toBeInTheDocument();
+  });
+});

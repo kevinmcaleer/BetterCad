@@ -8,6 +8,7 @@ import {
   type Box,
   type CopperLayer,
   type ElectronicsDesign,
+  type NetColour,
   type P2,
   type Shape,
   type Side,
@@ -31,6 +32,17 @@ export const LAYERS: { id: LayerId; label: string; colour: keyof Colours; copper
   { id: "holes", label: "Holes", colour: "ec-pad" },
   { id: "ratsnest", label: "Unrouted lines", colour: "ec-pcb-ink" },
 ];
+
+/** The token each net colour (#740) is drawn with: the inner layers' colours and a few the theme already has. */
+export const NET_COLOUR: Record<NetColour, keyof Colours> = {
+  green: "ec-copper-in1",
+  orange: "ec-copper-in2",
+  teal: "ec-copper-in3",
+  pink: "ec-copper-in4",
+  yellow: "ec-mark",
+  purple: "accent",
+  blue: "snap",
+};
 
 /** The colour each copper layer is drawn in. */
 export const copperColour = (layer: CopperLayer): keyof Colours =>
@@ -286,6 +298,11 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
   if (!board) return;
   const show = (l: LayerId) => !look.hidden.has(l);
   const lit = (net: string) => !look.net || look.net === net;
+  // A net with a colour of its own (#740) wears it on its unrouted lines, and on its tracks while it is lit.
+  const netColour = (net: string) => {
+    const k = board.netLooks?.[net]?.colour;
+    return k ? c[NET_COLOUR[k]] : undefined;
+  };
 
   // The board itself, with its cut-outs taken out.
   const edge = outlinePoints(board.outline);
@@ -324,7 +341,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
         path(ctx, v, t.pts);
         ctx.stroke();
       }
-      ctx.strokeStyle = copper(layer);
+      ctx.strokeStyle = (look.net === t.net && netColour(t.net)) || copper(layer);
       ctx.lineWidth = Math.max(1, t.width * v.scale);
       path(ctx, v, t.pts);
       ctx.stroke();
@@ -530,10 +547,13 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
   }
 
   if (show("ratsnest")) {
-    ctx.strokeStyle = c["ec-pcb-ink"];
     ctx.lineWidth = 1;
     ctx.setLineDash([3, 3]);
     for (const a of look.air) {
+      // A net whose lines are hidden still counts them as left to route; the status strip says so.
+      if (board.netLooks?.[a.net]?.hideAir) continue;
+      ctx.strokeStyle = netColour(a.net) ?? c["ec-pcb-ink"];
+      ctx.lineWidth = netColour(a.net) ? 1.5 : 1;
       ctx.globalAlpha = lit(a.net) ? 0.9 : 0.2;
       path(ctx, v, [a.a, a.b]);
       ctx.stroke();

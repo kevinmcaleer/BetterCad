@@ -45,6 +45,7 @@
     "./fab/common": "./src/fab/common.ts",
     "./fab/font": "./src/fab/font.ts",
     "./find": "./src/find.ts",
+    "./calc": "./src/calc.ts",
     "./library/starter.json": "./library/starter.json"
   },
   "scripts": {

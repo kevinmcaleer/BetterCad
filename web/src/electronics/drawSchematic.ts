@@ -25,7 +25,12 @@ export interface SchematicLook {
   selected: Set<string>;
   hover?: string | null;
   /** Things drawn faintly on top: a part being placed, a wire being drawn. */
-  ghost?: { symbols?: { def: SymbolDef; at: Pick<SchSymbol, "x" | "y" | "rot" | "mirror">; ref?: string; value?: string }[]; wires?: [P2, P2][] };
+  ghost?: {
+    symbols?: { def: SymbolDef; at: Pick<SchSymbol, "x" | "y" | "rot" | "mirror">; ref?: string; value?: string }[];
+    wires?: [P2, P2][];
+    /** A note being drawn (#733). */
+    notes?: Shape[];
+  };
   /** Open wire ends and floating pins to ring, from the netlist. */
   marks?: P2[];
   /** Wires of the net under the pointer, lit with it. */
@@ -51,6 +56,7 @@ function shape(
   c: Colours,
   stroke: string,
   fill: string,
+  ink: string = c.ink,
 ) {
   const px = (w?: number) => Math.max(1.2, (w ?? 0.15) * v.scale);
   ctx.strokeStyle = stroke;
@@ -107,11 +113,11 @@ function shape(
     ctx.stroke();
   } else {
     const q = toScreen(v, place([s.x, s.y]));
-    ctx.fillStyle = c.ink;
+    ctx.fillStyle = ink;
     ctx.font = `${Math.max(1, s.size * v.scale)}px ${c.font}`;
     ctx.textAlign = s.align === "centre" ? "center" : (s.align ?? "left");
     ctx.textBaseline = "middle";
-    ctx.fillText(s.text, q[0], q[1]);
+    s.text.split("\n").forEach((row, i) => ctx.fillText(row, q[0], q[1] + i * s.size * 1.4 * v.scale));
   }
 }
 
@@ -302,6 +308,14 @@ export function drawSchematic(
       ctx.fillText(` → ${to[0]!.name}${to.length > 1 ? ` +${to.length - 1}` : ""}`, s[0] + 2 + w, s[1] - 2);
     }
   }
+  // Notes (#733): text, lines, boxes and circles, in the ink of the sheet.
+  for (const n of sheet.notes ?? []) {
+    const on = look.selected.has(n.id) || look.hover === n.id;
+    const ink = on ? c.accent : c.ink;
+    shape(ctx, v, n.kind === "rect" ? { ...n, fill: n.fill ?? false } : n, (p) => p, 0, false, c, ink, c["ec-symbol-fill"], ink);
+  }
+  for (const g of look.ghost?.notes ?? [])
+    shape(ctx, v, g.kind === "rect" ? { ...g, fill: false } : g, (p) => p, 0, false, c, c.accent, c["ec-symbol-fill"], c.accent);
   for (const n of sheet.noConnects) {
     const s = toScreen(v, [n.x, n.y]);
     const r = Math.max(3, 0.6 * v.scale);

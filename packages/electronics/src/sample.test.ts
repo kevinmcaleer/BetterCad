@@ -98,7 +98,8 @@ describe("the sample board", () => {
 
   it("goes all the way to an order pack", async () => {
     const pack = orderPack(d, "jlcpcb", "Pico servo board")!;
-    expect(pack.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(["part-numbers"]);
+    // Every fitted part has its LCSC number (#729), so nothing is left to warn about.
+    expect(pack.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual([]);
     expect(pack.facts).toEqual({ width: 60, height: 80, thickness: 1.6, layers: 2, minTrack: 0.3, minGap: 0.2, minHole: 0.3 });
     // One via, the motor driver's 16 pins, the headers' 52, and bare holes for the switch's pegs and the mounting screws.
     expect(pack.tools).toEqual([

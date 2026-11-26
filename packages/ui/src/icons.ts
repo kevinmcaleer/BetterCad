@@ -146,6 +146,9 @@ export const gear =
   "M19.4 10.2 21.9 10.3 21.9 13.7 19.4 13.8 18.5 15.9 20.2 17.8 17.8 20.2 15.9 18.5 13.8 19.4 13.7 21.9 10.3 21.9 10.2 19.4 8.1 18.5 6.2 20.2 3.8 17.8 5.5 15.9 4.6 13.8 2.1 13.7 2.1 10.3 4.6 10.2 5.5 8.1 3.8 6.2 6.2 3.8 8.1 5.5 10.2 4.6 10.3 2.1 13.7 2.1 13.8 4.6 15.9 5.5 17.8 3.8 20.2 6.2 18.5 8.1zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
 export const history = "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 3";
 export const search = "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-4.3-4.3";
+/** A pocket calculator: a screen over a grid of keys. */
+export const calculator =
+  "M6 2h12a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zM8 5h8v4H8zM8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01M16 17h.01";
 export const keyboard = "M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10";
 export const sun = "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4";
 export const moon = "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z";
@@ -308,6 +311,7 @@ export const ICONS = {
   sweep,
   split,
   ruler,
+  calculator,
   sliders,
   settings,
   gear,
