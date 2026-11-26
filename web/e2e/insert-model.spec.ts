@@ -25,13 +25,13 @@ test("insert a saved model from My models, place it, and joint-ready as one comp
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Horn");
-  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
   // Saved: Ctrl+N then starts a new model without asking first.
-  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
+  await expect(page.getByRole("button", { name: "File", exact: true })).toHaveAccessibleDescription("Saved to your account", SAVE);
 
   // A new model with a box, then the horn inserted on the ground beside it.
   await page.keyboard.press("ControlOrMeta+n");
@@ -78,13 +78,13 @@ test("the My models panel lists saved models and right-click inserts one", async
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Cylinder", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toBeVisible();
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: "Save to your account…" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Horn");
-  await page.getByRole("button", { name: "Save", exact: true }).last().click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page).toHaveURL(/#\/edit\/m\d+$/, SAVE);
   // Saved: Ctrl+N then starts a new model without asking first.
-  await expect(page.getByRole("button", { name: "Save", exact: true }).first()).toHaveAccessibleDescription("Saved to your account", SAVE);
+  await expect(page.getByRole("button", { name: "File", exact: true })).toHaveAccessibleDescription("Saved to your account", SAVE);
   await page.keyboard.press("ControlOrMeta+n");
   await expect(page.getByRole("treeitem", { name: /Cylinder 1/ })).toHaveCount(0);
 

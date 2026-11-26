@@ -36,7 +36,7 @@ test("exports the bracket's build steps as pictures and a Markdown guide in a zi
   await page.goto("/");
   await page.getByRole("button", { name: "Open the bracket sample" }).click();
   await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
-  await page.getByRole("button", { name: "Share, versions and export" }).click();
+  await page.getByRole("button", { name: "File", exact: true }).click();
   await page.getByRole("menuitem", { name: /^Build steps/ }).click();
   await expect(page.getByText(/^Exported \d+ steps to Bracket build steps\.zip$/)).toBeVisible({ timeout: 120_000 });
 

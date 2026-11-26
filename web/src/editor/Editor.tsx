@@ -4232,12 +4232,12 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const saveEntries: MenuEntry[] = [
     accountEntry,
     { id: "saveAs", label: "Save as…", icon: "save", keys: formatCombo("shift+mod+s"), onSelect: () => void saveAs() },
+    { kind: "separator", id: "s-new" },
     { id: "new", label: "New model", icon: "plus", keys: formatCombo("mod+n"), onSelect: newModel },
     { id: "open", label: "Open…", icon: "folder", keys: formatCombo("mod+o"), onSelect: () => void open() },
     { id: "import", label: "Import STL, STEP or 3MF…", icon: "upload", onSelect: () => void open() },
     { id: "insert-file", label: "Insert a file as a component…", icon: "upload", onSelect: () => insertInput.current?.click() },
     { id: "import-reference", label: "Import as a reference…", icon: "ghost", onSelect: () => referenceInput.current?.click() },
-    ...files.recentEntries,
   ];
 
   const selectionText =
@@ -4632,6 +4632,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onUndo={doUndo}
             onRedo={doRedo}
             saveEntries={saveEntries}
+            recentEntries={files.recentEntries}
             onNewModel={newModel}
             saveTip={saveTip}
             // A run-out sign-in: Save logs in again, and the save that waits goes once you're back.

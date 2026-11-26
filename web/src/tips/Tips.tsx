@@ -16,7 +16,7 @@ export function tips(): Tip[] {
     {
       id: "new",
       title: "Start over",
-      text: `Press New beside Save, or ${formatCombo("mod+n")}, for an empty model. Undo brings your work back.`,
+      text: `Press New beside File, or ${formatCombo("mod+n")}, for an empty model. Undo brings your work back.`,
     },
     { id: "plane", title: "Sketch on any plane", text: "Right-click a plane in the browser to sketch on it." },
     {

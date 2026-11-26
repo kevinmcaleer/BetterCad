@@ -1178,24 +1178,9 @@ kbd {
   font-weight: 600;
   font-size: 12px;
 }
-/* Save as a split button: Save, then the arrow for Share, Versions and Export, joined by a hairline. */
-.bc-split {
-  display: inline-flex;
-  align-items: center;
-}
-.bc-split > .bc-btn.bc-done:first-child {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-.bc-split > .bc-btn.bc-done.bc-split-arrow {
-  min-width: 0;
-  padding: 0 var(--bc-space-3);
-  border-left: 1px solid var(--bc-color-bar);
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-/* Not saved to the account: the icon on Save carries the warning, outlined so it reads on the accent fill. */
-.bc-split.bc-bad > .bc-btn.bc-done:first-child {
+/* File: Save, New, Open, Share and Export in one menu. Not saved to the account: the icon carries the warning,
+   outlined so it reads on the accent fill. */
+.bc-file-btn.bc-bad {
   outline: 2px solid var(--bc-color-danger);
   outline-offset: 1px;
 }
@@ -1781,11 +1766,10 @@ kbd {
 .bc-frame-graph-60 {
   stroke: var(--bc-color-line);
 }
-/* A phone's top bar holds the logo, browser and My models, undo and redo, properties, Save and the account menu
+/* A phone's top bar holds the logo, browser and My models, undo and redo, properties, File and the account menu
    (Parameters and Help fold into it). Buttons keep their icons (their names stay for screen readers) and the gaps
    close up, so the bar fits a 360 px screen. */
 @media (max-width: 520px) {
-  .bc-app .bc-top .bc-split > .bc-btn:first-child > span,
   .bc-app .bc-top > .bc-btn > span:not([class]):not([role]) {
     position: absolute;
     width: 1px;
