@@ -20,6 +20,7 @@ import {
 } from "@bettercad/electronics/pcb/route";
 import { Button, NumberField, type IconName } from "@bettercad/ui";
 import type { EEdit } from "./actions";
+import NetProps from "./NetProps";
 import { eui } from "./ui";
 
 const ALIGN: { how: Align; label: string; icon: IconName }[] = [
@@ -352,119 +353,126 @@ export default function BoardProps({
     const first = tracks[0]!;
     const width = tracks.every((t) => t.width === first.width) ? first.width : null;
     const one = tracks.length === 1;
+    const net = tracks.every((t) => t.net === first.net) ? first.net : "";
     return (
-      <fieldset className="bc-ec-set" disabled={readOnly}>
-        <NumberField
-          label="Width"
-          value={width}
-          min={0.05}
-          max={10}
-          step={0.05}
-          precision={3}
-          onCommit={(v) =>
-            edit(
-              (d) =>
-                setTrackWidth(
-                  d,
-                  tracks.map((t) => t.id),
-                  v,
-                ),
-              "Change the track width",
-              "ec-track-width",
-            )
-          }
-        />
-        {one && (
-          <dl className="bc-facts">
-            <dt>Net</dt>
-            <dd>{first.net || "None"}</dd>
-            <dt>Layer</dt>
-            <dd>{layerName(first.layer)}</dd>
-            <dt>Length</dt>
-            <dd>{round(trackLength(first.pts))} mm</dd>
-          </dl>
-        )}
-        {one && first.net && <TuneLength design={design} edit={edit} id={first.id} net={first.net} />}
-        {one && first.net && (
-          <Button
-            size="dense"
-            variant="secondary"
-            icon="trash"
-            label={`Unroute ${first.net}`}
-            title="Delete every track and via on this net"
-            onClick={() => {
-              edit((d) => ripUpNet(d, first.net), "Unroute a net");
-              eui.set({ selected: [] });
-            }}
+      <>
+        <fieldset className="bc-ec-set" disabled={readOnly}>
+          <legend>{one ? "Track" : `${tracks.length} tracks`}</legend>
+          <NumberField
+            label="Width"
+            value={width}
+            min={0.05}
+            max={10}
+            step={0.05}
+            precision={3}
+            onCommit={(v) =>
+              edit(
+                (d) =>
+                  setTrackWidth(
+                    d,
+                    tracks.map((t) => t.id),
+                    v,
+                  ),
+                "Change the track width",
+                "ec-track-width",
+              )
+            }
           />
+          {one && (
+            <dl className="bc-facts">
+              <dt>Layer</dt>
+              <dd>{layerName(first.layer)}</dd>
+              <dt>Length</dt>
+              <dd>{round(trackLength(first.pts))} mm</dd>
+            </dl>
+          )}
+          {one && first.net && <TuneLength design={design} edit={edit} id={first.id} net={first.net} />}
+          {one && first.net && (
+            <Button
+              size="dense"
+              variant="secondary"
+              icon="trash"
+              label={`Unroute ${first.net}`}
+              title="Delete every track and via on this net"
+              onClick={() => {
+                edit((d) => ripUpNet(d, first.net), "Unroute a net");
+                eui.set({ selected: [] });
+              }}
+            />
+          )}
+        </fieldset>
+        {net ? (
+          <NetProps design={design} edit={edit} net={net} readOnly={readOnly} />
+        ) : (
+          <p className="bc-note">{first.net ? "These tracks are on different nets." : "Not on a net."}</p>
         )}
-      </fieldset>
+      </>
     );
   }
 
   if (via)
     return (
-      <fieldset className="bc-ec-set" disabled={readOnly}>
-        <div className="bc-ec-set-row">
-          <NumberField
-            label="Size"
-            value={via.diameter}
-            min={0.2}
-            max={10}
-            step={0.05}
-            precision={3}
-            onCommit={(v) => edit((d) => setVia(d, via.id, { diameter: v }), "Change the via", "ec-via-d")}
-          />
-          <NumberField
-            label="Hole"
-            value={via.drill}
-            min={0.1}
-            max={6}
-            step={0.05}
-            precision={3}
-            onCommit={(v) => edit((d) => setVia(d, via.id, { drill: v }), "Change the via", "ec-via-h")}
-          />
-        </div>
-        {layersOf(board).length > 2 && (
-          <>
-            <label className="bc-field-label" htmlFor={`${ids}vs`}>
-              Joins
-            </label>
-            <select
-              id={`${ids}vs`}
-              className="bc-select"
-              value={
-                viaKind(board, via) === "through"
-                  ? ""
-                  : viaLayers(board, via)
-                      .filter((_, i, on) => i === 0 || i === on.length - 1)
-                      .join()
-              }
-              data-tip="A via that stops part of the way costs more to make"
-              onChange={({ target: { value } }) =>
-                edit((d) => setViaSpan(d, via.id, value ? (value.split(",") as [CopperLayer, CopperLayer]) : undefined), "Change the layers a via joins")
-              }
-            >
-              <option value="">Every layer</option>
-              {layersOf(board).flatMap((a, i, all) =>
-                all.slice(i + 1).flatMap((b, k) =>
-                  i === 0 && k === all.length - 2
-                    ? []
-                    : [
-                        <option key={`${a},${b}`} value={`${a},${b}`}>
-                          {layerShort(a)} to {layerShort(b)}
-                        </option>,
-                      ],
-                ),
-              )}
-            </select>
-          </>
-        )}
-        <dl className="bc-facts">
-          <dt>Net</dt>
-          <dd>{via.net || "None"}</dd>
-        </dl>
-      </fieldset>
+      <>
+        <fieldset className="bc-ec-set" disabled={readOnly}>
+          <legend>Via</legend>
+          <div className="bc-ec-set-row">
+            <NumberField
+              label="Size"
+              value={via.diameter}
+              min={0.2}
+              max={10}
+              step={0.05}
+              precision={3}
+              onCommit={(v) => edit((d) => setVia(d, via.id, { diameter: v }), "Change the via", "ec-via-d")}
+            />
+            <NumberField
+              label="Hole"
+              value={via.drill}
+              min={0.1}
+              max={6}
+              step={0.05}
+              precision={3}
+              onCommit={(v) => edit((d) => setVia(d, via.id, { drill: v }), "Change the via", "ec-via-h")}
+            />
+          </div>
+          {layersOf(board).length > 2 && (
+            <>
+              <label className="bc-field-label" htmlFor={`${ids}vs`}>
+                Joins
+              </label>
+              <select
+                id={`${ids}vs`}
+                className="bc-select"
+                value={
+                  viaKind(board, via) === "through"
+                    ? ""
+                    : viaLayers(board, via)
+                        .filter((_, i, on) => i === 0 || i === on.length - 1)
+                        .join()
+                }
+                data-tip="A via that stops part of the way costs more to make"
+                onChange={({ target: { value } }) =>
+                  edit((d) => setViaSpan(d, via.id, value ? (value.split(",") as [CopperLayer, CopperLayer]) : undefined), "Change the layers a via joins")
+                }
+              >
+                <option value="">Every layer</option>
+                {layersOf(board).flatMap((a, i, all) =>
+                  all.slice(i + 1).flatMap((b, k) =>
+                    i === 0 && k === all.length - 2
+                      ? []
+                      : [
+                          <option key={`${a},${b}`} value={`${a},${b}`}>
+                            {layerShort(a)} to {layerShort(b)}
+                          </option>,
+                        ],
+                  ),
+                )}
+              </select>
+            </>
+          )}
+        </fieldset>
+        {via.net ? <NetProps design={design} edit={edit} net={via.net} readOnly={readOnly} /> : <p className="bc-note">Not on a net.</p>}
+      </>
     );
 
   if (picture) {

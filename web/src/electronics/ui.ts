@@ -36,6 +36,8 @@ export interface EUi {
   shove: boolean;
   /** Connections the open board still needs, once its copper is counted. Null until the board has been looked at. */
   unrouted: number | null;
+  /** The same, by net, for the inspector. */
+  airs: Record<string, number> | null;
   /** Tracks and vias on the open board, which Clear routes would take off. Null until the board has been looked at. */
   routed: number | null;
 }
@@ -61,6 +63,7 @@ const start = (): EUi => ({
   keepClear: true,
   shove: false,
   unrouted: null,
+  airs: null,
   routed: null,
 });
 

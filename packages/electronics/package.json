@@ -29,6 +29,7 @@
     "./pcb/shove": "./src/pcb/shove.ts",
     "./pcb/dxf": "./src/pcb/dxf.ts",
     "./pcb/autoroute": "./src/pcb/autoroute.ts",
+    "./pcb/netclass": "./src/pcb/netclass.ts",
     "./drc": "./src/pcb/drc.ts",
     "./swap": "./src/swap.ts",
     "./sample": "./src/sample.ts",
