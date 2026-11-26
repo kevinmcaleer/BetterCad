@@ -128,3 +128,13 @@ describe("a board with inner layers (#648)", () => {
     expect(layers.map((l) => l.label)).toEqual(["Inner 2 copper", "Inner 1 copper", "Top copper"]);
   });
 });
+
+describe("pours as outlines (#728)", () => {
+  it("a switch on the Layers card shows pours as their edges only", async () => {
+    render(<BoardView design={addPour(board(), "", "top", wholeBoard(board().board!))} edit={() => {}} />);
+    const box = screen.getByRole("checkbox", { name: "Pours as outlines" });
+    expect(box).not.toBeChecked();
+    await userEvent.click(box);
+    expect(eui.get().pourOutlines).toBe(true);
+  });
+});

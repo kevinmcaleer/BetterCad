@@ -2198,7 +2198,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   });
   tourCamera.current = tour.onCamera;
   // Tips wait for the tour and the What's new card.
-  const tips = useTips(active && !share && tour.card === null && !whatsNew.card);
+  const tips = useTips(active && !share && tour.card === null && !whatsNew.card && !eview);
   const showTips = tips.show;
   // The alpha notice waits for the What's new card, which sits in the same corner.
   const stage = useStageNotice(!whatsNew.card);
@@ -4709,6 +4709,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onLeaveRender={closeRender}
             onLeaveDrawing={() => setDrawing(null)}
             onLeaveElectronics={() => showView(null)}
+            onElectronics={() => showView(eui.get().last, live.current.doc.electronics)}
             electronicsRibbon={
               ribbonOn && eview ? (
                 <Suspense fallback={null}>
@@ -4787,7 +4788,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 <StageNotice onDismiss={stage.dismiss} />
               </Suspense>
             )}
-            {tips.open && (
+            {/* Model tips are about modelling: they wait while the schematic or the board is up (#731). */}
+            {tips.open && (tips.from === "help" || !eview) && (
               <Suspense fallback={null}>
                 <TipsCard from={tips.from} onDismiss={tips.dismiss} />
               </Suspense>

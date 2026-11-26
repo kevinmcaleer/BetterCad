@@ -57,6 +57,7 @@ export function showView(to: EView | null, d?: ElectronicsDesign): void {
   }
   eui.set({
     view: to,
+    ...(to ? { last: to } : {}),
     selected: to ? selected : [],
     placing: null,
     schTool: "select",

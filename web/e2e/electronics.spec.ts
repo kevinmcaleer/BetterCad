@@ -23,7 +23,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
 
     // The schematic takes the view: its own tools on the Electronics tab, the switcher, and a way to start.
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 0 parts, 0 nets" })).toBeVisible();
@@ -82,7 +82,7 @@ test.describe("on a wide screen", () => {
     const cube = page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true });
     await cube.waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await expect(page.getByText("Start with a part.")).toBeVisible();
     await page.keyboard.press("p");
     await pick(page, "Capacitor");
@@ -96,7 +96,7 @@ test.describe("on a wide screen", () => {
     await expect(page.getByRole("tab", { name: "Assemble" })).toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("tabpanel").getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 1 part, 0 nets" })).toBeVisible();
   });
 
@@ -104,7 +104,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
     const name = async (text: string, x: number, y: number) => {
       const label = tools(page).getByRole("button", { name: /^Net label/ });
@@ -146,7 +146,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await tools(page)
       .getByRole("button", { name: /^Components/ })
       .click();
@@ -177,7 +177,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await tools(page)
       .getByRole("button", { name: /^Components/ })
       .click();
@@ -244,7 +244,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await tools(page)
       .getByRole("button", { name: /^Components/ })
       .click();
@@ -310,7 +310,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
 
     // The rules check lists the two pins left open, goes to one, and clears as they are dealt with.
@@ -387,7 +387,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
     await tools(page)
       .getByRole("button", { name: /^Push to PCB/ })
@@ -541,7 +541,7 @@ test.describe("on a wide screen", () => {
       await page.goto("/");
       await page.getByRole("group", { name: "View cube" }).waitFor();
       await page.getByRole("tab", { name: "Electronics" }).click();
-      await page.getByRole("button", { name: "Schematic", exact: true }).click();
+      await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
       await page.getByRole("button", { name: "Open the sample board" }).click();
       const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
       await expect(schematic).toBeVisible({ timeout: 20_000 });
@@ -566,7 +566,7 @@ test.describe("on a wide screen", () => {
       await page.goto("/");
       await page.getByRole("group", { name: "View cube" }).waitFor();
       await page.getByRole("tab", { name: "Electronics" }).click();
-      await page.getByRole("button", { name: "Schematic", exact: true }).click();
+      await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
       await page.getByRole("button", { name: "Open the sample board" }).click();
       await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("Start with a part.")).toBeHidden();
@@ -595,7 +595,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await page.getByRole("button", { name: "Open the sample board" }).click();
     await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ })).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("2");
@@ -624,7 +624,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
     await tools(page)
       .getByRole("button", { name: /^Push to PCB/ })
@@ -695,7 +695,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
     await tools(page)
       .getByRole("button", { name: /^Push to PCB/ })
@@ -735,7 +735,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await tools(page)
       .getByRole("button", { name: /^Components/ })
       .click();
@@ -810,7 +810,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
     await tools(page)
       .getByRole("button", { name: /^Push to PCB/ })
@@ -851,7 +851,7 @@ test.describe("on a wide screen", () => {
     await width.fill("40");
     await width.press("Enter");
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "PCB", exact: true }).first().click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^PCB/ }).click();
     const status = page.getByText(/^Board \d+(\.\d+)? × \d+(\.\d+)? mm · Grid/);
     await expect(status).toHaveText(/^Board 40 × 20 mm/, { timeout: 20_000 });
     await page.getByRole("button", { name: "Board setup" }).click();
@@ -875,7 +875,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
     await tools(page)
       .getByRole("button", { name: /^Push to PCB/ })
@@ -946,7 +946,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await page.getByRole("button", { name: "Open the sample board" }).click();
     await expect(page.getByText("Opened the pico servo board sample. Its schematic and board are under Electronics.")).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("3");
@@ -987,7 +987,7 @@ test.describe("on a wide screen", () => {
     await expect.poll(ink, { timeout: 20_000 }).toBeGreaterThan(20);
 
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "PCB", exact: true }).first().click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^PCB/ }).click();
     await expect(page.getByRole("img", { name: /^PCB: 13 parts/ })).toBeVisible();
     await tools(page)
       .getByRole("button", { name: /^Order/ })
@@ -1007,7 +1007,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await page.getByRole("button", { name: "Open a KiCad or Eagle project" }).click();
     const dialog = page.getByRole("dialog", { name: "Open a project" });
     // The sample board as BetterCad writes it for KiCad, read back in.
@@ -1050,7 +1050,7 @@ test.describe("on a wide screen", () => {
       await page.goto("/");
       await page.getByRole("group", { name: "View cube" }).waitFor();
       await page.getByRole("tab", { name: "Electronics" }).click();
-      await page.getByRole("button", { name: "Schematic", exact: true }).click();
+      await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
       await ledCircuit(page);
       await tools(page)
         .getByRole("button", { name: /^Push to PCB/ })
@@ -1097,7 +1097,7 @@ test.describe("on a wide screen", () => {
     await page.goto("/");
     await page.getByRole("group", { name: "View cube" }).waitFor();
     await page.getByRole("tab", { name: "Electronics" }).click();
-    await page.getByRole("button", { name: "Schematic", exact: true }).click();
+    await page.getByRole("tablist", { name: "Electronics views" }).getByRole("tab", { name: /^Schematic/ }).click();
     await ledCircuit(page);
     await tools(page)
       .getByRole("button", { name: /^Push to PCB/ })

@@ -81,6 +81,7 @@ export function boardPicture(d: ElectronicsDesign, side: "top" | "bottom", font 
         pads,
         air: [],
         pours,
+        pourAlpha: 0.55,
       },
     );
     // Pads are bare metal: the mask is opened over them.

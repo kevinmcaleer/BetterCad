@@ -15,6 +15,16 @@ import {
   type P2,
 } from "@bettercad/electronics";
 import { inBox } from "./hit";
+import { boardTextStrokes } from "./drawBoard";
+
+/** The box round a board text as it is drawn: its strokes, and half the pen round them (#730). */
+export function textBox(t: Board["texts"][number]): Box {
+  const { lines, pen } = boardTextStrokes(t);
+  const b = emptyBox();
+  for (const line of lines) for (const p of line) grow(b, p, pen / 2);
+  if (b.x1 === Infinity) grow(b, [t.x, t.y], t.size / 2);
+  return b;
+}
 
 export interface BoardHit {
   kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area";
@@ -74,8 +84,7 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
       Math.hypot(pad.at[0] - p[0], pad.at[1] - p[1]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol
     )
       out.push({ kind: "pad", id: pad.part, net: pad.net, pad });
-  for (const t of board.texts)
-    if (inBox(p, { x1: t.x, y1: t.y - t.size * 0.2, x2: t.x + t.text.length * t.size * 0.6, y2: t.y + t.size }, tol)) out.push({ kind: "text", id: t.id });
+  for (const t of board.texts) if (inBox(p, textBox(t), tol)) out.push({ kind: "text", id: t.id });
   for (const pic of board.pictures ?? [])
     if (inBox(p, { x1: pic.x, y1: pic.y, x2: pic.x + pic.w, y2: pic.y + (pic.w / pic.cols) * pic.rows }, tol)) out.push({ kind: "picture", id: pic.id });
   for (const at of [...board.placements].reverse()) {

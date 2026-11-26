@@ -283,3 +283,42 @@ describe("onDesign", () => {
     forgetFiles();
   });
 });
+
+describe("find in the design (#734)", () => {
+  it("Ctrl+F opens a find box; choosing a part picks it on its sheet", async () => {
+    act(() => showView("schematic"));
+    const s = setup(ledAndResistor());
+    const find = s.commands.find((c) => c.id === "electronics.find")!;
+    expect(find.keys).toEqual(["mod+f"]);
+    act(() => find.run({} as never));
+    const box = await screen.findByRole("searchbox", { name: "A part or a net" });
+    await userEvent.type(box, "d1");
+    await userEvent.click(within(screen.getByRole("list", { name: "Found" })).getByRole("button", { name: /^D1/ }));
+    const led = s.design()!.parts.find((p) => p.ref === "D1")!;
+    const symbol = s.design()!.sheets[0]!.symbols.find((y) => y.part === led.id)!;
+    expect(eui.get().selected).toEqual([symbol.id]);
+  });
+
+  it("on the board, choosing a net lights it and picks its parts", async () => {
+    const d = pushToBoard(ledAndResistor()).design;
+    const net = netlist(d).nets[0]!.name;
+    act(() => showView("pcb"));
+    setup(d);
+    act(() => eui.set({ card: "find" }));
+    await userEvent.type(await screen.findByRole("searchbox", { name: "A part or a net" }), `${net}{Enter}`);
+    expect(eui.get().net).toBe(net);
+    expect(eui.get().selected).toHaveLength(2);
+  });
+});
+
+describe("measure on the board (#732)", () => {
+  it("is on the PCB tools as Measure (M), and works on a board you can only look at", async () => {
+    act(() => showView("pcb"));
+    setup(pushToBoard(ledAndResistor()).design, { readOnly: true });
+    const measure = await screen.findByRole("button", { name: "Measure" });
+    expect(measure).toBeEnabled();
+    await userEvent.click(measure);
+    expect(eui.get().pcbTool).toBe("measure");
+    expect(await screen.findByText(/Click the first point/)).toBeInTheDocument();
+  });
+});

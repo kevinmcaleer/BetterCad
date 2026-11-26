@@ -39,6 +39,8 @@
     "./fab/ipc2581": "./src/fab/ipc2581.ts",
     "./fab/read": "./src/fab/read.ts",
     "./fab/common": "./src/fab/common.ts",
+    "./fab/font": "./src/fab/font.ts",
+    "./find": "./src/find.ts",
     "./library/starter.json": "./library/starter.json"
   },
   "scripts": {
