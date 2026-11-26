@@ -5,6 +5,7 @@ import { renameGroup, ungroupOnSheet } from "@bettercad/electronics/groups";
 import { Button, PropsPanel, cx } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { KIND_TEXT } from "./pointKinds";
+import SaveBlock from "./SaveBlock";
 import { eui } from "./ui";
 
 /**
@@ -68,10 +69,11 @@ export default function GroupProps({
                   eui.set({ inGroup: null });
                 }}
               />
+              {!readOnly && <SaveBlock design={design} sheet={sheet} group={group} edit={edit} />}
             </>
           ),
         },
-        ...(block
+        ...(block && state.length
           ? [
               {
                 id: "ec-points",

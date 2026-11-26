@@ -1148,3 +1148,15 @@ button.bc-ec-pill {
   border: 1px solid var(--bc-color-line);
   border-radius: var(--bc-radius-sm);
 }
+
+/* Save as block (#772): a point per row, its tick, what it is and its volts. */
+.bc-ec-save-block {
+  display: grid;
+  gap: var(--bc-space-2);
+}
+.bc-ec-save-point {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 5em;
+  gap: var(--bc-space-2);
+  align-items: center;
+}

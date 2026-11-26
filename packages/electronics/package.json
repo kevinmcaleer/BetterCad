@@ -36,6 +36,7 @@
     "./sheets": "./src/sheets.ts",
     "./blocks": "./src/blocks.ts",
     "./connect": "./src/connect.ts",
+    "./ownBlocks": "./src/ownBlocks.ts",
     "./library/blocks": "./src/library/blocks.ts",
     "./groups": "./src/groups.ts",
     "./fab/pack": "./src/fab/pack.ts",

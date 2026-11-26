@@ -1,9 +1,11 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { inflate, type ComponentDef, type LibraryPack } from "@bettercad/electronics";
 import { KIND_TEXT } from "./pointKinds";
 import { buildBlock, placeBlock, type BlockSpec, type BuiltBlock } from "@bettercad/electronics/blocks";
 import { STARTER_BLOCKS } from "@bettercad/electronics/library/blocks";
+import { blockFileText, buildOwn, readBlockFile, type OwnBlock } from "@bettercad/electronics/ownBlocks";
 import { Button, Icon, PanelNote, cx } from "@bettercad/ui";
+import { textOf } from "./fileText";
 import { loadStarter } from "./starter";
 import { eui } from "./ui";
 
@@ -23,14 +25,15 @@ export function searchBlocks(blocks: BlockSpec[], query: string): BlockSpec[] {
   });
 }
 
-/** Builds a spec from the library pack, or says which part is missing. */
-function build(spec: BlockSpec, pack: LibraryPack): BuiltBlock | string {
+/** Builds a spec from the library pack, or your own block from the parts inside it, or says which part is missing. */
+function build(spec: BlockSpec, pack: LibraryPack | null, own?: OwnBlock): BuiltBlock | string | null {
   const lookup = (id: string): ComponentDef | undefined => {
-    const part = pack.parts.find((p) => p.id === id);
-    return part && inflate(pack, part);
+    const part = pack?.parts.find((p) => p.id === id);
+    return part && pack ? inflate(pack, part) : undefined;
   };
+  if (!own && !pack) return null;
   try {
-    return buildBlock(spec, lookup);
+    return own ? buildOwn(own) : buildBlock(spec, lookup);
   } catch (e) {
     return (e as Error).message;
   }
@@ -73,8 +76,19 @@ function BlockPicture({ built }: { built: BuiltBlock }) {
  * The Blocks tab of the Components panel (#768): ready-made circuits on shelves, each said in plain words with what
  * it needs and the points you join it by. Place puts it on the pointer; click the sheet to drop it.
  */
-export default function BlocksTab() {
+export default function BlocksTab({
+  own = [],
+  onSave,
+  onRemove,
+}: {
+  /** Your own blocks (#772), on the Your blocks shelf. */
+  own?: OwnBlock[];
+  onSave?: (b: OwnBlock) => void;
+  onRemove?: (id: string) => void;
+}) {
   const id = useId();
+  const openFile = useRef<HTMLInputElement>(null);
+  const [said, setSaid] = useState("");
   const [pack, setPack] = useState<LibraryPack | null>(null);
   const [failed, setFailed] = useState(false);
   const [find, setFind] = useState("");
@@ -89,9 +103,30 @@ export default function BlocksTab() {
       live = false;
     };
   }, []);
-  const found = useMemo(() => searchBlocks(STARTER_BLOCKS, find), [find]);
-  const spec = STARTER_BLOCKS.find((b) => b.id === chosen);
-  const built = useMemo(() => (spec && pack ? build(spec, pack) : null), [spec, pack]);
+  const all = useMemo(() => [...STARTER_BLOCKS, ...own.map((b) => b.spec)], [own]);
+  const ownOf = (specId?: string) => own.find((b) => b.spec.id === specId);
+  const found = useMemo(() => searchBlocks(all, find), [all, find]);
+  const spec = all.find((b) => b.id === chosen);
+  const mine = ownOf(spec?.id);
+  const built = useMemo(() => (spec ? build(spec, pack, mine) : null), [spec, pack, mine]);
+  const opened = async (file?: File) => {
+    if (!file) return;
+    const b = readBlockFile(await textOf(file));
+    if (typeof b === "string") return setSaid(b);
+    onSave?.(b);
+    setChosen(b.spec.id);
+    setSaid(`${b.spec.name} is on Your blocks.`);
+  };
+  const exportBlock = (b: OwnBlock) => {
+    const url = URL.createObjectURL(new Blob([blockFileText(b)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${b.spec.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.bcblock.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   const place = (b: BuiltBlock) =>
     eui.set({
       placingBlock: { built: b, place: (d, sheet, at) => placeBlock(d, sheet, b, at) },
@@ -101,7 +136,7 @@ export default function BlocksTab() {
       selected: [],
     });
 
-  if (failed) return <PanelNote>The blocks need the parts library, which did not load. Check your connection and open this again.</PanelNote>;
+  if (failed && !own.length) return <PanelNote>The blocks need the parts library, which did not load. Check your connection and open this again.</PanelNote>;
   return (
     <div className="bc-ec-blocks" role="tabpanel" aria-label="Blocks">
       <label className="bc-field-label" htmlFor={`${id}q`}>
@@ -120,8 +155,8 @@ export default function BlocksTab() {
         const here = found.filter((b) => b.shelf === shelf);
         if (!here.length) return null;
         return (
-          <section key={shelf} aria-labelledby={`${id}${shelf}`}>
-            <p className="bc-field-label" id={`${id}${shelf}`}>
+          <section key={shelf} aria-labelledby={`${id}${shelf.replace(/\W+/g, "-")}`}>
+            <p className="bc-field-label" id={`${id}${shelf.replace(/\W+/g, "-")}`}>
               {shelf}
             </p>
             <ul className="bc-ec-parts bc-ec-parts-short">
@@ -133,7 +168,7 @@ export default function BlocksTab() {
                     aria-pressed={chosen === b.id}
                     onClick={() => setChosen(b.id)}
                     onDoubleClick={() => {
-                      const ready = pack && build(b, pack);
+                      const ready = build(b, pack, ownOf(b.id));
                       if (ready && typeof ready !== "string") place(ready);
                     }}
                   >
@@ -148,6 +183,32 @@ export default function BlocksTab() {
         );
       })}
       {found.length === 0 && <p className="bc-note">Nothing matches. Try a shorter word.</p>}
+      {!own.length && !find && <p className="bc-note">Your blocks: pick a group on the schematic and use Save as block, or open a block file.</p>}
+      <div className="bc-ec-library-tools">
+        <Button
+          size="dense"
+          variant="secondary"
+          label="Open a block file"
+          title="Add a block someone shared with you"
+          onClick={() => openFile.current?.click()}
+        />
+        <input
+          ref={openFile}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          aria-label="A BetterCad block file"
+          onChange={(e) => {
+            void opened(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+      </div>
+      {said && (
+        <p className="bc-note" role="status">
+          {said}
+        </p>
+      )}
       {spec ? (
         <section className="bc-ec-part-card" aria-label={spec.name}>
           <header>
@@ -193,13 +254,19 @@ export default function BlocksTab() {
               ))}
             </ul>
           </details>
-          <p className="bc-note">
-            Follows{" "}
-            <a href={spec.source.url} target="_blank" rel="noreferrer">
-              {spec.source.title}
-            </a>
-            .
-          </p>
+          {spec.source.url ? (
+            <p className="bc-note">
+              Follows{" "}
+              <a href={spec.source.url} target="_blank" rel="noreferrer">
+                {spec.source.title}
+              </a>
+              .
+            </p>
+          ) : (
+            <p className="bc-note">
+              {spec.source.title}, version {spec.version}.
+            </p>
+          )}
           <Button
             variant="primary"
             label="Place"
@@ -207,6 +274,21 @@ export default function BlocksTab() {
             disabled={!built || typeof built === "string"}
             onClick={() => built && typeof built !== "string" && place(built)}
           />
+          {mine && (
+            <div className="bc-ec-library-tools">
+              <Button size="dense" variant="secondary" label="Export" title={`Save ${spec.name} as a file to share`} onClick={() => exportBlock(mine)} />
+              <Button
+                size="dense"
+                variant="secondary"
+                label="Delete"
+                title={`Take ${spec.name} off Your blocks. Copies already placed stay`}
+                onClick={() => {
+                  onRemove?.(mine.spec.id);
+                  setChosen(null);
+                }}
+              />
+            </div>
+          )}
         </section>
       ) : (
         <PanelNote>Pick a block to see what it does and how to join it, then Place. Double-click places it straight away.</PanelNote>

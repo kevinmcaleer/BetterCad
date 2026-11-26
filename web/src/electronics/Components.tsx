@@ -382,7 +382,7 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
       <FeaturePanel title="Components" icon="chip" className="bc-ec-card bc-ec-components" cancel={{ label: "Close", title: "Close (Esc)", onClick: onClose }}>
         {tabs}
         <Suspense fallback={<PanelNote>Getting the blocks…</PanelNote>}>
-          <BlocksTab />
+          <BlocksTab own={my.blocks} onSave={my.saveBlock} onRemove={my.removeBlock} />
         </Suspense>
       </FeaturePanel>
     );

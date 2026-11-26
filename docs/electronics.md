@@ -150,6 +150,12 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   it has one, packed close where not. Parked clusters and fully picked groups show their name in an outline
   (`boardGroups`). Pick the group (board inspector, or Ctrl+G on the board) picks a group's footprints, and turning
   several parts turns them round their middle so the group keeps its shape.
+- **Your own blocks (#772).** Save as block on a picked group (`SaveBlock.tsx`) offers its nets as points
+  (`pointChoices`: ticked when they leave the group or are a supply) and saves an `OwnBlock` (`ownBlocks.ts`): a
+  `BlockSpec` with the parts it uses carried inside, so it places anywhere. Blocks live in Your library
+  (`myLibrary.ts`, one store for every panel), go to the account inside the pack as `blocks`, and export as
+  `.bcblock.json`. The group becomes a placed copy (`markAsBlock`); saving it again makes a new version. Not built:
+  Edit block on its own sheet.
 
 ## The rules check (#634)
 

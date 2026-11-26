@@ -3,7 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptyDesign, netlist } from "@bettercad/electronics";
 import { STARTER_BLOCKS } from "@bettercad/electronics/library/blocks";
-import { searchBlocks } from "./BlocksTab";
+import { buildBlock, placeBlock } from "@bettercad/electronics/blocks";
+import { blockFileText, blockFromGroup, pointChoices } from "@bettercad/electronics/ownBlocks";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { inflate, type LibraryPack } from "@bettercad/electronics";
+import BlocksTab, { searchBlocks } from "./BlocksTab";
 import { ComponentsCard } from "./Components";
 import { eui } from "./ui";
 
@@ -51,5 +56,38 @@ describe("the Blocks tab (#768)", () => {
     expect(screen.getByRole("tab", { name: "Blocks" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(screen.getByRole("tab", { name: "Parts" }));
     expect(screen.getByLabelText("Find a part")).toBeInTheDocument();
+  });
+
+  it("puts your own blocks on Your blocks, and opens one from a file (#772)", async () => {
+    const pack = JSON.parse(readFileSync(join(__dirname, "../../../packages/electronics/library/starter.json"), "utf8")) as LibraryPack;
+    const lookup = (id: string) => {
+      const p = pack.parts.find((x) => x.id === id);
+      return p && inflate(pack, p);
+    };
+    const d = placeBlock(
+      emptyDesign(),
+      "sh1",
+      buildBlock(
+        STARTER_BLOCKS.find((b) => b.id === "qwiic")!,
+        lookup,
+      ),
+      [0, 0],
+    ).design;
+    const g = d.sheets[0]!.groups![0]!;
+    const own = blockFromGroup(d, "sh1", g.id, { name: "Sensor plug", summary: "A socket for sensors.", points: pointChoices(d, "sh1", g.id) })!;
+    const saved = vi.fn();
+    const removed = vi.fn();
+    const { rerender } = render(<BlocksTab own={[]} onSave={saved} onRemove={removed} />);
+    const file = new File([blockFileText(own)], "sensor-plug.bcblock.json", { type: "application/json" });
+    await userEvent.upload(screen.getByLabelText("A BetterCad block file"), file);
+    expect(saved).toHaveBeenCalledWith(own);
+    expect(await screen.findByRole("status")).toHaveTextContent("Sensor plug is on Your blocks.");
+    rerender(<BlocksTab own={[own]} onSave={saved} onRemove={removed} />);
+    const shelf = screen.getByRole("region", { name: "Your blocks" });
+    await userEvent.click(within(shelf).getByRole("button", { name: /Sensor plug/ }));
+    expect(screen.getByText("Your own block, version 1.")).toBeInTheDocument();
+    expect(await screen.findByRole("img", { name: "Drawing of Sensor plug" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(removed).toHaveBeenCalledWith(own.spec.id);
   });
 });

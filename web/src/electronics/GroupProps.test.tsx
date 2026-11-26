@@ -57,4 +57,22 @@ describe("a block in the inspector (#768, #770)", () => {
     expect(netlist(s.design()).of.get(`${s.pico}:36`)).toBe("QW1.3V3");
     expect(screen.getByRole("status")).toHaveTextContent("4 of 4 points joined.");
   });
+
+  it("saves the block as your own, and the group becomes a copy of it (#772)", async () => {
+    localStorage.clear();
+    const s = setup();
+    await userEvent.click(await screen.findByRole("button", { name: "Save as block" }));
+    const form = screen.getByRole("form", { name: "Save as block" });
+    const name = within(form).getByRole("textbox", { name: "Name" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Sensor plug");
+    expect(within(form).getByRole("checkbox", { name: "SDA" })).toBeChecked();
+    expect(within(form).getByRole("combobox", { name: "What GND is" })).toHaveValue("ground");
+    await userEvent.click(within(form).getByRole("button", { name: "Save block" }));
+    expect(s.labels).toEqual(["Save as block"]);
+    expect(s.design().sheets[0]!.groups![0]).toMatchObject({ name: "Sensor plug", block: { version: 1, tag: "QW1" } });
+    const kept = JSON.parse(localStorage.getItem("bettercad.electronics.library")!) as { blocks: { spec: { name: string; shelf: string } }[] };
+    expect(kept.blocks.map((b) => b.spec)).toMatchObject([{ name: "Sensor plug", shelf: "Your blocks" }]);
+    expect(await screen.findByRole("button", { name: "Save a new version" })).toBeInTheDocument();
+  });
 });
