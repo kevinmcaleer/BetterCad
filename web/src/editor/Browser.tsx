@@ -127,6 +127,10 @@ export interface BrowserModel {
   electronics?: { parts: number; board: boolean; view: "schematic" | "pcb" | null };
 }
 
+/** Rows that keep a drawing open when picked: the drawings themselves and the electronics views, which open in its place. */
+const staysInDrawing = (id: string, m: BrowserModel) =>
+  id === ROW.drawings || id === ROW.electronics || id === ROW.schematic || id === ROW.pcb || !!m.drawings?.some((d) => d.id === id);
+
 const kindLabel = (k: JointFeature["kind"]) => JOINT_KINDS.find((x) => x.id === k)!.label;
 
 /** A folder's row id in a component (#171); the model's own folders keep the plain ids. */
@@ -506,6 +510,8 @@ export interface BrowserPanelProps {
   onCanvas?: (id: string, act: "hide" | "edit" | "rename" | "delete", name?: string) => void;
   /** Drawings (#555): make one, open one or its Sheet settings, rename or delete one. */
   onDrawing?: (act: "new" | "open" | "settings" | "rename" | "delete" | "everyPart" | "fromSketches", id?: string, name?: string) => void;
+  /** A model row picked while a drawing's sheet is open: the drawing closes for the 3D view. */
+  onLeaveDrawing?: () => void;
   /** Opens the schematic or the board (#617). */
   onElectronics?: (view: "schematic" | "pcb") => void;
   /** Named views (#40): look from one ("home", "front", "side", "top" or a saved view's id), save, update, rename or delete one, set or reset home. */
@@ -535,6 +541,9 @@ export function BrowserPanel(p: BrowserPanelProps) {
 
   const select = (ids: string[]) => {
     const tail = ids[ids.length - 1];
+    // A drawing's sheet is open: picking anything of the model's goes back to the 3D view to show it. Drawings and the
+    // electronics views open in its place instead.
+    if (model.drawing && tail && !staysInDrawing(tail, model)) p.onLeaveDrawing?.();
     if (tail && p.onRowPick?.(tail)) return;
     const r = browserPick(ids, model);
     setOther(r.other);

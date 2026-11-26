@@ -257,7 +257,7 @@ describe("a dimension on the sheet", () => {
 
 describe("Dimension on the bar and the Drawing tab", () => {
   it("is a button on both, lit while the tool is armed", async () => {
-    const p = { onSettings: vi.fn(), onFit: vi.fn(), onFinish: vi.fn(), onDimension: vi.fn() };
+    const p = { onSettings: vi.fn(), onFit: vi.fn(), onDimension: vi.fn() };
     const { unmount } = render(<DrawingRibbon {...p} dimension />);
     const button = within(screen.getByRole("group", { name: "Dimensions" })).getByRole("button", { name: /^Dimension/ });
     expect(button.getAttribute("aria-pressed")).toBe("true");

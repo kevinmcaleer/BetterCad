@@ -33,7 +33,10 @@ test("make a drawing from the sketches, a page each with their sizes", async ({ 
   await expect(page.getByRole("button", { name: "Dimension, 20 mm" })).toBeVisible();
 
   // Run again from the model: the sketch has its page, so nothing is added.
-  await page.getByRole("button", { name: "Finish drawing" }).click();
+  await page
+    .getByRole("toolbar", { name: "Model tools" })
+    .getByRole("button", { name: /^Select/ })
+    .click();
   await runCommand(page, "Drawing from sketches");
   await expect(page.getByRole("status").filter({ hasText: "Every sketch already has a page." })).toBeVisible();
 });
