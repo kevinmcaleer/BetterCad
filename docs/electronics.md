@@ -454,6 +454,15 @@ Left for later: an outline from a face or a DXF file (there is no DXF
 import yet), spokes per pad, gate swapping and pictures
 on the silkscreen.
 
+**Teardrops** (#743). Board setup has **Teardrops**, off unless you tick it (`Board.teardrops`). Like pours they
+are never stored: `teardrops` in `pcb/teardrops.ts` works them out from the board each time. Where a track ends on
+a pad or a via of its own net and layer that is wider than the track, and its first piece runs straight for at least
+the pad's width beyond its middle, a four-cornered flare runs from the track's width out to 80% of the pad's narrower
+side. One that would come closer to another net's copper than the clearance is left out, so teardrops never fail the
+board check. The canvas paints them with the tracks and the copper files fill them as regions. They go to KiCad as
+KiCad's own teardrop zones (`attr teardrop`, filled), and coming in, a teardrop zone, or a via or pad with KiCad 8's
+`teardrops` set to enabled, turns the setting on.
+
 **Dragging corners** (#742). The one picked track shows its bends as small squares, and a picked pour, keep-out or
 cut-out shows its corners (`handlesOf` and `handleAt` in `hitBoard.ts`). A bend drags (`moveTrackCorner` in
 `pcb/corners.ts`); a track's ends stay on their pads and vias, and a piece either side that would run at an odd angle
@@ -760,7 +769,7 @@ may be too old to open them, so their nets are held to the ones it finds in its 
 that were changed between versions (parts numbered again, a pin moved) are held only to their own boards. All of
 them pass. What the newer files needed: a name written with a word in braces ("VPP{slash}MCLR") is the net
 "VPP/MCLR"; KiCad 10's board names each net where it is used and keeps no table of them; teardrops, which are zones
-in the file, are left out and said; and a stub of track on a pin that joins nothing is left out and said. A supply
+in the file, turn the board's teardrop setting on instead of coming in as copper (#743); and a stub of track on a pin that joins nothing is left out and said. A supply
 pin that is not drawn joins the net with its name in every version, KiCad 10 included.
 
 ## In from Eagle and Fusion Electronics (#665)

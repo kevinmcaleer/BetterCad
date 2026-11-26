@@ -22,7 +22,8 @@ import {
   type SymbolDef,
 } from "../model";
 import { byRef, netlist, type Netlist } from "../nets";
-import { netRules } from "../pcb/copper";
+import { copperOf, netRules } from "../pcb/copper";
+import { teardrops } from "../pcb/teardrops";
 import { SPOKE, THERMAL_GAP } from "../pcb/pour";
 import { markPad } from "../pcb/marks";
 import { layersOf, viaKind, viaLayers } from "../pcb/stack";
@@ -732,6 +733,27 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       ["filled_areas_thickness", "no"],
       ["fill", ["thermal_gap", n(THERMAL_GAP)], ["thermal_bridge_width", n(SPOKE)]],
       ["polygon", ["pts", ...p.outline.map((q) => ["xy", ...at(q)])]],
+    ]);
+  }
+  // Teardrops (#743) go as KiCad's own teardrop zones, filled, so KiCad keeps them as teardrops.
+  for (const [i, t] of teardrops(d, pads, copperOf(d, pads)).entries()) {
+    const pts: Node[] = ["pts", ...t.pts.map((q) => ["xy", ...at(q)])];
+    out.push([
+      "zone",
+      net(t.net),
+      ["net_name", s(t.net)],
+      ["layer", s(copperLayer(t.layer))],
+      ["tstamp", uuidOf(`teardrop:${i}`)],
+      ["name", s("$teardrop_padvia$")],
+      ["hatch", "full", "0.1"],
+      ["priority", "30000"],
+      ["attr", ["teardrop", ["type", "padvia"]]],
+      ["connect_pads", "yes", ["clearance", "0"]],
+      ["min_thickness", "0.0254"],
+      ["filled_areas_thickness", "no"],
+      ["fill", "yes", ["thermal_gap", "0.5"], ["thermal_bridge_width", "0.5"]],
+      ["polygon", pts],
+      ["filled_polygon", ["layer", s(copperLayer(t.layer))], pts],
     ]);
   }
   if (board.pours.length) notes.push("Pours went across as zone outlines. In KiCad's board editor, choose Edit, Fill all zones to fill them.");

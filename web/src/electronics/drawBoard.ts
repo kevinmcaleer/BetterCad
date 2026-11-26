@@ -89,6 +89,8 @@ export interface BoardLook {
   pourAlpha?: number;
   /** Two points being measured between (#732). */
   measure?: P2[];
+  /** Teardrops where tracks meet pads and vias (#743), worked out like pours. */
+  teardrops?: { net: string; layer: CopperLayer; pts: P2[] }[];
   /** Corners of the picked track or area that drag (#742), and the one picked. */
   handles?: { pts: P2[]; picked?: number };
 }
@@ -344,6 +346,14 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       ctx.lineWidth = Math.max(1, t.width * v.scale);
       path(ctx, v, t.pts);
       ctx.stroke();
+    }
+    for (const t of look.teardrops ?? []) {
+      if (t.layer !== layer) continue;
+      ctx.globalAlpha = lit(t.net) ? (near ? 1 : FAR_ALPHA) : 0.2;
+      ctx.fillStyle = (look.net === t.net && netColour(t.net)) || copper(layer);
+      path(ctx, v, t.pts);
+      ctx.closePath();
+      ctx.fill();
     }
     for (const p of look.pads) {
       if (p.pad.kind !== "smd" || p.side !== layer) continue;

@@ -97,6 +97,10 @@ describe("board setup", () => {
     expect(s.design().board!.viaMask).toBe("open");
     await userEvent.selectOptions(screen.getByLabelText("Vias"), "Covered by the mask");
     expect(s.design().board!.viaMask).toBeUndefined();
+    await userEvent.click(screen.getByLabelText("Teardrops"));
+    expect(s.design().board!.teardrops).toBe(true);
+    await userEvent.click(screen.getByLabelText("Teardrops"));
+    expect(s.design().board!.teardrops).toBeUndefined();
     expect(s.labels).toContain("Change the board's size");
   });
 

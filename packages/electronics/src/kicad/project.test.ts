@@ -161,10 +161,17 @@ describe("opening a KiCad project", () => {
       expect(copper(got.design).filter(Boolean).length).toBeGreaterThan(20);
     });
 
-    it("leaves out teardrops, and says so (KiCad 8)", () => {
+    it("turns teardrop zones into the board's teardrop setting (#743)", () => {
       const got = importKicadProject(withBoard((pcb) => pcb.replace(/^\t\(zone\n/m, "\t(zone\n\t\t(attr (teardrop (type padvia)))\n")));
       expect(got.design.board!.pours).toHaveLength(plain.design.board!.pours.length - 1);
-      expect(got.notes.map((n) => n.why)).toContain("Left out: 1 teardrops, the copper KiCad adds where a track meets a pad");
+      expect(got.design.board!.teardrops).toBe(true);
+      expect(plain.design.board!.teardrops).toBeUndefined();
+      expect(got.notes.map((n) => n.why).join("\n")).not.toMatch(/teardrop/);
+    });
+
+    it("takes the teardrop setting from KiCad 8's vias", () => {
+      const got = importKicadProject(withBoard((pcb) => pcb.replace(/^\t\(via\n/m, "\t(via\n\t\t(teardrops (best_length_ratio 0.5) (enabled yes))\n")));
+      expect(got.design.board!.teardrops).toBe(true);
     });
 
     it("leaves out a stub of track on a pin that joins nothing, and says so", () => {

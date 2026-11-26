@@ -20,6 +20,7 @@ import { layersOf } from "@bettercad/electronics/pcb/stack";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
 import { addMark } from "@bettercad/electronics/pcb/marks";
+import { teardrops } from "@bettercad/electronics/pcb/teardrops";
 import { slideTrack } from "@bettercad/electronics/pcb/slide";
 import { addCutout, addKeepoutArea, addPour, pourShape, removeAreas, wholeBoard } from "@bettercad/electronics/pcb/pour";
 import {
@@ -192,6 +193,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
   const nl = useMemo(() => netlist(design), [design]);
   const state = useMemo(() => boardState(design, nl), [design, nl]);
   const { pads, copper } = state;
+  const drops = useMemo(() => teardrops(design, pads, copper), [design, pads, copper]);
   const pours = useMemo(() => state.fills.map((fill) => ({ fill, shape: pourShape(design, fill.pour, pads, copper) })), [state]); // eslint-disable-line react-hooks/exhaustive-deps
   const nets = useMemo(() => [...new Set(pads.map((p) => p.net).filter(Boolean))].sort(), [pads]);
   const fillNet = nets.includes(pourNet) ? pourNet : (nets.find((n) => /^(gnd|ground|0v|vss)$/i.test(n)) ?? nets[0] ?? "");
@@ -759,6 +761,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
             pourOutlines: ui.pourOutlines,
             measure: measuring,
             handles,
+            teardrops: drops,
           })
         }
         onDown={onDown}

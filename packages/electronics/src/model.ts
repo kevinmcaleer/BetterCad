@@ -486,6 +486,8 @@ export interface Board {
   silk?: "white" | "black";
   /** Whether vias are under the mask (#736). None: covered. */
   viaMask?: ViaMask;
+  /** Teardrops where tracks meet pads and vias (#743), worked out each time like pours. */
+  teardrops?: boolean;
   /** Fiducials and test points (#735). */
   marks?: BoardMark[];
   /** How a net looks on the board (#740), by its name: a colour for its unrouted lines and when it is lit. */

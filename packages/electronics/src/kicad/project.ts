@@ -581,6 +581,9 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
   }
   if (arcs) notes.push({ name: "Board", why: `${arcs} curved ${arcs === 1 ? "track" : "tracks"} came in as short straight pieces` });
   board.tracks.push(...joinRuns(runs.values()));
+  // KiCad 8 and later keep teardrops as a setting on each via and pad, too.
+  const drops = (n: Node[]) => text(child(child(n, "teardrops"), "enabled"), 1) === "yes";
+  if (children(tree, "via").some(drops) || fps.some((f) => children(f, "pad").some(drops))) board.teardrops = true;
   for (const v of children(tree, "via")) {
     const layers = (child(v, "layers") ?? []).slice(1).map(String);
     const ends = [copperOf(layers[0] ?? "", inner), copperOf(layers[layers.length - 1] ?? "", inner)];
@@ -619,9 +622,10 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       });
       continue;
     }
-    // A teardrop is a zone KiCad 8 and later draw where a track meets a pad. It joins nothing new, so it is left out.
+    // A teardrop is a zone KiCad draws where a track meets a pad. Here teardrops are worked out each time (#743), so
+    // the zone turns the board's setting on instead of coming in as copper.
     if (child(child(z, "attr"), "teardrop")) {
-      dropped.add("teardrops, the copper KiCad adds where a track meets a pad");
+      board.teardrops = true;
       continue;
     }
     const pads = child(z, "connect_pads");
