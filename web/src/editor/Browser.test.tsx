@@ -1004,10 +1004,10 @@ describe("electronics", () => {
     expect(browserItems(model()).some((i) => i.id === ROW.electronics)).toBe(false);
   });
 
-  it("double-click or the menu opens a view, in a view-only model too", async () => {
+  it("a click or the menu opens a view, in a view-only model too", async () => {
     const p = props();
     render(<BrowserPanel model={model({ electronics: { parts: 2, board: true, view: null }, readOnly: true })} {...p} />);
-    await userEvent.dblClick(screen.getByRole("button", { name: /^Schematic/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Schematic/ }));
     expect(p.onElectronics).toHaveBeenLastCalledWith("schematic");
     fireEvent.contextMenu(row(/^PCB/));
     await userEvent.click(screen.getByRole("menuitem", { name: "Open the PCB" }));
@@ -1016,6 +1016,37 @@ describe("electronics", () => {
 });
 
 describe("drawings", () => {
+  it("Enter opens one, a shift-click only selects it, and F2 renames it", async () => {
+    const onDrawing = vi.fn();
+    const onRename = vi.fn();
+    const Host = () => {
+      const [renameId, setRenameId] = useState<string | null>(null);
+      return (
+        <BrowserPanel
+          model={model({ drawings: [{ id: "dr1", name: "Drawing 1" }], drawing: null })}
+          {...props()}
+          onDrawing={onDrawing}
+          onRename={onRename}
+          renameId={renameId}
+          onRenameIdChange={setRenameId}
+        />
+      );
+    };
+    render(<Host />);
+    const name = screen.getByRole("button", { name: /^Drawing 1/ });
+    fireEvent.click(name, { shiftKey: true });
+    expect(onDrawing).not.toHaveBeenCalled();
+    name.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onDrawing).toHaveBeenLastCalledWith("open", "dr1");
+    onDrawing.mockClear();
+    await userEvent.keyboard("{F2}");
+    const box = screen.getByRole("textbox");
+    await userEvent.clear(box);
+    await userEvent.type(box, "Front{Enter}");
+    expect(onDrawing).toHaveBeenLastCalledWith("rename", "dr1", "Front");
+  });
+
   const drs = { drawings: [{ id: "dr1", name: "Drawing 1" }], drawing: "dr1" };
   const props = () => ({
     selection: [],
@@ -1056,10 +1087,11 @@ describe("drawings", () => {
     expect(browserItems(model(drs)).find((i) => i.id === "dr1")?.warning).toBeUndefined();
   });
 
-  it("double-click opens one, and the menu opens, sets up, renames and deletes", async () => {
+  it("a click opens one, and the menu opens, sets up, renames and deletes", async () => {
     const p = props();
     render(<BrowserPanel model={model(drs)} {...p} />);
-    await userEvent.dblClick(screen.getByRole("button", { name: /^Drawing 1/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Drawing 1/ }));
+    expect(p.onDrawing).toHaveBeenCalledTimes(1);
     expect(p.onDrawing).toHaveBeenLastCalledWith("open", "dr1");
     fireEvent.contextMenu(row(/^Drawing 1/));
     expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Open", "Sheet settings", "RenameF2", "Delete"]);

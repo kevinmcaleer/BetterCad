@@ -104,7 +104,7 @@ test("double-click a size on a drawing to edit the sketch dimension that sets it
   await expect(page.getByText("Finished Sketch 1").first()).toBeVisible();
 
   // Back on the drawing, the size has followed the model.
-  await page.getByRole("treeitem", { name: /^Drawing 1/ }).dblclick();
+  await page.getByRole("treeitem", { name: /^Drawing 1/ }).click();
   await expect(sheet).toBeVisible();
   await expect(page.getByRole("button", { name: "Dimension, 36 mm" })).toBeVisible({ timeout: 30_000 });
 

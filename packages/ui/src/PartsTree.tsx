@@ -39,6 +39,8 @@ export interface TreeItem {
   move?: boolean;
   /** Rows marked `move` can be dropped onto it: a component (#334). */
   into?: boolean;
+  /** A plain click (or Enter) opens it with `onOpen`, as a drawing or a board does; rename it from its menu or with F2. */
+  openOnClick?: boolean;
 }
 
 export interface PartsTreeProps {
@@ -60,7 +62,7 @@ export interface PartsTreeProps {
   /** Controls which row is being renamed inline (F2 from a menu or the palette). Leave out to let the tree own it. */
   renameId?: string | null;
   onRenameIdChange?: (id: string | null) => void;
-  /** Double-click: opens the row to edit it (a section analysis), returning true, in place of renaming it. */
+  /** Double-click (a plain click on `openOnClick` rows): opens the row to edit it (a section analysis), returning true, in place of renaming it. */
   onOpen?: (id: string) => boolean;
 }
 
@@ -182,6 +184,7 @@ export function PartsTree({
         break;
       case "Enter":
         click(item.id, { shiftKey: e.shiftKey, ctrlKey: false, metaKey: false });
+        if (item.openOnClick && !e.shiftKey) onOpen?.(item.id);
         break;
       case " ":
         click(item.id, { shiftKey: false, ctrlKey: true, metaKey: false });
@@ -301,8 +304,11 @@ export function PartsTree({
                 type="button"
                 className="bc-row-name"
                 tabIndex={item.id === current ? 0 : -1}
-                onClick={(e) => click(item.id, e)}
-                onDoubleClick={() => !onOpen?.(item.id) && renamable(item) && setRenaming(item.id)}
+                onClick={(e) => {
+                  click(item.id, e);
+                  if (item.openOnClick && !e.shiftKey && !e.ctrlKey && !e.metaKey) onOpen?.(item.id);
+                }}
+                onDoubleClick={() => !item.openOnClick && !onOpen?.(item.id) && renamable(item) && setRenaming(item.id)}
                 onKeyDown={(e) => onKeyDown(e, item)}
                 onFocus={() => setFocusId(item.id)}
               >
