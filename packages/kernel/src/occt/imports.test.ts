@@ -186,7 +186,8 @@ describe("imports (#82)", () => {
     );
     expect(step).toEqual([...step].sort((a, b) => a - b));
     expect(step.at(-1)).toBeGreaterThanOrEqual(0.9);
-  });
+    // Meshing 6,000 triangles and reading a STEP file take about 2 s alone, and past vitest's 5 s on a busy CI runner.
+  }, 30_000);
 
   it("counts a mesh's faces each once, however many there are", () => {
     // 500 cubes in a row, none touching: more than one shell, so each of the 6,000 triangles stays its own face.
