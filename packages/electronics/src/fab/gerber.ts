@@ -6,6 +6,7 @@ import { copperOf, type Copper, type Solid } from "../pcb/copper";
 import { pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
 import { penFor, textStrokes, REF_SIZE } from "./font";
 import { pictureRects } from "../pcb/picture";
+import { teardrops } from "../pcb/teardrops";
 import { layerName, layersOf, viaLayers, viaOpen } from "../pcb/stack";
 
 /**
@@ -429,6 +430,12 @@ function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads:
     if (t.layer !== side) continue;
     w.attr(".N", field(t.net));
     w.line(w.circle(t.width, "Conductor"), t.pts);
+  }
+  // Teardrops (#743): filled flares where tracks meet pads and vias.
+  for (const t of teardrops(d, pads, copper)) {
+    if (t.layer !== side) continue;
+    w.attr(".N", field(t.net));
+    w.region(t.pts);
   }
   for (const s of board.shapes) if (s.layer === `copper-${side}`) drawShape(w, s, (p) => p, 0, side === "bottom", 0, "NonConductor");
   for (const t of board.texts) {

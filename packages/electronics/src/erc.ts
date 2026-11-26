@@ -1,4 +1,4 @@
-import { isPower, type CheckLevel, type ElectronicsDesign, type Id, type P2, type PinType } from "./model";
+import { PIN_TYPES, isPower, type CheckLevel, type ElectronicsDesign, type Id, type P2, type PinType } from "./model";
 import { byRef, netAt, netlist, type NetPin, type Netlist } from "./nets";
 import { isJoined, pointsJoined, voltRange, voltsOf } from "./points";
 
@@ -10,6 +10,7 @@ export type RuleId =
   | "pin-open"
   | "wire-open"
   | "output-clash"
+  | "pin-conflict"
   | "input-undriven"
   | "power-undriven"
   | "net-one-pin"
@@ -32,6 +33,7 @@ export interface Rule {
 export const RULES: Rule[] = [
   { id: "pin-open", label: "A pin is not connected", level: "error" },
   { id: "output-clash", label: "Two outputs drive one net", level: "error" },
+  { id: "pin-conflict", label: "Pins that should not meet share a net", level: "error" },
   { id: "input-undriven", label: "An input has nothing driving it", level: "error" },
   { id: "ref-duplicate", label: "Two parts share a name", level: "error" },
   { id: "no-footprint", label: "A part has no footprint", level: "error" },
@@ -68,6 +70,72 @@ export interface CheckResult<R extends string = RuleId> {
 
 export const levelOf = (d: ElectronicsDesign, rule: { id: string; level: CheckLevel }): CheckLevel => d.checks?.levels?.[rule.id] ?? rule.level;
 
+/** What two kinds of pin on one net come to (#738): fine, worth a look, or wrong. */
+export type PinMeet = "ok" | "warning" | "error";
+
+const pinPair = (a: PinType, b: PinType): string => {
+  const order = PIN_TYPES.map((t) => t.id);
+  return order.indexOf(a) <= order.indexOf(b) ? `${a}|${b}` : `${b}|${a}`;
+};
+
+const DRIVERS: PinType[] = ["output", "power_out"];
+/**
+ * Which pin types may meet, as KiCad's default table has it: two outputs fight, an output on a three-state or open
+ * pin fights it, a pin marked not connected must join nothing, and a pin of no set type is worth a look whatever it
+ * meets. Everything else is fine.
+ */
+export const PIN_MEETS: Record<string, PinMeet> = (() => {
+  const out: Record<string, PinMeet> = {};
+  for (const a of DRIVERS) for (const b of [...DRIVERS, "tristate", "open_collector", "open_emitter"] as PinType[]) out[pinPair(a, b)] = "error";
+  for (const a of DRIVERS) out[pinPair(a, "bidirectional")] = "warning";
+  out[pinPair("open_collector", "open_emitter")] = "warning";
+  for (const t of PIN_TYPES) out[pinPair("unspecified", t.id)] = "warning";
+  for (const t of PIN_TYPES) out[pinPair("no_connect", t.id)] = "error";
+  return out;
+})();
+
+/** What two pin types meeting comes to in this design: its own table where it differs, else the default. */
+export const pinMeet = (d: ElectronicsDesign, a: PinType, b: PinType): PinMeet => {
+  const k = pinPair(a, b);
+  return d.checks?.pins?.[k] ?? PIN_MEETS[k] ?? "ok";
+};
+
+/** Changes what two pin types meeting comes to; the default takes the change back out. */
+export function setPinMeet(d: ElectronicsDesign, a: PinType, b: PinType, meet: PinMeet): ElectronicsDesign {
+  const k = pinPair(a, b);
+  const pins = { ...d.checks?.pins };
+  if ((PIN_MEETS[k] ?? "ok") === meet) delete pins[k];
+  else pins[k] = meet;
+  const checks: NonNullable<ElectronicsDesign["checks"]> = { ...d.checks, pins };
+  if (!Object.keys(pins).length) delete checks.pins;
+  return { ...d, checks };
+}
+
+/** Puts the pin table back as it came. */
+export function resetPinMeets(d: ElectronicsDesign): ElectronicsDesign {
+  if (!d.checks?.pins) return d;
+  const checks = { ...d.checks };
+  delete checks.pins;
+  return { ...d, checks };
+}
+
+/** A pin type as the check's sentences say it. */
+const KIND: Record<PinType, string> = {
+  input: "an input",
+  output: "an output",
+  bidirectional: "in and out",
+  tristate: "three-state",
+  passive: "passive",
+  power_in: "a power input",
+  power_out: "a power output",
+  open_collector: "open collector",
+  open_emitter: "open emitter",
+  unspecified: "of no set type",
+  no_connect: "marked not connected",
+};
+
+const worse = (a: PinMeet, b: PinMeet): PinMeet => (a === "error" || b === "error" ? "error" : a === "warning" || b === "warning" ? "warning" : "ok");
+
 const pinName = (p: NetPin): string => (p.name && p.name !== p.pin && p.name !== "~" ? `${p.ref} pin ${p.pin} (${p.name})` : `${p.ref} pin ${p.pin}`);
 const DRIVES = new Set<PinType>(["output", "bidirectional", "tristate", "passive", "power_out", "open_collector", "open_emitter", "unspecified"]);
 const pinsKey = (pins: NetPin[]): string => pins.map((p) => `${p.ref}.${p.pin}`).join(",");
@@ -76,9 +144,11 @@ const pinsKey = (pins: NetPin[]): string => pins.map((p) => `${p.ref}.${p.pin}`)
 export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResult[] {
   const out: CheckResult[] = [];
   const level = new Map(RULES.map((r) => [r.id, levelOf(d, r)]));
-  const add = (rule: RuleId, key: string, text: string, fix: string, where: { sheet?: Id; at?: P2; parts?: Id[] } = {}) => {
-    const l = level.get(rule);
-    if (!l || l === "ignore") return;
+  const add = (rule: RuleId, key: string, text: string, fix: string, where: { sheet?: Id; at?: P2; parts?: Id[] } = {}, meet?: PinMeet) => {
+    const set = level.get(rule);
+    if (!set || set === "ignore" || meet === "ok") return;
+    // A rule set by the pin table (#738) takes its level from the table, unless the rule itself was turned down.
+    const l = meet && !d.checks?.levels?.[rule] ? meet : set;
     const k = `${rule}:${key}`;
     const waived = d.checks?.waived?.[k];
     out.push({
@@ -108,6 +178,20 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
   // the reference design does it. Only nets scoped to the block ("MD1.VINT") are trusted this way.
   const tags = new Set(d.sheets.flatMap((s) => (s.groups ?? []).flatMap((g) => (g.block ? [g.block.tag] : []))));
   const insideBlock = (net: string) => tags.has(net.slice(0, net.indexOf(".")));
+  // A block ties some of its pins to ground because its datasheet says so (a motor driver's sense pins): on the ground
+  // net, a block's pin is only worth a warning if it would be wrong anyway.
+  const blockParts = new Set<Id>();
+  const grounds = new Set<string>();
+  for (const sheet of d.sheets)
+    for (const g of sheet.groups ?? []) {
+      if (!g.block) continue;
+      for (const y of sheet.symbols) if (g.members.includes(y.id)) blockParts.add(y.part);
+      for (const p of g.block.points) {
+        const l = p.kind === "ground" && sheet.labels.find((x) => x.id === p.label);
+        const name = l && netAt(nl, sheet.id, [l.x, l.y]);
+        if (name) grounds.add(name);
+      }
+    }
 
   for (const p of nl.floating)
     add(
@@ -128,7 +212,9 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
         at: end.at,
       });
 
-    const outs = net.pins.filter((p) => p.type === "output" || p.type === "power_out");
+    const outs = net.pins.filter((p) => DRIVERS.includes(p.type));
+    let clash: PinMeet = "ok";
+    for (let i = 0; i < outs.length; i += 1) for (let j = i + 1; j < outs.length; j += 1) clash = worse(clash, pinMeet(d, outs[i]!.type, outs[j]!.type));
     if (outs.length > 1)
       add(
         "output-clash",
@@ -139,7 +225,41 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
           ...at(outs[0]!),
           parts: [...new Set(outs.map((p) => p.part))],
         },
+        clash,
       );
+
+    // Every other pair of pin types the table has something to say about, once a pair of types on a net (#738).
+    const byType = new Map<PinType, NetPin>();
+    for (const p of net.pins) if (!byType.has(p.type)) byType.set(p.type, p);
+    const order = PIN_TYPES.map((t) => t.id);
+    const kinds = [...byType.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    for (let i = 0; i < kinds.length; i += 1)
+      for (let j = i; j < kinds.length; j += 1) {
+        const a = kinds[i]!;
+        const b = kinds[j]!;
+        if (DRIVERS.includes(a) && DRIVERS.includes(b)) continue;
+        // Two pins of one type meet only when there are two of them.
+        const pa = byType.get(a)!;
+        const pb = a === b ? net.pins.find((p) => p.type === a && p !== pa) : byType.get(b)!;
+        if (!pb) continue;
+        const meet = pinMeet(d, a, b);
+        if (meet === "ok") continue;
+        if (meet === "warning" && grounds.has(net.name) && (blockParts.has(pa.part) || blockParts.has(pb.part))) continue;
+        add(
+          "pin-conflict",
+          `${pinPair(a, b)}|${k}`,
+          a === b
+            ? `On ${net.name}, ${pinName(pa)} and ${pinName(pb)} are both ${KIND[a]}.`
+            : `On ${net.name}, ${pinName(pa)} is ${KIND[a]} and ${pinName(pb)} is ${KIND[b]}.`,
+          a === "no_connect" || b === "no_connect"
+            ? "A pin marked not connected must join nothing. Take its wire off, or check the pin's type."
+            : a === "unspecified" || b === "unspecified"
+              ? "Set the pin's type in the part, so the check knows what it does."
+              : "Check the pins' types, or change what the pin table says about them.",
+          { ...at(pa), parts: [...new Set([pa.part, pb.part])] },
+          meet,
+        );
+      }
 
     const outside = open.has(net.name) || insideBlock(net.name);
     const driven = outside || net.power.length > 0 || net.pins.some((p) => DRIVES.has(p.type));

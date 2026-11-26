@@ -92,6 +92,10 @@ export interface BoardLook {
   groups?: { id: string; name: string; box: Box; picked: boolean }[];
   /** Two points being measured between (#732). */
   measure?: P2[];
+  /** Teardrops where tracks meet pads and vias (#743), worked out like pours. */
+  teardrops?: { net: string; layer: CopperLayer; pts: P2[] }[];
+  /** Corners of the picked track or area that drag (#742), and the one picked. */
+  handles?: { pts: P2[]; picked?: number };
 }
 
 /**
@@ -346,6 +350,14 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       path(ctx, v, t.pts);
       ctx.stroke();
     }
+    for (const t of look.teardrops ?? []) {
+      if (t.layer !== layer) continue;
+      ctx.globalAlpha = lit(t.net) ? (near ? 1 : FAR_ALPHA) : 0.2;
+      ctx.fillStyle = (look.net === t.net && netColour(t.net)) || copper(layer);
+      path(ctx, v, t.pts);
+      ctx.closePath();
+      ctx.fill();
+    }
     for (const p of look.pads) {
       if (p.pad.kind !== "smd" || p.side !== layer) continue;
       ctx.globalAlpha = lit(p.net) ? (near ? 1 : 0.6) : 0.3;
@@ -411,6 +423,24 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       }
     }
     ctx.globalAlpha = 1;
+    // Fiducials and test points (#735) are drawn as pads; a fiducial shows its clear ring, and a picked one its outline.
+    for (const m of board.marks ?? []) {
+      const s = toScreen(v, [m.x, m.y]);
+      if (m.kind === "fiducial") {
+        ctx.strokeStyle = c["ec-pad"];
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], m.size * v.scale, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (look.selected.has(m.id) || look.hover === m.id) {
+        ctx.strokeStyle = c["ec-pick"];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], (m.kind === "fiducial" ? m.size : m.size / 2) * v.scale + 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
   }
 
   // Parts: silkscreen, outline and reference.
@@ -592,6 +622,16 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
   const gc = { ...c, accent: c["ec-pick"], muted: c["ec-pcb-ink"] };
   for (const g of look.groups ?? []) drawGroup(ctx, v, g, gc, g.picked, false);
   if (look.measure?.length) drawMeasure(ctx, v, look.measure, c);
+  // Corners that drag (#742): small squares, the picked one filled.
+  if (look.handles)
+    for (const [i, p] of look.handles.pts.entries()) {
+      const s = toScreen(v, p);
+      ctx.fillStyle = i === look.handles.picked ? c["ec-pick"] : c["ec-pcb-bg"];
+      ctx.strokeStyle = c["ec-pick"];
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(s[0] - 4, s[1] - 4, 8, 8);
+      ctx.strokeRect(s[0] - 4, s[1] - 4, 8, 8);
+    }
   if (look.box) rubber(ctx, v, look.box, { ...c, accent: c["ec-pick"] });
 }
 

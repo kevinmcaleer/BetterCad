@@ -421,6 +421,25 @@ export interface BoardHole {
   pad?: number;
 }
 
+/**
+ * A fiducial or a test point (#735): a round copper pad of the board's own, with no part in the schematic. A
+ * fiducial is bare copper in a wide mask opening, for an assembly line's camera; a test point sits on a net, for a
+ * probe.
+ */
+export interface BoardMark {
+  id: Id;
+  kind: "fiducial" | "testpoint";
+  /** FID1, TP1: how the files and the pick and place list name it. */
+  ref: string;
+  x: number;
+  y: number;
+  side: Side;
+  /** The copper's diameter, mm. */
+  size: number;
+  /** The net a test point is on. */
+  net?: string;
+}
+
 export interface Keepout {
   id: Id;
   outline: P2[];
@@ -514,6 +533,10 @@ export interface Board {
   silk?: "white" | "black";
   /** Whether vias are under the mask (#736). None: covered. */
   viaMask?: ViaMask;
+  /** Teardrops where tracks meet pads and vias (#743), worked out each time like pours. */
+  teardrops?: boolean;
+  /** Fiducials and test points (#735). */
+  marks?: BoardMark[];
   /** How a net looks on the board (#740), by its name: a colour for its unrouted lines and when it is lit. */
   netLooks?: Record<string, NetLook>;
 }
@@ -537,7 +560,8 @@ export interface ElectronicsDesign {
   sheets: Sheet[];
   board?: Board;
   /** Rule levels changed from their defaults, and results waived with a note, by a result's stable key. */
-  checks?: { levels?: Record<string, CheckLevel>; waived?: Record<string, string> };
+  /** The rules checks' settings: each rule's level, waivers, and the pin table where it differs (#738). */
+  checks?: { levels?: Record<string, CheckLevel>; waived?: Record<string, string>; pins?: Record<string, "ok" | "warning" | "error"> };
 }
 
 export const emptySheet = (name = "Sheet 1"): Sheet => ({ id: eid("sh"), name, symbols: [], wires: [], junctions: [], labels: [], noConnects: [] });

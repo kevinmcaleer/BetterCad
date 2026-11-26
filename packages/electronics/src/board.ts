@@ -2,6 +2,7 @@ import { dist, placeOnBoard, q } from "./geom";
 import { packageOf, padsOfPin, type Board, type ElectronicsDesign, type Id, type P2, type Pad, type Side } from "./model";
 import { netlist, pinKey, type Netlist } from "./nets";
 import { outlinePoints } from "./outlineGeom";
+import { markPads } from "./pcb/marks";
 
 export { arcOf, area, outlinePoints, pointInPolygon } from "./outlineGeom";
 
@@ -48,6 +49,8 @@ export function boardPads(d: ElectronicsDesign, nl: Netlist = netlist(d)): Board
       });
     }
   }
+  // Fiducials and test points (#735) are pads of the board's own.
+  out.push(...markPads(d.board));
   return out;
 }
 

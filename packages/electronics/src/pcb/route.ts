@@ -189,9 +189,13 @@ export function outlineRadius(outline: Corner[]): number {
 /** Changes the board's make-up: its outline, thickness, colours. */
 export function setBoard(
   d: ElectronicsDesign,
-  change: Partial<Pick<Board, "outline" | "cutouts" | "thickness" | "mask" | "silk" | "viaMask" | "rules" | "classes">>,
+  change: Partial<Pick<Board, "outline" | "cutouts" | "thickness" | "mask" | "silk" | "viaMask" | "teardrops" | "rules" | "classes">>,
 ): ElectronicsDesign {
-  return onBoard(d, (b) => ({ ...b, ...change }));
+  return onBoard(d, (b) => {
+    const next = { ...b, ...change };
+    if (!next.teardrops) delete next.teardrops;
+    return next;
+  });
 }
 
 /** Sets where a part sits, how it is turned, its side, or whether it is locked. */

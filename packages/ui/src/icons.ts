@@ -133,6 +133,10 @@ export const route = "M4 19h5l6-6V6M15 6a2 2 0 1 0 .01 0M4 19a2 2 0 1 0 .01 0";
 export const clearRoutes = "M3 18h4l5-5V9M12 9a2 2 0 1 0 .01 0M3 18a2 2 0 1 0 .01 0M15 15l6 6M21 15l-6 6";
 export const via = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z";
 export const pushPcb = "M3 5h8v6H3zM13 13h8v6h-8zM7 11v4h6M10.5 12.5 13 15l-2.5 2.5";
+/** A fiducial: a copper dot in a clear ring, with the camera's cross hairs. */
+export const fiducial = "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 1v4M12 19v4M1 12h4M19 12h4";
+/** A test point: a probe coming down on a round pad. */
+export const testPoint = "M5 18a7 3 0 1 0 14 0 7 3 0 0 0-14 0zM12 15V3M9 6l3-3 3 3";
 export const pour = "M4 4h16v16H4zM4 12l8-8M8 20 20 8M14 20l6-6";
 export const keepOut = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM6 6l12 12";
 export const flipSide = "M12 3v18M8 7 4 12l4 5zM16 7l4 5-4 5";
@@ -312,6 +316,8 @@ export const ICONS = {
   split,
   ruler,
   calculator,
+  fiducial,
+  testPoint,
   sliders,
   settings,
   gear,

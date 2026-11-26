@@ -344,6 +344,12 @@ const DRAW: Record<string, () => string> = {
     hiLine("M13.5 13.5l6 6M19.5 13.5l-6 6", 2.2),
   via: () =>
     `<circle cx="12" cy="12" r="8.5" fill="${HI}" stroke="${EDGE}" stroke-width="1.2"/><circle cx="12" cy="12" r="3.4" fill="${HOLE}" stroke="${EDGE}" stroke-width="1"/>`,
+  // A fiducial: a copper dot in its clear ring, with the camera's cross hairs
+  fiducial: () =>
+    `<circle cx="12" cy="12" r="8" fill="none" stroke="${EDGE}" stroke-width="1.2"/><circle cx="12" cy="12" r="3.6" fill="${HI}" stroke="${EDGE}" stroke-width="1"/>` +
+    line("M12 1v4M12 19v4M1 12h4M19 12h4", EDGE, 1.4),
+  // A test point: a probe coming down on a round pad
+  testPoint: () => `<ellipse cx="12" cy="18" rx="7" ry="3" fill="${HI}" stroke="${EDGE}" stroke-width="1.1"/>` + line("M12 15V3M9 6l3-3 3 3", EDGE, 1.6),
   pushPcb: () =>
     `<rect x="2.5" y="3.5" width="9" height="7" fill="${TOP}" stroke="${EDGE}" stroke-width="1.1"/>` +
     `<rect x="12.5" y="13.5" width="9" height="7" rx="1" fill="${HI}" stroke="${EDGE}" stroke-width="1.1"/>` +

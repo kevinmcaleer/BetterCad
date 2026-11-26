@@ -1176,3 +1176,45 @@ button.bc-ec-pill {
   background: var(--bc-color-accent);
   color: var(--bc-color-on-accent);
 }
+/* The pin table (#738): which pin types may share a net, a cell to click for each pair. */
+.bc-ec-pins {
+  overflow-x: auto;
+}
+.bc-ec-pins table {
+  border-collapse: collapse;
+  font-size: var(--bc-type-small-size);
+}
+.bc-ec-pins th {
+  padding: var(--bc-space-1);
+  font-weight: 500;
+  color: var(--bc-color-muted);
+  white-space: nowrap;
+}
+.bc-ec-pins th[scope="row"] {
+  text-align: right;
+}
+.bc-ec-pins td {
+  padding: 0;
+}
+.bc-ec-pin-cell {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+  background: none;
+  color: var(--bc-color-muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bc-ec-pin-cell:hover {
+  background: var(--bc-color-rail);
+}
+.bc-ec-pin-warning {
+  background: var(--bc-color-warn-soft);
+  color: var(--bc-color-warn-ink);
+}
+.bc-ec-pin-error {
+  color: var(--bc-color-danger);
+  border-color: var(--bc-color-danger);
+}

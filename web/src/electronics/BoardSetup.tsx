@@ -302,6 +302,18 @@ export default function BoardSetup({
             <option value="open">Open</option>
           </select>
         </FeatureRow>
+        <FeatureRow label="Teardrops">
+          <label className="bc-ec-fitted" data-tip="Copper flares where tracks meet pads and vias, so a joint is never thin">
+            <input
+              type="checkbox"
+              aria-label="Teardrops"
+              checked={!!board.teardrops}
+              disabled={readOnly}
+              onChange={({ target: { checked } }) => edit((d) => setBoard(d, { teardrops: checked }), checked ? "Add teardrops" : "Take teardrops off")}
+            />
+            Where tracks meet pads
+          </label>
+        </FeatureRow>
         <FeatureRow label="Silkscreen">
           <select
             className="bc-select"

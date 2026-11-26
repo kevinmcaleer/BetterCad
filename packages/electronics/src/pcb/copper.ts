@@ -86,13 +86,15 @@ export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)):
   const board = d.board;
   if (!board) return [];
   const all = layersOf(board);
+  // A fiducial (#735) keeps copper out of its whole clear ring, so the camera sees bare board round the dot.
+  const fiducials = new Set((board.marks ?? []).filter((m) => m.kind === "fiducial").map((m) => m.id));
   const out: Copper[] = pads.map((p) => ({
-    ...padSolid(p),
+    ...(fiducials.has(p.part) ? { pts: [p.at], r: p.pad.w } : padSolid(p)),
     kind: "pad",
     net: p.net,
     layers: padLayers(p, all),
     id: p.part,
-    what: `${p.ref} pad ${p.pad.number}`,
+    what: fiducials.has(p.part) ? `fiducial ${p.ref}` : `${p.ref} pad ${p.pad.number}`,
     at: p.at,
   }));
   for (const t of board.tracks) {

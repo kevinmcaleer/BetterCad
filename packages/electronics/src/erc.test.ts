@@ -1,6 +1,6 @@
 import { GRID, header, power, resistor } from "./basics";
 import { addLabel, addWire, changePart, placePart } from "./edit";
-import { RULES, check, setLevel, tally, tallyText, waive } from "./erc";
+import { PIN_MEETS, RULES, check, pinMeet, resetPinMeets, setLevel, setPinMeet, tally, tallyText, waive } from "./erc";
 import { emptyDesign, type ComponentDef, type ElectronicsDesign, type PinType } from "./model";
 
 const G = GRID;
@@ -110,6 +110,29 @@ describe("electrical rules check", () => {
     d = addLabel(d, "sh1", "DATA", 0, 1.5 * G);
     d = addLabel(d, "sh1", "DATA", 10 * G, 1.5 * G);
     expect(found(d)).toEqual(["warning net-two-names: One net has two names: DATA and SDA."]);
+  });
+
+  it("finds pins that should not meet, by the pin table, which the design can change (#738)", () => {
+    const parts = [chip("Driver", [["Q", "output"]]), chip("Bus", [["OC", "open_collector"]])];
+    let x = fixture(parts, { "U1.1": "A", "U2.1": "A" });
+    expect(found(x)).toEqual(["error pin-conflict: On A, U1 pin 1 (Q) is an output and U2 pin 1 (OC) is open collector."]);
+    // Made a warning in the table, it is one; made fine, it goes.
+    x = setPinMeet(x, "open_collector", "output", "warning");
+    expect(x.checks?.pins).toEqual({ "output|open_collector": "warning" });
+    expect(found(x)).toEqual(["warning pin-conflict: On A, U1 pin 1 (Q) is an output and U2 pin 1 (OC) is open collector."]);
+    x = setPinMeet(x, "output", "open_collector", "ok");
+    expect(found(x)).toEqual([]);
+    // Setting the default takes the change out; Reset puts every cell back.
+    expect(setPinMeet(x, "output", "open_collector", "error").checks).not.toHaveProperty("pins");
+    expect(pinMeet(resetPinMeets(x), "output", "open_collector")).toBe("error");
+    // A pin of no set type is worth a look whatever it meets; one marked not connected must meet nothing.
+    const odd = fixture([chip("Odd", [["X", "unspecified"]]), resistor()], { "U1.1": "N", "R1.1": "N", "R1.2": "M" });
+    expect(found(odd)).toContain("warning pin-conflict: On N, R1 pin 1 is passive and U1 pin 1 (X) is of no set type.");
+    expect(PIN_MEETS["output|output"]).toBe("error");
+    expect(pinMeet(odd, "input", "passive")).toBe("ok");
+    // Two outputs still say so as they always have, at the table's level.
+    const two = fixture([chip("A", [["Q", "output"]]), chip("B", [["Q", "output"]])], { "U1.1": "N", "U2.1": "N" });
+    expect(found(setPinMeet(two, "output", "output", "warning"))).toEqual(["warning output-clash: U1 pin 1 (Q) and U2 pin 1 (Q) both drive N."]);
   });
 
   it("leaves alone a label that only names a net wired between pins", () => {

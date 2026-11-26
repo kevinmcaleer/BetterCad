@@ -27,7 +27,7 @@ export function textBox(t: Board["texts"][number]): Box {
 }
 
 export interface BoardHit {
-  kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area";
+  kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area" | "mark";
   /** A part's id for parts and pads; the thing's own id otherwise. */
   id: string;
   net?: string;
@@ -69,6 +69,8 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
   const out: BoardHit[] = [];
   for (const v of board.vias) if (Math.hypot(v.x - p[0], v.y - p[1]) <= v.diameter / 2 + tol) out.push({ kind: "via", id: v.id, net: v.net });
   for (const h of board.holes) if (Math.hypot(h.x - p[0], h.y - p[1]) <= Math.max(h.pad ?? 0, h.drill) / 2 + tol) out.push({ kind: "hole", id: h.id });
+  // A fiducial or test point is picked as itself, before the pad it is.
+  for (const m of board.marks ?? []) if (Math.hypot(m.x - p[0], m.y - p[1]) <= m.size / 2 + tol) out.push({ kind: "mark", id: m.id, net: m.net });
   for (const t of board.tracks) {
     if (!layerShown(t.layer)) continue;
     for (let i = 0; i + 1 < t.pts.length; i += 1)
@@ -97,7 +99,7 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
   return out;
 }
 
-/** Ids of the parts, tracks, vias and holes a rubber-band box touches. Parts come back by part id. */
+/** Ids of the parts, tracks, vias, holes and marks a rubber-band box touches. Parts come back by part id. */
 export function boxBoard(d: ElectronicsDesign, a: P2, b: P2): string[] {
   const board = d.board;
   if (!board) return [];
@@ -110,5 +112,29 @@ export function boxBoard(d: ElectronicsDesign, a: P2, b: P2): string[] {
   for (const t of board.tracks) if (t.pts.every((q) => inBox(q, box))) out.push(t.id);
   for (const v of board.vias) if (inBox([v.x, v.y], box)) out.push(v.id);
   for (const h of board.holes) if (inBox([h.x, h.y], box)) out.push(h.id);
+  for (const m of board.marks ?? []) if (inBox([m.x, m.y], box)) out.push(m.id);
   return out;
+}
+
+/**
+ * The corners a picked thing shows to drag (#742): a track's bends (its ends stay on their pads), or an area's
+ * corners. Nothing for anything else.
+ */
+export function handlesOf(board: Board, id: string): { kind: "track" | "area"; pts: P2[]; handles: number[] } | null {
+  const t = board.tracks.find((x) => x.id === id);
+  if (t) return { kind: "track", pts: t.pts, handles: t.pts.map((_, i) => i).slice(1, -1) };
+  const a = boardAreas(board).find((x) => x.id === id);
+  if (!a) return null;
+  const pts = a.kind === "cutout" ? (board.cutouts?.[Number(id.slice(4))] ?? []).map((c): P2 => [c.x, c.y]) : a.outline;
+  return { kind: "area", pts, handles: pts.map((_, i) => i) };
+}
+
+/** A corner of a picked thing under a point, or for an area a place on its edge to put a new one. */
+export function handleAt(board: Board, id: string, p: P2, tol: number): { i: number } | { edge: number; at: P2 } | null {
+  const h = handlesOf(board, id);
+  if (!h) return null;
+  for (const i of h.handles) if (Math.hypot(h.pts[i]![0] - p[0], h.pts[i]![1] - p[1]) <= tol) return { i };
+  if (h.kind === "area")
+    for (let k = 0; k < h.pts.length; k += 1) if (distToSegment(p, h.pts[k]!, h.pts[(k + 1) % h.pts.length]!) <= tol) return { edge: k, at: p };
+  return null;
 }

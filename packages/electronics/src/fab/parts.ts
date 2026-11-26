@@ -137,6 +137,21 @@ export function placeList(d: ElectronicsDesign, opts: { thru?: boolean } = {}): 
       mounting,
     });
   }
+  // Fiducials (#735) are in the pick and place list, so the line's camera knows where to look; they are on no parts
+  // list, as there is nothing to buy. Test points are bare pads with nothing to place.
+  for (const m of board.marks ?? [])
+    if (m.kind === "fiducial")
+      out.push({
+        part: m.id,
+        ref: m.ref,
+        value: "Fiducial",
+        footprint: `Fiducial_${round3(m.size)}mm`,
+        x: round3(m.x),
+        y: round3(m.y),
+        side: m.side,
+        rotation: 0,
+        mounting: "smd",
+      });
   return out.sort((a, b) => byRef(a.ref, b.ref));
 }
 

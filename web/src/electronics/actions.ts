@@ -18,7 +18,7 @@ export interface EActions {
   /** Lists what the board needs to match the schematic, in the change card. */
   push(): void;
   selectAll(): void;
-  /** Schematic only: the clipboard, and a copy set down beside the original. */
+  /** The clipboard, and a copy set down beside the original: on a sheet, and on the board (#741). */
   copy?(): void;
   paste?(): void;
   duplicate?(): void;
