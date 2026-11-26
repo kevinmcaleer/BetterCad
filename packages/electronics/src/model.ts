@@ -467,6 +467,17 @@ export interface Board {
   silk?: "white" | "black";
   /** Whether vias are under the mask (#736). None: covered. */
   viaMask?: ViaMask;
+  /** How a net looks on the board (#740), by its name: a colour for its unrouted lines and when it is lit. */
+  netLooks?: Record<string, NetLook>;
+}
+
+/** Colours a net can be given (#740), each drawn from the theme's own tokens. */
+export type NetColour = "green" | "orange" | "teal" | "pink" | "yellow" | "purple" | "blue";
+
+export interface NetLook {
+  colour?: NetColour;
+  /** Its unrouted lines are not drawn. They still count as left to route. */
+  hideAir?: true;
 }
 
 export type CheckLevel = "error" | "warning" | "ignore";

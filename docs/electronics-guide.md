@@ -73,7 +73,9 @@ schematic brings it up to date and lists the changes first.
    Most boards need two copper layers. Layers gives you four or six: the inner ones show in the Layers card, L steps
    through them while you route, and a pour over the whole board on an inner layer makes it a ground or power plane.
 2. **Place the parts.** Drag them into place. R turns a part, X flips it to the other side of the board, K locks it.
-   Thin lines show which pads still need joining.
+   Thin lines show which pads still need joining. Pick a track or a via and its net's section can give the net a
+   colour for its lines, or hide them, handy for ground before the pour is drawn. Hidden lines still count as left
+   to route.
 3. **Route.** Press W and click a pad. Each click lays a piece of track with a 45° bend; click the pad it goes to and
    the track ends. Press V to drop a via and carry on on the other side. With Keep clear on, a track stops before it
    comes too close to anything else and says what is in the way. Or choose Autoroute: it lays tracks for the

@@ -56,6 +56,21 @@ describe("a via in the inspector", () => {
 });
 
 describe("a net in the inspector", () => {
+  it("gives the net a colour and hides its unrouted lines (#740)", async () => {
+    const d = board();
+    const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} selected={[d.board!.tracks[0]!.id]} />);
+    await userEvent.selectOptions(screen.getByLabelText("Colour"), "Teal");
+    expect(s.design().board!.netLooks).toEqual({ GND: { colour: "teal" } });
+    const show = screen.getByRole("checkbox", { name: "Show unrouted lines" });
+    expect(show).toBeChecked();
+    await userEvent.click(show);
+    expect(s.design().board!.netLooks).toEqual({ GND: { colour: "teal", hideAir: true } });
+    expect(s.labels).toEqual(["Colour GND", "Hide GND's unrouted lines"]);
+    await userEvent.selectOptions(screen.getByLabelText("Colour"), "None");
+    await userEvent.click(screen.getByRole("checkbox", { name: "Show unrouted lines" }));
+    expect(s.design().board).not.toHaveProperty("netLooks");
+  });
+
   it("shows a track's net and sets the width of all its tracks", () => {
     const d = board();
     act(() => eui.set({ view: "pcb", airs: { GND: 2 } }));

@@ -221,7 +221,10 @@ The board's code is in `packages/electronics/src/pcb`, imported by subpath (`/pc
 radius: a via is a point, a track a line, a rounded pad a rectangle with its corners pulled in. `gap(a, b)` is the
 distance between the cores less both radii, which is exact for every pad shape we have. `copperGroups` joins pieces of
 one net that touch on a shared layer, so the ratsnest (`boardState` then `ratsnest`) leaves out pads that copper
-already connects, through vias and across layers.
+already connects, through vias and across layers. A net can be given a colour and have its unrouted lines hidden
+(`board.netLooks`, `setNetLook` in `netclass.ts`, #740) from its section in the inspector. The colours are a fixed
+set drawn from theme tokens (`NET_COLOUR` in `drawBoard.ts`), so they follow the theme; a coloured net's tracks wear
+it while the net is lit. Hiding only skips the drawing: the counts and the board check still see every connection.
 
 **Routing** (`route.ts`, the Route tool, W). Click a pad, a via or a track to start; each click lays a piece with one
 45° bend (`corner45`), bent whichever way is clear; a click on the net's own copper ends the track. V or Swap side
