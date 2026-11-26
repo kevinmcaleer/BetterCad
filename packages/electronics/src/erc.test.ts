@@ -112,6 +112,14 @@ describe("electrical rules check", () => {
     expect(found(d)).toEqual(["warning net-two-names: One net has two names: DATA and SDA."]);
   });
 
+  it("leaves alone a label that only names a net wired between pins", () => {
+    // R1 and R2 are wired together at pin 1; the one label LED names that wire and joins nothing else.
+    let d = fixture([resistor(), resistor()], { "R1.2": "X", "R2.2": "X" });
+    d = addWire(d, "sh1", [0, 1.5 * G], [10 * G, 1.5 * G]);
+    d = addLabel(d, "sh1", "LED", 5 * G, 1.5 * G);
+    expect(found(d)).toEqual([]);
+  });
+
   it("finds two parts with one name and a part with no footprint", () => {
     let d = fixture([resistor(), resistor()], { "R1.1": "A", "R2.1": "A", "R1.2": "B", "R2.2": "B" });
     d = { ...d, parts: d.parts.map((p) => ({ ...p, ref: "R1" })) };

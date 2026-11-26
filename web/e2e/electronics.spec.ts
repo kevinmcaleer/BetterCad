@@ -1073,7 +1073,7 @@ test.describe("on a wide screen", () => {
     await expect(dialog.getByRole("status")).toContainText("Found 13 parts on 1 sheet, and a board with 13 parts placed");
     await axe(page);
     await dialog.getByRole("button", { name: "Open", exact: true }).click();
-    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: 15 parts/ })).toBeVisible();
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: 19 parts/ })).toBeVisible();
     // The board came with it, routed, and matches the schematic.
     await page.keyboard.press("2");
     await expect(page.getByRole("img", { name: /^PCB: 13 parts/ })).toBeVisible();

@@ -165,7 +165,28 @@ title block says which. SVG text is text; a PDF's letters are outlines, as on dr
 everywhere. The netlist (`kicad/netlist.ts`) is KiCad's own format, with each part's value and footprint and each
 net's pins. The writers load when Export is pressed.
 
-Left for later: hand-drawn text and shapes on a sheet, and buses.
+## Notes on a sheet (#733)
+
+A sheet carries notes as well as parts and wires: text, lines, boxes and circles (`Sheet.notes`, the same `Shape` a
+symbol is drawn from). The Draw group on the schematic ribbon has a tool for each: Text asks for its words where you
+click, and the others take two clicks, a line's ends or a box's or circle's corners. Notes pick, move, copy, paste
+and delete with everything else, and double-clicking a text note changes its words; clearing them deletes it. They
+mean nothing to the nets or the rules check. They print on the PDF and SVG, and go to KiCad and back as its own
+`text`, `polyline`, `rectangle` and `circle`; KiCad's text boxes and arcs are still dropped on the way in.
+
+## The sample schematic (#729)
+
+The Pico servo board's sheet reads in groups, each with a title note: the Pico's sockets, the servos and sensor
+socket, the motor driver with its plugs, power in and the power light. Short runs inside a group are drawn as wires;
+the runs between groups are joined by name. The groups are laid out in grid steps and drawn in closer so the sheet
+reads at Fit on a 1440 px screen. Every fitted part carries its LCSC number, maker and maker's part number, read from
+the part pages on jlcpcb.com on 2026-11-26, so its order pack has no part number warning. The L293DNE (C701118) was
+pre-order on that date; MSKSEMI's L293DNE(MS), C19632281, was the in-stock part that fits.
+
+A label used once is a warning unless it names a net already wired between two or more pins (KiCad does the same),
+so naming a drawn wire for the board does not count as a slip.
+
+Left for later: buses.
 
 ## More than one sheet (#636)
 

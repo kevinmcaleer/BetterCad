@@ -1,6 +1,7 @@
 import { GRID, capacitor, header, power, resistor } from "./basics";
 import {
   addLabel,
+  addNote,
   addNoConnect,
   addWire,
   addWires,
@@ -20,6 +21,7 @@ import {
   renumber,
   rotateOnBoard,
   rotateOnSheet,
+  setNoteText,
   tidyValue,
 } from "./edit";
 import { placeOnSheet } from "./geom";
@@ -223,5 +225,27 @@ describe("replace", () => {
     const one = header(1);
     const less = replacePart(d, r.part.id, one);
     expect(less.lost).toEqual(["2"]);
+  });
+});
+
+describe("notes on a sheet (#733)", () => {
+  it("adds, moves, copies, rewrites and deletes notes", () => {
+    const d0 = emptyDesign();
+    const { design: d1, id } = addNote(d0, "sh1", { kind: "rect", x1: 0, y1: 0, x2: 5.08, y2: 2.54, fill: false });
+    const t = addNote(d1, "sh1", { kind: "text", x: 1.27, y: 1.27, text: "Power", size: 1.27 });
+    let d = t.design;
+    expect(d.sheets[0]!.notes).toHaveLength(2);
+    d = moveOnSheet(d, "sh1", [id], 2.54, 0);
+    expect(d.sheets[0]!.notes![0]).toMatchObject({ x1: 2.54, x2: 7.62 });
+    const clip = copyFromSheet(d, "sh1", [t.id])!;
+    expect(clip.notes).toHaveLength(1);
+    d = pasteOnSheet(d, "sh1", clip, 0, -2.54).design;
+    expect(d.sheets[0]!.notes!.filter((n) => n.kind === "text").map((n) => n.kind === "text" && n.y)).toEqual([1.27, -1.27]);
+    d = setNoteText(d, "sh1", t.id, "Servo power");
+    expect(d.sheets[0]!.notes!.find((n) => n.id === t.id)).toMatchObject({ text: "Servo power" });
+    d = setNoteText(d, "sh1", t.id, " ");
+    expect(d.sheets[0]!.notes!.some((n) => n.id === t.id)).toBe(false);
+    d = removeFromSheet(d, "sh1", [id]);
+    expect(d.sheets[0]!.notes!.some((n) => n.id === id)).toBe(false);
   });
 });

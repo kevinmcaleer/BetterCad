@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BASICS, addLabel, addNoConnect, addWire, emptyDesign, placePart } from "@bettercad/electronics";
+import { BASICS, addLabel, addNoConnect, addNote, addWire, emptyDesign, placePart } from "@bettercad/electronics";
 import { sceneSvg } from "../drawing/export/svg";
 import { schematicScene } from "./sheetScene";
 
@@ -51,5 +51,18 @@ describe("a schematic on paper", () => {
     expect(svg).toContain('width="297mm" height="210mm"');
     expect(svg).toMatch(/<text class="visible"[^>]*>LED_A<\/text>/);
     expect(svg).toMatch(/<text class="visible"[^>]*>R1<\/text>/);
+  });
+});
+
+describe("notes on paper (#733)", () => {
+  it("prints a sheet's text, boxes and circles in the PDF and SVG", () => {
+    let d = circuit();
+    d = addNote(d, "sh1", { kind: "text", x: -25.4, y: 12.7, text: "Status light", size: 1.27 }).design;
+    d = addNote(d, "sh1", { kind: "rect", x1: -30, y1: -12, x2: 5, y2: 8, fill: false }).design;
+    d = addNote(d, "sh1", { kind: "circle", cx: 0, cy: 3.81, r: 2 }).design;
+    const scene = schematicScene(d, d.sheets[0]!, { size: "A4", title: { title: "Blinky" } });
+    expect(scene.labels.map((l) => l.text)).toContain("Status light");
+    expect(scene.strokes.some((s) => s.curve.kind === "circle")).toBe(true);
+    expect(sceneSvg(scene)).toContain("Status light");
   });
 });

@@ -285,7 +285,23 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         sheet.notes!.push({ id: eid("n"), kind: "text", x: p[0], y: p[1], text: text(item), size, align: "left" });
       } else if (kind === "bus" || kind === "bus_entry") dropped.add("buses and their entries, which are not drawn (the wires they carry still join by name)");
       else if (kind === "image") dropped.add("pictures");
-      else if (kind === "text_box" || kind === "rectangle" || kind === "circle" || kind === "arc") dropped.add("boxes and shapes drawn on the sheet");
+      else if (kind === "rectangle") {
+        // Boxes and circles drawn on the sheet come in as notes (#733).
+        const a = at(child(item, "start"));
+        const b = at(child(item, "end"));
+        sheet.notes!.push({
+          id: eid("n"),
+          kind: "rect",
+          x1: Math.min(a[0], b[0]),
+          y1: Math.min(a[1], b[1]),
+          x2: Math.max(a[0], b[0]),
+          y2: Math.max(a[1], b[1]),
+          fill: false,
+        });
+      } else if (kind === "circle") {
+        const c = at(child(item, "center"));
+        sheet.notes!.push({ id: eid("n"), kind: "circle", cx: c[0], cy: c[1], r: r4(num(child(item, "radius"), 1)) });
+      } else if (kind === "text_box" || kind === "arc") dropped.add("text boxes and arcs drawn on the sheet");
       else if (kind === "netclass_flag" || kind === "directive_label") dropped.add("net class flags");
     }
     if (!sheet.notes!.length) delete sheet.notes;

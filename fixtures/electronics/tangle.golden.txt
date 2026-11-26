@@ -14,7 +14,6 @@ Nothing.
 ## Schematic check
 error pin-open: U1 pin 5 (EN) is not connected.
 warning label-once: The label OVER is used once, so it joins nothing.
-warning label-once: The label TEE is used once, so it joins nothing.
 warning wire-open: A wire on TEE ends in mid air.
 
 ## Board check

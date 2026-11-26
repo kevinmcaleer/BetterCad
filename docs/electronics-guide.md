@@ -27,8 +27,10 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
    A bigger design goes on more than one sheet: the plus beside the sheet tabs adds one, and right-click on a tab
    renames, moves, deletes or duplicates it. Duplicate copies a sheet as a block to use again, with its own part
    references. A label that carries on to another sheet says which; pick it to go there.
-4. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
-5. **Check it.** Press E for the rules check. It lists pins left unconnected, outputs wired together, nets with one
+4. **Write on the sheet.** The Draw group has Text, Line, Box and Circle, for titles, notes and boxes round a
+   group of parts. Double-click a text note to change its words. Notes don't join anything.
+5. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
+6. **Check it.** Press E for the rules check. It lists pins left unconnected, outputs wired together, nets with one
    pin and more, each with a way to fix it. Click a line to go to the spot.
 
 ![The rules check, open over the schematic](images/electronics-check.png)

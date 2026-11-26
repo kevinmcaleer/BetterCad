@@ -1,5 +1,5 @@
 import { isPower, type CheckLevel, type ElectronicsDesign, type Id, type P2, type PinType } from "./model";
-import { byRef, netlist, type NetPin, type Netlist } from "./nets";
+import { byRef, netAt, netlist, type NetPin, type Netlist } from "./nets";
 
 /**
  * The electrical rules check (#634): what is wrong with a schematic before it goes to a board, in plain words, with
@@ -152,12 +152,15 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
       );
   }
 
-  // A label nothing else shares: usually a slip of the keys (SDA and SDA1).
+  // A label nothing else shares: usually a slip of the keys (SDA and SDA1). One that names a net already wired between
+  // two or more pins is only its name, as in KiCad, so it is left alone.
   const labels = new Map<string, { n: number; sheet: Id; at: P2 }>();
   for (const sheet of d.sheets) for (const l of sheet.labels) labels.set(l.name, { n: (labels.get(l.name)?.n ?? 0) + 1, sheet: sheet.id, at: [l.x, l.y] });
   const supplies = new Set(nl.nets.flatMap((n) => n.power));
+  const pinsOn = new Map(nl.nets.map((n) => [n.name, n.pins.length]));
+  const naming = (l: { sheet: Id; at: P2 }) => (pinsOn.get(netAt(nl, l.sheet, l.at) ?? "") ?? 0) >= 2;
   for (const [name, l] of labels)
-    if (l.n === 1 && !supplies.has(name))
+    if (l.n === 1 && !supplies.has(name) && !naming(l))
       add(
         "label-once",
         name,

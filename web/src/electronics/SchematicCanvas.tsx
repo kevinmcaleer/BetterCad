@@ -3,6 +3,7 @@ import {
   GRID,
   addJunction,
   addLabel,
+  addNote,
   addNoConnect,
   addWires,
   clipOrigin,
@@ -21,12 +22,14 @@ import {
   placedPins,
   removeFromSheet,
   renameLabel,
+  setNoteText,
   renumber,
   rotateOnSheet,
   type Box,
   type ElectronicsDesign,
   type P2,
   type Rot,
+  type Shape,
   type Sheet,
 } from "@bettercad/electronics";
 import { ESC, useEscape } from "@bettercad/ui";
@@ -35,7 +38,7 @@ import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { getClip, setClip } from "./clip";
 import { readColours } from "./colours";
 import { drawSchematic } from "./drawSchematic";
-import { boxSheet, hitSheet, placedBox } from "./hit";
+import { boxSheet, hitSheet, noteBox, placedBox } from "./hit";
 import { eui } from "./ui";
 import { useEui } from "./useEui";
 import { fit, snap, toScreen, type View2D } from "./view2d";
@@ -66,8 +69,33 @@ export function sheetBox(d: ElectronicsDesign, sheet: Sheet, only?: Set<string>)
   }
   for (const w of sheet.wires) if (!only || only.has(w.id)) grow(grow(b, w.a), w.b);
   for (const l of sheet.labels) if (!only || only.has(l.id)) grow(b, [l.x, l.y], 2);
+  for (const n of sheet.notes ?? [])
+    if (!only || only.has(n.id)) {
+      const nb = noteBox(n);
+      grow(grow(b, [nb.x1, nb.y1], 1), [nb.x2, nb.y2], 1);
+    }
   if (b.x1 === Infinity) return { x1: -28, y1: -20, x2: 28, y2: 20 };
   return b;
+}
+
+/** A field over the sheet: a net label's name, or a text note's words (#733). `id` edits one that is there. */
+export interface LabelAsk {
+  at: P2;
+  screen: P2;
+  id?: string;
+  name?: string;
+  note?: boolean;
+}
+
+/** The note a line, box or circle tool makes from its first click to its second (#733). Null when it would be nothing. */
+export function noteShape(tool: "line" | "rect" | "circle", a: P2, b: P2): Shape | null {
+  if (a[0] === b[0] && a[1] === b[1]) return null;
+  if (tool === "line") return { kind: "line", pts: [a, b] };
+  if (tool === "rect") {
+    if (a[0] === b[0] || a[1] === b[1]) return null;
+    return { kind: "rect", x1: Math.min(a[0], b[0]), y1: Math.min(a[1], b[1]), x2: Math.max(a[0], b[0]), y2: Math.max(a[1], b[1]), fill: false };
+  }
+  return { kind: "circle", cx: a[0], cy: a[1], r: Math.round(Math.hypot(b[0] - a[0], b[1] - a[1]) * 1e4) / 1e4 };
 }
 
 export interface SchematicCanvasProps {
@@ -76,7 +104,7 @@ export interface SchematicCanvasProps {
   edit: EEdit;
   readOnly?: boolean;
   /** A label being named: where it goes on the screen, for the little field the view shows over the canvas. */
-  onAskLabel: (ask: { at: P2; screen: P2; id?: string; name?: string } | null) => void;
+  onAskLabel: (ask: LabelAsk | null) => void;
 }
 
 /** The schematic (#617, #631, #632): place parts, wire them, name the nets. */
@@ -96,6 +124,9 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   const [box, setBox] = useState<[P2, P2] | null>(null);
   /** The wire being drawn: the corner it continues from. */
   const [from, setFrom] = useState<P2 | null>(null);
+  /** The first click of a line, box or circle note. */
+  const [noteFrom, setNoteFrom] = useState<P2 | null>(null);
+  useEffect(() => setNoteFrom(null), [ui.schTool]);
   const [turnBy, setTurnBy] = useState<Rot>(0);
   const [flipped, setFlipped] = useState(false);
   const drag = useRef<{ ids: string[]; start: P2; last: P2; key: string } | null>(null);
@@ -201,7 +232,15 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       },
       remove,
       push: () => eui.set({ card: "changes" }),
-      selectAll: () => eui.set({ selected: [...sheet.symbols.map((s) => s.id), ...sheet.wires.map((w) => w.id), ...sheet.labels.map((l) => l.id)] }),
+      selectAll: () =>
+        eui.set({
+          selected: [
+            ...sheet.symbols.map((s) => s.id),
+            ...sheet.wires.map((w) => w.id),
+            ...sheet.labels.map((l) => l.id),
+            ...(sheet.notes ?? []).map((n) => n.id),
+          ],
+        }),
     };
     return () => {
       eactions.current = null;
@@ -210,6 +249,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
 
   // Esc backs out one layer: the wire corner, then the tool, then the selection.
   useEscape(tool === "wire" && !!from, () => setFrom(null), ESC.drag);
+  useEscape(!!noteFrom, () => setNoteFrom(null), ESC.drag);
   useEscape(tool !== "select", () => eui.set({ schTool: "select", placing: null }), ESC.tool);
   useEscape(tool === "select" && ui.selected.length > 0, () => eui.set({ selected: [] }), ESC.selection);
 
@@ -282,6 +322,15 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       return;
     }
     if (tool === "label") return onAskLabel({ at, screen: toScreen(view, at) });
+    if (tool === "text") return onAskLabel({ at, screen: toScreen(view, at), note: true });
+    if (tool === "line" || tool === "rect" || tool === "circle") {
+      const pt = snap(p.world, GRID);
+      if (!noteFrom) return setNoteFrom(pt);
+      const made = noteShape(tool, noteFrom, pt);
+      setNoteFrom(null);
+      if (made) edit((d) => addNote(d, sheet.id, made).design, tool === "line" ? "Draw a line" : tool === "rect" ? "Draw a box" : "Draw a circle");
+      return;
+    }
     if (tool === "noConnect") return edit((d) => addNoConnect(d, sheet.id, at[0], at[1]), "Mark not connected");
     if (tool === "junction") return edit((d) => addJunction(d, sheet.id, at[0], at[1]), "Junction");
   };
@@ -294,8 +343,12 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       const pts = elbow(from, cursor);
       return { wires: pts.slice(1).map((b, i) => [pts[i]!, b] as [P2, P2]) };
     }
+    if ((tool === "line" || tool === "rect" || tool === "circle") && noteFrom) {
+      const made = noteShape(tool, noteFrom, cursor);
+      return made ? { notes: [made] } : undefined;
+    }
     return undefined;
-  }, [cursor, tool, ui.placing, from, turnBy, flipped]);
+  }, [cursor, tool, ui.placing, from, turnBy, flipped, noteFrom]);
 
   /** Hovering a wire or a label lights its whole net across the sheet. */
   const lit = useMemo(() => {
@@ -347,15 +400,22 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
           const hit = hitSheet(design, sheet, p.world, tol)[0];
           const label = hit?.kind === "label" ? sheet.labels.find((l) => l.id === hit.id) : undefined;
           if (label) onAskLabel({ at: [label.x, label.y], screen: toScreen(view, [label.x, label.y]), id: label.id, name: label.name });
+          const note = hit?.kind === "note" ? sheet.notes?.find((n) => n.id === hit.id) : undefined;
+          if (note?.kind === "text") onAskLabel({ at: [note.x, note.y], screen: toScreen(view, [note.x, note.y]), id: note.id, name: note.text, note: true });
         }}
       />
     </div>
   );
 }
 
-/** Applies the label field: a new label, or a new name for one. */
-export function commitLabel(edit: EEdit, sheet: string, ask: { at: P2; id?: string }, name: string): void {
+/** Applies the label field: a new label, or a new name for one; or a text note's words (#733). */
+export function commitLabel(edit: EEdit, sheet: string, ask: { at: P2; id?: string; note?: boolean }, name: string): void {
   const text = name.trim();
+  if (ask.note) {
+    if (ask.id) edit((d) => setNoteText(d, sheet, ask.id!, text), text ? "Change a note" : "Delete a note");
+    else if (text) edit((d) => addNote(d, sheet, { kind: "text", x: ask.at[0], y: ask.at[1], text, size: 1.27, align: "left" }).design, "Add a note");
+    return;
+  }
   if (!text) return;
   if (ask.id) edit((d) => renameLabel(d, sheet, ask.id!, text), "Rename label");
   else edit((d) => addLabel(d, sheet, text, ask.at[0], ask.at[1]), "Label");
