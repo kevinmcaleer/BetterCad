@@ -184,8 +184,20 @@ describe("Ribbon", () => {
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((t) => t.textContent)).toEqual(["Model", "Assemble", "Inspect", "Drawing", "Electronics"]);
     expect(tabs[4]).toHaveAttribute("aria-selected", "true");
-    expect(tabs[0]).toBeDisabled();
     expect(screen.getByRole("toolbar", { name: "Electronics tools" })).toContainElement(screen.getByRole("button", { name: "Wire" }));
+  });
+
+  it("leaves the schematic or the board when you choose another tab", () => {
+    const onLeaveElectronics = vi.fn();
+    const onRender = vi.fn();
+    setup({ ribbon: (t) => <span>{t} tools</span>, onLeaveElectronics, onRender, electronicsRibbon: <button type="button">Wire</button> });
+    const model = screen.getByRole("tab", { name: "Model" });
+    expect(model).toBeEnabled();
+    fireEvent.click(model);
+    expect(onLeaveElectronics).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("tab", { name: "Render" }));
+    expect(onLeaveElectronics).toHaveBeenCalledTimes(2);
+    expect(onRender).toHaveBeenCalledOnce();
   });
 
   it("keeps the compact bar for a shared model", () => {

@@ -4691,6 +4691,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onRender={files.shared ? undefined : () => openRender()}
             onLeaveRender={closeRender}
             onLeaveDrawing={() => setDrawing(null)}
+            onLeaveElectronics={() => showView(null)}
             electronicsRibbon={
               ribbonOn && eview ? (
                 <Suspense fallback={null}>

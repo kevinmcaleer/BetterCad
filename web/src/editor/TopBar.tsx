@@ -110,6 +110,8 @@ export interface TopBarProps {
   onLeaveRender?: () => void;
   /** Another tab chosen while a drawing's sheet is open: it closes (it keeps every change as you go) and the tab opens. */
   onLeaveDrawing?: () => void;
+  /** Leaves the schematic or the board for the 3D view, keeping what the workspace was showing. */
+  onLeaveElectronics?: () => void;
   /** The schematic or the board is open (#617): the Electronics tab shows that view's tools. */
   electronicsRibbon?: ReactNode;
   /** The compact bar's last button: the ribbon's tabs and tools as a sheet, for phones and tablets. */
@@ -250,10 +252,12 @@ export function TopBar(p: TopBarProps) {
       // Render is a view more than a tab of tools: choosing it opens the Render view, which brings its own tools.
       if (t === "render") {
         if (over?.id === "drawing") p.onLeaveDrawing?.();
+        if (over?.id === "electronics") p.onLeaveElectronics?.();
         return p.onRender?.();
       }
       if (over?.id === "render") p.onLeaveRender?.();
       if (over?.id === "drawing") p.onLeaveDrawing?.();
+      if (over?.id === "electronics") p.onLeaveElectronics?.();
       setTab(t);
       setFolded(false);
     };
@@ -278,8 +282,9 @@ export function TopBar(p: TopBarProps) {
                   className="bc-tab"
                   aria-selected={!sketching && tab === id}
                   aria-controls="bc-ribbon-tools"
-                  // A sketch keeps you in it until you finish; the Render view and a drawing let you go straight to another tab.
-                  disabled={sketching && over?.id !== "render" && over?.id !== "drawing"}
+                  // A sketch keeps you in it until you finish; the Render view, a drawing and the electronics views let you
+                  // go straight to another tab.
+                  disabled={over?.id === "sketch"}
                   data-tip={folded ? undefined : "Double-click to fold the tools away"}
                   onClick={() => pick(id)}
                   onDoubleClick={() => setFolded(!folded)}
