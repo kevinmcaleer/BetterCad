@@ -3,7 +3,7 @@ import { BcadError, loadBcad, saveBcad } from "./bcad";
 import { boardSolid } from "@bettercad/electronics/pcb/solid";
 import { cataloguePart } from "./catalogue/list";
 import { addBoard, boardBodyId, boardParts, boardStep, onSketch, standoffsUnder } from "./board";
-import { MOUNT_DEFAULTS, addMount, build, featureSummary, newDoc, type BoardFeature, type ModelDoc } from "./document";
+import { MOUNT_DEFAULTS, addMount, addSketch, build, featureSummary, newDoc, type BoardFeature, type ModelDoc } from "./document";
 import { fromPartLocal } from "./extrude";
 
 const design = () => {
@@ -179,6 +179,18 @@ describe("the Board step", () => {
     expect(board!.position.y).toBeCloseTo(4, 6);
     expect(board!.position.z).toBeCloseTo(6, 6);
     expect(fromPartLocal([0, 0, 1], board!, true)[0]).toBeCloseTo(1, 6);
+  });
+
+  it("stands on its sketch when the sketch comes after the Board step", () => {
+    // The board was made first, then shaped by a sketch drawn later, 10 mm up (Use as PCB profile).
+    const d = design();
+    const on = { ...d, board: { ...d.board!, outlineFrom: { sketch: "sk", at: [25, -15] as [number, number] } } };
+    const doc = addSketch(addBoard({ ...newDoc("Bot"), electronics: on }, {}, "pcb"), { kind: "world", plane: "XY", offset: 10 }, "sk");
+    expect(doc.features.map((f) => f.type)).toEqual(["board", "sketch"]);
+    const board = build(doc).parts.find((p) => p.id === boardBodyId("pcb"))!;
+    expect(board.position.x).toBeCloseTo(25, 6);
+    expect(board.position.y).toBeCloseTo(-15, 6);
+    expect(board.position.z).toBeCloseTo(10, 6);
   });
 
   it("stands on the face its outline came from", () => {
