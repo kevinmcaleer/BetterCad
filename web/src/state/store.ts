@@ -1,4 +1,4 @@
-import { canRedo, canUndo, createHistory, discard, push, redo, seal, undo, type History } from "./history";
+import { amend, canRedo, canUndo, createHistory, discard, push, redo, seal, undo, type History } from "./history";
 
 /**
  * What the shell's undo and redo buttons talk to. The document store implements it now; the kernel's document
@@ -42,6 +42,8 @@ export function createStore<T>(initial: T) {
       const next = fn(h.present);
       set(push(h, stamp ? stamp(h.present, next) : next, label, coalesceKey));
     }),
+    /** Folds a change into the last step instead of making one (see `amend`). */
+    amend: guard((fn: (s: T) => T) => set(amend(h, fn(h.present)))),
     /** Sets what every later edit passes through, or null for none. */
     setStamp: (fn: typeof stamp) => {
       stamp = fn;

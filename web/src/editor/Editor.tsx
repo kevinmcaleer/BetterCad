@@ -410,7 +410,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [activeFeature, setActiveFeature] = useState<string | null>(null);
   const [featureMenuAt, setFeatureMenuAt] = useState<{ id: string; at: ContextMenuState } | null>(null);
   /** The view's menu (a long press, or a right click): the parts it acts on, or none for the view's own. */
-  const [viewMenuAt, setViewMenuAt] = useState<{ ids: string[]; at: ContextMenuState } | null>(null);
+  const [viewMenuAt, setViewMenuAt] = useState<{ ids: string[]; at: ContextMenuState; face?: number } | null>(null);
   /** The sketch's right-click menu, on what is picked in the sketch. */
   const [sketchMenuAt, setSketchMenuAt] = useState<{ ids: string[]; at: ContextMenuState } | null>(null);
   const [featureRenameId, setFeatureRenameId] = useState<string | null>(null);
@@ -632,6 +632,41 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const editDesign: EEdit = (change, label, key) =>
     // Loaded by now, since only the open view edits; the wait keeps the design's code out of the shell.
     void electronicsCode().then((m) => store.edit(m.onDesign(change), label, key));
+  // Use as PCB profile: a body (its biggest flat face, or the face right-clicked) or a sketch shapes the board, which
+  // then follows it. The code loads when it is used, or when the model has a board that follows something.
+  const shapeBoardFrom = (source: { body: string; face?: number } | { sketch: string }, name: string) =>
+    void import("../electronics/follow").then((m) => {
+      const sk = "sketch" in source ? built.sketches.find((x) => x.id === source.sketch) : undefined;
+      const change = m.profileChange(sk ? { sketch: sk } : (source as { body: string; face?: number }), kernel.bodies);
+      if (typeof change === "string") return say(change, true);
+      editDesign(change, `Use ${name} as the PCB profile`);
+      say(`The board takes its shape from ${name} and follows it when it changes.`);
+    });
+  const follows = doc.electronics?.board?.outlineFrom;
+  const goneSaid = useRef("");
+  useEffect(() => {
+    // Only the model as it is now: a timeline rolled back does not reshape the board.
+    if (!follows || at !== featureCount || files.shared) return;
+    let on = true;
+    void import("../electronics/follow").then((m) => {
+      if (!on) return;
+      const now = store.get().electronics;
+      const next = m.catchUp(now, built.sketches, kernel.bodies, new Set(parts.map((p) => p.id)));
+      const what = follows.sketch ? "sketch" : "face";
+      if (next === "gone") {
+        if (goneSaid.current !== (follows.sketch ?? follows.face))
+          say(`The ${what} the board's shape follows is gone. The board keeps its last shape; choose another in Board setup.`, true);
+        goneSaid.current = follows.sketch ?? follows.face ?? "";
+      } else {
+        goneSaid.current = "";
+        // Part of the change that moved the face, so one undo takes back both.
+        if (next) store.amend((d) => (d.electronics === now ? { ...d, electronics: next } : d));
+      }
+    });
+    return () => {
+      on = false;
+    };
+  }, [follows, kernel.bodies, built.sketches, at, featureCount]); // eslint-disable-line react-hooks/exhaustive-deps
   const onDrawingSheet = (change: (s: DrawingSheet) => DrawingSheet, label: string) =>
     void drawingCode().then((m) => shownDrawing && store.edit(...m.sheetEdit(shownDrawing, change, label, drawingSheet)));
   // The Drawing tab and the drawing's bar share their buttons.
@@ -3882,6 +3917,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                 sketch.redefine(id, () => setMarker(back));
               },
             },
+            { id: "pcb-profile", label: "Use as PCB profile", icon: "pcb" as const, onSelect: () => shapeBoardFrom({ sketch: id }, f.name) },
             {
               id: "dxf",
               label: "Export as DXF",
@@ -4133,7 +4169,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     setRecognising({ id, name: p.name });
   };
 
-  const partMenu = (ids: string[]): MenuEntry[] => {
+  /** `face`: the face right-clicked in the 3D view, if any. */
+  const partMenu = (ids: string[], face?: number): MenuEntry[] => {
     const chosen = parts.filter((p) => ids.includes(p.id));
     const allHidden = chosen.length > 0 && chosen.every((p) => p.hidden);
     return [
@@ -4200,6 +4237,9 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         : []),
       ...(chosen.length === 1 && chosen[0]!.imported?.mesh && !chosen[0]!.ops?.length && !chosen[0]!.copy
         ? [{ id: "recognise", label: "Recognise features…", icon: "shapes" as const, onSelect: () => startRecognise(chosen[0]!.id) }]
+        : []),
+      ...(chosen.length === 1 && !chosen[0]!.pcb
+        ? [{ id: "pcb-profile", label: "Use as PCB profile", icon: "pcb" as const, onSelect: () => shapeBoardFrom({ body: chosen[0]!.id, face }, chosen[0]!.name) }]
         : []),
       { id: "make-link", label: "New component", icon: "component", onSelect: () => makeLink(ids) },
       ...(ids.length > 1 ? [{ id: "make-rigid", label: "Rigid group", icon: "lock" as const, onSelect: () => makeRigid(ids) }] : []),
@@ -5172,12 +5212,12 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
             onBodyDrag={posing ? bodyDrag : undefined}
             onPoint={toolPick ? takePoint : undefined}
             onCamera={composedCamera}
-            onMenu={(pick, at) => {
+            onMenu={(pick, at, face) => {
               if (sketch.editing) return setSketchMenuAt({ ids: sketch.menuAt(at), at });
               const body = pick && parts.some((p) => p.id === pick.body) ? pick.body : null;
               const ids = body ? (selection.includes(body) ? selection : [body]) : [];
               if (body) setSelection(ids);
-              setViewMenuAt({ ids, at });
+              setViewMenuAt({ ids, at, ...(face?.kind === "face" && face.body === body ? { face: face.index } : {}) });
             }}
             onHome={vp.goHome}
             onFit={vp.fit}
@@ -5572,7 +5612,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         title={
           !viewMenuAt?.ids.length ? "View" : viewMenuAt.ids.length > 1 ? `${viewMenuAt.ids.length} parts` : parts.find((p) => p.id === viewMenuAt.ids[0])?.name
         }
-        entries={!viewMenuAt ? [] : viewMenuAt.ids.length ? partMenu(viewMenuAt.ids) : cubeMenu}
+        entries={!viewMenuAt ? [] : viewMenuAt.ids.length ? partMenu(viewMenuAt.ids, viewMenuAt.face) : cubeMenu}
       />
       {vp.namingDialog}
       {files.dialog}

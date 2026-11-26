@@ -13,11 +13,12 @@ import {
 import { outlineRadius, roundedOutline, setBoard } from "@bettercad/electronics/pcb/route";
 import { STACKS, buildOf, layerName, setStack, stackLoses, stackOf } from "@bettercad/electronics/pcb/stack";
 import { PRESETS, RULE_FIELDS, applyPreset, keepRules, matchesPreset, presetChanges, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
-import { profiles, type Sketch } from "@bettercad/sketch";
+import type { Sketch } from "@bettercad/sketch";
 import { Button, ESC, FeaturePanel, FeatureRow, NumberField, PanelNote, useEscape } from "@bettercad/ui";
 import type { EEdit } from "./actions";
 import { boardFaces, type ModelFaces } from "./faceOutline";
 import { textOf } from "./fileText";
+import { sketchShape } from "./follow";
 
 const THICKNESS = [0.8, 1, 1.2, 1.6, 2];
 const MASKS: NonNullable<Board["mask"]>[] = ["green", "black", "blue", "red", "white", "purple", "yellow"];
@@ -36,12 +37,6 @@ export interface OutlineSketch {
   id: string;
   name: string;
   sketch: Sketch;
-}
-
-/** A sketch's biggest closed shape, with the shapes inside it as holes. */
-function shapeOf(sketch: Sketch): OutlineShape | null {
-  const best = profiles(sketch).profiles.reduce<ReturnType<typeof profiles>["profiles"][number] | null>((a, b) => (a && a.area >= b.area ? a : b), null);
-  return best ? { outer: best.points.map((p) => [p[0], p[1]]), holes: best.holes.map((h) => h.points.map((p) => [p[0], p[1]])) } : null;
 }
 
 export default function BoardSetup({
@@ -87,7 +82,7 @@ export default function BoardSetup({
   const onFace = board.outlineFrom?.face;
   const shapes = useMemo(
     () => [
-      ...sketches.flatMap((s) => (shapeOf(s.sketch) ? [{ id: s.id, name: s.name, shape: shapeOf(s.sketch)!, face: "", frame: undefined }] : [])),
+      ...sketches.flatMap((s) => (sketchShape(s.sketch) ? [{ id: s.id, name: s.name, shape: sketchShape(s.sketch)!, face: "", frame: undefined }] : [])),
       ...boardFaces(model, onFace).map((f) => ({ id: `face:${f.id}`, name: f.name, shape: f.shape as OutlineShape, face: f.id, frame: f.shape.frame })),
     ],
     [sketches, model?.bodies, model?.picks, model?.names, onFace], // eslint-disable-line react-hooks/exhaustive-deps
@@ -158,7 +153,7 @@ export default function BoardSetup({
           <>
             <PanelNote>
               {source
-                ? `The outline follows ${source.name}: ${size.w} × ${size.h} mm. ${onFace ? "Holes through it" : "Shapes inside it"} are cut out.`
+                ? `The outline follows ${source.name}: ${size.w} × ${size.h} mm, and changes when it does. ${onFace ? "Holes through it" : "Shapes inside it"} are cut out.`
                 : onFace
                   ? "The face the outline followed is gone, or is no longer flat. The outline stays as it was."
                   : "The sketch the outline followed is gone, or has no closed shape. The outline stays as it was."}

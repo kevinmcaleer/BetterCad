@@ -1,6 +1,17 @@
-import { createHistory, push, undo, redo, seal, discard, canUndo, canRedo } from "./history";
+import { amend, createHistory, push, undo, redo, seal, discard, canUndo, canRedo } from "./history";
 
 describe("history", () => {
+  it("amends the last step without a step of its own, keeping redo", () => {
+    let h = push(push(createHistory(0), 1, "One"), 2, "Two");
+    h = undo(h);
+    h = amend(h, 10);
+    expect(h.present).toBe(10);
+    expect(h.label).toBe("One");
+    expect(h.past.map((p) => p.state)).toEqual([0]);
+    expect(h.future.map((p) => p.state)).toEqual([2]);
+    expect(undo(h).present).toBe(0);
+    expect(amend(h, 10)).toBe(h);
+  });
   it("undoes and redoes with labels", () => {
     let h = createHistory(0);
     h = push(h, 1, "One");

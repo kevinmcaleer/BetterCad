@@ -765,6 +765,43 @@ test.describe("on a wide screen", () => {
     await expect(timeline.getByRole("button", { name: /^Board,/ })).toHaveCount(0);
   });
 
+  test("use a body as the PCB profile: the board takes its biggest flat face and follows it as the body changes", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("button", { name: "Library" }).click();
+    await page.getByRole("button", { name: "Box", exact: true }).click();
+    const box = page.getByRole("treeitem", { name: /^Box 1/ });
+    // The body's mesh comes from the kernel; until then the entry says to wait.
+    await expect(async () => {
+      await box.click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Use as PCB profile" }).click();
+      await expect(page.getByText("The board takes its shape from Box 1 and follows it when it changes.").first()).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30_000 });
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await expect(timeline.getByRole("button", { name: /^Board,/ })).toBeVisible();
+
+    // A wider box makes a wider board, in the same undo step.
+    await box.click();
+    const width = page.getByRole("complementary", { name: "Properties" }).getByRole("textbox", { name: /^W/ });
+    await width.fill("40");
+    await width.press("Enter");
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page.getByRole("button", { name: "PCB", exact: true }).first().click();
+    const status = page.getByText(/^Board \d+(\.\d+)? × \d+(\.\d+)? mm · Grid/);
+    await expect(status).toHaveText(/^Board 40 × 20 mm/, { timeout: 20_000 });
+    await page.getByRole("button", { name: "Board setup" }).click();
+    await expect(
+      page.getByRole("group", { name: "Board setup options" }).getByText(/^The outline follows a face of Box 1: 40 × 20 mm, and changes when it does\./),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("ControlOrMeta+z");
+    await expect(status).toHaveText(/^Board 20 × 20 mm/, { timeout: 20_000 });
+    await page.keyboard.press("ControlOrMeta+z");
+    await page.keyboard.press("3");
+    await expect(timeline.getByRole("button", { name: /^Board,/ })).toHaveCount(0);
+  });
+
   test("order the board: check it, preview the files and save them for a board house", async ({ page }) => {
     // No save dialog here: the files arrive as a download.
     await page.addInitScript(() => {
