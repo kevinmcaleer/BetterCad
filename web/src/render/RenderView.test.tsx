@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { barPosition, RenderBar, RenderRibbon, SLOW_TEXT, SLUGGISH_TEXT } from "./RenderView";
 import { renderSession } from "./session";
@@ -72,6 +72,30 @@ describe("the Render view's options (#197)", () => {
     expect(s.get().stopped).toBe(true);
     await userEvent.click(screen.getByRole("button", { name: /^Add to strip/ }));
     expect(onAdd).toHaveBeenCalledOnce();
+  });
+
+  it("starts and stops from the bar's Start beside the status, in step with the ribbon", async () => {
+    const s = renderSession();
+    render(
+      <>
+        <RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} ribbon />
+        <div role="toolbar" aria-label="Render tools">
+          <RenderRibbon session={s} />
+        </div>
+      </>,
+    );
+    s.set({ loading: false, samples: 1 });
+    const bar = screen.getByRole("group", { name: "Render options" });
+    await userEvent.click(await within(bar).findByRole("button", { name: "Start" }));
+    expect(s.get().stopped).toBe(false);
+    expect(screen.getByRole("button", { name: "Stop rendering" })).toBeInTheDocument();
+    await userEvent.click(within(bar).getByRole("button", { name: "Stop" }));
+    expect(s.get().stopped).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "Start rendering" }));
+    expect(within(bar).getByRole("button", { name: "Stop" })).toBeInTheDocument();
+    // Finished: the bar has nothing to start, the ribbon says why.
+    s.set({ samples: 512 });
+    await waitFor(() => expect(within(bar).queryByRole("button")).toBeNull());
   });
 
   it("picks a background apart from the lighting", async () => {
