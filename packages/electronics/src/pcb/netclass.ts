@@ -1,4 +1,4 @@
-import { eid, type Board, type CopperLayer, type ElectronicsDesign, type Id, type NetClass } from "../model";
+import { eid, type Board, type CopperLayer, type ElectronicsDesign, type Id, type NetClass, type NetLook } from "../model";
 import { netRules } from "./copper";
 import { trackLength } from "./route";
 
@@ -132,4 +132,24 @@ export function netFacts(board: Pick<Board, "tracks" | "vias">, net: string, ord
     layers: order.filter((l) => on.has(l)),
     widths: [...new Set(tracks.map((t) => Math.round(t.width * 1000) / 1000))].sort((a, b) => a - b),
   };
+}
+
+/** The colours a net can be given (#740), in the order the inspector lists them. */
+export const NET_COLOURS = ["green", "orange", "teal", "pink", "yellow", "purple", "blue"] as const;
+
+/**
+ * Changes how a net looks on the board (#740): its colour, and whether its unrouted lines are drawn. `undefined` takes
+ * a setting off; a net with nothing set is left out.
+ */
+export function setNetLook(d: ElectronicsDesign, net: string, change: Partial<Record<keyof NetLook, NetLook[keyof NetLook] | undefined>>): ElectronicsDesign {
+  const board = d.board;
+  if (!board || !net) return d;
+  const look: Record<string, unknown> = { ...board.netLooks?.[net], ...change };
+  for (const k of Object.keys(look)) if (look[k] === undefined) delete look[k];
+  const rest = { ...board.netLooks };
+  delete rest[net];
+  const looks = Object.keys(look).length ? { ...rest, [net]: look as NetLook } : rest;
+  const next: Board = { ...board, netLooks: looks };
+  if (!Object.keys(looks).length) delete next.netLooks;
+  return { ...d, board: next };
 }

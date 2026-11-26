@@ -165,7 +165,28 @@ title block says which. SVG text is text; a PDF's letters are outlines, as on dr
 everywhere. The netlist (`kicad/netlist.ts`) is KiCad's own format, with each part's value and footprint and each
 net's pins. The writers load when Export is pressed.
 
-Left for later: hand-drawn text and shapes on a sheet, and buses.
+## Notes on a sheet (#733)
+
+A sheet carries notes as well as parts and wires: text, lines, boxes and circles (`Sheet.notes`, the same `Shape` a
+symbol is drawn from). The Draw group on the schematic ribbon has a tool for each: Text asks for its words where you
+click, and the others take two clicks, a line's ends or a box's or circle's corners. Notes pick, move, copy, paste
+and delete with everything else, and double-clicking a text note changes its words; clearing them deletes it. They
+mean nothing to the nets or the rules check. They print on the PDF and SVG, and go to KiCad and back as its own
+`text`, `polyline`, `rectangle` and `circle`; KiCad's text boxes and arcs are still dropped on the way in.
+
+## The sample schematic (#729)
+
+The Pico servo board's sheet reads in groups, each with a title note: the Pico's sockets, the servos and sensor
+socket, the motor driver with its plugs, power in and the power light. Short runs inside a group are drawn as wires;
+the runs between groups are joined by name. The groups are laid out in grid steps and drawn in closer so the sheet
+reads at Fit on a 1440 px screen. Every fitted part carries its LCSC number, maker and maker's part number, read from
+the part pages on jlcpcb.com on 2026-11-26, so its order pack has no part number warning. The L293DNE (C701118) was
+pre-order on that date; MSKSEMI's L293DNE(MS), C19632281, was the in-stock part that fits.
+
+A label used once is a warning unless it names a net already wired between two or more pins (KiCad does the same),
+so naming a drawn wire for the board does not count as a slip.
+
+Left for later: buses.
 
 ## More than one sheet (#636)
 
@@ -200,7 +221,10 @@ The board's code is in `packages/electronics/src/pcb`, imported by subpath (`/pc
 radius: a via is a point, a track a line, a rounded pad a rectangle with its corners pulled in. `gap(a, b)` is the
 distance between the cores less both radii, which is exact for every pad shape we have. `copperGroups` joins pieces of
 one net that touch on a shared layer, so the ratsnest (`boardState` then `ratsnest`) leaves out pads that copper
-already connects, through vias and across layers.
+already connects, through vias and across layers. A net can be given a colour and have its unrouted lines hidden
+(`board.netLooks`, `setNetLook` in `netclass.ts`, #740) from its section in the inspector. The colours are a fixed
+set drawn from theme tokens (`NET_COLOUR` in `drawBoard.ts`), so they follow the theme; a coloured net's tracks wear
+it while the net is lit. Hiding only skips the drawing: the counts and the board check still see every connection.
 
 **Routing** (`route.ts`, the Route tool, W). Click a pad, a via or a track to start; each click lays a piece with one
 45° bend (`corner45`), bent whichever way is clear; a click on the net's own copper ends the track. V or Swap side
@@ -420,6 +444,22 @@ Left for later: dragging a track's or an area's corners, an outline from a face 
 import yet), spokes per pad, gate swapping, pictures and fiducials
 on the silkscreen.
 
+## Calculators (#739)
+
+Calculators (on the Check group of the schematic and the Board group of the PCB) is a card of sums with no say over
+the design, in `packages/electronics/src/calc.ts` (subpath `/calc`) and `Calculators.tsx`, both loaded when it opens.
+
+- **Track width for a current** and **current a via carries**: IPC-2221 (2012), section 6.2, the fit to its
+  conductor charts, I = k · ΔT^0.44 · A^0.725, with I in amps, ΔT the temperature rise in °C, A the cross-section
+  in square mils, and k = 0.048 for outer layers, 0.024 for inner ones. The charts cover up to 35 A, 400 mil and 10 to
+  100 °C. Copper is 34.79 µm per oz/ft². A via's barrel is a ring of plating (25 µm unless changed) round its hole,
+  rated as outer copper, as Saturn PCB Toolkit and KiCad's calculator do. Use a width can set a net class's track
+  width, rounded up to 0.01 mm; tracks at the class's old width follow, as they do from the inspector.
+- **Resistor for an LED**: Ohm's law, R = (V supply − V forward) / I, rounded up to the next E24 value (IEC 60063)
+  so the current only falls; the card says the current and power with that value.
+- **Resistor colour bands**: IEC 60062, four bands (two figures) or five (three), both ways. The swatches are paint
+  colours kept with the sums (`BAND_PAINT`), like the board's mask colours, not interface colours.
+
 ## The board in 3D (#649 to #654)
 
 The board is in the model as one **Board step** on the timeline (`packages/kernel/src/board.ts`). A model has one
@@ -487,8 +527,12 @@ copper, mask, paste and silkscreen, and the outline. Every file is drawn looking
 Pads are flashed with apertures: circles, rectangles and obrounds as they are, and a macro (two bars and four
 discs, or a turned rectangle) for a rounded pad or one at an odd angle. Tracks are drawn with a round pen, and
 copper carries its net (`.N`), pads their part and pin (`.P`). The outline is drawn as closed paths with arcs kept
-as arcs. Mask openings are the pad grown by the mask margin; vias stay covered. The silkscreen has the mask
-openings taken back out of it, so ink never lands on a pad.
+as arcs. Mask openings are the pad grown by the mask margin. Vias are covered (tented) unless Board setup says
+Vias: Open (`board.viaMask`, #736), and one via can differ (`via.mask`, `viaOpen` in `pcb/stack.ts`); an open via
+gets an opening the size of its copper ring grown by the margin, on each outer side it reaches. The silkscreen has
+the mask openings taken back out of it, so ink never lands on a pad or an open via. The as-made preview reads the
+files back, so it follows. KiCad 7 keeps one say for the whole board, `(pcbplotparams (viasonmask …))`, so a via
+that differs from its board does not carry its own across; coming in, KiCad 8's `(tenting)` is read as well.
 
 A pour is painted the way the screen paints it, with dark and clear polarity in the same order: the area, the
 rings round its own pads out, the spokes back in, then everything it keeps clear of out, and last the islands the

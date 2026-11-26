@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { textStrokes, textWidth } from "@bettercad/electronics/fab/font";
-import { FAR_ALPHA, boardTextStrokes, pourAlpha } from "./drawBoard";
+import { emptyBoard, emptyDesign, type ElectronicsDesign } from "@bettercad/electronics";
+import { setNetLook } from "@bettercad/electronics/pcb/netclass";
+import type { Colours } from "./colours";
+import { FAR_ALPHA, NET_COLOUR, boardTextStrokes, drawBoard, pourAlpha } from "./drawBoard";
 import { textBox } from "./hitBoard";
 
 describe("pours on screen (#728)", () => {
@@ -35,5 +38,41 @@ describe("board text in the files' own font (#730)", () => {
     expect(b.y2).toBeCloseTo(5 + 1.44 + 0.108, 2);
     // A second line goes below the first, and the box takes it in.
     expect(textBox({ ...t, text: "A\nB" }).y1).toBeLessThan(5 - 1.44);
+  });
+});
+
+describe("a net's own colour and hidden lines (#740)", () => {
+  /** A canvas that writes down the colour of each line drawn. */
+  const recorder = () => {
+    const strokes: string[] = [];
+    const state: Record<string, unknown> = {};
+    const ctx = new Proxy(state, {
+      get: (t, k) => (k === "stroke" ? () => strokes.push(String(t.strokeStyle)) : k in t ? t[k as string] : () => undefined),
+      set: (t, k, v) => ((t[k as string] = v), true),
+    }) as unknown as CanvasRenderingContext2D;
+    return { ctx, strokes };
+  };
+  const colours = new Proxy({}, { get: (_, k) => `c:${String(k)}` }) as Colours;
+  const draw = (d: ElectronicsDesign) => {
+    const { ctx, strokes } = recorder();
+    const air = [
+      { net: "GND", a: [0, 0] as [number, number], b: [5, 0] as [number, number] },
+      { net: "SDA", a: [0, 5] as [number, number], b: [5, 5] as [number, number] },
+    ];
+    drawBoard(ctx, { scale: 4, ox: 0, oy: 0 }, { w: 100, h: 100 }, d, colours, { selected: new Set(), hidden: new Set(), active: "top", pads: [], air });
+    return strokes.filter((s) => s === "c:ec-pcb-ink" || Object.values(NET_COLOUR).some((k) => s === `c:${k}`));
+  };
+
+  it("draws a coloured net's unrouted lines in its colour, and leaves a hidden net's out", () => {
+    let d: ElectronicsDesign = { ...emptyDesign(), board: emptyBoard() };
+    expect(draw(d)).toEqual(["c:ec-pcb-ink", "c:ec-pcb-ink"]);
+    d = setNetLook(d, "SDA", { colour: "teal" });
+    expect(draw(d)).toEqual(["c:ec-pcb-ink", "c:ec-copper-in3"]);
+    d = setNetLook(d, "GND", { hideAir: true });
+    expect(draw(d)).toEqual(["c:ec-copper-in3"]);
+    expect(d.board!.netLooks).toEqual({ SDA: { colour: "teal" }, GND: { hideAir: true } });
+    // Taking every setting off leaves nothing behind.
+    d = setNetLook(setNetLook(d, "SDA", { colour: undefined }), "GND", { hideAir: undefined });
+    expect(d.board).not.toHaveProperty("netLooks");
   });
 });

@@ -10,6 +10,7 @@ import {
   type ElectronicsDesign,
   type P2,
   type SchSymbol,
+  type Shape,
   type Sheet,
   type Side,
   type SymbolDef,
@@ -66,27 +67,32 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
   const text = (t: string, at: P2, size: number, anchor: Label["anchor"], baseline: Label["baseline"] = "central", quarter = false) =>
     t && labels.push({ layer: "visible", at, size: size * s, anchor, baseline, text: t, ...(quarter ? { turn: Math.PI / 2 } : {}) });
 
+  /** A shape drawn as it is placed: a symbol's own, or a note on the sheet (#733). */
+  const shapeOut = (sh: Shape, place: (p: P2) => P2, rot: number, mirror: boolean) => {
+    if (sh.kind === "line") {
+      const pts = sh.pts.map(place);
+      if (sh.fill === "solid") fills.push({ layer: "visible", pts });
+      line(sh.fill ? [...pts, pts[0]!] : pts, pen(sh.width));
+    } else if (sh.kind === "rect") {
+      const pts = ([[sh.x1, sh.y1], [sh.x2, sh.y1], [sh.x2, sh.y2], [sh.x1, sh.y2], [sh.x1, sh.y1]] as P2[]).map(place); // prettier-ignore
+      if (sh.fill === "solid") fills.push({ layer: "visible", pts });
+      line(pts, pen(sh.width ?? 0.25));
+    } else if (sh.kind === "circle") {
+      if (sh.fill === "solid") disc(place([sh.cx, sh.cy]), sh.r * s);
+      strokes.push({ layer: "visible", width: pen(sh.width), curve: { kind: "circle", c: place([sh.cx, sh.cy]), r: sh.r * s } });
+    } else if (sh.kind === "arc") {
+      // Mirroring swaps the ends and the way round; turning adds to both.
+      const a0 = (mirror ? 180 - sh.a1 : sh.a0) + rot;
+      const a1 = (mirror ? 180 - sh.a0 : sh.a1) + rot;
+      strokes.push({ layer: "visible", width: pen(sh.width), curve: { kind: "arc", c: place([sh.cx, sh.cy]), r: sh.r * s, from: a0 * RAD, to: a1 * RAD } });
+    } else text(sh.text, place([sh.x, sh.y]), sh.size, sh.align === "centre" ? "middle" : sh.align === "right" ? "end" : "start");
+  };
+
   const symbol = (def: SymbolDef, at: SchSymbol, ref: string, value: string) => {
     const place = (p: P2) => P(placeOnSheet(p, at));
     for (const sh of def.shapes) {
       if (sh.unit !== undefined && def.units > 1 && sh.unit !== at.unit) continue;
-      if (sh.kind === "line") {
-        const pts = sh.pts.map(place);
-        if (sh.fill === "solid") fills.push({ layer: "visible", pts });
-        line(sh.fill ? [...pts, pts[0]!] : pts, pen(sh.width));
-      } else if (sh.kind === "rect") {
-        const pts = ([[sh.x1, sh.y1], [sh.x2, sh.y1], [sh.x2, sh.y2], [sh.x1, sh.y2], [sh.x1, sh.y1]] as P2[]).map(place); // prettier-ignore
-        if (sh.fill === "solid") fills.push({ layer: "visible", pts });
-        line(pts, pen(sh.width ?? 0.25));
-      } else if (sh.kind === "circle") {
-        if (sh.fill === "solid") disc(place([sh.cx, sh.cy]), sh.r * s);
-        strokes.push({ layer: "visible", width: pen(sh.width), curve: { kind: "circle", c: place([sh.cx, sh.cy]), r: sh.r * s } });
-      } else if (sh.kind === "arc") {
-        // Mirroring swaps the ends and the way round; turning adds to both.
-        const a0 = (at.mirror ? 180 - sh.a1 : sh.a0) + at.rot;
-        const a1 = (at.mirror ? 180 - sh.a0 : sh.a1) + at.rot;
-        strokes.push({ layer: "visible", width: pen(sh.width), curve: { kind: "arc", c: place([sh.cx, sh.cy]), r: sh.r * s, from: a0 * RAD, to: a1 * RAD } });
-      } else text(sh.text, place([sh.x, sh.y]), sh.size, sh.align === "centre" ? "middle" : sh.align === "right" ? "end" : "start");
+      shapeOut(sh, place, at.rot, !!at.mirror);
     }
     for (const pin of def.pins) {
       if ((pin.unit !== undefined && def.units > 1 && pin.unit !== at.unit) || pin.hidden) continue;
@@ -127,6 +133,7 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
     line([P([n.x - 0.6, n.y - 0.6]), P([n.x + 0.6, n.y + 0.6])], pen());
     line([P([n.x - 0.6, n.y + 0.6]), P([n.x + 0.6, n.y - 0.6])], pen());
   }
+  for (const note of sheet.notes ?? []) shapeOut(note, P, 0, false);
   return { ...scene, strokes, labels, ...(fills.length ? { fills } : {}) };
 }
 

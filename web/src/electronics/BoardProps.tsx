@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
-import { boardPads, netlist, type CopperLayer, type ElectronicsDesign, type Keepout, type Side } from "@bettercad/electronics";
-import { layerName, layerShort, layersOf, setViaSpan, viaKind, viaLayers } from "@bettercad/electronics/pcb/stack";
+import { boardPads, netlist, type CopperLayer, type ElectronicsDesign, type Keepout, type Side, type ViaMask } from "@bettercad/electronics";
+import { layerName, layerShort, layersOf, setViaSpan, viaKind, viaLayers, viaOpen } from "@bettercad/electronics/pcb/stack";
 import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
 import { invertInk, setPicture } from "@bettercad/electronics/pcb/picture";
@@ -435,6 +435,19 @@ export default function BoardProps({
               onCommit={(v) => edit((d) => setVia(d, via.id, { drill: v }), "Change the via", "ec-via-h")}
             />
           </div>
+          <label className="bc-field-label" htmlFor={`${ids}vm`}>
+            Mask
+          </label>
+          <select
+            id={`${ids}vm`}
+            className="bc-select"
+            value={viaOpen(board, via) ? "open" : "covered"}
+            data-tip="Board setup says what vias are; this one can differ"
+            onChange={({ target: { value } }) => edit((d) => setVia(d, via.id, { mask: value as ViaMask }), "Change the via's mask")}
+          >
+            <option value="covered">Covered{(board.viaMask ?? "covered") === "covered" ? ", like the board" : ""}</option>
+            <option value="open">Open{board.viaMask === "open" ? ", like the board" : ""}</option>
+          </select>
           {layersOf(board).length > 2 && (
             <>
               <label className="bc-field-label" htmlFor={`${ids}vs`}>

@@ -1,7 +1,7 @@
 import { useId, useMemo } from "react";
-import { netlist, type ElectronicsDesign } from "@bettercad/electronics";
+import { netlist, type ElectronicsDesign, type NetColour } from "@bettercad/electronics";
 import { netRules } from "@bettercad/electronics/pcb/copper";
-import { addNetClass, changeNetClass, classOf, netFacts, setNetClass, setNetWidth } from "@bettercad/electronics/pcb/netclass";
+import { NET_COLOURS, addNetClass, changeNetClass, classOf, netFacts, setNetClass, setNetLook, setNetWidth } from "@bettercad/electronics/pcb/netclass";
 import { layerShort, layersOf } from "@bettercad/electronics/pcb/stack";
 import { Button, NumberField } from "@bettercad/ui";
 import type { EEdit } from "./actions";
@@ -26,6 +26,7 @@ export default function NetProps({ design, edit, net, readOnly }: { design: Elec
   const facts = board && netFacts(board, net, layersOf(board));
   const left = ui.view === "pcb" && ui.airs && (pins > 1 || ui.airs[net]) ? (ui.airs[net] ?? 0) : undefined;
   const mixed = facts && facts.widths.length > 1;
+  const look = board?.netLooks?.[net];
   const pickClass = (value: string) => {
     if (value === NEW) edit((d) => addNetClass(d, net).design, `Put ${net} in a new class`);
     else edit((d) => setNetClass(d, net, value || null), value ? `Put ${net} in a class` : `Take ${net} out of its class`);
@@ -93,6 +94,45 @@ export default function NetProps({ design, edit, net, readOnly }: { design: Elec
               {k ? "" : " Type a width to make them all the same."}
             </p>
           )}
+          <div className="bc-ec-set-row">
+            <span>
+              <label className="bc-field-label" htmlFor={`${ids}k`}>
+                Colour
+              </label>
+              <select
+                id={`${ids}k`}
+                className="bc-select"
+                value={look?.colour ?? ""}
+                data-tip="Its unrouted lines, and its tracks while it is lit"
+                onChange={({ target: { value } }) =>
+                  edit(
+                    (d) => setNetLook(d, net, { colour: (value || undefined) as NetColour | undefined }),
+                    value ? `Colour ${net}` : `Take ${net}'s colour off`,
+                  )
+                }
+              >
+                <option value="">None</option>
+                {NET_COLOURS.map((c) => (
+                  <option key={c} value={c}>
+                    {c[0]!.toUpperCase() + c.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </span>
+            <label className="bc-ec-fitted" data-tip="Hidden lines still count as left to route">
+              <input
+                type="checkbox"
+                checked={!look?.hideAir}
+                onChange={(e) =>
+                  edit(
+                    (d) => setNetLook(d, net, { hideAir: e.target.checked ? undefined : true }),
+                    e.target.checked ? `Show ${net}'s unrouted lines` : `Hide ${net}'s unrouted lines`,
+                  )
+                }
+              />
+              Show unrouted lines
+            </label>
+          </div>
           <dl className="bc-facts">
             <dt>Pins</dt>
             <dd>{pins}</dd>

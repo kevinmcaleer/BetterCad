@@ -91,6 +91,10 @@ describe("board setup", () => {
     await userEvent.selectOptions(screen.getByLabelText("Thickness"), "1 mm");
     await userEvent.selectOptions(screen.getByLabelText("Solder mask"), "Black");
     expect(s.design().board).toMatchObject({ thickness: 1, mask: "black" });
+    await userEvent.selectOptions(screen.getByLabelText("Vias"), "Open");
+    expect(s.design().board!.viaMask).toBe("open");
+    await userEvent.selectOptions(screen.getByLabelText("Vias"), "Covered by the mask");
+    expect(s.design().board!.viaMask).toBeUndefined();
     expect(s.labels).toContain("Change the board's size");
   });
 
