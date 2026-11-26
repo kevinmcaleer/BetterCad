@@ -2135,6 +2135,23 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     void import("../render/strip").then((m) => setStrip(new m.StripController(() => stripDeps.current!)));
   }, [strip, render, shots.length]);
   useEffect(() => () => strip?.dispose(), [strip]);
+  // A video render runs with the strip's jobs, so it keeps going when you leave the Render view: the view shows it
+  // whenever it is open, and Stop reaches it.
+  useEffect(() => {
+    if (!strip || !render) return;
+    const jobs = strip.jobs;
+    const show = () => {
+      const video = jobs.get().video ?? null;
+      if (render.get().filming !== video) render.set({ filming: video });
+    };
+    show();
+    render.stopVideo = () => jobs.stopVideo();
+    const off = jobs.subscribe(show);
+    return () => {
+      off();
+      render.stopVideo = null;
+    };
+  }, [strip, render]);
   // Each model's pictures, from this browser or the account; in the Render view, shots never rendered start now.
   const shotIds = shots.map((s) => s.id).join(" ");
   useEffect(() => {
@@ -5306,6 +5323,7 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
                   onSetHome={vp.setHomeTo}
                   onResetHome={vp.resetHome}
                   onSaveVideo={saveVideo}
+                  onFilm={strip ? strip.jobs.film.bind(strip.jobs) : undefined}
                 />
               </Suspense>
             )}

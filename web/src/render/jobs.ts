@@ -8,7 +8,7 @@
 import type { ModelDoc, RenderShot } from "@bettercad/kernel/document";
 import type { KV } from "../files/idb";
 import type { RenderBody } from "./pathRender";
-import { samplesFor } from "./session";
+import { filmProgress, samplesFor, type Filming } from "./session";
 
 /** A finished render as kept in this browser. */
 export interface Picture {
@@ -32,6 +32,8 @@ export interface JobsState {
   jobs: Job[];
   /** Object URLs of the finished pictures, by shot id, and the key each was made from. */
   pictures: Record<string, { url: string; key: string; date: number }>;
+  /** A video render, which keeps going when you leave the Render view, or null. */
+  video?: Filming | null;
 }
 
 /** Renders one shot to a picture. Injected so tests needn't run the path tracer. */
@@ -231,12 +233,55 @@ export class RenderJobs {
     for (const f of this.subs) f();
   }
 
-  /** How far all the jobs have got together, 0 to 1, or null when nothing is waiting or running. */
+  /** How far all the jobs have got together, 0 to 1, or null when nothing is waiting or running. A video counts as one. */
   overall(): { count: number; progress: number; name: string } | null {
-    const { jobs } = this.state;
-    if (!jobs.length) return null;
-    const done = jobs.reduce((s, j) => s + j.progress, 0);
-    return { count: jobs.length, progress: done / jobs.length, name: (jobs.find((j) => j.running) ?? jobs[0]).name };
+    const { jobs, video } = this.state;
+    const count = jobs.length + (video ? 1 : 0);
+    if (!count) return null;
+    const done = jobs.reduce((s, j) => s + j.progress, 0) + (video ? filmProgress(video) : 0);
+    return { count, progress: done / count, name: video?.name ?? (jobs.find((j) => j.running) ?? jobs[0]).name };
+  }
+
+  private filmStop: AbortController | null = null;
+  /** The video render's work, until it has wound up, stopped or not. */
+  private filmEnd: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Runs a video render in the background: `work` makes the video, telling `update` how far it has got, and stops
+   * when `signal` does. Shots wait their turn until it is done (one running already carries on). One at a time: a
+   * new one waits for a stopped one to wind up, and is refused while one is still going.
+   */
+  film(start: Filming, work: (update: (change: Partial<Filming>) => void, signal: AbortSignal) => Promise<Blob>): Promise<Blob> {
+    if (this.filmStop && !this.filmStop.signal.aborted) return Promise.reject(new Error("A video is already rendering"));
+    const stop = new AbortController();
+    const before = this.filmEnd;
+    this.filmStop = stop;
+    this.set({ video: start });
+    const update = (change: Partial<Filming>) => {
+      if (this.filmStop === stop && !stop.signal.aborted && this.state.video) this.set({ video: { ...this.state.video, ...change } });
+    };
+    const done = (async () => {
+      try {
+        await before;
+        if (stop.signal.aborted) throw new Error("Stopped");
+        return await work(update, stop.signal);
+      } finally {
+        if (this.filmStop === stop) {
+          this.filmStop = null;
+          if (this.state.video) this.set({ video: null });
+        }
+        void this.next();
+      }
+    })();
+    this.filmEnd = done.catch(() => {});
+    return done;
+  }
+
+  /** Stops the video render, if one is running: the view hears at once, while the last tile on the GPU finishes. */
+  stopVideo(): void {
+    if (!this.filmStop) return;
+    this.filmStop.abort();
+    if (this.state.video) this.set({ video: null });
   }
 
   // A press anywhere (orbiting, dragging a sketch point) holds the render until you let go.
@@ -358,7 +403,8 @@ export class RenderJobs {
   }
 
   private async next(): Promise<void> {
-    if (this.running || this.disposed) return;
+    // A video render has the GPU to itself: shots wait for it.
+    if (this.running || this.disposed || this.filmStop) return;
     const job = this.queue.shift();
     if (!job) return this.publish();
     const stop = new AbortController();
@@ -392,6 +438,7 @@ export class RenderJobs {
     this.disposed = true;
     this.queue = [];
     this.running?.stop.abort();
+    this.filmStop?.abort();
     this.setPreview(null);
     for (const p of Object.values(this.state.pictures)) URL.revokeObjectURL(p.url);
     if (typeof window !== "undefined") {

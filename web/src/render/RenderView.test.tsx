@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { barPosition, RenderBar, RenderRibbon, SLOW_TEXT, SLUGGISH_TEXT } from "./RenderView";
+import { barPosition, filmingText, RenderBar, RenderRibbon, SLOW_TEXT, SLUGGISH_TEXT } from "./RenderView";
 import { renderSession } from "./session";
 
 describe("the Render view's options (#197)", () => {
@@ -295,7 +295,7 @@ describe("the one Play button", () => {
     await modes();
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Video render" }));
     expect(renderVideo).toHaveBeenCalled();
-    s.set({ filming: { frame: 12, frames: 300 } });
+    s.set({ filming: { name: "Orbit video", frame: 12, frames: 300, sample: 4, samples: 16, started: 0, canvas: null } });
     const stopVideo = vi.fn();
     s.stopVideo = stopVideo;
     await userEvent.click(await screen.findByRole("button", { name: "Stop the video render" }));
@@ -309,10 +309,26 @@ describe("the one Play button", () => {
     vi.unstubAllGlobals();
   });
 
-  it("says how far a video render has got", async () => {
+  it("says how far a video render has got, with bars for this frame and the whole video", () => {
     const s = renderSession();
-    s.set({ loading: false, filming: { frame: 12, frames: 300 } });
+    s.set({ loading: false, filming: { name: "Orbit video", frame: 12, frames: 300, sample: 4, samples: 16, started: 0, canvas: null } });
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
-    expect(screen.getByRole("status")).toHaveTextContent("Rendering the video, frame 12 of 300");
+    expect(screen.getByRole("status")).toHaveTextContent("Rendering the video, frame 13 of 300");
+    expect(screen.getByRole("progressbar", { name: "This frame" })).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getByRole("progressbar", { name: "This frame" })).toHaveAttribute("aria-valuetext", "4 of 16 samples");
+    expect(screen.getByRole("progressbar", { name: "Whole video" })).toHaveAttribute("aria-valuenow", "4");
+    // The samples come in: the frame's bar fills.
+    act(() => s.set({ filming: { ...s.get().filming!, sample: 12 } }));
+    expect(screen.getByRole("progressbar", { name: "This frame" })).toHaveAttribute("aria-valuenow", "75");
+    act(() => s.set({ filming: null }));
+    expect(screen.queryByRole("progressbar", { name: "This frame" })).not.toBeInTheDocument();
+  });
+
+  it("says how long a video render has left", () => {
+    const f = { name: "Orbit video", frame: 30, frames: 300, sample: 0, samples: 16, started: 0, canvas: null };
+    // 30 frames in a minute: 270 to go take about 9 minutes.
+    expect(filmingText(f, 60_000)).toBe("Rendering the video, frame 31 of 300, about 9 min left");
+    expect(filmingText({ ...f, frame: 0 }, 60_000)).toBe("Rendering the video, frame 1 of 300");
+    expect(filmingText({ ...f, frame: 299 }, 60_000)).toBe("Rendering the video, frame 300 of 300, under a minute left");
   });
 });

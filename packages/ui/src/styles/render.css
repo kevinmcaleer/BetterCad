@@ -318,3 +318,42 @@
   padding-inline: var(--bc-space-1);
   font-size: 11px;
 }
+/* A video render's frame as it clears, over the picture and clear of the cards: its own canvas, 1920 × 1080. */
+.bc-render-film-box {
+  position: absolute;
+  inset: var(--bc-view-top, 0px) var(--bc-view-right, 0px) var(--bc-view-bottom, 0px) var(--bc-view-left, 0px);
+  z-index: 2;
+  pointer-events: none;
+}
+.bc-render-film {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+/* This frame over the whole video: two thin bars beside the status. */
+.bc-render-film-bars {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  width: 120px;
+}
+.bc-render-film-bar {
+  position: relative;
+  display: block;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--bc-radius-pill);
+  background: var(--bc-color-line);
+}
+.bc-render-film-bar > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: var(--bc-color-accent);
+  transition: width 120ms linear;
+}
+.bc-render-film-bar + .bc-render-film-bar > span {
+  background: var(--bc-color-muted);
+}
