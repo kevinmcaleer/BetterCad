@@ -762,7 +762,8 @@ export class DrawOnView {
     this.frame = requestAnimationFrame(this.loop);
     if (this.playing) {
       // Steps of at most a tenth of a second, so a stalled tab doesn't skip the drawing.
-      this.time += Math.min(0.1, (now - this.last) / 1000);
+      // A frame's time can be a little before play() was pressed (it is when the frame began), so never step back.
+      this.time += Math.min(0.1, Math.max(0, (now - this.last) / 1000));
       if (this.time >= this.total) {
         this.time = this.total;
         this.playing = false;
