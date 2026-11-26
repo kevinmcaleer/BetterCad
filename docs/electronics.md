@@ -137,6 +137,14 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   most and groups do not nest. Deleting members shrinks the group, and a group left empty goes. Copy, paste and
   Duplicate sheet carry whole groups. The outline prints in the PDF and SVG, goes to KiCad as a box and text (KiCad
   has no schematic groups), and Find (Ctrl+F) finds groups by name.
+- **Circuit blocks (#767-#771).** A block is a group with block facts (`PlacedBlock`): its tag (MD1), its connection
+  points and a note per part. Inside nets are scoped to the tag ("MD1.VM") and shown without it, so copies never
+  share a net; ground is named plainly. Points are net labels on the outline. Specs are `BlockSpec`s in
+  `library/blocks.ts` (19 starter blocks), built by `buildBlock` and placed by `placeBlock` (`blocks.ts`); the
+  Blocks tab in Components lists them. Picking a block shows its points, Connect to… and Join I2C (`connect.ts`).
+  The rules check trusts a block's inside nets and treats an open point as the outside, then adds its own rules: a
+  required point left open, a supply outside a power input's range, two power outputs joined, and an I2C line with
+  no pull-ups or more than two.
 
 ## The rules check (#634)
 

@@ -4,8 +4,9 @@
  */
 import { addWires } from "./edit";
 import { key, onSegment, q } from "./geom";
-import type { BlockPoint, ElectronicsDesign, Id, P2, PinType, SchGroup, Sheet } from "./model";
+import type { BlockPoint, ElectronicsDesign, Id, P2, PinType } from "./model";
 import { netAt, netlist, placedPins, type Netlist } from "./nets";
+import { isJoined, pointsJoined, voltsOf } from "./points";
 
 export type Target =
   | { kind: "pin"; part: Id; pin: string; ref: string; name: string; at: P2; text: string; note: string; score: number }
@@ -22,32 +23,6 @@ const gpio = (name: string): number | null => {
 const isPico = (defName: string) => /pico|rp2040|rp2350/i.test(defName);
 const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 const DRIVES: PinType[] = ["output", "bidirectional", "tristate", "open_collector", "unspecified"];
-const voltsOf = (s: string | undefined): number | null => {
-  if (!s) return null;
-  const split = /(\d+)V(\d+)/i.exec(s);
-  if (split) return Number(`${split[1]}.${split[2]}`);
-  const plain = /(\d+(?:\.\d+)?)\s*V/i.exec(s);
-  return plain ? Number(plain[1]) : null;
-};
-
-/** True when a wire ends on the point or runs through it, or the point is a ground that joins by name. */
-export function isJoined(sheet: Sheet, at: P2): boolean {
-  const k = key(at[0], at[1]);
-  return sheet.wires.some((w) => key(w.a[0], w.a[1]) === k || key(w.b[0], w.b[1]) === k || onSegment(at, w.a, w.b));
-}
-
-/** A block's points with whether each one is joined to something outside it yet. */
-export function pointsJoined(sheet: Sheet, g: SchGroup): { point: BlockPoint; at: P2; joined: boolean }[] {
-  const labels = new Map(sheet.labels.map((l) => [l.id, l]));
-  return (g.block?.points ?? []).flatMap((p) => {
-    const l = labels.get(p.label);
-    if (!l) return [];
-    const at: P2 = [l.x, l.y];
-    // Ground is named plainly, so it is joined to the design's ground already.
-    return [{ point: p, at, joined: p.kind === "ground" ? true : isJoined(sheet, at) }];
-  });
-}
-
 /** What a point could join, best first, at most `limit`. Things inside its own block are left out. */
 export function suggestTargets(d: ElectronicsDesign, sheetId: Id, groupId: Id, label: Id, limit = 8, nl: Netlist = netlist(d)): Target[] {
   const sheet = d.sheets.find((s) => s.id === sheetId);
@@ -210,4 +185,4 @@ export function joinI2c(d: ElectronicsDesign, sheetId: Id, groupId: Id): { desig
   return { design: next, joined };
 }
 
-export { netAt };
+export { isJoined, netAt, pointsJoined };
