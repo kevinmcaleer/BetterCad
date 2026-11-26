@@ -283,7 +283,7 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         hidden: !!x.hidden,
       });
   }
-  // Drawings (#555): sheets made from the model. They have no eye; double-click opens one.
+  // Drawings (#555): sheets made from the model. They have no eye; a click opens one (F2 or the menu renames it).
   const drs = m.drawings ?? [];
   if (drs.length) {
     items.push(folder(ROW.drawings, "Drawings", { icon: "drawing", note: count(drs.length), toggles: [] }));
@@ -296,15 +296,16 @@ export function browserItems(m: BrowserModel): TreeItem[] {
         parentId: ROW.drawings,
         drag: false,
         rename: !m.readOnly,
+        openOnClick: true,
         toggles: [],
         note: x.id === m.drawing ? (x.problems ? `Open, ${x.problems} ${x.problems === 1 ? "problem" : "problems"}` : "Open") : undefined,
         ...(x.problems ? { warning: "Something on this drawing lost what it was fixed to. Right-click its warning to pick again or delete it." } : {}),
       });
   }
-  // Electronics (#606): one design, seen as a schematic and a board. Double-click opens a view.
+  // Electronics (#606): one design, seen as a schematic and a board. A click opens a view.
   if (m.electronics) {
     const e = m.electronics;
-    const row = { kind: "drawing" as const, parentId: ROW.electronics, drag: false, rename: false, toggles: [] };
+    const row = { kind: "drawing" as const, parentId: ROW.electronics, drag: false, rename: false, openOnClick: true, toggles: [] };
     items.push(
       folder(ROW.electronics, "Electronics", { icon: "chip", note: e.parts ? `${e.parts} ${e.parts === 1 ? "part" : "parts"}` : undefined, toggles: [] }),
     );

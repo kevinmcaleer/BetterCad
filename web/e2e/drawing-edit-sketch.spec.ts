@@ -35,7 +35,7 @@ test("double-clicking a sketch while a drawing is open leaves the drawing to edi
   await expect(ed.sketchTools).toHaveCount(0);
 
   // From the timeline's right-click menu.
-  await page.getByRole("treeitem", { name: /^Drawing 1/ }).dblclick();
+  await page.getByRole("treeitem", { name: /^Drawing 1/ }).click();
   await expect(page.getByRole("region", { name: /^Drawing: / })).toBeVisible();
   await page
     .getByRole("region", { name: "Timeline" })

@@ -73,7 +73,7 @@ test.describe("on a wide screen", () => {
     await page.keyboard.press("3");
     await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeVisible();
     await expect(page.getByRole("img", { name: /^PCB/ })).toBeHidden();
-    await tree.getByRole("button", { name: /^Schematic/ }).dblclick();
+    await tree.getByRole("button", { name: /^Schematic/ }).click();
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 3 parts, 1 net" })).toBeVisible();
   });
 

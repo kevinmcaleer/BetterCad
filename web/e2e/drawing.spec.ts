@@ -104,7 +104,7 @@ test("make a drawing, fill in its title block, leave it and open it again", { ta
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "Drawing: Drawing 1" })).toHaveCount(0);
   await expect(page.getByRole("group", { name: "View cube" }).getByRole("button", { name: "Fit", exact: true })).toBeVisible();
-  await page.getByRole("treeitem", { name: /^Drawing 1/ }).dblclick();
+  await page.getByRole("treeitem", { name: /^Drawing 1/ }).click();
   await expect(page.getByRole("group", { name: "Sheet 1: A3, portrait" })).toBeVisible();
   await expect(block.getByRole("button", { name: "Title: Bracket" })).toBeVisible();
   await page.getByRole("button", { name: "Finish drawing" }).click();
@@ -165,7 +165,7 @@ test("place a base view of the bracket, move it, change it and delete it", { tag
   await expect(top).toBeVisible({ timeout: 30_000 });
   await page.keyboard.press("Escape");
   await expect(page.getByRole("region", { name: "Drawing: Drawing 1" })).toHaveCount(0);
-  await page.getByRole("treeitem", { name: /^Drawing 1/ }).dblclick();
+  await page.getByRole("treeitem", { name: /^Drawing 1/ }).click();
   await expect(top).toBeVisible({ timeout: 30_000 });
   await expect(front).toBeVisible();
   await top.focus();

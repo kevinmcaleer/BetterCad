@@ -8,7 +8,7 @@ changes. The code is in `web/src/drawing/`, a chunk that loads the first time a 
 ## Making one
 
 Open the view style menu (Shaded) and choose **New drawing**. Pick a page size and the sheet opens in place of the 3D
-view. Drawings are listed under **Drawings** in the browser; double-click one to open it, and **Finish drawing** goes
+view. Drawings are listed under **Drawings** in the browser; click one to open it (F2 or its right-click menu renames it), and **Finish drawing** goes
 back to the model.
 
 | Key | Tool | What it does |
