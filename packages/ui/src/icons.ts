@@ -10,6 +10,11 @@ export const expand = "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7";
 export const shrink = "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7";
 export const play = "M8 5v14l11-7z";
 export const stop = "M7 7h10v10H7z";
+export const pause = "M8 5v14M16 5v14";
+export const replay = "M3 12a9 9 0 1 0 2.6-6.4L3 8M3 3v5h5";
+/** A four-point star: Draw on's ember. */
+export const sparkle = "M12 3c.6 4.6 2.4 6.4 7 7-4.6.6-6.4 2.4-7 7-.6-4.6-2.4-6.4-7-7 4.6-.6 6.4-2.4 7-7zM19 16v4M17 18h4";
+export const video = "M3 6h12v12H3zM15 10l6-3v10l-6-3";
 export const close = "M18 6 6 18M6 6l12 12";
 export const check = "M20 6 9 17l-5-5";
 export const text = "M4 7V4h16v3M9 20h6M12 4v16";
@@ -191,6 +196,10 @@ export const bulb = "M9 18h6M10 22h4M15 14c.2-1 .7-1.7 1.5-2.5A5.5 5.5 0 0 0 18 
 export const ICONS = {
   play,
   stop,
+  pause,
+  replay,
+  sparkle,
+  video,
   component,
   insertModel,
   bulb,

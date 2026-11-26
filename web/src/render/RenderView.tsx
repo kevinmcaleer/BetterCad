@@ -1,8 +1,32 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Banner, Button, Icon, IconButton, MenuButton, RibbonButton, RibbonGroup, ViewCube, type IconName, type MenuEntry } from "@bettercad/ui";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  Banner,
+  Button,
+  ESC,
+  Icon,
+  IconButton,
+  MenuButton,
+  RibbonButton,
+  RibbonGroup,
+  useEscape,
+  ViewCube,
+  type IconName,
+  type MenuEntry,
+} from "@bettercad/ui";
 import { BACKGROUNDS } from "./backgrounds";
 import { LIGHT_PRESETS, PathRender, type RenderBody } from "./pathRender";
-import { FOCUSES, QUALITIES, samplesFor, samplesText, type RenderSession, type SaveSize } from "./session";
+import {
+  DRAW_COLOURS,
+  DRAW_LENGTHS,
+  DRAW_ON_START,
+  FOCUSES,
+  QUALITIES,
+  samplesFor,
+  samplesText,
+  type DrawOnState,
+  type RenderSession,
+  type SaveSize,
+} from "./session";
 import { DEFAULT_CAMERA, lookFrom, orbit, pan, PRESETS, rollBy, viewRotation, zoom, type CameraState } from "../viewport/camera";
 import { fit } from "../viewport/fitSphere";
 import { Box3, Sphere, Vector3 } from "three";
@@ -27,6 +51,9 @@ function cutPlane(s: Section | null): CutPlane | null {
   return { normal: n, point: [s.origin[0] + n[0] * s.offset, s.origin[1] + n[1] * s.offset, s.origin[2] + n[2] * s.offset] };
 }
 
+/** Draw on loads on first use: its player and bloom pass stay out of the render chunk. */
+const DrawOnPicture = lazy(() => import("./DrawOn"));
+
 /** Tests cap the samples so a software GPU finishes. */
 const testMax = () => (window as unknown as { __bcRenderMax?: number }).__bcRenderMax;
 
@@ -50,6 +77,8 @@ export interface RenderPictureProps {
   home?: CameraState | null;
   onSetHome?: (camera: CameraState) => void;
   onResetHome?: () => void;
+  /** Saves Draw on's video. Called at once on the click with the video still recording. */
+  onSaveVideo?: (video: Promise<Blob | null>, ext: "mp4" | "webm") => Promise<void>;
 }
 
 /** The corner view (or the front, side or top), fitted round the bodies: home when the model has none of its own. */
@@ -69,7 +98,18 @@ function cornerView(bodies: RenderBody[], aspect: number, from: "iso" | "front" 
  * The Render view's picture (#197): a path-traced image of the model that clears over a few seconds. Drag to orbit
  * (right drag pans, the wheel zooms); the picture waits while you move and starts again when you stop.
  */
-export function RenderPicture({ session, bodies, section = null, camera, onCamera, onSave, home = null, onSetHome, onResetHome }: RenderPictureProps) {
+export function RenderPicture({
+  session,
+  bodies,
+  section = null,
+  camera,
+  onCamera,
+  onSave,
+  home = null,
+  onSetHome,
+  onResetHome,
+  onSaveVideo,
+}: RenderPictureProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const r = useRef<PathRender | null>(null);
   const cam = useRef(camera);
@@ -228,6 +268,10 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
     };
   }, [session, move, goHome, bodies]);
 
+  // Esc leaves Draw on first, back to the picture.
+  useEscape(!!state.drawOn, () => session.set({ drawOn: null }), ESC.tool);
+  const camNow = useCallback(() => cam.current, []);
+
   const orbiting = useRef(false);
   // As the modelling view's cube, less the projection: a path-traced picture is always in perspective.
   const cubeMenu: MenuEntry[] = [
@@ -246,6 +290,11 @@ export function RenderPicture({ session, bodies, section = null, camera, onCamer
         // Where the camera looks from, for tests: named views move it.
         data-look={`${Math.round(cam.current.azimuth)} ${Math.round(cam.current.elevation)}`}
       />
+      {state.drawOn && (
+        <Suspense fallback={null}>
+          <DrawOnPicture session={session} bodies={bodies} camera={camNow} onSaveVideo={onSaveVideo} />
+        </Suspense>
+      )}
       {/* The render's own view cube: it turns the picture's camera, as the modelling view's turns that one. */}
       <div className="bc-render-cube">
         <ViewCube
@@ -336,25 +385,77 @@ function QualityBar({ session }: { session: RenderSession }) {
 function useStatus(session: RenderSession) {
   const s = useSession(session);
   const max = testMax() ?? samplesFor(s.quality);
-  const status = s.loading
-    ? "Loading the renderer…"
-    : s.saving !== null
-      ? `Saving the picture, ${Math.round(s.saving * 100)}%`
-      : s.moving
-        ? "Waiting for you to stop moving"
-        : s.stopped && s.samples <= 1
-          ? "Press Start to render"
-          : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(max)}`;
+  const d = s.drawOn;
+  const status = d
+    ? d.recording
+      ? `Recording the video, ${secs(d.at)} of ${secs(d.total)}`
+      : d.total
+        ? `Draw on, ${secs(d.at)} of ${secs(d.total)}`
+        : "Draw on"
+    : s.loading
+      ? "Loading the renderer…"
+      : s.saving !== null
+        ? `Saving the picture, ${Math.round(s.saving * 100)}%`
+        : s.moving
+          ? "Waiting for you to stop moving"
+          : s.stopped && s.samples <= 1
+            ? "Press Start to render"
+            : `${s.stopped ? "Stopped at " : ""}${s.samples.toLocaleString("en-GB")} of ${samplesText(max)}`;
   const done = s.samples >= max;
   const rendering = !s.stopped && !done && !s.loading && !s.slow;
   const go = {
     icon: (rendering ? "stop" : "play") as IconName,
     title: rendering ? "Stop rendering" : done ? "Finished: raise the quality to keep going" : "Start rendering",
-    disabled: !rendering && (done || s.loading || s.slow),
+    disabled: !rendering && (done || s.loading || s.slow || !!d),
     onClick: () => session.set({ stopped: rendering }),
   };
-  const save: MenuEntry[] = SIZES.map((z) => ({ id: z.id, label: z.label, disabled: s.saving !== null || s.slow, onSelect: () => void session.save?.(z.id) }));
+  const save: MenuEntry[] = SIZES.map((z) => ({
+    id: z.id,
+    label: z.label,
+    disabled: s.saving !== null || s.slow || !!d,
+    onSelect: () => void session.save?.(z.id),
+  }));
   return { s, status, rendering, go, save };
+}
+
+/** "3 s", "12.5 s". */
+const secs = (t: number) => `${(Math.round(t * 10) / 10).toLocaleString("en-GB")} s`;
+
+/** Draw on's controls, for the ribbon and the floating bar: on and off, play, length, colour and Save video. */
+function useDrawOn(session: RenderSession) {
+  const s = useSession(session);
+  const d = s.drawOn;
+  const set = (change: Partial<DrawOnState>) => d && session.set({ drawOn: { ...d, ...change } });
+  const toggle = () => (d ? session.set({ drawOn: null }) : session.set({ drawOn: { ...DRAW_ON_START }, stopped: true }));
+  const ended = !!d && !d.playing && d.total > 0 && d.at >= d.total - 1e-3;
+  const play = {
+    icon: (d?.playing ? "pause" : ended ? "replay" : "play") as IconName,
+    title: d?.playing ? "Pause" : ended ? "Play again" : "Play",
+    short: d?.playing ? "Pause" : ended ? "Again" : "Play",
+    disabled: !d || d.recording,
+    onClick: () => (ended ? session.replay?.() : set({ playing: !d?.playing })),
+  };
+  const lengths: MenuEntry[] = DRAW_LENGTHS.map((l) => ({
+    id: l.id,
+    label: l.label,
+    checked: d?.length === l.id,
+    disabled: d?.recording,
+    onSelect: () => set({ length: l.id }),
+  }));
+  const colours: MenuEntry[] = DRAW_COLOURS.map((c) => ({
+    id: c.id,
+    label: c.label,
+    checked: d?.colour === c.id,
+    disabled: d?.recording,
+    onSelect: () => set({ colour: c.id }),
+  }));
+  const canRecord = typeof MediaRecorder !== "undefined";
+  const record = {
+    title: !canRecord ? "Your browser can't record video" : d?.recording ? "Recording the video" : "Save video: plays it from the start and records it",
+    disabled: !d || d.recording || !canRecord,
+    onClick: () => void session.record?.(),
+  };
+  return { d, toggle, play, lengths, colours, record };
 }
 
 /**
@@ -431,9 +532,26 @@ export function RenderBar({ session, onClose, onExportGltf, onNote, ribbon }: Re
           {status}
         </span>
         <MenuButton label="Save image" entries={save} trigger={(p) => <Button {...p} icon="download" label="Save image" title="Save the picture as a PNG" />} />
+        <DrawOnButtons session={session} />
         <Button kind="done" label="Done" title="Back to modelling" shortcut="Esc" onClick={onClose} />
       </div>
       {slow}
+    </>
+  );
+}
+
+/** Draw on in the floating bar: the switch, and once on, play and Save video. */
+function DrawOnButtons({ session }: { session: RenderSession }) {
+  const { d, toggle, play, record } = useDrawOn(session);
+  return (
+    <>
+      <Button icon="sparkle" label="Draw on" title="Draw on: glowing lines trace the model, then it fills in" on={!!d} onClick={toggle} />
+      {d && (
+        <>
+          <IconButton icon={play.icon} title={play.title} disabled={play.disabled} onClick={play.onClick} />
+          <IconButton icon="video" title={record.title} disabled={record.disabled} onClick={record.onClick} />
+        </>
+      )}
     </>
   );
 }
@@ -478,6 +596,7 @@ export interface RenderRibbonProps {
  */
 export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
   const { s, rendering, go, save } = useStatus(session);
+  const draw = useDrawOn(session);
   const pick = <T extends { id: string; label: string }>(list: readonly T[], on: string, set: (id: T["id"]) => void): MenuEntry[] =>
     list.map((x) => ({ id: x.id, label: x.label, checked: on === x.id, onSelect: () => set(x.id) }));
   return (
@@ -531,6 +650,36 @@ export function RenderRibbon({ session, onAdd }: RenderRibbonProps) {
           onPress={go.onClick}
         />
         <QualityBar session={session} />
+      </RibbonGroup>
+      <RibbonGroup label="Animate" entries={[]}>
+        <RibbonButton
+          icon="sparkle"
+          label="Draw on: glowing lines trace the model, then it fills in"
+          short="Draw on"
+          pressed={!!draw.d}
+          onPress={draw.toggle}
+        />
+        {draw.d && (
+          <>
+            <RibbonButton
+              icon={draw.play.icon}
+              colour={false}
+              label={draw.play.title}
+              short={draw.play.short}
+              disabled={draw.play.disabled}
+              onPress={draw.play.onClick}
+            />
+            <RibbonMenu icon="sliders" label={`Length: ${DRAW_LENGTHS.find((x) => x.id === draw.d!.length)!.label}`} short="Length" entries={draw.lengths} />
+            <RibbonMenu
+              icon="paint"
+              colour="sliders"
+              label={`Colour: ${DRAW_COLOURS.find((x) => x.id === draw.d!.colour)!.label}`}
+              short="Colour"
+              entries={draw.colours}
+            />
+            <RibbonButton icon="video" label={draw.record.title} short="Save video" disabled={draw.record.disabled} onPress={draw.record.onClick} />
+          </>
+        )}
       </RibbonGroup>
       {onAdd && (
         <RibbonGroup label="Strip" entries={[]}>

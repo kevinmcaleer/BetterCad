@@ -25,6 +25,35 @@ export const QUALITIES: { id: RenderQuality; label: string; samples: number }[] 
 export const samplesFor = (q: RenderQuality) => QUALITIES.find((x) => x.id === q)!.samples;
 /** Each body's colour and finish, or every part in matte paper white (a clay render). */
 export type RenderStyle = "finishes" | "paper";
+/** Draw on's glow: a neon colour, or each part's own. */
+export type DrawOnColour = "blue" | "amber" | "green" | "white" | "parts";
+export const DRAW_COLOURS: { id: DrawOnColour; label: string }[] = [
+  { id: "blue", label: "Neon blue" },
+  { id: "amber", label: "Amber" },
+  { id: "green", label: "Green" },
+  { id: "white", label: "White" },
+  { id: "parts", label: "Each part's colour" },
+];
+/** How long Draw on takes to draw every edge. */
+export type DrawOnLength = "quick" | "normal" | "slow";
+export const DRAW_LENGTHS: { id: DrawOnLength; label: string; seconds: number }[] = [
+  { id: "quick", label: "Quick, 5 s", seconds: 5 },
+  { id: "normal", label: "Normal, 10 s", seconds: 10 },
+  { id: "slow", label: "Slow, 20 s", seconds: 20 },
+];
+export const drawSeconds = (l: DrawOnLength) => DRAW_LENGTHS.find((x) => x.id === l)!.seconds;
+
+/** Draw on (the glowing build-up animation): whether it is showing, how, and where it has got. */
+export interface DrawOnState {
+  colour: DrawOnColour;
+  length: DrawOnLength;
+  playing: boolean;
+  /** Seconds in, and the whole length. */
+  at: number;
+  total: number;
+  /** Recording a video: true until it is saved. */
+  recording: boolean;
+}
 
 export interface RenderState {
   /** The renderer module is loading. */
@@ -49,6 +78,8 @@ export interface RenderState {
   sluggish: boolean;
   /** Saving a picture: 0 to 1, or null. */
   saving: number | null;
+  /** Draw on is showing in place of the picture, or null. */
+  drawOn: DrawOnState | null;
 }
 
 export interface RenderSession {
@@ -67,6 +98,9 @@ export interface RenderSession {
   canvas: (() => HTMLCanvasElement | null) | null;
   /** Set by the picture: the size it is drawn at, in CSS pixels. */
   size: (() => { width: number; height: number }) | null;
+  /** Set by Draw on once it shows: plays from the start, and records a video of it. */
+  replay: (() => void) | null;
+  record: (() => Promise<void>) | null;
 }
 
 export function renderSession(style: RenderStyle = "finishes"): RenderSession {
@@ -83,6 +117,7 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     slow: false,
     sluggish: false,
     saving: null,
+    drawOn: null,
   };
   const subs = new Set<() => void>();
   return {
@@ -101,8 +136,13 @@ export function renderSession(style: RenderStyle = "finishes"): RenderSession {
     standard: null,
     canvas: null,
     size: null,
+    replay: null,
+    record: null,
   };
 }
 
 /** "24 samples", "1 sample". */
 export const samplesText = (n: number) => `${n.toLocaleString("en-GB")} ${n === 1 ? "sample" : "samples"}`;
+
+/** Draw on as it opens: neon blue, normal length, playing. */
+export const DRAW_ON_START: DrawOnState = { colour: "blue", length: "normal", playing: true, at: 0, total: 0, recording: false };

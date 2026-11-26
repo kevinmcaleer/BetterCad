@@ -1,0 +1,579 @@
+/**
+ * Plays Draw on (see `drawOn.ts`) in real time with three.js: neon lines that grow behind star-like embers, ghost
+ * faces that glow at their rims, and the solid model firming up underneath, all through a bloom pass so the lines
+ * glow. It can record itself to a video with the browser's MediaRecorder.
+ *
+ * Unlike the path tracer this scene stays Z up, as the modelling view is.
+ */
+import {
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  Float32BufferAttribute,
+  Group,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
+  Matrix4,
+  Mesh,
+  NormalBlending,
+  PerspectiveCamera,
+  Points,
+  Scene,
+  ShaderMaterial,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+} from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { DEFAULT_COLOUR, type BodyMesh } from "@bettercad/kernel";
+import { cameraBasis, FOV, type CameraState } from "../viewport/camera";
+import { emberAt, GHOST, GHOST_IN, lineGlow, planDrawOn, SETTLE, type DrawOnPlan, type DrawOnTiming } from "./drawOn";
+import type { RenderBody } from "./pathRender";
+import type { DrawOnColour } from "./session";
+
+/**
+ * The glow colours. Like the path tracer's lighting, these are colours of the rendered picture, not of the interface,
+ * so they live here rather than in the design tokens.
+ */
+export const GLOWS: Record<Exclude<DrawOnColour, "parts">, number> = {
+  blue: 0x3d7bff,
+  amber: 0xffa23a,
+  green: 0x3cff8f,
+  white: 0xdfe9ff,
+};
+/** Behind the model: near black with a little blue in it. */
+const NIGHT = 0x020409;
+
+/** A body with the kernel's edges, as the Render view has it. */
+const hasEdges = (m: RenderBody["mesh"]): m is BodyMesh => "edgePositions" in m && "edgeSegs" in m && "faceTris" in m;
+
+const FACE_TIMING = /* glsl */ `
+  uniform float uTime;
+  uniform float uDrawEnd;
+  varying float vClosed;
+  float shown() { return smoothstep(vClosed, vClosed + ${GHOST_IN.toFixed(3)}, uTime); }
+  float solid() { return smoothstep(uDrawEnd * 0.5, uDrawEnd + ${SETTLE.toFixed(3)}, uTime); }
+`;
+
+const FACE_VERTEX = /* glsl */ `
+  attribute float aClosed;
+  varying float vClosed;
+  varying vec3 vNormal;
+  varying vec3 vView;
+  void main() {
+    vClosed = aClosed;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vNormal = normalize(normalMatrix * normal);
+    vView = -mv.xyz;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+/** Writes depth only where a face is mostly solid, so lines and ghosts behind it hide, but not behind a ghost. */
+const prepassMaterial = () =>
+  new ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uDrawEnd: { value: 1 } },
+    vertexShader: FACE_VERTEX,
+    fragmentShader: /* glsl */ `
+      ${FACE_TIMING}
+      void main() {
+        if (shown() * solid() < 0.6) discard;
+        gl_FragColor = vec4(0.0);
+      }
+    `,
+    colorWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 2,
+  });
+
+/** The solid model, softly lit, fading in over the ghosts. */
+const solidMaterial = (colour: Color, glow: Color) =>
+  new ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uDrawEnd: { value: 1 }, uColour: { value: colour }, uGlow: { value: glow } },
+    vertexShader: FACE_VERTEX,
+    fragmentShader: /* glsl */ `
+      ${FACE_TIMING}
+      uniform vec3 uColour;
+      uniform vec3 uGlow;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      void main() {
+        float a = shown() * solid();
+        if (a < 0.003) discard;
+        vec3 n = normalize(vNormal);
+        if (!gl_FrontFacing) n = -n;
+        vec3 v = normalize(vView);
+        // A key light up and to the left of the camera, a fill from the right, and a rim of the glow colour.
+        float key = max(dot(n, normalize(vec3(-0.5, 0.7, 0.6))), 0.0);
+        float fill = max(dot(n, normalize(vec3(0.7, -0.1, 0.5))), 0.0);
+        float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
+        // Kept under the bloom's threshold, so only the lines and embers glow.
+        vec3 c = uColour * (0.16 + 0.5 * key + 0.16 * fill) + uGlow * rim * 0.25;
+        gl_FragColor = vec4(c, a);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: NormalBlending,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 2,
+  });
+
+/** The ghost: see-through, glowing at its rims, fading as the solid comes in. */
+const ghostMaterial = (glow: Color) =>
+  new ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uDrawEnd: { value: 1 }, uGlow: { value: glow } },
+    vertexShader: FACE_VERTEX,
+    fragmentShader: /* glsl */ `
+      ${FACE_TIMING}
+      uniform vec3 uGlow;
+      varying vec3 vNormal;
+      varying vec3 vView;
+      void main() {
+        float a = shown() * (1.0 - solid());
+        if (a < 0.003) discard;
+        float facing = abs(dot(normalize(vNormal), normalize(vView)));
+        float rim = pow(1.0 - facing, 2.0);
+        gl_FragColor = vec4(uGlow * (${GHOST.toFixed(3)} * 0.6 + rim * 0.55) * a, 1.0);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: 2,
+  });
+
+/** Wide line segments that grow from their start as time reaches them, white hot where just drawn. */
+const lineMaterial = () =>
+  new ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uGlow: { value: 1 }, uResolution: { value: new Vector2(1, 1) }, uWidth: { value: 2.5 } },
+    vertexShader: /* glsl */ `
+      uniform vec2 uResolution;
+      uniform float uWidth;
+      attribute vec3 iStart;
+      attribute vec3 iEnd;
+      attribute vec2 iTime;
+      attribute vec3 iColour;
+      varying float vT;
+      varying float vSide;
+      varying vec3 vColour;
+      void main() {
+        vec4 a = projectionMatrix * modelViewMatrix * vec4(iStart, 1.0);
+        vec4 b = projectionMatrix * modelViewMatrix * vec4(iEnd, 1.0);
+        vec2 sa = a.xy / a.w * uResolution;
+        vec2 sb = b.xy / b.w * uResolution;
+        vec2 d = sb - sa;
+        vec2 dir = length(d) > 1e-5 ? normalize(d) : vec2(1.0, 0.0);
+        vec2 n = vec2(-dir.y, dir.x);
+        vec4 p = mix(a, b, position.x);
+        vec2 off = (n * position.y + dir * (position.x * 2.0 - 1.0) * 0.5) * uWidth / uResolution;
+        p.xy += off * p.w;
+        vT = mix(iTime.x, iTime.y, position.x);
+        vSide = position.y;
+        vColour = iColour;
+        gl_Position = p;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform float uTime;
+      uniform float uGlow;
+      varying float vT;
+      varying float vSide;
+      varying vec3 vColour;
+      void main() {
+        if (vT > uTime) discard;
+        float hot = exp(-(uTime - vT) * 2.5);
+        float core = 1.0 - abs(vSide);
+        core *= core;
+        vec3 c = mix(vColour, vec3(1.0), hot * 0.7) * (2.8 * uGlow + 3.0 * hot) * core;
+        gl_FragColor = vec4(c, 1.0);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+  });
+
+/** The embers: a hot white core, a halo of the glow colour and a four-point star that flickers. */
+const emberMaterial = () =>
+  new ShaderMaterial({
+    uniforms: { uSize: { value: 64 }, uFlicker: { value: 1 } },
+    vertexShader: /* glsl */ `
+      uniform float uSize;
+      attribute float aAlpha;
+      attribute vec3 aColour;
+      varying float vAlpha;
+      varying vec3 vColour;
+      void main() {
+        vAlpha = aAlpha;
+        vColour = aColour;
+        gl_PointSize = uSize;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform float uFlicker;
+      varying float vAlpha;
+      varying vec3 vColour;
+      void main() {
+        vec2 d = gl_PointCoord - 0.5;
+        float r2 = dot(d, d);
+        float core = exp(-r2 * 260.0);
+        float halo = exp(-r2 * 28.0) * 0.55;
+        float star = exp(-abs(d.x) * 70.0) * exp(-abs(d.y) * 7.0) + exp(-abs(d.y) * 70.0) * exp(-abs(d.x) * 7.0);
+        vec3 c = vec3(1.0) * (core * 3.0 + star * 1.6 * uFlicker) + vColour * halo * 2.0;
+        gl_FragColor = vec4(c * vAlpha, 1.0);
+      }
+    `,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    blending: AdditiveBlending,
+  });
+
+export interface DrawOnViewOptions {
+  /** Where the camera is: read each frame, so orbiting the picture underneath turns this too. */
+  camera?: () => CameraState;
+  /** Called as the animation plays (a few times a second), with the time and the whole length in seconds. */
+  onTime?: (t: number, total: number) => void;
+  /** Called when it reaches the end. */
+  onEnd?: () => void;
+}
+
+/** The video formats to try, best first: MP4 where the browser records it, else WebM. */
+const VIDEO_TYPES = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+export function videoType(supported: (t: string) => boolean = (t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)): string | null {
+  return VIDEO_TYPES.find(supported) ?? null;
+}
+
+export class DrawOnView {
+  readonly renderer: WebGLRenderer;
+  private scene = new Scene();
+  private camera = new PerspectiveCamera(FOV, 1, 1, 100_000);
+  private composer: EffectComposer;
+  private bloom: UnrealBloomPass;
+  private model = new Group();
+  private lines: Mesh<InstancedBufferGeometry, ShaderMaterial> | null = null;
+  private embers: Points<BufferGeometry, ShaderMaterial> | null = null;
+  private faceMaterials: ShaderMaterial[] = [];
+  private plan: DrawOnPlan | null = null;
+  private emberColours: Vector3[] = [];
+  private time = 0;
+  private playing = false;
+  private last = 0;
+  private frame = 0;
+  private told = -1;
+  private size = new Vector2(1, 1);
+  private seen: CameraState | null = null;
+
+  /** Throws when the browser has no WebGL. */
+  constructor(
+    readonly canvas: HTMLCanvasElement,
+    private opts: DrawOnViewOptions = {},
+  ) {
+    this.renderer = new WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    this.renderer.setClearColor(NIGHT, 1);
+    this.scene.background = new Color(NIGHT);
+    this.camera.up.set(0, 0, 1);
+    this.scene.add(this.model, this.camera);
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new Vector2(1, 1), 1.1, 0.55, 0.78);
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(new OutputPass());
+    this.loop = this.loop.bind(this);
+    this.frame = requestAnimationFrame(this.loop);
+  }
+
+  /** Builds the lines, faces and embers from the bodies. Starts again from the beginning. */
+  setBodies(bodies: readonly RenderBody[], timing: DrawOnTiming, colour: DrawOnColour): void {
+    this.clear();
+    const shown = bodies.filter((b) => hasEdges(b.mesh));
+    const plan = planDrawOn(
+      shown.map((b) => ({ mesh: b.mesh as BodyMesh, matrix: b.matrix.elements })),
+      timing,
+    );
+    this.plan = plan;
+    const glowOf = (b: RenderBody) => new Color(colour === "parts" ? (b.colour ?? DEFAULT_COLOUR) : GLOWS[colour]);
+
+    // Faces: one mesh per body, drawn three times (depth, solid, ghost), each vertex knowing when its face closes.
+    shown.forEach((b, i) => {
+      const m = b.mesh as BodyMesh;
+      const g = new BufferGeometry();
+      g.setAttribute("position", new BufferAttribute(m.positions, 3));
+      g.setAttribute("normal", new BufferAttribute(m.normals, 3));
+      g.setIndex(new BufferAttribute(m.indices, 1));
+      const closed = new Float32Array(m.positions.length / 3).fill(plan.drawEnd);
+      const times = plan.faceTimes[i];
+      for (let f = 0; f + 1 < m.faceVerts.length; f++) closed.fill(times[f] ?? plan.drawEnd, m.faceVerts[f], m.faceVerts[f + 1]);
+      g.setAttribute("aClosed", new BufferAttribute(closed, 1));
+      const glow = glowOf(b);
+      const mats = [prepassMaterial(), solidMaterial(new Color(b.colour ?? DEFAULT_COLOUR), glow), ghostMaterial(glow)];
+      mats.forEach((mat, order) => {
+        const mesh = new Mesh(g, mat);
+        mesh.matrixAutoUpdate = false;
+        mesh.matrix.copy(b.matrix);
+        mesh.renderOrder = order;
+        this.model.add(mesh);
+        this.faceMaterials.push(mat);
+      });
+    });
+
+    // Lines: one instanced quad per segment. Segments are placed already; their colour is their body's.
+    const n = plan.segmentTimes.length / 2;
+    const quad = new InstancedBufferGeometry();
+    quad.setAttribute("position", new Float32BufferAttribute([0, -1, 0, 1, -1, 0, 1, 1, 0, 0, 1, 0], 3));
+    quad.setIndex([0, 1, 2, 0, 2, 3]);
+    const start = new Float32Array(n * 3),
+      end = new Float32Array(n * 3),
+      colours = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      start.set(plan.segments.subarray(i * 6, i * 6 + 3), i * 3);
+      end.set(plan.segments.subarray(i * 6 + 3, i * 6 + 6), i * 3);
+    }
+    // Which body each segment came from, for its colour: the plan keeps them in edge order, so match by body.
+    const segColour = this.segmentColours(shown, plan, glowOf);
+    colours.set(segColour);
+    quad.setAttribute("iStart", new InstancedBufferAttribute(start, 3));
+    quad.setAttribute("iEnd", new InstancedBufferAttribute(end, 3));
+    quad.setAttribute("iTime", new InstancedBufferAttribute(plan.segmentTimes, 2));
+    quad.setAttribute("iColour", new InstancedBufferAttribute(colours, 3));
+    quad.instanceCount = n;
+    this.lines = new Mesh(quad, lineMaterial());
+    this.lines.frustumCulled = false;
+    this.lines.renderOrder = 3;
+    this.scene.add(this.lines);
+
+    // Embers: one point each, moved every frame.
+    const k = plan.embers.length;
+    const eg = new BufferGeometry();
+    eg.setAttribute("position", new BufferAttribute(new Float32Array(k * 3), 3));
+    eg.setAttribute("aAlpha", new BufferAttribute(new Float32Array(k), 1));
+    this.emberColours = plan.embers.map((p) => {
+      const c = this.colourNear(p.points[0], shown, glowOf);
+      return new Vector3(c.r, c.g, c.b);
+    });
+    eg.setAttribute("aColour", new BufferAttribute(new Float32Array(this.emberColours.flatMap((c) => [c.x, c.y, c.z])), 3));
+    this.embers = new Points(eg, emberMaterial());
+    this.embers.frustumCulled = false;
+    this.embers.renderOrder = 4;
+    this.scene.add(this.embers);
+    this.seek(0);
+  }
+
+  /** Each segment's colour: its body's glow. Bodies' segments come in tour order, so look each up by nearest body box. */
+  private segmentColours(bodies: RenderBody[], plan: DrawOnPlan, glowOf: (b: RenderBody) => Color): Float32Array {
+    const n = plan.segmentTimes.length / 2;
+    const out = new Float32Array(n * 3);
+    const one = bodies.length === 1 || new Set(bodies.map((b) => glowOf(b).getHex())).size <= 1;
+    const p = new Vector3();
+    for (let i = 0; i < n; i++) {
+      p.fromArray(plan.segments, i * 6);
+      const c = one && bodies.length ? glowOf(bodies[0]) : this.colourNear([p.x, p.y, p.z], bodies, glowOf);
+      out.set([c.r, c.g, c.b], i * 3);
+    }
+    return out;
+  }
+
+  /** The glow of the body nearest a point (by its bounding box), for lines and embers of several-coloured models. */
+  private boxes = new WeakMap<RenderBody, { min: Vector3; max: Vector3 }>();
+  private colourNear(at: [number, number, number], bodies: RenderBody[], glowOf: (b: RenderBody) => Color): Color {
+    if (!bodies.length) return new Color(GLOWS.blue);
+    let best = bodies[0],
+      bestD = Infinity;
+    const p = new Vector3(...at);
+    for (const b of bodies) {
+      let box = this.boxes.get(b);
+      if (!box) {
+        const min = new Vector3(Infinity, Infinity, Infinity),
+          max = new Vector3(-Infinity, -Infinity, -Infinity),
+          v = new Vector3();
+        const P = b.mesh.positions;
+        for (let i = 0; i < P.length; i += 3) {
+          v.set(P[i], P[i + 1], P[i + 2]).applyMatrix4(b.matrix);
+          min.min(v);
+          max.max(v);
+        }
+        box = { min, max };
+        this.boxes.set(b, box);
+      }
+      const d = new Vector3().copy(p).clamp(box.min, box.max).distanceTo(p);
+      if (d < bestD) [best, bestD] = [b, d];
+    }
+    return glowOf(best);
+  }
+
+  setCamera(c: CameraState): void {
+    const { position, up } = cameraBasis(c);
+    this.camera.position.set(...position);
+    this.camera.up.set(...up);
+    this.camera.lookAt(...c.target);
+    this.camera.near = Math.max(0.1, c.distance / 1000);
+    this.camera.far = c.distance * 100 + 10_000;
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld();
+  }
+
+  setSize(width: number, height: number): void {
+    this.size.set(width, height);
+    this.renderer.setSize(width, height, false);
+    this.composer.setSize(width, height);
+    this.camera.aspect = width / Math.max(1, height);
+    this.camera.updateProjectionMatrix();
+  }
+
+  get total(): number {
+    return this.plan?.total ?? 0;
+  }
+  get at(): number {
+    return this.time;
+  }
+  get isPlaying(): boolean {
+    return this.playing;
+  }
+
+  /** Plays from `from` (the start by default, or where it is if it hasn't finished). */
+  play(from?: number): void {
+    if (from !== undefined) this.time = from;
+    else if (this.time >= this.total) this.time = 0;
+    this.playing = true;
+    this.last = performance.now();
+  }
+  pause(): void {
+    this.playing = false;
+  }
+  seek(t: number): void {
+    this.time = Math.max(0, Math.min(t, this.total));
+    this.draw();
+  }
+
+  /**
+   * Records the animation from the start to a video, playing it as it goes. Resolves with the video, or null if the
+   * browser can't record (no MediaRecorder or no format it knows). `signal` stops early, keeping nothing.
+   */
+  async record(signal?: AbortSignal): Promise<{ blob: Blob; type: string } | null> {
+    const type = videoType();
+    if (!type || !("captureStream" in this.canvas)) return null;
+    const stream = this.canvas.captureStream(60);
+    const rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 16_000_000 });
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    const stopped = new Promise<void>((done) => (rec.onstop = () => done()));
+    this.seek(0);
+    rec.start(250);
+    this.play(0);
+    await new Promise<void>((done) => {
+      const check = () => {
+        if (signal?.aborted || !this.playing) return done();
+        requestAnimationFrame(check);
+      };
+      check();
+    });
+    // A last moment on the finished model.
+    if (!signal?.aborted) await new Promise((r) => setTimeout(r, 200));
+    rec.stop();
+    await stopped;
+    for (const t of stream.getTracks()) t.stop();
+    if (signal?.aborted) return null;
+    return { blob: new Blob(chunks, { type: type.split(";")[0] }), type: type.split(";")[0] };
+  }
+
+  private loop(now: number): void {
+    this.frame = requestAnimationFrame(this.loop);
+    if (this.playing) {
+      // Steps of at most a tenth of a second, so a stalled tab doesn't skip the drawing.
+      this.time += Math.min(0.1, (now - this.last) / 1000);
+      if (this.time >= this.total) {
+        this.time = this.total;
+        this.playing = false;
+        this.opts.onEnd?.();
+      }
+    }
+    this.last = now;
+    this.draw(now);
+  }
+
+  private draw(now = performance.now()): void {
+    const c = this.opts.camera?.();
+    if (c && c !== this.seen) {
+      this.seen = c;
+      this.setCamera(c);
+    }
+    const plan = this.plan;
+    const t = this.time;
+    if (plan) {
+      for (const m of this.faceMaterials) {
+        m.uniforms.uTime.value = t;
+        m.uniforms.uDrawEnd.value = plan.drawEnd;
+      }
+      if (this.lines) {
+        const u = this.lines.material.uniforms;
+        u.uTime.value = t;
+        u.uGlow.value = lineGlow(plan, t);
+        const pr = this.renderer.getPixelRatio();
+        u.uResolution.value.set((this.size.x * pr) / 2, (this.size.y * pr) / 2);
+        u.uWidth.value = 2.5 * pr;
+      }
+      if (this.embers) {
+        const pos = this.embers.geometry.getAttribute("position") as BufferAttribute;
+        const alpha = this.embers.geometry.getAttribute("aAlpha") as BufferAttribute;
+        plan.embers.forEach((p, i) => {
+          const e = emberAt(p, t);
+          pos.setXYZ(i, ...e.at);
+          // Bright while drawing, dimmer in flight, and gone once its run is done.
+          const fade = e.done ? Math.max(0, 1 - (t - p.times[p.times.length - 1]) / 0.4) : e.drawing ? 1 : 0.55;
+          alpha.setX(i, fade);
+        });
+        pos.needsUpdate = true;
+        alpha.needsUpdate = true;
+        const u = this.embers.material.uniforms;
+        u.uSize.value = Math.max(36, Math.min(96, this.size.y * 0.09)) * this.renderer.getPixelRatio();
+        u.uFlicker.value = 0.75 + 0.25 * Math.sin(now / 37) * Math.sin(now / 53);
+      }
+      if (this.playing && Math.floor(t * 10) !== this.told) {
+        this.told = Math.floor(t * 10);
+        this.opts.onTime?.(t, plan.total);
+      }
+    }
+    this.composer.render();
+  }
+
+  private clear(): void {
+    for (const c of [...this.model.children]) {
+      const m = c as Mesh;
+      this.model.remove(m);
+      (m.material as ShaderMaterial).dispose();
+    }
+    // Each body's geometry is shared by its three meshes: dispose once.
+    const seen = new Set<BufferGeometry>();
+    for (const c of this.model.children) seen.add((c as Mesh).geometry);
+    for (const g of seen) g.dispose();
+    this.faceMaterials = [];
+    for (const o of [this.lines, this.embers]) {
+      if (!o) continue;
+      this.scene.remove(o);
+      o.geometry.dispose();
+      o.material.dispose();
+    }
+    this.lines = null;
+    this.embers = null;
+    this.plan = null;
+  }
+
+  dispose(): void {
+    cancelAnimationFrame(this.frame);
+    this.clear();
+    this.composer.dispose();
+    this.renderer.dispose();
+  }
+}
+
+/** For tests: the identity, so a body placed in the kernel needs no matrix. */
+export const IDENTITY = new Matrix4();
