@@ -4239,7 +4239,14 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
         ? [{ id: "recognise", label: "Recognise features…", icon: "shapes" as const, onSelect: () => startRecognise(chosen[0]!.id) }]
         : []),
       ...(chosen.length === 1 && !chosen[0]!.pcb
-        ? [{ id: "pcb-profile", label: "Use as PCB profile", icon: "pcb" as const, onSelect: () => shapeBoardFrom({ body: chosen[0]!.id, face }, chosen[0]!.name) }]
+        ? [
+            {
+              id: "pcb-profile",
+              label: "Use as PCB profile",
+              icon: "pcb" as const,
+              onSelect: () => shapeBoardFrom({ body: chosen[0]!.id, face }, chosen[0]!.name),
+            },
+          ]
         : []),
       { id: "make-link", label: "New component", icon: "component", onSelect: () => makeLink(ids) },
       ...(ids.length > 1 ? [{ id: "make-rigid", label: "Rigid group", icon: "lock" as const, onSelect: () => makeRigid(ids) }] : []),
