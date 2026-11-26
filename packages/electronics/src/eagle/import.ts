@@ -33,7 +33,6 @@ export function importEagleLibraries(files: ImportFile[], source: { licence: str
       out.found.symbols += lib.symbols.size;
       out.found.footprints += lib.packages.size;
       const used = new Set<string>();
-      let offset = 0;
       for (const name of lib.sets.keys()) {
         const comp = componentOf(lib, name, { licence: source.licence, library: source.library ?? lib.name });
         if (!comp) continue;
@@ -47,7 +46,6 @@ export function importEagleLibraries(files: ImportFile[], source: { licence: str
         }
         for (const pkg of comp.def.packages) {
           used.add(pkg.footprint.name);
-          offset += lib.packages.get(pkg.footprint.name)?.offset ?? 0;
           const model = simpleBody(comp.def.name, pkg.footprint);
           if (model) pkg.model = model;
         }
@@ -62,11 +60,6 @@ export function importEagleLibraries(files: ImportFile[], source: { licence: str
         out.parts.push(comp.def);
       }
       for (const name of lib.packages.keys()) if (!used.has(name)) out.notes.push({ name, why: "No device here uses this package, so it was left out" });
-      if (offset)
-        out.notes.push({
-          name: lib.name,
-          why: `${offset} ${offset === 1 ? "pad has" : "pads have"} copper that sits off the middle of the hole: the hole is where it should be, and the copper is centred on it`,
-        });
     } catch (e) {
       out.notes.push({ name: f.name, why: e instanceof Error ? e.message : "It could not be read" });
     }

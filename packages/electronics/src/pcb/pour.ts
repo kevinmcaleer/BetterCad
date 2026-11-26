@@ -80,7 +80,11 @@ export function pourShape(d: ElectronicsDesign, pour: Pour, pads: BoardPad[] = b
     const far = Math.max(pad.pad.w, pad.pad.h) / 2 + THERMAL_GAP + SPOKE;
     for (const turn of [0, 90, 180, 270]) {
       const a = rad(pad.angle + turn);
-      spokes.push({ a: pad.at, b: [pad.at[0] + far * Math.cos(a), pad.at[1] + far * Math.sin(a)], width: Math.min(SPOKE, Math.min(pad.pad.w, pad.pad.h)) });
+      spokes.push({
+        a: pad.centre ?? pad.at,
+        b: [(pad.centre ?? pad.at)[0] + far * Math.cos(a), (pad.centre ?? pad.at)[1] + far * Math.sin(a)],
+        width: Math.min(SPOKE, Math.min(pad.pad.w, pad.pad.h)),
+      });
     }
   });
   // Bare holes have no copper to measure from, so the fill stays back from the drill itself.

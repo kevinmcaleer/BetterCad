@@ -26,6 +26,7 @@
     "./pcb/rules": "./src/pcb/rules.ts",
     "./pcb/picture": "./src/pcb/picture.ts",
     "./pcb/slide": "./src/pcb/slide.ts",
+    "./padShape": "./src/padShape.ts",
     "./pcb/marks": "./src/pcb/marks.ts",
     "./pcb/stitch": "./src/pcb/stitch.ts",
     "./pcb/clip": "./src/pcb/clip.ts",

@@ -343,7 +343,15 @@ function boardFootprint(node: Node[]): {
     const rest = { ...p };
     delete rest.angle;
     // Half a turn leaves a pad as it was.
-    return { ...rest, y: bottom ? r4(-p.y) : p.y, ...(mine % 180 ? { angle: mine } : {}) };
+    // A pad's own outline and copper offset are mirrored with it on the back.
+    const flipped = (q: P2): P2 => [q[0], r4(-q[1])];
+    return {
+      ...rest,
+      y: bottom ? r4(-p.y) : p.y,
+      ...(mine % 180 ? { angle: mine } : {}),
+      ...(bottom && p.points ? { points: p.points.map(flipped) } : {}),
+      ...(bottom && p.offset ? { offset: flipped(p.offset) } : {}),
+    };
   });
   const over = (s: FootprintDef["shapes"][number]): FootprintDef["shapes"][number] => {
     if (!bottom) return s;
@@ -512,8 +520,6 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     const f = boardFootprint(node);
     const p = pt(child(node, "at"));
     if (f.skipped) dropped.add("drawings in footprints on layers that are not kept (paste, mask and user layers)", f.skipped);
-    const off = children(node, "pad").filter((x) => child(child(x, "drill"), "offset")).length;
-    if (off) dropped.add("pads whose copper sits off the middle of the hole: the hole is where it should be, and the copper is centred on it", off);
     if (
       children(node, "fp_line")
         .concat(children(node, "fp_arc"), children(node, "fp_circle"))

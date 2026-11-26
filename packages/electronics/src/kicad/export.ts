@@ -235,20 +235,33 @@ function padNode(pad: Pad, side: Side, angle: number, net?: { code: number; name
   const type = pad.kind === "thru" ? "thru_hole" : pad.kind === "npth" ? "np_thru_hole" : "smd";
   const at = local([pad.x, pad.y], side);
   const turnBy = ((angle % 360) + 360) % 360;
+  // A polygon pad is KiCad's custom pad: a small round anchor at its middle, and the outline as a filled primitive.
+  const custom = pad.shape === "polygon" && (pad.points?.length ?? 0) >= 3;
+  const anchor = Math.min(0.2, Math.min(pad.w, pad.h) / 4);
   const out: Node[] = [
     "pad",
     s(pad.kind === "npth" ? "" : pad.number),
     type,
-    pad.shape,
+    custom ? "custom" : pad.shape,
     ["at", n(at[0]), n(at[1]), ...(turnBy ? [n(turnBy)] : [])],
-    ["size", n(pad.w), n(pad.h)],
+    custom ? ["size", n(anchor), n(anchor)] : ["size", n(pad.w), n(pad.h)],
   ];
-  if (pad.kind !== "smd" && pad.drill) out.push(pad.slot && pad.slot > pad.drill ? ["drill", "oval", n(pad.slot), n(pad.drill)] : ["drill", n(pad.drill)]);
+  // Copper off the hole's middle (#744): KiCad keeps it with the drill, in the pad's own turn.
+  const off = pad.offset && (pad.offset[0] || pad.offset[1]) ? local(pad.offset, side) : null;
+  const offset: Node[] = off ? [["offset", n(off[0]), n(off[1])]] : [];
+  if (pad.kind !== "smd" && pad.drill)
+    out.push(pad.slot && pad.slot > pad.drill ? ["drill", "oval", n(pad.slot), n(pad.drill), ...offset] : ["drill", n(pad.drill), ...offset]);
+  else if (off) out.push(["drill", ...offset]);
   out.push(pad.kind === "smd" ? ["layers", s(`${f}.Cu`), ...(pad.noPaste ? [] : [s(`${f}.Paste`)]), s(`${f}.Mask`)] : ["layers", s("*.Cu"), s("*.Mask")]);
   if (pad.shape === "roundrect") out.push(["roundrect_rratio", n(pad.round ?? 0.25)]);
   if (pad.maskMargin !== undefined) out.push(["solder_mask_margin", n(pad.maskMargin)]);
   if (pad.pasteMargin !== undefined && pad.kind === "smd" && !pad.noPaste) out.push(["solder_paste_margin", n(pad.pasteMargin)]);
   if (net && pad.kind !== "npth") out.push(["net", String(net.code), s(net.name)]);
+  if (custom) {
+    out.push(["options", ["clearance", "outline"], ["anchor", "circle"]]);
+    const pts = pad.points!.map((p) => local(p, side));
+    out.push(["primitives", ["gr_poly", ["pts", ...pts.map((p): Node => ["xy", n(p[0]), n(p[1])])], ["width", "0"], ["fill", "yes"]]]);
+  }
   return out;
 }
 

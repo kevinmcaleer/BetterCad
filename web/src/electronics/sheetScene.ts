@@ -220,9 +220,11 @@ export function assemblyScene(d: ElectronicsDesign, side: Side, page: AssemblyPa
       if (p.pad.kind === "smd" && p.side !== side) continue;
       const a = (p.angle * Math.PI) / 180;
       const [c, n] = [Math.cos(a), Math.sin(a)];
-      const corner = (x: number, y: number): P2 => P([p.at[0] + x * c - y * n, p.at[1] + x * n + y * c]);
+      const mid = p.centre ?? p.at;
+      const corner = (x: number, y: number): P2 => P([mid[0] + x * c - y * n, mid[1] + x * n + y * c]);
       const [w, h] = [p.pad.w / 2, p.pad.h / 2];
-      if (p.pad.shape === "circle") ring(P(p.at), Math.max(w, h) * s, 0.13);
+      if (p.outline) line([...p.outline, p.outline[0]!].map(P), 0.13);
+      else if (p.pad.shape === "circle") ring(P(mid), Math.max(w, h) * s, 0.13);
       else line([corner(-w, -h), corner(w, -h), corner(w, h), corner(-w, h), corner(-w, -h)], 0.13);
     }
     const one = mine.find((p) => p.pad.number === "1" || p.pad.number === "A1");

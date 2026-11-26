@@ -142,6 +142,23 @@ class Writer {
     });
   }
 
+  /**
+   * A board pad's copper, or its opening grown by `grow`: a flash at its copper's middle, or for a polygon pad (#744) a
+   * filled outline, grown by drawing round its edge with a pen twice the growth wide, or shrunk toward its middle.
+   */
+  boardPad(p: BoardPad, grow: number, fn?: string) {
+    if (!p.outline) return this.flash(this.pad(p.pad, p.angle, grow, fn), p.centre ?? p.at);
+    let pts = p.outline;
+    if (grow < 0) {
+      const mx = pts.reduce((a, q) => a + q[0], 0) / pts.length;
+      const my = pts.reduce((a, q) => a + q[1], 0) / pts.length;
+      const k = Math.max(0.1, 1 + (2 * grow) / Math.max(0.01, Math.min(p.pad.w, p.pad.h)));
+      pts = pts.map((q): P2 => [mx + (q[0] - mx) * k, my + (q[1] - my) * k]);
+    }
+    this.region(pts);
+    if (grow > 0) this.line(this.circle(2 * grow, fn), [...pts, pts[0]!]);
+  }
+
   private use(code: number) {
     if (code !== this.current) this.body.push(`D${code}*`);
     this.current = code;
@@ -449,7 +466,7 @@ function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads:
     if (p.pad.kind === "npth" || (p.pad.kind === "smd" && p.side !== side)) continue;
     w.attr(".P", `${field(p.ref)},${field(p.pad.number)}`);
     w.attr(".N", field(p.net));
-    w.flash(w.pad(p.pad, p.angle, 0, p.pad.kind === "smd" ? "SMDPad,CuDef" : "ComponentPad"), p.at);
+    w.boardPad(p, 0, p.pad.kind === "smd" ? "SMDPad,CuDef" : "ComponentPad");
   }
   w.attr(".P");
   for (const v of board.vias) {
@@ -472,7 +489,7 @@ function openings(w: Writer, board: Board, side: Side, pads: BoardPad[]) {
     if (p.pad.kind === "smd" && p.side !== side) continue;
     const grow = p.pad.maskMargin ?? margin;
     if (p.pad.kind === "npth") w.flash(w.pad(round(p.pad.drill ?? Math.max(p.pad.w, p.pad.h)), 0, grow), p.at);
-    else w.flash(w.pad(p.pad, p.angle, grow), p.at);
+    else w.boardPad(p, grow);
   }
   for (const h of board.holes) w.flash(w.pad(round(h.pad ?? h.drill), 0, margin), [h.x, h.y]);
   for (const v of board.vias) if (viaOpen(board, v) && viaLayers(board, v).includes(side)) w.flash(w.pad(round(v.diameter), 0, margin), [v.x, v.y]);
@@ -490,7 +507,7 @@ function pasteFile(side: Side, pads: BoardPad[], fn: string): string {
     if (p.pad.kind !== "smd" || p.side !== side || p.pad.noPaste) continue;
     // A pad's own paste gap (#627), never so far in that nothing is left to print.
     const grow = Math.max(p.pad.pasteMargin ?? 0, -(Math.min(p.pad.w, p.pad.h) / 2 - 0.05));
-    w.flash(w.pad(p.pad, p.angle, grow), p.at);
+    w.boardPad(p, grow);
   }
   return w.text();
 }

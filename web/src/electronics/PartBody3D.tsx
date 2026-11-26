@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { PackageChoice } from "@bettercad/electronics";
+import { copperMiddle, padOutline } from "@bettercad/electronics/padShape";
 import { MASK_COLOURS } from "@bettercad/electronics/pcb/solid";
 import type { BodyMesh } from "@bettercad/kernel";
 import { readColours } from "./colours";
@@ -104,15 +105,18 @@ export default function PartBody3D({ pkg, meshes, thickness, busy }: PartBody3DP
     for (const pad of pkg.footprint.pads) {
       const turn = ((pad.angle ?? 0) * Math.PI) / 180;
       const [hw, hh] = [pad.w / 2, pad.h / 2];
-      const shape =
-        pad.shape === "rect" || pad.shape === "roundrect"
+      const [mx, my] = copperMiddle(pad);
+      const outline = padOutline(pad);
+      const shape = outline
+        ? outline
+        : pad.shape === "rect" || pad.shape === "roundrect"
           ? [
               [-hw, -hh],
               [hw, -hh],
               [hw, hh],
               [-hw, hh],
-            ].map(([x, y]): [number, number] => [pad.x + x! * Math.cos(turn) - y! * Math.sin(turn), pad.y + x! * Math.sin(turn) + y! * Math.cos(turn)])
-          : round(pad.x, pad.y, hw, hh, turn);
+            ].map(([x, y]): [number, number] => [mx + x! * Math.cos(turn) - y! * Math.sin(turn), my + x! * Math.sin(turn) + y! * Math.cos(turn)])
+          : round(mx, my, hw, hh, turn);
       if (pad.kind !== "npth") {
         ctx.fillStyle = PAD;
         flat(shape, top);

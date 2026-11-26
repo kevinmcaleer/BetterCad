@@ -14,6 +14,7 @@ import {
 } from "@bettercad/electronics";
 import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
 import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
+import { copperMiddle, padOutline } from "@bettercad/electronics/padShape";
 import { REF_SIZE, penFor, textStrokes } from "@bettercad/electronics/fab/font";
 import type { Colours } from "./colours";
 import { rubber } from "./drawSchematic";
@@ -222,9 +223,30 @@ function path(ctx: CanvasRenderingContext2D, v: View2D, pts: P2[], close = false
   if (close) ctx.closePath();
 }
 
-/** A pad's shape as a path, centred on `at` and turned. */
-export function padPath(ctx: CanvasRenderingContext2D, v: View2D, pad: BoardPad["pad"], at: P2, angle: number, grow = 0) {
-  const s = toScreen(v, at);
+/**
+ * A pad's shape as a path, centred on `at` and turned. A polygon pad (#744) is drawn from its `outline` on the board;
+ * copper off the hole's middle is centred on `centre`.
+ */
+export function padPath(
+  ctx: CanvasRenderingContext2D,
+  v: View2D,
+  pad: BoardPad["pad"],
+  at: P2,
+  angle: number,
+  grow = 0,
+  where: { centre?: P2; outline?: P2[] } = {},
+) {
+  if (where.outline) {
+    ctx.beginPath();
+    where.outline.forEach((p, i) => {
+      const s = toScreen(v, p);
+      if (i) ctx.lineTo(s[0], s[1]);
+      else ctx.moveTo(s[0], s[1]);
+    });
+    ctx.closePath();
+    return;
+  }
+  const s = toScreen(v, where.centre ?? at);
   const w = (pad.w + grow * 2) * v.scale;
   const h = (pad.h + grow * 2) * v.scale;
   ctx.save();
@@ -359,7 +381,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       if (p.pad.kind !== "smd" || p.side !== layer) continue;
       ctx.globalAlpha = lit(p.net) ? (near ? 1 : 0.6) : 0.3;
       ctx.fillStyle = copper(layer);
-      padPath(ctx, v, p.pad, p.at, p.angle);
+      padPath(ctx, v, p.pad, p.at, p.angle, 0, p);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
@@ -372,7 +394,7 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       ctx.globalAlpha = lit(p.net) ? 1 : 0.3;
       if (p.pad.kind === "thru") {
         ctx.fillStyle = c["ec-pad"];
-        padPath(ctx, v, p.pad, p.at, p.angle);
+        padPath(ctx, v, p.pad, p.at, p.angle, 0, p);
         ctx.fill();
       }
       const s = toScreen(v, p.at);
@@ -474,7 +496,10 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     if (ghost)
       for (const pad of pkg.footprint.pads) {
         ctx.fillStyle = pad.kind === "smd" ? copper(pad.back ? (at.side === "top" ? "bottom" : "top") : at.side) : c["ec-pad"];
-        padPath(ctx, v, pad, place([pad.x, pad.y]), at.rot + (at.side === "bottom" ? -1 : 1) * (pad.angle ?? 0));
+        padPath(ctx, v, pad, place([pad.x, pad.y]), at.rot + (at.side === "bottom" ? -1 : 1) * (pad.angle ?? 0), 0, {
+          centre: place(copperMiddle(pad)),
+          outline: padOutline(pad)?.map(place),
+        });
         ctx.fill();
       }
     if (show(silk) && !("refHidden" in at && at.refHidden) && v.scale >= 3) {

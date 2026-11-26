@@ -58,14 +58,17 @@ export function gap(a: Solid, b: Solid): number {
 /** A pad's copper where it sits on the board. */
 export function padSolid(p: BoardPad): Solid {
   const { w, h, shape } = p.pad;
+  // A polygon pad is its outline; a pad off its hole is measured from its copper's middle (#744).
+  if (p.outline) return { pts: p.outline, r: 0 };
+  const mid = p.centre ?? p.at;
   const c = Math.cos(rad(p.angle));
   const s = Math.sin(rad(p.angle));
-  const at = (x: number, y: number): P2 => [p.at[0] + x * c - y * s, p.at[1] + x * s + y * c];
-  if (shape === "circle") return { pts: [p.at], r: Math.max(w, h) / 2 };
+  const at = (x: number, y: number): P2 => [mid[0] + x * c - y * s, mid[1] + x * s + y * c];
+  if (shape === "circle") return { pts: [mid], r: Math.max(w, h) / 2 };
   if (shape === "oval") {
     const r = Math.min(w, h) / 2;
     const half = Math.max(w, h) / 2 - r;
-    return half < 1e-6 ? { pts: [p.at], r } : { pts: w >= h ? [at(-half, 0), at(half, 0)] : [at(0, -half), at(0, half)], r };
+    return half < 1e-6 ? { pts: [mid], r } : { pts: w >= h ? [at(-half, 0), at(half, 0)] : [at(0, -half), at(0, half)], r };
   }
   const r = shape === "roundrect" ? Math.min(w, h) * (p.pad.round ?? 0.25) : 0;
   const x = w / 2 - r;

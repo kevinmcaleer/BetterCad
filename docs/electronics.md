@@ -229,7 +229,19 @@ The board's code is in `packages/electronics/src/pcb`, imported by subpath (`/pc
 
 **Copper as shapes** (`copper.ts`). Every piece of copper is a core (a point, a line or a convex outline) grown by a
 radius: a via is a point, a track a line, a rounded pad a rectangle with its corners pulled in. `gap(a, b)` is the
-distance between the cores less both radii, which is exact for every pad shape we have. `copperGroups` joins pieces of
+distance between the cores less both radii, which is exact for every pad shape we have.
+
+**Pad shapes** (`padShape.ts`, #744). Besides rectangles, rounded rectangles, ovals and circles, a pad can be a
+`polygon`: its corners are in `points`, around the copper's middle and turned with the pad, with `w` and `h` its box.
+A through-hole pad's copper can sit off the middle of its hole by `offset`, in the pad's own turn, as KiCad keeps it.
+`boardPads` gives each such pad its copper's `centre` and its `outline` on the board, so the board check, pours,
+Gerber (a polygon is a region, its mask opening the region with its edge drawn round by a pen twice the gap wide),
+IPC-2581 (a `Contour`), the drawing and the 3D picture all use them. The ring check takes the offset off the ring.
+In the footprint editor, Pad outline draws one corner by corner, a picked pad's shape can be set to Custom outline
+and its corners typed, Make it an octagon cuts a pad's corners at 45°, and a through-hole pad's copper can be moved
+off its hole. KiCad's custom pads come in as polygons: one `gr_poly` round the anchor as it is, any other mix of
+pieces as the hull round them all. They go out as custom pads with a small round anchor, and an offset goes out with
+the drill. `copperGroups` joins pieces of
 one net that touch on a shared layer, so the ratsnest (`boardState` then `ratsnest`) leaves out pads that copper
 already connects, through vias and across layers. A net can be given a colour and have its unrouted lines hidden
 (`board.netLooks`, `setNetLook` in `netclass.ts`, #740) from its section in the inspector. The colours are a fixed
@@ -806,8 +818,8 @@ How Eagle's things become ours:
 What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, buses
 as drawings, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
 drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as short
-straight pieces, hatched pours as solid ones, and octagon pads as round ones. A pad Eagle draws off the middle of its
-hole ("offset") comes in with the hole in the right place and the copper centred on it. Assembly variants are not
+straight pieces, and hatched pours as solid ones. Octagon pads come in drawn corner by corner, and a pad Eagle draws
+off the middle of its hole ("offset") keeps its copper where Eagle has it (#744). Assembly variants are not
 read, apart from a part marked not populated. Files from Eagle older than 6 are binary and are refused with a note
 to save them from a newer Eagle. A board without its schematic does not open.
 

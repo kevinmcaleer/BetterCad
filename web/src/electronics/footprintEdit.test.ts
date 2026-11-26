@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { FootprintDef } from "@bettercad/electronics";
 import {
   addOutline,
+  addOutlinePad,
   addPad,
+  cornersText,
+  makeOctagon,
+  padBox,
+  parseCorners,
+  setPadCorners,
+  setPadShape,
   deleteItems,
   hitFootprint,
   itemBox,
@@ -115,5 +122,52 @@ describe("editing a footprint pad by pad", () => {
     expect(again.shapes.filter((s) => s.layer === "courtyard")).toHaveLength(1);
     expect(again.shapes.at(-1)).toMatchObject({ x2: 2.75 });
     expect(wrapCourtyard(empty())).toEqual(empty());
+  });
+
+  it("draws a pad corner by corner, and edits its outline and the copper off its hole (#744)", () => {
+    const made = addOutlinePad(empty(), [
+      [0, 0],
+      [2, 0],
+      [2, 1],
+      [0, 0],
+    ])!;
+    const pad = made.fp.pads[0]!;
+    expect(pad).toMatchObject({ shape: "polygon", kind: "smd", x: 1, y: 0.5, w: 2, h: 1, number: "1" });
+    expect(pad.points).toEqual([
+      [-1, -0.5],
+      [1, -0.5],
+      [1, 0.5],
+    ]);
+    expect(
+      addOutlinePad(empty(), [
+        [0, 0],
+        [1, 1],
+      ]),
+    ).toBeNull();
+    // Back to a rectangle drops the corners; to a custom outline starts from the rectangle.
+    const rect = setPadShape(made.fp, ["p0"], "rect");
+    expect(rect.pads[0]!.points).toBeUndefined();
+    expect(setPadShape(rect, ["p0"], "polygon").pads[0]!.points).toHaveLength(4);
+    const eight = makeOctagon(rect, ["p0"]).pads[0]!;
+    expect(eight.points).toHaveLength(8);
+    expect([eight.w, eight.h]).toEqual([2, 1]);
+    // Typed corners set the outline and its size.
+    expect(parseCorners("0 0, 3 0; 0 2")).toEqual([
+      [0, 0],
+      [3, 0],
+      [0, 2],
+    ]);
+    expect(parseCorners("0 0, 3")).toBeNull();
+    expect(
+      cornersText([
+        [0, 0],
+        [3, 0],
+      ]),
+    ).toBe("0 0, 3 0");
+    const typed = setPadCorners(made.fp, "p0", parseCorners("0 0, 3 0, 0 2")!)!;
+    expect(typed.pads[0]).toMatchObject({ w: 3, h: 2 });
+    // The box follows the copper, moved off the hole.
+    const off = setPads(rect, ["p0"], { offset: [1, 0] });
+    expect(padBox(off.pads[0]!)).toEqual({ x1: 1, y1: 0, x2: 3, y2: 1 });
   });
 });

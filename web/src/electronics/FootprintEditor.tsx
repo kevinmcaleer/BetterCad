@@ -3,6 +3,7 @@ import type { FootprintDef, FootprintLayer, P2, Pad, PadKind, PadShape, Shape } 
 import { Button, ESC, NumberField, cx, useEscape } from "@bettercad/ui";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
 import { readColours, type Colours } from "./colours";
+import { copperMiddle, padOutline } from "@bettercad/electronics/padShape";
 import { padPath, shapeOn } from "./drawBoard";
 import {
   LAND_GRID,
@@ -10,16 +11,22 @@ import {
   PAD_KINDS,
   PAD_SHAPES,
   addOutline,
+  addOutlinePad,
   addPad,
+  cornersText,
   deleteItems,
   hitFootprint,
   isPad,
   itemBox,
   landBox,
+  makeOctagon,
   moveItems,
+  parseCorners,
   padsOf,
   setOutline,
+  setPadCorners,
   setPadKind,
+  setPadShape,
   setPads,
   shared,
   wrapCourtyard,
@@ -27,10 +34,11 @@ import {
 } from "./footprintEdit";
 import { fit, snap, toScreen, type View2D } from "./view2d";
 
-type Tool = "select" | "pad" | "line" | "rect" | "circle";
+type Tool = "select" | "pad" | "outline" | "line" | "rect" | "circle";
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: "select", label: "Select", hint: "Click a pad or an outline to pick it. Shift-click picks more. Drag to move." },
   { id: "pad", label: "Pad", hint: "Click where the pad's centre goes. It copies the last pad's shape and size." },
+  { id: "outline", label: "Pad outline", hint: "Click each corner of the pad. Double-click, or press Enter, to finish." },
   { id: "line", label: "Line", hint: "Click each corner. Double-click, or press Enter, to finish." },
   { id: "rect", label: "Rectangle", hint: "Click one corner, then the opposite one." },
   { id: "circle", label: "Circle", hint: "Click the centre, then the edge." },
@@ -105,6 +113,15 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
     if (t !== "select") setPicked([]);
   };
   const finishLine = (points: P2[]) => {
+    if (tool === "outline") {
+      const made = addOutlinePad(fp, points);
+      if (made) {
+        commit(made.fp);
+        setPicked([made.id]);
+      }
+      setPts([]);
+      return;
+    }
     const clean = points.filter((p, i) => i === 0 || p[0] !== points[i - 1]![0] || p[1] !== points[i - 1]![1]);
     if (clean.length >= 2) commit(addOutline(fp, { kind: "line", pts: clean }, layer).fp);
     setPts([]);
@@ -129,7 +146,7 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
       setPicked([made.id]);
       return true;
     }
-    if (tool === "line") {
+    if (tool === "line" || tool === "outline") {
       setPts([...pts, at]);
       return true;
     }
@@ -191,7 +208,7 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
     } else if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       remove();
-    } else if (e.key === "Enter" && tool === "line") {
+    } else if (e.key === "Enter" && (tool === "line" || tool === "outline")) {
       e.preventDefault();
       finishLine(pts);
     }
@@ -220,7 +237,7 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
       const at: P2 = [pad.x, pad.y];
       if (pad.kind !== "npth") {
         ctx.fillStyle = pad.kind === "smd" ? c["ec-copper-top"] : c["ec-pad"];
-        padPath(ctx, v, pad, at, pad.angle ?? 0);
+        padPath(ctx, v, pad, at, pad.angle ?? 0, 0, { centre: copperMiddle(pad), outline: padOutline(pad) ?? undefined });
         ctx.fill();
       }
       if (pad.drill) {
@@ -259,12 +276,13 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
         [pad.x, pad.y],
         pad.angle ?? 0,
         pad.maskMargin ?? maskRule,
+        pad.kind === "npth" ? {} : { centre: copperMiddle(pad), outline: padOutline(pad) ?? undefined },
       );
       ctx.stroke();
       if (pad.kind === "smd" && !pad.noPaste && pad.pasteMargin) {
         ctx.setLineDash([1, 3]);
         ctx.strokeStyle = c["ec-pcb-ink"];
-        padPath(ctx, v, pad, [pad.x, pad.y], pad.angle ?? 0, pad.pasteMargin);
+        padPath(ctx, v, pad, [pad.x, pad.y], pad.angle ?? 0, pad.pasteMargin, { outline: padOutline(pad) ?? undefined });
         ctx.stroke();
       }
     }
@@ -277,7 +295,7 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       const first = pts[0] && toScreen(v, pts[0]);
-      if (tool === "line" && pts.length) {
+      if ((tool === "line" || tool === "outline") && pts.length) {
         pts.forEach((q, i) => {
           const s = toScreen(v, q);
           if (i) ctx.lineTo(s[0], s[1]);
@@ -326,6 +344,7 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
         <Button size="dense" variant="secondary" icon="frame" label="Fit" onClick={doFit} />
         <Button size="dense" variant="secondary" label="Wrap a courtyard round it" disabled={!nPads} onClick={() => commit(wrapCourtyard(fp))} />
         {tool === "line" && pts.length >= 2 && <Button size="dense" variant="primary" label="Finish the line" onClick={() => finishLine(pts)} />}
+        {tool === "outline" && pts.length >= 3 && <Button size="dense" variant="primary" label="Finish the pad" onClick={() => finishLine(pts)} />}
       </div>
       <div className="bc-ec-symed-canvas">
         <Canvas2D
@@ -339,7 +358,7 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
           onDown={onDown}
           onMove={onMove}
           onUp={onUp}
-          onDouble={() => tool === "line" && finishLine(pts)}
+          onDouble={() => (tool === "line" || tool === "outline") && finishLine(pts)}
         />
       </div>
       <p className="bc-note" role="status">
@@ -388,12 +407,7 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
           <label className="bc-field-label" htmlFor={`${ids}shape`}>
             Shape
           </label>
-          <select
-            id={`${ids}shape`}
-            className="bc-select"
-            value={padShape ?? ""}
-            onChange={(e) => set({ shape: e.target.value as PadShape, round: e.target.value === "roundrect" ? 0.25 : undefined })}
-          >
+          <select id={`${ids}shape`} className="bc-select" value={padShape ?? ""} onChange={(e) => commit(setPadShape(fp, padIds, e.target.value as PadShape))}>
             {padShape === null && <option value="">Mixed</option>}
             {PAD_SHAPES.map((s) => (
               <option key={s.id} value={s.id}>
@@ -401,6 +415,10 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
               </option>
             ))}
           </select>
+          {padShape === "polygon" && pads.length === 1 && <Corners key={one} pad={pads[0]!} onCorners={(c) => commit(setPadCorners(fp, one!, c) ?? fp)} />}
+          {padShape !== "polygon" && padShape !== "circle" && padShape !== null && (
+            <Button size="dense" variant="secondary" label="Make it an octagon" onClick={() => commit(makeOctagon(fp, padIds))} />
+          )}
           {pads.length === 1 && (
             <div className="bc-ec-editor-sizes">
               <NumberField label="X" unit="mm" value={pads[0]!.x} min={-200} max={200} step={0.05} precision={3} onCommit={(x) => set({ x })} />
@@ -436,6 +454,36 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
               />
             )}
             {holes && size("drill", "Hole", 0.1)}
+            {holes && pads.length === 1 && pads[0]!.kind === "thru" && (
+              <>
+                <NumberField
+                  label="Copper off centre, X"
+                  unit="mm"
+                  value={pads[0]!.offset?.[0] ?? 0}
+                  min={-50}
+                  max={50}
+                  step={0.05}
+                  precision={3}
+                  onCommit={(x) => {
+                    const y = pads[0]!.offset?.[1] ?? 0;
+                    set({ offset: x || y ? [x, y] : undefined });
+                  }}
+                />
+                <NumberField
+                  label="Copper off centre, Y"
+                  unit="mm"
+                  value={pads[0]!.offset?.[1] ?? 0}
+                  min={-50}
+                  max={50}
+                  step={0.05}
+                  precision={3}
+                  onCommit={(y) => {
+                    const x = pads[0]!.offset?.[0] ?? 0;
+                    set({ offset: x || y ? [x, y] : undefined });
+                  }}
+                />
+              </>
+            )}
             {holes && (
               <NumberField
                 label="Slot length"
@@ -560,5 +608,44 @@ export default function FootprintEditor({ footprint: fp, maskRule = 0.05, onChan
         </fieldset>
       )}
     </div>
+  );
+}
+
+/** A custom pad's corners as typed text, kept while it does not read as corners yet. */
+function Corners({ pad, onCorners }: { pad: Pad; onCorners: (c: P2[]) => void }) {
+  const id = useId();
+  const [text, setText] = useState(() => cornersText(pad.points ?? []));
+  const [bad, setBad] = useState(false);
+  useEffect(() => {
+    setText(cornersText(pad.points ?? []));
+    setBad(false);
+  }, [pad.points]);
+  const commitText = () => {
+    const c = parseCorners(text);
+    const ok = !!c && c.length >= 3;
+    setBad(!ok);
+    if (ok) onCorners(c);
+  };
+  return (
+    <>
+      <label className="bc-field-label" htmlFor={id}>
+        Corners, in mm from the pad's middle
+      </label>
+      <input
+        id={id}
+        className="bc-text"
+        value={text}
+        aria-invalid={bad || undefined}
+        aria-describedby={bad ? `${id}bad` : undefined}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commitText}
+        onKeyDown={(e) => e.key === "Enter" && commitText()}
+      />
+      {bad && (
+        <p className="bc-note" id={`${id}bad`} role="alert">
+          Type at least three corners as x y pairs, split by commas, such as 0 0, 1 0, 1 1.
+        </p>
+      )}
+    </>
   );
 }

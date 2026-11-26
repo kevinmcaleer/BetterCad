@@ -108,7 +108,7 @@ export interface SymbolDef {
 
 // ---------------------------------------------------------------- footprints
 
-export type PadShape = "circle" | "rect" | "roundrect" | "oval";
+export type PadShape = "circle" | "rect" | "roundrect" | "oval" | "polygon";
 /** `smd`: copper on one side. `thru`: a plated hole with copper both sides. `npth`: a bare hole, no copper. */
 export type PadKind = "smd" | "thru" | "npth";
 
@@ -135,6 +135,13 @@ export interface Pad {
   noPaste?: boolean;
   /** A surface pad on the far side of the board from its part: the other face of an edge connector. */
   back?: boolean;
+  /**
+   * A `polygon` pad's outline (#744), around the copper's middle, in the pad's own turn. `w` and `h` are its box, so
+   * anything that only wants a size still has one.
+   */
+  points?: P2[];
+  /** Where the copper's middle sits from the hole (#744), in the pad's own turn. None: on it. */
+  offset?: P2;
 }
 
 /** Layers of a footprint, named from the part's own side; flipping the part to the bottom flips them. */

@@ -267,8 +267,6 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
     const turn = rotOf(e.attrs.rot);
     const p = at(pOf(e));
     if (pkg.skipped) dropped.add("drawings in packages on layers that are not kept (stop, cream, restrict and document layers)", pkg.skipped);
-    if (pkg.offset)
-      dropped.add("pads whose copper sits off the middle of the hole: the hole is where it should be, and the copper is centred on it", pkg.offset);
     if (pkg.edge) dropped.add("edge cuts and milling drawn inside packages");
     if (refs.has(name) && !out.has(name)) {
       out.set(name, { fp: pkg.footprint, nets: padNets.get(name) ?? new Map(), value: e.attrs.value ?? "", fitted: e.attrs.populate !== "no" });

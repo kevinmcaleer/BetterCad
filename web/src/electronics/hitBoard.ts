@@ -81,9 +81,9 @@ export function hitBoard(d: ElectronicsDesign, pads: BoardPad[], p: P2, tol: num
   }
   for (const pad of pads)
     if (
-      Math.abs(pad.at[0] - p[0]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol &&
-      Math.abs(pad.at[1] - p[1]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol &&
-      Math.hypot(pad.at[0] - p[0], pad.at[1] - p[1]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol
+      Math.abs((pad.centre ?? pad.at)[0] - p[0]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol &&
+      Math.abs((pad.centre ?? pad.at)[1] - p[1]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol &&
+      Math.hypot((pad.centre ?? pad.at)[0] - p[0], (pad.centre ?? pad.at)[1] - p[1]) <= Math.max(pad.pad.w, pad.pad.h) / 2 + tol
     )
       out.push({ kind: "pad", id: pad.part, net: pad.net, pad });
   for (const t of board.texts) if (inBox(p, textBox(t), tol)) out.push({ kind: "text", id: t.id });

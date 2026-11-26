@@ -319,7 +319,8 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
     if (!h) continue;
     holes.push(h);
     if (p.pad.kind === "thru") {
-      const ring = (Math.min(p.pad.w, p.pad.h) - h.drill) / 2;
+      // Copper off the hole's middle (#744) leaves the ring thinner on one side by as much.
+      const ring = (Math.min(p.pad.w, p.pad.h) - h.drill) / 2 - Math.hypot(...(p.pad.offset ?? [0, 0]));
       if (ring < rules.minRing - 1e-6)
         add(
           "ring",

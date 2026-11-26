@@ -96,8 +96,12 @@ function pad(n: Node[], back: boolean): Pad | null {
   const d = oval ? num(drill, 2) : num(drill, 1);
   const dy = oval ? num(drill, 3, d) : d;
   const layers = child(n, "layers")?.slice(1).map(String) ?? [];
-  // A custom pad keeps its anchor's box; a trapezoid its rectangle: close enough for placing and checking, and said in the docs.
+  // A trapezoid keeps its rectangle: close enough for placing and checking, and said in the docs. A custom pad keeps
+  // its outline (#744), and copper off the hole its offset.
   const shapes: Record<string, PadShape> = { circle: "circle", rect: "rect", roundrect: "roundrect", oval: "oval", trapezoid: "rect", custom: "rect" };
+  const outline = shape === "custom" ? customOutline(n, num(size, 1), num(size, 2, num(size, 1))) : null;
+  const offAt = child(drill, "offset");
+  const offset: P2 | null = offAt && (num(offAt, 1) || num(offAt, 2)) ? [r4(num(offAt, 1)), r4(-num(offAt, 2))] : null;
   const kind = type === "thru_hole" ? "thru" : type === "np_thru_hole" ? "npth" : "smd";
   const angle = num(at, 3);
   const round = num(child(n, "roundrect_rratio"), 1, 0.25);
@@ -106,11 +110,13 @@ function pad(n: Node[], back: boolean): Pad | null {
   return {
     number: text(n, 1),
     kind,
-    shape: shapes[shape] ?? "rect",
+    shape: outline ? "polygon" : (shapes[shape] ?? "rect"),
     x: num(at, 1),
     y: r4(-num(at, 2)),
-    w: num(size, 1),
-    h: num(size, 2, num(size, 1)),
+    w: outline ? outline.w : num(size, 1),
+    h: outline ? outline.h : num(size, 2, num(size, 1)),
+    ...(outline ? { points: outline.points } : {}),
+    ...(offset ? { offset } : {}),
     ...(angle ? { angle } : {}),
     ...(shape === "roundrect" ? { round } : {}),
     ...(kind !== "smd" && d ? { drill: Math.min(d, dy) } : {}),
@@ -120,6 +126,65 @@ function pad(n: Node[], back: boolean): Pad | null {
     ...(kind === "smd" && !layers.some((l) => l.endsWith(".Paste")) ? { noPaste: true } : {}),
     ...(far ? { back: true } : {}),
   };
+}
+
+/**
+ * A custom pad's copper as one outline in the pad's own frame, y up: its one polygon, or, when it is made of several
+ * pieces (polygons, rectangles, circles and the anchor), the hull round them all. Null when it has nothing we can read.
+ */
+function customOutline(n: Node[], aw: number, ah: number): { points: P2[]; w: number; h: number } | null {
+  const prims = child(n, "primitives") ?? [];
+  const pieces: P2[][] = [];
+  for (const g of children(prims, "gr_poly")) {
+    const pts = children(child(g, "pts"), "xy").map(xy);
+    if (pts.length >= 3) pieces.push(pts);
+  }
+  for (const g of children(prims, "gr_rect")) {
+    const [a, b] = [xy(child(g, "start")), xy(child(g, "end"))];
+    pieces.push([a, [b[0], a[1]], b, [a[0], b[1]]]);
+  }
+  for (const g of children(prims, "gr_circle")) {
+    const c = xy(child(g, "center"));
+    const e = xy(child(g, "end"));
+    const r = Math.hypot(e[0] - c[0], e[1] - c[1]) + num(child(g, "width")) / 2;
+    pieces.push(Array.from({ length: 16 }, (_, i): P2 => [r4(c[0] + r * Math.cos((i * Math.PI) / 8)), r4(c[1] + r * Math.sin((i * Math.PI) / 8))]));
+  }
+  if (!pieces.length) return null;
+  const anchor: P2[] = [
+    [-aw / 2, -ah / 2],
+    [aw / 2, -ah / 2],
+    [aw / 2, ah / 2],
+    [-aw / 2, ah / 2],
+  ];
+  const inside = (p: P2, poly: P2[]) => {
+    let k = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [a, b] = [poly[i]!, poly[j]!];
+      if (a[1] > p[1] !== b[1] > p[1] && p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) k = true;
+    }
+    return k;
+  };
+  // One polygon that takes in the anchor's middle is kept as it is; anything else becomes the hull.
+  const points = pieces.length === 1 && inside([0, 0], pieces[0]!) ? pieces[0]! : hull([...pieces.flat(), ...anchor]);
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  return { points, w: r4(Math.max(...xs) - Math.min(...xs)), h: r4(Math.max(...ys) - Math.min(...ys)) };
+}
+
+/** The convex hull of some points, anticlockwise. */
+function hull(pts: P2[]): P2[] {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o: P2, a: P2, b: P2) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list: P2[]) => {
+    const out: P2[] = [];
+    for (const q of list) {
+      while (out.length >= 2 && cross(out[out.length - 2]!, out[out.length - 1]!, q) <= 0) out.pop();
+      out.push(q);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(p), ...half([...p].reverse())];
 }
 
 /**
