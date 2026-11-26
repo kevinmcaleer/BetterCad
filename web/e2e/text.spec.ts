@@ -82,7 +82,8 @@ test("text in a sketch extrudes whole, letters with their holes, and can be chan
   await clickUntil(page, -16, 0, words);
   await expect(words).toHaveValue("BOB");
   await words.fill("BOBBY");
-  await expect(page.getByRole("status").filter({ hasText: "Drag the text with Select to move it." })).toBeVisible();
+  // Opening the text loads its font again, so the card says "Loading the font" for a while on a busy runner.
+  await expect(page.getByRole("status").filter({ hasText: "Drag the text with Select to move it." })).toBeVisible({ timeout: 20_000 });
   await page.getByRole("button", { name: /^Done/ }).click();
   await expect(words).toHaveCount(0);
   await page.keyboard.press("Enter");

@@ -23,6 +23,7 @@ function setup(drawings: { id: string; name: string }[] = []) {
     tool("tool.joint", "Joint"),
     tool("drawing.new", "New drawing"),
     tool("drawing.everyPart", "A drawing of every part"),
+    tool("view.render", "Render", { icon: "sun" }),
   ]);
   const onClose = vi.fn();
   const onFind = vi.fn();
@@ -70,6 +71,23 @@ describe("MoreTools", () => {
     fireEvent.keyDown(screen.getByRole("tab", { name: "Model" }), { key: "ArrowRight" });
     expect(screen.getByRole("tab", { name: "Assemble" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("button", { name: "Joint" })).toBeInTheDocument();
+  });
+
+  it("opens the Render view from the Render tab, as the desktop ribbon does", () => {
+    const { ran, onClose } = setup();
+    fireEvent.click(screen.getByRole("tab", { name: "Render" }));
+    expect(ran).toEqual(["view.render"]);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("shows an Open the Render view button when you arrow onto the Render tab", () => {
+    const { ran } = setup();
+    fireEvent.click(screen.getByRole("tab", { name: "Drawing" }));
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Drawing" }), { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Render" })).toHaveAttribute("aria-selected", "true");
+    expect(ran).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Open the Render view" }));
+    expect(ran).toEqual(["view.render"]);
   });
 
   it("offers Find a command for anything else", () => {
