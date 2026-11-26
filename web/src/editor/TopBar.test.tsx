@@ -141,6 +141,19 @@ describe("Ribbon", () => {
     expect(screen.getByRole("toolbar", { name: "Drawing tools" })).toContainElement(screen.getByRole("button", { name: "Parts list" }));
   });
 
+  it("leaves an open drawing when you choose another tab, with no Finish needed", () => {
+    const onLeaveDrawing = vi.fn();
+    const onRender = vi.fn();
+    setup({ ribbon: (t) => <span>{t} tools</span>, onLeaveDrawing, onRender, drawingRibbon: <button type="button">Parts list</button> });
+    const assemble = screen.getByRole("tab", { name: "Assemble" });
+    expect(assemble).toBeEnabled();
+    fireEvent.click(assemble);
+    expect(onLeaveDrawing).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("tab", { name: "Render" }));
+    expect(onLeaveDrawing).toHaveBeenCalledTimes(2);
+    expect(onRender).toHaveBeenCalledOnce();
+  });
+
   it("opens the Render view from a Render tab, whose options then take the tab over", () => {
     const onRender = vi.fn();
     setup({ ribbon: (t) => <span>{t} tools</span>, onRender });
