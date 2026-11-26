@@ -409,7 +409,9 @@ export function RenderPicture({
       const pr = r.current;
       const m = session.get().move;
       if (!pr || !m || session.get().filming || !canRenderVideo()) return;
-      const ext = videoExt();
+      // On the Transparent background: a WebM, which keeps it see-through (an MP4 can't).
+      const clear = session.get().background === "transparent";
+      const ext = clear ? "webm" : videoExt();
       const seconds = drawSeconds(m.length);
       const plan = cameraMove(m.id, seconds);
       const frames = frameCount(seconds);
@@ -432,6 +434,7 @@ export function RenderPicture({
             ext,
             (frame) => session.set({ filming: { frame, frames } }),
             stop.signal,
+            clear,
           ),
         ),
       );
