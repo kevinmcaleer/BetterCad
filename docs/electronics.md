@@ -454,6 +454,15 @@ Left for later: dragging a track's or an area's corners, an outline from a face 
 import yet), spokes per pad, gate swapping and pictures
 on the silkscreen.
 
+**Stitching vias** (#737). A pour's card has **Via spacing** (5 mm unless you change it) and **Add stitching vias**.
+`stitchPlan` (in `pcb/stitch.ts`, loaded only when asked) walks a grid that many mm apart, lined up with the board's
+origin, and keeps a point only when this pour and another pour of its net on another layer both fill all round a via
+there, at least one of them is joined to something already, and the via keeps its clearance from other nets'
+copper, from every pad (its own net's too, so no via lands in a pad), from holes, other vias and the edge.
+`addStitching` adds them in one edit, so one undo takes them out; after that they are ordinary vias on the net.
+Asking again adds none where they already are. `pourFill` takes `{ islands: true }` for the fill a pour would have
+once something joins it, as a bottom pour with nothing of its own on that side.
+
 **Fiducials and test points** (#735). The Add group has **Fiducial** and **Test point**. Each is a round copper pad
 of the board's own, with no part behind it (`Board.marks`, `pcb/marks.ts`), numbered FID1… and TP1…. `markPads`
 puts them into `boardPads`, so the copper and mask files, the unrouted lines and the board check all see them like any

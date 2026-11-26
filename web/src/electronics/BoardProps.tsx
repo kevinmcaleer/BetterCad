@@ -129,6 +129,38 @@ function SwapPins({ design, edit, part }: { design: ElectronicsDesign; edit: EEd
   );
 }
 
+/** Stitching vias (#737): fills the pour with vias to its net's pour on the other side. The sums load when asked. */
+function Stitching({ design, edit, pour }: { design: ElectronicsDesign; edit: EEdit; pour: string }) {
+  const [spacing, setSpacing] = useState(5);
+  const [said, setSaid] = useState("");
+  const add = async () => {
+    const { addStitching } = await import("@bettercad/electronics/pcb/stitch");
+    const made = addStitching(design, pour, spacing);
+    if (!made.added) return setSaid(made.why ?? "There is no room for a via.");
+    edit(() => made.design, "Add stitching vias");
+    setSaid(`Added ${made.added} ${made.added === 1 ? "via" : "vias"}. Undo takes them all out.`);
+  };
+  return (
+    <>
+      <div className="bc-ec-set-row">
+        <NumberField label="Via spacing" value={spacing} min={1} max={50} step={0.5} onCommit={setSpacing} />
+        <Button
+          size="dense"
+          variant="secondary"
+          label="Add stitching vias"
+          title="Join this pour to its net's pour on the other side with vias"
+          onClick={add}
+        />
+      </div>
+      {said && (
+        <p className="bc-note" role="status">
+          {said}
+        </p>
+      )}
+    </>
+  );
+}
+
 /**
  * What is picked on the board, as numbers you can type (#639): where a part sits, a track's width, a hole's size.
  * With `part` it is that part's place; without, whatever else is selected.
@@ -275,6 +307,7 @@ export default function BoardProps({
           <dt>Copper</dt>
           <dd>{area} mm²</dd>
         </dl>
+        <Stitching design={design} edit={edit} pour={pour.id} />
       </fieldset>
     );
   }

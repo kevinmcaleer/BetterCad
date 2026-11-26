@@ -343,6 +343,16 @@ describe("what is picked on the board", () => {
     expect(screen.getByText(/Copper text is copper on no net/)).toBeInTheDocument();
   });
 
+  it("stitches a pour to the other side with vias, as one step (#737)", async () => {
+    const d = sampleBoard();
+    const top = d.board!.pours.find((p) => p.layer === "top")!;
+    const s = setup(d, (design, edit) => <BoardProps design={design} edit={edit} selected={[top.id]} />);
+    await userEvent.click(screen.getByRole("button", { name: "Add stitching vias" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(/Added \d+ vias. Undo takes them all out./);
+    expect(s.labels).toEqual(["Add stitching vias"]);
+    expect(s.design().board!.vias.length).toBeGreaterThan(d.board!.vias.length);
+  });
+
   it("puts a test point on a net (#735)", async () => {
     const tp = addMark(sampleBoard(), "testpoint", 5, 5);
     const s = setup(tp.design, (design, edit) => <BoardProps design={design} edit={edit} selected={[tp.id]} />);

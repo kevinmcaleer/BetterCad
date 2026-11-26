@@ -88,7 +88,7 @@ schematic brings it up to date and lists the changes first.
    same gap. The bar shows how long the net is as you go; type a Target length to see it against that. To make a
    net longer, pick one of its tracks and type the length you want: it gets wiggles to make it up.
 4. **Pour copper.** Press P and draw round an area, usually the whole board for ground. The pour keeps clear of
-   other nets and joins its own pads with spokes.
+   other nets and joins its own pads with spokes. Pour both sides, then pick a pour and press **Add stitching vias** to join them with vias every few millimetres.
 5. **Add holes and text.** H adds a mounting hole for a screw. T writes on the silkscreen. If a board house will
    put the parts on, add three **Fiducials** near the corners, not in a line, so its camera can line the board up.
    A **Test point** clicked onto a track gives your meter's probe somewhere to land.
