@@ -379,10 +379,30 @@ export function moveOnBoard(d: ElectronicsDesign, ids: Id[], dx: number, dy: num
 /** Turns parts on the board by `by` degrees, each about its own origin. */
 export function rotateOnBoard(d: ElectronicsDesign, ids: Id[], by = 90): ElectronicsDesign {
   const set = new Set(ids);
-  return onBoard(d, (b) => ({
-    ...b,
-    placements: b.placements.map((p) => (set.has(p.part) && !p.locked ? { ...p, rot: (((p.rot + by) % 360) + 360) % 360 } : p)),
-  }));
+  return onBoard(d, (b) => {
+    const turning = b.placements.filter((p) => set.has(p.part) && !p.locked);
+    // Several parts turn as one, round their middle, so a group keeps its shape (#774).
+    const mid: P2 | null =
+      turning.length > 1
+        ? [
+            (Math.min(...turning.map((p) => p.x)) + Math.max(...turning.map((p) => p.x))) / 2,
+            (Math.min(...turning.map((p) => p.y)) + Math.max(...turning.map((p) => p.y))) / 2,
+          ]
+        : null;
+    const a = (by * Math.PI) / 180;
+    const [c, s] = [Math.cos(a), Math.sin(a)];
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    return {
+      ...b,
+      placements: b.placements.map((p) => {
+        if (!set.has(p.part) || p.locked) return p;
+        const rot = (((p.rot + by) % 360) + 360) % 360;
+        if (!mid) return { ...p, rot };
+        const [dx, dy] = [p.x - mid[0], p.y - mid[1]];
+        return { ...p, rot, x: r2(mid[0] + dx * c - dy * s), y: r2(mid[1] + dx * s + dy * c) };
+      }),
+    };
+  });
 }
 
 /** Moves parts to the other side of the board. */

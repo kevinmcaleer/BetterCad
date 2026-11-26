@@ -145,6 +145,11 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   The rules check trusts a block's inside nets and treats an open point as the outside, then adds its own rules: a
   required point left open, a supply outside a power input's range, two power outputs joined, and an I2C line with
   no pull-ups or more than two.
+- **Blocks on the board (#774).** Push to PCB sets each group's new parts out as one cluster (`clusters` in
+  `sync.ts`): a block's `layout` guide (millimetres by reference in its spec, kept by part id on `PlacedBlock`) where
+  it has one, packed close where not. Parked clusters and fully picked groups show their name in an outline
+  (`boardGroups`). Pick the group (board inspector, or Ctrl+G on the board) picks a group's footprints, and turning
+  several parts turns them round their middle so the group keeps its shape.
 
 ## The rules check (#634)
 

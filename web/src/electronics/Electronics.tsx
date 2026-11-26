@@ -636,7 +636,8 @@ function commands(design: () => ElectronicsDesign): Command[] {
       group: "Edit",
       icon: "group",
       keys: ["mod+g"],
-      when: schematic,
+      // On the board it picks the whole group of what is picked (#774).
+      when: () => schematic() || pcb(),
       run: () => eactions.current?.group?.(),
       keywords: "block outline gather organise",
     },

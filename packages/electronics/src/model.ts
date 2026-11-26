@@ -323,6 +323,8 @@ export interface PlacedBlock {
   notes?: Record<Id, string>;
   /** The outline as laid out, from the first point's label: it moves with the block. */
   frame?: { x1: number; y1: number; x2: number; y2: number };
+  /** Where its parts go on the board, from the block's layout guide: millimetres from the first part, by part id (#774). */
+  layout?: Record<Id, { x: number; y: number; rot: number }>;
 }
 
 // ---------------------------------------------------------------- the board

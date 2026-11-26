@@ -23,7 +23,7 @@ export interface EActions {
   paste?(): void;
   duplicate?(): void;
   renumber?(): void;
-  /** Schematic only: gather the selection into a named group, or take the picked groups apart (#766). */
+  /** Gather the selection into a named group, or take the picked groups apart (#766). On the board, pick the whole group (#774). */
   group?(): void;
   ungroup?(): void;
   /** The ribbon's Group button: take apart a selection that is only whole groups, else group it. */

@@ -9,7 +9,18 @@ import { pasteOnSheet, type Clip } from "./edit";
 import { emptyBox, grow, pinDirOnSheet, placeOnSheet, q, type Box } from "./geom";
 import { GROUP_PAD, placedBox, unitOf } from "./groups";
 import { GRID } from "./basics";
-import { eid, type BlockPoint, type ComponentDef, type ElectronicsDesign, type Id, type NetLabel, type P2, type PointKind, type Sheet } from "./model";
+import {
+  eid,
+  type BlockPoint,
+  type ComponentDef,
+  type ElectronicsDesign,
+  type Id,
+  type NetLabel,
+  type P2,
+  type PlacedBlock,
+  type PointKind,
+  type Sheet,
+} from "./model";
 
 /** Which edge of the outline a point sits on: inputs left, outputs right, power top, ground bottom. */
 export type Edge = "left" | "right" | "top" | "bottom";
@@ -36,6 +47,11 @@ export interface BlockSpec {
   /** Pins left open on purpose. */
   open?: string[];
   points: { name: string; net: string; kind: PointKind; edge?: Edge; volts?: string; note?: string; required?: boolean; global?: boolean }[];
+  /**
+   * Where the parts go on the board, from the datasheet's layout guide: millimetres and degrees by reference, the
+   * first part at the middle. Parts it leaves out are set beside them (#774).
+   */
+  layout?: Record<string, [x: number, y: number, rot?: number]>;
 }
 
 /** A block laid out and ready to place: a clip at the origin and its points. Inside names start with `@.`. */
@@ -46,6 +62,8 @@ export interface BuiltBlock {
   points: (Omit<BlockPoint, "label"> & { label: Id })[];
   /** What each part is for, by its id in the clip. */
   notes: Record<Id, string>;
+  /** The board layout, by id in the clip. */
+  layout?: Record<Id, { x: number; y: number; rot: number }>;
   /** The outline in the clip's space. */
   box: Box;
 }
@@ -88,6 +106,7 @@ export function buildBlock(spec: BlockSpec, lookup: (id: string) => ComponentDef
 
   const clip: Clip = { defs: {}, parts: [], symbols: [], wires: [], labels: [], junctions: [], noConnects: [] };
   const notes: Record<Id, string> = {};
+  let layout: Record<Id, { x: number; y: number; rot: number }> | undefined;
   const inner = emptyBox();
   let x = 0;
   let y = 0;
@@ -100,6 +119,8 @@ export function buildBlock(spec: BlockSpec, lookup: (id: string) => ComponentDef
     const id = eid("pt");
     clip.parts.push({ id, def: key, ref: p.ref, value: p.value ?? def.value ?? def.name, pkg: def.packages[p.pkg ?? 0] ? (p.pkg ?? 0) : 0 });
     notes[id] = p.note;
+    const spot = spec.layout?.[p.ref];
+    if (spot) (layout ??= {})[id] = { x: spot[0], y: spot[1], rot: spot[2] ?? 0 };
     // A part drawn in several units (a chip with four gates) has each unit placed, side by side.
     const units = Math.max(1, def.symbol.units || 1);
     for (let unit = 1; unit <= units; unit += 1) {
@@ -174,7 +195,7 @@ export function buildBlock(spec: BlockSpec, lookup: (id: string) => ComponentDef
         ...(p.required ? { required: true } : {}),
       });
     });
-  return { spec, clip, points, notes, box };
+  return { spec, clip, points, notes, box, ...(layout ? { layout } : {}) };
 }
 
 /** The next free tag for a block: MD1, MD2… across every sheet. */
@@ -202,11 +223,19 @@ export function placeBlock(d: ElectronicsDesign, sheetId: Id, built: BuiltBlock,
   const sheet = pasted.design.sheets.find((s) => s.id === sheetId)!;
   const partOf = new Map(sheet.symbols.map((s) => [s.id, s.part]));
   const clipSym = new Map(clip.symbols.map((s) => [s.part, s.id]));
+  const partFor = (clipPart: Id) => {
+    const sym = newId.get(clipSym.get(clipPart) ?? "");
+    return sym && partOf.get(sym);
+  };
   const notes: Record<Id, string> = {};
   for (const [clipPart, note] of Object.entries(built.notes)) {
-    const sym = newId.get(clipSym.get(clipPart) ?? "");
-    const part = sym && partOf.get(sym);
+    const part = partFor(clipPart);
     if (part) notes[part] = note;
+  }
+  let layout: PlacedBlock["layout"];
+  for (const [clipPart, spot] of Object.entries(built.layout ?? {})) {
+    const part = partFor(clipPart);
+    if (part) (layout ??= {})[part] = spot;
   }
   const first = clip.labels.find((l) => l.id === built.points[0]?.label);
   const frame = first && { x1: built.box.x1 - first.x, y1: built.box.y1 - first.y, x2: built.box.x2 - first.x, y2: built.box.y2 - first.y };
@@ -221,6 +250,7 @@ export function placeBlock(d: ElectronicsDesign, sheetId: Id, built: BuiltBlock,
       points: built.points.map((p) => ({ ...p, label: newId.get(p.label)! })),
       notes,
       ...(frame ? { frame } : {}),
+      ...(layout ? { layout } : {}),
     },
   };
   const design: ElectronicsDesign = {

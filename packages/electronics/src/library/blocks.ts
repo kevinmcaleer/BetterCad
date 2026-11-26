@@ -20,6 +20,8 @@ export const STARTER_BLOCKS: BlockSpec[] = [
     summary: "Turns 4.5 to 12 V into a steady 3.3 V for a microcontroller and sensors, up to about 800 mA.",
     needs: "4.5 to 12 V in. It gets warm when the drop is big: use the buck block from a battery pack above 7 V.",
     keywords: ["ldo", "linear", "ams1117", "3v3", "regulator", "power supply"],
+    // AMS1117 datasheet: both capacitors close to the regulator's pins, the input one by VIN.
+    layout: { U1: [0, 0], C1: [5.7, -1.5, 90], C2: [-5.7, -1.5, 90] },
     source: { title: "AMS1117 datasheet, typical application", url: "http://www.advanced-monolithic.com/pdf/ds1117.pdf" },
     parts: [
       { ref: "U1", part: "ams1117-3.3", note: "The regulator: drops the input to 3.3 V" },
@@ -42,6 +44,8 @@ export const STARTER_BLOCKS: BlockSpec[] = [
     summary: "Turns up to 32 V into 3.3 V without getting hot, up to 2 A. Good from a 2S or 3S battery pack.",
     needs: "3.8 to 32 V in.",
     keywords: ["buck", "switching", "step down", "ap63203", "3v3"],
+    // AP63203 datasheet layout: input capacitor and inductor right by the chip, output capacitors next.
+    layout: { U1: [0, 0], L1: [0, 3.2], C1: [-4.6, 0, 90], C2: [4.6, 0, 90], C3: [0, -3.1], C4: [0, -5.2] },
     source: { title: "AP63203 datasheet, typical application circuit", url: "https://www.diodes.com/assets/Datasheets/AP63200-AP63201-AP63203-AP63205.pdf" },
     parts: [
       { ref: "U1", part: "ap63203wu", note: "The buck regulator chip, fixed at 3.3 V" },
@@ -230,6 +234,8 @@ export const STARTER_BLOCKS: BlockSpec[] = [
     summary: "Drives two small DC motors forwards and backwards from four pins of your microcontroller.",
     needs: "2.7 to 10.8 V for the motors, up to 1.2 A each. Logic from 3.3 V or 5 V.",
     keywords: ["motor driver", "dc motor", "h-bridge", "drv8833", "n20", "tt motor"],
+    // DRV8833 datasheet layout: VM capacitor by the VM pin, VINT and charge pump capacitors close to the chip.
+    layout: { U1: [0, 0], C1: [0, 4.1], C2: [-2, -3.8], C3: [2, -3.8], R1: [5.6, 0, 90] },
     source: { title: "DRV8833 datasheet, typical application", url: "http://www.ti.com/lit/ds/symlink/drv8833.pdf" },
     parts: [
       { ref: "U1", part: "drv8833pw", note: "The motor driver: two H-bridges" },
@@ -432,6 +438,8 @@ export const STARTER_BLOCKS: BlockSpec[] = [
     summary: "A small 4-pin socket for I2C sensors and displays from SparkFun, Adafruit and Pimoroni. Plug and play.",
     needs: "3.3 V and an I2C bus (SDA and SCL).",
     keywords: ["qwiic", "stemma qt", "i2c", "jst sh", "sensor"],
+    // Pull-ups beside the socket.
+    layout: { J1: [0, 0], R1: [-2, -4.3], R2: [2, -4.3] },
     source: { title: "SparkFun Qwiic connector pinout: GND, 3.3 V, SDA, SCL", url: "https://www.sparkfun.com/qwiic" },
     parts: [
       { ref: "J1", part: "jst-sh-4", note: "The Qwiic socket" },
