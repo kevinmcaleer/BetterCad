@@ -260,6 +260,17 @@ const DRAW: Record<string, () => string> = {
     box(-5, -5, -5, 5, 10, 9, ["R"]) +
     `<polygon points="${pts([P(0, -5, 4), P(5, -5, 4), P(5, 5, 4), P(0, 5, 4)])}" fill="none" stroke="${EDGE}" stroke-width="0.7"${dashed}/>` +
     `<polyline points="${pts([P(5, -5, 4), P(5, -5, -5), P(5, 5, -5), P(0, 5, -5)])}" fill="none" stroke="${EDGE}" stroke-width="0.7"${dashed}/>`,
+  // Draw on: a box drawn in glowing accent lines, its ember a star at the corner it has reached
+  sparkle: () =>
+    `<polygon points="${pts([P(-5, -5, 4), P(5, -5, 4), P(5, 5, 4), P(-5, 5, 4)])}" fill="${TOP}" fill-opacity="0.5" stroke="${HI}" stroke-width="1.5" stroke-linejoin="round"/>` +
+    hiLine(path([P(-5, 5, 4), P(-5, 5, -5), P(5, 5, -5), P(5, -5, -5), P(5, -5, 4)], false), 1.5) +
+    hiLine(path([P(5, 5, -5), P(5, 5, 4)], false), 1.5) +
+    `<path d="M19 1.5c.4 2.6 1.4 3.6 4 4-2.6.4-3.6 1.4-4 4-.4-2.6-1.4-3.6-4-4 2.6-.4 3.6-1.4 4-4z" fill="${HI}" stroke="${EDGE}" stroke-width="0.6" stroke-linejoin="round"/>`,
+  // A film camera, its lens in the accent
+  video: () =>
+    `<rect x="2.5" y="7" width="13" height="11" rx="1.5" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.2"/>` +
+    `<path d="M15.5 10.5l6-3v10l-6-3z" fill="${DARK}" stroke="${EDGE}" stroke-width="1.1" stroke-linejoin="round"/>` +
+    `<circle cx="7" cy="12.5" r="2.4" fill="${HI}" stroke="${EDGE}" stroke-width="0.8"/>`,
   camera: () =>
     `<ellipse cx="12" cy="20" rx="8" ry="2" fill="${DARK}" opacity="0.5"/><circle cx="12" cy="11" r="8" fill="${SIDE}" stroke="${EDGE}" stroke-width="0.9"/>` +
     `<path d="M12 3a8 8 0 0 0 0 16a8 8 0 0 1 0-16z" fill="${TOP}"/><circle cx="12" cy="11" r="8" fill="none" stroke="${EDGE}" stroke-width="0.9"/><circle cx="9" cy="7.8" r="2.6" fill="${HI}"/>`,

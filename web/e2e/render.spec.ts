@@ -228,3 +228,20 @@ test("a rendered box at a fixed sample count @visual", async ({ page }) => {
   });
   expect(Buffer.from(url.split(",")[1], "base64")).toMatchSnapshot("render-box.png", { maxDiffPixelRatio: 0.05, threshold: 0.1 });
 });
+
+/** Draw on: embers trace the model's edges in neon, ghosts fill the faces and the model ends solid. */
+test("Draw on plays the glowing build-up over the Render view, and Esc leaves it first", async ({ page }) => {
+  test.setTimeout(480_000);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open the bracket sample" }).click();
+  await expect(page.locator(".bc-view-engine")).toHaveCount(0, { timeout: 60_000 });
+  await page.keyboard.press("Shift+R");
+  const bar = page.getByRole("group", { name: "Render options" });
+  await expect(bar.getByRole("status")).toHaveText("Press Start to render", { timeout: 200_000 });
+  await page.getByRole("button", { name: /^Draw on/ }).click({ timeout: 200_000 });
+  await expect(page.getByRole("img", { name: "Draw on: the model drawn in glowing lines" })).toBeVisible({ timeout: 60_000 });
+  await expect(bar.getByRole("status")).toHaveText(/^Draw on, [\d.]+ s of [\d.]+ s$/, { timeout: 60_000 });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("img", { name: /Draw on/ })).toHaveCount(0);
+  await expect(bar).toBeVisible();
+});

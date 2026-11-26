@@ -88,9 +88,12 @@
 }
 /* The face, edge or corner under the pointer. */
 .bc-cube-light {
-  fill: var(--bc-color-accent);
-  fill-opacity: 0.35;
+  fill: var(--bc-color-cube-hover);
   pointer-events: none;
+}
+/* A whole face stays see-through, so its lettering still reads. */
+.bc-cube-light-face {
+  fill: var(--bc-color-cube-hover-face);
 }
 .bc-axis-x {
   fill: var(--bc-color-axis-x);

@@ -313,7 +313,12 @@ export function ViewCube({ rotation = ISO, onPick, onOrbit, onOrbitEnd, onHome, 
           );
         })}
         {hlFaces.map((h) => (
-          <polygon key={h.k} className="bc-cube-light" points={h.points} aria-hidden="true" />
+          <polygon
+            key={h.k}
+            className={hl && hl.filter((v) => v !== 0).length === 1 ? "bc-cube-light bc-cube-light-face" : "bc-cube-light"}
+            points={h.points}
+            aria-hidden="true"
+          />
         ))}
         {front}
         {labels(true)}

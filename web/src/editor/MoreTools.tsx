@@ -16,8 +16,12 @@ const TABS: [Tab, string][] = [
   ["assemble", "Assemble"],
   ["inspect", "Inspect"],
   ["drawing", "Drawing"],
+  ["render", "Render"],
   ["electronics", "Electronics"],
 ];
+
+// Render has no tools of its own on the ribbon: choosing it opens the Render view, as on the desktop ribbon.
+const RENDER = "view.render";
 
 // The tab you last looked at, while the page stays open.
 let lastTab: Tab = "model";
@@ -51,21 +55,23 @@ export function MoreTools({ registry, tool, mirrorOn, panel, drawings, onOpenDra
     return () => before?.focus?.();
   }, []);
 
-  const pick = (t: Tab) => {
-    lastTab = t;
-    setTab(t);
-  };
   const run = (fn: () => void) => {
     onClose();
     fn();
   };
+  const canRender = !!registry.get(RENDER) && registry.enabled(RENDER);
+  const tabs = TABS.filter(([id]) => id !== "render" || canRender);
+  const pick = (t: Tab) => {
+    if (t !== "render") lastTab = t;
+    setTab(t);
+  };
   // Arrow keys move between tabs, as in any tab list.
   const onTabKey = (e: KeyboardEvent) => {
-    const i = TABS.findIndex(([id]) => id === tab);
+    const i = tabs.findIndex(([id]) => id === tab);
     const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
     e.preventDefault();
-    const next = TABS[(i + step + TABS.length) % TABS.length]![0];
+    const next = tabs[(i + step + tabs.length) % tabs.length]![0];
     pick(next);
     sheet.current?.querySelector<HTMLElement>(`#bc-more-tab-${next}`)?.focus();
   };
@@ -75,7 +81,7 @@ export function MoreTools({ registry, tool, mirrorOn, panel, drawings, onOpenDra
       <div ref={sheet} className="bc-more" role="dialog" aria-modal="true" aria-label="More tools">
         <div className="bc-more-head">
           <div className="bc-more-tabs" role="tablist" aria-label="Tool tabs" onKeyDown={onTabKey}>
-            {TABS.map(([id, label]) => (
+            {tabs.map(([id, label]) => (
               <button
                 key={id}
                 type="button"
@@ -85,7 +91,7 @@ export function MoreTools({ registry, tool, mirrorOn, panel, drawings, onOpenDra
                 aria-selected={tab === id}
                 aria-controls="bc-more-tools"
                 tabIndex={tab === id ? 0 : -1}
-                onClick={() => pick(id)}
+                onClick={() => (id === "render" ? run(() => registry.run(RENDER)) : pick(id))}
               >
                 {label}
               </button>
@@ -121,6 +127,14 @@ export function MoreTools({ registry, tool, mirrorOn, panel, drawings, onOpenDra
               </section>
             );
           })}
+          {tab === "render" && canRender && (
+            <section className="bc-more-group" aria-label="Show">
+              <h3 className="bc-more-name">Show</h3>
+              <div className="bc-more-grid">
+                <RibbonButton icon="sun" colour="camera" label="Open the Render view" short="Render" onPress={() => run(() => registry.run(RENDER))} />
+              </div>
+            </section>
+          )}
           {tab === "drawing" && (
             <section className="bc-more-group" aria-label="Open">
               <h3 className="bc-more-name">Open</h3>

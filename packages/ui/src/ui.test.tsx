@@ -469,6 +469,17 @@ describe("ViewCube", () => {
     expect(container.querySelector(".bc-cube-light")).toBeNull();
   });
 
+  it("keeps only a face's light see-through, so edges and corners light up solid", async () => {
+    const { container } = render(<ViewCube />);
+    await userEvent.hover(container.querySelector('[data-place="1,-1,1"]')!);
+    expect(container.querySelectorAll(".bc-cube-light").length).toBeGreaterThan(0);
+    expect(container.querySelector(".bc-cube-light-face")).toBeNull();
+    await userEvent.hover(container.querySelector('[data-place="0,-1,1"]')!);
+    expect(container.querySelector(".bc-cube-light-face")).toBeNull();
+    await userEvent.hover(container.querySelector('[data-place="0,-1,0"]')!);
+    expect(container.querySelectorAll(".bc-cube-light-face").length).toBeGreaterThan(0);
+  });
+
   it("turns the view when dragged, without picking", async () => {
     const onPick = vi.fn();
     const onOrbit = vi.fn();
