@@ -27,3 +27,14 @@ test("Esc closes More tools", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "More tools" })).toBeHidden();
 });
+
+test("More tools on a phone has a Render tab that opens the Render view", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("banner").getByRole("button", { name: "More tools" }).click();
+  const sheet = page.getByRole("dialog", { name: "More tools" });
+  await sheet.getByRole("tab", { name: "Render" }).click();
+  await expect(sheet).toBeHidden();
+  // The Render view opens stopped, so nothing path-traces here.
+  await expect(page.getByRole("group", { name: "Render options" }).getByRole("status")).toHaveText("Press Start to render", { timeout: 60_000 });
+  await page.close();
+});
