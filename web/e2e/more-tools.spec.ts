@@ -29,6 +29,9 @@ test("Esc closes More tools", async ({ page }) => {
 });
 
 test("More tools on a phone has a Render tab that opens the Render view", async ({ page }) => {
+  // As in render.spec.ts: software WebGL compiles the path tracer's shaders on the page's thread, which can hold up
+  // closing the page for well over the default 30 s on a busy runner.
+  test.setTimeout(240_000);
   await page.goto("/");
   await page.getByRole("banner").getByRole("button", { name: "More tools" }).click();
   const sheet = page.getByRole("dialog", { name: "More tools" });

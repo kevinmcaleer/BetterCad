@@ -346,10 +346,11 @@ export class PathRender {
 
   /** What is behind the model and what it stands on; the lighting stays as it is. */
   setBackground(id: BackgroundId): void {
-    const walls = !!this.walls.parent;
+    const walls = !!this.walls.parent,
+      floor = !!this.floor.parent;
     this.applyBackground(id);
-    // Walls coming or going change the scene's shape, so the tracer re-reads it.
-    if (!!this.walls.parent !== walls && this.model.children.length) this.tracer.setScene(this.scene, this.camera);
+    // Walls or the floor coming or going change the scene's shape, so the tracer re-reads it.
+    if ((!!this.walls.parent !== walls || !!this.floor.parent !== floor) && this.model.children.length) this.tracer.setScene(this.scene, this.camera);
     this.tracer.updateEnvironment();
     this.tracer.updateMaterials();
     this.restart();
@@ -360,7 +361,10 @@ export class PathRender {
     const b = this.backgrounds.get(id);
     if (b.walls) this.scene.add(this.walls);
     else this.scene.remove(this.walls);
-    this.scene.background = b.sky;
+    // Transparent: nothing behind and nothing under, so the canvas (made with alpha) stays see-through there.
+    if (b.clear) this.scene.remove(this.floor);
+    else this.scene.add(this.floor);
+    this.scene.background = b.clear ? null : b.sky;
     const m = this.floor.material;
     m.color.set(b.floor.colour);
     m.roughness = b.floor.roughness;

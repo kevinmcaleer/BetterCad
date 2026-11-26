@@ -13,6 +13,7 @@ export const BACKGROUNDS: { id: BackgroundId; label: string; title: string }[] =
   { id: "workbench", label: "Workbench", title: "A wooden bench in a warm room" },
   { id: "holoroom", label: "Holoroom", title: "A black room with a yellow grid" },
   { id: "replicator", label: "Replicator", title: "A bright floor lit from below, with a grey grid" },
+  { id: "transparent", label: "Transparent", title: "Nothing behind the model: saved pictures and videos keep it see-through" },
 ];
 
 /** The floor's look: colour, roughness, and the grid it carries, if any. Picture values, not interface colours. */
@@ -108,6 +109,14 @@ export interface Background {
   floor: Floor;
   /** Holoroom: grid walls and a roof round the model, in the floor's grid. */
   walls?: boolean;
+  /** Transparent: no sky and no floor, so what is behind the model stays see-through. */
+  clear?: boolean;
+}
+
+/** A sky's colour at the top and at the horizon, for Draw on, which paints the sky as a flat gradient. */
+export function skyColours(b: Background): { top: number; bottom: number } {
+  const g = b.sky as GradientEquirectTexture;
+  return { top: g.topColor.getHex(), bottom: g.bottomColor.getHex() };
 }
 
 /** Makes each background's sky (what the camera sees past the floor) and floor, once, on first use. */
@@ -151,5 +160,8 @@ function make(id: BackgroundId): Background {
     case "replicator":
       // A pale haze beyond a glowing, gridded pad; the pad's light comes up under the model.
       return { sky: gradient(0xf2f4f6, 0xc9ced3), floor: { colour: 0xffffff, roughness: 0.35, grid: { map: replicatorTile(), cell: 50 }, glow: 1.1 } };
+    case "transparent":
+      // The sky still lights nothing (the lighting preset does that); it is never shown.
+      return { sky: gradient(0x000000, 0x000000), floor: { colour: 0xffffff, roughness: 1 }, clear: true };
   }
 }

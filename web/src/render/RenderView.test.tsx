@@ -103,11 +103,14 @@ describe("the Render view's options (#197)", () => {
     render(<RenderBar session={s} onClose={() => {}} onExportGltf={() => {}} />);
     s.set({ loading: false });
     await userEvent.click(await screen.findByRole("button", { name: "Lightbox" }));
-    for (const name of ["Lightbox", "Grey table", "Workbench", "Holoroom", "Replicator"])
+    for (const name of ["Lightbox", "Grey table", "Workbench", "Holoroom", "Replicator", "Transparent"])
       expect(screen.getByRole("menuitemradio", { name })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitemradio", { name: "Holoroom" }));
     expect(s.get().background).toBe("holoroom");
     expect(s.get().preset).toBe("studio");
+    await userEvent.click(screen.getByRole("button", { name: "Holoroom" }));
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Transparent" }));
+    expect(s.get().background).toBe("transparent");
   });
 
   it("sets the quality with a Good, Better, Best slider", async () => {

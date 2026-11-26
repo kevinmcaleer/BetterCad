@@ -281,15 +281,16 @@ const smooth = (a: number, b: number, x: number) => {
 };
 
 /**
- * How solid the model is at time `t`, 0 (ghosts) to 1: it starts firming up halfway through the drawing and is solid
- * once it settles after the last line.
+ * How solid a face is at time `t`, 0 (ghost) to 1: it starts firming up halfway through the drawing, or once the face
+ * closes if that is later, and is solid once the model settles after the last line. A face that closes late eases in
+ * from a ghost over what time is left, rather than arriving nearly solid.
  */
-export const solidity = (plan: Pick<DrawOnPlan, "drawEnd">, t: number) => smooth(plan.drawEnd * 0.5, plan.drawEnd + SETTLE, t);
+export const solidity = (plan: Pick<DrawOnPlan, "drawEnd">, t: number, closed = 0) => smooth(Math.max(plan.drawEnd * 0.5, closed), plan.drawEnd + SETTLE, t);
 
 /** A face's share of the solid face at time `t`, closed at `closed`: nothing, then a ghost, then solid. */
 export function faceOpacity(plan: Pick<DrawOnPlan, "drawEnd">, closed: number, t: number): number {
   const shown = smooth(closed, closed + GHOST_IN, t);
-  return shown * (GHOST + (1 - GHOST) * solidity(plan, t));
+  return shown * (GHOST + (1 - GHOST) * solidity(plan, t, closed));
 }
 
 /** How bright the lines glow at time `t`: full while drawing, gone once the model is solid, so the end is just the model. */
