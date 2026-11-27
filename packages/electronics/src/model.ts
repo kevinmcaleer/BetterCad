@@ -276,6 +276,8 @@ export interface NetLabel {
   y: number;
   name: string;
   rot?: Rot;
+  /** A sheet pin (#757): on a sheet used as a box, this label is a pin on the box, joined to the net there. */
+  port?: boolean;
 }
 
 export interface Sheet {
@@ -295,6 +297,36 @@ export interface Sheet {
   buses?: Bus[];
   /** Short slanted pieces where a wire leaves a bus (#756). */
   busEntries?: BusEntry[];
+  /** Other sheets placed on this one as boxes with pins (#757). */
+  boxes?: SheetBox[];
+  /** Set when this sheet is placed on another as a box (#757): it is one use of a block. */
+  use?: SheetUse;
+}
+
+/** A sheet drawn on another as a box (#757). Its pins are the used sheet's sheet pins, in name order. */
+export interface SheetBox {
+  id: Id;
+  /** The sheet it stands for. */
+  sheet: Id;
+  /** Its top left corner. */
+  x: number;
+  y: number;
+  /** A box brought in from KiCad keeps its size and where its pins are, from its top left; a pin not listed is placed below them. */
+  w?: number;
+  h?: number;
+  pins?: { name: string; dx: number; dy: number; side: "left" | "right" }[];
+}
+
+/**
+ * One use of a block (#757). Its labels are named `prefix/name`, so each use has nets of its own. A use with a
+ * `master` is a copy that follows it: drawn from it again after every change, keeping its own parts and references.
+ */
+export interface SheetUse {
+  box: Id;
+  prefix: string;
+  master?: Id;
+  /** For a copy: each of the master's symbols, to this sheet's own. */
+  links?: Record<Id, Id>;
 }
 
 /** A bus (#756): a run of points, and a name such as "D[0..7]" for the nets it carries. It joins nothing itself. */

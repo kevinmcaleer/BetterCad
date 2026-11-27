@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   applyChanges,
   blocks,
@@ -8,6 +8,7 @@ import {
   describeChange,
   emptyDesign,
   isPower,
+  keepUsesInStep,
   netAt,
   netlist,
   realParts,
@@ -246,6 +247,15 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         tip: "Gather the selection in a named outline that moves as one. Pick a group and press again to take it apart",
         disabled: readOnly || ui.selected.length === 0,
         run: () => eactions.current?.groupToggle?.(),
+      },
+      {
+        id: "sheet-pin",
+        group: "Edit",
+        label: "Sheet pin",
+        icon: "pin",
+        tip: "Make the picked labels pins of this sheet, so it can be placed on another sheet as a box with these pins",
+        disabled: readOnly || ui.selected.length === 0,
+        run: () => eactions.current?.port?.(),
       },
       {
         id: "renumber",
@@ -940,7 +950,7 @@ export interface ElectronicsViewProps {
  */
 export default function ElectronicsView({
   design: saved,
-  edit,
+  edit: rawEdit,
   readOnly,
   ribbon,
   registry,
@@ -953,11 +963,14 @@ export default function ElectronicsView({
   call,
 }: ElectronicsViewProps) {
   const ui = useEui();
+  // A block placed more than once is one drawing (#757): every change to a master is drawn again on its copies.
+  const edit = useCallback<EEdit>((change, label, key) => rawEdit((d) => keepUsesInStep(d, change(d)), label, key), [rawEdit]);
   const blank = useRef(emptyDesign());
   const design = saved ?? blank.current;
   const view = ui.view ?? "schematic";
   const sheet = design.sheets.find((s) => s.id === ui.sheet) ?? design.sheets[0]!;
-  const tools = useTools(view, !!readOnly);
+  // A copy of a block follows its master (#757): its own sheet is not edited.
+  const tools = useTools(view, !!readOnly || (view === "schematic" && !!sheet.use?.master));
   const nl = useMemo(() => netlist(design), [design]);
   const changes = useMemo(() => boardChanges(design, nl), [design, nl]);
   const behind = design.board ? changes.length : 0;
@@ -976,7 +989,7 @@ export default function ElectronicsView({
   return (
     <div className={cx("bc-electronics", `bc-ec-${view}`)} data-view={view}>
       {view === "schematic" ? (
-        <SchematicCanvas key={sheet.id} design={design} sheet={sheet} edit={edit} readOnly={readOnly} onAskLabel={setAsk} />
+        <SchematicCanvas key={sheet.id} design={design} sheet={sheet} edit={edit} readOnly={readOnly || !!sheet.use?.master} onAskLabel={setAsk} />
       ) : (
         <Suspense fallback={null}>
           <BoardView design={design} edit={edit} readOnly={readOnly} />
@@ -1139,19 +1152,21 @@ export default function ElectronicsView({
               </button>
             )}
             <span className="bc-ec-status-far">
-              {ui.schTool === "place" && (ui.placing || ui.placingBlock)
-                ? `Placing ${ui.placing?.name ?? ui.placingBlock!.built.spec.name}. Click to place, Esc to stop.`
-                : ui.schTool === "wire"
-                  ? "Click a pin to start a wire, click again to turn or finish."
-                  : ui.schTool === "bus"
-                    ? "Click to draw a bus, double-click to finish. Click a bus to take a wire off it."
-                    : ui.schTool === "text"
-                      ? "Click where the note goes."
-                      : ui.schTool === "line" || ui.schTool === "rect" || ui.schTool === "circle"
-                        ? `Click to start the ${ui.schTool === "rect" ? "box" : ui.schTool}, click again to finish it.`
-                        : ui.net
-                          ? `Net ${ui.net}`
-                          : "Grid 2.54 mm"}
+              {sheet.use?.master
+                ? `This sheet follows ${design.sheets.find((s) => s.id === sheet.use!.master)?.name ?? "its first use"}. Change that sheet and this one changes with it.`
+                : ui.schTool === "place" && (ui.placing || ui.placingBlock)
+                  ? `Placing ${ui.placing?.name ?? ui.placingBlock!.built.spec.name}. Click to place, Esc to stop.`
+                  : ui.schTool === "wire"
+                    ? "Click a pin to start a wire, click again to turn or finish."
+                    : ui.schTool === "bus"
+                      ? "Click to draw a bus, double-click to finish. Click a bus to take a wire off it."
+                      : ui.schTool === "text"
+                        ? "Click where the note goes."
+                        : ui.schTool === "line" || ui.schTool === "rect" || ui.schTool === "circle"
+                          ? `Click to start the ${ui.schTool === "rect" ? "box" : ui.schTool}, click again to finish it.`
+                          : ui.net
+                            ? `Net ${ui.net}`
+                            : "Grid 2.54 mm"}
             </span>
           </>
         ) : (

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { eid, elsewhere, type ElectronicsDesign } from "@bettercad/electronics";
+import { GRID, copiesOf, eid, elsewhere, placeSheetBox, q, repeatLayout, type ElectronicsDesign, type P2, type Sheet } from "@bettercad/electronics";
 import { addSheet, duplicateSheet, moveSheet, removeSheet, renameSheet } from "@bettercad/electronics/sheets";
 import { ContextMenu, ESC, Icon, longPress, useEscape, type ContextMenuState } from "@bettercad/ui";
 import type { EEdit } from "./actions";
@@ -58,6 +58,7 @@ export default function SchSheets({ design, open, edit, readOnly }: SchSheetsPro
   const remove = (sheet: string) => {
     const at = sheets.findIndex((s) => s.id === sheet);
     if (at < 0) return;
+    if (sheets[at]!.use) return setSaid(`${sheets[at]!.name} is placed as a box. Delete its box instead.`);
     if (sheets.length < 2) return setSaid("A schematic keeps at least one sheet.");
     const next = sheets[at + 1] ?? sheets[at - 1]!;
     if (sheet === open) show(next.id);
@@ -71,6 +72,24 @@ export default function SchSheets({ design, open, edit, readOnly }: SchSheetsPro
     if (at < 0 || at + by < 0 || at + by >= sheets.length) return;
     edit((d) => moveSheet(d, sheet, at + by), "Move sheet");
     focus(sheet);
+  };
+  // Hierarchy (#757): the sheet goes on the open one as a box, to the right of what is there.
+  const place = (sheet: string) => {
+    // Worked out on the design as it is, so the new box can be picked straight away.
+    const got = placeSheetBox(design, open, sheet, freeSpot(sheets.find((s) => s.id === open)!));
+    if (!got) return setSaid("A sheet can't go inside itself.");
+    edit(() => got.design, "Place sheet as a box");
+    const name = sheets.find((s) => s.id === sheet)!.name;
+    eui.set({ selected: [got.box] });
+    setSaid(
+      got.sheet === sheet
+        ? `${name} is a box here now. Its sheet pins are the box's pins; double-click the box to open it.`
+        : `Placed ${name} again. The copy follows ${name}: change that sheet and every copy changes with it.`,
+    );
+  };
+  const repeat = (sheet: string) => {
+    edit((d) => repeatLayout(d, sheet), "Repeat block layout");
+    setSaid(`Laid the copies of ${sheets.find((s) => s.id === sheet)!.name} out as it is on the board.`);
   };
   const rename = () => {
     if (!renaming) return;
@@ -190,6 +209,15 @@ export default function SchSheets({ design, open, edit, readOnly }: SchSheetsPro
             ? [
                 { id: "rename", label: "Rename", keys: "F2", onSelect: () => setRenaming({ sheet: menu.sheet, name: sheets[at]!.name }) },
                 { id: "copy", label: "Duplicate, as a block to use again", onSelect: () => copy(menu.sheet) },
+                {
+                  id: "box",
+                  label: "Place on this sheet as a box",
+                  disabled: menu.sheet === open,
+                  onSelect: () => place(menu.sheet),
+                },
+                ...(design.board && copiesOf(design, menu.sheet).length
+                  ? [{ id: "layout", label: "Repeat its board layout on the copies", onSelect: () => repeat(menu.sheet) }]
+                  : []),
                 { id: "left", label: "Move left", keys: "Alt+←", disabled: at === 0, onSelect: () => move(menu.sheet, -1) },
                 { id: "right", label: "Move right", keys: "Alt+→", disabled: at === sheets.length - 1, onSelect: () => move(menu.sheet, 1) },
                 { kind: "separator", id: "s" },
@@ -200,4 +228,18 @@ export default function SchSheets({ design, open, edit, readOnly }: SchSheetsPro
       />
     </div>
   );
+}
+
+/** Where a new box goes on a sheet: a little to the right of everything on it, on the grid. */
+function freeSpot(sheet: Sheet): P2 {
+  const xs = [
+    ...sheet.symbols.map((y) => y.x + 10),
+    ...sheet.labels.map((l) => l.x + 10),
+    ...sheet.wires.flatMap((w) => [w.a[0], w.b[0]]),
+    ...(sheet.boxes ?? []).map((b) => b.x + 30),
+  ];
+  const ys = [...sheet.symbols.map((y) => y.y), ...(sheet.boxes ?? []).map((b) => b.y)];
+  const x = xs.length ? Math.max(...xs) + 4 * GRID : 0;
+  const y = ys.length ? Math.max(...ys) : 0;
+  return [q(Math.round(x / GRID) * GRID), q(Math.round(y / GRID) * GRID)];
 }

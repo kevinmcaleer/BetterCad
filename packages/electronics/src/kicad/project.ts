@@ -26,6 +26,7 @@ import {
   type SchSymbol,
   type Shape,
   type Sheet,
+  type SheetBox,
 } from "../model";
 import { Tally, joinRuns, loopArea, loopsOf, matchNets, type Edge } from "../boardIn";
 import { netlist } from "../nets";
@@ -131,11 +132,13 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
   const apart = new Set<string>();
 
   /** `alias` gives names inside this sheet that are really a net of the sheet above: the wires of a bus on a sheet pin. */
-  const walk = (file: string, path: string, name: string, prefix: string, depth: number, alias: Map<string, string>) => {
+  // Hierarchy (#757): the first sheet drawn from each file, which later uses of the file follow.
+  const firstUse = new Map<string, Sheet>();
+  const walk = (file: string, path: string, name: string, prefix: string, depth: number, alias: Map<string, string>, box?: Id): Sheet | undefined => {
     const tree = files.get(file);
     if (!tree || depth > 12) {
       if (!tree) notes.push({ name: base(file), why: "A sheet of the schematic is in this file, which was not among the ones opened" });
-      return;
+      return undefined;
     }
     const lib = libOf(file);
     // Where things are, to bring the sheet near our origin with y running up.
@@ -154,9 +157,21 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
     const oy = x1 === Infinity ? 0 : snap(y2);
     const at = (n: Node[] | undefined): P2 => [r4(num(n, 1) - ox), r4(oy - num(n, 2))];
     const sheet: Sheet = { id: eid("sh"), name: name || "Sheet 1", symbols: [], wires: [], junctions: [], labels: [], noConnects: [], notes: [] };
+    if (box) {
+      const master = firstUse.get(file);
+      sheet.use = { box, prefix: prefix.slice(0, -1), ...(master ? { master: master.id, links: {} } : {}) };
+      if (!master) firstUse.set(file, sheet);
+    }
     out.sheets.push(sheet);
-    const label = (text0: string, p: P2, rot = 0) =>
-      sheet.labels.push({ id: eid("lb"), name: plainName(text0), x: p[0], y: p[1], ...(rot ? { rot: (norm(rot) - (norm(rot) % 90)) as Rot } : {}) });
+    const label = (text0: string, p: P2, rot = 0, port = false) =>
+      sheet.labels.push({
+        id: eid("lb"),
+        name: plainName(text0),
+        x: p[0],
+        y: p[1],
+        ...(rot ? { rot: (norm(rot) - (norm(rot) % 90)) as Rot } : {}),
+        ...(port ? { port: true } : {}),
+      });
     /** A name used on this sheet, as the whole design knows it. */
     const scoped = (local: string) => alias.get(local) ?? `${prefix}${local}`;
 
@@ -225,7 +240,7 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
             apart.add(named);
             named = `/${named}`;
           }
-          label(named, at(child(item, "at")), num(child(item, "at"), 3));
+          label(named, at(child(item, "at")), num(child(item, "at"), 3), kind === "hierarchical_label" && !!box);
         }
       } else if (kind === "global_label") {
         if (!members(text(item))) label(text(item), at(child(item, "at")), num(child(item, "at"), 3));
@@ -238,13 +253,22 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         const childName = prop("Sheetname", "Sheet name") || "Sheet";
         const childFile = prop("Sheetfile", "Sheet file");
         const childPrefix = `${prefix}${childName}/`;
+        // The sheet comes in as a box (#757), its size and pins where KiCad has them.
+        const corner = at(child(item, "at"));
+        const size = child(item, "size");
+        const boxId = eid("bx");
+        const sheetBox: SheetBox = { id: boxId, sheet: "", x: corner[0], y: corner[1], w: r4(num(size, 1)), h: r4(num(size, 2)), pins: [] };
         // A pin on the sheet's box is the net of that name inside the sheet.
         const inside = new Map<string, string>();
         for (const pin of children(item, "pin")) {
           const list = members(text(pin));
           if (!list) {
             if (/\{.*\}/.test(text(pin))) dropped.add("group buses between sheets");
-            else label(`${childPrefix}${text(pin)}`, at(child(pin, "at")));
+            else {
+              const p = at(child(pin, "at"));
+              const side = Math.abs(p[0] - corner[0]) < Math.abs(p[0] - (corner[0] + sheetBox.w!)) ? "left" : "right";
+              sheetBox.pins!.push({ name: plainName(text(pin)), dx: r4(p[0] - corner[0]), dy: r4(p[1] - corner[1]), side });
+            }
             continue;
           }
           // A bus on the pin: each of its wires inside the sheet is the wire in the same place on the bus out here.
@@ -263,7 +287,16 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         const dir = file.includes("/") ? file.replace(/[^/]*$/, "") : "";
         const target = [...files.keys()].find((f) => f === `${dir}${childFile}`) ?? [...files.keys()].find((f) => base(f) === base(childFile));
         if (!target) notes.push({ name: childFile, why: `The sheet ${childName} is in this file, which was not among the ones opened` });
-        else walk(target, `${path}/${text(child(item, "uuid"))}`, childName, childPrefix, depth + 1, inside);
+        else {
+          const made = walk(target, `${path}/${text(child(item, "uuid"))}`, childName, childPrefix, depth + 1, inside, boxId);
+          if (made) {
+            sheetBox.sheet = made.id;
+            (sheet.boxes ??= []).push(sheetBox);
+            // A copy's symbols are the master's, one for one, as both are drawn from the same file.
+            const master = made.use?.master ? out.sheets.find((x) => x.id === made.use!.master) : undefined;
+            if (master) made.use!.links = Object.fromEntries(master.symbols.flatMap((y, i) => (made.symbols[i] ? [[y.id, made.symbols[i]!.id]] : [])));
+          }
+        }
       } else if (kind === "symbol") {
         const id = text(child(item, "lib_name")) || text(child(item, "lib_id"));
         const sym = lib.get(id);
@@ -350,6 +383,7 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
     if (!sheet.notes!.length) delete sheet.notes;
     if (busList.length) sheet.buses = busList;
     if (entryList.length) sheet.busEntries = entryList;
+    return sheet;
   };
   walk(rootFile, `/${text(child(root, "uuid"))}`, "", "", 0, new Map());
   for (const n of apart)

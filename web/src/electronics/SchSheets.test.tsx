@@ -106,4 +106,25 @@ describe("the schematic's sheets (#636)", () => {
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(one.labels).toEqual([]);
   });
+
+  it("places another sheet on this one as a box, and again as a copy that follows it (#757)", async () => {
+    const s = setup(twoSheets());
+    const place = async () => {
+      fireEvent.contextMenu(screen.getByRole("tab", { name: "Sheet 2, sheet 2 of 2" }));
+      await userEvent.click(within(screen.getByRole("menu", { name: "Sheet actions" })).getByRole("menuitem", { name: "Place on this sheet as a box" }));
+    };
+    await place();
+    expect(s.labels).toEqual(["Place sheet as a box"]);
+    expect(s.design().sheets[0]!.boxes).toHaveLength(1);
+    expect(eui.get().selected).toEqual([s.design().sheets[0]!.boxes![0]!.id]);
+    expect(screen.getByRole("status")).toHaveTextContent("Sheet 2 is a box here now");
+    await place();
+    expect(s.tabs()).toEqual(["Sheet 1", "Sheet 2", "Sheet 2 (2)"]);
+    expect(screen.getByRole("status")).toHaveTextContent("The copy follows Sheet 2");
+    // A placed sheet goes with its box.
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "Sheet 2, sheet 2 of 3" }));
+    await userEvent.click(within(screen.getByRole("menu", { name: "Sheet actions" })).getByRole("menuitem", { name: /^Delete/ }));
+    expect(s.tabs()).toHaveLength(3);
+    expect(screen.getByRole("status")).toHaveTextContent("Delete its box instead");
+  });
 });

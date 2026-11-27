@@ -1,6 +1,9 @@
 import {
   GRID,
   boardPads,
+  boxPins,
+  boxRect,
+  localName,
   entryEnd,
   outlinePoints,
   packageOf,
@@ -165,6 +168,18 @@ export function schematicScene(d: ElectronicsDesign, whole: Sheet, page: Schemat
     text(b.name, P([b.pts[0]![0] + 0.5, b.pts[0]![1] + 0.6]), 1.27, "start", "alphabetic");
   }
   for (const e of sheet.busEntries ?? []) line([P([e.x, e.y]), P(entryEnd(e))], pen(0.2));
+  // Sheets placed as boxes (#757): the box, its sheet's name, and its pins.
+  for (const box of sheet.boxes ?? []) {
+    const child = d.sheets.find((x) => x.id === box.sheet);
+    const { x1, y1, x2, y2 } = boxRect(d, box);
+    const corners: P2[] = [[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]; // prettier-ignore
+    line(corners.map(P), pen(0.3));
+    text(child ? `${child.name}${child.use ? ` · ${child.use.prefix}` : ""}` : "Missing sheet", P([x1, y2 + 0.6]), 1.27, "start", "alphabetic");
+    for (const pin of boxPins(d, box)) {
+      disc(P(pin.at), 0.25 * s);
+      text(pin.name, P([pin.at[0] + (pin.side === "left" ? 0.6 : -0.6), pin.at[1]]), 1.1, pin.side === "left" ? "start" : "end", "central");
+    }
+  }
   for (const p of teePoints(sheet)) disc(P(p), 0.45 * s);
   for (const j of sheet.junctions) disc(P([j.x, j.y]), 0.45 * s);
   const parts = new Map(d.parts.map((p) => [p.id, p]));
@@ -210,7 +225,7 @@ export function schematicScene(d: ElectronicsDesign, whole: Sheet, page: Schemat
       text(point.name, P([l.x + dx, l.y + (point.side === "middle" ? point.dy : 0)]), 1.2, point.side, "central");
       continue;
     }
-    const name = shownName(l.name, tagOf.get(l.id));
+    const name = shownName(localName(l.name, sheet), tagOf.get(l.id));
     if (l.rot === 180) text(name, P([l.x - 0.3, l.y + 0.3]), 1.27, "end", "alphabetic");
     else text(name, P([l.x + 0.3, l.y + 0.3]), 1.27, "start", "alphabetic");
     disc(P([l.x, l.y]), 0.25 * s);

@@ -1,5 +1,6 @@
 import { key, onSegment, placeOnSheet } from "./geom";
 import type { ElectronicsDesign, Id, P2, PinType } from "./model";
+import { boxPins } from "./hierarchy";
 
 /** A pin of a part: the part's id and the pin's number. */
 export interface PinRef {
@@ -156,6 +157,17 @@ function findNets(d: ElectronicsDesign): Netlist {
       labelsAt.set(n, (labelsAt.get(n) ?? 0) + 1);
       endCount.set(n, (endCount.get(n) ?? 0) + 1);
     }
+    // A box's pins (#757): a wire on one joins the net of that name inside the sheet the box stands for.
+    for (const box of sheet.boxes ?? []) {
+      const child = d.sheets.find((s) => s.id === box.sheet);
+      if (!child?.use) continue;
+      for (const pin of boxPins(d, box)) {
+        points.push(pin.at);
+        const n = node(sheet.id, pin.at);
+        sets.join(n, `name|${child.use.prefix}/${pin.name}`);
+        endCount.set(n, (endCount.get(n) ?? 0) + 1);
+      }
+    }
     for (const p of pins) {
       if (p.sheet !== sheet.id) continue;
       points.push(p.at);
@@ -232,13 +244,16 @@ function findNets(d: ElectronicsDesign): Netlist {
         if ((endCount.get(n) ?? 0) <= 1) group(n).openEnds.push({ sheet: sheet.id, at: end });
       }
 
+  const portNames = new Set(d.sheets.flatMap((s) => (s.use ? s.labels.filter((l) => l.port).map((l) => l.name) : [])));
   const nets: Net[] = [];
   const nameOf = new Map<Group, string>();
   for (const g of groups.values()) {
     if (g.pins.length === 0 && g.names.size === 0) continue;
     g.pins.sort((a, b) => byRef(a.ref, b.ref) || byRef(a.pin, b.pin));
     const power = [...g.power].sort();
-    const all = [...power, ...[...g.names].filter((n) => !g.power.has(n)).sort()];
+    // A box pin's name inside its sheet (#757) comes after the name the net has out here.
+    const named = [...g.names].filter((n) => !g.power.has(n)).sort();
+    const all = [...power, ...named.filter((n) => !portNames.has(n)), ...named.filter((n) => portNames.has(n))];
     const first = g.pins[0];
     nameOf.set(g, all[0] ?? `Net-(${first!.ref}-${first!.pin})`);
     nets.push({
