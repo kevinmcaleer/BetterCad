@@ -562,6 +562,8 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
           // Double-click a thing in a group: go into the group and pick just that thing.
           const g = hit && groupOf(sheet, hit.id);
           if (g && g.id !== inside) return eui.set({ inGroup: g.id, selected: [hit.id] });
+          // Double-click a part or a wire: the inspector opens on it, even if it was put away.
+          if (hit && (hit.kind === "symbol" || hit.kind === "wire")) return eui.set({ selected: [hit.id], inspect: eui.get().inspect + 1 });
           const label = hit?.kind === "label" ? sheet.labels.find((l) => l.id === hit.id) : undefined;
           if (label) onAskLabel({ at: [label.x, label.y], screen: toScreen(view, [label.x, label.y]), id: label.id, name: localName(label.name, sheet) });
           // Double-click a sheet's box (#757): its sheet opens.

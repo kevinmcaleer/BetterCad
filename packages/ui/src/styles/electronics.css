@@ -34,6 +34,14 @@
   display: none;
 }
 
+/* Notices over the view (unsaved models to recover) sit under the view switcher, never over it. */
+.bc-app:has(.bc-electronics) .bc-stage-bars {
+  top: calc(var(--bc-view-top) + 64px);
+}
+.bc-app:has(.bc-electronics .bc-ec-tools) .bc-stage-bars {
+  top: calc(var(--bc-view-top) + 116px);
+}
+
 /* The part of the view the cards leave clear: Fit centres the schematic or the board in it. */
 .bc-ec-clear {
   position: absolute;
