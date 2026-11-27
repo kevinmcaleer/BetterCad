@@ -235,7 +235,7 @@ export function headerFootprint(pins: number, rows = 1, pitch = GRID): Footprint
 }
 
 /** A single-row pin header with `pins` pins, drawn as a box with pins down its left side. */
-export function header(pins: number): ComponentDef {
+export function header(pins: number, socket = false): ComponentDef {
   const top = ((pins - 1) / 2) * GRID;
   const symbol: SymbolDef = {
     name: `Header 1×${pins}`,
@@ -262,7 +262,8 @@ export function header(pins: number): ComponentDef {
     packages: [
       {
         footprint: headerFootprint(pins),
-        model: { source: { kind: "header", rows: 1, pins, pitch: GRID, height: 8.5 }, offset: [0, (-(pins - 1) * GRID) / 2, 0] },
+        // Pins stand on a 2.5 mm strip; a socket is 8.5 mm tall (#752).
+        model: { source: { kind: "header", rows: 1, pins, pitch: GRID, height: socket ? 8.5 : 2.5 }, offset: [0, (-(pins - 1) * GRID) / 2, 0] },
       },
     ],
     keywords: ["header", "connector", "pins"],

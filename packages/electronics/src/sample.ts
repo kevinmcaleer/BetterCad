@@ -64,8 +64,8 @@ export function sampleBoard(): ElectronicsDesign {
     // The schematic reads in groups (#729): the Pico's sockets on the left, then servos and the sensor socket, then
     // the motor driver with its motors' plugs; power in and the power light along the top. Short runs are drawn as
     // wires, and the long ones between groups are joined by name.
-    put("J1", header(20), 0, 0, { value: "Pico 1 to 20", mirror: true, buy: socket });
-    put("J2", header(20), 18, 0, { value: "Pico 40 to 21", mirror: true, buy: socket });
+    put("J1", header(20, true), 0, 0, { value: "Pico 1 to 20", mirror: true, buy: socket });
+    put("J2", header(20, true), 18, 0, { value: "Pico 40 to 21", mirror: true, buy: socket });
     put("J3", header(3), 36, 8, { value: "Servo 1", buy: pins3 });
     put("J4", header(3), 36, 2, { value: "Servo 2", buy: pins3 });
     put("J5", header(2), 36, 20, { value: "5 V in", mirror: true, buy: pins2 });

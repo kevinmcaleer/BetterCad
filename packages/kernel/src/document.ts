@@ -25,7 +25,7 @@ import {
 import { resolveHole, holeLabel, type HoleParams, type HoleSpec } from "./holes";
 import type { ImportFormat } from "./imports";
 import type { Plug } from "./recognise/holes";
-import { partBounds, partFrame, type CataloguePart } from "./catalogue";
+import { partBounds, partFrame, type CataloguePart, type CatalogueShape } from "./catalogue";
 import type { FinishId } from "./looks";
 export {
   CATALOGUE_CATEGORIES,
@@ -205,6 +205,8 @@ export interface Part {
   imported?: ImportSpec;
   /** A catalogue part (#187): the record it was inserted from, kept whole so a catalogue change never moves it. */
   catalogue?: CataloguePart;
+  /** A board part's body drawn in code (#752): boxes and cylinders gathered as they stand, in the body's own axes. */
+  blocks?: CatalogueShape[];
   /** Its colour (#196), sRGB "#rrggbb"; none means the theme's part colour. From its look. */
   colour?: string;
   /** The link step (#171) it belongs to; none means the base link. Copies keep their original's link. */

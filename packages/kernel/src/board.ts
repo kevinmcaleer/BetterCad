@@ -94,6 +94,21 @@ export function boardParts(
           },
         ];
       }
+      // A true body drawn in code (#752): a body for each material, so each wears its own colour.
+      if (b.drawn?.length)
+        return b.drawn.map((piece, index) => ({
+          id: index ? `${step.id}/${b.part}.${index}` : `${step.id}/${b.part}`,
+          name: b.ref,
+          kind: "solid",
+          hidden: false,
+          ...placed(by, stand),
+          size: { x: b.size[0], y: b.size[1], z: b.size[2] },
+          blocks: piece.blocks,
+          colour: piece.colour,
+          ...(piece.metal ? { finish: "metal" as const } : {}),
+          reference: true,
+          pcb: true,
+        }));
       return [
         {
           id: `${step.id}/${b.part}`,
@@ -185,7 +200,8 @@ export function partBox(p: Part): [number[], number[]] | null {
     const [min, max] = partBounds(p.catalogue);
     return [[...min], [...max]];
   }
-  if (p.kind !== "box" && p.kind !== "cylinder") return null;
+  // A drawn body (#752) keeps the box its simple body had, so an opening is cut round the whole part.
+  if (p.kind !== "box" && p.kind !== "cylinder" && !p.blocks) return null;
   return [
     [-p.size.x / 2, -p.size.y / 2, 0],
     [p.size.x / 2, p.size.y / 2, p.size.z],

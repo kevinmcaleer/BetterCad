@@ -31,6 +31,7 @@
     "./pcb/match": "./src/pcb/match.ts",
     "./pcb/fanout": "./src/pcb/fanout.ts",
     "./pcb/notes": "./src/pcb/notes.ts",
+    "./pcb/bodies": "./src/pcb/bodies.ts",
     "./pcb/stitch": "./src/pcb/stitch.ts",
     "./pcb/clip": "./src/pcb/clip.ts",
     "./pcb/corners": "./src/pcb/corners.ts",

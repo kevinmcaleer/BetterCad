@@ -623,6 +623,20 @@ minute. Holes under 0.5 mm are left out of the solid, and so are holes that brea
 picture still shows them. Bodies are named by reference (R1, U3), stand on their own side of the board, and belong
 to one component named Board, so joints, Move, Hide and the clash check treat it as any other component.
 
+**True bodies** (#752, `pcb/bodies.ts`). Most starter parts are drawn as the part that comes back from the fab, in
+boxes and cylinders worked out from the footprint and the package's size: a header's black strip and gold pins
+through the board (a socket's tall housing with its tails underneath), a resistor's black body between tinned ends,
+a capacitor in tan, an LED with its lens, a DIP on its standoffs with a lead through every pad, gull-wing leads from
+SOIC, SSOP, TSSOP, MSOP and SOT pads up to the body, JST PH, XH and SH housings in natural white, a PCM12 slide
+switch with its lever, tactile buttons, USB sockets, round LEDs and cans, TO-220s with their tab, and ESP32 modules
+with the can over the chip and the antenna end bare. A resistor and a capacitor of the same size are told apart by
+the reference's letters. Each material is a body of its own (`R1`, `R1.1`), so each wears its colour; the blocks are
+gathered as they stand rather than joined (`gatheredShape` in `occt/catalogue.ts`), which builds the whole sample
+board in under a second where joining a 20-pin header's pins took over one. The same part used many times is
+meshed once, as before. Bodies are drawn in our own code (MIT) from sizes, so there are no files to fetch or credit;
+a part no rule knows, or one with a STEP file or a robot catalogue part, keeps what it had. A connector opening is
+still cut round the part's box. `header(pins, socket)` in the basics is a 2.5 mm pin header unless it is a socket.
+
 The bodies are reference bodies that draw solid (`pcb` on the part): they are there to design round, they do not
 print, and a slicer export leaves them out. To send the board to other CAD, right-click its bodies and choose
 Export; STEP keeps one body per part with its name. The clash check sees them when Include references is on.

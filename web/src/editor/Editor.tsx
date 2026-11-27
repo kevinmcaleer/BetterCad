@@ -1,3 +1,4 @@
+import { drawBodiesWith, drawsBodies } from "@bettercad/electronics/pcb/solid";
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Banner,
@@ -399,7 +400,17 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     const same = was && was.electronics === held && Object.keys(was).length === keys.length && keys.every((k) => k === "electronics" || was[k] === doc[k]);
     return same ? was : (heldDoc.current = { ...doc, electronics: held });
   }, [doc, held]);
-  const built = useMemo(() => build(modelDoc, at), [modelDoc, at]);
+  // A board's parts get their true bodies (#752) once that code has loaded, with the first model that has a board.
+  const [bodiesDrawn, setBodiesDrawn] = useState(drawsBodies);
+  const hasBoard = !!modelDoc.electronics?.board;
+  useEffect(() => {
+    if (bodiesDrawn || !hasBoard) return;
+    void import("@bettercad/electronics/pcb/bodies").then((m) => {
+      drawBodiesWith(m.drawnBody);
+      setBodiesDrawn(true);
+    });
+  }, [bodiesDrawn, hasBoard]);
+  const built = useMemo(() => build(modelDoc, at), [modelDoc, at, bodiesDrawn]); // eslint-disable-line react-hooks/exhaustive-deps
   const matesOf = useCallback((id: string) => rigidMates(built.rigid, id), [built.rigid]);
   const parts = built.parts;
   const kernel = useKernel(modelDoc, at, parts);

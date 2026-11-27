@@ -1,6 +1,7 @@
 import { area, outlinePoints, pointInPolygon } from "../outlineGeom";
 import { distToSegment, placeOnBoard, q } from "../geom";
 import { bodyBox } from "../library/body";
+import type { BodyAsk, BodyBlock, BodyMaterial, BodyPiece } from "./bodies";
 import { packageOf, type Board, type CatalogueBody, type Corner, type ElectronicsDesign, type Id, type P2 } from "../model";
 
 /**
@@ -21,6 +22,11 @@ export interface PartBody {
   step?: { blob: string; bodies: number; lift: number; rotate: [number, number, number] };
   /** A robot catalogue part (#624): its record, lifted and turned the same way. */
   catalogue?: { part: CatalogueBody; lift: number; rotate: [number, number, number] };
+  /**
+   * Its true body (#752), when one is drawn for it: pieces of one material each, in the body's own axes from the middle
+   * of its base. The box of `size` stands in for it where only a box will do.
+   */
+  drawn?: { colour: string; metal: boolean; blocks: BodyBlock[] }[];
   /** The middle of its base, on the board (z is the face it stands on). */
   at: [number, number, number];
   /** Turned anticlockwise seen from the top, degrees, after any flip. */
@@ -57,7 +63,25 @@ export const MASK_COLOURS: Record<NonNullable<Board["mask"]>, string> = {
   purple: "#4c2c7c",
   yellow: "#cfa71f",
 };
-const BODY_COLOURS: Record<string, string> = { "plastic-black": "#232427", metal: "#b9bcc0" };
+const BODY_COLOURS: Record<BodyMaterial, string> = {
+  "plastic-black": "#232427",
+  "plastic-white": "#e6e1d3",
+  "plastic-green": "#2f7d4a",
+  metal: "#b9bcc0",
+  gold: "#c9a24a",
+  ceramic: "#b89c72",
+  led: "#d23a3a",
+  module: "#20232a",
+};
+/**
+ * What draws true bodies (#752), once its code has loaded: `drawnBody` from `./bodies`. Until then, and in a model
+ * without a board, parts stand as their simple boxes, and the drawing code stays out of the app's first paint.
+ */
+let drawer: ((a: BodyAsk) => BodyPiece[] | null) | null = null;
+export function drawBodiesWith(draw: typeof drawer): void {
+  drawer = draw;
+}
+export const drawsBodies = (): boolean => drawer !== null;
 /** FR4, and copper, g/mm³; the copper is 35 µm a side, taken as covering a third of the board. */
 const FR4 = 1.85e-3;
 const COPPER = 8.96e-3 * 0.035 * 2 * (1 / 3);
@@ -75,8 +99,8 @@ function edges(corners: Corner[], name: string): Edge[] {
   });
 }
 
-/** The board as a solid, or null when there is no board or its outline is not a shape. */
-export function boardSolid(d: ElectronicsDesign, minDrill = MIN_DRILL): BoardSolid | null {
+/** The board as a solid, or null when there is no board or its outline is not a shape. `drawn`: true bodies for the parts that have one (#752). */
+export function boardSolid(d: ElectronicsDesign, minDrill = MIN_DRILL, drawn = true): BoardSolid | null {
   const board = d.board;
   if (!board || board.outline.length < 3) return null;
   const edge = outlinePoints(board.outline, 0.02);
@@ -112,6 +136,8 @@ export function boardSolid(d: ElectronicsDesign, minDrill = MIN_DRILL): BoardSol
             ? [src.diameter, src.diameter, src.height]
             : [q(box.x2 - box.x1), q(box.y2 - box.y1), src?.kind === "header" ? src.height : 2];
     if (!(size[0] > 0 && size[1] > 0 && size[2] > 0)) continue;
+    const pieces =
+      drawn && drawer ? drawer({ name, prefix: part.ref.replace(/[^A-Za-z].*$/, ""), footprint: pkg.footprint, ...(m ? { model: m } : {}) }) : null;
     bodies.push({
       part: part.id,
       ref: part.ref,
@@ -122,7 +148,16 @@ export function boardSolid(d: ElectronicsDesign, minDrill = MIN_DRILL): BoardSol
       at: [c[0], c[1], flip ? 0 : board.thickness],
       rot: ((at.rot % 360) + 360) % 360,
       flip,
-      colour: BODY_COLOURS[m?.colour ?? "plastic-black"] ?? BODY_COLOURS["plastic-black"]!,
+      colour: BODY_COLOURS[(m?.colour ?? "plastic-black") as BodyMaterial] ?? BODY_COLOURS["plastic-black"],
+      ...(pieces?.length
+        ? {
+            drawn: pieces.map((p) => ({
+              colour: BODY_COLOURS[p.material],
+              metal: p.material === "metal" || p.material === "gold",
+              blocks: p.blocks.map((b) => ({ ...b, at: [q(b.at[0] - off[0]), q(b.at[1] - off[1]), b.at[2]] as [number, number, number] })),
+            })),
+          }
+        : {}),
     });
   }
   for (const v of board.vias) wanted.push({ c: [v.x, v.y], r: v.drill / 2, id: `via.${v.id}` });
