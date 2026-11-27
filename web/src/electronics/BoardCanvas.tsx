@@ -311,7 +311,8 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     if (on && (!on.layer || on.layer === layer) && Math.hypot(on.at[0] - r.last[0], on.at[1] - r.last[1]) > 1e-6) return { to: on.at, lands: true };
     return { to: snap(p, grid), lands: false };
   };
-  const widthOf = (net: string) => width || (board ? netRules(board, net).trackWidth : 0.25);
+  // A width set in the toolbar wins; else the net's, or an area rule's where the piece starts (#760).
+  const widthOf = (net: string, at?: P2) => width || (board ? netRules(board, net, at).trackWidth : 0.25);
   const inWay = (net: string, layers: Layer[], pts: P2[], w: number) =>
     board && ui.keepClear ? blockers(board, copper, loops, { net, layers, pts, width: w })[0] : undefined;
   const tooClose = (what: string) => setSaid(`Too close to ${what}. Go round it, or turn Keep clear off.`);
@@ -321,7 +322,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
    * something in the way, other tracks and vias are pushed aside (with Push on), or the track walks round (#753).
    */
   const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string }; pushed?: ElectronicsDesign } => {
-    const w = widthOf(r.net);
+    const w = widthOf(r.net, r.last);
     const first = corner45(r.last, to, r.diag);
     const stop = inWay(r.net, [layer], first, w);
     if (!stop) return { pts: first };
@@ -394,7 +395,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       return false;
     }
     setSaid("");
-    const w = widthOf(r.net);
+    const w = widthOf(r.net, r.last);
     if (pushed) edit(() => addTrack(pushed, r.net, layer, pts, w), "Route a track and push others aside");
     else edit((d) => addTrack(d, r.net, layer, pts, w), "Route a track");
     return lands ? null : { ...r, last: to };
@@ -707,7 +708,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
       return { track: { pts: found.runs.a, width: w, layer, blocked: !!found.stop }, mate: { pts: found.runs.b, width: w, layer, blocked: !!found.stop } };
     }
     const { pts, stop } = way(route, aim(at, route).to);
-    return { track: { pts, width: widthOf(route.net), layer, blocked: !!stop } };
+    return { track: { pts, width: widthOf(route.net, route.last), layer, blocked: !!stop } };
   }, [route, at, board, copper, layer, width, ui.keepClear, ui.shove, grid, router]); // eslint-disable-line react-hooks/exhaustive-deps
   /** How long a net is, with the piece on the pointer counted, against the target if there is one. */
   const lengthOf = (net: string, more: P2[] = []) => {

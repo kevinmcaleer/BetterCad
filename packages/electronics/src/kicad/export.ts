@@ -5,6 +5,7 @@ import {
   isPower,
   packageOf,
   type Board,
+  type BoardRule,
   type BoardMark,
   type BoardLayer,
   type ComponentDef,
@@ -969,7 +970,44 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       ["polygon", ["pts", ...k.outline.map((q) => ["xy", ...at(q)])]],
     ]);
   }
+  // Area rules (#760) go as named rule areas that keep nothing out; the rules file names them.
+  for (const r of board.customRules ?? [])
+    if (r.kind === "area" && r.area?.length)
+      out.push([
+        "zone",
+        ["net", "0"],
+        ["net_name", s("")],
+        ["layers", s(inner.length ? "*.Cu" : "F&B.Cu")],
+        ["tstamp", uuidOf(r.id)],
+        ["name", s(ruleAreaName(r))],
+        ["hatch", "edge", "0.5"],
+        ["connect_pads", ["clearance", "0"]],
+        ["min_thickness", "0.25"],
+        ["filled_areas_thickness", "no"],
+        ["keepout", ["tracks", "allowed"], ["vias", "allowed"], ["pads", "allowed"], ["copperpour", "allowed"], ["footprints", "allowed"]],
+        ["fill", ["thermal_gap", "0.5"], ["thermal_bridge_width", "0.5"]],
+        ["polygon", ["pts", ...r.area.map((q) => ["xy", ...at(q)])]],
+      ]);
   return `${writeSexpr(out)}\n`;
+}
+
+/** The name an area rule's rule area has in KiCad. */
+const ruleAreaName = (r: BoardRule): string => r.name.replace(/'/g, "");
+
+/** Custom rules (#760) as KiCad's rules file: a clearance between two classes, or a clearance or width in an area. */
+export function druFile(board: Board): string | null {
+  const rules = board.customRules ?? [];
+  if (!rules.length) return null;
+  const q = (v: string) => JSON.stringify(v);
+  const lines = ["(version 1)"];
+  for (const r of rules) {
+    const cond = r.kind === "classes" ? `A.NetClass == '${r.a}' && B.NetClass == '${r.b}'` : `A.intersectsArea('${ruleAreaName(r)}')`;
+    lines.push(`(rule ${q(r.name)}`);
+    if (r.clearance !== undefined) lines.push(`  (constraint clearance (min ${n(r.clearance)}mm))`);
+    if (r.trackWidth !== undefined) lines.push(`  (constraint track_width (min ${n(r.trackWidth)}mm) (opt ${n(r.trackWidth)}mm))`);
+    lines.push(`  (condition ${q(cond)}))`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 // ---------------------------------------------------------------- the project
@@ -1117,6 +1155,8 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
   const nl = netlist(d);
   if (d.board) {
     files.push({ name: `${name}.kicad_pcb`, text: boardFile(d, d.board, names, nl, { paths }, notes) });
+    const dru = druFile(d.board);
+    if (dru) files.push({ name: `${name}.kicad_dru`, text: dru });
     const holes = new Map<string, FootprintDef>();
     for (const h of d.board.holes) {
       const size = h.pad ?? h.drill;

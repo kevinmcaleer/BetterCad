@@ -63,13 +63,13 @@ export function pourShape(d: ElectronicsDesign, pour: Pour, pads: BoardPad[] = b
   for (const other of order(board)) {
     if (other.id === pour.id) break;
     if (layerOf(other.layer) === layer && other.net !== pour.net)
-      knocks.push({ pts: other.outline, r: 0, reach: clearanceBetween(board, pour.net, other.net) });
+      knocks.push({ pts: other.outline, r: 0, reach: clearanceBetween(board, pour.net, other.net, other.outline) });
   }
   const joins = new Map(board.placements.map((p) => [p.part, p.joins]));
   copper.forEach((c, i) => {
     if (!c.layers.includes(layer)) return;
     if (c.net !== pour.net || !c.net) {
-      knocks.push({ pts: c.pts, r: c.r, reach: clearanceBetween(board, pour.net, c.net) });
+      knocks.push({ pts: c.pts, r: c.r, reach: clearanceBetween(board, pour.net, c.net, c.pts) });
       return;
     }
     const pad = c.kind === "pad" ? pads[i] : undefined;

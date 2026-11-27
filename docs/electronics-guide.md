@@ -109,7 +109,8 @@ schematic brings it up to date and lists the changes first.
    cut-outs. The board follows its source, so when you change the model the board's shape changes with it, and one
    undo takes back both. If the face or sketch goes away, the board keeps its last shape and you are told.
    Pick a board house's rules here too, and whether vias are covered by the mask or left open. A via's own card can
-   say otherwise for that one.
+   say otherwise for that one. Custom rules, at the bottom, give more room between two net classes (mains and
+   logic), or a clearance and track width of their own inside an area, such as under a fine-pitch chip.
    Most boards need two copper layers. Layers gives you four or six: the inner ones show in the Layers card, L steps
    through them while you route, and a pour over the whole board on an inner layer makes it a ground or power plane.
 2. **Place the parts.** Drag them into place. R turns a part, X flips it to the other side of the board, K locks it.

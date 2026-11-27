@@ -590,6 +590,22 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     ctx.stroke();
     ctx.setLineDash([]);
   }
+  // Area rules (#760): a dotted outline with the rule's name in its corner.
+  for (const r of board.customRules ?? []) {
+    if (r.kind !== "area" || !r.area?.length) continue;
+    ctx.strokeStyle = c["ec-mark"];
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
+    path(ctx, v, r.area, true);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const [x, y] = toScreen(v, [Math.min(...r.area.map((p) => p[0])), Math.max(...r.area.map((p) => p[1]))]);
+    ctx.fillStyle = c["ec-mark"];
+    ctx.font = `11px ${c.font}`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(r.name, x + 3, y + 3);
+  }
   for (const p of board.pours) {
     const on = look.selected.has(p.id) || look.hover === p.id;
     if (!on && !show(p.layer as LayerId)) continue;

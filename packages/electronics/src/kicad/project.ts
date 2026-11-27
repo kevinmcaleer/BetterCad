@@ -30,6 +30,7 @@ import {
 } from "../model";
 import { Tally, joinRuns, loopArea, loopsOf, matchNets, type Edge } from "../boardIn";
 import { netlist } from "../nets";
+import { readDru } from "../pcb/customRules";
 import { nextMarkRef } from "../pcb/marks";
 import { NOTE_PEN } from "../pcb/notes";
 import { layersOf } from "../pcb/stack";
@@ -565,6 +566,8 @@ interface BoardRead {
   parts: Map<string, { fp: FootprintDef; nets: Map<string, string>; value: string }>;
   /** KiCad's name for each net that copper is on, to be turned into ours. */
   found: { tracks: number; vias: number; pours: number };
+  /** Rule areas by name, for the custom rules that name them (#760). */
+  areas: Map<string, P2[]>;
 }
 
 /** Whether a one-pad footprint is a fiducial or a test point, by its name or its reference (FID1, TP3). */
@@ -577,6 +580,7 @@ function markKind(name: string, ref: string): BoardMark["kind"] | null {
 function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"]): BoardRead {
   const dropped = new Tally();
   const board = emptyBoard();
+  const areas = new Map<string, P2[]>();
   board.outline = [];
   const version = num(child(tree, "version"));
   if (version && version < 20211014)
@@ -754,6 +758,10 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     const keep = child(z, "keepout");
     if (keep) {
       const no = (key: string) => text(child(keep, key)) === "not_allowed";
+      // A rule area with a name is where a custom rule applies (#760); one that keeps nothing out is only that.
+      const named = text(child(z, "name"));
+      if (named) areas.set(named, outline);
+      if (named && !["tracks", "vias", "copperpour", "footprints", "pads"].some(no)) continue;
       board.keepouts.push({
         id: eid("ko"),
         outline,
@@ -873,7 +881,7 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     if (n) dropped.add(what === "image" ? "pictures" : "alignment targets", n);
   }
   for (const [what, n] of dropped.each()) notes.push({ name: "Board", why: `Left out: ${n} ${what}` });
-  return { board, parts, found: { tracks: board.tracks.length, vias: board.vias.length, pours: board.pours.length } };
+  return { board, parts, found: { tracks: board.tracks.length, vias: board.vias.length, pours: board.pours.length }, areas };
 }
 
 /** The numbers a KiCad project file sets, where it sets them. */
@@ -929,9 +937,11 @@ export function importKicadProject(files: ImportFile[], o: ProjectOptions = {}):
   let pcb: Node[] | undefined;
   let pcbName = "";
   let pro: unknown;
+  let dru = "";
   for (const f of files) {
     try {
       if (/\.kicad_pro$/i.test(f.name)) pro = JSON.parse(f.text);
+      else if (/\.kicad_dru$/i.test(f.name)) dru = f.text;
       else if (/\.kicad_(sch|pcb)$/i.test(f.name) || /^\s*\(kicad_(sch|pcb)\b/.test(f.text)) {
         const tree = parseSexpr(f.text)[0];
         if (isList(tree) && head(tree) === "kicad_sch") trees.set(f.name, tree);
@@ -1074,6 +1084,12 @@ export function importKicadProject(files: ImportFile[], o: ProjectOptions = {}):
     board.pours = board.pours.map((p) => ({ ...p, net: ours(p.net) }));
     if (board.marks) board.marks = board.marks.map((m) => (m.net ? { ...m, net: ours(m.net) } : m));
     board.classes = classes.map((c) => ({ ...c, id: eid("nc"), nets: [...new Set(c.nets.map(ours))] }));
+    // Custom rules (#760): the simplest of KiCad's, by pair of classes or by area.
+    if (dru) {
+      const got = readDru(dru, brd.areas);
+      if (got.rules.length) board.customRules = got.rules;
+      for (const k of got.skipped) notes.push({ name: `Rule ${k.name}`, why: `${k.why}, so it was left out` });
+    }
     board.synced = { nets: netPins(nl) };
   }
 

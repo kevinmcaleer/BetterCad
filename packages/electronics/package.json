@@ -42,6 +42,7 @@
     "./pcb/dxf": "./src/pcb/dxf.ts",
     "./pcb/autoroute": "./src/pcb/autoroute.ts",
     "./pcb/netclass": "./src/pcb/netclass.ts",
+    "./pcb/customRules": "./src/pcb/customRules.ts",
     "./drc": "./src/pcb/drc.ts",
     "./swap": "./src/swap.ts",
     "./sample": "./src/sample.ts",

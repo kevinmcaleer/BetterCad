@@ -358,6 +358,16 @@ a copper ring. Text (T) writes on the silkscreen of the side being worked on.
 mask and silkscreen colours, the rules and the net classes. A net class gives its nets a track width and clearance of
 their own; a net is in one class at a time.
 
+**Custom rules** (`board.customRules`, `pcb/customRules.ts`, #760). A rule between two classes ("Default" for nets in
+none) sets the clearance between their nets in place of the classes' own. An area rule sets a clearance for copper
+that touches its area, and a track width the route tool lays when a piece starts inside it; an area's clearance wins
+over a pair's. `clearanceBetween(board, a, b, ...pieces)` and `netRules(board, net, at)` in `./copper` apply them, so
+the board check, pours, teardrops, the route tool, push and walk round, and the autorouter (a space of its own for
+each class when there are rules) all follow. Areas show on the board as dotted outlines with their names. KiCad: the
+rules go out as `<name>.kicad_dru` with each area as a named rule area, and the simplest come back in (`readDru`: a
+pair of classes, or `insideArea`, `intersectsArea`, `enclosedByArea`; a clearance or a track width); any other rule
+is listed as left out.
+
 **Rule presets** (`presets.json`). A board house's limits are data: the numbers, the page they were read from and
 the day they were read. `ours` lists the fields that are our working values (clearance, track width, via size)
 chosen above the house's minimum. Adding a house is an entry in that file. The card links the source and says to

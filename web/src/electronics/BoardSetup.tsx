@@ -10,6 +10,7 @@ import {
   unfollowSketch,
   type OutlineShape,
 } from "@bettercad/electronics/pcb/outline";
+import { addRule, areaRect, changeRule, removeRule } from "@bettercad/electronics/pcb/customRules";
 import { outlineRadius, roundedOutline, setBoard } from "@bettercad/electronics/pcb/route";
 import { STACKS, buildOf, layerName, setStack, stackLoses, stackOf } from "@bettercad/electronics/pcb/stack";
 import { PRESETS, RULE_FIELDS, applyPreset, keepRules, matchesPreset, presetChanges, presetOf, setRule } from "@bettercad/electronics/pcb/rules";
@@ -517,6 +518,124 @@ export default function BoardSetup({
             )
           }
         />
+      </fieldset>
+
+      <fieldset className="bc-ec-set" disabled={readOnly}>
+        <legend>Custom rules</legend>
+        <PanelNote>More room between two classes, such as mains and logic, or other numbers inside an area, such as under a fine-pitch chip.</PanelNote>
+        {(board.customRules ?? []).map((r) => {
+          const box = r.area?.length
+            ? {
+                x1: Math.min(...r.area.map((p) => p[0])),
+                y1: Math.min(...r.area.map((p) => p[1])),
+                x2: Math.max(...r.area.map((p) => p[0])),
+                y2: Math.max(...r.area.map((p) => p[1])),
+              }
+            : null;
+          const kinds = ["Default", ...board.classes.map((k) => k.name)];
+          return (
+            <div key={r.id} className="bc-ec-class" role="group" aria-label={r.name}>
+              <div className="bc-ec-set-row">
+                <input
+                  className="bc-text"
+                  aria-label="Rule name"
+                  defaultValue={r.name}
+                  key={r.name}
+                  onBlur={(e) =>
+                    e.target.value.trim() && e.target.value !== r.name && edit((d) => changeRule(d, r.id, { name: e.target.value.trim() }), "Rename a rule")
+                  }
+                />
+                <Button
+                  size="dense"
+                  variant="secondary"
+                  icon="trash"
+                  aria-label={`Remove ${r.name}`}
+                  title="Remove this rule"
+                  onClick={() => edit((d) => removeRule(d, r.id), "Remove a rule")}
+                />
+              </div>
+              {r.kind === "classes" ? (
+                <div className="bc-ec-set-row">
+                  {(["a", "b"] as const).map((side) => (
+                    <label key={side} className="bc-field">
+                      <span>{side === "a" ? "Between" : "And"}</span>
+                      <select
+                        className="bc-select"
+                        aria-label={side === "a" ? "Between class" : "And class"}
+                        value={r[side] ?? "Default"}
+                        onChange={({ target: { value } }) => edit((d) => changeRule(d, r.id, { [side]: value }), "Change a rule")}
+                      >
+                        {kinds.map((k) => (
+                          <option key={k} value={k}>
+                            {k}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                box && (
+                  <div className="bc-ec-set-row">
+                    {(["x1", "y1", "x2", "y2"] as const).map((k) => (
+                      <NumberField
+                        key={k}
+                        label={{ x1: "Left", y1: "Bottom", x2: "Right", y2: "Top" }[k]}
+                        value={Math.round(box[k] * 1000) / 1000}
+                        step={0.5}
+                        precision={3}
+                        onCommit={(v) => {
+                          const next = { ...box, [k]: v };
+                          edit((d) => changeRule(d, r.id, { area: areaRect(next.x1, next.y1, next.x2, next.y2) }), "Move a rule's area");
+                        }}
+                      />
+                    ))}
+                  </div>
+                )
+              )}
+              <div className="bc-ec-set-row">
+                <NumberField
+                  label="Clearance"
+                  value={r.clearance ?? null}
+                  min={0.05}
+                  max={20}
+                  step={0.05}
+                  precision={3}
+                  onCommit={(v) => edit((d) => changeRule(d, r.id, { clearance: v }), "Change a rule")}
+                />
+                {r.kind === "area" && (
+                  <NumberField
+                    label="Track width"
+                    value={r.trackWidth ?? null}
+                    min={0}
+                    max={10}
+                    step={0.05}
+                    precision={3}
+                    onCommit={(v) => edit((d) => changeRule(d, r.id, { trackWidth: v > 0 ? v : undefined }), "Change a rule")}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <div className="bc-ec-set-row">
+          <Button
+            size="dense"
+            variant="secondary"
+            icon="plus"
+            label="Between classes"
+            title="Add a clearance between two net classes"
+            onClick={() => edit((d) => addRule(d, "classes").design, "Add a rule")}
+          />
+          <Button
+            size="dense"
+            variant="secondary"
+            icon="plus"
+            label="In an area"
+            title="Add a clearance and track width inside an area of the board"
+            onClick={() => edit((d) => addRule(d, "area").design, "Add a rule")}
+          />
+        </div>
       </fieldset>
     </FeaturePanel>
   );

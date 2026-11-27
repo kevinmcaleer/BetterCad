@@ -563,6 +563,22 @@ export interface NetClass {
   viaDrill?: number;
 }
 
+/**
+ * A custom rule (#760). `area`: inside a drawn area, copper keeps `clearance` and the route tools lay `trackWidth`.
+ * `classes`: between nets of class `a` and class `b` ("Default" for nets in no class), copper keeps `clearance`.
+ * A matching rule's number stands in for the classes' own; inside an area, the area's wins.
+ */
+export interface BoardRule {
+  id: Id;
+  name: string;
+  kind: "area" | "classes";
+  area?: P2[];
+  a?: string;
+  b?: string;
+  clearance?: number;
+  trackWidth?: number;
+}
+
 export interface Board {
   /** The edge, anticlockwise, then any cut-outs. */
   outline: Corner[];
@@ -597,6 +613,8 @@ export interface Board {
   keepouts: Keepout[];
   rules: Rules;
   classes: NetClass[];
+  /** Custom rules by area or by pair of classes (#760). */
+  customRules?: BoardRule[];
   /** What the board last took from the schematic: each net's pins, to tell a renamed net from a deleted one. */
   synced?: { nets: Record<string, string[]> };
   mask?: "green" | "black" | "blue" | "red" | "white" | "purple" | "yellow";
