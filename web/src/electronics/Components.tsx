@@ -92,7 +92,9 @@ function saveAs(blob: Blob, name: string) {
  */
 export function ComponentsCard({ onClose, design, edit, call }: { onClose: () => void; design?: ElectronicsDesign; edit?: EEdit; call?: KernelCall }) {
   // One part picked on the sheet can be swapped for the one picked here (#631).
-  const picked = useEui().selected;
+  const { selected: picked, view } = useEui();
+  // On the PCB a part goes on the board where you click, and on the schematic too (blocks are schematic only).
+  const onBoard = view === "pcb";
   const symbol = picked.length === 1 ? design?.sheets.flatMap((s) => s.symbols).find((y) => y.id === picked[0]) : undefined;
   const swap = design?.parts.find((p) => p.id === symbol?.part && !design.defs[p.def]?.symbol.power);
   const [starter, setStarter] = useState<LibraryPack | null>(null);
@@ -266,8 +268,12 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
   };
   const place = (r = row, at = pkg) => {
     if (!r) return;
+    if (onBoard && !design?.board) return setSaid("There is no board yet. Push the schematic to the PCB first.");
+    if (onBoard && !r.part.packages.length) return setSaid(`${r.part.name} has no footprint, so it can only go on the schematic.`);
     setRecent(noteRecent(r.key));
-    eui.set({ placing: inflate(r.pack, r.part), placingPkg: at, schTool: "place", card: null, selected: [] });
+    const placing = inflate(r.pack, r.part);
+    if (onBoard) eui.set({ placing, placingPkg: at, pcbTool: "place", card: null, selected: [] });
+    else eui.set({ placing, placingPkg: at, schTool: "place", card: null, selected: [] });
   };
   // The files your parts' bodies come from (#628): read from this browser when the panel opens, and any that are
   // only in your account fetched from there, so a part made on another machine brings its body.
@@ -377,7 +383,7 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
       ))}
     </div>
   );
-  if (tab === "blocks")
+  if (tab === "blocks" && !onBoard)
     return (
       <FeaturePanel title="Components" icon="chip" className="bc-ec-card bc-ec-components" cancel={{ label: "Close", title: "Close (Esc)", onClick: onClose }}>
         {tabs}
@@ -394,9 +400,9 @@ export function ComponentsCard({ onClose, design, edit, call }: { onClose: () =>
         icon="chip"
         className="bc-ec-card bc-ec-components"
         cancel={{ label: "Close", title: "Close (Esc)", onClick: onClose }}
-        {...(part ? { ok: { label: "Place", title: `Place ${part.name} on the sheet`, onClick: () => place() } } : {})}
+        {...(part ? { ok: { label: "Place", title: `Place ${part.name} on the ${onBoard ? "board" : "sheet"}`, onClick: () => place() } } : {})}
       >
-        {tabs}
+        {!onBoard && tabs}
         <label className="bc-field-label" htmlFor={field}>
           Find a part
         </label>

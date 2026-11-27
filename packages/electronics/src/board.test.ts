@@ -1,8 +1,8 @@
 import { GRID, header, resistor } from "./basics";
 import { area, boardPads, boardSize, outlinePoints, pointInPolygon, ratsnest } from "./board";
-import { addWire, placePart } from "./edit";
+import { addWire, placePart, placePartOnBoard } from "./edit";
 import { emptyDesign, rectOutline } from "./model";
-import { pushToBoard } from "./sync";
+import { boardChanges, pushToBoard } from "./sync";
 
 describe("board outline", () => {
   it("keeps straight edges as they are", () => {
@@ -62,5 +62,29 @@ describe("pads and the ratsnest", () => {
     expect(air).toEqual([{ net: "Net-(J1-1)", a: [30, 10], b: [10, 10.95] }]);
     // Once copper joins them there is nothing left to route.
     expect(ratsnest(pads, (p) => (p.net ? "one" : p.ref + p.pad.number))).toEqual([]);
+  });
+});
+
+describe("placing a part from the PCB view", () => {
+  it("puts its footprint where it was clicked and its symbol in a free spot on the schematic", () => {
+    let d = emptyDesign();
+    const sheet = d.sheets[0]!.id;
+    d = placePart(d, sheet, resistor(), { x: 0, y: 0 }).design;
+    d = pushToBoard(d).design;
+    const placed = placePartOnBoard(d, sheet, header(2), { x: 12, y: 8, rot: 90, side: "bottom" })!;
+    expect(placed.part.ref).toBe("J1");
+    const at = placed.design.board!.placements.find((p) => p.part === placed.part.id)!;
+    expect(at).toMatchObject({ x: 12, y: 8, rot: 90, side: "bottom", ref: "J1" });
+    const sym = placed.design.sheets[0]!.symbols.find((s) => s.part === placed.part.id)!;
+    // Clear of the resistor, on the grid.
+    expect(sym.x).toBeGreaterThan(0);
+    expect(Math.abs(sym.x / GRID - Math.round(sym.x / GRID))).toBeLessThan(1e-6);
+    // The board already matches the schematic, so Push to PCB has nothing to do for it.
+    expect(boardChanges(placed.design)).toEqual([]);
+  });
+
+  it("needs a board", () => {
+    const d = emptyDesign();
+    expect(placePartOnBoard(d, d.sheets[0]!.id, resistor(), { x: 0, y: 0 })).toBeNull();
   });
 });

@@ -471,6 +471,39 @@ test.describe("on a wide screen", () => {
     await axe(page);
   });
 
+  test("place a part from the PCB: it lands on the board and on the schematic", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Push to PCB/ })
+      .click();
+    await page.getByRole("group", { name: "Push to PCB options" }).getByRole("button", { name: "Make the board" }).click();
+    await expect(page.getByRole("img", { name: /^PCB: 2 parts/ })).toBeVisible();
+
+    const components = tools(page).getByRole("button", { name: /^Components/ });
+    await components.click();
+    await expect(page.getByRole("group", { name: "Components options" }).getByRole("tab", { name: "Blocks" })).toHaveCount(0);
+    await pick(page, "Resistor");
+    await expect(components).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByText(/^Placing Resistor on the top side/)).toBeVisible();
+    await press(page, 10, 10);
+    await expect(page.getByRole("img", { name: /^PCB: 3 parts/ })).toBeVisible();
+    await expect(page.getByText(/^R2 is on the board, and on the schematic/)).toBeVisible();
+    // The board and the schematic are one design, so nothing is waiting to be pushed.
+    await expect(page.getByRole("button", { name: /PCB is \d+ changes? behind/ })).toHaveCount(0);
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await expect(page.getByRole("status", { name: "Electronics status" })).toContainText("4 pins or wire ends are not connected");
+  });
+
   test("lay out a board: place by numbers, route a track, add a hole and text, check it and save the order files", { tag: "@journey" }, async ({ page }) => {
     // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
     test.setTimeout(120_000);

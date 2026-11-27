@@ -70,12 +70,16 @@ interface Tool {
 }
 
 const arm = (t: SchTool) => () => eui.set({ schTool: eui.get().schTool === t ? "select" : t, placing: null, placingBlock: null, card: null });
-const armPcb = (t: PcbTool) => () => eui.set({ pcbTool: eui.get().pcbTool === t ? "select" : t, card: null });
+const armPcb = (t: PcbTool) => () => eui.set({ pcbTool: eui.get().pcbTool === t ? "select" : t, placing: null, card: null });
 
-/** Components: opens the list of parts, or lets go of the part being placed (the way out on a touch screen). */
+/**
+ * Components: opens the list of parts, or lets go of the part being placed (the way out on a touch screen). On the
+ * PCB a part placed goes on the schematic too, so the two stay one design.
+ */
 const pickPart = () => {
   const ui = eui.get();
-  if (ui.schTool === "place") eui.set({ schTool: "select", placing: null, placingBlock: null });
+  if (ui.view === "pcb" && ui.pcbTool === "place") eui.set({ pcbTool: "select", placing: null });
+  else if (ui.view !== "pcb" && ui.schTool === "place") eui.set({ schTool: "select", placing: null, placingBlock: null });
   else eui.set({ card: ui.card === "components" ? null : "components" });
 };
 
@@ -355,6 +359,17 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     run: armPcb(id),
   });
   return [
+    {
+      id: "components",
+      group: "Place",
+      label: "Components",
+      icon: "chip",
+      key: "Shift+P",
+      tip: ui.pcbTool === "place" ? "Stop placing" : "Pick a part and put it on the board. It goes on the schematic too",
+      on: ui.card === "components" || ui.pcbTool === "place",
+      disabled: readOnly,
+      run: pickPart,
+    },
     draw("route", "Route", "route", "W", "Lay a track from a pad, bending at 45°"),
     draw("via", "Via", "via", "V", "Join the top and bottom copper with a plated hole"),
     {
@@ -687,6 +702,17 @@ function commands(design: () => ElectronicsDesign): Command[] {
       when: schematic,
       run: pickPart,
       keywords: "place part resistor capacitor led header library",
+    },
+    {
+      ...e,
+      id: "electronics.pcb.components",
+      label: "Components",
+      group: "Tools",
+      icon: "chip",
+      keys: ["shift+p"],
+      when: pcb,
+      run: pickPart,
+      keywords: "place part footprint resistor capacitor led header library add board",
     },
     {
       ...e,
@@ -1122,11 +1148,14 @@ export default function ElectronicsView({
           <Script design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />
         </Suspense>
       )}
+      {/* Components opens on the PCB too; a part placed there goes on the schematic as well. */}
+      {ui.card === "components" && !readOnly && (
+        <Suspense fallback={null}>
+          <ComponentsCard onClose={() => eui.set({ card: null })} design={design} edit={edit} {...(call ? { call } : {})} />
+        </Suspense>
+      )}
       {view === "schematic" && (
         <Suspense fallback={null}>
-          {ui.card === "components" && !readOnly && (
-            <ComponentsCard onClose={() => eui.set({ card: null })} design={design} edit={edit} {...(call ? { call } : {})} />
-          )}
           {ui.card === "checks" && <ChecksCard design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "sim" && <Simulate design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}

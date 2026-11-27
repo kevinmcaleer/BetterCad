@@ -1,5 +1,6 @@
 import { key, onSegment, placeOnSheet, q } from "./geom";
-import { tidy } from "./groups";
+import { GRID } from "./basics";
+import { placedBox, tidy } from "./groups";
 import {
   eid,
   isPower,
@@ -10,10 +11,12 @@ import {
   type NetLabel,
   type P2,
   type Part,
+  type Placement,
   type Rot,
   type SchSymbol,
   type Shape,
   type Sheet,
+  type Side,
   type Wire,
 } from "./model";
 
@@ -70,6 +73,55 @@ export function placePart(
     sheets: d.sheets.map((s) => (s.id === sheet ? { ...s, symbols: [...s.symbols, symbol] } : s)),
   };
   return { design, part, symbol };
+}
+
+/** Where a new symbol can go on a sheet without landing on anything: to the right of what is there, on the grid. */
+export function freeSpotOnSheet(d: ElectronicsDesign, sheet: Sheet, def: ComponentDef): { x: number; y: number } {
+  const parts = new Map(d.parts.map((p) => [p.id, p]));
+  let right = -Infinity;
+  let top = -Infinity;
+  for (const s of sheet.symbols) {
+    const sd = d.defs[parts.get(s.part)?.def ?? ""];
+    if (!sd) continue;
+    const b = placedBox(sd.symbol, s);
+    right = Math.max(right, b.x2);
+    top = Math.max(top, b.y2);
+  }
+  for (const w of sheet.wires) for (const p of [w.a, w.b]) [right, top] = [Math.max(right, p[0]), Math.max(top, p[1])];
+  for (const l of sheet.labels) [right, top] = [Math.max(right, l.x + 2), Math.max(top, l.y)];
+  if (right === -Infinity) return { x: 0, y: 0 };
+  const own = placedBox(def.symbol, { x: 0, y: 0, rot: 0 });
+  const on = (n: number) => q(Math.round(n / GRID) * GRID);
+  return { x: on(right + 2 * GRID - own.x1), y: on(top - own.y2) };
+}
+
+/**
+ * Places a new part from the PCB view (Components on the board). The part is one part of the design, so its symbol
+ * goes on the schematic too, in a free spot on the sheet, and its footprint lands on the board where it was put.
+ * The board then matches the schematic: Push to PCB has nothing to list for it. Null when the part has no footprint.
+ */
+export function placePartOnBoard(
+  d: ElectronicsDesign,
+  sheet: Id,
+  def: ComponentDef,
+  at: { x: number; y: number; rot?: number; side?: Side },
+  opts: { value?: string; pkg?: number } = {},
+): Placed | null {
+  const pkg = def.packages[opts.pkg ?? 0] ?? def.packages[0];
+  const on = d.sheets.find((s) => s.id === sheet) ?? d.sheets[0];
+  if (!pkg || !on || !d.board) return null;
+  const placed = placePart(d, on.id, def, freeSpotOnSheet(d, on, def), opts);
+  const board = placed.design.board!;
+  const placement: Placement = {
+    part: placed.part.id,
+    x: q(at.x),
+    y: q(at.y),
+    rot: at.rot ?? 0,
+    side: at.side ?? "top",
+    ref: placed.part.ref,
+    footprint: pkg.footprint.name,
+  };
+  return { ...placed, design: { ...placed.design, board: { ...board, placements: [...board.placements, placement] } } };
 }
 
 /** Removes parts, with their symbols. The board keeps its footprints until the next push lists them. */
