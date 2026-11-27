@@ -209,8 +209,8 @@ describe("opening an Eagle project", () => {
       "VCC top 0.5 6",
       "GND in1 0.2 2",
       "Net-(D1-A) top 0.3 2",
-      // The run with the curved piece in it.
-      "Net-(D1-A) top 0.3 39",
+      // The run with the curved piece in it, which stays one curved piece (#755).
+      "Net-(D1-A) top 0.3 4",
       "Net-(D1-A) top 0.3 2",
       "Net-(D1-A) bottom 0.3 2",
       "MID top 0.254 2",
@@ -261,13 +261,11 @@ describe("opening an Eagle project", () => {
     const got = open();
     expect(got.found).toEqual({ sheets: 2, parts: 7, placed: 7, tracks: 7, vias: 3, pours: 2 });
     expect(got.notes.map((n) => `${n.name}: ${n.why}`)).toEqual([
-      "Board: 1 curved track came in as short straight pieces",
       "Board: Left out: 3 drawings in packages on layers that are not kept (stop, cream, restrict and document layers)",
       "Board: Left out: 1 packages with no pads (logos and marks)",
       "Board: Left out: 1 dimensions",
       "Board: Left out: 1 drawings on layers that are not kept (document, stop, cream and user layers)",
       "Schematic: Left out: 1 frames and other symbols with no pins",
-      "Schematic: Left out: 1 buses, which are not drawn (the wires they carry still join by name)",
     ]);
   });
 

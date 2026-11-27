@@ -1,4 +1,4 @@
-import { key, placeOnSheet, q } from "./geom";
+import { key, onSegment, placeOnSheet, q } from "./geom";
 import { tidy } from "./groups";
 import {
   eid,
@@ -153,6 +153,15 @@ export function moveOnSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[], dx: nu
     junctions: s.junctions.map((j) => (set.has(j.id) ? at(j) : j)),
     noConnects: s.noConnects.map((n) => (set.has(n.id) ? at(n) : n)),
     ...(s.notes ? { notes: s.notes.map((n) => (set.has(n.id) ? moveShape(n, dx, dy) : n)) } : {}),
+    // Buses (#756), and the entries on a moved bus with it.
+    ...(s.buses ? { buses: s.buses.map((b) => (set.has(b.id) ? { ...b, pts: b.pts.map(shift) } : b)) } : {}),
+    ...(s.busEntries
+      ? {
+          busEntries: s.busEntries.map((e) =>
+            set.has(e.id) || (s.buses ?? []).some((b) => set.has(b.id) && b.pts.slice(1).some((p, i) => onSegment([e.x, e.y], b.pts[i]!, p))) ? at(e) : e,
+          ),
+        }
+      : {}),
   }));
 }
 
@@ -211,6 +220,8 @@ export function removeFromSheet(d: ElectronicsDesign, sheetId: Id, ids: Id[]): E
     junctions: s.junctions.filter((j) => !set.has(j.id)),
     noConnects: s.noConnects.filter((n) => !set.has(n.id)),
     ...(s.notes ? { notes: s.notes.filter((n) => !set.has(n.id)) } : {}),
+    ...(s.buses ? { buses: s.buses.filter((b) => !set.has(b.id)) } : {}),
+    ...(s.busEntries ? { busEntries: s.busEntries.filter((e) => !set.has(e.id)) } : {}),
   }));
   const used = new Set(next.sheets.flatMap((s) => s.symbols.map((y) => y.part)));
   return removeParts(

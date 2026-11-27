@@ -1,5 +1,7 @@
 export * from "./model";
 export * from "./geom";
+export * from "./trackArcs";
+export * from "./bus";
 export * from "./nets";
 export * from "./sync";
 export * from "./basics";

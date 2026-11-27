@@ -1,6 +1,7 @@
 import {
   GRID,
   elsewhere,
+  entryEnd,
   key,
   onSegment,
   pinDirOnSheet,
@@ -244,6 +245,8 @@ export function drawSchematic(
         junctions: whole.junctions.filter((x) => !hide.has(x.id)),
         noConnects: whole.noConnects.filter((x) => !hide.has(x.id)),
         ...(whole.notes ? { notes: whole.notes.filter((x) => !hide.has(x.id)) } : {}),
+        ...(whole.buses ? { buses: whole.buses.filter((x) => !hide.has(x.id)) } : {}),
+        ...(whole.busEntries ? { busEntries: whole.busEntries.filter((x) => !hide.has(x.id)) } : {}),
       }
     : whole;
   ctx.fillStyle = c.viewport;
@@ -275,6 +278,37 @@ export function drawSchematic(
     ctx.moveTo(a[0], a[1]);
     ctx.lineTo(b[0], b[1]);
     ctx.stroke();
+  }
+  // Buses (#756): a thick line with its name over the start, and slanted entries where wires leave it.
+  for (const e of sheet.busEntries ?? []) {
+    const a = toScreen(v, [e.x, e.y]);
+    const b = toScreen(v, entryEnd(e));
+    const on = look.selected.has(e.id) || look.hover === e.id;
+    ctx.strokeStyle = on ? c.accent : c["ec-wire"];
+    ctx.lineWidth = on ? wire + 1.5 : wire;
+    ctx.beginPath();
+    ctx.moveTo(a[0], a[1]);
+    ctx.lineTo(b[0], b[1]);
+    ctx.stroke();
+  }
+  for (const bus of sheet.buses ?? []) {
+    const on = look.selected.has(bus.id) || look.hover === bus.id;
+    ctx.strokeStyle = on ? c.accent : c["ec-wire"];
+    ctx.lineWidth = (on ? wire + 1.5 : wire) * 2.5;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    bus.pts.forEach((p, i) => {
+      const s = toScreen(v, p);
+      if (i) ctx.lineTo(s[0], s[1]);
+      else ctx.moveTo(s[0], s[1]);
+    });
+    ctx.stroke();
+    const at = toScreen(v, bus.pts[0]!);
+    ctx.fillStyle = on ? c.accent : c["ec-wire"];
+    ctx.font = `600 ${Math.max(1, 1.27 * v.scale)}px ${c.mono}`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(bus.name, at[0] + 2, at[1] - 0.6 * v.scale);
   }
   const dot = (p: P2, colour: string) => {
     const s = toScreen(v, p);

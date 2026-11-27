@@ -236,7 +236,15 @@ pre-order on that date; MSKSEMI's L293DNE(MS), C19632281, was the in-stock part 
 A label used once is a warning unless it names a net already wired between two or more pins (KiCad does the same),
 so naming a drawn wire for the board does not count as a slip.
 
-Left for later: buses.
+**Buses** (#756, `bus.ts`, the Bus tool, U). Click to draw a bus, and double-click, click the last corner again or press
+Esc to finish. Its name is asked for then, such as `D[0..7]` (`busMembers` reads ranges counting up or down, and
+`{SDA SCL}` lists). A bus is drawn thick with its name over its start. With the Bus tool, a click on a bus takes a
+wire off it: a slanted entry from the nearest grid point, leaning to the side clicked, a short wire on, and a label
+naming the net, the next of the bus's names not yet on the sheet. A bus joins nothing by itself, so the nets are
+exactly what the labels alone give, as in KiCad and Eagle; a wire ending on an entry is not "in mid air". Double-
+click a bus to rename it. Buses and their entries move, copy and delete like wires, print in the PDF a heavier line
+than a wire, go to KiCad as `bus`, `bus_entry` and a label on the bus, and come in from KiCad and Eagle drawn (Eagle
+has no entries; its wires end on the bus).
 
 ## More than one sheet (#636)
 
@@ -259,7 +267,7 @@ adds is the way to make and move between them.
   stays joined, and is the block's way in and out. Rename those on the copy where each copy needs its own. A copy is
   a copy: it does not follow the sheet it came from.
 
-Not built: buses (a group of signals drawn as one line), hierarchy with sheet pins, and blocks that stay linked to
+Not built: hierarchy with sheet pins, and blocks that stay linked to
 their master.
 
 ## Laying out a board (#637 to #643)
@@ -294,6 +302,17 @@ drops a via and carries on on the other layer. The width comes from the net's cl
 the Width list. With Keep clear on, `blockers` stops a piece that would come closer to another net, a hole or the edge
 than the rules allow, and says what is in the way; turn it off to route anywhere and let the board check find it.
 Pieces laid one after another become one track. Push and walk-round are below (#646, #753); the autorouter is #647.
+
+**Curved tracks** (#755, `trackArcs.ts`). A track's `arcs` give each piece between two points a bulge, the way an
+outline corner does (tan of a quarter of its turn, positive anticlockwise). A list that doesn't line up with the
+pieces is ignored. Everything that only needs the shape reads `trackPath` or `trackBits`, the curve cut into chords
+within 5 µm: the board's copper list, so the board check, pours, joins and the router; drawing and picking; and
+teardrops. Lengths (`trackLength`, `netLength`, the inspector) run along the curve. Sliding a piece keeps the bulge
+of the pieces either side as their ends move. Push only moves straight pieces, so a curve in the way is walked round.
+Wiggles go on straight pieces only. Gerber draws each curved piece as an arc (G02 or G03), KiCad gets `arc` with a
+middle point, and KiCad and Eagle curves come in as curves (Eagle's `curve` is the turn in degrees). We write no
+Eagle files. Autoroute's Corners option, Rounded, makes each corner of a run an arc of 1 mm (`roundCorners`) where
+that keeps clear, taking at most half of either piece.
 
 **Placing.** Drag parts on the grid (0.1 to 2.54 mm, in Layers), or pick one and type X, Y and turn in the part
 card. Lock (K) pins parts down; with several picked, the card lines them up or spaces them evenly. A part picked on
@@ -336,7 +355,8 @@ test the board check runs, so nothing shows here that the check would pass.
 ## Autoroute (#647)
 
 `pcb/autoroute.ts` is our own maze router: no code is taken from tscircuit or Freerouting. It routes the connections
-the ratsnest still shows, the short ones first, and only ever adds copper, so a track or via laid by hand never moves.
+the ratsnest still shows, the short ones first. It never moves a track or via that was on the board before it started:
+the only copper it takes up is its own (rip-up, below).
 
 - **The grid.** Both sides of the board at 0.125 mm (coarser when the board is very large). For each net class a
   `Space` holds, for every cell and side, how much copper could sit there: the least gap to any other net's copper
@@ -346,10 +366,18 @@ the ratsnest still shows, the short ones first, and only ever adds copper, so a 
 - **The search.** A* over cells and sides, eight ways on, with a small cost for a turn, a cost of 4 mm for a via and
   double for crossing another net's pour. A via needs room on both sides, its hole clear of other holes by
   `holeToHole`, and may not sit on a pad. A run leaves and reaches a pad by a short piece with one 45° bend.
+  A pad that sits between grid lines with no such piece clear (#754) is reached by a short exact stub straight out
+  or at 45°, up to 2 mm, measured like any track, and the search starts from the stub's end.
 - **Measured twice.** Every run and via found is measured with `blockers`, the same test a hand-drawn track gets,
   before it is kept. A test routes the sample board from bare and asks the board check for an empty list.
 - **Options.** `nets`, `parts` and `layers` (one side only, which also means no vias). A track through a pour can cut
   it in two, so the router looks at the ratsnest again, up to three times.
+- **Rip-up and retry** (#754, `ripUp: false` turns it off). For each connection with no way through, it takes up the
+  two routes of its own that pass nearest the connection's straight line (then up to five, within 3 mm), makes that
+  connection first, and lays the ones it took up again. A try is kept only if every route taken up goes back down;
+  otherwise the board stays as it was. It spends at most `ripUpBudget` (8 s) on this. The page is sent the whole new
+  set of routes in place of those it had. Tests route the sample board, `pico-servo-board` and `tangle` from bare
+  with a clean board check, and `tangle` on one side makes a connection with rip-up that it could not without.
 - **Fan-out** (`pcb/fanout.ts`, #746). `fanOut` gives each of a chip's surface pads that still has a connection to
   make a short track and a via: straight out along the pad, out and across at 45°, or in under the chip, the nearest
   place that keeps every rule, going round the chip in order so neighbours take turns. A pad left with no room tries
@@ -869,10 +897,10 @@ What it reads:
   footprint of the same name if there is one, and is listed if there is not.
 
 What does not come across, each listed in the dialog when a project has it: copper on inside layers (the top and
-bottom still come in), blind and buried vias, buses as drawings (their wires still join by name), group buses
+bottom still come in), blind and buried vias, group buses
 between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions other than straight ones
 (leaders, radii, centre marks), drawings on user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
-flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
+flags. Curved tracks come in as curves (#755), their bulge worked out from KiCad's start, middle and end. A pad whose copper sits off the
 middle of its hole keeps it there (#744). Text keeps its place, size, turn and lines, and its letters' own width and
 its mirror flag both ways (#751): `mirror` on a board text reads it the other way from its side's usual, and `width`
 is a letter's width where it differs from its height (`boardTextLook` in `fab/font.ts`). A board without its
@@ -927,10 +955,8 @@ How Eagle's things become ours:
 - Clearance, least track width, least drill, copper to edge and least ring come from the board's design rules, and
   net classes with a width or clearance of their own come across with their nets.
 
-What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, buses
-as drawings, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
-drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as short
-straight pieces. Hatched pours keep their hatching (#747). Octagon pads come in drawn corner by corner, and a pad Eagle draws
+What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
+drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as curves (#755). Hatched pours keep their hatching (#747). Octagon pads come in drawn corner by corner, and a pad Eagle draws
 off the middle of its hole ("offset") keeps its copper where Eagle has it (#744). Assembly variants are not
 read, apart from a part marked not populated. Files from Eagle older than 6 are binary and are refused with a note
 to save them from a newer Eagle. A board without its schematic does not open.

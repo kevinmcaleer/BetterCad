@@ -7,6 +7,8 @@ import {
   outlinePoints,
   packageOf,
   placeOnBoard,
+  trackBits,
+  trackPath,
   type Board,
   type BoardNote,
   type BoardPad,
@@ -133,9 +135,9 @@ export function hitBoard(
   for (const m of board.marks ?? []) if (Math.hypot(m.x - p[0], m.y - p[1]) <= m.size / 2 + tol) out.push({ kind: "mark", id: m.id, net: m.net });
   for (const t of board.tracks) {
     if (!layerShown(t.layer)) continue;
-    for (let i = 0; i + 1 < t.pts.length; i += 1)
-      if (distToSegment(p, t.pts[i]!, t.pts[i + 1]!) <= t.width / 2 + tol) {
-        out.push({ kind: "track", id: t.id, net: t.net, segment: i });
+    for (const bit of trackBits(t))
+      if (distToSegment(p, bit.a, bit.b) <= t.width / 2 + tol) {
+        out.push({ kind: "track", id: t.id, net: t.net, segment: bit.piece });
         break;
       }
   }
@@ -174,7 +176,7 @@ export function boxBoard(d: ElectronicsDesign, a: P2, b: P2, filter?: PickFilter
     const pb = placementBox(d, at);
     if (pb && boxesTouch(pb, box)) out.push(["part", at.part]);
   }
-  for (const t of board.tracks) if (t.pts.every((q) => inBox(q, box))) out.push(["track", t.id]);
+  for (const t of board.tracks) if (trackPath(t).every((q) => inBox(q, box))) out.push(["track", t.id]);
   for (const v of board.vias) if (inBox([v.x, v.y], box)) out.push(["via", v.id]);
   for (const h of board.holes) if (inBox([h.x, h.y], box)) out.push(["hole", h.id]);
   for (const m of board.marks ?? []) if (inBox([m.x, m.y], box)) out.push(["mark", m.id]);

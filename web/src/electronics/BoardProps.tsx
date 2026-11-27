@@ -521,7 +521,7 @@ export default function BoardProps({
               <dt>Layer</dt>
               <dd>{layerName(first.layer)}</dd>
               <dt>Length</dt>
-              <dd>{round(trackLength(first.pts))} mm</dd>
+              <dd>{round(trackLength(first.pts, first.arcs))} mm</dd>
             </dl>
           )}
           {one && first.net && <TuneLength design={design} edit={edit} id={first.id} net={first.net} />}

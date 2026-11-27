@@ -128,7 +128,7 @@ export function netFacts(board: Pick<Board, "tracks" | "vias">, net: string, ord
   return {
     tracks: tracks.length,
     vias: board.vias.filter((v) => v.net === net).length,
-    length: tracks.reduce((n, t) => n + trackLength(t.pts), 0),
+    length: tracks.reduce((n, t) => n + trackLength(t.pts, t.arcs), 0),
     layers: order.filter((l) => on.has(l)),
     widths: [...new Set(tracks.map((t) => Math.round(t.width * 1000) / 1000))].sort((a, b) => a - b),
   };

@@ -74,7 +74,7 @@ describe("opening a project", () => {
     const eagle = ["turns.sch", "turns.brd"].map((name) => new File([readFileSync(join(dir, name), "utf8")], name));
     await user.upload(screen.getByLabelText("Project files"), eagle);
     expect(await screen.findByRole("status")).toHaveTextContent("Found 7 parts on 2 sheets, and a board with 7 parts placed, 7 tracks, 3 vias and 2 pours.");
-    expect(screen.getByRole("list", { name: "What did not come across" })).toHaveTextContent("Board: 1 curved track came in as short straight pieces.");
+    expect(screen.getByRole("list", { name: "What did not come across" })).toHaveTextContent("Board: Left out: 1 dimensions.");
     await user.click(screen.getByRole("button", { name: "Open" }));
     expect(onOpen.mock.calls[0]![0].board?.placements).toHaveLength(7);
   });

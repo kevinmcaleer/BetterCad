@@ -26,7 +26,7 @@ function tracksOf(d: ElectronicsDesign, net: string) {
   const longest = (pts: P2[]) => Math.max(0, ...pts.slice(1).map((p, i) => Math.hypot(p[0] - pts[i]![0], p[1] - pts[i]![1])));
   return (d.board?.tracks ?? [])
     .filter((t) => t.net === net && t.pts.length > 1)
-    .sort((a, b) => longest(b.pts) - longest(a.pts) || trackLength(b.pts) - trackLength(a.pts));
+    .sort((a, b) => longest(b.pts) - longest(a.pts) || trackLength(b.pts, b.arcs) - trackLength(a.pts, a.arcs));
 }
 
 /**

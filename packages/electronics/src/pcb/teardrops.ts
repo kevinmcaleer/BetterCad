@@ -9,6 +9,7 @@ import { boardPads, type BoardPad } from "../board";
 import type { CopperLayer, ElectronicsDesign, P2 } from "../model";
 import { clearanceBetween, copperOf, gap, type Copper } from "./copper";
 import { layersOf, viaLayers } from "./stack";
+import { trackPath } from "../trackArcs";
 
 export interface Teardrop {
   net: string;
@@ -42,9 +43,11 @@ export function teardrops(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d),
   const out: Teardrop[] = [];
   for (const t of b.tracks) {
     if (t.pts.length < 2) continue;
+    // Along a curved end (#755), the way it leaves the pad is its first short chord.
+    const path = trackPath(t);
     for (const [end, next] of [
-      [t.pts[0]!, t.pts[1]!],
-      [t.pts[t.pts.length - 1]!, t.pts[t.pts.length - 2]!],
+      [path[0]!, path[1]!],
+      [path[path.length - 1]!, path[path.length - 2]!],
     ] as [P2, P2][]) {
       const land = lands.find((l) => l.net === t.net && l.layers.includes(t.layer) && Math.hypot(l.at[0] - end[0], l.at[1] - end[1]) < 1e-3);
       if (!land || land.r * 2 <= t.width * 1.2) continue;

@@ -1,5 +1,5 @@
 import { outlinePoints, ratsnest, type BoardPad } from "../board";
-import { key, q } from "../geom";
+import { key, q, segmentDistance } from "../geom";
 import type { Board, ElectronicsDesign, Id, P2 } from "../model";
 import { edgeLoops, netRules, padLayers, padSolid, type Copper, type Layer } from "./copper";
 import { applyRoutes, blockers, corner45, tidyRun, type Route } from "./route";
@@ -8,6 +8,7 @@ export { applyRoutes, type Route };
 import { layersOf } from "./stack";
 import { boardState } from "./state";
 import { fanOut } from "./fanout";
+import { curved, roundCorners, trackBits, trackPath } from "../trackArcs";
 
 /**
  * The autorouter (#647): routes the connections still to make, the short ones first, on a fine grid over every
@@ -24,6 +25,9 @@ export interface RouteProgress {
   /** The net just tried, and what was laid for it. None: it found no way through. */
   net: string;
   route?: Route;
+  /** After taking routes up and laying them again (#754): every route laid so far, in place of those sent before, and the nets still with no way. */
+  routes?: Route[];
+  lost?: string[];
 }
 
 export interface AutorouteOptions {
@@ -39,6 +43,12 @@ export interface AutorouteOptions {
   viaCost?: number;
   /** Fan out the surface pads it could not get away from, then try them again (#746). None: yes. */
   fanout?: boolean;
+  /** Round each run's corners into arcs of this radius, mm (#755). None: sharp 45° corners. */
+  round?: number;
+  /** Take up its own routes near a connection it could not make, make that one, then lay them again (#754). None: yes. */
+  ripUp?: boolean;
+  /** How long it may spend taking routes up, ms. None: 8 s. */
+  ripUpBudget?: number;
   onProgress?: (p: RouteProgress) => void;
 }
 
@@ -176,6 +186,7 @@ class Router {
   private layers: Layer[];
   private allowed: boolean[];
   private viaCost: number;
+  private round: number;
   // The search's own arrays, kept between searches; `mark` says which search a cell's numbers belong to.
   private cost: Float32Array;
   private from: Int32Array;
@@ -214,6 +225,7 @@ class Router {
     this.allowed = layers.map((l) => (!opts.layers || opts.layers.includes(l)) && (l === "top" || l === "bottom" || !board.pours.some((p) => p.layer === l)));
     const size = layers.length * n;
     this.viaCost = opts.viaCost ?? 4;
+    this.round = opts.round ?? 0;
     this.cost = new Float32Array(size + 1);
     this.from = new Int32Array(size + 1);
     this.dir = new Int8Array(size + 1);
@@ -427,12 +439,43 @@ class Router {
       );
       if (out.size) return out;
     }
-    return own;
+    // Last, a short exact piece out to the grid: after the fan-out's via, which keeps the way clear for its neighbours.
+    return this.escape(s, net, netId, pad);
   }
 
-  /** Whether a route could leave this pad at all, from the pad or its fan-out's via. */
+  /**
+   * Ways out of a pad that sits between the grid's lines with no clear cell near it (#754): a short exact piece
+   * straight out of the pad, in any of the eight directions and up to 2 mm long, to a place a grid cell can be
+   * reached from.
+   */
+  private escape(s: Space, net: string, netId: number, pad: BoardPad): Map<number, { pts: P2[]; cost: number }> {
+    const out = new Map<number, { pts: P2[]; cost: number }>();
+    const layers = padLayers(pad, this.layers);
+    const local = this.around(pad.at, 4);
+    const step = Math.max(0.05, this.pitch / 2);
+    for (const [dx, dy] of DIRS) {
+      const unit = Math.hypot(dx, dy);
+      for (let len = step; len <= 2 + 1e-9; len += step) {
+        const e: P2 = [q(pad.at[0] + (dx / unit) * len), q(pad.at[1] + (dy / unit) * len)];
+        const piece = [pad.at, e];
+        if (layers.every((layer) => blockers(this.board, local, this.loops, { net, layers: [layer], pts: piece, width: s.width }).length)) break;
+        const on = layers.filter((layer) => !blockers(this.board, local, this.loops, { net, layers: [layer], pts: piece, width: s.width }).length);
+        const found = this.ways(s, net, netId, { at: e }, on, local);
+        if (!found.size) continue;
+        for (const [node, w] of found) {
+          const cost = len * 1.2 + w.cost;
+          if (!out.has(node) || out.get(node)!.cost > cost) out.set(node, { pts: [pad.at, ...w.pts], cost });
+        }
+        break;
+      }
+    }
+    return out;
+  }
+
+  /** Whether a route could leave this pad by the grid's own short pieces; if not, it is fanned out first. */
   canLeave(pad: BoardPad): boolean {
-    return this.from_(this.space(pad.net), pad.net, this.netId(pad.net), pad).size > 0;
+    // Only by the grid's own short pieces: a pad that needs an exact stub out is one to fan out first.
+    return this.ways(this.space(pad.net), pad.net, this.netId(pad.net), pad, padLayers(pad, this.layers), this.around(pad.at, 3)).size > 0;
   }
 
   /** The copper near a point, for measuring the short runs at a pad. */
@@ -531,21 +574,29 @@ class Router {
 
     // Measured the way a track drawn by hand is, before it is kept.
     const rules = netRules(this.board, net);
-    for (const t of route.tracks) if (blockers(this.board, this.copper, this.loops, { net, layers: [t.layer], pts: t.pts, width: s.width }).length) return null;
+    const clear = (t: { layer: Layer; pts: P2[]; arcs?: number[] }) =>
+      !blockers(this.board, this.copper, this.loops, { net, layers: [t.layer], pts: trackPath(t), width: s.width }).length;
+    for (const t of route.tracks) if (!clear(t)) return null;
+    // Rounded corners (#755): each run's corners become arcs, unless that brings it too close to something.
+    if (this.round > 0)
+      route.tracks = route.tracks.map((t) => {
+        const rounded = { layer: t.layer, ...roundCorners(t, this.round) };
+        return curved(rounded) && clear(rounded) ? rounded : t;
+      });
     for (const v of route.vias)
       if (blockers(this.board, this.copper, this.loops, { net, layers: this.layers, pts: [v], width: rules.viaDiameter }).length) return null;
 
     for (const t of route.tracks)
-      for (let k = 0; k + 1 < t.pts.length; k += 1)
+      for (const { a, b } of trackBits(t))
         this.copper.push({
-          pts: [t.pts[k]!, t.pts[k + 1]!],
+          pts: [a, b],
           r: s.width / 2,
           kind: "track",
           net,
           layers: [t.layer],
           id: "",
           what: `a track on ${net}`,
-          at: t.pts[k]!,
+          at: a,
         });
     for (const v of route.vias) {
       this.copper.push({ pts: [v], r: rules.viaDiameter / 2, kind: "via", net, layers: this.layers, id: "", what: `a via on ${net}`, at: v });
@@ -592,6 +643,10 @@ export function autoroute(d: ElectronicsDesign, opts: AutorouteOptions = {}): Au
       for (const route of fanned.routes) opts.onProgress?.({ done: 0, total: 0, routed: 0, failed: 0, net: route.net, route });
     }
   }
+  // What the passes lay can be taken up again; what was there before, and the fan-out, never is.
+  const base = out.design;
+  const laid: { route: Route; a: BoardPad; b: BoardPad }[] = [];
+  const stuck: { net: string; a: BoardPad; b: BoardPad }[] = [];
   // A track through a pour can cut it in two, leaving a new connection to make: so it looks again, a few times.
   for (let pass = 0; pass < 3; pass += 1) {
     const state = boardState(out.design);
@@ -605,10 +660,34 @@ export function autoroute(d: ElectronicsDesign, opts: AutorouteOptions = {}): Au
       done += 1;
       if (route) {
         out.routes.push(route);
+        laid.push({ route, a: w.a, b: w.b });
         out.routed += 1;
         out.design = applyRoutes(out.design, [route]);
-      } else out.failed.push({ net: w.air.net, a: w.air.a, b: w.air.b });
+      } else {
+        out.failed.push({ net: w.air.net, a: w.air.a, b: w.air.b });
+        stuck.push({ net: w.air.net, a: w.a, b: w.b });
+      }
       opts.onProgress?.({ done, total: out.total, routed: out.routed, failed: out.failed.length, net: w.air.net, ...(route ? { route } : {}) });
+    }
+  }
+  if (opts.ripUp !== false && stuck.length && laid.length) {
+    const kept = ripUp(base, laid, stuck, opts, opts.ripUpBudget ?? 8000);
+    if (kept) {
+      const fanned = out.routes.length - out.routed;
+      out.design = kept.design;
+      out.routes = [...out.routes.slice(0, fanned), ...kept.laid.map((l) => l.route)];
+      out.routed += kept.made.length;
+      const made = new Set(kept.made);
+      out.failed = out.failed.filter((f) => !made.has(`${f.net}|${key(f.a[0], f.a[1])}|${key(f.b[0], f.b[1])}`));
+      opts.onProgress?.({
+        done,
+        total: out.total,
+        routed: out.routed,
+        failed: out.failed.length,
+        net: "",
+        routes: out.routes,
+        lost: [...new Set(out.failed.map((f) => f.net))],
+      });
     }
   }
   // A connection that failed and was then made another way round is no longer one to report.
@@ -618,4 +697,78 @@ export function autoroute(d: ElectronicsDesign, opts: AutorouteOptions = {}): Au
     out.failed = out.failed.filter((f) => left.has(f.net));
   }
   return out;
+}
+
+/** How close a route comes to the straight line between two points, mm. */
+function nearLine(route: Route, a: P2, b: P2): number {
+  let best = Infinity;
+  for (const t of route.tracks) for (let k = 0; k + 1 < t.pts.length; k += 1) best = Math.min(best, segmentDistance(t.pts[k]!, t.pts[k + 1]!, a, b));
+  for (const v of route.vias) best = Math.min(best, segmentDistance(v, v, a, b));
+  return best;
+}
+
+/**
+ * Rip-up and retry (#754): for each connection it could not make, takes up the few routes of its own that lie nearest
+ * its way, makes that connection first, then lays the ones it took up again. A try is kept only when every route it
+ * took up goes back down; otherwise the board stays as it was. Tracks and vias that were on the board before it
+ * started are never moved.
+ */
+function ripUp(
+  base: ElectronicsDesign,
+  laid: { route: Route; a: BoardPad; b: BoardPad }[],
+  stuck: { net: string; a: BoardPad; b: BoardPad }[],
+  opts: AutorouteOptions,
+  budget: number,
+): { design: ElectronicsDesign; laid: typeof laid; made: string[] } | null {
+  const t0 = performance.now();
+  let now = laid;
+  const made: string[] = [];
+  for (const f of stuck) {
+    for (const [take, within] of [
+      [2, 1.5],
+      [5, 3],
+    ] as const) {
+      if (performance.now() - t0 > budget) break;
+      const near = now
+        .map((l, i) => ({ i, by: nearLine(l.route, f.a.at, f.b.at) }))
+        .filter((n) => n.by < within && now[n.i]!.route.net !== f.net)
+        .sort((x, y) => x.by - y.by)
+        .slice(0, take);
+      if (!near.length) continue;
+      const out = new Set(near.map((n) => n.i));
+      const rest = now.filter((_, i) => !out.has(i));
+      const d = applyRoutes(
+        base,
+        rest.map((l) => l.route),
+      );
+      const state = boardState(d);
+      const router = new Router(d, state.pads, [...state.copper], opts);
+      const first = router.route(f.net, f.a, f.b);
+      if (!first) continue;
+      const again: typeof laid = [{ route: first, a: f.a, b: f.b }];
+      let ok = true;
+      for (const n of near) {
+        const l = now[n.i]!;
+        const route = router.route(l.route.net, l.a, l.b);
+        if (!route) {
+          ok = false;
+          break;
+        }
+        again.push({ route, a: l.a, b: l.b });
+      }
+      if (!ok) continue;
+      now = [...rest, ...again];
+      made.push(`${f.net}|${key(f.a.at[0], f.a.at[1])}|${key(f.b.at[0], f.b.at[1])}`);
+      break;
+    }
+  }
+  if (!made.length) return null;
+  return {
+    design: applyRoutes(
+      base,
+      now.map((l) => l.route),
+    ),
+    laid: now,
+    made,
+  };
 }

@@ -3,6 +3,7 @@ import { q } from "../geom";
 import type { CopperLayer, ElectronicsDesign, Id, P2 } from "../model";
 import { copperOf, edgeLoops } from "./copper";
 import { blockers, tidyRun, trackLength } from "./route";
+import { bulgeOf, curved, trackPath } from "../trackArcs";
 
 const sub = (a: P2, b: P2): P2 => [a[0] - b[0], a[1] - b[1]];
 const dot = (a: P2, b: P2): number => a[0] * b[0] + a[1] * b[1];
@@ -16,7 +17,7 @@ const dot = (a: P2, b: P2): number => a[0] * b[0] + a[1] * b[1];
 
 /** How much track a net has, mm. Vias add nothing. */
 export const netLength = (d: ElectronicsDesign, net: string): number =>
-  (d.board?.tracks ?? []).reduce((n, t) => (t.net === net ? n + trackLength(t.pts) : n), 0);
+  (d.board?.tracks ?? []).reduce((n, t) => (t.net === net ? n + trackLength(t.pts, t.arcs) : n), 0);
 
 /** What a 45° corner of size 1 costs a wiggle against a square one, mm. */
 const CORNER = 4 * (2 - Math.SQRT2);
@@ -85,12 +86,17 @@ export function tuneLength(d: ElectronicsDesign, id: Id, target: number, piece?:
   let fits = false;
   for (const i of order) {
     for (const side of [1, -1] as const) {
+      // Wiggles go on straight pieces only; a curved track (#755) keeps its other pieces' bulges.
+      if (bulgeOf(t, i)) continue;
       const w = wiggles(t.pts[i]!, t.pts[i + 1]!, extra, t.width, side);
       if (!w) continue;
       fits = true;
-      const pts = tidyRun([...t.pts.slice(0, i), ...w, ...t.pts.slice(i + 2)]);
-      if (blockers(board, copper, loops, { net: t.net, layers: [t.layer], pts, width: t.width }).length) continue;
-      const design = { ...d, board: { ...board, tracks: board.tracks.map((x) => (x === t ? { ...t, pts } : x)) } };
+      const bent = curved(t);
+      const raw = [...t.pts.slice(0, i), ...w, ...t.pts.slice(i + 2)];
+      const pts = bent ? raw : tidyRun(raw);
+      const next = bent ? { ...t, pts, arcs: [...t.arcs!.slice(0, i), ...w.slice(1).map(() => 0), ...t.arcs!.slice(i + 1)] } : { ...t, pts };
+      if (blockers(board, copper, loops, { net: t.net, layers: [t.layer], pts: trackPath(next), width: t.width }).length) continue;
+      const design = { ...d, board: { ...board, tracks: board.tracks.map((x) => (x === t ? next : x)) } };
       return { design, length: netLength(design, t.net) };
     }
   }

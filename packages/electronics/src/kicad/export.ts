@@ -32,6 +32,7 @@ import { boardTextLook } from "../fab/font";
 import { pictureRects } from "../pcb/picture";
 import { layersOf, viaKind, viaLayers } from "../pcb/stack";
 import { Str, writeSexpr, type Node } from "./sexpr";
+import { arcMid, bulgeOf } from "../trackArcs";
 
 /**
  * Leaving with the whole design (#664): a KiCad project with the schematic, the board and a library of the symbols
@@ -390,6 +391,7 @@ function pageOf(d: ElectronicsDesign, sheet: Sheet): Page {
     see(w.b);
   }
   for (const l of [...sheet.labels, ...sheet.junctions, ...sheet.noConnects]) see([l.x, l.y]);
+  for (const b of sheet.buses ?? []) b.pts.forEach(see);
   if (x1 > x2) [x1, y1, x2, y2] = [0, 0, 0, 0];
   const snap = (v: number) => Math.round(v / GRID) * GRID;
   const ox = snap(MARGIN - x1);
@@ -447,6 +449,14 @@ function sheetFile(
     for (let i = 0; i + 1 < stops.length; i += 1)
       out.push(["wire", ["pts", xy(page.at(stops[i]!)), xy(page.at(stops[i + 1]!))], stroke(0), ["uuid", uuidOf(i ? `${w.id}:${i}` : w.id)]]);
   }
+  // Buses (#756): a piece of bus for each straight run, its name as a label on its start, and the entries.
+  for (const b of sheet.buses ?? []) {
+    for (let i = 0; i + 1 < b.pts.length; i += 1)
+      out.push(["bus", ["pts", xy(page.at(b.pts[i]!)), xy(page.at(b.pts[i + 1]!))], stroke(0), ["uuid", uuidOf(i ? `${b.id}:${i}` : b.id)]]);
+    out.push(["label", s(b.name), ["at", ...at(b.pts[0]!), "0"], font(1.27, ["justify", "left", "bottom"]), ["uuid", uuidOf(`${b.id}:name`)]]);
+  }
+  for (const e of sheet.busEntries ?? [])
+    out.push(["bus_entry", ["at", ...at([e.x, e.y])], ["size", n(e.dx * GRID), n(-e.dy * GRID)], stroke(0), ["uuid", uuidOf(e.id)]]);
   for (const l of sheet.labels) {
     const rot = l.rot ?? 0;
     const just = rot === 180 || rot === 270 ? "right" : "left";
@@ -796,16 +806,20 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
   }
 
   for (const t of board.tracks)
-    for (let i = 0; i + 1 < t.pts.length; i += 1)
+    for (let i = 0; i + 1 < t.pts.length; i += 1) {
+      // A curved piece (#755) is KiCad's arc: its start, the point halfway round, and its end.
+      const bulge = bulgeOf(t, i);
       out.push([
-        "segment",
+        bulge ? "arc" : "segment",
         ["start", ...at(t.pts[i]!)],
+        ...(bulge ? [["mid", ...at(arcMid(t.pts[i]!, t.pts[i + 1]!, bulge))]] : []),
         ["end", ...at(t.pts[i + 1]!)],
         ["width", n(t.width)],
         ["layer", s(copperLayer(t.layer))],
         net(t.net),
         ["tstamp", uuidOf(`${t.id}:${i}`)],
       ]);
+    }
   for (const v of board.vias) {
     const on = viaLayers(board, v);
     out.push([

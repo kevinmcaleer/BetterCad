@@ -13,6 +13,7 @@ import {
   type P2,
   type Shape,
   type Side,
+  trackPath,
 } from "@bettercad/electronics";
 import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
 import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
@@ -373,16 +374,18 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
     for (const t of board.tracks) {
       if (t.layer !== layer) continue;
       const on = look.selected.has(t.id) || look.hover === t.id;
+      // Curved pieces (#755) drawn as fine chords.
+      const shape = trackPath(t, 0.002);
       ctx.globalAlpha = lit(t.net) ? (near ? 1 : FAR_ALPHA) : 0.2;
       if (on) {
         ctx.strokeStyle = c["ec-pick"];
         ctx.lineWidth = t.width * v.scale + 3;
-        path(ctx, v, t.pts);
+        path(ctx, v, shape);
         ctx.stroke();
       }
       ctx.strokeStyle = (look.net === t.net && netColour(t.net)) || copper(layer);
       ctx.lineWidth = Math.max(1, t.width * v.scale);
-      path(ctx, v, t.pts);
+      path(ctx, v, shape);
       ctx.stroke();
     }
     for (const t of look.teardrops ?? []) {

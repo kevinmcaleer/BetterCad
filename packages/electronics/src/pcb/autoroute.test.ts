@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ratsnest } from "../board";
 import type { ElectronicsDesign } from "../model";
 import { sampleBoard } from "../sample";
@@ -97,4 +99,51 @@ describe("the autorouter (#647)", () => {
     const d = { ...start, board: undefined } as ElectronicsDesign;
     expect(autoroute(d)).toMatchObject({ design: d, routes: [], routed: 0, total: 0 });
   });
+});
+
+describe("the autorouter takes its own tracks up, and reaches pads off its grid (#754)", () => {
+  const fixture = (name: string): ElectronicsDesign =>
+    bare(JSON.parse(readFileSync(join(__dirname, `../../../../fixtures/electronics/${name}.design.json`), "utf8")) as ElectronicsDesign);
+
+  it("routes the sample board and two denser boards from bare, and each passes the board check", () => {
+    for (const d of [bare(sampleBoard()), fixture("pico-servo-board"), fixture("tangle")]) {
+      const r = autoroute(d);
+      expect(r.failed).toEqual([]);
+      expect(r.routed).toBe(r.total);
+      expect(checkBoard(r.design).filter((e) => e.level === "error")).toEqual([]);
+    }
+  }, 30000);
+
+  it("makes a connection it had no way for by taking up its own routes nearby and laying them again", () => {
+    const d = fixture("tangle");
+    const once = autoroute(d, { layers: ["top"], ripUp: false });
+    const again = autoroute(d, { layers: ["top"] });
+    expect(again.routed).toBeGreaterThan(once.routed);
+    expect(again.failed.length).toBeLessThan(once.failed.length);
+    expect(errors(again.design).filter((e) => e.level === "error")).toEqual([]);
+    expect(applyRoutes(d, again.routes).board!.tracks.length).toBe(again.design.board!.tracks.length);
+  }, 30000);
+
+  it("never moves a track that was on the board before it started", () => {
+    const whole = JSON.parse(readFileSync(join(__dirname, "../../../../fixtures/electronics/tangle.design.json"), "utf8")) as ElectronicsDesign;
+    const kept = whole.board!.tracks.filter((_, i) => i % 3 === 0);
+    const some = { ...whole, board: { ...whole.board!, tracks: kept, vias: [] } };
+    const r = autoroute(some, { layers: ["top"] });
+    for (const t of kept) expect(r.design.board!.tracks.find((x) => x.id === t.id)!.pts.slice(0, t.pts.length)).toEqual(t.pts);
+  }, 30000);
+
+  it("reaches a pad between its grid lines with a short exact piece", () => {
+    const start = bare(sampleBoard());
+    const r = autoroute(start, { pitch: 0.4, fanout: false });
+    expect(r.failed).toEqual([]);
+    const pads = boardState(start).pads.map((p) => p.at);
+    const onPad = (p: [number, number]) => pads.some((a) => Math.abs(a[0] - p[0]) < 1e-6 && Math.abs(a[1] - p[1]) < 1e-6);
+    // Every route starts and ends dead on a pad, whatever the grid.
+    for (const route of r.routes) {
+      const first = route.tracks[0]!.pts[0]!;
+      const last = route.tracks.at(-1)!.pts.at(-1)!;
+      expect(onPad(first) && onPad(last)).toBe(true);
+    }
+    expect(errors(r.design).filter((e) => e.level === "error")).toEqual([]);
+  }, 30000);
 });

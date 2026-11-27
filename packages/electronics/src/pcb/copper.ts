@@ -3,6 +3,7 @@ import { boardTextLook, penFor, textStrokes } from "../fab/font";
 import { distToSegment, rad, segmentDistance } from "../geom";
 import type { Board, CopperLayer, ElectronicsDesign, Id, NetClass, P2, Rules } from "../model";
 import { layersOf, viaLayers } from "./stack";
+import { trackBits } from "../trackArcs";
 
 /**
  * Copper as shapes that can be measured (#640, #644). Every piece is a core (a point, a line or a convex outline)
@@ -102,9 +103,8 @@ export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)):
   }));
   for (const t of board.tracks) {
     if (!all.includes(t.layer)) continue;
-    for (let i = 0; i + 1 < t.pts.length; i += 1) {
-      const a = t.pts[i]!;
-      const b = t.pts[i + 1]!;
+    // A curved piece (#755) is its short chords, each still named by the piece it is part of.
+    for (const { a, b, piece } of trackBits(t)) {
       out.push({
         pts: [a, b],
         r: t.width / 2,
@@ -112,7 +112,7 @@ export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)):
         net: t.net,
         layers: [t.layer],
         id: t.id,
-        segment: i,
+        segment: piece,
         what: `a track on ${t.net || "no net"}`,
         at: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
       });

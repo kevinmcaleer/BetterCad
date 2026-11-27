@@ -1,5 +1,6 @@
 import { q } from "../geom";
 import type { ElectronicsDesign, Id, P2 } from "../model";
+import { arcsIfAny } from "../trackArcs";
 
 const same = (a: P2, b: P2): boolean => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
 
@@ -11,7 +12,9 @@ const same = (a: P2, b: P2): boolean => Math.abs(a[0] - b[0]) < 1e-6 && Math.abs
  * `by` is how far the pointer has gone; only the part of it across the piece counts. Null when the piece cannot go
  * that far: a neighbour would have to turn back on itself, or the piece itself would.
  */
-export function slidePiece(pts: P2[], i: number, by: P2): { pts: P2[]; moved: [P2, P2][] } | null {
+export function slidePiece(pts: P2[], i: number, by: P2, arcs?: number[]): { pts: P2[]; arcs?: number[]; moved: [P2, P2][] } | null {
+  // Curved pieces (#755) keep their bulge as their ends move; a piece put in is straight.
+  const bulge = (k: number) => (arcs && arcs.length === pts.length - 1 ? (arcs[k] ?? 0) : 0);
   const a = pts[i];
   const b = pts[i + 1];
   if (!a || !b) return null;
@@ -20,7 +23,7 @@ export function slidePiece(pts: P2[], i: number, by: P2): { pts: P2[]; moved: [P
   const u: P2 = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
   const n: P2 = [-u[1], u[0]];
   const off = by[0] * n[0] + by[1] * n[1];
-  if (Math.abs(off) < 1e-9) return { pts, moved: [] };
+  if (Math.abs(off) < 1e-9) return { pts, ...(arcs ? { arcs } : {}), moved: [] };
   // The slid piece lies on the line through `o` along `u`; places on it are measured from `o`.
   const o: P2 = [a[0] + n[0] * off, a[1] + n[1] * off];
   const on = (t: number): P2 => [q(o[0] + u[0] * t), q(o[1] + u[1] * t)];
@@ -40,36 +43,45 @@ export function slidePiece(pts: P2[], i: number, by: P2): { pts: P2[]; moved: [P
   const before = pts[i - 1];
   const dBefore = dir(before, a);
   let tA = dBefore && meet(before!, dBefore);
-  let head: P2[];
+  // Each point with the bulge of the piece that starts at it.
+  let head: [P2, number][];
   if (tA === null || tA === undefined) {
     // An end of the track, or a piece running the same way: the corner stays and a 45° piece reaches across.
     tA = Math.abs(off);
-    head = pts.slice(0, i + 1);
+    head = pts.slice(0, i + 1).map((p, k) => [p, k < i ? bulge(k) : 0]);
   } else {
     const at = on(tA);
     if ((at[0] - before![0]) * dBefore![0] + (at[1] - before![1]) * dBefore![1] < -eps) return null;
-    head = pts.slice(0, i);
+    head = pts.slice(0, i).map((p, k) => [p, bulge(k)]);
     moved.push([a, at]);
   }
 
   const after = pts[i + 2];
   const dAfter = dir(b, after ?? b);
   let tB = after && dAfter ? meet(b, dAfter) : null;
-  let tail: P2[];
+  let tail: [P2, number][];
+  let joinB = 0;
   if (tB === null) {
     tB = len - Math.abs(off);
-    tail = pts.slice(i + 1);
+    tail = pts.slice(i + 1).map((p, k) => [p, bulge(i + 1 + k)]);
   } else {
     const at = on(tB);
     if ((after![0] - at[0]) * dAfter![0] + (after![1] - at[1]) * dAfter![1] < -eps) return null;
-    tail = pts.slice(i + 2);
+    tail = pts.slice(i + 2).map((p, k) => [p, bulge(i + 2 + k)]);
+    joinB = bulge(i + 1);
     moved.push([b, at]);
   }
   if (tB - tA < -eps) return null;
 
-  const out: P2[] = [];
-  for (const p of [...head, on(tA), on(tB), ...tail]) if (!out.length || !same(out[out.length - 1]!, p)) out.push(p);
-  return out.length > 1 ? { pts: out, moved } : null;
+  const out: [P2, number][] = [];
+  for (const e of [...head, [on(tA), bulge(i)] as [P2, number], [on(tB), joinB] as [P2, number], ...tail]) {
+    // A point on top of the last: the piece between goes, and the last takes on the next piece's bulge.
+    if (out.length && same(out[out.length - 1]![0], e[0])) out[out.length - 1]![1] = e[1];
+    else out.push([e[0], e[1]]);
+  }
+  if (out.length < 2) return null;
+  const kept = arcsIfAny(out.slice(0, -1).map((e) => e[1]));
+  return { pts: out.map((e) => e[0]), ...(arcs ? kept : {}), moved };
 }
 
 /**
@@ -80,26 +92,30 @@ export function slideTrack(d: ElectronicsDesign, id: Id, piece: number, by: P2):
   const board = d.board;
   const track = board?.tracks.find((t) => t.id === id);
   if (!board || !track) return d;
-  let slid = slidePiece(track.pts, piece, by);
+  let slid = slidePiece(track.pts, piece, by, track.arcs);
   if (!slid) {
     // Too far: find how far it can go, to within a few microns.
     let [lo, hi] = [0, 1];
     for (let k = 0; k < 14; k += 1) {
       const mid = (lo + hi) / 2;
-      if (slidePiece(track.pts, piece, [by[0] * mid, by[1] * mid])) lo = mid;
+      if (slidePiece(track.pts, piece, [by[0] * mid, by[1] * mid], track.arcs)) lo = mid;
       else hi = mid;
     }
-    slid = lo > 0 ? slidePiece(track.pts, piece, [by[0] * lo, by[1] * lo]) : null;
+    slid = lo > 0 ? slidePiece(track.pts, piece, [by[0] * lo, by[1] * lo], track.arcs) : null;
   }
   if (!slid || slid.pts === track.pts) return d;
-  const { pts, moved } = slid;
+  const { pts, arcs, moved } = slid;
   const to = (p: P2): P2 | undefined => moved.find(([from]) => same(from, p))?.[1];
   return {
     ...d,
     board: {
       ...board,
       tracks: board.tracks.map((t) => {
-        if (t.id === id) return { ...t, pts };
+        if (t.id === id) {
+          const next = { ...t, pts, ...(arcs ? { arcs } : {}) };
+          if (!arcs) delete next.arcs;
+          return next;
+        }
         if (t.net !== track.net || t.layer !== track.layer || !moved.length) return t;
         const first = to(t.pts[0]!);
         const last = to(t.pts[t.pts.length - 1]!);

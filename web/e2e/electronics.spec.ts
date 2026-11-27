@@ -1143,7 +1143,7 @@ test.describe("on a wide screen", () => {
     const eagle = "../packages/electronics/src/eagle/fixtures";
     await dialog.getByLabel("Project files").setInputFiles([`${eagle}/turns.sch`, `${eagle}/turns.brd`]);
     await expect(dialog.getByRole("status")).toContainText("Found 7 parts on 2 sheets, and a board with 7 parts placed");
-    await expect(dialog.getByRole("list", { name: "What did not come across" })).toContainText("1 curved track came in as short straight pieces");
+    await expect(dialog.getByRole("list", { name: "What did not come across" })).toContainText("Left out: 1 dimensions");
     await dialog.getByRole("button", { name: "Open", exact: true }).click();
     await expect(page.getByRole("img", { name: "Schematic, Sheet 1: 11 parts, 7 nets" })).toBeVisible();
     await page.keyboard.press("2");
