@@ -122,6 +122,11 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
     return Array.from({ length: Math.abs(to - from) + 1 }, (_, i) => `${m[1]}${from + i * step}`);
   };
 
+  // Global labels' names anywhere in the design. A local label of the same name is another net in KiCad (#751).
+  const globals = new Set<string>();
+  for (const tree of files.values()) for (const item of tree) if (isList(item) && head(item) === "global_label") globals.add(text(item));
+  const apart = new Set<string>();
+
   /** `alias` gives names inside this sheet that are really a net of the sheet above: the wires of a bus on a sheet pin. */
   const walk = (file: string, path: string, name: string, prefix: string, depth: number, alias: Map<string, string>) => {
     const tree = files.get(file);
@@ -196,7 +201,15 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         sheet.noConnects.push({ id: eid("nc"), x: p[0], y: p[1] });
       } else if (kind === "label" || kind === "hierarchical_label") {
         // A bus's own label names its wires; it is not a net.
-        if (!members(text(item))) label(scoped(text(item)), at(child(item, "at")), num(child(item, "at"), 3));
+        if (!members(text(item))) {
+          let named = scoped(text(item));
+          // On the top sheet a local name is bare, so one a global label also has is given KiCad's own name for it.
+          if (named === text(item) && globals.has(named)) {
+            apart.add(named);
+            named = `/${named}`;
+          }
+          label(named, at(child(item, "at")), num(child(item, "at"), 3));
+        }
       } else if (kind === "global_label") {
         if (!members(text(item))) label(text(item), at(child(item, "at")), num(child(item, "at"), 3));
       } else if (kind === "sheet") {
@@ -311,6 +324,11 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
     if (!sheet.notes!.length) delete sheet.notes;
   };
   walk(rootFile, `/${text(child(root, "uuid"))}`, "", "", 0, new Map());
+  for (const n of apart)
+    notes.push({
+      name: "Schematic",
+      why: `A local label and a global label are both called ${plainName(n)}. They stay apart: the local one's net is /${plainName(n)}, as KiCad names it`,
+    });
   for (const [what, n] of dropped.each()) notes.push({ name: "Schematic", why: `Left out: ${n} ${what}` });
   return out;
 }
@@ -754,20 +772,23 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
     let shape: Shape | null = null;
     if (kind === "gr_text") {
       const size = num(child(child(child(item, "effects"), "font"), "size"), 1, 1);
+      // KiCad's size is a letter's height then its width; the width is kept where it differs (#751).
+      const across = num(child(child(child(item, "effects"), "font"), "size"), 2, size);
       const just = child(child(item, "effects"), "justify") ?? [];
       const bottom = layer.endsWith("bottom");
+      const mirrored = just.some((j) => j === "mirror");
       const where = child(item, "at");
       const angle = norm(num(where, 3));
       const p = pt(where);
       // KiCad anchors text by its middle unless it says otherwise; ours starts at its left end, on its baseline.
-      const wide = textWidth(text(item), size);
+      const wide = textWidth(text(item), size) * (size > 0 ? across / size : 1);
       const along = just.some((j) => j === "left") ? 0 : just.some((j) => j === "right") ? -wide : -wide / 2;
       // Several lines sit about the anchor as a block; ours hangs below its first line's baseline.
       const below = (text(item).split("\n").length - 1) * size * LINE_GAP;
       const up = just.some((j) => j === "bottom") ? below : just.some((j) => j === "top") ? -size : -size / 2 + below / 2;
       const c = Math.cos((angle * Math.PI) / 180);
       const s0 = Math.sin((angle * Math.PI) / 180);
-      const dx = (bottom ? -1 : 1) * along;
+      const dx = (mirrored ? -1 : 1) * along;
       board.texts.push({
         id: eid("tx"),
         layer,
@@ -776,6 +797,8 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
         text: text(item),
         size,
         ...(angle ? { angle } : {}),
+        ...(mirrored !== bottom ? { mirror: true } : {}),
+        ...(Math.abs(across - size) > 1e-6 ? { width: across } : {}),
       });
       continue;
     }

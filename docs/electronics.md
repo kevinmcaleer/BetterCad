@@ -525,7 +525,8 @@ a bit a cell (`BoardPicture`, at most 200 cells across, `pcb/picture.ts`), so no
 the width (the height follows), the side, and **Swap ink and bare board** for a light logo on a dark ground; a note
 says when its finest detail is thinner than the board rules print. It is drawn in the silkscreen file as filled
 regions, flipped on the bottom so it reads from underneath, cut away over pads like any ink, and the board check
-warns when it crosses one. Pictures are not written to KiCad files yet.
+warns when it crosses one. Pictures go to KiCad as filled silkscreen polygons, a rectangle for each run of ink
+(#751); they come back as silkscreen drawings, not as a picture.
 
 **A pad's own way into a pour** (#641). A pour joins its pads with spokes or all round. One pad can differ: a
 part's card lists its pads that are on a poured net, each with As the pour says, With spokes or All round
@@ -846,11 +847,12 @@ bottom still come in), blind and buried vias, buses as drawings (their wires sti
 between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions other than straight ones
 (leaders, radii, centre marks), drawings on user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
 flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
-middle of its hole comes in with the hole in the right place and the copper centred on it, so the board check can
-report a clearance there that KiCad does not. Text keeps its place, size, turn and lines, but not KiCad's separate
-width or its mirror flag, so a line of text can come in a little longer or shorter than KiCad draws it. A board
-without its schematic does not open: the nets of a design here
-come from its schematic. A local label and a global label with one name are one net here; in KiCad they can be two.
+middle of its hole keeps it there (#744). Text keeps its place, size, turn and lines, and its letters' own width and
+its mirror flag both ways (#751): `mirror` on a board text reads it the other way from its side's usual, and `width`
+is a letter's width where it differs from its height (`boardTextLook` in `fab/font.ts`). A board without its
+schematic does not open: the nets of a design here come from its schematic. A local label on the top sheet with the
+name of a global label is another net in KiCad, so it stays apart here as `/name`, KiCad's own name for it, and the
+import says so (#751).
 
 How it is checked: `kicad/project.test.ts` writes the sample and the fixture that turns everything every way out as
 KiCad projects and reads them back: the same parts, nets, pads and board check, and nothing for Push to PCB to do.

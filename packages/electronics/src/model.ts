@@ -528,7 +528,11 @@ export interface Board {
   tracks: Track[];
   vias: Via[];
   pours: Pour[];
-  texts: { id: Id; layer: BoardLayer; x: number; y: number; text: string; size: number; angle?: number }[];
+  /**
+   * Words on the board. `mirror` reads it the other way from its side's way (mirrored on the bottom, not on the top);
+   * `width` is a letter's width, mm, where it is not its height, as KiCad keeps it (#751).
+   */
+  texts: { id: Id; layer: BoardLayer; x: number; y: number; text: string; size: number; angle?: number; mirror?: boolean; width?: number }[];
   shapes: (Shape & { id: Id; layer: BoardLayer })[];
   /** Pictures on the silkscreen (#642). */
   pictures?: BoardPicture[];

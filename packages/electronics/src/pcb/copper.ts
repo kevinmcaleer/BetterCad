@@ -1,5 +1,5 @@
 import { boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
-import { penFor, textStrokes } from "../fab/font";
+import { boardTextLook, penFor, textStrokes } from "../fab/font";
 import { distToSegment, rad, segmentDistance } from "../geom";
 import type { Board, CopperLayer, ElectronicsDesign, Id, NetClass, P2, Rules } from "../model";
 import { layersOf, viaLayers } from "./stack";
@@ -136,7 +136,7 @@ export function copperOf(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d)):
     if (!t.layer.startsWith("copper")) continue;
     const side = t.layer === "copper-bottom" ? "bottom" : "top";
     const cap = t.size * 0.72;
-    for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: side === "bottom" }))
+    for (const line of textStrokes(t.text, cap, [t.x, t.y], boardTextLook(t)))
       for (let i = 0; i + 1 < line.length; i += 1)
         out.push({
           pts: [line[i]!, line[i + 1]!],

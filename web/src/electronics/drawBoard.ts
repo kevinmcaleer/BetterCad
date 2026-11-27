@@ -18,7 +18,7 @@ import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
 import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
 import { copperMiddle, padOutline } from "@bettercad/electronics/padShape";
 import { noteStrokes } from "@bettercad/electronics/pcb/notes";
-import { REF_SIZE, penFor, textStrokes } from "@bettercad/electronics/fab/font";
+import { REF_SIZE, boardTextLook, penFor, textStrokes } from "@bettercad/electronics/fab/font";
 import type { Colours } from "./colours";
 import { drawGroup, rubber } from "./drawSchematic";
 import { toScreen, type View2D } from "./view2d";
@@ -135,9 +135,12 @@ export function strokeLines(ctx: CanvasRenderingContext2D, v: View2D, lines: P2[
 }
 
 /** A board text's strokes: its capitals are 0.72 of its size, as the Gerber writer draws them. */
-export function boardTextStrokes(t: { text: string; size: number; x: number; y: number; angle?: number; layer: string }): { lines: P2[][]; pen: number } {
+export function boardTextStrokes(t: { text: string; size: number; x: number; y: number; angle?: number; layer: string; mirror?: boolean; width?: number }): {
+  lines: P2[][];
+  pen: number;
+} {
   const cap = Math.max(0, t.size * 0.72);
-  return { lines: textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: t.layer.endsWith("bottom") }), pen: penFor(cap) };
+  return { lines: textStrokes(t.text, cap, [t.x, t.y], boardTextLook(t)), pen: penFor(cap) };
 }
 
 let scratch: HTMLCanvasElement | null = null;

@@ -4,7 +4,7 @@ import { packageOf, type Board, type CopperLayer, type Corner, type ElectronicsD
 import { netlist, type Netlist } from "../nets";
 import { copperOf, type Copper, type Solid } from "../pcb/copper";
 import { fillRects, pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
-import { penFor, textStrokes, REF_SIZE } from "./font";
+import { boardTextLook, penFor, textStrokes, REF_SIZE } from "./font";
 import { pictureRects } from "../pcb/picture";
 import { teardrops } from "../pcb/teardrops";
 import { noteStrokes } from "../pcb/notes";
@@ -487,7 +487,7 @@ function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads:
     const cap = t.size * 0.72;
     const code = w.circle(penFor(cap), "NonConductor");
     w.attr(".N");
-    for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror: side === "bottom" })) w.line(code, line);
+    for (const line of textStrokes(t.text, cap, [t.x, t.y], boardTextLook(t))) w.line(code, line);
   }
   for (const p of pads) {
     if (p.pad.kind === "npth" || (p.pad.kind === "smd" && p.side !== side)) continue;
@@ -564,7 +564,7 @@ function silkFile(d: ElectronicsDesign, board: Board, side: Side, pads: BoardPad
     if (t.layer !== `silk-${side}`) continue;
     const cap = Math.max(t.size * 0.72, 0);
     const code = w.circle(penFor(cap, least));
-    for (const line of textStrokes(t.text, cap, [t.x, t.y], { angle: t.angle ?? 0, mirror })) w.line(code, line);
+    for (const line of textStrokes(t.text, cap, [t.x, t.y], boardTextLook(t))) w.line(code, line);
   }
   for (const pic of board.pictures ?? []) {
     if (pic.layer !== `silk-${side}`) continue;

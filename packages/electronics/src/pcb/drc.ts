@@ -4,7 +4,7 @@ import { placeOnBoard, rad } from "../geom";
 import { packageOf, type CheckLevel, type ElectronicsDesign, type Id, type P2 } from "../model";
 import { byRef, netlist, type Netlist } from "../nets";
 import { boardChanges, footprintBox } from "../sync";
-import { LINE_GAP, REF_SIZE, textWidth } from "../fab/font";
+import { LINE_GAP, REF_SIZE, boardTextLook, textWidth } from "../fab/font";
 import { clearanceBetween, edgeGap, edgeLoops, gap, padSolid, type Copper, type Solid } from "./copper";
 import { layerName, layersOf, viaKind, viaLayers } from "./stack";
 import { boardState } from "./state";
@@ -566,9 +566,10 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
       const side = t.layer === "silk-bottom" ? "bottom" : "top";
       const cap = t.size * 0.72;
       const a = rad(t.angle ?? 0);
-      const flip = side === "bottom" ? -1 : 1;
+      const look = boardTextLook(t);
+      const flip = look.mirror ? -1 : 1;
       const corner = (x: number, y: number): P2 => [t.x + flip * x * Math.cos(a) - y * Math.sin(a), t.y + flip * x * Math.sin(a) + y * Math.cos(a)];
-      const w = textWidth(t.text, cap);
+      const w = textWidth(t.text, cap) * (look.stretch ?? 1);
       // Further lines go below the first, as they are drawn and printed (#730).
       const low = -(t.text.split("\n").length - 1) * cap * LINE_GAP;
       const pad = hit([corner(0, low), corner(w, low), corner(w, cap), corner(0, cap)], side);

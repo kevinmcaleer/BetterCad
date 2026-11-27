@@ -28,6 +28,8 @@ import { teardrops } from "../pcb/teardrops";
 import { SPOKE, THERMAL_GAP } from "../pcb/pour";
 import { markPad } from "../pcb/marks";
 import { NOTE_PEN, NOTE_SIZE, dimensionParts } from "../pcb/notes";
+import { boardTextLook } from "../fab/font";
+import { pictureRects } from "../pcb/picture";
 import { layersOf, viaKind, viaLayers } from "../pcb/stack";
 import { Str, writeSexpr, type Node } from "./sexpr";
 
@@ -711,7 +713,7 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
     }
   }
   for (const t of board.texts) {
-    const bottom = t.layer.endsWith("bottom");
+    const look = boardTextLook(t);
     out.push([
       "gr_text",
       s(t.text),
@@ -720,11 +722,24 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       ["tstamp", uuidOf(t.id)],
       [
         "effects",
-        ["font", ["size", n(t.size), n(t.size)], ["thickness", n(Math.max(0.1, t.size * 0.15))]],
-        ["justify", "left", "bottom", ...(bottom ? ["mirror"] : [])],
+        ["font", ["size", n(t.size), n(t.width ?? t.size)], ["thickness", n(Math.max(0.1, t.size * 0.15))]],
+        ["justify", "left", "bottom", ...(look.mirror ? ["mirror"] : [])],
       ],
     ]);
   }
+
+  // Pictures on the silkscreen (#751): each run of ink a filled rectangle, as the Gerber file draws them.
+  for (const pic of board.pictures ?? [])
+    pictureRects(pic).forEach((r, i) =>
+      out.push([
+        "gr_poly",
+        ["pts", ...([[r.x1, r.y1], [r.x2, r.y1], [r.x2, r.y2], [r.x1, r.y2]] as P2[]).map((p) => ["xy", ...at(p)])], // prettier-ignore
+        stroke(0, "solid"),
+        ["fill", "solid"],
+        ["layer", s(BOARD_LAYERS[pic.layer])],
+        ["tstamp", uuidOf(`${pic.id}:${i}`)],
+      ]),
+    );
 
   // The notes (#749) go on KiCad's drawings layer: lines, text, and dimensions KiCad measures again itself.
   const drawings: Node[] = ["layer", s("Dwgs.User")];
