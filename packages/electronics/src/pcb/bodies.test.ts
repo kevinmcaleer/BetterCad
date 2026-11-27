@@ -91,6 +91,16 @@ describe("true bodies for the starter parts (#752)", () => {
       /^LED_D5.0mm$/,
       /^CP_Radial/,
       /^TO-220-3_Vertical$/,
+      /^QFN-/,
+      /^BarrelJack_/,
+      /^TerminalBlock_/,
+      /^TO-92_Inline$/,
+      /^ESP32-C3-DevKitM-1$/,
+      /^USB_Micro-B_/,
+      /^PinHeader_2x20_P2.54mm_Vertical$/,
+      /^(R|C)_0402/,
+      /^(R|C)_1206/,
+      /^LED_D3.0mm$/,
     ])
       expect(
         covered.some((n) => family.test(n)),

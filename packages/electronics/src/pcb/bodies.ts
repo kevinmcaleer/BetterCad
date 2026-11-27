@@ -300,12 +300,77 @@ function to220(a: BodyAsk): BodyPiece[] | null {
   ];
 }
 
+/** A barrel jack (#752): its black housing, and its legs through the board. */
+function barrel(a: BodyAsk): BodyPiece[] | null {
+  const o = outline(a, 11);
+  return [
+    { material: "plastic-black", blocks: [box((o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2, 0, o.x2 - o.x1, o.y2 - o.y1, o.h)] },
+    { material: "metal", blocks: leads(thru(a.footprint), 0.5) },
+  ];
+}
+
+/** A screw terminal (#752): a green housing with a screw head on top over each way in, and its legs. */
+function terminal(a: BodyAsk): BodyPiece[] | null {
+  const o = outline(a, 10);
+  const pads = thru(a.footprint);
+  if (!pads.length) return null;
+  const [cx, cy] = [(o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2];
+  return [
+    { material: "plastic-green", blocks: [box(cx, cy, 0, o.x2 - o.x1, o.y2 - o.y1, o.h)] },
+    { material: "metal", blocks: [...pads.map((p) => cyl(p.x, cy, o.h, Math.min(3, (o.y2 - o.y1) * 0.4), 0.3)), ...leads(pads, 0.5)] },
+  ];
+}
+
+/** A TO-92 (#752): a black body on its three legs. */
+function to92(a: BodyAsk): BodyPiece[] | null {
+  const pads = thru(a.footprint);
+  if (pads.length !== 3) return null;
+  const xs = pads.map((p) => p.x);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const y = pads.reduce((k, p) => k + p.y, 0) / pads.length;
+  const lift = 2.5;
+  return [
+    { material: "plastic-black", blocks: [box(cx, y - 0.6, lift, 4.8, 3.2, 4.5)] },
+    { material: "metal", blocks: pins(pads, lift + 0.3, 0.45) },
+  ];
+}
+
+/**
+ * A development board on pin headers (#752), such as an ESP32 DevKit: a black strip and gold pins under each row,
+ * the board on top of them, and the module's can on the board.
+ */
+function devKit(a: BodyAsk): BodyPiece[] | null {
+  const pads = thru(a.footprint);
+  if (pads.length < 8) return null;
+  const o = outline(a, 1.6);
+  const strip = 2.5;
+  const rows = new Map<number, Pad[]>();
+  for (const p of pads) rows.set(r3(p.x), [...(rows.get(r3(p.x)) ?? []), p]);
+  const strips = [...rows.values()].map((row) => {
+    const ys = row.map((p) => p.y);
+    return box(row[0]!.x, (Math.min(...ys) + Math.max(...ys)) / 2, 0, 2.54, Math.max(...ys) - Math.min(...ys) + 2.54, strip);
+  });
+  const [cx, cy] = [(o.x1 + o.x2) / 2, (o.y1 + o.y2) / 2];
+  const w = o.x2 - o.x1;
+  const d = o.y2 - o.y1;
+  const tall = d >= w;
+  const can = tall
+    ? box(cx, o.y1 + d * 0.3, strip + 1.6, Math.min(w * 0.7, 13), d * 0.35, 2.4)
+    : box(o.x1 + w * 0.3, cy, strip + 1.6, w * 0.35, Math.min(d * 0.7, 13), 2.4);
+  return [
+    { material: "plastic-black", blocks: strips },
+    { material: "gold", blocks: pins(pads, strip + 1.6 + 0.5) },
+    { material: "module", blocks: [box(cx, cy, strip, w, d, 1.6)] },
+    { material: "metal", blocks: [can] },
+  ];
+}
+
 /** Rules, tried in order. A rule that answers null passes the part on to the simple box. */
 const RULES: [RegExp, (a: BodyAsk) => BodyPiece[] | null][] = [
   [/^Pin(Header|Socket)_|^Pin header /, header],
   [/^DIP-\d+_/, dip],
   [/^(R|C|L|LED|Fuse)_(0402|0603|0805|1206|1210|1812)_|^(0402|0603|0805|1206) \(\d+ metric\)$/, chip],
-  [/^(SOIC|SSOP|TSSOP|MSOP|HTSSOP|SOT-|TSOT-|SC-70|Texas_HTSOP|QFN|DFN)/, leaded],
+  [/^(SOIC|SSOP|TSSOP|MSOP|HTSSOP|SOT-|TSOT-|SC-70|Texas_HTSOP|QFN|DFN|TQFP|LQFP|QFP)/, leaded],
   [/^JST_(SH|PH|XH)_/, jst],
   [/^SW_SPDT_PCM12|^SW_Slide/, slide],
   [/^SW_PUSH_6mm|^SW_SPST_TL3342/, button],
@@ -313,6 +378,10 @@ const RULES: [RegExp, (a: BodyAsk) => BodyPiece[] | null][] = [
   [/^USB_/, usb],
   [/^ESP32-.*(WROOM|MINI)|^ESP-12/, espModule],
   [/^TO-220-3/, to220],
+  [/^BarrelJack_/, barrel],
+  [/^TerminalBlock_/, terminal],
+  [/^TO-92/, to92],
+  [/DevKit/, devKit],
 ];
 
 /** A true body for a part, or null when it keeps its simple box (#752). */

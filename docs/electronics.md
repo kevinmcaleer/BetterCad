@@ -638,8 +638,10 @@ boxes and cylinders worked out from the footprint and the package's size: a head
 through the board (a socket's tall housing with its tails underneath), a resistor's black body between tinned ends,
 a capacitor in tan, an LED with its lens, a DIP on its standoffs with a lead through every pad, gull-wing leads from
 SOIC, SSOP, TSSOP, MSOP and SOT pads up to the body, JST PH, XH and SH housings in natural white, a PCM12 slide
-switch with its lever, tactile buttons, USB sockets, round LEDs and cans, TO-220s with their tab, and ESP32 modules
-with the can over the chip and the antenna end bare. A resistor and a capacitor of the same size are told apart by
+switch with its lever, tactile buttons, USB sockets, barrel jacks, green screw terminals, round LEDs and cans,
+TO-92s, TO-220s with their tab, QFN and TQFP chips, ESP32 modules with the can over the chip and the antenna end
+bare, and DevKit boards standing on their pin headers. The list was agreed with Kev on 2026-11-27, with the bodies
+drawn in our own code (his choice over KiCad's STEP models). A resistor and a capacitor of the same size are told apart by
 the reference's letters. Each material is a body of its own (`R1`, `R1.1`), so each wears its colour; the blocks are
 gathered as they stand rather than joined (`gatheredShape` in `occt/catalogue.ts`), which builds the whole sample
 board in under a second where joining a 20-pin header's pins took over one. The same part used many times is
