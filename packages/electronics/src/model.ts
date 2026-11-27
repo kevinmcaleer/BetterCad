@@ -548,9 +548,20 @@ export interface Board {
   marks?: BoardMark[];
   /** How a net looks on the board (#740), by its name: a colour for its unrouted lines and when it is lit. */
   netLooks?: Record<string, NetLook>;
+  /** Dimensions, lines and text for whoever makes the board (#749): never copper or silkscreen. */
+  notes?: BoardNote[];
   /** Groups of nets tuned to the same length (#745), each within its tolerance, mm. The board check warns when one drifts. */
   matched?: LengthGroup[];
 }
+
+/**
+ * A note on the board's drawing layer (#749). A dimension measures from `a` to `b`, its line `offset` mm to the left
+ * of the way from `a` to `b` (right if less than nothing).
+ */
+export type BoardNote =
+  | { id: Id; kind: "text"; x: number; y: number; text: string; size: number; angle?: number }
+  | { id: Id; kind: "line"; pts: P2[]; width?: number }
+  | { id: Id; kind: "dimension"; a: P2; b: P2; offset: number; size?: number };
 
 export interface LengthGroup {
   id: Id;

@@ -27,6 +27,7 @@ import { copperOf, netRules } from "../pcb/copper";
 import { teardrops } from "../pcb/teardrops";
 import { SPOKE, THERMAL_GAP } from "../pcb/pour";
 import { markPad } from "../pcb/marks";
+import { NOTE_PEN, NOTE_SIZE, dimensionParts } from "../pcb/notes";
 import { layersOf, viaKind, viaLayers } from "../pcb/stack";
 import { Str, writeSexpr, type Node } from "./sexpr";
 
@@ -723,6 +724,60 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
         ["justify", "left", "bottom", ...(bottom ? ["mirror"] : [])],
       ],
     ]);
+  }
+
+  // The notes (#749) go on KiCad's drawings layer: lines, text, and dimensions KiCad measures again itself.
+  const drawings: Node[] = ["layer", s("Dwgs.User")];
+  for (const note of board.notes ?? []) {
+    if (note.kind === "line")
+      for (let i = 0; i + 1 < note.pts.length; i += 1)
+        out.push([
+          "gr_line",
+          ["start", ...at(note.pts[i]!)],
+          ["end", ...at(note.pts[i + 1]!)],
+          stroke(note.width ?? NOTE_PEN, "solid"),
+          drawings,
+          ["tstamp", uuidOf(`${note.id}:${i}`)],
+        ]);
+    else if (note.kind === "text")
+      out.push([
+        "gr_text",
+        s(note.text),
+        ["at", ...at([note.x, note.y]), ...(note.angle ? [n(note.angle)] : [])],
+        drawings,
+        ["tstamp", uuidOf(note.id)],
+        ["effects", ["font", ["size", n(note.size), n(note.size)], ["thickness", n(Math.max(0.1, note.size * 0.15))]], ["justify", "left", "bottom"]],
+      ]);
+    else {
+      const { text: words } = dimensionParts(note);
+      const size = note.size ?? NOTE_SIZE;
+      out.push([
+        "dimension",
+        ["type", "aligned"],
+        drawings,
+        ["tstamp", uuidOf(note.id)],
+        ["pts", ["xy", ...at(note.a)], ["xy", ...at(note.b)]],
+        ["height", n(-note.offset)],
+        [
+          "gr_text",
+          s(words.text),
+          ["at", ...at([words.x, words.y]), n(words.angle)],
+          drawings,
+          ["tstamp", uuidOf(`${note.id}:text`)],
+          ["effects", ["font", ["size", n(size), n(size)], ["thickness", n(Math.max(0.1, size * 0.15))]]],
+        ],
+        ["format", ["prefix", s("")], ["suffix", s("")], ["units", "2"], ["units_format", "1"], ["precision", "2"]],
+        [
+          "style",
+          ["thickness", n(NOTE_PEN)],
+          ["arrow_length", n(size)],
+          ["text_position_mode", "0"],
+          ["extension_height", "1"],
+          ["extension_offset", "0.5"],
+          "keep_text_aligned",
+        ],
+      ]);
+    }
   }
 
   for (const t of board.tracks)

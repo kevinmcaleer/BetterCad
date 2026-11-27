@@ -4,6 +4,7 @@ import {
   packageOf,
   placeOnBoard,
   type Air,
+  type BoardNote,
   type BoardPad,
   type Box,
   type CopperLayer,
@@ -16,13 +17,14 @@ import {
 import type { PourFill, PourShape } from "@bettercad/electronics/pcb/pour";
 import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
 import { copperMiddle, padOutline } from "@bettercad/electronics/padShape";
+import { noteStrokes } from "@bettercad/electronics/pcb/notes";
 import { REF_SIZE, penFor, textStrokes } from "@bettercad/electronics/fab/font";
 import type { Colours } from "./colours";
 import { drawGroup, rubber } from "./drawSchematic";
 import { toScreen, type View2D } from "./view2d";
 
 /** The layers the Layers card lists. */
-export type LayerId = "top" | "bottom" | `in${number}` | "silk-top" | "silk-bottom" | "courtyard" | "edge" | "holes" | "ratsnest";
+export type LayerId = "top" | "bottom" | `in${number}` | "silk-top" | "silk-bottom" | "courtyard" | "edge" | "holes" | "notes" | "ratsnest";
 export const LAYERS: { id: LayerId; label: string; colour: keyof Colours; copper?: CopperLayer }[] = [
   { id: "top", label: "Top copper", colour: "ec-copper-top", copper: "top" },
   { id: "bottom", label: "Bottom copper", colour: "ec-copper-bottom", copper: "bottom" },
@@ -31,6 +33,7 @@ export const LAYERS: { id: LayerId; label: string; colour: keyof Colours; copper
   { id: "courtyard", label: "Part outlines", colour: "ec-courtyard" },
   { id: "edge", label: "Board edge", colour: "ec-edge" },
   { id: "holes", label: "Holes", colour: "ec-pad" },
+  { id: "notes", label: "Notes", colour: "ec-pcb-ink" },
   { id: "ratsnest", label: "Unrouted lines", colour: "ec-pcb-ink" },
 ];
 
@@ -83,6 +86,8 @@ export interface BoardLook {
   box?: [P2, P2] | null;
   /** The pours as they fill: what to paint and the islands to leave out. */
   pours?: { shape: PourShape; fill: PourFill }[];
+  /** A note being drawn (#749): a dimension or a line, as it would land. */
+  note?: BoardNote[];
   /** An area being drawn, corner by corner. */
   area?: P2[];
   /** Pours drawn as their outlines only, so everything under them shows (#728). */
@@ -537,6 +542,23 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
           ? copper(t.layer.endsWith("top") ? "top" : "bottom")
           : c[t.layer.endsWith("top") ? "ec-silk" : "ec-silk-far"];
     strokeLines(ctx, v, lines, t.layer.startsWith("silk") ? Math.max(pen, board.rules?.minSilkWidth ?? 0) : pen);
+  }
+
+  // Notes for whoever makes the board (#749): dimensions, lines and words.
+  if (show("notes"))
+    for (const n of board.notes ?? []) {
+      const { lines, pen } = noteStrokes(n);
+      ctx.strokeStyle = look.selected.has(n.id) || look.hover === n.id ? c["ec-pick"] : c["ec-pcb-ink"];
+      strokeLines(ctx, v, lines, pen);
+    }
+  if (look.note?.length) {
+    ctx.strokeStyle = c["ec-pick"];
+    strokeLines(
+      ctx,
+      v,
+      look.note.flatMap((n) => noteStrokes(n).lines),
+      0.1,
+    );
   }
 
   // Pictures on the silkscreen: the ink, a cell at a time.

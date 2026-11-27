@@ -1284,6 +1284,23 @@ test.describe("on a wide screen", () => {
     await undo.click();
     await expect(status).toContainText("Every connection is routed");
 
+    // A dimension on the notes (#749): two points to measure between, then where its line goes. Picked, it says
+    // how long it measures.
+    await tools(page)
+      .getByRole("button", { name: /^Dimension/ })
+      .click();
+    await expect(bar.getByRole("status")).toContainText("Click the first point to measure from");
+    await press(page, 5, 34);
+    await press(page, 15, 34);
+    await expect(bar.getByRole("status")).toContainText("Click where the dimension's line goes");
+    await press(page, 10, 37);
+    await expect(undo).toHaveAccessibleName(/^Undo add a dimension/);
+    await page.keyboard.press("Escape");
+    await press(page, 10, 37);
+    await expect(page.getByRole("group", { name: "Dimension" })).toContainText("Measures 10 mm");
+    await page.keyboard.press("Escape");
+    await undo.click();
+
     // Deleting a part on the board asks first, then takes it off the schematic too. One undo brings both back.
     await press(page, 15, 20);
     await page.keyboard.press("Delete");

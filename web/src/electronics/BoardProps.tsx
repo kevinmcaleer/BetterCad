@@ -15,6 +15,7 @@ import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
 import { invertInk, setPicture } from "@bettercad/electronics/pcb/picture";
 import { setMark } from "@bettercad/electronics/pcb/marks";
+import { NOTE_PEN, NOTE_SIZE, dimensionText, setNote } from "@bettercad/electronics/pcb/notes";
 import { HATCH, pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
 import {
   SCREWS,
@@ -815,6 +816,60 @@ export default function BoardProps({
           <option value="copper-bottom">Bottom copper</option>
         </select>
         {text.layer.startsWith("copper") && <p className="bc-note">Copper text is copper on no net. Tracks and pours keep clear of it.</p>}
+      </fieldset>
+    );
+  }
+
+  const note = selected.length === 1 ? board.notes?.find((n) => set.has(n.id)) : undefined;
+  if (note) {
+    const change = (c: Parameters<typeof setNote>[2], label: string) =>
+      edit((d) => setNote(d, note.id, c), label, `ec-note-${note.id}-${Object.keys(c).join()}`);
+    return (
+      <fieldset className="bc-ec-set" disabled={readOnly}>
+        <legend>{note.kind === "dimension" ? "Dimension" : note.kind === "line" ? "Note line" : "Note"}</legend>
+        {note.kind === "text" && (
+          <>
+            <label className="bc-field-label" htmlFor={`${ids}t`}>
+              Text
+            </label>
+            <input
+              id={`${ids}t`}
+              className="bc-text"
+              value={note.text}
+              onChange={(e) => e.target.value && change({ text: e.target.value }, "Change the note")}
+            />
+            <div className="bc-ec-set-row">
+              <NumberField label="Height" value={note.size} min={0.5} max={20} step={0.1} onCommit={(v) => change({ size: v }, "Change the note")} />
+              <NumberField
+                label="Turn"
+                unit="°"
+                value={note.angle ?? 0}
+                step={45}
+                onCommit={(v) => change({ angle: ((v % 360) + 360) % 360 }, "Turn the note")}
+              />
+            </div>
+          </>
+        )}
+        {note.kind === "dimension" && (
+          <>
+            <p className="bc-note">Measures {dimensionText(note)}.</p>
+            <div className="bc-ec-set-row">
+              <NumberField label="Offset" value={note.offset} step={0.5} onCommit={(v) => change({ offset: v }, "Move the dimension")} />
+              <NumberField
+                label="Text height"
+                value={note.size ?? NOTE_SIZE}
+                min={0.5}
+                max={10}
+                step={0.1}
+                onCommit={(v) => change({ size: v }, "Change the dimension")}
+              />
+            </div>
+          </>
+        )}
+        {note.kind === "line" && (
+          <NumberField label="Width" value={note.width ?? NOTE_PEN} min={0.05} max={2} step={0.05} onCommit={(v) => change({ width: v }, "Change the line")} />
+        )}
+        <p className="bc-note">Notes go on the assembly drawing and in a notes file for the board house, never in copper or on the silkscreen.</p>
       </fieldset>
     );
   }

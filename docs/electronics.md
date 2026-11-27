@@ -305,6 +305,14 @@ whether locked parts count. `hitBoard` and `boxBoard` in `web/src/electronics/hi
 click on something left out reaches what is under it. Routing still starts from any copper. A drag box takes the
 parts it touches and anything else wholly inside it.
 
+**Notes** (#749, `pcb/notes.ts`). `board.notes` holds dimensions, lines and text for whoever makes the board: never
+copper, never silkscreen, nothing the board check measures. Dimension (in the Notes group) takes two points, which
+snap as Measure's do, then a third for where its line goes; its length is worked out each time it is drawn
+(`dimensionParts`), so moving an end keeps it right. Note line lays a line with each click until Esc. The Text tool
+writes on the notes when its Write on list says so. Everything draws a note through `noteStrokes`: the Notes layer
+on the board, the notes Gerber file (`notesFile`, X2 function `OtherDrawing,Notes`, with the edge for reference,
+added to the order zip as `-Notes.gbr` and not stepped across a panel), and the first page of the assembly drawing.
+
 **Holes and text.** Hole (H) adds an M3 mounting hole; the card changes the screw size, the drill and whether it has
 a copper ring. Text (T) writes on the silkscreen of the side being worked on.
 
@@ -787,6 +795,9 @@ What changes on the way out:
 - A power symbol carries its net's name on its hidden pin, where KiCad 7 reads it, and as its value, where KiCad 8
   and 9 do.
 - Pours go out as zone outlines. KiCad fills them itself (Edit, Fill all zones). Keep-outs go out as rule areas.
+- The board's notes go on User.Drawings: lines, text, and dimensions as aligned dimensions KiCad measures again. Coming
+  in, drawings on User.Drawings, User.Comments and both fabrication layers become notes, circles and arcs as short
+  straight runs, and aligned and orthogonal dimensions become ours.
 - Ids are made from the design's own, so the same design always writes the same files.
 
 How it is checked: `export.test.ts` reads the libraries back with our own KiCad readers and holds the sample's
@@ -827,8 +838,8 @@ What it reads:
 
 What does not come across, each listed in the dialog when a project has it: copper on inside layers (the top and
 bottom still come in), blind and buried vias, buses as drawings (their wires still join by name), group buses
-between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions, drawings on fabrication and
-user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
+between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions other than straight ones
+(leaders, radii, centre marks), drawings on user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
 flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
 middle of its hole comes in with the hole in the right place and the copper centred on it, so the board check can
 report a clearance there that KiCad does not. Text keeps its place, size, turn and lines, but not KiCad's separate

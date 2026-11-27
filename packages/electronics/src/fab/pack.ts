@@ -6,7 +6,7 @@ import { checkBoard } from "../pcb/drc";
 import { pourFills } from "../pcb/pour";
 import { panelFiles, type Panel } from "./panel";
 import { drillFiles, type DrillTool } from "./drill";
-import { gerberFiles, pourClashes, type GerberLayer } from "./gerber";
+import { gerberFiles, notesFile, pourClashes, type GerberLayer } from "./gerber";
 import { layerName } from "../pcb/stack";
 import data from "./houses.json";
 import { bom, placeList, type Bom, type BomRow, type PlaceRow } from "./parts";
@@ -103,7 +103,7 @@ export interface Pack {
   facts: { width: number; height: number; thickness: number; layers: number; minTrack: number | null; minGap: number; minHole: number | null };
   checks: Check[];
   /** Files inside the Gerber zip, in the order a viewer stacks them. */
-  gerbers: { name: string; layer: GerberLayer | "drill-plated" | "drill-bare" | "drill-span" | "vcut"; text: string }[];
+  gerbers: { name: string; layer: GerberLayer | "drill-plated" | "drill-bare" | "drill-span" | "vcut" | "notes"; text: string }[];
   /** The panel the files make, when there is one (#662): its size and how many boards. */
   panel: { w: number; h: number; boards: number; join: Panel["join"] } | null;
   zipName: string;
@@ -136,6 +136,9 @@ export function orderPack(d: ElectronicsDesign, houseId: string, name: string, p
   if (drills.tools.some((t) => t.plated && !t.span)) gerbers.push({ name: `${base}-PTH.DRL`, layer: "drill-plated", text: drills.plated });
   if (drills.tools.some((t) => !t.plated)) gerbers.push({ name: `${base}-NPTH.DRL`, layer: "drill-bare", text: drills.bare });
   for (const s of drills.spans) gerbers.push({ name: `${base}-L${s.from}-L${s.to}.DRL`, layer: "drill-span", text: s.text });
+  // The notes go with one board, not stepped across a panel: they are for reading, not making.
+  const notes = notesFile(board);
+  if (notes) gerbers.push({ name: `${base}-Notes.gbr`, layer: "notes", text: notes });
 
   const parts = bom(d);
   const place = placeList(d, { thru: house.placeThru });

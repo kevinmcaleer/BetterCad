@@ -8,12 +8,14 @@ import {
   packageOf,
   placeOnBoard,
   type Board,
+  type BoardNote,
   type BoardPad,
   type Box,
   type CopperLayer,
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
+import { noteStrokes } from "@bettercad/electronics/pcb/notes";
 import { inBox } from "./hit";
 import { boardTextStrokes } from "./drawBoard";
 
@@ -27,7 +29,7 @@ export function textBox(t: Board["texts"][number]): Box {
 }
 
 export interface BoardHit {
-  kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area" | "mark";
+  kind: "part" | "track" | "via" | "hole" | "text" | "picture" | "pad" | "area" | "mark" | "note";
   /** A part's id for parts and pads; the thing's own id otherwise. */
   id: string;
   net?: string;
@@ -53,7 +55,7 @@ export interface PickFilter {
   skipLocked: boolean;
 }
 
-/** The filter's kind for a hit: pads go with their parts, pictures with text, marks with holes, keep-outs with pours. */
+/** The filter's kind for a hit: pads go with their parts, pictures and notes with text, marks with holes, keep-outs with pours. */
 export const pickKindOf = (kind: BoardHit["kind"]): PickKind =>
   kind === "part" || kind === "pad"
     ? "parts"
@@ -63,7 +65,7 @@ export const pickKindOf = (kind: BoardHit["kind"]): PickKind =>
         ? "vias"
         : kind === "area"
           ? "pours"
-          : kind === "text" || kind === "picture"
+          : kind === "text" || kind === "picture" || kind === "note"
             ? "text"
             : "holes";
 
@@ -73,6 +75,17 @@ export function pickable(board: Board, f: PickFilter | undefined, kind: BoardHit
   if (f.off.includes(pickKindOf(kind))) return false;
   if (f.skipLocked && (kind === "part" || kind === "pad")) return !board.placements.find((p) => p.part === id)?.locked;
   return true;
+}
+
+/** Whether a point is on a note (#749): on one of its lines, or within its words' box. */
+function onNote(n: BoardNote, p: P2, tol: number): boolean {
+  const { lines, pen } = noteStrokes(n);
+  if (n.kind === "text") {
+    const b = emptyBox();
+    for (const l of lines) for (const q of l) grow(b, q, pen / 2);
+    return b.x1 !== Infinity && inBox(p, b, tol);
+  }
+  return lines.some((l) => l.some((q, i) => i > 0 && distToSegment(p, l[i - 1]!, q) <= pen / 2 + tol));
 }
 
 /** A placed footprint's box on the board. */
@@ -109,6 +122,7 @@ export function hitBoard(
   tol: number,
   layerShown: (l: CopperLayer) => boolean = () => true,
   filter?: PickFilter,
+  notesShown = true,
 ): BoardHit[] {
   const board = d.board;
   if (!board) return [];
@@ -133,6 +147,7 @@ export function hitBoard(
     )
       out.push({ kind: "pad", id: pad.part, net: pad.net, pad });
   for (const t of board.texts) if (inBox(p, textBox(t), tol)) out.push({ kind: "text", id: t.id });
+  if (notesShown) for (const n of board.notes ?? []) if (onNote(n, p, tol)) out.push({ kind: "note", id: n.id });
   for (const pic of board.pictures ?? [])
     if (inBox(p, { x1: pic.x, y1: pic.y, x2: pic.x + pic.w, y2: pic.y + (pic.w / pic.cols) * pic.rows }, tol)) out.push({ kind: "picture", id: pic.id });
   for (const at of [...board.placements].reverse()) {
@@ -146,8 +161,8 @@ export function hitBoard(
 }
 
 /**
- * Ids of what a rubber-band box takes: parts it touches, and tracks, vias, holes, marks, text, pictures, pours and
- * keep-outs wholly inside it. Parts come back by part id. `filter` leaves out what the selection filter does (#748).
+ * Ids of what a rubber-band box takes: parts it touches, and tracks, vias, holes, marks, text, pictures, notes, pours
+ * and keep-outs wholly inside it. Parts come back by part id. `filter` leaves out what the selection filter does (#748).
  */
 export function boxBoard(d: ElectronicsDesign, a: P2, b: P2, filter?: PickFilter): string[] {
   const board = d.board;
@@ -166,6 +181,7 @@ export function boxBoard(d: ElectronicsDesign, a: P2, b: P2, filter?: PickFilter
   for (const t of board.texts) if (within(textBox(t))) out.push(["text", t.id]);
   for (const pic of board.pictures ?? [])
     if (within({ x1: pic.x, y1: pic.y, x2: pic.x + pic.w, y2: pic.y + (pic.w / pic.cols) * pic.rows })) out.push(["picture", pic.id]);
+  for (const n of board.notes ?? []) if (noteStrokes(n).lines.every((l) => l.every((q) => inBox(q, box)))) out.push(["note", n.id]);
   for (const ar of boardAreas(board)) if (ar.kind !== "cutout" && ar.outline.length && ar.outline.every((q) => inBox(q, box))) out.push(["area", ar.id]);
   return out.filter(([kind, id]) => pickable(board, filter, kind, id)).map(([, id]) => id);
 }

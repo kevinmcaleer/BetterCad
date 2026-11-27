@@ -7,6 +7,7 @@ import { pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
 import { penFor, textStrokes, REF_SIZE } from "./font";
 import { pictureRects } from "../pcb/picture";
 import { teardrops } from "../pcb/teardrops";
+import { noteStrokes } from "../pcb/notes";
 import { layerName, layersOf, viaLayers, viaOpen } from "../pcb/stack";
 
 /**
@@ -563,6 +564,23 @@ function edgeFile(board: Board, fn: string): string {
   const w = new Writer(fn);
   const pen = w.circle(EDGE_PEN, "Profile");
   for (const loop of [board.outline, ...(board.cutouts ?? [])]) w.outline(pen, loop);
+  return w.text();
+}
+
+/**
+ * The notes file (#749): the board's dimensions, lines and text for whoever makes it, drawn as a pen draws them, with
+ * the board's edge for reference. None when the board has no notes.
+ */
+export function notesFile(board: Board): string | null {
+  if (!board.notes?.length) return null;
+  const w = new Writer("OtherDrawing,Notes");
+  const edge = w.circle(EDGE_PEN);
+  for (const loop of [board.outline, ...(board.cutouts ?? [])]) w.outline(edge, loop);
+  for (const n of board.notes) {
+    const { lines, pen } = noteStrokes(n);
+    const code = w.circle(pen);
+    for (const line of lines) w.line(code, line);
+  }
   return w.text();
 }
 
