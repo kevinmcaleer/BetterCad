@@ -94,9 +94,13 @@ export function hitSheet(d: ElectronicsDesign, sheet: Sheet, p: P2, tol: number)
   const out: SchHit[] = [];
   for (const n of sheet.noConnects) if (Math.hypot(n.x - p[0], n.y - p[1]) <= tol + 0.6) out.push({ kind: "noConnect", id: n.id });
   for (const j of sheet.junctions) if (Math.hypot(j.x - p[0], j.y - p[1]) <= tol + 0.5) out.push({ kind: "junction", id: j.id });
-  for (const l of sheet.labels)
-    if (inBox(p, { x1: l.x - 0.5, y1: l.y - 0.3, x2: l.x + Math.max(2, l.name.length * 0.95), y2: l.y + 1.8 }, tol * 0.5))
-      out.push({ kind: "label", id: l.id });
+  for (const l of sheet.labels) {
+    // A flagged label (#788) sits across its point, a plain one above it; either reads leftwards when turned round.
+    const len = Math.max(2, l.name.length * 0.95) + (l.shape ? 2 : 0);
+    const [x1, x2] = l.rot === 180 ? [l.x - len, l.x + 0.5] : [l.x - 0.5, l.x + len];
+    const [y1, y2] = l.shape ? [l.y - 1.1, l.y + 1.1] : [l.y - 0.3, l.y + 1.8];
+    if (inBox(p, { x1, y1, x2, y2 }, tol * 0.5)) out.push({ kind: "label", id: l.id });
+  }
   for (const w of sheet.wires) if (distToSegment(p, w.a, w.b) <= tol) out.push({ kind: "wire", id: w.id });
   for (const e of sheet.busEntries ?? []) if (distToSegment(p, [e.x, e.y], entryEnd(e)) <= tol) out.push({ kind: "busEntry", id: e.id });
   for (const b of sheet.buses ?? [])

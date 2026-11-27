@@ -278,7 +278,12 @@ export interface NetLabel {
   rot?: Rot;
   /** A sheet pin (#757): on a sheet used as a box, this label is a pin on the box, joined to the net there. */
   port?: boolean;
+  /** Which way the signal goes (#788): drawn as a flag pointing in, out or both ways. A reminder only: nets join by name. */
+  shape?: LabelShape;
 }
+
+/** A net label's flag: the signal comes in, goes out, or both. */
+export type LabelShape = "in" | "out" | "both";
 
 export interface Sheet {
   id: Id;

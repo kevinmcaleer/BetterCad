@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { sampleBoard } from "../sample";
 import type { FootprintDef } from "../model";
 import { kicadFootprint, kicadName, kicadProject, uuidOf } from "./export";
+import { importKicadProject } from "./project";
 import { tangle } from "./fixture";
 import { readKicadFootprint } from "./footprint";
 import { children, parseSexpr, text, type Node } from "./sexpr";
@@ -137,6 +138,26 @@ describe("exporting to KiCad (#664)", () => {
     expect(children(pcb, "zone")).toHaveLength(d.board!.pours.length);
     expect(children(pcb, "segment").length).toBe(d.board!.tracks.reduce((n, t) => n + t.pts.length - 1, 0));
     expect(children(pcb, "gr_arc").length).toBe(d.board!.outline.filter((c) => c.bulge).length);
+  });
+
+  it("keeps which way a net label points, both ways round (#788)", () => {
+    const d = tangle();
+    const sheet = d.sheets[0]!;
+    const shapeOf = (name: string) => (name === "TEE" ? ("in" as const) : name === "OVER" ? ("both" as const) : undefined);
+    const shaped = {
+      ...d,
+      sheets: [{ ...sheet, labels: sheet.labels.map((l) => (shapeOf(l.name) ? { ...l, shape: shapeOf(l.name) } : l)) }, ...d.sheets.slice(1)],
+    };
+    const t = kicadProject(shaped, "tangle");
+    const root = parseSexpr(t.files.find((f) => f.name === "tangle.kicad_sch")!.text)[0] as Node[];
+    const shapes = new Map(children(root, "global_label").map((g) => [text(g), text(g.find((x) => Array.isArray(x) && x[0] === "shape") as Node[])]));
+    expect(shapes.get("TEE")).toBe("input");
+    expect(shapes.get("OVER")).toBe("bidirectional");
+    const back = importKicadProject(t.files.map((f) => ({ name: f.name, text: f.text })));
+    const named = new Map(back.design.sheets[0]!.labels.map((l) => [l.name, l.shape]));
+    expect(named.get("TEE")).toBe("in");
+    expect(named.get("OVER")).toBe("both");
+    expect([...named.values()].filter(Boolean)).toHaveLength(2);
   });
 
   it("cuts a wire where another joins it, and marks nets that span sheets as global", () => {

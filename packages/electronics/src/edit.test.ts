@@ -1,6 +1,8 @@
 import { GRID, capacitor, header, power, resistor } from "./basics";
 import {
   addLabel,
+  labelsNamed,
+  setLabelShape,
   addNote,
   addNoConnect,
   addWire,
@@ -247,5 +249,20 @@ describe("notes on a sheet (#733)", () => {
     expect(d.sheets[0]!.notes!.some((n) => n.id === t.id)).toBe(false);
     d = removeFromSheet(d, "sh1", [id]);
     expect(d.sheets[0]!.notes!.some((n) => n.id === id)).toBe(false);
+  });
+});
+
+describe("net label direction and ends (#788)", () => {
+  it("sets and clears a label's flag, and lists labels by name on every sheet", () => {
+    let d = addLabel(emptyDesign(), "sh1", "SDA", 0, 0);
+    d = addLabel(d, "sh1", "SDA", 10, 0);
+    const [a] = d.sheets[0]!.labels;
+    d = setLabelShape(d, "sh1", [a!.id], "out");
+    expect(d.sheets[0]!.labels[0]!.shape).toBe("out");
+    expect(d.sheets[0]!.labels[1]!.shape).toBeUndefined();
+    d = setLabelShape(d, "sh1", [a!.id], null);
+    expect("shape" in d.sheets[0]!.labels[0]!).toBe(false);
+    expect(labelsNamed(d, "SDA")).toHaveLength(2);
+    expect(labelsNamed(d, "SCL")).toEqual([]);
   });
 });

@@ -5,6 +5,7 @@ import {
   isPower,
   packageOf,
   type Board,
+  type NetLabel,
   type BoardRule,
   type BoardMark,
   type BoardLayer,
@@ -488,7 +489,7 @@ function sheetFile(
           ? [
               "hierarchical_label",
               s(localName(l.name, sheet)),
-              ["shape", "passive"],
+              ["shape", kicadShape(l.shape)],
               ["at", ...at([l.x, l.y]), n(rot)],
               font(1.27, ["justify", just]),
               ["uuid", uuidOf(l.id)],
@@ -499,7 +500,7 @@ function sheetFile(
     }
     out.push(
       o.global || across
-        ? ["global_label", s(l.name), ["shape", "passive"], ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just]), ["uuid", uuidOf(l.id)]]
+        ? ["global_label", s(l.name), ["shape", kicadShape(l.shape)], ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just]), ["uuid", uuidOf(l.id)]]
         : ["label", s(l.name), ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just, "bottom"]), ["uuid", uuidOf(l.id)]],
     );
   }
@@ -1209,4 +1210,9 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
     text: `# Where the parts came from\n\nThe symbols and footprints in \`${name}.kicad_sym\` and \`${name}.pretty\` were written by BetterCad from this design.\n\n${credits.join("\n")}\n`,
   });
   return { files, notes };
+}
+
+/** A net label's flag (#788) as KiCad names it. */
+function kicadShape(shape: NetLabel["shape"]): string {
+  return shape === "in" ? "input" : shape === "out" ? "output" : shape === "both" ? "bidirectional" : "passive";
 }
