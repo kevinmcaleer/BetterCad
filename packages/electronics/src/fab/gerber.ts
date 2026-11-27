@@ -341,6 +341,8 @@ function paintPour(w: Writer, shape: PourShape, islands: [number, number, number
   w.region(area);
   w.attr(".N");
   w.polarity(false);
+  // A hatched pour's openings (#747), before the rings and spokes, so spokes still cross them.
+  for (const sq of shape.holes) w.region(sq);
   const edge = shape.board[0];
   if (edge && !sameLoop(edge, area)) clearOutside(w, edge, [...edge, ...area]);
   for (const hole of shape.board.slice(1)) w.region(hole);

@@ -15,7 +15,7 @@ import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
 import { invertInk, setPicture } from "@bettercad/electronics/pcb/picture";
 import { setMark } from "@bettercad/electronics/pcb/marks";
-import { pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
+import { HATCH, pourFill, setKeepout, setPadJoin, setPour } from "@bettercad/electronics/pcb/pour";
 import {
   SCREWS,
   alignParts,
@@ -351,6 +351,47 @@ export default function BoardProps({
           />
           Join pads with spokes
         </label>
+        <label className="bc-field-label" htmlFor={`${ids}h`}>
+          Fill
+        </label>
+        <select
+          id={`${ids}h`}
+          className="bc-select"
+          value={pour.hatch ? "hatch" : "solid"}
+          onChange={({ target: { value } }) =>
+            change(
+              { hatch: value === "hatch" ? { ...HATCH, width: Math.max(HATCH.width, board.rules.minTrackWidth) } : null },
+              value === "hatch" ? "Hatch the pour" : "Fill the pour solid",
+            )
+          }
+        >
+          <option value="solid">Solid</option>
+          <option value="hatch">Hatched</option>
+        </select>
+        {pour.hatch && (
+          <div className="bc-ec-set-row">
+            <NumberField
+              label="Line width"
+              unit="mm"
+              value={pour.hatch.width}
+              min={0.05}
+              max={10}
+              step={0.05}
+              precision={3}
+              onCommit={(width) => change({ hatch: { ...pour.hatch!, width } }, "Change the hatching")}
+            />
+            <NumberField
+              label="Gap"
+              unit="mm"
+              value={pour.hatch.gap}
+              min={0.1}
+              max={20}
+              step={0.1}
+              precision={3}
+              onCommit={(gap) => change({ hatch: { ...pour.hatch!, gap } }, "Change the hatching")}
+            />
+          </div>
+        )}
         <label className="bc-field-label" htmlFor={`${ids}o`}>
           Where pours overlap
         </label>

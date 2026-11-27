@@ -641,6 +641,11 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
       ),
     );
     if (!sides.size) dropped.add("zones on inside layers past the fourth");
+    // A hatched zone (#747) keeps its lines and gaps; turned hatching comes in square to the board.
+    const fill = child(z, "fill");
+    const hatched = text(child(fill, "mode")) === "hatch";
+    const hatch = hatched ? { width: num(child(fill, "hatch_thickness"), 1, 0.25), gap: num(child(fill, "hatch_gap"), 1, 1) } : null;
+    if (hatched && num(child(fill, "hatch_orientation")) % 90) dropped.add("hatched zones turned at an angle, which came in square");
     for (const side of sides) {
       const priority = num(child(z, "priority"));
       board.pours.push({
@@ -650,6 +655,7 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
         outline,
         thermal: !pads?.some((x) => x === "yes" || x === "no"),
         ...(priority ? { priority } : {}),
+        ...(hatch ? { hatch } : {}),
       });
     }
   }

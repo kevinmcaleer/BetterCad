@@ -446,6 +446,14 @@ which pieces are islands that reach nothing; islands are dropped. Pads a pour jo
 and the board check both know. The card sets the net, the side, spokes or solid joins, and which pour fills first
 where two overlap. `pour-empty` (a warning) finds a pour that fills nothing. Spokes are set per pour, not per pad.
 
+**Hatched pours** (#747). A pour's Fill can be Hatched, with a line width and a gap (`pour.hatch`). `hatchHoles` cuts
+square openings `gap` wide on a grid of `width + gap` lined up with the board's origin, only where a whole line is
+left round the area's edge; they are taken out just after the area, so spokes still cross them, on screen and in the
+Gerber file alike, and the fill's grid leaves them bare so islands and joins stay right. The board check treats the
+lines as tracks: lines narrower than the least track width are an error. KiCad zones go out and come in with
+`(mode hatch)`, `hatch_thickness` and `hatch_gap` (hatching turned at an angle comes in square, with a note), and
+Eagle's `pour="hatch"` polygons come in with their width and their spacing less the width as the gap.
+
 **Keep-outs and cut-outs** (the Keep-out tool, O). The same corner-by-corner drawing makes an area tracks, vias and
 pours stay out of (parts too, if ticked in its card), or a hole of any shape cut through the board. Route stops at a
 keep-out when Keep clear is on, pours flow round it, and the board check lists what sits in one. Areas are picked by
@@ -872,7 +880,7 @@ How Eagle's things become ours:
 What does not come across, each listed when a project has it: copper on inside layers, blind and buried vias, buses
 as drawings, modules (design blocks) and what is inside them, frames and other symbols with no pins, dimensions,
 drawings on document, stop and cream layers, and logos (packages with no pads). Curved tracks come in as short
-straight pieces, and hatched pours as solid ones. Octagon pads come in drawn corner by corner, and a pad Eagle draws
+straight pieces. Hatched pours keep their hatching (#747). Octagon pads come in drawn corner by corner, and a pad Eagle draws
 off the middle of its hole ("offset") keeps its copper where Eagle has it (#744). Assembly variants are not
 read, apart from a part marked not populated. Files from Eagle older than 6 are binary and are refused with a note
 to save them from a newer Eagle. A board without its schematic does not open.

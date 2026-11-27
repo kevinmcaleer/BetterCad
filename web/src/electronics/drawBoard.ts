@@ -194,6 +194,11 @@ function paintPour(
     }
   };
   o.globalCompositeOperation = "destination-out";
+  // A hatched pour's openings (#747), then the rings round its own pads.
+  for (const sq of shape.holes) {
+    path(o, v, sq, true);
+    o.fill();
+  }
   shape.rings.forEach(knock);
   o.globalCompositeOperation = "source-over";
   o.lineCap = "butt";

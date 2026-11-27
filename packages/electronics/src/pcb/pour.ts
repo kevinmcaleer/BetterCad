@@ -29,6 +29,8 @@ export interface PourShape {
   rings: Knock[];
   spokes: { a: P2; b: P2; width: number }[];
   knocks: Knock[];
+  /** A hatched pour's openings (#747): squares of bare board between its lines, taken out just after the area. */
+  holes: P2[][];
 }
 
 /** The gap round a pad joined by spokes, and how wide a spoke is, mm. */
@@ -90,7 +92,42 @@ export function pourShape(d: ElectronicsDesign, pour: Pour, pads: BoardPad[] = b
   // Bare holes have no copper to measure from, so the fill stays back from the drill itself.
   for (const p of pads) if (p.pad.kind === "npth" && p.pad.drill) knocks.push({ pts: [p.at], r: p.pad.drill / 2, reach: rules.copperToEdge });
   for (const h of board.holes) if (!h.pad) knocks.push({ pts: [[h.x, h.y]], r: h.drill / 2, reach: rules.copperToEdge });
-  return { pour, outline: pour.outline, board: loops, rings, spokes, knocks };
+  return { pour, outline: pour.outline, board: loops, rings, spokes, knocks, holes: hatchHoles(pour) };
+}
+
+/** The most openings a hatched pour is cut into; past it the grid is made coarser. */
+const MAX_HOLES = 40_000;
+
+/**
+ * A hatched pour's openings (#747): squares `gap` wide on a grid of `width + gap`, lined up with the board's origin so
+ * neighbouring pours line up too. Only squares a whole line inside the area are cut, so a line runs all round its edge.
+ */
+export function hatchHoles(pour: Pick<Pour, "outline" | "hatch">): P2[][] {
+  const h = pour.hatch;
+  const out: P2[][] = [];
+  if (!h || !(h.gap > 0) || !(h.width > 0) || pour.outline.length < 3) return out;
+  const xs = pour.outline.map((p) => p[0]);
+  const ys = pour.outline.map((p) => p[1]);
+  const [x1, x2, y1, y2] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  let pitch = h.width + h.gap;
+  while (((x2 - x1) / pitch) * ((y2 - y1) / pitch) > MAX_HOLES) pitch *= 2;
+  const gap = pitch - h.width;
+  const edge = (p: P2) => {
+    let best = Infinity;
+    for (let i = 0; i < pour.outline.length; i += 1) best = Math.min(best, distToSegment(p, pour.outline[i]!, pour.outline[(i + 1) % pour.outline.length]!));
+    return best;
+  };
+  for (let x = Math.ceil((x1 + h.width) / pitch) * pitch + h.width / 2; x + gap <= x2 - h.width + 1e-9; x += pitch)
+    for (let y = Math.ceil((y1 + h.width) / pitch) * pitch + h.width / 2; y + gap <= y2 - h.width + 1e-9; y += pitch) {
+      const sq: P2[] = [
+        [x, y],
+        [x + gap, y],
+        [x + gap, y + gap],
+        [x, y + gap],
+      ];
+      if (sq.every((p) => pointInPolygon(p, pour.outline) && edge(p) >= h.width - 1e-9)) out.push(sq);
+    }
+  return out;
 }
 
 /** How far a point is from a core: 0 inside an outline. */
@@ -194,6 +231,15 @@ export function pourFill(
       if (far > k.r && !spokeAt[i]) cells[i] = 0;
     });
   for (const k of shape.knocks) near(k, k.r + k.reach + step / 2, (i) => (cells[i] = 0));
+  // A hatched pour's openings: cells well inside one are bare, so the grid never cuts a line it should keep.
+  for (const sq of shape.holes) {
+    const [a, b] = [sq[0]!, sq[2]!];
+    const i1 = Math.max(0, Math.ceil((a[0] + step / 2 - x0) / step));
+    const i2 = Math.min(w - 1, Math.floor((b[0] - step / 2 - x0) / step));
+    const j1 = Math.max(0, Math.ceil((a[1] + step / 2 - y0) / step));
+    const j2 = Math.min(h - 1, Math.floor((b[1] - step / 2 - y0) / step));
+    for (let j = j1; j <= j2; j += 1) for (let i = i1; i <= i2; i += 1) if (!spokeAt[j * w + i]) cells[j * w + i] = 0;
+  }
 
   // Pieces: copper cells that touch side to side.
   let pieces = 0;
@@ -283,9 +329,25 @@ export function setPadJoin(d: ElectronicsDesign, part: Id, pad: string, how?: "s
   }));
 }
 
-export function setPour(d: ElectronicsDesign, id: Id, change: Partial<Pick<Pour, "net" | "layer" | "thermal" | "priority">>): ElectronicsDesign {
-  return onBoard(d, (b) => ({ ...b, pours: b.pours.map((p) => (p.id === id ? { ...p, ...change } : p)) }));
+export function setPour(
+  d: ElectronicsDesign,
+  id: Id,
+  change: Partial<Pick<Pour, "net" | "layer" | "thermal" | "priority">> & { hatch?: Pour["hatch"] | null },
+): ElectronicsDesign {
+  return onBoard(d, (b) => ({
+    ...b,
+    pours: b.pours.map((p) => {
+      if (p.id !== id) return p;
+      const next = { ...p, ...change } as Pour & { hatch?: Pour["hatch"] | null };
+      // Solid again: no hatch kept.
+      if (!next.hatch) delete next.hatch;
+      return next as Pour;
+    }),
+  }));
 }
+
+/** What a hatched pour starts with: lines as wide as a track, and a millimetre between them. */
+export const HATCH = { width: 0.25, gap: 1 };
 
 /** The board's own outline as an area, for a pour over the whole board. */
 export const wholeBoard = (board: Pick<Board, "outline">): P2[] => outlinePoints(board.outline, 0.02);

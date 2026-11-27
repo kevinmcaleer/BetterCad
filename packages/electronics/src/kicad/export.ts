@@ -763,7 +763,20 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       p.thermal === false ? ["connect_pads", "yes", ["clearance", n(gap)]] : ["connect_pads", ["clearance", n(gap)]],
       ["min_thickness", n(Math.max(0.1, board.rules.minTrackWidth))],
       ["filled_areas_thickness", "no"],
-      ["fill", ["thermal_gap", n(THERMAL_GAP)], ["thermal_bridge_width", n(SPOKE)]],
+      [
+        "fill",
+        ...(p.hatch ? [["mode", "hatch"] as Node[]] : []),
+        ["thermal_gap", n(THERMAL_GAP)],
+        ["thermal_bridge_width", n(SPOKE)],
+        // A hatched pour (#747): KiCad's lines, gaps and their turn.
+        ...(p.hatch
+          ? ([
+              ["hatch_thickness", n(p.hatch.width)],
+              ["hatch_gap", n(p.hatch.gap)],
+              ["hatch_orientation", "0"],
+            ] as Node[])
+          : []),
+      ],
       ["polygon", ["pts", ...p.outline.map((q) => ["xy", ...at(q)])]],
     ]);
   }

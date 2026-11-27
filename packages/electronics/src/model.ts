@@ -401,6 +401,8 @@ export interface Pour {
   thermal?: boolean;
   /** Higher fills first where pours overlap. */
   priority?: number;
+  /** Filled as a grid of lines instead of solid (#747): each line this wide, with this much bare board between, mm. */
+  hatch?: { width: number; gap: number };
 }
 
 export type BoardLayer = "silk-top" | "silk-bottom" | "copper-top" | "copper-bottom";

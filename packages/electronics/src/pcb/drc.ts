@@ -312,6 +312,16 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
         "Pick the track and make it wider.",
         t.pts[0],
       );
+  // A hatched pour's lines are tracks to the board house (#747).
+  for (const p of board.pours)
+    if (p.hatch && p.hatch.width < rules.minTrackWidth - 1e-6)
+      add(
+        "track-width",
+        p.id,
+        `The hatched pour on ${p.net || "no net"} has lines ${mm(p.hatch.width)} wide. The narrowest the rules allow is ${mm(rules.minTrackWidth)}.`,
+        "Pick the pour and make its lines wider.",
+        p.outline[0],
+      );
 
   // Holes: size, the copper round them, and how close they sit.
   const holes: Hole[] = [];
