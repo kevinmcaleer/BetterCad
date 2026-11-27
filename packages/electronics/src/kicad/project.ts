@@ -35,6 +35,7 @@ import { footprintIn } from "./footprint";
 import { unstack, type ImportFile } from "./import";
 import { arcFrom3, child, children, flag, head, isList, num, parseSexpr, text, type Node } from "./sexpr";
 import { symbolsIn, type KicadSymbol } from "./symbol";
+import { bulgeThrough } from "../trackArcs";
 
 /**
  * Opening a KiCad project (#663): its schematic, sheet by sheet, and its board, as one design. KiCad 6 and later
@@ -644,39 +645,21 @@ function readBoard(tree: Node[], refs: Set<string>, notes: ProjectImport["notes"
   }
   board.placements = pending;
 
-  // Tracks: KiCad keeps each straight piece on its own; pieces that run on from each other are joined.
-  const runs = new Map<string, { net: string; layer: CopperLayer; width: number; pieces: [P2, P2][] }>();
-  const piece = (net: string, layer: string, width: number, a: P2, b: P2) => {
+  // Tracks: KiCad keeps each piece on its own; pieces that run on from each other are joined.
+  const runs = new Map<string, { net: string; layer: CopperLayer; width: number; pieces: [P2, P2, number?][] }>();
+  const piece = (net: string, layer: string, width: number, a: P2, b: P2, bulge = 0) => {
     const side = copperOf(layer, inner);
     if (!side) return dropped.add("tracks on inside layers past the fourth");
     const key = `${net}|${side}|${width}`;
     if (!runs.has(key)) runs.set(key, { net, layer: side, width, pieces: [] });
-    runs.get(key)!.pieces.push([a, b]);
+    runs.get(key)!.pieces.push(bulge ? [a, b, bulge] : [a, b]);
   };
   for (const s of children(tree, "segment")) piece(netOf(s), text(child(s, "layer")), num(child(s, "width")), pt(child(s, "start")), pt(child(s, "end")));
-  let arcs = 0;
+  // A curved track (#755) comes in as a curve: its bulge is worked out from KiCad's start, middle and end.
   for (const s of children(tree, "arc")) {
     const [a, m, b] = [pt(child(s, "start")), pt(child(s, "mid")), pt(child(s, "end"))];
-    const arc = arcFrom3(a, m, b);
-    arcs += 1;
-    if (!arc) {
-      piece(netOf(s), text(child(s, "layer")), num(child(s, "width")), a, b);
-      continue;
-    }
-    // A curved track goes in as short straight pieces, from its start to its end.
-    const ccw = (m[0] - a[0]) * (b[1] - a[1]) - (m[1] - a[1]) * (b[0] - a[0]) > 0;
-    const sweep = arc.a1 - arc.a0;
-    // Close enough that the chords stay within half a micron of the curve, which is the grace the board check gives.
-    const n = Math.max(2, Math.ceil(sweep / ((360 / Math.PI) * Math.acos(Math.max(0, 1 - 0.0005 / Math.max(arc.r, 0.01))))));
-    let last = a;
-    for (let i = 1; i <= n; i += 1) {
-      const t = ((ccw ? arc.a0 + (sweep * i) / n : arc.a1 - (sweep * i) / n) * Math.PI) / 180;
-      const next: P2 = i === n ? b : [r4(arc.cx + arc.r * Math.cos(t)), r4(arc.cy + arc.r * Math.sin(t))];
-      piece(netOf(s), text(child(s, "layer")), num(child(s, "width")), last, next);
-      last = next;
-    }
+    piece(netOf(s), text(child(s, "layer")), num(child(s, "width")), a, b, bulgeThrough(a, m, b));
   }
-  if (arcs) notes.push({ name: "Board", why: `${arcs} curved ${arcs === 1 ? "track" : "tracks"} came in as short straight pieces` });
   board.tracks.push(...joinRuns(runs.values()));
   // KiCad 8 and later keep teardrops as a setting on each via and pad, too.
   const drops = (n: Node[]) => text(child(child(n, "teardrops"), "enabled"), 1) === "yes";

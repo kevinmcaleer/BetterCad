@@ -111,6 +111,16 @@ describe("Autoroute (#647)", () => {
     expect(checkBoard(made.design())).toEqual([]);
   });
 
+  it("rounds the corners when asked (#755)", async () => {
+    const { d } = board();
+    const made = setup(d);
+    await userEvent.selectOptions(screen.getByLabelText("Track corners"), "Rounded, 1 mm");
+    await userEvent.click(screen.getByRole("button", { name: "Route" }));
+    await screen.findByText(/^Routed 2 of 2 connections\./);
+    expect(made.design().board!.tracks.some((t) => t.arcs?.some((b) => b !== 0))).toBe(true);
+    expect(checkBoard(made.design())).toEqual([]);
+  });
+
   it("routes only the picked part's connections, on one side when asked", async () => {
     const { d, parts } = board();
     const made = setup(d);

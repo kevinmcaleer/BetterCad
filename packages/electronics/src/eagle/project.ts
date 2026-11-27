@@ -25,7 +25,6 @@ import { netlist, pinKey } from "../nets";
 import { netPins } from "../sync";
 import {
   RESTRING,
-  chordsOf,
   componentOf,
   lengthOf,
   libraryIn,
@@ -40,6 +39,7 @@ import {
   type Restring,
 } from "./library";
 import { kid, kids, numOf, parseXml, type El } from "./xml";
+import { bulgeOfTurn } from "../trackArcs";
 
 /**
  * Opening an Eagle project (#665): its schematic and its board, as one design. Eagle 6 and later and Fusion
@@ -153,7 +153,6 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
   const padNets = new Map<string, Map<string, string>>();
   const runs = new Map<string, Run>();
   const classNets = new Map<string, string[]>();
-  let curved = 0;
   let inner = 0;
   // Inner layers (#648): Eagle numbers them 2 to 15. Those with copper on them become Inner 1 up, in order, to the fourth.
   const used = new Set<number>();
@@ -191,13 +190,9 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
         const key = `${net}|${side}|${width}`;
         if (!runs.has(key)) runs.set(key, { net, layer: side, width, pieces: [] });
         const [a, b] = [at(pOf(item, "x1", "y1")), at(pOf(item, "x2", "y2"))];
+        // A curved wire (#755) stays a curve: Eagle's `curve` is how far round it turns, anticlockwise.
         const curve = numOf(item, "curve");
-        if (curve) curved += 1;
-        let last = a;
-        for (const next of curve ? chordsOf(a, b, curve) : [b]) {
-          runs.get(key)!.pieces.push([last, next]);
-          last = next;
-        }
+        runs.get(key)!.pieces.push(curve ? [a, b, bulgeOfTurn(curve)] : [a, b]);
       } else if (item.tag === "via") {
         const extent = (item.attrs.extent ?? "1-16").split("-").map(Number);
         const through = Math.min(...extent) === 1 && Math.max(...extent) === 16;
@@ -247,7 +242,6 @@ function readBoard(root: El, refs: Set<string>, notes: Notes): BoardRead {
     }
   }
   board.tracks.push(...joinRuns(runs.values()));
-  if (curved) notes.push({ name: "Board", why: `${curved} curved ${curved === 1 ? "track" : "tracks"} came in as short straight pieces` });
   if (inner)
     notes.push({
       name: "Board",

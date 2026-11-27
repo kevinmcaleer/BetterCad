@@ -374,6 +374,11 @@ export interface Track {
   layer: CopperLayer;
   width: number;
   pts: P2[];
+  /**
+   * Curved pieces (#755): the bulge of each piece between two points, as an outline corner's (tan of a quarter of
+   * its turn, positive anticlockwise, 0 straight). None, or a list of another length: every piece is straight.
+   */
+  arcs?: number[];
 }
 
 export interface Via {

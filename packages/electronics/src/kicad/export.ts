@@ -32,6 +32,7 @@ import { boardTextLook } from "../fab/font";
 import { pictureRects } from "../pcb/picture";
 import { layersOf, viaKind, viaLayers } from "../pcb/stack";
 import { Str, writeSexpr, type Node } from "./sexpr";
+import { arcMid, bulgeOf } from "../trackArcs";
 
 /**
  * Leaving with the whole design (#664): a KiCad project with the schematic, the board and a library of the symbols
@@ -796,16 +797,20 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
   }
 
   for (const t of board.tracks)
-    for (let i = 0; i + 1 < t.pts.length; i += 1)
+    for (let i = 0; i + 1 < t.pts.length; i += 1) {
+      // A curved piece (#755) is KiCad's arc: its start, the point halfway round, and its end.
+      const bulge = bulgeOf(t, i);
       out.push([
-        "segment",
+        bulge ? "arc" : "segment",
         ["start", ...at(t.pts[i]!)],
+        ...(bulge ? [["mid", ...at(arcMid(t.pts[i]!, t.pts[i + 1]!, bulge))]] : []),
         ["end", ...at(t.pts[i + 1]!)],
         ["width", n(t.width)],
         ["layer", s(copperLayer(t.layer))],
         net(t.net),
         ["tstamp", uuidOf(`${t.id}:${i}`)],
       ]);
+    }
   for (const v of board.vias) {
     const on = viaLayers(board, v);
     out.push([

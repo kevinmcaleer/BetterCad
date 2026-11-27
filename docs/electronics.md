@@ -295,6 +295,17 @@ the Width list. With Keep clear on, `blockers` stops a piece that would come clo
 than the rules allow, and says what is in the way; turn it off to route anywhere and let the board check find it.
 Pieces laid one after another become one track. Push and walk-round are below (#646, #753); the autorouter is #647.
 
+**Curved tracks** (#755, `trackArcs.ts`). A track's `arcs` give each piece between two points a bulge, the way an
+outline corner does (tan of a quarter of its turn, positive anticlockwise). A list that doesn't line up with the
+pieces is ignored. Everything that only needs the shape reads `trackPath` or `trackBits`, the curve cut into chords
+within 5 µm: the board's copper list, so the board check, pours, joins and the router; drawing and picking; and
+teardrops. Lengths (`trackLength`, `netLength`, the inspector) run along the curve. Sliding a piece keeps the bulge
+of the pieces either side as their ends move. Push only moves straight pieces, so a curve in the way is walked round.
+Wiggles go on straight pieces only. Gerber draws each curved piece as an arc (G02 or G03), KiCad gets `arc` with a
+middle point, and KiCad and Eagle curves come in as curves (Eagle's `curve` is the turn in degrees). We write no
+Eagle files. Autoroute's Corners option, Rounded, makes each corner of a run an arc of 1 mm (`roundCorners`) where
+that keeps clear, taking at most half of either piece.
+
 **Placing.** Drag parts on the grid (0.1 to 2.54 mm, in Layers), or pick one and type X, Y and turn in the part
 card. Lock (K) pins parts down; with several picked, the card lines them up or spaces them evenly. A part picked on
 the schematic stays picked on the board.
@@ -881,7 +892,7 @@ What does not come across, each listed in the dialog when a project has it: copp
 bottom still come in), blind and buried vias, buses as drawings (their wires still join by name), group buses
 between sheets, pictures, text boxes and shapes on a sheet, net class flags, dimensions other than straight ones
 (leaders, radii, centre marks), drawings on user layers, paste and mask drawings in footprints, symbols drawn in their alternate (De Morgan) style, and power
-flags. Curved tracks come in as short straight pieces, within 0.5 µm of the curve. A pad whose copper sits off the
+flags. Curved tracks come in as curves (#755), their bulge worked out from KiCad's start, middle and end. A pad whose copper sits off the
 middle of its hole keeps it there (#744). Text keeps its place, size, turn and lines, and its letters' own width and
 its mirror flag both ways (#751): `mirror` on a board text reads it the other way from its side's usual, and `width`
 is a letter's width where it differs from its height (`boardTextLook` in `fab/font.ts`). A board without its

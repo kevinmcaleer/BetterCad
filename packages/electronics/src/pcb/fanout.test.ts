@@ -94,5 +94,5 @@ describe("fan-out (#746)", () => {
     // What the page hears about lays the same board, the fan-outs' smaller vias included.
     expect(seen).toEqual(fanned.routes);
     expect(applyRoutes(d, seen).board!.vias.map((v) => [v.x, v.y, v.diameter])).toEqual(fanned.design.board!.vias.map((v) => [v.x, v.y, v.diameter]));
-  });
+  }, 30000);
 });

@@ -1,6 +1,18 @@
 import { arcOf, boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
 import { distToSegment, placeOnBoard, rad, segmentDistance } from "../geom";
-import { packageOf, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Pad, type Pour, type Shape, type Side } from "../model";
+import {
+  packageOf,
+  type Board,
+  type CopperLayer,
+  type Corner,
+  type ElectronicsDesign,
+  type P2,
+  type Pad,
+  type Pour,
+  type Shape,
+  type Side,
+  type Track,
+} from "../model";
 import { netlist, type Netlist } from "../nets";
 import { copperOf, type Copper, type Solid } from "../pcb/copper";
 import { fillRects, pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
@@ -9,6 +21,7 @@ import { pictureRects } from "../pcb/picture";
 import { teardrops } from "../pcb/teardrops";
 import { noteStrokes } from "../pcb/notes";
 import { layerName, layersOf, viaLayers, viaOpen } from "../pcb/stack";
+import { arcOn, bulgeOf, curved } from "../trackArcs";
 
 /**
  * Gerber files for a board (#655): one RS-274X file per layer with X2 attributes, in millimetres, as every board
@@ -199,6 +212,20 @@ class Writer {
     this.use(code);
     this.body.push(`X${co(pts[0]![0])}Y${co(pts[0]![1])}D02*`);
     for (const p of close ? [...pts.slice(1), pts[0]!] : pts.slice(1)) this.body.push(`X${co(p[0])}Y${co(p[1])}D01*`);
+  }
+
+  /** A run of track with the pen `code`, its curved pieces (#755) drawn as arcs. */
+  track(code: number, t: Pick<Track, "pts" | "arcs">) {
+    if (!curved(t)) return this.line(code, t.pts);
+    this.use(code);
+    this.body.push(`X${co(t.pts[0]![0])}Y${co(t.pts[0]![1])}D02*`);
+    t.pts.slice(1).forEach((b, i) => {
+      const a = t.pts[i]!;
+      const bulge = bulgeOf(t, i);
+      const arc = arcOn(a, b, bulge);
+      if (arc) this.arcTo([arc.cx, arc.cy], a, b, bulge < 0);
+      else this.body.push(`X${co(b[0])}Y${co(b[1])}D01*`);
+    });
   }
 
   /** An arc about `c` from `a` to `b`, anticlockwise unless `clockwise`. Equal ends make a full circle. */
@@ -473,7 +500,7 @@ function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads:
   for (const t of board.tracks) {
     if (t.layer !== side) continue;
     w.attr(".N", field(t.net));
-    w.line(w.circle(t.width, "Conductor"), t.pts);
+    w.track(w.circle(t.width, "Conductor"), t);
   }
   // Teardrops (#743): filled flares where tracks meet pads and vias.
   for (const t of teardrops(d, pads, copper)) {

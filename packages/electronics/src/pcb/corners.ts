@@ -7,6 +7,7 @@
 import { q } from "../geom";
 import type { Board, Corner, ElectronicsDesign, Id, P2 } from "../model";
 import { corner45, tidyRun } from "./route";
+import { withPts } from "../trackArcs";
 
 const onBoard = (d: ElectronicsDesign, change: (b: Board) => Board): ElectronicsDesign => {
   const next = d.board && change(d.board);
@@ -39,7 +40,7 @@ export function moveTrackCorner(d: ElectronicsDesign, id: Id, i: number, to: P2)
   return onBoard(d, (b) => {
     const t = b.tracks.find((x) => x.id === id);
     const pts = t && cornerMoved(t.pts, i, to);
-    return t && pts ? { ...b, tracks: b.tracks.map((x) => (x === t ? { ...t, pts } : x)) } : b;
+    return t && pts ? { ...b, tracks: b.tracks.map((x) => (x === t ? withPts(t, pts) : x)) } : b;
   });
 }
 

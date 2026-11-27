@@ -1,6 +1,7 @@
 import { eid, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Part, type Track } from "./model";
 import { pinKey, type Netlist } from "./nets";
 import { area } from "./outlineGeom";
+import { arcsIfAny } from "./trackArcs";
 
 /**
  * What the readers of other tools' boards share (#663, #665): counting what was left out, closing the lines of an
@@ -76,10 +77,11 @@ export interface Run {
   net: string;
   layer: CopperLayer;
   width: number;
-  pieces: [P2, P2][];
+  /** Each piece from one point to another, with its bulge when it is curved (#755). */
+  pieces: [P2, P2, number?][];
 }
 
-/** Tracks from straight pieces: pieces of one net, side and width that run on from each other are joined. */
+/** Tracks from pieces: pieces of one net, side and width that run on from each other are joined. Curves stay curves. */
 export function joinRuns(runs: Iterable<Run>): Track[] {
   const tracks: Track[] = [];
   const k = (p: P2) => `${Math.round(p[0] * 1e3)},${Math.round(p[1] * 1e3)}`;
@@ -88,7 +90,9 @@ export function joinRuns(runs: Iterable<Run>): Track[] {
     for (const [a, b] of run.pieces) for (const p of [a, b]) ends.set(k(p), (ends.get(k(p)) ?? 0) + 1);
     const left = [...run.pieces];
     while (left.length) {
-      const pts: P2[] = [...left.shift()!];
+      const [a0, b0, w0] = left.shift()!;
+      const pts: P2[] = [a0, b0];
+      const arcs: number[] = [w0 ?? 0];
       for (const front of [false, true]) {
         for (;;) {
           const tip = front ? pts[0]! : pts[pts.length - 1]!;
@@ -96,13 +100,20 @@ export function joinRuns(runs: Iterable<Run>): Track[] {
           if (ends.get(k(tip)) !== 2) break;
           const i = left.findIndex(([a, b]) => k(a) === k(tip) || k(b) === k(tip));
           if (i < 0) break;
-          const [a, b] = left.splice(i, 1)[0]!;
-          const next = k(a) === k(tip) ? b : a;
-          if (front) pts.unshift(next);
-          else pts.push(next);
+          const [a, b, w = 0] = left.splice(i, 1)[0]!;
+          const forward = k(a) === k(tip);
+          const next = forward ? b : a;
+          // A curve walked the other way round bends the other way.
+          if (front) {
+            pts.unshift(next);
+            arcs.unshift(forward ? -w : w);
+          } else {
+            pts.push(next);
+            arcs.push(forward ? w : -w);
+          }
         }
       }
-      tracks.push({ id: eid("t"), net: run.net, layer: run.layer, width: run.width, pts });
+      tracks.push({ id: eid("t"), net: run.net, layer: run.layer, width: run.width, pts, ...arcsIfAny(arcs) });
     }
   }
   return tracks;

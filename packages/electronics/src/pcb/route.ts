@@ -3,6 +3,7 @@ import { key, q } from "../geom";
 import { eid, isPower, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type Id, type P2, type Placement, type ViaMask } from "../model";
 import { clearanceBetween, edgeGap, gap, netRules, type Copper, type Layer, type Solid } from "./copper";
 import { layersOf, viaLayers } from "./stack";
+import { bulgeOf, curved, pathLength } from "../trackArcs";
 
 /**
  * A path from `a` to `b` with one 45° bend (#640): a straight run along x or y and a diagonal. `diagonalFirst`
@@ -81,15 +82,21 @@ export function tidyRun(pts: P2[]): P2[] {
  * Lays a track. With no width given it takes its net's from the rules. A run that starts where a track of the same
  * net, layer and width ends carries that track on, so a route laid click by click stays one track.
  */
-export function addTrack(d: ElectronicsDesign, net: string, layer: CopperLayer, pts: P2[], width?: number): ElectronicsDesign {
-  const run = tidyRun(pts);
+export function addTrack(d: ElectronicsDesign, net: string, layer: CopperLayer, pts: P2[], width?: number, arcs?: number[]): ElectronicsDesign {
+  // A run with curves (#755) keeps its points as they are, so each bulge stays with its piece.
+  const bent = !!arcs && arcs.length === pts.length - 1 && arcs.some((x) => Math.abs(x) > 1e-9);
+  const run = bent ? pts : tidyRun(pts);
   if (run.length < 2) return d;
   return onBoard(d, (b) => {
     const w = width ?? netRules(b, net).trackWidth;
     const same = (p: P2, o: P2) => key(p[0], p[1]) === key(o[0], o[1]);
     const on = b.tracks.find((t) => t.net === net && t.layer === layer && Math.abs(t.width - w) < 1e-9 && same(t.pts[t.pts.length - 1]!, run[0]!));
+    if (on && (bent || curved(on))) {
+      const joined = [...on.pts.map((_, i) => bulgeOf(on, i)).slice(0, -1), ...(bent ? arcs! : run.slice(1).map(() => 0))];
+      return { ...b, tracks: b.tracks.map((t) => (t === on ? { ...t, pts: [...on.pts, ...run.slice(1)], arcs: joined } : t)) };
+    }
     if (on) return { ...b, tracks: b.tracks.map((t) => (t === on ? { ...t, pts: tidyRun([...t.pts, ...run]) } : t)) };
-    return { ...b, tracks: [...b.tracks, { id: eid("tr"), net, layer, width: w, pts: run }] };
+    return { ...b, tracks: [...b.tracks, { id: eid("tr"), net, layer, width: w, pts: run, ...(bent ? { arcs: [...arcs!] } : {}) }] };
   });
 }
 
@@ -123,7 +130,7 @@ export function setVia(d: ElectronicsDesign, id: Id, change: { diameter?: number
 /** What the autorouter (#647) lays for one connection: a run of track on each side it uses, and the vias between. */
 export interface Route {
   net: string;
-  tracks: { layer: Layer; pts: P2[] }[];
+  tracks: { layer: Layer; pts: P2[]; arcs?: number[] }[];
   vias: P2[];
   /** A size for its vias other than the net's: a fan-out's smaller ones (#746). */
   viaSize?: { diameter: number; drill: number };
@@ -132,7 +139,7 @@ export interface Route {
 /** Lays routes the autorouter found. */
 export function applyRoutes(d: ElectronicsDesign, routes: Route[]): ElectronicsDesign {
   for (const r of routes) {
-    for (const t of r.tracks) d = addTrack(d, r.net, t.layer, t.pts);
+    for (const t of r.tracks) d = addTrack(d, r.net, t.layer, t.pts, undefined, t.arcs);
     for (const v of r.vias) {
       d = addVia(d, r.net, v[0], v[1]);
       const made = r.viaSize && d.board?.vias.find((x) => x.net === r.net && key(x.x, x.y) === key(v[0], v[1]));
@@ -143,7 +150,7 @@ export function applyRoutes(d: ElectronicsDesign, routes: Route[]): ElectronicsD
 }
 
 /** How long a track is, mm. */
-export const trackLength = (pts: P2[]): number => pts.slice(1).reduce((n, p, i) => n + Math.hypot(p[0] - pts[i]![0], p[1] - pts[i]![1]), 0);
+export const trackLength = (pts: P2[], arcs?: number[]): number => pathLength({ pts, ...(arcs ? { arcs } : {}) });
 
 /** Deletes every track and via of a net. */
 export function ripUpNet(d: ElectronicsDesign, net: string): ElectronicsDesign {

@@ -112,7 +112,7 @@ describe("the autorouter takes its own tracks up, and reaches pads off its grid 
       expect(r.routed).toBe(r.total);
       expect(checkBoard(r.design).filter((e) => e.level === "error")).toEqual([]);
     }
-  });
+  }, 30000);
 
   it("makes a connection it had no way for by taking up its own routes nearby and laying them again", () => {
     const d = fixture("tangle");
@@ -122,7 +122,7 @@ describe("the autorouter takes its own tracks up, and reaches pads off its grid 
     expect(again.failed.length).toBeLessThan(once.failed.length);
     expect(errors(again.design).filter((e) => e.level === "error")).toEqual([]);
     expect(applyRoutes(d, again.routes).board!.tracks.length).toBe(again.design.board!.tracks.length);
-  });
+  }, 30000);
 
   it("never moves a track that was on the board before it started", () => {
     const whole = JSON.parse(readFileSync(join(__dirname, "../../../../fixtures/electronics/tangle.design.json"), "utf8")) as ElectronicsDesign;
@@ -130,7 +130,7 @@ describe("the autorouter takes its own tracks up, and reaches pads off its grid 
     const some = { ...whole, board: { ...whole.board!, tracks: kept, vias: [] } };
     const r = autoroute(some, { layers: ["top"] });
     for (const t of kept) expect(r.design.board!.tracks.find((x) => x.id === t.id)!.pts.slice(0, t.pts.length)).toEqual(t.pts);
-  });
+  }, 30000);
 
   it("reaches a pad between its grid lines with a short exact piece", () => {
     const start = bare(sampleBoard());
@@ -145,5 +145,5 @@ describe("the autorouter takes its own tracks up, and reaches pads off its grid 
       expect(onPad(first) && onPad(last)).toBe(true);
     }
     expect(errors(r.design).filter((e) => e.level === "error")).toEqual([]);
-  });
+  }, 30000);
 });

@@ -8,6 +8,7 @@ export { applyRoutes, type Route };
 import { layersOf } from "./stack";
 import { boardState } from "./state";
 import { fanOut } from "./fanout";
+import { curved, roundCorners, trackBits, trackPath } from "../trackArcs";
 
 /**
  * The autorouter (#647): routes the connections still to make, the short ones first, on a fine grid over every
@@ -42,6 +43,8 @@ export interface AutorouteOptions {
   viaCost?: number;
   /** Fan out the surface pads it could not get away from, then try them again (#746). None: yes. */
   fanout?: boolean;
+  /** Round each run's corners into arcs of this radius, mm (#755). None: sharp 45° corners. */
+  round?: number;
   /** Take up its own routes near a connection it could not make, make that one, then lay them again (#754). None: yes. */
   ripUp?: boolean;
   /** How long it may spend taking routes up, ms. None: 8 s. */
@@ -183,6 +186,7 @@ class Router {
   private layers: Layer[];
   private allowed: boolean[];
   private viaCost: number;
+  private round: number;
   // The search's own arrays, kept between searches; `mark` says which search a cell's numbers belong to.
   private cost: Float32Array;
   private from: Int32Array;
@@ -221,6 +225,7 @@ class Router {
     this.allowed = layers.map((l) => (!opts.layers || opts.layers.includes(l)) && (l === "top" || l === "bottom" || !board.pours.some((p) => p.layer === l)));
     const size = layers.length * n;
     this.viaCost = opts.viaCost ?? 4;
+    this.round = opts.round ?? 0;
     this.cost = new Float32Array(size + 1);
     this.from = new Int32Array(size + 1);
     this.dir = new Int8Array(size + 1);
@@ -569,21 +574,29 @@ class Router {
 
     // Measured the way a track drawn by hand is, before it is kept.
     const rules = netRules(this.board, net);
-    for (const t of route.tracks) if (blockers(this.board, this.copper, this.loops, { net, layers: [t.layer], pts: t.pts, width: s.width }).length) return null;
+    const clear = (t: { layer: Layer; pts: P2[]; arcs?: number[] }) =>
+      !blockers(this.board, this.copper, this.loops, { net, layers: [t.layer], pts: trackPath(t), width: s.width }).length;
+    for (const t of route.tracks) if (!clear(t)) return null;
+    // Rounded corners (#755): each run's corners become arcs, unless that brings it too close to something.
+    if (this.round > 0)
+      route.tracks = route.tracks.map((t) => {
+        const rounded = { layer: t.layer, ...roundCorners(t, this.round) };
+        return curved(rounded) && clear(rounded) ? rounded : t;
+      });
     for (const v of route.vias)
       if (blockers(this.board, this.copper, this.loops, { net, layers: this.layers, pts: [v], width: rules.viaDiameter }).length) return null;
 
     for (const t of route.tracks)
-      for (let k = 0; k + 1 < t.pts.length; k += 1)
+      for (const { a, b } of trackBits(t))
         this.copper.push({
-          pts: [t.pts[k]!, t.pts[k + 1]!],
+          pts: [a, b],
           r: s.width / 2,
           kind: "track",
           net,
           layers: [t.layer],
           id: "",
           what: `a track on ${net}`,
-          at: t.pts[k]!,
+          at: a,
         });
     for (const v of route.vias) {
       this.copper.push({ pts: [v], r: rules.viaDiameter / 2, kind: "via", net, layers: this.layers, id: "", what: `a via on ${net}`, at: v });

@@ -13,6 +13,7 @@ import type { CopperLayer, ElectronicsDesign, Id, P2, Track, Via } from "../mode
 import { clearanceBetween, copperOf, edgeLoops, gap, netRules, type Copper, type Layer, type Solid } from "./copper";
 import { blockers, corner45, tidyRun } from "./route";
 import { slidePiece, slideTrack } from "./slide";
+import { bulgeOf, curved, trackBits, trackPath } from "../trackArcs";
 import { viaLayers } from "./stack";
 
 export interface Run {
@@ -31,7 +32,10 @@ interface Pusher {
   self?: Id;
 }
 
-const piecesOf = (r: Pick<Run, "pts" | "width">): Solid[] => r.pts.slice(1).map((b, i) => ({ pts: [r.pts[i]!, b], r: r.width / 2 }));
+/** The short straight bits of a run, curves cut into chords (#755), each with the piece of the run it is part of. */
+const bitsOf = (r: Pick<Track, "pts" | "width" | "arcs">): { solid: Solid; piece: number }[] =>
+  trackBits(r).map((b) => ({ solid: { pts: [b.a, b.b], r: r.width / 2 }, piece: b.piece }));
+const piecesOf = (r: Pick<Track, "pts" | "width" | "arcs">): Solid[] => bitsOf(r).map((b) => b.solid);
 const sub = (a: P2, b: P2): P2 => [a[0] - b[0], a[1] - b[1]];
 const dot = (a: P2, b: P2): number => a[0] * b[0] + a[1] * b[1];
 const same = (a: P2, b: P2): boolean => Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[1] - b[1]) < 1e-4;
@@ -113,7 +117,7 @@ function pushFrom(d: ElectronicsDesign, start: Pusher): { design: ElectronicsDes
         for (const t of board.tracks) {
           if (!by.layers.includes(t.layer) || t.id === by.self || (t.net && t.net === by.net)) continue;
           const need = clearanceBetween(board, by.net, t.net);
-          const hits = piecesOf(t).flatMap((p, k) => (mine.some((m) => gap(m, p) < need - 1e-6) ? [k] : []));
+          const hits = [...new Set(bitsOf(t).flatMap((b) => (mine.some((m) => gap(m, b.solid) < need - 1e-6) ? [b.piece] : [])))];
           if (hits.length) {
             // Of the pieces too close, the one that lies most beside what pushes: a piece met end on has no side to go to.
             const i = hits.reduce((b, k) => (sideOf(t, k).lateral > sideOf(t, b).lateral ? k : b));
@@ -158,6 +162,8 @@ function pushFrom(d: ElectronicsDesign, start: Pusher): { design: ElectronicsDes
       }
 
       const { t, i, need } = hitTrack!;
+      // A curved piece is not pushed: the way is walked round it instead.
+      if (bulgeOf(t, i)) return false;
       const a = t.pts[i]!;
       const b = t.pts[i + 1]!;
       const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -176,21 +182,28 @@ function pushFrom(d: ElectronicsDesign, start: Pusher): { design: ElectronicsDes
       const s1 = Math.min(...along) - room;
       const s2 = Math.max(...along) + room;
       const on = (s: number): P2 => [q(a[0] + u[0] * s), q(a[1] + u[1] * s)];
-      const split = [...t.pts.slice(0, i + 1), ...(s1 > 0.05 ? [on(s1)] : []), ...(s2 < len - 0.05 ? [on(s2)] : []), ...t.pts.slice(i + 1)];
+      const extra = [...(s1 > 0.05 ? [on(s1)] : []), ...(s2 < len - 0.05 ? [on(s2)] : [])];
+      const split = [...t.pts.slice(0, i + 1), ...extra, ...t.pts.slice(i + 1)];
+      const splitArcs = curved(t) ? [...t.arcs!.slice(0, i), ...extra.map(() => 0), 0, ...t.arcs!.slice(i + 1)] : undefined;
       const at = i + (s1 > 0.05 ? 1 : 0);
       let done = false;
       for (let k = 0; k < 8 && !done; k += 1) {
-        const slid = slidePiece(split, at, [n[0] * side * off, n[1] * side * off]);
+        const slid = slidePiece(split, at, [n[0] * side * off, n[1] * side * off], splitArcs);
         if (!slid) return false;
         // The slid piece is the one lying on the line it was sent to.
         const target = dot(n, a) + side * off;
-        const piece = piecesOf({ pts: slid.pts, width: t.width }).find((p) => p.pts.every((x) => Math.abs(dot(n, x) - target) < 1e-4));
+        const piece = piecesOf({ pts: slid.pts, width: t.width, ...(slid.arcs ? { arcs: slid.arcs } : {}) }).find((p) =>
+          p.pts.every((x) => Math.abs(dot(n, x) - target) < 1e-4),
+        );
         const g = piece ? Math.min(...mine.map((m) => gap(m, piece))) : need;
         if (g >= need - 1e-6) done = true;
         else off += need - g + 0.01;
       }
       if (!done) return false;
-      const cut = { ...cur, board: { ...board, tracks: board.tracks.map((x) => (x === t ? { ...t, pts: split } : x)) } };
+      const cut = {
+        ...cur,
+        board: { ...board, tracks: board.tracks.map((x) => (x === t ? { ...t, pts: split, ...(splitArcs ? { arcs: splitArcs } : {}) } : x)) },
+      };
       const next = slideTrack(cut, t.id, at, [n[0] * side * off, n[1] * side * off]);
       if (next === cut) return false;
       // Whatever the slide carried with it (other tracks of the net, a via on a corner) has moved too.
@@ -222,7 +235,7 @@ function allClear(d: ElectronicsDesign, start: ElectronicsDesign, moved: Set<Id>
   for (const t of [...board.tracks, ...extra]) {
     if (!moved.has(t.id) && was.get(t.id) === t && !extra.includes(t)) continue;
     const others = copper.filter((c) => c.id !== t.id);
-    if (blockers(board, others, loops, { net: t.net, layers: [t.layer], pts: t.pts, width: t.width }).length) return false;
+    if (blockers(board, others, loops, { net: t.net, layers: [t.layer], pts: trackPath(t), width: t.width }).length) return false;
   }
   for (const v of board.vias) {
     if (!moved.has(v.id)) continue;

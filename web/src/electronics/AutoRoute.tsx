@@ -18,10 +18,14 @@ const connections = (n: number) => `${n} ${n === 1 ? "connection" : "connections
  * Stop. What it lays goes on the board as one step, so one undo takes it all out. It never moves a track or via that
  * is already there.
  */
+/** The radius rounded corners get (#755), mm. */
+const ROUND = 1;
+
 export default function AutoRoute({ design, edit, readOnly, onClose }: { design: ElectronicsDesign; edit: EEdit; readOnly?: boolean; onClose: () => void }) {
   const ui = useEui();
   const [what, setWhat] = useState<What>("all");
   const [sides, setSides] = useState<Sides>("both");
+  const [corners, setCorners] = useState<"sharp" | "round">("sharp");
   const [progress, setProgress] = useState<RouteProgress | null>(null);
   const [said, setSaid] = useState("");
   const job = useRef<{ job: RouteJob; design: ElectronicsDesign; routes: Route[]; last: RouteProgress | null; lost: Set<string> } | null>(null);
@@ -73,6 +77,7 @@ export default function AutoRoute({ design, edit, readOnly, onClose }: { design:
         ...(scope === "parts" ? { parts } : {}),
         ...(scope === "net" && ui.net ? { nets: [ui.net] } : {}),
         ...(sides === "both" ? {} : { layers: [sides] }),
+        ...(corners === "round" ? { round: ROUND } : {}),
       },
       {
         progress: (p) => {
@@ -131,6 +136,12 @@ export default function AutoRoute({ design, edit, readOnly, onClose }: { design:
             <option value="both">Both sides</option>
             <option value="top">Top only</option>
             <option value="bottom">Bottom only</option>
+          </select>
+        </FeatureRow>
+        <FeatureRow label="Corners">
+          <select className="bc-select" aria-label="Track corners" value={corners} onChange={(e) => setCorners(e.target.value as "sharp" | "round")}>
+            <option value="sharp">45° corners</option>
+            <option value="round">Rounded, {ROUND} mm</option>
           </select>
         </FeatureRow>
       </fieldset>
