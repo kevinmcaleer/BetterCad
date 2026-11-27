@@ -575,7 +575,26 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         view={view}
         onView={setView}
         cursor={tool === "select" ? (hover ? "move" : "default") : "crosshair"}
-        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, twins, ui.spot, outlines, picked, inside, stale, folded, hidden]}
+        drawKey={[
+          design,
+          sheet,
+          selected,
+          hover,
+          ghost,
+          box,
+          colours,
+          marks,
+          lit,
+          twins,
+          ui.spot,
+          outlines,
+          picked,
+          inside,
+          stale,
+          folded,
+          hidden,
+          ui.gridShown,
+        ]}
         draw={(ctx, v, size) =>
           drawSchematic(ctx, v, size, design, sheet, colours, {
             selected,
@@ -589,6 +608,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
             spot: ui.spot?.sheet === sheet.id ? ui.spot.at : undefined,
             groups: { outlines, picked, inside, stale, folded },
             hidden,
+            grid: ui.gridShown,
           })
         }
         onDown={onDown}
