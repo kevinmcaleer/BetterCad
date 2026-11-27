@@ -35,6 +35,12 @@ export const LIBRARIES: Library[] = [
   { name: "React", use: "The interface", licence: "MIT", url: "https://github.com/facebook/react" },
   { name: "FastAPI", use: "The server", licence: "MIT", url: "https://github.com/fastapi/fastapi" },
   {
+    name: "ngspice",
+    use: "Circuit simulation in the electronics workspace, through eecircuit-engine",
+    licence: "modified BSD / MIT",
+    url: "https://ngspice.sourceforge.io/",
+  },
+  {
     name: "KiCad libraries 9.0.0",
     use: "The electronics starter parts. Boards you make with them are yours",
     licence: "CC-BY-SA 4.0 with the KiCad libraries exception",

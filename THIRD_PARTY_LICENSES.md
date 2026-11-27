@@ -12,9 +12,10 @@ BetterCad's own code is MIT. These libraries keep their own licences. The WASM b
 | three.js | The 3D view (epic #3) | MIT | https://github.com/mrdoob/three.js |
 | React, React DOM | The interface | MIT | https://github.com/facebook/react |
 | FastAPI, Starlette, Pydantic, Uvicorn | The server | MIT / BSD-3-Clause | https://github.com/fastapi/fastapi |
+| ngspice (via eecircuit-engine 1.9.0, an ngspice build for the browser) | Circuit simulation in the electronics workspace (#761) | ngspice: modified BSD; eecircuit-engine: MIT | https://ngspice.sourceforge.io/, https://github.com/eelab-dev/EEcircuit-engine |
 | KiCad libraries 9.0.0 (symbols and footprints, converted to BetterCad's format) | The electronics starter parts (epic #606) | CC-BY-SA 4.0 with the KiCad libraries exception | https://www.kicad.org/libraries/license/, https://gitlab.com/kicad/libraries |
 
-The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VERSIONS.md` to swap it. planegcs ships as `assets/planegcs-*.wasm`.
+The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VERSIONS.md` to swap it. planegcs ships as `assets/planegcs-*.wasm`. ngspice ships as `assets/sim/eecircuit-engine-*.js`, the package's own file, copied unchanged.
 
 ## Every runtime dependency
 
@@ -30,6 +31,7 @@ The OCCT WASM ships as `assets/replicad_single-*.wasm`; see `packages/kernel/VER
 | @salusoft89/planegcs | 1.3.0 | LGPL-2.0-or-later | npm |
 | @types/dom-webcodecs | 0.1.19 | MIT | npm |
 | @types/wicg-file-system-access | 2020.9.8 | MIT | npm |
+| eecircuit-engine | 1.9.0 | MIT | npm |
 | js-tokens | 4.0.0 | MIT | npm |
 | loose-envify | 1.4.0 | MIT | npm |
 | mp4-muxer | 5.2.2 | MIT | npm |

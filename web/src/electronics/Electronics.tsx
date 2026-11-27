@@ -49,6 +49,8 @@ const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
 const FindCard = lazy(() => import("./Find"));
 const Calculators = lazy(() => import("./Calculators"));
+const Simulate = lazy(() => import("./Simulate"));
+const Script = lazy(() => import("./Script"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -100,6 +102,15 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     tip: "Track width for a current, via current, an LED's resistor and colour bands",
     on: ui.card === "calc",
     run: toggle("calc"),
+  };
+  const script: Tool = {
+    id: "script",
+    group: view === "schematic" ? "Check" : "Board",
+    label: "Script",
+    icon: "code",
+    tip: "Run JavaScript that reads and changes the design, such as placing LEDs in a ring; you see the change first",
+    on: ui.card === "script",
+    run: toggle("script"),
   };
   if (view === "schematic")
     return [
@@ -289,6 +300,16 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         run: toggle("table"),
       },
       calc,
+      script,
+      {
+        id: "sim",
+        group: "Check",
+        label: "Simulate",
+        icon: "waveform",
+        tip: "Run the circuit on a simulator and see the voltage on a net over time",
+        on: ui.card === "sim",
+        run: toggle("sim"),
+      },
       {
         id: "push",
         group: "Sync",
@@ -476,6 +497,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       run: toggle("order"),
     },
     calc,
+    script,
     {
       id: "push",
       group: "Sync",
@@ -770,6 +792,25 @@ function commands(design: () => ElectronicsDesign): Command[] {
       when: schematic,
       run: toggle("table"),
       keywords: "bom list values bulk",
+    },
+    {
+      ...e,
+      id: "electronics.sim",
+      label: "Simulate",
+      group: "Tools",
+      icon: "waveform",
+      when: schematic,
+      run: toggle("sim"),
+      keywords: "spice ngspice probe voltage scope transient",
+    },
+    {
+      ...e,
+      id: "electronics.script",
+      label: "Script",
+      group: "Tools",
+      icon: "code",
+      run: toggle("script"),
+      keywords: "javascript plug-in plugin automate macro bc",
     },
     {
       ...e,
@@ -1076,6 +1117,11 @@ export default function ElectronicsView({
           <Calculators design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />
         </Suspense>
       )}
+      {ui.card === "script" && (
+        <Suspense fallback={null}>
+          <Script design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />
+        </Suspense>
+      )}
       {view === "schematic" && (
         <Suspense fallback={null}>
           {ui.card === "components" && !readOnly && (
@@ -1083,6 +1129,7 @@ export default function ElectronicsView({
           )}
           {ui.card === "checks" && <ChecksCard design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "sim" && <Simulate design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "export" && <ExportSchematic design={design} sheet={sheet} name={name || "Schematic"} onClose={() => eui.set({ card: null })} />}
         </Suspense>
       )}

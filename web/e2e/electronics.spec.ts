@@ -415,6 +415,62 @@ test.describe("on a wide screen", () => {
   });
 
   // The whole way (#667): two parts, a wire, a board, a routed track, a clean check and the files to order.
+  test("simulate: drive a net with a square wave and see its voltage over time (#761)", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Simulate/ })
+      .click();
+    const card = page.getByRole("group", { name: "Simulate options" });
+    // The one net, between the resistor and the LED: probed, and driven 0 to 5 V at 1 kHz.
+    const add = card.getByLabel("Add a probe");
+    await add.selectOption({ index: 1 });
+    await expect(card.getByRole("list", { name: "Probes" }).getByRole("listitem")).toHaveCount(1);
+    await card.getByRole("button", { name: "Drive a net" }).click();
+    await card.getByRole("button", { name: "Run", exact: true }).click();
+    // ngspice loads in a worker the first time, then runs the 10 ms.
+    await expect(card.getByRole("img", { name: /^Voltages over 10 ms: .+ from 0 V to 5 V$/ })).toBeVisible({ timeout: 30_000 });
+    await axe(page);
+  });
+
+  test("script: run JavaScript in the sandbox, keep its change, and stop one that runs away (#764)", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Script/ })
+      .click();
+    const card = page.getByRole("group", { name: "Script options" });
+    const code = card.getByLabel("JavaScript");
+    // The sandbox has no network, no storage and no way to post its own answer; a script that tries to load code is refused.
+    await code.fill('bc.say(typeof fetch, typeof XMLHttpRequest, typeof WebSocket, typeof indexedDB, typeof postMessage);\nbc.setValue("R1", "1 kΩ");');
+    await card.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(card.getByRole("log", { name: "Script output" })).toHaveText("undefined undefined undefined undefined undefined");
+    await expect(card.getByText("Sets R1 to 1 kΩ.")).toBeVisible();
+    await card.getByRole("button", { name: "Keep" }).click();
+    await expect(page.getByRole("img", { name: /^Schematic/ })).toBeVisible();
+    await code.fill('await import("data:text/javascript,export default 1");');
+    await card.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(card.getByRole("alert")).toBeVisible();
+
+    await code.fill("while (true) {}");
+    await card.getByRole("button", { name: "Run", exact: true }).click();
+    await card.getByRole("button", { name: "Stop" }).click();
+    await expect(card.getByRole("alert")).toHaveText("Stopped. Nothing was changed.");
+    await axe(page);
+  });
+
   test("lay out a board: place by numbers, route a track, add a hole and text, check it and save the order files", { tag: "@journey" }, async ({ page }) => {
     // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
     test.setTimeout(120_000);

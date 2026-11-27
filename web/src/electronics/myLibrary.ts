@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dropPart, emptyPack, freeId, isPack, mergePacks, putPart, type ComponentDef, type LibraryPack } from "@bettercad/electronics";
 import type { OwnBlock } from "@bettercad/electronics/ownBlocks";
+import type { OwnPlugin } from "@bettercad/electronics/script/starters";
 
 /**
  * Your own parts (#629): components you made or imported, as a library pack. Kept in this browser and, when you are
  * signed in, in your account, the way drawing templates are, so they work offline and follow you to the next machine.
  * `removed` lists parts and blocks you deleted, so one deleted here does not come back from another machine. Your
- * blocks (#772) ride in the pack as `blocks`, so the account keeps them with the parts.
+ * blocks (#772) and plug-ins (#764) ride in the pack as `blocks` and `plugins`, so the account keeps them with the parts.
  */
 export interface MyLibrary {
   pack: LibraryPack;
   removed: string[];
   blocks?: OwnBlock[];
+  plugins?: OwnPlugin[];
 }
 
 const KEY = "bettercad.electronics.library";
@@ -21,13 +23,27 @@ const fresh = (): MyLibrary => ({ pack: emptyPack(MY_PARTS), removed: [] });
 export function readLibrary(raw: unknown): MyLibrary | null {
   const v = raw as Partial<MyLibrary> | null;
   if (!v || !isPack(v.pack)) return null;
-  const { blocks: inPack, ...pack } = v.pack as LibraryPack & { blocks?: OwnBlock[] };
+  const { blocks: inPack, plugins: pluginsInPack, ...pack } = v.pack as LibraryPack & { blocks?: OwnBlock[]; plugins?: OwnPlugin[] };
   const blocks = [...(Array.isArray(v.blocks) ? v.blocks : []), ...(Array.isArray(inPack) ? inPack : [])].filter((b) => b && b.spec && b.defs);
+  const plugins = [...(Array.isArray(v.plugins) ? v.plugins : []), ...(Array.isArray(pluginsInPack) ? pluginsInPack : [])].filter(isPlugin);
   return {
     pack: pack as LibraryPack,
     removed: Array.isArray(v.removed) ? v.removed.filter((x): x is string => typeof x === "string") : [],
     ...(blocks.length ? { blocks: newest(blocks) } : {}),
+    ...(plugins.length ? { plugins: latest(plugins) } : {}),
   };
+}
+
+const isPlugin = (p: unknown): p is OwnPlugin => {
+  const v = p as Partial<OwnPlugin> | null;
+  return !!v && typeof v.id === "string" && typeof v.name === "string" && typeof v.source === "string";
+};
+
+/** One of each plug-in, the one saved last. */
+function latest(plugins: OwnPlugin[]): OwnPlugin[] {
+  const by = new Map<string, OwnPlugin>();
+  for (const p of plugins) if ((by.get(p.id)?.at ?? -1) <= (p.at ?? 0)) by.set(p.id, { ...p, description: p.description ?? "", at: p.at ?? 0 });
+  return [...by.values()];
 }
 
 /** One of each block, its newest version; on a tie the later one in the list. */
@@ -37,8 +53,11 @@ function newest(blocks: OwnBlock[]): OwnBlock[] {
   return [...by.values()];
 }
 
-/** What the account stores: the pack, with your blocks inside it. */
-const forAccount = (lib: MyLibrary) => ({ pack: lib.blocks?.length ? { ...lib.pack, blocks: lib.blocks } : lib.pack, removed: lib.removed });
+/** What the account stores: the pack, with your blocks and plug-ins inside it. */
+const forAccount = (lib: MyLibrary) => ({
+  pack: { ...lib.pack, ...(lib.blocks?.length ? { blocks: lib.blocks } : {}), ...(lib.plugins?.length ? { plugins: lib.plugins } : {}) },
+  removed: lib.removed,
+});
 
 export function loadLocal(): MyLibrary {
   try {
@@ -64,7 +83,8 @@ export function merge(local: MyLibrary, remote: MyLibrary): MyLibrary {
   let pack = mergePacks(local.pack, remote.pack, { replace: true }).pack;
   for (const id of removed) if (pack.parts.some((p) => p.id === id)) pack = dropPart(pack, id);
   const blocks = newest([...(local.blocks ?? []), ...(remote.blocks ?? [])]).filter((b) => !removed.includes(b.spec.id));
-  return { pack, removed, ...(blocks.length ? { blocks } : {}) };
+  const plugins = latest([...(local.plugins ?? []), ...(remote.plugins ?? [])]).filter((p) => !removed.includes(p.id));
+  return { pack, removed, ...(blocks.length ? { blocks } : {}), ...(plugins.length ? { plugins } : {}) };
 }
 
 /** The part of the account's API the library needs: any call, signed as the rest are. */
@@ -86,6 +106,11 @@ export interface MyParts {
   /** Saves a block: a new one, or a newer version of one already here. */
   saveBlock: (b: OwnBlock) => void;
   removeBlock: (id: string) => void;
+  /** Your plug-ins (#764). */
+  plugins: OwnPlugin[];
+  /** Saves a plug-in: a new one, or over the one with that id. */
+  savePlugin: (p: OwnPlugin) => void;
+  removePlugin: (id: string) => void;
 }
 
 // One library for every panel that shows it, so a block saved from the inspector is on the Blocks shelf at once.
@@ -187,7 +212,22 @@ export function useMyLibrary(api?: LibraryApi, signedIn = false): MyParts {
     [commit],
   );
 
-  return { pack: lib.pack, save, remove, add, kept, blocks: lib.blocks ?? [], saveBlock, removeBlock };
+  const savePlugin = useCallback(
+    (p: OwnPlugin) => {
+      const { plugins = [], removed } = now.current;
+      commit({ ...now.current, plugins: [...plugins.filter((x) => x.id !== p.id), p], removed: removed.filter((x) => x !== p.id) });
+    },
+    [commit],
+  );
+  const removePlugin = useCallback(
+    (id: string) => {
+      const { plugins = [], removed } = now.current;
+      commit({ ...now.current, plugins: plugins.filter((x) => x.id !== id), removed: [...new Set([...removed, id])] });
+    },
+    [commit],
+  );
+
+  return { pack: lib.pack, save, remove, add, kept, blocks: lib.blocks ?? [], saveBlock, removeBlock, plugins: lib.plugins ?? [], savePlugin, removePlugin };
 }
 
 /**

@@ -1,11 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
-import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { brotliCompressSync, constants as zlib, gzipSync } from "node:zlib";
 import type { Plugin } from "vite";
+import { SIM_ENGINE_VERSION, simEnginePath } from "./src/electronics/simEngine";
 
 /**
  * Writes a .br and a .gz beside each large asset so the server sends them without compressing per request (#97). The
@@ -78,6 +79,57 @@ function serviceWorker(): Plugin {
   };
 }
 
+/**
+ * The circuit simulator (#761): ngspice built for the browser (eecircuit-engine, MIT; ngspice is BSD). It is 20 MB
+ * of script with the WASM inside, so it stays out of the bundle and the offline cache: the build copies it to
+ * `assets/sim/` (named by its version, so it is cached like a hashed asset) with a .br and a .gz beside it, and the
+ * dev server serves it from node_modules. It loads only when you run a simulation.
+ */
+function simEngine(): Plugin {
+  const pkg = JSON.parse(readFileSync(new URL("../node_modules/eecircuit-engine/package.json", import.meta.url), "utf8")) as { version: string };
+  if (pkg.version !== SIM_ENGINE_VERSION)
+    throw new Error(`eecircuit-engine is ${pkg.version}; set SIM_ENGINE_VERSION in web/src/electronics/simEngine.ts to match`);
+  const path = simEnginePath();
+  const source = new URL("../node_modules/eecircuit-engine/dist/eecircuit-engine.mjs", import.meta.url);
+  let outDir = "dist";
+  return {
+    name: "bettercad-sim-engine",
+    configResolved: (c) => void (outDir = c.build.outDir),
+    configureServer(server) {
+      server.middlewares.use(`/${path}`, (_req, res) => {
+        res.setHeader("Content-Type", "text/javascript");
+        res.end(readFileSync(source));
+      });
+    },
+    closeBundle() {
+      if (!existsSync(outDir)) return;
+      const bytes = readFileSync(source);
+      mkdirSync(join(outDir, "assets", "sim"), { recursive: true });
+      writeFileSync(join(outDir, path), bytes);
+      writeFileSync(join(outDir, `${path}.gz`), gzipSync(bytes, { level: 9 }));
+      const br = brotliCompressSync(bytes, { params: { [zlib.BROTLI_PARAM_QUALITY]: 9, [zlib.BROTLI_PARAM_SIZE_HINT]: bytes.length } });
+      writeFileSync(join(outDir, `${path}.br`), br);
+    },
+  };
+}
+
+/**
+ * The script sandbox (#764): the worker a script runs in is sent with a Content-Security-Policy that allows no
+ * network at all, in dev and preview as FastAPI does in production (server/bettercad/main.py).
+ */
+export const SCRIPT_SANDBOX_CSP = "default-src 'none'; script-src 'self' 'unsafe-eval'; connect-src 'none'";
+function scriptSandbox(): Plugin {
+  const csp = (req: { url?: string }, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    if (req.url && /script\.worker/.test(req.url)) res.setHeader("Content-Security-Policy", SCRIPT_SANDBOX_CSP);
+    next();
+  };
+  return {
+    name: "bettercad-script-sandbox",
+    configureServer: (server) => void server.middlewares.use(csp),
+    configurePreviewServer: (server) => void server.middlewares.use(csp),
+  };
+}
+
 // `base: "./"` lets the same build run at the root, on GitHub Pages under /BetterCad/, or as a static preview.
 // Cross-origin isolation lets the kernel (#4) use SharedArrayBuffer and WASM threads. FastAPI sets the same headers in production.
 const isolation = { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" };
@@ -94,7 +146,7 @@ export default defineConfig({
   base: process.env.BASE ?? "./",
   // wasm() lets packages import .wasm modules directly. Top-level await needs no plugin: the build targets ES2022,
   // which every browser that can run OCCT supports natively (vite-plugin-top-level-await added 78 kB for nothing).
-  plugins: [react(), wasm(), precompress(), serviceWorker()],
+  plugins: [react(), wasm(), precompress(), serviceWorker(), simEngine(), scriptSandbox()],
   worker: { format: "es", plugins: () => [wasm()] },
   server: {
     port: 5173,

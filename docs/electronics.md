@@ -674,6 +674,55 @@ the design, in `packages/electronics/src/calc.ts` (subpath `/calc`) and `Calcula
 - **Resistor colour bands**: IEC 60062, four bands (two figures) or five (three), both ways. The swatches are paint
   colours kept with the sums (`BAND_PAINT`), like the board's mask colours, not interface colours.
 
+## Circuit simulation (#761)
+
+Kev chose ngspice in the browser (2026-11-27). It is eecircuit-engine 1.9.0 (MIT; ngspice is modified BSD): one
+19 MB script with the WASM inside, 4.2 MB with Brotli. It runs in Node too, so `web/src/electronics/sim.test.ts` runs
+the real engine on an RC step and an LED switched by a transistor.
+
+- `packages/electronics/src/sim/spice.ts` (`@bettercad/electronics/sim`) writes the design as a deck: one node per
+  net, ground nets (GND, GNDA, AGND, 0) as node 0, each part by its prefix and its pins' names (A and K, B C E,
+  G D S, + and -), rails as sources against ground, driven nets as PULSE, SIN or DC sources, and a `.tran` of 500
+  points. `.options rshunt=1e12` keeps open pins from stopping the run. Parts left off a variant (`fitted: false`)
+  and parts it has no model for are left out and listed. `tracesOf` maps the engine's vectors back to the probes.
+- The models are typical: the 2N3904 and 2N3906 parameter sets for NPN and PNP, a Darlington for the TIP12x,
+  level 1 MOSFETs for small, logic level and power parts, and LEDs worked out from the diode equation to drop
+  1.9 V (red) to 3 V (blue) at 20 mA. Zeners take their breakdown from their value.
+- `design.sim` keeps the run's length, the probes, rail voltages and drives (`SimSettings`); each change is one undo step.
+- The engine is not bundled: `simEngine()` in `web/vite.config.ts` copies it to `assets/sim/eecircuit-engine-<version>.js`
+  with a .br and a .gz (the server compresses and caches `assets/` only), and the dev server serves it from
+  node_modules. It is not in the offline cache. `SIM_ENGINE_VERSION` in `web/src/electronics/simEngine.ts` must match
+  the package; the build checks. Budgets has its own row for it.
+- `sim.worker.ts` imports the engine from the URL the page sends, starts it once and keeps it for the next runs;
+  `simClient.ts` stops a run after 30 s or on Stop by ending the worker.
+
+Not done: AC and DC sweeps, current probes, probes drawn on the schematic, and models for chips (an op amp, a 555).
+
+## Scripts and plug-ins (#764)
+
+Kev was happy with the proposal (2026-11-27): JavaScript in a sandbox, through one `bc` object, with a preview before
+anything changes.
+
+- `packages/electronics/src/script/api.ts` (`@bettercad/electronics/script/api`): `scriptApi(design)` gives a frozen
+  `bc` whose readers hand out copies and whose changers check their arguments as they are called and add a
+  `ScriptChange` to a list. A bad call throws a plain message ("There is no part R9"). `applyScript` applies the list,
+  `describeChanges` says it in words, `touchedParts` is what the view lights up, and `cleanRun` checks what came back
+  from the worker before the app trusts it. At most 10,000 changes and outputs.
+- `script/run.ts` runs the source as an async function in strict mode with only `bc` in scope. A script that throws
+  keeps none of its changes.
+- The sandbox: one module worker per run (`web/src/electronics/script.worker.ts`). Before the script runs,
+  `lockDown` (`scriptLock.ts`) deletes fetch, XMLHttpRequest, WebSocket, indexedDB, caches, importScripts,
+  postMessage and the rest from the worker's scope and its prototypes. The worker's file is also served with
+  `Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-eval'; connect-src 'none'`, by
+  `CachedStatic` in `server/bettercad/main.py` and by `scriptSandbox()` in `web/vite.config.ts` for dev and preview,
+  so a dynamic `import()` from anywhere else is refused too. `scriptClient.ts` ends the worker after 10 s or on Stop.
+- Plug-ins: `script/starters.ts` has the three starters and `pluginFile`/`readPluginFile`. A `.bcplugin.js` is the
+  script itself with `// @bcplugin`, `// @name` and `// @description` comments on top, so it runs as it is. Your
+  plug-ins ride in the library pack as `plugins` (`myLibrary.ts`), like blocks; of two copies the one saved last wins.
+
+Not done: a plug-in shelf in the tools, plug-ins that take settings in a form, and scripts that edit symbols or
+footprints.
+
 ## The board in 3D (#649 to #654)
 
 The board is in the model as one **Board step** on the timeline (`packages/kernel/src/board.ts`). A model has one

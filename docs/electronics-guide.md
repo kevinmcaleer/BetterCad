@@ -149,6 +149,39 @@ Press M to measure: click two points to read the distance between them, and its 
 centres, track ends and the board's edge snap. Press Ctrl+F in either view to find a part by its reference, value or
 part number, or a net by its name: choosing a result goes to it, on whichever sheet it is, and picks it.
 
+## Simulate it
+
+Choose Simulate, in the schematic's tools, to run the circuit on ngspice and see the voltage on a net over time. Pick
+the nets to probe (up to six), or select one on the schematic and choose Probe. Rails take their voltage from their
+name (5V, +3V3, +12V, VBUS); give VCC, VIN and other rails one in the card. Drive a net to put a square wave, a sine
+wave or a steady voltage on it, such as a switch's or a sensor's, and set how long the run lasts. Run draws each probe
+in its own colour. The settings are saved with the design.
+
+Resistors, capacitors, inductors, potentiometers (at their middle), diodes, LEDs (by colour), zeners (by their
+value), transistors, MOSFETs and batteries are simulated with typical models, close enough to see a filter settle or a
+transistor switch an LED, not the makers' own. Chips, connectors and switches are left out and listed, so you can see
+what the run ignores. The simulator downloads the first time you run it, about 5 MB.
+
+## Script it
+
+Choose Script to run JavaScript on the design: lay LEDs out in a ring, set every capacitor to one value, or write
+a parts list for your supplier. Scripts read and change the design through `bc`:
+
+- Read: `bc.parts()`, `bc.sheets()`, `bc.nets()`, `bc.board()`, `bc.erc()` and `bc.drc()`. Each gives a copy.
+- Change the schematic: `bc.setValue(ref, value)`, `bc.setFitted(ref, false)`, `bc.setPartNumber(ref, { lcsc })`,
+  `bc.addLabel(name, [x, y])`, `bc.wire([x, y], [x, y])`, `bc.place(ref, [x, y])` (a copy of a part) and
+  `bc.renumber()`.
+- Change the board: `bc.move(ref, [x, y], turn, side)`, `bc.addTrack(net, points)`, `bc.addVia(net, [x, y])`,
+  `bc.setRule(rule, value)` and `bc.setNetClass(net, className)`.
+- Show what it found: `bc.say(...)`, `bc.table(rows)` and `bc.file(name, text)`, which you can save.
+
+Run shows what the script would change, in words and lit up on the view; nothing changes until you choose Keep,
+which makes it one step you can undo. Scripts run in a sandbox: they can't reach the network or your files, and
+stop after 10 s. Start from one of the starter plug-ins to see how they work.
+
+Give a script a name and choose Save as a plug-in to keep it in Your plug-ins, with your parts and blocks, in your
+account when you are signed in. Save the file saves it as a `.bcplugin.js` file to pass on; Open a file opens one.
+
 ## See it in 3D
 
 Press 3. The board stands in your model as a step on the timeline, with a simple body for each part, so you can
@@ -180,7 +213,7 @@ board as one IPC-2581 file for an assembler that asks for one.
 | Join | W wire, L net label, J junction, Q not connected | W route, V via, L swap side, / bend the other way |
 | Add | | H hole, T text, P pour |
 | Change | R rotate, X mirror, Del delete, Ctrl+D duplicate | R rotate, X flip side, K lock, Del delete |
-| Check | E rules check, T parts table | E board check, B board setup |
+| Check | E rules check, T parts table, Simulate in the tools | E board check, B board setup |
 | View | F fit, Ctrl+F find | F fit, M measure, Ctrl+F find |
 
 On a Mac, Ctrl is Cmd. Press ? in the app for every shortcut.
