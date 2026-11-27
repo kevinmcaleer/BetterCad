@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { addPour, setPour, wholeBoard } from "../pcb/pour";
+import { addPour, pourFill, setPour, wholeBoard } from "../pcb/pour";
 import { addTrack, setBoard, setVia } from "../pcb/route";
 import { fabBoard } from "./fixture";
-import { GERBER_LAYERS, gerberFiles, pourClashes, type GerberLayer } from "./gerber";
-import type { ElectronicsDesign, Pad } from "../model";
+import { GERBER_LAYERS, gerberFiles, type GerberLayer } from "./gerber";
+import { boardPads, pointInPolygon } from "../board";
+import { distToSegment } from "../geom";
+import { clearanceBetween, copperOf } from "../pcb/copper";
+import type { ElectronicsDesign, P2, Pad, Pour } from "../model";
 import { inkAt, readGerber, type GerberImage } from "./read";
 
 const files = () => {
@@ -196,22 +199,58 @@ describe("Gerber files", () => {
     expect(inkAt(img, [25, 5])).toBe(true);
   });
 
-  it("says when two pours cannot be painted truly", () => {
+  it("writes two pours that meet: the one cut into goes on as its finished fill (#750)", () => {
     const { d, nets, pad } = fabBoard();
-    expect(pourClashes(d)).toEqual([]);
-    // A second pour on the bottom, on the other net, laid over the first one's pad.
+    // A second pour on the bottom, on the other net, laid over the first one's pad and track, made to fill first.
     const p = pad("J1", "2");
-    let two = addTrack(d, nets[1], "bottom", [p, [p[0] + 3, p[1]]], 0.25);
+    let two = addTrack(d, nets[1], "bottom", [p, [p[0] + 6, p[1]]], 0.25);
     two = addPour(two, nets[0], "bottom", [
-      [p[0] + 2, p[1] - 2],
+      [p[0] + 4, p[1] - 2],
       [p[0] + 8, p[1] - 2],
       [p[0] + 8, p[1] + 2],
-      [p[0] + 2, p[1] + 2],
+      [p[0] + 4, p[1] + 2],
     ]);
-    // Left to fill second it gives way everywhere, so nothing is cut. Made to fill first, it cuts into the other.
-    expect(pourClashes(two)).toEqual([]);
     two = setPour(two, two.board!.pours[1]!.id, { priority: 1 });
-    expect(pourClashes(two)).toEqual([{ side: "bottom", a: nets[1], b: nets[0] }]);
+    const [first, second] = two.board!.pours as [Pour, Pour];
+    const text = gerberFiles(two).find((f) => f.layer === "copper-bottom")!.text;
+    expect(text).toContain(`G04 Pour on ${nets[1]}, as its finished fill*`);
+    const img = readGerber(text);
+    // Where the first pour's own copper meets its track inside the second's reach, past its pad's thermal ring, the
+    // file still has it.
+    const fill = pourFill(two, first);
+    const pads = boardPads(two);
+    const copper = copperOf(two, pads);
+    const track = copper.find((c) => c.kind === "track" && c.net === nets[1] && c.layers.includes("bottom"))!;
+    const reach = clearanceBetween(two.board!, nets[0], nets[1]) + track.r;
+    const kept: P2[] = [];
+    for (let j = 0; j < fill.h; j += 1)
+      for (let i = 0; i < fill.w; i += 1) {
+        const at: P2 = [fill.x0 + i * fill.step, fill.y0 + j * fill.step];
+        const off = distToSegment(at, track.pts[0]!, track.pts[1]!);
+        const fromArea = Math.min(...second.outline.map((a, k) => distToSegment(at, a, second.outline[(k + 1) % second.outline.length]!)));
+        if (
+          fill.cells[j * fill.w + i] &&
+          off > track.r + 0.05 &&
+          off < reach &&
+          !pointInPolygon(at, second.outline) &&
+          fromArea > reach + 0.2 &&
+          at[0] > p[0] + 1.6
+        )
+          kept.push(at);
+      }
+    expect(kept.length).toBeGreaterThan(0);
+    for (const at of kept) expect(inkAt(img, at)).toBe(true);
+    // And it keeps its distance from the other pour and the other net's copper, corner by corner.
+    const gap = clearanceBetween(two.board!, nets[0], nets[1]);
+    const regions = img.ops.filter((o) => o.kind === "region" && o.pts.length <= 5);
+    expect(regions.length).toBeGreaterThan(0);
+    const outline = second.outline;
+    for (const r of regions.slice(-200))
+      for (const q of r.kind === "region" ? r.pts : []) {
+        if (pointInPolygon(q, outline)) continue;
+        const toArea = Math.min(...outline.map((a, k) => distToSegment(q, a, outline[(k + 1) % outline.length]!)));
+        expect(toArea).toBeGreaterThanOrEqual(gap - 1e-6);
+      }
     expect(wholeBoard(two.board!).length).toBeGreaterThan(4);
   });
 });

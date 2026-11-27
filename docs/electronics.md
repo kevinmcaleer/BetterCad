@@ -683,8 +683,13 @@ that differs from its board does not carry its own across; coming in, KiCad 8's 
 A pour is painted the way the screen paints it, with dark and clear polarity in the same order: the area, the
 rings round its own pads out, the spokes back in, then everything it keeps clear of out, and last the islands the
 fill dropped. What lies outside the board is cleared with one area that has the board as a hole in it. The format
-has no way to clip one pour's clearing to its own area, so two pours on different nets on one side that run into
-each other cannot always be painted truly; `pourClashes` finds that case and the order card refuses to export it.
+has no way to clip one pour's clearing to its own area, so when two pours on different nets on one side run into
+each other, painting the later one would cut copper out of the earlier one round its own pads and tracks (#750).
+`cutPours` finds each pour that would be cut, and it is written after the painted ones as its finished fill instead:
+`fillRects` turns its fill, on a grid of up to a million cells (no coarser than 0.05 mm where that fits), into
+rectangles of copper with nothing cleared, so nothing drawn later cuts it and it cuts nothing. Each knock takes out
+three quarters of a cell more than its reach, so no corner of a rectangle comes nearer than the rules allow. Its
+edges are steps of one cell; the painted pours keep their exact edges. Any pours now export.
 
 **Text** (`font.ts`). Board houses are sent lines, not fonts, so silkscreen and copper text is drawn with our own
 stroke font: capitals, digits and common marks on a 4 by 6 grid, small letters as small capitals. The PCB view

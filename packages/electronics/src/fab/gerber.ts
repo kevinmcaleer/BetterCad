@@ -1,9 +1,9 @@
 import { arcOf, boardPads, outlinePoints, pointInPolygon, type BoardPad } from "../board";
 import { distToSegment, placeOnBoard, rad, segmentDistance } from "../geom";
-import { packageOf, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Pad, type Shape, type Side } from "../model";
+import { packageOf, type Board, type CopperLayer, type Corner, type ElectronicsDesign, type P2, type Pad, type Pour, type Shape, type Side } from "../model";
 import { netlist, type Netlist } from "../nets";
 import { copperOf, type Copper, type Solid } from "../pcb/copper";
-import { pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
+import { fillRects, pourFill, pourShape, type Knock, type PourShape } from "../pcb/pour";
 import { penFor, textStrokes, REF_SIZE } from "./font";
 import { pictureRects } from "../pcb/picture";
 import { teardrops } from "../pcb/teardrops";
@@ -375,35 +375,56 @@ const paintOrder = (board: Board, side: CopperLayer) =>
     .map((x) => x.p);
 
 /**
- * Pours this writer cannot paint truly: two on one side, on different nets, close enough that painting the second
- * would cut copper out of the first round the first's own pads and tracks. Says which, so the order pack can stop.
+ * Pours on a layer that painting another would cut into: two on different nets, close enough that painting the later
+ * one would take copper out of the earlier one round the earlier's own pads and tracks (#750).
  */
-export function pourClashes(
-  d: ElectronicsDesign,
-  pads: BoardPad[] = boardPads(d),
-  copper: Copper[] = copperOf(d, pads),
-): { side: CopperLayer; a: string; b: string }[] {
-  const board = d.board;
-  const out: { side: CopperLayer; a: string; b: string }[] = [];
-  if (!board) return out;
-  for (const side of layersOf(board)) {
-    const order = paintOrder(board, side);
-    order.forEach((later, i) => {
-      const shape = pourShape(d, later, pads, copper);
-      for (const earlier of order.slice(0, i)) {
-        if (earlier.net === later.net) continue;
-        const hit = copper.some(
+function cutPours(d: ElectronicsDesign, side: CopperLayer, pads: BoardPad[], copper: Copper[]): Set<Pour> {
+  const out = new Set<Pour>();
+  const order = paintOrder(d.board!, side);
+  order.forEach((later, i) => {
+    const earlier = order.slice(0, i).filter((e) => e.net !== later.net && !out.has(e));
+    if (!earlier.length) return;
+    const shape = pourShape(d, later, pads, copper);
+    for (const e of earlier)
+      if (
+        copper.some(
           (c) =>
-            c.net === earlier.net &&
+            c.net === e.net &&
             c.layers.includes(side) &&
-            shape.knocks.some((k) => k.pts === c.pts && near(later.outline, k) && reachOf(earlier.outline, k) < k.r + k.reach),
-        );
-        if (hit) out.push({ side, a: earlier.net || "no net", b: later.net || "no net" });
-      }
-    });
-  }
+            shape.knocks.some((k) => k.pts === c.pts && near(later.outline, k) && reachOf(e.outline, k) < k.r + k.reach),
+        )
+      )
+        out.add(e);
+  });
   return out;
 }
+
+/**
+ * A pour written as its finished fill (#750): rectangles of copper only, nothing cleared, so it cannot cut what is
+ * already drawn. The fill's grid is fine for this, and every knock takes out three quarters of a cell more than its
+ * reach, so no corner of a cell comes nearer than the rules allow.
+ */
+function writeFill(w: Writer, d: ElectronicsDesign, pour: Pour, pads: BoardPad[], copper: Copper[]) {
+  const xs = pour.outline.map((p) => p[0]);
+  const ys = pour.outline.map((p) => p[1]);
+  const area = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys));
+  const step = Math.max(0.05, Math.sqrt(area / FINE_CELLS));
+  const fill = pourFill(d, pour, pads, copper, { step, margin: step * 0.75 });
+  w.comment(`Pour on ${pour.net || "no net"}, as its finished fill`);
+  w.polarity(true);
+  w.attr(".N", field(pour.net));
+  for (const [x, y, wide, tall] of fillRects(fill))
+    w.region([
+      [x, y],
+      [x + wide, y],
+      [x + wide, y + tall],
+      [x, y + tall],
+    ]);
+  w.attr(".N");
+}
+
+/** How many cells a pour written as its fill may have. */
+const FINE_CELLS = 1_000_000;
 
 /** A footprint's or the board's line work, placed and drawn with a round pen. */
 function drawShape(w: Writer, s: Shape, place: (p: P2) => P2, turnBy: number, mirror: boolean, least: number, fn?: string) {
@@ -445,7 +466,10 @@ const round = (d: number): Pick<Pad, "shape" | "w" | "h"> => ({ shape: "circle",
 
 function copperFile(d: ElectronicsDesign, board: Board, side: CopperLayer, pads: BoardPad[], copper: Copper[], fn: string): string {
   const w = new Writer(fn);
-  for (const pour of paintOrder(board, side)) paintPour(w, pourShape(d, pour, pads, copper), pourFill(d, pour, pads, copper).islands);
+  // A pour a later one would cut into is written last, as its finished fill, so nothing painted after it cuts it (#750).
+  const cut = cutPours(d, side, pads, copper);
+  for (const pour of paintOrder(board, side)) if (!cut.has(pour)) paintPour(w, pourShape(d, pour, pads, copper), pourFill(d, pour, pads, copper).islands);
+  for (const pour of paintOrder(board, side)) if (cut.has(pour)) writeFill(w, d, pour, pads, copper);
   for (const t of board.tracks) {
     if (t.layer !== side) continue;
     w.attr(".N", field(t.net));

@@ -167,8 +167,11 @@ export function pourFill(
   pour: Pour,
   pads: BoardPad[] = boardPads(d),
   copper: Copper[] = copperOf(d, pads),
-  /** Keep islands in: where the pour would fill if something joined it, as stitching vias (#737) would. */
-  o: { islands?: boolean } = {},
+  /**
+   * Keep islands in: where the pour would fill if something joined it, as stitching vias (#737) would. `step` sets the
+   * grid's cell size, mm, and `margin` how much further than its reach a knock takes cells out (half a cell unless set).
+   */
+  o: { islands?: boolean; step?: number; margin?: number } = {},
 ): PourFill {
   const shape = pourShape(d, pour, pads, copper);
   const layer = layerOf(pour.layer);
@@ -181,7 +184,8 @@ export function pourFill(
   const y2 = Math.min(Math.max(...ys), Math.max(...edge.map((p) => p[1])));
   const empty: PourFill = { pour, x0: 0, y0: 0, step: 1, w: 0, h: 0, cells: new Int32Array(0), joins: [], islands: [], area: 0 };
   if (!(x2 > x1) || !(y2 > y1) || pour.outline.length < 3) return empty;
-  const step = Math.max(0.1, Math.sqrt(((x2 - x1) * (y2 - y1)) / MAX_CELLS));
+  const step = o.step ?? Math.max(0.1, Math.sqrt(((x2 - x1) * (y2 - y1)) / MAX_CELLS));
+  const margin = o.margin ?? step / 2;
   const w = Math.ceil((x2 - x1) / step);
   const h = Math.ceil((y2 - y1) / step);
   const x0 = x1 + step / 2;
@@ -230,7 +234,7 @@ export function pourFill(
     near(k, k.r + k.reach, (i, far) => {
       if (far > k.r && !spokeAt[i]) cells[i] = 0;
     });
-  for (const k of shape.knocks) near(k, k.r + k.reach + step / 2, (i) => (cells[i] = 0));
+  for (const k of shape.knocks) near(k, k.r + k.reach + margin, (i) => (cells[i] = 0));
   // A hatched pour's openings: cells well inside one are bare, so the grid never cuts a line it should keep.
   for (const sq of shape.holes) {
     const [a, b] = [sq[0]!, sq[2]!];
@@ -288,6 +292,33 @@ export function pourFill(
     }
   }
   return { pour, x0, y0, step, w, h, cells, joins, islands, area: filled * step * step };
+}
+
+/**
+ * A fill as rectangles of copper (#750): each row's runs of cells, a run that repeats in the rows below it taken in
+ * with them. Each rectangle is its cells' squares, so the rectangles together are the copper, with no holes to cut.
+ */
+export function fillRects(f: PourFill): [number, number, number, number][] {
+  const out: [number, number, number, number][] = [];
+  const open = new Map<string, number>();
+  for (let j = 0; j <= f.h; j += 1) {
+    const runs = new Set<string>();
+    if (j < f.h)
+      for (let i = 0; i < f.w; i += 1) {
+        if (!f.cells[j * f.w + i]) continue;
+        const from = i;
+        while (i + 1 < f.w && f.cells[j * f.w + i + 1]) i += 1;
+        runs.add(`${from},${i}`);
+      }
+    for (const [run, top] of open)
+      if (!runs.has(run)) {
+        const [a, b] = run.split(",").map(Number) as [number, number];
+        out.push([f.x0 + (a - 0.5) * f.step, f.y0 + (top - 0.5) * f.step, (b - a + 1) * f.step, (j - top) * f.step]);
+        open.delete(run);
+      }
+    for (const run of runs) if (!open.has(run)) open.set(run, j);
+  }
+  return out;
 }
 
 /** Every pour's fill, in the order they fill. */
