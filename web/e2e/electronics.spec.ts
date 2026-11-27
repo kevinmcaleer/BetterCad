@@ -1194,8 +1194,10 @@ test.describe("on a wide screen", () => {
       .getByRole("tab", { name: /^Schematic/ })
       .click();
     await page.getByRole("button", { name: "Open a board made from blocks" }).click();
-    const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
+    // The empty sheet is "0 parts" too: wait for the sample itself, and for its toast to come and go, before fitting.
+    const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: [1-9]\d* parts/ });
     await expect(schematic).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/^Opened the robot board from blocks sample/)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/^Opened the robot board from blocks sample/)).toBeHidden({ timeout: 20_000 });
     // The pointer is left where the sample's button was, over the drawing: pointing at a label lights the labels
     // with its name (#788), so it goes to an empty corner first.
