@@ -208,7 +208,7 @@ describe("the electronics workspace", () => {
 });
 
 describe("the part card", () => {
-  it("edits the picked part's value and package, and lists its pins with their nets", () => {
+  it("edits the picked part's value and package, and lists its pins with their nets", async () => {
     let d = ledAndResistor();
     const r1 = d.parts.find((p) => p.ref === "R1")!;
     const symbol = d.sheets[0]!.symbols.find((y) => y.part === r1.id)!;
@@ -225,8 +225,8 @@ describe("the part card", () => {
     expect(d.parts.find((p) => p.id === r1.id)?.value).toBe("330 Ω");
     expect((screen.getByLabelText("Package") as HTMLSelectElement).options.length).toBeGreaterThan(1);
     const net = netlist(d).of.get(`${r1.id}:1`)!;
-    expect(screen.getByText(net)).toBeInTheDocument();
-    expect(screen.getByText("Not connected")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Net on pin 1")).toHaveValue(net);
+    expect(screen.getByLabelText("Net on pin 2")).toHaveAttribute("placeholder", "Not connected");
   });
 
   it("reads shorthand when you leave the value, and marks a part as not fitted", async () => {

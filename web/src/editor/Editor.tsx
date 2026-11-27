@@ -468,6 +468,8 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const drawingApi = useRef<DrawingApi | null>(null);
   // Electronics (#617): the schematic or the board covers the view the way a drawing's sheet does.
   const eview = useSyncExternalStore(eui.subscribe, () => eui.get().view);
+  // A pin double-clicked in the electronics views opens the inspector, where its net's name is.
+  const pinAsk = useSyncExternalStore(eui.subscribe, () => eui.get().pin?.n ?? 0);
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);
@@ -628,6 +630,11 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
     if (lastDoc.current !== doc && !store.canUndo() && !store.canRedo()) eui.reset();
     lastDoc.current = doc;
   }, [doc, store]);
+  useEffect(() => {
+    if (!pinAsk) return;
+    setPropsOpen(true);
+    setPropsHidden(false);
+  }, [pinAsk]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => eui.reset(), []);
   const editDesign: EEdit = (change, label, key) =>
     // Loaded by now, since only the open view edits; the wait keeps the design's code out of the shell.

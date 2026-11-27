@@ -46,6 +46,7 @@
     "./library/blocks": "./src/library/blocks.ts",
     "./library/blockVersions": "./src/library/blockVersions.ts",
     "./blockUpdate": "./src/blockUpdate.ts",
+    "./netName": "./src/netName.ts",
     "./groups": "./src/groups.ts",
     "./fab/pack": "./src/fab/pack.ts",
     "./fab/panel": "./src/fab/panel.ts",

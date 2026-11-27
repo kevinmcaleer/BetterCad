@@ -55,6 +55,8 @@ export interface EUi {
   pourOutlines: boolean;
   /** A schematic group gone into with a double-click: its things are picked one by one (#766). */
   inGroup: string | null;
+  /** A pin double-clicked on the schematic or the board: the inspector opens its net name field. `n` goes up each time. */
+  pin: { part: string; pin: string; n: number } | null;
 }
 
 /** The board grids on offer, mm: round metric steps and the inch pitches parts are made on. */
@@ -84,6 +86,7 @@ const start = (): EUi => ({
   routed: null,
   pourOutlines: false,
   inGroup: null,
+  pin: null,
 });
 
 /**
