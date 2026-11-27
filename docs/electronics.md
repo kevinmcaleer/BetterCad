@@ -293,7 +293,7 @@ it while the net is lit. Hiding only skips the drawing: the counts and the board
 drops a via and carries on on the other layer. The width comes from the net's class, else the board's rules, or from
 the Width list. With Keep clear on, `blockers` stops a piece that would come closer to another net, a hole or the edge
 than the rules allow, and says what is in the way; turn it off to route anywhere and let the board check find it.
-Pieces laid one after another become one track. There is no push and shove (#646) and no autorouter (#647).
+Pieces laid one after another become one track. Push and walk-round are below (#646, #753); the autorouter is #647.
 
 **Placing.** Drag parts on the grid (0.1 to 2.54 mm, in Layers), or pick one and type X, Y and turn in the part
 card. Lock (K) pins parts down; with several picked, the card lines them up or spaces them evenly. A part picked on
@@ -367,14 +367,24 @@ pads that fall between grid lines; the connections it finds no way for are liste
 
 ## Push, length and pairs (#646)
 
-`pcb/shove.ts`, used by the route tool in `BoardCanvas.tsx`.
+`pcb/push.ts` (loaded with the route tool or with Push on) and `pcb/shove.ts`, used by the route tool in `BoardCanvas.tsx`.
 
-- **Push.** With Push on, a run that comes too close to another net's track asks `shove` for room. The piece in the
-  way is cut so only the stretch beside the new run moves, then slid sideways with `slidePiece` (#640) just far
-  enough, with 45° pieces at each end. What it then comes too close to is pushed in turn, three deep at most. Pads,
-  vias, text, keep-outs and the board's edge never move: a push into one of them is no push, and the track stops as
-  before. Everything that moved is measured with `blockers` before it is kept, and the run and its pushes are one
-  edit, so one undo puts them back.
+- **Push** (#646, #753). With Push on, a run that comes too close to another net's track or via asks `shove` for
+  room. A via moves straight away from the nearest point of what pushes it, and the ends of its own tracks go with it.
+  A track's piece in the way is cut so only the stretch beside what pushes moves, then slid sideways with
+  `slidePiece` (#640) just far enough, with 45° pieces at each end; of several pieces too close, the one that lies
+  most beside the pusher moves, so a piece met end on is never the one asked to go sideways. What moved pushes in
+  turn, four deep at most. Pads, plated holes, text, keep-outs and the board's edge never move. Everything that moved
+  is measured with `blockers` before it is kept, and the run and its pushes are one edit, so one undo puts them back.
+- **Walk round** (#753, `walkRound`, `routeOn`). With Keep clear on, a piece that cannot go straight, the other way
+  round its bend, or by pushing walks round instead: an A* search in eight directions on a grid over the ground
+  between the two ends and 6 mm round it (no more than 60,000 cells, so the pointer never stalls), each piece of
+  copper marking only the cells too close to it and the board's edge a wall. A small cost on each turn keeps the
+  corners few, and the result is pulled tight to straight runs and 45° corners, then measured with `blockers`. With
+  Push on it first walks round only what cannot move and pushes the rest aside.
+- **Drag with push** (#753, `dragPushing`). With Push on, sliding a piece of track in Select pushes the tracks and
+  vias it comes too close to, worked out from the board as it was when the piece was picked up; where there is no
+  room the piece stays where it last fitted. The 1,750 part board drags and walks in well under a second.
 - **Length.** The route bar shows the net's length as you go, the piece on the pointer counted, and against a target
   when one is typed. A track's card shows its net's length; typing a longer one puts flat-topped wiggles with 45°
   corners in its longest straight piece, on whichever side has room (`tuneLength`). Tuning only makes a net longer.

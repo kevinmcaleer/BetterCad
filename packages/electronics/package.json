@@ -37,6 +37,7 @@
     "./pcb/corners": "./src/pcb/corners.ts",
     "./pcb/teardrops": "./src/pcb/teardrops.ts",
     "./pcb/shove": "./src/pcb/shove.ts",
+    "./pcb/push": "./src/pcb/push.ts",
     "./pcb/dxf": "./src/pcb/dxf.ts",
     "./pcb/autoroute": "./src/pcb/autoroute.ts",
     "./pcb/netclass": "./src/pcb/netclass.ts",

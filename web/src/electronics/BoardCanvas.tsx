@@ -18,7 +18,7 @@ import {
   type ElectronicsDesign,
   type P2,
 } from "@bettercad/electronics";
-import { clearanceBetween, copperOf, edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
+import { clearanceBetween, edgeLoops, netRules, type Layer } from "@bettercad/electronics/pcb/copper";
 import { layersOf } from "@bettercad/electronics/pcb/stack";
 import { boardState } from "@bettercad/electronics/pcb/state";
 import { addPicture } from "@bettercad/electronics/pcb/picture";
@@ -40,7 +40,7 @@ import {
   toggleLock,
   trackLength,
 } from "@bettercad/electronics/pcb/route";
-import { layPair, netLength, pairOf, pairRuns, shove } from "@bettercad/electronics/pcb/shove";
+import { layPair, netLength, pairOf, pairRuns } from "@bettercad/electronics/pcb/shove";
 import { Button, ESC, NumberField, useEscape } from "@bettercad/ui";
 import { eactions, type EEdit } from "./actions";
 import { Canvas2D, type Canvas2DApi, type Pointer } from "./Canvas2D";
@@ -188,6 +188,17 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     }
   };
   // What is wrong with where the picked parts sit (#639), found as they move. The check's code loads once, apart.
+  // The router's push and walk (#753) load with the route tool, or with Push on.
+  const [router, setRouter] = useState<typeof import("@bettercad/electronics/pcb/push") | null>(null);
+  const wantRouter = ui.pcbTool === "route" || ui.shove;
+  useEffect(() => {
+    if (!wantRouter || router) return;
+    let live = true;
+    void import("@bettercad/electronics/pcb/push").then((m) => live && setRouter(m));
+    return () => {
+      live = false;
+    };
+  }, [wantRouter, router]);
   const [findClashes, setFindClashes] = useState<typeof import("@bettercad/electronics/drc").placeClashes | null>(null);
   useEffect(() => {
     let live = true;
@@ -305,22 +316,19 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     board && ui.keepClear ? blockers(board, copper, loops, { net, layers, pts, width: w })[0] : undefined;
   const tooClose = (what: string) => setSaid(`Too close to ${what}. Go round it, or turn Keep clear off.`);
 
-  /** With Push on: whether other tracks can move aside to let this run through (#646). */
-  const canPush = (net: string, pts: P2[], w: number): boolean => {
-    if (!ui.shove || !board) return false;
-    const made = shove(design, { net, layer, pts, width: w }, pads);
-    return !!made?.board && made !== design && !blockers(made.board, copperOf(made, pads), loops, { net, layers: [layer], pts, width: w }).length;
-  };
-  /** The way to `to`: bent the way asked for, or the other way if only that one is clear, or pushing through. */
-  const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string }; push?: boolean } => {
+  /**
+   * The way to `to`: bent the way asked for, or the other way if only that one is clear. With Keep clear on and
+   * something in the way, other tracks and vias are pushed aside (with Push on), or the track walks round (#753).
+   */
+  const way = (r: Routing, to: P2): { pts: P2[]; stop?: { what: string }; pushed?: ElectronicsDesign } => {
     const w = widthOf(r.net);
     const first = corner45(r.last, to, r.diag);
     const stop = inWay(r.net, [layer], first, w);
     if (!stop) return { pts: first };
     const other = corner45(r.last, to, !r.diag);
     if (first.length > 2 && !inWay(r.net, [layer], other, w)) return { pts: other };
-    if (canPush(r.net, first, w)) return { pts: first, push: true };
-    if (first.length > 2 && canPush(r.net, other, w)) return { pts: other, push: true };
+    const got = router?.routeOn(design, { net: r.net, layer, width: w }, r.last, to, { push: ui.shove, walk: true, diag: r.diag }, pads);
+    if (got) return got;
     return { pts: first, stop };
   };
   /** The nearest pad of a net to a point, within reach of a pair. */
@@ -380,14 +388,14 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     }
     const { to, lands } = aim(p, r);
     if (Math.hypot(to[0] - r.last[0], to[1] - r.last[1]) < 1e-6) return r;
-    const { pts, stop, push } = way(r, to);
+    const { pts, stop, pushed } = way(r, to);
     if (stop) {
       tooClose(stop.what);
       return false;
     }
     setSaid("");
     const w = widthOf(r.net);
-    if (push) edit((d) => addTrack(shove(d, { net: r.net, layer, pts, width: w }) ?? d, r.net, layer, pts, w), "Route a track and push others aside");
+    if (pushed) edit(() => addTrack(pushed, r.net, layer, pts, w), "Route a track and push others aside");
     else edit((d) => addTrack(d, r.net, layer, pts, w), "Route a track");
     return lands ? null : { ...r, last: to };
   };
@@ -571,7 +579,19 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
         }
         const sl = d.slide;
         // A slide is always worked out from the track as it was picked up, so going back puts it back.
-        if (sl) edit((x) => slideTrack({ ...x, board: sl.board }, sl.id, sl.piece, [s[0] - sl.from[0], s[1] - sl.from[1]]), "Move a piece of track", d.key);
+        // With Push on, the piece pushes the tracks and vias it comes too close to (#753).
+        if (sl)
+          edit(
+            (x) => {
+              const from = { ...x, board: sl.board };
+              const by: P2 = [s[0] - sl.from[0], s[1] - sl.from[1]];
+              if (!(ui.shove && router)) return slideTrack(from, sl.id, sl.piece, by);
+              const next = router.dragPushing(from, sl.id, sl.piece, by);
+              return next === from ? x : next;
+            },
+            "Move a piece of track",
+            d.key,
+          );
         else edit((x) => moveOnBoard(x, d.ids, dx, dy), "Move", d.key);
       }
       return;
@@ -688,7 +708,7 @@ export function BoardCanvas({ design, edit, readOnly }: BoardCanvasProps) {
     }
     const { pts, stop } = way(route, aim(at, route).to);
     return { track: { pts, width: widthOf(route.net), layer, blocked: !!stop } };
-  }, [route, at, board, copper, layer, width, ui.keepClear, ui.shove, grid]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [route, at, board, copper, layer, width, ui.keepClear, ui.shove, grid, router]); // eslint-disable-line react-hooks/exhaustive-deps
   /** How long a net is, with the piece on the pointer counted, against the target if there is one. */
   const lengthOf = (net: string, more: P2[] = []) => {
     const n = mm(netLength(design, net) + trackLength(more));
