@@ -369,6 +369,23 @@ export function drawSchematic(
     const box = look.groups?.outlines.find((o) => o.id === g.id)?.box;
     if (box) for (const p of g.block.points) pointOf.set(p.label, { point: p, box });
   }
+  // The labels a picked or hovered one is joined to by name (#788): a dashed line to each says they are one net.
+  if (look.twins?.size && look.twinFrom) {
+    const from = toScreen(v, look.twinFrom);
+    ctx.save();
+    ctx.strokeStyle = c.accent;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    for (const l of sheet.labels) {
+      if (!look.twins.has(l.id)) continue;
+      const to = toScreen(v, [l.x, l.y]);
+      ctx.moveTo(from[0], from[1]);
+      ctx.lineTo(to[0], to[1]);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
   for (const l of sheet.labels) {
     const s = toScreen(v, [l.x, l.y]);
     const on = look.selected.has(l.id) || look.hover === l.id;
@@ -414,23 +431,6 @@ export function drawSchematic(
       ctx.font = `${Math.max(1, 1.0 * v.scale)}px ${c.font}`;
       ctx.fillText(` → ${to[0]!.name}${to.length > 1 ? ` +${to.length - 1}` : ""}`, s[0] + 2 + w, s[1] - 2);
     }
-  }
-  // The labels a picked or hovered one is joined to by name (#788): a dashed line to each says they are one net.
-  if (look.twins?.size && look.twinFrom) {
-    const from = toScreen(v, look.twinFrom);
-    ctx.save();
-    ctx.strokeStyle = c.accent;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([6, 5]);
-    ctx.beginPath();
-    for (const l of sheet.labels) {
-      if (!look.twins.has(l.id)) continue;
-      const to = toScreen(v, [l.x, l.y]);
-      ctx.moveTo(from[0], from[1]);
-      ctx.lineTo(to[0], to[1]);
-    }
-    ctx.stroke();
-    ctx.restore();
   }
   // Notes (#733): text, lines, boxes and circles, in the ink of the sheet.
   for (const n of sheet.notes ?? []) {

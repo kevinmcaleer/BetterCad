@@ -482,6 +482,11 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     if (grabbed && !ui.selected.includes(grabbed)) {
       const into = edge ? null : groupOf(sheet, grabbed)?.id === inside ? inside : null;
       eui.set({ selected: wholeGroups(sheet, [grabbed], into), inGroup: into });
+    } else if (!grabbed && ui.selected.length) {
+      // An empty place among the picked things keeps them for the menu; one away from them lets go, as a click does.
+      const b = sheetBox(design, sheet, new Set(ui.selected));
+      const m = GRID * 2;
+      if (!(p.world[0] >= b.x1 - m && p.world[0] <= b.x2 + m && p.world[1] >= b.y1 - m && p.world[1] <= b.y2 + m)) eui.set({ selected: [], inGroup: null });
     }
     const r = host.current?.getBoundingClientRect();
     setMenu({ x: (r?.left ?? 0) + p.screen[0], y: (r?.top ?? 0) + p.screen[1], at: snapped(p) });
