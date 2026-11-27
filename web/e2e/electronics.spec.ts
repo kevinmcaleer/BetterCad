@@ -725,6 +725,42 @@ test.describe("on a wide screen", () => {
     }).toPass({ timeout: 10_000 });
   });
 
+  test("the inspector shows in Electronics though it was put away over the model, and a double-click brings it back", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    const props = page.getByRole("complementary", { name: "Properties" });
+    // Put away over the model.
+    await page.getByRole("button", { name: "Hide properties" }).first().click();
+    await expect(props).toBeHidden();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await page.getByRole("button", { name: "Open the sample board" }).click();
+    await expect(page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ })).toBeVisible({ timeout: 20_000 });
+    // Electronics keeps its own choice: the inspector is out.
+    await expect(props).toBeVisible();
+    await page.keyboard.press("2");
+    await expect(page.getByRole("img", { name: /^PCB: 13 parts/ })).toBeVisible();
+    await page.keyboard.press("f");
+    // Put away here too, then a double-click on a 5V track brings it back with the track's width.
+    await props.getByRole("button", { name: "Hide properties" }).click();
+    await expect(props).toBeHidden();
+    await expect(async () => {
+      const [x, y] = await onCanvas(page, 25, 66.8);
+      await page.mouse.dblclick(x, y);
+      await expect(page.getByRole("group", { name: "Track" }).getByLabel(/^Width/)).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await expect(props).toBeVisible();
+    await expect(page.getByRole("group", { name: "Net 5V" })).toBeVisible();
+    // Back over the model, the panel stays put away as you left it there.
+    await page.getByRole("tab", { name: "Model" }).click();
+    await expect(props).toBeHidden();
+  });
+
   test("autoroute: the connections left are routed, and one undo takes them out", async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto("/");

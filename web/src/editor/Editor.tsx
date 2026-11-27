@@ -281,6 +281,7 @@ const NO_PICK = () => {};
 const NARROW = "(max-width: 899px)";
 const TIMELINE_KEY = "bettercad.timeline";
 const PROPS_HIDDEN_KEY = "bettercad.props.hidden";
+const EPROPS_HIDDEN_KEY = "bettercad.props.hidden.electronics";
 
 const ORIENT_KEY = "bettercad.orientWeights";
 
@@ -442,11 +443,21 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   /** The Parameters dialog floats over the view, leaving the browser where it is. */
   const [paramsOpen, setParamsOpen] = useState(false);
   const [propsOpen, setPropsOpen] = useState(false);
-  // From 900px up the props panel shows unless put away; the choice lasts between visits.
-  const [propsHidden, setPropsHiddenNow] = useState(() => recall(PROPS_HIDDEN_KEY) === "1");
+  // From 900px up the props panel shows unless put away; the choice lasts between visits. The electronics views keep
+  // their own choice, so putting the panel away over the model never hides the inspector you change tracks in.
+  const eview = useSyncExternalStore(eui.subscribe, () => eui.get().view);
+  const [hiddenIn, setHiddenIn] = useState(() => ({
+    model: recall(PROPS_HIDDEN_KEY) === "1",
+    electronics: recall(EPROPS_HIDDEN_KEY) === "1",
+  }));
+  const propsWhere: "electronics" | "model" = eview ? "electronics" : "model";
+  const propsHidden = hiddenIn[propsWhere];
+  const propsWhereNow = useRef(propsWhere);
+  propsWhereNow.current = propsWhere;
   const setPropsHidden = useCallback((hidden: boolean) => {
-    setPropsHiddenNow(hidden);
-    keep(PROPS_HIDDEN_KEY, hidden ? "1" : "");
+    const where = propsWhereNow.current;
+    setHiddenIn((h) => (h[where] === hidden ? h : { ...h, [where]: hidden }));
+    keep(where === "electronics" ? EPROPS_HIDDEN_KEY : PROPS_HIDDEN_KEY, hidden ? "1" : "");
   }, []);
   const [tool, setTool] = useState<ToolId>("select");
   const [combineOp, setCombineOp] = useState<CombineOp>("join");
@@ -477,10 +488,9 @@ export function Editor({ active = true, model, share, sample, frame = false }: E
   const [drawingSize, setDrawingSize] = useState<SelectedSize | null>(null);
   const [sheetCard, setSheetCard] = useState<"new" | "settings" | null>(null);
   const drawingApi = useRef<DrawingApi | null>(null);
-  // Electronics (#617): the schematic or the board covers the view the way a drawing's sheet does.
-  const eview = useSyncExternalStore(eui.subscribe, () => eui.get().view);
-  // A pin double-clicked in the electronics views opens the inspector, where its net's name is.
-  const pinAsk = useSyncExternalStore(eui.subscribe, () => eui.get().pin?.n ?? 0);
+  // Electronics (#617): the schematic or the board covers the view the way a drawing's sheet does (eview, above).
+  // A pin, a part, a wire or a track double-clicked in the electronics views opens the inspector on it.
+  const pinAsk = useSyncExternalStore(eui.subscribe, () => (eui.get().pin?.n ?? 0) + eui.get().inspect);
   const [drawingTool, setDrawingTool] = useState<DrawingTool | null>(null);
   // Report a problem (#109): open, and the error that offered it, if one did.
   const [report, setReport] = useState<{ prefill?: string } | null>(null);

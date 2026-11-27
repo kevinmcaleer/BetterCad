@@ -60,6 +60,8 @@ export interface EUi {
   inGroup: string | null;
   /** A pin double-clicked on the schematic or the board: the inspector opens its net name field. `n` goes up each time. */
   pin: { part: string; pin: string; n: number } | null;
+  /** Goes up each time something is double-clicked on the schematic or the board: the inspector opens for it. */
+  inspect: number;
 }
 
 /** The board grids on offer, mm: round metric steps and the inch pitches parts are made on. */
@@ -91,6 +93,7 @@ const start = (): EUi => ({
   pick: { off: [], skipLocked: false },
   inGroup: null,
   pin: null,
+  inspect: 0,
 });
 
 /**
