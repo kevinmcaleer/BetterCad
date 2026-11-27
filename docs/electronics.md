@@ -887,7 +887,10 @@ What changes on the way out:
 
 How it is checked: `export.test.ts` reads the libraries back with our own KiCad readers and holds the sample's
 schematic and board to goldens. `kicadCli.test.ts` goes further where KiCad is installed (`kicad-cli`, KiCad 7 or
-later; CI has none, so it is skipped there): KiCad reads the exported schematic and writes its netlist, which must
+later; the pull request CI has none, so it skips there, and the Nightly KiCad workflow, `kicad.yml` (#759), runs it,
+`demos.test.ts` and `eagle/kicadReads.test.ts` every night in KiCad's own image on the current release, with the demos
+as KiCad 8, 9 and 10 save them, and on any pull request that changes the KiCad or Eagle code. There `KICAD_REQUIRED`
+turns a missing KiCad into a failure, and a failing night opens an issue labelled nightly-failure): KiCad reads the exported schematic and writes its netlist, which must
 have our nets, pin for pin and name for name; it plots the board's copper, which must lie where ours does on both
 sides; and it writes the drill files, which must have our holes. Both the sample and a design made to turn
 everything every way (`kicad/fixture.ts`: mirrored and turned symbols, a part with two units, power symbols, wires

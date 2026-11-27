@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { needsKicad } from "./needsKicad";
 import { boardPads } from "../board";
 import type { ElectronicsDesign } from "../model";
 import { netlist } from "../nets";
@@ -18,6 +19,7 @@ import { child, children, parseSexpr, text, type Node } from "./sexpr";
  */
 const DEMOS = process.env.KICAD_DEMOS ?? "/usr/share/kicad/demos";
 const has = existsSync(DEMOS) && spawnSync("kicad-cli", ["version"]).status === 0;
+needsKicad(has, "kicad-cli and KiCad's demos");
 
 /** A project's folder, and the schematic its board is named after. */
 const PROJECTS: [string, string][] = [
@@ -44,6 +46,7 @@ const OVERHANGS = ["video"];
  */
 const NEWER = process.env.KICAD_NEWER_DEMOS ?? "";
 const VERSIONS = NEWER && existsSync(NEWER) ? readdirSync(NEWER).filter((v) => /^\d+\.\d+$/.test(v)) : [];
+needsKicad(!NEWER || VERSIONS.length > 0, `the newer demos in ${NEWER}`);
 /** Demos that were changed between versions, so their nets are not the older copy's: the parts were numbered again, or a pin moved. */
 const CHANGED: Record<string, string[]> = { complex_hierarchy: ["9.0", "10.0"], video: ["8.0", "9.0"] };
 

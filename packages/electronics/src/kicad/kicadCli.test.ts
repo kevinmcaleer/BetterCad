@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { needsKicad } from "./needsKicad";
 import { boardPads } from "../board";
 import { holesOf } from "../fab/drill";
 import { gerberFiles } from "../fab/gerber";
@@ -17,9 +18,10 @@ import { child, children, parseSexpr, text, type Node } from "./sexpr";
 /**
  * The export, opened by KiCad itself (#664). These run only where `kicad-cli` is installed (KiCad 7 or later): KiCad
  * reads the schematic and writes its netlist, reads the board and plots its copper and drill files, and each is held
- * to what the design says here. CI has no KiCad, so they are skipped there; run them after a change to the exporter.
+ * to what the design says here. The pull request CI has no KiCad, so they skip there; the Nightly KiCad workflow runs them in KiCad's own image (#759).
  */
 const has = spawnSync("kicad-cli", ["version"]).status === 0;
+needsKicad(has, "kicad-cli");
 
 function exportTo(d: ElectronicsDesign, name: string): string {
   const dir = mkdtempSync(join(tmpdir(), "bc-kicad-"));
