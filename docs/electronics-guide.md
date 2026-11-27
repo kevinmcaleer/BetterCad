@@ -106,6 +106,10 @@ Choose Push to PCB in the schematic. It lists what it will do (make the board, a
 After that, the PCB tab shows how many changes the board is behind whenever the schematic has moved on; Update from
 schematic brings it up to date and lists the changes first.
 
+You can add a part from the PCB too: Shift+P opens Components there. Click where it goes on the board; R turns it, X
+puts it on the other side. Its symbol goes on the schematic as well, beside the other parts, so the two stay one
+design. Wire it on the schematic to give its pads nets.
+
 ![The sample board in the PCB view](images/electronics-pcb.png)
 
 1. **Set up the board.** Press B for Board setup: width, height, corner radius and thickness, or take the outline
@@ -214,7 +218,7 @@ board as one IPC-2581 file for an assembler that asks for one.
 | | Schematic | PCB |
 | --- | --- | --- |
 | Views | 1 schematic, 2 PCB, 3 model | the same |
-| Place | P Components | drag a part |
+| Place | P Components | Shift+P Components, drag a part |
 | Join | W wire, L net label, J junction, Q not connected | W route, V via, L swap side, / bend the other way |
 | Add | | H hole, T text, P pour |
 | Change | R rotate, X mirror, Del delete, Ctrl+D duplicate | R rotate, X flip side, K lock, Del delete |

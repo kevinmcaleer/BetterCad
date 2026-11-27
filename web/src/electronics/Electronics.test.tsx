@@ -333,3 +333,20 @@ describe("notes on a sheet (#733)", () => {
     expect(screen.getByText("Click to start the box, click again to finish it.")).toBeInTheDocument();
   });
 });
+
+describe("Components on the PCB", () => {
+  it("is on the PCB tools as Components (Shift+P) and opens the parts, without the schematic's blocks", async () => {
+    act(() => showView("pcb"));
+    const s = setup(pushToBoard(ledAndResistor()).design, { ribbon: false });
+    expect(s.commands.find((c) => c.id === "electronics.pcb.components")?.keys).toEqual(["shift+p"]);
+    const components = await screen.findByRole("button", { name: /^Components/ });
+    await userEvent.click(components);
+    const card = await screen.findByRole("group", { name: "Components options" });
+    expect(within(card).queryByRole("tab", { name: "Blocks" })).not.toBeInTheDocument();
+    // Placing on the board arms the board's tool, and Components lets go of the part again.
+    act(() => eui.set({ card: null, pcbTool: "place", placing: s.design()!.defs[s.design()!.parts[0]!.def]! }));
+    expect(components).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(components);
+    expect(eui.get()).toMatchObject({ pcbTool: "select", placing: null });
+  });
+});
