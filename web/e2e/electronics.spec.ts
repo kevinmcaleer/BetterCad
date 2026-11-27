@@ -679,7 +679,10 @@ test.describe("on a wide screen", () => {
       const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
       await expect(schematic).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("Start with a part.")).toBeHidden();
-      await expect(page.getByText(/^Opened the pico servo board sample/)).toBeHidden({ timeout: 20_000 });
+      // The empty sheet is "Sheet 1: 0 parts" too, so wait for the sample to open, then for its note to go.
+      const opened = page.getByText(/^Opened the pico servo board sample/);
+      await expect(opened).toBeVisible({ timeout: 20_000 });
+      await expect(opened).toBeHidden({ timeout: 20_000 });
       await page.keyboard.press("f");
       // A first picture is taken twice to see that it holds still, which is slow on a runner with no graphics card.
       await expect(schematic).toHaveScreenshot(`sample-schematic-${theme}.png`, { maxDiffPixelRatio: 0.01, timeout: 30_000 });
@@ -1229,7 +1232,10 @@ test.describe("on a wide screen", () => {
     await page.getByRole("button", { name: "Open a board made from blocks" }).click();
     const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
     await expect(schematic).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/^Opened the robot board from blocks sample/)).toBeHidden({ timeout: 20_000 });
+    // The empty sheet is "Sheet 1: 0 parts" too, so wait for the sample to open, then for its note to go.
+    const opened = page.getByText(/^Opened the robot board from blocks sample/);
+    await expect(opened).toBeVisible({ timeout: 20_000 });
+    await expect(opened).toBeHidden({ timeout: 20_000 });
     await page.keyboard.press("f");
     await expect(schematic).toHaveScreenshot("blocks-sample-schematic.png", { maxDiffPixelRatio: 0.01, timeout: 30_000 });
   });
