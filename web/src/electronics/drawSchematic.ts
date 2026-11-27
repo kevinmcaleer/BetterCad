@@ -39,6 +39,9 @@ export interface SchematicLook {
   marks?: P2[];
   /** Wires of the net under the pointer, lit with it. */
   lit?: Set<string>;
+  /** Labels on this sheet with the same name as the picked or hovered one (#788), and where that one is. */
+  twins?: Set<string>;
+  twinFrom?: P2;
   /** The place a check's result points at, ringed. */
   spot?: P2;
   /** A rubber-band box, in world millimetres. */
@@ -374,13 +377,28 @@ export function drawSchematic(
       drawPoint(ctx, v, [l.x, l.y], point.point, point.box, c, on || !!look.lit?.has(l.id), point.point.kind !== "ground" && !pointJoined(sheet, [l.x, l.y]));
       continue;
     }
-    ctx.fillStyle = on ? c.accent : c["ec-wire"];
+    const twin = !!look.twins?.has(l.id);
+    ctx.fillStyle = on || twin ? c.accent : c["ec-wire"];
     ctx.font = `600 ${Math.max(1, 1.27 * v.scale)}px ${c.mono}`;
     ctx.textAlign = l.rot === 180 ? "right" : "left";
     ctx.textBaseline = "bottom";
     const shown = shownName(localName(l.name, sheet), tagOf.get(l.id));
-    ctx.fillText(shown, l.rot === 180 ? s[0] - 2 : s[0] + 2, s[1] - 2);
     ctx.fillRect(s[0] - 1.5, s[1] - 1.5, 3, 3);
+    if (l.shape) {
+      const end = flag(ctx, s, l.rot === 180 ? -1 : 1, ctx.measureText(shown).width, 1.27 * v.scale + 4, l.shape, on || twin ? c.accent : c["ec-wire"]);
+      ctx.textBaseline = "middle";
+      ctx.fillText(shown, end.text, s[1]);
+      ctx.textBaseline = "bottom";
+      const to = far?.get(l.name);
+      if (to) {
+        ctx.fillStyle = c.muted;
+        ctx.textAlign = l.rot === 180 ? "right" : "left";
+        ctx.font = `${Math.max(1, 1.0 * v.scale)}px ${c.font}`;
+        ctx.fillText(`→ ${to[0]!.name}${to.length > 1 ? ` +${to.length - 1}` : ""}`, end.far + (l.rot === 180 ? -4 : 4), s[1] + 0.5 * v.scale);
+      }
+      continue;
+    }
+    ctx.fillText(shown, l.rot === 180 ? s[0] - 2 : s[0] + 2, s[1] - 2);
     // A sheet pin (#757) is boxed, as it is a pin on the box the sheet is placed as.
     if (l.port) {
       const w = ctx.measureText(shown).width + 4;
@@ -396,6 +414,23 @@ export function drawSchematic(
       ctx.font = `${Math.max(1, 1.0 * v.scale)}px ${c.font}`;
       ctx.fillText(` → ${to[0]!.name}${to.length > 1 ? ` +${to.length - 1}` : ""}`, s[0] + 2 + w, s[1] - 2);
     }
+  }
+  // The labels a picked or hovered one is joined to by name (#788): a dashed line to each says they are one net.
+  if (look.twins?.size && look.twinFrom) {
+    const from = toScreen(v, look.twinFrom);
+    ctx.save();
+    ctx.strokeStyle = c.accent;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    for (const l of sheet.labels) {
+      if (!look.twins.has(l.id)) continue;
+      const to = toScreen(v, [l.x, l.y]);
+      ctx.moveTo(from[0], from[1]);
+      ctx.lineTo(to[0], to[1]);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
   // Notes (#733): text, lines, boxes and circles, in the ink of the sheet.
   for (const n of sheet.notes ?? []) {
@@ -568,4 +603,50 @@ export function rubber(ctx: CanvasRenderingContext2D, v: View2D, box: [P2, P2], 
   ctx.lineWidth = 1;
   ctx.strokeRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]));
   ctx.restore();
+}
+
+/**
+ * A net label's flag (#788): an outline round the name, pointed at the end the signal flows to. "in" points at the
+ * label's own point (into the wire), "out" away from it, "both" at both ends. Says where the name and the far end go.
+ */
+function flag(
+  ctx: CanvasRenderingContext2D,
+  s: P2,
+  dir: 1 | -1,
+  textW: number,
+  h: number,
+  shape: "in" | "out" | "both",
+  ink: string,
+): { text: number; far: number } {
+  const tip = h / 2;
+  const near = shape !== "out";
+  const farTip = shape !== "in";
+  const x0 = s[0];
+  const x1 = x0 + dir * (tip + textW + 6 + tip);
+  const top = s[1] - h / 2;
+  const bottom = s[1] + h / 2;
+  ctx.save();
+  ctx.strokeStyle = ink;
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  if (near) {
+    ctx.moveTo(x0, s[1]);
+    ctx.lineTo(x0 + dir * tip, top);
+  } else {
+    ctx.moveTo(x0, bottom);
+    ctx.lineTo(x0, top);
+  }
+  if (farTip) {
+    ctx.lineTo(x1 - dir * tip, top);
+    ctx.lineTo(x1, s[1]);
+    ctx.lineTo(x1 - dir * tip, bottom);
+  } else {
+    ctx.lineTo(x1, top);
+    ctx.lineTo(x1, bottom);
+  }
+  if (near) ctx.lineTo(x0 + dir * tip, bottom);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+  return { text: x0 + dir * (tip + 3), far: x1 };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   GRID,
   addJunction,
@@ -133,6 +133,8 @@ export interface SchematicCanvasProps {
   onAskLabel: (ask: LabelAsk | null) => void;
 }
 
+const SchMenu = lazy(() => import("./SchMenu"));
+
 /** The schematic (#617, #631, #632): place parts, wire them, name the nets. */
 export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: SchematicCanvasProps) {
   const ui = useEui();
@@ -152,7 +154,14 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
   const [from, setFrom] = useState<P2 | null>(null);
   /** The bus being drawn (#756): its corners so far. */
   const [busRun, setBusRun] = useState<P2[] | null>(null);
-  useEffect(() => setBusRun(null), [ui.schTool]);
+  /** A bus started from the right-click menu: its first corner, kept while the tool changes to Bus. */
+  const busFrom = useRef<P2 | null>(null);
+  useEffect(() => {
+    setBusRun(busFrom.current ? [busFrom.current] : null);
+    busFrom.current = null;
+  }, [ui.schTool]);
+  /** The right-click menu (#788): where it opens on the page, and the place on the sheet it was opened on. */
+  const [menu, setMenu] = useState<{ x: number; y: number; at: P2 } | null>(null);
   /** The first click of a line, box or circle note. */
   const [noteFrom, setNoteFrom] = useState<P2 | null>(null);
   useEffect(() => setNoteFrom(null), [ui.schTool]);
@@ -461,6 +470,38 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     if (tool === "junction") return edit((d) => addJunction(d, sheet.id, at[0], at[1]), "Junction");
   };
 
+  /** Right-click (or a finger held still): pick what is under the pointer, unless it is picked already, then open the menu. */
+  const onMenu = (p: Pointer) => {
+    drag.current = null;
+    setBox(null);
+    if (tool !== "select") eui.set({ schTool: "select", placing: null, placingBlock: null });
+    setFrom(null);
+    const hit = hitSheet(design, sheet, p.world, tol).filter((h) => !hidden.has(h.id))[0];
+    const edge = hit ? undefined : (hitGroupOutline(outlines, p.world, tol) ?? foldedAt(p.world));
+    const grabbed = hit?.id ?? sheet.groups?.find((g) => g.id === edge?.id)?.members[0];
+    if (grabbed && !ui.selected.includes(grabbed)) {
+      const into = edge ? null : groupOf(sheet, grabbed)?.id === inside ? inside : null;
+      eui.set({ selected: wholeGroups(sheet, [grabbed], into), inGroup: into });
+    }
+    const r = host.current?.getBoundingClientRect();
+    setMenu({ x: (r?.left ?? 0) + p.screen[0], y: (r?.top ?? 0) + p.screen[1], at: snapped(p) });
+  };
+
+  /** What the menu needs from the canvas: starting a wire or a bus at a place keeps the canvas's own drawing state. */
+  const menuTools = {
+    startWire: (at: P2) => {
+      eui.set({ schTool: "wire", selected: [] });
+      setFrom(at);
+    },
+    startBus: (at: P2) => {
+      eui.set({ selected: [] });
+      if (eui.get().schTool === "bus") return setBusRun([at]);
+      busFrom.current = at;
+      eui.set({ schTool: "bus" });
+    },
+    askGroupName,
+  };
+
   const ghost = useMemo(() => {
     if (!cursor) return undefined;
     if (tool === "place" && ui.placingBlock) {
@@ -502,6 +543,15 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
     if ((lit?.net ?? null) !== eui.get().net) eui.set({ net: lit?.net ?? null });
   }, [lit]);
 
+  /** Labels joined by name to the hovered or picked one (#788): lit, with a dashed line to each. */
+  const twins = useMemo(() => {
+    const id = sheet.labels.some((l) => l.id === hover) ? hover : ui.selected.length === 1 ? ui.selected[0] : null;
+    const from = sheet.labels.find((l) => l.id === id);
+    if (!from) return undefined;
+    const ids = new Set(sheet.labels.filter((l) => l.name === from.name && l.id !== from.id).map((l) => l.id));
+    return ids.size ? { ids, from: [from.x, from.y] as P2 } : undefined;
+  }, [hover, ui.selected, sheet.labels]);
+
   const marks = useMemo(
     () => [
       ...nl.floating.filter((p) => p.sheet === sheet.id).map((p) => p.at),
@@ -520,7 +570,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         view={view}
         onView={setView}
         cursor={tool === "select" ? (hover ? "move" : "default") : "crosshair"}
-        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, ui.spot, outlines, picked, inside, stale, folded, hidden]}
+        drawKey={[design, sheet, selected, hover, ghost, box, colours, marks, lit, twins, ui.spot, outlines, picked, inside, stale, folded, hidden]}
         draw={(ctx, v, size) =>
           drawSchematic(ctx, v, size, design, sheet, colours, {
             selected,
@@ -529,6 +579,8 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
             box,
             marks,
             lit: lit?.ids,
+            twins: twins?.ids,
+            twinFrom: twins?.from,
             spot: ui.spot?.sheet === sheet.id ? ui.spot.at : undefined,
             groups: { outlines, picked, inside, stale, folded },
             hidden,
@@ -537,6 +589,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         onDown={onDown}
         onMove={onMove}
         onUp={onUp}
+        onMenu={onMenu}
         onDouble={(p) => {
           if (readOnly) return;
           if (tool === "wire") return setFrom(null);
@@ -575,6 +628,22 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
           if (note?.kind === "text") onAskLabel({ at: [note.x, note.y], screen: toScreen(view, [note.x, note.y]), id: note.id, name: note.text, note: true });
         }}
       />
+      {menu && (
+        <Suspense fallback={null}>
+          <SchMenu
+            menu={menu}
+            onClose={() => setMenu(null)}
+            design={design}
+            sheet={sheet}
+            selected={ui.selected}
+            readOnly={!!readOnly}
+            view={view}
+            edit={edit}
+            onAskLabel={onAskLabel}
+            {...menuTools}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

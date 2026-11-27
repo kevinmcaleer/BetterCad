@@ -23,7 +23,12 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
    with a dot.
 3. **Name nets.** Press L, type a name and click a wire. Wires with the same name are joined, on one sheet or across
    sheets, so you can keep the drawing tidy without long wires. Power symbols (5V, GND) are in Components and join
-   by name the same way.
+   by name the same way. Point at a label to see a dashed line to the others with its name. Right-click a label to
+   give it an arrow for which way the signal goes (Comes in, Goes out, Both ways), or to show its other ends.
+   For a set of nets that run together, such as a data bus, press U and draw a bus, then name it D[0..7]. Click
+   the bus to take a wire off it; each wire gets a label for one of its nets.
+   **Right-click** the schematic for the things you can do there. Pick several parts (drag a box round them, or
+   Shift-click) and right-click one to group them; on an empty place it starts a wire, a label or a bus there.
    A bigger design goes on more than one sheet: the plus beside the sheet tabs adds one, and right-click on a tab
    renames, moves, deletes or duplicates it. Duplicate copies a sheet as a block to use again, with its own part
    references. A label that carries on to another sheet says which; pick it to go there.

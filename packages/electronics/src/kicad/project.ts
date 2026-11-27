@@ -6,6 +6,7 @@ import {
   eid,
   emptyBoard,
   type Board,
+  type NetLabel,
   type BoardMark,
   type BoardNote,
   type BoardLayer,
@@ -164,7 +165,7 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
       if (!master) firstUse.set(file, sheet);
     }
     out.sheets.push(sheet);
-    const label = (text0: string, p: P2, rot = 0, port = false) =>
+    const label = (text0: string, p: P2, rot = 0, port = false, shape?: string) =>
       sheet.labels.push({
         id: eid("lb"),
         name: plainName(text0),
@@ -172,6 +173,7 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
         y: p[1],
         ...(rot ? { rot: (norm(rot) - (norm(rot) % 90)) as Rot } : {}),
         ...(port ? { port: true } : {}),
+        ...(SHAPES[shape ?? ""] ? { shape: SHAPES[shape ?? ""] } : {}),
       });
     /** A name used on this sheet, as the whole design knows it. */
     const scoped = (local: string) => alias.get(local) ?? `${prefix}${local}`;
@@ -241,10 +243,10 @@ function readSchematic(files: Map<string, Node[]>, rootFile: string, notes: Proj
             apart.add(named);
             named = `/${named}`;
           }
-          label(named, at(child(item, "at")), num(child(item, "at"), 3), kind === "hierarchical_label" && !!box);
+          label(named, at(child(item, "at")), num(child(item, "at"), 3), kind === "hierarchical_label" && !!box, text(child(item, "shape")));
         }
       } else if (kind === "global_label") {
-        if (!members(text(item))) label(text(item), at(child(item, "at")), num(child(item, "at"), 3));
+        if (!members(text(item))) label(text(item), at(child(item, "at")), num(child(item, "at"), 3), false, text(child(item, "shape")));
       } else if (kind === "sheet") {
         const prop = (key: string, old: string) =>
           text(
@@ -1106,3 +1108,6 @@ export function importKicadProject(files: ImportFile[], o: ProjectOptions = {}):
     },
   };
 }
+
+/** KiCad's label shapes as BetterCad's flags (#788); passive and the rest stay plain. */
+const SHAPES: Record<string, NetLabel["shape"]> = { input: "in", output: "out", bidirectional: "both" };
