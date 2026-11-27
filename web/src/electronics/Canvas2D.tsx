@@ -79,6 +79,14 @@ export function Canvas2D(p: Canvas2DProps) {
   // Pointers: who is down, and what the drag is doing.
   const downs = useRef(new Map<number, P2>());
   const drag = useRef<{ mode: "pan" | "tool" | "pinch"; moved: boolean; last: P2; start: P2; gap?: number } | null>(null);
+  /** When a right-drag pan last ended: the menu that follows the button coming up (Windows) is not wanted then. */
+  const panned = useRef(0);
+  /** A finger held still opens the menu, as a right-click does (#788). */
+  const hold = useRef<number | undefined>(undefined);
+  const letGo = () => {
+    window.clearTimeout(hold.current);
+    hold.current = undefined;
+  };
 
   const pointer = (e: { clientX: number; clientY: number; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; pointerType?: string }): Pointer => {
     const r = ref.current!.getBoundingClientRect();
@@ -116,13 +124,16 @@ export function Canvas2D(p: Canvas2DProps) {
       style={{ cursor: p.cursor }}
       onContextMenu={(e) => {
         e.preventDefault();
-        if (!drag.current?.moved) live.current.onMenu?.(pointer(e));
+        // A touch screen's own long-press menu event: the held finger has opened ours already.
+        if ((e.nativeEvent as PointerEvent).pointerType === "touch") return;
+        if (!drag.current?.moved && Date.now() - panned.current > 300) live.current.onMenu?.(pointer(e));
       }}
       onDoubleClick={(e) => live.current.onDouble?.(pointer(e))}
       onPointerDown={(e) => {
         const at = pointer(e);
         e.currentTarget.setPointerCapture?.(e.pointerId);
         downs.current.set(e.pointerId, at.screen);
+        letGo();
         if (downs.current.size === 2) {
           const [a, b] = [...downs.current.values()] as [P2, P2];
           drag.current = {
@@ -140,6 +151,13 @@ export function Canvas2D(p: Canvas2DProps) {
         }
         const taken = live.current.onDown?.(at);
         drag.current = { mode: taken || !at.touch ? "tool" : "pan", moved: false, last: at.screen, start: at.screen };
+        if (at.touch && live.current.onMenu)
+          hold.current = window.setTimeout(() => {
+            hold.current = undefined;
+            if (!drag.current || drag.current.moved || downs.current.size !== 1) return;
+            drag.current = null;
+            live.current.onMenu?.(at);
+          }, 500);
       }}
       onPointerMove={(e) => {
         const at = pointer(e);
@@ -155,7 +173,10 @@ export function Canvas2D(p: Canvas2DProps) {
           d.gap = gap;
           return;
         }
-        if (!d.moved && Math.hypot(at.screen[0] - d.start[0], at.screen[1] - d.start[1]) > (at.touch ? 8 : 3)) d.moved = true;
+        if (!d.moved && Math.hypot(at.screen[0] - d.start[0], at.screen[1] - d.start[1]) > (at.touch ? 8 : 3)) {
+          d.moved = true;
+          letGo();
+        }
         if (d.mode === "pan") {
           if (d.moved) live.current.onView(pan(live.current.view, at.screen[0] - d.last[0], at.screen[1] - d.last[1]));
           d.last = at.screen;
@@ -167,7 +188,9 @@ export function Canvas2D(p: Canvas2DProps) {
         const at = pointer(e);
         const d = drag.current;
         downs.current.delete(e.pointerId);
+        letGo();
         if (!d) return;
+        if (d.mode === "pan" && d.moved && e.button === 2) panned.current = Date.now();
         if (d.mode === "pinch") {
           if (downs.current.size === 0) drag.current = null;
           return;
@@ -178,6 +201,7 @@ export function Canvas2D(p: Canvas2DProps) {
       }}
       onPointerCancel={(e) => {
         downs.current.delete(e.pointerId);
+        letGo();
         drag.current = null;
       }}
     />

@@ -8,6 +8,7 @@ import {
   type ComponentDef,
   type ElectronicsDesign,
   type Id,
+  type LabelShape,
   type NetLabel,
   type P2,
   type Part,
@@ -303,6 +304,25 @@ export function renameLabel(d: ElectronicsDesign, sheet: Id, id: Id, name: strin
   const text = name.trim();
   if (!text) return d;
   return onSheet(d, sheet, (s) => ({ ...s, labels: s.labels.map((l) => (l.id === id ? { ...l, name: text } : l)) }));
+}
+
+/** Gives the picked net labels a flag for which way the signal goes, or takes it off (null). */
+export function setLabelShape(d: ElectronicsDesign, sheet: Id, ids: Id[], shape: LabelShape | null): ElectronicsDesign {
+  const set = new Set(ids);
+  return onSheet(d, sheet, (s) => ({
+    ...s,
+    labels: s.labels.map((l) => {
+      if (!set.has(l.id)) return l;
+      const next = { ...l, shape: shape ?? undefined };
+      if (!shape) delete next.shape;
+      return next;
+    }),
+  }));
+}
+
+/** Every label with this name, on every sheet: the ends of a net that is joined by name rather than by a wire. */
+export function labelsNamed(d: ElectronicsDesign, name: string): { sheet: Id; label: NetLabel }[] {
+  return d.sheets.flatMap((s) => s.labels.filter((l) => l.name === name).map((label) => ({ sheet: s.id, label })));
 }
 
 /** Changes a part's value, package, reference, supplier numbers or whether it is fitted. */
