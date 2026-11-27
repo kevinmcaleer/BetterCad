@@ -421,6 +421,8 @@ function sheetFile(
     uses: { path: string; sheet: Sheet }[];
     uuid: string;
     global: boolean;
+    /** Names that must join across sheets by name (#757): a use's labels for a net of the sheet above. */
+    outs: Set<string>;
     subs: Node[][];
     /** The sheets placed on this one as boxes (#757). */
     boxes: { box: SheetBox; name: string; file: string; page: number }[];
@@ -479,7 +481,8 @@ function sheetFile(
     const rot = l.rot ?? 0;
     const just = rot === 180 || rot === 270 ? "right" : "left";
     // A use of a block (#757): its sheet pins are hierarchical labels, and its other labels local to each use.
-    if (sheet.use) {
+    const across = o.outs.has(l.name);
+    if (sheet.use && !across) {
       out.push(
         l.port
           ? [
@@ -495,7 +498,7 @@ function sheetFile(
       continue;
     }
     out.push(
-      o.global
+      o.global || across
         ? ["global_label", s(l.name), ["shape", "passive"], ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just]), ["uuid", uuidOf(l.id)]]
         : ["label", s(l.name), ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just, "bottom"]), ["uuid", uuidOf(l.id)]],
     );
@@ -1101,6 +1104,11 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
   }));
   const fileOf = new Map(sheets.map((sh) => [sh.sheet.id, sh.file]));
   const global = plain.length > 0;
+  // A use's label that is not its own (no prefix) is a net of a sheet above, as a bus on a sheet pin brings in: it
+  // goes out as a global label, on every sheet that has it, so KiCad joins it by name.
+  const outs = new Set(
+    d.sheets.flatMap((sh) => (sh.use ? sh.labels.filter((l) => !l.port && !l.name.startsWith(`${sh.use!.prefix}/`)).map((l) => l.name) : [])),
+  );
   const pathOf = (sh: Sheet, depth = 0): string => {
     if (sh === top) return `/${root}`;
     const at = sh.use && boxOf.get(sh.use.box);
@@ -1143,7 +1151,7 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
     });
     files.push({
       name: sh.file,
-      text: sheetFile(d, sh.sheet, names, { project: name, root, uses: usesOf(sh.sheet), uuid: sh.uuid, global, subs, boxes }),
+      text: sheetFile(d, sh.sheet, names, { project: name, root, uses: usesOf(sh.sheet), uuid: sh.uuid, global, outs, subs, boxes }),
     });
   });
   const instances = [

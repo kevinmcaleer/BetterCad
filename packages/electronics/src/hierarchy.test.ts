@@ -128,4 +128,33 @@ describe("hierarchy (#757)", () => {
     expect(netOf(back, "R2", "1")).toBe("B");
     expect(netOf(back, "R1", "2")).not.toBe(netOf(back, "R2", "2"));
   });
+
+  it("keeps a block's label for a net of the sheet above joined to it in KiCad, as a global label", () => {
+    // A bus on a sheet pin brings the sheet above's names in: the label inside carries no prefix of the use's.
+    let d = twice();
+    d = placePart(d, "drv", BASICS.resistor!(), { x: 20, y: 0 }).design;
+    const inner = placedPins(d)
+      .filter((p) => p.sheet === "drv")
+      .at(-1)!;
+    d = addLabel(d, "drv", "VCC", inner.at[0], inner.at[1]);
+    d = placePart(d, "sh1", BASICS.resistor!(), { x: 40, y: 40 }).design;
+    const outer = placedPins(d)
+      .filter((p) => p.sheet === "sh1")
+      .at(-1)!;
+    d = addLabel(d, "sh1", "VCC", outer.at[0], outer.at[1]);
+    const ref = (sheet: string) =>
+      d.parts.find(
+        (p) =>
+          p.id ===
+          placedPins(d)
+            .filter((q) => q.sheet === sheet)
+            .at(-1)!.part,
+      )!.ref;
+    const [inRef, outRef] = [ref("drv"), ref("sh1")];
+    expect(netOf(d, inRef, "2")).toBe(netOf(d, outRef, "2"));
+    const out = kicadProject(d, "hier");
+    expect(out.files.find((f) => f.name === "hier.kicad_sch")!.text).toMatch(/\(global_label "VCC"/);
+    const back = importKicadProject(out.files.map((f) => ({ name: f.name, text: f.text }))).design;
+    expect(netOf(back, inRef, "2")).toBe(netOf(back, outRef, "2"));
+  });
 });

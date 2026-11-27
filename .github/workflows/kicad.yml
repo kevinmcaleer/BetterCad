@@ -56,7 +56,9 @@ jobs:
             mv "$RUNNER_TEMP/kicad-$v-demos/demos" "$RUNNER_TEMP/demos/$v"
           done
           echo "KICAD_NEWER_DEMOS=$RUNNER_TEMP/demos" >> "$GITHUB_ENV"
-          if [ -d /usr/share/kicad/demos ]; then echo "KICAD_DEMOS=/usr/share/kicad/demos" >> "$GITHUB_ENV"; else echo "KICAD_DEMOS=$RUNNER_TEMP/demos/$KICAD" >> "$GITHUB_ENV"; fi
+          # KiCad 9's copy is the one held to KiCad's nets: KiCad 10 dropped flat_hierarchy, test_xil_95108 and
+          # custom_pads_test from its demos, and the image's own copy has only what 10 ships.
+          echo "KICAD_DEMOS=$RUNNER_TEMP/demos/9.0" >> "$GITHUB_ENV"
       - run: kicad-cli version
       - run: >-
           npx vitest run packages/electronics/src/kicad/kicadCli.test.ts packages/electronics/src/kicad/demos.test.ts

@@ -13,7 +13,9 @@ import { importEagleProject } from "./project";
  */
 const SCRIPT = `
 import json, sys, pcbnew
-b = pcbnew.IO_MGR.Load(pcbnew.IO_MGR.EAGLE, sys.argv[1])
+# KiCad 8 calls it PCB_IO_MGR; older ones IO_MGR.
+io = getattr(pcbnew, "PCB_IO_MGR", None) or pcbnew.IO_MGR
+b = io.Load(io.EAGLE, sys.argv[1])
 mm = lambda v: round(pcbnew.ToMM(v), 4)
 pads = [{"ref": f.GetReference(), "pad": p.GetNumber(), "x": mm(p.GetPosition().x), "y": mm(p.GetPosition().y), "w": mm(p.GetSize().x), "h": mm(p.GetSize().y),
          "top": p.IsOnLayer(pcbnew.F_Cu), "bottom": p.IsOnLayer(pcbnew.B_Cu), "net": p.GetNetname(), "drill": mm(p.GetDrillSize().x)}

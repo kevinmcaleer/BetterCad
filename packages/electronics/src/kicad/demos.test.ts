@@ -47,8 +47,11 @@ const OVERHANGS = ["video"];
 const NEWER = process.env.KICAD_NEWER_DEMOS ?? "";
 const VERSIONS = NEWER && existsSync(NEWER) ? readdirSync(NEWER).filter((v) => /^\d+\.\d+$/.test(v)) : [];
 needsKicad(!NEWER || VERSIONS.length > 0, `the newer demos in ${NEWER}`);
-/** Demos that were changed between versions, so their nets are not the older copy's: the parts were numbered again, or a pin moved. */
-const CHANGED: Record<string, string[]> = { complex_hierarchy: ["9.0", "10.0"], video: ["8.0", "9.0"] };
+/**
+ * Demos that were changed between versions, so their nets are not KiCad 9's copy's (the one the nightly opens as
+ * KICAD_DEMOS): the parts were numbered again, or a pin moved.
+ */
+const CHANGED: Record<string, string[]> = { complex_hierarchy: ["8.0"], video: ["10.0"] };
 
 const filesIn = (folder: string, name: string) =>
   readdirSync(folder)
