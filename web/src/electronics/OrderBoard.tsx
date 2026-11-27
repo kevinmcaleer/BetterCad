@@ -23,7 +23,9 @@ export default function OrderBoard({ design, name, onClose, onParts }: { design:
   const [note, setNote] = useState("");
   const [bad, setBad] = useState(false);
   const [panel, setPanel] = useState<Panel | null>(null);
-  const pack = useMemo(() => orderPack(design, house, name, panel), [design, house, name, panel]);
+  // Which build to order (#758): the parts list and pick and place follow it.
+  const [variant, setVariant] = useState<string | null>(null);
+  const pack = useMemo(() => orderPack(design, house, name, panel, variant), [design, house, name, panel, variant]);
   const place = useMemo(() => (pack ? pinOnes(design, pack.place) : []), [design, pack]);
   if (!pack) return null;
   const blocked = pack.checks.filter((c) => !c.ok && c.blocks);
@@ -107,6 +109,20 @@ export default function OrderBoard({ design, name, onClose, onParts }: { design:
             <Button key={h.id} label={h.name} on={house === h.id} onClick={() => setHouse(h.id)} />
           ))}
         </span>
+
+        {(design.variants?.length ?? 0) > 0 && (
+          <label className="bc-field">
+            <span>Build</span>
+            <select className="bc-select" aria-label="Build" value={variant ?? ""} onChange={({ target: { value } }) => setVariant(value || null)}>
+              <option value="">As drawn</option>
+              {design.variants!.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="bc-check">
           <input type="checkbox" checked={!!panel} onChange={(e) => setPanel(e.target.checked ? PANEL : null)} />

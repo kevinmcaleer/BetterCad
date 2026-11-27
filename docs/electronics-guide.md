@@ -43,7 +43,9 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
 ![The rules check, open over the schematic](images/electronics-check.png)
 
 The parts table (T) shows every part in one table. Change values, packages and part numbers there, several rows at a
-time. Export saves the schematic as a PDF or an SVG, a netlist, or the whole design as a KiCad project.
+time. Export saves the schematic as a PDF or an SVG, a netlist, or the whole design as a KiCad project. To make more than one build of a board, such as
+one without the charger, choose New variant in the parts table: Values and Fitted then change that build only, and
+Order the board asks which build to make the parts list and pick and place for.
 
 On a phone or tablet the tools sit along the bottom, and you tap where you would click.
 

@@ -8,6 +8,7 @@ import { panelFiles, type Panel } from "./panel";
 import { drillFiles, type DrillTool } from "./drill";
 import { gerberFiles, notesFile, type GerberLayer } from "./gerber";
 import data from "./houses.json";
+import { withVariant } from "../variants";
 import { bom, placeList, type Bom, type BomRow, type PlaceRow } from "./parts";
 
 export { pinOnes, type PinOne } from "./parts";
@@ -118,15 +119,20 @@ export interface Pack {
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const list = (refs: string[]) => (refs.length > 6 ? `${refs.slice(0, 6).join(", ")} and ${refs.length - 6} more` : refs.join(", "));
 
-/** The order pack for a board house, or null when there is no board. `name` is the model's name. */
-export function orderPack(d: ElectronicsDesign, houseId: string, name: string, panel?: Panel | null): Pack | null {
+/**
+ * The order pack for a board house, or null when there is no board. `name` is the model's name. With a `variant`
+ * (#758), the parts list and pick and place are for that build, and the files carry its name.
+ */
+export function orderPack(drawn: ElectronicsDesign, houseId: string, name: string, panel?: Panel | null, variant?: string | null): Pack | null {
+  const d = withVariant(drawn, variant);
+  const v = variant ? drawn.variants?.find((x) => x.id === variant) : undefined;
   const board = d.board;
   if (!board) return null;
   const house = houseOf(houseId);
   const nl = netlist(d);
   const pads = boardPads(d, nl);
   const copper = copperOf(d, pads);
-  const base = fileBase(name);
+  const base = fileBase(v ? `${name} ${v.name}` : name);
   const one = drillFiles(d, nl)!;
   const many = panel && panel.rows * panel.cols > 1 ? panelFiles(board, panel, gerberFiles(d, nl), one, board.copperLayers) : null;
   const drills = many?.drills ?? one;

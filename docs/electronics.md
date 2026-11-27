@@ -778,6 +778,12 @@ has every fitted part's middle, side and turn (anticlockwise, seen from the top)
 corrections (`pnp`) added in the file only. Part numbers are typed or pasted in the parts table, which opens from
 the order card.
 
+**Variants** (`variants.ts`, subpath `./variants`, #758). `design.variants` holds named builds, each only what it
+changes from the drawing: `fitted` and `values` by part id. `withVariant(d, id)` is the design as that build makes
+it, and `orderPack(..., variant)` uses it for the parts list and pick and place and puts the variant's name in the
+file names. The parts table's Build menu shows and edits one build; the order card has the same menu. Eagle's
+`variantdef`s and each part's `variant` (populate, value) come in as variants; KiCad gets the drawing as drawn.
+
 **The order pack** (`pack.ts`, `houses.json`). Order the board, in the PCB view's tools, picks a board house and
 gives the Gerber and drill files in a zip of their own, then the parts list and the pick and place list as CSV or
 XLSX (`web/src/electronics/xlsx.ts`, a workbook written by hand: five small XML files in a zip). Each house is data:

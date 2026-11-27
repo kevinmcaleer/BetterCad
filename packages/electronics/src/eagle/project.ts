@@ -501,6 +501,22 @@ export function importEagleProject(files: ImportFile[], o: ProjectOptions = {}):
       if (!comp.def.packages.length) lacking.push(name);
     }
   }
+  // Assembly variants (#758): each part says where it differs, as populate="no" or a value of its own.
+  const variantDefs = kids(kid(schematic, "variantdefs"), "variantdef");
+  if (variantDefs.length) {
+    design.variants = variantDefs.map((v) => ({ id: eid("var"), name: v.attrs.name || "Variant" }));
+    for (const p of partEls) {
+      const part = parts.get(p.attrs.name ?? "")?.part;
+      if (!part) continue;
+      for (const pv of kids(p, "variant")) {
+        const v = design.variants.find((x) => x.name === (pv.attrs.name || "Variant"));
+        if (!v) continue;
+        const fitted = pv.attrs.populate !== "no";
+        if (fitted !== (part.fitted !== false)) v.fitted = { ...v.fitted, [part.id]: fitted };
+        if (pv.attrs.value !== undefined && pv.attrs.value !== part.value) v.values = { ...v.values, [part.id]: pv.attrs.value };
+      }
+    }
+  }
   if (lacking.length)
     notes.push({
       name: lacking.length > 6 ? `${lacking.slice(0, 6).join(", ")} and ${lacking.length - 6} more` : lacking.join(", "),

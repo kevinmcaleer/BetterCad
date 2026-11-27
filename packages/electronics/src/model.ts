@@ -651,6 +651,16 @@ export interface ElectronicsDesign {
   /** Rule levels changed from their defaults, and results waived with a note, by a result's stable key. */
   /** The rules checks' settings: each rule's level, waivers, and the pin table where it differs (#738). */
   checks?: { levels?: Record<string, CheckLevel>; waived?: Record<string, string>; pins?: Record<string, "ok" | "warning" | "error"> };
+  /** Named sets of fitted parts and changed values (#758), each on top of the design as drawn. */
+  variants?: Variant[];
+}
+
+/** A variant (#758): the parts it fits or leaves off, and values it changes, by part id. Others are as drawn. */
+export interface Variant {
+  id: Id;
+  name: string;
+  fitted?: Record<Id, boolean>;
+  values?: Record<Id, string>;
 }
 
 export const emptySheet = (name = "Sheet 1"): Sheet => ({ id: eid("sh"), name, symbols: [], wires: [], junctions: [], labels: [], noConnects: [] });
