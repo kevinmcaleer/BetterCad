@@ -23,7 +23,8 @@ import type { ModelFaces } from "./faceOutline";
 import { eactions, showView, type EEdit } from "./actions";
 import { SchematicCanvas, commitLabel, type LabelAsk } from "./SchematicCanvas";
 import { ELECTRONICS_GUIDE_URL as GUIDE_URL } from "../help/about";
-import { eui, type EView, type PcbTool, type SchTool } from "./ui";
+import { eui, toggleGrid, type EView, type PcbTool, type SchTool } from "./ui";
+import { GridButton } from "./GridButton";
 import { useEui } from "./useEui";
 
 export { onDesign } from "./design";
@@ -603,6 +604,17 @@ function commands(design: () => ElectronicsDesign): Command[] {
       run: armPcb(t),
       keywords,
     })),
+    {
+      ...e,
+      id: "electronics.grid",
+      label: "Show or hide the grid",
+      group: "View",
+      icon: "grid",
+      keys: ["g"],
+      when: () => schematic() || pcb(),
+      run: toggleGrid,
+      keywords: "grid dots snap",
+    },
     {
       ...e,
       id: "electronics.pcb.layer",
@@ -1213,8 +1225,9 @@ export default function ElectronicsView({
                           ? `Click to start the ${ui.schTool === "rect" ? "box" : ui.schTool}, click again to finish it.`
                           : ui.net
                             ? `Net ${ui.net}`
-                            : "Grid 2.54 mm"}
+                            : ""}
             </span>
+            <GridButton view="schematic" />
           </>
         ) : (
           <>
@@ -1232,7 +1245,8 @@ export default function ElectronicsView({
                 {behind} {behind === 1 ? "change" : "changes"} from the schematic
               </button>
             )}
-            <span className="bc-ec-status-far">{size ? `Board ${size.w} × ${size.h} mm · Grid ${ui.grid} mm` : ""}</span>
+            <span className="bc-ec-status-far">{size ? `Board ${size.w} × ${size.h} mm` : ""}</span>
+            <GridButton view="pcb" />
           </>
         )}
       </div>

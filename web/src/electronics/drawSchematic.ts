@@ -22,7 +22,7 @@ import {
 import type { Colours } from "./colours";
 import { shownName } from "@bettercad/electronics/groups";
 import type { GroupOutline } from "./hit";
-import { gridStep, toScreen, toWorld, type View2D } from "./view2d";
+import { drawGridDots, toScreen, type View2D } from "./view2d";
 
 export interface SchematicLook {
   /** Ids of selected symbols, wires, labels, junctions and marks. */
@@ -46,6 +46,7 @@ export interface SchematicLook {
   spot?: P2;
   /** A rubber-band box, in world millimetres. */
   box?: [P2, P2] | null;
+  /** Draw the grid's dots. On unless false. */
   grid?: boolean;
   /** Group outlines (#766), with which are picked and which one is gone into. */
   groups?: { outlines: GroupOutline[]; picked: Set<string>; inside?: string | null; stale?: Set<string>; folded?: Set<string> };
@@ -258,18 +259,7 @@ export function drawSchematic(
     : whole;
   ctx.fillStyle = c.viewport;
   ctx.fillRect(0, 0, size.w, size.h);
-  if (look.grid !== false) {
-    const step = gridStep(v, GRID);
-    const a = toWorld(v, [0, size.h]);
-    const b = toWorld(v, [size.w, 0]);
-    ctx.fillStyle = c.line;
-    const r = step === GRID ? 1 : 1.3;
-    for (let x = Math.ceil(a[0] / step) * step; x <= b[0]; x += step)
-      for (let y = Math.ceil(a[1] / step) * step; y <= b[1]; y += step) {
-        const s = toScreen(v, [x, y]);
-        ctx.fillRect(s[0] - r / 2, s[1] - r / 2, r, r);
-      }
-  }
+  if (look.grid !== false) drawGridDots(ctx, v, size, GRID, c.muted);
   for (const o of look.groups?.outlines ?? [])
     drawGroup(ctx, v, o, c, look.groups!.picked.has(o.id), look.groups!.inside === o.id, look.groups!.stale?.has(o.id), look.groups!.folded?.has(o.id));
   const parts = new Map(d.parts.map((p) => [p.id, p]));
