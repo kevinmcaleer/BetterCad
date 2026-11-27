@@ -1,7 +1,7 @@
 import { outlinePoints, ratsnest, type BoardPad } from "../board";
 import { key, q, segmentDistance } from "../geom";
 import type { Board, ElectronicsDesign, Id, P2 } from "../model";
-import { edgeLoops, netRules, padLayers, padSolid, type Copper, type Layer } from "./copper";
+import { classOf, clearanceBetween, edgeLoops, netRules, padLayers, padSolid, type Copper, type Layer } from "./copper";
 import { applyRoutes, blockers, corner45, tidyRun, type Route } from "./route";
 
 export { applyRoutes, type Route };
@@ -333,7 +333,8 @@ class Router {
   /** The space a net routes in, brought up to date with the copper laid so far. */
   private space(net: string): Space {
     const r = netRules(this.board, net);
-    const id = `${r.trackWidth}|${r.clearance}|${r.viaDiameter}|${r.viaDrill}`;
+    // With custom rules (#760) the clearances depend on the net's class, so each class routes in a space of its own.
+    const id = `${r.trackWidth}|${r.clearance}|${r.viaDiameter}|${r.viaDrill}${this.board.customRules?.length ? `|${classOf(this.board, net)}` : ""}`;
     let s = this.spaces.get(id);
     if (!s) {
       const size = this.layers.length * this.n;
@@ -357,7 +358,15 @@ class Router {
     for (; s.upto < this.copper.length; s.upto += 1) {
       const c = this.copper[s.upto]!;
       const layers = c.layers.map((l) => this.layers.indexOf(l)).filter((l) => l >= 0);
-      if (layers.length) this.stamp(s, layers, c.pts, c.r, Math.max(s.clearance, netRules(this.board, c.net).clearance), this.netId(c.net));
+      if (layers.length)
+        this.stamp(
+          s,
+          layers,
+          c.pts,
+          c.r,
+          this.board.customRules?.length ? clearanceBetween(this.board, net, c.net, c.pts) : Math.max(s.clearance, netRules(this.board, c.net).clearance),
+          this.netId(c.net),
+        );
     }
     return s;
   }

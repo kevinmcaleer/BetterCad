@@ -82,4 +82,21 @@ describe("the parts table", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Filled in the numbers for C1, R1 and R2. Check each part suits your circuit: C1 is ±10%, 50 V, X7R");
     expect(screen.queryByRole("button", { name: /^Fill in/ })).toBeNull();
   });
+
+  it("makes a variant and changes only that build's fitted parts and values (#758)", async () => {
+    const { labels, design } = setup(three());
+    await userEvent.click(screen.getByRole("button", { name: "New variant" }));
+    expect(screen.getByLabelText("Build")).toHaveDisplayValue("Variant");
+    await userEvent.click(screen.getByLabelText("R1 is fitted"));
+    const value = screen.getByLabelText("Value of R2");
+    await userEvent.clear(value);
+    await userEvent.type(value, "4k7{Enter}");
+    expect(labels).toEqual(["New variant", "Change R1 in Variant", "Change R2 in Variant"]);
+    expect(screen.getByText(/^Variant changes R1 not fitted and R2 4.7 kΩ/)).toBeInTheDocument();
+    // The drawing keeps its own.
+    const r1 = design().parts.find((p) => p.ref === "R1")!;
+    expect(r1.fitted).toBeUndefined();
+    await userEvent.selectOptions(screen.getByLabelText("Build"), "As drawn");
+    expect(screen.getByLabelText("R1 is fitted")).toBeChecked();
+  });
 });

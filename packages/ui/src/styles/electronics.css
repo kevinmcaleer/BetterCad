@@ -790,6 +790,14 @@ button.bc-ec-pill {
 }
 
 /* ---- the parts table */
+/* Which build the table shows (#758), with its name and the buttons to make or drop one. */
+.bc-ec-variant-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--bc-space-2);
+  margin-bottom: var(--bc-space-2);
+}
 .bc-ec-table-wrap {
   max-height: 60vh;
   overflow: auto;

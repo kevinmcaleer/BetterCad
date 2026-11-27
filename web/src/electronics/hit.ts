@@ -1,4 +1,5 @@
 import {
+  boxRect,
   boxesTouch,
   distToSegment,
   entryEnd,
@@ -17,7 +18,7 @@ import { GROUP_NAME, type GroupOutline } from "@bettercad/electronics/groups";
 
 /** What the pointer is over on a sheet. `id` is the thing's own id; for a symbol, `part` is its part. */
 export interface SchHit {
-  kind: "symbol" | "wire" | "label" | "junction" | "noConnect" | "note" | "bus" | "busEntry";
+  kind: "symbol" | "wire" | "label" | "junction" | "noConnect" | "note" | "bus" | "busEntry" | "box";
   id: string;
   part?: string;
 }
@@ -102,6 +103,8 @@ export function hitSheet(d: ElectronicsDesign, sheet: Sheet, p: P2, tol: number)
     if (b.pts.some((a, i) => i > 0 && distToSegment(p, b.pts[i - 1]!, a) <= tol + 0.3) || inBox(p, busNameBox(b), tol * 0.5))
       out.push({ kind: "bus", id: b.id });
   for (const n of sheet.notes ?? []) if (onNote(n, p, tol)) out.push({ kind: "note", id: n.id });
+  // A sheet placed as a box (#757), under its own pins and wires.
+  for (const b of sheet.boxes ?? []) if (inBox(p, boxRect(d, b), tol * 0.5)) out.push({ kind: "box", id: b.id });
   const parts = new Map(d.parts.map((x) => [x.id, x]));
   for (const s of [...sheet.symbols].reverse()) {
     const def = d.defs[parts.get(s.part)?.def ?? ""];
@@ -125,6 +128,7 @@ export function boxSheet(d: ElectronicsDesign, sheet: Sheet, a: P2, b: P2): stri
   for (const n of sheet.noConnects) if (inBox([n.x, n.y], box)) out.push(n.id);
   for (const b of sheet.buses ?? []) if (b.pts.every((p) => inBox(p, box))) out.push(b.id);
   for (const e of sheet.busEntries ?? []) if (inBox([e.x, e.y], box) && inBox(entryEnd(e), box)) out.push(e.id);
+  for (const x of sheet.boxes ?? []) if (boxesTouch(boxRect(d, x), box)) out.push(x.id);
   for (const n of sheet.notes ?? []) {
     const nb = noteBox(n);
     if (inBox([nb.x1, nb.y1], box) && inBox([nb.x2, nb.y2], box)) out.push(n.id);

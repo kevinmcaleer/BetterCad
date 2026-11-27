@@ -27,6 +27,12 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
    A bigger design goes on more than one sheet: the plus beside the sheet tabs adds one, and right-click on a tab
    renames, moves, deletes or duplicates it. Duplicate copies a sheet as a block to use again, with its own part
    references. A label that carries on to another sheet says which; pick it to go there.
+   To use a sheet as a block, pick the labels where it joins the rest and choose Sheet pin, then right-click its tab
+   and choose Place on this sheet as a box. The box has a pin for each sheet pin; wire them up like a part's.
+   Place it again for a second use: each use has its own parts, references and nets, but the drawing is one, so a
+   change to the first sheet shows on every copy. Double-click a box to open its sheet. On the PCB, Repeat its board
+   layout on the copies (on the same tab menu) lays the copies out as you laid out the first. Boxes go to KiCad as
+   hierarchical sheets, one file for the block, and come back the same.
 4. **Write on the sheet.** The Draw group has Text, Line, Box and Circle, for titles, notes and boxes round a
    group of parts. Double-click a text note to change its words. Notes don't join anything.
 5. **Mark pins you leave open.** Press Q and click the pin, so the rules check knows it is on purpose.
@@ -37,7 +43,9 @@ Raspberry Pi Pico with two servo headers, routed and ready to order. The lesson
 ![The rules check, open over the schematic](images/electronics-check.png)
 
 The parts table (T) shows every part in one table. Change values, packages and part numbers there, several rows at a
-time. Export saves the schematic as a PDF or an SVG, a netlist, or the whole design as a KiCad project.
+time. Export saves the schematic as a PDF or an SVG, a netlist, or the whole design as a KiCad project. To make more than one build of a board, such as
+one without the charger, choose New variant in the parts table: Values and Fitted then change that build only, and
+Order the board asks which build to make the parts list and pick and place for.
 
 On a phone or tablet the tools sit along the bottom, and you tap where you would click.
 
@@ -101,7 +109,8 @@ schematic brings it up to date and lists the changes first.
    cut-outs. The board follows its source, so when you change the model the board's shape changes with it, and one
    undo takes back both. If the face or sketch goes away, the board keeps its last shape and you are told.
    Pick a board house's rules here too, and whether vias are covered by the mask or left open. A via's own card can
-   say otherwise for that one.
+   say otherwise for that one. Custom rules, at the bottom, give more room between two net classes (mains and
+   logic), or a clearance and track width of their own inside an area, such as under a fine-pitch chip.
    Most boards need two copper layers. Layers gives you four or six: the inner ones show in the Layers card, L steps
    through them while you route, and a pour over the whole board on an inner layer makes it a ground or power plane.
 2. **Place the parts.** Drag them into place. R turns a part, X flips it to the other side of the board, K locks it.

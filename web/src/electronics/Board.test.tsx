@@ -83,6 +83,21 @@ describe("the board check card", () => {
 });
 
 describe("board setup", () => {
+  it("adds custom rules between classes and in an area (#760)", async () => {
+    const s = setup(board().d, (design, edit) => <BoardSetup design={design} edit={edit} onClose={() => {}} />);
+    await userEvent.click(screen.getByRole("button", { name: "Between classes" }));
+    await userEvent.click(screen.getByRole("button", { name: "In an area" }));
+    expect(s.design().board!.customRules!.map((r) => r.kind)).toEqual(["classes", "area"]);
+    const area = screen.getByRole("group", { name: "Area 2" });
+    type(within(area).getByLabelText("Track width (mm)"), "0.15");
+    type(within(area).getByLabelText("Right (mm)"), "40");
+    const rule = s.design().board!.customRules![1]!;
+    expect(rule.trackWidth).toBe(0.15);
+    expect(Math.max(...rule.area!.map((p) => p[0]))).toBe(40);
+    await userEvent.click(screen.getByRole("button", { name: "Remove Classes 1" }));
+    expect(s.design().board!.customRules!.map((r) => r.name)).toEqual(["Area 2"]);
+  });
+
   it("sizes the board, rounds its corners and sets what it is made of", async () => {
     const s = setup(board().d, (design, edit) => <BoardSetup design={design} edit={edit} onClose={() => {}} />);
     type(screen.getByLabelText("Width (mm)"), "60");

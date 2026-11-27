@@ -1,0 +1,109 @@
+name: Nightly KiCad
+
+# The round trips against real KiCad (#759): our KiCad export opened by kicad-cli, KiCad's own demo projects read
+# here and held to the nets KiCad finds, and KiCad's reading of our Eagle test board. They run in KiCad's own image,
+# on its current release, with the demos as KiCad 8, 9 and 10 save them. KICAD_REQUIRED makes a missing KiCad a
+# failure rather than a skip. Nightly on main, a failure opens (or updates) one issue labelled nightly-failure and a
+# green run closes it; a pull request that changes the KiCad or Eagle code runs it too, as a check.
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - packages/electronics/src/kicad/**
+      - packages/electronics/src/eagle/**
+      - .github/workflows/kicad.yml
+
+concurrency:
+  group: kicad-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  # The current KiCad release. Move it on when KiCad does.
+  KICAD: "10.0"
+
+jobs:
+  round-trips:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: kicad/kicad:10.0-full
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # The demos as each version of KiCad saves them, from that branch of KiCad's source.
+      - name: Fetch KiCad's demos
+        run: |
+          set -eu
+          # KiCad's image has no curl.
+          command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq --no-install-recommends curl ca-certificates >/dev/null; }
+          mkdir -p "$RUNNER_TEMP/demos"
+          for v in 8.0 9.0 10.0; do
+            curl -fsSL -o "$RUNNER_TEMP/demos-$v.tar.gz" "https://gitlab.com/kicad/code/kicad/-/archive/$v/kicad-$v.tar.gz?path=demos"
+            tar -xzf "$RUNNER_TEMP/demos-$v.tar.gz" -C "$RUNNER_TEMP"
+            mv "$RUNNER_TEMP/kicad-$v-demos/demos" "$RUNNER_TEMP/demos/$v"
+          done
+          echo "KICAD_NEWER_DEMOS=$RUNNER_TEMP/demos" >> "$GITHUB_ENV"
+          # KiCad 9's copy is the one held to KiCad's nets: KiCad 10 dropped flat_hierarchy, test_xil_95108 and
+          # custom_pads_test from its demos, and the image's own copy has only what 10 ships.
+          echo "KICAD_DEMOS=$RUNNER_TEMP/demos/9.0" >> "$GITHUB_ENV"
+      - run: kicad-cli version
+      - run: >-
+          npx vitest run packages/electronics/src/kicad/kicadCli.test.ts packages/electronics/src/kicad/demos.test.ts
+          packages/electronics/src/eagle/kicadReads.test.ts --reporter=default --reporter=json --outputFile=kicad-report.json
+        env:
+          CI: "1"
+          KICAD_REQUIRED: "1"
+      - if: always()
+        run: node scripts/test-report.mjs kicad-report.json "Nightly KiCad round trips (KiCad $KICAD)" | tee kicad-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-kicad
+          path: kicad-summary.md
+          retention-days: 14
+
+  # Only the scheduled run on main opens or closes the issue.
+  report:
+    needs: [round-trips]
+    if: always() && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nightly-kicad
+        continue-on-error: true
+      - uses: actions/github-script@v7
+        env:
+          RESULT: ${{ needs.round-trips.result }}
+        with:
+          script: |
+            const fs = require("fs");
+            const label = "nightly-failure";
+            const title = "Nightly KiCad round trips failing";
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, labels: label, state: "open", per_page: 100 });
+            const mine = open.filter((i) => i.title === title);
+            if (process.env.RESULT === "success") {
+              for (const i of mine) {
+                await github.rest.issues.createComment({ ...context.repo, issue_number: i.number, body: `Green again in [this run](${run}).` });
+                await github.rest.issues.update({ ...context.repo, issue_number: i.number, state: "closed", state_reason: "completed" });
+              }
+              return;
+            }
+            const summary = fs.existsSync("kicad-summary.md") ? fs.readFileSync("kicad-summary.md", "utf8") : "";
+            const body = [`The nightly KiCad round trips failed on ${new Date().toISOString().slice(0, 10)}: [run](${run}).`, "", summary.slice(0, 60000)].join("\n");
+            if (mine.length) await github.rest.issues.update({ ...context.repo, issue_number: mine[0].number, body });
+            else await github.rest.issues.create({ ...context.repo, title, labels: [label], body });

@@ -67,7 +67,7 @@ export function teardrops(d: ElectronicsDesign, pads: BoardPad[] = boardPads(d),
       ];
       // Kept only when every other net's copper on its layer is far enough away.
       const solid = { pts, r: 0 };
-      const near = copper.some((c) => c.net !== t.net && c.layers.includes(t.layer) && gap(solid, c) < clearanceBetween(b, t.net, c.net) - 1e-6);
+      const near = copper.some((c) => c.net !== t.net && c.layers.includes(t.layer) && gap(solid, c) < clearanceBetween(b, t.net, c.net, c.pts, t.pts) - 1e-6);
       if (!near) out.push({ net: t.net, layer: t.layer, pts });
     }
   }

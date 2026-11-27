@@ -42,7 +42,7 @@ export function blockers(
   for (const piece of pieces) {
     for (const c of copper) {
       if ((c.net && c.net === run.net) || !c.layers.some((l) => run.layers.includes(l))) continue;
-      const need = clearanceBetween(board, run.net, c.net);
+      const need = clearanceBetween(board, run.net, c.net, piece.pts, c.pts);
       const g = gap(piece, c);
       if (g < need - 1e-6) out.push({ what: c.what, gap: g, need, at: c.at });
     }

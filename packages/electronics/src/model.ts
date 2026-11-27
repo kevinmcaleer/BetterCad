@@ -276,6 +276,8 @@ export interface NetLabel {
   y: number;
   name: string;
   rot?: Rot;
+  /** A sheet pin (#757): on a sheet used as a box, this label is a pin on the box, joined to the net there. */
+  port?: boolean;
 }
 
 export interface Sheet {
@@ -295,6 +297,36 @@ export interface Sheet {
   buses?: Bus[];
   /** Short slanted pieces where a wire leaves a bus (#756). */
   busEntries?: BusEntry[];
+  /** Other sheets placed on this one as boxes with pins (#757). */
+  boxes?: SheetBox[];
+  /** Set when this sheet is placed on another as a box (#757): it is one use of a block. */
+  use?: SheetUse;
+}
+
+/** A sheet drawn on another as a box (#757). Its pins are the used sheet's sheet pins, in name order. */
+export interface SheetBox {
+  id: Id;
+  /** The sheet it stands for. */
+  sheet: Id;
+  /** Its top left corner. */
+  x: number;
+  y: number;
+  /** A box brought in from KiCad keeps its size and where its pins are, from its top left; a pin not listed is placed below them. */
+  w?: number;
+  h?: number;
+  pins?: { name: string; dx: number; dy: number; side: "left" | "right" }[];
+}
+
+/**
+ * One use of a block (#757). Its labels are named `prefix/name`, so each use has nets of its own. A use with a
+ * `master` is a copy that follows it: drawn from it again after every change, keeping its own parts and references.
+ */
+export interface SheetUse {
+  box: Id;
+  prefix: string;
+  master?: Id;
+  /** For a copy: each of the master's symbols, to this sheet's own. */
+  links?: Record<Id, Id>;
 }
 
 /** A bus (#756): a run of points, and a name such as "D[0..7]" for the nets it carries. It joins nothing itself. */
@@ -531,6 +563,22 @@ export interface NetClass {
   viaDrill?: number;
 }
 
+/**
+ * A custom rule (#760). `area`: inside a drawn area, copper keeps `clearance` and the route tools lay `trackWidth`.
+ * `classes`: between nets of class `a` and class `b` ("Default" for nets in no class), copper keeps `clearance`.
+ * A matching rule's number stands in for the classes' own; inside an area, the area's wins.
+ */
+export interface BoardRule {
+  id: Id;
+  name: string;
+  kind: "area" | "classes";
+  area?: P2[];
+  a?: string;
+  b?: string;
+  clearance?: number;
+  trackWidth?: number;
+}
+
 export interface Board {
   /** The edge, anticlockwise, then any cut-outs. */
   outline: Corner[];
@@ -565,6 +613,8 @@ export interface Board {
   keepouts: Keepout[];
   rules: Rules;
   classes: NetClass[];
+  /** Custom rules by area or by pair of classes (#760). */
+  customRules?: BoardRule[];
   /** What the board last took from the schematic: each net's pins, to tell a renamed net from a deleted one. */
   synced?: { nets: Record<string, string[]> };
   mask?: "green" | "black" | "blue" | "red" | "white" | "purple" | "yellow";
@@ -619,6 +669,16 @@ export interface ElectronicsDesign {
   /** Rule levels changed from their defaults, and results waived with a note, by a result's stable key. */
   /** The rules checks' settings: each rule's level, waivers, and the pin table where it differs (#738). */
   checks?: { levels?: Record<string, CheckLevel>; waived?: Record<string, string>; pins?: Record<string, "ok" | "warning" | "error"> };
+  /** Named sets of fitted parts and changed values (#758), each on top of the design as drawn. */
+  variants?: Variant[];
+}
+
+/** A variant (#758): the parts it fits or leaves off, and values it changes, by part id. Others are as drawn. */
+export interface Variant {
+  id: Id;
+  name: string;
+  fitted?: Record<Id, boolean>;
+  values?: Record<Id, string>;
 }
 
 export const emptySheet = (name = "Sheet 1"): Sheet => ({ id: eid("sh"), name, symbols: [], wires: [], junctions: [], labels: [], noConnects: [] });

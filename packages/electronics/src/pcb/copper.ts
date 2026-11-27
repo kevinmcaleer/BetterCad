@@ -195,24 +195,60 @@ export function copperGroups(copper: Copper[], joined: number[][] = []): number[
   return copper.map((_, i) => find(i));
 }
 
-/** The width, clearance and via a net is routed with: its class's, else the board's own. */
+/** The name of a net's class, "Default" for a net in none. */
+export const classOf = (board: Pick<Board, "classes">, net: string): string => board.classes.find((c) => c.nets.includes(net))?.name ?? "Default";
+
+/** Whether a run of points (or one point) is inside an area or crosses its edge. */
+export function touchesArea(pts: readonly P2[], area: readonly P2[]): boolean {
+  if (area.length < 3 || !pts.length) return false;
+  if (pts.some((p) => pointInPolygon(p, area as P2[]))) return true;
+  for (let i = 0; i + 1 < pts.length; i += 1)
+    for (let k = 0; k < area.length; k += 1) if (segmentDistance(pts[i]!, pts[i + 1]!, area[k]!, area[(k + 1) % area.length]!) < 1e-9) return true;
+  return false;
+}
+
+/**
+ * The width, clearance and via a net is routed with: its class's, else the board's own. At a point inside an area
+ * rule (#760) with a width, that width.
+ */
 export function netRules(
-  board: Pick<Board, "rules" | "classes">,
+  board: Pick<Board, "rules" | "classes" | "customRules">,
   net: string,
+  at?: P2,
 ): Pick<NetClass, "trackWidth" | "clearance"> & { viaDiameter: number; viaDrill: number } {
   const k = board.classes.find((c) => c.nets.includes(net));
   const r: Rules = board.rules;
+  const area = at && board.customRules?.find((x) => x.kind === "area" && x.trackWidth && x.area && pointInPolygon(at, x.area));
   return {
-    trackWidth: k?.trackWidth ?? r.trackWidth,
+    trackWidth: area ? area.trackWidth! : (k?.trackWidth ?? r.trackWidth),
     clearance: k?.clearance ?? r.clearance,
     viaDiameter: k?.viaDiameter ?? r.viaDiameter,
     viaDrill: k?.viaDrill ?? r.viaDrill,
   };
 }
 
-/** The clearance two nets must keep from each other: the larger of the two. */
-export const clearanceBetween = (board: Pick<Board, "rules" | "classes">, a: string, b: string): number =>
-  Math.max(netRules(board, a).clearance, netRules(board, b).clearance);
+/**
+ * The clearance two nets must keep from each other: the larger of their classes'. A rule for that pair of classes
+ * (#760) stands in for it; and where `near` (the two pieces' points) touches an area rule, the area's number does.
+ */
+export function clearanceBetween(board: Pick<Board, "rules" | "classes" | "customRules">, a: string, b: string, ...near: (readonly P2[])[]): number {
+  const base = Math.max(netRules(board, a).clearance, netRules(board, b).clearance);
+  const rules = board.customRules;
+  if (!rules?.length) return base;
+  const ka = classOf(board, a);
+  const kb = classOf(board, b);
+  const pair = rules.filter((x) => x.kind === "classes" && x.clearance !== undefined && ((x.a === ka && x.b === kb) || (x.a === kb && x.b === ka)));
+  const areas = near.length
+    ? rules.filter((x) => x.kind === "area" && x.clearance !== undefined && x.area && near.some((pts) => touchesArea(pts, x.area!)))
+    : [];
+  if (areas.length) return Math.max(...areas.map((x) => x.clearance!));
+  if (pair.length) return Math.max(...pair.map((x) => x.clearance!));
+  return base;
+}
+
+/** The most any rule asks two pieces of copper to keep apart, for a search that must reach that far. */
+export const widestClearance = (board: Pick<Board, "rules" | "classes" | "customRules">): number =>
+  Math.max(board.rules.clearance, ...board.classes.map((k) => k.clearance), ...(board.customRules ?? []).map((x) => x.clearance ?? 0));
 
 /** The board's edge and cut-outs as closed runs of straight pieces. */
 export function edgeLoops(board: Pick<Board, "outline" | "cutouts">): P2[][] {

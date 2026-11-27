@@ -5,7 +5,7 @@ import { packageOf, type CheckLevel, type ElectronicsDesign, type Id, type P2 } 
 import { byRef, netlist, type Netlist } from "../nets";
 import { boardChanges, footprintBox } from "../sync";
 import { LINE_GAP, REF_SIZE, boardTextLook, textWidth } from "../fab/font";
-import { clearanceBetween, edgeGap, edgeLoops, gap, padSolid, type Copper, type Solid } from "./copper";
+import { clearanceBetween, widestClearance, edgeGap, edgeLoops, gap, padSolid, type Copper, type Solid } from "./copper";
 import { layerName, layersOf, viaKind, viaLayers } from "./stack";
 import { boardState } from "./state";
 
@@ -228,13 +228,13 @@ export function checkBoard(d: ElectronicsDesign, nl: Netlist = netlist(d)): Boar
   // Copper against copper: touching is a short, too close a clearance problem. A part's own pads are its footprint's business.
   if (on("short") || on("clearance")) {
     const live = copper.filter((c) => c.layers.length);
-    const reach = Math.max(rules.clearance, ...board.classes.map((k) => k.clearance));
+    const reach = widestClearance(board);
     const worst = new Map<string, { a: Copper; b: Copper; g: number; need: number }>();
     for (const [a, b] of near(live, reach)) {
       if ((a.net && a.net === b.net) || !a.layers.some((l) => b.layers.includes(l))) continue;
       if (a.kind === "pad" && b.kind === "pad" && a.id === b.id) continue;
       if (a.kind !== "pad" && a.id === b.id) continue;
-      const need = clearanceBetween(board, a.net, b.net);
+      const need = clearanceBetween(board, a.net, b.net, a.pts, b.pts);
       const g = gap(a, b);
       // Half a micron of grace: a gap that reads as the rule's own number passes it.
       if (g >= need - 5e-4) continue;

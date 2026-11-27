@@ -1,5 +1,6 @@
 import { byRef, changePart, realParts, tidyValue, type ElectronicsDesign, type Part } from "@bettercad/electronics";
 import { COMMON_CHECKED, commonMatches, fillCommon } from "@bettercad/electronics/fab/common";
+import { addVariant, partIn, removeVariant, renameVariant, setVariantFitted, setVariantValue, variantChanges } from "@bettercad/electronics/variants";
 import { Button, Dialog } from "@bettercad/ui";
 import { useState } from "react";
 import type { EEdit } from "./actions";
@@ -42,7 +43,11 @@ export const tableRows = (d: ElectronicsDesign): Part[] => realParts(d).sort((a,
  * a cell and it fills the rows below.
  */
 export default function PartsTable({ design, edit, readOnly, onClose }: { design: ElectronicsDesign; edit: EEdit; readOnly?: boolean; onClose: () => void }) {
-  const rows = tableRows(design);
+  // A variant (#758): the table shows and changes that build's fitted parts and values, not the drawing's.
+  const [variantId, setVariant] = useState<string | null>(null);
+  const variant = design.variants?.find((v) => v.id === variantId);
+  const rows = tableRows(design).map((p) => partIn(variant, p));
+  const changes = variant ? variantChanges(design, variant.id) : [];
   // Everyday resistors and capacitors whose LCSC numbers are known (#661). Offered, never filled in for you.
   const common = commonMatches(design);
   const [filled, setFilled] = useState("");
@@ -52,7 +57,55 @@ export default function PartsTable({ design, edit, readOnly, onClose }: { design
         <p className="bc-note">There are no parts yet.</p>
       ) : (
         <>
-          <p className="bc-note">Change a cell and move on to keep it. Paste a column from a spreadsheet into a cell to fill the rows below.</p>
+          <div className="bc-ec-variant-bar">
+            <label className="bc-field">
+              <span>Build</span>
+              <select className="bc-select" aria-label="Build" value={variant?.id ?? ""} onChange={({ target: { value } }) => setVariant(value || null)}>
+                <option value="">As drawn</option>
+                {(design.variants ?? []).map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {!readOnly && (
+              <Button
+                label="New variant"
+                onClick={() => {
+                  const made = addVariant(design);
+                  edit(() => made.design, "New variant");
+                  setVariant(made.id);
+                }}
+              />
+            )}
+            {variant && !readOnly && (
+              <>
+                <input
+                  className="bc-text"
+                  aria-label="Variant name"
+                  defaultValue={variant.name}
+                  key={variant.id + variant.name}
+                  onBlur={(e) => e.target.value.trim() !== variant.name && edit((d) => renameVariant(d, variant.id, e.target.value), "Rename variant")}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                />
+                <Button
+                  label="Delete variant"
+                  onClick={() => {
+                    edit((d) => removeVariant(d, variant.id), "Delete variant");
+                    setVariant(null);
+                  }}
+                />
+              </>
+            )}
+          </div>
+          <p className="bc-note" role={variant ? "status" : undefined}>
+            {variant
+              ? changes.length
+                ? `${variant.name} changes ${listed(changes)}. Values and Fitted here change this build only.`
+                : `${variant.name} is the same as the drawing so far. Values and Fitted here change this build only.`
+              : "Change a cell and move on to keep it. Paste a column from a spreadsheet into a cell to fill the rows below."}
+          </p>
           {(common.length > 0 || filled) && (
             <p className="bc-note" role="status">
               {common.length > 0 ? (
@@ -112,7 +165,13 @@ export default function PartsTable({ design, edit, readOnly, onClose }: { design
                         disabled={readOnly}
                         onBlur={(e) => {
                           const text = e.target.value;
-                          if (text.trim() !== cell(design, p, col)) edit((d) => setCell(d, p.id, col, text), `Change ${p.ref}`);
+                          if (text.trim() === cell(design, p, col)) return;
+                          if (variant && col === "value")
+                            edit(
+                              (d) => setVariantValue(d, variant.id, p.id, tidyValue(text.trim(), d.defs[p.def]?.prefix ?? "")),
+                              `Change ${p.ref} in ${variant.name}`,
+                            );
+                          else edit((d) => setCell(d, p.id, col, text), `Change ${p.ref}`);
                         }}
                         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                         onPaste={(e) => {
@@ -154,7 +213,11 @@ export default function PartsTable({ design, edit, readOnly, onClose }: { design
                           aria-label={`${p.ref} is fitted`}
                           checked={p.fitted !== false}
                           disabled={readOnly}
-                          onChange={({ target: { checked } }) => edit((d) => changePart(d, p.id, { fitted: checked ? undefined : false }), `Change ${p.ref}`)}
+                          onChange={({ target: { checked } }) =>
+                            variant
+                              ? edit((d) => setVariantFitted(d, variant.id, [p.id], checked), `Change ${p.ref} in ${variant.name}`)
+                              : edit((d) => changePart(d, p.id, { fitted: checked ? undefined : false }), `Change ${p.ref}`)
+                          }
                         />
                       </td>
                     </tr>

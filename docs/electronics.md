@@ -169,7 +169,7 @@ The edits live in `packages/electronics/src/edit.ts`, each a function from a des
   filled, picks the group on a click inside the box and unfolds it on a double-click; the inspector has Fold to a
   box and Unfold, and the command list has Fold or unfold the block. The PDF prints folded blocks folded with "N
   parts inside". Not built: printing each folded block's inside on a page of its own, and a right-click menu (the
-  schematic has none yet). KiCad gets the block flattened until hierarchy (#757) is in.
+  schematic has none yet). KiCad gets the block flattened; a sheet placed as a box (#757) goes as KiCad hierarchy.
 
 ## The rules check (#634)
 
@@ -267,8 +267,27 @@ adds is the way to make and move between them.
   stays joined, and is the block's way in and out. Rename those on the copy where each copy needs its own. A copy is
   a copy: it does not follow the sheet it came from.
 
-Not built: hierarchy with sheet pins, and blocks that stay linked to
-their master.
+## Hierarchy (#757)
+
+`packages/electronics/src/hierarchy.ts`. A label marked `port` is a sheet pin. `placeSheetBox` puts a sheet on
+another as a `SheetBox`, with a pin for each sheet pin (`boxPins`: half down the left, half down the right, or where
+KiCad had them). The first placing makes the sheet a use (`Sheet.use`, with a prefix): its labels are stored as
+`prefix/name` and shown without it (`localName`, `storedName`), so each use has nets of its own. In the netlist a
+box pin joins `name|prefix/pin`; the rules check leaves sheet pins out of "label used once" and "two names".
+
+Placing it again makes a copy sheet with `use.master` and `use.links` (master symbol to copy symbol).
+`keepUsesInStep` wraps every edit in the view: after a change to a master, `syncCopy` draws each copy from it again,
+keeping the copy's own symbols and parts, so references and the board stay put. A copy's sheet is read only. Taking a
+copy's box away (`removeBox`) takes its sheet and parts; taking the master's makes the first copy the master.
+`repeatLayout` gives the copies the master's placements, shifted across by the group's width, with its tracks and
+vias on the copies' nets.
+
+KiCad: each master is one `.kicad_sch`; every box is a `sheet` with `pin`s pointing at it, the sheet pins are
+`hierarchical_label`s and the other labels local, and each symbol lists a reference per use under `instances`. On
+the way in, a `sheet` becomes a box with its size and pins as drawn, and a second sheet of the same file becomes a
+copy linked symbol by symbol.
+
+Not built: boxes inside a copy (a copy follows its master's drawing, not its boxes), and buses on box pins.
 
 ## Laying out a board (#637 to #643)
 
@@ -338,6 +357,16 @@ a copper ring. Text (T) writes on the silkscreen of the side being worked on.
 **Board setup** (B). Width, height and corner radius of a rectangular board (`roundedOutline`), thickness, solder
 mask and silkscreen colours, the rules and the net classes. A net class gives its nets a track width and clearance of
 their own; a net is in one class at a time.
+
+**Custom rules** (`board.customRules`, `pcb/customRules.ts`, #760). A rule between two classes ("Default" for nets in
+none) sets the clearance between their nets in place of the classes' own. An area rule sets a clearance for copper
+that touches its area, and a track width the route tool lays when a piece starts inside it; an area's clearance wins
+over a pair's. `clearanceBetween(board, a, b, ...pieces)` and `netRules(board, net, at)` in `./copper` apply them, so
+the board check, pours, teardrops, the route tool, push and walk round, and the autorouter (a space of its own for
+each class when there are rules) all follow. Areas show on the board as dotted outlines with their names. KiCad: the
+rules go out as `<name>.kicad_dru` with each area as a named rule area, and the simplest come back in (`readDru`: a
+pair of classes, or `insideArea`, `intersectsArea`, `enclosedByArea`; a clearance or a track width); any other rule
+is listed as left out.
 
 **Rule presets** (`presets.json`). A board house's limits are data: the numbers, the page they were read from and
 the day they were read. `ours` lists the fields that are our working values (clearance, track width, via size)
@@ -759,6 +788,12 @@ has every fitted part's middle, side and turn (anticlockwise, seen from the top)
 corrections (`pnp`) added in the file only. Part numbers are typed or pasted in the parts table, which opens from
 the order card.
 
+**Variants** (`variants.ts`, subpath `./variants`, #758). `design.variants` holds named builds, each only what it
+changes from the drawing: `fitted` and `values` by part id. `withVariant(d, id)` is the design as that build makes
+it, and `orderPack(..., variant)` uses it for the parts list and pick and place and puts the variant's name in the
+file names. The parts table's Build menu shows and edits one build; the order card has the same menu. Eagle's
+`variantdef`s and each part's `variant` (populate, value) come in as variants; KiCad gets the drawing as drawn.
+
 **The order pack** (`pack.ts`, `houses.json`). Order the board, in the PCB view's tools, picks a board house and
 gives the Gerber and drill files in a zip of their own, then the parts list and the pick and place list as CSV or
 XLSX (`web/src/electronics/xlsx.ts`, a workbook written by hand: five small XML files in a zip). Each house is data:
@@ -862,7 +897,10 @@ What changes on the way out:
 
 How it is checked: `export.test.ts` reads the libraries back with our own KiCad readers and holds the sample's
 schematic and board to goldens. `kicadCli.test.ts` goes further where KiCad is installed (`kicad-cli`, KiCad 7 or
-later; CI has none, so it is skipped there): KiCad reads the exported schematic and writes its netlist, which must
+later; the pull request CI has none, so it skips there, and the Nightly KiCad workflow, `kicad.yml` (#759), runs it,
+`demos.test.ts` and `eagle/kicadReads.test.ts` every night in KiCad's own image on the current release, with the demos
+as KiCad 8, 9 and 10 save them, and on any pull request that changes the KiCad or Eagle code. There `KICAD_REQUIRED`
+turns a missing KiCad into a failure, and a failing night opens an issue labelled nightly-failure): KiCad reads the exported schematic and writes its netlist, which must
 have our nets, pin for pin and name for name; it plots the board's copper, which must lie where ours does on both
 sides; and it writes the drill files, which must have our holes. Both the sample and a design made to turn
 everything every way (`kicad/fixture.ts`: mirrored and turned symbols, a part with two units, power symbols, wires
@@ -883,9 +921,9 @@ the Board step is added to the model so the board stands in 3D.
 
 What it reads:
 
-- The schematic, sheet by sheet. A hierarchy is flattened: each sheet box becomes a sheet of ours, the nets inside it
-  take the sheet's name as a prefix, and its sheet pins become labels, so what was joined through the box is still
-  joined. A sheet used twice comes in twice. Bus vectors (`D[0..7]`) are followed through sheet pins by name.
+- The schematic, sheet by sheet. A hierarchy stays a hierarchy (#757): each sheet box becomes a box of ours with its
+  pins where they were, the nets inside it take the sheet's name as a prefix, and its hierarchical labels are sheet
+  pins. A sheet used twice comes in as a copy that follows the first use. Bus vectors (`D[0..7]`) are followed through sheet pins by name.
 - Symbols come from the schematic's own copy of each (`lib_symbols`), so no KiCad library is needed. Units of one
   reference are one part. Power symbols stay power symbols; a hidden supply pin gets a label with its name, which is
   the net KiCad joins it to.

@@ -107,7 +107,7 @@ function pushFrom(d: ElectronicsDesign, start: Pusher): { design: ElectronicsDes
       // Vias first: a track that ends on one is carried with it.
       for (const v of board.vias) {
         if (v.id === by.self || (v.net && v.net === by.net) || !viaLayers(board, v).some((l) => by.layers.includes(l))) continue;
-        const need = clearanceBetween(board, by.net, v.net);
+        const need = clearanceBetween(board, by.net, v.net, [[v.x, v.y]]);
         if (mine.some((m) => gap(m, viaSolid(v)) < need - 1e-6)) {
           hitVia = { v, need };
           break;
@@ -116,7 +116,7 @@ function pushFrom(d: ElectronicsDesign, start: Pusher): { design: ElectronicsDes
       if (!hitVia)
         for (const t of board.tracks) {
           if (!by.layers.includes(t.layer) || t.id === by.self || (t.net && t.net === by.net)) continue;
-          const need = clearanceBetween(board, by.net, t.net);
+          const need = clearanceBetween(board, by.net, t.net, t.pts);
           const hits = [...new Set(bitsOf(t).flatMap((b) => (mine.some((m) => gap(m, b.solid) < need - 1e-6) ? [b.piece] : [])))];
           if (hits.length) {
             // Of the pieces too close, the one that lies most beside what pushes: a piece met end on has no side to go to.
@@ -351,7 +351,7 @@ export function walkRound(
         if (!blocked[k] && gap({ pts: [at(i, j)], r }, s) < need - 1e-6) blocked[k] = 1;
       }
   };
-  for (const c of near) if (!(c.net && c.net === run.net)) mark(c, clearanceBetween(board, run.net, c.net));
+  for (const c of near) if (!(c.net && c.net === run.net)) mark(c, clearanceBetween(board, run.net, c.net, c.pts));
   // The board's edge is a wall: a walk that starts on the board stays on it.
   for (const loop of loops) for (let k = 0; k < loop.length; k += 1) mark({ pts: [loop[k]!, loop[(k + 1) % loop.length]!], r: 0 }, board.rules.copperToEdge);
   for (const k of board.keepouts ?? [])

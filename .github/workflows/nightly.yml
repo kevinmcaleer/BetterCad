@@ -96,7 +96,10 @@ jobs:
             const label = "nightly-failure";
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const ok = process.env.MODELS === "success" && process.env.JOURNEYS === "success";
-            const { data: open } = await github.rest.issues.listForRepo({ ...context.repo, labels: label, state: "open", per_page: 1 });
+            // Its own issue only: the KiCad round trips (kicad.yml) keep one of their own under the same label.
+            const title = "Nightly run failing";
+            const { data: all } = await github.rest.issues.listForRepo({ ...context.repo, labels: label, state: "open", per_page: 100 });
+            const open = all.filter((i) => i.title === title);
             if (ok) {
               for (const i of open) {
                 await github.rest.issues.createComment({ ...context.repo, issue_number: i.number, body: `Green again in [this run](${run}).` });
@@ -114,4 +117,4 @@ jobs:
               summary.slice(0, 60000),
             ].join("\n");
             if (open.length) await github.rest.issues.update({ ...context.repo, issue_number: open[0].number, body });
-            else await github.rest.issues.create({ ...context.repo, title: "Nightly run failing", labels: [label], body });
+            else await github.rest.issues.create({ ...context.repo, title, labels: [label], body });

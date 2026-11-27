@@ -1,8 +1,11 @@
 import {
   GRID,
+  boxPins,
+  boxRect,
   elsewhere,
   entryEnd,
   key,
+  localName,
   onSegment,
   pinDirOnSheet,
   placeOnSheet,
@@ -247,6 +250,7 @@ export function drawSchematic(
         ...(whole.notes ? { notes: whole.notes.filter((x) => !hide.has(x.id)) } : {}),
         ...(whole.buses ? { buses: whole.buses.filter((x) => !hide.has(x.id)) } : {}),
         ...(whole.busEntries ? { busEntries: whole.busEntries.filter((x) => !hide.has(x.id)) } : {}),
+        ...(whole.boxes ? { boxes: whole.boxes.filter((x) => !hide.has(x.id)) } : {}),
       }
     : whole;
   ctx.fillStyle = c.viewport;
@@ -310,6 +314,32 @@ export function drawSchematic(
     ctx.textBaseline = "bottom";
     ctx.fillText(bus.name, at[0] + 2, at[1] - 0.6 * v.scale);
   }
+  // Sheets placed here as boxes (#757): the box, the sheet's name over it, and a pin for each of its sheet pins.
+  for (const box of sheet.boxes ?? []) {
+    const child = d.sheets.find((x) => x.id === box.sheet);
+    const r = boxRect(d, box);
+    const on = look.selected.has(box.id) || look.hover === box.id;
+    const [x1, y1] = toScreen(v, [r.x1, r.y2]);
+    const [x2, y2] = toScreen(v, [r.x2, r.y1]);
+    ctx.strokeStyle = on ? c.accent : c["ec-symbol"];
+    ctx.lineWidth = on ? 2.5 : 1.5;
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    ctx.fillStyle = on ? c.accent : c["ec-symbol"];
+    ctx.font = `600 ${Math.max(1, 1.27 * v.scale)}px ${c.font}`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(child ? `${child.name}${child.use ? ` · ${child.use.prefix}` : ""}` : "Missing sheet", x1, y1 - 3);
+    ctx.font = `${Math.max(1, 1.1 * v.scale)}px ${c.mono}`;
+    ctx.textBaseline = "middle";
+    for (const pin of boxPins(d, box)) {
+      const [px, py] = toScreen(v, pin.at);
+      ctx.fillStyle = c["ec-wire"];
+      ctx.fillRect(px - 2, py - 2, 4, 4);
+      ctx.fillStyle = c.ink;
+      ctx.textAlign = pin.side === "left" ? "left" : "right";
+      ctx.fillText(pin.name, pin.side === "left" ? px + 0.6 * v.scale : px - 0.6 * v.scale, py);
+    }
+  }
   const dot = (p: P2, colour: string) => {
     const s = toScreen(v, p);
     ctx.fillStyle = colour;
@@ -348,8 +378,17 @@ export function drawSchematic(
     ctx.font = `600 ${Math.max(1, 1.27 * v.scale)}px ${c.mono}`;
     ctx.textAlign = l.rot === 180 ? "right" : "left";
     ctx.textBaseline = "bottom";
-    ctx.fillText(shownName(l.name, tagOf.get(l.id)), l.rot === 180 ? s[0] - 2 : s[0] + 2, s[1] - 2);
+    const shown = shownName(localName(l.name, sheet), tagOf.get(l.id));
+    ctx.fillText(shown, l.rot === 180 ? s[0] - 2 : s[0] + 2, s[1] - 2);
     ctx.fillRect(s[0] - 1.5, s[1] - 1.5, 3, 3);
+    // A sheet pin (#757) is boxed, as it is a pin on the box the sheet is placed as.
+    if (l.port) {
+      const w = ctx.measureText(shown).width + 4;
+      const h = 1.27 * v.scale + 2;
+      ctx.strokeStyle = on ? c.accent : c["ec-wire"];
+      ctx.lineWidth = 1;
+      ctx.strokeRect(l.rot === 180 ? s[0] - w - 1 : s[0] + 1, s[1] - h - 1, w, h);
+    }
     const to = far?.get(l.name);
     if (to) {
       const w = ctx.measureText(l.name).width;

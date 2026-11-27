@@ -5,6 +5,7 @@ import {
   addLabel,
   addBus,
   addBusEntry,
+  boxRect,
   addNote,
   busAt,
   freeMembers,
@@ -18,7 +19,11 @@ import {
   key,
   flipOnSheet,
   mirrorOnSheet,
+  localName,
+  moveBox,
   moveOnSheet,
+  removeBox,
+  storedName,
   netAt,
   netlist,
   onSegment,
@@ -30,6 +35,7 @@ import {
   setNoteText,
   renumber,
   rotateOnSheet,
+  setPorts,
   type Box,
   type ElectronicsDesign,
   type P2,
@@ -77,6 +83,11 @@ export function sheetBox(d: ElectronicsDesign, sheet: Sheet, only?: Set<string>)
   for (const w of sheet.wires) if (!only || only.has(w.id)) grow(grow(b, w.a), w.b);
   for (const l of sheet.labels) if (!only || only.has(l.id)) grow(b, [l.x, l.y], 2);
   for (const bus of sheet.buses ?? []) if (!only || only.has(bus.id)) for (const p of bus.pts) grow(b, p, 2);
+  for (const x of sheet.boxes ?? [])
+    if (!only || only.has(x.id)) {
+      const r = boxRect(d, x);
+      grow(grow(b, [r.x1, r.y1], 2), [r.x2, r.y2], 3);
+    }
   for (const o of groupOutlines(d, sheet))
     if (!only || sheet.groups?.find((g) => g.id === o.id)?.members.some((m) => only.has(m))) grow(grow(b, [o.box.x1, o.box.y1]), [o.box.x2, o.box.y2 + 2]);
   for (const n of sheet.notes ?? [])
@@ -203,7 +214,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
 
   const remove = () => {
     if (readOnly || !ui.selected.length) return;
-    edit((d) => removeFromSheet(d, sheet.id, ui.selected), ui.selected.length === 1 ? "Delete" : `Delete ${ui.selected.length} things`);
+    edit((d) => removeOnSheet(d, sheet.id, ui.selected), ui.selected.length === 1 ? "Delete" : `Delete ${ui.selected.length} things`);
     eui.set({ selected: [] });
   };
   const paste = (beside: boolean) => {
@@ -271,6 +282,13 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         edit((d) => (d === design ? made.design : groupOnSheet(d, sheet.id, ids).design), "Group");
         eui.set({ inGroup: null });
         askGroupName(made.design, made.id);
+      },
+      port: () => {
+        const labels = sheet.labels.filter((l) => eui.get().selected.includes(l.id));
+        if (readOnly || !labels.length) return;
+        const on = !labels.every((l) => l.port);
+        const ids = labels.map((l) => l.id);
+        edit((d) => setPorts(d, sheet.id, ids, on), on ? "Make sheet pin" : "Make plain label");
       },
       ungroup: () => {
         const gone = groupsIn(sheet, eui.get().selected);
@@ -373,7 +391,7 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
         const dy = s[1] - d.last[1];
         if (dx || dy) {
           d.last = s;
-          edit((x) => moveOnSheet(x, sheet.id, d.ids, dx, dy), "Move", d.key);
+          edit((x) => moveAll(x, sheet.id, d.ids, dx, dy), "Move", d.key);
         }
         return;
       }
@@ -545,7 +563,10 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
           const g = hit && groupOf(sheet, hit.id);
           if (g && g.id !== inside) return eui.set({ inGroup: g.id, selected: [hit.id] });
           const label = hit?.kind === "label" ? sheet.labels.find((l) => l.id === hit.id) : undefined;
-          if (label) onAskLabel({ at: [label.x, label.y], screen: toScreen(view, [label.x, label.y]), id: label.id, name: label.name });
+          if (label) onAskLabel({ at: [label.x, label.y], screen: toScreen(view, [label.x, label.y]), id: label.id, name: localName(label.name, sheet) });
+          // Double-click a sheet's box (#757): its sheet opens.
+          const sheetBox = hit?.kind === "box" ? sheet.boxes?.find((b) => b.id === hit.id) : undefined;
+          if (sheetBox) return eui.set({ sheet: sheetBox.sheet, selected: [] });
           const bus = hit?.kind === "bus" ? sheet.buses?.find((b) => b.id === hit.id) : undefined;
           if (bus) onAskLabel({ at: bus.pts[0]!, screen: toScreen(view, bus.pts[0]!), id: bus.id, name: bus.name, bus: true });
           const note = hit?.kind === "note" ? sheet.notes?.find((n) => n.id === hit.id) : undefined;
@@ -554,6 +575,18 @@ export function SchematicCanvas({ design, sheet, edit, readOnly, onAskLabel }: S
       />
     </div>
   );
+}
+
+/** Moves the picked things, and the sheet boxes among them with the wires on their pins (#757). */
+function moveAll(d: ElectronicsDesign, sheet: string, ids: string[], dx: number, dy: number): ElectronicsDesign {
+  const boxes = new Set(d.sheets.find((s) => s.id === sheet)?.boxes?.map((b) => b.id));
+  return ids.filter((id) => boxes.has(id)).reduce((x, id) => moveBox(x, id, dx, dy), moveOnSheet(d, sheet, ids, dx, dy));
+}
+
+/** Deletes the picked things; a sheet box takes its copy sheet with it (#757). */
+function removeOnSheet(d: ElectronicsDesign, sheet: string, ids: string[]): ElectronicsDesign {
+  const boxes = new Set(d.sheets.find((s) => s.id === sheet)?.boxes?.map((b) => b.id));
+  return ids.filter((id) => boxes.has(id)).reduce((x, id) => removeBox(x, id), removeFromSheet(d, sheet, ids));
 }
 
 /** Applies the name field: a new label, or a new name for a label or a group; or a text note's words (#733). */
@@ -578,6 +611,12 @@ export function commitLabel(
   }
   if (!text) return;
   if (ask.group && ask.id) return edit((d) => renameGroup(d, sheet, ask.id!, text), "Rename group");
-  if (ask.id) edit((d) => renameLabel(d, sheet, ask.id!, text), "Rename label");
-  else edit((d) => addLabel(d, sheet, text, ask.at[0], ask.at[1]), "Label");
+  // On a sheet placed as a box (#757) a label's name is kept with the use's prefix.
+  const stored = (d: ElectronicsDesign) =>
+    storedName(
+      text,
+      d.sheets.find((s) => s.id === sheet),
+    );
+  if (ask.id) edit((d) => renameLabel(d, sheet, ask.id!, stored(d)), "Rename label");
+  else edit((d) => addLabel(d, sheet, stored(d), ask.at[0], ask.at[1]), "Label");
 }

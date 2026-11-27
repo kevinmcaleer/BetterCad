@@ -5,6 +5,7 @@ import {
   isPower,
   packageOf,
   type Board,
+  type BoardRule,
   type BoardMark,
   type BoardLayer,
   type ComponentDef,
@@ -19,10 +20,12 @@ import {
   type Part,
   type PinType,
   type Sheet,
+  type SheetBox,
   type Side,
   type SymbolDef,
 } from "../model";
 import { byRef, netlist, type Netlist } from "../nets";
+import { boxPins, boxRect, localName } from "../hierarchy";
 import { copperOf, netRules } from "../pcb/copper";
 import { teardrops } from "../pcb/teardrops";
 import { SPOKE, THERMAL_GAP } from "../pcb/pour";
@@ -392,6 +395,11 @@ function pageOf(d: ElectronicsDesign, sheet: Sheet): Page {
   }
   for (const l of [...sheet.labels, ...sheet.junctions, ...sheet.noConnects]) see([l.x, l.y]);
   for (const b of sheet.buses ?? []) b.pts.forEach(see);
+  for (const box of sheet.boxes ?? []) {
+    const r = boxRect(d, box);
+    see([r.x1, r.y1]);
+    see([r.x2, r.y2 + 2 * GRID]);
+  }
   if (x1 > x2) [x1, y1, x2, y2] = [0, 0, 0, 0];
   const snap = (v: number) => Math.round(v / GRID) * GRID;
   const ox = snap(MARGIN - x1);
@@ -406,7 +414,19 @@ function sheetFile(
   d: ElectronicsDesign,
   sheet: Sheet,
   names: Names,
-  o: { project: string; root: string; path: string; uuid: string; global: boolean; subs: Node[][] },
+  o: {
+    project: string;
+    root: string;
+    /** Every place this file is used (#757): its path, and the sheet of ours that is that use. */
+    uses: { path: string; sheet: Sheet }[];
+    uuid: string;
+    global: boolean;
+    /** Names that must join across sheets by name (#757): a use's labels for a net of the sheet above. */
+    outs: Set<string>;
+    subs: Node[][];
+    /** The sheets placed on this one as boxes (#757). */
+    boxes: { box: SheetBox; name: string; file: string; page: number }[];
+  },
 ): string {
   const page = pageOf(d, sheet);
   const parts = new Map(d.parts.map((p) => [p.id, p]));
@@ -460,8 +480,25 @@ function sheetFile(
   for (const l of sheet.labels) {
     const rot = l.rot ?? 0;
     const just = rot === 180 || rot === 270 ? "right" : "left";
+    // A use of a block (#757): its sheet pins are hierarchical labels, and its other labels local to each use.
+    const across = o.outs.has(l.name);
+    if (sheet.use && !across) {
+      out.push(
+        l.port
+          ? [
+              "hierarchical_label",
+              s(localName(l.name, sheet)),
+              ["shape", "passive"],
+              ["at", ...at([l.x, l.y]), n(rot)],
+              font(1.27, ["justify", just]),
+              ["uuid", uuidOf(l.id)],
+            ]
+          : ["label", s(localName(l.name, sheet)), ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just, "bottom"]), ["uuid", uuidOf(l.id)]],
+      );
+      continue;
+    }
     out.push(
-      o.global
+      o.global || across
         ? ["global_label", s(l.name), ["shape", "passive"], ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just]), ["uuid", uuidOf(l.id)]]
         : ["label", s(l.name), ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just, "bottom"]), ["uuid", uuidOf(l.id)]],
     );
@@ -532,7 +569,14 @@ function sheetFile(
     for (const pin of def.symbol.pins)
       if (pin.unit === undefined || def.symbol.units < 2 || pin.unit === sym.unit)
         node.push(["pin", s(pin.number), ["uuid", uuidOf(`${sym.id}:${pin.number}`)]]);
-    node.push(["instances", ["project", s(o.project), ["path", s(o.path), ["reference", s(part.ref)], ["unit", String(sym.unit || 1)]]]]);
+    // One file can be several uses of a block (#757): each keeps its own reference, by the path to it.
+    const instances: Node[] = ["project", s(o.project)];
+    for (const use of o.uses) {
+      const mine = use.sheet === sheet ? sym : use.sheet.symbols.find((y) => y.id === use.sheet.use?.links?.[sym.id]);
+      const ref = mine && parts.get(mine.part)?.ref;
+      if (mine && ref !== undefined) instances.push(["path", s(use.path), ["reference", s(ref)], ["unit", String(mine.unit || 1)]]);
+    }
+    node.push(["instances", instances]);
     out.push(node);
   }
 
@@ -541,7 +585,33 @@ function sheetFile(
     sub.splice(1, 0, ["at", n(page.right + MARGIN), n(MARGIN + i * 8 * GRID)], ["size", n(12 * GRID), n(4 * GRID)]);
     out.push(sub);
   });
-  if (o.path === `/${o.root}`) out.push(["sheet_instances", ["path", s("/"), ["page", s("1")]]]);
+  // Sheets placed here as boxes (#757), with a pin for each of their sheet pins.
+  for (const { box, name, file, page: no } of o.boxes) {
+    const r = boxRect(d, box);
+    const node: Node[] = [
+      "sheet",
+      ["at", ...at([r.x1, r.y2])],
+      ["size", n(r.x2 - r.x1), n(r.y2 - r.y1)],
+      ["fields_autoplaced"],
+      stroke(0.1524, "solid"),
+      ["fill", ["color", "0", "0", "0", "0.0000"]],
+      ["uuid", uuidOf(box.id)],
+      ["property", s("Sheetname"), s(name), ["at", ...at([r.x1, r.y2 + 0.7]), "0"], font(1.27, ["justify", "left", "bottom"])],
+      ["property", s("Sheetfile"), s(file), ["at", ...at([r.x1, r.y1 - 0.7]), "0"], font(1.27, ["justify", "left", "top"])],
+    ];
+    for (const pin of boxPins(d, box))
+      node.push([
+        "pin",
+        s(pin.name),
+        "passive",
+        ["at", ...at(pin.at), pin.side === "left" ? "180" : "0"],
+        font(1.27, ["justify", pin.side]),
+        ["uuid", uuidOf(`${box.id}:${pin.name}`)],
+      ]);
+    node.push(["instances", ["project", s(o.project), ...o.uses.map((u): Node[] => ["path", s(u.path), ["page", s(String(no))]])]]);
+    out.push(node);
+  }
+  if (o.uses.some((u) => u.path === `/${o.root}`)) out.push(["sheet_instances", ["path", s("/"), ["page", s("1")]]]);
   return `${writeSexpr(out)}\n`;
 }
 
@@ -903,7 +973,44 @@ function boardFile(d: ElectronicsDesign, board: Board, names: Names, nl: Netlist
       ["polygon", ["pts", ...k.outline.map((q) => ["xy", ...at(q)])]],
     ]);
   }
+  // Area rules (#760) go as named rule areas that keep nothing out; the rules file names them.
+  for (const r of board.customRules ?? [])
+    if (r.kind === "area" && r.area?.length)
+      out.push([
+        "zone",
+        ["net", "0"],
+        ["net_name", s("")],
+        ["layers", s(inner.length ? "*.Cu" : "F&B.Cu")],
+        ["tstamp", uuidOf(r.id)],
+        ["name", s(ruleAreaName(r))],
+        ["hatch", "edge", "0.5"],
+        ["connect_pads", ["clearance", "0"]],
+        ["min_thickness", "0.25"],
+        ["filled_areas_thickness", "no"],
+        ["keepout", ["tracks", "allowed"], ["vias", "allowed"], ["pads", "allowed"], ["copperpour", "allowed"], ["footprints", "allowed"]],
+        ["fill", ["thermal_gap", "0.5"], ["thermal_bridge_width", "0.5"]],
+        ["polygon", ["pts", ...r.area.map((q) => ["xy", ...at(q)])]],
+      ]);
   return `${writeSexpr(out)}\n`;
+}
+
+/** The name an area rule's rule area has in KiCad. */
+const ruleAreaName = (r: BoardRule): string => r.name.replace(/'/g, "");
+
+/** Custom rules (#760) as KiCad's rules file: a clearance between two classes, or a clearance or width in an area. */
+export function druFile(board: Board): string | null {
+  const rules = board.customRules ?? [];
+  if (!rules.length) return null;
+  const q = (v: string) => JSON.stringify(v);
+  const lines = ["(version 1)"];
+  for (const r of rules) {
+    const cond = r.kind === "classes" ? `A.NetClass == '${r.a}' && B.NetClass == '${r.b}'` : `A.intersectsArea('${ruleAreaName(r)}')`;
+    lines.push(`(rule ${q(r.name)}`);
+    if (r.clearance !== undefined) lines.push(`  (constraint clearance (min ${n(r.clearance)}mm))`);
+    if (r.trackWidth !== undefined) lines.push(`  (constraint track_width (min ${n(r.trackWidth)}mm) (opt ${n(r.trackWidth)}mm))`);
+    lines.push(`  (condition ${q(cond)}))`);
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 // ---------------------------------------------------------------- the project
@@ -980,26 +1087,53 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
   const names = nameThings(d, name);
   const notes: string[] = [];
   const files: KicadFile[] = [];
-  const root = uuidOf(`sheet:${d.sheets[0]?.id ?? "root"}`);
-  const sheets = d.sheets.map((sh, i) => ({
+  // Hierarchy (#757): a sheet placed as a box is a use of a block. A block's file is written once, from its first
+  // use, and every use points at it; the other sheets hang off the top one as before.
+  const boxOf = new Map(d.sheets.flatMap((h) => (h.boxes ?? []).map((b) => [b.id, { box: b, home: h }] as const)));
+  const placed = (sh: Sheet) => !!sh.use && boxOf.has(sh.use.box);
+  const top = d.sheets.find((sh) => !placed(sh)) ?? d.sheets[0];
+  const root = uuidOf(`sheet:${top?.id ?? "root"}`);
+  const plain = d.sheets.filter((sh) => sh !== top && !placed(sh));
+  const masters = d.sheets.filter((sh) => placed(sh) && !sh.use!.master);
+  const ordered = [...(top ? [top] : []), ...plain, ...masters];
+  const sheets = ordered.map((sh, i) => ({
     sheet: sh,
     uuid: i ? uuidOf(`sheet:${sh.id}`) : root,
     file: i ? `${name}-${i + 1}.kicad_sch` : `${name}.kicad_sch`,
     name: sh.name,
   }));
-  const global = sheets.length > 1;
+  const fileOf = new Map(sheets.map((sh) => [sh.sheet.id, sh.file]));
+  const global = plain.length > 0;
+  // A use's label that is not its own (no prefix) is a net of a sheet above, as a bus on a sheet pin brings in: it
+  // goes out as a global label, on every sheet that has it, so KiCad joins it by name.
+  const outs = new Set(
+    d.sheets.flatMap((sh) => (sh.use ? sh.labels.filter((l) => !l.port && !l.name.startsWith(`${sh.use!.prefix}/`)).map((l) => l.name) : [])),
+  );
+  const pathOf = (sh: Sheet, depth = 0): string => {
+    if (sh === top) return `/${root}`;
+    const at = sh.use && boxOf.get(sh.use.box);
+    if (!at || depth > 32) return `/${root}/${uuidOf(`sheet:${sh.id}`)}`;
+    return `${pathOf(at.home, depth + 1)}/${uuidOf(at.box.id)}`;
+  };
+  const usesOf = (sh: Sheet) => [sh, ...(placed(sh) ? d.sheets.filter((c) => c.use?.master === sh.id) : [])].map((u) => ({ path: pathOf(u), sheet: u }));
+  // Page numbers: the top sheet, the plain sheets, then every box.
+  const pages = new Map<string, number>();
+  let page = 1 + plain.length;
+  for (const h of d.sheets) for (const b of h.boxes ?? []) pages.set(b.id, (page += 1));
 
-  // Where each part's symbol is, for the board to point back at.
+  // Where each part's symbol is, for the board to point back at. A copy's symbols are drawn by its master's file.
   const paths = new Map<Id, string>();
-  sheets.forEach((sh, i) => {
-    for (const sym of sh.sheet.symbols) if (!paths.has(sym.part)) paths.set(sym.part, `${i ? `/${sh.uuid}` : ""}/${uuidOf(sym.id)}`);
-  });
+  for (const sh of d.sheets) {
+    const under = pathOf(sh).slice(`/${root}`.length);
+    const back = new Map(Object.entries(sh.use?.links ?? {}).map(([m, mine]) => [mine, m]));
+    for (const sym of sh.symbols) if (!paths.has(sym.part)) paths.set(sym.part, `${under}/${uuidOf(back.get(sym.id) ?? sym.id)}`);
+  }
 
   sheets.forEach((sh, i) => {
     const subs: Node[][] = i
       ? []
       : sheets
-          .slice(1)
+          .slice(1, 1 + plain.length)
           .map((sub, k): Node[] => [
             "sheet",
             ["fields_autoplaced"],
@@ -1010,16 +1144,27 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
             ["property", s("Sheetfile"), s(sub.file), ["at", "0", "0", "0"], hidden()],
             ["instances", ["project", s(name), ["path", s(`/${root}`), ["page", s(String(k + 2))]]]],
           ]);
+    const boxes = (sh.sheet.boxes ?? []).flatMap((box) => {
+      const child = d.sheets.find((c) => c.id === box.sheet);
+      const file = child && fileOf.get(child.use?.master ?? child.id);
+      return child?.use && file ? [{ box, name: child.use.prefix, file, page: pages.get(box.id)! }] : [];
+    });
     files.push({
       name: sh.file,
-      text: sheetFile(d, sh.sheet, names, { project: name, root, path: i ? `/${root}/${sh.uuid}` : `/${root}`, uuid: sh.uuid, global, subs }),
+      text: sheetFile(d, sh.sheet, names, { project: name, root, uses: usesOf(sh.sheet), uuid: sh.uuid, global, outs, subs, boxes }),
     });
   });
+  const instances = [
+    ...sheets.slice(0, 1 + plain.length).map((sh) => ({ uuid: sh.uuid, name: sh.name })),
+    ...[...boxOf.values()].map(({ box }) => ({ uuid: uuidOf(box.id), name: d.sheets.find((c) => c.id === box.sheet)?.use?.prefix ?? "Sheet" })),
+  ];
   if (global) notes.push("Labels went across as global labels, so nets with one name still join between sheets.");
 
   const nl = netlist(d);
   if (d.board) {
     files.push({ name: `${name}.kicad_pcb`, text: boardFile(d, d.board, names, nl, { paths }, notes) });
+    const dru = druFile(d.board);
+    if (dru) files.push({ name: `${name}.kicad_dru`, text: dru });
     const holes = new Map<string, FootprintDef>();
     for (const h of d.board.holes) {
       const size = h.pad ?? h.drill;
@@ -1058,7 +1203,7 @@ export function kicadProject(d: ElectronicsDesign, title: string): KicadProject 
     `${writeSexpr([kind, ["lib", ["name", s(name)], ["type", s("KiCad")], ["uri", s(uri)], ["options", s("")], ["descr", s("The parts of this design")]]])}\n`;
   files.push({ name: "sym-lib-table", text: table("sym_lib_table", `\${KIPRJMOD}/${name}.kicad_sym`) });
   files.push({ name: "fp-lib-table", text: table("fp_lib_table", `\${KIPRJMOD}/${name}.pretty`) });
-  files.push({ name: `${name}.kicad_pro`, text: projectFile(name, sheets, d.board) });
+  files.push({ name: `${name}.kicad_pro`, text: projectFile(name, instances, d.board) });
   files.push({
     name: "CREDITS.md",
     text: `# Where the parts came from\n\nThe symbols and footprints in \`${name}.kicad_sym\` and \`${name}.pretty\` were written by BetterCad from this design.\n\n${credits.join("\n")}\n`,

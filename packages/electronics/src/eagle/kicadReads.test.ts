@@ -2,17 +2,20 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { needsKicad } from "../kicad/needsKicad";
 import { boardPads } from "../board";
 import { importEagleProject } from "./project";
 
 /**
  * A second opinion on the Eagle reader (#665): KiCad reads Eagle boards too, so where KiCad's Python module is
  * installed (`apt install kicad`), it opens the same test board and every pad must be where ours is, the same size,
- * on the same side and on the same net. CI has no KiCad, so this is skipped there; run it after a change to the reader.
+ * on the same side and on the same net. The pull request CI has no KiCad, so this skips there; the Nightly KiCad workflow runs it in KiCad's own image (#759).
  */
 const SCRIPT = `
 import json, sys, pcbnew
-b = pcbnew.IO_MGR.Load(pcbnew.IO_MGR.EAGLE, sys.argv[1])
+# KiCad 8 calls it PCB_IO_MGR; older ones IO_MGR.
+io = getattr(pcbnew, "PCB_IO_MGR", None) or pcbnew.IO_MGR
+b = io.Load(io.EAGLE, sys.argv[1])
 mm = lambda v: round(pcbnew.ToMM(v), 4)
 pads = [{"ref": f.GetReference(), "pad": p.GetNumber(), "x": mm(p.GetPosition().x), "y": mm(p.GetPosition().y), "w": mm(p.GetSize().x), "h": mm(p.GetSize().y),
          "top": p.IsOnLayer(pcbnew.F_Cu), "bottom": p.IsOnLayer(pcbnew.B_Cu), "net": p.GetNetname(), "drill": mm(p.GetDrillSize().x)}
@@ -23,6 +26,7 @@ print("JSON" + json.dumps({"pads": pads, "vias": vias}))
 const board = join(__dirname, "fixtures", "turns.brd");
 const ran = spawnSync("python3", ["-c", SCRIPT, board], { encoding: "utf8" });
 const has = ran.status === 0 && ran.stdout.includes("JSON");
+needsKicad(has, "KiCad's Python module (pcbnew)");
 
 interface TheirPad {
   ref: string;

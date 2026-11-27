@@ -180,6 +180,8 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
   // the reference design does it. Only nets scoped to the block ("MD1.VINT") are trusted this way.
   const tags = new Set(d.sheets.flatMap((s) => (s.groups ?? []).flatMap((g) => (g.block ? [g.block.tag] : []))));
   const insideBlock = (net: string) => tags.has(net.slice(0, net.indexOf(".")));
+  // A used sheet's pins (#757), by the names they have inside it.
+  const ports = new Set(d.sheets.flatMap((s) => (s.use ? s.labels.filter((l) => l.port).map((l) => l.name) : [])));
   // A block ties some of its pins to ground because its datasheet says so (a motor driver's sense pins): on the ground
   // net, a block's pin is only worth a warning if it would be wrong anyway.
   const blockParts = new Set<Id>();
@@ -293,7 +295,8 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
       add("net-one-pin", k, `${net.name} has only one pin on it: ${pinName(first!)}.`, "Connect it to something, or mark the pin Not connected.", where);
 
     // Joining a block's point gives the net the block's name for it too ("MD1.VM"); that is the point of joining.
-    const names = net.names.filter((n) => !insideBlock(n));
+    // So does a wire on a box's pin: the name the sheet inside has for it (#757).
+    const names = net.names.filter((n) => !insideBlock(n) && !ports.has(n));
     if (names.length > 1)
       add(
         "net-two-names",
@@ -312,7 +315,7 @@ export function check(d: ElectronicsDesign, nl: Netlist = netlist(d)): CheckResu
   const pinsOn = new Map(nl.nets.map((n) => [n.name, n.pins.length]));
   const naming = (l: { sheet: Id; at: P2 }) => (pinsOn.get(netAt(nl, l.sheet, l.at) ?? "") ?? 0) >= 2;
   for (const [name, l] of labels)
-    if (l.n === 1 && !supplies.has(name) && !naming(l))
+    if (l.n === 1 && !supplies.has(name) && !naming(l) && !ports.has(name))
       add(
         "label-once",
         name,
