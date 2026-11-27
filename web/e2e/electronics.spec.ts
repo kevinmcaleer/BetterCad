@@ -1197,6 +1197,9 @@ test.describe("on a wide screen", () => {
     const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
     await expect(schematic).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/^Opened the robot board from blocks sample/)).toBeHidden({ timeout: 20_000 });
+    // The pointer is left where the sample's button was, over the drawing: pointing at a label lights the labels
+    // with its name (#788), so it goes to an empty corner first.
+    await page.mouse.move(300, 790);
     await page.keyboard.press("f");
     await expect(schematic).toHaveScreenshot("blocks-sample-schematic.png", { maxDiffPixelRatio: 0.01, timeout: 30_000 });
   });
