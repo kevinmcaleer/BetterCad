@@ -131,6 +131,37 @@ function SwapPins({ design, edit, part }: { design: ElectronicsDesign; edit: EEd
   );
 }
 
+/** Fan-out (#746): a short track and a via from each of a chip's surface pads that has a connection to make. */
+function FanOut({ design, edit, part }: { design: ElectronicsDesign; edit: EEdit; part: string }) {
+  const [said, setSaid] = useState("");
+  const pads = boardPads(design).filter((p) => p.part === part && p.pad.kind === "smd" && p.net).length;
+  if (pads < 3) return null;
+  const go = async () => {
+    const { fanOut } = await import("@bettercad/electronics/pcb/fanout");
+    const made = fanOut(design, [part]);
+    if (made.fanned) edit(() => made.design, "Fan out");
+    const stuck = made.stuck.map((s) => s.pad);
+    setSaid(
+      [
+        made.fanned ? `Fanned out ${made.fanned} ${made.fanned === 1 ? "pad" : "pads"}.` : "No pad needed fanning out.",
+        stuck.length ? `No room for ${stuck.length === 1 ? "pad" : "pads"} ${stuck.join(", ")}.` : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  };
+  return (
+    <>
+      <Button size="dense" variant="secondary" label="Fan out" title="A short track and a via from each pad still to connect" onClick={go} />
+      {said && (
+        <p className="bc-note" role="status">
+          {said}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** Stitching vias (#737): fills the pour with vias to its net's pour on the other side. The sums load when asked. */
 function Stitching({ design, edit, pour }: { design: ElectronicsDesign; edit: EEdit; pour: string }) {
   const [spacing, setSpacing] = useState(5);
@@ -228,6 +259,7 @@ export default function BoardProps({
         </label>
         <SwapPins design={design} edit={edit} part={part} />
         <PadJoins design={design} edit={edit} part={part} />
+        {!readOnly && <FanOut design={design} edit={edit} part={part} />}
       </fieldset>
     );
   }

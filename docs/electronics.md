@@ -296,6 +296,14 @@ the ratsnest still shows, the short ones first, and only ever adds copper, so a 
   before it is kept. A test routes the sample board from bare and asks the board check for an empty list.
 - **Options.** `nets`, `parts` and `layers` (one side only, which also means no vias). A track through a pour can cut
   it in two, so the router looks at the ratsnest again, up to three times.
+- **Fan-out** (`pcb/fanout.ts`, #746). `fanOut` gives each of a chip's surface pads that still has a connection to
+  make a short track and a via: straight out along the pad, out and across at 45°, or in under the chip, the nearest
+  place that keeps every rule, going round the chip in order so neighbours take turns. A pad left with no room tries
+  again before its nearest neighbours, and a chip too fine for the net's vias is fanned again with the smallest via
+  the rules allow (least drill plus two least rings), which is what a 0.5 mm QFN needs. Tests fan out SOIC (1.27 mm),
+  TSSOP (0.65 mm), QFP (0.8 mm) and QFN (0.5 mm) clean. Before it routes, the autorouter fans out every pad it
+  cannot leave from its grid (`fanout: false` turns that off), and a connection from a fanned pad starts from its
+  via. Fan out on a part's card does it by hand.
 - **In the app.** Autoroute on the PCB tools opens a card (`AutoRoute.tsx`). The router runs in a worker of its own
   (the board check's script, `boardCheck.worker.ts`, so the board's model is bundled for a worker once), which sends each route back as it is found; Stop ends the worker and keeps those. They go
   on the board in one edit, so one undo takes them out. If the board changed meanwhile nothing is laid.

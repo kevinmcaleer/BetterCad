@@ -125,13 +125,19 @@ export interface Route {
   net: string;
   tracks: { layer: Layer; pts: P2[] }[];
   vias: P2[];
+  /** A size for its vias other than the net's: a fan-out's smaller ones (#746). */
+  viaSize?: { diameter: number; drill: number };
 }
 
 /** Lays routes the autorouter found. */
 export function applyRoutes(d: ElectronicsDesign, routes: Route[]): ElectronicsDesign {
   for (const r of routes) {
     for (const t of r.tracks) d = addTrack(d, r.net, t.layer, t.pts);
-    for (const v of r.vias) d = addVia(d, r.net, v[0], v[1]);
+    for (const v of r.vias) {
+      d = addVia(d, r.net, v[0], v[1]);
+      const made = r.viaSize && d.board?.vias.find((x) => x.net === r.net && key(x.x, x.y) === key(v[0], v[1]));
+      if (made && r.viaSize) d = setVia(d, made.id, r.viaSize);
+    }
   }
   return d;
 }
