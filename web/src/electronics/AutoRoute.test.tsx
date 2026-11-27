@@ -11,6 +11,9 @@ import AutoRoute from "./AutoRoute";
 import { startRouting, type RouteEvents } from "./autorouteJob";
 import { eui } from "./ui";
 
+// A test can stand in for the router, to send the card events in an order of its own.
+const fake = vi.hoisted(() => ({ run: null as null | ((design: ElectronicsDesign, on: RouteEvents) => void) }));
+
 // jsdom has no workers: the card's router runs in the page here, a moment after it is asked.
 vi.mock("./autorouteJob", async (real) => ({
   ...(await real<typeof import("./autorouteJob")>()),
@@ -19,6 +22,7 @@ vi.mock("./autorouteJob", async (real) => ({
     let live = true;
     queueMicrotask(() => {
       if (!live) return;
+      if (fake.run) return fake.run(design, on);
       autoroute(design, { ...options, onProgress: (p) => on.progress(p) });
       on.done();
     });
@@ -71,7 +75,10 @@ function setup(start: ElectronicsDesign) {
   return { labels, design: () => design };
 }
 
-afterEach(() => act(() => eui.reset()));
+afterEach(() => {
+  fake.run = null;
+  act(() => eui.reset());
+});
 
 describe("Autoroute (#647)", () => {
   it("routes what is left as one step, and says how it went", async () => {
@@ -82,6 +89,24 @@ describe("Autoroute (#647)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Route" }));
     expect(await screen.findByText("Routed 2 of 2 connections. Undo takes the new tracks out in one step.")).toBeInTheDocument();
     expect(made.labels).toEqual(["Autoroute"]);
+    expect(left(made.design())).toBe(0);
+    expect(checkBoard(made.design())).toEqual([]);
+  });
+
+  it("lays the router's new set when it took routes up to make room (#754)", async () => {
+    const { d } = board();
+    const made = setup(d);
+    fake.run = (design, on) => {
+      const r = autoroute(design);
+      const [first, second] = r.routes;
+      on.progress({ done: 1, total: 2, routed: 1, failed: 0, net: first!.net, route: first! });
+      on.progress({ done: 2, total: 2, routed: 1, failed: 1, net: second!.net });
+      // It took the first up, made the second, and laid the first again.
+      on.progress({ done: 2, total: 2, routed: 2, failed: 0, net: "", routes: [second!, first!], lost: [] });
+      on.done();
+    };
+    await userEvent.click(screen.getByRole("button", { name: "Route" }));
+    expect(await screen.findByText("Routed 2 of 2 connections. Undo takes the new tracks out in one step.")).toBeInTheDocument();
     expect(left(made.design())).toBe(0);
     expect(checkBoard(made.design())).toEqual([]);
   });

@@ -84,9 +84,10 @@ describe("fan-out (#746)", () => {
   it("lets the autorouter get away from pads it could not leave", () => {
     // On a coarse grid the router's cells miss a fine-pitch chip's pads, and the pads hem each other in.
     const d = chipBoard(FAMILIES[1]![1]);
-    const plain = autoroute(d, { fanout: false, pitch: 0.25 });
+    // Without taking routes up again (#754), which would make up for much of the difference.
+    const plain = autoroute(d, { fanout: false, ripUp: false, pitch: 0.25 });
     const seen: Route[] = [];
-    const fanned = autoroute(d, { pitch: 0.25, onProgress: (p) => p.route && seen.push(p.route) });
+    const fanned = autoroute(d, { pitch: 0.25, ripUp: false, onProgress: (p) => p.route && seen.push(p.route) });
     expect(fanned.failed.length).toBeLessThan(plain.failed.length);
     expect(fanned.design.board!.vias.length).toBeGreaterThan(plain.design.board!.vias.length);
     expect(errors(fanned.design)).toEqual([]);

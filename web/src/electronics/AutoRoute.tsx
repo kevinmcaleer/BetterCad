@@ -77,7 +77,11 @@ export default function AutoRoute({ design, edit, readOnly, onClose }: { design:
       {
         progress: (p) => {
           if (job.current !== run) return;
-          if (p.route) {
+          if (p.routes) {
+            // It took some of its own routes up to make room, and laid them again: these replace all it sent.
+            run.routes = [...p.routes];
+            run.lost = new Set(p.lost);
+          } else if (p.route) {
             run.routes.push(p.route);
             run.lost.delete(p.net);
           } else run.lost.add(p.net);

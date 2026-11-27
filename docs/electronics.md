@@ -336,7 +336,8 @@ test the board check runs, so nothing shows here that the check would pass.
 ## Autoroute (#647)
 
 `pcb/autoroute.ts` is our own maze router: no code is taken from tscircuit or Freerouting. It routes the connections
-the ratsnest still shows, the short ones first, and only ever adds copper, so a track or via laid by hand never moves.
+the ratsnest still shows, the short ones first. It never moves a track or via that was on the board before it started:
+the only copper it takes up is its own (rip-up, below).
 
 - **The grid.** Both sides of the board at 0.125 mm (coarser when the board is very large). For each net class a
   `Space` holds, for every cell and side, how much copper could sit there: the least gap to any other net's copper
@@ -346,10 +347,18 @@ the ratsnest still shows, the short ones first, and only ever adds copper, so a 
 - **The search.** A* over cells and sides, eight ways on, with a small cost for a turn, a cost of 4 mm for a via and
   double for crossing another net's pour. A via needs room on both sides, its hole clear of other holes by
   `holeToHole`, and may not sit on a pad. A run leaves and reaches a pad by a short piece with one 45° bend.
+  A pad that sits between grid lines with no such piece clear (#754) is reached by a short exact stub straight out
+  or at 45°, up to 2 mm, measured like any track, and the search starts from the stub's end.
 - **Measured twice.** Every run and via found is measured with `blockers`, the same test a hand-drawn track gets,
   before it is kept. A test routes the sample board from bare and asks the board check for an empty list.
 - **Options.** `nets`, `parts` and `layers` (one side only, which also means no vias). A track through a pour can cut
   it in two, so the router looks at the ratsnest again, up to three times.
+- **Rip-up and retry** (#754, `ripUp: false` turns it off). For each connection with no way through, it takes up the
+  two routes of its own that pass nearest the connection's straight line (then up to five, within 3 mm), makes that
+  connection first, and lays the ones it took up again. A try is kept only if every route taken up goes back down;
+  otherwise the board stays as it was. It spends at most `ripUpBudget` (8 s) on this. The page is sent the whole new
+  set of routes in place of those it had. Tests route the sample board, `pico-servo-board` and `tangle` from bare
+  with a clean board check, and `tangle` on one side makes a connection with rip-up that it could not without.
 - **Fan-out** (`pcb/fanout.ts`, #746). `fanOut` gives each of a chip's surface pads that still has a connection to
   make a short track and a via: straight out along the pad, out and across at 45°, or in under the chip, the nearest
   place that keeps every rule, going round the chip in order so neighbours take turns. A pad left with no room tries
