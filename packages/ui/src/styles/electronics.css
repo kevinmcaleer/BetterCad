@@ -1362,3 +1362,37 @@ button.bc-ec-pill {
 .bc-ec-sim-trace-5 {
   color: var(--bc-color-snap);
 }
+
+/* Script (#764): the code, what it said, and Keep or Throw away. */
+.bc-ec-script {
+  width: 420px;
+}
+.bc-ec-script-text {
+  min-height: 180px;
+  font-family: var(--bc-font-mono);
+  white-space: pre;
+  tab-size: 2;
+  resize: vertical;
+}
+.bc-ec-script-out {
+  max-height: 200px;
+  overflow: auto;
+  margin: var(--bc-space-2) 0;
+  padding: var(--bc-space-2);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+  font-family: var(--bc-font-mono);
+}
+.bc-ec-script-out p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.bc-ec-script-table {
+  border-collapse: collapse;
+  margin: var(--bc-space-1) 0;
+}
+.bc-ec-script-table th,
+.bc-ec-script-table td {
+  padding: 0 var(--bc-space-2) 0 0;
+  text-align: left;
+}

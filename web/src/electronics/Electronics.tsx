@@ -50,6 +50,7 @@ const SchSheets = lazy(() => import("./SchSheets"));
 const FindCard = lazy(() => import("./Find"));
 const Calculators = lazy(() => import("./Calculators"));
 const Simulate = lazy(() => import("./Simulate"));
+const Script = lazy(() => import("./Script"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -101,6 +102,15 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
     tip: "Track width for a current, via current, an LED's resistor and colour bands",
     on: ui.card === "calc",
     run: toggle("calc"),
+  };
+  const script: Tool = {
+    id: "script",
+    group: view === "schematic" ? "Check" : "Board",
+    label: "Script",
+    icon: "code",
+    tip: "Run JavaScript that reads and changes the design, such as placing LEDs in a ring; you see the change first",
+    on: ui.card === "script",
+    run: toggle("script"),
   };
   if (view === "schematic")
     return [
@@ -290,6 +300,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         run: toggle("table"),
       },
       calc,
+      script,
       {
         id: "sim",
         group: "Check",
@@ -486,6 +497,7 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
       run: toggle("order"),
     },
     calc,
+    script,
     {
       id: "push",
       group: "Sync",
@@ -793,6 +805,15 @@ function commands(design: () => ElectronicsDesign): Command[] {
     },
     {
       ...e,
+      id: "electronics.script",
+      label: "Script",
+      group: "Tools",
+      icon: "code",
+      run: toggle("script"),
+      keywords: "javascript plug-in plugin automate macro bc",
+    },
+    {
+      ...e,
       id: "electronics.export",
       label: "Export the schematic",
       group: "Tools",
@@ -1094,6 +1115,11 @@ export default function ElectronicsView({
       {ui.card === "calc" && (
         <Suspense fallback={null}>
           <Calculators design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />
+        </Suspense>
+      )}
+      {ui.card === "script" && (
+        <Suspense fallback={null}>
+          <Script design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />
         </Suspense>
       )}
       {view === "schematic" && (

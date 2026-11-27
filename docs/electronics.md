@@ -698,6 +698,31 @@ the real engine on an RC step and an LED switched by a transistor.
 
 Not done: AC and DC sweeps, current probes, probes drawn on the schematic, and models for chips (an op amp, a 555).
 
+## Scripts and plug-ins (#764)
+
+Kev was happy with the proposal (2026-11-27): JavaScript in a sandbox, through one `bc` object, with a preview before
+anything changes.
+
+- `packages/electronics/src/script/api.ts` (`@bettercad/electronics/script/api`): `scriptApi(design)` gives a frozen
+  `bc` whose readers hand out copies and whose changers check their arguments as they are called and add a
+  `ScriptChange` to a list. A bad call throws a plain message ("There is no part R9"). `applyScript` applies the list,
+  `describeChanges` says it in words, `touchedParts` is what the view lights up, and `cleanRun` checks what came back
+  from the worker before the app trusts it. At most 10,000 changes and outputs.
+- `script/run.ts` runs the source as an async function in strict mode with only `bc` in scope. A script that throws
+  keeps none of its changes.
+- The sandbox: one module worker per run (`web/src/electronics/script.worker.ts`). Before the script runs,
+  `lockDown` (`scriptLock.ts`) deletes fetch, XMLHttpRequest, WebSocket, indexedDB, caches, importScripts,
+  postMessage and the rest from the worker's scope and its prototypes. The worker's file is also served with
+  `Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-eval'; connect-src 'none'`, by
+  `CachedStatic` in `server/bettercad/main.py` and by `scriptSandbox()` in `web/vite.config.ts` for dev and preview,
+  so a dynamic `import()` from anywhere else is refused too. `scriptClient.ts` ends the worker after 10 s or on Stop.
+- Plug-ins: `script/starters.ts` has the three starters and `pluginFile`/`readPluginFile`. A `.bcplugin.js` is the
+  script itself with `// @bcplugin`, `// @name` and `// @description` comments on top, so it runs as it is. Your
+  plug-ins ride in the library pack as `plugins` (`myLibrary.ts`), like blocks; of two copies the one saved last wins.
+
+Not done: a plug-in shelf in the tools, plug-ins that take settings in a form, and scripts that edit symbols or
+footprints.
+
 ## The board in 3D (#649 to #654)
 
 The board is in the model as one **Board step** on the timeline (`packages/kernel/src/board.ts`). A model has one

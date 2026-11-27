@@ -439,6 +439,38 @@ test.describe("on a wide screen", () => {
     await axe(page);
   });
 
+  test("script: run JavaScript in the sandbox, keep its change, and stop one that runs away (#764)", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await ledCircuit(page);
+    await tools(page)
+      .getByRole("button", { name: /^Script/ })
+      .click();
+    const card = page.getByRole("group", { name: "Script options" });
+    const code = card.getByLabel("JavaScript");
+    // The sandbox has no network, no storage and no way to post its own answer; a script that tries to load code is refused.
+    await code.fill('bc.say(typeof fetch, typeof XMLHttpRequest, typeof WebSocket, typeof indexedDB, typeof postMessage);\nbc.setValue("R1", "1 kΩ");');
+    await card.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(card.getByRole("log", { name: "Script output" })).toHaveText("undefined undefined undefined undefined undefined");
+    await expect(card.getByText("Sets R1 to 1 kΩ.")).toBeVisible();
+    await card.getByRole("button", { name: "Keep" }).click();
+    await expect(page.getByRole("img", { name: /^Schematic/ })).toBeVisible();
+    await code.fill('await import("data:text/javascript,export default 1");');
+    await card.getByRole("button", { name: "Run", exact: true }).click();
+    await expect(card.getByRole("alert")).toBeVisible();
+
+    await code.fill("while (true) {}");
+    await card.getByRole("button", { name: "Run", exact: true }).click();
+    await card.getByRole("button", { name: "Stop" }).click();
+    await expect(card.getByRole("alert")).toHaveText("Stopped. Nothing was changed.");
+    await axe(page);
+  });
+
   test("lay out a board: place by numbers, route a track, add a hole and text, check it and save the order files", { tag: "@journey" }, async ({ page }) => {
     // A long journey: on a CI runner, two to three times slower than a laptop, it runs close to the usual 30 s.
     test.setTimeout(120_000);

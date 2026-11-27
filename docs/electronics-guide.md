@@ -162,6 +162,26 @@ value), transistors, MOSFETs and batteries are simulated with typical models, cl
 transistor switch an LED, not the makers' own. Chips, connectors and switches are left out and listed, so you can see
 what the run ignores. The simulator downloads the first time you run it, about 5 MB.
 
+## Script it
+
+Choose Script to run JavaScript on the design: lay LEDs out in a ring, set every capacitor to one value, or write
+a parts list for your supplier. Scripts read and change the design through `bc`:
+
+- Read: `bc.parts()`, `bc.sheets()`, `bc.nets()`, `bc.board()`, `bc.erc()` and `bc.drc()`. Each gives a copy.
+- Change the schematic: `bc.setValue(ref, value)`, `bc.setFitted(ref, false)`, `bc.setPartNumber(ref, { lcsc })`,
+  `bc.addLabel(name, [x, y])`, `bc.wire([x, y], [x, y])`, `bc.place(ref, [x, y])` (a copy of a part) and
+  `bc.renumber()`.
+- Change the board: `bc.move(ref, [x, y], turn, side)`, `bc.addTrack(net, points)`, `bc.addVia(net, [x, y])`,
+  `bc.setRule(rule, value)` and `bc.setNetClass(net, className)`.
+- Show what it found: `bc.say(...)`, `bc.table(rows)` and `bc.file(name, text)`, which you can save.
+
+Run shows what the script would change, in words and lit up on the view; nothing changes until you choose Keep,
+which makes it one step you can undo. Scripts run in a sandbox: they can't reach the network or your files, and
+stop after 10 s. Start from one of the starter plug-ins to see how they work.
+
+Give a script a name and choose Save as a plug-in to keep it in Your plug-ins, with your parts and blocks, in your
+account when you are signed in. Save the file saves it as a `.bcplugin.js` file to pass on; Open a file opens one.
+
 ## See it in 3D
 
 Press 3. The board stands in your model as a step on the timeline, with a simple body for each part, so you can

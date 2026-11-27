@@ -86,3 +86,32 @@ describe("your blocks (#772)", () => {
     two.unmount();
   });
 });
+
+describe("your plug-ins (#764)", () => {
+  const plug = (id: string, at: number) => ({ id, at, name: id, description: "", source: `bc.say("${id} ${at}")` });
+
+  it("keeps the one saved last, keeps a deleted one deleted, and rides in the account's pack", async () => {
+    const merged = merge(
+      { pack: emptyPack(MY_PARTS), removed: ["gone"], plugins: [plug("a", 2), plug("gone", 1)] },
+      { pack: emptyPack(MY_PARTS), removed: [], plugins: [plug("a", 1), plug("b", 1)] },
+    );
+    expect(merged.plugins!.map((p) => [p.id, p.at])).toEqual([
+      ["a", 2],
+      ["b", 1],
+    ]);
+    const lib = readLibrary({ pack: { ...emptyPack(MY_PARTS), plugins: [plug("a", 1), { id: 1 }] }, removed: [] })!;
+    expect(lib.plugins!.map((p) => p.id)).toEqual(["a"]);
+    expect("plugins" in lib.pack).toBe(false);
+
+    localStorage.clear();
+    const call = vi.fn(() => Promise.resolve({ pack: null, removed: [] }));
+    const one = renderHook(() => useMyLibrary({ call } as never, true));
+    act(() => one.result.current.savePlugin(plug("c", 5)));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("PUT", "parts-library", expect.objectContaining({ pack: expect.objectContaining({ plugins: [plug("c", 5)] }) })),
+    );
+    act(() => one.result.current.removePlugin("c"));
+    expect(one.result.current.plugins).toEqual([]);
+    one.unmount();
+  });
+});

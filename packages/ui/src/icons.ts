@@ -136,6 +136,8 @@ export const via = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 
 export const pushPcb = "M3 5h8v6H3zM13 13h8v6h-8zM7 11v4h6M10.5 12.5 13 15l-2.5 2.5";
 /** A fiducial: a copper dot in a clear ring, with the camera's cross hairs. */
 export const fiducial = "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 1v4M12 19v4M1 12h4M19 12h4";
+/** Script (#764): angle brackets round a slash, as code is written. */
+export const code = "M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16";
 /** Simulate (#761): a scope screen with a wave across it. */
 export const waveform = "M3 5h18v14H3zM5 14c2 0 2-6 4-6s2 8 4 8 2-6 4-6 2 3 2 3";
 /** A test point: a probe coming down on a round pad. */
@@ -322,6 +324,7 @@ export const ICONS = {
   fiducial,
   testPoint,
   waveform,
+  code,
   sliders,
   settings,
   gear,

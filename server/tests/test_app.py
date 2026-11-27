@@ -37,6 +37,19 @@ def test_serves_web_app_with_fallback(make_client, tmp_path):
         assert "BetterCad" in client.get("/../../etc/passwd").text
 
 
+def test_script_sandbox_worker_gets_no_network(make_client, tmp_path):
+    # The worker scripts run in (#764) may not reach the network; other files keep the usual headers.
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html>")
+    (dist / "assets" / "script.worker-abc.js").write_text("1")
+    (dist / "assets" / "app-abc.js").write_text("1")
+    with make_client(web_dist=dist) as client:
+        csp = client.get("/assets/script.worker-abc.js").headers["Content-Security-Policy"]
+        assert "connect-src 'none'" in csp and "default-src 'none'" in csp
+        assert "Content-Security-Policy" not in client.get("/assets/app-abc.js").headers
+
+
 def test_production_needs_secret_key(tmp_path):
     with pytest.raises(RuntimeError, match="SECRET_KEY"):
         Settings(env="production", data_dir=tmp_path).check()

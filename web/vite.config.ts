@@ -113,6 +113,23 @@ function simEngine(): Plugin {
   };
 }
 
+/**
+ * The script sandbox (#764): the worker a script runs in is sent with a Content-Security-Policy that allows no
+ * network at all, in dev and preview as FastAPI does in production (server/bettercad/main.py).
+ */
+export const SCRIPT_SANDBOX_CSP = "default-src 'none'; script-src 'self' 'unsafe-eval'; connect-src 'none'";
+function scriptSandbox(): Plugin {
+  const csp = (req: { url?: string }, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    if (req.url && /script\.worker/.test(req.url)) res.setHeader("Content-Security-Policy", SCRIPT_SANDBOX_CSP);
+    next();
+  };
+  return {
+    name: "bettercad-script-sandbox",
+    configureServer: (server) => void server.middlewares.use(csp),
+    configurePreviewServer: (server) => void server.middlewares.use(csp),
+  };
+}
+
 // `base: "./"` lets the same build run at the root, on GitHub Pages under /BetterCad/, or as a static preview.
 // Cross-origin isolation lets the kernel (#4) use SharedArrayBuffer and WASM threads. FastAPI sets the same headers in production.
 const isolation = { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" };
@@ -129,7 +146,7 @@ export default defineConfig({
   base: process.env.BASE ?? "./",
   // wasm() lets packages import .wasm modules directly. Top-level await needs no plugin: the build targets ES2022,
   // which every browser that can run OCCT supports natively (vite-plugin-top-level-await added 78 kB for nothing).
-  plugins: [react(), wasm(), precompress(), serviceWorker(), simEngine()],
+  plugins: [react(), wasm(), precompress(), serviceWorker(), simEngine(), scriptSandbox()],
   worker: { format: "es", plugins: () => [wasm()] },
   server: {
     port: 5173,

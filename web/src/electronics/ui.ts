@@ -35,7 +35,7 @@ export interface EUi {
   layer: CopperLayer;
   hidden: LayerId[];
   /** Cards that are open over the view. */
-  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | "autoroute" | "find" | "calc" | "sim" | null;
+  card: "changes" | "components" | "checks" | "table" | "export" | "open" | "board" | "order" | "autoroute" | "find" | "calc" | "sim" | "script" | null;
   /** A place a check points at: the view brings it into the middle and rings it. On the board its sheet is "board". */
   spot: { sheet: string; at: P2; n: number } | null;
   /** Goes up by one to ask the open view to bring the selection into the middle. */

@@ -37,6 +37,9 @@ def _version(settings: Settings) -> str:
     return __version__
 
 
+SCRIPT_SANDBOX_CSP = "default-src 'none'; script-src 'self' 'unsafe-eval'; connect-src 'none'"
+
+
 class CachedStatic(StaticFiles):
     """Hashed assets are cached for a year; everything else is revalidated."""
 
@@ -66,6 +69,9 @@ class CachedStatic(StaticFiles):
             response.headers["Cache-Control"] = "no-cache"
         if path.endswith(".wasm"):
             response.headers["Content-Type"] = "application/wasm"
+        # The sandbox scripts run in (#764): no network, no frames, its own code and eval only.
+        if path.startswith("assets/script.worker-"):
+            response.headers["Content-Security-Policy"] = SCRIPT_SANDBOX_CSP
         return response
 
 
