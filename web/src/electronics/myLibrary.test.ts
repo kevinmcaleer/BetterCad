@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BASICS, emptyPack, putPart } from "@bettercad/electronics";
+import type { OwnBlock } from "@bettercad/electronics/ownBlocks";
 import { MY_PARTS, loadLocal, merge, readLibrary, useMyLibrary } from "./myLibrary";
 
 const mine = (name: string) => ({ ...BASICS.resistor!(), name, source: { library: "You", licence: "CC0 1.0" } });
@@ -46,5 +47,42 @@ describe("your parts", () => {
     expect(merge(a, b).pack.parts.map((p) => p.name)).toEqual(["New"]);
     expect(readLibrary({ pack: { pack: 3 } })).toBeNull();
     expect(readLibrary({ pack: null, removed: [] })).toBeNull();
+  });
+});
+
+describe("your blocks (#772)", () => {
+  const block = (id: string, version: number): OwnBlock => ({
+    spec: { id, version, name: id, shelf: "Your blocks", summary: "", tag: "B", source: { title: "Your own block", url: "" }, parts: [], nets: {}, points: [] },
+    defs: {},
+  });
+
+  it("keeps the newest version of each, and a deleted one stays deleted", () => {
+    const local = { pack: emptyPack(MY_PARTS), removed: ["gone"], blocks: [block("a", 2), block("gone", 1)] };
+    const remote = { pack: emptyPack(MY_PARTS), removed: [], blocks: [block("a", 1), block("b", 1)] };
+    const merged = merge(local, remote);
+    expect(merged.blocks!.map((b) => [b.spec.id, b.spec.version])).toEqual([
+      ["a", 2],
+      ["b", 1],
+    ]);
+  });
+
+  it("reads blocks carried in the account's pack", () => {
+    const lib = readLibrary({ pack: { ...emptyPack(MY_PARTS), blocks: [block("a", 1)] }, removed: [] })!;
+    expect(lib.blocks!.map((b) => b.spec.id)).toEqual(["a"]);
+    expect("blocks" in lib.pack).toBe(false);
+  });
+
+  it("saves a block for every panel at once, and sends it up inside the pack", async () => {
+    localStorage.clear();
+    const call = vi.fn(() => Promise.resolve({ pack: null, removed: [] }));
+    const one = renderHook(() => useMyLibrary({ call } as never, true));
+    const two = renderHook(() => useMyLibrary());
+    act(() => one.result.current.saveBlock(block("a", 1)));
+    expect(two.result.current.blocks.map((b) => b.spec.id)).toEqual(["a"]);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith("PUT", "parts-library", expect.objectContaining({ pack: expect.objectContaining({ blocks: [block("a", 1)] }) })),
+    );
+    one.unmount();
+    two.unmount();
   });
 });

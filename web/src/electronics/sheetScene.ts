@@ -19,6 +19,8 @@ import { newSheet, type SheetSize, type TitleBlock } from "@bettercad/kernel/dra
 import { sheetScene, type Fill, type Label, type Scene, type Stroke } from "../drawing/export/scene";
 import { sheetLayout } from "../drawing/layout";
 import { teePoints } from "./drawSchematic";
+import { foldedAway, shownName } from "@bettercad/electronics/groups";
+import { groupOutlines } from "./hit";
 import { sheetBox } from "./SchematicCanvas";
 
 const DIRS: Record<number, P2> = { 0: [1, 0], 90: [0, 1], 180: [-1, 0], 270: [0, -1] };
@@ -38,7 +40,20 @@ export interface SchematicPage {
  * A schematic sheet on paper (#635): the drawing workspace's frame and title block, with the diagram drawn inside
  * as the screen draws it. Lines and text only, black on white, so the PDF and SVG writers of drawings take it as is.
  */
-export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: SchematicPage): Scene {
+export function schematicScene(d: ElectronicsDesign, whole: Sheet, page: SchematicPage): Scene {
+  // Folded blocks print folded (#775): their box and points, not what is inside.
+  const away = foldedAway(whole);
+  const sheet: Sheet = away.size
+    ? {
+        ...whole,
+        symbols: whole.symbols.filter((x) => !away.has(x.id)),
+        wires: whole.wires.filter((x) => !away.has(x.id)),
+        labels: whole.labels.filter((x) => !away.has(x.id)),
+        junctions: whole.junctions.filter((x) => !away.has(x.id)),
+        noConnects: whole.noConnects.filter((x) => !away.has(x.id)),
+        ...(whole.notes ? { notes: whole.notes.filter((x) => !away.has(x.id)) } : {}),
+      }
+    : whole;
   const paper = newSheet(sheet.name, { size: page.size, landscape: true, block: { type: "Schematic", ...page.title } });
   const blank = sheetLayout(paper);
   // The diagram goes above the title block, a little clear of the frame.
@@ -116,6 +131,29 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
     beside(value, def.valueAt ?? [GRID, -GRID]);
   };
 
+  // Group outlines (#766): a thin box with the group's name on its top edge.
+  const outlines = groupOutlines(d, whole);
+  for (const o of outlines) {
+    const { x1, y1, x2, y2 } = o.box;
+    line(
+      (
+        [
+          [x1, y1],
+          [x2, y1],
+          [x2, y2],
+          [x1, y2],
+          [x1, y1],
+        ] as P2[]
+      ).map(P),
+      pen(0.15),
+    );
+    text(o.name, P([x1 + 0.8, y2 + 0.5]), 1.5, "start", "alphabetic");
+    if (sheet.groups?.find((g) => g.id === o.id)?.folded) {
+      const g = sheet.groups.find((x) => x.id === o.id)!;
+      const n = new Set(whole.symbols.filter((y) => g.members.includes(y.id)).map((y) => y.part)).size;
+      text(`${n} ${n === 1 ? "part" : "parts"} inside`, P([(x1 + x2) / 2, (y1 + y2) / 2]), 1.27, "middle", "central");
+    }
+  }
   for (const w of sheet.wires) line([P(w.a), P(w.b)], pen(0.2));
   for (const p of teePoints(sheet)) disc(P(p), 0.45 * s);
   for (const j of sheet.junctions) disc(P([j.x, j.y]), 0.45 * s);
@@ -125,8 +163,46 @@ export function schematicScene(d: ElectronicsDesign, sheet: Sheet, page: Schemat
     const def = part && d.defs[part.def];
     if (part && def) symbol(def.symbol, y, part.ref, part.value);
   }
+  // Inside a block, labels print without its tag, and its points as a diamond with the name inside the outline (#767).
+  const tagOf = new Map<string, string>();
+  const points = new Map<string, { name: string; side: "start" | "end" | "middle"; dy: number }>();
+  for (const o of outlines) {
+    const g = sheet.groups?.find((x) => x.id === o.id)?.block;
+    if (!g) continue;
+    for (const m of sheet.groups!.find((x) => x.id === o.id)!.members) tagOf.set(m, g.tag);
+    for (const p of g.points) {
+      const l = sheet.labels.find((x) => x.id === p.label);
+      if (l)
+        points.set(l.id, {
+          name: p.volts ? `${p.name} · ${p.volts}` : p.name,
+          side: Math.abs(l.x - o.box.x1) < 0.01 ? "start" : Math.abs(l.x - o.box.x2) < 0.01 ? "end" : "middle",
+          dy: Math.abs(l.y - o.box.y2) < 0.01 ? -1.6 : 1.6,
+        });
+    }
+  }
   for (const l of sheet.labels) {
-    text(l.name, P([l.x + 0.3, l.y + 0.3]), 1.27, "start", "alphabetic");
+    const point = points.get(l.id);
+    if (point) {
+      const r = 0.6;
+      line(
+        (
+          [
+            [l.x - r, l.y],
+            [l.x, l.y + r],
+            [l.x + r, l.y],
+            [l.x, l.y - r],
+            [l.x - r, l.y],
+          ] as P2[]
+        ).map(P),
+        pen(0.15),
+      );
+      const dx = point.side === "start" ? 1.2 : point.side === "end" ? -1.2 : 0;
+      text(point.name, P([l.x + dx, l.y + (point.side === "middle" ? point.dy : 0)]), 1.2, point.side, "central");
+      continue;
+    }
+    const name = shownName(l.name, tagOf.get(l.id));
+    if (l.rot === 180) text(name, P([l.x - 0.3, l.y + 0.3]), 1.27, "end", "alphabetic");
+    else text(name, P([l.x + 0.3, l.y + 0.3]), 1.27, "start", "alphabetic");
     disc(P([l.x, l.y]), 0.25 * s);
   }
   for (const n of sheet.noConnects) {

@@ -19,7 +19,7 @@ import {
   type Printer,
   type PrintSettings,
 } from "../state/document";
-import { FIT_CALIBRATION_GAPS } from "@bettercad/kernel/samples";
+import { FIT_CALIBRATION_GAPS } from "@bettercad/kernel/sample-list";
 import type { Mate } from "@bettercad/kernel";
 
 /**

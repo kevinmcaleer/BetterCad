@@ -1057,6 +1057,77 @@ button.bc-ec-pill {
     height: 44vh;
   }
 }
+/* Circuit blocks (#768): the Blocks tab's drawing and the list of connection points. */
+.bc-ec-blocks {
+  display: grid;
+  gap: var(--bc-space-2);
+}
+.bc-ec-block-picture {
+  width: 100%;
+  max-height: 180px;
+  background: var(--bc-color-viewport);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-ec-block-outline {
+  fill: none;
+  stroke: var(--bc-color-muted);
+  stroke-width: 0.6;
+}
+.bc-ec-block-part {
+  fill: var(--bc-color-ec-symbol-fill);
+  stroke: var(--bc-color-ec-symbol);
+  stroke-width: 0.4;
+}
+.bc-ec-block-ref {
+  font-size: 2.4px;
+  fill: var(--bc-color-muted);
+}
+.bc-ec-block-points,
+.bc-ec-block-inside {
+  display: grid;
+  gap: var(--bc-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bc-ec-block-points li {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  column-gap: var(--bc-space-3);
+}
+.bc-ec-block-points small {
+  grid-column: 2 / -1;
+  color: var(--bc-color-muted);
+}
+.bc-ec-point-dot {
+  width: 8px;
+  height: 8px;
+  transform: rotate(45deg);
+  background: var(--bc-color-ec-wire);
+}
+.bc-ec-block-point {
+  fill: var(--bc-color-ec-wire);
+}
+.bc-ec-point-power-in,
+.bc-ec-point-power-out {
+  background: var(--bc-color-danger);
+  fill: var(--bc-color-danger);
+}
+.bc-ec-point-ground {
+  background: var(--bc-color-ink);
+  fill: var(--bc-color-ink);
+}
+.bc-ec-point-i2c-sda,
+.bc-ec-point-i2c-scl {
+  background: var(--bc-color-accent);
+  fill: var(--bc-color-accent);
+}
+.bc-ec-point-load {
+  background: var(--bc-color-snap);
+  fill: var(--bc-color-snap);
+}
 
 /* Calculators (#739): a resistor's bands, each a swatch of its paint over the colour picker. */
 .bc-ec-bands {
@@ -1078,6 +1149,33 @@ button.bc-ec-pill {
   border-radius: var(--bc-radius-sm);
 }
 
+/* Save as block (#772): a point per row, its tick, what it is and its volts. */
+.bc-ec-save-block {
+  display: grid;
+  gap: var(--bc-space-2);
+}
+.bc-ec-save-point {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 5em;
+  gap: var(--bc-space-2);
+  align-items: center;
+}
+
+/* A placed block's Update (#773): the badge and what changed. */
+.bc-ec-block-update {
+  display: grid;
+  gap: var(--bc-space-2);
+  padding: var(--bc-space-3);
+  border: 1px solid var(--bc-color-accent);
+  border-radius: var(--bc-radius-sm);
+}
+.bc-ec-badge {
+  display: inline-block;
+  padding: 0 var(--bc-space-2);
+  border-radius: var(--bc-radius-sm);
+  background: var(--bc-color-accent);
+  color: var(--bc-color-on-accent);
+}
 /* The pin table (#738): which pin types may share a net, a cell to click for each pair. */
 .bc-ec-pins {
   overflow-x: auto;

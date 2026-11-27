@@ -11,6 +11,7 @@ import {
   type Sheet,
   type SymbolDef,
 } from "@bettercad/electronics";
+import { GROUP_NAME, type GroupOutline } from "@bettercad/electronics/groups";
 
 /** What the pointer is over on a sheet. `id` is the thing's own id; for a symbol, `part` is its part. */
 export interface SchHit {
@@ -115,4 +116,19 @@ export function boxSheet(d: ElectronicsDesign, sheet: Sheet, a: P2, b: P2): stri
     if (inBox([nb.x1, nb.y1], box) && inBox([nb.x2, nb.y2], box)) out.push(n.id);
   }
   return out;
+}
+
+export { groupBoxes as groupOutlines, type GroupOutline } from "@bettercad/electronics/groups";
+
+/** The group whose outline or name is under a point: the edge within `tol`, or the name above the top edge. */
+export function hitGroupOutline(outlines: GroupOutline[], p: P2, tol: number): GroupOutline | undefined {
+  for (const o of [...outlines].reverse()) {
+    const { x1, y1, x2, y2 } = o.box;
+    const name = { x1, y1: y2, x2: x1 + Math.max(4, o.name.length * 1.05 + 1), y2: y2 + GROUP_NAME + 0.6 };
+    if (inBox(p, name, tol * 0.5)) return o;
+    const near = (a: number, b: number) => Math.abs(a - b) <= tol;
+    const along = inBox(p, o.box, tol);
+    if (along && (near(p[0], x1) || near(p[0], x2) || near(p[1], y1) || near(p[1], y2))) return o;
+  }
+  return undefined;
 }

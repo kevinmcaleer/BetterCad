@@ -1070,6 +1070,45 @@ test.describe("on a wide screen", () => {
     await expect(dialog.getByRole("region", { name: "Preview of the files" }).getByRole("img", { name: /seen from the top/ })).toBeVisible();
   });
 
+  test("open the robot board from blocks: eight blocks round a Pico, clean in the rules check, on a board (#776)", { tag: "@journey" }, async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await page.getByRole("button", { name: "Open a board made from blocks" }).click();
+    const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
+    await expect(schematic).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Start with a part.")).toBeHidden();
+    await page.keyboard.press("e");
+    const checks = page.getByRole("group", { name: "Rules check options" });
+    await expect(checks.getByRole("status")).toHaveText("No problems found.");
+    await checks.getByRole("button", { name: "Close" }).click();
+    await page.keyboard.press("2");
+    await expect(page.getByRole("img", { name: /^PCB: 44 parts/ })).toBeVisible();
+  });
+
+  test("the robot board from blocks' schematic @visual", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/");
+    await page.getByRole("group", { name: "View cube" }).waitFor();
+    await page.getByRole("tab", { name: "Electronics" }).click();
+    await page
+      .getByRole("tablist", { name: "Electronics views" })
+      .getByRole("tab", { name: /^Schematic/ })
+      .click();
+    await page.getByRole("button", { name: "Open a board made from blocks" }).click();
+    const schematic = page.getByRole("img", { name: /^Schematic, Sheet 1: \d+ parts/ });
+    await expect(schematic).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/^Opened the robot board from blocks sample/)).toBeHidden({ timeout: 20_000 });
+    await page.keyboard.press("f");
+    await expect(schematic).toHaveScreenshot("blocks-sample-schematic.png", { maxDiffPixelRatio: 0.01, timeout: 30_000 });
+  });
+
   test("open a KiCad project and an Eagle one: the schematic, the board, and what did not come across", async ({ page }) => {
     test.setTimeout(60_000);
     await page.goto("/");

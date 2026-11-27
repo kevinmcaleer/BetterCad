@@ -23,6 +23,13 @@ export interface EActions {
   paste?(): void;
   duplicate?(): void;
   renumber?(): void;
+  /** Gather the selection into a named group, or take the picked groups apart (#766). On the board, pick the whole group (#774). */
+  group?(): void;
+  ungroup?(): void;
+  /** The ribbon's Group button: take apart a selection that is only whole groups, else group it. */
+  groupToggle?(): void;
+  /** Folds the picked blocks to boxes, or opens them again when they all are (#775). */
+  fold?(): void;
   /** Board only: swap the copper layer (dropping a via when a track is on the go), and lock the picked parts. */
   layer?(): void;
   lock?(): void;
@@ -60,6 +67,7 @@ export function showView(to: EView | null, d?: ElectronicsDesign): void {
     ...(to ? { last: to } : {}),
     selected: to ? selected : [],
     placing: null,
+    placingBlock: null,
     schTool: "select",
     pcbTool: "select",
     card: null,

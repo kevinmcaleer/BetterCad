@@ -357,6 +357,13 @@ const DRAW: Record<string, () => string> = {
   flipSide: () =>
     line("M12 3v18", EDGE, 1.2, dashed) +
     `<path d="M8.5 7 4 12l4.5 5z" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.1" stroke-linejoin="round"/><path d="M15.5 7l4.5 5-4.5 5z" fill="${HI}" stroke="${EDGE}" stroke-width="1.1" stroke-linejoin="round"/>`,
+  // Two parts gathered in a dashed outline with its name tab in the accent: a schematic group
+  group: () =>
+    `<rect x="2.5" y="5.5" width="19" height="15" rx="2.5" fill="none" stroke="${EDGE}" stroke-width="1.2" stroke-dasharray="2.4 1.6"/>` +
+    `<rect x="5.5" y="9.5" width="5" height="7" rx="0.8" fill="${TOP}" stroke="${EDGE}" stroke-width="1.1"/>` +
+    `<rect x="13.5" y="9.5" width="5" height="7" rx="0.8" fill="${TOP}" stroke="${EDGE}" stroke-width="1.1"/>` +
+    line("M10.5 13h3", EDGE, 1.2) +
+    `<rect x="2.5" y="2.5" width="8" height="3" rx="1" fill="${HI}" stroke="${EDGE}" stroke-width="0.8"/>`,
   rulesCheck: () => `<rect x="3.5" y="3.5" width="17" height="17" rx="2" fill="${TOP}" stroke="${EDGE}" stroke-width="1.2"/>` + hiLine("M8 12l3 3 5-6", 2.2),
   clash: () => box(-6, -3, -5, 7, 7, 7) + box(-1, -5, -3, 7, 7, 7) + poly([P(-1, -3, 2), P(1, -3, 2), P(1, 2, 2), P(-1, 2, 2)], HI, 0.7),
   // Sketch: flat shapes with their points in the accent

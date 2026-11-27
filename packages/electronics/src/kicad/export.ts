@@ -1,3 +1,4 @@
+import { groupBoxes } from "../groups";
 import { boardPads } from "../board";
 import { key, onSegment, placeOnSheet } from "../geom";
 import {
@@ -451,6 +452,24 @@ function sheetFile(
         ? ["global_label", s(l.name), ["shape", "passive"], ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just]), ["uuid", uuidOf(l.id)]]
         : ["label", s(l.name), ["at", ...at([l.x, l.y]), n(rot)], font(1.27, ["justify", just, "bottom"]), ["uuid", uuidOf(l.id)]],
     );
+  }
+  // Groups (#766): KiCad has no groups on a schematic, so each goes out as a box with its name on the top edge.
+  for (const g of groupBoxes(d, sheet)) {
+    out.push([
+      "rectangle",
+      ["start", ...at([g.box.x1, g.box.y1])],
+      ["end", ...at([g.box.x2, g.box.y2])],
+      stroke(0.15),
+      ["fill", ["type", "none"]],
+      ["uuid", uuidOf(`${g.id}:box`)],
+    ]);
+    out.push([
+      "text",
+      s(g.name),
+      ["at", ...at([g.box.x1 + 0.8, g.box.y2 + 0.5]), n(0)],
+      font(1.5, ["justify", "left", "bottom"]),
+      ["uuid", uuidOf(`${g.id}:name`)],
+    ]);
   }
   for (const note of sheet.notes ?? []) {
     const id: Node[] = ["uuid", uuidOf(note.id)];

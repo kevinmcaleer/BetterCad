@@ -1,5 +1,5 @@
 import { emptyBox, grow, type Box } from "./geom";
-import { emptyBoard, isPower, packageOf, type Board, type ElectronicsDesign, type FootprintDef, type Id, type Placement } from "./model";
+import { emptyBoard, isPower, packageOf, type Board, type ElectronicsDesign, type FootprintDef, type Id, type Placement, type SchGroup } from "./model";
 import { byRef, netlist, pinKey, type Netlist } from "./nets";
 
 /**
@@ -133,32 +133,22 @@ export function applyChanges(d: ElectronicsDesign, changes: Change[], nl: Netlis
   let y = edge.y2;
   let rowH = 0;
   const wrap = Math.max(60, edge.x2 - edge.x1);
+  // New parts of one schematic group land together, as one cluster in the rows (#774).
+  const adds = changes.flatMap((c) => (c.kind === "add-part" ? [c.part] : []));
+  for (const item of clusters(d, adds)) {
+    const w = item.box.x2 - item.box.x1 + 2;
+    const h = item.box.y2 - item.box.y1 + 2;
+    if (x + w > left + wrap && x > left) {
+      x = left;
+      y -= rowH;
+      rowH = 0;
+    }
+    for (const at of item.placements) board.placements.push({ ...at, x: round(at.x + x - item.box.x1 + 1), y: round(at.y + y - item.box.y2 - 1) });
+    x += w;
+    rowH = Math.max(rowH, h);
+  }
   for (const c of changes) {
-    if (c.kind === "add-part") {
-      const part = d.parts.find((p) => p.id === c.part);
-      const pkg = part && packageOf(d, part);
-      if (!part || !pkg) continue;
-      const box = footprintBox(pkg.footprint);
-      const w = box.x2 - box.x1 + 2;
-      const h = box.y2 - box.y1 + 2;
-      if (x + w > left + wrap && x > left) {
-        x = left;
-        y -= rowH;
-        rowH = 0;
-      }
-      const at: Placement = {
-        part: part.id,
-        ref: part.ref,
-        x: round(x - box.x1 + 1),
-        y: round(y - box.y2 - 1),
-        rot: 0,
-        side: "top",
-        footprint: pkg.footprint.name,
-      };
-      board.placements.push(at);
-      x += w;
-      rowH = Math.max(rowH, h);
-    } else if (c.kind === "remove-part") {
+    if (c.kind === "remove-part") {
       board.placements = board.placements.filter((p) => p.part !== c.part);
     } else if (c.kind === "change-footprint") {
       const at = board.placements.find((p) => p.part === c.part);
@@ -183,6 +173,138 @@ export function applyChanges(d: ElectronicsDesign, changes: Change[], nl: Netlis
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** A footprint's space turned by `rot` degrees (a quarter turn at a time; other angles take the turned square). */
+export function turnedBox(b: Box, rot: number): Box {
+  const r = ((Math.round(rot / 90) % 4) + 4) % 4;
+  if (rot % 90) {
+    const m = Math.max(Math.abs(b.x1), Math.abs(b.x2), Math.abs(b.y1), Math.abs(b.y2)) * Math.SQRT2;
+    return { x1: -m, y1: -m, x2: m, y2: m };
+  }
+  if (r === 0) return b;
+  if (r === 1) return { x1: -b.y2, y1: b.x1, x2: -b.y1, y2: b.x2 };
+  if (r === 2) return { x1: -b.x2, y1: -b.y2, x2: -b.x1, y2: -b.y1 };
+  return { x1: b.y1, y1: -b.x2, x2: b.y2, y2: -b.x1 };
+}
+
+/** The schematic group each part is in, by part id. */
+export function partGroups(d: ElectronicsDesign): Map<Id, SchGroup> {
+  const out = new Map<Id, SchGroup>();
+  for (const sheet of d.sheets) {
+    const partOf = new Map(sheet.symbols.map((y) => [y.id, y.part]));
+    for (const g of sheet.groups ?? []) for (const m of g.members) if (partOf.has(m) && !out.has(partOf.get(m)!)) out.set(partOf.get(m)!, g);
+  }
+  return out;
+}
+
+/** Every part of the groups the given parts are in, with the given ones that are in none (#774). */
+export function pickGroups(d: ElectronicsDesign, ids: Id[]): Id[] {
+  const groups = partGroups(d);
+  const want = new Set(ids.flatMap((id) => (groups.has(id) ? [groups.get(id)!.id] : [])));
+  return [...new Set([...ids, ...[...groups].filter(([, g]) => want.has(g.id)).map(([part]) => part)])];
+}
+
+/**
+ * Outlines round groups' footprints on the board (#774): every group whose parts are all picked, and every group
+ * still parked off the board, so a fresh push shows which cluster is which. A group needs two parts on the board.
+ */
+export function boardGroups(d: ElectronicsDesign, selected: ReadonlySet<Id>): { id: Id; name: string; box: Box; picked: boolean }[] {
+  const board = d.board;
+  if (!board) return [];
+  const parts = new Map(d.parts.map((p) => [p.id, p]));
+  const edge = outlineBox(board);
+  const by = new Map<Id, { g: SchGroup; at: Placement[] }>();
+  const groups = partGroups(d);
+  for (const at of board.placements) {
+    const g = groups.get(at.part);
+    if (g) by.set(g.id, { g, at: [...(by.get(g.id)?.at ?? []), at] });
+  }
+  const out: { id: Id; name: string; box: Box; picked: boolean }[] = [];
+  for (const { g, at } of by.values()) {
+    if (at.length < 2) continue;
+    const box = emptyBox();
+    for (const p of at) {
+      const part = parts.get(p.part);
+      const pkg = part && packageOf(d, part);
+      const b = turnedBox(pkg ? footprintBox(pkg.footprint) : { x1: -1, y1: -1, x2: 1, y2: 1 }, p.rot);
+      grow(grow(box, [p.x + b.x1, p.y + b.y1]), [p.x + b.x2, p.y + b.y2]);
+    }
+    const picked = at.every((p) => selected.has(p.part));
+    const parked = box.x1 > edge.x2 || box.x2 < edge.x1 || box.y1 > edge.y2 || box.y2 < edge.y1;
+    if (picked || parked) out.push({ id: g.id, name: g.name, box: { x1: box.x1 - 0.5, y1: box.y1 - 0.5, x2: box.x2 + 0.5, y2: box.y2 + 0.5 }, picked });
+  }
+  return out;
+}
+
+interface Cluster {
+  /** The group's name, or none for a part on its own. */
+  name?: string;
+  /** Placements round the cluster's own origin. */
+  placements: Placement[];
+  box: Box;
+}
+
+/**
+ * New parts set out for the board: each group's parts together, a block's on its layout guide where it has one and
+ * packed close where not, and every other part on its own (#774). In reference order of each cluster's first part.
+ */
+export function clusters(d: ElectronicsDesign, ids: Id[]): Cluster[] {
+  const parts = new Map(d.parts.map((p) => [p.id, p]));
+  const groups = partGroups(d);
+  const buckets = new Map<string, Id[]>();
+  for (const id of ids) {
+    const g = groups.get(id);
+    const k = g ? `g:${g.id}` : `p:${id}`;
+    buckets.set(k, [...(buckets.get(k) ?? []), id]);
+  }
+  const out: (Cluster & { first: string })[] = [];
+  for (const [k, members] of buckets) {
+    const g = k.startsWith("g:") ? groups.get(members[0]!) : undefined;
+    const items = members.flatMap((id) => {
+      const part = parts.get(id);
+      const pkg = part && packageOf(d, part);
+      return part && pkg ? [{ part, pkg, box: footprintBox(pkg.footprint) }] : [];
+    });
+    if (!items.length) continue;
+    items.sort((a, b) => byRef(a.part.ref, b.part.ref));
+    const placements: Placement[] = [];
+    const box = emptyBox();
+    const put = (it: (typeof items)[number], x: number, y: number, rot: number) => {
+      placements.push({ part: it.part.id, ref: it.part.ref, x: round(x), y: round(y), rot, side: "top", footprint: it.pkg.footprint.name });
+      const t = turnedBox(it.box, rot);
+      grow(grow(box, [x + t.x1, y + t.y1]), [x + t.x2, y + t.y2]);
+    };
+    const guide = g?.block?.layout;
+    const rest = guide ? items.filter((it) => !guide[it.part.id]) : items;
+    for (const it of items) {
+      const spot = guide?.[it.part.id];
+      if (spot) put(it, spot.x, spot.y, spot.rot);
+    }
+    // The rest in rows about as wide as they are tall, under what the guide placed.
+    const area = rest.reduce((a, it) => a + (it.box.x2 - it.box.x1 + 1) * (it.box.y2 - it.box.y1 + 1), 0);
+    const widest = Math.max(0, ...rest.map((it) => it.box.x2 - it.box.x1 + 1));
+    const rowW = Math.max(widest, Math.sqrt(area) * 1.4);
+    let cx = box.x1 === Infinity ? 0 : box.x1;
+    let cy = box.y1 === Infinity ? 0 : box.y1 - 1;
+    const startX = cx;
+    let h = 0;
+    for (const it of rest) {
+      const w = it.box.x2 - it.box.x1 + 1;
+      if (cx + w > startX + rowW && cx > startX) {
+        cx = startX;
+        cy -= h;
+        h = 0;
+      }
+      put(it, cx - it.box.x1, cy - it.box.y2, 0);
+      cx += w;
+      h = Math.max(h, it.box.y2 - it.box.y1 + 1);
+    }
+    // Room above for the group's name.
+    if (g) box.y2 += 2;
+    out.push({ ...(g ? { name: g.name } : {}), placements, box, first: items[0]!.part.ref });
+  }
+  return out.sort((a, b) => byRef(a.first, b.first)).map(({ first: _f, ...c }) => c);
+}
 
 /** Pushes the schematic to the board in one go: the list, then the result. */
 export function pushToBoard(d: ElectronicsDesign): { design: ElectronicsDesign; changes: Change[] } {

@@ -16,6 +16,7 @@ import { emptyDesign, withFixedIds, type ElectronicsDesign } from "./model";
 import { byRef, netlist } from "./nets";
 import { checkBoard } from "./pcb/drc";
 import { sampleBoard } from "./sample";
+import { robotBlocksBoard } from "./sampleBlocks";
 import { boardChanges, describeChange, pushToBoard } from "./sync";
 
 /**
@@ -48,6 +49,7 @@ const eagle = (name: string) => ({ name, text: readFileSync(join(dirname(fileURL
 /** How each fixture was first made. The file on disk is what is tested: these only run under UPDATE_GOLDEN. */
 const MAKE: Record<string, () => ElectronicsDesign> = {
   "pico-servo-board": sampleBoard,
+  "robot-blocks": robotBlocksBoard,
   "fab-board": () => fabBoard().d,
   tangle,
   unfinished,

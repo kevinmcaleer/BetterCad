@@ -36,3 +36,12 @@ describe("find in a design (#734)", () => {
     expect(findInDesign(design(), "zzz")).toEqual([]);
   });
 });
+
+describe("find a group (#766)", () => {
+  it("finds a schematic group by its name, after parts", async () => {
+    const { groupOnSheet } = await import("./groups");
+    const d0 = design();
+    const d = groupOnSheet(d0, "sh1", [d0.sheets[0]!.symbols[0]!.id], "Regulator").design;
+    expect(findInDesign(d, "regul")).toEqual([{ kind: "group", id: d.sheets[0]!.groups![0]!.id, sheet: "sh1", text: "Regulator", note: "Group · Sheet 1" }]);
+  });
+});

@@ -21,3 +21,11 @@ This writes `web/public/samples/<id>.bcad` and `<id>.png`. It makes a gallery bu
 `packages/kernel/src/samples.test.ts` builds every sample in the kernel. It checks that no step fails, each builds in under 2 s, the volumes are right, and a parameter change reshapes the model. So the samples are regression fixtures too.
 
 Before launch, Kev prints the phone stand once to check that it prints with no supports.
+
+## Robot board from blocks
+
+`robot-blocks` (#776) has no model, only a circuit: a Raspberry Pi Pico with eight blocks from the Blocks shelf,
+joined with Connect to… and Join I2C, clean in the rules check and pushed to a board. It opens from Open a board
+made from blocks on an empty schematic, and is the answer file for the lesson
+[Build a robot board from blocks](lessons/robot-board-from-blocks.md). It is built by `robotBlocksBoard()` in
+`packages/electronics/src/sampleBlocks.ts`; it keeps only the footprints its parts use, so it is about 450 KB.

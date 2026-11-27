@@ -15,6 +15,19 @@ export function goToFound(d: ElectronicsDesign, f: Found, view: EView, nl: Netli
     if (sheet && sheet !== (ui.sheet ?? d.sheets[0]?.id)) setTimeout(() => eui.set({ focus: eui.get().focus + 1 }), 30);
     else eui.set({ focus: eui.get().focus + 1 });
   };
+  if (f.kind === "group") {
+    // A group is a schematic thing: its parts on the board, or its members on its sheet.
+    const sheet = d.sheets.find((s) => s.id === f.sheet);
+    const members = sheet?.groups?.find((g) => g.id === f.id)?.members ?? [];
+    if (!sheet) return;
+    if (view === "pcb") {
+      const parts = new Set(sheet.symbols.filter((y) => members.includes(y.id)).map((y) => y.part));
+      eui.set({ selected: (d.board?.placements ?? []).filter((p) => parts.has(p.part)).map((p) => p.part), net: null, spot: null });
+      return bump();
+    }
+    eui.set({ sheet: sheet.id, selected: members, net: null, spot: null, inGroup: null });
+    return bump(sheet.id);
+  }
   if (view === "pcb") {
     const board = d.board;
     if (f.kind === "part") {
@@ -60,7 +73,7 @@ export default function FindCard({ design, view, onClose }: { design: Electronic
   const nl = useMemo(() => netlist(design), [design]);
   const found = useMemo(() => findInDesign(design, query, nl), [design, query, nl]);
   useEscape(true, onClose, ESC.panel);
-  const keyOf = (f: Found) => (f.kind === "part" ? `p:${f.id}` : `n:${f.name}`);
+  const keyOf = (f: Found) => (f.kind === "net" ? `n:${f.name}` : `${f.kind[0]}:${f.id}`);
   const go = (f: Found) => {
     setAt(keyOf(f));
     goToFound(design, f, view, nl);

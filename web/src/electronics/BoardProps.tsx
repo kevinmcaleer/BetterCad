@@ -1,5 +1,15 @@
 import { lazy, Suspense, useId, useState } from "react";
-import { boardPads, netlist, type CopperLayer, type ElectronicsDesign, type Keepout, type Side, type ViaMask } from "@bettercad/electronics";
+import {
+  boardPads,
+  netlist,
+  partGroups,
+  pickGroups,
+  type CopperLayer,
+  type ElectronicsDesign,
+  type Keepout,
+  type Side,
+  type ViaMask,
+} from "@bettercad/electronics";
 import { layerName, layerShort, layersOf, setViaSpan, viaKind, viaLayers, viaOpen } from "@bettercad/electronics/pcb/stack";
 import { netLength, tuneLength } from "@bettercad/electronics/pcb/shove";
 import { swapGroups, swapPins } from "@bettercad/electronics/swap";
@@ -107,6 +117,22 @@ function PadJoins({ design, edit, part }: { design: ElectronicsDesign; edit: EEd
 /**
  * Pin swap (#645): offered only for pins the component says do the same job. The schematic follows in the same step.
  */
+/** A part in a schematic group can bring the rest of its group along, to move or turn them as one (#774). */
+function PickGroup({ design, part }: { design: ElectronicsDesign; part: string }) {
+  const g = partGroups(design).get(part);
+  if (!g) return null;
+  const placed = new Set(design.board?.placements.map((p) => p.part));
+  return (
+    <Button
+      size="dense"
+      variant="secondary"
+      label={`Pick the group: ${g.name}`}
+      title="Pick every part of this group on the board, to move or turn them as one (Ctrl+G)"
+      onClick={() => eui.set({ selected: pickGroups(design, [part]).filter((id) => placed.has(id)), net: null })}
+    />
+  );
+}
+
 function SwapPins({ design, edit, part }: { design: ElectronicsDesign; edit: EEdit; part: string }) {
   const groups = swapGroups(design, part);
   const ref = design.parts.find((p) => p.id === part)?.ref ?? "";
@@ -257,6 +283,7 @@ export default function BoardProps({
           />
           Name on the silkscreen
         </label>
+        <PickGroup design={design} part={part} />
         <SwapPins design={design} edit={edit} part={part} />
         <PadJoins design={design} edit={edit} part={part} />
         {!readOnly && <FanOut design={design} edit={edit} part={part} />}

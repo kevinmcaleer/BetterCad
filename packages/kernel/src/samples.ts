@@ -2,7 +2,10 @@ import { SAMPLE_BOARD, sampleBoard } from "@bettercad/electronics/sample";
 import { addBoard } from "./board";
 import { newDoc, type Feature, type ModelDoc, type PartKind, type Vec3 } from "./document";
 import type { Parameter } from "./params";
-import { SAMPLE_CARDS, type SampleCard } from "./sampleList";
+import { FIT_CALIBRATION_GAPS, SAMPLE_CARDS, type SampleCard } from "./sampleList";
+import { robotBlocksBoard } from "@bettercad/electronics/sample-blocks";
+
+export { FIT_CALIBRATION_GAPS };
 
 /**
  * Sample models (#99), built from the document API so they follow the format when it changes. Each one is driven by
@@ -175,8 +178,6 @@ function holeCalibration(): ModelDoc {
   return s.doc;
 }
 
-/** Gaps each side the fit coupon tries, mm, one slot each from the left (#182). */
-export const FIT_CALIBRATION_GAPS = [0.05, 0.1, 0.15, 0.2, 0.3, 0.4] as const;
 /** The coupon's square peg, mm across. */
 export const FIT_PEG = 10;
 
@@ -266,8 +267,16 @@ function picoServoBoard(): ModelDoc {
   return s.doc;
 }
 
+/** The circuit blocks sample (#776): the schematic and board only, no printed parts. */
+function robotBlocks(): ModelDoc {
+  const s = new Sample("Robot board from blocks");
+  s.doc.electronics = robotBlocksBoard();
+  return s.doc;
+}
+
 const BUILDS: Record<string, () => ModelDoc> = {
   "pico-servo-board": picoServoBoard,
+  "robot-blocks": robotBlocks,
   "track-wheels": trackWheels,
   "box-with-lid": boxWithLid,
   bracket,

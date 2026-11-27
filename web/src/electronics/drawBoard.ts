@@ -5,6 +5,7 @@ import {
   placeOnBoard,
   type Air,
   type BoardPad,
+  type Box,
   type CopperLayer,
   type ElectronicsDesign,
   type NetColour,
@@ -17,7 +18,7 @@ import { layerName, layersOf } from "@bettercad/electronics/pcb/stack";
 import { copperMiddle, padOutline } from "@bettercad/electronics/padShape";
 import { REF_SIZE, penFor, textStrokes } from "@bettercad/electronics/fab/font";
 import type { Colours } from "./colours";
-import { rubber } from "./drawSchematic";
+import { drawGroup, rubber } from "./drawSchematic";
 import { toScreen, type View2D } from "./view2d";
 
 /** The layers the Layers card lists. */
@@ -88,6 +89,8 @@ export interface BoardLook {
   pourOutlines?: boolean;
   /** How strongly pours are painted, over the shares the screen uses: the 3D board's picture paints them fuller. */
   pourAlpha?: number;
+  /** Groups' outlines round their footprints (#774). */
+  groups?: { id: string; name: string; box: Box; picked: boolean }[];
   /** Two points being measured between (#732). */
   measure?: P2[];
   /** Teardrops where tracks meet pads and vias (#743), worked out like pours. */
@@ -641,6 +644,8 @@ export function drawBoard(ctx: CanvasRenderingContext2D, v: View2D, size: { w: n
       ctx.fillText(m.text, s[0], s[1] - 12);
     }
   }
+  const gc = { ...c, accent: c["ec-pick"], muted: c["ec-pcb-ink"] };
+  for (const g of look.groups ?? []) drawGroup(ctx, v, g, gc, g.picked, false);
   if (look.measure?.length) drawMeasure(ctx, v, look.measure, c);
   // Corners that drag (#742): small squares, the picked one filled.
   if (look.handles)
