@@ -89,6 +89,16 @@ if (existsSync(join(dist, "index.html"))) {
     const size = statSync(join(dist, "assets", gcs)).size;
     add("WASM", "planegcs", mb(size), budgets.wasm.planegcs.raw, "MB", mb(size) <= budgets.wasm.planegcs.raw);
   }
+  // The circuit simulator (#761): ngspice with its WASM inside one script, in assets/sim/, loaded only to simulate.
+  const simDir = join(dist, "assets", "sim");
+  const sim = existsSync(simDir) ? readdirSync(simDir).find((f) => f.endsWith(".js")) : undefined;
+  if (sim && budgets.wasm.sim) {
+    const size = statSync(join(simDir, sim)).size;
+    const br = existsSync(join(simDir, `${sim}.br`)) ? statSync(join(simDir, `${sim}.br`)).size : size;
+    const w = budgets.wasm.sim;
+    add("WASM", "ngspice (circuit simulator)", mb(size), w.raw, "MB", mb(size) <= w.raw);
+    add("WASM", "ngspice, Brotli", mb(br), w.brotli, "MB", mb(br) <= w.brotli);
+  }
 }
 
 // Benchmarks: a median may be up to the tolerance over its baseline.

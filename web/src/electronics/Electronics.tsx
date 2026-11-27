@@ -49,6 +49,7 @@ const AutoRoute = lazy(() => import("./AutoRoute"));
 const SchSheets = lazy(() => import("./SchSheets"));
 const FindCard = lazy(() => import("./Find"));
 const Calculators = lazy(() => import("./Calculators"));
+const Simulate = lazy(() => import("./Simulate"));
 const PartPreview = lazy(() => import("./PartPreview").then((m) => ({ default: m.PartPreview })));
 
 type Card = NonNullable<ReturnType<typeof eui.get>["card"]>;
@@ -289,6 +290,15 @@ function useTools(view: EView, readOnly: boolean): Tool[] {
         run: toggle("table"),
       },
       calc,
+      {
+        id: "sim",
+        group: "Check",
+        label: "Simulate",
+        icon: "waveform",
+        tip: "Run the circuit on a simulator and see the voltage on a net over time",
+        on: ui.card === "sim",
+        run: toggle("sim"),
+      },
       {
         id: "push",
         group: "Sync",
@@ -773,6 +783,16 @@ function commands(design: () => ElectronicsDesign): Command[] {
     },
     {
       ...e,
+      id: "electronics.sim",
+      label: "Simulate",
+      group: "Tools",
+      icon: "waveform",
+      when: schematic,
+      run: toggle("sim"),
+      keywords: "spice ngspice probe voltage scope transient",
+    },
+    {
+      ...e,
       id: "electronics.export",
       label: "Export the schematic",
       group: "Tools",
@@ -1083,6 +1103,7 @@ export default function ElectronicsView({
           )}
           {ui.card === "checks" && <ChecksCard design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "table" && <PartsTable design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
+          {ui.card === "sim" && <Simulate design={design} edit={edit} readOnly={readOnly} onClose={() => eui.set({ card: null })} />}
           {ui.card === "export" && <ExportSchematic design={design} sheet={sheet} name={name || "Schematic"} onClose={() => eui.set({ card: null })} />}
         </Suspense>
       )}

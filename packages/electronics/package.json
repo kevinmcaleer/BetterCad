@@ -16,6 +16,7 @@
     "./tools": "./src/library/tools.ts",
     "./erc": "./src/erc.ts",
     "./variants": "./src/variants.ts",
+    "./sim": "./src/sim/spice.ts",
     "./replace": "./src/replace.ts",
     "./pcb/copper": "./src/pcb/copper.ts",
     "./pcb/route": "./src/pcb/route.ts",

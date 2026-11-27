@@ -671,6 +671,30 @@ export interface ElectronicsDesign {
   checks?: { levels?: Record<string, CheckLevel>; waived?: Record<string, string>; pins?: Record<string, "ok" | "warning" | "error"> };
   /** Named sets of fitted parts and changed values (#758), each on top of the design as drawn. */
   variants?: Variant[];
+  /** Circuit simulation's settings (#761): how long to run, the nets probed, rail voltages and signals driven. */
+  sim?: SimSettings;
+}
+
+/** A signal put on a net for a simulation (#761), against ground. */
+export interface SimDrive {
+  id: Id;
+  net: string;
+  wave: "dc" | "pulse" | "sine";
+  /** Volts: the low and high of a pulse, the bottom and top of a sine, or `high` alone for dc. */
+  low: number;
+  high: number;
+  /** Hertz, for a pulse or a sine. */
+  freq?: number;
+}
+
+export interface SimSettings {
+  /** Seconds to run for. */
+  stop?: number;
+  /** Nets whose voltage is drawn, by name. */
+  probes?: string[];
+  /** Volts for power rails whose name doesn't say (VCC, VIN), by net name. */
+  rails?: Record<string, number>;
+  drives?: SimDrive[];
 }
 
 /** A variant (#758): the parts it fits or leaves off, and values it changes, by part id. Others are as drawn. */

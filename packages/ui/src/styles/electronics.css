@@ -1258,3 +1258,107 @@ button.bc-ec-pill {
 .bc-ec-pin-nets dd .bc-text {
   text-align: left;
 }
+
+/* Simulate (#761): probes, rails, driven nets and the plot of the run. */
+.bc-ec-sim {
+  width: 360px;
+}
+.bc-ec-sim-head {
+  margin: var(--bc-space-3) 0 var(--bc-space-1);
+  font-size: var(--bc-type-micro-strong-size);
+  line-height: var(--bc-type-micro-strong-line);
+  font-weight: var(--bc-type-micro-strong-weight);
+  color: var(--bc-color-muted);
+}
+.bc-ec-sim-list {
+  margin: 0 0 var(--bc-space-1);
+  padding: 0;
+  list-style: none;
+}
+.bc-ec-sim-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--bc-space-2);
+  min-height: 28px;
+}
+.bc-ec-sim-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--bc-font-mono);
+}
+.bc-ec-sim-range {
+  color: var(--bc-color-muted);
+}
+.bc-ec-sim-swatch {
+  flex: none;
+  width: 12px;
+  height: 4px;
+  border-radius: var(--bc-radius-pill);
+  background: currentColor;
+}
+.bc-ec-sim-rails {
+  flex-wrap: wrap;
+}
+.bc-ec-sim-drive {
+  margin: 0 0 var(--bc-space-2);
+  padding: var(--bc-space-2);
+  border: 1px solid var(--bc-color-line);
+  border-radius: var(--bc-radius-md);
+}
+.bc-ec-sim-drive legend {
+  padding: 0 var(--bc-space-1);
+  font-family: var(--bc-font-mono);
+}
+.bc-ec-sim-skipped {
+  margin: var(--bc-space-2) 0;
+  color: var(--bc-color-muted);
+}
+.bc-ec-sim-skipped ul {
+  margin: var(--bc-space-1) 0 0;
+  padding-left: var(--bc-space-4);
+}
+.bc-ec-sim-plot {
+  margin: var(--bc-space-2) 0 0;
+}
+.bc-ec-sim-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.bc-ec-sim-frame {
+  fill: var(--bc-color-viewport);
+  stroke: var(--bc-color-line);
+}
+.bc-ec-sim-grid {
+  stroke: var(--bc-color-grid);
+}
+.bc-ec-sim-tick {
+  fill: var(--bc-color-muted);
+  font-size: 9px;
+  font-family: var(--bc-font-mono);
+}
+.bc-ec-sim-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.bc-ec-sim-trace-0 {
+  color: var(--bc-color-accent);
+}
+.bc-ec-sim-trace-1 {
+  color: var(--bc-color-axis-y);
+}
+.bc-ec-sim-trace-2 {
+  color: var(--bc-color-axis-x);
+}
+.bc-ec-sim-trace-3 {
+  color: var(--bc-color-axis-z);
+}
+.bc-ec-sim-trace-4 {
+  color: var(--bc-color-dimension);
+}
+.bc-ec-sim-trace-5 {
+  color: var(--bc-color-snap);
+}

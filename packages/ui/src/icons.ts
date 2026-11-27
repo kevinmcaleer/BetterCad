@@ -136,6 +136,8 @@ export const via = "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 
 export const pushPcb = "M3 5h8v6H3zM13 13h8v6h-8zM7 11v4h6M10.5 12.5 13 15l-2.5 2.5";
 /** A fiducial: a copper dot in a clear ring, with the camera's cross hairs. */
 export const fiducial = "M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM12 1v4M12 19v4M1 12h4M19 12h4";
+/** Simulate (#761): a scope screen with a wave across it. */
+export const waveform = "M3 5h18v14H3zM5 14c2 0 2-6 4-6s2 8 4 8 2-6 4-6 2 3 2 3";
 /** A test point: a probe coming down on a round pad. */
 export const testPoint = "M5 18a7 3 0 1 0 14 0 7 3 0 0 0-14 0zM12 15V3M9 6l3-3 3 3";
 export const pour = "M4 4h16v16H4zM4 12l8-8M8 20 20 8M14 20l6-6";
@@ -319,6 +321,7 @@ export const ICONS = {
   calculator,
   fiducial,
   testPoint,
+  waveform,
   sliders,
   settings,
   gear,

@@ -350,6 +350,11 @@ const DRAW: Record<string, () => string> = {
     `<circle cx="12" cy="12" r="8" fill="none" stroke="${EDGE}" stroke-width="1.2"/><circle cx="12" cy="12" r="3.6" fill="${HI}" stroke="${EDGE}" stroke-width="1"/>` +
     line("M12 1v4M12 19v4M1 12h4M19 12h4", EDGE, 1.4),
   // A test point: a probe coming down on a round pad
+  // Simulate: a scope's screen, its wave in the accent
+  waveform: () =>
+    `<rect x="2.5" y="4.5" width="19" height="15" rx="1.6" fill="${SIDE}" stroke="${EDGE}" stroke-width="1.2"/>` +
+    `<rect x="4.5" y="6.5" width="15" height="11" rx="0.6" fill="${TOP}" stroke="${EDGE}" stroke-width="0.7"/>` +
+    hiLine("M5 14c2 0 2-6 4-6s2 8 4 8 2-6 4-6 2 3 2 3", 1.8),
   testPoint: () => `<ellipse cx="12" cy="18" rx="7" ry="3" fill="${HI}" stroke="${EDGE}" stroke-width="1.1"/>` + line("M12 15V3M9 6l3-3 3 3", EDGE, 1.6),
   pushPcb: () =>
     `<rect x="2.5" y="3.5" width="9" height="7" fill="${TOP}" stroke="${EDGE}" stroke-width="1.1"/>` +
